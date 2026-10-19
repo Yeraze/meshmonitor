@@ -137,6 +137,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
       url: url('mqtt', 'bridge'),
       username: `${PRIV}-bridge-user`,
       password: `${PW}-bridge`,
+      clientId: '!0000beef',
     },
     subscriptions: [`${EP}-topic/#`],
     mode: 'bidirectional',
@@ -558,7 +559,7 @@ describe('source config redaction', () => {
 
       expect(rows.mqtt_bridge.config).toEqual({
         ...without(FIXTURES.mqtt_bridge, UNCLASSIFIED),
-        upstream: { url: editorUrl('mqtt', 'bridge'), username: `${PRIV}-bridge-user` },
+        upstream: { url: editorUrl('mqtt', 'bridge'), username: `${PRIV}-bridge-user`, clientId: '!0000beef' },
       });
       expect(rows.mqtt_bridge.maskedConfigFields!.sort()).toEqual(['upstream.password', 'upstream.url']);
 

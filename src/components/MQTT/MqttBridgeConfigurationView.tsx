@@ -45,6 +45,7 @@ import {
   emptyBridgeForm,
   BRIDGE_MODES,
   BRIDGE_FORWARDING_MODES,
+  BRIDGE_CLIENT_ID_PATTERN,
   type BridgeConfigForm,
   type UplinkTopicMode,
 } from './mqttBridgeConfig';
@@ -86,6 +87,10 @@ interface GeoFilterSourceStatus {
   uplinkOkToMqttDrops?: number;
   uplinkAutomationDrops?: number;
   uplinkBridgeRelayDrops?: number;
+  /** #5893: uplinks dropped while the upstream connection was down. */
+  uplinkDisconnectedDrops?: number;
+  /** #5893: another bridge shares this parent broker + upstream in per_gateway mode. */
+  sharedUpstreamWarning?: string | null;
   lastGeoSweep?: {
     timestamp: number;
     scanned: number;
@@ -100,6 +105,15 @@ interface SourceSummary {
   id: string;
   name: string;
   type: string;
+  /** Only the parent broker's gateway id is read (#5893); absent when not shown. */
+  config?: { gateway?: { nodeId?: unknown } } | null;
+}
+
+/** #5893: a broker source's gateway id as `!xxxxxxxx`, or null when unknown. */
+function brokerGatewayClientId(broker: SourceSummary | undefined): string | null {
+  const id = broker?.config?.gateway?.nodeId;
+  if (typeof id !== 'string' || !BRIDGE_CLIENT_ID_PATTERN.test(id)) return null;
+  return '!' + id.replace(/^!/, '').toLowerCase();
 }
 
 interface MqttBridgeConfigurationViewProps {
@@ -125,6 +139,10 @@ function bboxFromForm(g: BridgeConfigForm['geo']): BBoxValue | null {
   return nums;
 }
 
+/** #5893: help text under the single-mode Client ID input. */
+const CLIENT_ID_HELP =
+  "Leave blank for the default mm-bridge-… ID. Strict community brokers accept only !xxxxxxxx (8 hex digits); set one here so the broker sees a single connection from MeshMonitor. It must not match an ID another client uses on that broker: your radio's own MQTT module, another MeshMonitor, or another bridge source. A duplicate makes the broker evict one of them, and after 5 evictions in 10 minutes this bridge stops reconnecting.";
+
 const labelStyle: React.CSSProperties = { fontSize: 11, color: 'var(--color-text-subtle)', marginTop: 4 };
 
 export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewProps> = ({
@@ -145,6 +163,8 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const uplinkOkToMqttDrops = geoStatus?.uplinkOkToMqttDrops ?? 0;
   const uplinkAutomationDrops = geoStatus?.uplinkAutomationDrops ?? 0;
   const uplinkBridgeRelayDrops = geoStatus?.uplinkBridgeRelayDrops ?? 0;
+  const uplinkDisconnectedDrops = geoStatus?.uplinkDisconnectedDrops ?? 0;
+  const sharedUpstreamWarning = geoStatus?.sharedUpstreamWarning ?? null;
 
   const [form, setForm] = useState<BridgeConfigForm>(emptyBridgeForm());
   // The form as last loaded or saved: what "unsaved changes" is measured
@@ -377,6 +397,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   }
 
   const attached = !!form.brokerId;
+  const parentGatewayClientId = brokerGatewayClientId(brokers.find((b) => b.id === form.brokerId));
 
   return (
     <div id={MQTT_BRIDGE_SETTINGS_SECTION_ID} className={sectionClass}>
@@ -513,6 +534,51 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             )}
           </span>
         </label>
+        {sharedUpstreamWarning && form.forwardingMode === 'per_gateway' && (
+          <p className={styles.warning} role="status">
+            <UiIcon name="alert" size={14} />{' '}
+            {t(
+              'source.form.mqtt_bridge_shared_upstream_warning',
+              'Another bridge source uses the same parent broker and upstream URL in per_gateway mode. Both connect with the same Client IDs, so the upstream broker will keep evicting one for the other. Keep one bridge per broker and upstream, or switch one to Single.',
+            )}
+          </p>
+        )}
+        {form.forwardingMode === 'single' && (
+          <div className="dashboard-form-field">
+            <label className="dashboard-form-label" htmlFor="mqttBridgeClientId">
+              {t('source.form.mqtt_bridge_client_id', 'Upstream Client ID (optional)')}
+            </label>
+            <div className={styles.clientIdRow}>
+              <input
+                id="mqttBridgeClientId"
+                className={`dashboard-form-input ${styles.clientIdInput}`}
+                type="text"
+                value={form.clientId ?? ''}
+                disabled={!canWrite}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => patch('clientId', e.target.value)}
+                placeholder={parentGatewayClientId ?? '!a1b2c3d4'}
+              />
+              {parentGatewayClientId && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!canWrite || form.clientId === parentGatewayClientId}
+                  onClick={() => patch('clientId', parentGatewayClientId)}
+                >
+                  {t('source.form.mqtt_bridge_client_id_use_gateway', "Use the parent broker's gateway ID")}
+                </button>
+              )}
+            </div>
+            <span style={labelStyle}>
+              {t(
+                'source.form.mqtt_bridge_client_id_help',
+                CLIENT_ID_HELP,
+              )}
+            </span>
+          </div>
+        )}
         <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
           <input
             type="checkbox"
@@ -556,6 +622,13 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
                 'source.form.mqtt_bridge_uplink_policy_drops',
                 'Dropped so far: {{automation}} automation · {{okToMqtt}} ok_to_mqtt',
                 { automation: uplinkAutomationDrops, okToMqtt: uplinkOkToMqttDrops },
+              )}
+            </span>
+            <span style={{ ...labelStyle, display: 'block' }}>
+              {t(
+                'source.form.mqtt_bridge_disconnected_drops',
+                'Dropped while the upstream connection was down: {{count}}',
+                { count: uplinkDisconnectedDrops },
               )}
             </span>
           </span>

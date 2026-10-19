@@ -27,6 +27,7 @@ vi.mock('../services/database.js', () => ({
 vi.mock('./sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: {
     getManager: (id: string) => registry.managers.get(id),
+    getAllManagers: () => Array.from(registry.managers.values()),
     on: vi.fn(),
     off: vi.fn(),
   },

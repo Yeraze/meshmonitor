@@ -81,7 +81,16 @@ export interface BridgeConfigForm {
   uplinkTopics?: string;
   downlinkRewrite?: BridgeRewriteStrings;
   uplinkRewrite?: BridgeRewriteStrings;
+  /**
+   * #5893: optional single-mode Client ID (`!xxxxxxxx`). Page-only: when
+   * omitted, the stored `upstream.clientId` is kept. Saved only while the
+   * forwarding mode is `single`; the server ignores it in `per_gateway`.
+   */
+  clientId?: string;
 }
+
+/** #5893: the shape the server accepts for `upstream.clientId`. */
+export const BRIDGE_CLIENT_ID_PATTERN = /^!?[0-9a-fA-F]{8}$/;
 
 export interface BridgeConfigError {
   key: string;
@@ -177,12 +186,33 @@ export function buildBridgeConfig(
     else delete cfg.brokerSourceId;
   }
 
+  // #5893: single-mode Client ID. Kept from base when the caller does not
+  // manage it (the modal); dropped outside single mode so a row never carries
+  // a stale one.
+  const forwardingMode = form.forwardingMode ?? opts.base?.forwardingMode ?? 'per_gateway';
+  let clientId: string | undefined =
+    form.clientId !== undefined
+      ? form.clientId.trim() || undefined
+      : typeof opts.base?.upstream?.clientId === 'string'
+        ? opts.base.upstream.clientId
+        : undefined;
+  if (forwardingMode !== 'single') clientId = undefined;
+  if (clientId !== undefined && !BRIDGE_CLIENT_ID_PATTERN.test(clientId)) {
+    return {
+      error: {
+        key: 'source.form.error_mqtt_bridge_client_id',
+        fallback: 'Client ID must be 8 hex digits, optionally starting with ! (for example !a1b2c3d4)',
+      },
+    };
+  }
+
   // Upstream is rebuilt fresh (never spread from base — avoids leaking the
   // stored password back through). Empty password => undefined => server keeps.
   cfg.upstream = {
     url,
     username: form.username?.trim() || undefined,
     password: form.password || undefined,
+    ...(clientId !== undefined ? { clientId } : {}),
   };
 
   if (form.subscriptions !== undefined) {
@@ -344,6 +374,7 @@ export function formFromBridgeConfig(config: Record<string, any> | null | undefi
       from: cfg.uplinkTopicRewrite?.from ?? '',
       to: cfg.uplinkTopicRewrite?.to ?? '',
     },
+    clientId: typeof cfg.upstream?.clientId === 'string' ? cfg.upstream.clientId : '',
   };
 }
 
@@ -369,5 +400,6 @@ export function emptyBridgeForm(): BridgeConfigForm {
     uplinkTopics: '',
     downlinkRewrite: { from: '', to: '' },
     uplinkRewrite: { from: '', to: '' },
+    clientId: '',
   };
 }

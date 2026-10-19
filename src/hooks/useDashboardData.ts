@@ -79,6 +79,15 @@ export interface SourceStatus {
   authStoppedGatewayCount?: number;
   /** Their `!<8-hex>` ids. Present only when the viewer may read the source's nodes. */
   authStoppedGateways?: string[];
+  /**
+   * MQTT bridge only (#5893): the subscriber gave up reconnecting after
+   * repeated evictions (another client holds its Client ID or login). The
+   * reason text arrives as `permissionMessage`. A save or a manual connect
+   * clears it.
+   */
+  evictionStopped?: boolean;
+  /** MQTT bridge only (#5893): per-gateway publishers that stopped the same way. */
+  evictionStoppedGatewayCount?: number;
   /** Total nodes heard by this source — populated by GET /api/sources/:id/status. */
   nodeCount?: number;
   /**

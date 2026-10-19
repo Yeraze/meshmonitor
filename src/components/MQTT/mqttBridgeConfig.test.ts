@@ -6,6 +6,52 @@ import {
   type BridgeConfigForm,
 } from './mqttBridgeConfig';
 
+describe('mqttBridgeConfig — single-mode Client ID (#5893)', () => {
+  const single = (over: Partial<BridgeConfigForm> = {}): BridgeConfigForm => ({
+    ...emptyBridgeForm(),
+    url: 'mqtt://strict-broker.example:1883',
+    forwardingMode: 'single',
+    ...over,
+  });
+
+  it('writes upstream.clientId in single mode', () => {
+    const { config } = buildBridgeConfig(single({ clientId: '!a1b2c3d4' }), { editing: false });
+    expect(config?.upstream.clientId).toBe('!a1b2c3d4');
+  });
+
+  it('omits a blank clientId', () => {
+    const { config } = buildBridgeConfig(single({ clientId: '  ' }), { editing: false });
+    expect(config?.upstream).not.toHaveProperty('clientId');
+  });
+
+  it('drops clientId outside single mode', () => {
+    const { config } = buildBridgeConfig(
+      single({ forwardingMode: 'per_gateway', clientId: '!a1b2c3d4' }),
+      { editing: true, base: { forwardingMode: 'single', upstream: { url: 'x', clientId: '!a1b2c3d4' } } },
+    );
+    expect(config?.upstream).not.toHaveProperty('clientId');
+  });
+
+  it('rejects a malformed clientId', () => {
+    const { error } = buildBridgeConfig(single({ clientId: 'mm-bridge-1' }), { editing: false });
+    expect(error?.key).toBe('source.form.error_mqtt_bridge_client_id');
+  });
+
+  it('keeps the stored clientId when the caller does not manage it (modal)', () => {
+    const { config } = buildBridgeConfig(
+      { url: 'mqtt://strict-broker.example:1883' },
+      { editing: true, base: { forwardingMode: 'single', upstream: { url: 'x', clientId: '!0000beef' } } },
+    );
+    expect(config?.upstream.clientId).toBe('!0000beef');
+  });
+
+  it('hydrates the form from the stored config', () => {
+    const form = formFromBridgeConfig({ forwardingMode: 'single', upstream: { url: 'x', clientId: '!0000beef' } });
+    expect(form.clientId).toBe('!0000beef');
+    expect(formFromBridgeConfig({}).clientId).toBe('');
+  });
+});
+
 describe('mqttBridgeConfig', () => {
   describe('buildBridgeConfig', () => {
     it('requires an upstream URL', () => {
@@ -282,6 +328,7 @@ describe('mqttBridgeConfig', () => {
         uplinkTopics: 'msh/US/FL/+/+/LongFast/#',
         downlinkRewrite: { from: 'msh/US', to: 'msh/local' },
         uplinkRewrite: { from: 'msh/local', to: 'msh/US' },
+        clientId: '!a1b2c3d4',
       };
       const { config } = buildBridgeConfig(form, { editing: false });
       const round = formFromBridgeConfig(config);

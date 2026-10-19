@@ -582,7 +582,28 @@ A stopped connection drops the uplink packets it would have carried. They are co
 
 To start again, fix the credentials or the broker's rules and save the source, or click **Connect** / **Retry**. Either gives each stopped connection five fresh attempts; connections that are working are left alone. A save that changes nothing (a rename, say) does not restart the bridge. A restart of MeshMonitor also gives five fresh attempts: the count is kept in memory, not in the database.
 
-Any other failure — broker down, network drop, TLS error — keeps retrying on the normal backoff (1 second, doubling to 60 seconds) and never stops.
+A broker that keeps evicting a connection also stops it (see the next section). Any other failure — broker down, network drop, TLS error — keeps retrying on the normal backoff (1 second, doubling to 60 seconds) and never stops.
+
+### Bridge shows "Stopped: evicted", or the logs say "duplicate Client ID signature"
+
+An eviction is a session the upstream broker closes within seconds of accepting it, with no error on MeshMonitor's side. It almost always means another client holds the same Client ID or login, and the broker drops one session each time the other connects. The two then take turns evicting each other for ever. Likely causes:
+
+- **Another bridge source** on the same parent broker and upstream URL, in `per_gateway` mode. Both connect under the same `!<hex>` Client IDs. The bridge settings page warns when it sees this.
+- **A per-username connection cap** on the broker. `per_gateway` mode opens one connection for the bridge plus one for each local gateway that sends a packet, all with the same login. If the broker allows one connection per user, switch to **Single** and set a **Client ID** (below).
+- **The gateway node itself**, if its own MQTT module publishes to the same broker.
+- **Another MeshMonitor instance** using the same Client ID.
+
+After **5 evictions in 10 minutes** a connection stops reconnecting. The subscriber connection reads **Stopped: evicted** on the card, with a **Connect** button; a gateway publisher stops on its own and the bridge keeps running. Remove the other client, then save the source or click **Connect** / **Retry**. A restart of MeshMonitor also starts a fresh count.
+
+### Upstream Client ID in Single mode
+
+Some community brokers accept only Client IDs of the form `!xxxxxxxx` (8 hex digits) and refuse MeshMonitor's default `mm-bridge-…` ID with CONNACK 4. In **Single** mode the bridge settings page has an optional **Upstream Client ID** field for this. MeshMonitor uses it as typed, with no random suffix, so the broker sees one connection from MeshMonitor. **Use the parent broker's gateway ID** fills in the gateway ID shown on the parent broker source.
+
+The ID must not match one that another client uses on that broker (your radio's own MQTT module, another MeshMonitor, or another bridge source), or the broker evicts one of them. Leave it blank to keep the default.
+
+### Uplink packets dropped while disconnected
+
+A packet that should go upstream while the bridge's upstream connection is down is dropped, not queued. The count shows on the bridge settings page as **Dropped while the upstream connection was down** (`uplinkDisconnectedDrops` on the status), and the log notes it once each time the connection goes down. If this number climbs, check the card and the logs for an eviction loop or a broker that is down.
 
 ### Deleting the broker source
 

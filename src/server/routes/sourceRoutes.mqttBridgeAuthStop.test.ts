@@ -60,7 +60,13 @@ import databaseService from '../../services/database.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMqttBridgeManager } from '../sourceManagerTypes.js';
-import { BRIDGE_AUTH_STOPPED_MESSAGE, BRIDGE_MAX_AUTH_FAILURES } from '../mqttBridgeManager.js';
+import {
+  BRIDGE_AUTH_STOPPED_MESSAGE,
+  BRIDGE_MAX_AUTH_FAILURES,
+  BRIDGE_EVICTION_STOPPED_MESSAGE,
+  BRIDGE_MAX_EVICTIONS,
+} from '../mqttBridgeManager.js';
+import { GATEWAY_EVICTION_STOPPED_MESSAGE } from '../mqttBridgePublisherPool.js';
 
 const USERNAME = 'route-bridge-user';
 const PASSWORD = 'route-bridge-pass';
@@ -399,6 +405,61 @@ describe('mqtt_bridge auth stop through the source routes', () => {
       expect(bridgeManager(id)).toBe(mgr);
       expect(sockets().length).toBe(before);
       expect(sock.end).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('eviction stop (#5893)', () => {
+    /** The broker accepts each session and closes it at once: an eviction. */
+    async function evictToLimit(sock: any) {
+      // The create's own connect already landed; close it, then 4 more rounds.
+      sock.emit('close');
+      for (let i = 1; i < BRIDGE_MAX_EVICTIONS; i++) {
+        sock.emit('connect');
+        sock.emit('close');
+      }
+      await settle();
+    }
+
+    it('shows the fixed reason to a caller with no login and resumes on connect', async () => {
+      const { agent, id } = await createBridge();
+      await evictToLimit(lastSocketFor(SUBSCRIBER_ID));
+      expect(bridgeManager(id).getStatus().evictionStopped).toBe(true);
+
+      const anon = await harness.loginAs(null);
+      const res = await anon.get(`/${id}/status`);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        connected: false,
+        evictionStopped: true,
+        permissionMessage: BRIDGE_EVICTION_STOPPED_MESSAGE,
+        lastError: BRIDGE_EVICTION_STOPPED_MESSAGE,
+      });
+      expectNoSecrets(res.body);
+
+      const connect = await agent.post(`/${id}/connect`);
+      expect(connect.body).toEqual({ success: true, restarted: { subscriber: true, gateways: 0 } });
+      await settle();
+      const after = await agent.get(`/${id}/status`);
+      expect(after.body).toMatchObject({ connected: true, evictionStopped: false });
+    });
+
+    it('hides eviction-stopped gateway ids from a caller without nodes:read', async () => {
+      const { agent, id } = await createBridge();
+      await uplink(GW_A);
+      await evictToLimit(lastSocketFor(GW_A));
+      expect(bridgeManager(id).getStatus().evictionStoppedGateways).toEqual([GW_A]);
+
+      const admin = await agent.get(`/${id}/status`);
+      expect(admin.body.evictionStoppedGateways).toEqual([GW_A]);
+
+      const anon = await harness.loginAs(null);
+      const res = await anon.get(`/${id}/status`);
+      expect(res.body.evictionStoppedGatewayCount).toBe(1);
+      expect(res.body.evictionStoppedGateways).toBeUndefined();
+      expect(JSON.stringify(res.body)).not.toContain(GW_A);
+      const entries = Object.values(res.body.publishers) as Array<{ evictionStopped: boolean; lastError: string | null }>;
+      expect(entries[0].evictionStopped).toBe(true);
+      expect(entries[0].lastError).toBe(GATEWAY_EVICTION_STOPPED_MESSAGE);
     });
   });
 
