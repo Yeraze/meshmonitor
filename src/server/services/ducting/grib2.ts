@@ -57,7 +57,8 @@ function signed16(v: number): number {
   return v & 0x8000 ? -(v & 0x7fff) : v;
 }
 function signed32(v: number): number {
-  return v & 0x80000000 ? -(v & 0x7fffffff) : v;
+  // `>>> 31` reads the sign bit without JS's signed 32-bit `&` result.
+  return v >>> 31 ? -(v & 0x7fffffff) : v;
 }
 
 function scaledLevel(scale: number, value: number): number {

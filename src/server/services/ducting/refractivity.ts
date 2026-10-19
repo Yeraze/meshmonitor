@@ -92,6 +92,8 @@ export function indexColumn(levels: readonly ProfileLevel[], groundHeightM: numb
         Number.isFinite(l.temperatureK) &&
         Number.isFinite(l.relativeHumidityPct) &&
         l.temperatureK > 150 &&
+        // 1 m of slack: an isobaric level's geopotential height can sit just
+        // under the surface height from packing rounding; keep it.
         l.heightM >= groundHeightM - 1,
     )
     .map((l) => {
