@@ -26,6 +26,7 @@ import { optionalAuth } from './auth/authMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { setupAccessLogger } from './middleware/accessLogger.js';
 import { getEnvironmentConfig, resetEnvironmentConfig } from './config/environment.js';
+import { dataPath } from './config/dataDir.js';
 import { pushNotificationService } from './services/pushNotificationService.js';
 import { appriseNotificationService } from './services/appriseNotificationService.js';
 import { backupSchedulerService } from './services/backupSchedulerService.js';
@@ -1002,7 +1003,7 @@ apiRouter.use('/elevation', elevationRoutes);
 apiRouter.use('/gnss', gnssRoutes);
 
 // GeoJSON overlay layer routes
-const geojsonDataDir = path.join(process.env.DATA_DIR || '/data', 'geojson');
+const geojsonDataDir = dataPath('geojson');
 const geojsonService = new GeoJsonService(geojsonDataDir);
 const geojsonRouter = createGeoJsonRouter(geojsonService);
 apiRouter.use('/geojson', geojsonRouter);
@@ -1012,7 +1013,7 @@ apiRouter.use('/geojson', geojsonRouter);
 apiRouter.use('/privacy/admin', privacyAdminRouter);
 
 // MapLibre GL style routes
-const mapStyleDataDir = path.join(process.env.DATA_DIR || '/data', 'styles');
+const mapStyleDataDir = dataPath('styles');
 const mapStyleService = new MapStyleService(mapStyleDataDir);
 const mapStyleRouter = createMapStyleRouter(mapStyleService);
 apiRouter.use('/map-styles', mapStyleRouter);

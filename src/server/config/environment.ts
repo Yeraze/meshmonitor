@@ -15,6 +15,7 @@
 import crypto from 'crypto';
 import path from 'path';
 import { logger } from '../../utils/logger.js';
+import { getDataDir, getDefaultDatabasePath, getDefaultAccessLogPath } from './dataDir.js';
 
 /**
  * Parse boolean environment variable
@@ -472,7 +473,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
   // Database
   const databasePath = {
-    value: process.env.DATABASE_PATH || '/data/meshmonitor.db',
+    value: process.env.DATABASE_PATH || getDefaultDatabasePath(),
     wasProvided: process.env.DATABASE_PATH !== undefined
   };
 
@@ -731,14 +732,14 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   // Access Logging (for fail2ban)
   const accessLogEnabled = parseBoolean('ACCESS_LOG_ENABLED', process.env.ACCESS_LOG_ENABLED, false);
   const accessLogPath = {
-    value: process.env.ACCESS_LOG_PATH || '/data/logs/access.log',
+    value: process.env.ACCESS_LOG_PATH || getDefaultAccessLogPath(),
     wasProvided: process.env.ACCESS_LOG_PATH !== undefined
   };
 
   // Validate ACCESS_LOG_PATH for security
   if (accessLogPath.value.includes('../') || !path.isAbsolute(accessLogPath.value)) {
     logger.warn(`Invalid ACCESS_LOG_PATH: ${accessLogPath.value}. Must be absolute path without path traversal.`);
-    accessLogPath.value = '/data/logs/access.log';
+    accessLogPath.value = getDefaultAccessLogPath();
     accessLogPath.wasProvided = false;
   }
 
@@ -797,6 +798,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.debug(`   COOKIE_SECURE: ${cookieSecure.value} (${src(cookieSecure.wasProvided)})`);
   logger.debug(`   COOKIE_SAMESITE: ${cookieSameSite.value} (${src(cookieSameSite.wasProvided)})`);
   logger.debug('   --- Database ---');
+  logger.info(`   DATA_DIR: ${getDataDir()} (${src(process.env.DATA_DIR !== undefined)})`);
   logger.info(`   DATABASE_TYPE: ${databaseType}`);
   if (databaseUrl.wasProvided) {
     logger.info(`   DATABASE_URL: ***provided*** (${databaseType})`);

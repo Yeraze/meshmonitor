@@ -132,6 +132,18 @@ describe('resolveScriptPath', () => {
       expect(r.ext).toBe('sh');
     }
   });
+
+  it('maps the stored /data/scripts/ form onto DATA_DIR (#5889)', () => {
+    writeScript('logical.sh', '#!/bin/sh\necho hi\n');
+    const r = resolveScriptPath('/data/scripts/logical.sh');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.path).toBe(path.join(scriptsDir, 'logical.sh'));
+  });
+
+  it('still rejects traversal through the /data/scripts/ form', () => {
+    const r = resolveScriptPath('/data/scripts/../../etc/passwd');
+    expect(r.ok).toBe(false);
+  });
 });
 
 describe('runScript', () => {

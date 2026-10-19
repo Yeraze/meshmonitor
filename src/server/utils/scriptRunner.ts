@@ -16,6 +16,7 @@
  * surfaces must agree on what's executable.
  */
 import path from 'path';
+import { dataPath } from '../config/dataDir.js';
 import fs from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -66,9 +67,12 @@ const ALLOWED_EXTENSIONS = new Set(['js', 'mjs', 'py', 'sh']);
 export const PYTHON_DEPS_SUBDIR = 'python_packages';
 export const NODE_DEPS_SUBDIR = 'node_modules';
 
+/** Stored, logical prefix for a user script, whatever DATA_DIR is. */
+const LOGICAL_SCRIPTS_PREFIX = '/data/scripts/';
+
 /** Absolute path to the user-scripts directory ($DATA_DIR/scripts, default /data/scripts). */
 export function getScriptsDir(): string {
-  return path.join(process.env.DATA_DIR || '/data', 'scripts');
+  return dataPath('scripts');
 }
 
 /**
@@ -108,7 +112,14 @@ export function resolveScriptPath(scriptPath: string): { ok: true; path: string;
 
   // Allow caller to pass either a bare filename or a full path; either
   // way the resolved path must live inside the scripts dir.
-  const candidate = path.isAbsolute(scriptPath) ? scriptPath : path.join(scriptsDir, scriptPath);
+  // `/data/scripts/<name>` is the stored, logical form other script surfaces
+  // save (auto-responder, timers, script list). Map it onto the real scripts
+  // dir so it still works when DATA_DIR is not /data (#5889). The containment
+  // and traversal checks below still apply to the mapped path.
+  const relative = scriptPath.startsWith(LOGICAL_SCRIPTS_PREFIX)
+    ? scriptPath.slice(LOGICAL_SCRIPTS_PREFIX.length)
+    : scriptPath;
+  const candidate = path.isAbsolute(relative) ? relative : path.join(scriptsDir, relative);
   const resolved = path.resolve(candidate);
   const normalizedDir = path.resolve(scriptsDir);
   if (!resolved.startsWith(normalizedDir + path.sep) && resolved !== normalizedDir) {

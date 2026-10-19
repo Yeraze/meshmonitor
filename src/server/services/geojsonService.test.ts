@@ -336,3 +336,18 @@ describe('GeoJsonService', () => {
     });
   });
 });
+
+describe('default data dir (#5889)', () => {
+  it('resolves $DATA_DIR/geojson at call time when no dir is passed', () => {
+    const saved = process.env.DATA_DIR;
+    const lazy = new GeoJsonService();
+    process.env.DATA_DIR = tmpDir;
+    try {
+      const layer = lazy.addLayer('lazy.geojson', validFeatureCollection);
+      expect(fs.existsSync(path.join(tmpDir, 'geojson', layer.filename))).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env.DATA_DIR;
+      else process.env.DATA_DIR = saved;
+    }
+  });
+});

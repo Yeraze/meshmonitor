@@ -8,9 +8,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
+import { getBackupDir } from '../config/dataDir.js';
 import databaseService from '../../services/database.js';
-
-const BACKUP_DIR = process.env.BACKUP_DIR || '/data/backups';
 
 interface BackupFile {
   filename: string;
@@ -26,9 +25,9 @@ class BackupFileService {
    */
   initializeBackupDirectory(): void {
     try {
-      if (!fs.existsSync(BACKUP_DIR)) {
-        fs.mkdirSync(BACKUP_DIR, { recursive: true });
-        logger.info(`📁 Created backup directory: ${BACKUP_DIR}`);
+      if (!fs.existsSync(getBackupDir())) {
+        fs.mkdirSync(getBackupDir(), { recursive: true });
+        logger.info(`📁 Created backup directory: ${getBackupDir()}`);
       }
     } catch (error) {
       logger.error('❌ Failed to create backup directory:', error);
@@ -60,7 +59,7 @@ class BackupFileService {
     const date = now.toISOString().split('T')[0]; // YYYY-MM-DD
     const time = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
     const filename = `${nodeIdNumber}-${date}-${time}.yaml`;
-    const filepath = path.join(BACKUP_DIR, filename);
+    const filepath = path.join(getBackupDir(), filename);
 
     try {
       fs.writeFileSync(filepath, content, 'utf8');

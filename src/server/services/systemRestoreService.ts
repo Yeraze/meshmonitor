@@ -18,6 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
+import { getSystemBackupDir, getRestoreMarkerFile } from '../config/dataDir.js';
 import databaseService from '../../services/database.js';
 import { systemBackupService } from './systemBackupService.js';
 import { BACKUP_IDENTIFIER_PATTERN, planRestoreTables } from './systemBackupTables.js';
@@ -30,9 +31,6 @@ import { getSourcePkiKeyStore } from './sourcePkiKeyStore.js';
 import { getMeshCoreCredentialStore } from './meshcoreCredentialStore.js';
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
-
-const SYSTEM_BACKUP_DIR = process.env.SYSTEM_BACKUP_DIR || '/data/system-backups';
-const RESTORE_MARKER_FILE = '/data/.restore-completed';
 
 /**
  * PostgreSQL and MySQL cap a statement at 65,535 bind parameters. Rows go in
@@ -166,7 +164,7 @@ class SystemRestoreService {
 
       // Phase 4: Restore database atomically
       logger.debug('Phase 4: Restoring database...');
-      const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
+      const backupPath = path.join(getSystemBackupDir(), dirname);
       const dbConfig = getDatabaseConfig();
 
       if (dbConfig.type === 'postgres' && dbConfig.postgresUrl) {
@@ -228,8 +226,8 @@ class SystemRestoreService {
 
       // Write restore marker to prevent accidental re-restoration
       try {
-        fs.writeFileSync(RESTORE_MARKER_FILE, dirname, 'utf8');
-        logger.info(`📝 Restore marker written to: ${RESTORE_MARKER_FILE}`);
+        fs.writeFileSync(getRestoreMarkerFile(), dirname, 'utf8');
+        logger.info(`📝 Restore marker written to: ${getRestoreMarkerFile()}`);
         logger.info('ℹ️  This prevents accidental re-restore on next restart');
         logger.info('ℹ️  To restore again, remove RESTORE_FROM_BACKUP from environment or delete the marker file');
       } catch (error) {
@@ -393,9 +391,9 @@ class SystemRestoreService {
     logger.info(`🔍 RESTORE_FROM_BACKUP environment variable detected: ${restoreFrom}`);
 
     // Check if this backup has already been restored (safety mechanism)
-    if (fs.existsSync(RESTORE_MARKER_FILE)) {
+    if (fs.existsSync(getRestoreMarkerFile())) {
       try {
-        const lastRestored = fs.readFileSync(RESTORE_MARKER_FILE, 'utf8').trim();
+        const lastRestored = fs.readFileSync(getRestoreMarkerFile(), 'utf8').trim();
         if (lastRestored === restoreFrom) {
           logger.warn('⚠️  ========================================');
           logger.warn('⚠️  RESTORE ALREADY COMPLETED');
@@ -423,7 +421,7 @@ class SystemRestoreService {
     }
 
     // Check if backup exists
-    const backupPath = path.join(SYSTEM_BACKUP_DIR, restoreFrom);
+    const backupPath = path.join(getSystemBackupDir(), restoreFrom);
     if (!fs.existsSync(backupPath)) {
       logger.error(`❌ Backup directory not found: ${backupPath}`);
       throw new Error(`Backup directory not found: ${restoreFrom}`);
@@ -445,7 +443,7 @@ class SystemRestoreService {
   async canRestore(dirname: string): Promise<{ can: boolean; reason?: string }> {
     try {
       // Check if backup exists
-      const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
+      const backupPath = path.join(getSystemBackupDir(), dirname);
       if (!fs.existsSync(backupPath)) {
         return { can: false, reason: 'Backup directory not found' };
       }

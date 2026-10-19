@@ -197,9 +197,11 @@ MESHTASTIC_TCP_PORT=4403
 NODE_ENV=production
 PORT=3001
 
-# IMPORTANT: Database path (Docker default is /data/meshmonitor.db)
-# For bare metal, point this to your data directory
-DATABASE_PATH=/var/lib/meshmonitor/data/meshmonitor.db
+# IMPORTANT: Data directory (Docker default is /data)
+# For bare metal, point this to your data directory. The database, backups,
+# firmware backups, scripts and other data files all live under it, so the
+# systemd unit's ReadWritePaths covers them.
+DATA_DIR=/var/lib/meshmonitor/data
 
 # CORS: Set to match how you access the UI
 # For direct access on port 3001:

@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataPath } from '../config/dataDir.js';
 import { randomUUID } from 'crypto';
 import { logger } from '../../utils/logger.js';
 
@@ -32,7 +33,6 @@ export interface MapStyleManifest {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_STYLES_DIR = '/data/styles';
 const MANIFEST_FILENAME = 'manifest.json';
 
 // ---------------------------------------------------------------------------
@@ -40,12 +40,23 @@ const MANIFEST_FILENAME = 'manifest.json';
 // ---------------------------------------------------------------------------
 
 export class MapStyleService {
-  private readonly dataDir: string;
-  private readonly manifestPath: string;
+  private readonly explicitDataDir?: string;
 
-  constructor(dataDir: string = DEFAULT_STYLES_DIR) {
-    this.dataDir = dataDir;
-    this.manifestPath = path.join(dataDir, MANIFEST_FILENAME);
+  /**
+   * @param dataDir Directory to use. When omitted, resolves to
+   *   `$DATA_DIR/styles` at call time (#5889), so the module-level singleton
+   *   honors a DATA_DIR loaded after this module was imported.
+   */
+  constructor(dataDir?: string) {
+    this.explicitDataDir = dataDir;
+  }
+
+  private get dataDir(): string {
+    return this.explicitDataDir ?? dataPath('styles');
+  }
+
+  private get manifestPath(): string {
+    return path.join(this.dataDir, MANIFEST_FILENAME);
   }
 
   // ---- Directory management ------------------------------------------------
