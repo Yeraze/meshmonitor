@@ -154,7 +154,18 @@ describe('AircraftFlightMatchesRepository — episode and lookup rules', () => {
   it('startEpisode resets lookups, status and every match field', async () => {
     await repo.startEpisode('src-a', NODE, 1000);
     await repo.recordLookup('src-a', NODE, { episodeStartedAt: 1000, lookupsBefore: 0, firstLookupAt: 1500, result: hit() });
-    await repo.recordLookup('src-a', NODE, { episodeStartedAt: 1000, lookupsBefore: 1, result: hit({ status: 'matched' }) });
+    await repo.recordLookup('src-a', NODE, {
+      episodeStartedAt: 1000,
+      lookupsBefore: 1,
+      result: hit({ status: 'matched' }),
+      point: { at: 2500, lat: 25.8, lon: -80.3 },
+    });
+    await repo.recordRecheck('src-a', NODE, {
+      episodeStartedAt: 1000,
+      rechecksBefore: 0,
+      misses: 1,
+      point: { at: 3500, lat: 26, lon: -80.3 },
+    });
 
     await repo.startEpisode('src-a', NODE, 50_000);
     expect(await repo.get('src-a', NODE)).toEqual({
@@ -174,6 +185,60 @@ describe('AircraftFlightMatchesRepository — episode and lookup rules', () => {
       altM: null,
       distanceKm: null,
       matchedAt: null,
+      lastLookupAt: null,
+      lastLookupLat: null,
+      lastLookupLon: null,
+      rechecks: 0,
+      misses: 0,
     });
+  });
+
+  it('recordLookup stores the lookup point', async () => {
+    await repo.startEpisode('src-a', NODE, 1000);
+    await repo.recordLookup('src-a', NODE, {
+      episodeStartedAt: 1000,
+      lookupsBefore: 0,
+      firstLookupAt: 1500,
+      point: { at: 1500, lat: 25.8, lon: -80.3 },
+    });
+    expect(await repo.get('src-a', NODE)).toMatchObject({ lastLookupAt: 1500, lastLookupLat: 25.8, lastLookupLon: -80.3 });
+  });
+
+  it('recordRecheck spends a re-check, writes the point, misses and result (#5876)', async () => {
+    await repo.startEpisode('src-a', NODE, 1000);
+    await repo.recordLookup('src-a', NODE, { episodeStartedAt: 1000, lookupsBefore: 0, result: hit() });
+    expect(await repo.recordRecheck('src-a', NODE, {
+      episodeStartedAt: 1000,
+      rechecksBefore: 0,
+      misses: 0,
+      point: { at: 9000, lat: 26, lon: -80.1 },
+      result: hit({ status: 'matched', callsign: 'AAL2001', matchedAt: 9000 }),
+    })).toBe(true);
+    expect(await repo.get('src-a', NODE)).toMatchObject({
+      lookups: 1,
+      rechecks: 1,
+      misses: 0,
+      status: 'matched',
+      callsign: 'AAL2001',
+      lastLookupAt: 9000,
+      lastLookupLat: 26,
+      lastLookupLon: -80.1,
+    });
+    // Without a result: spend it, keep the fields.
+    expect(await repo.recordRecheck('src-a', NODE, {
+      episodeStartedAt: 1000, rechecksBefore: 1, misses: 1, point: { at: 10_000, lat: 26, lon: -80.1 },
+    })).toBe(true);
+    expect(await repo.get('src-a', NODE)).toMatchObject({ rechecks: 2, misses: 1, status: 'matched', callsign: 'AAL2001' });
+  });
+
+  it('recordRecheck refuses a stale re-check count or episode, and is source-scoped', async () => {
+    await repo.startEpisode('src-a', NODE, 1000);
+    await repo.startEpisode('src-b', NODE, 1000);
+    const w = { episodeStartedAt: 1000, rechecksBefore: 0, misses: 0, point: { at: 2000, lat: 1, lon: 2 } };
+    expect(await repo.recordRecheck('src-a', NODE, w)).toBe(true);
+    expect(await repo.recordRecheck('src-a', NODE, w)).toBe(false);
+    expect(await repo.recordRecheck('src-a', NODE, { ...w, episodeStartedAt: 999, rechecksBefore: 1 })).toBe(false);
+    expect((await repo.get('src-a', NODE))!.rechecks).toBe(1);
+    expect((await repo.get('src-b', NODE))!.rechecks).toBe(0);
   });
 });

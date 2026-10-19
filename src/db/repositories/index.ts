@@ -170,6 +170,8 @@ export type {
   FlightMatchStatus,
   FlightMatchResultWrite,
   FlightMatchLookupWrite,
+  FlightMatchRecheckWrite,
+  FlightMatchLookupPoint,
 } from './aircraftFlightMatches.js';
 export { MeshCoreFiltersRepository } from './meshcoreFilters.js';
 export type {

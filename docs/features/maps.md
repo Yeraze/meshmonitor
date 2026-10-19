@@ -386,10 +386,14 @@ The line links to the flight on the feed's own map. Parts the feed doesn't repor
 
 **How it looks up a flight**
 
-- A lookup happens only when a node **becomes** a likely aircraft, and at most **two lookups per flagging**.
+- Lookups start only when a node **becomes** a likely aircraft: **two lookups**, then up to **six re-checks** per flagging (at most eight in all).
 - Lookup 1 runs when the node is flagged. A hit shows as **Possible match**.
 - Lookup 2 runs on the node's next live position, 1 to 30 minutes later. If it names the same aircraft again, the line changes to **Matched**.
-- After that nothing more is looked up until the node is flagged again. The count is stored in the database, so a restart or a settings save doesn't reset it.
+- After that, a live position re-checks the match when the node has moved more than 10 km from where the last lookup ran, or 15 minutes have passed since it:
+  - the same aircraft refreshes the callsign, speed, heading and altitude (a flight number can change mid-flight);
+  - a different aircraft shows as **Possible match** with the new one;
+  - no aircraft twice in a row clears the match.
+- After six re-checks nothing more is looked up until the node is flagged again. The counts are stored in the database, so a restart or a settings save doesn't reset them, and a restart alone never triggers a lookup.
 - MeshMonitor picks the nearest aircraft within a radius that grows with the age of the node's fix (5 to 90 km) and within 300 m of the node's altitude. If two aircraft are about equally close, it shows nothing rather than guess.
 - **A match only confirms.** No match never clears the likely-aircraft flag: light aircraft, balloons and drones often carry no ADS-B.
 

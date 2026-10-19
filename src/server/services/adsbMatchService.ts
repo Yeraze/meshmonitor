@@ -4,19 +4,27 @@
  *
  * When a node BECOMES a likely aircraft (the Phase 1 live `node:aircraft`
  * transition), ask the configured public ADS-B feed which aircraft is at that
- * spot. At most two lookups per flagging:
+ * spot. Two lookups per flagging, then up to six re-checks:
  *
  *  1. on the transition — a hit reads "Possible match";
  *  2. on the node's next live position 60 s – 30 min later — the same ICAO hex
- *     again upgrades it to "Matched".
+ *     again upgrades it to "Matched";
+ *  3. re-checks (#5876): once a flagging has had its two lookups (or holds a
+ *     match), a live fix re-checks it when the node has moved > 10 km from
+ *     where the last lookup ran, or ≥ 15 min have passed since it. The same hex
+ *     refreshes the callsign / speed / track / altitude (a flight number can
+ *     roll over mid-flight); a different hex reads "Possible match" with the new
+ *     aircraft; two re-checks in a row with no hit clear the match. At most six
+ *     per flagging.
  *
  * A match only confirms; no match never clears the likely-aircraft flag.
  *
  * Mesh impact: none. Outbound HTTPS only — no packets, no events, no
  * notifications. Rate limits:
- *  - the per-flagging lookup count lives in `aircraft_flight_matches`, so a
- *    restart or settings save cannot reset it (and a restart is not a
- *    transition, so it triggers nothing);
+ *  - the per-flagging lookup and re-check counts live in
+ *    `aircraft_flight_matches`, so a restart or settings save cannot reset them
+ *    (and a restart is not a transition or a live fix, so it triggers nothing);
+ *  - at most 2 + 6 = 8 feed requests per flagging;
  *  - one global queue spaces requests ≥ 1.1 s apart (feeds cap at 1 req/s);
  *  - any 429 / 403 / 5xx / timeout / network failure starts a 10-minute global
  *    backoff; a failed lookup does not spend the node's allowance;
@@ -35,12 +43,14 @@ import { fetchAircraftNear, AdsbFeedError } from './adsbFeedClient.js';
 import { openSkyTokenManager, type OpenSkyCredentials } from './openSkyTokenManager.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
+import { calculateDistance } from '../../utils/distance.js';
 import { matchAircraft, radiusToNm, searchRadiusKm, type AdsbAircraft } from '../../utils/adsbMatch.js';
 import { resolveAdsbFeed, type AdsbFeedInfo } from '../../utils/adsbFeeds.js';
 import type { DbNode } from '../../db/types.js';
 import type {
   AircraftFlightMatchRow,
   FlightMatchLookupWrite,
+  FlightMatchRecheckWrite,
   FlightMatchResultWrite,
 } from '../../db/repositories/aircraftFlightMatches.js';
 
@@ -59,6 +69,14 @@ export const RETRY_FLOOR_MS = 60_000;
 export const MAX_QUEUED = 100;
 /** Ceiling on a feed's Retry-After pause, so a bad header cannot stop lookups for good. */
 export const MAX_RETRY_AFTER_MS = 24 * 60 * 60_000;
+/** Re-checks (#5876): a live fix re-checks once the node has moved this far from the last lookup… */
+export const RECHECK_DISTANCE_KM = 10;
+/** …or this long has passed since it. */
+export const RECHECK_INTERVAL_MS = 15 * 60_000;
+/** Re-checks allowed per flagging, after the two lookups. */
+export const MAX_RECHECKS = 6;
+/** Consecutive re-checks with no hit that clear the match. */
+export const RECHECK_MISSES_TO_CLEAR = 2;
 
 export const ADSB_SETTINGS = {
   enabled: 'adsbMatchEnabled',
@@ -87,6 +105,7 @@ export interface AdsbMatchDeps {
   getMatch(sourceId: string, nodeNum: number): Promise<AircraftFlightMatchRow | null>;
   startEpisode(sourceId: string, nodeNum: number, episodeStartedAt: number): Promise<void>;
   recordLookup(sourceId: string, nodeNum: number, write: FlightMatchLookupWrite): Promise<boolean>;
+  recordRecheck(sourceId: string, nodeNum: number, write: FlightMatchRecheckWrite): Promise<boolean>;
   fetchAircraft(
     feed: AdsbFeedInfo,
     lat: number,
@@ -110,6 +129,8 @@ function defaultDeps(): AdsbMatchDeps {
     startEpisode: (sourceId, nodeNum, at) => databaseService.startAircraftFlightMatchEpisodeAsync(sourceId, nodeNum, at),
     recordLookup: (sourceId, nodeNum, write) =>
       databaseService.recordAircraftFlightMatchLookupAsync(sourceId, nodeNum, write),
+    recordRecheck: (sourceId, nodeNum, write) =>
+      databaseService.recordAircraftFlightMatchRecheckAsync(sourceId, nodeNum, write),
     fetchAircraft: (feed, lat, lon, nm, token, openSky) =>
       fetchAircraftNear(feed, lat, lon, nm, {
         token,
@@ -123,12 +144,34 @@ function defaultDeps(): AdsbMatchDeps {
 }
 
 interface LookupJob {
+  kind: 'lookup';
   sourceId: string;
   nodeNum: number;
   episodeStartedAt: number;
   lookupsBefore: 0 | 1;
   /** Lookup 2 only: the hex lookup 1 found (null when it found nothing). */
   previousHex: string | null;
+}
+
+interface RecheckJob {
+  kind: 'recheck';
+  sourceId: string;
+  nodeNum: number;
+  /** The row as read; the write is conditional on its episode and re-check count. */
+  row: AircraftFlightMatchRow;
+}
+
+type Job = LookupJob | RecheckJob;
+
+/** When the last lookup ran: rows from before #5876 have no `lastLookupAt`. */
+function lastLookupTime(row: AircraftFlightMatchRow): number | null {
+  return row.lastLookupAt ?? row.matchedAt ?? row.firstLookupAt;
+}
+
+/** A re-check is open to a flagging that has had both lookups or holds a match, until the cap. */
+function recheckEligible(row: AircraftFlightMatchRow): boolean {
+  if (row.rechecks >= MAX_RECHECKS) return false;
+  return row.lookups >= 2 || row.status === 'matched' || row.status === 'possible';
 }
 
 interface ReuseEntry {
@@ -210,7 +253,7 @@ export class AdsbMatchService {
     } else {
       await this.deps.startEpisode(sourceId, nodeNum, transitionAt);
     }
-    await this.runLookup({ sourceId, nodeNum, episodeStartedAt: transitionAt, lookupsBefore: 0, previousHex: null });
+    await this.runLookup({ kind: 'lookup', sourceId, nodeNum, episodeStartedAt: transitionAt, lookupsBefore: 0, previousHex: null });
   }
 
   private async handleLivePosition(sourceId: string, nodeNum: number): Promise<void> {
@@ -223,22 +266,43 @@ export class AdsbMatchService {
     if (row.lookups === 0) {
       const sinceFlag = this.deps.now() - row.episodeStartedAt;
       if (sinceFlag < 0 || sinceFlag > SECOND_LOOKUP_MAX_MS) return;
-      await this.runLookup({ sourceId, nodeNum, episodeStartedAt: row.episodeStartedAt, lookupsBefore: 0, previousHex: null });
+      await this.runLookup({ kind: 'lookup', sourceId, nodeNum, episodeStartedAt: row.episodeStartedAt, lookupsBefore: 0, previousHex: null });
       return;
     }
-    if (row.lookups !== 1 || row.status === 'matched' || row.firstLookupAt == null) return;
-    const sinceFirst = this.deps.now() - row.firstLookupAt;
-    if (sinceFirst < SECOND_LOOKUP_MIN_MS || sinceFirst > SECOND_LOOKUP_MAX_MS) return;
-    await this.runLookup({
-      sourceId,
-      nodeNum,
-      episodeStartedAt: row.episodeStartedAt,
-      lookupsBefore: 1,
-      previousHex: row.status === 'possible' ? row.hex : null,
-    });
+    if (row.lookups === 1 && row.status !== 'matched' && row.firstLookupAt != null) {
+      const sinceFirst = this.deps.now() - row.firstLookupAt;
+      // Lookup 2 not due yet: nothing else runs before it.
+      if (sinceFirst < SECOND_LOOKUP_MIN_MS) return;
+      if (sinceFirst <= SECOND_LOOKUP_MAX_MS) {
+        await this.runLookup({
+          kind: 'lookup',
+          sourceId,
+          nodeNum,
+          episodeStartedAt: row.episodeStartedAt,
+          lookupsBefore: 1,
+          previousHex: row.status === 'possible' ? row.hex : null,
+        });
+        return;
+      }
+      // The lookup-2 window has passed: fall through to the re-check lane.
+    }
+    if (!recheckEligible(row)) return;
+    // Cheap pre-check before the node read: with no baseline position, only time can make it due.
+    const last = lastLookupTime(row);
+    const timeDue = last != null && this.deps.now() - last >= RECHECK_INTERVAL_MS;
+    if (!timeDue && (row.lastLookupLat == null || row.lastLookupLon == null)) return;
+    await this.runLookup({ kind: 'recheck', sourceId, nodeNum, row });
   }
 
-  private async runLookup(job: LookupJob): Promise<void> {
+  /** A re-check runs when the node moved > 10 km from the last lookup or ≥ 15 min passed since it. */
+  private recheckDue(row: AircraftFlightMatchRow, lat: number, lon: number): boolean {
+    const last = lastLookupTime(row);
+    if (last != null && this.deps.now() - last >= RECHECK_INTERVAL_MS) return true;
+    if (row.lastLookupLat == null || row.lastLookupLon == null) return false;
+    return calculateDistance(row.lastLookupLat, row.lastLookupLon, lat, lon) > RECHECK_DISTANCE_KM;
+  }
+
+  private async runLookup(job: Job): Promise<void> {
     const key = this.key(job.sourceId, job.nodeNum);
     if (this.inFlight.has(key)) return;
     const lastFail = this.lastFailureAt.get(key);
@@ -255,6 +319,7 @@ export class AdsbMatchService {
       const alt = eff.altitude;
       if (!finite(lat) || !finite(lon) || !finite(alt)) return;
       if (isBogusPosition(lat, lon, node.positionPrecisionBits)) return;
+      if (job.kind === 'recheck' && !this.recheckDue(job.row, lat, lon)) return;
 
       const feedSetting = await this.deps.getGlobalSetting(ADSB_SETTINGS.feed);
       const feed = resolveAdsbFeed(feedSetting);
@@ -284,12 +349,6 @@ export class AdsbMatchService {
       const now = this.deps.now();
       const match = matchAircraft({ latitude: lat, longitude: lon, altitudeM: alt, positionTimestampMs: posTs, nowMs: now }, aircraft);
 
-      const write: FlightMatchLookupWrite = {
-        episodeStartedAt: job.episodeStartedAt,
-        lookupsBefore: job.lookupsBefore,
-      };
-      if (job.lookupsBefore === 0) write.firstLookupAt = now;
-
       const fields = (status: FlightMatchResultWrite['status']): FlightMatchResultWrite => ({
         status,
         feed: feed.id,
@@ -303,6 +362,19 @@ export class AdsbMatchService {
         distanceKm: match?.distanceKm ?? null,
         matchedAt: now,
       });
+      const point = { at: now, lat, lon };
+
+      if (job.kind === 'recheck') {
+        await this.recordRecheck(job, match, fields, point);
+        return;
+      }
+
+      const write: FlightMatchLookupWrite = {
+        episodeStartedAt: job.episodeStartedAt,
+        lookupsBefore: job.lookupsBefore,
+        point,
+      };
+      if (job.lookupsBefore === 0) write.firstLookupAt = now;
 
       if (job.lookupsBefore === 0) {
         write.result = fields(match ? 'possible' : 'none');
@@ -320,6 +392,47 @@ export class AdsbMatchService {
       }
     } finally {
       this.inFlight.delete(key);
+    }
+  }
+
+  /**
+   * Apply one re-check result (#5876): the same hex refreshes the fields (and
+   * confirms the match), a different hex reads "possible" with the new
+   * aircraft, and no hit counts a miss — two in a row clear the match.
+   */
+  private async recordRecheck(
+    job: RecheckJob,
+    match: ReturnType<typeof matchAircraft>,
+    fields: (status: FlightMatchResultWrite['status']) => FlightMatchResultWrite,
+    point: { at: number; lat: number; lon: number },
+  ): Promise<void> {
+    const { row } = job;
+    const write: FlightMatchRecheckWrite = {
+      episodeStartedAt: row.episodeStartedAt,
+      rechecksBefore: row.rechecks,
+      misses: 0,
+      point,
+    };
+    let outcome: string;
+    if (match) {
+      const same = row.status !== 'none' && match.hex === row.hex;
+      write.result = fields(same ? 'matched' : 'possible');
+      outcome = same ? 'refreshed' : 'new aircraft';
+    } else {
+      write.misses = row.misses + 1;
+      if (write.misses >= RECHECK_MISSES_TO_CLEAR && row.status !== 'none') {
+        write.result = fields('none');
+        outcome = 'cleared';
+      } else {
+        outcome = 'miss';
+      }
+    }
+    const written = await this.deps.recordRecheck(job.sourceId, job.nodeNum, write);
+    if (written) {
+      logger.debug(
+        `ADS-B re-check ${row.rechecks + 1} for ${this.key(job.sourceId, job.nodeNum)}: ${outcome}` +
+          (match ? ` (${match.callsign ?? match.hex}, ${match.distanceKm.toFixed(1)} km)` : ''),
+      );
     }
   }
 

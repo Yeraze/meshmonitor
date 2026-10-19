@@ -119,7 +119,7 @@ import type {
   TelemetryCadenceAggregate,
 } from '../db/repositories/index.js';
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
-import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite, AssetNode, AssetNodeSettings } from '../db/repositories/index.js';
+import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite, FlightMatchRecheckWrite, AssetNode, AssetNodeSettings } from '../db/repositories/index.js';
 import type { MeshCoreIgnoredNodeRow, MeshCoreMessageFilterRow, MeshCoreMessageFilterInput, MeshCoreFilterMode } from '../db/repositories/index.js';
 import type { MessageSourceScope } from '../db/repositories/index.js';
 import type { PasskeySummary, DbPasskey, CreatePasskeyInput } from '../db/repositories/index.js';
@@ -6128,6 +6128,14 @@ class DatabaseService {
     write: FlightMatchLookupWrite,
   ): Promise<boolean> {
     return this.aircraftFlightMatches.recordLookup(sourceId, nodeNum, write);
+  }
+
+  async recordAircraftFlightMatchRecheckAsync(
+    sourceId: string,
+    nodeNum: number,
+    write: FlightMatchRecheckWrite,
+  ): Promise<boolean> {
+    return this.aircraftFlightMatches.recordRecheck(sourceId, nodeNum, write);
   }
 
   async deleteAircraftFlightMatchAsync(sourceId: string, nodeNum: number): Promise<number> {
