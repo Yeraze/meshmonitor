@@ -212,6 +212,10 @@ function getStatusInfo(
     // "Connecting" would be a lie: nothing is retrying.
     return { dotClass: 'disconnected', label: t('source.status_auth_stopped') };
   }
+  if (status.evictionStopped && !status.connected) {
+    // An MQTT bridge the broker kept evicting gave up (#5893). Nothing retries.
+    return { dotClass: 'disconnected', label: t('source.status_eviction_stopped') };
+  }
   if (status.connected) {
     return { dotClass: 'connected', label: t('source.status_connected') };
   }
@@ -1028,9 +1032,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 // A bridge whose gateway publishers stopped gets the button
                 // even while its subscriber is connected: the click restarts
                 // only the stopped gateways.
-                ((((source.config as any)?.autoConnect === false || status?.authStopped === true) &&
+                ((((source.config as any)?.autoConnect === false ||
+                  status?.authStopped === true ||
+                  status?.evictionStopped === true) &&
                   !status?.connected) ||
-                  (status?.authStoppedGatewayCount ?? 0) > 0) &&
+                  (status?.authStoppedGatewayCount ?? 0) > 0 ||
+                  (status?.evictionStoppedGatewayCount ?? 0) > 0) &&
                 onConnectSource && (() => {
                   const pending = connectingIds?.has(source.id) === true;
                   const gatewaysOnly = status?.connected === true;
@@ -1043,7 +1050,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                         if (!pending) onConnectSource(source.id);
                       }}
                       title={
-                        (status?.authStopped
+                        (status?.authStopped || status?.evictionStopped
                           ? (status as { permissionMessage?: string | null }).permissionMessage
                           : null) ??
                         (gatewaysOnly ? t('source.retry_gateways_help') : t('source.connect_help'))

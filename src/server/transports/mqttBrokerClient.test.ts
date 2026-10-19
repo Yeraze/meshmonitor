@@ -455,6 +455,97 @@ describe('MqttBrokerClient', () => {
       expect(hints[0]).toContain('!aaaaaaaa');
     });
 
+    it('the eviction hint lists every likely cause (#5893)', () => {
+      const client = new MqttBrokerClient({ url: URL, clientId: '!aaaaaaaa' });
+      void client.connect();
+      const fake = lastFakeClient();
+      for (let i = 0; i < 3; i++) {
+        up(fake);
+        vi.advanceTimersByTime(400);
+        down(fake);
+        vi.advanceTimersByTime(600);
+      }
+      const hint = warnLines(logger).find((l: string) => l.includes('duplicate Client ID signature'));
+      expect(hint).toBeDefined();
+      expect(hint).toContain('another MQTT bridge source on the same broker and upstream');
+      expect(hint).toContain('per-username connection cap');
+      expect(hint).toContain('single mode with a !xxxxxxxx Client ID');
+      expect(hint).toContain('the gateway node itself');
+      expect(hint).toContain('another MeshMonitor instance');
+    });
+
+    describe('eviction stop (#5893)', () => {
+      const evictOnce = (fake: any) => {
+        up(fake);
+        vi.advanceTimersByTime(400);
+        down(fake);
+      };
+
+      it('stops after maxEvictions inside the window and emits eviction-stopped once', () => {
+        const client = new MqttBrokerClient({ url: URL, clientId: '!aaaaaaaa', maxEvictions: 5 });
+        const stopped = vi.fn();
+        client.on('eviction-stopped', stopped);
+        void client.connect();
+        const fake = lastFakeClient();
+
+        for (let i = 0; i < 4; i++) {
+          evictOnce(fake);
+          vi.advanceTimersByTime(70_000);
+        }
+        expect(client.isEvictionStopped()).toBe(false);
+        expect(fake.reconnect).toHaveBeenCalledTimes(4);
+
+        evictOnce(fake);
+        expect(client.isEvictionStopped()).toBe(true);
+        expect(stopped).toHaveBeenCalledTimes(1);
+        expect(stopped.mock.calls[0][0]).toMatchObject({ evictions: 5, windowMs: 600_000 });
+
+        vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+        expect(fake.reconnect).toHaveBeenCalledTimes(4);
+        client.doReconnect();
+        expect(fake.reconnect).toHaveBeenCalledTimes(4);
+        return expect(client.publish('t', Buffer.from('x'))).rejects.toThrow(/evictions/);
+      });
+
+      it('evictions older than the window do not count', () => {
+        const client = new MqttBrokerClient({ url: URL, clientId: '!aaaaaaaa', maxEvictions: 5 });
+        void client.connect();
+        const fake = lastFakeClient();
+        for (let i = 0; i < 12; i++) {
+          evictOnce(fake);
+          vi.advanceTimersByTime(3 * 60_000); // 4 per ~10 minutes at most
+        }
+        expect(client.isEvictionStopped()).toBe(false);
+      });
+
+      it('a session with a client-side error is not an eviction', () => {
+        const client = new MqttBrokerClient({ url: URL, clientId: '!aaaaaaaa', maxEvictions: 2 });
+        client.on('error', () => {});
+        void client.connect();
+        const fake = lastFakeClient();
+        for (let i = 0; i < 5; i++) {
+          up(fake);
+          vi.advanceTimersByTime(400);
+          fake.emit('error', new Error('read ECONNRESET'));
+          down(fake);
+          vi.advanceTimersByTime(70_000);
+        }
+        expect(client.isEvictionStopped()).toBe(false);
+      });
+
+      it('without maxEvictions the client keeps retrying (opt-in)', () => {
+        const client = new MqttBrokerClient({ url: URL, clientId: '!aaaaaaaa' });
+        void client.connect();
+        const fake = lastFakeClient();
+        for (let i = 0; i < 10; i++) {
+          evictOnce(fake);
+          vi.advanceTimersByTime(70_000);
+        }
+        expect(client.isEvictionStopped()).toBe(false);
+        expect(fake.reconnect).toHaveBeenCalledTimes(10);
+      });
+    });
+
     it('reuses one mqtt.js client across every reconnect (no leaked instances)', () => {
       const client = new MqttBrokerClient({ url: URL, clientId: '!aaaaaaaa' });
       void client.connect();

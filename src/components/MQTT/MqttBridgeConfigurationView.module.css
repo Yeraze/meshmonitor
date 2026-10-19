@@ -22,3 +22,23 @@
 .error {
   color: var(--color-error);
 }
+
+/* #5893: single-mode Client ID input and its "use the gateway ID" button. */
+.clientIdRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.clientIdInput {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-family: monospace;
+}
+
+.warning {
+  color: var(--color-warning);
+  font-size: 0.85rem;
+  margin: 4px 0 8px;
+}

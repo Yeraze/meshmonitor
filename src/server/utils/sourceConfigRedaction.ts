@@ -499,6 +499,9 @@ const MQTT_BRIDGE: Spec<MqttBridgeSourceConfig> = {
     url: grantedUrl(),
     username: withheld,
     password: secret({ endpoint: 'url' }),
+    // #5893: single-mode Client ID. A setting, not a credential, but it can be
+    // a node id, so it is not shown to a viewer.
+    clientId: withheld,
   }),
   subscriptions: granted(stringList),
   mode: withheld,

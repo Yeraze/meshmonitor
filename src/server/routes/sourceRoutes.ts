@@ -14,7 +14,7 @@ import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequ
 import { isMqttProxyLinkMisconfigured } from '../../utils/mqttProxyLink.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
-import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
+import { MqttBridgeManager, normalizeBridgeClientId, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
 import aircraftFlightMatchRoutes from './aircraftFlightMatchRoutes.js';
@@ -498,6 +498,27 @@ function validateMqttBridgeForwardingMode(config: Record<string, any>): string |
 }
 
 /**
+ * Validate and normalise the optional single-mode Client ID (#5893),
+ * `upstream.clientId`. Accepts `!xxxxxxxx` or `xxxxxxxx` (8 hex digits, any
+ * case) and stores lowercase `!xxxxxxxx`; a blank value is removed. Mutates
+ * `config.upstream` (a fresh object, never the caller's nested one).
+ */
+function validateMqttBridgeClientId(config: Record<string, any>): string | null {
+  const upstream = config?.upstream;
+  if (!upstream || typeof upstream !== 'object' || Array.isArray(upstream)) return null;
+  if (!Object.prototype.hasOwnProperty.call(upstream, 'clientId')) return null;
+  const normalized = normalizeBridgeClientId(upstream.clientId);
+  if (normalized === null) {
+    return 'mqtt_bridge upstream.clientId must be 8 hex digits, optionally starting with ! (for example !a1b2c3d4)';
+  }
+  const next = { ...upstream };
+  if (normalized === undefined) delete next.clientId;
+  else next.clientId = normalized;
+  config.upstream = next;
+  return null;
+}
+
+/**
  * Validate the optional boolean uplink overrides on an mqtt_bridge config:
  * `ignoreOkToMqtt` (absent ⇒ honor the bit) and `dropAutomationUplinks`
  * (#5414, absent ⇒ uplink automation sends as before).
@@ -948,6 +969,10 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       if (ignoreOkErr) {
         return res.status(400).json({ error: ignoreOkErr });
       }
+      const clientIdErr = validateMqttBridgeClientId(config ?? {});
+      if (clientIdErr) {
+        return fail(res, 400, 'INVALID_CLIENT_ID', clientIdErr);
+      }
     }
     if (!config || typeof config !== 'object') {
       return res.status(400).json({ error: 'config is required and must be an object' });
@@ -1250,6 +1275,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         const ignoreOkErr = validateMqttBridgeIgnoreOkToMqtt(config);
         if (ignoreOkErr) {
           return res.status(400).json({ error: ignoreOkErr });
+        }
+        const clientIdErr = validateMqttBridgeClientId(config ?? {});
+        if (clientIdErr) {
+          return fail(res, 400, 'INVALID_CLIENT_ID', clientIdErr);
         }
       }
 
@@ -1865,13 +1894,18 @@ async function mqttProxyUnlinkedFor(
  * object either way.
  *
  * One `lastError` survives: that of a source or gateway that stopped itself
- * after rejected logins (`authStopped`). The manager sets a fixed sentence
+ * after rejected logins (`authStopped`) or repeated evictions (`evictionStopped`, #5893). The manager sets a fixed sentence
  * there, with no host in it, and the UI shows it as the reason (#5596, #5610).
  * A `meshcore_mqtt` source only ever sets that sentence.
  */
 function withoutEndpointDetail(status: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...status };
-  if ('lastError' in out && out.sourceType !== 'meshcore_mqtt' && out.authStopped !== true) {
+  if (
+    'lastError' in out &&
+    out.sourceType !== 'meshcore_mqtt' &&
+    out.authStopped !== true &&
+    out.evictionStopped !== true
+  ) {
     out.lastError = null;
   }
   if (out.publishers && typeof out.publishers === 'object') {
@@ -1879,7 +1913,7 @@ function withoutEndpointDetail(status: Record<string, unknown>): Record<string, 
       Object.entries(out.publishers as Record<string, Record<string, unknown>>).map(
         ([clientId, entry]) => [
           clientId,
-          { ...entry, lastError: entry.authStopped ? entry.lastError : null },
+          { ...entry, lastError: entry.authStopped || entry.evictionStopped ? entry.lastError : null },
         ],
       ),
     );
@@ -1912,11 +1946,11 @@ function withoutEndpointDetail(status: Record<string, unknown>): Record<string, 
  *
  * A per-gateway publisher's id is a node id (`!<8-hex>`). Such a caller still
  * gets how many gateways there are, which are connected, and how many stopped
- * after rejected logins — but not which nodes they are, and not the broker's
+ * after rejected logins or (#5893) evictions — but not which nodes they are, and not the broker's
  * error text for each (it can name the broker host).
  */
 function redactBridgeGatewayIds(status: Record<string, unknown>): Record<string, unknown> {
-  const { authStoppedGateways: _ids, ...rest } = status;
+  const { authStoppedGateways: _ids, evictionStoppedGateways: _evictedIds, ...rest } = status;
   const publishers = rest.publishers;
   if (!publishers || typeof publishers !== 'object') return rest;
   const anonymous: Record<string, unknown> = {};
@@ -1931,7 +1965,8 @@ function redactBridgeGatewayIds(status: Record<string, unknown>): Record<string,
       // (GATEWAY_AUTH_STOPPED_MESSAGE), safe for anyone. Any other value is
       // the broker's or the socket's own words, so it is withheld. Do not
       // "simplify" this to always-null or always-passthrough.
-      lastError: entry.authStopped ? entry.lastError : null,
+      // GATEWAY_EVICTION_STOPPED_MESSAGE (#5893) is fixed text too.
+      lastError: entry.authStopped || entry.evictionStopped ? entry.lastError : null,
     };
   });
   return { ...rest, publishers: anonymous };

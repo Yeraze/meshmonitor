@@ -51,6 +51,23 @@ export interface MqttBrokerClientOptions {
    * set of attempts, then the stop applies again.
    */
   maxAuthFailures?: number;
+  /**
+   * Stop reconnecting after this many evictions inside
+   * {@link evictionWindowMs} (#5893). Opt-in: unset = reconnect for ever.
+   *
+   * An eviction is a session the broker closes within seconds of CONNACK with
+   * no client-side error: the same signal behind the duplicate-Client-ID
+   * hint. Two clients that share an ID (or a login under a per-username
+   * connection cap) evict each other for ever, so without a stop the pair
+   * hands the broker a CONNECT every backoff tick for as long as both run.
+   *
+   * Once stopped, the client emits `eviction-stopped` and stays down until the
+   * owner builds a new one. Like the auth stop, the count lives in memory: a
+   * process restart or a rebuilt client starts a fresh count.
+   */
+  maxEvictions?: number;
+  /** Window for {@link maxEvictions}, in ms. Defaults to 10 minutes. */
+  evictionWindowMs?: number;
 }
 
 
@@ -94,6 +111,10 @@ export interface MqttClientCapabilities {
  * - 'auth-stopped' (info: { failures: number })
  *     fired once, when `maxAuthFailures` consecutive logins were rejected and
  *     the client gave up reconnecting. Only for clients that opted in.
+ * - 'eviction-stopped' (info: { evictions: number; windowMs: number })
+ *     fired once, when `maxEvictions` evictions landed inside
+ *     `evictionWindowMs` and the client gave up reconnecting (#5893). Only for
+ *     clients that opted in.
  */
 /**
  * Coordinates reconnection across multiple MqttBrokerClient instances
@@ -237,6 +258,11 @@ export class MqttBrokerClient extends EventEmitter {
   private consecutiveAuthFailures = 0;
   /** True once `maxAuthFailures` was hit. Never cleared: the owner rebuilds. */
   private authStopped = false;
+  /** When each recent eviction happened, oldest first, inside the window. */
+  private evictionTimes: number[] = [];
+  /** True once `maxEvictions` was hit. Never cleared: the owner rebuilds. */
+  private evictionStopped = false;
+  private static readonly DEFAULT_EVICTION_WINDOW_MS = 10 * 60_000;
 
   constructor(options: MqttBrokerClientOptions) {
     super();
@@ -338,12 +364,21 @@ export class MqttBrokerClient extends EventEmitter {
       this.emit('offline');
     });
     this.client.on('close', () => {
-      this.noteClose();
+      // noteClose() may trip the eviction stop; it must be in force before
+      // scheduleReconnect() runs, and the owner hears about it last, after the
+      // client has settled, so it can tear this client down from the listener.
+      const evictionStoppedNow = this.noteClose();
       this.connected = false;
       this.connectedAt = null;
       this.clearStableReset();
       this.scheduleReconnect();
       this.emit('close');
+      if (evictionStoppedNow) {
+        this.emit('eviction-stopped', {
+          evictions: this.evictionTimes.length,
+          windowMs: this.getEvictionWindowMs(),
+        });
+      }
     });
     // MQTT 5 DISCONNECT packet. We hardcode protocolVersion 4 so this never
     // fires today, but if the client is ever bumped it carries the broker's
@@ -432,6 +467,10 @@ export class MqttBrokerClient extends EventEmitter {
     if (this.authStopped) {
       return Promise.reject(new Error('MqttBrokerClient stopped after rejected logins'));
     }
+    // Same for a client that gave up after repeated evictions (#5893).
+    if (this.evictionStopped) {
+      return Promise.reject(new Error('MqttBrokerClient stopped after repeated evictions'));
+    }
     return new Promise<void>((resolve, reject) => {
       this.client!.publish(topic, payload, { qos: 0, retain: retained }, (err) => {
         if (err) reject(err);
@@ -450,7 +489,7 @@ export class MqttBrokerClient extends EventEmitter {
    * dozens of sockets per minute against the upstream broker.
    */
   doReconnect(): void {
-    if (this.stopping || this.authStopped || !this.client) return;
+    if (this.stopping || this.authStopped || this.evictionStopped || !this.client) return;
     if (this.connected) return;
     this.client.reconnect();
   }
@@ -499,8 +538,8 @@ export class MqttBrokerClient extends EventEmitter {
    * socket over. The first drop of an episode is a warning; the rest fold
    * into the rate-limited flap summary so the log stays readable.
    */
-  private noteClose(): void {
-    if (this.stopping) return;
+  private noteClose(): boolean {
+    if (this.stopping) return false;
     const now = Date.now();
     const uptimeMs = this.connectedAt === null ? null : now - this.connectedAt;
     const reason = this.describeCloseReason(now, uptimeMs);
@@ -511,6 +550,10 @@ export class MqttBrokerClient extends EventEmitter {
     } else {
       this.shortSessionStreak = 0;
     }
+    // An eviction: the broker closed a session that reached CONNACK within
+    // seconds, and nothing failed on our side. The same test the hint uses.
+    const evicted =
+      uptimeMs !== null && uptimeMs < MqttBrokerClient.SHORT_SESSION_MS && !this.lastError;
 
     this.dropsSinceStable += 1;
     const where = `${this.resolvedUrl} (clientId=${this.resolvedClientId})`;
@@ -536,15 +579,45 @@ export class MqttBrokerClient extends EventEmitter {
       !this.lastError
     ) {
       this.duplicateIdHintLogged = true;
-      logger.warn(
-        `📡 MQTT connection to ${where} has been evicted ${this.shortSessionStreak} times ` +
-          `within seconds of connecting, with no client-side error. This is the classic ` +
-          `duplicate Client ID signature (MQTT 3.1.1 §3.1.4): another client — a second ` +
-          `MeshMonitor, or the gateway node itself — is connected to this broker using the ` +
-          `same Client ID, and the broker kicks whichever session is older. Give this ` +
-          `connection a unique Client ID, or stop the other publisher.`,
-      );
+      logger.warn(duplicateIdHint(where, this.shortSessionStreak));
     }
+
+    return evicted ? this.noteEviction(now) : false;
+  }
+
+  /**
+   * Count an eviction and, for an opted-in client, stop for good once
+   * `maxEvictions` land inside the window. Returns true on the call that trips
+   * the stop. Runs from the 'close' handler BEFORE scheduleReconnect(), so the
+   * stop is in force before the next retry is asked for.
+   */
+  private noteEviction(now: number): boolean {
+    const max = this.options.maxEvictions;
+    if (max === undefined || max <= 0 || this.evictionStopped) return false;
+    const windowMs = this.getEvictionWindowMs();
+    this.evictionTimes.push(now);
+    while (this.evictionTimes.length > 0 && now - this.evictionTimes[0] > windowMs) {
+      this.evictionTimes.shift();
+    }
+    if (this.evictionTimes.length < max) return false;
+
+    this.evictionStopped = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.clearStableReset();
+    logger.warn(
+      `📡 MQTT connection to ${this.resolvedUrl} (clientId=${this.resolvedClientId}) was evicted ` +
+        `${this.evictionTimes.length} times in ${Math.round(windowMs / 60_000)} minutes — no more ` +
+        `reconnect attempts until the connection is reconfigured or reconnected by hand.`,
+    );
+    return true;
+  }
+
+  private getEvictionWindowMs(): number {
+    const w = this.options.evictionWindowMs;
+    return w !== undefined && w > 0 ? w : MqttBrokerClient.DEFAULT_EVICTION_WINDOW_MS;
   }
 
   private describeCloseReason(now: number, uptimeMs: number | null): string {
@@ -615,7 +688,7 @@ export class MqttBrokerClient extends EventEmitter {
   }
 
   private scheduleReconnect(): void {
-    if (this.stopping || this.authStopped || !this.client) return;
+    if (this.stopping || this.authStopped || this.evictionStopped || !this.client) return;
     if (this.coordinator) {
       this.coordinator.requestReconnect(this);
       return;
@@ -703,6 +776,11 @@ export class MqttBrokerClient extends EventEmitter {
   /** True once the client gave up after `maxAuthFailures` rejected logins. */
   isAuthStopped(): boolean {
     return this.authStopped;
+  }
+
+  /** True once the client gave up after `maxEvictions` evictions in the window. */
+  isEvictionStopped(): boolean {
+    return this.evictionStopped;
   }
 
   /** Rejected logins since the last successful connect. */
@@ -818,6 +896,24 @@ export class MqttBrokerClient extends EventEmitter {
       });
     }
   }
+}
+
+/**
+ * The one-time warning for a run of instant evictions (#5079, reworded #5893).
+ * Lists every cause seen in the field, most likely first. Exported for tests.
+ */
+export function duplicateIdHint(where: string, evictions: number): string {
+  return (
+    `📡 MQTT connection to ${where} has been evicted ${evictions} times within seconds of ` +
+    `connecting, with no client-side error. This is the classic duplicate Client ID signature ` +
+    `(MQTT 3.1.1 §3.1.4): the broker closes one session when another takes its place. Likely ` +
+    `causes: (1) another MQTT bridge source on the same broker and upstream using the same ` +
+    `identity; (2) a per-username connection cap on the broker: per_gateway mode opens one ` +
+    `connection per local gateway plus one, all with the same login, so try single mode with a ` +
+    `!xxxxxxxx Client ID; (3) the gateway node itself, publishing to this broker with its own ` +
+    `MQTT module; (4) another MeshMonitor instance using the same Client ID. Give this ` +
+    `connection a unique Client ID, or stop the other client.`
+  );
 }
 
 // Bare host → mqtt://host; canonical TLS ports get mqtts://. Lives in the

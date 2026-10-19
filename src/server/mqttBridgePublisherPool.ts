@@ -46,6 +46,13 @@ export interface PublisherPoolOptions {
    * gateway only, and the rest keep publishing. Unset = retry for ever.
    */
   maxAuthFailures?: number;
+  /**
+   * Stop a gateway's client after this many evictions inside
+   * `evictionWindowMs` (#5893). Per gateway, like `maxAuthFailures`.
+   * Unset = reconnect for ever.
+   */
+  maxEvictions?: number;
+  evictionWindowMs?: number;
 }
 
 /**
@@ -57,6 +64,10 @@ export interface PublisherPoolOptions {
  */
 export const GATEWAY_AUTH_STOPPED_MESSAGE =
   'Broker rejected this gateway\'s login repeatedly; it stopped reconnecting.';
+
+/** Fixed text for a gateway that stopped after repeated evictions (#5893). */
+export const GATEWAY_EVICTION_STOPPED_MESSAGE =
+  'Broker kept closing this gateway\'s connection (another client is using the same Client ID or login); it stopped reconnecting.';
 
 /** `published` = handed to mqtt.js. `dropped` = the gateway is stopped. */
 export type PoolPublishResult = 'published' | 'dropped';
@@ -70,6 +81,8 @@ export interface PublisherStatus {
   lastError: string | null;
   /** True once the broker rejected this gateway's login too many times. */
   authStopped: boolean;
+  /** True once the broker evicted this gateway too many times (#5893). */
+  evictionStopped: boolean;
   /** Uplink packets thrown away because this gateway is stopped. */
   droppedPublishes: number;
 }
@@ -88,7 +101,14 @@ interface PoolEntry {
    * gateway would build a fresh client and hand the broker five more logins.
    */
   authStopped: boolean;
+  /** Same marker role as `authStopped`, for a stop after evictions (#5893). */
+  evictionStopped: boolean;
   droppedPublishes: number;
+}
+
+/** True when the entry gave up for either reason and takes no publishes. */
+function isStopped(entry: PoolEntry): boolean {
+  return entry.authStopped || entry.evictionStopped;
 }
 
 /**
@@ -104,8 +124,10 @@ export class MqttBridgePublisherPool {
   private readonly options: PublisherPoolOptions;
   private readonly entries = new Map<number, PoolEntry>();
   private closed = false;
-  /** Uplink packets dropped on stopped gateways, over the pool's lifetime. */
+  /** Uplink packets dropped on auth-stopped gateways, over the pool's lifetime. */
   private authStoppedDrops = 0;
+  /** Uplink packets dropped on eviction-stopped gateways (#5893). */
+  private evictionStoppedDrops = 0;
 
   constructor(options: PublisherPoolOptions) {
     this.options = options;
@@ -132,8 +154,13 @@ export class MqttBridgePublisherPool {
         publishes: entry.publishes,
         lastPublishAt: entry.lastPublishAt,
         // Fixed text for a stopped gateway, never the broker's own words.
-        lastError: entry.authStopped ? GATEWAY_AUTH_STOPPED_MESSAGE : entry.lastError,
+        lastError: entry.authStopped
+          ? GATEWAY_AUTH_STOPPED_MESSAGE
+          : entry.evictionStopped
+            ? GATEWAY_EVICTION_STOPPED_MESSAGE
+            : entry.lastError,
         authStopped: entry.authStopped,
+        evictionStopped: entry.evictionStopped,
         droppedPublishes: entry.droppedPublishes,
       };
     }
@@ -153,16 +180,29 @@ export class MqttBridgePublisherPool {
     return this.authStoppedDrops;
   }
 
+  /** `!<8-hex>` ids of the gateways that stopped after repeated evictions, sorted. */
+  getEvictionStoppedGateways(): string[] {
+    return Array.from(this.entries.values())
+      .filter((e) => e.evictionStopped)
+      .map((e) => e.clientId)
+      .sort();
+  }
+
+  /** Uplink packets dropped because their gateway stopped after evictions. */
+  getEvictionStoppedDrops(): number {
+    return this.evictionStoppedDrops;
+  }
+
   /**
-   * Give every stopped gateway a fresh client, and so a fresh set of login
-   * attempts. Healthy and still-retrying gateways are left alone. Returns how
-   * many gateways were restarted.
+   * Give every stopped gateway (rejected logins or repeated evictions) a
+   * fresh client, and so a fresh count. Healthy and still-retrying gateways
+   * are left alone. Returns how many gateways were restarted.
    *
    * The dropped packets are gone: nothing is replayed.
    */
   restartAuthStopped(): number {
     if (this.closed) return 0;
-    const stopped = Array.from(this.entries.entries()).filter(([, e]) => e.authStopped);
+    const stopped = Array.from(this.entries.entries()).filter(([, e]) => isStopped(e));
     for (const [key] of stopped) {
       this.entries.delete(key);
       this.ensureEntry(key);
@@ -197,7 +237,7 @@ export class MqttBridgePublisherPool {
       throw new Error(`Publisher pool ${this.options.poolLabel} is closed`);
     }
     const entry = this.ensureEntry(gatewayNum);
-    if (entry.authStopped) {
+    if (isStopped(entry)) {
       this.noteDrop(entry);
       return 'dropped';
     }
@@ -209,7 +249,7 @@ export class MqttBridgePublisherPool {
       return 'published';
     } catch (err) {
       // The stop can land while the publish is in flight.
-      if (entry.authStopped) {
+      if (isStopped(entry)) {
         this.noteDrop(entry);
         return 'dropped';
       }
@@ -220,14 +260,33 @@ export class MqttBridgePublisherPool {
 
   private noteDrop(entry: PoolEntry): void {
     entry.droppedPublishes++;
-    this.authStoppedDrops++;
+    if (entry.authStopped) this.authStoppedDrops++;
+    else this.evictionStoppedDrops++;
     // Once per stop, not per packet.
     if (entry.droppedPublishes === 1) {
+      const why = entry.authStopped ? 'rejected logins' : 'repeated evictions';
       logger.warn(
-        `Publisher pool ${this.options.poolLabel}: gateway ${entry.clientId} is stopped after rejected logins; ` +
+        `Publisher pool ${this.options.poolLabel}: gateway ${entry.clientId} is stopped after ${why}; ` +
           'dropping its uplink packets until the source is saved or reconnected',
       );
     }
+  }
+
+  /**
+   * The broker evicted this gateway too many times (#5893). Same handling as
+   * an auth stop: mark the entry so the next packet does not build a fresh
+   * client, and close the socket. Other gateways are untouched.
+   */
+  private onEvictionStopped(entry: PoolEntry): void {
+    if (isStopped(entry)) return;
+    entry.evictionStopped = true;
+    logger.warn(
+      `Publisher pool ${this.options.poolLabel}: broker evicted gateway ${entry.clientId} ` +
+        `${this.options.maxEvictions} times; that gateway stopped reconnecting`,
+    );
+    void entry.client.disconnect().catch((err) => {
+      logger.debug(`Publisher pool ${this.options.poolLabel}: error closing evicted client:`, err);
+    });
   }
 
   /**
@@ -236,7 +295,7 @@ export class MqttBridgePublisherPool {
    * while the logins were failing. Other gateways are untouched.
    */
   private onAuthStopped(entry: PoolEntry): void {
-    if (entry.authStopped) return;
+    if (isStopped(entry)) return;
     entry.authStopped = true;
     logger.warn(
       `Publisher pool ${this.options.poolLabel}: broker rejected gateway ${entry.clientId} ` +
@@ -296,6 +355,8 @@ export class MqttBridgePublisherPool {
       password: this.options.password,
       clientId,
       maxAuthFailures: this.options.maxAuthFailures,
+      maxEvictions: this.options.maxEvictions,
+      evictionWindowMs: this.options.evictionWindowMs,
     });
     if (this.options.reconnectCoordinator) {
       client.setCoordinator(this.options.reconnectCoordinator);
@@ -310,12 +371,14 @@ export class MqttBridgePublisherPool {
       // we keep it so prepare() callers can await it explicitly.
       ready: client.connect(),
       authStopped: false,
+      evictionStopped: false,
       droppedPublishes: 0,
     };
     client.on('error', (err) => {
       entry.lastError = err.message;
     });
     client.on('auth-stopped', () => this.onAuthStopped(entry));
+    client.on('eviction-stopped', () => this.onEvictionStopped(entry));
     this.entries.set(key, entry);
     logger.info(
       `Publisher pool ${this.options.poolLabel}: created entry for gateway ${clientId}`,
