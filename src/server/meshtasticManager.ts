@@ -55,6 +55,7 @@ import {
 } from '../utils/firmwareVersion.js';
 import { MODEM_PRESET_NAMES } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
+import { dataPath } from './config/dataDir.js';
 import { notificationService } from './services/notificationService.js';
 import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
@@ -12363,7 +12364,7 @@ class MeshtasticManager implements ISourceManager {
       const projectRoot = path.resolve(process.cwd());
       scriptsDir = path.join(projectRoot, 'data', 'scripts');
     } else {
-      scriptsDir = path.join(process.env.DATA_DIR || '/data', 'scripts');
+      scriptsDir = dataPath('scripts');
     }
 
     if (!fs.existsSync(scriptsDir)) {

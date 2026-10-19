@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { dataPath } from '../config/dataDir.js';
 import { randomUUID } from 'crypto';
 import { DOMParser } from '@xmldom/xmldom';
 import { kml } from '@tmcw/togeojson';
@@ -57,7 +58,6 @@ export interface GeoJsonManifest {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_GEOJSON_DIR = '/data/geojson';
 const MANIFEST_FILENAME = 'manifest.json';
 
 const DEFAULT_COLOR_PALETTE = [
@@ -88,12 +88,23 @@ const VALID_GEOJSON_TYPES = new Set([
 // ---------------------------------------------------------------------------
 
 export class GeoJsonService {
-  private readonly dataDir: string;
-  private readonly manifestPath: string;
+  private readonly explicitDataDir?: string;
 
-  constructor(dataDir: string = DEFAULT_GEOJSON_DIR) {
-    this.dataDir = dataDir;
-    this.manifestPath = path.join(dataDir, MANIFEST_FILENAME);
+  /**
+   * @param dataDir Directory to use. When omitted, resolves to
+   *   `$DATA_DIR/geojson` at call time (#5889), so the module-level singleton
+   *   honors a DATA_DIR loaded after this module was imported.
+   */
+  constructor(dataDir?: string) {
+    this.explicitDataDir = dataDir;
+  }
+
+  private get dataDir(): string {
+    return this.explicitDataDir ?? dataPath('geojson');
+  }
+
+  private get manifestPath(): string {
+    return path.join(this.dataDir, MANIFEST_FILENAME);
   }
 
   // ---- Directory management ------------------------------------------------

@@ -4,6 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { dataPath } from '../config/dataDir.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { scriptDependencyEnv } from '../utils/scriptRunner.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
@@ -52,7 +53,7 @@ export const getScriptsDirectory = (): string => {
     const projectRoot = path.resolve(__dirname, '../../../');
     scriptsDir = path.join(projectRoot, 'data', 'scripts');
   } else {
-    scriptsDir = path.join(process.env.DATA_DIR || '/data', 'scripts');
+    scriptsDir = dataPath('scripts');
   }
 
   if (!fs.existsSync(scriptsDir)) {

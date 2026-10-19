@@ -3,6 +3,8 @@ import { optionalAuth, requireAuth, requirePermission, requireAdmin } from '../a
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { fail } from '../utils/apiResponse.js';
+import path from 'path';
+import { getAppriseConfigDir } from '../config/dataDir.js';
 import { validateMessageTemplate, normalizeTemplate } from '../../utils/notificationTemplate.js';
 import { defaultNotificationPreferences } from '../../utils/notificationDefaults.js';
 import { pushNotificationService } from '../services/pushNotificationService.js';
@@ -659,9 +661,7 @@ appriseRouter.post(
 // Get configured Apprise URLs (admin only)
 appriseRouter.get('/urls', requireAdmin(), async (_req: Request, res: Response) => {
   try {
-    const configFile = process.env.APPRISE_CONFIG_DIR
-      ? `${process.env.APPRISE_CONFIG_DIR}/urls.txt`
-      : '/data/apprise-config/urls.txt';
+    const configFile = path.join(getAppriseConfigDir(), 'urls.txt');
 
     // Check if file exists
     const fs = await import('fs/promises');

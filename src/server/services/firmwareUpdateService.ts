@@ -17,6 +17,7 @@ import * as net from 'net';
 import * as path from 'path';
 import { assertSafeUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { logger } from '../../utils/logger.js';
+import { getDataDir, dataPath } from '../config/dataDir.js';
 import { parseFirmwareVersion, isParsedFirmwareAtLeast } from '../../utils/firmwareVersion.js';
 import { parseOtaGateway } from '../../utils/otaGateway.js';
 import databaseService from '../../services/database.js';
@@ -167,7 +168,10 @@ const NIGHTLY_BASE_URL = 'https://raw.githubusercontent.com/meshtastic/meshtasti
 const NIGHTLY_INDEX_URL = `${NIGHTLY_BASE_URL}/index.json`;
 const DEFAULT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const INITIAL_CHECK_DELAY_MS = 30 * 1000; // 30 seconds
-const DATA_DIR = process.env.DATA_DIR || '/data';
+// Data paths are read at call time, not module load (#5889): ESM hoists this
+// import above server.ts's dotenv load, so a module-level const missed a
+// DATA_DIR set in .env.
+const firmwareBackupDir = (): string => dataPath('firmware-backups');
 
 // Cap for a user-uploaded firmware image (#5249). A single ESP32 app-partition
 // binary is a few MB; the 256 MB download cap exists because official zips
@@ -208,7 +212,6 @@ function formatFirmwareSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
-const BACKUP_DIR = path.join(DATA_DIR, 'firmware-backups');
 
 // ---- Service ----
 
@@ -931,9 +934,9 @@ export class FirmwareUpdateService {
    * Ensure the firmware backup directory exists.
    */
   ensureBackupDir(): void {
-    if (!fs.existsSync(BACKUP_DIR)) {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
-      logger.info(`[FirmwareUpdateService] Created backup directory: ${BACKUP_DIR}`);
+    if (!fs.existsSync(firmwareBackupDir())) {
+      fs.mkdirSync(firmwareBackupDir(), { recursive: true });
+      logger.info(`[FirmwareUpdateService] Created backup directory: ${firmwareBackupDir()}`);
     }
   }
 
@@ -943,11 +946,11 @@ export class FirmwareUpdateService {
   listBackups(): Array<{ filename: string; path: string; timestamp: number; size: number }> {
     this.ensureBackupDir();
     try {
-      const files = fs.readdirSync(BACKUP_DIR);
+      const files = fs.readdirSync(firmwareBackupDir());
       return files
         .filter((f) => f.endsWith('.bin'))
         .map((filename) => {
-          const filePath = path.join(BACKUP_DIR, filename);
+          const filePath = path.join(firmwareBackupDir(), filename);
           const stats = fs.statSync(filePath);
           return {
             filename,
@@ -1021,8 +1024,8 @@ export class FirmwareUpdateService {
     const safeName = path.basename(originalName).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 128)
       || 'firmware.bin';
 
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    const stageDir = fs.mkdtempSync(path.join(DATA_DIR, 'firmware-upload-'));
+    fs.mkdirSync(getDataDir(), { recursive: true });
+    const stageDir = fs.mkdtempSync(path.join(getDataDir(), 'firmware-upload-'));
     const stagedPath = path.join(stageDir, STAGED_FIRMWARE_FILENAME);
     fs.writeFileSync(stagedPath, data);
 
@@ -1049,10 +1052,10 @@ export class FirmwareUpdateService {
    */
   private sweepStaleUploads(): void {
     try {
-      if (!fs.existsSync(DATA_DIR)) return;
-      for (const entry of fs.readdirSync(DATA_DIR)) {
+      if (!fs.existsSync(getDataDir())) return;
+      for (const entry of fs.readdirSync(getDataDir())) {
         if (!entry.startsWith('firmware-upload-')) continue;
-        fs.rmSync(path.join(DATA_DIR, entry), { recursive: true, force: true });
+        fs.rmSync(path.join(getDataDir(), entry), { recursive: true, force: true });
         logger.debug(`[FirmwareUpdateService] Removed stale firmware upload directory ${entry}`);
       }
     } catch (err) {
@@ -1316,9 +1319,9 @@ export class FirmwareUpdateService {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       // Sanitize nodeId: strip any characters that could escape BACKUP_DIR.
       const safeNodeId = String(nodeId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'unknown';
-      const candidatePath = path.join(BACKUP_DIR, `config-${safeNodeId}-${timestamp}.yaml`);
+      const candidatePath = path.join(firmwareBackupDir(), `config-${safeNodeId}-${timestamp}.yaml`);
       // Defense-in-depth: verify resolved path is still under BACKUP_DIR.
-      const resolvedBackupDir = path.resolve(BACKUP_DIR);
+      const resolvedBackupDir = path.resolve(firmwareBackupDir());
       const backupPath = path.resolve(candidatePath);
       if (!backupPath.startsWith(resolvedBackupDir + path.sep)) {
         throw new Error('Refusing to write backup outside of backup directory');
@@ -1372,7 +1375,7 @@ export class FirmwareUpdateService {
       throw new Error(`Staged firmware ${staged.originalName} is no longer on disk — upload it again`);
     }
 
-    const tempDir = fs.mkdtempSync(path.join(DATA_DIR, 'firmware-tmp-'));
+    const tempDir = fs.mkdtempSync(path.join(getDataDir(), 'firmware-tmp-'));
     this.tempDir = tempDir;
     const extractDir = path.resolve(path.join(tempDir, 'extracted'));
     fs.mkdirSync(extractDir, { recursive: true });
@@ -1421,7 +1424,7 @@ export class FirmwareUpdateService {
         throw ssrfError;
       }
 
-      const tempDir = fs.mkdtempSync(path.join(DATA_DIR, 'firmware-tmp-'));
+      const tempDir = fs.mkdtempSync(path.join(getDataDir(), 'firmware-tmp-'));
       this.tempDir = tempDir;
 
       const response = await fetch(downloadUrl);
@@ -2080,7 +2083,7 @@ export class FirmwareUpdateService {
     // Restrict restorable paths to files inside BACKUP_DIR. Without this a
     // caller could pass an arbitrary path (e.g. /etc/passwd) and use the
     // existsSync check as a filesystem-probe oracle.
-    const resolvedBackupDir = path.resolve(BACKUP_DIR);
+    const resolvedBackupDir = path.resolve(firmwareBackupDir());
     const resolvedBackup = path.resolve(backupPath);
     if (!resolvedBackup.startsWith(resolvedBackupDir + path.sep)) {
       throw new Error('Backup path is outside the allowed backup directory');
@@ -2119,8 +2122,8 @@ export class FirmwareUpdateService {
       this.ensureBackupDir();
       const safe = this.sanitizeNodeId(nodeId);
       const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      const markerPath = path.join(BACKUP_DIR, `.flash-incomplete-${safe}-${ts}`);
-      const resolvedBackupDir = path.resolve(BACKUP_DIR);
+      const markerPath = path.join(firmwareBackupDir(), `.flash-incomplete-${safe}-${ts}`);
+      const resolvedBackupDir = path.resolve(firmwareBackupDir());
       const resolvedMarker = path.resolve(markerPath);
       if (!resolvedMarker.startsWith(resolvedBackupDir + path.sep)) {
         logger.error('[FirmwareUpdateService] Refusing to write marker outside backup dir');
@@ -2140,10 +2143,10 @@ export class FirmwareUpdateService {
   /** True if a recovery marker exists for the given nodeId. */
   hasFlashIncompleteMarker(nodeId: string): boolean {
     try {
-      if (!fs.existsSync(BACKUP_DIR)) return false;
+      if (!fs.existsSync(firmwareBackupDir())) return false;
       const safe = this.sanitizeNodeId(nodeId);
       const prefix = `.flash-incomplete-${safe}-`;
-      return fs.readdirSync(BACKUP_DIR).some(f => f.startsWith(prefix));
+      return fs.readdirSync(firmwareBackupDir()).some(f => f.startsWith(prefix));
     } catch (err) {
       logger.warn('[FirmwareUpdateService] Error checking flash incomplete markers:', err);
       return false;
@@ -2154,13 +2157,13 @@ export class FirmwareUpdateService {
   clearFlashIncompleteMarker(nodeId: string): number {
     let removed = 0;
     try {
-      if (!fs.existsSync(BACKUP_DIR)) return 0;
+      if (!fs.existsSync(firmwareBackupDir())) return 0;
       const safe = this.sanitizeNodeId(nodeId);
       const prefix = `.flash-incomplete-${safe}-`;
-      const resolvedBackupDir = path.resolve(BACKUP_DIR);
-      for (const f of fs.readdirSync(BACKUP_DIR)) {
+      const resolvedBackupDir = path.resolve(firmwareBackupDir());
+      for (const f of fs.readdirSync(firmwareBackupDir())) {
         if (!f.startsWith(prefix)) continue;
-        const target = path.resolve(path.join(BACKUP_DIR, f));
+        const target = path.resolve(path.join(firmwareBackupDir(), f));
         if (!target.startsWith(resolvedBackupDir + path.sep)) continue;
         fs.unlinkSync(target);
         removed++;
@@ -2222,7 +2225,7 @@ export class FirmwareUpdateService {
     // closes the file-access-to-http path where an attacker-influenced
     // `firmwarePath` could exfiltrate arbitrary local files over the OTA
     // socket.
-    const resolvedDataDir = path.resolve(DATA_DIR);
+    const resolvedDataDir = path.resolve(getDataDir());
     const resolvedFirmwarePath = path.resolve(firmwarePath);
     if (!resolvedFirmwarePath.startsWith(resolvedDataDir + path.sep)) {
       return Promise.reject(new Error('Refusing to upload firmware from outside data directory'));

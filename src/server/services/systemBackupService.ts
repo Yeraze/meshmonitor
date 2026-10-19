@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
+import { getSystemBackupDir } from '../config/dataDir.js';
 import databaseService from '../../services/database.js';
 import {
   BACKUP_TABLES,
@@ -27,8 +28,6 @@ import {
   type BackupReadSession,
   type BackupRow,
 } from './systemBackupIo.js';
-
-const SYSTEM_BACKUP_DIR = process.env.SYSTEM_BACKUP_DIR || '/data/system-backups';
 
 /**
  * 1.0: each table file is the whole array, pretty-printed.
@@ -109,9 +108,9 @@ class SystemBackupService {
    */
   initializeBackupDirectory(): void {
     try {
-      if (!fs.existsSync(SYSTEM_BACKUP_DIR)) {
-        fs.mkdirSync(SYSTEM_BACKUP_DIR, { recursive: true, mode: BACKUP_DIR_MODE });
-        logger.info(`📁 Created system backup directory: ${SYSTEM_BACKUP_DIR}`);
+      if (!fs.existsSync(getSystemBackupDir())) {
+        fs.mkdirSync(getSystemBackupDir(), { recursive: true, mode: BACKUP_DIR_MODE });
+        logger.info(`📁 Created system backup directory: ${getSystemBackupDir()}`);
       }
     } catch (error) {
       logger.error('❌ Failed to create system backup directory:', error);
@@ -145,7 +144,7 @@ class SystemBackupService {
       // Create timestamped directory for this backup
       const now = new Date();
       const dirname = this.formatBackupDirname(now);
-      const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
+      const backupPath = path.join(getSystemBackupDir(), dirname);
 
       // A backup holds keys, password hashes and tokens: keep it private to
       // the server's user.
@@ -454,7 +453,7 @@ class SystemBackupService {
    */
   async getBackupMetadata(dirname: string): Promise<SystemBackupMetadata | null> {
     try {
-      const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
+      const backupPath = path.join(getSystemBackupDir(), dirname);
       const metadataFile = path.join(backupPath, 'metadata.json');
 
       if (!fs.existsSync(metadataFile)) {
@@ -480,7 +479,7 @@ class SystemBackupService {
     const errors: string[] = [];
 
     try {
-      const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
+      const backupPath = path.join(getSystemBackupDir(), dirname);
 
       // Check if backup directory exists
       if (!fs.existsSync(backupPath)) {
@@ -532,7 +531,7 @@ class SystemBackupService {
   async deleteBackup(dirname: string): Promise<void> {
     try {
       const dbType = databaseService.getDatabaseType();
-      const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
+      const backupPath = path.join(getSystemBackupDir(), dirname);
 
       // Check if backup exists either in database or on disk
       const bpCol = dbType === 'postgres' ? '"backupPath"' : 'backupPath';
@@ -611,7 +610,7 @@ class SystemBackupService {
 
       for (const backup of oldBackups) {
         // Delete directory from disk
-        const backupPath = path.join(SYSTEM_BACKUP_DIR, backup.backupPath);
+        const backupPath = path.join(getSystemBackupDir(), backup.backupPath);
         if (fs.existsSync(backupPath)) {
           fs.rmSync(backupPath, { recursive: true, force: true });
         }
@@ -646,7 +645,7 @@ class SystemBackupService {
    * Get backup directory path (for external access)
    */
   getBackupPath(dirname: string): string {
-    return path.join(SYSTEM_BACKUP_DIR, dirname);
+    return path.join(getSystemBackupDir(), dirname);
   }
 
   /**
