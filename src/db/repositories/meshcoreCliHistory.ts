@@ -63,6 +63,11 @@ export interface MeshCoreCliHistoryQuery {
   to?: number;
   /** Exclusive cursor: only rows older than this timestamp (ms). */
   before?: number;
+  /**
+   * With `before`: the id of the last row on the previous page, so rows that
+   * share its millisecond are not skipped (order is timestamp, then id).
+   */
+  beforeId?: number;
   limit?: number;
 }
 
@@ -118,7 +123,11 @@ export class MeshCoreCliHistoryRepository extends BaseRepository {
     if (query.username) conditions.push(eq(t.username, query.username));
     if (query.from !== undefined) conditions.push(gte(t.timestamp, query.from));
     if (query.to !== undefined) conditions.push(lte(t.timestamp, query.to));
-    if (query.before !== undefined) conditions.push(lt(t.timestamp, query.before));
+    if (query.before !== undefined) {
+      conditions.push(query.beforeId !== undefined
+        ? (or(lt(t.timestamp, query.before), and(eq(t.timestamp, query.before), lt(t.id, query.beforeId))) as SQL)
+        : lt(t.timestamp, query.before));
+    }
 
     const limit = Math.min(Math.max(1, query.limit ?? CLI_HISTORY_DEFAULT_LIMIT), CLI_HISTORY_MAX_LIMIT);
     const base = this.db.select().from(t);

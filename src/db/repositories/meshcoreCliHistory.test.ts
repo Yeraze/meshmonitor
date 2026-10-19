@@ -95,6 +95,21 @@ function runRepoSuite(getRepo: () => MeshCoreCliHistoryRepository, clear: () => 
     expect(page2.map(r => r.command)).toEqual(['c2', 'c1']);
   });
 
+  it('does not skip rows that share the page edge millisecond', async () => {
+    for (let i = 0; i < 4; i++) await repo.record(row({ timestamp: 2000, command: `same${i}` }));
+    await repo.record(row({ timestamp: 1999, command: 'older' }));
+    const seen: string[] = [];
+    let cursor: { before: number; beforeId: number } | undefined;
+    for (let n = 0; n < 5; n++) {
+      const page = await repo.list({ scopes: 'all', limit: 2, before: cursor?.before, beforeId: cursor?.beforeId });
+      seen.push(...page.map(r => r.command));
+      if (page.length < 2) break;
+      const last = page[page.length - 1];
+      cursor = { before: last.timestamp, beforeId: last.id };
+    }
+    expect(seen.sort()).toEqual(['older', 'same0', 'same1', 'same2', 'same3']);
+  });
+
   it('scopes rows by source and target kind', async () => {
     await repo.record(row({ sourceId: SRC_A, targetKind: 'remote', command: 'a-remote' }));
     await repo.record(row({ sourceId: SRC_A, targetKind: 'local', targetPublicKey: null, command: 'a-local' }));

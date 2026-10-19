@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { CliHistoryList } from './CliHistoryList';
-import { fetchSourceCliHistory, type CliHistoryEntry } from './cliHistoryApi';
+import { fetchSourceCliHistory, nextCliHistoryCursor, type CliHistoryCursor, type CliHistoryEntry } from './cliHistoryApi';
 import styles from './CliHistory.module.css';
 
 const PAGE_SIZE = 25;
@@ -24,17 +24,17 @@ export const CliHistoryPanel: React.FC<CliHistoryTarget> = ({ sourceId, target }
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<CliHistoryEntry[]>([]);
-  const [nextBefore, setNextBefore] = useState<number | null>(null);
+  const [nextCursor, setNextCursor] = useState<CliHistoryCursor | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (before: number | null) => {
+  const load = useCallback(async (cursor: CliHistoryCursor | null) => {
     setLoading(true);
     setError(null);
     try {
-      const page = await fetchSourceCliHistory(sourceId, { target, limit: PAGE_SIZE, before });
-      setEntries((prev) => (before === null ? page.entries : [...prev, ...page.entries]));
-      setNextBefore(page.nextBefore);
+      const page = await fetchSourceCliHistory(sourceId, { target, limit: PAGE_SIZE, before: cursor?.before, beforeId: cursor?.beforeId });
+      setEntries((prev) => (cursor === null ? page.entries : [...prev, ...page.entries]));
+      setNextCursor(nextCliHistoryCursor(page));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -46,7 +46,7 @@ export const CliHistoryPanel: React.FC<CliHistoryTarget> = ({ sourceId, target }
   useEffect(() => {
     setOpen(false);
     setEntries([]);
-    setNextBefore(null);
+    setNextCursor(null);
     setError(null);
   }, [sourceId, target]);
 
@@ -89,8 +89,8 @@ export const CliHistoryPanel: React.FC<CliHistoryTarget> = ({ sourceId, target }
             <p className={styles.empty}>{t('meshcore.cliHistory.empty', 'No commands recorded yet.')}</p>
           )}
           {entries.length > 0 && <CliHistoryList entries={entries} />}
-          {nextBefore !== null && (
-            <button type="button" className={styles.more} onClick={() => void load(nextBefore)} disabled={loading}>
+          {nextCursor !== null && (
+            <button type="button" className={styles.more} onClick={() => void load(nextCursor)} disabled={loading}>
               {t('meshcore.cliHistory.load_more', 'Load more')}
             </button>
           )}

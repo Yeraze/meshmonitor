@@ -4,7 +4,7 @@
  *   GET /api/sources/:id/meshcore/cli-history   one source
  *   GET /api/meshcore/cli-history               every source the caller may read
  *
- * Query: limit, before (ms cursor, exclusive), target ('local' | 64-hex
+ * Query: limit, before (ms cursor, exclusive) + beforeId (tie-break), target ('local' | 64-hex
  * public key), user (exact username), from / to (ms, inclusive), and for the
  * unified route `source`.
  *
@@ -73,6 +73,15 @@ function parseFilters(req: Request, res: Response): ParsedFilters | null {
     if (v !== undefined) filters[key] = v;
   }
 
+  if (q.beforeId !== undefined && q.beforeId !== '') {
+    const id = Number(q.beforeId);
+    if (!Number.isSafeInteger(id) || id < 1 || filters.before === undefined) {
+      fail(res, 400, 'INVALID_QUERY', 'beforeId must be a positive whole number, sent with before');
+      return null;
+    }
+    filters.beforeId = id;
+  }
+
   if (q.target !== undefined && q.target !== '') {
     if (q.target === 'local' || q.target === 'remote') {
       filters.targetKind = q.target;
@@ -95,9 +104,14 @@ function parseFilters(req: Request, res: Response): ParsedFilters | null {
   return filters;
 }
 
-/** The cursor for the next page: the oldest timestamp on a full page. */
-function nextCursor(rows: Array<{ timestamp: number }>, limit: number): number | null {
-  return rows.length === limit ? rows[rows.length - 1].timestamp : null;
+/** The cursor for the next page: the oldest row on a full page. */
+function nextCursor(
+  rows: Array<{ timestamp: number; id: number }>,
+  limit: number,
+): { nextBefore: number | null; nextBeforeId: number | null } {
+  if (rows.length !== limit) return { nextBefore: null, nextBeforeId: null };
+  const last = rows[rows.length - 1];
+  return { nextBefore: last.timestamp, nextBeforeId: last.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +134,7 @@ perSourceCliHistoryRouter.get('/cli-history', requireAuth(), async (req: Request
       ...filters,
       scopes: [{ sourceId, kinds }],
     });
-    return ok(res, { entries: rows, nextBefore: nextCursor(rows, filters.limit!) });
+    return ok(res, { entries: rows, ...nextCursor(rows, filters.limit!) });
   } catch (error) {
     logger.error('[API] Error reading MeshCore CLI history:', error);
     return fail(res, 500, 'INTERNAL_ERROR', 'Failed to read CLI history');
@@ -173,7 +187,7 @@ unifiedCliHistoryRouter.get('/', requireAuth(), async (req: Request, res: Respon
       .map(s => ({ id: s.id, name: s.name }));
     return ok(res, {
       entries: rows,
-      nextBefore: nextCursor(rows, filters.limit!),
+      ...nextCursor(rows, filters.limit!),
       sources: meshcoreSources,
     });
   } catch (error) {

@@ -261,9 +261,15 @@ describe('MeshCore CLI history (#5892)', () => {
       const page1 = await agent.get('/meshcore/cli-history?limit=2');
       expect(page1.body.data.entries).toHaveLength(2);
       expect(page1.body.data.nextBefore).toEqual(page1.body.data.entries[1].timestamp);
-      const page2 = await agent.get(`/meshcore/cli-history?limit=2&before=${page1.body.data.nextBefore}`);
+      expect(page1.body.data.nextBeforeId).toEqual(page1.body.data.entries[1].id);
+      const page2 = await agent.get(
+        `/meshcore/cli-history?limit=2&before=${page1.body.data.nextBefore}&beforeId=${page1.body.data.nextBeforeId}`,
+      );
       expect(page2.body.data.entries).toHaveLength(1);
       expect(page2.body.data.nextBefore).toBeNull();
+      expect(page2.body.data.nextBeforeId).toBeNull();
+      // A tie-break id makes no sense without the timestamp it breaks.
+      expect((await agent.get('/meshcore/cli-history?beforeId=3')).status).toBe(400);
     });
 
     it('400 on a bad filter', async () => {

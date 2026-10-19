@@ -42,7 +42,7 @@ describe('CliHistoryPanel', () => {
   beforeEach(() => get.mockReset());
 
   it('loads nothing until opened, then shows this target\'s rows', async () => {
-    get.mockResolvedValue({ success: true, data: { entries: [entry()], nextBefore: null } });
+    get.mockResolvedValue({ success: true, data: { entries: [entry()], nextBefore: null, nextBeforeId: null } });
     render(<CliHistoryPanel sourceId="src-a" target={KEY} />);
     expect(get).not.toHaveBeenCalled();
 
@@ -59,20 +59,20 @@ describe('CliHistoryPanel', () => {
 
   it('pages back with Load more', async () => {
     get
-      .mockResolvedValueOnce({ success: true, data: { entries: [entry({ id: 1, command: 'one', timestamp: 500 })], nextBefore: 500 } })
-      .mockResolvedValueOnce({ success: true, data: { entries: [entry({ id: 2, command: 'two', timestamp: 400 })], nextBefore: null } });
+      .mockResolvedValueOnce({ success: true, data: { entries: [entry({ id: 1, command: 'one', timestamp: 500 })], nextBefore: 500, nextBeforeId: 1 } })
+      .mockResolvedValueOnce({ success: true, data: { entries: [entry({ id: 2, command: 'two', timestamp: 400 })], nextBefore: null, nextBeforeId: null } });
     render(<CliHistoryPanel sourceId="src-a" target="local" />);
     fireEvent.click(screen.getByRole('button', { name: /meshcore\.cliHistory\.title/ }));
     await waitFor(() => expect(screen.getByText('one')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /meshcore\.cliHistory\.load_more/ }));
     await waitFor(() => expect(screen.getByText('two')).toBeInTheDocument());
-    expect(get).toHaveBeenLastCalledWith('/api/sources/src-a/meshcore/cli-history?target=local&limit=25&before=500');
+    expect(get).toHaveBeenLastCalledWith('/api/sources/src-a/meshcore/cli-history?target=local&limit=25&before=500&beforeId=1');
     expect(screen.getByText('one')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /meshcore\.cliHistory\.load_more/ })).toBeNull();
   });
 
   it('shows the empty state', async () => {
-    get.mockResolvedValue({ success: true, data: { entries: [], nextBefore: null } });
+    get.mockResolvedValue({ success: true, data: { entries: [], nextBefore: null, nextBeforeId: null } });
     render(<CliHistoryPanel sourceId="src-a" target="local" />);
     fireEvent.click(screen.getByRole('button', { name: /meshcore\.cliHistory\.title/ }));
     await waitFor(() => expect(screen.getByText('meshcore.cliHistory.empty')).toBeInTheDocument());
@@ -91,6 +91,7 @@ describe('MeshCoreCliActivity', () => {
           entry({ id: 2, sourceId: 'src-b', origin: 'vn', username: 'vn:abc', ipAddress: '10.0.0.9', command: 'get name' }),
         ],
         nextBefore: null,
+        nextBeforeId: null,
         sources: [{ id: 'src-a', name: 'Alpha' }, { id: 'src-b', name: 'Bravo' }],
       },
     });

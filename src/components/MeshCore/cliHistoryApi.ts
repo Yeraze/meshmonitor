@@ -28,6 +28,8 @@ export interface CliHistoryEntry {
 export interface CliHistoryPage {
   entries: CliHistoryEntry[];
   nextBefore: number | null;
+  /** Id of the oldest row on the page; send it back as `beforeId`. */
+  nextBeforeId: number | null;
   /** Unified route only: the MeshCore sources the caller may read. */
   sources?: Array<{ id: string; name: string }>;
 }
@@ -35,6 +37,7 @@ export interface CliHistoryPage {
 export interface CliHistoryFilters {
   limit?: number;
   before?: number | null;
+  beforeId?: number | null;
   /** 'local', 'remote', or a 64-hex public key. */
   target?: string;
   user?: string;
@@ -64,6 +67,19 @@ export function fetchSourceCliHistory(sourceId: string, filters: CliHistoryFilte
 
 export function fetchUnifiedCliHistory(filters: CliHistoryFilters): Promise<CliHistoryPage> {
   return getPage(`/api/meshcore/cli-history${queryString(filters)}`);
+}
+
+/** Paging cursor: the oldest row seen so far. */
+export interface CliHistoryCursor {
+  before: number;
+  beforeId: number;
+}
+
+/** The next page's cursor, or null on the last page. */
+export function nextCliHistoryCursor(page: CliHistoryPage): CliHistoryCursor | null {
+  return page.nextBefore !== null && page.nextBeforeId !== null
+    ? { before: page.nextBefore, beforeId: page.nextBeforeId }
+    : null;
 }
 
 /** Who sent a command, for display: a username, or a Virtual Node client. */

@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../services/api';
 import { UiIcon } from '../icons';
 import { CliHistoryList } from './CliHistoryList';
-import { fetchUnifiedCliHistory, type CliHistoryEntry, type CliHistoryFilters } from './cliHistoryApi';
+import { fetchUnifiedCliHistory, nextCliHistoryCursor, type CliHistoryCursor, type CliHistoryEntry, type CliHistoryFilters } from './cliHistoryApi';
 import styles from './CliHistory.module.css';
 
 const PAGE_SIZE = 50;
@@ -35,7 +35,7 @@ export const MeshCoreCliActivity: React.FC = () => {
 
   const [entries, setEntries] = useState<CliHistoryEntry[]>([]);
   const [sources, setSources] = useState<Array<{ id: string; name: string }>>([]);
-  const [nextBefore, setNextBefore] = useState<number | null>(null);
+  const [nextCursor, setNextCursor] = useState<CliHistoryCursor | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,13 +48,13 @@ export const MeshCoreCliActivity: React.FC = () => {
     to: dayBound(toDate, true),
   }), [source, user, target, fromDate, toDate]);
 
-  const load = useCallback(async (before: number | null) => {
+  const load = useCallback(async (cursor: CliHistoryCursor | null) => {
     setLoading(true);
     setError(null);
     try {
-      const page = await fetchUnifiedCliHistory({ ...filters, before });
-      setEntries((prev) => (before === null ? page.entries : [...prev, ...page.entries]));
-      setNextBefore(page.nextBefore);
+      const page = await fetchUnifiedCliHistory({ ...filters, before: cursor?.before, beforeId: cursor?.beforeId });
+      setEntries((prev) => (cursor === null ? page.entries : [...prev, ...page.entries]));
+      setNextCursor(nextCliHistoryCursor(page));
       if (page.sources) setSources(page.sources);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
@@ -63,7 +63,7 @@ export const MeshCoreCliActivity: React.FC = () => {
         setError(err instanceof Error ? err.message : String(err));
       }
       setEntries([]);
-      setNextBefore(null);
+      setNextCursor(null);
     } finally {
       setLoading(false);
     }
@@ -156,9 +156,9 @@ export const MeshCoreCliActivity: React.FC = () => {
       {entries.length > 0 && (
         <CliHistoryList entries={entries} showSource showTarget sourceNames={sourceNames} />
       )}
-      {nextBefore !== null && (
+      {nextCursor !== null && (
         <div>
-          <button type="button" className={styles.more} onClick={() => void load(nextBefore)} disabled={loading}>
+          <button type="button" className={styles.more} onClick={() => void load(nextCursor)} disabled={loading}>
             {t('meshcore.cliHistory.load_more', 'Load more')}
           </button>
         </div>
