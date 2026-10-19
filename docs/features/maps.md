@@ -399,8 +399,11 @@ The line links to the flight on the feed's own map. Parts the feed doesn't repor
 |---|---|
 | **adsb.lol** *(default)* | Open data under the ODbL. |
 | **adsb.fi** | For personal, non-commercial use only. |
+| **OpenSky Network** | Non-commercial and research use only. Credit: *Data: The OpenSky Network*. Needs a free OpenSky account. |
 
 airplanes.live is not offered: it refused anonymous requests when this feature was built. The optional **API key** field is for adsb.lol's announced future key; leave it empty unless adsb.lol asks for one. Only admins can see the key.
+
+**OpenSky Network** needs an API client: log in to OpenSky, open your Account page, create an API client, and paste its **client ID** and **client secret** into Settings. There is no anonymous mode: the feed cannot be picked or saved without both. MeshMonitor swaps them for a 30-minute token, kept in memory only, and never sends the adsb.lol API key to OpenSky. OpenSky has no aircraft type or registration, so its matches show the callsign and ICAO hex only. OpenSky spends credits from a daily quota; when it runs out, OpenSky says how long to wait, and MeshMonitor pauses OpenSky lookups for that long (at most 24 hours). The pause is saved, so a restart does not end it early.
 
 **What it sends, and how often**
 

@@ -662,8 +662,9 @@ This same elevation source drives Map Analysis's [3D terrain view](/features/map
 
 **Fields**:
 - **Look up likely aircraft on a public ADS-B feed** — the on/off switch. Off means no outside calls at all.
-- **Feed** — **adsb.lol** (default, ODbL open data) or **adsb.fi** (personal, non-commercial use only). airplanes.live is not offered in this version.
-- **API key (optional)** — for adsb.lol's announced future key. Sent only when set; never shown to non-admins.
+- **Feed** — **adsb.lol** (default, ODbL open data), **adsb.fi** (personal, non-commercial use only) or **OpenSky Network** (non-commercial and research use; needs credentials, below). airplanes.live is not offered in this version.
+- **API key (optional)** — for adsb.lol's announced future key. Sent only when set, never to OpenSky; never shown to non-admins.
+- **OpenSky client ID / client secret** — needed for the **OpenSky Network** feed (non-commercial and research use only), which takes no anonymous requests. Create an API client on your OpenSky Account page. The OpenSky option stays disabled, and a save is refused, until both are set. Both are server-only and never shown to non-admins.
 
 At most two lookups per flagging, no packets over the mesh. See [Flight matching (ADS-B)](/features/maps#flight-matching-ads-b) for how matches are chosen and shown.
 

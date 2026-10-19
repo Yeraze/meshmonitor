@@ -463,6 +463,12 @@ export const VALID_SETTINGS_KEYS = [
   'adsbMatchEnabled',
   'adsbFeed',
   'adsb_api_token',
+  // OpenSky Network feed credentials (#5877). Both server-only: the secret via
+  // the `_secret` suffix, the id via SECRET_SETTINGS_KEYS. The feed's
+  // Retry-After pause (`adsb_opensky_paused_until`) is written by the server
+  // only and deliberately NOT listed here, so a save cannot clear it.
+  'adsb_opensky_client_id',
+  'adsb_opensky_client_secret',
   // ATAK/CoT Phase 3 (issue #3691): plaintext TCP CoT feed for ATAK/WinTAK.
   // Default OFF. When enabled, streams CoT <event> XML on cotFeedPort.
   'cotFeedEnabled',
@@ -880,6 +886,8 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'adsbMatchEnabled',                       // global outbound service (#5374), read via getSetting
   'adsbFeed',                               // "
   'adsb_api_token',                         // ", secret via the _token pattern
+  'adsb_opensky_client_id',                 // " (#5877), secret via SECRET_SETTINGS_KEYS
+  'adsb_opensky_client_secret',             // " (#5877), secret via the _secret pattern
   // Global singletons driven only by the global POST branch:
   'cotFeedEnabled',                         // settingsRoutes.ts:900-911 — "global singleton"
   'cotFeedPort',                            // "
@@ -998,6 +1006,9 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
   // May embed an API key; server-only (all elevation fetches are
   // server-proxied, so no frontend consumer ever needs the raw URL).
   'elevationSourceUrl',
+  // OpenSky client id (#5877). Not secret alone, but half of a credential
+  // pair; the secret half is caught by the `_secret` suffix.
+  'adsb_opensky_client_id',
   // One API key per translation provider (#5518): every `kind: 'secret'`
   // field in the provider descriptors.
   ...TRANSLATION_PROVIDER_SECRET_SETTING_KEYS,

@@ -591,6 +591,21 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       return fail(res, 400, 'INVALID_ADSB_FEED',
         `adsbFeed must be one of: ${ADSB_FEED_IDS.join(', ')}`);
     }
+    // OpenSky (#5877) has no anonymous mode: the feed needs both credentials,
+    // whether they arrive in this save or are already stored. Also refuses a
+    // save that clears a credential while OpenSky stays selected.
+    if (['adsbFeed', 'adsb_opensky_client_id', 'adsb_opensky_client_secret'].some((k) => k in filteredSettings)) {
+      const effective = async (k: string): Promise<string> =>
+        (k in filteredSettings ? filteredSettings[k] : await databaseService.settings.getSetting(k)) ?? '';
+      if ((await effective('adsbFeed')) === 'opensky') {
+        const id = String(await effective('adsb_opensky_client_id')).trim();
+        const secret = String(await effective('adsb_opensky_client_secret')).trim();
+        if (!id || !secret) {
+          return fail(res, 400, 'ADSB_OPENSKY_CREDENTIALS_REQUIRED',
+            'OpenSky Network needs both a client ID and a client secret');
+        }
+      }
+    }
     if ('aircraftAgeOutAction' in filteredSettings
       && !isAircraftAgeOutAction(filteredSettings.aircraftAgeOutAction)) {
       return fail(res, 400, 'INVALID_AIRCRAFT_AGE_OUT_ACTION',

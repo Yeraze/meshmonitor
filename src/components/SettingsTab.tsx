@@ -226,6 +226,9 @@ interface SettingsDraft {
   adsbMatchEnabled: boolean;
   adsbFeed: string;
   adsbApiToken: string;
+  // OpenSky Network credentials (#5877): server-only `adsb_opensky_client_*`.
+  adsbOpenSkyClientId: string;
+  adsbOpenSkyClientSecret: string;
   // Deployment-wide Carto basemap API key (#4934). Global, admin-set, publicly
   // readable (NOT a secret) — publishable, domain-restricted token appended to
   // Carto tile URLs. Mirrors the elevationSourceUrl admin-field pattern.
@@ -578,6 +581,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     adsbMatchEnabled: false,
     adsbFeed: DEFAULT_ADSB_FEED,
     adsbApiToken: '',
+    adsbOpenSkyClientId: '',
+    adsbOpenSkyClientSecret: '',
     cartoApiKey: '',
     cotFeedEnabled: false,
     cotFeedPort: 8088,
@@ -625,6 +630,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAdsbMatchEnabled, setInitialAdsbMatchEnabled] = useState(false);
   const [initialAdsbFeed, setInitialAdsbFeed] = useState<string>(DEFAULT_ADSB_FEED);
   const [initialAdsbApiToken, setInitialAdsbApiToken] = useState('');
+  const [initialAdsbOpenSkyClientId, setInitialAdsbOpenSkyClientId] = useState('');
+  const [initialAdsbOpenSkyClientSecret, setInitialAdsbOpenSkyClientSecret] = useState('');
   // Likely-aircraft detection (#5364/#5365 Phase 1 WP5). Per-source, unseeded
   // Node Display keys (AIRCRAFT_NODE_DISPLAY_KEYS) — same Category C pattern
   // as the elevation pair above: no SettingsContext prop home, dirty-tracked
@@ -852,6 +859,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const adsbToken = typeof settings.adsb_api_token === 'string' ? settings.adsb_api_token : '';
           updateField('adsbApiToken', adsbToken);
           setInitialAdsbApiToken(adsbToken);
+          const openSkyId = typeof settings.adsb_opensky_client_id === 'string' ? settings.adsb_opensky_client_id : '';
+          updateField('adsbOpenSkyClientId', openSkyId);
+          setInitialAdsbOpenSkyClientId(openSkyId);
+          const openSkySecret = typeof settings.adsb_opensky_client_secret === 'string' ? settings.adsb_opensky_client_secret : '';
+          updateField('adsbOpenSkyClientSecret', openSkySecret);
+          setInitialAdsbOpenSkyClientSecret(openSkySecret);
 
           // Load likely-aircraft detection settings (#5364/#5365 Phase 1
           // WP5). Per-source, routed through NODE_DISPLAY_SETTING_KEYS; an
@@ -1064,6 +1077,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       adsbMatchEnabled: initialAdsbMatchEnabled,
       adsbFeed: initialAdsbFeed,
       adsbApiToken: initialAdsbApiToken,
+      adsbOpenSkyClientId: initialAdsbOpenSkyClientId,
+      adsbOpenSkyClientSecret: initialAdsbOpenSkyClientSecret,
       cartoApiKey: initialCartoApiKey,
       cotFeedEnabled: initialCotFeedEnabled,
       cotFeedPort: initialCotFeedPort,
@@ -1091,6 +1106,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
+      initialAdsbOpenSkyClientId, initialAdsbOpenSkyClientSecret,
       initialTranslationEnabled, initialTranslationProvider, initialTranslationFields, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
@@ -1184,6 +1200,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // nodeDimmingChanged tracker is gone now that the trio is an ordinary draft field (#4412 Phase 3
   // WP4c) covered by settingsDraftEqual like every other field.
   const hasChanges = useMemo(() => !settingsDraftEqual(draft, baseline), [draft, baseline]);
+  // OpenSky has no anonymous mode (#5877); the server refuses the feed without both.
+  const openSkyCredsSet = draft.adsbOpenSkyClientId.trim() !== '' && draft.adsbOpenSkyClientSecret.trim() !== '';
 
   // Reset local state to current saved values (for SaveBar dismiss). Replaces the old ~35-dep
   // resetChanges useCallback — re-seeding the draft from `baseline` covers every draft field
@@ -1297,6 +1315,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialAdsbMatchEnabled(d.adsbMatchEnabled);
     setInitialAdsbFeed(d.adsbFeed);
     setInitialAdsbApiToken(d.adsbApiToken.trim());
+    setInitialAdsbOpenSkyClientId(d.adsbOpenSkyClientId.trim());
+    setInitialAdsbOpenSkyClientSecret(d.adsbOpenSkyClientSecret.trim());
     setInitialCartoApiKey(d.cartoApiKey.trim());
     setInitialCotFeedEnabled(d.cotFeedEnabled);
     setInitialCotFeedPort(d.cotFeedPort);
@@ -1409,6 +1429,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         adsbMatchEnabled: draft.adsbMatchEnabled ? 'true' : 'false',
         adsbFeed: draft.adsbFeed,
         adsb_api_token: draft.adsbApiToken.trim(),
+        adsb_opensky_client_id: draft.adsbOpenSkyClientId.trim(),
+        adsb_opensky_client_secret: draft.adsbOpenSkyClientSecret.trim(),
         cartoApiKey: draft.cartoApiKey.trim(),
         cotFeedEnabled: draft.cotFeedEnabled ? '1' : '0',
         cotFeedPort: String(draft.cotFeedPort),
@@ -3400,7 +3422,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span className="setting-description">
                 {draft.adsbFeed === 'adsb.fi'
                   ? t('settings.adsb_feed_terms_adsb_fi', 'adsb.fi: for personal, non-commercial use only.')
-                  : t('settings.adsb_feed_terms_adsb_lol', 'adsb.lol: open data under the ODbL.')}
+                  : draft.adsbFeed === 'opensky'
+                    ? t('settings.adsb_feed_terms_opensky', 'OpenSky Network: non-commercial and research use only. Matches credit "Data: The OpenSky Network". No aircraft type or registration.')
+                    : t('settings.adsb_feed_terms_adsb_lol', 'adsb.lol: open data under the ODbL.')}
               </span>
             </label>
             <select
@@ -3411,9 +3435,55 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               disabled={!draft.adsbMatchEnabled}
             >
               {ADSB_FEED_IDS.map((id) => (
-                <option key={id} value={id}>{ADSB_FEEDS[id].name}</option>
+                <option
+                  key={id}
+                  value={id}
+                  // OpenSky has no anonymous mode (#5877): selectable once both credentials are filled in.
+                  disabled={id === 'opensky' && !openSkyCredsSet && draft.adsbFeed !== 'opensky'}
+                >
+                  {id === 'opensky' && !openSkyCredsSet
+                    ? t('settings.adsb_feed_opensky_needs_creds', '{{name}} (needs client ID and secret)', { name: ADSB_FEEDS[id].name })
+                    : ADSB_FEEDS[id].name}
+                </option>
               ))}
             </select>
+            {draft.adsbFeed === 'opensky' && !openSkyCredsSet && (
+              <span className="setting-description" role="alert">
+                {t('settings.adsb_opensky_creds_missing', 'OpenSky Network needs both a client ID and a client secret. Saving will fail until both are set.')}
+              </span>
+            )}
+          </div>
+          <div className="setting-item">
+            <label htmlFor="adsbOpenSkyClientId">
+              {t('settings.adsb_opensky_client_id_label', 'OpenSky client ID')}
+              <span className="setting-description">
+                {t('settings.adsb_opensky_client_id_description', 'Needed only for the OpenSky Network feed. Create an API client under your OpenSky account. Stored server-side and never shown to non-admins.')}
+              </span>
+            </label>
+            <input
+              id="adsbOpenSkyClientId"
+              type="text"
+              value={draft.adsbOpenSkyClientId}
+              onChange={(e) => updateField('adsbOpenSkyClientId', e.target.value)}
+              className="setting-input"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={!draft.adsbMatchEnabled}
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="adsbOpenSkyClientSecret">
+              {t('settings.adsb_opensky_client_secret_label', 'OpenSky client secret')}
+            </label>
+            <PasswordField
+              id="adsbOpenSkyClientSecret"
+              value={draft.adsbOpenSkyClientSecret}
+              onChange={(e) => updateField('adsbOpenSkyClientSecret', e.target.value)}
+              className="setting-input"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={!draft.adsbMatchEnabled}
+            />
           </div>
           <div className="setting-item">
             <label htmlFor="adsbApiToken">

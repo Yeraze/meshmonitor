@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import settingsRoutes from './settingsRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
-const KEYS = ['adsbMatchEnabled', 'adsbFeed', 'adsb_api_token'];
+const KEYS = ['adsbMatchEnabled', 'adsbFeed', 'adsb_api_token', 'adsb_opensky_client_id', 'adsb_opensky_client_secret'];
 
 describe('/api/settings — ADS-B flight matching (#5374)', () => {
   let harness: RouteTestHarness;
@@ -35,7 +35,7 @@ describe('/api/settings — ADS-B flight matching (#5374)', () => {
     expect(await harness.db.settings.getSetting('adsb_api_token')).toBe('k-123');
   });
 
-  it.each([['airplanes.live'], ['opensky'], ['']])('rejects adsbFeed=%j with 400 INVALID_ADSB_FEED', async (feed) => {
+  it.each([['airplanes.live'], ['OpenSky'], ['']])('rejects adsbFeed=%j with 400 INVALID_ADSB_FEED', async (feed) => {
     const agent = await harness.loginAs(harness.admin);
     const res = await agent.post('/api/settings').send({ adsbFeed: feed });
     expect(res.status).toBe(400);
@@ -86,5 +86,85 @@ describe('/api/settings — ADS-B flight matching (#5374)', () => {
     const admin = await harness.loginAs(harness.admin);
     const adminRes = await admin.get('/api/settings');
     expect(adminRes.body.adsb_api_token).toBe('secret-key');
+  });
+});
+
+describe('/api/settings — OpenSky Network feed (#5877)', () => {
+  let harness: RouteTestHarness;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({
+      mount: (app) => app.use('/api/settings', settingsRoutes),
+    });
+  });
+
+  afterEach(async () => {
+    for (const k of KEYS) await harness.db.settings.deleteSetting(k).catch(() => {});
+    await harness.cleanup();
+  });
+
+  it.each([
+    [{ adsbFeed: 'opensky' }],
+    [{ adsbFeed: 'opensky', adsb_opensky_client_id: 'id' }],
+    [{ adsbFeed: 'opensky', adsb_opensky_client_secret: 'secret' }],
+    [{ adsbFeed: 'opensky', adsb_opensky_client_id: ' ', adsb_opensky_client_secret: 'secret' }],
+  ])('rejects OpenSky without both credentials: %j', async (body) => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/api/settings').send(body);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ADSB_OPENSKY_CREDENTIALS_REQUIRED');
+    expect(await harness.db.settings.getSetting('adsbFeed')).toBeNull();
+  });
+
+  it('accepts OpenSky with both credentials in the same save', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/api/settings').send({
+      adsbFeed: 'opensky', adsb_opensky_client_id: 'id', adsb_opensky_client_secret: 'secret',
+    });
+    expect(res.status).toBe(200);
+    expect(await harness.db.settings.getSetting('adsbFeed')).toBe('opensky');
+    expect(await harness.db.settings.getSetting('adsb_opensky_client_id')).toBe('id');
+    expect(await harness.db.settings.getSetting('adsb_opensky_client_secret')).toBe('secret');
+  });
+
+  it('accepts OpenSky when the credentials are already stored', async () => {
+    await harness.db.settings.setSetting('adsb_opensky_client_id', 'id');
+    await harness.db.settings.setSetting('adsb_opensky_client_secret', 'secret');
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/api/settings').send({ adsbFeed: 'opensky' });
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses to clear a credential while OpenSky stays selected', async () => {
+    await harness.db.settings.setSetting('adsbFeed', 'opensky');
+    await harness.db.settings.setSetting('adsb_opensky_client_id', 'id');
+    await harness.db.settings.setSetting('adsb_opensky_client_secret', 'secret');
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/api/settings').send({ adsb_opensky_client_secret: '' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('ADSB_OPENSKY_CREDENTIALS_REQUIRED');
+    expect(await harness.db.settings.getSetting('adsb_opensky_client_secret')).toBe('secret');
+  });
+
+  it('never sends either credential to a non-admin', async () => {
+    await harness.db.settings.setSetting('adsb_opensky_client_id', 'id-123');
+    await harness.db.settings.setSetting('adsb_opensky_client_secret', 'secret-456');
+
+    const anon = await harness.loginAs(null);
+    const anonRes = await anon.get('/api/settings');
+    expect(anonRes.status).toBe(200);
+    expect(anonRes.body).not.toHaveProperty('adsb_opensky_client_id');
+    expect(anonRes.body).not.toHaveProperty('adsb_opensky_client_secret');
+
+    await harness.grant(harness.limited.id, 'settings', 'read', harness.sourceA);
+    const limited = await harness.loginAs(harness.limited);
+    const limitedRes = await limited.get('/api/settings');
+    expect(limitedRes.body).not.toHaveProperty('adsb_opensky_client_id');
+    expect(limitedRes.body).not.toHaveProperty('adsb_opensky_client_secret');
+
+    const admin = await harness.loginAs(harness.admin);
+    const adminRes = await admin.get('/api/settings');
+    expect(adminRes.body.adsb_opensky_client_id).toBe('id-123');
+    expect(adminRes.body.adsb_opensky_client_secret).toBe('secret-456');
   });
 });

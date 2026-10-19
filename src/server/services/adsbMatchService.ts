@@ -21,13 +21,18 @@
  *  - any 429 / 403 / 5xx / timeout / network failure starts a 10-minute global
  *    backoff; a failed lookup does not spend the node's allowance;
  *  - a node flagged on several sources at once shares one HTTP request via a
- *    60-second in-memory reuse cache.
+ *    60-second in-memory reuse cache;
+ *  - OpenSky (#5877) runs only with its client id + secret set, and a 429
+ *    with a Retry-After pauses OpenSky until then (capped at 24 h) instead of
+ *    the 10-minute backoff. The pause-until time is persisted in settings, so
+ *    a restart does not hammer a spent quota.
  */
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { dataEventEmitter, type DataEvent, type NodeAircraftData } from './dataEventEmitter.js';
 import { AIRCRAFT_EXCLUDED_SOURCE_TYPES } from './aircraftClassificationService.js';
 import { fetchAircraftNear, AdsbFeedError } from './adsbFeedClient.js';
+import { openSkyTokenManager, type OpenSkyCredentials } from './openSkyTokenManager.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { matchAircraft, radiusToNm, searchRadiusKm, type AdsbAircraft } from '../../utils/adsbMatch.js';
@@ -52,15 +57,28 @@ export const REUSE_TTL_MS = 60_000;
 export const RETRY_FLOOR_MS = 60_000;
 /** Backstop on queued requests; overflow is dropped (not counted). */
 export const MAX_QUEUED = 100;
+/** Ceiling on a feed's Retry-After pause, so a bad header cannot stop lookups for good. */
+export const MAX_RETRY_AFTER_MS = 24 * 60 * 60_000;
 
 export const ADSB_SETTINGS = {
   enabled: 'adsbMatchEnabled',
   feed: 'adsbFeed',
   token: 'adsb_api_token',
+  openSkyClientId: 'adsb_opensky_client_id',
+  openSkyClientSecret: 'adsb_opensky_client_secret',
+  /** Epoch ms; server-written only (not in VALID_SETTINGS_KEYS). */
+  openSkyPausedUntil: 'adsb_opensky_paused_until',
 } as const;
+
+/** The settings key that persists a feed's Retry-After pause, for feeds that send one. */
+const PAUSE_SETTING: Partial<Record<string, string>> = {
+  opensky: ADSB_SETTINGS.openSkyPausedUntil,
+};
 
 export interface AdsbMatchDeps {
   getGlobalSetting(key: string): Promise<string | null>;
+  /** Persists a feed's Retry-After pause. Optional so older test harnesses still type-check. */
+  setGlobalSetting?(key: string, value: string): Promise<void>;
   getSourceType(sourceId: string): Promise<string | null>;
   /** Fresh DB read. */
   getNode(nodeNum: number, sourceId: string): Promise<DbNode | null>;
@@ -69,7 +87,14 @@ export interface AdsbMatchDeps {
   getMatch(sourceId: string, nodeNum: number): Promise<AircraftFlightMatchRow | null>;
   startEpisode(sourceId: string, nodeNum: number, episodeStartedAt: number): Promise<void>;
   recordLookup(sourceId: string, nodeNum: number, write: FlightMatchLookupWrite): Promise<boolean>;
-  fetchAircraft(feed: AdsbFeedInfo, lat: number, lon: number, nm: number, token: string | null): Promise<AdsbAircraft[]>;
+  fetchAircraft(
+    feed: AdsbFeedInfo,
+    lat: number,
+    lon: number,
+    nm: number,
+    token: string | null,
+    openSky?: OpenSkyCredentials | null,
+  ): Promise<AdsbAircraft[]>;
   now(): number;
   sleep(ms: number): Promise<void>;
 }
@@ -77,6 +102,7 @@ export interface AdsbMatchDeps {
 function defaultDeps(): AdsbMatchDeps {
   return {
     getGlobalSetting: (key) => databaseService.settings.getSetting(key),
+    setGlobalSetting: (key, value) => databaseService.settings.setSetting(key, value),
     getSourceType: async (sourceId) => (await databaseService.sources.getSource(sourceId))?.type ?? null,
     getNode: (nodeNum, sourceId) => databaseService.nodes.getNode(nodeNum, sourceId),
     getCachedNode: (nodeNum, sourceId) => databaseService.nodeCache.get(nodeNum, sourceId),
@@ -84,7 +110,13 @@ function defaultDeps(): AdsbMatchDeps {
     startEpisode: (sourceId, nodeNum, at) => databaseService.startAircraftFlightMatchEpisodeAsync(sourceId, nodeNum, at),
     recordLookup: (sourceId, nodeNum, write) =>
       databaseService.recordAircraftFlightMatchLookupAsync(sourceId, nodeNum, write),
-    fetchAircraft: (feed, lat, lon, nm, token) => fetchAircraftNear(feed, lat, lon, nm, { token }),
+    fetchAircraft: (feed, lat, lon, nm, token, openSky) =>
+      fetchAircraftNear(feed, lat, lon, nm, {
+        token,
+        oauth: openSky
+          ? { getToken: () => openSkyTokenManager.getToken(openSky), invalidate: () => openSkyTokenManager.invalidate() }
+          : null,
+      }),
     now: () => Date.now(),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   };
@@ -111,6 +143,8 @@ function finite(v: unknown): v is number {
 export class AdsbMatchService {
   private readonly deps: AdsbMatchDeps;
   private backoffUntil = 0;
+  /** Per-feed Retry-After pause (epoch ms), mirrored from settings. */
+  private readonly feedPausedUntil = new Map<string, number>();
   private lastRequestAt = 0;
   private queueTail: Promise<void> = Promise.resolve();
   private queued = 0;
@@ -224,15 +258,24 @@ export class AdsbMatchService {
 
       const feedSetting = await this.deps.getGlobalSetting(ADSB_SETTINGS.feed);
       const feed = resolveAdsbFeed(feedSetting);
-      const token = await this.deps.getGlobalSetting(ADSB_SETTINGS.token);
+      let openSky: OpenSkyCredentials | null = null;
+      if (feed.auth === 'oauth2') {
+        // No anonymous mode: without both credentials OpenSky is never asked.
+        openSky = await this.openSkyCredentials();
+        if (!openSky) return;
+      }
+      if (await this.isFeedPaused(feed)) return;
+      const token = feed.auth === 'oauth2' ? null : await this.deps.getGlobalSetting(ADSB_SETTINGS.token);
       const posTs = node.positionTimestamp ?? null;
 
       let aircraft: AdsbAircraft[];
       try {
-        aircraft = await this.getAircraft(feed, job.nodeNum, lat, lon, posTs, token);
+        aircraft = await this.getAircraft(feed, job.nodeNum, lat, lon, posTs, token, openSky);
       } catch (err) {
         this.lastFailureAt.set(key, this.deps.now());
-        if (err instanceof AdsbFeedError && err.backoff) this.enterBackoff(err.message);
+        if (err instanceof AdsbFeedError && err.retryAfterMs != null && PAUSE_SETTING[feed.id]) {
+          await this.pauseFeed(feed, err.retryAfterMs);
+        } else if (err instanceof AdsbFeedError && err.backoff) this.enterBackoff(err.message);
         else logger.debug(`ADS-B lookup for ${key} failed: ${err instanceof Error ? err.message : err}`);
         return; // not counted
       }
@@ -291,6 +334,7 @@ export class AdsbMatchService {
     lon: number,
     positionTimestampMs: number | null,
     token: string | null,
+    openSky: OpenSkyCredentials | null = null,
   ): Promise<AdsbAircraft[]> {
     const now = this.deps.now();
     for (const [k, entry] of this.reuse) {
@@ -301,7 +345,13 @@ export class AdsbMatchService {
     if (cached) return cached.promise;
 
     const nm = radiusToNm(searchRadiusKm(positionTimestampMs, now));
-    const promise = this.enqueue(() => this.deps.fetchAircraft(feed, lat, lon, nm, token));
+    const promise = this.enqueue(() => {
+      // Re-checked at the head of the queue: a 429 may have paused the feed meanwhile.
+      if (this.deps.now() < (this.feedPausedUntil.get(feed.id) ?? 0)) {
+        throw new AdsbFeedError(`${feed.name} paused by its rate limit`, 'network', null, false);
+      }
+      return this.deps.fetchAircraft(feed, lat, lon, nm, token, openSky);
+    });
     this.reuse.set(reuseKey, { at: now, promise });
     // A failure must not be reused: the next attempt should really retry.
     promise.catch(() => {
@@ -339,6 +389,38 @@ export class AdsbMatchService {
     const already = now < this.backoffUntil;
     this.backoffUntil = now + FEED_BACKOFF_MS;
     if (!already) logger.warn(`ADS-B flight matching: ${reason}; pausing lookups for 10 minutes`);
+  }
+
+  private async openSkyCredentials(): Promise<OpenSkyCredentials | null> {
+    const clientId = (await this.deps.getGlobalSetting(ADSB_SETTINGS.openSkyClientId))?.trim();
+    const clientSecret = (await this.deps.getGlobalSetting(ADSB_SETTINGS.openSkyClientSecret))?.trim();
+    return clientId && clientSecret ? { clientId, clientSecret } : null;
+  }
+
+  /** True while the feed's persisted Retry-After pause runs. Reads the setting so a restart keeps it. */
+  private async isFeedPaused(feed: AdsbFeedInfo): Promise<boolean> {
+    const settingKey = PAUSE_SETTING[feed.id];
+    if (!settingKey) return false;
+    const stored = Number(await this.deps.getGlobalSetting(settingKey));
+    const until = Math.max(this.feedPausedUntil.get(feed.id) ?? 0, Number.isFinite(stored) ? stored : 0);
+    if (until > 0) this.feedPausedUntil.set(feed.id, until);
+    return this.deps.now() < until;
+  }
+
+  private async pauseFeed(feed: AdsbFeedInfo, retryAfterMs: number): Promise<void> {
+    const settingKey = PAUSE_SETTING[feed.id];
+    if (!settingKey) return;
+    const until = this.deps.now() + Math.min(retryAfterMs, MAX_RETRY_AFTER_MS);
+    if (until <= (this.feedPausedUntil.get(feed.id) ?? 0)) return;
+    this.feedPausedUntil.set(feed.id, until);
+    logger.warn(
+      `ADS-B flight matching: ${feed.name} rate limit reached; pausing ${feed.name} lookups until ${new Date(until).toISOString()}`,
+    );
+    try {
+      await this.deps.setGlobalSetting?.(settingKey, String(until));
+    } catch (err) {
+      logger.debug(`ADS-B: could not persist the ${feed.name} pause: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   // ------------------------------------------------------------ test hooks
