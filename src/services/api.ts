@@ -100,6 +100,43 @@ export interface NodeNameHistoryEntry {
   sourceIds: string[];
 }
 
+/** One anchor behind an estimated position (#4609, #5900). */
+export interface PositionEstimateAnchor {
+  anchorNodeNum: number;
+  anchorNodeId: string;
+  anchorLongName: string | null;
+  anchorShortName: string | null;
+  anchorLat: number;
+  anchorLon: number;
+  kind: 'traceroute' | 'neighbor';
+  snrDb: number | null;
+  observedAt: number;
+  weight: number;
+  distanceKm: number;
+}
+
+/** GET /api/nodes/:nodeNum/position-estimate payload (#4609, #5900). */
+export interface PositionEstimateRationale {
+  nodeNum: number;
+  nodeId: string;
+  latitude: number;
+  longitude: number;
+  uncertaintyKm: number | null;
+  observationCount: number;
+  /** ms epoch of the estimator run that wrote this estimate. */
+  updatedAt: number;
+  nEff: number | null;
+  radiusMethod: 'single_anchor' | 'blended' | 'convergence' | null;
+  uniqueAnchors: number;
+  uniqueAnchorsIsLowerBound: boolean;
+  singleAnchorDefaultKm: number;
+  /** Only the anchors the caller may see, strongest first. */
+  anchors: PositionEstimateAnchor[];
+  anchorsStored: number;
+  anchorsTruncated: boolean;
+  maxStoredAnchors: number;
+}
+
 export interface SignalTrendResult {
   trend: SignalTrend;
   basis: 'rssi' | 'snr' | null;
@@ -1308,6 +1345,19 @@ class ApiService {
       `/api/nodes/${encodeURIComponent(nodeId)}/name-history`,
     );
     return body.data?.entries ?? [];
+  }
+
+  /**
+   * The rationale behind a node's ESTIMATED position (#4609, #5900): how the
+   * radius was derived and which anchors fed it. 404s (rejects) for a node with
+   * no estimate. The server wraps the payload as `{ success, data }`;
+   * `request()` does not unwrap, so read `body.data`.
+   */
+  async getPositionEstimate(nodeNum: number): Promise<PositionEstimateRationale> {
+    const body = await this.get<{ success: boolean; data: PositionEstimateRationale }>(
+      `/api/nodes/${encodeURIComponent(String(nodeNum))}/position-estimate`,
+    );
+    return body.data;
   }
 
   async getSignalTrend(nodeId: string, sourceId: string): Promise<SignalTrendResult> {

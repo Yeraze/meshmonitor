@@ -48,7 +48,9 @@ import { calculateDistance } from '../../utils/distance.js';
 import {
   DEFAULT_SINGLE_ANCHOR_KM,
   MAX_STORED_ANCHORS_PER_NODE,
+  countUniqueAnchorPositions,
 } from '../services/positionEstimationService.js';
+import { loadPositionEstimateAccess } from '../utils/positionEstimateAccess.js';
 import {
   encodeSharedContactUrl,
   decodeSharedContactUrl,
@@ -688,7 +690,9 @@ router.get('/nodes/:nodeNum/copy-candidates', requireSourcePermission('nodes', '
  *
  * GLOBAL — no `sourceId`. Estimates pool observations from every Meshtastic
  * source into one row per physical nodeNum (#3271), so there is nothing to
- * scope. The `nodes:read` gate still applies.
+ * scope. The `nodes:read` gate still applies, and because the anchors come from
+ * every source, a non-admin sees only anchors whose position they could already
+ * see on a source they read (#5900, `positionEstimateAccess.ts`).
  *
  * Anchors are capped at storage time (MAX_STORED_ANCHORS_PER_NODE); `anchors`
  * carries what was kept and `observationCount` the true total, so a consumer
@@ -701,24 +705,40 @@ router.get('/nodes/:nodeNum/position-estimate', requirePermission('nodes', 'read
       return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be a decimal node number or a !hex node id');
     }
 
-    const estimate = await databaseService.getEstimatedPositionByNodeNumAsync(nodeNum);
-    if (!estimate) {
+    const [estimate, access] = await Promise.all([
+      databaseService.getEstimatedPositionByNodeNumAsync(nodeNum),
+      loadPositionEstimateAccess(req.user, nodeNum),
+    ]);
+    // A node the caller cannot read on any source answers exactly like a node
+    // with no estimate, so the reply does not confirm the node exists (#5900).
+    if (!estimate || !access.canSeeTarget) {
       return fail(res, 404, 'NO_ESTIMATED_POSITION', 'This node has no estimated position');
     }
 
     const stored = await databaseService.getEstimatedPositionAnchorsAsync(nodeNum);
-    const anchors = stored.map((a) => ({
-      anchorNodeNum: a.anchorNodeNum,
-      anchorNodeId: a.anchorNodeId,
-      anchorLat: a.anchorLat,
-      anchorLon: a.anchorLon,
-      kind: a.kind,
-      snrDb: a.snrDb,
-      observedAt: a.observedAt,
-      weight: a.weight,
-      // Derived, not stored: how far this anchor sits from the solved point.
-      distanceKm: calculateDistance(estimate.latitude, estimate.longitude, a.anchorLat, a.anchorLon),
-    }));
+    // Counted over every stored row, before the visibility filter: like
+    // observationCount and nEff, it describes the global estimate itself.
+    const uniqueAnchors = countUniqueAnchorPositions(stored);
+    const anchors = stored.flatMap((a) => {
+      // Only positions the caller could already see (#5900). See
+      // positionEstimateAccess.ts for the rule.
+      const label = access.anchorLabel(a.anchorNodeNum, a.anchorLat, a.anchorLon);
+      if (!label) return [];
+      return [{
+        anchorNodeNum: a.anchorNodeNum,
+        anchorNodeId: a.anchorNodeId,
+        anchorLongName: label.longName,
+        anchorShortName: label.shortName,
+        anchorLat: a.anchorLat,
+        anchorLon: a.anchorLon,
+        kind: a.kind,
+        snrDb: a.snrDb,
+        observedAt: a.observedAt,
+        weight: a.weight,
+        // Derived, not stored: how far this anchor sits from the solved point.
+        distanceKm: calculateDistance(estimate.latitude, estimate.longitude, a.anchorLat, a.anchorLon),
+      }];
+    });
 
     return ok(res, {
       nodeNum: estimate.nodeNum,
@@ -733,6 +753,12 @@ router.get('/nodes/:nodeNum/position-estimate', requirePermission('nodes', 'read
       // rather than guess a method.
       nEff: estimate.nEff,
       radiusMethod: estimate.radiusMethod,
+      // Distinct anchor positions (#5900). The estimator stores one row per
+      // position before it stores repeats, so this is exact unless every stored
+      // slot holds a different position and some observations were dropped.
+      uniqueAnchors,
+      uniqueAnchorsIsLowerBound:
+        estimate.observationCount > stored.length && uniqueAnchors >= MAX_STORED_ANCHORS_PER_NODE,
       singleAnchorDefaultKm: DEFAULT_SINGLE_ANCHOR_KM,
       anchors,
       anchorsStored: anchors.length,
