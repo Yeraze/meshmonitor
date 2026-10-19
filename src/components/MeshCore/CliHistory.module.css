@@ -17,7 +17,9 @@
   padding: 0.25rem 0.5rem;
 }
 
-.toggle {
+.panelHeader button.toggle,
+.panelHeader button.toggle:hover {
+  margin: 0;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -29,7 +31,8 @@
   cursor: pointer;
 }
 
-.iconButton {
+.panelHeader button.iconButton {
+  margin: 0;
   display: inline-flex;
   align-items: center;
   padding: 0.3rem;
@@ -40,7 +43,7 @@
   cursor: pointer;
 }
 
-.iconButton:hover:not(:disabled) {
+.panelHeader button.iconButton:hover:not(:disabled) {
   background: var(--color-surface-hover);
 }
 
@@ -76,7 +79,10 @@
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.row {
+.list button.row {
+  margin: 0;
+  border-radius: 0;
+  font-weight: 400;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -91,7 +97,7 @@
   cursor: pointer;
 }
 
-.row:hover {
+.list button.row:hover {
   background: var(--color-surface-hover);
 }
 
@@ -175,7 +181,10 @@ p.detailError {
   color: var(--color-text-faint);
 }
 
-.more {
+button.more,
+.panelBody button.more,
+.activity button.more {
+  font-weight: 500;
   margin-top: 0.5rem;
   padding: 0.35rem 0.75rem;
   background: var(--color-surface-active);
@@ -183,6 +192,11 @@ p.detailError {
   border-radius: var(--radius-sm);
   color: var(--color-text);
   cursor: pointer;
+}
+
+.panelBody button.more:hover:not(:disabled),
+.activity button.more:hover:not(:disabled) {
+  background: var(--color-surface-hover);
 }
 
 /* ---- Unified CLI activity view ---- */
