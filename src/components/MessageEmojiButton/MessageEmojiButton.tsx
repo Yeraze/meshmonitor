@@ -108,6 +108,8 @@ export const MessageEmojiButton: React.FC<MessageEmojiButtonProps> = ({
             <EmojiPicker
               onEmojiClick={(e: { emoji: string }) => handleSelect(e.emoji)}
               theme={detectPickerTheme() as never}
+              // v5 defaults to native glyphs; keep v4's Apple images (#5887).
+              emojiStyle="apple"
             />
           </Suspense>
         </div>
