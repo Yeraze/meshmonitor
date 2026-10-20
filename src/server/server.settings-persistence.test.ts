@@ -220,6 +220,8 @@ function validTestValue(key: string, suffix = ''): string {
     // known one (INVALID_ADSB_FEED otherwise).
     adsbMatchEnabled: 'true',
     adsbFeed: 'adsb.fi',
+    // Ducting overlay (#5734): strict boolean.
+    ductingOverlayEnabled: 'true',
     // Reliable PKI (#5691): enums, INVALID_RELIABLE_PKI_MODE otherwise.
     reliablePkiMode: 'asNeeded',
     reliablePkiSourceMode: 'off',
@@ -586,6 +588,9 @@ describe('Settings Persistence', () => {
         // elevation pair; read server-side by adsbMatchService. The flag is
         // also read publicly by useAdsbMatchEnabled() via a direct fetch.
         'adsbMatchEnabled', 'adsbFeed', 'adsb_api_token',
+        // Ducting overlay (#5734) — same Category C pattern; read
+        // server-side by ductingRoutes and publicly by useDuctingEnabled().
+        'ductingOverlayEnabled',
         // OpenSky credentials (#5877), same pattern.
         'adsb_opensky_client_id', 'adsb_opensky_client_secret',
         // Translation settings (global) — loaded directly by SettingsTab into

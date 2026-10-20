@@ -1,0 +1,12 @@
+/*
+ * Ducting overlay cells (#5734). Leaflet writes `fill` as an SVG attribute,
+ * which cannot read var(); a CSS `fill` beats the attribute, so the role
+ * tokens live here and follow the theme. Opacity stays on the path options.
+ */
+.super {
+  fill: var(--color-info);
+}
+
+.duct {
+  fill: var(--color-caution);
+}

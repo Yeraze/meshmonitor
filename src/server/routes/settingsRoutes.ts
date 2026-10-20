@@ -22,7 +22,7 @@ import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.js';
 import { invalidateSignFlipContext, SIGN_FLIP_SETTING_KEYS } from '../services/signFlipCorrection.js';
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
-import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
+import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import {
@@ -367,6 +367,8 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     for (const key of VALID_SETTINGS_KEYS) {
       if (!(key in settings)) continue;
       if (!isAdminWriter && isSecretSettingKey(key)) continue;
+      // Admin-only keys (#5734): dropped for non-admins, like secrets above.
+      if (!isAdminWriter && ADMIN_ONLY_SETTINGS_KEYS.has(key)) continue;
       if (sourceId && GLOBAL_ONLY_SETTINGS_KEYS.has(key)) {
         ignoredKeys.push(key);
         continue;
@@ -402,6 +404,8 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       'aircraftAgeOutEnabled',
       // ADS-B flight matching (#5374): turns on third-party HTTP requests.
       'adsbMatchEnabled',
+      // Ducting overlay (#5734): lets map viewers trigger NOAA requests.
+      'ductingOverlayEnabled',
     ] as const;
 
     for (const key of STRICT_BOOLEAN_SETTINGS_KEYS) {

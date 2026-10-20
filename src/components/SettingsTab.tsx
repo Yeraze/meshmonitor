@@ -226,6 +226,8 @@ interface SettingsDraft {
   // ADS-B flight matching (#5374). Global outbound service, same admin-field
   // pattern as the elevation pair. `adsbApiToken` maps to the server-only
   // `adsb_api_token` key (admins receive it unmasked).
+  // Tropospheric ducting overlay (#5734). Global, admin-only, off by default.
+  ductingOverlayEnabled: boolean;
   adsbMatchEnabled: boolean;
   adsbFeed: string;
   adsbApiToken: string;
@@ -582,6 +584,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     externalUrl: '',
     elevationEnabled: false,
     elevationSourceUrl: '',
+    ductingOverlayEnabled: false,
     adsbMatchEnabled: false,
     adsbFeed: DEFAULT_ADSB_FEED,
     adsbApiToken: '',
@@ -631,6 +634,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // `elevationSourceUrl` (stripSecretSettings returns the full map to admins).
   const [initialElevationEnabled, setInitialElevationEnabled] = useState(false);
   const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
+  // Ducting overlay (#5734): same Category C pattern as elevation.
+  const [initialDuctingOverlayEnabled, setInitialDuctingOverlayEnabled] = useState(false);
   // ADS-B flight matching (#5374): same Category C pattern as elevation.
   const [initialAdsbMatchEnabled, setInitialAdsbMatchEnabled] = useState(false);
   const [initialAdsbFeed, setInitialAdsbFeed] = useState<string>(DEFAULT_ADSB_FEED);
@@ -857,6 +862,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             : '';
           updateField('elevationSourceUrl', elevationSourceUrl);
           setInitialElevationSourceUrl(elevationSourceUrl);
+
+          // Ducting overlay (#5734). Off unless stored 'true'.
+          const ductingOn = settings.ductingOverlayEnabled === 'true';
+          updateField('ductingOverlayEnabled', ductingOn);
+          setInitialDuctingOverlayEnabled(ductingOn);
 
           // ADS-B flight matching (#5374). Off unless stored 'true'; an
           // unknown feed reads as the default.
@@ -1085,6 +1095,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       externalUrl: initialExternalUrl,
       elevationEnabled: initialElevationEnabled,
       elevationSourceUrl: initialElevationSourceUrl,
+      ductingOverlayEnabled: initialDuctingOverlayEnabled,
       adsbMatchEnabled: initialAdsbMatchEnabled,
       adsbFeed: initialAdsbFeed,
       adsbApiToken: initialAdsbApiToken,
@@ -1116,6 +1127,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
+      initialDuctingOverlayEnabled,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
       initialAdsbOpenSkyClientId, initialAdsbOpenSkyClientSecret,
       initialTranslationEnabled, initialTranslationProvider, initialTranslationFields, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
@@ -1324,6 +1336,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialExternalUrl(d.externalUrl.trim());
     setInitialElevationEnabled(d.elevationEnabled);
     setInitialElevationSourceUrl(d.elevationSourceUrl.trim());
+    setInitialDuctingOverlayEnabled(d.ductingOverlayEnabled);
     setInitialAdsbMatchEnabled(d.adsbMatchEnabled);
     setInitialAdsbFeed(d.adsbFeed);
     setInitialAdsbApiToken(d.adsbApiToken.trim());
@@ -1439,6 +1452,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         externalUrl: draft.externalUrl.trim(),
         elevationEnabled: draft.elevationEnabled ? 'true' : 'false',
         elevationSourceUrl: draft.elevationSourceUrl.trim(),
+        ductingOverlayEnabled: draft.ductingOverlayEnabled ? 'true' : 'false',
         adsbMatchEnabled: draft.adsbMatchEnabled ? 'true' : 'false',
         adsbFeed: draft.adsbFeed,
         adsb_api_token: draft.adsbApiToken.trim(),
@@ -3418,6 +3432,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 </p>
               )}
             </div>
+          </div>
+        </div>}
+
+        {show('settings-ducting') && isAdmin && <div id="settings-ducting" className="settings-section">
+          <h3>{t('settings.ducting_section', 'Tropospheric ducting overlay')}</h3>
+          <p className="setting-description">
+            {t(
+              'settings.ducting_section_description',
+              'Adds a Ducting overlay to the Map tab and the Dashboard map: a NOAA GFS forecast of where the lower atmosphere bends radio signals further than usual, now and up to 72 hours ahead. While on, anyone who can view the map can use it. Each forecast step a viewer opens that the server has not cached yet costs one HTTPS request to NOAA (at most 25 per 6-hour GFS cycle). Nothing is sent over the mesh.'
+            )}
+          </p>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="ductingOverlayEnabled"
+                type="checkbox"
+                checked={draft.ductingOverlayEnabled}
+                onChange={(e) => updateField('ductingOverlayEnabled', e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.ducting_enabled_label', 'Enable the ducting overlay (contacts NOAA)')}</span>
+            </label>
+            <span className="setting-description">
+              {t('settings.ducting_enabled_description', 'Off by default. While off, the map toggle is hidden and the server makes no NOAA requests for anyone.')}
+            </span>
           </div>
         </div>}
 

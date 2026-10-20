@@ -1,11 +1,11 @@
 /**
- * Ducting forecast for an area (#5734 spike): fetch a GFS slice, build a
+ * Ducting forecast for an area (#5734): fetch a GFS slice, build a
  * vertical profile per grid point, and index each column.
  *
  * Results are cached in memory per (cycle, forecast hour, box) and concurrent
  * identical requests share one fetch, so NOMADS sees at most one request per
- * cache miss. Nothing here runs on a timer: a fetch happens only when an
- * admin asks for a forecast.
+ * cache miss. Nothing here runs on a timer: a fetch happens only when a
+ * map viewer asks for a forecast step.
  */
 import { indexColumns } from './gfsProfile.js';
 import { fetchGfsSlice, latestPublishedCycle, GfsUnavailableError, type BBox, type FetchLike } from './gfsClient.js';

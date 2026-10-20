@@ -50,7 +50,12 @@ const mocks = vi.hoisted(() => ({
     showCrossSourceLinks: false,
     // #5580 traceroute-confirmed sub-toggle (default on in the real context).
     showTracerouteConfirmedLinks: true,
+    // #5734 ducting overlay toggle.
+    showDucting: false,
   },
+  // #5734: the admin's ductingOverlayEnabled switch, as the hook reads it.
+  ductingEnabled: false,
+  setShowDucting: vi.fn(),
   setShowCrossSourceLinks: vi.fn(),
   setShowTracerouteConfirmedLinks: vi.fn(),
   // #5580: props the map hands the confirmed-links layer (null = not mounted).
@@ -197,6 +202,10 @@ vi.mock('../../contexts/MapContext', () => ({
     setShowCrossSourceLinks: mocks.setShowCrossSourceLinks,
     showTracerouteConfirmedLinks: mocks.mapContext.showTracerouteConfirmedLinks,
     setShowTracerouteConfirmedLinks: mocks.setShowTracerouteConfirmedLinks,
+    showDucting: mocks.mapContext.showDucting,
+    setShowDucting: mocks.setShowDucting,
+    ductingHoursAhead: 0,
+    setDuctingHoursAhead: vi.fn(),
     showAgedOutAircraft: mocks.mapContext.showAgedOutAircraft,
     setShowAgedOutAircraft: vi.fn(),
     aircraftDisplayMode: mocks.mapContext.aircraftDisplayMode,
@@ -230,6 +239,17 @@ vi.mock('../map/layers/TracerouteConfirmedLinksLayer', () => ({
     mocks.confirmedLayerProps = p;
     return <div data-testid="traceroute-confirmed-links" />;
   },
+}));
+// #5734: the ducting hooks run queries (no QueryClient here). The real
+// control renders against these; the layer is a marker div.
+vi.mock('../../hooks/useDuctingForecast', () => ({
+  DUCTING_MAX_HOURS_AHEAD: 72,
+  DUCTING_STEP_HOURS: 3,
+  useDuctingEnabled: () => mocks.ductingEnabled,
+  useDuctingForecast: () => ({ data: undefined, error: null, isFetching: false, isPlaceholderData: false }),
+}));
+vi.mock('../map/layers/DuctingLayer', () => ({
+  default: () => <div data-testid="ducting-layer" />,
 }));
 vi.mock('../map/layers/AircraftTrailsLayer', () => ({
   default: (p: { trails: Array<{ key: string; label: string; times: number[] }> }) => {
@@ -492,7 +512,9 @@ describe('DashboardMap', () => {
       showAircraftTrails: false,
       showCrossSourceLinks: false,
       showTracerouteConfirmedLinks: true,
+      showDucting: false,
     };
+    mocks.ductingEnabled = false;
     mocks.crossSourceLayerProps = null;
     mocks.confirmedLayerProps = null;
     mocks.aircraftTrails = [];
@@ -567,6 +589,31 @@ describe('DashboardMap', () => {
     render(<DashboardMap {...defaultProps} sourceId="src-1" />);
     expect(screen.getByTestId('cross-source-links')).toBeInTheDocument();
     expect(mocks.crossSourceLayerProps).toMatchObject({ enabled: true, sourceIds: ['src-1'] });
+  });
+
+  describe('#5734: ducting overlay toggle', () => {
+    it('is hidden, and no layer mounts, while the admin switch is off', () => {
+      mocks.mapContext.showDucting = true;
+      render(<DashboardMap {...defaultProps} />);
+      expect(screen.queryByTestId('ducting-control')).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: /map\.ducting\.toggle|Ducting/ })).not.toBeInTheDocument();
+    });
+
+    it('shows the toggle once the admin switch is on, and mounts the layer while ticked', () => {
+      mocks.ductingEnabled = true;
+      const { unmount } = render(<DashboardMap {...defaultProps} />);
+      const toggle = screen.getByRole('checkbox', { name: /map\.ducting\.toggle|Ducting/ });
+      expect(toggle).not.toBeChecked();
+      expect(screen.queryByTestId('ducting-layer')).not.toBeInTheDocument();
+      fireEvent.click(toggle);
+      expect(mocks.setShowDucting).toHaveBeenCalledWith(true);
+      unmount();
+
+      mocks.mapContext.showDucting = true;
+      render(<DashboardMap {...defaultProps} />);
+      expect(screen.getByTestId('ducting-layer')).toBeInTheDocument();
+      expect(screen.getByRole('slider', { name: /map\.ducting\.scrubber_label|Forecast time/ })).toBeInTheDocument();
+    });
   });
 
   describe('#5580: traceroute-confirmed links sub-toggle', () => {

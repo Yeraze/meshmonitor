@@ -145,6 +145,12 @@ interface MapContextType {
   /** #5686: local map markers (planning notes, never transmitted). Per-browser, default ON. */
   showLocalMarkers: boolean;
   setShowLocalMarkers: (show: boolean) => void;
+  /** #5734: tropospheric ducting overlay. Per-browser (localStorage), default off. */
+  showDucting: boolean;
+  setShowDucting: (show: boolean) => void;
+  /** #5734: the forecast step on view, hours ahead (0..72, 3 h steps). Not persisted. */
+  ductingHoursAhead: number;
+  setDuctingHoursAhead: (hours: number) => void;
   animatedNodes: Set<string>;
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
@@ -262,6 +268,15 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       return true;
     }
   });
+  // #5734: default off, so only an explicit 'true' turns it on.
+  const [showDucting, setShowDuctingState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('showDucting') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [ductingHoursAhead, setDuctingHoursAhead] = useState<number>(0);
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
@@ -429,6 +444,15 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowLocalMarkersState(value);
     try {
       localStorage.setItem('showLocalMarkers', value.toString());
+    } catch {
+      // storage unavailable: the toggle still works for this session
+    }
+  }, []);
+
+  const setShowDucting = React.useCallback((value: boolean) => {
+    setShowDuctingState(value);
+    try {
+      localStorage.setItem('showDucting', value.toString());
     } catch {
       // storage unavailable: the toggle still works for this session
     }
@@ -677,6 +701,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowTracerouteConfirmedLinks,
     showLocalMarkers,
     setShowLocalMarkers,
+    showDucting,
+    setShowDucting,
+    ductingHoursAhead,
+    setDuctingHoursAhead,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -730,6 +758,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showCrossSourceLinks, setShowCrossSourceLinks,
     showTracerouteConfirmedLinks, setShowTracerouteConfirmedLinks,
     showLocalMarkers, setShowLocalMarkers,
+    showDucting, setShowDucting,
+    ductingHoursAhead, setDuctingHoursAhead,
     animatedNodes, triggerNodeAnimation,
     mapCenterTarget, setMapCenterTarget,
     mapCenter, setMapCenter,

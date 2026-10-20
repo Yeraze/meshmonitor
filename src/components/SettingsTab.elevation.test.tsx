@@ -581,3 +581,37 @@ describe('SettingsTab — Flight matching (ADS-B) section (#5374)', () => {
     expect(body.adsb_api_token).toBe('new-key');
   });
 });
+
+// Tropospheric ducting overlay (#5734): one admin-only global switch, next to
+// elevation and ADS-B, reusing this suite's mocks.
+describe('SettingsTab — Tropospheric ducting overlay section (#5734)', () => {
+  beforeEach(() => {
+    csrfFetchMock.mockClear();
+    csrfFetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    saveBarCapture.current = null;
+    installFetchMock();
+  });
+
+  it('is off by default', async () => {
+    serverSettings = {};
+    renderSettings();
+    await screen.findByRole('heading', { name: 'Tropospheric ducting overlay' });
+    const box = document.getElementById('ductingOverlayEnabled') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+  });
+
+  it('loads a stored value and saves the edit as a strict boolean', async () => {
+    serverSettings = { ductingOverlayEnabled: 'true' };
+    renderSettings();
+    await screen.findByRole('heading', { name: 'Tropospheric ducting overlay' });
+    const box = document.getElementById('ductingOverlayEnabled') as HTMLInputElement;
+    await waitFor(() => expect(box.checked).toBe(true));
+
+    fireEvent.click(box);
+    await waitFor(() => expect(box.checked).toBe(false));
+    await saveBarCapture.current!.onSave();
+    const [, options] = csrfFetchMock.mock.calls[csrfFetchMock.mock.calls.length - 1];
+    const body = JSON.parse((options as RequestInit).body as string);
+    expect(body.ductingOverlayEnabled).toBe('false');
+  });
+});
