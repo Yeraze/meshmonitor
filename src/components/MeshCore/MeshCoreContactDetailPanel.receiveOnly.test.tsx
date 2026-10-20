@@ -54,6 +54,7 @@ function renderPanel(receiveOnly: boolean) {
       onRemoveContact={vi.fn().mockResolvedValue(true)}
       onExportContact={vi.fn().mockResolvedValue([1, 2, 3])}
       canWriteNodes
+      canTraceroute
       isCompanion
       receiveOnly={receiveOnly}
     />,

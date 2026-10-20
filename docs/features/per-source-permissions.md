@@ -51,6 +51,19 @@ Select a user to edit their permission scope and per-channel access across every
 
 ![User detail view with permission scope dropdown and per-channel controls](/images/features/per-source-permissions.png)
 
+## Traceroute read and write
+
+The `traceroute` row on the Users page has separate **Read** and **Write** boxes:
+
+- **Read** shows traceroutes and route data: the Traceroute Explorer, route history, route segments and the map's route lines.
+- **Write** lets the user send traceroutes and NeighborInfo requests over the mesh, and run **Trace Path** on a MeshCore contact.
+
+Grant Read alone for a public, view-only explorer: visitors see the routes but cannot put traffic on the mesh. Before 4.17.1 the row had one "Can Initiate Traceroutes" box that set both.
+
+::: tip MeshCore Trace Path moved to `traceroute` write
+MeshCore **Trace Path** used to need `nodes` write. It now needs `traceroute` write, like a Meshtastic traceroute. On upgrade, every user with `nodes` write on a source gets `traceroute` write on that source, so nobody loses the button.
+:::
+
 ## Traceroute records
 
 On the Info tab, the **Longest Active Route Segment** and **Record Holder Route Segment** cards need `traceroute` read access on the source. **Clear Record** needs `traceroute` write access on the source. Older versions used `info` for these cards. That permission applies across all sources, so it could not limit them to one. See [Transport Breakdown](/features/transport-breakdown).

@@ -540,6 +540,8 @@ router.post(
  * 200 → { success, hops: [{ index, snr }], lastSnr, path }
  * 409 → MESHCORE_TRACE_FAILED (no path / disconnected / not a Companion / device error)
  * 504 → MESHCORE_TRACE_TIMEOUT, with { reason: 'timeout', waitMs, suggestedTimeoutMs }
+ *
+ * Requires traceroute:write on the source (#5898; was nodes:write).
  */
 // The trace can wait up to 60 s for the radio, past the server's 30 s socket
 // timeout (server.ts). Closing the socket with no reply makes the browser
@@ -551,7 +553,9 @@ router.post(
   extendRequestTimeout(MESHCORE_TRACE_SOCKET_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
-  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  // #5898: a trace is a traceroute send, so it takes traceroute:write like
+  // POST /api/traceroute. Migration 213 copied nodes:write holders across.
+  requirePermission('traceroute', 'write', { sourceIdFrom: 'params.id' }),
   requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {

@@ -163,7 +163,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'info', name: 'Info', description: 'Telemetry and network information' },
   { id: 'automation', name: 'Automation', description: 'Automated tasks and announcements' },
   { id: 'automations', name: 'Automation Engine', description: 'Create and manage global automations and variables (Advanced Mode)' },
-  { id: 'traceroute', name: 'Traceroute', description: 'Initiate traceroute requests to nodes' },
+  { id: 'traceroute', name: 'Traceroute', description: 'Read: view traceroutes and route data. Write: send traceroutes and NeighborInfo requests' },
   { id: 'audit', name: 'Audit Log', description: 'View and manage audit logs (admin only)' },
   { id: 'security', name: 'Security', description: 'View security scan results and key management' },
   { id: 'themes', name: 'Custom Themes', description: 'Create and manage custom color themes' },

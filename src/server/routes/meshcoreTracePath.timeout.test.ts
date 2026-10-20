@@ -104,9 +104,9 @@ describe('POST /contacts/:publicKey/trace-path — timeout (#5588)', () => {
     expect(traceContactPathDetailed).not.toHaveBeenCalled();
   });
 
-  it('per-source scoping: nodes:write on sourceA does not authorize sourceB', async () => {
+  it('per-source scoping: traceroute:write on sourceA does not authorize sourceB (#5898)', async () => {
     traceContactPathDetailed.mockResolvedValue({ ok: true, hops: [], lastSnr: 0, path: [] });
-    await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceA);
+    await harness.grant(harness.limited.id, 'traceroute', 'write', harness.sourceA);
     const agent = await harness.loginAs(harness.limited);
     expect((await agent.post(url(harness.sourceA)).send({})).status).toBe(200);
     expect((await agent.post(url(harness.sourceB)).send({})).status).toBe(403);

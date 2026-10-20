@@ -660,7 +660,7 @@ const UsersTab: React.FC = () => {
     security: t('nav.security'),
     nodes_private: t('nodes_private'),
     connection: t('users.can_control_connection'),
-    traceroute: t('users.can_initiate_traceroutes'),
+    traceroute: t('users.traceroute_permission', 'Traceroute'),
     waypoints: 'Waypoints',
     themes: 'Custom Themes',
     sources: 'Sources',
@@ -677,7 +677,8 @@ const UsersTab: React.FC = () => {
     info: 'Read: view device info and statistics.',
     automation: 'Read: view automation rules. Write: create/edit automation rules.',
     connection: 'Connect/disconnect the Meshtastic device for this source.',
-    traceroute: 'Initiate traceroute requests to mesh nodes.',
+    // #5898: read and write are separate, like every other resource.
+    traceroute: 'Read: view traceroutes and route data. Write: send traceroutes and NeighborInfo requests over the mesh.',
     audit: 'Read: view the audit log. Write: purge audit log entries.',
     security: 'Read: view security scan results. Write: run scans, manage flagged/dead nodes.',
     packetmonitor: 'Read: view raw Meshtastic packets in the packet monitor.',
@@ -1045,24 +1046,6 @@ const UsersTab: React.FC = () => {
                             onChange={() => togglePermission(resource, 'read')}
                           />
                           {t('users.read')}
-                        </label>
-                      ) : resource === 'traceroute' ? (
-                        // Traceroute is a single action — read is implicit for any
-                        // viewer of the source, only the "initiate" capability
-                        // needs gating.
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={permissions[resource]?.write || false}
-                            onChange={() => {
-                              const newValue = !permissions[resource]?.write;
-                              setPermissions({
-                                ...permissions,
-                                [resource]: { read: newValue, write: newValue }
-                              });
-                            }}
-                          />
-                          {t('users.can_initiate_traceroutes')}
                         </label>
                       ) : resource === 'connection' ? (
                         // Connection is split: `read` gates viewing source status
