@@ -12,6 +12,8 @@ export interface TelemetryCsvRow {
   solarEstimate?: number | null;
   paxWifi?: number | null;
   paxBle?: number | null;
+  /** The source that recorded this point, for a cross-source chart (#5896). */
+  source?: string | null;
 }
 
 export interface TelemetryCsvMeta {
@@ -34,6 +36,7 @@ export const TELEMETRY_CSV_OPTIONAL_COLUMNS: ReadonlyArray<{ key: string; label:
   { key: 'solarEstimate', label: 'Solar Estimate' },
   { key: 'paxWifi', label: 'Pax Wifi' },
   { key: 'paxBle', label: 'Pax Ble' },
+  { key: 'source', label: 'Source' },
 ];
 
 function csvRow(cells: string[]): string {
@@ -52,25 +55,27 @@ function formatCell(value: string | number | null | undefined): string {
 
 function hasAny(
   rows: TelemetryCsvRow[],
-  key: 'solarEstimate' | 'paxWifi' | 'paxBle',
+  key: 'solarEstimate' | 'paxWifi' | 'paxBle' | 'source',
 ): boolean {
   return rows.some((row) => row[key] != null);
 }
 
 /**
- * RFC 4180, CRLF, no BOM. Base columns always; optional solar/pax columns
- * only when any row carries that field.
+ * RFC 4180, CRLF, no BOM. Base columns always; optional solar/pax/source
+ * columns only when any row carries that field.
  */
 export function telemetrySeriesToCsv(rows: TelemetryCsvRow[], meta: TelemetryCsvMeta): string {
   const includeSolar = hasAny(rows, 'solarEstimate');
   const includePaxWifi = hasAny(rows, 'paxWifi');
   const includePaxBle = hasAny(rows, 'paxBle');
+  const includeSource = hasAny(rows, 'source');
 
   const labels = [
     ...TELEMETRY_CSV_BASE_COLUMNS.map((c) => c.label),
     ...(includeSolar ? ['Solar Estimate'] : []),
     ...(includePaxWifi ? ['Pax Wifi'] : []),
     ...(includePaxBle ? ['Pax Ble'] : []),
+    ...(includeSource ? ['Source'] : []),
   ];
 
   const header = csvRow(labels);
@@ -86,6 +91,7 @@ export function telemetrySeriesToCsv(rows: TelemetryCsvRow[], meta: TelemetryCsv
     if (includeSolar) cells.push(formatCell(row.solarEstimate));
     if (includePaxWifi) cells.push(formatCell(row.paxWifi));
     if (includePaxBle) cells.push(formatCell(row.paxBle));
+    if (includeSource) cells.push(formatCell(row.source));
     return csvRow(cells);
   });
 

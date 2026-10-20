@@ -11,6 +11,7 @@ import packetLogService from '../services/packetLogService.js';
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { PortNum, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
 import { isAnyMeshCoreManager, isMeshCoreManager } from '../sourceManagerTypes.js';
@@ -21,7 +22,11 @@ import {
   canReadVirtualChannel,
 } from '../utils/virtualChannelPermissions.js';
 import { buildSourceDashboard } from '../services/sourceDashboardData.js';
-import { loadNodeViewAccess, omitPositionTelemetry } from '../utils/nodeEnhancer.js';
+import {
+  getFavoriteTelemetrySeries,
+  getLatestTelemetrySnapshot,
+  parseTelemetryHours,
+} from '../services/unifiedTelemetryService.js';
 import {
   unifiedChannelDisplayName,
   loadSourcePresetNames,
@@ -910,124 +915,39 @@ router.get('/messages', async (req: Request, res: Response) => {
  * GET /api/unified/telemetry?hours=24
  *
  * Returns the latest telemetry reading per node per type across all accessible
- * sources, sorted by timestamp descending. Each entry includes `sourceId` and
- * `sourceName`. Useful for a cross-source "fleet overview" dashboard.
+ * sources, sorted by timestamp descending. Each entry includes `sourceId`,
+ * `sourceName`, and whether it is on that source's favorites list
+ * (`favorited`) and the caller may change that list (`canEditFavorite`).
+ * One query per source (#5896); the per-node rules of GET
+ * /api/telemetry/:nodeId apply (see unifiedTelemetryService).
  *
- * ?hours=N  → only include readings from the past N hours (default 24)
+ * ?hours=N  -> only include readings from the past N hours (default 24, max 168)
  */
 router.get('/telemetry', async (req: Request, res: Response) => {
   try {
-    const hours = Math.min(parseInt(req.query.hours as string || '24', 10), 168);
-    // Telemetry timestamps are stored in milliseconds (see meshtasticManager.ts
-    // `Store in milliseconds (Unix timestamp in ms)`), so the cutoff must also
-    // be in ms. Previously the cutoff was computed in seconds, so the `hours`
-    // filter was effectively a no-op (ms values always exceed the s cutoff).
-    const cutoff = Date.now() - hours * 3600 * 1000;
-    const user = (req as any).user;
-    const isAdmin = user?.isAdmin ?? false;
-
-    const [sources, access] = await Promise.all([
-      databaseService.sources.getAllSources(),
-      // The per-node rules of GET /api/telemetry/:nodeId (#5896), loaded once:
-      // channel access per node, and position rows of a private-position node
-      // only with `nodes_private:read` on that source.
-      loadNodeViewAccess(user),
-    ]);
-
-    const sourceResults = await Promise.allSettled(
-      sources.map(async (source) => {
-        // 'telemetry' is not a real permission resource (#4700) — gate on
-        // 'nodes:read' like the v1 telemetry route does.
-        const canRead = isAdmin || (user
-          ? await databaseService.checkPermissionAsync(user.id, 'nodes', 'read', source.id)
-          : false);
-        if (!canRead) return [];
-
-        // MeshCore nodes live in a separate table keyed by publicKey, not
-        // the Meshtastic `nodes` table's nodeId — enumerate from the right
-        // table per source type so MeshCore telemetry rows (also keyed by
-        // publicKey) actually get looked up (#4700).
-        //
-        // Each node passes the same check `checkNodeChannelAccess` applies on
-        // the per-node route: a MeshCore peer (no channel) needs
-        // `nodes:viewOnMap` on the source; a Meshtastic node needs `viewOnMap`
-        // on the channel it was heard on there.
-        const nodeList: Array<{
-          telemetryNodeId: string;
-          longName?: string | null;
-          shortName?: string | null;
-          hidePosition: boolean;
-        }> =
-          isAnyMeshCoreSourceType(source.type)
-            ? (access.isAdmin || access.permissions.can('nodes', 'viewOnMap', source.id)
-              ? (await databaseService.meshcore.getNodesBySource(source.id)).map((n) => ({
-                  telemetryNodeId: n.publicKey,
-                  longName: n.name,
-                  shortName: null,
-                  hidePosition: false,
-                }))
-              : [])
-            : (await databaseService.nodes.getAllNodes(source.id))
-                .filter((n) => access.canViewNode(source.id, n.channel))
-                .map((n) => ({
-                  telemetryNodeId: n.nodeId,
-                  longName: n.longName,
-                  shortName: n.shortName,
-                  hidePosition: !!n.positionOverrideIsPrivate && !access.canViewPrivate(source.id),
-                }));
-
-        const entries: Array<Record<string, unknown>> = [];
-
-        // Fan out per-node telemetry lookups in parallel rather than awaiting
-        // each one sequentially. On a multi-source deployment the sequential
-        // form was the dominant cost of /api/unified/telemetry — O(sources *
-        // nodes) serial round trips through Drizzle.
-        const perNodeLatest = await Promise.all(
-          nodeList.map((node) =>
-            databaseService.telemetry
-              .getLatestTelemetryByNode(node.telemetryNodeId, source.id)
-              .then((latest) => ({ node, latest }))
-              .catch((err) => {
-                logger.warn(
-                  `Failed to load telemetry for node ${node.telemetryNodeId} (source ${source.id}):`,
-                  err
-                );
-                return { node, latest: [] as Array<{ timestamp: number }> };
-              })
-          )
-        );
-
-        for (const { node, latest } of perNodeLatest) {
-          const rows = node.hidePosition
-            ? omitPositionTelemetry(latest as Array<{ telemetryType: string; timestamp: number }>)
-            : latest;
-          for (const t of rows as any[]) {
-            if (t.timestamp >= cutoff) {
-              entries.push({
-                ...t,
-                sourceId: source.id,
-                sourceName: source.name,
-                nodeLongName: node.longName,
-                nodeShortName: node.shortName,
-              });
-            }
-          }
-        }
-        return entries;
-      })
-    );
-
-    const allEntries: Array<Record<string, unknown>> = [];
-    for (const result of sourceResults) {
-      if (result.status === 'fulfilled') allEntries.push(...result.value);
-    }
-
-    allEntries.sort((a, b) => ((b.timestamp as number) ?? 0) - ((a.timestamp as number) ?? 0));
-
-    res.json(allEntries);
+    const hours = parseTelemetryHours(req.query.hours);
+    res.json(await getLatestTelemetrySnapshot(req.user, hours));
   } catch (error) {
     logger.error('Error fetching unified telemetry:', error);
     res.status(500).json({ error: 'Failed to fetch unified telemetry' });
+  }
+});
+
+/**
+ * GET /api/unified/telemetry/series?hours=24
+ *
+ * The cross-source Telemetry Dashboard (#5896): every favorited series across
+ * the sources the caller may read, one chart per (node, type) with one line
+ * per source, averaged to ~240 points per line. Same per-node rules as GET
+ * /api/telemetry/:nodeId.
+ */
+router.get('/telemetry/series', async (req: Request, res: Response) => {
+  try {
+    const hours = parseTelemetryHours(req.query.hours);
+    ok(res, await getFavoriteTelemetrySeries(req.user, hours));
+  } catch (error) {
+    logger.error('Error fetching unified telemetry series:', error);
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch telemetry series');
   }
 });
 

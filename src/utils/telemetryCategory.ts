@@ -266,6 +266,46 @@ const TYPE_CATEGORY: Record<string, TelemetryCategory> = {
 };
 
 /**
+ * Types whose value depends on WHICH source recorded it, not only on the
+ * subject node (#5896): the signal a source's own radio heard the node at
+ * (SNR/RSSI), the channel load and packet counters a local radio reports, and
+ * the series MeshMonitor itself computes per source (node counts, per-transport
+ * traffic, clock offset). The cross-source Telemetry Dashboard still overlays
+ * these one line per source, but labels each line "heard by <source>" so a
+ * reader does not take two sources' lines as two readings of one quantity.
+ *
+ * Everything else (temperature, battery, voltage, uptime, ...) is a property
+ * of the subject node: every source that hears it sees the same value.
+ */
+const OBSERVER_RELATIVE_TYPES: ReadonlySet<string> = new Set([
+  // Signal as heard by the observing radio.
+  'snr', 'snr_local', 'snr_remote', 'rssi',
+  'mc_last_rssi', 'mc_last_snr', 'mc_status_last_rssi', 'mc_status_last_snr',
+  // Local channel load.
+  'channelUtilization', 'airUtilTx',
+  // Packet counters and node counts of a local radio (LocalStats).
+  'numOnlineNodes', 'numTotalNodes',
+  'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad', 'numRxDupe',
+  'numTxRelay', 'numTxRelayCanceled', 'numTxDropped',
+  // Computed by MeshMonitor for one source.
+  'systemNodeCount', 'systemDirectNodeCount',
+  'systemNodesHeardRf', 'systemNodesHeardUdp', 'systemNodesHeardMqtt',
+  'systemPacketsRxRf', 'systemPacketsRxUdp', 'systemPacketsRxMqtt',
+  'transportNodesHeard', 'transportPacketsRx',
+  'timeOffset',
+]);
+
+/** True when a series of `type` depends on the observing source (see above). */
+export function isObserverRelative(type: string): boolean {
+  return OBSERVER_RELATIVE_TYPES.has(type);
+}
+
+/** The observer-relative type list, for tests. */
+export function observerRelativeTypes(): string[] {
+  return [...OBSERVER_RELATIVE_TYPES];
+}
+
+/**
  * Classify a telemetry type into one of the display categories. Handles
  * the `mc_*_ch<N>` and `mc_*_ch<N>_<axis>` suffixes MeshCore uses for
  * Cayenne LPP records: strip the suffix, look up the base name, fall
