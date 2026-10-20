@@ -65,6 +65,21 @@ The Mesh widget ships in Widgets Pack **v1.4.3**. Treat it as a preview. Before 
 
 **By [maxhayim](https://github.com/maxhayim/widgets-pack)**
 
+### [ShackScreen](https://github.com/maxhayim/ShackScreen)
+An Android app that turns a TV or tablet into a live radio dashboard. Its MeshMonitor widgets show the state of your Meshtastic, MeshCore, and MQTT sources, the nodes heard today, and recent mesh messages. Other widgets cover space weather, POTA and DX spots, satellite passes, aircraft, marine traffic, and local weather. It reads MeshMonitor's REST API and never talks to a radio, and it can open the full MeshMonitor web interface in an in-app browser. It runs on Android TV, Google TV, Fire TV, and Android tablets and phones (Android 5.1 or newer), and works with the TV remote or a touchscreen. MIT licensed. [Download the latest release](https://github.com/maxhayim/ShackScreen/releases/latest).
+
+::: tip Early preview
+ShackScreen is at **v0.6.0**. Treat it as a preview. Before you install it:
+
+- **Use a read-only user.** An API token can do whatever its creator can do. Create a user that can only read, and issue the token from that account.
+- **The token sits in plain text** in the app's private storage on the device, not in the Android keystore.
+- **You install it by sideloading the APK** from GitHub Releases. By default it checks GitHub once a day and shows a badge when an update is out. Set updates to **Off** to stop it contacting GitHub, or to **Auto** to let it download and install updates itself.
+- **It polls while it runs:** each MeshMonitor widget on screen refreshes every 60 seconds, plus one health check a minute. The app allows plain `http://` so it can reach servers on your home network; use HTTPS if MeshMonitor is reachable from outside it.
+- **The full web interface opens in a browser inside the app,** so you sign in there with a normal MeshMonitor account, separate from the API token.
+:::
+
+**By [maxhayim](https://github.com/maxhayim/ShackScreen)**
+
 ## How Add-ons Work
 
 An add-on reaches MeshMonitor in one of two ways. Neither kind talks to your radio: MeshMonitor holds that link.
@@ -90,6 +105,7 @@ An add-on reaches MeshMonitor in one of two ways. Neither kind talks to your rad
    │  Meshtastic   │     │  CardMesh              │
    │    Node       │     │  Mesh Screensaver      │
    └───────────────┘     │  Mesh Widget           │
+                         │  ShackScreen           │
                          │  (REST API clients)    │
                          └────────────────────────┘
 ```
@@ -106,7 +122,7 @@ The [Docker Compose Configurator](/configurator) can add the MQTT Proxy to your 
 
 ### REST API clients
 
-CardMesh, Mesh Screensaver, and Mesh Widget call the [v1 REST API](/development/api-reference) over HTTP(S). They never open the Virtual Node, so you can leave it off. They need:
+CardMesh, Mesh Screensaver, Mesh Widget, and ShackScreen call the [v1 REST API](/development/api-reference) over HTTP(S). They never open the Virtual Node, so you can leave it off. They need:
 
 1. **MeshMonitor's web address**: the one you open in a browser, with your [`BASE_URL`](/configuration/#optional-variables) path if you set one.
 2. **An API token.** Sign in, open the user menu, choose **API Token**, and generate one. The client sends it as `Authorization: Bearer <token>`. Each user holds one token; a new one revokes the old.
