@@ -6,11 +6,18 @@
  * v1 ships two feeds. airplanes.live was in the spec, but it answered HTTP 403
  * to an anonymous request during the implementation-time check, so it is left
  * out until a key or registration path is confirmed.
+ *
+ * OpenSky Network (#5877) takes a bounding box, answers with positional arrays
+ * and needs an OAuth2 client-credentials account, so a feed can override how
+ * its request is built (`buildRequest`), how its body is read (`parse`) and
+ * how it authenticates (`auth`). The readsb feeds keep the defaults.
  */
+import type { AdsbAircraft } from './adsbMatch.js';
+import { openSkyStatesUrl, parseOpenSkyStates, OPENSKY_RETRY_AFTER_HEADER } from './openSky.js';
 
-export type AdsbFeedId = 'adsb.lol' | 'adsb.fi';
+export type AdsbFeedId = 'adsb.lol' | 'adsb.fi' | 'opensky';
 
-export const ADSB_FEED_IDS: readonly AdsbFeedId[] = ['adsb.lol', 'adsb.fi'];
+export const ADSB_FEED_IDS: readonly AdsbFeedId[] = ['adsb.lol', 'adsb.fi', 'opensky'];
 
 export const DEFAULT_ADSB_FEED: AdsbFeedId = 'adsb.lol';
 
@@ -24,6 +31,23 @@ export interface AdsbFeedInfo {
   flightUrl(hex: string): string;
   /** Short terms-of-use line for the Settings UI. */
   terms: string;
+  /** Credit line name when it differs from `name` ("Data: <credit>"). */
+  credit?: string;
+  /**
+   * How the client authenticates. `'api-key'` (default): the shared
+   * `adsb_api_token`, as `X-API-Key`, when one is set. `'oauth2'`: a Bearer
+   * token from the feed's own client credentials; the shared key is never sent.
+   */
+  auth?: 'api-key' | 'oauth2';
+  /** Request for a point query. Default: GET `pointUrl(lat, lon, nm)` with no extra headers. */
+  buildRequest?(lat: number, lon: number, nm: number): { url: string; headers: Record<string, string> };
+  /** Aircraft out of the response body. Default: the readsb `ac[]` parser. Throws on a bad body. */
+  parse?(body: unknown): AdsbAircraft[];
+  /**
+   * Header with a 429's retry delay in seconds. When set and present, the
+   * service pauses this feed for that long instead of the fixed backoff.
+   */
+  retryAfterHeader?: string;
 }
 
 function coord(v: number): string {
@@ -48,7 +72,24 @@ export const ADSB_FEEDS: Readonly<Record<AdsbFeedId, AdsbFeedInfo>> = {
     flightUrl: (hex) => `https://globe.adsb.fi/?icao=${encodeURIComponent(hex)}`,
     terms: 'For personal, non-commercial use only.',
   },
+  opensky: {
+    id: 'opensky',
+    name: 'OpenSky Network',
+    credit: 'The OpenSky Network',
+    pointUrl: (lat, lon, nm) => openSkyStatesUrl(lat, lon, nm),
+    buildRequest: (lat, lon, nm) => ({ url: openSkyStatesUrl(lat, lon, nm), headers: {} }),
+    parse: parseOpenSkyStates,
+    auth: 'oauth2',
+    retryAfterHeader: OPENSKY_RETRY_AFTER_HEADER,
+    flightUrl: (hex) => `https://map.opensky-network.org/?icao=${encodeURIComponent(hex)}`,
+    terms: 'Non-commercial and research use only. Credit: The OpenSky Network.',
+  },
 };
+
+/** The credit line shown with a match ("Data: adsb.lol"). */
+export function adsbFeedCredit(feed: AdsbFeedInfo): string {
+  return `Data: ${feed.credit ?? feed.name}`;
+}
 
 export function isAdsbFeed(v: unknown): v is AdsbFeedId {
   return typeof v === 'string' && (ADSB_FEED_IDS as readonly string[]).includes(v);

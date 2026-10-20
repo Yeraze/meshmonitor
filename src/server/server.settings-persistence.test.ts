@@ -583,6 +583,8 @@ describe('Settings Persistence', () => {
         // elevation pair; read server-side by adsbMatchService. The flag is
         // also read publicly by useAdsbMatchEnabled() via a direct fetch.
         'adsbMatchEnabled', 'adsbFeed', 'adsb_api_token',
+        // OpenSky credentials (#5877), same pattern.
+        'adsb_opensky_client_id', 'adsb_opensky_client_secret',
         // Translation settings (global) — loaded directly by SettingsTab into
         // its initial* snapshot; read server-side by translationService.
         'translationEnabled', 'translationProvider', 'translationDefaultLanguage',
