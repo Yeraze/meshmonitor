@@ -83,6 +83,8 @@ import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { CrossSourceLinksLayer } from '../map/layers/CrossSourceLinksLayer';
 import { TracerouteConfirmedLinksLayer } from '../map/layers/TracerouteConfirmedLinksLayer';
+import DuctingLayer from '../map/layers/DuctingLayer';
+import { DuctingControl } from '../map/DuctingControl';
 import subToggleStyles from '../map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
 import { snrToNeighborOpacity, dedupByUnorderedPair } from '../../utils/neighborLinks';
@@ -333,6 +335,10 @@ export default function DashboardMap({
     setShowCrossSourceLinks,
     showTracerouteConfirmedLinks,
     setShowTracerouteConfirmedLinks,
+    showDucting,
+    setShowDucting,
+    ductingHoursAhead,
+    setDuctingHoursAhead,
     showWaypoints,
     setShowWaypoints,
     showLocalMarkers,
@@ -1026,6 +1032,12 @@ export default function DashboardMap({
         {showCrossSourceLinks && showTracerouteConfirmedLinks && polarSourceIds.length > 0 && (
           <TracerouteConfirmedLinksLayer enabled sourceIds={polarSourceIds} lookbackHours={effectiveMaxAge} />
         )}
+
+        {/* Tropospheric ducting overlay (#5734): one atmosphere for every
+            source. Mounted only while on. */}
+        {showDucting === true && (
+          <DuctingLayer hoursAhead={ductingHoursAhead ?? 0} />
+        )}
       </BaseMap>
       )}
 
@@ -1171,6 +1183,15 @@ export default function DashboardMap({
               <span>{t('map.traceroute_confirmed.toggle', 'Traceroute-Confirmed Links')}</span>
             </label>
           )}
+          {/* #5734: tropospheric ducting overlay. Renders nothing unless an
+              admin turned the overlay on. */}
+          <DuctingControl
+            checked={showDucting === true}
+            onCheckedChange={setShowDucting}
+            hoursAhead={ductingHoursAhead ?? 0}
+            onHoursAheadChange={setDuctingHoursAhead}
+            disabledTitle={unavailableIn3DTitle}
+          />
           <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"

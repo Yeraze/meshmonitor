@@ -1,11 +1,11 @@
 /**
- * Ducting forecast for an area (#5734 spike): fetch a GFS slice, build a
+ * Ducting forecast for an area (#5734): fetch a GFS slice, build a
  * vertical profile per grid point, and index each column.
  *
  * Results are cached in memory per (cycle, forecast hour, box) and concurrent
  * identical requests share one fetch, so NOMADS sees at most one request per
- * cache miss. Nothing here runs on a timer: a fetch happens only when an
- * admin asks for a forecast.
+ * cache miss. Nothing here runs on a timer: a fetch happens only when a
+ * map viewer asks for a forecast step.
  */
 import { indexColumns } from './gfsProfile.js';
 import { fetchGfsSlice, latestPublishedCycle, GfsUnavailableError, type BBox, type FetchLike } from './gfsClient.js';
@@ -19,7 +19,12 @@ const CYCLE_MS = 6 * 3600_000;
 const CYCLES_TRIED = 3;
 /** Remember an unpublished cycle this long before probing it again. */
 const UNPUBLISHED_RETRY_MS = 15 * 60_000;
-const CACHE_MAX_ENTRIES = 50;
+/**
+ * One entry is one (cycle, hour, box). Boxes are scoped to the nodes each
+ * caller can see, so an install with several viewer groups holds several
+ * boxes; 200 keeps ~8 full 25-step scrubbers before evictions force NOAA refetches.
+ */
+const CACHE_MAX_ENTRIES = 200;
 
 export interface DuctingForecast {
   cycle: string;

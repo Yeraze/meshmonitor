@@ -1,0 +1,82 @@
+/* Ducting overlay control in the Map Features panels (#5734). */
+.root {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 6px 22px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.scrubberLabel {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--color-text);
+}
+
+.validTime {
+  color: var(--color-text-subtle);
+}
+
+.scrubber {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.meta {
+  color: var(--color-text-subtle);
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.legend {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--color-border);
+}
+
+.swatchWide {
+  flex: none;
+  width: 30px;
+  height: 12px;
+  border: 1px solid var(--color-border);
+}
+
+.swatchNone {
+  display: inline-block;
+  background: transparent;
+}
+
+.caveat {
+  margin-top: 2px;
+  font-style: italic;
+  color: var(--color-text-subtle);
+}
+
+.attribution {
+  color: var(--color-text-faint);
+}

@@ -462,6 +462,10 @@ export const VALID_SETTINGS_KEYS = [
   // every elevation fetch is server-proxied.
   'elevationEnabled',
   'elevationSourceUrl',
+  // Tropospheric ducting overlay (#5734). Global, off by default, admin-only
+  // write (ADMIN_ONLY_SETTINGS_KEYS below). Not secret: every map viewer reads
+  // it to decide whether to show the toggle.
+  'ductingOverlayEnabled',
   // ADS-B flight matching for likely aircraft (#5374). Global (not per-source):
   // it configures one outbound service, like elevation. `adsb_api_token` is
   // server-only via SECRET_SETTINGS_KEY_PATTERN (`_token` suffix).
@@ -889,6 +893,7 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'adminRetryAttempts',                     // :201 global admin retry count (#4487)
   'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)
   'elevationSourceUrl',                     // :305, also SECRET_SETTINGS_KEYS
+  'ductingOverlayEnabled',                  // global outbound service (#5734), read via getSetting
   'adsbMatchEnabled',                       // global outbound service (#5374), read via getSetting
   'adsbFeed',                               // "
   'adsb_api_token',                         // ", secret via the _token pattern
@@ -1025,6 +1030,18 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
   'forwardingRules',
   // Forwarding master switch (#5537) — same reasoning as the rules.
   'forwardingEnabled',
+]);
+
+/**
+ * Settings only an admin may write. A non-admin `settings:write` save drops
+ * them (the same way it drops secret keys), so a Settings page save by a
+ * non-admin carries the stored value through untouched.
+ *
+ * `ductingOverlayEnabled` (#5734): turning it on lets every map viewer make
+ * the server contact NOAA, so the maintainer reserved it for admins.
+ */
+export const ADMIN_ONLY_SETTINGS_KEYS = new Set<string>([
+  'ductingOverlayEnabled',
 ]);
 
 /**

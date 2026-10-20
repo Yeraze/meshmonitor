@@ -94,6 +94,8 @@ import listHeaderStyles from './NodesListHeader.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { CrossSourceLinksLayer } from './map/layers/CrossSourceLinksLayer';
 import { TracerouteConfirmedLinksLayer } from './map/layers/TracerouteConfirmedLinksLayer';
+import DuctingLayer from './map/layers/DuctingLayer';
+import { DuctingControl } from './map/DuctingControl';
 import subToggleStyles from './map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -588,6 +590,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowCrossSourceLinks,
     showTracerouteConfirmedLinks,
     setShowTracerouteConfirmedLinks,
+    showDucting,
+    setShowDucting,
+    ductingHoursAhead,
+    setDuctingHoursAhead,
     showRoute,
     setShowRoute,
     showMotion,
@@ -3171,6 +3177,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <span>{t('map.traceroute_confirmed.toggle', 'Traceroute-Confirmed Links')}</span>
                     </label>
                   )}
+                  {/* #5734: tropospheric ducting overlay. Renders nothing
+                      unless an admin turned the overlay on. */}
+                  <DuctingControl
+                    checked={showDucting}
+                    onCheckedChange={setShowDucting}
+                    hoursAhead={ductingHoursAhead}
+                    onHoursAheadChange={setDuctingHoursAhead}
+                    disabledTitle={unavailableIn3DTitle}
+                  />
                   <label className="map-control-item">
                     <input
                       type="checkbox"
@@ -3677,6 +3692,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   sourceIds={[currentSourceId]}
                   lookbackHours={effectiveMapMaxAge}
                 />
+              )}
+
+              {/* Tropospheric ducting overlay (#5734): one atmosphere for
+                  every source. Mounted only while on; it fetches only while
+                  the admin switch is on. */}
+              {showDucting && (
+                <DuctingLayer hoursAhead={ductingHoursAhead} />
               )}
 
               {/* Note: Selected node traceroute with separate forward and back paths */}

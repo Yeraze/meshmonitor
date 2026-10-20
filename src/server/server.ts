@@ -1070,7 +1070,7 @@ apiRouter.use('/', nodesRoutes);
 apiRouter.use('/', nodeNameHistoryRoutes);
 // #5794: saved MQTT broker presets (global, admin-managed)
 apiRouter.use('/mqtt-broker-presets', mqttBrokerPresetRoutes);
-// #5734 spike: tropospheric ducting forecast from NOAA GFS (admin-only)
+// #5734: tropospheric ducting forecast from NOAA GFS (gated by ductingOverlayEnabled + map read)
 apiRouter.use('/ducting', ductingRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
