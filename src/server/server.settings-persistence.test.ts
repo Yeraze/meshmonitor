@@ -529,6 +529,9 @@ describe('Settings Persistence', () => {
         // MeshCore CLI console reply-timeout (#4027) — loaded directly by
         // SettingsTab and read server-side by the /cli routes, not via SettingsContext.
         'meshcoreCliTimeoutSeconds',
+        // Cross-source hop resolution (#5909) — loaded directly by SettingsTab
+        // and read server-side by the MeshCore hop-candidates route only.
+        'meshcoreCrossSourceHopResolution',
         // Remote-admin retry attempts (#4487) — same shape: SettingsTab loads it
         // straight from the settings API, and only the admin routes read it when
         // deciding whether to re-send a timed-out command. No frontend state

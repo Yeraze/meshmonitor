@@ -48,6 +48,10 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // position? false = it did not, though latitude/longitude above still hold
   // the last known fix (#3504). NULL = unknown (no advert seen since 194).
   lastAdvertHadPosition: integer('lastAdvertHadPosition', { mode: 'boolean' }),
+  // #5909 (migration 215): did the latest ADVERT signature check out? Written
+  // only by meshcore_mqtt ingest. NULL = never checked (device sources, or a
+  // row that predates 215).
+  advertSignatureVerified: integer('advertSignatureVerified', { mode: 'boolean' }),
   // #5842 (migration 206): MeshMonitor-only location override, parallel to the
   // Meshtastic `nodes.positionOverride*` columns. Advert ingest never writes
   // these, and the override is never copied into latitude/longitude above.
@@ -163,6 +167,10 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   altitude: pgDoublePrecision('altitude'),
   positionSource: pgText('positionSource'),
   lastAdvertHadPosition: pgBoolean('lastAdvertHadPosition'),
+  // #5909 (migration 215): did the latest ADVERT signature check out? Written
+  // only by meshcore_mqtt ingest. NULL = never checked (device sources, or a
+  // row that predates 215).
+  advertSignatureVerified: pgBoolean('advertSignatureVerified'),
   positionOverrideEnabled: pgBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: pgDoublePrecision('latitudeOverride'),
   longitudeOverride: pgDoublePrecision('longitudeOverride'),
@@ -246,6 +254,10 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   altitude: myDouble('altitude'),
   positionSource: myVarchar('positionSource', { length: 16 }),
   lastAdvertHadPosition: myBoolean('lastAdvertHadPosition'),
+  // #5909 (migration 215): did the latest ADVERT signature check out? Written
+  // only by meshcore_mqtt ingest. NULL = never checked (device sources, or a
+  // row that predates 215).
+  advertSignatureVerified: myBoolean('advertSignatureVerified'),
   positionOverrideEnabled: myBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: myDouble('latitudeOverride'),
   longitudeOverride: myDouble('longitudeOverride'),

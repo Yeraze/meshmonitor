@@ -233,6 +233,7 @@ import { migration as createMqttBrokerPresetsMigration, runMigration211Postgres,
 import { migration as createMeshcoreCliHistoryMigration, runMigration212Postgres, runMigration212Mysql } from '../server/migrations/212_create_meshcore_cli_history.js';
 import { migration as backfillTracerouteWriteMigration, runMigration213Postgres, runMigration213Mysql } from '../server/migrations/213_backfill_traceroute_write_for_meshcore_trace.js';
 import { migration as aircraftFlightMatchRechecksMigration, runMigration214Postgres, runMigration214Mysql } from '../server/migrations/214_add_aircraft_flight_match_rechecks.js';
+import { migration as addMeshcoreAdvertSignatureVerifiedMigration, runMigration215Postgres, runMigration215Mysql } from '../server/migrations/215_add_meshcore_advert_signature_verified.js';
 
 // ============================================================================
 // Registry
@@ -3457,4 +3458,19 @@ registry.register({
   sqlite: (db) => aircraftFlightMatchRechecksMigration.up(db),
   postgres: (client) => runMigration214Postgres(client),
   mysql: (pool) => runMigration214Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 215: `meshcore_nodes.advertSignatureVerified` (#5909). PER-SOURCE.
+// Nullable boolean written by meshcore_mqtt ingest: did the latest advert's
+// signature verify? Gates MQTT nodes in cross-source hop resolution.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 215,
+  name: 'add_meshcore_advert_signature_verified',
+  settingsKey: 'migration_215_add_meshcore_advert_signature_verified',
+  sqlite: (db) => addMeshcoreAdvertSignatureVerifiedMigration.up(db),
+  postgres: (client) => runMigration215Postgres(client),
+  mysql: (pool) => runMigration215Mysql(pool),
 });
