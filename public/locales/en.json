@@ -1587,7 +1587,7 @@
   "flight_match.credit": "Data: {{feed}}",
   "flight_match.label": "Flight (ADS-B)",
   "settings.adsb_section": "Flight matching (ADS-B)",
-  "settings.adsb_section_description": "When a node becomes a likely aircraft, MeshMonitor asks the selected public ADS-B feed which aircraft is at that spot. At most two lookups per flagging. Nothing is sent over the mesh.",
+  "settings.adsb_section_description": "When a node becomes a likely aircraft, MeshMonitor asks the selected public ADS-B feed which aircraft is at that spot. Two lookups per flagging, then up to six re-checks as the node moves. Nothing is sent over the mesh.",
   "settings.adsb_enabled_label": "Look up likely aircraft on a public ADS-B feed",
   "settings.adsb_enabled_description": "Off by default. When on, MeshMonitor sends the flagged node's approximate position to the feed over HTTPS. A match only confirms; no match never clears the likely-aircraft flag.",
   "settings.adsb_feed_label": "Feed",

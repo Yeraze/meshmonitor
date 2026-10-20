@@ -21,7 +21,19 @@ import type { AircraftFlightMatchRow } from '../../db/repositories/aircraftFligh
 
 const router = Router({ mergeParams: true });
 
-export interface FlightMatchResponse extends Omit<AircraftFlightMatchRow, 'sourceId' | 'lookups' | 'episodeStartedAt' | 'firstLookupAt'> {
+/** Bookkeeping columns the route never returns (the last-lookup point is a node position). */
+type InternalMatchFields =
+  | 'sourceId'
+  | 'lookups'
+  | 'episodeStartedAt'
+  | 'firstLookupAt'
+  | 'lastLookupAt'
+  | 'lastLookupLat'
+  | 'lastLookupLon'
+  | 'rechecks'
+  | 'misses';
+
+export interface FlightMatchResponse extends Omit<AircraftFlightMatchRow, InternalMatchFields> {
   feedName: string;
   flightUrl: string | null;
   attribution: string;

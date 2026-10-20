@@ -3,7 +3,9 @@
  *
  * One row per (sourceId, nodeNum): the current likely-aircraft flagging
  * ("episode") and the ADS-B lookups spent on it. `lookups` is the DB-backed
- * cap (max 2 per episode), so a restart or a settings save cannot reset it.
+ * cap (max 2 per episode), and `rechecks` (max 6 per episode, #5876) caps the
+ * later re-checks the same way, so a restart or a settings save cannot reset
+ * either.
  *
  * PER-SOURCE. The FK to sources(id) ON DELETE CASCADE is declared in the
  * migration DDL (migration 180), matching the waypoints convention.
@@ -51,6 +53,15 @@ export const aircraftFlightMatchesSqlite = sqliteTable('aircraft_flight_matches'
   distanceKm: real('distanceKm'),
   /** ms; the last lookup that produced this status. */
   matchedAt: integer('matchedAt'),
+  /** ms; the last lookup or re-check that ran (migration 214, #5876). */
+  lastLookupAt: integer('lastLookupAt'),
+  /** The node's position at that lookup. */
+  lastLookupLat: real('lastLookupLat'),
+  lastLookupLon: real('lastLookupLon'),
+  /** 0–6; re-checks spent in this episode. */
+  rechecks: integer('rechecks').notNull().default(0),
+  /** Consecutive re-checks that found no aircraft; 2 clears the match. */
+  misses: integer('misses').notNull().default(0),
 }, (table) => ({
   pk: sqlitePrimaryKey({ columns: [table.sourceId, table.nodeNum] }),
 }));
@@ -74,6 +85,11 @@ export const aircraftFlightMatchesPostgres = pgTable('aircraft_flight_matches', 
   altM: pgDouble('altM'),
   distanceKm: pgDouble('distanceKm'),
   matchedAt: pgBigint('matchedAt', { mode: 'number' }),
+  lastLookupAt: pgBigint('lastLookupAt', { mode: 'number' }),
+  lastLookupLat: pgDouble('lastLookupLat'),
+  lastLookupLon: pgDouble('lastLookupLon'),
+  rechecks: pgInteger('rechecks').notNull().default(0),
+  misses: pgInteger('misses').notNull().default(0),
 }, (table) => ({
   pk: pgPrimaryKey({ columns: [table.sourceId, table.nodeNum] }),
 }));
@@ -97,6 +113,11 @@ export const aircraftFlightMatchesMysql = mysqlTable('aircraft_flight_matches', 
   altM: myDouble('altM'),
   distanceKm: myDouble('distanceKm'),
   matchedAt: myBigint('matchedAt', { mode: 'number' }),
+  lastLookupAt: myBigint('lastLookupAt', { mode: 'number' }),
+  lastLookupLat: myDouble('lastLookupLat'),
+  lastLookupLon: myDouble('lastLookupLon'),
+  rechecks: myInt('rechecks').notNull().default(0),
+  misses: myInt('misses').notNull().default(0),
 }, (table) => ({
   pk: myPrimaryKey({ columns: [table.sourceId, table.nodeNum] }),
 }));

@@ -3398,7 +3398,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <p className="setting-description">
             {t(
               'settings.adsb_section_description',
-              'When a node becomes a likely aircraft, MeshMonitor asks the selected public ADS-B feed which aircraft is at that spot. At most two lookups per flagging. Nothing is sent over the mesh.'
+              'When a node becomes a likely aircraft, MeshMonitor asks the selected public ADS-B feed which aircraft is at that spot. Two lookups per flagging, then up to six re-checks as the node moves. Nothing is sent over the mesh.'
             )}
           </p>
           <div className="setting-item">

@@ -10,10 +10,12 @@ When a node becomes a likely aircraft, MeshMonitor can look it up in a free, com
   - Choices: **adsb.lol** (default), **adsb.fi** and **airplanes.live**.
   - All three return the same ADSBx v2 / readsb JSON, so one client and one parser serve them.
   - Off by default. A stock install makes no third-party calls.
-- **D2 When to look up.** Only in response to a node **becoming** a likely aircraft (the Phase 1 live transition), with at most **2 lookups per flagging**:
+- **D2 When to look up.** Only in response to a node **becoming** a likely aircraft (the Phase 1 live transition), with **2 lookups per flagging**, then up to **6 re-checks** (#5876):
   - Lookup 1 runs on the transition, and a hit shows as **"Possible match"**.
   - Lookup 2 runs on the node's next live position, at least 60 s and at most 30 min after lookup 1. If it names the same aircraft (ICAO hex), the match becomes **"Matched"**.
-  - After that, nothing more is looked up until the node becomes flagged again.
+  - Re-checks (#5876): once a flagging has had both lookups (or holds a match), a live position re-checks it when the node has moved > 10 km from the last lookup's position, or ≥ 15 min have passed since the last lookup. Each re-check is one point query through the same queue, backoff and reuse cache. Same hex: refresh callsign / speed / track / altitude / distance and read **"Matched"**. A different unambiguous hex: **"Possible match"** with the new aircraft. No hit: count a miss; 2 misses in a row clear the match (status none); a hit resets the count.
+  - The re-check count (cap 6), miss count and last-lookup position and time live in `aircraft_flight_matches` (migration 214), written with the same compare-and-set as `lookups`, so a restart or a settings save cannot reset them. A restart never triggers a re-check; only a live fix does.
+  - After 6 re-checks, nothing more is looked up until the node becomes flagged again.
 - **D3 Display.** The popup and the node details show one line, for example "Matched: UAL123 · B738 · N12345 · 450 kt 270°". The line links to the flight on the chosen feed's map and credits the feed.
   - The node keeps its own name. The marker and the automation engine are unchanged.
 - **D4 Confidence.** This is a two-fix confirm (see D2).
@@ -43,7 +45,7 @@ These are global, not per source: they configure an outbound service, like `elev
 - **Secret keys and non-admin saves (added in review):** a non-admin never receives `adsb_api_token` (or any secret key), so their Settings save carries it blank. `POST /api/settings` drops secret keys from non-admin writers, so such a save can neither wipe nor set a key. This also closes the same gap for `elevationSourceUrl`.
 - **UI:** a "Flight matching (ADS-B)" block in Settings, next to the Elevation settings (global section).
   - An enable switch, a feed select and an optional key field.
-  - Help text: "When a node becomes a likely aircraft, MeshMonitor asks the selected public ADS-B feed which aircraft is at that spot. At most two lookups per flagging. Nothing is sent over the mesh."
+  - Help text: "When a node becomes a likely aircraft, MeshMonitor asks the selected public ADS-B feed which aircraft is at that spot. Two lookups per flagging, then up to six re-checks as the node moves. Nothing is sent over the mesh."
   - Show the feed's terms line next to the select: adsb.lol is ODbL; adsb.fi and airplanes.live are for personal, non-commercial use.
 
 ## Feed endpoints (one client)

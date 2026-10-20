@@ -6,7 +6,14 @@
  * cap is exercised exactly as production stores it. HTTP is a fake.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { AdsbMatchService, type AdsbMatchDeps, LOOKUP_SPACING_MS, FEED_BACKOFF_MS } from './adsbMatchService.js';
+import {
+  AdsbMatchService,
+  type AdsbMatchDeps,
+  LOOKUP_SPACING_MS,
+  FEED_BACKOFF_MS,
+  RECHECK_INTERVAL_MS,
+  MAX_RECHECKS,
+} from './adsbMatchService.js';
 import { AdsbFeedError } from './adsbFeedClient.js';
 import { AircraftFlightMatchesRepository } from '../../db/repositories/aircraftFlightMatches.js';
 import { createTestDb, type TestDb } from '../test-helpers/testDb.js';
@@ -70,6 +77,7 @@ function makeHarness(opts: { responses?: Array<AdsbAircraft[] | Error>; clock?: 
     getMatch: (s, n) => repo.get(s, n),
     startEpisode: (s, n, at) => repo.startEpisode(s, n, at),
     recordLookup: (s, n, w) => repo.recordLookup(s, n, w),
+    recordRecheck: (s, n, w) => repo.recordRecheck(s, n, w),
     fetchAircraft: fetch as unknown as AdsbMatchDeps['fetchAircraft'],
     now: () => clock.now,
     sleep: async (ms) => {
@@ -187,7 +195,7 @@ describe('AdsbMatchService — lookups and status', () => {
     expect(await h.repo.get('src-a', NODE)).toMatchObject({ lookups: 2, status: 'possible', hex: 'a3f1c2' });
   });
 
-  it('lookup 2 waits 60 s and gives up after 30 min', async () => {
+  it('lookup 2 waits 60 s and gives up after 30 min (later fixes go to the re-check lane, #5876)', async () => {
     const h = makeHarness({ responses: [HIT] });
     await flag(h);
     h.clock.now += 30_000;
@@ -195,7 +203,7 @@ describe('AdsbMatchService — lookups and status', () => {
     expect(h.fetch).toHaveBeenCalledTimes(1);
     h.clock.now += 31 * 60_000;
     await livePosition(h);
-    expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ lookups: 1, rechecks: 1 });
   });
 
   it('a new flagging resets the allowance', async () => {
@@ -338,5 +346,178 @@ describe('AdsbMatchService — spacing and cross-source reuse', () => {
     await h.svc.idleForTest();
     expect(times).toHaveLength(2);
     expect(times[1] - times[0]).toBeGreaterThanOrEqual(LOOKUP_SPACING_MS);
+  });
+});
+
+describe('AdsbMatchService — re-checks (#5876)', () => {
+  /** ~22 km north of the node's starting spot. */
+  const MOVED_LAT = 26.0;
+  const at = (lat: number, over: Partial<AdsbAircraft> = {}): AdsbAircraft[] => [{ ...HIT[0], lat, ...over }];
+
+  /** Flag, then confirm with lookup 2 90 s later: a matched row with no re-checks spent. */
+  async function matched(h: Harness): Promise<void> {
+    await flag(h);
+    h.clock.now += 90_000;
+    await livePosition(h);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ lookups: 2, status: 'matched', rechecks: 0 });
+  }
+
+  it('lookups record where and when they ran', async () => {
+    const h = makeHarness({ responses: [HIT] });
+    await flag(h);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ lastLookupAt: T0, lastLookupLat: 25.8, lastLookupLon: -80.3 });
+  });
+
+  it('below both thresholds (< 15 min, ≤ 10 km) nothing is looked up', async () => {
+    const h = makeHarness({ responses: [HIT] });
+    await matched(h);
+    h.clock.now += RECHECK_INTERVAL_MS - 120_000;
+    h.node.latitude = 25.84; // ~4.4 km
+    await livePosition(h);
+    expect(h.fetch).toHaveBeenCalledTimes(2);
+    expect((await h.repo.get('src-a', NODE))!.rechecks).toBe(0);
+  });
+
+  it('a flight-number rollover on the same hex refreshes the fields and stays matched', async () => {
+    const h = makeHarness({ responses: [HIT, HIT, at(25.81, { flight: 'AAL2001 ', gs: 401, track: 90 })] });
+    await matched(h);
+    h.clock.now += RECHECK_INTERVAL_MS;
+    await livePosition(h);
+    expect(h.fetch).toHaveBeenCalledTimes(3);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({
+      status: 'matched',
+      hex: 'a3f1c2',
+      callsign: 'AAL2001',
+      gsKt: 401,
+      trackDeg: 90,
+      rechecks: 1,
+      misses: 0,
+      lookups: 2,
+      matchedAt: h.clock.now,
+      lastLookupAt: h.clock.now,
+    });
+  });
+
+  it('a node that moved > 10 km re-checks early; a different aircraft there reads possible', async () => {
+    const h = makeHarness({ responses: [HIT, HIT, at(MOVED_LAT + 0.01, { hex: 'ffff01', flight: 'JBU9 ' })] });
+    await matched(h);
+    h.clock.now += 120_000;
+    h.node.latitude = MOVED_LAT;
+    await livePosition(h);
+    expect(h.fetch).toHaveBeenCalledTimes(3);
+    const [, lat] = h.fetch.mock.calls[2];
+    expect(lat).toBe(MOVED_LAT);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({
+      status: 'possible',
+      hex: 'ffff01',
+      callsign: 'JBU9',
+      rechecks: 1,
+      lastLookupLat: MOVED_LAT,
+    });
+  });
+
+  it('one miss keeps the match; a second miss in a row clears it', async () => {
+    const h = makeHarness({ responses: [HIT, HIT, MISS] });
+    await matched(h);
+    h.clock.now += RECHECK_INTERVAL_MS;
+    await livePosition(h);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ status: 'matched', hex: 'a3f1c2', misses: 1, rechecks: 1 });
+    h.clock.now += RECHECK_INTERVAL_MS;
+    await livePosition(h);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ status: 'none', hex: null, callsign: null, misses: 2, rechecks: 2 });
+  });
+
+  it('a hit between misses resets the miss count', async () => {
+    const h = makeHarness({ responses: [HIT, HIT, MISS, HIT, MISS] });
+    await matched(h);
+    for (let i = 0; i < 3; i++) {
+      h.clock.now += RECHECK_INTERVAL_MS;
+      await livePosition(h);
+    }
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ status: 'matched', misses: 1, rechecks: 3 });
+  });
+
+  it('a possible match whose lookup-2 window passed is re-checked, and the same hex confirms it', async () => {
+    const h = makeHarness({ responses: [HIT] });
+    await flag(h);
+    h.clock.now += 31 * 60_000;
+    await livePosition(h);
+    expect(h.fetch).toHaveBeenCalledTimes(2);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ lookups: 1, rechecks: 1, status: 'matched' });
+  });
+
+  it('a none after one lookup is not re-checked once the lookup-2 window passed', async () => {
+    const h = makeHarness({ responses: [MISS] });
+    await flag(h);
+    h.clock.now += 31 * 60_000;
+    await livePosition(h);
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops at six re-checks, and a restart neither resets the cap nor triggers a lookup', async () => {
+    const clock = { now: T0 };
+    const h1 = makeHarness({ responses: [HIT], clock });
+    await matched(h1);
+    for (let i = 0; i < MAX_RECHECKS + 2; i++) {
+      clock.now += RECHECK_INTERVAL_MS;
+      await livePosition(h1);
+    }
+    expect(h1.fetch).toHaveBeenCalledTimes(2 + MAX_RECHECKS);
+    expect((await h1.repo.get('src-a', NODE))!.rechecks).toBe(MAX_RECHECKS);
+
+    const h2 = makeHarness({ responses: [HIT], clock });
+    await h2.svc.idleForTest();
+    expect(h2.fetch).not.toHaveBeenCalled();
+    clock.now += RECHECK_INTERVAL_MS;
+    h2.node.latitude = MOVED_LAT;
+    await livePosition(h2);
+    expect(h2.fetch).not.toHaveBeenCalled();
+    expect((await h2.repo.get('src-a', NODE))!.rechecks).toBe(MAX_RECHECKS);
+  });
+
+  it('a restart mid-way keeps the re-checks already spent', async () => {
+    const clock = { now: T0 };
+    const h1 = makeHarness({ responses: [HIT], clock });
+    await matched(h1);
+    for (let i = 0; i < 4; i++) {
+      clock.now += RECHECK_INTERVAL_MS;
+      await livePosition(h1);
+    }
+    const h2 = makeHarness({ responses: [HIT], clock });
+    for (let i = 0; i < 4; i++) {
+      clock.now += RECHECK_INTERVAL_MS;
+      await livePosition(h2);
+    }
+    expect(h2.fetch).toHaveBeenCalledTimes(MAX_RECHECKS - 4);
+    expect((await h2.repo.get('src-a', NODE))!.rechecks).toBe(MAX_RECHECKS);
+  });
+
+  it('a new flagging resets the re-check allowance', async () => {
+    const h = makeHarness({ responses: [HIT] });
+    await matched(h);
+    h.clock.now += RECHECK_INTERVAL_MS;
+    await livePosition(h);
+    expect((await h.repo.get('src-a', NODE))!.rechecks).toBe(1);
+    h.clock.now += 3_600_000;
+    await flag(h);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ lookups: 1, rechecks: 0, misses: 0 });
+  });
+
+  it('honours the global backoff and does not spend a re-check on a failure', async () => {
+    const h = makeHarness({ responses: [HIT, HIT, new AdsbFeedError('HTTP 429', 'http', 429, true), HIT] });
+    await matched(h);
+    h.clock.now += RECHECK_INTERVAL_MS;
+    await livePosition(h); // 429
+    expect(h.svc.isBackingOffForTest()).toBe(true);
+    expect((await h.repo.get('src-a', NODE))!.rechecks).toBe(0);
+
+    h.clock.now += 2 * 60_000;
+    await livePosition(h); // still backing off
+    expect(h.fetch).toHaveBeenCalledTimes(3);
+
+    h.clock.now += FEED_BACKOFF_MS;
+    await livePosition(h);
+    expect(h.fetch).toHaveBeenCalledTimes(4);
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ status: 'matched', rechecks: 1 });
   });
 });

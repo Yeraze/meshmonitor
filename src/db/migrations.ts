@@ -232,6 +232,7 @@ import { migration as messagesChannelIndexMigration, runMigration210Postgres, ru
 import { migration as createMqttBrokerPresetsMigration, runMigration211Postgres, runMigration211Mysql } from '../server/migrations/211_create_mqtt_broker_presets.js';
 import { migration as createMeshcoreCliHistoryMigration, runMigration212Postgres, runMigration212Mysql } from '../server/migrations/212_create_meshcore_cli_history.js';
 import { migration as backfillTracerouteWriteMigration, runMigration213Postgres, runMigration213Mysql } from '../server/migrations/213_backfill_traceroute_write_for_meshcore_trace.js';
+import { migration as aircraftFlightMatchRechecksMigration, runMigration214Postgres, runMigration214Mysql } from '../server/migrations/214_add_aircraft_flight_match_rechecks.js';
 
 // ============================================================================
 // Registry
@@ -3441,4 +3442,19 @@ registry.register({
   sqlite: (db) => backfillTracerouteWriteMigration.up(db),
   postgres: (client) => runMigration213Postgres(client),
   mysql: (pool) => runMigration213Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 214: re-check columns on `aircraft_flight_matches` (#5876).
+// PER-SOURCE. Last-lookup position/time plus the persisted re-check and miss
+// counters, so a restart or settings save cannot reset the re-check cap.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 214,
+  name: 'add_aircraft_flight_match_rechecks',
+  settingsKey: 'migration_214_add_aircraft_flight_match_rechecks',
+  sqlite: (db) => aircraftFlightMatchRechecksMigration.up(db),
+  postgres: (client) => runMigration214Postgres(client),
+  mysql: (pool) => runMigration214Mysql(pool),
 });

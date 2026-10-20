@@ -666,7 +666,7 @@ This same elevation source drives Map Analysis's [3D terrain view](/features/map
 - **API key (optional)** — for adsb.lol's announced future key. Sent only when set, never to OpenSky; never shown to non-admins.
 - **OpenSky client ID / client secret** — needed for the **OpenSky Network** feed (non-commercial and research use only), which takes no anonymous requests. Create an API client on your OpenSky Account page. The OpenSky option stays disabled, and a save is refused, until both are set. Both are server-only and never shown to non-admins.
 
-At most two lookups per flagging, no packets over the mesh. See [Flight matching (ADS-B)](/features/maps#flight-matching-ads-b) for how matches are chosen and shown.
+Two lookups per flagging, then up to six re-checks (at most eight in all); no packets over the mesh. See [Flight matching (ADS-B)](/features/maps#flight-matching-ads-b) for how matches are chosen and shown.
 
 ## Display Preferences
 
