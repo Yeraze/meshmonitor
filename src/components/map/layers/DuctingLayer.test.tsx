@@ -19,10 +19,13 @@ import styles from './DuctingLayer.module.css';
 import type { DuctingForecast } from '../../../hooks/useDuctingForecast';
 
 vi.mock('react-leaflet', () => ({
-  Rectangle: ({ bounds, pathOptions, interactive }: { bounds: unknown; pathOptions?: PathOptions; interactive?: boolean }) => (
+  // `className` must be a top-level prop: react-leaflet applies pathOptions
+  // with setStyle, which never sets a class (found on the live map).
+  Rectangle: ({ bounds, pathOptions, interactive, className }: { bounds: unknown; pathOptions?: PathOptions; interactive?: boolean; className?: string }) => (
     <div
       data-testid="ducting-cell"
-      data-class={pathOptions?.className}
+      data-class={className}
+      data-path-class={String(pathOptions?.className)}
       data-fill-opacity={String(pathOptions?.fillOpacity)}
       data-stroke={String(pathOptions?.stroke)}
       data-interactive={String(interactive)}
@@ -95,6 +98,8 @@ describe('DuctingCells', () => {
   it('draws only super-refractive and ducting cells, each with its tone class', () => {
     render(<DuctingCells forecast={FORECAST} />);
     const cells = screen.getAllByTestId('ducting-cell');
+    expect(styles.super).toBeTruthy();
+    expect(styles.duct).toBeTruthy();
     expect(cells.map((c) => c.dataset.class)).toEqual([styles.super, styles.duct, styles.duct]);
     expect(cells.map((c) => Number(c.dataset.fillOpacity))).toEqual([
       SUPER_REFRACTIVE_OPACITY,

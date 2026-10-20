@@ -36,11 +36,13 @@ export function DuctingCells({ forecast }: { forecast: DuctingForecast }) {
         key={`${k}:${style.tone}`}
         bounds={ductingCellBounds(forecast.grid, k)}
         interactive={false}
+        // A top-level prop: react-leaflet applies pathOptions through
+        // setStyle, which never adds a class.
+        className={TONE_CLASS[style.tone]}
         pathOptions={{
           stroke: false,
           fill: true,
           fillOpacity: style.fillOpacity,
-          className: TONE_CLASS[style.tone],
         }}
       />,
     );
