@@ -143,7 +143,7 @@ import {
 } from './services/meshcoreFrameIngest.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
-import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops } from '../utils/meshcorePath.js';
+import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops, hopByteForKey } from '../utils/meshcorePath.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
@@ -7217,51 +7217,71 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     this.requireTransmit();
     const contact = this.contacts.get(publicKey);
-    if (!contact?.outPath || contact.pathLen == null || contact.pathLen <= 0) {
-      logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
-      return failed;
-    }
-    let pathHops = parsePathHops(contact.outPath);
-    if (pathHops.length === 0) {
-      logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… is empty or malformed`);
-      return failed;
-    }
-    let hashBytes = pathHashBytesOf(pathHops);
-    if (pathHops.some((h) => h.length !== hashBytes * 2)) {
-      logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… has mixed-width hops, aborting`);
-      return failed;
-    }
-    // Caller-chosen hop width (#5723). The cached path is a list of key
-    // prefixes, so narrowing is a truncation, but widening needs each hop's
-    // full key: it works only when every hop matches exactly one contact.
-    if (opts.hashBytes !== undefined && opts.hashBytes !== hashBytes) {
-      const rewidthed = rewidthPathHops(pathHops, opts.hashBytes, [...this.contacts.keys()]);
-      if (!rewidthed) {
-        logger.warn(`[MeshCore] Trace-path: cannot send ${publicKey.substring(0, 16)}…'s ${hashBytes}-byte path as ${opts.hashBytes}-byte hops (a hop does not match exactly one contact)`);
-        return { ok: false, reason: 'failed' };
+    const targetForwards =
+      contact?.advType === MeshCoreDeviceType.REPEATER || contact?.advType === MeshCoreDeviceType.ROOM_SERVER;
+    let tracedHops: string[];
+    let hashBytes: 1 | 2 | 3;
+    if (contact && contact.pathLen === 0) {
+      // Direct neighbour (#5914): there is no out_path to walk, so the trace
+      // is the single hop through the target's own hash. The target appends
+      // its SNR and repeats it, and we hear that repeat, so one hop gives both
+      // directions. Only repeaters and room servers forward traces; a
+      // companion drops them unless its repeat setting is on, so we'd wait
+      // out the timeout for nothing.
+      if (!targetForwards) {
+        logger.warn(`[MeshCore] Trace-path: ${publicKey.substring(0, 16)}… is a direct neighbour that does not forward traces (not a repeater or room server)`);
+        return failed;
       }
-      pathHops = rewidthed;
-      hashBytes = opts.hashBytes;
+      const defaultWidth = await this.getDefaultPathHashSize();
+      // Trace-path hops are 1 or 2 bytes (#4786); a 3-byte default falls back to 1.
+      hashBytes = opts.hashBytes ?? (defaultWidth === 2 ? 2 : 1);
+      tracedHops = [hopByteForKey(publicKey, hashBytes)];
+    } else {
+      if (!contact?.outPath || contact.pathLen == null || contact.pathLen < 0) {
+        logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
+        return failed;
+      }
+      let pathHops = parsePathHops(contact.outPath);
+      if (pathHops.length === 0) {
+        logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… is empty or malformed`);
+        return failed;
+      }
+      hashBytes = pathHashBytesOf(pathHops);
+      if (pathHops.some((h) => h.length !== hashBytes * 2)) {
+        logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… has mixed-width hops, aborting`);
+        return failed;
+      }
+      // Caller-chosen hop width (#5723). The cached path is a list of key
+      // prefixes, so narrowing is a truncation, but widening needs each hop's
+      // full key: it works only when every hop matches exactly one contact.
+      if (opts.hashBytes !== undefined && opts.hashBytes !== hashBytes) {
+        const rewidthed = rewidthPathHops(pathHops, opts.hashBytes, [...this.contacts.keys()]);
+        if (!rewidthed) {
+          logger.warn(`[MeshCore] Trace-path: cannot send ${publicKey.substring(0, 16)}…'s ${hashBytes}-byte path as ${opts.hashBytes}-byte hops (a hop does not match exactly one contact)`);
+          return { ok: false, reason: 'failed' };
+        }
+        pathHops = rewidthed;
+        hashBytes = opts.hashBytes;
+      }
+      // CMD_SEND_TRACE_PATH's flags byte only encodes power-of-two hop widths
+      // (device: `1 << (flags & 0x03)`), so 1- and 2-byte hops are
+      // representable but the 3-byte width MeshMonitor also supports elsewhere
+      // is not (#4786).
+      if (hashBytes !== 1 && hashBytes !== 2) {
+        logger.warn(`[MeshCore] Trace-path: ${hashBytes}-byte hop hash width for ${publicKey.substring(0, 16)}… is not supported by the device's trace-path command (only 1 or 2 bytes/hop)`);
+        return failed;
+      }
+      // Auto return path (#5485): bring the trace back along the same route so
+      // the initiator hears it end and gets per-direction SNRs. Repeaters and
+      // room servers forward traces, so loop through the target; a companion
+      // drops them unless its repeat setting is on, so turn at the last repeater.
+      // Off unless the caller asks, so scheduled automation traces keep their
+      // one-way airtime.
+      tracedHops = buildTracePathHops(pathHops, publicKey, hashBytes, {
+        autoReturn: opts.autoReturn === true,
+        targetForwards,
+      });
     }
-    // CMD_SEND_TRACE_PATH's flags byte only encodes power-of-two hop widths
-    // (device: `1 << (flags & 0x03)`), so 1- and 2-byte hops are
-    // representable but the 3-byte width MeshMonitor also supports elsewhere
-    // is not (#4786).
-    if (hashBytes !== 1 && hashBytes !== 2) {
-      logger.warn(`[MeshCore] Trace-path: ${hashBytes}-byte hop hash width for ${publicKey.substring(0, 16)}… is not supported by the device's trace-path command (only 1 or 2 bytes/hop)`);
-      return failed;
-    }
-    // Auto return path (#5485): bring the trace back along the same route so
-    // the initiator hears it end and gets per-direction SNRs. Repeaters and
-    // room servers forward traces, so loop through the target; a companion
-    // drops them unless its repeat setting is on, so turn at the last repeater.
-    // Off unless the caller asks, so scheduled automation traces keep their
-    // one-way airtime.
-    const tracedHops = buildTracePathHops(pathHops, publicKey, hashBytes, {
-      autoReturn: opts.autoReturn === true,
-      targetForwards:
-        contact.advType === MeshCoreDeviceType.REPEATER || contact.advType === MeshCoreDeviceType.ROOM_SERVER,
-    });
     // Expand each hop token into its constituent bytes so multi-byte hops
     // (e.g. "a3f2") yield [0xa3, 0xf2] rather than being truncated to a
     // single byte by parseInt. 1-byte paths are unaffected.

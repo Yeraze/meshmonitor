@@ -436,8 +436,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     () => repeaterHopOptions(repeaters ?? [], editorHashBytes),
     [repeaters, editorHashBytes],
   );
+  // A direct neighbour (pathLen 0) is traced through its own hash (#5914),
+  // which only works when it forwards traces: a repeater or room server.
+  const targetForwardsTraces = advType === 2 || advType === 3;
   const canShowTraceButton =
-    !!onTracePath && canTraceroute && isCompanion && pathKnown && pathLen! > 0;
+    !!onTracePath && canTraceroute && isCompanion && pathKnown &&
+    (pathLen! > 0 || targetForwardsTraces);
   // Ping needs no cached path (that is the point — it builds a synthetic
   // one-hop path from the contact's own key hash), so unlike Trace Path it is
   // offered whether or not an out_path is known.
