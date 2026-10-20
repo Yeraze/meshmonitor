@@ -26,6 +26,7 @@ import AircraftMarkNote from './AircraftMarkNote';
 import PkiExchangeStatusCard from './PkiExchangeStatusCard';
 import AssetTrackingSection from './AssetTrackingSection';
 import NodeNameHistory from './NodeNameHistory';
+import PositionEstimateRationaleBox from './PositionEstimateRationaleBox';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -893,6 +894,18 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             </div>
           ) : null}
         </div>
+
+        {/* Estimated-position rationale (#5900) — only when the displayed
+            position is an estimate, never for GPS or an override. */}
+        {positionSource.kind === 'estimated' && node.nodeNum != null
+          && node.position?.latitude != null && node.position?.longitude != null && (
+          <PositionEstimateRationaleBox
+            nodeNum={node.nodeNum}
+            distanceUnit={distanceUnit}
+            timeFormat={timeFormat}
+            dateFormat={dateFormat}
+          />
+        )}
 
         {/* Name history (#5862) — renders nothing until the node is renamed. */}
         <NodeNameHistory

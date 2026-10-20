@@ -14,6 +14,7 @@ const mockDb = vi.hoisted(() => ({
   upsertEstimatedPositionsAsync: vi.fn(),
   deleteEstimatedPositionsByNodeNumsAsync: vi.fn(),
   replaceEstimatedPositionAnchorsAsync: vi.fn(),
+  getAllEstimatedPositionsAsync: vi.fn(async () => [] as Array<{ nodeNum: number }>),
 }));
 vi.mock('../../services/database.js', () => ({ default: mockDb }));
 
@@ -24,6 +25,8 @@ import {
   positionEstimationService,
   DEFAULT_SINGLE_ANCHOR_KM,
   MAX_STORED_ANCHORS_PER_NODE,
+  selectAnchorsToStore,
+  countUniqueAnchorPositions,
   type PositionObservation,
   type TracerouteForEstimation,
   type NeighborForEstimation,
@@ -567,6 +570,189 @@ describe('estimate rationale (#4609)', () => {
 
       expect(solved.usedObservations.map((u) => u.observation.anchorNodeNum)).toEqual([2, 3, 1]);
       expect(solved.usedObservations[0].weight).toBeGreaterThan(solved.usedObservations[2].weight);
+    });
+  });
+
+  describe('repeat observations of one anchor (#5900)', () => {
+    // The reported case: six traceroute observations, all through one relay at
+    // identical coordinates, with the SNRs from the issue.
+    const RELAY = { anchorNodeNum: 0x5555, anchorLat: 59.91, anchorLon: 10.75 };
+    const reportedSnrs = [-6.25, -7, -7.5, -7.5, -8.5, -9];
+
+    it('treats six observations from one anchor as a single anchor, not a 50 m convergence', () => {
+      const solved = solveNodePosition(
+        reportedSnrs.map((snrDb, i) => obs({ ...RELAY, snrDb, timestamp: NOW - i * 60_000 })),
+        NOW,
+      )!;
+
+      expect(solved.observationCount).toBe(6);
+      expect(solved.uniqueAnchors).toBe(1);
+      expect(solved.nEff).toBe(1);
+      expect(solved.radiusMethod).toBe('single_anchor');
+      expect(solved.uncertaintyKm).toBeCloseTo(DEFAULT_SINGLE_ANCHOR_KM, 6);
+      // Every observation still counts toward the weights.
+      expect(solved.usedObservations).toHaveLength(6);
+    });
+
+    it('treats coordinates within the tolerance as one anchor position', () => {
+      const solved = solveNodePosition([
+        obs({ ...RELAY, snrDb: 0 }),
+        obs({ ...RELAY, anchorLat: RELAY.anchorLat + 1e-8, snrDb: 0 }),
+      ], NOW)!;
+      expect(solved.uniqueAnchors).toBe(1);
+      expect(solved.radiusMethod).toBe('single_anchor');
+    });
+
+    it('treats two nodes at the same coordinates as one anchor position', () => {
+      const solved = solveNodePosition([
+        obs({ ...RELAY, anchorNodeNum: 1, snrDb: 0 }),
+        obs({ ...RELAY, anchorNodeNum: 2, snrDb: 0 }),
+      ], NOW)!;
+      expect(solved.uniqueAnchors).toBe(1);
+      expect(solved.radiusMethod).toBe('single_anchor');
+    });
+
+    it('gives nEff = 2 for two distinct anchors each heard three times', () => {
+      const a = { anchorNodeNum: 1, anchorLat: 35.0, anchorLon: -80.0 };
+      const b = { anchorNodeNum: 2, anchorLat: 35.01, anchorLon: -80.0 };
+      const solved = solveNodePosition([
+        obs({ ...a, snrDb: 0 }), obs({ ...a, snrDb: 0 }), obs({ ...a, snrDb: 0 }),
+        obs({ ...b, snrDb: 0 }), obs({ ...b, snrDb: 0 }), obs({ ...b, snrDb: 0 }),
+      ], NOW)!;
+
+      expect(solved.observationCount).toBe(6);
+      expect(solved.uniqueAnchors).toBe(2);
+      // Raw-observation nEff would be 6; per-position it is 2.
+      expect(solved.nEff).toBeCloseTo(2, 6);
+      expect(solved.radiusMethod).toBe('convergence');
+      // The statistical radius is spread / sqrt(2), not spread / sqrt(6).
+      const halfSpreadKm = 0.01 * 111.195 / 2;
+      expect(solved.uncertaintyKm).toBeCloseTo(halfSpreadKm / Math.SQRT2, 2);
+    });
+
+    it('leaves the centroid unchanged by collapsing repeats', () => {
+      const a = { anchorNodeNum: 1, anchorLat: 35.0, anchorLon: -80.0 };
+      const b = { anchorNodeNum: 2, anchorLat: 35.04, anchorLon: -80.0 };
+      const solved = solveNodePosition([
+        obs({ ...a, snrDb: 0 }), obs({ ...a, snrDb: 0 }), obs({ ...a, snrDb: 0 }),
+        obs({ ...b, snrDb: 0 }),
+      ], NOW)!;
+      // Three of four weights sit on A, so the pin is 3/4 of the way to A.
+      expect(solved.latitude).toBeCloseTo(35.01, 6);
+    });
+
+    it('writes the corrected estimate on the next scheduled run', async () => {
+      vi.clearAllMocks();
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      try {
+        mockDb.sources.getAllSources.mockResolvedValue([{ id: 'src-a', type: 'meshtastic_tcp' }]);
+        mockDb.nodes.getAllNodes.mockResolvedValue([
+          { nodeNum: 100, latitude: RELAY.anchorLat, longitude: RELAY.anchorLon },
+        ]);
+        // Three traceroutes from 100 through unpositioned 5 to unpositioned 6,
+        // each with a return path: two observations of 100 per traceroute.
+        mockDb.traceroutes.getAllTraceroutes.mockResolvedValue([0, 1, 2].map((i) => ({
+          fromNodeNum: 100, toNodeNum: 6, route: JSON.stringify([5]),
+          routeBack: JSON.stringify([5]), snrTowards: JSON.stringify([-25, -28]),
+          snrBack: JSON.stringify([-30, -36]), timestamp: NOW - i * 60_000,
+        })));
+        mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([]);
+        mockDb.upsertEstimatedPositionsAsync.mockResolvedValue(undefined);
+        mockDb.deleteEstimatedPositionsByNodeNumsAsync.mockResolvedValue(0);
+        mockDb.replaceEstimatedPositionAnchorsAsync.mockResolvedValue(undefined);
+
+        await positionEstimationService.recomputeAll({ lookbackMs: 7 * 24 * 60 * 60 * 1000 });
+
+        const estimate = mockDb.upsertEstimatedPositionsAsync.mock.calls[0][0]
+          .find((e: any) => e.nodeNum === 5);
+        expect(estimate.observationCount).toBe(6);
+        expect(estimate.radiusMethod).toBe('single_anchor');
+        expect(estimate.nEff).toBe(1);
+        expect(estimate.uncertaintyKm).toBeCloseTo(DEFAULT_SINGLE_ANCHOR_KM, 6);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('drops the false-confidence estimate under the shipped uncertainty cap', async () => {
+      vi.clearAllMocks();
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      try {
+        mockDb.sources.getAllSources.mockResolvedValue([{ id: 'src-a', type: 'meshtastic_tcp' }]);
+        mockDb.nodes.getAllNodes.mockResolvedValue([
+          { nodeNum: 100, latitude: RELAY.anchorLat, longitude: RELAY.anchorLon },
+        ]);
+        mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([0, 1, 2, 3].map((i) => ({
+          nodeNum: 100, neighborNodeNum: 9, snr: -7, timestamp: NOW - i * 60_000,
+        })));
+        mockDb.traceroutes.getAllTraceroutes.mockResolvedValue([]);
+        mockDb.upsertEstimatedPositionsAsync.mockResolvedValue(undefined);
+        mockDb.deleteEstimatedPositionsByNodeNumsAsync.mockResolvedValue(0);
+        mockDb.replaceEstimatedPositionAnchorsAsync.mockResolvedValue(undefined);
+
+        const result = await positionEstimationService.recomputeAll({
+          lookbackMs: 7 * 24 * 60 * 60 * 1000,
+          maxUncertaintyKm: DEFAULT_MAX_UNCERTAINTY_KM,
+        });
+
+        // Before #5900 this solved at the 50 m floor and was kept. Now it is a
+        // 5 km single-anchor guess, over the 2 km cap, so the stale row goes.
+        expect(result.rejectedNodeCount).toBe(1);
+        expect(mockDb.deleteEstimatedPositionsByNodeNumsAsync).toHaveBeenCalledWith(
+          expect.arrayContaining([9]),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it('clears a stored estimate this run did not rewrite (#5900)', async () => {
+    vi.clearAllMocks();
+    mockDb.sources.getAllSources.mockResolvedValue([{ id: 'src-a', type: 'meshtastic_tcp' }]);
+    mockDb.nodes.getAllNodes.mockResolvedValue([]);
+    mockDb.traceroutes.getAllTraceroutes.mockResolvedValue([]);
+    mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([]);
+    mockDb.upsertEstimatedPositionsAsync.mockResolvedValue(undefined);
+    mockDb.deleteEstimatedPositionsByNodeNumsAsync.mockResolvedValue(0);
+    mockDb.replaceEstimatedPositionAnchorsAsync.mockResolvedValue(undefined);
+    // A row left over from an older run (e.g. the pre-#5900 50 m estimate),
+    // for a node with no observation left in the lookback window.
+    mockDb.getAllEstimatedPositionsAsync.mockResolvedValueOnce([{ nodeNum: 4242 }]);
+
+    await positionEstimationService.recomputeAll({ lookbackMs: 1000 });
+
+    expect(mockDb.deleteEstimatedPositionsByNodeNumsAsync).toHaveBeenCalledWith(
+      expect.arrayContaining([4242]),
+    );
+  });
+
+  describe('selectAnchorsToStore (#5900)', () => {
+    const weighted = (anchorNodeNum: number, lat: number, weight: number) => ({
+      observation: obs({ anchorNodeNum, anchorLat: lat, anchorLon: -80 }),
+      weight,
+    });
+
+    it('stores every distinct position before any repeat', () => {
+      // One strong relay heard 5 times, plus two weaker distinct anchors.
+      const used = [
+        weighted(1, 35, 10), weighted(1, 35, 9), weighted(1, 35, 8),
+        weighted(1, 35, 7), weighted(1, 35, 6),
+        weighted(2, 36, 2), weighted(3, 37, 1),
+      ];
+      const kept = selectAnchorsToStore(used, 4);
+      expect(kept).toHaveLength(4);
+      expect(new Set(kept.map((k) => k.observation.anchorNodeNum))).toEqual(new Set([1, 2, 3]));
+      // Still strongest-first.
+      expect(kept.map((k) => k.weight)).toEqual([10, 9, 2, 1]);
+      expect(countUniqueAnchorPositions(kept.map((k) => k.observation))).toBe(3);
+    });
+
+    it('returns the input untouched when it fits', () => {
+      const used = [weighted(1, 35, 2), weighted(1, 35, 1)];
+      expect(selectAnchorsToStore(used, 20)).toBe(used);
     });
   });
 
