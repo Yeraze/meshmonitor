@@ -60,8 +60,19 @@ const FAVORITE_COMPONENT_TYPES: Record<string, readonly string[]> = {
 };
 
 /** A pseudo favorite type expands to its component types; anything else is just itself. */
-function expandFavoriteType(telemetryType: string): readonly string[] {
+export function expandFavoriteType(telemetryType: string): readonly string[] {
   return FAVORITE_COMPONENT_TYPES[telemetryType] ?? [telemetryType];
+}
+
+/**
+ * Parse one stored `telemetryFavorites` value (#5896: the cross-source
+ * dashboard reads every readable source's list). Malformed input yields [].
+ */
+export function parseTelemetryFavorites(
+  raw: string | null | undefined,
+  label = 'unknown',
+): Array<{ nodeId: string; telemetryType: string }> {
+  return parseFavorites(raw ?? undefined, label);
 }
 
 function clampStorageDays(raw: string | undefined, fallback: number): number {

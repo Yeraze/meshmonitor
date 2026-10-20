@@ -6481,7 +6481,12 @@ class DatabaseService {
     return [];
   }
 
-  async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string): Promise<DbTelemetry[]> {
+  /**
+   * Averaged telemetry for one node. `types`, when given, limits the result to
+   * those telemetry types (an empty list returns nothing): the cross-source
+   * dashboard asks only for favorited series (#5896).
+   */
+  async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string, types?: readonly string[]): Promise<DbTelemetry[]> {
     if (!this.telemetryRepo) {
       return [];
     }
@@ -6497,7 +6502,8 @@ class DatabaseService {
         sinceTimestamp,
         actualIntervalMinutes,
         maxHours,
-        sourceId
+        sourceId,
+        types
       );
       return rows.map(t => this.normalizeBigInts(t));
     }
@@ -6507,7 +6513,8 @@ class DatabaseService {
       sinceTimestamp,
       actualIntervalMinutes,
       maxHours,
-      sourceId
+      sourceId,
+      types
     );
     return rows.map(t => this.normalizeBigInts(t));
   }

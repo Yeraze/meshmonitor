@@ -1,0 +1,24 @@
+.star {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-faint);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.star:hover:not(:disabled) {
+  color: var(--color-warning);
+}
+
+.star:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.starOn {
+  color: var(--color-warning);
+}

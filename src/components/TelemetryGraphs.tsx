@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './TelemetryGraphs.css';
-import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
+import { type TemperatureUnit, formatTemperature, isTemperatureType } from '../utils/temperature';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -17,7 +17,6 @@ import { useWidgetRange } from '../hooks/useWidgetRange';
 import { useSource } from '../contexts/SourceContext';
 import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { getLatestValue } from '../utils/telemetry';
-import { telemetryDisplayScale } from '../utils/telemetryFormat';
 import { telemetryDotProp } from '../utils/telemetryChartDensity';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
@@ -29,8 +28,8 @@ import {
   getTelemetryCategory,
   type TelemetryCategory,
 } from '../utils/telemetryCategory';
-import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetryChartCsv';
-import { downloadTextFile } from '../utils/nodeExport';
+import { downloadTelemetryCsv, resolveSeriesDisplay } from '../utils/telemetrySeriesDisplay';
+import { TELEMETRY_RANGE_PRESETS, TELEMETRY_RETENTION_HOURS } from '../utils/telemetryRangePresets';
 import { UiIcon } from './icons';
 import DeviceCounterNote from './DeviceCounterNote';
 import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
@@ -80,26 +79,6 @@ interface TelemetryGraphsProps {
 /** localStorage key for the Device Info telemetry time-range selection. */
 const TELEMETRY_RANGE_STORAGE_KEY = 'deviceInfoTelemetryHours';
 
-/** Server-side telemetry retention window (see TELEMETRY_RETENTION_HOURS). */
-const TELEMETRY_RETENTION_HOURS = 168;
-
-/**
- * Selectable telemetry windows, shortest to longest. Capped at the retention
- * window so no button can request data that has already been purged. Hours are
- * fractional where needed (0.25h = 15 minutes); the backend parses with
- * parseFloat and averages each window down to a manageable point count.
- */
-const TELEMETRY_RANGE_PRESETS: { label: string; hours: number }[] = [
-  { label: '15m', hours: 0.25 },
-  { label: '1h', hours: 1 },
-  { label: '3h', hours: 3 },
-  { label: '6h', hours: 6 },
-  { label: '12h', hours: 12 },
-  { label: '24h', hours: 24 },
-  { label: '48h', hours: 48 },
-  { label: '3d', hours: 72 },
-  { label: '7d', hours: 168 },
-].filter(p => p.hours <= TELEMETRY_RETENTION_HOURS);
 
 /**
  * Helper function to calculate minimum timestamp from telemetry data
@@ -238,10 +217,10 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
 
   const isTemperature = isTemperatureType(type);
   const chartData = prepareChartData(data, isTemperature, globalMinTime);
-  // Humanize uptime and auto-scale current/power the same way the Dashboard
-  // widget does (#3261). Temperature keeps its own C/F handling below.
-  const display = telemetryDisplayScale(type, data.map(d => d.value), data[0]?.unit || '');
-  const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : display.unit;
+  // Humanize uptime, auto-scale current/power (#3261) and convert C/F, shared
+  // with the cross-source dashboard (#5896).
+  const display = resolveSeriesDisplay(type, data.map(d => d.value), data[0]?.unit || '', temperatureUnit);
+  const unit = display.unit;
   const label = isPaxcounterCombined ? 'Paxcounter' : getTelemetryLabel(type);
   const color = getColor(type);
 
@@ -292,27 +271,15 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
         paxBle: p.paxBle as number | null | undefined,
       };
     });
-    const csv = telemetrySeriesToCsv(rows, {
-      nodeId,
-      telemetryType: type,
-      unit,
-      hours,
-    });
-    downloadTextFile(
-      buildTelemetryFilename(nodeId, type, hours),
-      `\uFEFF${csv}`,
-      'text/csv;charset=utf-8',
-    );
+    downloadTelemetryCsv(rows, { nodeId, telemetryType: type, unit, hours });
   };
 
   // Gauge/numeric modes display a single raw value, so convert it (and the
   // gauge range) to the selected unit. Ranges persist in base units (Celsius
   // for temperature, the stored A/W for current/power), so edits made in the
   // displayed unit are converted back before saving.
-  const toDisplayTemp = (v: number) =>
-    isTemperature ? formatTemperature(v, 'C', temperatureUnit) : v * display.factor;
-  const toStoredTemp = (v: number) =>
-    isTemperature ? formatTemperature(v, temperatureUnit, 'C') : v / display.factor;
+  const toDisplayTemp = display.toDisplay;
+  const toStoredTemp = display.toStored;
   const handleRangeChange = (r: { min: number; max: number }) =>
     setRange({ min: toStoredTemp(r.min), max: toStoredTemp(r.max) });
 

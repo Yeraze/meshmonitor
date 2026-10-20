@@ -193,7 +193,7 @@ Read and search messages across every source from a single view, with an optiona
 ![Unified Messages](/images/features/unified-messages.png)
 
 ### Unified Telemetry
-Telemetry charts, gauges, and tables aggregated across every connected source.
+A cross-source Telemetry Dashboard: every favorited telemetry graph from every source you can read, with one line per source on each graph. A **Latest** tab shows the newest reading of each node per source, and a star there adds the reading to that source's favorites.
 
 ![Unified Telemetry](/images/features/unified-telemetry.png)
 

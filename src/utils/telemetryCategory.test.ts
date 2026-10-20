@@ -12,6 +12,8 @@ import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 import {
   getTelemetryCategory,
+  isObserverRelative,
+  observerRelativeTypes,
   TELEMETRY_CATEGORY_LABELS,
   TELEMETRY_CATEGORY_ORDER,
 } from './telemetryCategory';
@@ -110,6 +112,43 @@ describe('getTelemetryCategory', () => {
   it('has a label for every category in the display order', () => {
     for (const cat of TELEMETRY_CATEGORY_ORDER) {
       expect(TELEMETRY_CATEGORY_LABELS[cat]).toBeTruthy();
+    }
+  });
+});
+
+describe('isObserverRelative (#5896)', () => {
+  it('flags the signal, channel-load, packet-counter and per-source computed types', () => {
+    for (const type of [
+      'snr', 'snr_local', 'snr_remote', 'rssi', 'mc_last_rssi', 'mc_status_last_snr',
+      'channelUtilization', 'airUtilTx', 'numPacketsRx', 'numTxDropped',
+      'systemNodeCount', 'systemPacketsRxMqtt', 'transportNodesHeard', 'timeOffset',
+    ]) {
+      expect(isObserverRelative(type)).toBe(true);
+    }
+  });
+
+  it('leaves properties of the subject node unflagged', () => {
+    for (const type of [
+      'temperature', 'humidity', 'pressure', 'batteryLevel', 'voltage', 'uptimeSeconds',
+      'mc_temperature_ch1', 'mc_battery_volts', 'pm25Standard', 'altitude', 'unknown_type',
+    ]) {
+      expect(isObserverRelative(type)).toBe(false);
+    }
+  });
+
+  it('names only types that have a real category, so a typo cannot hide in the list', () => {
+    for (const type of observerRelativeTypes()) {
+      expect(getTelemetryCategory(type), type).not.toBe('other');
+    }
+  });
+
+  it('every observer-relative type has a chart label', () => {
+    const labels = new Set(loadTelemetryLabelKeys());
+    // Pseudo favorite types render as combined charts with their own titles.
+    const pseudo = new Set(['transportNodesHeard', 'transportPacketsRx']);
+    for (const type of observerRelativeTypes()) {
+      if (pseudo.has(type)) continue;
+      expect(labels.has(type), type).toBe(true);
     }
   });
 });
