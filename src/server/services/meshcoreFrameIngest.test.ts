@@ -3,17 +3,19 @@
  * decrypt, the secret-derived channel index / fingerprint, and ADVERT → node.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
+import { ChannelCrypto, Ed25519SignatureVerifier } from '@michaelhart/meshcore-decoder';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
 
 const upsertNode = vi.fn().mockResolvedValue(undefined);
 const getAllChannels = vi.fn();
 const getEnabledVirtual = vi.fn();
+const getSettingAsBoolean = vi.fn().mockResolvedValue(false);
 vi.mock('../../services/database.js', () => ({
   default: {
     meshcore: { upsertNode: (...a: unknown[]) => upsertNode(...a) },
     channels: { getAllChannels: (...a: unknown[]) => getAllChannels(...a) },
     channelDatabase: { getEnabledAsync: (...a: unknown[]) => getEnabledVirtual(...a) },
+    settings: { getSettingAsBoolean: (...a: unknown[]) => getSettingAsBoolean(...a) },
   },
 }));
 
@@ -203,6 +205,42 @@ describe('ingestAdvertFrame', () => {
     expect(await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, skipPublicKey: NODE_KEY.toUpperCase() })).toBeNull();
     expect(await ingestAdvertFrame(buildGrpTxtFrame(1, 'A: b', SECRET_A), 's', { lastHeardMs: 1 })).toBeNull();
     expect(upsertNode).not.toHaveBeenCalled();
+  });
+
+  describe('advertSignatureVerified marker (#5909)', () => {
+    it('is left untouched (undefined) for callers that do not record it', async () => {
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1 });
+      expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBeUndefined();
+      expect(getSettingAsBoolean).not.toHaveBeenCalled();
+    });
+
+    it('is written false WITHOUT a signature check while the toggle is off', async () => {
+      getSettingAsBoolean.mockResolvedValueOnce(false);
+      const spy = vi.spyOn(Ed25519SignatureVerifier, 'verifyAdvertisementSignature');
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, recordSignature: true });
+      expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBe(false);
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it('records the check result while the toggle is on', async () => {
+      getSettingAsBoolean.mockResolvedValue(true);
+      // The test frame carries a dummy signature, so the real check fails.
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, recordSignature: true });
+      expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBe(false);
+
+      const spy = vi.spyOn(Ed25519SignatureVerifier, 'verifyAdvertisementSignature').mockResolvedValue(true);
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, recordSignature: true });
+      expect(upsertNode.mock.calls[1][0].advertSignatureVerified).toBe(true);
+      spy.mockRestore();
+      getSettingAsBoolean.mockReset().mockResolvedValue(false);
+    });
+
+    it('treats a throwing settings read as off', async () => {
+      getSettingAsBoolean.mockRejectedValueOnce(new Error('db down'));
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, recordSignature: true });
+      expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBe(false);
+    });
   });
 });
 

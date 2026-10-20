@@ -21,7 +21,7 @@
  */
 import { createHash, createHmac, createDecipheriv, timingSafeEqual } from 'node:crypto';
 import { advertHasPosition } from '../../utils/meshcoreAdvertPosition.js';
-import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
+import { ChannelCrypto, Ed25519SignatureVerifier } from '@michaelhart/meshcore-decoder';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
 import { decodeMeshCorePacket, type DecodedAdvert } from '../../utils/meshcorePacketDecode.js';
@@ -356,15 +356,59 @@ export function frameChannelMessageId(
  * Returns the decoded advert when a node was written, else null. Throws on a
  * DB failure; callers are best-effort and catch.
  */
+/** Global opt-in for cross-source hop resolution (#5909). */
+export const CROSS_SOURCE_HOP_RESOLUTION_SETTING = 'meshcoreCrossSourceHopResolution';
+
+/** Check an advert's Ed25519 signature. Never throws: a throw counts as invalid. */
+export async function verifyAdvertSignature(advert: DecodedAdvert): Promise<boolean> {
+  try {
+    return await Ed25519SignatureVerifier.verifyAdvertisementSignature(
+      advert.publicKey,
+      advert.signature,
+      advert.timestamp,
+      advert.appDataHex ?? '',
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The `advertSignatureVerified` value to store for an MQTT-ingested advert
+ * (#5909). The check costs an Ed25519 verify per advert, which #5040 chose
+ * not to pay on every feed, so it runs only while the cross-source hop toggle
+ * is on. With the toggle off the marker is written `false`, so a node never
+ * keeps a `true` from an older advert after a newer one went unchecked.
+ */
+async function advertSignatureMarker(advert: DecodedAdvert): Promise<boolean> {
+  let enabled: boolean;
+  try {
+    enabled = await databaseService.settings.getSettingAsBoolean(CROSS_SOURCE_HOP_RESOLUTION_SETTING, false);
+  } catch {
+    enabled = false;
+  }
+  return enabled ? verifyAdvertSignature(advert) : false;
+}
+
 export async function ingestAdvertFrame(
   rawHex: string,
   sourceId: string,
-  opts: { lastHeardMs: number | 'advert'; skipPublicKey?: string | null },
+  opts: {
+    lastHeardMs: number | 'advert';
+    skipPublicKey?: string | null;
+    /**
+     * #5909: store whether the advert's signature verified (meshcore_mqtt
+     * ingest only, where adverts come from strangers). Other callers leave
+     * the marker untouched.
+     */
+    recordSignature?: boolean;
+  },
 ): Promise<DecodedAdvert | null> {
   const packet = decodeMeshCorePacket(rawHex);
   const advert = packet?.payload?.advert;
   if (!advert?.publicKey) return null;
   if (opts.skipPublicKey && advert.publicKey.toLowerCase() === opts.skipPublicKey.toLowerCase()) return null;
+  const advertSignatureVerified = opts.recordSignature ? await advertSignatureMarker(advert) : undefined;
 
   await databaseService.meshcore.upsertNode(
     {
@@ -381,6 +425,8 @@ export async function ingestAdvertFrame(
       // coordinates stay, so this is the one record that the node's latest
       // advert had no position.
       lastAdvertHadPosition: advertHasPosition(advert.latitude, advert.longitude),
+      // #5909: undefined (non-MQTT callers) keeps the stored value.
+      advertSignatureVerified,
       lastHeard: opts.lastHeardMs === 'advert' ? advertLastHeardMs(advert.timestamp) : opts.lastHeardMs,
     },
     sourceId,

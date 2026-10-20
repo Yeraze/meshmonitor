@@ -205,6 +205,9 @@ interface SettingsDraft {
   // server-only — same Category C pattern as localStatsIntervalMinutes.
   txTargetMaxAgeHoursWhenUnlimited: number;
   meshcoreCliTimeoutSeconds: number;
+  // #5909: global opt-in, default off. Server-only (Category C): read by the
+  // hop-candidates route, never via SettingsContext.
+  meshcoreCrossSourceHopResolution: boolean;
   adminRetryAttempts: number;
   // Coverage Report retention window, in days (#5277 P1 WP2). Global, no
   // SettingsContext prop home — same Category C pattern as the two above.
@@ -567,6 +570,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     localStatsIntervalMinutes: NODE_DISPLAY_NUMERIC_DEFAULTS.localStatsIntervalMinutes,
     txTargetMaxAgeHoursWhenUnlimited: TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT,
     meshcoreCliTimeoutSeconds: 15,
+    meshcoreCrossSourceHopResolution: false,
     adminRetryAttempts: 1,
     coverageRetentionDays: COVERAGE_RETENTION_DEFAULT_DAYS,
     analyticsProvider: 'none',
@@ -609,6 +613,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // MeshCore CLI console reply-timeout (seconds), issue #4027. Local-only server-backed setting
   // (no SettingsContext prop), mirroring localStats above.
   const [initialMeshcoreCliTimeoutSeconds, setInitialMeshcoreCliTimeoutSeconds] = useState(15);
+  const [initialMeshcoreCrossSourceHopResolution, setInitialMeshcoreCrossSourceHopResolution] = useState(false);
   const [initialAdminRetryAttempts, setInitialAdminRetryAttempts] = useState(1);
   // Coverage Report retention window (#5277 P1 WP2). Same Category C pattern.
   const [initialCoverageRetentionDays, setInitialCoverageRetentionDays] = useState(COVERAGE_RETENTION_DEFAULT_DAYS);
@@ -776,6 +781,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const cliTimeout = Number.isFinite(cliTimeoutParsed) ? Math.min(60, Math.max(1, cliTimeoutParsed)) : 15;
           updateField('meshcoreCliTimeoutSeconds', cliTimeout);
           setInitialMeshcoreCliTimeoutSeconds(cliTimeout);
+
+          // #5909: cross-source hop resolution. Off unless explicitly on.
+          const crossSourceHopsOn = settings.meshcoreCrossSourceHopResolution === '1' || settings.meshcoreCrossSourceHopResolution === 'true';
+          updateField('meshcoreCrossSourceHopResolution', crossSourceHopsOn);
+          setInitialMeshcoreCrossSourceHopResolution(crossSourceHopsOn);
 
           // Load remote-admin retry attempts (#4487). Absent/invalid => 1, i.e.
           // a single attempt, matching the server's own fallback exactly.
@@ -1063,6 +1073,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localStatsIntervalMinutes: initialLocalStatsIntervalMinutes,
       txTargetMaxAgeHoursWhenUnlimited: initialTxTargetMaxAgeHoursWhenUnlimited,
       meshcoreCliTimeoutSeconds: initialMeshcoreCliTimeoutSeconds,
+      meshcoreCrossSourceHopResolution: initialMeshcoreCrossSourceHopResolution,
       adminRetryAttempts: initialAdminRetryAttempts,
       coverageRetentionDays: initialCoverageRetentionDays,
       analyticsProvider: initialAnalyticsProvider,
@@ -1100,7 +1111,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialSignFlip,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialTxTargetMaxAgeHoursWhenUnlimited,
-      initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
+      initialMeshcoreCliTimeoutSeconds, initialMeshcoreCrossSourceHopResolution, initialAdminRetryAttempts,
       initialCoverageRetentionDays,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
@@ -1301,6 +1312,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialLocalStatsIntervalMinutes(d.localStatsIntervalMinutes);
     setInitialTxTargetMaxAgeHoursWhenUnlimited(d.txTargetMaxAgeHoursWhenUnlimited);
     setInitialMeshcoreCliTimeoutSeconds(d.meshcoreCliTimeoutSeconds);
+    setInitialMeshcoreCrossSourceHopResolution(d.meshcoreCrossSourceHopResolution);
     setInitialAdminRetryAttempts(d.adminRetryAttempts);
     setInitialCoverageRetentionDays(d.coverageRetentionDays);
     setInitialAnalyticsProvider(d.analyticsProvider);
@@ -1391,6 +1403,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         localStatsIntervalMinutes: draft.localStatsIntervalMinutes.toString(),
         txTargetMaxAgeHoursWhenUnlimited: draft.txTargetMaxAgeHoursWhenUnlimited.toString(),
         meshcoreCliTimeoutSeconds: draft.meshcoreCliTimeoutSeconds.toString(),
+        meshcoreCrossSourceHopResolution: draft.meshcoreCrossSourceHopResolution ? '1' : '0',
         adminRetryAttempts: draft.adminRetryAttempts.toString(),
         coverage_retention_days: String(clampCoverageRetentionDays(draft.coverageRetentionDays)),
         nodeHopsCalculation: draft.nodeHopsCalculation,
@@ -2419,6 +2432,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(n) => updateField('meshcoreCliTimeoutSeconds', n)}
               className="setting-input"
             />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="meshcoreCrossSourceHopResolution" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="meshcoreCrossSourceHopResolution"
+                type="checkbox"
+                checked={draft.meshcoreCrossSourceHopResolution}
+                onChange={(e) => updateField('meshcoreCrossSourceHopResolution', e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.meshcore_cross_source_hops_label', 'Use other sources to resolve unknown hops')}</span>
+            </label>
+            <p className="setting-description">
+              {t('settings.meshcore_cross_source_hops_description', 'When a relay hash in a MeshCore message route matches none of this source\'s contacts, look it up in the other MeshCore sources you can read, including MQTT feeds (MQTT nodes count only once a signed advert from them has checked out). Those names are marked "via <source>", and a hash that several nodes share is shown as a guess with a question mark. Display only: nothing is sent. Off by default.')}
+            </p>
           </div>
         </div>}
 

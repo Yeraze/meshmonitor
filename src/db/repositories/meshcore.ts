@@ -95,6 +95,14 @@ export interface DbMeshCoreNode {
    */
   lastAdvertHadPosition?: boolean | null;
   /**
+   * #5909 (migration 215): did the signature on the latest ADVERT this source
+   * ingested verify? Written only by meshcore_mqtt ingest, and only checked
+   * while `meshcoreCrossSourceHopResolution` is on (otherwise written `false`,
+   * so a stale `true` never outlives an unchecked advert). NULL = never
+   * checked. Gates which MQTT nodes may name a hop on another source.
+   */
+  advertSignatureVerified?: boolean | null;
+  /**
    * #5842 (migration 206): MeshMonitor-only location override, parallel to
    * the Meshtastic `nodes.positionOverride*` columns. Written only by
    * `setNodePositionOverride` / `clearNodePositionOverride`; `upsertNode`

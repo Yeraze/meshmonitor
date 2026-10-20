@@ -116,6 +116,17 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row?.positionSource).toBe('contact');
   });
 
+  it('upsertNode stores advertSignatureVerified, lets false replace true, and keeps it when unobserved (#5909)', async () => {
+    await repo.upsertNode({ publicKey: 'pk-sig', name: 'Signed', advertSignatureVerified: true }, 'src-a');
+    expect((await repo.getNodeByPublicKeyAndSource('pk-sig', 'src-a'))?.advertSignatureVerified).toBe(true);
+    // A non-MQTT write (undefined) keeps the marker.
+    await repo.upsertNode({ publicKey: 'pk-sig', name: 'Signed' }, 'src-a');
+    expect((await repo.getNodeByPublicKeyAndSource('pk-sig', 'src-a'))?.advertSignatureVerified).toBe(true);
+    // A later unchecked/invalid advert clears it.
+    await repo.upsertNode({ publicKey: 'pk-sig', advertSignatureVerified: false }, 'src-a');
+    expect((await repo.getNodeByPublicKeyAndSource('pk-sig', 'src-a'))?.advertSignatureVerified).toBe(false);
+  });
+
   it('upsertNode leaves lastAdvertHadPosition alone when the caller did not observe an advert (#5578)', async () => {
     await repo.upsertNode({ publicKey: 'pk-adv2', lastAdvertHadPosition: false }, 'src-a');
     // A telemetry / config write knows nothing about adverts.
@@ -276,6 +287,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTimeSyncAt INTEGER,
         repeaterNeighborAt INTEGER,
         lastAdvertHadPosition INTEGER,
+        advertSignatureVerified INTEGER,
         positionOverrideEnabled INTEGER DEFAULT 0,
         latitudeOverride REAL,
         longitudeOverride REAL,
@@ -553,6 +565,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTimeSyncAt INTEGER,
         repeaterNeighborAt INTEGER,
         lastAdvertHadPosition INTEGER,
+        advertSignatureVerified INTEGER,
         positionOverrideEnabled INTEGER DEFAULT 0,
         latitudeOverride REAL,
         longitudeOverride REAL,
@@ -831,6 +844,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTimeSyncAt INTEGER,
         repeaterNeighborAt INTEGER,
         lastAdvertHadPosition INTEGER,
+        advertSignatureVerified INTEGER,
         positionOverrideEnabled INTEGER DEFAULT 0,
         latitudeOverride REAL,
         longitudeOverride REAL,
@@ -917,6 +931,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTimeSyncAt INTEGER,
         repeaterNeighborAt INTEGER,
         lastAdvertHadPosition INTEGER,
+        advertSignatureVerified INTEGER,
         positionOverrideEnabled INTEGER DEFAULT 0,
         latitudeOverride REAL,
         longitudeOverride REAL,

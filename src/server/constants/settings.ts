@@ -315,6 +315,11 @@ export const VALID_SETTINGS_KEYS = [
   // in direct range so you can re-fire a command sooner instead of waiting the
   // default 15s. Clamped to 1..60s; absent/invalid => the built-in 15s default.
   'meshcoreCliTimeoutSeconds',
+  // Global opt-in (#5909, default OFF): when a relay hash in a MeshCore message
+  // route matches none of the source's own contacts, the route view may look it
+  // up among MeshCore nodes on OTHER sources the viewer can read (meshcore_mqtt
+  // nodes only with a verified advert). Read by the hop-candidates route.
+  'meshcoreCrossSourceHopResolution',
   // How many times a remote admin command is attempted before settling as
   // timed_out (#4487). Only a timeout is retried — an explicit routing
   // rejection settles immediately. Clamped 1..10; absent/invalid => 1, i.e.
@@ -879,6 +884,7 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'contactUrl',                             // "
   'meshcoreChannelRetryEnabled',            // :189 global opt-in (#3979)
   'meshcoreReactionsAckOnReceive',          // global opt-in: Auto-Ack may answer reactions (#5759)
+  'meshcoreCrossSourceHopResolution',       // global opt-in: cross-source hop names (#5909)
   'meshcoreCliTimeoutSeconds',              // :195 global CLI reply timeout (#4027)
   'adminRetryAttempts',                     // :201 global admin retry count (#4487)
   'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)

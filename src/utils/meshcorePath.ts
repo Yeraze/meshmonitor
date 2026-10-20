@@ -250,3 +250,146 @@ export function resolveRoute(hops: PathHop[], contacts: MeshCoreContact[]): Reso
 export function resolveRouteNames(hops: PathHop[], contacts: MeshCoreContact[]): string[] {
   return resolveRoute(hops, contacts).map((r) => r.name ?? r.byte);
 }
+
+// ---------------------------------------------------------------------------
+// Cross-source fallback (#5909)
+// ---------------------------------------------------------------------------
+
+/**
+ * A relay on ANOTHER MeshCore source whose key starts with a hop hash, as the
+ * server's permission-filtered `/hop-candidates` route returns it. Position is
+ * present only when the viewer may see it.
+ */
+export interface CrossSourceHopCandidate {
+  name: string;
+  publicKey: string;
+  sourceId: string;
+  sourceName: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+/** Hop hash (lowercase hex) to the other-source relays that match it. */
+export type CrossSourceHopPool = Record<string, CrossSourceHopCandidate[]>;
+
+/** A fallback candidate with its ranking distance (km), when it could be ranked. */
+export interface RankedHopCandidate extends CrossSourceHopCandidate {
+  /** Summed distance to the anchors used to rank it; absent when unranked. */
+  distanceKm?: number;
+}
+
+/** A route hop resolved own-contacts-first, then from other sources. */
+export interface ResolvedRouteHopWithFallback extends ResolvedRouteHop {
+  /** 'own' = this source's contacts; 'other' = another source; 'none' = unknown. */
+  origin: 'own' | 'other' | 'none';
+  /** The source the shown name came from (origin 'other' only). */
+  via: { sourceId: string; sourceName: string } | null;
+  /**
+   * True when `name` is a distance-ranked GUESS among several other-source
+   * candidates. A tentative hop never carries a position, so it never lands on
+   * the flow map as if it were known.
+   */
+  tentative: boolean;
+  /** Every other-source candidate (origin 'other'), best first when ranked. */
+  candidates: RankedHopCandidate[];
+}
+
+function candidatePosition(c: CrossSourceHopCandidate): { lat: number; lon: number } | null {
+  return optionPosition({ publicKey: c.publicKey, name: c.name, hopByte: '', latitude: c.latitude, longitude: c.longitude });
+}
+
+/**
+ * Resolve a route like {@link resolveRoute}, then fill hops that matched none
+ * of this source's contacts from `pool` (other sources, #5909).
+ *
+ * Own contacts always win: a hop with any own match is left exactly as
+ * `resolveRoute` resolved it. For an unmatched hop:
+ *  - one candidate   → its name, labelled with its source; not tentative.
+ *  - several, ranked → the nearest candidate, marked tentative. Anchors are
+ *    the neighbouring hops' known positions (the previous hop, when it is not
+ *    itself a guess, and the next hop when it resolves to one node), plus the
+ *    receiving radio after the last hop, since the last relay is the one that
+ *    reached it. With no neighbour anchor, the receiver alone is used.
+ *  - several, unranked (no positioned candidate or no anchor) → no name; the
+ *    caller shows "N candidates" and the list.
+ */
+export function resolveRouteWithFallback(
+  hops: PathHop[],
+  contacts: MeshCoreContact[],
+  pool: CrossSourceHopPool | null | undefined,
+  receiver?: { lat: number; lon: number } | null,
+): ResolvedRouteHopWithFallback[] {
+  const own = resolveRoute(hops, contacts);
+  const candsFor = (i: number): CrossSourceHopCandidate[] => {
+    if (!pool || own[i].matchCount > 0) return [];
+    const byte = hops[i];
+    return (pool[byte] ?? []).filter((c) => c.publicKey.toLowerCase().startsWith(byte));
+  };
+
+  // A position the hop is certain to have: an own unique match, or a single
+  // other-source candidate. Used as the "next hop" anchor.
+  const certainPos = hops.map((_, i) => {
+    if (own[i].matchCount === 1) return own[i].position;
+    const cs = candsFor(i);
+    return cs.length === 1 ? candidatePosition(cs[0]) : null;
+  });
+
+  const out: ResolvedRouteHopWithFallback[] = [];
+  for (let i = 0; i < hops.length; i++) {
+    const base = own[i];
+    if (base.matchCount > 0) {
+      out.push({ ...base, origin: 'own', via: null, tentative: false, candidates: [] });
+      continue;
+    }
+    const cs = candsFor(i);
+    if (cs.length === 0) {
+      out.push({ ...base, origin: 'none', via: null, tentative: false, candidates: [] });
+      continue;
+    }
+    if (cs.length === 1) {
+      const c = cs[0];
+      out.push({
+        byte: base.byte,
+        name: c.name,
+        matchCount: 1,
+        position: candidatePosition(c),
+        origin: 'other',
+        via: { sourceId: c.sourceId, sourceName: c.sourceName },
+        tentative: false,
+        candidates: [c],
+      });
+      continue;
+    }
+
+    const prev = i > 0 && !out[i - 1].tentative ? out[i - 1].position : null;
+    const next = i < hops.length - 1 ? certainPos[i + 1] : (receiver ?? null);
+    let anchors = [prev, next].filter((p): p is { lat: number; lon: number } => p !== null);
+    if (anchors.length === 0 && receiver) anchors = [receiver];
+
+    const ranked: RankedHopCandidate[] = cs.map((c) => {
+      const p = candidatePosition(c);
+      if (!p || anchors.length === 0) return { ...c };
+      const d = anchors.reduce((acc, a) => acc + calculateDistance(p.lat, p.lon, a.lat, a.lon), 0);
+      return { ...c, distanceKm: d };
+    });
+    ranked.sort((a, b) => {
+      const da = a.distanceKm ?? Infinity;
+      const db = b.distanceKm ?? Infinity;
+      if (da !== db) return da - db;
+      return a.name.localeCompare(b.name);
+    });
+    const best = ranked[0];
+    const isRanked = best.distanceKm !== undefined;
+    out.push({
+      byte: base.byte,
+      name: isRanked ? best.name : null,
+      matchCount: cs.length,
+      position: null,
+      origin: 'other',
+      via: isRanked ? { sourceId: best.sourceId, sourceName: best.sourceName } : null,
+      tentative: isRanked,
+      candidates: ranked,
+    });
+  }
+  return out;
+}

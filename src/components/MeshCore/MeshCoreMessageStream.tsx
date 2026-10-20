@@ -968,6 +968,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           message={routeDetail}
           fromLabel={routeDetail.fromName ?? nameForKey(routeDetail.fromPublicKey) ?? `${routeDetail.fromPublicKey.substring(0, 8)}…`}
           contacts={contacts ?? []}
+          sourceId={sourceId}
           onClose={() => setRouteDetail(null)}
         />
       )}

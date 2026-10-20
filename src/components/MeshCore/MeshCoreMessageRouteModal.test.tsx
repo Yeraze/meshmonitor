@@ -11,7 +11,7 @@
  */
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -27,6 +27,11 @@ vi.mock('react-leaflet', () => ({
   Polyline: () => <div data-testid="flow-line" />,
   Tooltip: ({ children }: { children?: ReactNode }) => <span data-testid="flow-label">{children}</span>,
   useMap: () => ({ setView: vi.fn(), fitBounds: vi.fn() }),
+}));
+
+const apiGet = vi.fn();
+vi.mock('../../services/api', () => ({
+  default: { get: (...a: unknown[]) => apiGet(...a) },
 }));
 
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
@@ -234,6 +239,95 @@ describe('MeshCoreMessageRouteModal', () => {
         />,
       );
       expect(screen.queryByTestId('base-map')).toBeNull();
+    });
+  });
+
+  describe('cross-source fallback (#5909)', () => {
+    const otherKey = (prefix: string, fill: string) => prefix + fill.repeat(64 - prefix.length);
+    const local: MeshCoreContact = {
+      publicKey: 'ee' + 'e'.repeat(62), advType: 1, advName: 'Me', isLocal: true, latitude: 51.92, longitude: 4.48,
+    };
+    const own: MeshCoreContact[] = [
+      { publicKey: 'a3' + 'b'.repeat(62), advType: 2, advName: 'Hilltop', latitude: 51.9, longitude: 4.4 },
+      local,
+    ];
+    const envelope = (candidates: Record<string, unknown[]>, enabled = true) => ({ success: true, data: { enabled, candidates } });
+
+    it('asks only for hops own contacts left unknown, and labels a single match "via" its source', async () => {
+      apiGet.mockReset().mockResolvedValue(envelope({
+        '7f': [{ name: 'NL-RTM-RPT-01', publicKey: otherKey('7f', 'a'), sourceId: 'mq', sourceName: 'DutchMeshcore' }],
+      }));
+      render(
+        <MeshCoreMessageRouteModal message={msg()} fromLabel="Sender" contacts={own} sourceId="src-1" onClose={() => {}} />,
+      );
+      await waitFor(() => expect(screen.getByText('NL-RTM-RPT-01')).toBeTruthy());
+      expect(apiGet).toHaveBeenCalledTimes(1);
+      expect(apiGet.mock.calls[0][0]).toBe('/api/sources/src-1/meshcore/hop-candidates?prefixes=7f');
+      expect(screen.getByText('(via DutchMeshcore)')).toBeTruthy();
+      // The own match is unchanged and carries no "via".
+      expect(screen.getAllByText('Hilltop').length).toBeGreaterThan(0);
+      expect(screen.queryByText(/candidates/)).toBeNull();
+    });
+
+    it('shows a ranked collision as a tentative guess with the full list on expand, and no map', async () => {
+      apiGet.mockReset().mockResolvedValue(envelope({
+        '7f': [
+          { name: 'Far Rpt', publicKey: otherKey('7f', 'a'), sourceId: 'mq', sourceName: 'DutchMeshcore', latitude: 40, longitude: -74 },
+          { name: 'NL-RTM-RPT-01', publicKey: otherKey('7f', 'b'), sourceId: 'mq', sourceName: 'DutchMeshcore', latitude: 51.91, longitude: 4.47 },
+          { name: 'Unplaced', publicKey: otherKey('7f', 'c'), sourceId: 'mq2', sourceName: 'Other Feed' },
+        ],
+      }));
+      render(
+        <MeshCoreMessageRouteModal message={msg()} fromLabel="Sender" contacts={own} sourceId="src-1" onClose={() => {}} />,
+      );
+      await waitFor(() => expect(screen.getAllByText('NL-RTM-RPT-01?').length).toBeGreaterThan(0));
+      expect(screen.getByText('(via DutchMeshcore, 3 candidates)')).toBeTruthy();
+      const summary = screen.getByText('Show all 3 candidates (nearest first)');
+      fireEvent.click(summary);
+      const items = Array.from(document.querySelectorAll('details li')).map((li) => li.textContent);
+      expect(items[0]).toContain('NL-RTM-RPT-01');
+      expect(items[1]).toContain('Far Rpt');
+      expect(items[2]).toContain('Unplaced');
+      expect(items[2]).toContain('via Other Feed');
+      // A guess never draws the flow map.
+      expect(screen.queryByTestId('base-map')).toBeNull();
+    });
+
+    it('shows "N candidates" with no guess when nothing can be ranked', async () => {
+      apiGet.mockReset().mockResolvedValue(envelope({
+        '7f': [
+          { name: 'Bravo', publicKey: otherKey('7f', 'a'), sourceId: 'mq', sourceName: 'Feed' },
+          { name: 'Alpha', publicKey: otherKey('7f', 'b'), sourceId: 'mq', sourceName: 'Feed' },
+        ],
+      }));
+      render(
+        <MeshCoreMessageRouteModal
+          message={msg({ routePath: '7f' })}
+          fromLabel="Sender"
+          contacts={[]}
+          sourceId="src-1"
+          onClose={() => {}}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText('2 candidates')).toBeTruthy());
+      expect(screen.getByText('Show all 2 candidates')).toBeTruthy();
+      expect(screen.queryByText(/\?$/)).toBeNull();
+    });
+
+    it('does not call the server when every hop resolved, or with no sourceId', () => {
+      apiGet.mockReset().mockResolvedValue(envelope({}));
+      const both: MeshCoreContact[] = [...own, { publicKey: '7f' + 'c'.repeat(62), advType: 3, advName: 'Downtown Room' }];
+      render(<MeshCoreMessageRouteModal message={msg()} fromLabel="Sender" contacts={both} sourceId="src-1" onClose={() => {}} />);
+      render(<MeshCoreMessageRouteModal message={msg()} fromLabel="Sender" contacts={own} onClose={() => {}} />);
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+
+    it('keeps the hop unknown when the server reports the toggle off', async () => {
+      apiGet.mockReset().mockResolvedValue(envelope({ '7f': [{ name: 'Leak', publicKey: otherKey('7f', 'a'), sourceId: 'mq', sourceName: 'X' }] }, false));
+      render(<MeshCoreMessageRouteModal message={msg()} fromLabel="Sender" contacts={own} sourceId="src-1" onClose={() => {}} />);
+      await waitFor(() => expect(apiGet).toHaveBeenCalled());
+      expect(screen.queryByText('Leak')).toBeNull();
+      expect(screen.getByText('unknown repeater')).toBeTruthy();
     });
   });
 });

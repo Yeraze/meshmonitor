@@ -1,0 +1,41 @@
+/* #5909: hop names borrowed from another source, kept apart from own contacts. */
+
+.otherName {
+  color: var(--color-info);
+}
+
+.tentativeName {
+  color: var(--color-warning);
+  font-style: italic;
+}
+
+.via {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.candidates {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.candidates > summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+}
+
+.candidateList {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.85em;
+  color: var(--color-text);
+}
+
+.candidateList li {
+  margin: 0.125rem 0;
+}
+
+.candidateKey {
+  color: var(--color-text-subtle);
+}

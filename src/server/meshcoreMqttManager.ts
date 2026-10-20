@@ -539,6 +539,11 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    * the packet monitor can show validity per frame on demand. If this ever
    * needs to become a gate, that is the hook, and it belongs here.
    *
+   * #5909: the result IS now recorded (not enforced) as
+   * `meshcore_nodes.advertSignatureVerified`, but only while the global
+   * cross-source hop toggle is on, so the CPU cost stays opt-in. Another
+   * source may borrow a name from this one only when that marker is true.
+   *
    * Best-effort: a decode or write failure must never break the ingest stream.
    */
   private async ingestAdvert(decoded: IngestedObserverPacket): Promise<void> {
@@ -547,7 +552,11 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // delayed publish must not make a silent node look freshly heard. The
       // shared helper caps the claim at now, since a forged FUTURE time would
       // park the node at the top of every "last heard" sort indefinitely.
-      const advert = await ingestAdvertFrame(decoded.event.raw_hex, this.sourceId, { lastHeardMs: 'advert' });
+      const advert = await ingestAdvertFrame(decoded.event.raw_hex, this.sourceId, {
+        lastHeardMs: 'advert',
+        // #5909: record signature validity for cross-source hop resolution.
+        recordSignature: true,
+      });
       if (advert) this.stats.advertsIngested++;
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);

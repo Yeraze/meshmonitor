@@ -70,6 +70,7 @@ const { default: packetRoutes } = await import('./meshcorePacketRoutes.js');
 const { default: ingestReadRoutes } = await import('./meshcoreIngestReadRoutes.js');
 const { default: filterRoutes } = await import('./meshcoreFilterRoutes.js');
 const { default: traceRoutes } = await import('./meshcoreTraceRoutes.js');
+const { default: hopCandidatesRoutes } = await import('./meshcoreHopCandidatesRoutes.js');
 const { perSourceCliHistoryRouter } = await import('./meshcoreCliHistoryRoutes.js');
 
 /**
@@ -661,6 +662,10 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
   trace: {
     'GET /hop-snr': 'read',
   },
+  // #5909: cross-source hop names. Stored data; sends nothing; off by default.
+  hopCandidates: {
+    'GET /hop-candidates': 'read',
+  },
   // #5892: stored CLI history. Sends nothing; grants checked per row kind.
   cliHistory: {
     'GET /cli-history': 'handler-scoped',
@@ -695,6 +700,7 @@ describe('guard: every MeshCore route is classified', () => {
     ingest: ingestReadRoutes,
     filter: filterRoutes,
     trace: traceRoutes,
+    hopCandidates: hopCandidatesRoutes,
     cliHistory: perSourceCliHistoryRouter,
   };
   const key = (r: RegisteredRoute): string => `${r.method.toUpperCase()} ${r.path}`;
