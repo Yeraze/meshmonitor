@@ -102,6 +102,7 @@ import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIR
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
 import { resolveLastHeardSec, isLiveReception, isFirmwareReplayPacket, resolvePositionObservedAtMs, resolveNodeDbPositionObservedAtMs } from './utils/replayGuard.js';
+import { channelIndexFromPacket } from './utils/nodeChannelEvidence.js';
 import { isLiveNodeDiscovery } from './utils/nodeDiscovery.js';
 import { isUptimeReboot } from './utils/rebootDetection.js';
 import { isPowered, detectPowerTransition } from './utils/poweredState.js';
@@ -323,6 +324,8 @@ export interface ProcessingContext {
   viaStoreForward?: boolean; // Message was received via Store & Forward replay
   /** #5534: this packet first discovered its sender; suppress trigger.nodeUpdated for it. */
   nodeDiscovered?: boolean;
+  /** #5923: packet came from a Virtual Node client's MQTT proxy, not from our radio. */
+  fromMqttProxy?: boolean;
 }
 
 // CHANNEL_DB_OFFSET is imported from './constants/meshtastic.js'
@@ -6824,12 +6827,15 @@ class MeshtasticManager implements ISourceManager {
         discoveredNodeNum = fromNum;
       }
 
-      // Only update the node's channel from firmware-decoded packets (decryptedBy === 'node').
-      // Server-decrypted packets still have the raw channel hash in meshPacket.channel, not
-      // a valid channel index (0-7), so storing it would corrupt the node's channel field.
-      const channelFromPacket = (decryptedBy === 'node' && meshPacket.channel !== undefined)
-        ? meshPacket.channel
-        : undefined;
+      // Only update the node's channel when our radio decrypted this sender's own
+      // traffic with that channel's key (#5923). Server-decrypted packets carry the
+      // raw channel hash; PKI packets, firmware 2.8 NodeDB replays, spoofed zero-hop
+      // replies and Virtual Node MQTT-proxy envelopes all carry a channel the sender
+      // never used. See utils/nodeChannelEvidence.ts.
+      const channelFromPacket = channelIndexFromPacket(meshPacket, {
+        decryptedBy,
+        fromMqttProxy: context?.fromMqttProxy === true,
+      });
 
       // Stamp the per-packet transport mechanism onto the node row
       // (most-recent wins). Feeds the map's Show RF / UDP / MQTT toggles
