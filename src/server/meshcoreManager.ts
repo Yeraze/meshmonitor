@@ -704,6 +704,9 @@ export interface MeshCoreNode {
   firmwareBuild?: string;
   model?: string;
   ver?: string;
+  /** Contact and channel capacity, also from DeviceQuery. The Virtual Node reports them (#5916). */
+  maxContacts?: number;
+  maxChannels?: number;
 }
 
 /**
@@ -10509,6 +10512,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (info.firmwareBuild !== undefined) this.localNode.firmwareBuild = info.firmwareBuild;
     if (info.model !== undefined) this.localNode.model = info.model;
     if (info.ver !== undefined) this.localNode.ver = info.ver;
+    if (info.maxContacts !== undefined) this.localNode.maxContacts = info.maxContacts;
+    if (info.maxChannels !== undefined) this.localNode.maxChannels = info.maxChannels;
     dataEventEmitter.emitMeshCoreLocalNodeUpdated(this.localNode, this.sourceId);
   }
 

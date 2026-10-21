@@ -379,7 +379,7 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(payload.readInt8(1)).toBe(SUPPORTED_COMPANION_PROTOCOL_VERSION);
   });
 
-  it('pins DeviceInfo protocol version to v1 even when the real node reports a higher firmwareVer (regression #3705)', async () => {
+  it('pins the DeviceInfo version byte even when the real node reports a higher firmwareVer (regression #3705)', async () => {
     // Once the manager's background deviceQuery() caches the real node's
     // firmware-version byte, that value must NOT leak into the VN's DeviceInfo
     // version field — the VN only speaks v1 frames, and the meshcore-flutter app
@@ -400,6 +400,55 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
       realClient.close();
       await realServer.stop();
     }
+  });
+
+  it('reports the real node capacities in the v3 DeviceInfo layout (#5916)', async () => {
+    const realNode: MeshCoreNode = { ...LOCAL_NODE, maxContacts: 350, maxChannels: 40, model: 'Heltec V3', ver: 'v1.12.0' };
+    const realServer = new MeshCoreVirtualNodeServer({ port: 0, manager: new FakeManager(realNode), databaseService: CHANNELS_DB });
+    await realServer.start();
+    const realClient = new TestClient();
+    await realClient.connect(realServer.getListeningPort()!);
+    try {
+      const payload = await realClient.request([CommandCodes.DeviceQuery, 1]);
+      expect(payload.length).toBe(80);
+      expect(payload[1]).toBeGreaterThanOrEqual(3); // MeshCore One reads capacities only from v3
+      expect(payload[2]).toBe(175);
+      expect(payload[3]).toBe(40);
+      expect(payload.subarray(20, 60).toString('utf8').replace(/\0+$/, '')).toBe('Heltec V3');
+      // The version string stays empty: MeshCore One turns features on from it.
+      expect(payload.subarray(60, 80).every((x) => x === 0)).toBe(true);
+    } finally {
+      realClient.close();
+      await realServer.stop();
+    }
+  });
+
+  it('falls back to enough channel slots for every synced channel before DeviceQuery is cached (#5916)', async () => {
+    const db = {
+      channels: {
+        getAllChannels: vi.fn().mockResolvedValue([
+          { id: 0, name: 'Public', psk: null },
+          { id: 11, name: 'Far slot', psk: null },
+        ]),
+      },
+    };
+    const coldServer = new MeshCoreVirtualNodeServer({ port: 0, manager: new FakeManager(LOCAL_NODE), databaseService: db });
+    await coldServer.start();
+    const coldClient = new TestClient();
+    await coldClient.connect(coldServer.getListeningPort()!);
+    try {
+      const payload = await coldClient.request([CommandCodes.DeviceQuery, 1]);
+      expect(payload[3]).toBe(12);
+      expect(payload[2]).toBe(50); // 100 contacts / 2
+    } finally {
+      coldClient.close();
+      await coldServer.stop();
+    }
+  });
+
+  it('uses the stock 8 channel slots when no channels are synced', async () => {
+    const payload = await client.request([CommandCodes.DeviceQuery, 1]);
+    expect(payload[3]).toBe(8);
   });
 
   it('replies to GetContacts with ContactsStart(N), Contact frames, then EndOfContacts', async () => {

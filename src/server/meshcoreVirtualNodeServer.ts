@@ -264,6 +264,13 @@ class VnCommandError extends Error {
   }
 }
 
+/**
+ * DeviceInfo capacities before the real node's DeviceQuery is cached (#5916):
+ * the companion firmware's stock MAX_GROUP_CHANNELS and MAX_CONTACTS.
+ */
+const DEFAULT_MAX_CHANNELS = 8;
+const DEFAULT_MAX_CONTACTS = 100;
+
 /** Reverse map of command codes → names, for human-readable command logging. */
 const COMMAND_NAMES: Record<number, string> = Object.fromEntries(
   Object.entries(CommandCodes).map(([name, code]) => [code, name]),
@@ -663,7 +670,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           this.send(clientId, encodeOk());
           break;
         case CommandCodes.DeviceQuery:
-          this.handleDeviceQuery(clientId);
+          void this.handleDeviceQuery(clientId);
           break;
         case CommandCodes.GetContacts:
           this.handleGetContacts(clientId);
@@ -1648,28 +1655,44 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     this.send(clientId, encodeSelfInfo(this.buildSelfInfo(localNode)));
   }
 
-  private handleDeviceQuery(clientId: string): void {
+  private async handleDeviceQuery(clientId: string): Promise<void> {
     const localNode = this.options.manager.getLocalNode();
     // Intentionally does NOT gate on isConnected()/localNode (unlike
     // handleAppStart, which replies BadState): the app sends DeviceQuery
     // *before* AppStart, so we must reply even with a cold manager — display
     // fields just fall back to safe defaults below.
-    // The DeviceInfo version byte is the *companion protocol* version the app
-    // must use to talk to us — NOT the proxied node's firmware version. We only
-    // implement v1 frames, so this MUST always be SUPPORTED_COMPANION_PROTOCOL_VERSION.
     //
-    // Leaking the real node's `firmwareVer` here (once the manager's background
-    // deviceQuery() has cached it) makes the meshcore-flutter app abort the
-    // handshake: it sends DeviceQuery *before* AppStart, and on seeing a version
-    // it can't reconcile with our v1 wire format it never sends AppStart and
-    // drops the socket after ~5s. Before the cache is warm we fell back to v1
-    // and the app connected — which is exactly the "works once after restart,
-    // then never again" symptom (issue #3705). Build date / model are display
-    // strings and stay real so the app shows a faithful identity.
+    // The version byte is always SUPPORTED_COMPANION_PROTOCOL_VERSION, never
+    // the proxied node's real firmwareVer: clients read it as a feature level,
+    // and leaking the real value made meshcore-flutter drop the handshake
+    // (issue #3705). The firmware version string stays '' for the same reason,
+    // since MeshCore One also reads features from it. Build date and model are
+    // display strings and stay real so the app shows a faithful identity.
+    //
+    // Capacities come from the real node's DeviceQuery once the poller has
+    // cached them. MeshCore One syncs only `maxChannels` slots and offers no
+    // free slot when it reads 0 (#5916), so a cold cache falls back to enough
+    // slots for every synced channel.
+    let maxChannels = localNode?.maxChannels;
+    if (!maxChannels) {
+      maxChannels = DEFAULT_MAX_CHANNELS;
+      try {
+        const channels = await this.db.channels.getAllChannels(this.sourceId);
+        for (const ch of channels) maxChannels = Math.max(maxChannels, ch.id + 1);
+      } catch (err) {
+        logger.warn(`[MeshCore VN ${this.sourceId}] DeviceQuery: channel count unavailable: ${(err as Error).message}`);
+      }
+    }
+    const maxContacts = localNode?.maxContacts
+      || Math.max(DEFAULT_MAX_CONTACTS, this.options.manager.getContacts().length);
     this.send(clientId, encodeDeviceInfo({
       firmwareVer: SUPPORTED_COMPANION_PROTOCOL_VERSION,
+      maxContacts,
+      maxChannels,
+      blePin: 0,
       firmwareBuildDate: localNode?.firmwareBuild ?? '',
       manufacturerModel: localNode?.model || 'MeshMonitor Virtual Node',
+      firmwareVersion: '',
     }));
   }
 
