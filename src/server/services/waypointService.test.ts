@@ -636,3 +636,78 @@ describe('waypoint arrival notifications wiring', () => {
     expect(mockForgetWaypoint).toHaveBeenCalledWith('s2', 2);
   });
 });
+
+describe('geofence fields (#5922)', () => {
+  it('stores the geofence an inbound waypoint carries', async () => {
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 5 });
+    await waypointService.upsertFromMesh('s1', 1, {
+      id: 5, latitudeI: 300000000, longitudeI: -900000000, expire: 0,
+      geofenceRadius: 500,
+      boundingBox: { longitudeWestI: -900100000, latitudeSouthI: 299900000, longitudeEastI: -899900000, latitudeNorthI: 300100000 },
+      notifyOnEnter: true,
+      notifyFavoritesOnly: true,
+    });
+    expect(mockUpsert.mock.calls[0][0]).toMatchObject({
+      geofenceRadiusM: 500,
+      boundingBox: { west: -90.01, south: 29.99, east: -89.99, north: 30.01 },
+      notifyOnEnter: true,
+      notifyOnExit: false,
+      notifyFavoritesOnly: true,
+    });
+  });
+
+  it('clears a stored geofence when the sender no longer sends one', async () => {
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 5 });
+    await waypointService.upsertFromMesh('s1', 1, { id: 5, latitudeI: 1, longitudeI: 1, expire: 0 });
+    expect(mockUpsert.mock.calls[0][0]).toMatchObject({
+      geofenceRadiusM: null, boundingBox: null, notifyOnEnter: false, notifyOnExit: false, notifyFavoritesOnly: false,
+    });
+  });
+
+  it('createLocal stores the geofence it is given', async () => {
+    mockGetExistingIds.mockResolvedValueOnce(new Set());
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 9 });
+    await waypointService.createLocal('s1', 1, {
+      latitude: 30, longitude: -90,
+      geofence: { geofenceRadiusM: 800, notifyOnExit: true },
+    });
+    expect(mockUpsert.mock.calls[0][0]).toMatchObject({
+      geofenceRadiusM: 800, boundingBox: null, notifyOnEnter: false, notifyOnExit: true, notifyFavoritesOnly: false,
+    });
+  });
+
+  it('update leaves geofence fields alone unless they are given', async () => {
+    mockGet.mockResolvedValueOnce({ ...eligibleRow(), lockedTo: null, geofenceRadiusM: 800, notifyOnExit: true });
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 7 });
+    await waypointService.update('s1', 7, 1, { name: 'New' });
+    const args = mockUpsert.mock.calls[0][0];
+    expect(args.geofenceRadiusM).toBeUndefined();
+    expect(args.notifyOnExit).toBeUndefined();
+
+    mockGet.mockResolvedValueOnce({ ...eligibleRow(), lockedTo: null });
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 7 });
+    await waypointService.update('s1', 7, 1, { geofence: { geofenceRadiusM: null } });
+    expect(mockUpsert.mock.calls[1][0].geofenceRadiusM).toBeNull();
+  });
+
+  it('rebroadcasts the stored geofence', async () => {
+    const broadcastWaypoint = vi.fn().mockResolvedValue(99);
+    mockFindOldestEligible.mockResolvedValueOnce(eligibleRow({
+      geofenceRadiusM: 300,
+      boundingBox: { west: 1, south: 2, east: 3, north: 4 },
+      notifyOnEnter: true,
+      notifyOnExit: false,
+      notifyFavoritesOnly: false,
+    }));
+    mockGetManager.mockReturnValue({ broadcastWaypoint, canTransmit: () => true });
+    mockMarkRebroadcasted.mockResolvedValue(true);
+    mockGet.mockResolvedValue(null);
+    await waypointService.rebroadcastTick();
+    expect(broadcastWaypoint.mock.calls[0][0]).toMatchObject({
+      id: 7,
+      geofenceRadiusM: 300,
+      boundingBox: { west: 1, south: 2, east: 3, north: 4 },
+      notifyOnEnter: true,
+    });
+  });
+});

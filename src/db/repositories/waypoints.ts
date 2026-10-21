@@ -8,6 +8,14 @@ import { and, asc, eq, gte, lte, lt, isNull, or, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
+/** Geofence bounding box in degrees (firmware `BoundingBox`, #5922). */
+export interface WaypointBoundingBox {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
 export interface Waypoint {
   sourceId: string;
   waypointId: number;
@@ -30,6 +38,13 @@ export interface Waypoint {
   automationKey: string | null;
   /** Digest of the content an automation step last sent (#5482, onlyWhenChanged). */
   broadcastFingerprint: string | null;
+  /** Firmware geofence radius in metres; `null` = no circle (#5922). */
+  geofenceRadiusM: number | null;
+  /** Firmware geofence box; `null` = none (#5922). */
+  boundingBox: WaypointBoundingBox | null;
+  notifyOnEnter: boolean;
+  notifyOnExit: boolean;
+  notifyFavoritesOnly: boolean;
   lastBroadcastAt: number | null;
   firstSeenAt: number;
   lastUpdatedAt: number;
@@ -53,12 +68,24 @@ export interface WaypointUpsertInput {
   hopLimit?: number | null;
   automationKey?: string | null;
   broadcastFingerprint?: string | null;
+  geofenceRadiusM?: number | null;
+  boundingBox?: WaypointBoundingBox | null;
+  notifyOnEnter?: boolean;
+  notifyOnExit?: boolean;
+  notifyFavoritesOnly?: boolean;
   lastBroadcastAt?: number | null;
 }
 
 export interface WaypointListOptions {
   includeExpired?: boolean;
   bbox?: { minLat: number; maxLat: number; minLon: number; maxLon: number };
+}
+
+function readBoundingBox(row: { bboxWest?: unknown; bboxSouth?: unknown; bboxEast?: unknown; bboxNorth?: unknown }): WaypointBoundingBox | null {
+  const parts = [row.bboxWest, row.bboxSouth, row.bboxEast, row.bboxNorth];
+  if (parts.some((v) => v == null)) return null;
+  const [west, south, east, north] = parts.map(Number);
+  return { west, south, east, north };
 }
 
 function deserializeRow(row: any): Waypoint {
@@ -80,6 +107,11 @@ function deserializeRow(row: any): Waypoint {
     hopLimit: row.hopLimit == null ? null : Number(row.hopLimit),
     automationKey: row.automationKey ?? null,
     broadcastFingerprint: row.broadcastFingerprint ?? null,
+    geofenceRadiusM: row.geofenceRadiusM == null || Number(row.geofenceRadiusM) <= 0 ? null : Number(row.geofenceRadiusM),
+    boundingBox: readBoundingBox(row),
+    notifyOnEnter: Boolean(row.notifyOnEnter),
+    notifyOnExit: Boolean(row.notifyOnExit),
+    notifyFavoritesOnly: Boolean(row.notifyFavoritesOnly),
     lastBroadcastAt: row.lastBroadcastAt == null ? null : Number(row.lastBroadcastAt),
     firstSeenAt: Number(row.firstSeenAt),
     lastUpdatedAt: Number(row.lastUpdatedAt),
@@ -102,6 +134,8 @@ export class WaypointsRepository extends BaseRepository {
     // Look up the existing row to preserve firstSeenAt and merge optional fields
     const existing = await this.getAsync(input.sourceId, input.waypointId);
     const firstSeenAt = existing?.firstSeenAt ?? now;
+    const boundingBox =
+      input.boundingBox === undefined ? existing?.boundingBox ?? null : input.boundingBox;
 
     const values = {
       sourceId: input.sourceId,
@@ -133,6 +167,15 @@ export class WaypointsRepository extends BaseRepository {
         input.lastBroadcastAt === undefined
           ? existing?.lastBroadcastAt ?? null
           : input.lastBroadcastAt,
+      geofenceRadiusM:
+        input.geofenceRadiusM === undefined ? existing?.geofenceRadiusM ?? null : input.geofenceRadiusM,
+      bboxWest: boundingBox?.west ?? null,
+      bboxSouth: boundingBox?.south ?? null,
+      bboxEast: boundingBox?.east ?? null,
+      bboxNorth: boundingBox?.north ?? null,
+      notifyOnEnter: (input.notifyOnEnter ?? existing?.notifyOnEnter ?? false) ? 1 : 0,
+      notifyOnExit: (input.notifyOnExit ?? existing?.notifyOnExit ?? false) ? 1 : 0,
+      notifyFavoritesOnly: (input.notifyFavoritesOnly ?? existing?.notifyFavoritesOnly ?? false) ? 1 : 0,
       firstSeenAt,
       lastUpdatedAt: now,
     };

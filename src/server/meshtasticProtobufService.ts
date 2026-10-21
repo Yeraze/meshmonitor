@@ -4,6 +4,7 @@
  * This service provides proper protobuf parsing using the official Meshtastic
  * protobuf definitions and protobufjs library.
  */
+import type { WireWaypoint } from './services/waypointGeofence.js';
 import { loadProtobufDefinitions, getProtobufRoot, type FromRadio, type MeshPacket } from './protobufLoader.js';
 import { logger } from '../utils/logger.js';
 import { PortNum, DEFAULT_HOP_LIMIT, resolveHopLimit } from './constants/meshtastic.js';
@@ -534,16 +535,7 @@ export class MeshtasticProtobufService {
    * with hop limit 0 goes out without `want_ack`: the firmware rewrites hop 0 to
    * the node default on want_ack packets from the phone API (#5121).
    */
-  createWaypointMessage(waypoint: {
-    id: number;
-    latitude: number;
-    longitude: number;
-    expire: number; // epoch seconds; 0 = no expiry; non-zero past = delete tombstone
-    lockedTo?: number;
-    name?: string;
-    description?: string;
-    icon?: number; // unicode codepoint
-  }, options?: { destination?: number; channel?: number; hopLimit?: number }): { data: Uint8Array; packetId: number } {
+  createWaypointMessage(waypoint: WireWaypoint, options?: { destination?: number; channel?: number; hopLimit?: number }): { data: Uint8Array; packetId: number } {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -562,6 +554,22 @@ export class MeshtasticProtobufService {
         description: waypoint.description ?? '',
         icon: waypoint.icon ?? 0,
       };
+      // Geofence fields 9-13 (#5922). Only set when present, so a waypoint
+      // without a geofence encodes exactly as it did before.
+      if (waypoint.geofenceRadiusM && waypoint.geofenceRadiusM > 0) {
+        waypointPayload.geofenceRadius = Math.round(waypoint.geofenceRadiusM);
+      }
+      if (waypoint.boundingBox) {
+        waypointPayload.boundingBox = {
+          longitudeWestI: Math.round(waypoint.boundingBox.west * 1e7),
+          latitudeSouthI: Math.round(waypoint.boundingBox.south * 1e7),
+          longitudeEastI: Math.round(waypoint.boundingBox.east * 1e7),
+          latitudeNorthI: Math.round(waypoint.boundingBox.north * 1e7),
+        };
+      }
+      if (waypoint.notifyOnEnter) waypointPayload.notifyOnEnter = true;
+      if (waypoint.notifyOnExit) waypointPayload.notifyOnExit = true;
+      if (waypoint.notifyFavoritesOnly) waypointPayload.notifyFavoritesOnly = true;
       const wpMessage = Waypoint.create(waypointPayload);
       const payload = Waypoint.encode(wpMessage).finish();
 

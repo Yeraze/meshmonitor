@@ -77,6 +77,7 @@ import {
   type ParsedClientNotification,
 } from './services/clientNotificationPolicy.js';
 import { waypointService } from './services/waypointService.js';
+import type { WireWaypoint } from './services/waypointGeofence.js';
 // import type only — cannot use a static runtime import here because of a circular
 // dependency chain: meshtasticManager → distanceDeleteScheduler →
 // autoDeleteByDistanceService → resolveSourceManager → meshtasticManager.
@@ -9785,16 +9786,7 @@ class MeshtasticManager implements ISourceManager {
    * Returns the packet id assigned by the protobuf service, or 0 if not
    * connected / encoding failed.
    */
-  async broadcastWaypoint(waypoint: {
-    id: number;
-    latitude: number;
-    longitude: number;
-    expire: number;
-    lockedTo?: number;
-    name?: string;
-    description?: string;
-    icon?: number;
-  }, options: { destination?: number; channel?: number; origin?: SendOrigin; hopLimit?: number | null } = {}): Promise<number> {
+  async broadcastWaypoint(waypoint: WireWaypoint, options: { destination?: number; channel?: number; origin?: SendOrigin; hopLimit?: number | null } = {}): Promise<number> {
     if (!this.isConnected || !this.transport) {
       logger.warn(`[meshtasticManager] broadcastWaypoint skipped: not connected (source ${this.sourceId})`);
       return 0;

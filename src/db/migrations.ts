@@ -234,6 +234,7 @@ import { migration as createMeshcoreCliHistoryMigration, runMigration212Postgres
 import { migration as backfillTracerouteWriteMigration, runMigration213Postgres, runMigration213Mysql } from '../server/migrations/213_backfill_traceroute_write_for_meshcore_trace.js';
 import { migration as aircraftFlightMatchRechecksMigration, runMigration214Postgres, runMigration214Mysql } from '../server/migrations/214_add_aircraft_flight_match_rechecks.js';
 import { migration as addMeshcoreAdvertSignatureVerifiedMigration, runMigration215Postgres, runMigration215Mysql } from '../server/migrations/215_add_meshcore_advert_signature_verified.js';
+import { migration as addWaypointGeofenceMigration, runMigration216Postgres, runMigration216Mysql } from '../server/migrations/216_add_waypoint_geofence.js';
 
 // ============================================================================
 // Registry
@@ -3473,4 +3474,19 @@ registry.register({
   sqlite: (db) => addMeshcoreAdvertSignatureVerifiedMigration.up(db),
   postgres: (client) => runMigration215Postgres(client),
   mysql: (pool) => runMigration215Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 216: waypoint geofence fields (#5922)
+// Firmware Waypoint fields 9-13 (radius, bounding box, enter/exit/favorites
+// alert flags), stored so waypoints from other clients round-trip.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 216,
+  name: 'add_waypoint_geofence',
+  settingsKey: 'migration_216_add_waypoint_geofence',
+  sqlite: (db) => addWaypointGeofenceMigration.up(db),
+  postgres: (client) => runMigration216Postgres(client),
+  mysql: (pool) => runMigration216Mysql(pool),
 });

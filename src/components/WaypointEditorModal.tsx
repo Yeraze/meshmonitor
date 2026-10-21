@@ -17,6 +17,13 @@ import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
 import PinSourcePicker, { type PinSourceChoice } from './map/PinSourcePicker';
+import WaypointGeofenceFields from './WaypointGeofenceFields';
+import {
+  EMPTY_GEOFENCE,
+  geofenceBody,
+  geofenceDraftFrom,
+  type GeofenceDraft,
+} from './waypointGeofenceDraft';
 
 const DEFAULT_EMOJIS = ['📍', '🏠', '🏕️', '⛺', '🚗', '🛟', '⚠️', '⭐', '🚩', '🛠️'];
 
@@ -96,6 +103,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
   const [rebroadcast, setRebroadcast] = useState('');
   /** '' = the node's configured hop limit; '0'-'7' pins it (#5482). */
   const [hopLimit, setHopLimit] = useState('');
+  const [geofence, setGeofence] = useState<GeofenceDraft>(EMPTY_GEOFENCE);
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const numberScope = useNumberInputScope();
@@ -133,6 +141,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
           : '',
       );
       setHopLimit(hopLimitSettingValue(initial.hopLimit));
+      setGeofence(geofenceDraftFrom(initial));
     } else {
       setLat(defaultCoords ? String(defaultCoords.lat) : '');
       setLon(defaultCoords ? String(defaultCoords.lon) : '');
@@ -146,6 +155,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       setChannel(0);
       setRebroadcast('');
       setHopLimit('');
+      setGeofence(EMPTY_GEOFENCE);
     }
     setError(null);
   }, [isOpen, initial, defaultCoords]);
@@ -207,6 +217,11 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       }
       rebroadcastIntervalS = minutes * 60;
     }
+    const geofenceFields = geofenceBody(geofence);
+    if ('error' in geofenceFields) {
+      setError(geofenceFields.error);
+      return null;
+    }
     return {
       lat: latN,
       lon: lonN,
@@ -219,6 +234,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       channel,
       rebroadcast_interval_s: rebroadcastIntervalS,
       hop_limit: hopLimit === '' ? null : Number(hopLimit),
+      ...geofenceFields,
     };
   }
 
@@ -451,6 +467,16 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
             </span>
           )}
         </label>
+
+        <WaypointGeofenceFields
+          value={geofence}
+          onChange={setGeofence}
+          center={
+            lat !== '' && lon !== '' && Number.isFinite(Number(lat)) && Number.isFinite(Number(lon))
+              ? { lat: Number(lat), lon: Number(lon) }
+              : null
+          }
+        />
 
         {error && (
           <div role="alert" className="form-error">

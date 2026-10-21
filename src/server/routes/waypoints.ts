@@ -12,6 +12,12 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { waypointService } from '../services/waypointService.js';
+import {
+  toWireWaypoint,
+  WAYPOINT_GEOFENCE_MIN_RADIUS_M,
+  WAYPOINT_GEOFENCE_MAX_RADIUS_M,
+  type WaypointGeofence,
+} from '../services/waypointGeofence.js';
 import { fail } from '../utils/apiResponse.js';
 import { HOP_LIMIT_OVERRIDE_MAX, parseHopLimitOverride } from '../../utils/hopLimitOverride.js';
 
@@ -114,6 +120,61 @@ function parseHopLimitBody(body: Record<string, unknown> | null | undefined): nu
   return n;
 }
 
+/**
+ * Read the geofence body fields (#5922). Only keys present in the body are
+ * returned, so a PATCH keeps the rest. Accepts:
+ *   - `geofence_radius_m`: integer metres in the editor's range, or null/0 to clear
+ *   - `bounding_box`: `{ west, south, east, north }` in degrees, or null to clear
+ *   - `notify_on_enter` / `notify_on_exit` / `notify_favorites_only`: booleans
+ */
+export function parseGeofenceBody(
+  body: Record<string, unknown> | null | undefined,
+): Partial<WaypointGeofence> | { error: string } {
+  const out: Partial<WaypointGeofence> = {};
+  if (!body) return out;
+  if (body.geofence_radius_m !== undefined) {
+    const raw = body.geofence_radius_m;
+    if (raw === null || raw === '' || raw === 0) {
+      out.geofenceRadiusM = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < WAYPOINT_GEOFENCE_MIN_RADIUS_M || n > WAYPOINT_GEOFENCE_MAX_RADIUS_M) {
+        return {
+          error: `geofence_radius_m must be an integer from ${WAYPOINT_GEOFENCE_MIN_RADIUS_M} to ${WAYPOINT_GEOFENCE_MAX_RADIUS_M} metres, or null for none`,
+        };
+      }
+      out.geofenceRadiusM = n;
+    }
+  }
+  if (body.bounding_box !== undefined) {
+    const raw = body.bounding_box as Record<string, unknown> | null;
+    if (raw === null) {
+      out.boundingBox = null;
+    } else {
+      const west = Number(raw?.west);
+      const south = Number(raw?.south);
+      const east = Number(raw?.east);
+      const north = Number(raw?.north);
+      const valid =
+        [west, south, east, north].every(Number.isFinite) &&
+        south >= -90 && north <= 90 && west >= -180 && east <= 180 &&
+        south < north && west < east;
+      if (!valid) {
+        return { error: 'bounding_box needs west < east and south < north, in degrees, or null for none' };
+      }
+      out.boundingBox = { west, south, east, north };
+    }
+  }
+  for (const [key, field] of [
+    ['notify_on_enter', 'notifyOnEnter'],
+    ['notify_on_exit', 'notifyOnExit'],
+    ['notify_favorites_only', 'notifyFavoritesOnly'],
+  ] as const) {
+    if (body[key] !== undefined) out[field] = Boolean(body[key]);
+  }
+  return out;
+}
+
 // GET /api/sources/:id/waypoints?includeExpired=&bbox=minLat,minLon,maxLat,maxLon
 router.get(
   '/',
@@ -195,6 +256,8 @@ router.post(
         return fail(res, 400, 'INVALID_HOP_LIMIT', parsedHopLimit.error);
       }
       const hopLimit = (parsedHopLimit as number | null | undefined) ?? null;
+      const geofence = parseGeofenceBody(body);
+      if ('error' in geofence) return fail(res, 400, 'INVALID_GEOFENCE', geofence.error);
 
       // Best-effort: use the source's local node as the owner. Fallback to 0
       // when the manager isn't reachable (still records, owner_node_num NULL).
@@ -215,6 +278,7 @@ router.post(
           channel,
           rebroadcastIntervalS,
           hopLimit,
+          geofence,
         },
         { virtual },
       );
@@ -225,16 +289,7 @@ router.post(
       if (!virtual && manager && typeof (manager as any).broadcastWaypoint === 'function') {
         try {
           await (manager as any).broadcastWaypoint(
-            {
-              id: persisted.waypointId,
-              latitude: persisted.latitude,
-              longitude: persisted.longitude,
-              expire: persisted.expireAt ?? 0,
-              lockedTo: persisted.lockedTo ?? 0,
-              name: persisted.name,
-              description: persisted.description,
-              icon: persisted.iconCodepoint ?? 0,
-            },
+            toWireWaypoint(persisted),
             // Stored value is already validated on write; NULL rows predate #4341.
             // hopLimit NULL = the node's configured limit (#5482).
             { channel: persisted.channel ?? 0, hopLimit: persisted.hopLimit },
@@ -315,6 +370,9 @@ router.patch(
       if (parsedHopLimit !== undefined) {
         fields.hopLimit = parsedHopLimit;
       }
+      const geofence = parseGeofenceBody(body);
+      if ('error' in geofence) return fail(res, 400, 'INVALID_GEOFENCE', geofence.error);
+      if (Object.keys(geofence).length > 0) fields.geofence = geofence;
 
       let persisted;
       try {
@@ -332,16 +390,7 @@ router.patch(
       if (!persisted.isVirtual && manager && typeof (manager as any).broadcastWaypoint === 'function') {
         try {
           await (manager as any).broadcastWaypoint(
-            {
-              id: persisted.waypointId,
-              latitude: persisted.latitude,
-              longitude: persisted.longitude,
-              expire: persisted.expireAt ?? 0,
-              lockedTo: persisted.lockedTo ?? 0,
-              name: persisted.name,
-              description: persisted.description,
-              icon: persisted.iconCodepoint ?? 0,
-            },
+            toWireWaypoint(persisted),
             // Stored value is already validated on write; NULL rows predate #4341.
             // hopLimit NULL = the node's configured limit (#5482).
             { channel: persisted.channel ?? 0, hopLimit: persisted.hopLimit },

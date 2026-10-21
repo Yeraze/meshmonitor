@@ -15,8 +15,8 @@
  * MapAnalysis-only; `PerSourceWaypoints` has no such dependency and is the
  * cross-surface piece Dashboard consumes directly.
  */
-import { useMemo } from 'react';
-import { Marker, Popup } from 'react-leaflet';
+import { Fragment, useMemo } from 'react';
+import { Circle, Marker, Popup, Rectangle } from 'react-leaflet';
 import L from 'leaflet';
 import {
   useDashboardSources,
@@ -25,8 +25,43 @@ import { useMapAnalysisCtx } from '../../MapAnalysis/MapAnalysisContext';
 import { useWaypoints } from '../../../hooks/useWaypoints';
 import type { Waypoint } from '../../../types/waypoint';
 import { UiIcon } from '../../icons';
+import styles from './WaypointsLayer.module.css';
+import { geofenceSummary } from './waypointGeofenceSummary';
 
 const FALLBACK_EMOJI = '\u{1F4CD}';
+
+/**
+ * The firmware geofence a waypoint carries (#5922), drawn under its pin.
+ * Dashed and non-interactive, so it reads apart from automation geofences
+ * and never steals a click from a node marker. Exported for tests.
+ */
+export function WaypointGeofenceRegion({ wp }: { wp: Waypoint }) {
+  const box = wp.boundingBox;
+  const drawBox = box && box.west < box.east && box.south < box.north;
+  return (
+    <>
+      {wp.geofenceRadiusM != null && wp.geofenceRadiusM > 0 && (
+        <Circle
+          center={[wp.latitude, wp.longitude]}
+          radius={wp.geofenceRadiusM}
+          interactive={false}
+          // A top-level prop: react-leaflet applies pathOptions through
+          // setStyle, which never adds a class.
+          className={styles.geofence}
+          pathOptions={{ weight: 2, dashArray: '6 6', fillOpacity: 0.08 }}
+        />
+      )}
+      {drawBox && (
+        <Rectangle
+          bounds={[[box.south, box.west], [box.north, box.east]]}
+          interactive={false}
+          className={styles.geofence}
+          pathOptions={{ weight: 2, dashArray: '6 6', fillOpacity: 0.08 }}
+        />
+      )}
+    </>
+  );
+}
 const EMOJI_VS = '️'; // emoji-presentation variation selector
 
 /** Force emoji (color) presentation for codepoints that default to text glyphs
@@ -131,8 +166,9 @@ export function PerSourceWaypoints({
             ? `!${Number(wp.ownerNodeNum).toString(16).padStart(8, '0')}`
             : 'unknown';
         return (
+          <Fragment key={`${wp.sourceId}:${wp.waypointId}`}>
+          <WaypointGeofenceRegion wp={wp} />
           <Marker
-            key={`${wp.sourceId}:${wp.waypointId}`}
             position={[wp.latitude, wp.longitude]}
             icon={icon}
           >
@@ -160,6 +196,13 @@ export function PerSourceWaypoints({
                     <div className="node-popup-item" style={{ gridColumn: '1 / -1' }}>
                       <span className="node-popup-icon"><UiIcon name="text" size={15} /></span>
                       <span className="node-popup-value">{wp.description}</span>
+                    </div>
+                  )}
+
+                  {geofenceSummary(wp) && (
+                    <div className="node-popup-item" style={{ gridColumn: '1 / -1' }}>
+                      <span className="node-popup-icon"><UiIcon name="location" size={15} /></span>
+                      <span className="node-popup-value">{geofenceSummary(wp)}</span>
                     </div>
                   )}
 
@@ -221,6 +264,7 @@ export function PerSourceWaypoints({
               </div>
             </Popup>
           </Marker>
+          </Fragment>
         );
       })}
     </>
