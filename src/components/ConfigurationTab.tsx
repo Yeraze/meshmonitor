@@ -25,6 +25,7 @@ import { normalizeMeshtasticKey } from '../utils/meshtasticKeyFormat';
 import { policyToSend, toKnownPolicy } from '../utils/packetSignaturePolicy';
 import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
+import { sourcePollQueryKey } from '../hooks/pollQueryKey';
 import type { DeviceInfo, Channel } from '../types/device';
 import { logger } from '../utils/logger';
 import NodeIdentitySection from './configuration/NodeIdentitySection';
@@ -1853,6 +1854,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
       // Wait a moment for device to respond
       await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // The reload re-saves every channel slot the node sends, but the
+      // channel list on this page comes from the poll cache, which refetches
+      // only every 30 s while the WebSocket is up (and no channel event is
+      // pushed). Refetch it now, or a renamed or newly enabled slot keeps its
+      // stale name until the next poll (#5919).
+      void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
 
       // Fetch updated config
       const config = await apiService.getCurrentConfig(sourceId);

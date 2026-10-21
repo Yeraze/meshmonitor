@@ -30,6 +30,7 @@ import type { DeviceInfo, Channel, LocalNodeInfo } from '../types/device';
 import { appBasename } from '../init';
 import { useWebSocketConnected } from '../contexts/WebSocketContext';
 import { useSource } from '../contexts/SourceContext';
+import { POLL_QUERY_KEY, sourcePollQueryKey } from './pollQueryKey';
 
 /**
  * Connection status from the server
@@ -201,26 +202,8 @@ const WEBSOCKET_POLL_INTERVAL = 30000;
 /** Polling interval when WebSocket is disconnected (5 seconds for real-time updates) */
 const DEFAULT_POLL_INTERVAL = 5000;
 
-/**
- * Query key for the poll endpoint.
- *
- * Use this when you need to:
- * - Invalidate the poll cache: `queryClient.invalidateQueries({ queryKey: POLL_QUERY_KEY })`
- * - Manually refetch: `queryClient.refetchQueries({ queryKey: POLL_QUERY_KEY })`
- * - Set up custom query observers
- *
- * For accessing cached data, prefer the helper functions in useServerData.ts:
- * `getNodesFromCache()`, `getChannelsFromCache()`, `getCurrentNodeIdFromCache()`
- */
-export const POLL_QUERY_KEY = ['poll'] as const;
-
-/**
- * Build a per-source poll query key. Use this when invalidating/reading cache
- * for a specific source rather than the global poll.
- */
-export function sourcePollQueryKey(sourceId: string | null) {
-  return sourceId ? (['poll', sourceId] as const) : POLL_QUERY_KEY;
-}
+// Poll query keys live in ./pollQueryKey (no imports) and are re-exported here.
+export { POLL_QUERY_KEY, sourcePollQueryKey };
 
 /**
  * Fetch the /api/poll payload for a given source. This is usePoll()'s own
