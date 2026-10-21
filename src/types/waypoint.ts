@@ -3,6 +3,14 @@
  * `src/db/repositories/waypoints.ts`). Numeric fields are normalised to
  * `number`; nullable columns surface as `null`.
  */
+/** Firmware geofence bounding box, in degrees (#5922). */
+export interface WaypointBoundingBox {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
 export interface Waypoint {
   sourceId: string;
   waypointId: number;
@@ -28,6 +36,16 @@ export interface Waypoint {
   hopLimit?: number | null;
   /** Set when an automation step owns this waypoint (#5482). */
   automationKey?: string | null;
+  /**
+   * Firmware geofence (#5922). Each receiving node checks it and raises its
+   * own alerts; MeshMonitor stores and resends it. Optional for rows from
+   * an older server.
+   */
+  geofenceRadiusM?: number | null;
+  boundingBox?: WaypointBoundingBox | null;
+  notifyOnEnter?: boolean;
+  notifyOnExit?: boolean;
+  notifyFavoritesOnly?: boolean;
   lastBroadcastAt: number | null;
   firstSeenAt: number;
   lastUpdatedAt: number;
@@ -49,4 +67,11 @@ export interface WaypointInput {
   rebroadcast_interval_s?: number | null;
   /** Hop limit 0-7, or null for the node's configured limit (#5482). Omitted = unchanged on edit. */
   hop_limit?: number | null;
+  /** Geofence radius in metres (160-16000), or null for none (#5922). */
+  geofence_radius_m?: number | null;
+  /** Geofence box in degrees, or null for none (#5922). */
+  bounding_box?: WaypointBoundingBox | null;
+  notify_on_enter?: boolean;
+  notify_on_exit?: boolean;
+  notify_favorites_only?: boolean;
 }

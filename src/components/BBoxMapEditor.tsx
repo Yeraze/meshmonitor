@@ -40,6 +40,10 @@ interface BBoxMapEditorProps {
   onChange: (bbox: BBoxValue | null) => void;
   /** Map height in CSS units. Default: 300px. */
   height?: string;
+  /** Where the map opens when no bbox is set. Default: a world view. */
+  emptyCenter?: [number, number];
+  /** Zoom for `emptyCenter`. Default: 2. */
+  emptyZoom?: number;
 }
 
 interface PendingCorner {
@@ -275,7 +279,13 @@ const Layer: React.FC<{
   return null;
 };
 
-const BBoxMapEditor: React.FC<BBoxMapEditorProps> = ({ bbox, onChange, height = '300px' }) => {
+const BBoxMapEditor: React.FC<BBoxMapEditorProps> = ({
+  bbox,
+  onChange,
+  height = '300px',
+  emptyCenter = [30, 0],
+  emptyZoom = 2,
+}) => {
   const { t } = useTranslation();
   const [pending, setPending] = useState<PendingCorner | null>(null);
 
@@ -284,8 +294,8 @@ const BBoxMapEditor: React.FC<BBoxMapEditorProps> = ({ bbox, onChange, height = 
   // is fine as a fallback.
   const initialCenter = useMemo<[number, number]>(() => {
     if (bbox) return [(bbox.minLat + bbox.maxLat) / 2, (bbox.minLng + bbox.maxLng) / 2];
-    return [30, 0];
-  }, [bbox]);
+    return emptyCenter;
+  }, [bbox, emptyCenter]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -299,7 +309,7 @@ const BBoxMapEditor: React.FC<BBoxMapEditorProps> = ({ bbox, onChange, height = 
           overflow: 'hidden',
         }}
       >
-        <BaseMap center={initialCenter} zoom={bbox ? 5 : 2}>
+        <BaseMap center={initialCenter} zoom={bbox ? 5 : emptyZoom}>
           <Layer
             bbox={bbox}
             pending={pending}

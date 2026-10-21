@@ -13,6 +13,9 @@
  *   - locked_to (uint32 nodeNum; 0 = open to anyone)
  *   - name (≤30 chars), description (≤100 chars)
  *   - icon (fixed32 unicode codepoint)
+ *   - geofence_radius (uint32 metres), bounding_box, notify_on_enter,
+ *     notify_on_exit, notify_favorites_only (fields 9-13, #5922). Each
+ *     receiving node evaluates these itself; MeshMonitor stores and resends them.
  */
 import crypto from 'crypto';
 import databaseService from '../../services/database.js';
@@ -21,6 +24,21 @@ import { dataEventEmitter } from './dataEventEmitter.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { waypointNotificationService } from './waypointNotificationService.js';
 import type { Waypoint } from '../../db/repositories/waypoints.js';
+import {
+  decodeWaypointGeofence,
+  toWireWaypoint,
+  type DecodedWaypointGeofenceFields,
+  type WaypointGeofence,
+} from './waypointGeofence.js';
+
+export {
+  decodeWaypointGeofence,
+  toWireWaypoint,
+  WAYPOINT_GEOFENCE_MIN_RADIUS_M,
+  WAYPOINT_GEOFENCE_MAX_RADIUS_M,
+  type WaypointGeofence,
+  type WireWaypoint,
+} from './waypointGeofence.js';
 import { isMeshtasticManager } from '../sourceManagerTypes.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
 import { WAYPOINT_AUTOMATION_MIN_INTERVAL_SECONDS } from '../../types/automation.js';
@@ -33,7 +51,7 @@ const DEFAULT_GRACE_SECONDS = 86400;
 
 /** Inbound decoded protobuf shape we care about. Field names follow the
  * camelCase / snake_case duality emitted by protobufjs. */
-export interface DecodedWaypointMessage {
+export interface DecodedWaypointMessage extends DecodedWaypointGeofenceFields {
   id?: number | bigint;
   // both casings are observed depending on the protobufjs config
   latitudeI?: number;
@@ -102,6 +120,8 @@ export interface CreateLocalInput {
   rebroadcastIntervalS?: number | null;
   /** Hop limit 0-7; null/undefined = the node's configured limit (#5482). */
   hopLimit?: number | null;
+  /** Geofence fields (#5922); omitted = none. */
+  geofence?: Partial<WaypointGeofence>;
 }
 
 export interface UpdateInput {
@@ -117,6 +137,8 @@ export interface UpdateInput {
   /** undefined = keep; null = inherit the node's configured limit (#5482). */
   hopLimit?: number | null;
   isVirtual?: boolean;
+  /** Geofence fields (#5922); each omitted field keeps its stored value. */
+  geofence?: Partial<WaypointGeofence>;
 }
 
 /**
@@ -277,6 +299,8 @@ class WaypointService {
       // `undefined` leaves an existing row's stored channel untouched.
       channel:
         channel === undefined || channel === null ? undefined : normalizeWaypointChannel(channel),
+      // The packet is the whole waypoint: a sender with no geofence clears ours.
+      ...decodeWaypointGeofence(decoded),
     });
 
     dataEventEmitter.emitWaypointUpserted(persisted, sourceId);
@@ -355,6 +379,11 @@ class WaypointService {
       channel: normalizeWaypointChannel(fields.channel),
       rebroadcastIntervalS: fields.rebroadcastIntervalS ?? null,
       hopLimit: fields.hopLimit ?? null,
+      geofenceRadiusM: fields.geofence?.geofenceRadiusM ?? null,
+      boundingBox: fields.geofence?.boundingBox ?? null,
+      notifyOnEnter: fields.geofence?.notifyOnEnter ?? false,
+      notifyOnExit: fields.geofence?.notifyOnExit ?? false,
+      notifyFavoritesOnly: fields.geofence?.notifyFavoritesOnly ?? false,
     });
 
     dataEventEmitter.emitWaypointUpserted(persisted, sourceId);
@@ -410,6 +439,12 @@ class WaypointService {
           ? existing.rebroadcastIntervalS
           : fields.rebroadcastIntervalS,
       hopLimit: fields.hopLimit === undefined ? existing.hopLimit : fields.hopLimit,
+      // undefined keeps the stored value (the repository merges it).
+      geofenceRadiusM: fields.geofence?.geofenceRadiusM,
+      boundingBox: fields.geofence?.boundingBox,
+      notifyOnEnter: fields.geofence?.notifyOnEnter,
+      notifyOnExit: fields.geofence?.notifyOnExit,
+      notifyFavoritesOnly: fields.geofence?.notifyFavoritesOnly,
     });
 
     dataEventEmitter.emitWaypointUpserted(persisted, sourceId);
@@ -610,16 +645,7 @@ class WaypointService {
 
     try {
       const packetId = await manager.broadcastWaypoint(
-        {
-          id: candidate.waypointId,
-          latitude: candidate.latitude,
-          longitude: candidate.longitude,
-          expire: candidate.expireAt ?? 0,
-          lockedTo: candidate.lockedTo ?? 0,
-          name: candidate.name,
-          description: candidate.description,
-          icon: candidate.iconCodepoint ?? 0,
-        },
+        toWireWaypoint(candidate),
         // Rebroadcast on the channel the waypoint was created with (#4341);
         // rows predating the column have `channel === null` and stay on 0.
         // Scheduler-driven rebroadcast — automation traffic (#5414).

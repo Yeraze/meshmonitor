@@ -562,4 +562,72 @@ describe('Waypoint routes', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('geofence fields (#5922)', () => {
+    const row = {
+      latitude: 30, longitude: -90, name: '', description: '', iconCodepoint: null,
+      expireAt: null, lockedTo: null, isVirtual: false, channel: 0,
+      geofenceRadiusM: 500, boundingBox: null, notifyOnEnter: true, notifyOnExit: false, notifyFavoritesOnly: false,
+    };
+
+    function mockManager() {
+      const broadcastWaypoint = vi.fn().mockResolvedValue(1234);
+      (sourceManagerRegistry.getManager as ReturnType<typeof vi.fn>).mockReturnValue({
+        getLocalNodeInfo: () => ({ nodeNum: 42 }),
+        broadcastWaypoint,
+      });
+      return { broadcastWaypoint };
+    }
+
+    it('POST stores the geofence and broadcasts it', async () => {
+      const { broadcastWaypoint } = mockManager();
+      mockWaypointService.createLocal.mockResolvedValue({ ...row, sourceId: harness.sourceA, waypointId: 3 });
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post(`/api/sources/${harness.sourceA}/waypoints`).send({
+        lat: 30, lon: -90,
+        geofence_radius_m: 500,
+        bounding_box: { west: -90.1, south: 29.9, east: -89.9, north: 30.1 },
+        notify_on_enter: true,
+      });
+      expect(res.status).toBe(201);
+      expect(mockWaypointService.createLocal.mock.calls[0][2].geofence).toEqual({
+        geofenceRadiusM: 500,
+        boundingBox: { west: -90.1, south: 29.9, east: -89.9, north: 30.1 },
+        notifyOnEnter: true,
+      });
+      expect(broadcastWaypoint.mock.calls[0][0]).toMatchObject({ id: 3, geofenceRadiusM: 500, notifyOnEnter: true });
+    });
+
+    it.each([
+      [{ geofence_radius_m: 100 }],
+      [{ geofence_radius_m: 20000 }],
+      [{ geofence_radius_m: 500.5 }],
+      [{ bounding_box: { west: 1, south: 2, east: 0, north: 4 } }],
+      [{ bounding_box: { west: 1, south: 5, east: 3, north: 4 } }],
+      [{ bounding_box: { west: 'x', south: 2, east: 3, north: 4 } }],
+    ])('POST rejects an invalid geofence %j', async (bad) => {
+      mockManager();
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post(`/api/sources/${harness.sourceA}/waypoints`).send({ lat: 30, lon: -90, ...bad });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ success: false, code: 'INVALID_GEOFENCE' });
+      expect(mockWaypointService.createLocal).not.toHaveBeenCalled();
+    });
+
+    it('PATCH passes only the geofence keys it was sent', async () => {
+      mockManager();
+      mockWaypointService.update.mockResolvedValue({ ...row, sourceId: harness.sourceA, waypointId: 5 });
+      const agent = await harness.loginAs(harness.admin);
+      await agent.patch(`/api/sources/${harness.sourceA}/waypoints/5`).send({ geofence_radius_m: null, notify_on_exit: true });
+      expect(mockWaypointService.update.mock.calls[0][3].geofence).toEqual({ geofenceRadiusM: null, notifyOnExit: true });
+    });
+
+    it('PATCH without geofence keys leaves the geofence alone', async () => {
+      mockManager();
+      mockWaypointService.update.mockResolvedValue({ ...row, sourceId: harness.sourceA, waypointId: 5 });
+      const agent = await harness.loginAs(harness.admin);
+      await agent.patch(`/api/sources/${harness.sourceA}/waypoints/5`).send({ name: 'x' });
+      expect(mockWaypointService.update.mock.calls[0][3]).not.toHaveProperty('geofence');
+    });
+  });
 });

@@ -1,0 +1,9 @@
+/*
+ * Waypoint geofence region (#5922). Leaflet writes stroke/fill as SVG
+ * attributes, which cannot read var(); CSS beats the attribute, so the role
+ * token lives here and follows the theme.
+ */
+.geofence {
+  stroke: var(--color-info);
+  fill: var(--color-info);
+}
