@@ -322,6 +322,19 @@ describe('MeshCoreContactDetailPanel', () => {
       expect(screen.getByRole('button', { name: 'Trace Path' })).toBeTruthy();
     });
 
+    it('offers Trace Path for a direct repeater but not a direct companion (#5914)', () => {
+      const repeater: MeshCoreContact = { publicKey: PK, advType: 2, pathLen: 0, outPath: '' } as MeshCoreContact;
+      const { rerender } = render(
+        <MeshCoreContactDetailPanel contact={repeater} publicKey={PK} onTracePath={vi.fn()} canTraceroute isCompanion />,
+      );
+      expect(screen.getByRole('button', { name: 'Trace Path' })).toBeTruthy();
+      const companion: MeshCoreContact = { publicKey: PK, advType: 1, pathLen: 0, outPath: '' } as MeshCoreContact;
+      rerender(
+        <MeshCoreContactDetailPanel contact={companion} publicKey={PK} onTracePath={vi.fn()} canTraceroute isCompanion />,
+      );
+      expect(screen.queryByRole('button', { name: 'Trace Path' })).toBeNull();
+    });
+
     it('hides Ping without nodes:write', () => {
       const contact: MeshCoreContact = { publicKey: PK, advType: 2 };
       render(
