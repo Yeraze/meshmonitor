@@ -658,6 +658,9 @@ export class VirtualNodeServer extends EventEmitter {
                 logger.trace(`Virtual node: Processing MQTT proxy message locally from ${clientId} (channel: ${envelope.channelId || 'unknown'}, gateway: ${envelope.gatewayId || 'unknown'})`);
                 await this.config.meshtasticManager.processIncomingData(fromRadioMessage, {
                   skipVirtualNodeBroadcast: true,
+                  // #5923: never touched our radio, so its channel field says
+                  // nothing about which of our channels the sender is on.
+                  fromMqttProxy: true,
                 });
               }
             } else {
