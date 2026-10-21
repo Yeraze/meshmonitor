@@ -149,6 +149,26 @@ function runChannelsTests(getBackend: () => TestBackend) {
     expect(channel!.name).toBe('KeepMe');
   });
 
+  it('upsertChannel - a slot stored unused takes the name, role and PSK it later arrives with (#5919)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // First config download: an empty slot 4 (processChannelProtobuf stores the
+    // "Channel 4" fallback name and normalizes the elided role to DISABLED).
+    await repo.upsertChannel({ id: 4, name: 'Channel 4', role: 0 }, 'src-a');
+    // Reload after the slot was named and enabled on the radio.
+    await repo.upsertChannel({ id: 4, name: 'Custom', psk: 'AQ==', role: 2 }, 'src-a');
+
+    const channel = await repo.getChannelById(4, 'src-a');
+    expect(channel).not.toBeNull();
+    expect(channel!.name).toBe('Custom');
+    expect(channel!.role).toBe(2);
+    expect(channel!.psk).toBe('AQ==');
+  });
+
   // --- AEAD flag (#5248) -------------------------------------------------
 
   it('upsertChannel - useAead defaults to false, and an omitted flag keeps the stored value', async () => {

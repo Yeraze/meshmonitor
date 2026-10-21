@@ -228,3 +228,41 @@ describe('MeshtasticManager - processChannelProtobuf proto3 boolean elision (#35
     expect(stored.downlinkEnabled).toBe(false);
   });
 });
+
+// #5919: a slot first read empty, then named on the radio. Both config
+// downloads must reach the store, the second with the real name and role, so a
+// Reload Config on Device can correct the stale "Channel N" row.
+describe('MeshtasticManager - processChannelProtobuf re-saves a slot named after it was empty (#5919)', () => {
+  let manager: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    manager = managerModule.fallbackManager;
+    manager.sourceId = SOURCE;
+  });
+
+  it('stores the empty slot as DISABLED, then the named slot as SECONDARY with its name', async () => {
+    // First download: an empty slot. On the wire it is just `index` plus an
+    // empty settings message (hex 0804 1200); protobuf.js decodes the elided
+    // fields to their defaults: role 0, name '', an empty PSK.
+    await manager.processChannelProtobuf({
+      index: 4,
+      role: 0,
+      settings: { name: '', psk: new Uint8Array(0) },
+    });
+    // Reload after the slot was set to "Custom" and enabled on the radio.
+    await manager.processChannelProtobuf({
+      index: 4,
+      role: 2,
+      settings: { name: 'Custom', psk: Buffer.from([1]) },
+    });
+
+    expect(mockUpsertChannel).toHaveBeenCalledTimes(2);
+    const [first, firstSource] = mockUpsertChannel.mock.calls[0];
+    expect(first).toMatchObject({ id: 4, name: 'Channel 4', role: 0 });
+    expect(firstSource).toBe(SOURCE);
+    const [second, secondSource] = mockUpsertChannel.mock.calls[1];
+    expect(second).toMatchObject({ id: 4, name: 'Custom', role: 2, psk: 'AQ==' });
+    expect(secondSource).toBe(SOURCE);
+  });
+});
