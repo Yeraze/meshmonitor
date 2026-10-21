@@ -721,12 +721,12 @@ The **Automations** view also hosts a per-source Auto-Announce that periodically
 
 Auto-Responder matches incoming messages against operator-defined patterns and replies automatically:
 
-- **Per-trigger pattern** — match incoming text via a regular expression, with per-channel filtering, DM listening, and a per-sender cooldown to avoid loops.
+- **Per-trigger pattern** — match incoming text with per-channel filtering, DM listening, and a per-sender cooldown to avoid loops. Each trigger has a **Match mode**, the same as on Meshtastic (see [Match mode](/features/automation#match-mode-pattern-or-regex)): **Pattern** (the Meshtastic syntax, whole message, `{name}` captures that fill the reply and reach a script as `PARAM_<name>`) or **Regex** (case-insensitive, matches anywhere in the message, `(?<name>…)` captures). New triggers start as Pattern; triggers saved before match modes existed stay Regex. Both modes take emoji and other non-ASCII text.
 - **Per-trigger pre-send delay** — wait a configurable number of seconds (0–120, `0` = immediate) after a match before replying, so a relaying repeater can finish its own transmission before your reply floods. Mirrors the Auto-Acknowledge pre-send delay; the wait applies once per fire, ahead of both text and script responses.
 - **Two actions** — reply with a **text response** (same token expansion as Auto-Announce) or **run a script** (with token-expanded script args). Script execution reuses the shared script runner, with `MESHCORE_*` environment variables injected so a script can branch on which stack invoked it.
 - **Reply scope/region** — choose which region the reply floods to: **Inherit** the channel/source default, **Match the triggering message's scope** (answer back on the same region it arrived on), send **Unscoped**, or pick **a specific region**. This mirrors the MeshCore scope control in the [Automation Engine](/features/automation-engine#actions).
 
-Triggers work the same way as on Meshtastic: each one is a card with its own on/off switch, a summary and tags. Click **Add trigger** or **Edit** to open a card, then **Done**, then **Save**. **Delete** asks first. The **Test a message** box shows which triggers a sample message fires (case-insensitive, anywhere in the message) and their reply text, with tokens such as `{VERSION}` left as written. It sends nothing and does not apply channel filters.
+Triggers work the same way as on Meshtastic: each one is a card with its own on/off switch, a summary and tags. Click **Add trigger** or **Edit** to open a card, then **Done**, then **Save**. **Delete** asks first. The **Test a message** box shows which triggers a sample message fires, each in its own match mode, and their reply text with captured values filled in and tokens such as `{VERSION}` left as written. It sends nothing and does not apply channel filters.
 
 ### Route tokens
 

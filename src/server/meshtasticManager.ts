@@ -90,8 +90,9 @@ import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { AUTO_ACK_MAX_PENDING, autoAckChannelWaitMs, resolveAutoAckMaxResponses } from './autoAckResponseCap.js';
 import { countDistinctResponders } from '../utils/messageReplies.js';
 import { clampHopLimitOverride, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
-import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
-import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
+import { normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
+import { matchResponderTrigger } from './utils/autoResponderMatcher.js';
+import { resolveResponderSyntax, type ResponderSyntax } from '../utils/responderTrigger.js';
 import { runForwarding, parseStoredForwardingRules } from './utils/forwardingEngine.js';
 import { FORWARDING_SETTING_KEY } from '../types/forwarding.js';
 import { isForwardingEnabled } from './services/forwardingStateService.js';
@@ -547,6 +548,11 @@ type TextMessage = {
  */
 interface AutoResponderTrigger {
   trigger: string | string[];
+  /**
+   * `'pattern'` (placeholder DSL, anchored) or `'regex'` (bare, unanchored,
+   * case-insensitive). Missing = `'pattern'`, the pre-#5924 behaviour.
+   */
+  syntax?: ResponderSyntax;
   response: string;
   responseType?: 'text' | 'http' | 'script' | 'traceroute' | 'mailbox';
   channel?: number | 'dm' | 'none';
@@ -12968,15 +12974,15 @@ class MeshtasticManager implements ISourceManager {
           }
         }
 
-        // Handle both string and array types for trigger.trigger
-        const patterns = normalizeTriggerPatterns(trigger.trigger);
+        // One shared matcher for both syntaxes (#5924). Pattern mode tries
+        // each comma alternative in turn; regex mode runs the one regex.
         let matchedPattern: string | null = null;
         let extractedParams: Record<string, string> = {};
-
-        // Try each pattern until one matches
-        for (const origPatternStr of patterns) {
-          const m = matchAutoResponderPattern(origPatternStr, message.text);
-          if (m.matched) { extractedParams = m.params; matchedPattern = origPatternStr; break; }
+        const syntax = resolveResponderSyntax(trigger.syntax, 'pattern');
+        const m = matchResponderTrigger({ pattern: trigger.trigger, syntax }, message.text);
+        if (m.matched) {
+          extractedParams = m.params;
+          matchedPattern = m.matchedPattern ?? (Array.isArray(trigger.trigger) ? trigger.trigger[0] : trigger.trigger);
         }
 
         if (matchedPattern) {

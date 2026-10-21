@@ -14,7 +14,8 @@ import { TriggerListFilter } from '../shared/automation/TriggerListFilter';
 import { PatternTestBox, type PatternTestResult } from '../shared/automation/PatternTestBox';
 import { TRIGGER_FILTER_THRESHOLD, matchesSearch, newTriggerId } from '../shared/automation/triggerList';
 import { MeshCoreResponderTriggerEditor } from './MeshCoreResponderTriggerEditor';
-import { validateMeshCoreResponderPattern, meshCoreResponderPatternMatches } from './meshcoreResponderMatch';
+import { validateMeshCoreResponderPattern, matchMeshCoreResponderPattern, meshCoreTriggerSyntax } from './meshcoreResponderMatch';
+import { substituteResponderParams } from '../../utils/responderTrigger';
 import type {
   MeshCoreAutoResponderTrigger,
   MeshCoreChannelRow,
@@ -37,6 +38,9 @@ const newTrigger = (): MeshCoreAutoResponderTrigger => ({
   name: '',
   enabled: true,
   pattern: '',
+  // New triggers use the placeholder DSL, as on Meshtastic (#5924). Saved
+  // triggers with no syntax stay regex (meshCoreTriggerSyntax).
+  syntax: 'pattern',
   responseType: 'text',
   response: '',
   channels: [],
@@ -150,7 +154,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     // Validate every trigger up front so the operator sees the bad one
     // before a round-trip; open it so the error shows in place.
     for (const tr of triggers) {
-      const v = validateMeshCoreResponderPattern(tr.pattern);
+      const v = validateMeshCoreResponderPattern(tr.pattern, meshCoreTriggerSyntax(tr));
       const noName = nameMissing(tr);
       if (!v.valid || noName) {
         setAttemptedIds((prev) => new Set(prev).add(tr.id));
@@ -226,7 +230,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     if (!id) return true;
     const tr = triggers.find((x) => x.id === id);
     if (tr) {
-      if (!validateMeshCoreResponderPattern(tr.pattern).valid || nameMissing(tr)) {
+      if (!validateMeshCoreResponderPattern(tr.pattern, meshCoreTriggerSyntax(tr)).valid || nameMissing(tr)) {
         setAttemptedIds((prev) => new Set(prev).add(id));
         setExpandedId(id);
         return false;
@@ -270,9 +274,13 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
       && (typeFilter === 'all' || (tr.responseType || 'text') === typeFilter)
     ));
 
+  // A regex shows as /…/; a DSL pattern shows as written.
+  const patternLabel = (tr: MeshCoreAutoResponderTrigger): string =>
+    meshCoreTriggerSyntax(tr) === 'regex' ? `/${tr.pattern}/` : tr.pattern;
+
   const summaryOf = (tr: MeshCoreAutoResponderTrigger): React.ReactNode => (
     <>
-      <code>/{tr.pattern}/</code> <UiIcon name="forward" size={12} />{' '}
+      <code>{patternLabel(tr)}</code> <UiIcon name="forward" size={12} />{' '}
       {(tr.responseType || 'text') === 'script'
         ? <code>{tr.scriptPath || t('meshcore.automation.responder.select_script', '(select script)')}{tr.scriptArgs ? ` ${tr.scriptArgs}` : ''}</code>
         : tr.response}
@@ -299,14 +307,24 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     return chips;
   };
 
-  // Mirrors the server: every enabled trigger whose regex matches replies.
-  // Channel / DM filters are not applied (the test message has neither).
+  // Mirrors the server: every enabled trigger whose pattern matches, in its
+  // own syntax, replies. Channel / DM filters are not applied (the test
+  // message has neither).
   const matchForTest = (tr: MeshCoreAutoResponderTrigger, text: string): PatternTestResult => {
-    if (!tr.enabled || !meshCoreResponderPatternMatches(tr.pattern, text)) return { matched: false };
+    if (!tr.enabled) return { matched: false };
+    const m = matchMeshCoreResponderPattern(tr.pattern, text, meshCoreTriggerSyntax(tr));
+    if (!m.matched) return { matched: false };
+    const params = Object.entries(m.params);
+    const detail = (
+      <>
+        {patternLabel(tr)}
+        {params.length > 0 && ` · ${params.map(([k, v]) => `${k}="${v}"`).join(', ')}`}
+      </>
+    );
     if ((tr.responseType || 'text') === 'script') {
-      return { matched: true, detail: <>/{tr.pattern}/ · {tr.scriptPath}</> };
+      return { matched: true, detail: <>{detail} · {tr.scriptPath}</> };
     }
-    return { matched: true, detail: <>/{tr.pattern}/</>, response: tr.response };
+    return { matched: true, detail, response: substituteResponderParams(tr.response, m.params) };
   };
 
   return (
@@ -351,7 +369,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
         )}
 
         {visible.map(tr => {
-          const v = validateMeshCoreResponderPattern(tr.pattern);
+          const v = validateMeshCoreResponderPattern(tr.pattern, meshCoreTriggerSyntax(tr));
           const attempted = attemptedIds.has(tr.id);
           const patternError = !v.valid && (tr.pattern || attempted) ? v.error : undefined;
           const nameError = attempted && nameMissing(tr)
@@ -410,11 +428,11 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
             triggers={triggers}
             mode="all"
             getKey={(tr) => tr.id}
-            getLabel={(tr) => tr.name || `/${tr.pattern}/`}
+            getLabel={(tr) => tr.name || patternLabel(tr)}
             match={matchForTest}
             description={t(
               'meshcore.automation.responder.test_description',
-              'Type sample messages, one per line. Every enabled trigger whose pattern matches (case-insensitive, anywhere in the message) replies. Tokens such as {VERSION} are filled in when the reply is sent. Nothing is sent from here, and channel filters are not applied.',
+              'Type sample messages, one per line. Every enabled trigger whose pattern matches, in its own syntax, replies. Captured {name} values are filled in here; tokens such as {VERSION} are filled in when the reply is sent. Nothing is sent from here, and channel filters are not applied.',
             )}
           />
         )}

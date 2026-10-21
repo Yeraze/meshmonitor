@@ -7647,5 +7647,13 @@
   "audit.views": "Audit views",
   "audit.view_events": "Audit events",
   "audit.view_meshcore_cli": "MeshCore CLI activity",
-  "maintenance.meshcore_cli_history_retention": "MeshCore CLI History Retention"
+  "maintenance.meshcore_cli_history_retention": "MeshCore CLI History Retention",
+  "auto_responder.trigger_placeholder_regex": "e.g. ^!(signal|chat)\\b",
+  "auto_responder.trigger_regex_title": "Trigger regex: case-insensitive, matches anywhere in the message. Use (?<name>…) to capture a value for the response.",
+  "automation.responder_syntax.label": "Match mode",
+  "automation.responder_syntax.pattern": "Pattern",
+  "automation.responder_syntax.regex": "Regex",
+  "automation.responder_syntax.pattern_hint": "The whole message must match, case-insensitive. {name} captures a word, {name:regex} a custom value; separate alternatives with commas.",
+  "automation.responder_syntax.regex_hint": "Regular expression, case-insensitive. Matches anywhere in the message; anchor with ^ and $. (?<name>…) captures a value.",
+  "meshcore.automation.responder.pattern_label": "Pattern"
 }

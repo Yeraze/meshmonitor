@@ -14,8 +14,10 @@ import React, { useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import type { Channel } from '../../types/device';
 import type { AutoResponderTrigger, ResponseType, ScriptMetadata } from './types';
-import { splitTriggerPatterns, extractParameters } from './utils';
-import { patternText, renderSampleResponse, editableChannels, type TriggerErrors } from './triggerModel';
+import { extractParameters } from './utils';
+import { patternText, renderSampleResponse, editableChannels, triggerSyntax, type TriggerErrors } from './triggerModel';
+import { responderPatternList } from '../../utils/responderTrigger';
+import { ResponderSyntaxSelect } from '../shared/automation/ResponderSyntaxSelect';
 import { COOLDOWN_SECONDS_MAX } from '../automationInputLimits';
 import { NumberInput } from '../common/NumberInput';
 import { UiIcon } from '../icons';
@@ -67,8 +69,12 @@ const TriggerEditor: React.FC<TriggerEditorProps> = ({
   const selected = editableChannels(trigger);
   const hasDm = selected.includes('dm');
   const hasNone = selected.includes('none');
-  const patterns = splitTriggerPatterns(newTrigger);
-  const allParams = patterns.flatMap((p) => extractParameters(p));
+  const syntax = triggerSyntax(trigger);
+  const patterns = responderPatternList(newTrigger, syntax);
+  // Pattern mode: `{name}` placeholders. Regex mode: `(?<name>…)` groups.
+  const allParams: Array<{ name: string; pattern?: string }> = syntax === 'regex'
+    ? Array.from(newTrigger.matchAll(/\(\?<([A-Za-z_][A-Za-z0-9_]*)>/g), (m) => ({ name: m[1] }))
+    : patterns.flatMap((p) => extractParameters(p));
   const uniqueParams = Array.from(new Set(allParams.map((p) => p.name)));
   const idBase = `ar-${trigger.id}`;
 
@@ -106,6 +112,13 @@ const TriggerEditor: React.FC<TriggerEditorProps> = ({
 
   return (
     <div className={styles.editor}>
+      <ResponderSyntaxSelect
+        id={`${idBase}-syntax`}
+        value={syntax}
+        onChange={(v) => onChange({ syntax: v })}
+        disabled={disabled}
+      />
+
       {/* Pattern, type and response */}
       <div className={`${layout.wrapRow} ${layout.patternRow}`} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
         <div className={`${layout.growField} ${layout.patternField}`} style={{ position: 'relative' }}>
@@ -114,7 +127,7 @@ const TriggerEditor: React.FC<TriggerEditorProps> = ({
             id={`${idBase}-pattern`}
             value={newTrigger}
             onChange={(e) => onChange({ trigger: e.target.value })}
-            placeholder={t('auto_responder.trigger_placeholder')}
+            placeholder={syntax === 'regex' ? t('auto_responder.trigger_placeholder_regex') : t('auto_responder.trigger_placeholder')}
             disabled={disabled}
             aria-label={t('auto_responder.trigger_label')}
             aria-invalid={errors.trigger ? true : undefined}
@@ -127,7 +140,7 @@ const TriggerEditor: React.FC<TriggerEditorProps> = ({
               // empty field keeps its full width for the placeholder.
               paddingRight: newTrigger.trim() ? PATTERN_BADGE_RESERVE : undefined
             }}
-            title={t('auto_responder.trigger_pattern_title')}
+            title={syntax === 'regex' ? t('auto_responder.trigger_regex_title') : t('auto_responder.trigger_pattern_title')}
           />
           {newTrigger.trim() && (
             <div style={{
@@ -140,7 +153,7 @@ const TriggerEditor: React.FC<TriggerEditorProps> = ({
               pointerEvents: 'none',
               whiteSpace: 'nowrap'
             }}>
-              {t('auto_responder.pattern_count', { count: splitTriggerPatterns(newTrigger).length })}
+              {t('auto_responder.pattern_count', { count: patterns.length })}
             </div>
           )}
         </div>
@@ -259,7 +272,7 @@ const TriggerEditor: React.FC<TriggerEditorProps> = ({
                     className={styles.param}
                     title={param?.pattern ? t('auto_responder.pattern_title', { pattern: param.pattern }) : t('auto_responder.default_pattern_title')}
                   >
-                    {`{${name}${param?.pattern ? `:${param.pattern}` : ''}}`}
+                    {syntax === 'regex' ? `(?<${name}>)` : `{${name}${param?.pattern ? `:${param.pattern}` : ''}}`}
                   </code>
                 );
               })}

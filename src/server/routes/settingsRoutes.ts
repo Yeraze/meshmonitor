@@ -25,6 +25,8 @@ import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { validateResponderTrigger } from '../utils/autoResponderMatcher.js';
+import { isResponderSyntax } from '../../utils/responderTrigger.js';
 import {
   requireSourcePermission,
   getSourceTarget,
@@ -737,6 +739,19 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
           }
           if (!Array.isArray(trigger.trigger) && typeof trigger.trigger !== 'string') {
             return res.status(400).json({ error: 'Trigger must be a string or array of strings' });
+          }
+
+          // Trigger syntax (#5924). Missing = 'pattern' (the DSL). A regex-mode
+          // trigger gets the same store-time checks as a MeshCore one; pattern
+          // mode is left as it was, so older triggers still save.
+          if (trigger.syntax !== undefined && !isResponderSyntax(trigger.syntax)) {
+            return fail(res, 400, 'INVALID_REGEX', 'syntax must be "pattern" or "regex"');
+          }
+          if (trigger.syntax === 'regex') {
+            const v = validateResponderTrigger(trigger.trigger, 'regex');
+            if (!v.ok) {
+              return fail(res, 400, 'INVALID_REGEX', `Invalid regex for trigger ${trigger.id}: ${v.error}`);
+            }
           }
 
           if (

@@ -858,6 +858,19 @@ Trigger patterns can include parameters using curly braces `{parameter}` that ex
 - Parameters support commas and special characters (e.g., "parkland,fl")
 - Patterns are matched against the entire message
 
+#### Match mode: Pattern or Regex
+
+Each trigger has a **Match mode**. It works the same on Meshtastic and MeshCore sources, so a trigger written for one works unchanged on the other.
+
+- **Pattern** (the default): the syntax on this page. The whole message must match, case-insensitive. `{name}` captures a word and `{name:regex}` a custom value; commas separate alternatives. Look-alike Cyrillic letters count as their Latin twins.
+- **Regex**: one regular expression, case-insensitive, that **matches anywhere in the message**. Anchor it with `^` and `$` to match the whole message. A named group such as `(?<level>\d+)` captures a value for the response as `{level}`. Commas are regex text, not separators. At most 100 characters, and patterns that can backtrack badly (such as `(a+)+` or `a{2,}`) are refused.
+
+A regex matches more messages than an anchored pattern, so it can fire more replies. Cooldowns and rate limits apply the same in both modes.
+
+Patterns in both modes may use any printable text: emoji (`🔋`, `👋\s*hi`), accented letters and CJK. Control characters are refused.
+
+Triggers saved before match modes existed keep their old behaviour: Meshtastic triggers read as **Pattern**, MeshCore triggers as **Regex**.
+
 #### Multiple Patterns Per Trigger
 
 You can specify multiple patterns for a single trigger by separating them with commas. This allows one trigger to match different message formats:
