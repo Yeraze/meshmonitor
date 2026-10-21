@@ -182,11 +182,45 @@ describe('meshcoreCompanionCodec — encoders round-trip through meshcore.js dec
   it('DeviceInfo decodes firmware version, build date and model', async () => {
     const decoded = await decodeWithMeshcore(
       ResponseCodes.DeviceInfo,
-      encodeDeviceInfo({ firmwareVer: 7, firmwareBuildDate: '19 Feb 2025', manufacturerModel: 'MeshMonitor Virtual Node' }),
+      encodeDeviceInfo({
+        firmwareVer: 3, maxContacts: 100, maxChannels: 8, blePin: 0,
+        firmwareBuildDate: '19 Feb 2025', manufacturerModel: 'MeshMonitor Virtual Node', firmwareVersion: '',
+      }),
     );
-    expect(decoded.firmwareVer).toBe(7);
+    expect(decoded.firmwareVer).toBe(3);
     expect(decoded.firmware_build_date).toBe('19 Feb 2025');
-    expect(decoded.manufacturerModel).toBe('MeshMonitor Virtual Node');
+    // meshcore.js reads the model as the rest of the frame, padding included,
+    // exactly as it does for a real device's DeviceInfo.
+    expect(String(decoded.manufacturerModel).replace(/\0+$/, '')).toBe('MeshMonitor Virtual Node');
+  });
+
+  it('DeviceInfo uses the firmware v3 layout with fixed-width strings (#5916)', () => {
+    const b = encodeDeviceInfo({
+      firmwareVer: 3, maxContacts: 350, maxChannels: 40, blePin: 123456,
+      firmwareBuildDate: '19 Feb 2025', manufacturerModel: 'Heltec V3', firmwareVersion: 'v1.9.0',
+    });
+    expect(b.length).toBe(80);
+    expect(b[0]).toBe(ResponseCodes.DeviceInfo);
+    expect(b[1]).toBe(3);
+    expect(b[2]).toBe(175); // maxContacts / 2
+    expect(b[3]).toBe(40);
+    expect(b.readUInt32LE(4)).toBe(123456);
+    const str = (start: number, len: number) => b.subarray(start, start + len).toString('utf8').replace(/\0+$/, '');
+    expect(str(8, 12)).toBe('19 Feb 2025');
+    expect(str(20, 40)).toBe('Heltec V3');
+    expect(str(60, 20)).toBe('v1.9.0');
+  });
+
+  it('DeviceInfo clamps capacities to one byte and truncates long strings', () => {
+    const b = encodeDeviceInfo({
+      firmwareVer: 3, maxContacts: 2000, maxChannels: 300, blePin: 0,
+      firmwareBuildDate: '', manufacturerModel: 'M'.repeat(60), firmwareVersion: '',
+    });
+    expect(b.length).toBe(80);
+    expect(b[2]).toBe(255);
+    expect(b[3]).toBe(255);
+    expect(b.subarray(20, 59).toString('utf8')).toBe('M'.repeat(39));
+    expect(b[59]).toBe(0);
   });
 
   it('ContactsStart decodes the announced count', async () => {

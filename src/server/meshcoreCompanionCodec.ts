@@ -30,8 +30,17 @@ export const FRAME_NODE_TO_APP = 0x3e; // ">" — frames we send the app
 import { parsePathHops } from '../utils/meshcorePath.js';
 import { encodeOutPathLen, OUT_PATH_UNKNOWN } from './meshcoreNativeBackend.js';
 
-/** Companion protocol version this virtual node speaks (meshcore.js v1.13.0). */
-export const SUPPORTED_COMPANION_PROTOCOL_VERSION = 1;
+/**
+ * FIRMWARE_VER_CODE the virtual node reports in DeviceInfo (byte 1).
+ *
+ * Clients read this byte as a feature level, so it must never be the proxied
+ * node's real value (#3705): meshcore-flutter turns on commands we don't
+ * implement at 8 and above, and dropped the handshake when it saw one. It must
+ * be at least 3, though: below that MeshCore One skips the fixed-width fields
+ * and reads maxChannels as 0, so it never syncs channels (#5916). Neither app
+ * gates anything between 3 and 7.
+ */
+export const SUPPORTED_COMPANION_PROTOCOL_VERSION = 3;
 
 /** Command codes the app sends (mirrors meshcore.js Constants.CommandCodes). */
 export const CommandCodes = {
@@ -643,19 +652,38 @@ export function encodeCurrTime(epochSecs: number): Buffer {
 
 export interface DeviceInfoWire {
   firmwareVer: number;
+  /** Contact capacity. The wire holds half of it in one byte. */
+  maxContacts: number;
+  /** Channel slots (MAX_GROUP_CHANNELS). */
+  maxChannels: number;
+  blePin: number;
   firmwareBuildDate: string; // e.g. "19 Feb 2025", max 12 incl. null terminator
-  manufacturerModel: string; // remainder of frame
+  manufacturerModel: string; // max 40 incl. null terminator
+  /**
+   * Firmware version string, max 20 incl. null terminator. MeshCore One turns
+   * features on from it ("v1.11" and up), so the virtual node sends ''.
+   */
+  firmwareVersion: string;
 }
 
-/** Encode a DeviceInfo(13) response (reply to DeviceQuery). */
+/**
+ * Encode a DeviceInfo(13) response (reply to DeviceQuery) in the v3 layout
+ * the companion firmware sends (#5916):
+ * `[13][ver][maxContacts/2][maxChannels][blePin u32][build 12][model 40][version 20]`.
+ * The v9+ client_repeat and v10+ path_hash_mode bytes are left off, as a v3
+ * device sends no such bytes.
+ */
 export function encodeDeviceInfo(info: DeviceInfoWire): Buffer {
-  const head = Buffer.alloc(1 + 1 + 6 + 12); // code + firmwareVer + reserved(6) + cstring(12)
-  head[0] = ResponseCodes.DeviceInfo;
-  head.writeInt8(info.firmwareVer | 0, 1);
-  // reserved[6] left zero
-  writeCString(head, 8, info.firmwareBuildDate ?? '', 12);
-  const model = Buffer.from(info.manufacturerModel ?? '', 'utf8');
-  return Buffer.concat([head, model]);
+  const b = Buffer.alloc(1 + 1 + 1 + 1 + 4 + 12 + 40 + 20);
+  b[0] = ResponseCodes.DeviceInfo;
+  b.writeInt8(clampInt8(info.firmwareVer | 0), 1);
+  b[2] = Math.max(0, Math.min(255, Math.floor((info.maxContacts | 0) / 2)));
+  b[3] = Math.max(0, Math.min(255, info.maxChannels | 0));
+  b.writeUInt32LE(info.blePin >>> 0, 4);
+  writeCString(b, 8, info.firmwareBuildDate ?? '', 12);
+  writeCString(b, 20, info.manufacturerModel ?? '', 40);
+  writeCString(b, 60, info.firmwareVersion ?? '', 20);
+  return b;
 }
 
 /** Encode a ContactsStart(2) response announcing how many Contact frames follow. */
