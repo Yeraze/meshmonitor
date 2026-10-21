@@ -26,6 +26,21 @@ const toBBoxValue = (b: WaypointBoundingBox | null): BBoxValue | null =>
 const fromBBoxValue = (b: BBoxValue | null): WaypointBoundingBox | null =>
   b ? { west: b.minLng, south: b.minLat, east: b.maxLng, north: b.maxLat } : null;
 
+/** The four box edges, in the order the inputs show them. */
+const BOX_EDGES = [
+  { key: 'north', labelKey: 'waypoints.geofence.north', label: 'North', min: -90, max: 90 },
+  { key: 'south', labelKey: 'waypoints.geofence.south', label: 'South', min: -90, max: 90 },
+  { key: 'west', labelKey: 'waypoints.geofence.west', label: 'West', min: -180, max: 180 },
+  { key: 'east', labelKey: 'waypoints.geofence.east', label: 'East', min: -180, max: 180 },
+] as const;
+
+/** A small box around the waypoint, about 1 km across. */
+function seedBox(center: { lat: number; lon: number } | null): WaypointBoundingBox | null {
+  if (!center) return null;
+  const d = 0.005;
+  return { west: center.lon - d, south: center.lat - d, east: center.lon + d, north: center.lat + d };
+}
+
 function formatRadius(m: number): string {
   const km = m / 1000;
   const mi = m / 1609.344;
@@ -107,6 +122,27 @@ export default function WaypointGeofenceFields({ value, onChange, center }: Wayp
             emptyCenter={center ? [center.lat, center.lon] : undefined}
             emptyZoom={center ? 13 : undefined}
           />
+          <div className={styles.boxGrid}>
+            {BOX_EDGES.map(({ key, labelKey, label, min, max }) => (
+              <label key={key} className={styles.label}>
+                {t(labelKey, label)}
+                <NumberInput
+                  className={styles.input}
+                  allowEmpty
+                  step={0.000001}
+                  min={min}
+                  max={max}
+                  value={value.box ? value.box[key] : null}
+                  onChange={(v) => {
+                    if (v === null) return;
+                    // Typing into an empty box seeds one around the waypoint.
+                    const seed = value.box ?? seedBox(center);
+                    if (seed) set({ box: { ...seed, [key]: v } });
+                  }}
+                />
+              </label>
+            ))}
+          </div>
         </div>
       )}
 

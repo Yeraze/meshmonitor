@@ -71,6 +71,9 @@ export function geofenceBody(d: GeofenceDraft):
     }
   }
   if (wantsBox && !d.box) return { error: 'Draw the geofence box on the map' };
+  if (wantsBox && d.box && !(d.box.south < d.box.north && d.box.west < d.box.east)) {
+    return { error: 'The geofence box needs south below north and west below east' };
+  }
   const hasShape = d.shape !== 'none';
   return {
     geofence_radius_m: wantsCircle ? d.radiusM : null,

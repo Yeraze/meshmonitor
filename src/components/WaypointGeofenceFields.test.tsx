@@ -88,6 +88,18 @@ describe('WaypointGeofenceFields', () => {
     await user.click(screen.getByRole('button', { name: 'draw-box' }));
     expect(draft().box).toEqual({ west: -90.1, south: 29.9, east: -89.9, north: 30.1 });
   });
+
+  it('edits a box edge from its number field, and rejects an inverted box', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'waypoints.geofence.shape' }), 'box');
+    await user.click(screen.getByRole('button', { name: 'draw-box' }));
+    const north = screen.getByRole('spinbutton', { name: 'waypoints.geofence.north' });
+    await user.clear(north);
+    await user.type(north, '30.25');
+    expect(draft().box).toEqual({ west: -90.1, south: 29.9, east: -89.9, north: 30.25 });
+    expect(geofenceBody({ ...draft(), box: { ...draft().box!, north: 29 } })).toHaveProperty('error');
+  });
 });
 
 describe('WaypointEditorModal geofence', () => {
