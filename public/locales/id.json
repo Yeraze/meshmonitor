@@ -7406,5 +7406,6 @@
     "settings.translation_deepl_url": "",
     "config_item_card.delete_title": "",
     "config.danger_zone": "",
-    "automation.forwardingSource.placeholder": ""
+    "automation.forwardingSource.placeholder": "",
+    "auto_responder.trigger_placeholder": ""
 }
