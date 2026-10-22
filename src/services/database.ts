@@ -197,6 +197,7 @@ export interface DbNode {
   altitudeOverride?: number; // Override altitude
   positionOverrideIsPrivate?: boolean; // Override privacy (false = public, true = private)
   hideFromMap?: boolean; // #3549: suppress this node's marker on maps only
+  channelLocked?: boolean; // #5923: admin-pinned channel; traffic does not change it
   notes?: string; // #3921: free-text per-node MeshMonitor-local annotation
   isUnmessagable?: boolean; // #3684: User.is_unmessagable — node won't receive DMs
   /** #5317: set when the row came from an imported contact URL and the node has not been heard yet. */
@@ -4446,6 +4447,30 @@ class DatabaseService {
     }
 
     logger.debug(`📝 Node ${nodeNum}@${sourceId} notes updated (${notes.length} chars)`);
+  }
+
+  /**
+   * Set or clear a node's channel by hand, and lock or unlock it (#5923).
+   * While locked, traffic does not change the channel. Returns false when the
+   * node has no row on this source.
+   */
+  async setNodeChannelAsync(nodeNum: number, sourceId: string, channel: number | null, channelLocked: boolean): Promise<boolean> {
+    if (!this.nodesRepo) {
+      throw new Error('Nodes repository is not initialized');
+    }
+
+    const updated = await this.nodesRepo.setNodeChannel(nodeNum, sourceId, channel, channelLocked);
+
+    // Keep the in-memory cache consistent for sync readers.
+    const cached = this.nodeCache.get(nodeNum, sourceId);
+    if (updated && cached) {
+      cached.channel = channel ?? undefined;
+      cached.channelLocked = channelLocked;
+      cached.updatedAt = Date.now();
+    }
+
+    logger.debug(`Node ${nodeNum}@${sourceId} channel set to ${channel ?? 'none'} (locked: ${channelLocked})`);
+    return updated;
   }
 
   // Authentication and Authorization

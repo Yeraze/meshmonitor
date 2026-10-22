@@ -791,7 +791,11 @@ export class NodesRepository extends BaseRepository {
           snr: nodeData.snr ?? existingNode.snr,
           rssi: nodeData.rssi ?? existingNode.rssi,
           firmwareVersion: nodeData.firmwareVersion ?? existingNode.firmwareVersion,
-          channel: nodeData.channel ?? existingNode.channel,
+          // #5923: an admin-locked channel is not changed by traffic. Only
+          // setNodeChannel() writes it while locked.
+          channel: existingNode.channelLocked
+            ? existingNode.channel
+            : (nodeData.channel ?? existingNode.channel),
           isFavorite: existingNode.favoriteLocked
             ? existingNode.isFavorite
             : (nodeData.isFavorite ?? existingNode.isFavorite),
@@ -1427,6 +1431,25 @@ export class NodesRepository extends BaseRepository {
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
 
     await this.syncCacheNode(nodeNum, sourceId);
+  }
+
+  /**
+   * Set or clear a node's channel by hand, and its lock (#5923), scoped to
+   * sourceId. `channel: null` clears it. While `channelLocked` is true,
+   * upsertNode() keeps the stored channel. Returns false when no row matched.
+   */
+  async setNodeChannel(nodeNum: number, sourceId: string, channel: number | null, channelLocked: boolean): Promise<boolean> {
+    const existing = await this.getNode(nodeNum, sourceId);
+    if (!existing) return false;
+    const { nodes } = this.tables;
+
+    await this.db
+      .update(nodes)
+      .set({ channel, channelLocked, updatedAt: this.now() })
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
+    return true;
   }
 
   /**

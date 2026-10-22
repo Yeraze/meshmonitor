@@ -1700,6 +1700,49 @@ router.post('/nodes/:nodeId/notes', requirePermission('nodes', 'write', { source
   }
 });
 
+// Set or clear a node's channel by hand, and lock or unlock it (#5923).
+// MeshMonitor-local only — never sent to the mesh. `channel: null` clears it.
+// While `locked` is true, traffic does not change the stored channel. The
+// channel decides which channel-scoped viewers can see the node, so this needs
+// nodes:write on that source.
+router.post('/nodes/:nodeId/channel', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    const { channel, locked, sourceId } = req.body ?? {};
+
+    if (typeof sourceId !== 'string' || sourceId.length === 0) {
+      fail(res, 400, 'MISSING_SOURCE_ID', 'Request body must include a sourceId string');
+      return;
+    }
+    if (channel !== null && !(Number.isInteger(channel) && channel >= 0 && channel <= 0x7fffffff)) {
+      fail(res, 400, 'INVALID_PARAMETER', 'channel must be a non-negative integer or null');
+      return;
+    }
+    if (typeof locked !== 'boolean') {
+      fail(res, 400, 'INVALID_PARAMETER_TYPE', 'locked must be a boolean');
+      return;
+    }
+
+    const nodeNumStr = nodeId.replace('!', '');
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      fail(res, 400, 'INVALID_NODE_ID', 'nodeId must be in format !XXXXXXXX (8 hex characters)');
+      return;
+    }
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    const updated = await databaseService.setNodeChannelAsync(nodeNum, sourceId, channel, locked);
+    if (!updated) {
+      fail(res, 404, 'NODE_NOT_FOUND', 'Node not found on this source');
+      return;
+    }
+
+    ok(res, { nodeNum, channel, locked });
+  } catch (error) {
+    logger.error('Error setting node channel:', error);
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to set node channel');
+  }
+});
+
 // Delete neighbor info for a node
 router.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write', { sourceIdFrom: 'query', requireSourceId: true }), async (req, res) => {
   try {
