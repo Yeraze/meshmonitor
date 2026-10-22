@@ -1673,12 +1673,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     // cached them. MeshCore One syncs only `maxChannels` slots and offers no
     // free slot when it reads 0 (#5916), so a cold cache falls back to enough
     // slots for every synced channel.
-    let maxChannels = localNode?.maxChannels;
-    if (!maxChannels) {
-      maxChannels = DEFAULT_MAX_CHANNELS;
+    let channels: ChannelRow[] = [];
+    if (!localNode?.maxChannels) {
       try {
-        const channels = await this.db.channels.getAllChannels(this.sourceId);
-        for (const ch of channels) maxChannels = Math.max(maxChannels, ch.id + 1);
+        channels = await this.db.channels.getAllChannels(this.sourceId);
       } catch (err) {
         logger.warn(`[MeshCore VN ${this.sourceId}] DeviceQuery: channel count unavailable: ${(err as Error).message}`);
       }
@@ -1688,7 +1686,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     this.send(clientId, encodeDeviceInfo({
       firmwareVer: SUPPORTED_COMPANION_PROTOCOL_VERSION,
       maxContacts,
-      maxChannels,
+      maxChannels: this.getReportedMaxChannels(localNode, channels),
       blePin: 0,
       firmwareBuildDate: localNode?.firmwareBuild ?? '',
       manufacturerModel: localNode?.model || 'MeshMonitor Virtual Node',
@@ -1726,14 +1724,29 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     logger.debug(`[MeshCore VN ${this.sourceId}] ▶ ${contacts.length} contacts to ${clientId}`);
   }
 
-  /** GetChannel(idx) → ChannelInfo from the synced channel list, or Err(NotFound). */
+  /** Keep GetChannel's empty-slot boundary identical to DeviceInfo's wire capacity (#5933). */
+  private getReportedMaxChannels(localNode: MeshCoreNode | null, channels: ChannelRow[]): number {
+    let maxChannels = localNode?.maxChannels;
+    if (!maxChannels) {
+      maxChannels = DEFAULT_MAX_CHANNELS;
+      for (const ch of channels) maxChannels = Math.max(maxChannels, ch.id + 1);
+    }
+    // DeviceInfo carries the capacity in one unsigned byte.
+    return Math.max(0, Math.min(255, maxChannels | 0));
+  }
+
+  /** GetChannel(idx) → ChannelInfo (including empty slots), or Err(NotFound) beyond capacity. */
   private async handleGetChannel(clientId: string, channelIdx: number): Promise<void> {
     try {
       const channels = await this.db.channels.getAllChannels(this.sourceId);
       const row = channels.find((ch) => ch.id === channelIdx);
       if (!row) {
-        // Tells the app it has reached the end of the configured slots.
-        this.send(clientId, encodeErr(ErrorCodes.NotFound));
+        // Firmware returns an empty ChannelInfo for every unused in-range slot.
+        // Pipelined clients count only ChannelInfo, so NotFound stalls their sync.
+        const maxChannels = this.getReportedMaxChannels(this.options.manager.getLocalNode(), channels);
+        this.send(clientId, channelIdx < maxChannels
+          ? encodeChannelInfo(channelIdx, '', Buffer.alloc(16))
+          : encodeErr(ErrorCodes.NotFound));
         return;
       }
       const secret = row.psk ? Buffer.from(row.psk, 'base64') : Buffer.alloc(16);
