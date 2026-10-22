@@ -1,5 +1,5 @@
 # Build stage
-FROM node:24.21.0-alpine3.24 AS builder
+FROM node:24.22.1-alpine3.24 AS builder
 
 WORKDIR /app
 
@@ -84,7 +84,7 @@ RUN npm run build:server
 RUN npm prune --omit=dev --legacy-peer-deps
 
 # Production stage
-FROM node:24.21.0-alpine3.24
+FROM node:24.22.1-alpine3.24
 
 WORKDIR /app
 
