@@ -93,6 +93,7 @@ export interface DeviceInfo {
   favoriteLocked?: boolean;
   isIgnored?: boolean;
   hideFromMap?: boolean; // #3549: suppress this node's marker on maps only
+  channelLocked?: boolean; // #5923: admin-pinned channel; traffic does not change it
   notes?: string; // #3921: free-text per-node MeshMonitor-local annotation
   isUnmessagable?: boolean; // #3684: User.is_unmessagable — node won't receive DMs
   /** #5317: set when the row came from an imported contact URL and the node has not been heard yet. */

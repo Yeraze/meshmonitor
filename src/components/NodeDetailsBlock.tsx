@@ -27,6 +27,7 @@ import PkiExchangeStatusCard from './PkiExchangeStatusCard';
 import AssetTrackingSection from './AssetTrackingSection';
 import NodeNameHistory from './NodeNameHistory';
 import PositionEstimateRationaleBox from './PositionEstimateRationaleBox';
+import NodeChannelEditor from './NodeChannelEditor';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -40,6 +41,12 @@ interface NodeDetailsBlockProps {
   canEditNotes?: boolean;
   /** Persist the edited note. Resolves on success, rejects on failure. */
   onSaveNotes?: (notes: string) => Promise<void>;
+  /**
+   * When true (and `onSaveChannel` is provided), the Channel card can set,
+   * clear and lock the node's channel (#5923). Needs nodes:write.
+   */
+  canEditChannel?: boolean;
+  onSaveChannel?: (channel: number | null, locked: boolean) => Promise<void>;
   /**
    * Active source id. Required to fetch the per-node signal trend badge (#4110);
    * when absent (or a MeshCore/no-source context) the badge is simply omitted.
@@ -106,7 +113,7 @@ function buildSignalTrendTooltip(
   return parts.join('\n');
 }
 
-const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes, sourceId, assetTracking, canOpenRemoteAdmin = false }) => {
+const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes, canEditChannel = false, onSaveChannel, sourceId, assetTracking, canOpenRemoteAdmin = false }) => {
   const { t } = useTranslation();
   const { channels } = useChannels();
   const { currentNodeId } = useDeviceConfig();
@@ -646,8 +653,15 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         {/* Manual mark vs automatic fixed mark (#5715) */}
         <AircraftMarkNote node={node} timeFormat={timeFormat} dateFormat={dateFormat} />
 
-        {/* Channel */}
-        {node.channel !== undefined && (
+        {/* Channel — editable and lockable with nodes:write (#5923) */}
+        {(canEditChannel && onSaveChannel) ? (
+          <NodeChannelEditor
+            channel={node.channel}
+            locked={node.channelLocked === true}
+            channels={channels || []}
+            onSave={onSaveChannel}
+          />
+        ) : node.channel !== undefined && (
           <div className="node-detail-card">
             <div className="node-detail-label">{t('node_details.channel')}</div>
             <div className="node-detail-value">

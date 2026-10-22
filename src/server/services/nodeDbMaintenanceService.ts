@@ -159,6 +159,11 @@ export function mapDbNodeToDeviceInfo(
     deviceInfo.favoriteLocked = Boolean(node.favoriteLocked);
   }
 
+  // #5923: admin-pinned channel
+  if (node.channelLocked !== null && node.channelLocked !== undefined) {
+    deviceInfo.channelLocked = Boolean(node.channelLocked);
+  }
+
   // Add isIgnored if it exists
   if (node.isIgnored !== null && node.isIgnored !== undefined) {
     deviceInfo.isIgnored = Boolean(node.isIgnored);

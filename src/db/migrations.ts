@@ -235,6 +235,7 @@ import { migration as backfillTracerouteWriteMigration, runMigration213Postgres,
 import { migration as aircraftFlightMatchRechecksMigration, runMigration214Postgres, runMigration214Mysql } from '../server/migrations/214_add_aircraft_flight_match_rechecks.js';
 import { migration as addMeshcoreAdvertSignatureVerifiedMigration, runMigration215Postgres, runMigration215Mysql } from '../server/migrations/215_add_meshcore_advert_signature_verified.js';
 import { migration as addWaypointGeofenceMigration, runMigration216Postgres, runMigration216Mysql } from '../server/migrations/216_add_waypoint_geofence.js';
+import { migration as addNodeChannelLockedMigration, runMigration217Postgres, runMigration217Mysql } from '../server/migrations/217_add_node_channel_locked.js';
 
 // ============================================================================
 // Registry
@@ -3489,4 +3490,19 @@ registry.register({
   sqlite: (db) => addWaypointGeofenceMigration.up(db),
   postgres: (client) => runMigration216Postgres(client),
   mysql: (pool) => runMigration216Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 217: nodes.channelLocked (#5923). PER-SOURCE (a nodes column).
+// An admin-pinned channel that packet-driven upserts leave alone. Existing
+// rows start unlocked.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 217,
+  name: 'add_node_channel_locked',
+  settingsKey: 'migration_217_add_node_channel_locked',
+  sqlite: (db) => addNodeChannelLockedMigration.up(db),
+  postgres: (client) => runMigration217Postgres(client),
+  mysql: (pool) => runMigration217Mysql(pool),
 });

@@ -1961,6 +1961,27 @@ class ApiService {
     return response.json();
   }
 
+  /**
+   * Set or clear a node's channel by hand and lock or unlock it (#5923).
+   * MeshMonitor-local only. `channel: null` clears it.
+   */
+  async setNodeChannel(nodeId: string, channel: number | null, locked: boolean, sourceId: string) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/nodes/${encodeURIComponent(nodeId)}/channel`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify({ channel, locked, sourceId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to set node channel');
+    }
+
+    return response.json();
+  }
+
   async requestConfig(configType: number, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/request`, {
