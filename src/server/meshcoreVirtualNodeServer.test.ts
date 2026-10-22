@@ -468,10 +468,69 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(payload[1]).toBe(0); // channel index
   });
 
-  it('replies to GetChannel for an unknown slot with Err(NotFound)', async () => {
+  it('replies to an empty channel slot with a zero-filled ChannelInfo (#5933)', async () => {
     const payload = await client.request([CommandCodes.GetChannel, 7]);
-    expect(payload[0]).toBe(ResponseCodes.Err);
-    expect(payload[1]).toBe(Constants.ErrorCodes.NotFound);
+    expect(payload).toEqual(Buffer.from([ResponseCodes.ChannelInfo, 7, ...Buffer.alloc(48)]));
+  });
+
+  it.each([8, 9, 255])('replies to out-of-capacity GetChannel(%i) with Err(NotFound)', async (idx) => {
+    const payload = await client.request([CommandCodes.GetChannel, idx]);
+    expect(payload).toEqual(Buffer.from([ResponseCodes.Err, ErrorCodes.NotFound]));
+  });
+
+  it.each([
+    { label: 'real capacity', localNode: { ...LOCAL_NODE, maxChannels: 40 }, ids: [0, 23], capacity: 40 },
+    { label: 'stock fallback', localNode: LOCAL_NODE, ids: [], capacity: 8 },
+    { label: 'sparse fallback', localNode: LOCAL_NODE, ids: [0, 11], capacity: 12 },
+    { label: 'zero-capacity fallback', localNode: { ...LOCAL_NODE, maxChannels: 0 }, ids: [11], capacity: 12 },
+    { label: 'cold manager', localNode: null, ids: [11], capacity: 12 },
+    { label: 'wire capacity clamp', localNode: { ...LOCAL_NODE, maxChannels: 300 }, ids: [0], capacity: 255 },
+  ])('uses the DeviceInfo $label for empty channel reads (#5933)', async ({ localNode, ids, capacity }) => {
+    const db = {
+      channels: {
+        getAllChannels: vi.fn().mockResolvedValue(ids.map((id) => ({ id, name: 'Configured' }))),
+      },
+    };
+    const channelServer = new MeshCoreVirtualNodeServer({ port: 0, manager: new FakeManager(localNode), databaseService: db });
+    await channelServer.start();
+    const channelClient = new TestClient();
+    await channelClient.connect(channelServer.getListeningPort()!);
+    try {
+      const info = await channelClient.request([CommandCodes.DeviceQuery, 1]);
+      expect(info[3]).toBe(capacity);
+      // Queue a read for every slot, including gaps and the first invalid slot,
+      // as a pipelined app does. Correlate by index rather than arrival order.
+      for (let idx = 0; idx <= capacity; idx++) channelClient.send([CommandCodes.GetChannel, idx]);
+      const frames = await channelClient.expectFrames(capacity + 1);
+      const channels = frames.filter((frame) => frame[0] === ResponseCodes.ChannelInfo);
+      expect(channels).toHaveLength(capacity);
+      for (let idx = 0; idx < capacity; idx++) {
+        const frame = channels.find((channel) => channel[1] === idx);
+        expect(frame).toHaveLength(50);
+        if (!ids.includes(idx)) {
+          expect(frame).toEqual(Buffer.from([ResponseCodes.ChannelInfo, idx, ...Buffer.alloc(48)]));
+        }
+      }
+      expect(frames.filter((frame) => frame[0] === ResponseCodes.Err))
+        .toEqual([Buffer.from([ResponseCodes.Err, ErrorCodes.NotFound])]);
+      expect(db.channels.getAllChannels.mock.calls.every(([sourceId]) => sourceId === 'src-test')).toBe(true);
+    } finally {
+      channelClient.close();
+      await channelServer.stop();
+    }
+  });
+
+  it('keeps a channel DB failure distinct from an empty slot (#5933)', async () => {
+    CHANNELS_DB.channels.getAllChannels.mockRejectedValueOnce(new Error('DB unavailable'));
+    const payload = await client.request([CommandCodes.GetChannel, 7]);
+    expect(payload).toEqual(Buffer.from([ResponseCodes.Err, ErrorCodes.NotFound]));
+  });
+
+  it('still reports the stock DeviceInfo capacity when the channel DB fails (#5933)', async () => {
+    CHANNELS_DB.channels.getAllChannels.mockRejectedValueOnce(new Error('DB unavailable'));
+    const payload = await client.request([CommandCodes.DeviceQuery, 1]);
+    expect(payload[0]).toBe(ResponseCodes.DeviceInfo);
+    expect(payload[3]).toBe(8);
   });
 
   it('replies to GetBatteryVoltage with BatteryVoltage', async () => {
