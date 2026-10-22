@@ -1160,18 +1160,28 @@ export class VirtualNodeServer extends EventEmitter {
    * one proxy. Broadcasting the frame to every connected app would make each
    * of them publish the same envelope — duplicate publishes on the broker.
    * Mirror the physical-node behavior by delegating to the most recently
-   * connected client with a live, writable socket (newest wins).
+   * connected client with a live, writable socket (newest wins). Clients that
+   * have identified as the MQTT proxy (`sentMqttProxy`, #5013) take precedence,
+   * so a non-proxy client connecting later doesn't steal the uplink (#5927).
    */
   public async broadcastToProxyDelegate(data: Uint8Array): Promise<void> {
     let delegateId: string | null = null;
     let delegateConnectedAt = 0;
+    let delegateIsProxy = false;
     for (const [clientId, client] of this.clients.entries()) {
       if (client.socket.destroyed || !client.socket.writable) {
         continue;
       }
-      if (!delegateId || client.connectedAt.getTime() > delegateConnectedAt) {
+      const isProxy = client.sentMqttProxy === true;
+      const connectedAt = client.connectedAt.getTime();
+      if (
+        !delegateId ||
+        (isProxy && !delegateIsProxy) ||
+        (isProxy === delegateIsProxy && connectedAt > delegateConnectedAt)
+      ) {
         delegateId = clientId;
-        delegateConnectedAt = client.connectedAt.getTime();
+        delegateConnectedAt = connectedAt;
+        delegateIsProxy = isProxy;
       }
     }
 

@@ -165,6 +165,42 @@ describe('VirtualNodeServer.broadcastToProxyDelegate — #4037 single-delegate p
     expect(older.writes).toHaveLength(1);
   });
 
+  it('#5927: prefers a client that sent MQTT proxy traffic over a newer non-proxy client', async () => {
+    const vn = makeServer();
+    const proxy = attachFakeClient(vn, 'mqtt-proxy', new Date('2026-07-29T10:00:00Z'));
+    (proxy.client as any).sentMqttProxy = true;
+    const bot = attachFakeClient(vn, 'bot', new Date('2026-07-29T10:10:00Z'));
+
+    await vn.broadcastToProxyDelegate(PAYLOAD);
+
+    expect(proxy.writes).toHaveLength(1);
+    expect(bot.writes).toHaveLength(0);
+  });
+
+  it('#5927: picks the newest among multiple proxy clients', async () => {
+    const vn = makeServer();
+    const p1 = attachFakeClient(vn, 'proxy-1', new Date('2026-07-29T10:00:00Z'));
+    const p2 = attachFakeClient(vn, 'proxy-2', new Date('2026-07-29T10:05:00Z'));
+    (p1.client as any).sentMqttProxy = true;
+    (p2.client as any).sentMqttProxy = true;
+
+    await vn.broadcastToProxyDelegate(PAYLOAD);
+
+    expect(p1.writes).toHaveLength(0);
+    expect(p2.writes).toHaveLength(1);
+  });
+
+  it('#5927: ignores a proxy client whose socket is destroyed', async () => {
+    const vn = makeServer();
+    const dead = attachFakeClient(vn, 'dead-proxy', new Date('2026-07-29T10:00:00Z'), { destroyed: true });
+    (dead.client as any).sentMqttProxy = true;
+    const other = attachFakeClient(vn, 'other', new Date('2026-07-29T10:10:00Z'));
+
+    await vn.broadcastToProxyDelegate(PAYLOAD);
+
+    expect(other.writes).toHaveLength(1);
+  });
+
   it('drops the frame without throwing when no writable client exists', async () => {
     const vn = makeServer();
     attachFakeClient(vn, 'client-dead', new Date(), { destroyed: true });
