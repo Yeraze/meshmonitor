@@ -1,160 +1,81 @@
 /**
- * Server-only: the Meshtastic auto-responder placeholder-DSL matcher.
+ * Server-only: the Auto-Responder trigger matcher for Meshtastic and MeshCore
+ * (#5924).
  *
- * Lives under src/server/utils (NOT src/utils) because it depends on
- * safeRegex.js -> the native re2 module; src/utils/autoResponderUtils.ts is
- * imported by frontend components (TriggerItem.tsx) and must stay free of
- * Node-native dependencies or the Vite client build fails (UNLOADABLE_DEPENDENCY).
+ * Lives under src/server/utils (NOT src/utils) because it compiles with RE2
+ * through safeRegex.js (a native module). The parsing, splitting, checks and
+ * param extraction live in src/utils/responderTrigger.ts, which the browser
+ * also runs with its own engine, so the UI preview matches this.
  */
-import { applyHomoglyphOptimization } from '../../utils/homoglyph.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
+import {
+  compileResponderTrigger,
+  runResponderTrigger,
+  type CompiledResponderTrigger,
+  type CompileResponderOptions,
+  type ResponderPatternErrorCode,
+  type ResponderSyntax,
+  type ResponderTriggerInput,
+  MAX_RESPONDER_PATTERN_LENGTH,
+} from '../../utils/responderTrigger.js';
 
 export interface AutoResponderMatch {
   matched: boolean;
   /** param name -> extracted value (from original text when possible) */
   params: Record<string, string>;
+  /** The pattern that matched. */
+  matchedPattern?: string;
+}
+
+/** Compile a trigger with RE2. See `compileResponderTrigger`. */
+export function compileResponderTriggerRe2(
+  trigger: ResponderTriggerInput,
+  options: CompileResponderOptions = {},
+): ReturnType<typeof compileResponderTrigger> {
+  return compileResponderTrigger(trigger, compileUserRegex, options);
 }
 
 /**
- * Match one incoming message against one Meshtastic auto-responder trigger PATTERN
- * (a single comma-split pattern, e.g. "weather {city}" or "zip {z:\\d{5}}").
- * Homoglyph-normalizes both sides, parses the {name}/{name:regex} placeholder DSL,
- * builds an anchored capture regex via compileUserRegex, and extracts params from the
- * ORIGINAL text where possible (Unicode preservation).
+ * Match one message against one trigger, in either syntax. Both managers call
+ * this. A trigger that does not compile matches nothing.
  */
-export function matchAutoResponderPattern(patternStr: string, messageText: string): AutoResponderMatch {
-  // Normalize trigger pattern through homoglyph mapping to match normalized message text
-  const normalizedPatternStr = applyHomoglyphOptimization(patternStr);
-  // Normalize message text through homoglyph mapping (Issue #2136)
-  const normalizedText = applyHomoglyphOptimization(messageText);
-
-  // Extract parameters with optional regex patterns from trigger pattern
-  interface ParamSpec {
-    name: string;
-    pattern?: string;
-  }
-  const params: ParamSpec[] = [];
-  let i = 0;
-
-  while (i < normalizedPatternStr.length) {
-    if (normalizedPatternStr[i] === '{') {
-      const startPos = i + 1;
-      let depth = 1;
-      let colonPos = -1;
-      let endPos = -1;
-
-      // Find the matching closing brace, accounting for nested braces in regex patterns
-      for (let j = startPos; j < normalizedPatternStr.length && depth > 0; j++) {
-        if (normalizedPatternStr[j] === '{') {
-          depth++;
-        } else if (normalizedPatternStr[j] === '}') {
-          depth--;
-          if (depth === 0) {
-            endPos = j;
-          }
-        } else if (normalizedPatternStr[j] === ':' && depth === 1 && colonPos === -1) {
-          colonPos = j;
-        }
-      }
-
-      if (endPos !== -1) {
-        const paramName = colonPos !== -1
-          ? normalizedPatternStr.substring(startPos, colonPos)
-          : normalizedPatternStr.substring(startPos, endPos);
-        const paramPattern = colonPos !== -1
-          ? normalizedPatternStr.substring(colonPos + 1, endPos)
-          : undefined;
-
-        if (!params.find(p => p.name === paramName)) {
-          params.push({ name: paramName, pattern: paramPattern });
-        }
-
-        i = endPos + 1;
-      } else {
-        i++;
-      }
-    } else {
-      i++;
-    }
-  }
-
-  // Build regex pattern from trigger by processing it character by character
-  let pattern = '';
-  const replacements: Array<{ start: number; end: number; replacement: string }> = [];
-  i = 0;
-
-  while (i < normalizedPatternStr.length) {
-    if (normalizedPatternStr[i] === '{') {
-      const startPos = i;
-      let depth = 1;
-      let endPos = -1;
-
-      // Find the matching closing brace
-      for (let j = i + 1; j < normalizedPatternStr.length && depth > 0; j++) {
-        if (normalizedPatternStr[j] === '{') {
-          depth++;
-        } else if (normalizedPatternStr[j] === '}') {
-          depth--;
-          if (depth === 0) {
-            endPos = j;
-          }
-        }
-      }
-
-      if (endPos !== -1) {
-        const paramIndex = replacements.length;
-        if (paramIndex < params.length) {
-          const paramRegex = params[paramIndex].pattern || '[^\\s]+';
-          replacements.push({
-            start: startPos,
-            end: endPos + 1,
-            replacement: `(${paramRegex})`
-          });
-        }
-        i = endPos + 1;
-      } else {
-        i++;
-      }
-    } else {
-      i++;
-    }
-  }
-
-  // Build the final pattern by replacing placeholders
-  for (let i = 0; i < normalizedPatternStr.length; i++) {
-    const replacement = replacements.find(r => r.start === i);
-    if (replacement) {
-      pattern += replacement.replacement;
-      i = replacement.end - 1; // -1 because loop will increment
-    } else {
-      // Escape special regex characters in literal parts
-      const char = normalizedPatternStr[i];
-      if (/[.*+?^${}()|[\]\\]/.test(char)) {
-        pattern += '\\' + char;
-      } else {
-        pattern += char;
-      }
-    }
-  }
-
-  const triggerRegex = compileUserRegex(`^${pattern}$`, 'i');
-  const triggerMatch = normalizedText.match(triggerRegex);
-
-  if (triggerMatch) {
-    // Extract parameters from original text when possible to preserve full
-    // Unicode characters. Homoglyph normalization can mangle Cyrillic words
-    // (e.g., "Барнаул" → "Бapнayл") which breaks geocoding APIs.
-    // The regex usually matches original text too since param patterns like
-    // [^\s]+ accept any non-whitespace character.
-    const originalMatch = messageText.match(triggerRegex);
-
-    const extractedParams: Record<string, string> = {};
-    params.forEach((param, index) => {
-      extractedParams[param.name] = originalMatch?.[index + 1] ?? triggerMatch[index + 1];
-    });
-    return { matched: true, params: extractedParams };
-  }
-
-  return { matched: false, params: {} };
+export function matchResponderTrigger(trigger: ResponderTriggerInput, text: string): AutoResponderMatch {
+  const { compiled } = compileResponderTriggerRe2(trigger);
+  return compiled ? matchCompiledResponderTrigger(compiled, text) : { matched: false, params: {} };
 }
 
+/** Run an already-compiled trigger (MeshCore caches the compile). */
+export function matchCompiledResponderTrigger(compiled: CompiledResponderTrigger, text: string): AutoResponderMatch {
+  const m = runResponderTrigger(compiled, text);
+  return m.matched ? { matched: true, params: m.params, matchedPattern: m.matchedPattern } : { matched: false, params: {} };
+}
+
+const ERROR_TEXT: Record<ResponderPatternErrorCode, string> = {
+  empty: 'empty pattern',
+  too_long: `pattern too long (max ${MAX_RESPONDER_PATTERN_LENGTH} chars)`,
+  charset: 'pattern contains disallowed characters',
+  redos: 'pattern matches a catastrophic-backtracking shape',
+  invalid: 'invalid regex',
+};
+
+/** Store-time check of a trigger in either syntax. Same rules the UI applies. */
+export function validateResponderTrigger(
+  pattern: string | string[],
+  syntax: ResponderSyntax,
+): { ok: boolean; error?: string } {
+  const r = compileResponderTriggerRe2({ pattern, syntax }, { validate: true });
+  if (r.compiled) return { ok: true };
+  const base = ERROR_TEXT[r.error ?? 'invalid'];
+  const where = r.failedPattern !== undefined && syntax === 'pattern' ? ` in "${r.failedPattern}"` : '';
+  return { ok: false, error: `${base}${r.detail ? `: ${r.detail}` : ''}${where}` };
+}
+
+/**
+ * Match one Meshtastic placeholder-DSL pattern (one comma alternative, e.g.
+ * "weather {city}" or "zip {z:\\d{5}}"). Kept for existing callers and tests;
+ * same as `matchResponderTrigger` in pattern mode.
+ */
+export function matchAutoResponderPattern(patternStr: string, messageText: string): AutoResponderMatch {
+  const m = matchResponderTrigger({ pattern: [patternStr], syntax: 'pattern' }, messageText);
+  return { matched: m.matched, params: m.params };
+}

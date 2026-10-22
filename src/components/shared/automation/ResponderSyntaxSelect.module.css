@@ -1,0 +1,21 @@
+/* Auto-Responder trigger syntax selector (#5924). */
+
+.field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.select {
+  width: auto;
+  min-width: 10rem;
+}
+
+.hint {
+  flex: 1 1 100%;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}

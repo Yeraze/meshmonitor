@@ -1,4 +1,5 @@
 import type { ScopeMode } from './ScopeSelectField';
+import type { ResponderSyntax } from '../../utils/responderTrigger';
 
 /**
  * Mirrors the backend `MeshCoreAutoResponderTrigger` shape. Kept inline
@@ -10,6 +11,11 @@ export interface MeshCoreAutoResponderTrigger {
   name: string;
   enabled: boolean;
   pattern: string;
+  /**
+   * How `pattern` is read (#5924): `'pattern'` (placeholder DSL) or
+   * `'regex'`. Missing = `'regex'`, the pre-#5924 behaviour.
+   */
+  syntax?: ResponderSyntax;
   /**
    * `text` (default) sends `response`; `script` runs `scriptPath` and
    * sends each entry of the script's wouldSendMessages output.

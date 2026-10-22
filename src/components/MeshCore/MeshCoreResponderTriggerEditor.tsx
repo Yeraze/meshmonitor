@@ -1,7 +1,7 @@
 /**
  * MeshCore Auto-Responder trigger editor: the form inside an expanded
  * TriggerCard (#5808). The fields are the ones the always-open trigger card
- * had: name, regex pattern, action (text or script), response or script and
+ * had: name, match mode (#5924), pattern, action (text or script), response or script and
  * args, listen on DMs, reply as DM, cooldown, pre-send delay, channels and
  * the reply scope. The enable toggle and Delete live on the card itself.
  */
@@ -9,6 +9,8 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumberInput } from '../common/NumberInput';
 import { ScopeSelectField } from './ScopeSelectField';
+import { ResponderSyntaxSelect } from '../shared/automation/ResponderSyntaxSelect';
+import { meshCoreTriggerSyntax } from './meshcoreResponderMatch';
 import type {
   MeshCoreAutoResponderTrigger,
   MeshCoreChannelRow,
@@ -45,6 +47,7 @@ export const MeshCoreResponderTriggerEditor: React.FC<MeshCoreResponderTriggerEd
   const { t } = useTranslation();
   const idBase = `mc-responder-${tr.id}`;
   const isText = (tr.responseType || 'text') === 'text';
+  const syntax = meshCoreTriggerSyntax(tr);
 
   return (
     <div className={styles.editor}>
@@ -62,14 +65,21 @@ export const MeshCoreResponderTriggerEditor: React.FC<MeshCoreResponderTriggerEd
         {nameError && <span className={styles.error} role="alert">{nameError}</span>}
       </label>
 
+      <ResponderSyntaxSelect
+        id={`${idBase}-syntax`}
+        value={syntax}
+        onChange={(v) => onChange({ syntax: v })}
+        disabled={disabled}
+      />
+
       <label className={styles.field}>
-        {t('meshcore.automation.responder.pattern', 'Pattern (regex, case-insensitive)')}
+        {t('meshcore.automation.responder.pattern_label', 'Pattern')}
         <input
           type="text"
           value={tr.pattern}
           onChange={(e) => onChange({ pattern: e.target.value })}
           disabled={disabled}
-          placeholder="^(test|ping)"
+          placeholder={syntax === 'regex' ? '^(test|ping)' : 'weather {city}, ping'}
           aria-invalid={patternError ? true : undefined}
           className={`meshcore-input ${styles.mono}`}
         />

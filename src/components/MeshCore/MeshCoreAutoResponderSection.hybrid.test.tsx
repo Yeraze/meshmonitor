@@ -115,6 +115,11 @@ describe('MeshCoreAutoResponderSection hybrid workflow (#5808)', () => {
     expect(alerts).toEqual(expect.arrayContaining(['Name is required', 'Pattern is required']));
 
     await user.type(within(card).getByPlaceholderText('Trigger name'), 'Status');
+    // New triggers start in pattern mode (#5924); switch this one to regex.
+    const mode = within(card).getByRole('combobox', { name: 'Match mode' }) as HTMLSelectElement;
+    expect(mode.value).toBe('pattern');
+    await user.selectOptions(mode, 'regex');
+    expect(within(card).getByText(/matches anywhere in the message/i)).toBeInTheDocument();
     await user.type(within(card).getByPlaceholderText('^(test|ping)'), '^status$');
     await user.type(within(card).getByPlaceholderText(/Response text/), 'up {{DURATION}');
     await user.click(within(card).getByRole('button', { name: /done/i }));
@@ -128,6 +133,7 @@ describe('MeshCoreAutoResponderSection hybrid workflow (#5808)', () => {
       name: 'Status',
       enabled: true,
       pattern: '^status$',
+      syntax: 'regex',
       responseType: 'text',
       response: 'up {DURATION}',
       channels: [],
@@ -190,5 +196,42 @@ describe('MeshCoreAutoResponderSection hybrid workflow (#5808)', () => {
     expect(within(screen.getAllByTestId('pattern-test-line')[0]).getByText(/no trigger matches/i)).toBeInTheDocument();
 
     expect(csrfFetchMock.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('a saved trigger with no syntax shows as regex mode (#5924)', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await user.click(within(cards()[0]).getByRole('button', { name: /edit/i }));
+    expect((within(cards()[0]).getByRole('combobox', { name: 'Match mode' }) as HTMLSelectElement).value).toBe('regex');
+  });
+
+  it('an emoji regex is accepted; a control character is not (#5924)', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await user.click(within(cards()[0]).getByRole('button', { name: /edit/i }));
+    const pattern = within(cards()[0]).getByDisplayValue('^ping');
+    await user.clear(pattern);
+    await user.type(pattern, '👋\\s*hi');
+    expect(within(cards()[0]).queryByRole('alert')).toBeNull();
+
+    const box = screen.getByRole('textbox', { name: /test a message/i });
+    await user.type(box, 'well 👋 HI there');
+    expect(within(screen.getAllByTestId('pattern-test-line')[0]).getByText('Ping')).toBeInTheDocument();
+
+    await user.clear(pattern);
+    await user.type(pattern, 'ping\u0007');
+    expect(within(cards()[0]).getByRole('alert')).toHaveTextContent(/characters the server does not accept/i);
+  });
+
+  it('a pattern-mode trigger previews with the DSL: anchored, with captured params (#5924)', async () => {
+    const user = userEvent.setup();
+    await renderLoaded([{ ...SAVED[0], name: 'Weather', syntax: 'pattern', pattern: 'weather {city}', response: 'Sunny in {city}' }]);
+    const box = screen.getByRole('textbox', { name: /test a message/i });
+    await user.type(box, 'WEATHER Miami{Enter}say weather Miami');
+    const lines = screen.getAllByTestId('pattern-test-line');
+    expect(within(lines[0]).getByText('Sunny in Miami')).toBeInTheDocument();
+    expect(within(lines[0]).getByText(/city="Miami"/)).toBeInTheDocument();
+    // Anchored: text before the pattern does not match.
+    expect(within(lines[1]).getByText(/no trigger matches/i)).toBeInTheDocument();
   });
 });

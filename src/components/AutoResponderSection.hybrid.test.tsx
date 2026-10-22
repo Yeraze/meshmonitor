@@ -134,6 +134,7 @@ describe('AutoResponderSection hybrid workflow (#5808)', () => {
     // Same shape the old Add / Save-edit paths produced.
     expect(rest).toEqual({
       trigger: ['status', 'stat {node}'],
+      syntax: 'pattern',
       responseType: 'text',
       response: 'all good {node}',
       multiline: false,
@@ -222,5 +223,49 @@ describe('AutoResponderSection hybrid workflow (#5808)', () => {
     expect(screen.getByRole('button', { name: /auto_responder\.add_trigger/ })).toBeDisabled();
     expect(within(cards()[0]).getByRole('button', { name: /common\.edit/ })).toBeDisabled();
     expect(within(cards()[0]).getByRole('button', { name: /common\.delete/ })).toBeDisabled();
+  });
+
+  it('a regex-mode trigger is saved unsplit and the test box matches it anywhere (#5924)', async () => {
+    const user = userEvent.setup();
+    renderSection([]);
+    await settle();
+
+    await user.click(screen.getByRole('button', { name: /auto_responder\.add_trigger/ }));
+    const card = cards()[0];
+    const mode = within(card).getByRole('combobox', { name: /responder_syntax\.label|Match mode/ }) as HTMLSelectElement;
+    expect(mode.value).toBe('pattern');
+    await user.selectOptions(mode, 'regex');
+    // The commas in {1,3} would split a pattern; a regex stays whole.
+    await user.type(within(card).getByLabelText('auto_responder.trigger_label'), '🔋\\s*(?<level>\\d{{1,3})');
+    await user.type(within(card).getByLabelText('auto_responder.response_label'), 'level {{level}');
+    await user.click(within(card).getByLabelText(/Channel 0: Primary|auto_responder\.channel_option/));
+    await user.click(within(card).getByRole('button', { name: /common\.done/ }));
+    expect(cards()[0]).not.toHaveAttribute('data-expanded');
+
+    const box = screen.getByLabelText(/auto_responder\.test_pattern_matching/);
+    await user.clear(box);
+    await user.type(box, 'battery 🔋 42 left');
+    const line = screen.getAllByTestId('pattern-test-line')[0];
+    expect(within(line).getByText('level 42')).toBeInTheDocument();
+
+    await save();
+    const [saved] = JSON.parse(savedTriggersJson()) as AutoResponderTrigger[];
+    expect(saved.syntax).toBe('regex');
+    expect(saved.trigger).toBe('🔋\\s*(?<level>\\d{1,3})');
+  });
+
+  it('a saved trigger with no syntax is pattern mode, and the test box applies homoglyphs (#5924)', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    await settle();
+    await user.click(within(cards()[0]).getByRole('button', { name: /common\.edit/ }));
+    expect((within(cards()[0]).getByRole('combobox', { name: /responder_syntax\.label|Match mode/ }) as HTMLSelectElement).value).toBe('pattern');
+
+    const box = screen.getByLabelText(/auto_responder\.test_pattern_matching/);
+    await user.clear(box);
+    // Cyrillic "е" and "о" in "hellо" normalise to Latin, as on the server.
+    await user.type(box, 'h\u0435ll\u043e');
+    const line = screen.getAllByTestId('pattern-test-line')[0];
+    expect(within(line).getByText('hi there')).toBeInTheDocument();
   });
 });

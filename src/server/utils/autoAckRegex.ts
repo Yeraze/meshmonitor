@@ -16,29 +16,24 @@
  */
 
 import { compileUserRegex } from '../../utils/safeRegex.js';
-
-const MAX_PATTERN_LENGTH = 100;
+import {
+  DANGEROUS_SHAPE_RE,
+  MAX_RESPONDER_PATTERN_LENGTH,
+  PRINTABLE_CHARSET_RE,
+} from '../../utils/responderTrigger.js';
 
 /**
- * Charset allowlist. The pattern may contain only ASCII letters, digits,
- * whitespace, and the regex meta-characters we actually want to support
- * (alternation, anchors, character classes, simple quantifiers,
- * groups, common literal punctuation). Notably excluded:
- *  - Unicode property escapes (`\p{…}`) — can be slow / DoS-prone
- *  - Unicode code-point escapes (`\u{…}`) — same
- *  - Any non-ASCII character — narrows the attack surface to a
- *    well-understood charset and acts as a CodeQL data-flow barrier
- *    for the `js/regex-injection` query.
+ * Length cap, charset allowlist and ReDoS shapes are shared with the
+ * Auto-Responder (src/utils/responderTrigger.ts, #5924). The charset allows
+ * any printable Unicode (emoji, accents, CJK, ZWJ sequences) and rejects
+ * control and stray format characters. Message Forwarding (#5446) uses this
+ * check too, so it gets the same relaxation.
+ *
+ * RE2 always runs in Unicode mode (it reports flags `iu`), so a non-ASCII
+ * literal or class matches whole code points, not UTF-16 halves.
  */
-const ALLOWED_CHARSET_RE = /^[A-Za-z0-9\s.^$*+?()|[\]{},\\!@#%&'"<>=~`:;/_\-]+$/;
-
-// Catastrophic-backtracking shapes:
-//  - `(\.\*){2,}`  — repeated `.*` groups
-//  - `(\+.*\+)`    — text-between-two-pluses (nested unbounded reps)
-//  - `(\*.*\*)`    — same with stars
-//  - `(\{[0-9]{3,}\})` — explicit count ≥ 1000
-//  - `(\{[0-9]+,\})`   — unbounded `{n,}` repetition
-const DANGEROUS_SHAPE_RE = /(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/;
+const MAX_PATTERN_LENGTH = MAX_RESPONDER_PATTERN_LENGTH;
+const ALLOWED_CHARSET_RE = PRINTABLE_CHARSET_RE;
 
 export interface AutoAckRegexValidation {
   ok: boolean;
@@ -50,9 +45,8 @@ export interface AutoAckRegexValidation {
  * with the reason on failure. Centralised so the route store-time check
  * and the manager execution-time check stay in sync.
  *
- * Validation order matters: we run a charset allowlist first (which
- * acts as a sanitising barrier — only patterns built from this fixed
- * set of ASCII characters reach the compiler), then check for known
+ * Validation order matters: we run a charset allowlist first (printable
+ * Unicode only), then check for known
  * catastrophic-backtracking shapes, and finally let `RegExp` reject
  * any remaining syntactic invalidity.
  */
