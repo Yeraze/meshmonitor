@@ -222,6 +222,27 @@ describe('MeshCoreNodesView — Discover menu (#3351)', () => {
     expect(onDiscoverNodes).toHaveBeenCalledWith('repeaters');
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Discovery failed', 'error'));
   });
+
+  it('puts the title and actions on one header row, filter and sort on a second (#5936)', () => {
+    const { container } = render(
+      <MeshCoreNodesView
+        nodes={nodes}
+        contacts={contacts}
+        onImportContact={vi.fn()}
+        onDiscoverNodes={vi.fn()}
+        canDiscover
+      />,
+    );
+    const header = container.querySelector('.meshcore-list-pane-header')!;
+    const rows = Array.from(header.children);
+    expect(rows).toHaveLength(2);
+    const [top, bottom] = rows;
+    expect(top.contains(screen.getByText('Nodes'))).toBe(true);
+    expect(top.contains(screen.getByText('Import'))).toBe(true);
+    expect(top.contains(screen.getByText('Discover'))).toBe(true);
+    expect(bottom.contains(screen.getByTestId('node-age-window'))).toBe(true);
+    expect(bottom.contains(screen.getByLabelText('Sort by'))).toBe(true);
+  });
 });
 
 function setViewportWidth(width: number) {
