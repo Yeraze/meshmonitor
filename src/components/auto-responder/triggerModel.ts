@@ -10,11 +10,16 @@ import type { AutoResponderTrigger, ResponseType } from './types';
 import {
   splitTriggerPatterns,
   extractParameters,
-  testSinglePattern,
-  buildRegexPattern,
   getExampleValueForParam,
 } from './utils';
 import { normalizeTriggerChannels } from '../../utils/autoResponderUtils';
+import { resolveResponderSyntax, substituteResponderParams, type ResponderSyntax } from '../../utils/responderTrigger';
+import { matchResponderTriggerNative, validateResponderTriggerNative } from '../../utils/responderTriggerNative';
+
+/** Meshtastic's legacy default: a saved trigger with no `syntax` is a DSL pattern (#5924). */
+export function triggerSyntax(trigger: { syntax?: unknown }): ResponderSyntax {
+  return resolveResponderSyntax(trigger.syntax, 'pattern');
+}
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -35,12 +40,12 @@ export function patternText(trigger: string | string[]): string {
   return Array.isArray(trigger) ? trigger.join(', ') : trigger;
 }
 
-export function validateTriggerPattern(trigger: string | string[], t: TFn): Validation {
+export function validateTriggerPattern(trigger: string | string[], t: TFn, syntax: ResponderSyntax = 'pattern'): Validation {
   if (Array.isArray(trigger)) {
     if (trigger.length === 0) return { valid: false, error: t('auto_responder.trigger_empty') };
     for (const pattern of trigger) {
       if (typeof pattern !== 'string' || !pattern.trim()) continue;
-      const v = validateTriggerPattern(pattern, t);
+      const v = validateTriggerPattern(pattern, t, syntax);
       if (!v.valid) return v;
     }
     return { valid: true };
@@ -48,12 +53,19 @@ export function validateTriggerPattern(trigger: string | string[], t: TFn): Vali
   if (!trigger || typeof trigger !== 'string' || !trigger.trim()) {
     return { valid: false, error: t('auto_responder.trigger_empty') };
   }
-  const patterns = splitTriggerPatterns(trigger);
-  if (patterns.length === 0) return { valid: false, error: t('auto_responder.trigger_empty') };
-  for (let i = 0; i < patterns.length; i++) {
-    if (!patterns[i].trim()) return { valid: false, error: t('auto_responder.pattern_empty', { index: i + 1 }) };
-    if (patterns[i].length > 100) return { valid: false, error: t('auto_responder.pattern_too_long', { index: i + 1 }) };
+  if (syntax === 'pattern') {
+    const patterns = splitTriggerPatterns(trigger);
+    if (patterns.length === 0) return { valid: false, error: t('auto_responder.trigger_empty') };
+    for (let i = 0; i < patterns.length; i++) {
+      if (!patterns[i].trim()) return { valid: false, error: t('auto_responder.pattern_empty', { index: i + 1 }) };
+      if (patterns[i].length > 100) return { valid: false, error: t('auto_responder.pattern_too_long', { index: i + 1 }) };
+    }
   }
+  // The shared checks the server applies (#5924): printable Unicode only,
+  // and the regex must compile; regex mode adds the length cap and the
+  // ReDoS shape check.
+  const v = validateResponderTriggerNative(trigger, syntax);
+  if (!v.valid) return { valid: false, error: v.error };
   return { valid: true };
 }
 
@@ -97,7 +109,7 @@ export function editableChannels(trigger: AutoResponderTrigger): Array<number | 
 
 export function validateAutoResponderTrigger(trigger: AutoResponderTrigger, t: TFn): TriggerErrors {
   const errors: TriggerErrors = {};
-  const p = validateTriggerPattern(trigger.trigger, t);
+  const p = validateTriggerPattern(trigger.trigger, t, triggerSyntax(trigger));
   if (!p.valid) errors.trigger = p.error || t('auto_responder.invalid_trigger');
   const r = validateResponse(trigger.response ?? '', trigger.responseType, t);
   if (!r.valid) errors.response = r.error || t('auto_responder.invalid_response');
@@ -112,7 +124,9 @@ export const hasErrors = (e: TriggerErrors): boolean => !!(e.trigger || e.respon
  * become an array, one stays a string. Splits with the brace-aware splitter
  * the server uses, so `{n:\d{2,3}}` is not cut at its comma.
  */
-export function normalizePatternText(text: string): string | string[] {
+export function normalizePatternText(text: string, syntax: ResponderSyntax = 'pattern'): string | string[] {
+  // A regex is one pattern; its commas are regex text (`a{1,3}`).
+  if (syntax === 'regex') return text.trim();
   const patterns = splitTriggerPatterns(text);
   if (patterns.length > 1) return patterns;
   return text.trim();
@@ -130,7 +144,8 @@ export function finalizeTrigger(trigger: AutoResponderTrigger): AutoResponderTri
   const scriptArgs = rt === 'script' && trigger.scriptArgs?.trim() ? trigger.scriptArgs.trim() : undefined;
   return {
     ...trigger,
-    trigger: normalizePatternText(patternText(trigger.trigger)),
+    trigger: normalizePatternText(patternText(trigger.trigger), triggerSyntax(trigger)),
+    syntax: triggerSyntax(trigger),
     responseType: rt,
     response: (trigger.response ?? '').trim(),
     multiline: rt !== 'script' ? !!trigger.multiline : undefined,
@@ -147,6 +162,7 @@ export function newAutoResponderTrigger(): AutoResponderTrigger {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     trigger: '',
+    syntax: 'pattern',
     responseType: 'text',
     response: '',
     multiline: false,
@@ -161,32 +177,25 @@ export interface TriggerMatch {
   regexPattern: string;
 }
 
-/** Local match of one message against one trigger; first matching pattern wins. */
+/**
+ * Local match of one message against one trigger, in its syntax; first
+ * matching pattern wins. Runs the server's shared matcher (homoglyphs,
+ * params, anchoring) with the browser engine (#5924).
+ */
 export function matchAutoResponderTrigger(trigger: AutoResponderTrigger, message: string): TriggerMatch | null {
-  for (const pattern of splitTriggerPatterns(trigger.trigger)) {
-    let m: { params?: Record<string, string> } | null;
-    try {
-      m = testSinglePattern(pattern, message);
-    } catch {
-      // A parameter regex that does not compile matches nothing.
-      m = null;
-    }
-    if (m) {
-      return { matchedPattern: pattern, params: m.params ?? {}, regexPattern: buildRegexPattern(pattern) };
-    }
-  }
-  return null;
+  const m = matchResponderTriggerNative({ pattern: trigger.trigger, syntax: triggerSyntax(trigger) }, message);
+  if (!m.matched) return null;
+  return { matchedPattern: m.matchedPattern ?? patternText(trigger.trigger), params: m.params, regexPattern: m.source ?? '' };
 }
 
 /** Fill `{param}` placeholders with the extracted values, or example values. */
 export function renderSampleResponse(trigger: AutoResponderTrigger, params?: Record<string, string>): string {
   let response = trigger.response ?? '';
   if (params && Object.keys(params).length > 0) {
-    for (const [key, value] of Object.entries(params)) {
-      response = response.replace(new RegExp(`\\{${key}\\}`, 'g'), value ?? '');
-    }
-    return response;
+    return substituteResponderParams(response, params);
   }
+  // Regex mode has no `{name}` placeholders to fill with examples.
+  if (triggerSyntax(trigger) === 'regex') return response;
   for (const param of extractParameters(patternText(trigger.trigger))) {
     response = response.replace(
       new RegExp(`\\{${param.name}\\}`, 'g'),

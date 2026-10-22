@@ -228,7 +228,9 @@ describe('pattern count badge does not cover the pattern', () => {
   });
 
   it('the badge stays on one line', () => {
-    const at = tsx.indexOf("t('auto_responder.pattern_count', { count: splitTriggerPatterns(newTrigger).length })");
+    // The first pattern_count is the badge; the second is the summary line.
+    const at = tsx.indexOf("t('auto_responder.pattern_count', { count: patterns.length })");
+    expect(at).toBeGreaterThan(0);
     const style = tsx.slice(tsx.lastIndexOf('<div style={{', at), at);
     expect(style).toContain("whiteSpace: 'nowrap'");
   });

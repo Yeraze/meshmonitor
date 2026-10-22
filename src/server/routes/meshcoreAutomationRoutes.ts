@@ -13,6 +13,8 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { validateAutoAckRegex } from '../utils/autoAckRegex.js';
+import { validateResponderTrigger } from '../utils/autoResponderMatcher.js';
+import { isResponderSyntax, resolveResponderSyntax } from '../../utils/responderTrigger.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
@@ -759,17 +761,20 @@ router.post(
         if (!Array.isArray(body.triggers)) {
           return res.status(400).json({ success: false, error: 'triggers must be an array' });
         }
-        // Validate each trigger's regex up front so a broken pattern
-        // never reaches the message loop. Reuses the same validator
-        // the manager applies at execution time.
-        for (const tr of body.triggers as Array<{ id?: string; pattern?: string }>) {
+        // Validate each trigger's pattern up front, in its syntax (#5924),
+        // so a broken pattern never reaches the message loop. Missing
+        // syntax = 'regex', the pre-#5924 behaviour. Same shared checks
+        // the manager and the UI apply.
+        for (const tr of body.triggers as Array<{ id?: string; pattern?: string; syntax?: unknown }>) {
+          if (tr?.syntax !== undefined && !isResponderSyntax(tr.syntax)) {
+            return fail(res, 400, 'INVALID_REGEX', `Invalid syntax for trigger ${tr.id || '(unnamed)'}: must be "pattern" or "regex"`);
+          }
           if (typeof tr?.pattern !== 'string') continue;
-          const v = validateAutoAckRegex(tr.pattern);
+          const syntax = resolveResponderSyntax(tr.syntax, 'regex');
+          const v = validateResponderTrigger(tr.pattern, syntax);
           if (!v.ok) {
-            return res.status(400).json({
-              success: false,
-              error: `Invalid regex for trigger ${tr.id || '(unnamed)'}: ${v.error}`,
-            });
+            const kind = syntax === 'regex' ? 'regex' : 'pattern';
+            return fail(res, 400, 'INVALID_REGEX', `Invalid ${kind} for trigger ${tr.id || '(unnamed)'}: ${v.error}`);
           }
         }
         await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoResponderTriggers', JSON.stringify(body.triggers));

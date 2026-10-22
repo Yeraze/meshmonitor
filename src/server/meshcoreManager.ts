@@ -30,6 +30,8 @@ import { compileUserRegex } from '../utils/safeRegex.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { meshCoreTriggerChanges } from './utils/nodeDiscovery.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
+import { compileResponderTriggerRe2, matchCompiledResponderTrigger } from './utils/autoResponderMatcher.js';
+import { resolveResponderSyntax, substituteResponderParams, type CompiledResponderTrigger, type ResponderSyntax } from '../utils/responderTrigger.js';
 import { resolveAutoAckPreSendDelaySeconds, clampPreSendDelaySeconds } from './autoAckDelay.js';
 import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.js';
 import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
@@ -524,8 +526,17 @@ export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeCon
   id: string;
   name: string;
   enabled: boolean;
-  /** Case-insensitive regex matched against incoming message text. */
+  /**
+   * Trigger text, read in `syntax`: a case-insensitive unanchored regex, or
+   * the Meshtastic placeholder DSL.
+   */
   pattern: string;
+  /**
+   * `'regex'` (bare, unanchored, case-insensitive) or `'pattern'` (the
+   * placeholder DSL with `{name}` captures). Missing = `'regex'`, the
+   * behaviour every trigger saved before #5924 had.
+   */
+  syntax?: ResponderSyntax;
   /**
    * Action to take on match. `text` sends `response` rendered against
    * announce tokens; `script` runs `scriptPath` and sends each entry of
@@ -12013,7 +12024,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // Triggers are read live on each message so a settings save takes
   // effect on the next incoming packet without a restart.
 
-  private autoResponderRegexCache: Map<string, RegExp | null> = new Map();
+  private autoResponderRegexCache: Map<string, CompiledResponderTrigger | null> = new Map();
 
   /**
    * Build the env map for a script invocation triggered by an incoming
@@ -12141,14 +12152,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return result;
   }
 
-  private getAutoResponderRegex(pattern: string): RegExp | null {
-    if (this.autoResponderRegexCache.has(pattern)) {
-      return this.autoResponderRegexCache.get(pattern)!;
+  /**
+   * Compile (and cache) a trigger in its syntax (#5924). Regex mode runs the
+   * same checks as the auto-ack validator (length, charset, ReDoS shape),
+   * so unsafe patterns are rejected the same way at every surface.
+   */
+  private getAutoResponderMatcher(pattern: string, syntax: ResponderSyntax): CompiledResponderTrigger | null {
+    const key = `${syntax}\u0000${pattern}`;
+    if (this.autoResponderRegexCache.has(key)) {
+      return this.autoResponderRegexCache.get(key)!;
     }
-    // Reuse the auto-ack validator so ReDoS-shaped patterns are
-    // rejected the same way at both surfaces.
-    const compiled = compileAutoAckRegex(pattern).regex;
-    this.autoResponderRegexCache.set(pattern, compiled);
+    const { compiled } = compileResponderTriggerRe2({ pattern, syntax });
+    this.autoResponderRegexCache.set(key, compiled);
     return compiled;
   }
 
@@ -12204,12 +12219,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           if (typeof channelIdx !== 'number' || !trigger.channels.includes(channelIdx)) continue;
         }
 
-        const regex = this.getAutoResponderRegex(trigger.pattern);
-        if (!regex) {
-          logger.warn(`[MeshCore:${this.sourceId}] Auto-responder ${trigger.id}: invalid regex "${trigger.pattern}"`);
+        const syntax = resolveResponderSyntax(trigger.syntax, 'regex');
+        const matcher = this.getAutoResponderMatcher(trigger.pattern, syntax);
+        if (!matcher) {
+          logger.warn(`[MeshCore:${this.sourceId}] Auto-responder ${trigger.id}: invalid ${syntax} "${trigger.pattern}"`);
           continue;
         }
-        if (!regex.test(text)) continue;
+        const match = matchCompiledResponderTrigger(matcher, text);
+        if (!match.matched) continue;
 
         // Cooldown gate.
         const cooldownMs = Math.max(0, Math.min(3600, trigger.cooldownSeconds || 0)) * 1000;
@@ -12254,6 +12271,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             continue;
           }
           const env = this.buildMeshCoreResponderScriptEnv(message, isDM, channelIdx, trigger);
+          // Captured params reach the script as PARAM_<name>, as on Meshtastic.
+          for (const [key, value] of Object.entries(match.params)) env[`PARAM_${key}`] = value;
           await this.runMeshCoreScript(trigger.scriptPath, trigger.scriptArgs, env, dispatch, `Auto-responder ${trigger.id}`);
           continue;
         }
@@ -12263,8 +12282,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // like an auto-ack template (#3892). senderName comes from the message
         // or the resolved contact.
         const senderName = message.fromName || senderContact?.advName || senderContact?.name || undefined;
+        // Captured `{name}` params fill the template first, as on Meshtastic;
+        // the reply tokens are expanded after.
         const body = await this.renderReplyTemplate(
-          trigger.response || '',
+          substituteResponderParams(trigger.response || '', match.params),
           message.fromPublicKey,
           senderName,
           message.snr,

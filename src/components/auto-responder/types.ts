@@ -1,4 +1,5 @@
 import { Channel } from '../../types/device';
+import type { ResponderSyntax } from '../../utils/responderTrigger';
 
 /**
  * Script metadata from the API
@@ -16,6 +17,11 @@ export type ResponseType = 'text' | 'http' | 'script' | 'traceroute' | 'mailbox'
 export interface AutoResponderTrigger {
   id: string;
   trigger: string | string[]; // Single pattern or array of patterns (e.g., "ask" or ["ask", "ask {message}"])
+  /**
+   * How `trigger` is read (#5924): 'pattern' (placeholder DSL, anchored) or
+   * 'regex' (bare, unanchored, case-insensitive). Missing = 'pattern'.
+   */
+  syntax?: ResponderSyntax;
   responseType: ResponseType;
   response: string; // Either text content, HTTP URL, or script path
   multiline?: boolean; // Enable multiline support for text/http responses
