@@ -13,6 +13,7 @@ import { useNodeDisplaySettings } from '../../hooks/useNodeDisplaySettings';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge, meshcoreLastHeardMs } from '../../utils/meshcoreAge';
 import { formatTimeOrDate } from '../../utils/datetime';
 import { UiIcon } from '../icons';
+import styles from './MeshCoreNodesView.module.css';
 
 type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
@@ -405,7 +406,10 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   return (
     <div className={`meshcore-two-pane ${mobileClass}`}>
       <div className={`meshcore-list-pane ${isListCollapsed ? 'collapsed' : ''}`}>
-        <div className="meshcore-list-pane-header">
+        {/* Two rows so a 320px pane never clips Discover (#5936): title and
+            actions on top, age filter and sort below. */}
+        <div className={`meshcore-list-pane-header ${styles.header}`}>
+          <div className={styles.row}>
           <button
             type="button"
             className="meshcore-collapse-btn"
@@ -424,12 +428,12 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           <>
           <span>{t('meshcore.nav.nodes', 'Nodes')}</span>
           <span className="pane-count">{rows.length}</span>
-          <NodeQuickAgeFilter settingsHours={maxNodeAgeHours} variant="meshcore" />
+          <span className={styles.actions}>
           {onImportContact && (
             <button
               type="button"
               className="btn-secondary"
-              style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem', marginLeft: '0.5rem' }}
+              style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem' }}
               onClick={() => { setImportHex(''); setImportError(null); setImportDialogOpen(true); }}
             >
               {t('meshcore.import_contact.button', 'Import')}
@@ -440,7 +444,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               <button
                 type="button"
                 className="btn-secondary"
-                style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem', marginLeft: '0.5rem' }}
+                style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem' }}
                 onClick={() => setDiscoverMenuOpen((open) => !open)}
                 disabled={discovering !== null}
                 aria-haspopup="menu"
@@ -456,7 +460,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                     className="mc-discover-menu-backdrop"
                     onClick={() => setDiscoverMenuOpen(false)}
                   />
-                  <div className="mc-discover-menu" role="menu">
+                  <div className={`mc-discover-menu ${styles.discoverMenu}`} role="menu">
                     <button
                       type="button"
                       role="menuitem"
@@ -489,6 +493,13 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               )}
             </div>
           )}
+          </span>
+          </>
+          )}
+          </div>
+          {!isListCollapsed && (
+          <div className={styles.row}>
+          <NodeQuickAgeFilter settingsHours={maxNodeAgeHours} variant="meshcore" />
           <div className="sort-controls meshcore-sort-controls">
             <select
               aria-label={t('meshcore.sort_by', 'Sort by')}
@@ -514,7 +525,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               <UiIcon name={sortDirection === 'asc' ? 'sortAscending' : 'sortDescending'} />
             </button>
           </div>
-          </>
+          </div>
           )}
         </div>
         {!isListCollapsed && (
