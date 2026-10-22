@@ -103,12 +103,14 @@ describe('trigger placeholder locales', () => {
     for (const file of readdirSync(localeDir).filter((f) => f.endsWith('.json') && f !== 'en.json')) {
       const d = JSON.parse(readFileSync(join(localeDir, file), 'utf8')) as Record<string, unknown>;
       const value = d['auto_responder.trigger_placeholder'];
-      if (value === undefined) continue;
+      // Absent or "" (Weblate's untranslated marker) both fall back to English.
+      if (value === undefined || value === '') continue;
       expect(typeof value, file).toBe('string');
       expect((value as string).trim(), file).not.toBe('');
       expect(value as string, file).not.toMatch(/,/);
     }
     const i18n = read('../config/i18n.ts');
     expect(i18n).toMatch(/fallbackLng:\s*'en'/);
+    expect(i18n).toMatch(/returnEmptyString:\s*false/);
   });
 });
