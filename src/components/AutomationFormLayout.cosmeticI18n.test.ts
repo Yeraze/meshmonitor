@@ -146,10 +146,14 @@ describe('auto responder strings are translatable', () => {
     }
   });
 
+  // Weblate writes untranslated keys as "", which i18n.ts reads as missing
+  // (returnEmptyString: false) and falls back to English. Only a real string
+  // would be a translation we added by hand.
   it('adds keys to en.json only', () => {
     const de = JSON.parse(read('../../public/locales/de.json')) as Record<string, string>;
-    expect(de).not.toHaveProperty(['auto_responder.channels_label']);
-    expect(de).not.toHaveProperty(['auto_responder.multiline_label']);
+    expect(de['auto_responder.channels_label'] ?? '').toBe('');
+    expect(de['auto_responder.multiline_label'] ?? '').toBe('');
+    expect(read('../config/i18n.ts')).toMatch(/returnEmptyString:\s*false/);
   });
 });
 
