@@ -90,6 +90,8 @@ export const nodesSqlite = sqliteTable('nodes', {
   positionOverrideIsPrivate: integer('positionOverrideIsPrivate', { mode: 'boolean' }).default(false),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: integer('hideFromMap', { mode: 'boolean' }).default(false),
+  // #5923: an admin pinned `channel`; packet-driven upserts leave it alone.
+  channelLocked: integer('channelLocked', { mode: 'boolean' }).default(false),
   // User capability flags from the node's User protobuf (issue #3684)
   isUnmessagable: integer('isUnmessagable', { mode: 'boolean' }).default(false),
   isLicensed: integer('isLicensed', { mode: 'boolean' }).default(false),
@@ -214,6 +216,7 @@ export const nodesPostgres = pgTable('nodes', {
   positionOverrideIsPrivate: pgBoolean('positionOverrideIsPrivate').default(false),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: pgBoolean('hideFromMap').default(false),
+  channelLocked: pgBoolean('channelLocked').default(false),
   // User capability flags from the node's User protobuf (issue #3684)
   isUnmessagable: pgBoolean('isUnmessagable').default(false),
   isLicensed: pgBoolean('isLicensed').default(false),
@@ -332,6 +335,7 @@ export const nodesMysql = mysqlTable('nodes', {
   positionOverrideIsPrivate: myBoolean('positionOverrideIsPrivate').default(false),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: myBoolean('hideFromMap').default(false),
+  channelLocked: myBoolean('channelLocked').default(false),
   // User capability flags from the node's User protobuf (issue #3684)
   isUnmessagable: myBoolean('isUnmessagable').default(false),
   isLicensed: myBoolean('isLicensed').default(false),

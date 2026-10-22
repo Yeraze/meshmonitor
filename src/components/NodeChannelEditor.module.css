@@ -1,0 +1,92 @@
+/* Node details Channel card with set / clear / lock (#5923). */
+.card {
+  display: flex;
+  flex-direction: column;
+}
+
+.valueRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lockBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75rem;
+  color: var(--color-warning);
+}
+
+.editButton {
+  margin-left: auto;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.editor select {
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+}
+
+.lockToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.error {
+  font-size: 0.8rem;
+  color: var(--color-error);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.actions button {
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.actions .save {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: 600;
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

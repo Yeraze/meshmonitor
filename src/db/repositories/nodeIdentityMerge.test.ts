@@ -299,6 +299,23 @@ describe('the merge itself', () => {
     expect(rows[0].notes).toBe('mast at 40m');
   });
 
+  it('carries an admin-locked channel over when the survivor has none (#5923)', async () => {
+    await testDb.db.update(schema.nodesSqlite)
+      .set({ channel: null, channelLocked: true } as never)
+      .where(eq(schema.nodesSqlite.nodeNum, OLD_NUM));
+    await testDb.db.update(schema.nodesSqlite)
+      .set({ channel: 2 } as never)
+      .where(eq(schema.nodesSqlite.nodeNum, NEW_NUM));
+
+    await repo.executeMerge({
+      sourceId: SOURCE_A, fromNodeNum: OLD_NUM, toNodeNum: NEW_NUM, basis: 'derivedNodeNum', mergedBy: 'admin',
+    });
+
+    const [survivor] = await testDb.db.select().from(schema.nodesSqlite);
+    expect(survivor.channel).toBeNull();
+    expect(Boolean(survivor.channelLocked)).toBe(true);
+  });
+
   it('refuses to merge a node into itself', async () => {
     await expect(
       repo.executeMerge({

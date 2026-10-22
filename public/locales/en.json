@@ -7655,5 +7655,12 @@
   "automation.responder_syntax.regex": "Regex",
   "automation.responder_syntax.pattern_hint": "The whole message must match, case-insensitive. {name} captures a word, {name:regex} a custom value; separate alternatives with commas.",
   "automation.responder_syntax.regex_hint": "Regular expression, case-insensitive. Matches anywhere in the message; anchor with ^ and $. (?<name>…) captures a value.",
-  "meshcore.automation.responder.pattern_label": "Pattern"
+  "meshcore.automation.responder.pattern_label": "Pattern",
+  "node_details.channel_none": "None",
+  "node_details.channel_locked": "Locked",
+  "node_details.channel_locked_hint": "Locked: traffic does not change this channel",
+  "node_details.channel_lock_label": "Lock (traffic will not change it)",
+  "node_details.channel_edit_hint": "Unlocked, the next packet decoded with a channel key updates it again.",
+  "node_details.channel_save_failed": "Could not save the channel",
+  "node_details.channel_saved": "Channel saved"
 }

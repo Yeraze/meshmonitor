@@ -136,6 +136,9 @@ export function mapDbNodeToDeviceInfo(
   if (node.hideFromMap !== null && node.hideFromMap !== undefined) {
     deviceInfo.hideFromMap = Boolean(node.hideFromMap);
   }
+  if (node.channelLocked !== null && node.channelLocked !== undefined) {
+    deviceInfo.channelLocked = Boolean(node.channelLocked);
+  }
   if (node.notes !== null && node.notes !== undefined) {
     deviceInfo.notes = node.notes;
   }

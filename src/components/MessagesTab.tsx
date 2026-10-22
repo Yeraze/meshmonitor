@@ -51,6 +51,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { nodeColorStyle } from '../utils/nodeColor';
 import { useDeviceNodes, useTelemetryNodes, setNodeFieldInCache } from '../hooks/useServerData';
 import { useQueryClient } from '@tanstack/react-query';
+import { sourcePollQueryKey } from '../hooks/pollQueryKey';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
@@ -2934,6 +2935,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   if (!selectedNode.user?.id) throw new Error('Node has no ID');
                   await apiService.setNodeNotes(selectedNode.user.id, notes, sourceId);
                   showToast(t('node_details.notes_saved', 'Notes saved'), 'success');
+                }}
+                canEditChannel={hasPermission('nodes', 'write') && !!sourceId}
+                onSaveChannel={async (channel, locked) => {
+                  if (!selectedNode.user?.id) throw new Error('Node has no ID');
+                  if (!sourceId) throw new Error('No source selected');
+                  await apiService.setNodeChannel(selectedNode.user.id, channel, locked, sourceId);
+                  await queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
+                  showToast(t('node_details.channel_saved', 'Channel saved'), 'success');
                 }}
               />
             )}
