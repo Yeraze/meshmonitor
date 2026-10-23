@@ -27,7 +27,7 @@ export const ReticulumSettingsView: React.FC<ReticulumSettingsViewProps> = ({ so
   return (
     <div className={styles.view} data-testid="reticulum-settings-view">
       <h2 className={styles.title}>{t('nav.settings', 'Settings')}</h2>
-      <GlobalSettingsLink variant="inline" />
+      <GlobalSettingsLink variant="banner" />
       <p className={styles.empty}>
         {t(
           'reticulum.settings.none_per_source',

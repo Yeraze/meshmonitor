@@ -221,7 +221,7 @@ describe('ReticulumSourcePage', () => {
     expect(note.querySelector('a')?.getAttribute('href')).toBe('/settings#settings-reticulum');
     expect(screen.queryByText('Destination retention cap')).toBeNull();
     // The page's own link to Global Settings, for the phone layout.
-    expect(screen.getByTestId('global-settings-link-inline')).toBeInTheDocument();
+    expect(screen.getByTestId('global-settings-link-banner')).toBeInTheDocument();
   });
 
   it('mounts ReticulumDmsView (Phase 2 WP5) when the Messages nav item is selected', async () => {

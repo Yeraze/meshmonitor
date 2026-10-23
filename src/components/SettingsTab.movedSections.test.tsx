@@ -493,6 +493,21 @@ describe('SettingsTab global mode: the Reticulum retention cap moved in', () => 
   });
 });
 
+describe('SettingsTab: the Global Settings banner', () => {
+  it('heads every source Settings page, linking to /settings', async () => {
+    renderSettings('source');
+    await settled();
+    const banner = screen.getByTestId('global-settings-link-banner');
+    expect(banner.querySelector('a')?.getAttribute('href')).toBe('/settings');
+  });
+
+  it('is absent from Global Settings itself', async () => {
+    renderSettings('global');
+    await settled();
+    expect(screen.queryByTestId('global-settings-link-banner')).toBeNull();
+  });
+});
+
 describe('SettingsTab: the moved sections do not join the SettingsDraft', () => {
   const settingsPosts = () =>
     csrfFetchMock.mock.calls.filter(([url, init]) =>
