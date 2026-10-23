@@ -27,6 +27,8 @@ import styles from './MeshCoreMessageStream.module.css';
 import protocolStripe from '../messages/ProtocolStripe.module.css';
 import { getMeshCoreChannelSendState, getMeshCoreDirectSendState } from '../../utils/deliveryDiagnostics/status';
 import { directSendLabel } from './meshcoreSendLabel';
+import { parseSpip } from '../../utils/spip';
+import { SpipImage } from '../Spip/SpipImage';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -106,6 +108,10 @@ function formatTime(ts: number): string {
 const MENTION_RE = /@\[([^\]]+)\]/g;
 
 function renderMessageText(text: string): React.ReactNode {
+  // A message that is one SPIP image code draws as the image.
+  const spip = parseSpip(text);
+  if (spip) return <SpipImage image={spip} code={text.trim()} />;
+
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
