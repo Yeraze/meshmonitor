@@ -18,7 +18,7 @@ import type { AtakContact } from '../../../types/atakContact';
 import { createAtakContactIcon } from '../markerIcons';
 import { teamColor, teamLabel, roleLabel } from '../../../utils/atakTeam';
 import { formatRelativeTime } from '../../../utils/datetime';
-import { UiIcon } from '../../icons';
+import { UiIcon, batteryIconName } from '../../icons';
 import styles from './AtakContactsLayer.module.css';
 
 export interface SourceInfo {
@@ -90,7 +90,7 @@ export function AtakContactsLayer({ source }: { source: SourceInfo }) {
                     </div>
                     {contact.battery !== null && (
                       <div className={styles.item}>
-                        <UiIcon name="battery" size={15} />
+                        <UiIcon name={batteryIconName(contact.battery)} size={15} />
                         <span className={styles.value}>{contact.battery}%</span>
                       </div>
                     )}
