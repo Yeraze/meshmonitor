@@ -179,4 +179,32 @@ describe('MeshtasticManager — handleClientNotification', () => {
 
     expect(emitClient).toHaveBeenCalledTimes(1);
   });
+
+  it('passes a refused unsigned update on with its node and level (#5944)', async () => {
+    const mgr = seedManager();
+    const message =
+      'Unsigned update from Base Camp (!a1b2c3d4) ignored, due to Strict security setting. Remove the node to accept its unsigned updates.';
+
+    await mgr.handleClientNotification({ level: 30, message });
+
+    expect(emitClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message,
+        kind: 'unsigned_update_ignored',
+        nodeNum: 0xa1b2c3d4,
+        nodeName: 'Base Camp',
+        policy: 'strict',
+      }),
+      SOURCE,
+    );
+    expect(setNodeFavorite).not.toHaveBeenCalled();
+  });
+
+  it('leaves other warnings without a kind', async () => {
+    const mgr = seedManager();
+
+    await mgr.handleClientNotification({ level: 30, message: 'Duty cycle limit exceeded. You can send again in 3 mins' });
+
+    expect(emitClient.mock.calls[0][0]).not.toHaveProperty('kind');
+  });
 });

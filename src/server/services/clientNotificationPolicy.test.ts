@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  parseUnsignedUpdateIgnored,
   shouldSuppressToast,
   parseProtectedCapRefusal,
   sanitizeNotificationMessage,
@@ -171,5 +172,42 @@ describe('ToastThrottle', () => {
     expect(t.shouldEmit('src2::A', 1_000)).toBe(true);
     // Re-emitting the same per-source key is throttled.
     expect(t.shouldEmit('src1::A', 2_000)).toBe(false);
+  });
+});
+
+describe('parseUnsignedUpdateIgnored (#5944)', () => {
+  const tail = ' security setting. Remove the node to accept its unsigned updates.';
+
+  it('reads the node name, id and Balanced level', () => {
+    expect(parseUnsignedUpdateIgnored(`Unsigned update from Hill Top (!0000beef) ignored, due to Balanced${tail}`)).toEqual({
+      nodeNum: 0xbeef,
+      nodeName: 'Hill Top',
+      policy: 'balanced',
+    });
+  });
+
+  it('reads Strict and a name holding parentheses', () => {
+    expect(parseUnsignedUpdateIgnored(`Unsigned update from Relay (2) (!a1b2c3d4) ignored, due to Strict${tail}`)).toEqual({
+      nodeNum: 0xa1b2c3d4,
+      nodeName: 'Relay (2)',
+      policy: 'strict',
+    });
+  });
+
+  it('handles the bare id the firmware prints when the node has no name', () => {
+    expect(parseUnsignedUpdateIgnored(`Unsigned update from !ffffffff ignored, due to Balanced${tail}`)).toEqual({
+      nodeNum: 0xffffffff,
+      nodeName: null,
+      policy: 'balanced',
+    });
+  });
+
+  it('accepts emoji in the name', () => {
+    expect(parseUnsignedUpdateIgnored(`Unsigned update from 🛰️ Sat (!12345678) ignored, due to Balanced${tail}`)?.nodeName).toBe('🛰️ Sat');
+  });
+
+  it('returns null for any other notice', () => {
+    expect(parseUnsignedUpdateIgnored('Duty cycle limit exceeded. You can send again in 3 mins')).toBeNull();
+    expect(parseUnsignedUpdateIgnored('')).toBeNull();
   });
 });
