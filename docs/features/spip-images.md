@@ -4,6 +4,8 @@ MeshMonitor draws [Small Packet Image Protocol 1.0](https://github.com/lilyellow
 
 SPIP packs a small image into one text message, so it costs no more airtime than any other message. Use the [SPIP editor](https://lilyellowtags.github.io/spip-editor/) to draw one, then paste the code into the message box.
 
+![A channel with a SPIP heart and checkerboard drawn as images, next to ordinary text messages](/images/features/spip-images.png)
+
 ---
 
 ## Format
