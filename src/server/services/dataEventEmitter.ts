@@ -255,6 +255,14 @@ export interface ClientNotificationData {
   message: string;
   replyId?: number;
   time?: number;
+  /**
+   * Set when the server recognised the notice, so the UI can show a
+   * translated explanation instead of the firmware's English text (#5944).
+   */
+  kind?: 'unsigned_update_ignored';
+  nodeNum?: number;
+  nodeName?: string | null;
+  policy?: 'balanced' | 'strict';
 }
 
 class DataEventEmitter extends EventEmitter {
