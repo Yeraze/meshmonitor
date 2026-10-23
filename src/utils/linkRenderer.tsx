@@ -1,6 +1,8 @@
 import React from 'react';
 import api from '../services/api.js';
 import { mentionTokenRegex } from './mentions.js';
+import { parseSpip } from './spip.js';
+import { SpipImage } from '../components/Spip/SpipImage.js';
 
 // URL detection regex - matches http://, https://, and www. URLs
 const URL_REGEX = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;
@@ -80,7 +82,8 @@ function renderMentions(
 
 /**
  * Renders text with clickable links for any URLs found, and `@` mentions as
- * chips when mention options are supplied (#5276).
+ * chips when mention options are supplied (#5276). A message that is a SPIP
+ * image code is drawn as the image instead.
  * @param text - The message text to process
  * @param mentions - Optional mention rendering behaviour
  * @returns JSX elements with URLs converted to clickable links
@@ -90,6 +93,10 @@ export function renderMessageWithLinks(
   mentions?: MentionRenderOptions
 ): React.ReactNode[] {
   if (!text) return [];
+
+  // A message that is one SPIP image code draws as the image.
+  const spip = parseSpip(text);
+  if (spip) return [<SpipImage key="spip" image={spip} code={text.trim()} />];
 
   // Replace bell character (0x07) with visible indicator
   text = text.replace(/\x07/g, '(Alert Bell) \u{1F514} ');

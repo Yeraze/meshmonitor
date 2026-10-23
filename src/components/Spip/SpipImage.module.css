@@ -1,0 +1,12 @@
+/* SPIP1 pixel image in a message bubble. CSS module per the containment
+   rule in CLAUDE.md. Theme tokens only. */
+
+.image {
+  display: block;
+  width: 8rem;
+  max-width: 100%;
+  height: auto;
+  margin: 0.25rem 0;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+}
