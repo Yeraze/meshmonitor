@@ -73,6 +73,7 @@ import {
   ToastThrottle,
   shouldSuppressToast,
   parseProtectedCapRefusal,
+  parseUnsignedUpdateIgnored,
   sanitizeNotificationMessage,
   type ParsedClientNotification,
 } from './services/clientNotificationPolicy.js';
@@ -7196,8 +7197,17 @@ class MeshtasticManager implements ISourceManager {
     const throttleKey = `${this.sourceId}::${message}`;
     if (!this.clientNotificationThrottle.shouldEmit(throttleKey, Date.now())) return;
 
+    // Firmware after 2.8.1 explains a refused unsigned name/role change (#5944).
+    // Pass it on structured so the UI can explain it in the viewer's language.
+    const unsigned = parseUnsignedUpdateIgnored(message);
     dataEventEmitter.emitClientNotification(
-      { level: data.level, message, replyId: data.replyId, time: data.time },
+      {
+        level: data.level,
+        message,
+        replyId: data.replyId,
+        time: data.time,
+        ...(unsigned ? { kind: 'unsigned_update_ignored' as const, ...unsigned } : {}),
+      },
       this.sourceId,
     );
   }

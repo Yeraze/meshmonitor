@@ -139,3 +139,32 @@ export class ToastThrottle {
     return true;
   }
 }
+
+export interface UnsignedUpdateIgnored {
+  nodeNum: number;
+  /** The node name the firmware printed, or null when it had none. */
+  nodeName: string | null;
+  policy: 'balanced' | 'strict';
+}
+
+/**
+ * Firmware with meshtastic/firmware#12191 (after 2.8.1) refuses an unsigned
+ * NodeInfo that would change a known signer's name or role under Balanced or
+ * Strict, and says so at most once an hour (`NodeDB.cpp`):
+ *   "Unsigned update from <name> (!xxxxxxxx) ignored, due to <Balanced|Strict>
+ *    security setting. Remove the node to accept its unsigned updates."
+ * With no name the firmware prints the bare `!xxxxxxxx`. Returns null on no match.
+ */
+const UNSIGNED_UPDATE_RE =
+  /^Unsigned update from (?:(.*) \()?!([0-9a-f]{1,8})\)? ignored, due to (Balanced|Strict) security setting/i;
+
+export function parseUnsignedUpdateIgnored(message: string): UnsignedUpdateIgnored | null {
+  const m = UNSIGNED_UPDATE_RE.exec(message ?? '');
+  if (!m) return null;
+  const name = m[1]?.trim();
+  return {
+    nodeNum: parseInt(m[2], 16),
+    nodeName: name ? name : null,
+    policy: m[3].toLowerCase() as 'balanced' | 'strict',
+  };
+}

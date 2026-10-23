@@ -247,6 +247,10 @@ export function describeMeshtasticDelivery(
             ? 'delivery_details.value.yes'
             : 'delivery_details.value.no',
         provenance: 'reported',
+        // Unsigned is the normal case, not a fault (#5944).
+        ...(msg.xeddsaSigned === false
+          ? { valueTone: 'muted' as const, tooltipKey: 'delivery_details.tooltip.xeddsa_unsigned' }
+          : {}),
       },
       // Ack proof verdict (#5279) — only when the radio reported one.
       ...(ackProofField ? [ackProofField] : []),

@@ -234,6 +234,16 @@ describe('describeMeshtasticDelivery', () => {
     expect(findField(result, 'delivery_details.field.want_ack')?.valueKey).toBe('delivery_details.value.no');
   });
 
+  it('marks an unsigned packet as normal, not a fault (#5944)', () => {
+    const unsigned = findField(describeMeshtasticDelivery(baseMessage({ xeddsaSigned: false })), 'delivery_details.field.xeddsa_signed');
+    expect(unsigned?.valueKey).toBe('delivery_details.value.no');
+    expect(unsigned?.valueTone).toBe('muted');
+    expect(unsigned?.tooltipKey).toBe('delivery_details.tooltip.xeddsa_unsigned');
+
+    const signed = findField(describeMeshtasticDelivery(baseMessage({ xeddsaSigned: true })), 'delivery_details.field.xeddsa_signed');
+    expect(signed?.tooltipKey).toBeUndefined();
+  });
+
   describe('ack proof row (#5279)', () => {
     const LABEL = 'delivery_details.field.ack_proof';
 

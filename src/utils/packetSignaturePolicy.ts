@@ -5,18 +5,29 @@
  * import a Node-only module. `src/server/constants/meshtastic.ts` re-exports
  * it for server code.
  *
- * What each value does on receive (firmware `Router.cpp`,
- * `checkXeddsaReceivePolicy`):
+ * What each value does. Firmware changed this after 2.8.1
+ * (meshtastic/firmware#12191, on `develop` as 2.8.2), so both are listed:
  *
+ * 2.8.0 / 2.8.1 (firmware `Router.cpp`, `checkXeddsaReceivePolicy`). Every
+ * value signs outgoing broadcasts.
  *   - COMPATIBLE: an unsigned packet passes. A signature that can be checked
  *     and is wrong still drops the packet.
  *   - BALANCED: as COMPATIBLE, except an unsigned broadcast from a node that
  *     has signed before is dropped (when its signed form would have fit).
  *   - STRICT: every packet that is neither signed-and-verified nor PKI
- *     encrypted is dropped. Firmware signs broadcasts only, so that covers all
- *     traffic from pre-2.8 nodes except PKI DMs, and from 2.8 nodes the channel
- *     unicasts (traceroute replies, ACKs, legacy admin channel) and broadcasts
- *     too large to sign.
+ *     encrypted is dropped. That covers all traffic from pre-2.8 nodes except
+ *     PKI DMs, and from 2.8 nodes the channel unicasts (traceroute replies,
+ *     ACKs, legacy admin channel) and broadcasts too large to sign.
+ *
+ * After 2.8.1:
+ *   - COMPATIBLE no longer signs. BALANCED and STRICT sign broadcasts plus
+ *     NodeInfo and position unicasts. Packets on an AES-CCM (`use_aead`)
+ *     channel and traceroutes are never signed.
+ *   - Only STRICT drops a packet for lacking a signature, and it exempts
+ *     AES-CCM channel packets, acks/routing, key verification and traceroutes.
+ *   - BALANCED and STRICT ignore an unsigned NodeInfo that would change a
+ *     known signer's name or role, and send a ClientNotification at most once
+ *     an hour (`parseUnsignedUpdateIgnored` in clientNotificationPolicy.ts).
  *
  * A build without PKI or XEdDSA forces COMPATIBLE on a set
  * (`AdminModule::handleSetConfig`), and a security set reboots the node.
