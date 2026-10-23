@@ -105,7 +105,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
-import { UiIcon } from './icons';
+import { UiIcon, batteryIconName } from './icons';
 import { useToast } from './ToastContainer';
 import { logger } from '../utils/logger';
 
@@ -2990,7 +2990,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       )}
                       {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
                         <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? t('nodes.plugged_in') : t('nodes.battery_level')}>
-                          <UiIcon name={node.deviceMetrics.batteryLevel === 101 ? 'batteryCharging' : 'battery'} size={14} /> {node.deviceMetrics.batteryLevel === 101 ? t('nodes.plugged_in') : `${node.deviceMetrics.batteryLevel}%`}
+                          <UiIcon name={batteryIconName(node.deviceMetrics.batteryLevel)} size={14} /> {node.deviceMetrics.batteryLevel === 101 ? t('nodes.plugged_in') : `${node.deviceMetrics.batteryLevel}%`}
                         </span>
                       )}
                       {node.deviceMetrics?.voltage !== undefined && node.deviceMetrics.voltage !== null && (

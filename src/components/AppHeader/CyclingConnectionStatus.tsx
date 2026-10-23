@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConnectionStatus } from '../../types/ui';
-import { UiIcon } from '../icons';
+import { UiIcon, batteryIconName } from '../icons';
 
 /** Local-node telemetry the badge can surface (all optional). */
 export interface LocalNodeMetrics {
@@ -92,7 +92,7 @@ export const CyclingConnectionStatus: React.FC<CyclingConnectionStatusProps> = (
       if (metrics.voltage != null) parts.push(`${metrics.voltage.toFixed(2)}V`);
       return (
         <span className="status-metric">
-          <UiIcon name={plugged ? 'batteryCharging' : 'battery'} size={14} />
+          <UiIcon name={plugged ? 'batteryCharging' : batteryIconName(metrics.batteryLevel)} size={14} />
           {/* Wrapped, not a bare text node, so the narrow-viewport rules in
               AppHeader.css can collapse the badge to its icon (#5051). */}
           <span className="status-metric-text">{parts.join(' ')}</span>
