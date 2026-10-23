@@ -24,7 +24,7 @@ import type { TimeFormat, DateFormat } from '../../../contexts/SettingsContext';
 import { useNodeListStyle } from '../../../contexts/SettingsContext';
 import { nodeColorStyle } from '../../../utils/nodeColor';
 import type { NodeCardModel, NodeSourceRef } from './nodeCardModel';
-import { UiIcon, type UiIconName } from '../../icons';
+import { UiIcon, batteryIconName, type UiIconName } from '../../icons';
 import { formatAircraftSummary } from '../../../utils/aircraftClassification';
 import { SignFlipNotice } from '../../SignFlipNotice';
 import FlightMatchLine from '../../FlightMatchLine';
@@ -186,7 +186,7 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
       )}
       {model.battery != null && (
         <div className="node-popup-item">
-          <span className="node-popup-icon"><UiIcon name={isPluggedIn ? 'batteryCharging' : 'battery'} /></span>
+          <span className="node-popup-icon"><UiIcon name={isPluggedIn ? 'batteryCharging' : batteryIconName(Math.min(model.battery, 100))} /></span>
           <span className="node-popup-value">
             {isPluggedIn ? t('node_popup.power_plugged', 'Plugged In') : `${model.battery}%`}
           </span>
