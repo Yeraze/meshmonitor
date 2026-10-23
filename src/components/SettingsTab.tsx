@@ -50,6 +50,7 @@ import { getEffectiveTileset, type Theme, type AppearanceMode, type NodeHopsCalc
 import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
+import { GlobalSettingsLink } from './nav/GlobalSettingsLink';
 import {
   GLOBAL_SETTINGS_SECTIONS,
   SOURCE_SETTINGS_SECTIONS,
@@ -1981,6 +1982,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         >
           <UiIcon name="heart" /> {t('settings.support')}</a>
       </div>
+      {mode === 'source' && <GlobalSettingsLink variant="banner" />}
       <SectionNav
         searchable
         searchPlaceholder={t('config_search.filter_settings', 'Search settings...')}

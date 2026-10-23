@@ -88,10 +88,14 @@ describe('GlobalSettingsLink', () => {
     expect(link).toHaveAttribute('title', 'Global Settings');
   });
 
-  it('inline: one line that links to /settings', () => {
-    renderLink({ variant: 'inline' });
-    expect(screen.getByTestId('global-settings-link-inline')).toHaveTextContent(/install-wide settings are in\s+Global Settings/);
-    expect(screen.getByRole('link', { name: 'Global Settings' }).getAttribute('href')).toBe('/settings');
+  it('banner: a callout with a button to /settings', () => {
+    renderLink({ variant: 'banner' });
+    const banner = screen.getByTestId('global-settings-link-banner');
+    expect(banner).toHaveTextContent('These settings apply to this source only');
+    expect(banner).toHaveTextContent(/install-wide settings are in/);
+    const link = screen.getByRole('link', { name: 'Global Settings' });
+    expect(link).toHaveTextContent('Open Global Settings');
+    expect(link.getAttribute('href')).toBe('/settings');
   });
 
   it('asks for settings:read on any source, like the dashboard footer gear', () => {
@@ -104,7 +108,7 @@ describe('GlobalSettingsLink', () => {
     expect(seen).toContainEqual(['settings', 'read', { anySource: true }]);
   });
 
-  it.each(['rail', 'inline'] as const)('%s: renders nothing without that grant', (variant) => {
+  it.each(['rail', 'banner'] as const)('%s: renders nothing without that grant', (variant) => {
     grants = (resource) => resource !== 'settings';
     const { container } = renderLink({ variant });
     expect(container).toBeEmptyDOMElement();

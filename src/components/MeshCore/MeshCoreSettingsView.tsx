@@ -225,7 +225,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       <h2 style={{ color: 'var(--color-text)', marginBottom: '1rem' }}>
         {t('nav.settings', 'Settings')}
       </h2>
-      <GlobalSettingsLink variant="inline" />
+      <GlobalSettingsLink variant="banner" />
 
       <div className="form-section">
         <h3>{t('meshcore.connection', 'Connection')}</h3>

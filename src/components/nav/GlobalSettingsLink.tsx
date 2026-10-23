@@ -9,8 +9,10 @@
  *   rail    the foot of the source nav, where the Meshtastic sidebar keeps its
  *           footer links. Icon only in the collapsed rail, icon and label in
  *           the expanded one.
- *   inline  one line on the source's Settings page. The phone layout docks the
- *           nav as a bottom bar with no foot, so the rail link is not there.
+ *   banner  a callout at the top of every source's Settings page. People kept
+ *           missing the install-wide page, so this one is hard to overlook.
+ *           The phone layout docks the nav as a bottom bar with no foot, so
+ *           the rail link is not there either.
  *
  * The icon and the label come from GLOBAL_SETTINGS_NAV_ENTRY, so every link to
  * that page reads "Global Settings" and no per-source gear does.
@@ -27,7 +29,7 @@ import { GLOBAL_SETTINGS_PATH, globalSettingsNav } from './sourceNavEntries';
 import styles from './GlobalSettingsLink.module.css';
 
 export interface GlobalSettingsLinkProps {
-  variant?: 'rail' | 'inline';
+  variant?: 'rail' | 'banner';
   /** Rail only: the nav is collapsed, so show the icon alone. */
   collapsed?: boolean;
 }
@@ -45,25 +47,32 @@ export const GlobalSettingsLink: React.FC<GlobalSettingsLinkProps> = ({
 
   const { icon, label } = globalSettingsNav(t);
 
-  if (variant === 'inline') {
+  if (variant === 'banner') {
+    const body = (
+      <>
+        <UiIcon name={icon} size={16} /> {t('nav.open_global_settings', 'Open Global Settings')}
+      </>
+    );
     return (
-      <p className={styles.inline} data-testid="global-settings-link-inline">
-        <span>
-          {t(
-            'nav.global_settings_hint',
-            'Language, units, map and other install-wide settings are in',
-          )}
-        </span>{' '}
+      <aside className={styles.banner} data-testid="global-settings-link-banner">
+        <div className={styles.bannerText}>
+          <strong className={styles.bannerTitle}>
+            {t('nav.global_settings_banner_title', 'These settings apply to this source only')}
+          </strong>
+          <span>
+            {t(
+              'nav.global_settings_banner_hint',
+              'Language, units, map, notifications and other install-wide settings are in {{label}}.',
+              { label },
+            )}
+          </span>
+        </div>
         {inRouter ? (
-          <Link className={styles.inlineLink} to={GLOBAL_SETTINGS_PATH}>
-            <UiIcon name={icon} size={14} /> {label}
-          </Link>
+          <Link className={styles.bannerButton} to={GLOBAL_SETTINGS_PATH} aria-label={label}>{body}</Link>
         ) : (
-          <a className={styles.inlineLink} href={GLOBAL_SETTINGS_PATH}>
-            <UiIcon name={icon} size={14} /> {label}
-          </a>
+          <a className={styles.bannerButton} href={GLOBAL_SETTINGS_PATH} aria-label={label}>{body}</a>
         )}
-      </p>
+      </aside>
     );
   }
 
