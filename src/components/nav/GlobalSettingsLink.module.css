@@ -1,6 +1,6 @@
 /*
  * GlobalSettingsLink: the foot-of-rail link, drawn like a SidebarFooter
- * button (muted, small, a hairline above), and the one-line inline form.
+ * button (muted, small, a hairline above), and the Settings-page banner.
  */
 
 .rail {
@@ -33,16 +33,48 @@
   text-overflow: ellipsis;
 }
 
-.inline {
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
   margin: 0 0 1rem;
-  color: var(--color-text-subtle);
-  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-accent);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+.bannerText {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.9rem;
   line-height: 1.4;
 }
 
-.inlineLink {
+.bannerTitle {
+  font-size: 0.95rem;
+}
+
+.bannerButton {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 0.25rem;
-  color: var(--color-accent);
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.bannerButton:hover,
+.bannerButton:focus-visible {
+  background-color: var(--color-accent-hover);
 }
