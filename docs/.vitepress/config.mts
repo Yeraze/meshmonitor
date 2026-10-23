@@ -72,7 +72,8 @@ const featuresSidebar = [
       { text: 'Delivery Details', link: '/features/delivery-diagnostics' },
       { text: 'Channel Database', link: '/features/channel-database' },
       { text: 'Store & Forward', link: '/features/store-forward' },
-      { text: 'Message Translation', link: '/features/message-translation' }
+      { text: 'Message Translation', link: '/features/message-translation' },
+      { text: 'SPIP Pixel Images', link: '/features/spip-images' }
     ]
   },
   {
