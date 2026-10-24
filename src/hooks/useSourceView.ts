@@ -499,6 +499,14 @@ export function useSourceView(params: UseSourceViewParams) {
         if (!isShowMode && matches) return false;
       }
 
+      // Hidden from map filter (#5952): "Hide from Map" only drops the marker,
+      // so this is how a user finds those nodes again to un-hide them.
+      if (nodeFilters.showHiddenFromMap) {
+        const matches = !!node.hideFromMap;
+        if (isShowMode && !matches) return false;
+        if (!isShowMode && matches) return false;
+      }
+
       // Device role filter
       if (nodeFilters.deviceRoles.length > 0) {
         const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');

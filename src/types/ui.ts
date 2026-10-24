@@ -108,6 +108,8 @@ export interface NodeFilters {
   showUnknown: boolean;
   showIgnored: boolean;
   showFavoriteLocked: boolean;
+  /** #5952: match nodes marked Hide from Map (they still appear in this list). */
+  showHiddenFromMap: boolean;
   deviceRoles: number[];
   channels: number[];
 }

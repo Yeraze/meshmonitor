@@ -31,6 +31,7 @@ const DEFAULT_FILTERS: NodeFilters = {
   showUnknown: false,
   showIgnored: false,
   showFavoriteLocked: false,
+  showHiddenFromMap: false,
   deviceRoles: [],
   channels: [],
 };
@@ -291,6 +292,18 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
               <span className="filter-label-with-icon">
                 <span className="filter-icon"><UiIcon name="encrypted" /></span>
                 <span>{t('node_filter.favorite_locked', 'Favorite locked')}</span>
+              </span>
+            </label>
+
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={nodeFilters.showHiddenFromMap}
+                onChange={e => onNodeFiltersChange({ ...nodeFilters, showHiddenFromMap: e.target.checked })}
+              />
+              <span className="filter-label-with-icon">
+                <span className="filter-icon"><UiIcon name="visibilityOff" /></span>
+                <span>{t('node_filter.hidden_from_map', 'Hidden from map')}</span>
               </span>
             </label>
           </div>
