@@ -38,6 +38,7 @@ import { formatDistance } from '../../utils/distance';
 import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
 import toolPanelStyles from './MapToolPanels.module.css';
+import endpointStyles from './LinkProfileEndpoints.module.css';
 
 // Documented defaults (LINK_PROFILE_TOOL_SPEC.md §0.7).
 const DEFAULT_FREQ_MHZ = 915;
@@ -103,6 +104,11 @@ const ChartTooltip: React.FC<{
 /** The state object Recharts hands to `<ComposedChart onMouseMove>` — derived
  *  from its own prop type so it can't drift from the installed Recharts version. */
 type ChartMouseState = Parameters<NonNullable<React.ComponentProps<typeof ComposedChart>['onMouseMove']>>[0];
+
+/** A short name for an endpoint chip: the node's label, else its coordinates. */
+function endpointName(ep: { label?: string; lat: number; lng: number }): string {
+  return ep.label || `${ep.lat.toFixed(4)}, ${ep.lng.toFixed(4)}`;
+}
 
 const LinkProfileDrawer: React.FC = () => {
   const { distanceUnit } = useSettings();
@@ -281,7 +287,7 @@ const LinkProfileDrawer: React.FC = () => {
         {!endpointA || !endpointB ? (
           <div className="map-analysis-link-drawer-empty">
             {!endpointA
-              ? 'Pick two points on the map to build a link profile.'
+              ? 'Pick two points on the map to build a link profile. Hold Space to pan without placing points.'
               : 'Pick a second point to build a link profile.'}
           </div>
         ) : isLoading ? (
@@ -381,6 +387,38 @@ const LinkProfileDrawer: React.FC = () => {
             <UiIcon name="close" size={16} />
           </button>
         </div>
+
+        {endpointA && (
+          <div className={endpointStyles.endpoints} data-testid="link-profile-endpoints">
+            {[endpointA, endpointB].map((ep, i) =>
+              ep ? (
+                <span key={i === 0 ? 'A' : 'B'} className={endpointStyles.endpoint}>
+                  <strong>{i === 0 ? 'A' : 'B'}</strong>
+                  <span className={endpointStyles.endpointName} title={endpointName(ep)}>
+                    {endpointName(ep)}
+                  </span>
+                  <button
+                    type="button"
+                    className={endpointStyles.clear}
+                    onClick={() => setLinkEndpoints(linkEndpoints.filter((_, j) => j !== i))}
+                    aria-label={`Clear point ${i === 0 ? 'A' : 'B'}`}
+                    title={i === 0 && endpointB ? 'Clear A (B becomes A)' : `Clear ${i === 0 ? 'A' : 'B'}`}
+                  >
+                    <UiIcon name="close" size={12} />
+                  </button>
+                </span>
+              ) : null,
+            )}
+            <button type="button" className={endpointStyles.reset} onClick={() => setLinkEndpoints([])}>
+              Reset
+            </button>
+            {endpointB && (
+              <span className={endpointStyles.hint}>
+                Drag A or B on the map to move it. Hold Space to pan without placing points.
+              </span>
+            )}
+          </div>
+        )}
 
         {analysis && budget && endpointA && endpointB && !isLoading && !error && (
           <div className="map-analysis-link-drawer-stats">

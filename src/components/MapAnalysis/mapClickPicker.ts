@@ -45,15 +45,25 @@ export function resolvePickedPoint<T extends PickCandidate>(
   const target = e.target as HTMLElement | null;
   if (target && target.closest('.leaflet-control')) return null;
 
-  const container = map.getContainer();
-  const latlng = map.mouseEventToLatLng(e);
+  return resolvePickedLatLng(map, map.mouseEventToLatLng(e), points, snapPx);
+}
+
+/**
+ * The same snap for a map coordinate rather than a click: used when an
+ * endpoint is dropped after a drag (#5959), so a drop near a node lands on it.
+ */
+export function resolvePickedLatLng<T extends PickCandidate>(
+  map: LeafletMap,
+  latlng: { lat: number; lng: number },
+  points: T[],
+  snapPx: number = MAP_PICK_SNAP_PX,
+): PickedPoint<T> {
   const nearest = nearestPoint(points, latlng.lat, latlng.lng);
 
   if (nearest) {
-    const rect = container.getBoundingClientRect();
-    const clickPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const dropPx = map.latLngToContainerPoint([latlng.lat, latlng.lng]);
     const nearestPx = map.latLngToContainerPoint([nearest.lat, nearest.lng]);
-    if (Math.hypot(clickPx.x - nearestPx.x, clickPx.y - nearestPx.y) < snapPx) {
+    if (Math.hypot(dropPx.x - nearestPx.x, dropPx.y - nearestPx.y) < snapPx) {
       // Spread the candidate so callers keep whatever else it carried (name,
       // nodeNum, …) rather than being handed a bare coordinate.
       return { ...(nearest as T), isNode: true };

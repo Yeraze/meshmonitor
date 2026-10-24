@@ -19,3 +19,8 @@
 .leaflet-tooltip.link-profile-label::before {
   display: none;
 }
+
+/* #5959: endpoint rings can be dragged to move them. */
+.leaflet-interactive.link-profile-endpoint {
+  cursor: grab;
+}

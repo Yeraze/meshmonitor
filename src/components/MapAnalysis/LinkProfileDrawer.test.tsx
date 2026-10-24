@@ -169,6 +169,42 @@ describe('LinkProfileDrawer', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  describe('endpoint chips (#5959)', () => {
+    it('clears B, clears A (B becomes A), and resets both', () => {
+      getElevationProfileMock.mockResolvedValue(OBSTRUCTED_PROFILE);
+      mockLinkEndpoints = [
+        { ...endpointA, label: 'Alpha' },
+        { ...endpointB, label: 'Bravo' },
+      ];
+      renderDrawer();
+      expect(screen.getByText('Alpha')).toBeInTheDocument();
+      expect(screen.getByText('Bravo')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear point B' }));
+      expect(setLinkEndpointsSpy).toHaveBeenLastCalledWith([mockLinkEndpoints[0]]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear point A' }));
+      expect(setLinkEndpointsSpy).toHaveBeenLastCalledWith([mockLinkEndpoints[1]]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      expect(setLinkEndpointsSpy).toHaveBeenLastCalledWith([]);
+      // Reset keeps the tool on; only Close turns it off.
+      expect(setLinkProfileModeSpy).not.toHaveBeenCalled();
+    });
+
+    it('labels an arbitrary point by its coordinates', () => {
+      mockLinkEndpoints = [{ id: 'pt-1', lat: 27.123456, lng: -82.5, isNode: false }];
+      renderDrawer();
+      expect(screen.getByText('27.1235, -82.5000')).toBeInTheDocument();
+    });
+
+    it('shows no chips before a point is picked', () => {
+      mockLinkEndpoints = [];
+      renderDrawer();
+      expect(screen.queryByTestId('link-profile-endpoints')).toBeNull();
+    });
+  });
+
   it('shows a prompt while only one endpoint is picked', () => {
     mockLinkEndpoints = [endpointA];
     renderDrawer();

@@ -2,8 +2,9 @@
  * @vitest-environment jsdom
  */
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, cleanup } from '@testing-library/react';
 import type { LinkEndpoint } from '../../utils/linkProfile';
 
 // Real container element the controller attaches its capture-phase listener to.
@@ -17,27 +18,36 @@ container.style.cursor = '';
 // jsdom's getBoundingClientRect() defaults to all-zero, matching the (0,0)
 // origin `mouseEventToLatLng`/`latLngToContainerPoint` assume below.
 
+// One stable map object: the controller keys its effects on it (#5959).
+const mapMock = {
+  getContainer: () => container,
+  mouseEventToLatLng: (e: MouseEvent) => ({ lat: e.clientY, lng: e.clientX }),
+  latLngToContainerPoint: ([lat, lng]: [number, number]) => ({ x: lng, y: lat }),
+  dragging: { enable: vi.fn(), disable: vi.fn() },
+};
+
 vi.mock('react-leaflet', () => ({
-  useMap: () => ({
-    getContainer: () => container,
-    mouseEventToLatLng: (e: MouseEvent) => ({ lat: e.clientY, lng: e.clientX }),
-    latLngToContainerPoint: ([lat, lng]: [number, number]) => ({ x: lng, y: lat }),
+  useMap: () => mapMock,
+  // Renders inside the map container (portal) so a release over a ring
+  // counts as "on the map"; the ref exposes getElement() like Leaflet's.
+  CircleMarker: React.forwardRef(function CircleMarker(
+    { center, pathOptions }: { center: [number, number]; pathOptions: { fillOpacity: number; color: string } },
+    ref: React.Ref<{ getElement: () => HTMLElement | null }>,
+  ) {
+    const el = React.useRef<HTMLDivElement>(null);
+    React.useImperativeHandle(ref, () => ({ getElement: () => el.current }));
+    return ReactDOM.createPortal(
+      <div
+        ref={el}
+        data-testid="link-ring"
+        data-lat={center[0]}
+        data-lng={center[1]}
+        data-filled={pathOptions.fillOpacity > 0}
+        data-color={pathOptions.color}
+      />,
+      container,
+    );
   }),
-  CircleMarker: ({
-    center,
-    pathOptions,
-  }: {
-    center: [number, number];
-    pathOptions: { fillOpacity: number; color: string };
-  }) => (
-    <div
-      data-testid="link-ring"
-      data-lat={center[0]}
-      data-lng={center[1]}
-      data-filled={pathOptions.fillOpacity > 0}
-      data-color={pathOptions.color}
-    />
-  ),
   Polyline: ({
     positions,
     pathOptions,
@@ -51,6 +61,7 @@ vi.mock('react-leaflet', () => ({
       {children}
     </div>
   ),
+  Pane: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   Tooltip: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="link-label">{children}</div>
   ),
@@ -104,6 +115,8 @@ describe('LinkProfileController', () => {
     document.body.appendChild(container);
   });
   afterEach(() => {
+    // Unmount first: the ring mocks portal into `container`.
+    cleanup();
     container.remove();
     container.innerHTML = '';
   });
@@ -155,15 +168,142 @@ describe('LinkProfileController', () => {
     expect(screen.getByTestId('link-label').textContent).toMatch(/km$/);
   });
 
-  it('a third click restarts the pair from a new endpoint A', () => {
-    render(<Harness />);
+  it('a third click does nothing once both endpoints are set (#5959)', () => {
+    const onPick = vi.fn();
+    render(<Harness onPick={onPick} />);
     clickAt(105, 100); // A
     clickAt(895, 100); // C -> completed pair
-    expect(screen.queryByTestId('link-line')).not.toBeNull();
+    expect(onPick).toHaveBeenCalledTimes(2);
 
-    clickAt(505, 100); // restart with B as the new anchor A
-    expect(screen.queryByTestId('link-line')).toBeNull();
-    expect(screen.getAllByTestId('link-ring')).toHaveLength(1);
+    clickAt(505, 100);
+    expect(onPick).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByTestId('link-ring')).toHaveLength(2);
+    expect(screen.queryByTestId('link-line')).not.toBeNull();
+  });
+
+  describe('gesture guard (#5959)', () => {
+    function pointer(type: string, x: number, y: number, pointerId = 1, target: EventTarget = container) {
+      act(() => {
+        const ev = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+        Object.defineProperty(ev, 'pointerId', { value: pointerId });
+        target.dispatchEvent(ev);
+      });
+    }
+
+    it('ignores the click that ends a pan', () => {
+      const onPick = vi.fn();
+      render(<Harness onPick={onPick} />);
+      pointer('pointerdown', 300, 300);
+      pointer('pointermove', 340, 300);
+      pointer('pointerup', 340, 300, 1, window);
+      clickAt(340, 300);
+      expect(onPick).not.toHaveBeenCalled();
+    });
+
+    it('still picks when the pointer barely moved', () => {
+      const onPick = vi.fn();
+      render(<Harness onPick={onPick} />);
+      pointer('pointerdown', 300, 300);
+      pointer('pointermove', 303, 301);
+      pointer('pointerup', 303, 301, 1, window);
+      clickAt(303, 301);
+      expect(onPick).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a pinch (two pointers down)', () => {
+      const onPick = vi.fn();
+      render(<Harness onPick={onPick} />);
+      pointer('pointerdown', 300, 300, 1);
+      pointer('pointerdown', 320, 300, 2);
+      pointer('pointerup', 300, 300, 1, window);
+      pointer('pointerup', 320, 300, 2, window);
+      clickAt(300, 300);
+      expect(onPick).not.toHaveBeenCalled();
+    });
+
+    it('ignores a Shift click (box zoom)', () => {
+      const onPick = vi.fn();
+      render(<Harness onPick={onPick} />);
+      act(() => {
+        container.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 300, clientY: 300, shiftKey: true }),
+        );
+      });
+      expect(onPick).not.toHaveBeenCalled();
+    });
+
+    it('holding Space navigates only, with a grab cursor', () => {
+      const onPick = vi.fn();
+      render(<Harness onPick={onPick} />);
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ' }));
+      });
+      expect(container.style.cursor).toBe('grab');
+      clickAt(300, 300);
+      expect(onPick).not.toHaveBeenCalled();
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ' }));
+      });
+      expect(container.style.cursor).toBe('crosshair');
+      clickAt(300, 300);
+      expect(onPick).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('dragging an endpoint (#5959)', () => {
+    function pointerAt(type: string, target: EventTarget, x: number, y: number) {
+      act(() => {
+        const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 });
+        Object.defineProperty(e, 'pointerId', { value: 7 });
+        Object.defineProperty(e, 'pointerType', { value: 'mouse' });
+        target.dispatchEvent(e);
+      });
+    }
+    const ring = (i: number) => screen.getAllByTestId('link-ring')[i];
+
+    it('moves B and snaps the drop to a nearby node', () => {
+      const onPick = vi.fn();
+      render(<Harness onPick={onPick} />);
+      clickAt(105, 100); // A = node a
+      clickAt(300, 300); // B = arbitrary point
+      pointerAt('pointerdown', ring(1), 300, 300);
+      expect(mapMock.dragging.disable).toHaveBeenCalled();
+      pointerAt('pointermove', container, 480, 110);
+      expect(ring(1).getAttribute('data-lng')).toBe('480');
+      pointerAt('pointerup', container, 495, 104); // within the snap radius of node b (100,500)
+      const last = onPick.mock.calls.at(-1)![0] as LinkEndpoint[];
+      expect(last[0].id).toBe('a');
+      expect(last[1]).toMatchObject({ id: 'b', isNode: true });
+      expect(mapMock.dragging.enable).toHaveBeenCalled();
+      // The click that follows the release does not pick.
+      clickAt(495, 104);
+      expect(onPick.mock.calls.at(-1)![0]).toBe(last);
+    });
+
+    it('leaves the endpoint in place when released outside the map', () => {
+      const onPick = vi.fn();
+      render(<Harness onPick={onPick} />);
+      clickAt(105, 100);
+      clickAt(300, 300);
+      const calls = onPick.mock.calls.length;
+      pointerAt('pointerdown', ring(1), 300, 300);
+      pointerAt('pointermove', container, 600, 600);
+      pointerAt('pointerup', document.body, 600, 600);
+      expect(onPick.mock.calls.length).toBe(calls);
+      expect(ring(1).getAttribute('data-lng')).toBe('300');
+    });
+
+    it("refuses a drop onto the other endpoint's node", () => {
+      const onPick = vi.fn();
+      render(<Harness onPick={onPick} />);
+      clickAt(105, 100); // A = node a
+      clickAt(505, 100); // B = node b
+      const calls = onPick.mock.calls.length;
+      pointerAt('pointerdown', ring(1), 500, 100);
+      pointerAt('pointerup', container, 102, 100); // onto node a
+      expect(onPick.mock.calls.length).toBe(calls);
+    });
   });
 
   it('ignores re-picking the same node as the first endpoint', () => {
