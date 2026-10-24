@@ -142,6 +142,10 @@ Each MeshCore source has its own multi-pane page accessible by clicking the sour
 
 A map of every contact with valid coordinates, plus a styled row list aligned to the same visual vocabulary as the Meshtastic nodes view. The map honours zoom-based label visibility and falls through to the dashboard map when the source is selected at the dashboard level. A search/filter bar lets you quickly find contacts by name or public key prefix.
 
+The list header has two rows: search and filters on the first, sort and view controls on the second.
+
+![MeshCore Nodes list header with two rows](/images/features/5936-meshcore-nodes-header.png)
+
 On **mobile**, the node list and the map occupy the same area; a toggle button switches between them so the map is always reachable without first selecting a node. On desktop, a collapse button collapses the list to a thin sidebar (preference persisted to `localStorage`).
 
 ### Channels
@@ -205,18 +209,29 @@ Per-contact DM view (renamed from "Direct Messages" to reflect that it also surf
 - Hops away (`pathLen`)
 - RSSI and SNR
 - Last heard and last advert
-- Position (if known)
+- Position (if known). A note under the Position card says when a [location override](#contact-location-override) is in use.
 - Full public key
 - **Discover Path** button — triggers firmware CMD 52 to establish/refresh the route to a companion contact. The button then counts down while it waits for the reply (20 to 60 seconds, from the radio's own estimate) and ends with **Path updated** and the hop count, or **No response from** the contact. The countdown sends nothing and never retries.
 - **Trace Path** button — sends one trace along the contact's stored path and lists the SNR at each hop. It shows only when the contact has a known path of at least one hop. MeshMonitor waits 8 to 60 seconds for the reply, as the radio suggests, and never retries a trace. With **Auto return path** ticked (the default, saved per browser) the trace comes back along the same route, so you get SNR in both directions: it loops through a repeater or room server, and turns at the last repeater for a companion. The return leg costs about twice the airtime. Results also feed [Trace SNR History](#trace-snr-history).
 - **Define Path** editor — manually set the route to a contact when you already know the relay hops, instead of probing for it. Add hops in order and pick the per-hop **hash width** (1, 2, or 3 bytes) — the selector is pre-filled from the current path, and changing the width clears the hop list since the encoding differs. The hop count is capped at 63. Use this when Discover Path can't reach the contact but you know the topology.
 - **Delivery status** — your own DMs show **Sent to radio**, a double tick, or **Not confirmed** (see the table under [Channels](#channels))
 
-Discover Path, Trace Path and the other action buttons need **Nodes: write** on the source, and a Companion source.
+Discover Path and the other action buttons need **Nodes: write** on the source, and a Companion source. Trace Path needs **Traceroute: write** instead, because it sends a packet.
 
 The star in the panel header, and the one on each row of the Nodes list, toggles a contact's **favorite**. It needs **Nodes: write** and works for every contact type. The favorite syncs to the firmware's favourite bit on
 the device, in both directions. MeshMonitor is the source of truth: to
 un-favourite a contact, do it in MeshMonitor rather than on the device.
+
+#### Contact location override {#contact-location-override}
+
+Click **Override location** in the contact's details to pin the contact to a position you choose. The map, the node list and the other maps then use that position in place of the one in its adverts. It needs **Nodes: write** on the source.
+
+- The override lives in MeshMonitor only. MeshMonitor sends nothing to the radio, so it works for Companion and Repeater sources, and while the source is disconnected.
+- A new advert does not move a pinned contact or clear the override.
+- Mark the override private to show it only to signed-in users who hold the **Private Positions** permission on the source. Everyone else sees the advertised position.
+- Cross-source links, the Coverage Report and the other features that read a contact's position use the override too.
+
+It matches the location override on Meshtastic nodes.
 
 Contact names in messages are **clickable** — clicking a name navigates directly to that contact's DM thread. Messages containing **@YourName** are visually highlighted.
 
@@ -238,6 +253,13 @@ Received channel and DM messages show a route line beneath the body, derived fro
 **Clicking the hash chain** opens a route-detail popup with the message's reception details (sender, time, hops, scope, text) and the route expanded per hop into **repeater / room-server names** from the contact list. Only relay infrastructure ever appears in a MeshCore path — each forwarder appends the leading bytes of its public key at the hash width the original sender chose (1–3 bytes) — so matching is limited to those contacts. Unknown hashes stay as raw hex; when several repeaters share a hash prefix, the popup best-guesses the one closest to the neighbouring hops' positions and labels it as such.
 
 When **every** relay hop resolves to a contact with a known position, the popup also shows a **Packet flow** mini map: a dashed line tracing the packet geospatially across the relays, each hop marked and labeled (`#1 Hilltop`, `#2 Downtown`, …). The sender and your local node are added as endpoints when their positions are known. If any hop is unknown or unpositioned the map is omitted entirely — a partial line would misrepresent the path.
+
+**Naming hops from other sources.** When a relay hash matches none of this source's contacts, MeshMonitor can look it up in the MeshCore nodes of other sources you can read, including MQTT feeds. Turn it on with **Use other sources to resolve unknown hops** under **Settings → MeshCore Messaging**. It is off by default. It changes only what you see: nothing goes over the air.
+
+- Your own contacts always win. Other sources fill in only hops with no match of your own.
+- A single match reads `Name (via Source)`. When several nodes share the hash, the popup shows the nearest as a guess, such as `Name? (via Source, 3 candidates)`, and lists all candidates, nearest first. A guess never appears on the Packet flow map.
+- A node from a device-backed source counts as soon as that source knows it. A node from an MQTT feed counts only after its signed advert checks out. MeshMonitor checks MQTT adverts only while this setting is on, so each MQTT node becomes usable when it sends its next advert.
+- You see only nodes from sources you can read. A private or hidden position never ranks a guess for you.
 
 Room-server posts and messages with no recoverable path show no route line.
 
@@ -262,13 +284,23 @@ MeshMonitor reads emoji reactions sent by [MeshCore One](https://github.com/Avi0
 - A reaction is not a message. It does not mark a channel or DM unread, raise a mention alert, or trigger Auto-Responder or Forwarding. It fires an automation only when that rule has **Also fire on MeshCore reactions** ticked (see [Automation Engine](/features/automation-engine)).
 - Reactions are matched per source. A reaction heard on one source does not attach to a message only another source heard.
 - **Unified Messages** shows the same chips on the merged message. A reaction heard on several sources counts once. You see only what the sources you can read have matched, and chips there are read-only: send reactions from the source's own MeshCore page.
+
+  ![Unified Messages with MeshCore reactions](/images/features/5763-unified-meshcore-reactions.png)
+
 - **CSV export** leaves reactions out unless you tick **Include emoji reactions**. A reaction row has `reaction` = 1 and `reply_to_id` = the id of the message it answers.
 - **Search** leaves reactions out.
 - To **send** a reaction, use the react button on a message and pick an emoji, or click a chip another node left to add the same one. Your own reaction shows with an accent border. MeshMonitor sends the MeshCore One format.
 - You can send each emoji once per message. A reaction is never resent, and there is no way to take one back (MeshCore One has none either).
 - You cannot react to a room post, to another reaction, or to a message stored before reactions were supported.
 
+![MeshCore reaction chips under a message](/images/features/5761-meshcore-reaction-chips.png)
+
+![Reaction picker](/images/features/5762-meshcore-react-picker.png)
+
 Three switches sit under **MeshCore → Settings → Reactions**:
+
+![MeshCore reaction settings](/images/features/5762-meshcore-react-settings.png)
+
 
 | Setting | Scope | Default | Effect |
 |---|---|---|---|
@@ -414,6 +446,8 @@ A MeshCore companion radio and MeshMonitor each keep their own list of nodes, an
 
 ### Auto-add contacts
 
+![Radio contact list options](/images/features/5777-meshcore-autoadd-contacts.png)
+
 The radio has three ways to treat the nodes it hears. Pick one in **MeshCore → Device Configuration → Radio contact list** (needs `configuration:write`):
 
 - **Add every node it hears** (the usual default): the radio saves each node that adverts, until the table fills. The type boxes are ignored in this mode.
@@ -467,7 +501,7 @@ For any Repeater (advType=2) or Room Server (advType=3) contact in your MeshCore
 - **Read live stats** in a structured panel (battery, queue, packet counts, air time, last SNR / RSSI) auto-refreshed every 30 s while logged in.
 - **Manage the ACL** via a `setperm` form: paste a 64-char hex pubkey, pick **Remove / Guest / ReadWrite / Admin**, click Apply. The built command (`setperm <pubkey> <level>`) lands in the same transcript as free-typed commands.
 
-The console only renders for Repeater / Room Server advTypes since Companion firmware doesn't expose a remote-admin surface. Replies are single-packet (≈130 – 180 byte MTU) and there is no chunking — long output is truncated at the firmware level.
+The login console renders for Repeater / Room Server advTypes. Companion contacts on firmware 1.18.0 and later use a login-free console instead (see [Companion remote CLI](#companion-remote-cli)). Replies are single-packet (≈130 – 180 byte MTU) and there is no chunking — long output is truncated at the firmware level.
 
 #### Login timing and retries
 
@@ -481,8 +515,13 @@ Every login screen (remote console, contact details, direct messages and rooms) 
 
 A repeater keeps you logged in until its client table fills up; there is no idle timeout, and an admin login even survives a reboot of the repeater. So MeshMonitor remembers each successful **admin** login, per source and per node, in its database. The record survives a MeshMonitor restart or upgrade. A guest login (blank password) is not remembered, because a repeater ignores commands from a guest; it also replaces any admin login remembered before it.
 
+![Remote console with a remembered login](/images/features/5785-admin-session-resume.png)
+
 - When you open the console and a login is remembered, it shows **Resume session**. Resume turns the console on without sending anything over the air. **Log in again** does a fresh login (with the saved password, or the password dialog when none is saved).
 - The console never logs in or resumes on its own. You always click.
+
+  ![Remote console after resuming a session](/images/features/5785-admin-session-resumed.png)
+
 - **Log out** forgets the remembered login on this server. It sends nothing to the node: MeshCore has no logout command, so the node keeps you in its table until it drops you or someone removes you with `setperm`.
 - A remembered login only counts for the radio that made it. If you swap the companion radio on a source, you need to log in again.
 - If the node has dropped you (for example it rebooted within a few seconds of your login, or its table filled up), it ignores your commands without a reply. The transcript then says "No reply. If the node rebooted or dropped the session, log in again." A single missed reply can also be a lost packet, so MeshMonitor keeps the record until you log in again or log out.
@@ -497,7 +536,17 @@ The Device Configuration tab gets a **Device console** for the locally connected
 | Local firmware | Console behavior |
 |---|---|
 | Repeater / Room Server | Forwards to the device's native serial CLI via `sendRepeaterCommand`. Same command set as a remote Repeater. |
-| Companion | A small synthetic interpreter on the server side maps `ver` / `stats [core\|radio\|packets]` / `clock` / `advert.zerohop` / `advert` / `help` to existing companion-protocol bridge commands and formats the response as text. Mutating verbs (`set name`, `set radio` …) are intentionally NOT in the synthetic CLI — the existing form fields on the same Device Configuration tab handle those with proper validation. |
+| Companion, firmware 1.18.0 and later (protocol v14) | Sends each line to the firmware's own CLI (`CMD_RUN_CLI_COMMAND`) over the serial or TCP link. Nothing is transmitted. The firmware knows config `get` and `set`, `ver`, `board`, `reboot` and `poweroff` or `shutdown`. `stats`, `clock`, `advert`, `advert.zerohop`, `help` and `version` still use the interpreter below. Quick-action buttons: Version, Stats, Clock, Radio, TX power, Time zone, Zero-hop advert, Help and a danger Reboot. |
+| Companion, older firmware | A small synthetic interpreter on the server side maps `ver` / `stats [core\|radio\|packets]` / `clock` / `advert.zerohop` / `advert` / `help` to existing companion-protocol bridge commands and formats the response as text. Mutating verbs (`set name`, `set radio` …) are intentionally NOT in the synthetic CLI — the existing form fields on the same Device Configuration tab handle those with proper validation. |
+
+#### Companion remote CLI {#companion-remote-cli}
+
+Companion firmware 1.18.0 and later can also run CLI commands that another Companion sends over the air. There is no login. The target allows it for each contact:
+
+- **Allow this contact to run CLI commands on this radio** (under **Remote CLI** in a Companion contact's details, needs `configuration:write`) sets flag `0x10` on that contact in your radio. It needs protocol v14 and a contact the radio holds. MeshMonitor reads the flag back from the radio after each change.
+- A Companion contact then gets a remote console that needs **Remote admin: write** on the source. It uses the same danger guard and rate limit as the repeater console. A target that has not allowed your radio stays silent, and the console says so when the reply times out.
+- Allowing a contact lets it run any command on your radio, including reboot and radio settings, and each command makes your radio reply over the air. MeshMonitor cannot limit this.
+- A CLI command from a contact you have not allowed is logged and dropped. MeshMonitor does not store it as a direct message.
 
 No login flow: the connection is physical (USB serial or direct TCP), so there's no admin password concept. Gated on the existing `configuration:write` permission.
 
@@ -527,7 +576,36 @@ Every CLI command, login outcome, and credential mutation writes an `audit_log` 
 | `meshcore_local_cli` / `_failed` / `_blocked` | per-CLI command on the local node |
 | `meshcore_credential_forget` | `DELETE /admin/credentials/:pubkey` |
 
-The `details` JSON captures `sourceId`, `publicKey` (where relevant), command text, reply length, and elapsed milliseconds. **The plaintext password never appears in audit details**, verified by the canary test referenced above.
+The `details` JSON captures `sourceId`, `publicKey` (where relevant), the command text, reply length, and elapsed milliseconds. MeshMonitor masks passwords and keys in the command text before it stores it (see [CLI command history](#cli-command-history)). **The plaintext password never appears in audit details**, verified by the canary test referenced above.
+
+### CLI command history {#cli-command-history}
+
+MeshMonitor records every CLI command a person sends through it, with a timestamp, and shows the list in the consoles and on the Audit Log page.
+
+![Command history in the local console](/images/features/5892-console-history.png)
+
+**What it records.** Commands from four places:
+
+1. The remote console, including the Companion remote console.
+2. The local console.
+3. The time-sync button (stored as `clock sync`).
+4. A Virtual Node app that relays a CLI command. These rows show `vn:<client>` as the user, and the app's IP address.
+
+Background use is not recorded: stats and neighbor polls, config refreshes, the time-sync scheduler and automations.
+
+**Outcome.** Each row shows **OK**, **Blocked** (the danger guard or receive-only mode stopped it, and nothing was sent), **Failed** or **Timed out**, with the reply or error and the time taken.
+
+**Where to see it.**
+- The **Command history** panel under the input of the Local, Remote and Companion remote consoles. Click a row to see its reply. **Load more** pages back.
+- The **MeshCore CLI activity** tab on the Audit Log page, across every source you can read, with filters for source, target, user and date range.
+
+![MeshCore CLI activity on the Audit Log page](/images/features/5892-cli-activity.png)
+
+**Permissions.** Remote rows need `remote_admin:read` on the source. Local rows need `configuration:read`. Admins see all rows.
+
+**Redaction.** MeshMonitor masks passwords and keys in commands and replies before it stores them, in the history and in the audit log. It masks the argument of `password`, `passwd` and `login`, the value of `set` for any password, key, PSK or secret setting (such as `set guest.password` or `set prv.key`), and the reply to `get` of those settings. The radio still receives the real text.
+
+**Retention.** The nightly database maintenance deletes history older than **MeshCore CLI History Retention** (default 90 days, range 7 to 365). See [Settings](/features/settings#database-maintenance).
 
 ## Analyzer Observer
 
@@ -707,6 +785,10 @@ Automated adverts (the auto-announce advert burst, timer triggers, and the autom
 
 Automated floods are limited to **one per hour per source**. The time of the last flood lives in the database, so restarting MeshMonitor or saving settings does not reset it. Any flood counts toward the hour, including a manual one. When an automated flood falls inside the hour, MeshMonitor skips it (it does not send a zero-hop advert instead) and logs why; a timer trigger records the reason as its last error, and an automation step fails with it. Zero-hop adverts have no such limit, and a manual flood is never blocked.
 
+## Auto Ping
+
+On a **Companion** source, the **Automations** view also has an **Auto Ping** section: a contact DMs `ping N` and the companion pings it back N times, recording each ping's round trip, timeout, and whether it went direct or by flood. Repeater sources do not have it. See [Auto Ping on MeshCore](/features/automation#auto-ping-meshcore).
+
 ## Auto-Announce
 
 The **Automations** view also hosts a per-source Auto-Announce that periodically broadcasts a status message to one or more MeshCore channels:
@@ -791,10 +873,10 @@ In 4.5 the global `meshcore` permission is gone. Migration 058 expanded every le
 |---|---|---|
 | `connection` | Per-source | Connect/disconnect, status, the Node Info tab |
 | `configuration` | Per-source | Identity, radio, telemetry mode, location, per-node remote-telemetry config |
-| `nodes` | Per-source | Node list, contacts, map data. `nodes:write` covers favorites, Discover Path, Trace Path and Push to radio |
+| `nodes` | Per-source | Node list, contacts, map data. `nodes:write` covers favorites, Discover Path, the location override and Push to radio |
 | `messages` | Per-source | Read and send DMs / channel messages; resend a channel post |
 | `channel_0` to `channel_7` | Per-source | Read one channel slot without full `messages:read` |
-| `traceroute` | Per-source | `traceroute:read` shows Trace SNR history |
+| `traceroute` | Per-source | `traceroute:read` shows Trace SNR history. `traceroute:write` lets you run Trace Path |
 | `packetmonitor` | Per-source | Read the Packet Monitor. Clearing its log is for administrators |
 | `remote_admin` | Per-source | The remote console for repeaters and room servers |
 | `automation` | Per-source | The Automations tab |

@@ -453,6 +453,36 @@ Sessions update in real-time via WebSocket events. Admins can force-stop any act
 - **Timeout**: The default 60-second timeout is generous enough for multi-hop networks; reduce it for direct connections
 - **Max Pings**: Set the maximum to a reasonable value (20–50) to prevent excessive network usage from long sessions
 
+### MeshCore Companion Sources {#auto-ping-meshcore}
+
+A MeshCore **Companion** source has its own Auto Ping section on the MeshCore page's **Automations** view. It is built for coverage and route tests: carry a mobile companion around, DM `ping N` to a base companion that MeshMonitor manages, and the base pings you back while you move.
+
+**Companion sources only.** The section does not show on a Repeater source, and a Repeater ignores `ping`. The feature was requested for companion-to-companion tests, so Repeater support is out of scope.
+
+It works like the Meshtastic version, with these differences:
+
+- **Each ping is a short DM**, such as `Ping 3/20`. A MeshCore DM has no NodeInfo request, so the round trip comes from the DM's own ACK: the radio reports the ACK's trip time, and MeshMonitor records it as the ping's RTT.
+- **One attempt per ping.** A normal MeshCore DM is resent up to three times, and the last try resets the path and floods. A ping is never resent, so each result is one real try, and a ping never changes the route you are testing.
+- **Direct or flood.** Each ping records whether it went **direct** (the contact had a known path when the ping was sent) or by **flood** (no known path). A flood ACK can teach the radio a path part-way through a session, so later pings may show as direct.
+- **Timeout.** A ping times out after the **Ping Timeout** setting, or after the radio's own suggested wait when that is longer.
+- **No NAK.** MeshCore reports no delivery failure, so a ping is either ACKed or timed out.
+- **Summary.** The summary DM matches the Meshtastic one and adds the direct and flood counts, for example:
+
+  ```
+  Auto-ping done: 18/20 ok
+  Min/Avg/Max: 812/1450/3020ms
+  Timeouts: 2
+  Direct: 15 Flood: 5
+  ```
+
+- **Active sessions** show a **Direct / Flood** column, and the table refreshes every 5 seconds while a session runs.
+
+The settings, defaults and ranges are the same as on Meshtastic, saved per source. Saving the settings never starts or restarts a session. Sessions live in memory: a disconnect or a restart ends them, and they do not resume.
+
+**Airtime.** Each ping is a DM plus its ACK, so a 20-ping session puts about 40 packets on the air. With no known path both are flooded, and every repeater in range sends them again.
+
+**Loops.** Auto-Acknowledge and the Auto-Responder never answer an Auto Ping DM (the pings, the start reply or the summary), and a `ping N` from one of MeshMonitor's own nodes is ignored, so two MeshMonitor companions cannot ping each other in a loop. As on Meshtastic, a `ping N` command skips the Auto-Responder, but Auto-Acknowledge can still answer the command itself if its pattern matches.
+
 ### Troubleshooting
 
 **"ping 5" not working**:
@@ -870,6 +900,10 @@ A regex matches more messages than an anchored pattern, so it can fire more repl
 Patterns in both modes may use any printable text: emoji (`🔋`, `👋\s*hi`), accented letters and CJK. Control characters are refused.
 
 Triggers saved before match modes existed keep their old behaviour: Meshtastic triggers read as **Pattern**, MeshCore triggers as **Regex**.
+
+![Meshtastic Auto-Responder trigger with a match mode](/images/features/5924-meshtastic-trigger-syntax.png)
+
+![MeshCore Auto-Responder trigger with a match mode](/images/features/5924-meshcore-trigger-syntax.png)
 
 #### Multiple Patterns Per Trigger
 

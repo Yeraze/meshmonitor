@@ -53,8 +53,8 @@ The Packet Monitor is a "radio sniffer": most rows are packets your node heard f
 | ATAK_PLUGIN_V2 (78) | ATAK V2 (firmware 2.8+ rich CoT, zstd-compressed) — shown as `[ATAK V2 (not decoded), N bytes]`; decoding is a planned follow-up |
 | ATAK_FORWARDER (257) | Third-party ATAK Forwarder packets — identified by name, not decoded |
 
-::: tip Signed-packet shield (firmware 2.8 early preview)
-Packets carrying a firmware-verified **XEdDSA signature** (Meshtastic's new packet-signing scheme, not yet in an official release) show a small shield icon next to the entry. This only reflects what the connected node itself reported as verified — MeshMonitor doesn't re-verify the signature.
+::: tip Signed-packet shield
+Packets carrying a firmware-verified **XEdDSA signature** (Meshtastic's packet-signing scheme, firmware 2.8 and later) show a small shield icon next to the entry. This only reflects what the connected node itself reported as verified — MeshMonitor doesn't re-verify the signature.
 :::
 
 ### Packets That Do NOT Appear
@@ -68,6 +68,10 @@ The following packets are not logged to the Packet Monitor:
 These internal packets are filtered to reduce noise and keep the log focused on actual mesh traffic. ADMIN and ROUTING packets between remote nodes on the mesh are still logged.
 
 This is by design - the Packet Monitor shows mesh network traffic, not local device management.
+
+**Firmware 2.8 NodeDB replays:**
+- When MeshMonitor connects, firmware 2.8 and later replays stored positions, telemetry and node status as if they were new packets. These are not mesh traffic, so MeshMonitor drops them from the log.
+- MeshMonitor spots a replay by recomputing the packet id the firmware would give it. An RF packet with no receive time and no RSSI also counts as a replay.
 
 ## Filtering Packets
 

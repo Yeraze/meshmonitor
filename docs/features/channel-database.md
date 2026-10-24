@@ -33,12 +33,22 @@ The Channel Database is under **Global Settings** → **Channel Database**. Only
 3. Enter the channel details:
    - **Name** - A descriptive name for the channel
    - **PSK** - The Pre-Shared Key (Base64 encoded)
+   - **AEAD channel (AES-CCM, Experimental)** (optional) - Check this for a channel that uses authenticated encryption on firmware 2.8.1 or later. See [AEAD Channels](#aead-channels).
    - **Description** (optional) - Notes about the channel's purpose
 4. Click **Save**
 
 ::: tip PSK Format
 Enter the PSK in Base64 format, the same format used by Meshtastic. You can find channel PSKs in your device's channel configuration or exported settings.
 :::
+
+## AEAD Channels
+
+Firmware 2.8.1 added AEAD channels, which use AES-CCM authenticated encryption in place of AES-CTR. To decrypt one, check **AEAD channel (AES-CCM, Experimental)** on the entry. The box shows on Meshtastic entries only.
+
+- With the box on, the key opens only AEAD packets. With it off, the key opens only plain ones. An AEAD entry and a plain entry can share a name and key.
+- MeshMonitor tries an AEAD entry only with AES-CCM, as the firmware does. It skips the entry when it cannot tell where the packet was sent.
+- Changing the box re-runs retroactive decryption for that entry.
+- The box is kept in JSON export and import and in channel URL import. Entries with the flag show an **AEAD** badge.
 
 ## Channel Priority and Ordering
 
@@ -290,7 +300,7 @@ The Channel Database is accessible via the V1 API:
 
 - **No transmit capability** - Database channels are read-only
 - **Requires encrypted packets to be captured** - Your node must receive the packets first
-- **AES decryption only** - Standard Meshtastic encryption (AES-128-CTR or AES-256-CTR)
+- **AES decryption only** - Standard Meshtastic encryption (AES-128-CTR or AES-256-CTR), and AES-CCM for AEAD channels
 - **Performance** - Very large numbers of channels may impact packet processing speed
 
 ## Troubleshooting

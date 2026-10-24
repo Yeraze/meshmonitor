@@ -206,7 +206,13 @@ import { plausibleMeshCoreTimeMs, plausibleMeshCoreMessageTimeMs, plausibleMeshC
 import { runForwarding, parseStoredForwardingRules } from './utils/forwardingEngine.js';
 import { FORWARDING_SETTING_KEY } from '../types/forwarding.js';
 import { isForwardingEnabled } from './services/forwardingStateService.js';
-import { isOwnPublicKey } from './utils/ownNodes.js';
+import { isOwnPublicKey, isOwnPublicKeyPrefix } from './utils/ownNodes.js';
+import {
+  MeshCoreAutoPingController,
+  isAutoPingCommandText,
+  isAutoPingOutputText,
+  type MeshCoreAutoPingSessionInfo,
+} from './meshcoreAutoPing.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -1854,6 +1860,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // doesn't burn airtime if they spam the trigger phrase.
   private autoAckCooldowns: Map<string, number> = new Map();
 
+  // Auto Ping (#5953): `ping N` DM sessions, Companion sources only. In
+  // memory on purpose: a restart ends every session and never resumes one.
+  private readonly autoPing: MeshCoreAutoPingController;
+
   private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
 
   constructor(sourceId: string, sourceName?: string) {
@@ -1864,6 +1874,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.sourceId = sourceId;
     this.sourceName = sourceName ?? sourceId;
     this.distanceDeleteScheduler = new DistanceDeleteScheduler(sourceId);
+    this.autoPing = this.createAutoPingController();
     logger.info(`[MeshCore:${sourceId}] Manager initialized`);
   }
 
@@ -2420,6 +2431,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     this.pendingChannelRetries.clear();
 
+    // Auto Ping sessions (#5953): drop them and their timers. Nothing resumes
+    // on the next connect, so a reconnect can never fire a burst of pings.
+    this.autoPing.clearAll();
+
     this.connected = false;
     this.connectionState = 'disconnected';
     this.deviceType = MeshCoreDeviceType.UNKNOWN;
@@ -2909,6 +2924,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         );
       }
     } else if (event_type === 'send_confirmed') {
+      // An Auto Ping (#5953) ping? Its RTT is the trip time. Our pings arm no
+      // retry, so the bookkeeping below only marks the bubble delivered.
+      this.autoPing.handleSendConfirmed(data.ack_code, data.round_trip_ms);
       // Ack arrived in time — cancel the auto-retry timer (#3977) so a
       // stale-path resend doesn't fire after the fact.
       const retryPending = this.pendingDmRetries.get(data.ack_code);
@@ -4853,7 +4871,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.debug(o.logLine);
       if (o.autoReplies !== false) {
         void this.checkAutoAcknowledge(message, o.isDM, o.channelIdx, o.hopCount, o.route);
-        void this.checkAutoResponder(message, o.isDM, o.channelIdx, o.hopCount, o.route);
+        void this.checkAutoPingThenResponder(message, o);
         void this.checkForwarding(message, o.isDM, o.channelIdx);
       }
     }
@@ -11363,6 +11381,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.connected = false;
     this.connectionState = 'disconnected';
     this.stopHeartbeat();
+    this.autoPing.clearAll();
     await this.stopObserver();
     await this.stopVirtualNodeServer();
     // Release the dead backend. Without this `nativeBackend` keeps pointing at a
@@ -11391,6 +11410,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // native backend's own 'disconnected' event so it doesn't re-enter the
     // unexpected-drop path. connect() clears the flag when the reconnect lands.
     this.intentionalTeardown = true;
+
+    // Auto Ping sessions (#5953) end with the link; see disconnect().
+    this.autoPing.clearAll();
 
     // Stop the Analyzer Observer publisher first (#4457 Phase 2) — same
     // rationale as the VN server below: it shouldn't keep publishing (or hold
@@ -12208,6 +12230,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (this.localNode && message.fromPublicKey === this.localNode.publicKey) {
         return;
       }
+      // Never answer an Auto Ping DM (#5953): two MeshMonitor companions
+      // would otherwise reply to each other's pings.
+      if (isDM && isAutoPingOutputText(text)) return;
 
       for (const trigger of triggers) {
         if (!trigger || !trigger.enabled || !trigger.pattern) continue;
@@ -12306,6 +12331,87 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] Auto-responder check threw: ${(err as Error).message}`);
     }
+  }
+
+  // ============ Auto Ping (#5953) ============
+  //
+  // `ping N` / `ping stop` DM command, Companion sources only. The session
+  // logic lives in meshcoreAutoPing.ts; this is the radio-facing host.
+
+  /**
+   * A received DM goes to Auto Ping first. A `ping` command it takes skips
+   * the Auto-Responder, as on Meshtastic. Auto-Acknowledge still runs on the
+   * command (Meshtastic order); it is fired separately by the caller.
+   */
+  private async checkAutoPingThenResponder(message: MeshCoreMessage, o: ReceivedMessageOpts): Promise<void> {
+    // Only a `ping` command waits on Auto Ping; every other message reaches
+    // the Auto-Responder in the same tick, as before #5953.
+    if (o.isDM && !message.reactionEmoji && isAutoPingCommandText(message.text)) {
+      try {
+        if (await this.autoPing.handleCommand(message.fromPublicKey, message.text || '')) return;
+      } catch (err) {
+        logger.warn(`[MeshCore:${this.sourceId}] Auto-ping command threw: ${(err as Error).message}`);
+      }
+    }
+    await this.checkAutoResponder(message, o.isDM, o.channelIdx, o.hopCount, o.route);
+  }
+
+  private createAutoPingController(): MeshCoreAutoPingController {
+    return new MeshCoreAutoPingController({
+      sourceId: this.sourceId,
+      isCompanion: () => this.deviceType === MeshCoreDeviceType.COMPANION,
+      canTransmit: () => this.canTransmit(),
+      isConnected: () => this.connected,
+      isOwnKey: (prefix) =>
+        isOwnPublicKeyPrefix(prefix)
+        || (!!this.localNode?.publicKey && !!prefix && this.localNode.publicKey.toLowerCase().startsWith(prefix.toLowerCase())),
+      resolveContact: (prefix) => {
+        const c = this.resolveContactByPrefix(prefix);
+        if (!c) return undefined;
+        return {
+          publicKey: c.publicKey,
+          name: c.advName || c.name || `${c.publicKey.substring(0, 8)}…`,
+          // A known out path (pathLen set, 0 = zero-hop) means the DM goes
+          // direct; null is the firmware's OUT_PATH_UNKNOWN, so it floods.
+          direct: c.pathLen !== null && c.pathLen !== undefined,
+        };
+      },
+      getSetting: (key) => databaseService.settings.getSettingForSource(this.sourceId, key),
+      sendPing: (text, publicKey) => this.sendAutoPingDm(text, publicKey),
+      sendReply: (text, publicKey) => this.sendMessage(text, publicKey),
+      markPingFailed: (messageId, ackCrc) => this.failDmDelivery(messageId, ackCrc),
+      recordMeshTx: () => this.recordMeshTx(),
+    });
+  }
+
+  /**
+   * One ping DM with NO ack-timeout retry. The normal DM cadence (#3977)
+   * resends up to three times and resets the path for a flood on the last
+   * try. For a ping that would add up to 3 more transmissions, change the
+   * route under test, and make the ack code the session waits on stale.
+   */
+  private async sendAutoPingDm(text: string, publicKey: string): Promise<{ ok: boolean; ackCrc?: number; estTimeoutMs?: number; messageId?: string }> {
+    const result = await this.sendMessageWithResult(text, publicKey);
+    if (!result.ok) return { ok: false };
+    const crc = result.expectedAckCrc;
+    if (typeof crc === 'number') {
+      const pending = this.pendingDmRetries.get(crc);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pendingDmRetries.delete(crc);
+      }
+    }
+    return { ok: true, ackCrc: crc, estTimeoutMs: result.estTimeout, messageId: result.message?.id };
+  }
+
+  /** Active Auto Ping sessions on this source, for the settings route. */
+  getAutoPingSessions(): MeshCoreAutoPingSessionInfo[] {
+    return this.autoPing.getSessions();
+  }
+
+  /** Stop one Auto Ping session from the UI. False when there was none. */
+  stopAutoPingSession(requesterPublicKey: string): boolean {
+    return this.autoPing.stopSession(requesterPublicKey, 'force_stopped');
   }
 
   // ============ Message Forwarding (#5446) ============
@@ -12537,6 +12643,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
 
       const text = message.text || '';
+      // Never acknowledge an Auto Ping DM (#5953): the default regex
+      // `^(test|ping)` would match "Ping 3/20" from another MeshMonitor.
+      if (isDirectMessage && isAutoPingOutputText(text)) return;
       if (!regex.test(text)) return;
 
       // Channel allowlist / DM gate

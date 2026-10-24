@@ -359,6 +359,8 @@ curl -X POST http://localhost:8080/api/nodes/scan-duplicate-keys
 
 The checks above are MeshMonitor's own. Firmware 2.8.0 adds a control on the node itself: a packet signature policy that decides whether the node accepts packets it cannot prove came from their sender. MeshMonitor sets it with the **Protection Level** picker (Compatible, Balanced or Strict) in the Security section of Device Configuration and of the Admin Commands tab. See [Protection Level](/features/device#protection-level-packet-authenticity) before you raise it: Strict drops most traffic from nodes older than 2.8.
 
+What each level does depends on the firmware: 2.8.0 and 2.8.1 behave one way, later firmware another. The [Protection Level table](/features/device#protection-level-packet-authenticity) lists both. On later firmware, Balanced and Strict ignore an unsigned name or role change from a node that has signed before, and MeshMonitor shows an **Unsigned update ignored** notice when that happens.
+
 ## Two-Factor Authentication (MFA)
 
 MeshMonitor supports TOTP-based two-factor authentication (MFA) for user accounts, adding an extra layer of security beyond username and password.

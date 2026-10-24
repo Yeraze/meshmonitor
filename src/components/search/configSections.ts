@@ -345,15 +345,20 @@ export function meshcoreConfigurationNavItems(t: Translate, options: MeshCoreCon
 }
 
 /** Sections of a MeshCore source's Automations page. */
-export function meshcoreAutomationNavItems(t: Translate): NavItem[] {
-  return [
+export function meshcoreAutomationNavItems(t: Translate, opts: { includeAutoPing?: boolean } = {}): NavItem[] {
+  const items: NavItem[] = [
     { id: 'meshcore-automation-pathfinding', label: t('meshcore.automation.pathfinding.title', 'Auto-Pathfinding'), keywords: ['path discovery', 'neighbors', 'neighbours', 'repeaters', 'schedule', 'target filter'] },
     { id: 'meshcore-automation-auto-ack', label: t('meshcore.automation.autoack.title', 'Auto-Acknowledge'), keywords: ['ack', 'reply', 'ping', 'test'] },
     { id: 'meshcore-automation-auto-announce', label: t('meshcore.automation.announce.title', 'Auto-Announce'), keywords: ['broadcast', 'scheduled', 'advert', 'message'] },
     { id: 'meshcore-automation-auto-responder', label: t('meshcore.automation.responder.title', 'Auto-Responder'), keywords: ['reply', 'bot', 'keyword', 'trigger'] },
+    // Auto Ping (#5953) is Companion-only; the view passes includeAutoPing.
+    ...(opts.includeAutoPing
+      ? [{ id: 'meshcore-automation-auto-ping', label: t('automation.auto_ping.title', 'Auto Ping'), keywords: ['ping', 'coverage', 'route', 'rtt', 'flood', 'direct'] }]
+      : []),
     { id: 'meshcore-automation-forwarding', label: t('forwarding.title', 'Forwarding'), keywords: ['forward', 'relay', 'bridge', 'copy'] },
     { id: 'meshcore-automation-timer-triggers', label: t('meshcore.automation.timers.title', 'Timer Triggers'), keywords: ['schedule', 'cron', 'timed events'] },
   ];
+  return items;
 }
 
 /** Sections of the per-source Notifications tab. */

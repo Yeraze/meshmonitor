@@ -1402,6 +1402,8 @@ That check covers the node's running config only. A status that vanishes after a
 
 ### Re-apply after a reboot (opt-in)
 
+![Status Message section with the re-apply option](/images/features/5745-status-reapply-option.png)
+
 The root cause is in the node firmware: it can lose a Status Message on reboot without any error. **Re-apply after a reboot** works around it from MeshMonitor's side.
 
 - It is **off by default**, and you set it per source, under the Status Message section.
@@ -1452,11 +1454,11 @@ Whoever holds a node's private key can impersonate it. Only paste a private key 
 
 Firmware 2.8.0 added a packet signature policy. The **Protection Level** picker in the Security section sets how the node treats packets it cannot prove came from their sender.
 
-| Level | What the node accepts |
-|---|---|
-| **Compatible** (firmware default) | Unsigned packets. A signature that can be checked and is wrong still drops the packet. Works with every firmware version. |
-| **Balanced** | Unsigned packets, except an unsigned broadcast from a node that has sent a signed one before. |
-| **Strict** | Only packets with a verified signature, and PKI-encrypted direct messages. |
+| Level | 2.8.0 and 2.8.1 | Firmware after 2.8.1 |
+|---|---|---|
+| **Compatible** (firmware default) | Accepts unsigned packets. A signature that can be checked and is wrong still drops the packet. Works with every firmware version. | Same, but the node does not sign its own packets at this level. |
+| **Balanced** | Signs the node's broadcasts. Drops an unsigned broadcast from a node that has sent a signed one before. | Signs the node's broadcasts. Accepts unsigned packets, but ignores an unsigned name or role change from a node that has sent a signed one before. |
+| **Strict** | Accepts only packets with a verified signature, and PKI-encrypted direct messages. | Same, and also accepts unsigned acks, traceroutes, key verification and AES-CCM channel packets. |
 
 - The picker is locked when the node runs firmware older than 2.8.0, when its firmware version is not known, or when its current level could not be read. Load the security config first.
 - Moving to Balanced or Strict asks you to confirm. Saving the security config reboots the node.
@@ -1465,13 +1467,33 @@ Firmware 2.8.0 added a packet signature policy. The **Protection Level** picker 
 
 A Security save that leaves the picker alone keeps the node's level. MeshMonitor reads the security config from the node before it writes, and sends nothing if the node does not answer.
 
+When the node ignores an unsigned name or role change, MeshMonitor shows an **Unsigned update ignored** notice that names the sender and the node's level. Remove that sender from your node list to accept its unsigned updates.
+
 ### Authenticated encryption (AEAD) channels
 
-A channel with the firmware's AES-CCM authenticated encryption turned on shows an **AEAD** badge in the Channels tab and in the channel list under Device Configuration. Only nodes with the same setting can read such a channel. MeshMonitor shows the flag and keeps it when you edit, import or export the channel. It has no control to turn it on or off.
+A channel with the firmware's AES-CCM authenticated encryption turned on shows an **AEAD** badge in the Channels tab and in the channel list under Device Configuration. Only nodes with the same setting can read such a channel. MeshMonitor keeps the flag when you edit, import or export the channel.
+
+To turn it on, open the channel in Device Configuration and check **AEAD channel (AES-CCM, Experimental)**. Turning it on asks you to confirm, because **AEAD cuts this channel off from nodes that don't use it**. Nodes on older firmware, or with AEAD off, can no longer read or send on the channel, even with the same name and key. Turn it on for every node on the channel at the same time.
+
+- The checkbox needs firmware 2.8.1 or later on the node, and a non-empty key on the channel. Without them the box stays off and MeshMonitor sends nothing to the radio.
+- Turning it off always works and needs no confirmation, so you can switch back a channel that another app set.
+
+To read AEAD traffic that your node cannot open, add the key to the [Channel Database](/features/channel-database) with its AEAD box checked.
 
 ## Applying Changes
 
-All configuration changes require clicking the "Save" button in each section. Most changes also require a device reboot to take effect. MeshMonitor will notify you when a reboot is required.
+All configuration changes require clicking the "Save" button in each section. Most saves make the node reboot about 7 seconds later, and MeshMonitor expects that. A reboot window opens, waits for the node to come back, and reads the config again so the forms show what the node holds.
+
+- Position, Network, Security and most module saves always reboot the node.
+- Owner, Device, Power and Display saves may reboot it, depending on what changed. The window reads **Device May Restart**. If the node stays up, it closes with "Configuration saved. The node did not need to restart."
+- LoRa saves reboot the node on firmware older than 2.8 and apply live on 2.8 and later.
+- Status Message and MeshBeacon saves do not reboot the node.
+
+### Danger zone
+
+**Reboot** and **Purge Node Database** sit in a **Danger zone** section at the end of the page, after Firmware Updates. **Reload Config** and **Import/Export** are at the top. Both actions ask for confirmation in the app: Reboot with a confirm dialog, and Purge only after you type `PURGE`. The danger zone links to Admin Commands for shutdown, DFU and factory reset (admins only).
+
+Every section is read-only unless you hold **configuration: write** on the source. Import and the danger buttons are off too. Export and Reload stay on.
 
 You can clear a number field while you edit it. A blank or out-of-range field gets an outline and a message, and Save stays off until every number on the form is valid. A field that shows 0 where 0 has a special meaning says under it what 0 means and what a save sends.
 

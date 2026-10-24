@@ -99,6 +99,28 @@ A faulty sensor can log a spike that flattens the rest of a chart. **Clean outli
 
 If telemetry changed after the preview, MeshMonitor asks you to run the preview again. Each purge is written to the audit log.
 
+## Unified Telemetry Dashboard
+
+**Unified Telemetry** (in the dashboard sidebar) shows telemetry across every source you can read. It has two views: **Graphs** and **Latest**.
+
+![Unified Telemetry](/images/features/unified-telemetry.png)
+
+### Graphs
+
+- The page draws a chart for each favorited reading. It takes the union of each source's favorites, and counts a favorite only on a source where you can see its node.
+- Each chart covers one node and one telemetry type, with one line per source. The legend names the sources. MeshMonitor never merges or averages the lines.
+- Some types depend on who heard the packet: SNR, RSSI, channel utilization, air TX, LocalStats packet counters, MeshMonitor's per-source series and clock offset. These lines carry a **heard by <source>** label.
+- Charts sit in the same category sections as a source's own Telemetry Dashboard.
+- The **Time range** presets run from 15 minutes to 7 days, and the page remembers your pick. A source filter narrows the lines, and **Refresh** reloads. The page loads on open, on a range change and on refresh. It does not poll.
+- **Export CSV** on each chart saves one file with a `Source` column.
+- With no favorites yet, the page says so. Star a reading on the **Latest** view, or a graph on a source's Telemetry Dashboard.
+
+### Latest
+
+**Latest** shows the newest reading of each node for each source, as cards you can search, filter by source and type, and sort. The star on a reading adds it to, or removes it from, **that source's** favorites. The star shows only where you hold `settings:write` on that source. The view refreshes every 60 seconds.
+
+Visibility follows the per-source rules for node telemetry: the source needs `nodes:read`, a Meshtastic node needs its channel's map visibility, and the position readings of a private node need the private-position permission.
+
 ## Limitations
 
 - Gauge and Numeric modes only display the **most recent** data point. If no data has been received, the widget remains empty.

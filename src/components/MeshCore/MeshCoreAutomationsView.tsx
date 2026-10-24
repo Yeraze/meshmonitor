@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
 import { MeshCoreAutoAnnounceSection } from './MeshCoreAutoAnnounceSection';
 import { MeshCoreAutoResponderSection } from './MeshCoreAutoResponderSection';
+import { MeshCoreAutoPingSection } from './MeshCoreAutoPingSection';
 import { MeshCoreForwardingSection } from './MeshCoreForwardingSection';
 import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
 import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSection';
@@ -28,6 +29,9 @@ interface MeshCoreAutomationsViewProps {
    *  paused note while keeping its configuration inputs editable (interview
    *  decision 5) — only "Send Now" / "Run now" get disabled, wired in WP4. */
   receiveOnly?: boolean;
+  /** True for a Companion source. Auto Ping (#5953) is Companion-only, so
+   *  its section and nav chip render only then. */
+  isCompanionSource?: boolean;
 }
 
 interface PathfindingSettings {
@@ -50,7 +54,7 @@ const DEFAULTS: PathfindingSettings = {
   lastRunAt: null,
 };
 
-export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
+export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = ({ baseUrl, sourceId, receiveOnly = false, isCompanionSource = false }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { hasPermission } = useAuth();
@@ -169,7 +173,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         searchPlaceholder={t('config_search.filter_automation', 'Search automations...')}
         searchLabel={t('config_search.filter_automation', 'Search automations...')}
         noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
-        items={meshcoreAutomationNavItems(t)}
+        items={meshcoreAutomationNavItems(t, { includeAutoPing: isCompanionSource })}
       />
 
       {/* Single source-of-truth token reference for the whole page. */}
@@ -364,6 +368,13 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       <div id="meshcore-automation-auto-responder">
         <MeshCoreAutoResponderSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
       </div>
+
+      {/* Auto Ping Section (#5953): Companion sources only. */}
+      {isCompanionSource && (
+        <div id="meshcore-automation-auto-ping">
+          <MeshCoreAutoPingSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+        </div>
+      )}
 
       {/* Forwarding Section (#5446) */}
       <div id="meshcore-automation-forwarding">

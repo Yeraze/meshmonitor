@@ -620,6 +620,10 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
   automation: {
     'GET /automation/pathfinding': 'read',
     'POST /automation/pathfinding': 'write',
+    // #5953 Auto Ping: settings read/save, and a force-stop of a session.
+    'GET /automation/auto-ping': 'read',
+    'POST /automation/auto-ping': 'write',
+    'POST /automation/auto-ping/stop': 'write',
     'GET /automation/pathfinding/filter': 'read',
     'POST /automation/pathfinding/filter': 'write',
     'GET /automation/autoack': 'read',

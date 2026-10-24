@@ -16,6 +16,10 @@ A multi-word query narrows rather than widens: every word has to appear. `region
 
 ![The Settings tab filtered to "battery"](/images/features/5182-settings-filter.png)
 
+### MeshCore pages
+
+MeshCore **Device Configuration** and **Automations** have the same sticky top bar: a search box and a row of section buttons. Type to narrow the page to the matching sections, or click a button to jump to one. Buttons show only for sections on the page, so a Repeater or a disconnected source gets fewer of them. The Ctrl+, palette does not reach MeshCore pages yet.
+
 ## Searching across every page
 
 The page filter only knows about the page you are on. To search all of them at once, open the configuration palette:
@@ -40,7 +44,7 @@ The palette searches section **names** and their synonyms across every page, bec
 Results are scoped to what you can actually reach:
 
 - Sections your account cannot see are not offered. An admin-only panel does not appear for a non-admin.
-- Sections that do not apply to your install are not offered either — Database Maintenance only appears on SQLite, Firmware Updates only when OTA is enabled.
+- Sections that do not apply to your install are not offered either — Firmware Updates only when OTA is enabled.
 - Opened from the standalone Global Settings page, the palette offers only global sections. There is no single "current source" there to send a per-source link to.
 
 ## Searching messages

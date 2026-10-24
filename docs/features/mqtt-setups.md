@@ -8,6 +8,10 @@ This guide walks through the three MQTT setups people ask about most, start to f
 
 Read [The parts and which way traffic flows](#the-parts-and-which-way-traffic-flows) first. Nearly every MQTT problem comes from a part doing something its owner did not expect, most often putting broker traffic on the air.
 
+The bridge's configuration page links to this guide and to the broker reference:
+
+![MQTT Bridge Configuration with links to the setup guide](/images/features/5013-mqtt-docs-links.png)
+
 ## The parts and which way traffic flows
 
 Four parts can carry MQTT traffic. Each one moves it in a fixed direction:
