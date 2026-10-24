@@ -8,7 +8,7 @@
  * result keeps the node's identity rather than degrading to a bare coordinate.
  */
 import { describe, it, expect } from 'vitest';
-import { resolvePickedPoint, MAP_PICK_SNAP_PX } from './mapClickPicker';
+import { resolvePickedLatLng, resolvePickedPoint, MAP_PICK_SNAP_PX } from './mapClickPicker';
 
 /** Minimal Leaflet-map stand-in: 1 degree == 100 px, origin at (0,0). */
 function fakeMap(overrides: Record<string, unknown> = {}) {
@@ -77,5 +77,16 @@ describe('resolvePickedPoint', () => {
     const near = { id: 'near', lat: 1, lng: 1 };
     const far = { id: 'far', lat: 5, lng: 5 };
     expect(resolvePickedPoint(fakeMap(), evt(100, 100), [far, near])?.id).toBe('near');
+  });
+});
+
+describe('resolvePickedLatLng (#5959 endpoint drop)', () => {
+  it('snaps a drop near a node to that node', () => {
+    expect(resolvePickedLatLng(fakeMap(), { lat: 1.05, lng: 1.05 }, [NODE])).toMatchObject({ id: 'node-a', isNode: true });
+  });
+
+  it('keeps a drop away from every node as a bare coordinate', () => {
+    const picked = resolvePickedLatLng(fakeMap(), { lat: 2, lng: 2 }, [NODE]);
+    expect(picked).toMatchObject({ lat: 2, lng: 2, isNode: false });
   });
 });

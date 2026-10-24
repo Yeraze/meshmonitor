@@ -222,8 +222,13 @@ The **Link Profile** toolbar button only appears when your server administrator 
    - Clicking within about 24 pixels of a node marker **snaps** to that node — its live position, source, and radio identity are captured for auto-frequency detection (see below).
    - Clicking anywhere else drops an **arbitrary point** at the exact clicked coordinates, with a hollow marker ring instead of a filled one.
 3. Click a second point the same way. The two points are connected by a line on the map and the profile drawer slides up from the bottom.
-4. Clicking a third time restarts the pick from a new first point (A), so you can explore several links without reopening the tool.
-5. Press **Escape** at any point to clear the current pick and exit the tool.
+4. Once both points are set, further map clicks do nothing, so panning around the map cannot move them by accident.
+5. **Drag** point A or B on the map to move it. A drop within about 24 pixels of a node snaps to that node; anywhere else it becomes an arbitrary point. The profile updates when you let go.
+6. Use the chips at the top of the drawer to clear **A** or **B** (clearing A makes B the new A), or **Reset** to clear both and pick again. Press **Escape** at any point to clear the pick and exit the tool.
+
+![Link Profile drawer with the A and B chips and Reset](/images/features/5959-link-profile-endpoints.png)
+
+**Moving around while picking.** The map still pans and zooms while the tool is on. A click that ends a pan, a pinch zoom, or a Shift+drag box zoom never places a point. To click and drag freely without any chance of a pick, **hold Space**: the cursor turns into a hand, and clicks only move the map until you let go. The Site Planner uses the same rules for its origin pick.
 
 ### Reading the drawer
 
