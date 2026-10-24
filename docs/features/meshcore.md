@@ -707,6 +707,10 @@ Automated adverts (the auto-announce advert burst, timer triggers, and the autom
 
 Automated floods are limited to **one per hour per source**. The time of the last flood lives in the database, so restarting MeshMonitor or saving settings does not reset it. Any flood counts toward the hour, including a manual one. When an automated flood falls inside the hour, MeshMonitor skips it (it does not send a zero-hop advert instead) and logs why; a timer trigger records the reason as its last error, and an automation step fails with it. Zero-hop adverts have no such limit, and a manual flood is never blocked.
 
+## Auto Ping
+
+On a **Companion** source, the **Automations** view also has an **Auto Ping** section: a contact DMs `ping N` and the companion pings it back N times, recording each ping's round trip, timeout, and whether it went direct or by flood. Repeater sources do not have it. See [Auto Ping on MeshCore](/features/automation#auto-ping-meshcore).
+
 ## Auto-Announce
 
 The **Automations** view also hosts a per-source Auto-Announce that periodically broadcasts a status message to one or more MeshCore channels:

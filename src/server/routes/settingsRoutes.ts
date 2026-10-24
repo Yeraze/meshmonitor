@@ -25,6 +25,7 @@ import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { parseAutoPingSettingsUpdate, readAutoPingSettings } from '../utils/autoPingSettings.js';
 import { validateResponderTrigger } from '../utils/autoResponderMatcher.js';
 import { isResponderSyntax } from '../../utils/responderTrigger.js';
 import {
@@ -2153,12 +2154,7 @@ router.get('/auto-ping', perSourceSettings('read'), async (req, res) => {
       if (key in sourceOverrides) return sourceOverrides[key];
       return await databaseService.settings.getSetting(key);
     };
-    const settings = {
-      autoPingEnabled: (await readSetting('autoPingEnabled')) === 'true',
-      autoPingIntervalSeconds: parseInt((await readSetting('autoPingIntervalSeconds')) || '30', 10),
-      autoPingMaxPings: parseInt((await readSetting('autoPingMaxPings')) || '20', 10),
-      autoPingTimeoutSeconds: parseInt((await readSetting('autoPingTimeoutSeconds')) || '60', 10),
-    };
+    const settings = await readAutoPingSettings(readSetting);
     const sessions = autoPingManager ? await autoPingManager.getAutoPingSessions() : [];
     res.json({ settings, sessions });
   } catch (error) {
@@ -2169,8 +2165,13 @@ router.get('/auto-ping', perSourceSettings('read'), async (req, res) => {
 
 router.post('/auto-ping', perSourceSettings('write'), async (req, res) => {
   try {
-    const { autoPingEnabled, autoPingIntervalSeconds, autoPingMaxPings, autoPingTimeoutSeconds } = req.body;
     const autoPingSourceId = getSourceTarget(req).sourceId;
+    // Validate every field before writing any (ranges shared with the
+    // MeshCore route, #5953).
+    const parsed = parseAutoPingSettingsUpdate(req.body);
+    if (!parsed.ok) {
+      return fail(res, 400, parsed.code, parsed.message);
+    }
     const writeSetting = async (key: string, value: string) => {
       if (autoPingSourceId) {
         await databaseService.settings.setSourceSetting(autoPingSourceId, key, value);
@@ -2186,41 +2187,12 @@ router.post('/auto-ping', perSourceSettings('write'), async (req, res) => {
       return await databaseService.settings.getSetting(key);
     };
 
-    if (autoPingEnabled !== undefined) {
-      await writeSetting('autoPingEnabled', String(autoPingEnabled));
-      sourceOverrides['autoPingEnabled'] = String(autoPingEnabled);
-    }
-    if (autoPingIntervalSeconds !== undefined) {
-      const val = parseInt(String(autoPingIntervalSeconds), 10);
-      if (isNaN(val) || val < 10) {
-        return fail(res, 400, 'INVALID_INTERVAL', 'Interval must be at least 10 seconds.');
-      }
-      await writeSetting('autoPingIntervalSeconds', String(val));
-      sourceOverrides['autoPingIntervalSeconds'] = String(val);
-    }
-    if (autoPingMaxPings !== undefined) {
-      const val = parseInt(String(autoPingMaxPings), 10);
-      if (isNaN(val) || val < 1 || val > 100) {
-        return fail(res, 400, 'INVALID_MAX_PINGS', 'Max pings must be between 1 and 100.');
-      }
-      await writeSetting('autoPingMaxPings', String(val));
-      sourceOverrides['autoPingMaxPings'] = String(val);
-    }
-    if (autoPingTimeoutSeconds !== undefined) {
-      const val = parseInt(String(autoPingTimeoutSeconds), 10);
-      if (isNaN(val) || val < 10) {
-        return fail(res, 400, 'INVALID_TIMEOUT', 'Timeout must be at least 10 seconds.');
-      }
-      await writeSetting('autoPingTimeoutSeconds', String(val));
-      sourceOverrides['autoPingTimeoutSeconds'] = String(val);
+    for (const [key, value] of parsed.updates) {
+      await writeSetting(key, value);
+      sourceOverrides[key] = value;
     }
 
-    const settings = {
-      autoPingEnabled: (await readSetting('autoPingEnabled')) === 'true',
-      autoPingIntervalSeconds: parseInt((await readSetting('autoPingIntervalSeconds')) || '30', 10),
-      autoPingMaxPings: parseInt((await readSetting('autoPingMaxPings')) || '20', 10),
-      autoPingTimeoutSeconds: parseInt((await readSetting('autoPingTimeoutSeconds')) || '60', 10),
-    };
+    const settings = await readAutoPingSettings(readSetting);
 
     res.json({ success: true, settings });
   } catch (error) {

@@ -19,6 +19,7 @@ import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { parseAutoPingSettingsUpdate, readAutoPingSettings } from '../utils/autoPingSettings.js';
 import { MESHCORE_ADVERT_MODES, isMeshCoreAdvertMode, resolveMeshCoreAdvertMode } from '../../types/meshcoreAdvert.js';
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
 import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
@@ -123,6 +124,75 @@ router.post(
     } catch (error) {
       logger.error('[API] Error saving auto-pathfinding settings:', error);
       res.status(500).json({ success: false, error: 'Failed to save auto-pathfinding settings' });
+    }
+  },
+);
+
+// ============ Auto Ping (#5953) ============
+//
+// `ping N` DM sessions, Companion sources only. Same per-source keys and
+// ranges as the Meshtastic `/api/settings/auto-ping` route
+// (utils/autoPingSettings.ts). Saving writes settings only: it never starts,
+// restarts or re-arms a session; sessions start from a received DM.
+
+router.get(
+  '/automation/auto-ping',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mgr = managerFor(req, res);
+      const sourceId = (req.params as { id?: string }).id!;
+      const settings = await readAutoPingSettings((key) => databaseService.settings.getSettingForSource(sourceId, key));
+      ok(res, { settings, sessions: mgr.getAutoPingSessions() });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore auto-ping settings:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read auto-ping settings');
+    }
+  },
+);
+
+router.post(
+  '/automation/auto-ping',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const parsed = parseAutoPingSettingsUpdate(req.body);
+      if (!parsed.ok) {
+        return fail(res, 400, parsed.code, parsed.message);
+      }
+      for (const [key, value] of parsed.updates) {
+        await databaseService.settings.setSourceSetting(sourceId, key, value);
+      }
+      const settings = await readAutoPingSettings((key) => databaseService.settings.getSettingForSource(sourceId, key));
+      ok(res, { settings });
+    } catch (error) {
+      logger.error('[API] Error saving meshcore auto-ping settings:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to save auto-ping settings');
+    }
+  },
+);
+
+router.post(
+  '/automation/auto-ping/stop',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = (req.body as { publicKey?: unknown } | undefined)?.publicKey;
+      if (typeof publicKey !== 'string' || !publicKey) {
+        return fail(res, 400, 'INVALID_PUBLIC_KEY', 'publicKey is required');
+      }
+      const stopped = managerFor(req, res).stopAutoPingSession(publicKey);
+      if (!stopped) {
+        return fail(res, 404, 'NOT_FOUND', 'No active ping session for that node');
+      }
+      ok(res);
+    } catch (error) {
+      logger.error('[API] Error stopping meshcore auto-ping session:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to stop auto-ping session');
     }
   },
 );
