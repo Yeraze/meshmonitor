@@ -42,6 +42,12 @@ const PING_STOP_RE = /^ping\s+stop$/;
 const AUTO_PING_OUTPUT_RE =
   /^(Ping \d+\/\d+$|Auto-ping (done|cancelled|force_stopped)|Starting \d+ pings every |No active ping session to stop|You already have an active ping session|Ping count must be at least 1)/;
 
+/** True when `text` is a `ping N` / `ping stop` command (cheap, sync pre-check). */
+export function isAutoPingCommandText(text: string | null | undefined): boolean {
+  const t = (text || '').trim().toLowerCase();
+  return PING_START_RE.test(t) || PING_STOP_RE.test(t);
+}
+
 export function isAutoPingOutputText(text: string | null | undefined): boolean {
   return !!text && AUTO_PING_OUTPUT_RE.test(text.trim());
 }

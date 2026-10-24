@@ -209,6 +209,7 @@ import { isForwardingEnabled } from './services/forwardingStateService.js';
 import { isOwnPublicKey, isOwnPublicKeyPrefix } from './utils/ownNodes.js';
 import {
   MeshCoreAutoPingController,
+  isAutoPingCommandText,
   isAutoPingOutputText,
   type MeshCoreAutoPingSessionInfo,
 } from './meshcoreAutoPing.js';
@@ -12343,7 +12344,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * command (Meshtastic order); it is fired separately by the caller.
    */
   private async checkAutoPingThenResponder(message: MeshCoreMessage, o: ReceivedMessageOpts): Promise<void> {
-    if (o.isDM && !message.reactionEmoji) {
+    // Only a `ping` command waits on Auto Ping; every other message reaches
+    // the Auto-Responder in the same tick, as before #5953.
+    if (o.isDM && !message.reactionEmoji && isAutoPingCommandText(message.text)) {
       try {
         if (await this.autoPing.handleCommand(message.fromPublicKey, message.text || '')) return;
       } catch (err) {
