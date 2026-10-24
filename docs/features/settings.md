@@ -196,8 +196,8 @@ MeshMonitor records **First Heard** for each node on each source. It sets the va
 
 **How to show a hidden node on the map again**:
 1. Enable "Hidden from map" in the filter panel (Show mode)
-2. Select the node in the list
-3. Click **Show on Map** in its node panel
+2. Note the node in the list, then open it in the **Messages** tab (its direct-message view)
+3. Click **Show on Map** in the node panel there
 
 ### Security Filter
 
