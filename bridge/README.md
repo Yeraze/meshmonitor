@@ -13,8 +13,10 @@ MeshMonitor `package.json` or `node:24` image.
 ## Two connection modes
 
 - **`attach`** (default): connects to an *existing* `rnsd`/shared Reticulum instance as a
-  client. Needs a readable RNS config directory (typically the user's `~/.reticulum`, bind-
-  mounted read-only or read-write). Safe by design -- client instances never open interfaces
+  client. Needs a **writable** RNS config directory (typically the user's `~/.reticulum`,
+  bind-mounted read-write, with the container running as the directory's owner). RNS writes
+  into `<configdir>/storage` even as a client, so a read-only mount fails at attach with
+  `Read-only file system`. Safe by design -- client instances never open interfaces
   themselves (WP0 spike evidence §2), so attaching cannot double-open a serial port or disturb
   the running `rnsd`.
 - **`tcp_peer`**: the bridge runs its *own* standalone RNS instance and connects out to one or
@@ -38,7 +40,8 @@ docker build -t meshmonitor-rns-bridge bridge/
 
 docker run --rm \
   --network host \
-  -v "$HOME/.reticulum:/rns:ro" \
+  --user "$(id -u):$(id -g)" \
+  -v "$HOME/.reticulum:/rns" \
   -e BRIDGE_TOKEN=change-me \
   -e RNS_MODE=attach \
   -e RNS_CONFIG_DIR=/rns \

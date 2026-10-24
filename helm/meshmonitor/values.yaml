@@ -254,7 +254,9 @@ reticulum:
   mode: "attach"
 
   # Host path to the RNS config dir (attach mode only), hostPath-mounted
-  # read-only into the bridge container at /rns. Requires the node running the
+  # read-write into the bridge container at /rns. RNS writes <configdir>/storage
+  # even as a shared-instance client (issue #5954), so the bridge must run as
+  # the directory's owner: set securityContext.runAsUser/runAsGroup below. Requires the node running the
   # pod to actually have this path (e.g. a DaemonSet-style single-node
   # deployment, or a nodeSelector pinning the pod to the host running rnsd).
   configDir: "/root/.reticulum"
@@ -269,3 +271,11 @@ reticulum:
   # BRIDGE_HOST/BRIDGE_PORT for the container env -- those are the names the
   # bridge actually reads (bridge/meshmonitor_rns_bridge/config.py).
   bind: "127.0.0.1:8765"
+
+  # securityContext for the bridge container only. In attach mode, run it as
+  # the owner of configDir so RNS can write <configdir>/storage, e.g.
+  # runAsUser: 0 / runAsGroup: 0 for the default /root/.reticulum. Empty keeps
+  # the image's own unprivileged user, which suits tcp_peer mode.
+  securityContext: {}
+  #   runAsUser: 0
+  #   runAsGroup: 0

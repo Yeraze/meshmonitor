@@ -10,8 +10,32 @@
 # Enable with:
 #   docker compose -f docker-compose.yml -f docker-compose.reticulum.yml up -d
 #
-# Then add a Reticulum source in MeshMonitor (Dashboard -> Sources) with its
+# Then open MeshMonitor at http://localhost:3001 (NOT :8080 -- see "Host
+# networking" below), add a Reticulum source (Dashboard -> Sources) with its
 # bridge URL set to ws://127.0.0.1:8765 and the same token as BRIDGE_TOKEN below.
+#
+# Host networking (attach mode, issue #5954): this overlay also moves the
+# `meshmonitor` service onto `network_mode: host`. The bridge must share the
+# host's network namespace to reach rnsd's shared instance on 127.0.0.1, and
+# MeshMonitor must share it too, or ws://127.0.0.1:8765 inside the meshmonitor
+# container points at the container itself (BRIDGE_UNREACHABLE). Consequences:
+#   - The base file's `ports:` are dropped (`!reset`, Docker Compose >= 2.24.4).
+#     Host networking does not publish ports; every listener is on the host.
+#   - The web UI is always on port 3001. supervisord pins PORT=3001 for the
+#     Node process, so `PORT=` on the meshmonitor service has no effect.
+#   - ALLOWED_ORIGINS must name :3001. This overlay defaults it to
+#     http://localhost:3001; set ALLOWED_ORIGINS in your shell or .env to
+#     override (e.g. http://<host-ip>:3001 or your reverse-proxy origin).
+#   - The embedded MQTT broker (1883) and any Virtual Node ports listen on the
+#     host directly, so they must be free there.
+#
+# Config dir ownership (attach mode, issue #5954): RNS writes into
+# <configdir>/storage even as a shared-instance client, so ~/.reticulum is
+# mounted READ-WRITE, and the bridge runs as the uid:gid that owns it (the same
+# user that runs rnsd). Set RNS_UID/RNS_GID to that owner -- `id -u` / `id -g`
+# for your own ~/.reticulum, or 0 for a root rnsd using /root/.reticulum. With
+# a read-only mount, or the wrong uid, the bridge fails at attach with
+# "Read-only file system" / "Permission denied".
 #
 # NOTE ON ENV VAR NAMES: earlier design docs sketched `MM_RNS_*` names for this
 # overlay. The bridge that actually shipped (bridge/meshmonitor_rns_bridge/config.py)
@@ -23,16 +47,20 @@
 #
 #   attach (default below) -- the bridge attaches to a `rnsd`/shared Reticulum
 #     instance YOU already run, as a client. Needs `network_mode: host` because
-#     the shared-instance RPC socket binds to 127.0.0.1, plus a read-only mount
+#     the shared-instance RPC socket binds to 127.0.0.1, plus a read-write mount
 #     of your RNS config dir (usually ~/.reticulum). Safe by design: client
 #     instances never open interfaces themselves, so this cannot double-open a
-#     serial port or otherwise disturb your running rnsd.
+#     serial port or otherwise disturb your running rnsd. The mount must be
+#     read-write (see "Config dir ownership" above).
 #
 #   tcp_peer -- the bridge runs its own standalone RNS instance and dials out to
 #     one or more TCPClientInterface peers. No host networking, no config-dir
 #     mount. To switch:
-#       1. Delete the `network_mode: host` line and the `${HOME}/.reticulum`
-#          volume mount below.
+#       1. Delete the `network_mode: host` line, the `user:` line and the
+#          `${HOME}/.reticulum` volume mount below, and delete the whole
+#          `meshmonitor:` service block at the bottom (tcp_peer needs no host
+#          networking; use ws://meshmonitor-rns-bridge:8765 as the bridge URL
+#          and add that host to RETICULUM_BRIDGE_ALLOWED_HOSTS if you set it).
 #       2. Uncomment the `ports` block below (publish 8765 instead of relying
 #          on host networking).
 #       3. Change `RNS_MODE` to `tcp_peer`, remove `RNS_CONFIG_DIR`, and set
@@ -55,8 +83,10 @@ services:
 
     # --- attach mode (default) ---
     network_mode: host
+    # Run as the owner of ~/.reticulum so RNS can write <configdir>/storage.
+    user: "${RNS_UID:-1000}:${RNS_GID:-1000}"
     volumes:
-      - ${HOME}/.reticulum:/rns:ro
+      - ${HOME}/.reticulum:/rns
     # --- tcp_peer mode: comment out network_mode + volumes above, then
     #     uncomment this instead ---
     # ports:
@@ -75,3 +105,11 @@ services:
       # tcp_peer mode: delete RNS_CONFIG_DIR above and add instead:
       #   RNS_MODE: tcp_peer
       #   RNS_TCP_PEERS: amsterdam.connect.reticulum.network:4965
+
+  # Attach mode puts MeshMonitor on host networking too (issue #5954), so it can
+  # reach the bridge at ws://127.0.0.1:8765. Remove this block for tcp_peer mode.
+  meshmonitor:
+    network_mode: host
+    ports: !reset []
+    environment:
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3001}
