@@ -63,6 +63,14 @@ describe('mapDbNodeToDeviceInfo', () => {
     expect(result.importedAt).toBe(1_700_000_000_000);
   });
 
+  it('carries hideFromMap through so the client knows a node is hidden (#5952)', () => {
+    const base = { nodeNum: 0x3f60a525, nodeId: '!3f60a525', longName: 'Rigel', shortName: 'Rig' };
+    expect(mapDbNodeToDeviceInfo({ ...base, hideFromMap: 1 }).hideFromMap).toBe(true);
+    expect(mapDbNodeToDeviceInfo({ ...base, hideFromMap: true }).hideFromMap).toBe(true);
+    expect(mapDbNodeToDeviceInfo({ ...base, hideFromMap: 0 }).hideFromMap).toBe(false);
+    expect(mapDbNodeToDeviceInfo({ ...base, hideFromMap: null }).hideFromMap).toBeUndefined();
+  });
+
   it('omits importedAt for a node that was heard rather than imported', () => {
     const result = mapDbNodeToDeviceInfo({
       nodeNum: 0x3f60a525,
