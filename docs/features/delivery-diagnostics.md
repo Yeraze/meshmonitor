@@ -54,7 +54,7 @@ The rest of the popup is organized into labeled groups, each field carrying its 
 - **Route** -- whether the send was direct or relayed, starting hop limit, remaining hop limit, an *inferred* hops-used count, and the last relay.
   - On Meshtastic, the last relay is only ever a **1-byte partial node ID** (the protocol doesn't send a full node number in the routing ACK), so MeshMonitor shows the candidate node name only when exactly one known node matches that byte, "N possible relays" when several nodes share it, or "Unknown relay" when nothing matches, always alongside the raw `0xNN` byte so you can judge for yourself. MeshCore reports full relay hashes, so its relay field doesn't have this ambiguity.
 - **Signal** -- SNR and RSSI for the ACK, when reported.
-- **Transport** -- whether the packet traveled over RF or MQTT, whether it passed through Store & Forward, whether it was XEdDSA-signed, and whether "Want ACK" was requested.
+- **Transport** -- whether the packet traveled over RF or MQTT, whether it passed through Store & Forward, whether it was XEdDSA-signed ("No" shows muted, because most traffic is unsigned: older firmware never signs, and newer firmware signs only some packets), and whether "Want ACK" was requested.
 
 ### Ack Proof (Meshtastic direct messages)
 

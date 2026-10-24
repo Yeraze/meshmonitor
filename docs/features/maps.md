@@ -41,6 +41,21 @@ Each node is represented on the map with a marker that provides visual informati
 - **Per-node color** *(New in 4.15.2)*:
   - Every node gets a deterministic color derived from its NodeNum using the same algorithm the official Meshtastic app uses. The color is applied to the map pin and to the matching node's row in the sidebar list, so a node is easy to pick out at a glance across the map and the list. Signal-quality color coding above still applies where the underlying color is used as a fill — the per-node color drives the pin's outline / accent so the two signals don't collide.
 
+#### Battery icons
+
+The node list, the header status, the map node popup and ATAK contact cards pick the battery icon from the charge level:
+
+| Charge | Icon |
+|---|---|
+| Under 10% | Empty (warning) |
+| 10% to 50% | Low |
+| 50% to 85% | Medium |
+| Over 85% | Full |
+| On external power | Charging |
+| Unknown | Plain outline |
+
+![Node list with battery icons by charge level](/images/features/5946-battery-level-icons.png)
+
 #### Node Popups
 
 Click any node marker to view detailed information:
@@ -48,7 +63,7 @@ Click any node marker to view detailed information:
 - Node name (long name and short name)
 - Node ID (hexadecimal and decimal)
 - Hardware model with device image
-- Battery level and voltage
+- Battery level and voltage, with an icon for the charge level (under 10%, 10-50%, 50-85%, over 85%). A node on external power shows a charging icon.
 - Signal quality (SNR and RSSI)
 - Last heard timestamp
 - Device role
@@ -294,6 +309,19 @@ Estimation itself is configured in **Global Settings → Position Estimation**,
 including a **Maximum acceptable accuracy** cutoff that discards low-confidence
 guesses. See the dedicated [Position Estimation](/features/position-estimation)
 page.
+
+### Tropospheric ducting overlay {#tropospheric-ducting-overlay}
+
+The overlay shades the map where the lower air bends radio further than usual, from a NOAA GFS forecast. It helps you spot when a long path may open. It is off until an admin turns on **Enable the ducting overlay (contacts NOAA)** in [Global Settings](/features/settings#tropospheric-ducting-overlay).
+
+With it on, the **Ducting** toggle appears in Map Features on both the Map tab and the Dashboard map. MeshMonitor saves the toggle per browser.
+
+- **Scrubber.** Drag the slider to pick a forecast time, from now to +72 hours. It labels the step (`+N h`), the valid time in your time zone and the GFS run. The map loads a step after you stop moving the slider.
+- **Legend.** Normal air has no fill. A light tint marks super-refractive air (gradient at or below -79 N/km). A stronger tint in the caution color marks a duct (at or below -157 N/km), stronger for a stronger duct. Sub-refractive air has no fill, because it shortens range.
+- **Area.** The forecast covers the busiest group of nodes you can see on the map, up to 20 degrees on a side. When your sources have a local node with a position you may see, MeshMonitor centres the area on those nodes first. It uses only nodes you may see, so two viewers can get different areas.
+- **Caveat.** GFS pressure levels sit 200 to 500 m apart near the ground, so a sharp duct can read weaker than it is.
+
+The server fetches a forecast step from NOAA only when a viewer opens a step it has not cached: one HTTPS request each, at most 25 per 6-hour GFS cycle. MeshMonitor sends nothing over the mesh. While the setting is off, the forecast route answers `403` with code `DUCTING_DISABLED`.
 
 ### Node Age Filter
 

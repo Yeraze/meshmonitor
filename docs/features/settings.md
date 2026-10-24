@@ -319,6 +319,7 @@ The Node Details block provides comprehensive information about the currently se
 
 #### Power Status
 - **Battery Level**: Current battery percentage (0-100%)
+  - The icon shows the charge level: under 10%, 10-50%, 50-85% and over 85%. A node on external power (level 101) shows a charging icon. An unknown level shows a plain battery.
   - Color-coded indicators:
     - 🟢 Green: >75% (good)
     - 🟡 Yellow: 25-75% (moderate)
@@ -385,6 +386,19 @@ The Node Details block provides comprehensive information about the currently se
 - **Last Heard**: When the node was last active
   - Relative time format (e.g., "5 minutes ago", "2 hours ago")
   - Uses your configured time/date format preferences
+
+### Node channel {#node-channel}
+
+The Channel card shows the channel MeshMonitor has recorded for the node. MeshMonitor records a node's channel only from that node's own traffic that the connected radio decoded with a channel key. Packets that do not prove a channel never change it: PKI direct messages, firmware 2.8 NodeDB replays, spoofed zero-hop packets and Virtual Node MQTT-proxy packets. A row recorded before that rule can name a channel the node has no key for.
+
+With **Nodes: write** on the source, click **Edit** on the Channel card to fix it by hand:
+
+- Pick **None** or one of the source's channels. If the source no longer lists the stored channel, it stays in the list.
+- Tick **Lock (traffic will not change it)**. While a channel is locked, traffic does not change it. The card shows a **Locked** badge. Unlocked, the next key-decoded packet from the node sets the channel again.
+
+The edit changes MeshMonitor's data only. It sends nothing over the mesh. A node merge carries a locked channel to the node that survives, when that node has none.
+
+![Node channel editor](/images/features/5923-node-channel-lock-editor.png)
 
 ### Layout
 
@@ -667,6 +681,38 @@ This same elevation source drives Map Analysis's [3D terrain view](/features/map
 - **OpenSky client ID / client secret** — needed for the **OpenSky Network** feed (non-commercial and research use only), which takes no anonymous requests. Create an API client on your OpenSky Account page. The OpenSky option stays disabled, and a save is refused, until both are set. Both are server-only and never shown to non-admins.
 
 Two lookups per flagging, then up to six re-checks (at most eight in all); no packets over the mesh. See [Flight matching (ADS-B)](/features/maps#flight-matching-ads-b) for how matches are chosen and shown.
+
+## Tropospheric ducting overlay {#tropospheric-ducting-overlay}
+
+**Description**: Turns on the [ducting overlay](/features/maps#tropospheric-ducting-overlay) on the Map tab and the Dashboard map. It shows a NOAA GFS forecast of where the lower air bends radio further than usual. Admin-only, global (not per source); under **Global Settings → Tropospheric ducting overlay**.
+
+**Fields**:
+- **Enable the ducting overlay (contacts NOAA)** — off by default. While it is off, the map toggle is hidden for everyone and the server makes no NOAA requests. While it is on, anyone who can view the map can use it. Only an admin can change it: a non-admin who holds `settings:write` saves other settings as usual, but this one stays as it was.
+
+**Notes**:
+- The server asks NOAA for a forecast step only when a viewer opens a step it has not cached. That costs one HTTPS request per step, at most 25 per 6-hour GFS cycle. There is no timer. Nothing goes over the mesh.
+- While the setting is off, `GET /api/ducting/forecast` answers `403` with code `DUCTING_DISABLED`, to admins too.
+- The forecast covers the busiest group of nodes you can see on the map. When your sources have a local node with a position you may see, MeshMonitor centres the area on those nodes first. It never uses nodes you cannot see, so two viewers with different access can get different areas.
+
+## Database Maintenance {#database-maintenance}
+
+**Description**: An optional nightly job that deletes old data and then runs `VACUUM`. It works on SQLite, PostgreSQL and MySQL. It is **off by default** on every backend, so turn it on if you want old data pruned. Under **Settings → Database Maintenance**.
+
+**Fields**:
+- **Enable automatic database maintenance** and **Maintenance Time (24-hour format)**.
+- Retention for each data type, in days (minimum 7, maximum 365): **Message Retention**, **Traceroute Retention**, **Route Segment Retention**, **Neighbor Info Retention**, **Audit Log Retention** (default 90) and **MeshCore CLI History Retention** (default 90).
+- **Run Maintenance Now** runs one pass at once and reports how many records it deleted and how much space it freed.
+
+The job deletes the audit log and CLI history in batches. The first run on a database that has never been cleaned can delete a lot and take a while. See [Database](/development/database#postgresql-memory-and-maintenance) for PostgreSQL tuning.
+
+## MeshCore Messaging {#meshcore-messaging}
+
+**Description**: Install-wide MeshCore message options, under **Settings → MeshCore Messaging**.
+
+**Fields**:
+- **Auto-retry automated MeshCore channel sends** — retries channel messages that automations send.
+- **Remote CLI reply timeout (seconds)** — how long the MeshCore consoles wait for a reply (1 to 60, default 15).
+- **Use other sources to resolve unknown hops** — off by default. When a relay hash in a message route matches none of a source's contacts, MeshMonitor looks it up in the MeshCore nodes of other sources you can read, MQTT feeds included. It changes only what you see and sends nothing. MQTT nodes count once each sends a signed advert after you turn this on. See [Message route line](/features/meshcore#message-route-line).
 
 ## Display Preferences
 
