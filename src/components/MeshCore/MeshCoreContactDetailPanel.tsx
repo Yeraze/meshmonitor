@@ -23,6 +23,9 @@ import styles from './MeshCoreContactDetailPanel.module.css';
 import api from '../../services/api';
 import '../NodeDetailsBlock.css';
 import { UiIcon } from '../icons';
+import { shouldDiscardPosition } from '../../utils/nullIsland';
+import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
+import { isHiddenByPositionlessAdvert, readHidePositionlessAdverts } from '../../utils/meshcoreAdvertPosition';
 import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
 import { SignFlipNotice } from '../SignFlipNotice';
 import { MeshCoreNeighboursFetchProgress } from './MeshCoreNeighboursFetchProgress';
@@ -90,6 +93,9 @@ interface MeshCoreContactDetailPanelProps {
    *  so it works on Companion and Repeater sources and while disconnected.
    *  Unset hides the Override location button. */
   onSetPositionOverride?: (publicKey: string, data: MeshCorePositionOverrideInput) => Promise<void>;
+  /** #5964: open the MeshCore Nodes map on this node and open its popup.
+   *  The button shows only when the map would draw the node. Unset hides it. */
+  onShowOnMap?: (publicKey: string) => void;
   /** `nodes:write` on this source, the permission the Meshtastic override
    *  route takes. Not tied to the connection, unlike `canWriteNodes`. */
   canEditPositionOverride?: boolean;
@@ -193,6 +199,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   isFavorite = false,
   onToggleFavorite,
   onSetPositionOverride,
+  onShowOnMap,
   canEditPositionOverride = false,
   onResetPath,
   onShareContact,
@@ -416,6 +423,13 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const latitude = contact?.latitude;
   const longitude = contact?.longitude;
   const hasPosition = typeof latitude === 'number' && typeof longitude === 'number';
+  // #5964: Show on Map only for a node the MeshCore map draws. It drops
+  // invalid fixes (null island etc.) and, with the #5578 toggle on, a node
+  // whose latest advert had no position (an override or the local node stays).
+  const canShowOnMap = !!onShowOnMap
+    && hasPosition
+    && !shouldDiscardPosition(latitude!, longitude!, undefined, getDiscardInvalidPositions())
+    && (contact?.isLocal === true || !isHiddenByPositionlessAdvert(contact, readHidePositionlessAdverts()));
   const pathKnown = typeof pathLen === 'number' && pathLen !== null && pathLen >= 0;
   // Favorite is not companion-only (#3588 covers every role), so unlike the
   // other action buttons below this doesn't gate on `isCompanion` — the
@@ -1351,6 +1365,17 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               <div className="node-detail-value">
                 {`${latitude!.toFixed(5)}, ${longitude!.toFixed(5)}`}
               </div>
+              {canShowOnMap && (
+                <button
+                  type="button"
+                  className={`${styles.overrideButton} ${styles.showOnMapButton}`}
+                  onClick={() => onShowOnMap!(publicKey)}
+                  title={t('messages.show_on_map_title', 'Show this node on the map')}
+                >
+                  <UiIcon name="map" size={14} />
+                  {t('messages.show_on_map', 'Show on Map')}
+                </button>
+              )}
               {contact?.positionIsOverride && (
                 <div className={styles.overrideNote}>
                   <UiIcon name="location" size={12} />

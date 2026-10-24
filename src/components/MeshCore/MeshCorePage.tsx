@@ -115,6 +115,10 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     if (toggleNavPin()) setToolbarExpanded(true);
   }, [toggleNavPin]);
   const [pendingDmContact, setPendingDmContact] = useState<string | null>(null);
+  // #5964: Node Details → Show on Map. Same hand-off shape as
+  // `pendingDmContact`: set the key, switch to the Nodes view (list + map),
+  // and drop the key once the view changes away again.
+  const [pendingMapNode, setPendingMapNode] = useState<string | null>(null);
 
   // Wire the durable per-user read-state transport once per mounted source
   // (#4607). The store is deliberately fetch-free so it can stay a plain
@@ -165,12 +169,18 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     setView('dms');
   }, []);
 
+  const showNodeOnMap = useCallback((publicKey: string) => {
+    setPendingMapNode(publicKey);
+    setView('nodes');
+  }, []);
+
   useEffect(() => {
     onStatusChange?.(status);
   }, [status, onStatusChange]);
 
   useEffect(() => {
     if (view !== 'dms') setPendingDmContact(null);
+    if (view !== 'nodes') setPendingMapNode(null);
   }, [view]);
 
   return (
@@ -224,6 +234,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             mapIsLoading={!hasLoadedOnce}
             receiveOnly={receiveOnly}
             isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
+            focusPublicKey={pendingMapNode}
           />
         )}
         {view === 'channels' && (
@@ -266,6 +277,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             ignoredNodes={ignoredNodesQuery.data}
             onSetIgnoredNode={handleSetIgnoredNode}
             onRemoveIgnoredNode={handleRemoveIgnoredNode}
+            onShowOnMap={showNodeOnMap}
           />
         )}
         {view === 'telemetry' && (

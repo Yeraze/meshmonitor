@@ -65,6 +65,28 @@
   cursor: default;
 }
 
+.textBtn {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-subtle);
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.textBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.textBtn[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 .favorited {
   color: var(--color-warning);
 }
@@ -91,4 +113,8 @@
   height: 3px;
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+.mergedSwatch {
+  background: var(--color-accent);
 }

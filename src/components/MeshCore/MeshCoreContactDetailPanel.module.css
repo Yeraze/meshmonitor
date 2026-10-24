@@ -80,3 +80,8 @@
   font-size: 0.8rem;
   color: var(--color-text-subtle);
 }
+
+/* #5964: Show on Map sits under the coordinates in the Position card. */
+.showOnMapButton {
+  margin-top: 0.35rem;
+}

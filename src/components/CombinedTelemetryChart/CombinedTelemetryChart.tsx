@@ -1,14 +1,17 @@
 /**
  * One telemetry chart with one line per source (#5896).
  *
- * The cross-source Telemetry Dashboard draws a (node, type) series as
- * overlapping lines, one per source that holds data for it, coloured by
- * source. Lines are never merged or averaged together. For an
- * observer-relative type (SNR, RSSI, channel load, packet counters) each line
- * is labelled "heard by <source>", since two sources' lines there are two
- * observers' views, not two readings of one quantity.
+ * The cross-source Telemetry Dashboard draws a (node, type) series per
+ * source that holds data for it, coloured by source.
+ *  - An observer-relative type (SNR, RSSI, channel load, packet counters)
+ *    keeps one line per source, labelled "heard by <source>": two sources'
+ *    lines there are two observers' views, not two readings of one quantity.
+ *  - An objective type (battery, temperature, voltage) with data on more than
+ *    one source draws ONE merged line (#5931), so a reading one source missed
+ *    fills the other's gap. "Split by source" brings back one line per source.
+ *    The CSV follows the view on screen.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TemperatureUnit } from '../../utils/temperature';
@@ -17,6 +20,7 @@ import type { TimeFormat } from '../../contexts/SettingsContext';
 import { resolveSeriesDisplay, downloadTelemetryCsv } from '../../utils/telemetrySeriesDisplay';
 import { getTelemetryLabel } from '../TelemetryChart';
 import { UiIcon } from '../icons';
+import { mergeSourceLines } from './mergeSourceLines';
 import styles from './CombinedTelemetryChart.module.css';
 
 export interface CombinedSeriesLine {
@@ -54,6 +58,9 @@ interface CombinedTelemetryChartProps {
 
 /** Row key of line `i` in the merged chart data. */
 const lineKey = (i: number) => `l${i}`;
+/** Row key of the merged line, and of its contributing sources. */
+const MERGED_KEY = 'merged';
+const MERGED_SOURCES_KEY = 'mergedSources';
 
 const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
   series,
@@ -77,6 +84,16 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
     [series, temperatureUnit],
   );
 
+  // Objective types with more than one source merge unless split (#5931).
+  const canMerge = !series.observerRelative && series.lines.length > 1;
+  const [split, setSplit] = useState(false);
+  const merged = canMerge && !split;
+
+  const mergedPoints = useMemo(
+    () => (merged ? mergeSourceLines(series.lines) : []),
+    [merged, series],
+  );
+
   const lineLabel = (line: CombinedSeriesLine) =>
     series.observerRelative
       ? t('unified.telemetry.heard_by', { name: line.sourceName })
@@ -84,7 +101,14 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
 
   // One row per timestamp; each line's value under its own key. A line with
   // no point at a timestamp leaves a gap that `connectNulls` bridges.
-  const data = useMemo(() => {
+  const data = useMemo((): Array<Record<string, number | string>> => {
+    if (merged) {
+      return mergedPoints.map((p) => ({
+        timestamp: p.timestamp,
+        [MERGED_KEY]: display.toDisplay(p.value),
+        [MERGED_SOURCES_KEY]: p.sources.join(', '),
+      }));
+    }
     const rows = new Map<number, Record<string, number>>();
     series.lines.forEach((line, i) => {
       for (const p of line.points) {
@@ -94,19 +118,23 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
       }
     });
     return [...rows.values()].sort((a, b) => a.timestamp - b.timestamp);
-  }, [series, display]);
+  }, [series, display, merged, mergedPoints]);
 
   const title = getTelemetryLabel(series.type);
   const unit = display.unit;
 
   const handleExport = () => {
-    downloadTelemetryCsv(
-      series.lines.flatMap((line) =>
+    const rows = merged
+      ? mergedPoints.map((p) => ({ timestamp: p.timestamp, value: display.toDisplay(p.value), source: p.sources.join('; ') }))
+      : series.lines.flatMap((line) =>
         line.points.map((p) => ({ timestamp: p.timestamp, value: display.toDisplay(p.value), source: line.sourceName })),
-      ),
-      { nodeId: series.subjectKey, telemetryType: series.type, unit, hours },
-    );
+      );
+    downloadTelemetryCsv(rows, { nodeId: series.subjectKey, telemetryType: series.type, unit, hours });
   };
+
+  const mergedLabel = t('unified.telemetry.merged_label', {
+    names: series.lines.map((l) => l.sourceName).join(', '),
+  });
 
   return (
     <div className={styles.card} data-testid="combined-telemetry-chart">
@@ -118,6 +146,17 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
           <span className={styles.subject} title={series.subjectKey}>{series.nodeName}</span>
         </div>
         <div className={styles.actions}>
+          {canMerge && (
+            <button
+              type="button"
+              className={styles.textBtn}
+              onClick={() => setSplit((v) => !v)}
+              aria-pressed={split}
+              title={t('unified.telemetry.split_hint')}
+            >
+              {t('unified.telemetry.split_by_source')}
+            </button>
+          )}
           <button
             type="button"
             className={styles.iconBtn}
@@ -144,7 +183,12 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
       </div>
 
       <ul className={styles.legend} aria-label={t('unified.telemetry.legend_aria')}>
-        {series.lines.map((line) => (
+        {merged ? (
+          <li className={styles.legendItem}>
+            <span className={`${styles.swatch} ${styles.mergedSwatch}`} aria-hidden="true" />
+            {mergedLabel}
+          </li>
+        ) : series.lines.map((line) => (
           <li key={line.sourceId} className={styles.legendItem}>
             <span className={styles.swatch} style={{ background: colorFor(line.sourceId) }} aria-hidden="true" />
             {lineLabel(line)}
@@ -175,13 +219,28 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
             formatter={(value) =>
               typeof value === 'number' && display.formatValue ? display.formatValue(value) : value
             }
-            labelFormatter={(value) =>
-              new Date(value as number).toLocaleString([], {
+            labelFormatter={(value, payload) => {
+              const when = new Date(value as number).toLocaleString([], {
                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
-              })
-            }
+              });
+              const from = merged ? payload?.[0]?.payload?.[MERGED_SOURCES_KEY] : undefined;
+              return from ? `${when} · ${t('unified.telemetry.merged_from', { names: from })}` : when;
+            }}
           />
-          {series.lines.map((line, i) => (
+          {merged ? (
+            <Line
+              key={MERGED_KEY}
+              type="monotone"
+              dataKey={MERGED_KEY}
+              name={mergedLabel}
+              stroke="var(--color-accent)"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4 }}
+              connectNulls={true}
+              isAnimationActive={false}
+            />
+          ) : series.lines.map((line, i) => (
             <Line
               key={line.sourceId}
               type="monotone"
