@@ -108,11 +108,15 @@ If telemetry changed after the preview, MeshMonitor asks you to run the preview 
 ### Graphs
 
 - The page draws a chart for each favorited reading. It takes the union of each source's favorites, and counts a favorite only on a source where you can see its node.
-- Each chart covers one node and one telemetry type, with one line per source. The legend names the sources. MeshMonitor never merges or averages the lines.
-- Some types depend on who heard the packet: SNR, RSSI, channel utilization, air TX, LocalStats packet counters, MeshMonitor's per-source series and clock offset. These lines carry a **heard by <source>** label.
+- Each chart covers one node and one telemetry type.
+- Some types depend on who heard the packet: SNR, RSSI, channel utilization, air TX, LocalStats packet counters, MeshMonitor's per-source series and clock offset. These keep one line per source, each labelled **heard by <source>**.
+- Every other type is a reading the node takes itself, such as battery, voltage or temperature. When more than one source holds it, the chart draws **one merged line**, so a reading one source missed fills the other's gap:
+  - A reading that two sources both received plots once, not twice. Two sources' points in the same time bucket, or less than a minute apart for unaveraged types, count as one reading.
+  - If those sources' values differ, the point shows their average. The tooltip names the sources behind each point.
+  - **Split by source** on the chart brings back one line per source, so you can see where each one has gaps. The page does not remember this choice.
 - Charts sit in the same category sections as a source's own Telemetry Dashboard.
 - The **Time range** presets run from 15 minutes to 7 days, and the page remembers your pick. A source filter narrows the lines, and **Refresh** reloads. The page loads on open, on a range change and on refresh. It does not poll.
-- **Export CSV** on each chart saves one file with a `Source` column.
+- **Export CSV** on each chart saves what the chart shows, with a `Source` column. A merged line lists every source behind a reading, separated by `; `.
 - With no favorites yet, the page says so. Star a reading on the **Latest** view, or a graph on a source's Telemetry Dashboard.
 
 ### Latest
