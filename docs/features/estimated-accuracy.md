@@ -153,6 +153,8 @@ we use the **Kish effective sample size**:
            Σ wᵢ²
 ```
 
+Weights are summed per **unique anchor position** first. Six traceroute replies through one relay are one anchor's worth of evidence, not six. Positions match within about 0.11 m.
+
 `n_eff` answers "how many *balanced* observations is this really worth?"
 
 - Two equally-weighted anchors → `n_eff = 2`.

@@ -12,7 +12,9 @@ Click the **gear icon** titled **Global Settings** in the dashboard sidebar foot
 
 ## What lives here
 
-MeshMonitor has three settings pages. **Device Configuration** (satellite icon, per source) holds what MeshMonitor writes to, or does on, the radio. **Settings** (gear icon, per source) holds what MeshMonitor stores and does for that one source. **Global Settings** holds what applies to the whole install. MeshCore and Reticulum source pages link here from the foot of their left nav rail and from the top of their Settings page.
+MeshMonitor has three settings pages. **Device Configuration** (satellite icon, per source) holds what MeshMonitor writes to, or does on, the radio. **Settings** (gear icon, per source) holds what MeshMonitor stores and does for that one source. **Global Settings** holds what applies to the whole install. Every source's Settings page (Meshtastic, MeshCore and Reticulum) shows a banner at the top: **These settings apply to this source only**. The banner links to Global Settings for language, units, map, notifications and other install-wide settings. MeshCore and Reticulum source pages also link here from the foot of their left nav rail.
+
+![Banner on a source Settings page](/images/features/source-settings-global-banner.png)
 
 ### Language, Units & Formats, Sorting
 
@@ -65,7 +67,11 @@ The destination retention cap. It applies to every Reticulum source. A Reticulum
 
 ### Database Maintenance
 
-Shown on SQLite installs only. An optional scheduled job deletes messages, traceroutes, route segments and neighbor info older than the retention you set for each (7 to 365 days).
+Shown on SQLite, PostgreSQL and MySQL installs. An optional scheduled job deletes messages, traceroutes, route segments, neighbor info, audit log entries and MeshCore CLI history older than the retention you set for each (7 to 365 days). It is off until an admin turns it on. On PostgreSQL and MySQL nothing is pruned until you do. See [Settings → Database Maintenance](/features/settings#database-maintenance).
+
+### Tropospheric ducting overlay
+
+An admin-only switch for the [ducting overlay](/features/maps#tropospheric-ducting-overlay) on the Map tab and the Dashboard map. Off by default. See [Settings → Tropospheric ducting overlay](/features/settings#tropospheric-ducting-overlay).
 
 ### Position Estimation
 

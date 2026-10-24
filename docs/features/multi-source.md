@@ -159,6 +159,11 @@ Everything that used to be a single global setting is now per-source:
 | Permissions | ✅ |
 | Notifications / Apprise | ✅ (admins and subscribers receive per-source events) |
 
+Two display choices are remembered too:
+
+- **Show MQTT/Bridge Messages** in the Channels view is saved per user and per source. Turning it on for one source leaves the others as they were. MeshMonitor saves it to your account, so it follows you to another browser. Anonymous users keep it in the browser only.
+- **Unified Messages** remembers the channel you last picked in its selector, per browser. It restores that channel on your next visit when the channel still exists, or when you chose **All channels**. If you never pick one, the page chooses as before.
+
 For global behavior that isn't source-specific (theme, language, map center, push VAPID keys, session policy), use the new **Global Settings** page — the gear icon in the dashboard sidebar footer.
 
 ## Migration from 3.x

@@ -60,7 +60,35 @@ Authoring is available on a source's own map and in Map Analysis, for users with
    - **Expires** — toggle on to set an expiry timestamp; off means "never expires"
    - **Hop limit** — how many hops the waypoint may travel. Blank uses the node's own hop limit. A value is capped at that limit, so it can only shorten reach.
    - **Channel** — which of the source's channels the waypoint is broadcast on. The list comes from the waypoint's own source, so you only ever see channels that source can transmit on. Leave it alone and the waypoint goes out on Primary (slot 0), the channel every waypoint used before this option existed. The picker is disabled for virtual waypoints, which are never transmitted.
-5. Click **Save**. MeshMonitor allocates a waypoint id (Python-style id allocation), persists the row, and broadcasts a WAYPOINT_APP packet to the mesh.
+5. Optional: set a **Geofence** (see [Geofence](#geofence)).
+6. Click **Save**. MeshMonitor allocates a waypoint id (Python-style id allocation), persists the row, and broadcasts a WAYPOINT_APP packet to the mesh.
+
+### Geofence
+
+A waypoint can carry a geofence: an area the waypoint watches. The **Geofence** section of the editor sets it.
+
+![Waypoint editor with a rectangle geofence](/images/features/5922-waypoint-geofence-editor.png)
+
+- **Shape** — **None**, **Circle (radius)**, **Rectangle (bounding box)**, or **Circle and rectangle** (shown when a waypoint from another app has both).
+- **Radius (metres)** — from 160 m to 16 km (0.1 to 10 mi), the range the Apple app offers.
+- **Bounding box** — drawn on a small map centred on the waypoint, with **North**, **South**, **West** and **East** fields you can edit. West must lie left of east, and south below north.
+- **Alert when a node enters**, **Alert when a node leaves** and **Only for favourite nodes** — flags that travel with the waypoint.
+
+**MeshMonitor raises no alerts for a geofence.** It stores the geofence, sends it with the waypoint, and draws it. Each node that receives the waypoint watches the area itself and alerts its user.
+
+::: warning Alerts happen on every receiving device
+Every node that receives the waypoint alerts its user when a node crosses the edge. A busy area can mean many alerts on many devices. **Only for favourite nodes** limits each device to its own favourites.
+:::
+
+A geofence adds a few bytes to the waypoint packet (a radius takes 2 to 3, a box 22, each flag 2). MeshMonitor sends it only where it sent the waypoint before. A waypoint without a geofence is byte-for-byte as before.
+
+Geofences round-trip with the Apple and Android apps. A waypoint made there keeps its geofence here. A waypoint you edit or rebroadcast from MeshMonitor keeps it on the mesh. A waypoint packet is the whole waypoint, so a sender that sends none clears the one you stored.
+
+On the map, the region shows as a dashed shape under the pin. It ignores clicks, so it never blocks a click meant for a node. The pin's popup adds a summary line.
+
+![Geofence regions on the map](/images/features/5922-waypoint-geofence-map.png)
+
+![Waypoint popup with a geofence summary](/images/features/5922-waypoint-geofence-popup.png)
 
 ### Edit
 
@@ -95,7 +123,7 @@ Waypoints are exposed on the v1 source-scoped routes, gated by `waypoints:read|w
 | --- | --- | --- |
 | `GET`    | `/api/sources/:id/waypoints` | List waypoints (supports `?bbox=` and `?includeExpired=true`) |
 | `POST`   | `/api/sources/:id/waypoints` | Create a local waypoint and broadcast it |
-| `PATCH`  | `/api/sources/:id/waypoints/:waypointId` | Update name/description/icon/expiry/lock/channel |
+| `PATCH`  | `/api/sources/:id/waypoints/:waypointId` | Update name/description/icon/expiry/lock/channel/geofence |
 | `DELETE` | `/api/sources/:id/waypoints/:waypointId` | Delete locally and broadcast a tombstone |
 
 All mutations require the standard `X-CSRF-Token` header. Mutations on a waypoint with `locked_to` set to another node return `403`.
@@ -103,6 +131,8 @@ All mutations require the standard `X-CSRF-Token` header. Mutations on a waypoin
 `POST` and `PATCH` accept an optional `channel` field — an integer device channel slot `0`-`7`. Anything else returns `400`. Omit it and the waypoint stays on slot 0.
 
 `POST` and `PATCH` also accept `hop_limit` (or `hopLimit`): an integer `0`-`7`, or `null` to use the node's configured hop limit. Anything else returns `400` with code `INVALID_HOP_LIMIT`. The stored value is what you asked for; at send time it is capped at the node's own hop limit. `GET` returns it as `hopLimit`.
+
+`POST` and `PATCH` also accept the geofence fields: `geofence_radius_m` (an integer from `160` to `16000`, or `null`), `bounding_box` (`{ "west", "south", "east", "north" }` with west < east and south < north, or `null`), and the booleans `notify_on_enter`, `notify_on_exit` and `notify_favorites_only`. A bad value returns `400` with code `INVALID_GEOFENCE`. `PATCH` changes only the keys you send.
 
 ## Database
 
@@ -113,6 +143,8 @@ Migrations **054** / **055** seed the new `waypoints:read` / `waypoints:write` p
 Migration **130** adds the `channel` column that records which slot a waypoint is broadcast on. Rows created before it read back as `NULL`, which every send site treats as slot 0 — the same channel they always used.
 
 Migration **183** adds `hop_limit` (`NULL` = the node's configured hop limit, which every earlier row gets), plus `automation_key` and `broadcast_fingerprint`, used by the Automation Engine's [Broadcast a waypoint](/features/automation-engine#broadcast-a-waypoint) action.
+
+Migration **216** adds the geofence columns (`geofence_radius_m`, `bbox_west`, `bbox_south`, `bbox_east`, `bbox_north`, `notify_on_enter`, `notify_on_exit`, `notify_favorites_only`). Existing rows have no geofence and every flag off.
 
 Waypoints used to go out at a fixed hop limit of 3. They now use the node's configured LoRa hop limit unless the waypoint sets its own.
 

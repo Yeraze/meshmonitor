@@ -47,7 +47,7 @@ Estimation**. The controls are global and require `settings:write`.
 | **Enable** | Turns the scheduled estimator on/off. On by default. |
 | **Calculation frequency** | How often the batch job runs (3 / 6 / 12 / 24 hours). Default 6h. |
 | **Lookback window** | How far back observations are pooled (1 / 3 / 7 / 14 / 30 days). Default 7 days. |
-| **Maximum acceptable accuracy (km)** | Estimates whose uncertainty radius is **larger** than this are discarded instead of stored — so low-confidence guesses don't litter the map with huge circles. **`0` = no limit.** |
+| **Maximum acceptable accuracy (km)** | Estimates whose uncertainty radius is **larger** than this are discarded instead of stored — so low-confidence guesses don't litter the map with huge circles. Default `2`. **`0` = no limit.** |
 | **Recalculate now** | Runs the job immediately. The last-run summary shows how many nodes were estimated, how many observations were pooled, and how many were **discarded** by the accuracy cutoff. |
 
 ### Choosing a maximum accuracy
@@ -59,6 +59,12 @@ acceptable accuracy** to roughly **2–3 km**: nodes that can only be placed
 (seen from several directions) are kept. Already-stored estimates that no
 longer qualify are cleared on the next run.
 
+### Stale and single-anchor estimates
+
+- A node seen from **one anchor position** is always a single-anchor estimate, with the radio-range default radius, however many observations back it. Repeat observations of the same anchor do not count as more anchors.
+- Each run also deletes stored estimates it did not rewrite. A node with no observation left in the lookback window loses its estimate and leaves the map.
+- A single-anchor estimate (about 5 km) leaves the map when **Maximum acceptable accuracy** is below its radius. The default is 2 km, so with the default most single-anchor pins do not show. Set the cutoff to `0` or to 5 or more to keep them.
+
 ## Viewing estimates on the map
 
 Two independent per-user map toggles live in the **Map Features** panel
@@ -68,6 +74,14 @@ Two independent per-user map toggles live in the **Map Features** panel
 - **Show Accuracy** — shows the **uncertainty circle** around each estimated
   node (and the precision-bits accuracy regions for GPS nodes). Turning it off
   declutters the map while keeping the markers.
+
+When the position in Node Details is estimated, a box explains it:
+
+- The method in plain words: a single anchor with the radio-range default, partly converged, or converged from N anchors.
+- The uncertainty, the number of observations, the number of **unique anchors**, and when MeshMonitor computed it.
+- The anchor list: name, ID, kind, SNR, weight and distance from the estimate. It collapses when there are more than 3.
+
+You see only the anchors you may see on the map. If some are hidden, the box says "Showing N of M observations". The box does not show for GPS or overridden positions.
 
 An estimated node's uncertainty circle is drawn only when **both** toggles are
 on, so a circle never appears without its marker. The circle radius is the

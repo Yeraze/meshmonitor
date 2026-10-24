@@ -301,6 +301,10 @@ The bridge records the echo **before** it hands the packet to the broker, becaus
 
 ## Bridges do not relay each other
 
+The bridge's **MQTT Bridge Configuration** has a **Forwarding** group with these options:
+
+![Bridge Forwarding options](/images/features/5013-mqtt-bridge-forwarding.png)
+
 When two or more bridges share one parent broker, each upstream's traffic lands in the broker, and the broker offers every packet to every bridge's uplink. Before 4.17.1 that meant upstream A's packets were published to upstream B (and, in per-gateway mode, under the foreign gateway's client ID). Two upstreams that already share traffic could then pass the same packet back and forth without end.
 
 Now a bridge **does not uplink a packet another bridge on the same broker brought down** in the last minute. It still uplinks everything that started on your side: your nodes, client-proxy devices and other local MQTT clients. Each skipped packet adds one to `uplinkBridgeRelayDrops` in `/api/sources/:id/status`, shown on the bridge's **Settings → MQTT Bridge Configuration** page as **Not relayed so far**.

@@ -39,6 +39,17 @@ it first ran 2.8 — for example the first time someone sets its region.
 - On the map you may briefly see both, until the old one falls outside your
   node-age window.
 
+## Name History
+
+A rename leaves a trace. MeshMonitor logs each change to a node's long or short name, and Node Details shows it in a **Name History** section for Meshtastic and MeshCore nodes. The section shows nothing until the node has been renamed, and it collapses past 5 entries (**Show all**, **Show fewer**).
+
+- MeshMonitor keeps the newest 50 renames per node on each source.
+- When you can see the node on several sources, Node Details merges their entries. One rename seen on several sources within 10 minutes shows once, as "Seen on N sources".
+- A placeholder name is not a rename. Going from `Node !1234abcd`, `Unknown`, `Meshtastic abcd`, a short name made of the last four hex digits, or `UNK` to a real name adds nothing, and neither does a real name falling back to one of those.
+- You see only the sources you may see the node on. For Meshtastic that follows the node list's map visibility rule. For MeshCore it needs `nodes:read`.
+- MeshMonitor reads names from packets it already receives. It sends nothing.
+- Deleting or purging a node removes its history, and system backups include it.
+
 ## The identity-change notice
 
 MeshMonitor detects the likely pairing and tells you about it. Look for the

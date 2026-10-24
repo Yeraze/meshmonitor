@@ -871,6 +871,10 @@ Patterns in both modes may use any printable text: emoji (`🔋`, `👋\s*hi`), 
 
 Triggers saved before match modes existed keep their old behaviour: Meshtastic triggers read as **Pattern**, MeshCore triggers as **Regex**.
 
+![Meshtastic Auto-Responder trigger with a match mode](/images/features/5924-meshtastic-trigger-syntax.png)
+
+![MeshCore Auto-Responder trigger with a match mode](/images/features/5924-meshcore-trigger-syntax.png)
+
 #### Multiple Patterns Per Trigger
 
 You can specify multiple patterns for a single trigger by separating them with commas. This allows one trigger to match different message formats:
