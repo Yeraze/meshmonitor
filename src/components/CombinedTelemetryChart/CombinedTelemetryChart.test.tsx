@@ -50,8 +50,41 @@ const renderChart = (series: CombinedSeries, props: Partial<React.ComponentProps
 describe('CombinedTelemetryChart', () => {
   beforeEach(() => downloadTextFile.mockClear());
 
-  it('shows the node, the type, and one legend entry per source', () => {
+  it('merges an objective series into one legend entry naming every source (#5931)', () => {
     renderChart(temperature);
+    expect(screen.getByText('Weather Station')).toBeInTheDocument();
+    const items = screen.getAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    expect(items[0].textContent).toContain('unified.telemetry.merged_label');
+  });
+
+  it('splits an objective series back into one legend entry per source', () => {
+    renderChart(temperature);
+    const toggle = screen.getByRole('button', { name: 'unified.telemetry.split_by_source' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    const legend = screen.getByRole('list');
+    expect(legend.textContent).toContain('Roof');
+    expect(legend.textContent).toContain('MQTT');
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('never merges an observer-relative series, and offers no split toggle', () => {
+    renderChart({ ...temperature, type: 'snr_local', observerRelative: true });
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'unified.telemetry.split_by_source' })).toBeNull();
+  });
+
+  it('offers no split toggle for a single-source series', () => {
+    renderChart({ ...temperature, lines: [temperature.lines[0]] });
+    expect(screen.queryByRole('button', { name: 'unified.telemetry.split_by_source' })).toBeNull();
+    expect(screen.getByRole('listitem').textContent).toContain('Roof');
+  });
+
+  it('shows the node, the type, and one legend entry per source when split', () => {
+    renderChart(temperature);
+    fireEvent.click(screen.getByRole('button', { name: 'unified.telemetry.split_by_source' }));
     expect(screen.getByText('Weather Station')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 4 }).textContent).toContain('°C');
     const legend = screen.getByRole('list');
@@ -82,8 +115,22 @@ describe('CombinedTelemetryChart', () => {
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
-  it('exports every line to one CSV with a Source column, in the display unit', () => {
+  it('exports the merged line, naming the sources of each reading', () => {
+    renderChart(temperature);
+    fireEvent.click(screen.getByRole('button', { name: 'telemetry.export_csv' }));
+    const [, csv] = downloadTextFile.mock.calls[0] as [string, string];
+    const lines = csv.replace('\uFEFF', '').split('\r\n');
+    expect(lines).toHaveLength(3);
+    // 20 (Roof) and 20.5 (MQTT) in the same bucket average to 20.25.
+    expect(lines[1]).toContain('20.25');
+    expect(lines[1]).toContain('Roof; MQTT');
+    expect(lines[2]).toContain('21');
+    expect(lines[2]).not.toContain('MQTT');
+  });
+
+  it('exports every line to one CSV with a Source column, in the display unit, when split', () => {
     renderChart(temperature, { temperatureUnit: 'F' });
+    fireEvent.click(screen.getByRole('button', { name: 'unified.telemetry.split_by_source' }));
     fireEvent.click(screen.getByRole('button', { name: 'telemetry.export_csv' }));
     expect(downloadTextFile).toHaveBeenCalledTimes(1);
     const [filename, csv] = downloadTextFile.mock.calls[0] as [string, string];
