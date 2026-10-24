@@ -302,6 +302,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
                 baseUrl={baseUrl}
                 sourceId={sourceId}
                 receiveOnly={receiveOnly}
+                isCompanionSource={status?.deviceType === DEVICE_TYPE_COMPANION}
               />
             </SaveBarGroup>
             <SaveBar />

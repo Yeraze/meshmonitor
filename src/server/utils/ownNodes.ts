@@ -82,6 +82,17 @@ export function isOwnPublicKey(pubkey: string | null | undefined): boolean {
 }
 
 /**
+ * Like {@link isOwnPublicKey}, but for the key PREFIX a received MeshCore DM
+ * carries (`pubkey_prefix`, usually 6 bytes). Prefixes under 4 bytes never
+ * match, so a short or empty value cannot claim to be ours by accident.
+ */
+export function isOwnPublicKeyPrefix(prefix: string | null | undefined): boolean {
+  if (!prefix || prefix.length < 8) return false;
+  const lower = prefix.toLowerCase();
+  return getOwnPublicKeys().some((k) => k.startsWith(lower));
+}
+
+/**
  * Every local LXMF destination hash MeshMonitor currently owns, across all
  * registered Reticulum sources (#3960 Phase 2 WP3). Mirrors
  * {@link getOwnPublicKeys}. Non-Reticulum managers contribute nothing.
