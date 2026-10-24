@@ -5,7 +5,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import ductingRoutes, { bboxFromPositions, parseBBox, resetDuctingForecastForTests } from './ductingRoutes.js';
+import ductingRoutes, { bboxFromPositions, MAX_BBOX_SPAN_DEG, parseBBox, resetDuctingForecastForTests } from './ductingRoutes.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
 vi.mock('../sourceManagerRegistry.js', () => ({
@@ -46,13 +47,40 @@ describe('parseBBox / bboxFromPositions', () => {
     expect(box).toEqual({ minLat: 26.5, maxLat: 28.5, minLon: -83.25, maxLon: -81.5 });
   });
 
-  it('caps the span around the centre', () => {
+  it('picks the busier of two far-apart clusters, never the empty space between them', () => {
     const box = bboxFromPositions([
       ...Array.from({ length: 10 }, () => ({ lat: 0, lon: -120 })),
-      ...Array.from({ length: 10 }, () => ({ lat: 40, lon: -60 })),
+      ...Array.from({ length: 12 }, () => ({ lat: 40, lon: -60 })),
     ])!;
-    expect(box.maxLat - box.minLat).toBe(20);
-    expect(box.maxLon - box.minLon).toBe(20);
+    expect(box).toEqual({ minLat: 39.5, maxLat: 40.5, minLon: -60.5, maxLon: -59.5 });
+  });
+
+  it('keeps a small Japan cluster despite two stray msh/JP nodes in western Russia (#5951)', () => {
+    const japan = [
+      { lat: 35.6, lon: 139.7 },
+      { lat: 34.7, lon: 135.5 },
+      { lat: 43.1, lon: 141.3 },
+    ];
+    const russia = [
+      { lat: 55.2, lon: 47.1 },
+      { lat: 54.9, lon: 47.3 },
+    ];
+    const box = bboxFromPositions([...japan, ...russia])!;
+    expect(box).toEqual({ minLat: 34, maxLat: 43.75, minLon: 135, maxLon: 142 });
+  });
+
+  it("anchors on the caller's local node over a busier cluster elsewhere (#5951)", () => {
+    const europe = Array.from({ length: 10 }, (_, i) => ({ lat: 48 + i * 0.1, lon: 11 }));
+    const japan = [{ lat: 35.6, lon: 139.7 }];
+    const box = bboxFromPositions([...europe, ...japan], [{ lat: 35.0, lon: 139.0 }])!;
+    expect(box).toEqual({ minLat: 34.5, maxLat: 36.25, minLon: 138.5, maxLon: 140.25 });
+  });
+
+  it('never spans more than the cap, however scattered the nodes', () => {
+    const scatter = Array.from({ length: 200 }, (_, i) => ({ lat: -60 + ((i * 37) % 120), lon: -170 + ((i * 53) % 340) }));
+    const box = bboxFromPositions(scatter)!;
+    expect(box.maxLat - box.minLat).toBeLessThanOrEqual(MAX_BBOX_SPAN_DEG);
+    expect(box.maxLon - box.minLon).toBeLessThanOrEqual(MAX_BBOX_SPAN_DEG);
   });
 
   it('returns null with no points', () => {
@@ -162,6 +190,56 @@ describe('GET /ducting/forecast', () => {
       expect(wide.status).toBe(200);
       expect(wide.body.data.bbox.minLon).toBeLessThan(-97);
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("centres the default area on the source's own local node (#5951)", async () => {
+      stubNoaa(200, FIXTURE);
+      // A busier cluster near Seattle, and the source's own radio in Tampa.
+      for (let i = 0; i < 5; i++) {
+        await harness.db.nodes.upsertNode(
+          { nodeNum: 0x59510 + i, nodeId: `!000${(0x59510 + i).toString(16)}`, latitude: 47.6 + i * 0.01, longitude: -122.3, lastHeard: now(), channel: 0 },
+          harness.sourceA,
+        );
+      }
+      await harness.db.nodes.upsertNode(
+        { nodeNum: 0x5734a, nodeId: '!0005734a', latitude: 27.5, longitude: -82.5, lastHeard: now() - 30 * 86400, channel: 0 },
+        harness.sourceA,
+      );
+      vi.mocked(sourceManagerRegistry.getManager).mockImplementation(((id: string) =>
+        id === harness.sourceA ? { getLocalNodeInfo: () => ({ nodeNum: 0x5734a }) } : null) as never);
+      try {
+        await grantMapViewerA();
+        const user = await harness.loginAs(harness.limited);
+        const res = await user.get('/ducting/forecast');
+        expect(res.status).toBe(200);
+        expect(res.body.data.bbox).toEqual(TAMPA_BOX);
+      } finally {
+        vi.mocked(sourceManagerRegistry.getManager).mockReturnValue(null);
+      }
+    });
+
+    it('ignores a local node whose position the caller may not see (#5951)', async () => {
+      stubNoaa(200, FIXTURE);
+      await harness.db.nodes.upsertNode(
+        { nodeNum: 0x5734a, nodeId: '!0005734a', latitude: 27.5, longitude: -82.5, lastHeard: now(), channel: 0 },
+        harness.sourceA,
+      );
+      // The local node sits on channel 1, which the viewer may not see on the map.
+      await harness.db.nodes.upsertNode(
+        { nodeNum: 0x5734e, nodeId: '!0005734e', latitude: 47.6, longitude: -122.3, lastHeard: now(), channel: 1 },
+        harness.sourceA,
+      );
+      vi.mocked(sourceManagerRegistry.getManager).mockImplementation(((id: string) =>
+        id === harness.sourceA ? { getLocalNodeInfo: () => ({ nodeNum: 0x5734e }) } : null) as never);
+      try {
+        await grantMapViewerA();
+        const user = await harness.loginAs(harness.limited);
+        const res = await user.get('/ducting/forecast');
+        expect(res.status).toBe(200);
+        expect(res.body.data.bbox).toEqual(TAMPA_BOX);
+      } finally {
+        vi.mocked(sourceManagerRegistry.getManager).mockReturnValue(null);
+      }
     });
 
     it('leaves out a node whose channel the caller may not see on the map', async () => {
