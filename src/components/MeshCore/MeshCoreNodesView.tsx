@@ -55,6 +55,12 @@ interface MeshCoreNodesViewProps {
    *  comes only from the repeater's `neighbors` table, so the empty state
    *  says why it may stay short or empty. */
   isRepeaterSource?: boolean;
+  /**
+   * #5964: Node Details' Show on Map. When set, the view selects this node
+   * (which centres and zooms the map on it), shows the map pane on a phone,
+   * and opens the node's popup once. Changing the value repeats that.
+   */
+  focusPublicKey?: string | null;
 }
 
 interface MergedRow {
@@ -165,6 +171,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   mapIsLoading,
   receiveOnly = false,
   isRepeaterSource = false,
+  focusPublicKey = null,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -191,12 +198,19 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
       setFavoriteBusy(null);
     }
   }, [onToggleFavorite, favoriteBusy, showToast, t]);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Seeded from `focusPublicKey` so a Show on Map jump mounts the map on the
+  // node straight away, rather than mounting elsewhere and remounting.
+  const [selected, setSelected] = useState<string | null>(focusPublicKey);
+  // #5964: the node whose popup the map should open once it draws it.
+  const [pendingPopupKey, setPendingPopupKey] = useState<string | null>(focusPublicKey);
+  const clearPendingPopup = useCallback(() => setPendingPopupKey(null), []);
   const [discoverMenuOpen, setDiscoverMenuOpen] = useState(false);
   const [discovering, setDiscovering] = useState<DiscoverMode | null>(null);
   const [sortField, setSortField] = useState<SortField>('lastHeard');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [mobileShowContent, setMobileShowContent] = useState(false);
+  const [mobileShowContent, setMobileShowContent] = useState(
+    () => focusPublicKey != null && isMobileViewport(),
+  );
   // Desktop list-pane collapse toggle (mirrors NodesTab's `collapse-nodes-btn`
   // / MeshCoreDirectMessagesView's `meshcore-collapse-btn`). Persisted so the
   // preference survives reloads on desktop; always false on mobile — the
@@ -268,6 +282,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
       // best-effort — ignore storage errors (e.g. private browsing quota)
     }
   }, [isListCollapsed]);
+
+  // A later Show on Map while this view stays mounted.
+  useEffect(() => {
+    if (!focusPublicKey) return;
+    setSelected(focusPublicKey);
+    setPendingPopupKey(focusPublicKey);
+    if (isMobileViewport()) setMobileShowContent(true);
+  }, [focusPublicKey]);
 
   const handleSelectNode = useCallback((key: string) => {
     setSelected(key);
@@ -662,6 +684,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           onNavigateToDm={onNavigateToDm}
           isLoading={mapIsLoading}
           resizeTrigger={`${isListCollapsed}-${mobileShowContent}`}
+          pendingPopupPublicKey={pendingPopupKey}
+          onPendingPopupHandled={clearPendingPopup}
         />
       </div>
       {importDialogOpen && (

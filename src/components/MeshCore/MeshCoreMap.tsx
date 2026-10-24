@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { LeafletEvent, Marker as LeafletMarker } from 'leaflet';
 import { useTranslation } from 'react-i18next';
 import { Popup, Tooltip, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -104,9 +105,28 @@ interface MeshCoreMapProps {
    * (matches BaseMap's own opt-in default).
    */
   resizeTrigger?: unknown;
+  /**
+   * #5964: open this node's popup once its marker is on the map, then call
+   * `onPendingPopupHandled`. Set by Node Details' Show on Map. The popup
+   * opens at most once per request: the map drops the key as soon as it
+   * opens it, so a later remount or re-render does not reopen it.
+   */
+  pendingPopupPublicKey?: string | null;
+  /** Called once the pending popup has opened, or once it is clear the map
+   *  will not draw that node. The owner should clear the pending key. */
+  onPendingPopupHandled?: () => void;
 }
 
-export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm, isLoading = false, resizeTrigger }) => {
+export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
+  contacts,
+  selectedPublicKey,
+  localNodePosition,
+  onNavigateToDm,
+  isLoading = false,
+  resizeTrigger,
+  pendingPopupPublicKey = null,
+  onPendingPopupHandled,
+}) => {
   const { t } = useTranslation();
   const { mapTileset, setMapTileset } = useSettings();
   const baseMapSettings = useBaseMapSettings();
@@ -295,6 +315,40 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   // `variant:'meshcore'` is the moved `makeIcon` body verbatim, so output is
   // pixel-identical. Popup/Tooltip content (Phase 5, unchanged) stays here as
   // `children`.
+  //
+  // #5964 pending popup (Node Details → Show on Map). Mirrors Meshtastic's
+  // `pendingCenterNodeNum`: the request survives the BaseMap remount that
+  // selecting a node causes (the remount is keyed on center/zoom), and the
+  // marker's Leaflet `add` event opens the popup on whichever mount draws it.
+  // A ref, not state, so the `markers` memo does not rebuild when it changes.
+  // Synced in a layout effect: react-leaflet adds markers in passive effects,
+  // and every layout effect of a commit runs before any passive one.
+  const pendingPopupRef = useRef<string | null>(pendingPopupPublicKey);
+  const onPendingPopupHandledRef = useRef(onPendingPopupHandled);
+  useLayoutEffect(() => {
+    pendingPopupRef.current = pendingPopupPublicKey;
+  }, [pendingPopupPublicKey]);
+  useLayoutEffect(() => {
+    onPendingPopupHandledRef.current = onPendingPopupHandled;
+  }, [onPendingPopupHandled]);
+  const openPendingPopup = useCallback((publicKey: string, e: LeafletEvent) => {
+    if (pendingPopupRef.current !== publicKey) return;
+    // Drop the request before opening, so a later remount or re-render of
+    // this marker cannot open the popup a second time.
+    pendingPopupRef.current = null;
+    (e.target as LeafletMarker).openPopup();
+    onPendingPopupHandledRef.current?.();
+  }, []);
+  // The map does not draw the requested node (filtered out by node type, the
+  // #5578 toggle or the caller's age filter): drop the request so it cannot
+  // fire on a later, unrelated selection of that node.
+  useEffect(() => {
+    if (!pendingPopupPublicKey || isLoading) return;
+    if (visibleContacts.some(c => c.publicKey === pendingPopupPublicKey)) return;
+    pendingPopupRef.current = null;
+    onPendingPopupHandledRef.current?.();
+  }, [pendingPopupPublicKey, isLoading, visibleContacts]);
+
   const markers: NodeMarkerDescriptor[] = useMemo(
     () => visibleContacts.map(c => {
       const name = c.advName || c.name || 'MeshCore';
@@ -314,6 +368,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             roleCategory: category,
             labelName: name,
           }),
+        eventHandlers: { add: (e: LeafletEvent) => openPendingPopup(c.publicKey, e) },
         children: (
           <>
             <Tooltip>
@@ -340,7 +395,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         ),
       };
     }),
-    [visibleContacts, onNavigateToDm, timeFormat, dateFormat],
+    [visibleContacts, onNavigateToDm, timeFormat, dateFormat, openPendingPopup],
   );
 
   const localPos = useMemo((): [number, number] | null => {
