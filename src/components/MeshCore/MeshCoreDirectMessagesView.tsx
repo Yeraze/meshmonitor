@@ -66,6 +66,22 @@ interface MeshCoreDirectMessagesViewProps {
   ignoredNodes?: ReadonlyArray<{ publicKey: string; mode: MeshCoreFilterMode }>;
   onSetIgnoredNode?: (publicKey: string, mode: MeshCoreFilterMode, name: string | null) => Promise<unknown>;
   onRemoveIgnoredNode?: (publicKey: string) => Promise<unknown>;
+  /** #5964: Node Details' Show on Map. Switches to the Nodes map, selects
+   *  the node and opens its popup. Unset hides the button. */
+  onShowOnMap?: (publicKey: string) => void;
+}
+
+/** Copy the node row's #5578 advert-position fields onto the contact. */
+function withAdvertPosition(
+  contact: MeshCoreContact | null,
+  fields: Pick<MeshCoreContact, 'lastAdvertHadPosition' | 'positionSource'> | undefined,
+): MeshCoreContact | null {
+  if (!contact || !fields) return contact;
+  return {
+    ...contact,
+    lastAdvertHadPosition: fields.lastAdvertHadPosition ?? contact.lastAdvertHadPosition,
+    positionSource: fields.positionSource ?? contact.positionSource,
+  };
 }
 
 /** True when the publicKey is a real 64-char hex (i.e. not a synthetic / prefix key). */
@@ -100,6 +116,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   ignoredNodes,
   onSetIgnoredNode,
   onRemoveIgnoredNode,
+  onShowOnMap,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -168,6 +185,20 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     const map = new Map<string, number>();
     for (const n of nodes) {
       if (n.publicKey && typeof n.firstHeard === 'number') map.set(n.publicKey, n.firstHeard);
+    }
+    return map;
+  }, [nodes]);
+
+  // #5578: the map's "hide nodes without a current position advert" toggle
+  // reads two fields from the durable node row (the node row wins over the
+  // live contact, as in MeshCoreNodesView). The detail panel needs them to
+  // hide Show on Map for a node the map would not draw (#5964).
+  const advertPositionByKey = useMemo(() => {
+    const map = new Map<string, Pick<MeshCoreContact, 'lastAdvertHadPosition' | 'positionSource'>>();
+    for (const n of nodes) {
+      if (!n.publicKey) continue;
+      if (n.lastAdvertHadPosition == null && n.positionSource == null) continue;
+      map.set(n.publicKey, { lastAdvertHadPosition: n.lastAdvertHadPosition, positionSource: n.positionSource });
     }
     return map;
   }, [nodes]);
@@ -605,8 +636,10 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
             )}
             <div className="meshcore-detail-pane">
               <MeshCoreContactDetailPanel
-                contact={contactsByKey.get(selected) ?? null}
+                contact={withAdvertPosition(contactsByKey.get(selected) ?? null, advertPositionByKey.get(selected))}
                 publicKey={selected}
+                // An ignored or blocked node is off the map (#5408).
+                onShowOnMap={ignoredModeByKey.has(selected.toLowerCase()) ? undefined : onShowOnMap}
                 isFavorite={favoriteByKey.get(selected) ?? false}
                 onToggleFavorite={actions.setNodeFavorite}
                 onSetPositionOverride={actions.setNodePositionOverride}
