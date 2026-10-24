@@ -14,6 +14,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import { resolvePickedPoint, type PickCandidate } from './mapClickPicker';
+import { usePickGestureGuard } from './pickGestureGuard';
 
 export interface SitePlannerOrigin extends PickCandidate {
   isNode: boolean;
@@ -46,13 +47,8 @@ export default function SitePlannerOriginController({
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
 
-  useEffect(() => {
-    if (!active) return;
-    const container = map.getContainer();
-    const prev = container.style.cursor;
-    container.style.cursor = 'crosshair';
-    return () => { container.style.cursor = prev; };
-  }, [active, map]);
+  // Crosshair cursor, plus the pan/pinch/Space guard shared with Link Profile (#5959).
+  const guardRef = usePickGestureGuard(map, active);
 
   useEffect(() => {
     if (!active) return;
@@ -60,6 +56,8 @@ export default function SitePlannerOriginController({
     const onClick = (e: MouseEvent) => {
       const picked = resolvePickedPoint(map, e, pointsRef.current);
       if (!picked) return; // a Leaflet control — leave it alone
+      // The end of a pan, pinch or box zoom, or Space held: not a pick (#5959).
+      if (guardRef.current?.isGesture(e)) return;
       // Suppress the marker popup / map click that would otherwise follow.
       e.stopPropagation();
       e.preventDefault();
@@ -67,7 +65,7 @@ export default function SitePlannerOriginController({
     };
     container.addEventListener('click', onClick, true);
     return () => container.removeEventListener('click', onClick, true);
-  }, [active, map]);
+  }, [active, map, guardRef]);
 
   useEffect(() => {
     if (!active || !onExit) return;
