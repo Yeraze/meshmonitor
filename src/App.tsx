@@ -232,6 +232,9 @@ function App() {
         if (parsed.showFavoriteLocked === undefined) {
           parsed.showFavoriteLocked = false;
         }
+        if (parsed.showHiddenFromMap === undefined) {
+          parsed.showHiddenFromMap = false;
+        }
         return parsed;
       } catch (e) {
         logger.error('Failed to parse saved node filters:', e);
@@ -251,6 +254,7 @@ function App() {
       showUnknown: false,
       showIgnored: false,
       showFavoriteLocked: false,
+      showHiddenFromMap: false,
       deviceRoles: [] as number[], // Empty array means show all roles
       channels: [] as number[],
     };

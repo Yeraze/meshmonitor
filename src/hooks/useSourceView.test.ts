@@ -73,6 +73,7 @@ const defaultNodeFilters: NodeFilters = {
   showUnknown: false,
   showIgnored: false,
   showFavoriteLocked: false,
+  showHiddenFromMap: false,
   deviceRoles: [],
   channels: [],
 };
@@ -315,6 +316,35 @@ describe('useSourceView', () => {
         );
         expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([200]);
         expect(result.current.agedOutAircraftNodes).toEqual([]);
+      });
+    });
+
+    describe('Hidden from map filter (#5952)', () => {
+      const hidden = () => makeNode({ nodeNum: 200, hideFromMap: true, user: { id: '!c8', longName: 'Hidden', shortName: 'H' } });
+      const shown = () => makeNode({ nodeNum: 100, user: { id: '!64', longName: 'Shown', shortName: 'S' } });
+
+      it('keeps hidden-from-map nodes in the list when the filter is off', () => {
+        mockUseNodes.mockReturnValue({ nodes: [shown(), hidden()], isLoading: false, error: null });
+        const { result } = renderHook(() => useSourceView(baseParams()));
+        expect(result.current.processedNodes.map(n => n.nodeNum).sort()).toEqual([100, 200]);
+      });
+
+      it('show mode lists only the nodes marked Hide from Map', () => {
+        mockUseNodes.mockReturnValue({ nodes: [shown(), hidden()], isLoading: false, error: null });
+        const { result } = renderHook(() =>
+          useSourceView(baseParams({ nodeFilters: { ...defaultNodeFilters, showHiddenFromMap: true } })),
+        );
+        expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([200]);
+      });
+
+      it('hide mode drops the nodes marked Hide from Map', () => {
+        mockUseNodes.mockReturnValue({ nodes: [shown(), hidden()], isLoading: false, error: null });
+        const { result } = renderHook(() =>
+          useSourceView(
+            baseParams({ nodeFilters: { ...defaultNodeFilters, filterMode: 'hide', showHiddenFromMap: true } }),
+          ),
+        );
+        expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([100]);
       });
     });
 

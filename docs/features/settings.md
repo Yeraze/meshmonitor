@@ -184,6 +184,21 @@ MeshMonitor records **First Heard** for each node on each source. It sets the va
 
 **Note**: Ignoring a node does not affect message delivery or network functionality - it only hides the node from the UI.
 
+### Hidden from Map Filter
+
+**Description**: Find nodes marked **Hide from Map**. Hiding a node removes only its map marker; the node stays in the Node List. This filter lets you find those nodes again without knowing their names.
+
+**Location**: Node List filter panel, "Hidden from map"
+
+**Behavior**:
+- **Show mode**: the list shows only nodes marked Hide from Map
+- **Hide mode**: the list leaves out nodes marked Hide from Map
+
+**How to show a hidden node on the map again**:
+1. Enable "Hidden from map" in the filter panel (Show mode)
+2. Select the node in the list
+3. Click **Show on Map** in its node panel
+
 ### Security Filter
 
 **Description**: Filter nodes based on detected security issues, allowing you to focus on nodes with security problems or hide them from view.
