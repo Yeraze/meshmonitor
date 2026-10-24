@@ -150,6 +150,15 @@ your orchestrator's equivalent) so a fresh process comes up and attaches cleanly
 how `rnstatus`/NomadNet expect to be run and is deliberately simple: "the bridge is stateless
 beyond its RNS instance, restarting it is always safe."
 
+The same applies to a failed **start** (#5955). Once `RNS.Reticulum()` has been entered, RNS has
+registered its singleton (and in attach mode may hold the shared-instance listener, which would
+stop a later `rnsd` from becoming the shared instance), so a second attempt in the same process
+would only fail with `Attempt to reinitialise Reticulum`. The bridge instead returns the original
+error (e.g. `Read-only file system: '/rns/storage'` or `NO_SHARED_INSTANCE`) to MeshMonitor, then
+exits with code `1`. With a restart policy, a fresh process comes up and MeshMonitor's retry
+reconnects once the cause is fixed. Failures caught before construction (a missing or unreadable
+config dir, a missing RNode device) do not exit, since a retry in the same process is safe.
+
 ## Tests
 
 ```bash

@@ -101,6 +101,10 @@ def main(argv=None) -> int:
     manager.run_dispatcher(stop_event)
     ws_thread.join(timeout=5)
 
+    if manager.poisoned:
+        logger.error("exiting after a failed RNS start; expecting supervisor restart")
+        return 1
+
     if health.shutdown_requested.is_set():
         logger.error("exiting after repeated RNS failures; expecting supervisor restart")
         return 1
