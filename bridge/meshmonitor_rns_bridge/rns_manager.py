@@ -551,6 +551,10 @@ class RNSManager:
     (see pollers.py's health-driven shutdown and bridge/README.md).
     """
 
+    # Seconds run_dispatcher() waits after a poisoning start failure before it
+    # stops, so the error reaches Node first (#5955). Tests shorten it.
+    POISON_EXIT_GRACE_S = 1.0
+
     def __init__(self, cfg):
         self.cfg = cfg
         self.reticulum: Optional[RNS.Reticulum] = None
@@ -558,6 +562,19 @@ class RNSManager:
         self._sub_lock = threading.Lock()
         self._lifecycle_lock = threading.Lock()
         self._started = False
+        # Issue #5955: RNS registers its process-wide singleton early in
+        # RNS.Reticulum.__init__ (and in attach mode may already have bound the
+        # shared-instance listener), so once construction has been entered a
+        # failed start() cannot be retried in this process -- a second
+        # RNS.Reticulum() raises "Attempt to reinitialise Reticulum", which hides
+        # the real cause. `_rns_construct_attempted` marks that point;
+        # `_poisoned` keeps the original failure, which start() returns from then
+        # on, and `poisoned_event` tells run_dispatcher() to stop so the process
+        # exits for a supervisor restart (same recovery as the poller health
+        # shutdown).
+        self._rns_construct_attempted = False
+        self._poisoned: Optional[RNSStartupError] = None
+        self.poisoned_event = threading.Event()
         self._path_table_cache: list = []
         self._path_table_lock = threading.Lock()
         # Phase 2 (LXMF messaging): one LXMRouter per process (build spec
@@ -660,6 +677,12 @@ class RNSManager:
         with self._lifecycle_lock:
             if self._started:
                 return
+            if self._poisoned is not None:
+                raise RNSStartupError(
+                    self._poisoned.code,
+                    f"{self._poisoned.message} (RNS cannot start again in this process; "
+                    "the bridge is restarting)",
+                )
             self._effective_mode = mode or self.cfg.mode
             self._effective_configdir = (
                 rns_config_dir if rns_config_dir is not None else self.cfg.rns_config_dir
@@ -670,17 +693,45 @@ class RNSManager:
             if own_params is not None:
                 self._effective_own_params = dict(own_params)
 
-            if self._effective_mode == "attach":
-                self._start_attach(self._effective_configdir)
-            elif self._effective_mode == "tcp_peer":
-                self._start_tcp_peer(self._effective_configdir, self._effective_peers)
-            else:
-                self._start_own(
-                    self._effective_configdir, self._effective_own_device, self._effective_own_params
-                )
-            RNS.Transport.register_announce_handler(_AnnounceHandler(self))
-            self._start_lxmf()
+            try:
+                if self._effective_mode == "attach":
+                    self._start_attach(self._effective_configdir)
+                elif self._effective_mode == "tcp_peer":
+                    self._start_tcp_peer(self._effective_configdir, self._effective_peers)
+                else:
+                    self._start_own(
+                        self._effective_configdir, self._effective_own_device, self._effective_own_params
+                    )
+                RNS.Transport.register_announce_handler(_AnnounceHandler(self))
+                self._start_lxmf()
+            except Exception as e:
+                if self._rns_construct_attempted:
+                    self._poison(
+                        e if isinstance(e, RNSStartupError) else RNSStartupError(protocol.RNS_INIT_FAILED, str(e))
+                    )
+                raise
             self._started = True
+
+    def _construct_reticulum(self, **kwargs) -> "RNS.Reticulum":
+        """The only place RNS.Reticulum() is constructed. Marks the point after
+        which a failed start() is unrecoverable in this process (#5955)."""
+        self._rns_construct_attempted = True
+        return RNS.Reticulum(**kwargs)
+
+    def _poison(self, err: RNSStartupError) -> None:
+        if self._poisoned is None:
+            self._poisoned = err
+            logger.error(
+                "RNS failed to start (%s: %s); RNS cannot be re-initialised in this process, "
+                "so the bridge will exit for a supervisor restart",
+                err.code,
+                err.message,
+            )
+        self.poisoned_event.set()
+
+    @property
+    def poisoned(self) -> bool:
+        return self._poisoned is not None
 
     def request_start(
         self,
@@ -724,6 +775,11 @@ class RNSManager:
             except Exception as e:  # noqa: BLE001 - must never crash the dispatcher
                 logger.exception("unexpected error starting RNS instance")
                 response_q.put(RNSStartupError(protocol.RNS_INIT_FAILED, str(e)))
+            if self.poisoned_event.is_set():
+                # #5955: give the WS thread a moment to send the original error to
+                # Node, then stop so __main__ exits and the supervisor restarts us.
+                stop_event.wait(self.POISON_EXIT_GRACE_S)
+                stop_event.set()
 
     def stop(self) -> None:
         """Clears bridge-side bookkeeping. Does NOT tear down RNS.Reticulum -- there
@@ -749,7 +805,7 @@ class RNSManager:
                 )
 
         try:
-            reticulum = RNS.Reticulum(configdir=configdir, require_shared_instance=True)
+            reticulum = self._construct_reticulum(configdir=configdir, require_shared_instance=True)
         except PermissionError as e:
             # WP0 §5(b2): configdir exists but is unreadable (wrong owner) raises a
             # plain PermissionError while RNS tries to stat its storage subdirectory,
@@ -781,7 +837,7 @@ class RNSManager:
 
     def _start_tcp_peer(self, configdir: Optional[str], tcp_peers: Iterable) -> None:
         try:
-            reticulum = RNS.Reticulum(configdir=configdir)
+            reticulum = self._construct_reticulum(configdir=configdir)
         except Exception as e:
             raise RNSStartupError(protocol.RNS_INIT_FAILED, str(e)) from e
 
@@ -852,7 +908,7 @@ class RNSManager:
             )
 
         try:
-            reticulum = RNS.Reticulum(configdir=configdir)
+            reticulum = self._construct_reticulum(configdir=configdir)
         except Exception as e:
             raise RNSStartupError(protocol.RNS_INIT_FAILED, str(e)) from e
 

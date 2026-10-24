@@ -140,6 +140,22 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
    */
   private ownDestinationHash: string | null = null;
 
+  /**
+   * Retry for a failed initial auto-connect (#5955). The bridge client only
+   * reconnects after a session has reached `ready` once, so without this a
+   * source whose bridge was down (or restarting after a failed RNS start) at
+   * boot stayed down until the user clicked Connect. Doubling backoff from
+   * {@link startRetryInitialMs} to {@link startRetryMaxMs}, unbounded, like the
+   * client's own post-ready reconnect loop. Local WebSocket only: no mesh
+   * traffic. Cancelled by stop()/disconnect() and by a manual connect().
+   * Public so tests can shorten the delays.
+   */
+  startRetryInitialMs = 5_000;
+  startRetryMaxMs = 60_000;
+  private startRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private startRetryAttempts = 0;
+  private lastStartError: string | null = null;
+
   constructor(sourceId: string, sourceName?: string) {
     super();
     if (!sourceId) {
@@ -171,8 +187,9 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
 
   /**
    * ISourceManager: parameterless start — delegates to connect() using the
-   * config stored by configure(). Never throws: failures are logged so a
-   * bad source doesn't abort the whole boot sequence (registry.addManager()
+   * config stored by configure(). Never throws: failures are logged and
+   * retried with backoff (#5955) so a bad source doesn't abort the whole boot
+   * sequence (registry.addManager()
    * also wraps this call defensively, but that catch stays purely defensive
    * because this method already swallows its own errors).
    */
@@ -183,15 +200,56 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       );
       return;
     }
+    this.cancelStartRetry();
+    this.startRetryAttempts = 0;
+    this.lastStartError = null;
+    await this.attemptAutoConnect();
+  }
+
+  /** One auto-connect attempt; on failure, schedules the next one (#5955). Never throws. */
+  private async attemptAutoConnect(): Promise<void> {
+    const cfg = this.pendingConfig;
+    if (!cfg) return;
     try {
-      await this.connect(this.pendingConfig);
-      logger.info(`[Reticulum:${this.sourceId} (${this.sourceName})] Auto-connected`);
-    } catch (err) {
-      logger.warn(
-        `[Reticulum:${this.sourceId} (${this.sourceName})] Auto-connect failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+      await this.connect(cfg);
+      const retries = this.startRetryAttempts;
+      this.startRetryAttempts = 0;
+      this.lastStartError = null;
+      logger.info(
+        `[Reticulum:${this.sourceId} (${this.sourceName})] Auto-connected${retries > 0 ? ` after ${retries} retr${retries === 1 ? 'y' : 'ies'}` : ''}`,
       );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const delayMs = this.scheduleStartRetry();
+      // Warn on the first failure and whenever the cause changes; repeat
+      // failures with the same cause drop to debug so a long outage does not
+      // write a warning every minute.
+      const line = `[Reticulum:${this.sourceId} (${this.sourceName})] Auto-connect failed: ${message} (retrying in ${Math.round(delayMs / 1000)}s)`;
+      if (message !== this.lastStartError) {
+        logger.warn(line);
+      } else {
+        logger.debug(line);
+      }
+      this.lastStartError = message;
+    }
+  }
+
+  private scheduleStartRetry(): number {
+    const delayMs = Math.min(this.startRetryMaxMs, this.startRetryInitialMs * 2 ** this.startRetryAttempts);
+    this.startRetryAttempts += 1;
+    this.startRetryTimer = setTimeout(() => {
+      this.startRetryTimer = null;
+      if (this.isConnected()) return;
+      void this.attemptAutoConnect();
+    }, delayMs);
+    this.startRetryTimer.unref?.();
+    return delayMs;
+  }
+
+  private cancelStartRetry(): void {
+    if (this.startRetryTimer) {
+      clearTimeout(this.startRetryTimer);
+      this.startRetryTimer = null;
     }
   }
 
@@ -214,6 +272,9 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
    * expected to handle/report the rejection themselves.
    */
   async connect(cfg: ReticulumConfig): Promise<void> {
+    // A manual connect supersedes a pending auto-connect retry (#5955); the
+    // retry path itself calls connect() only after its timer has fired.
+    this.cancelStartRetry();
     if (this.client) {
       await this.disconnect();
     }
@@ -232,6 +293,7 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
 
   /** Tear down the bridge client, if any. Idempotent. */
   async disconnect(): Promise<void> {
+    this.cancelStartRetry();
     const client = this.client;
     this.client = null;
     if (client) {

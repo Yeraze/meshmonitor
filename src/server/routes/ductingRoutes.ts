@@ -10,9 +10,10 @@
  *  2. The map's read gate: the caller (or the anonymous user) needs
  *     `nodes:read` on at least one source.
  *
- * The area is the spread of recently heard Meshtastic nodes the CALLER could
- * see on the map (their readable sources, through `buildPositionFilter`), so
- * the box never hints at nodes on a source they cannot read. Viewers with the
+ * The area is the busiest cluster of recently heard Meshtastic nodes the
+ * CALLER could see on the map (their readable sources, through
+ * `buildPositionFilter`), anchored on those sources' own local nodes (#5951),
+ * so the box never hints at nodes on a source they cannot read. Viewers with the
  * same visible nodes share one box and so one cache entry. `bbox` stays
  * available to admins (debugging); others get 403, so a caller cannot make
  * the server fetch arbitrary boxes from NOAA.
@@ -28,6 +29,7 @@ import { logger } from '../../utils/logger.js';
 import { resolvePermittedSourceIds } from '../utils/permittedSources.js';
 import { buildPositionFilter, loadNodesBySource } from '../utils/positionVisibility.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { DuctingForecastService, MAX_HOURS_AHEAD } from '../services/ducting/ductingForecastService.js';
 import { GfsUnavailableError, type BBox } from '../services/ducting/gfsClient.js';
 import { Grib2FormatError } from '../services/ducting/grib2.js';
@@ -62,58 +64,117 @@ export function parseBBox(raw: string): BBox | string {
   return { minLat, maxLat, minLon, maxLon };
 }
 
-function percentile(sorted: number[], q: number): number {
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1))))];
+/** Side of the search window, whole degrees: the span cap less the padding on both sides. */
+const WINDOW_DEG = Math.floor(MAX_BBOX_SPAN_DEG - 2 * NODE_PAD_DEG);
+
+type LatLon = { lat: number; lon: number };
+
+/**
+ * The nodes in the busiest WINDOW_DEG x WINDOW_DEG square (#5951). Positions
+ * are binned on a 1 degree grid with 2D prefix sums, so every window position
+ * is scored in O(1). A window scores first by how many `anchors` (the
+ * caller's sources' own local nodes) it holds, then by how many `points`.
+ * Taking the spread of every node instead let a couple of stray MQTT nodes
+ * pull the box into empty space between clusters: Japan's nodes plus two in
+ * western Russia gave a box over Mongolia that held none of them.
+ */
+function busiestWindow(points: readonly LatLon[], anchors: readonly LatLon[]): LatLon[] {
+  const W = 360;
+  const H = 180;
+  const cellOf = (p: LatLon): [number, number] => [
+    Math.min(H - 1, Math.max(0, Math.floor(p.lat + 90))),
+    Math.min(W - 1, Math.max(0, Math.floor(p.lon + 180))),
+  ];
+  const prefix = (list: readonly LatLon[]): Int32Array => {
+    const sum = new Int32Array((H + 1) * (W + 1));
+    for (const p of list) {
+      const [r, c] = cellOf(p);
+      sum[(r + 1) * (W + 1) + (c + 1)] += 1;
+    }
+    for (let r = 1; r <= H; r++) {
+      for (let c = 1; c <= W; c++) {
+        const i = r * (W + 1) + c;
+        sum[i] += sum[i - 1] + sum[i - (W + 1)] - sum[i - (W + 1) - 1];
+      }
+    }
+    return sum;
+  };
+  const pointSum = prefix(points);
+  const anchorSum = anchors.length > 0 ? prefix(anchors) : null;
+  const count = (sum: Int32Array, r0: number, c0: number): number => {
+    const r1 = Math.min(H, r0 + WINDOW_DEG);
+    const c1 = Math.min(W, c0 + WINDOW_DEG);
+    return sum[r1 * (W + 1) + c1] - sum[r0 * (W + 1) + c1] - sum[r1 * (W + 1) + c0] + sum[r0 * (W + 1) + c0];
+  };
+  let best = { anchors: -1, points: -1, r0: 0, c0: 0 };
+  for (let r0 = 0; r0 + WINDOW_DEG <= H; r0++) {
+    for (let c0 = 0; c0 + WINDOW_DEG <= W; c0++) {
+      const a = anchorSum ? count(anchorSum, r0, c0) : 0;
+      const n = count(pointSum, r0, c0);
+      if (a > best.anchors || (a === best.anchors && n > best.points)) best = { anchors: a, points: n, r0, c0 };
+    }
+  }
+  const inside = (p: LatLon) => {
+    const [r, c] = cellOf(p);
+    return r >= best.r0 && r < best.r0 + WINDOW_DEG && c >= best.c0 && c < best.c0 + WINDOW_DEG;
+  };
+  return [...anchors.filter(inside), ...points.filter(inside)];
 }
 
 /**
- * The area the nodes cover: 5th to 95th percentile on each axis (so one
- * far-off MQTT node does not stretch it), padded, snapped out to the GFS grid
- * and shrunk around its centre to the span cap.
+ * The forecast area: the busiest cluster of nodes (see busiestWindow; the
+ * caller's local nodes, `anchors`, win over a busier group without one),
+ * padded and snapped out to the GFS grid. The window keeps it within
+ * MAX_BBOX_SPAN_DEG on each side.
  */
-export function bboxFromPositions(points: readonly { lat: number; lon: number }[]): BBox | null {
-  if (points.length === 0) return null;
-  const lats = points.map((p) => p.lat).sort((a, b) => a - b);
-  const lons = points.map((p) => p.lon).sort((a, b) => a - b);
+export function bboxFromPositions(points: readonly LatLon[], anchors: readonly LatLon[] = []): BBox | null {
+  if (points.length === 0 && anchors.length === 0) return null;
+  const members = busiestWindow(points, anchors);
+  const lats = members.map((p) => p.lat);
+  const lons = members.map((p) => p.lon);
   const snapDown = (v: number) => Math.floor(v / GRID_DEG) * GRID_DEG;
   const snapUp = (v: number) => Math.ceil(v / GRID_DEG) * GRID_DEG;
-  const fit = (lo: number, hi: number, min: number, max: number): [number, number] => {
-    let a = snapDown(lo - NODE_PAD_DEG);
-    let b = snapUp(hi + NODE_PAD_DEG);
-    if (b - a > MAX_BBOX_SPAN_DEG) {
-      const mid = snapDown((a + b) / 2);
-      a = mid - MAX_BBOX_SPAN_DEG / 2;
-      b = mid + MAX_BBOX_SPAN_DEG / 2;
-    }
-    return [Math.max(min, a), Math.min(max, b)];
-  };
-  const [minLat, maxLat] = fit(percentile(lats, 0.05), percentile(lats, 0.95), -90, 90);
-  const [minLon, maxLon] = fit(percentile(lons, 0.05), percentile(lons, 0.95), -180, 180);
+  const fit = (lo: number, hi: number, min: number, max: number): [number, number] => [
+    Math.max(min, snapDown(lo - NODE_PAD_DEG)),
+    Math.min(max, snapUp(hi + NODE_PAD_DEG)),
+  ];
+  const [minLat, maxLat] = fit(Math.min(...lats), Math.max(...lats), -90, 90);
+  const [minLon, maxLon] = fit(Math.min(...lons), Math.max(...lons), -180, 180);
   return { minLat, maxLat, minLon, maxLon };
 }
 
 /**
  * The area the caller's visible nodes cover. Reads only `sourceIds` (the
  * caller's readable sources) and drops any node the map would not draw for
- * them (hidden, private position, channel without viewOnMap).
+ * them (hidden, private position, channel without viewOnMap). Each source's
+ * own local node, when the caller may see its position, anchors the box
+ * (#5951), so it lands where the caller's radios are.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5734 req.user's shape isn't exported as a type (same as buildPositionFilter)
 async function nodeArea(user: any, sourceIds: string[]): Promise<BBox | null> {
   const cutoff = Math.floor(Date.now() / 1000) - NODE_WINDOW_S;
   const nodesBySource = await loadNodesBySource(sourceIds);
   const visible = await buildPositionFilter(user, sourceIds, nodesBySource);
-  const points: { lat: number; lon: number }[] = [];
+  const points: LatLon[] = [];
+  const anchors: LatLon[] = [];
   for (const [sourceId, nodes] of nodesBySource) {
+    const localNodeNum = sourceManagerRegistry.getManager(sourceId)?.getLocalNodeInfo()?.nodeNum;
     for (const n of nodes) {
       const lat = n.latitude;
       const lon = n.longitude;
       if (lat == null || lon == null || isBogusPosition(lat, lon)) continue;
-      if (n.lastHeard == null || n.lastHeard < cutoff) continue;
       if (!visible({ sourceId, nodeNum: Number(n.nodeNum) })) continue;
+      // The local node anchors the box however long ago it was last heard:
+      // it is the source's own radio, and its position is where the source is.
+      if (localNodeNum != null && Number(n.nodeNum) === Number(localNodeNum)) {
+        anchors.push({ lat, lon });
+        continue;
+      }
+      if (n.lastHeard == null || n.lastHeard < cutoff) continue;
       points.push({ lat, lon });
     }
   }
-  return bboxFromPositions(points);
+  return bboxFromPositions(points, anchors);
 }
 
 /** True when an admin has switched the overlay on. */

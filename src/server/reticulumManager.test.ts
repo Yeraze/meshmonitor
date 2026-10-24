@@ -738,6 +738,79 @@ describe('ReticulumManager connection lifecycle', () => {
     expect(manager.isConnected()).toBe(false);
   });
 
+  // -- initial auto-connect retry (#5955) --
+
+  /** Mock bridge that fails `configure` for the first `failures` sessions, then accepts. */
+  function startFlakyBridge(failures: number): Promise<{ url: string; sessions: () => number }> {
+    let sessions = 0;
+    return startMockBridge((ws, send) => {
+      const session = ++sessions;
+      ws.on('message', (data) => {
+        const env = JSON.parse(String(data)) as Record<string, unknown>;
+        if (env.type === 'hello') {
+          send({ v: 1, type: 'welcome', ts: Date.now(), protocolVersion: 1, bridgeVersion: '0.1.0', rnsVersion: '1.4.2' });
+        } else if (env.type === 'configure') {
+          if (session <= failures) {
+            send({ v: 1, type: 'error', id: env.id, ts: Date.now(), code: 'RNS_INIT_FAILED', message: 'boom' });
+          } else {
+            send({ v: 1, type: 'ready', id: env.id, ts: Date.now() });
+          }
+        }
+      });
+    }).then(({ url }) => ({ url, sessions: () => sessions }));
+  }
+
+  async function waitFor(pred: () => boolean, timeoutMs = 2000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!pred()) {
+      if (Date.now() > deadline) throw new Error('waitFor timed out');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  it('start() retries a failed initial connect until the bridge accepts (#5955)', async () => {
+    const bridge = await startFlakyBridge(2);
+    const manager = trackManager(new ReticulumManager('src-a'));
+    manager.startRetryInitialMs = 20;
+    manager.startRetryMaxMs = 40;
+    manager.configure({ mode: 'attach', bridgeUrl: bridge.url, token: 't', protocolVersion: 1, configDir: '/rns' });
+
+    await manager.start();
+    expect(manager.isConnected()).toBe(false);
+
+    await waitFor(() => manager.isConnected());
+    expect(bridge.sessions()).toBe(3);
+  });
+
+  it('disconnect() cancels a pending auto-connect retry (#5955)', async () => {
+    const bridge = await startFlakyBridge(Infinity);
+    const manager = trackManager(new ReticulumManager('src-a'));
+    manager.startRetryInitialMs = 30;
+    manager.configure({ mode: 'attach', bridgeUrl: bridge.url, token: 't', protocolVersion: 1, configDir: '/rns' });
+
+    await manager.start();
+    expect(bridge.sessions()).toBe(1);
+    await manager.disconnect();
+    await new Promise((r) => setTimeout(r, 120));
+    expect(bridge.sessions()).toBe(1);
+  });
+
+  it('a manual connect() supersedes a pending auto-connect retry (#5955)', async () => {
+    const bridge = await startFlakyBridge(1);
+    const manager = trackManager(new ReticulumManager('src-a'));
+    manager.startRetryInitialMs = 60;
+    const cfg = { mode: 'attach' as const, bridgeUrl: bridge.url, token: 't', protocolVersion: 1, configDir: '/rns' };
+    manager.configure(cfg);
+
+    await manager.start();
+    await manager.connect(cfg);
+    expect(manager.isConnected()).toBe(true);
+    await new Promise((r) => setTimeout(r, 150));
+    // Only the failed auto-connect and the manual connect; no retry fired.
+    expect(bridge.sessions()).toBe(2);
+    expect(manager.isConnected()).toBe(true);
+  });
+
   it('connect() propagates a bridge-unreachable failure to the caller', async () => {
     const manager = trackManager(new ReticulumManager('src-a'));
     await expect(

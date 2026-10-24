@@ -1536,6 +1536,7 @@
   "node_filter.remote_admin_only": "Remote Admin available only",
   "node_filter.remote_admin_help": "Show only nodes with verified Remote Admin capability.",
   "node_filter.remote_admin": "Remote Admin",
+  "node_filter.hidden_from_map": "Hidden from map",
   "relay_modal.title_ack": "Message Acknowledgment",
   "relay_modal.title_relay": "Message Relay Information",
   "relay_modal.acknowledged": "Acknowledged",
