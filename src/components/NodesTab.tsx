@@ -96,6 +96,9 @@ import { CrossSourceLinksLayer } from './map/layers/CrossSourceLinksLayer';
 import { TracerouteConfirmedLinksLayer } from './map/layers/TracerouteConfirmedLinksLayer';
 import DuctingLayer from './map/layers/DuctingLayer';
 import { DuctingControl } from './map/DuctingControl';
+import { PacketFlightsControl } from './map/PacketFlightsControl';
+import { PacketFlightsLayer } from './map/layers/PacketFlightsLayer';
+import type { FlightNodeEntry } from '../utils/packetFlightEdges';
 import subToggleStyles from './map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -590,6 +593,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowCrossSourceLinks,
     showTracerouteConfirmedLinks,
     setShowTracerouteConfirmedLinks,
+    showPacketFlights,
+    setShowPacketFlights,
+    packetFlightRate,
+    setPacketFlightRate,
     showDucting,
     setShowDucting,
     ductingHoursAhead,
@@ -1998,6 +2005,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Phase 1 count bug) — and independent of the checkbox itself.
   const agedOutCountOnMap = [...processedWithPosition, ...agedOutWithPosition]
     .filter(node => isAgedOutAircraft(node) && passesMapFilters(node)).length;
+  // #4835: live packet traffic resolves each flight against the nodes this
+  // map draws, at their marker positions. Built only while the layer is on.
+  const [packetFlightsDropped, setPacketFlightsDropped] = useState(0);
+  const packetFlightNodesSig = showPacketFlights ? visibleMapNodes.map(n => n.nodeNum).join(',') : '';
+  const packetFlightNodes: FlightNodeEntry[] = useMemo(() => {
+    if (!showPacketFlights) return [];
+    const out: FlightNodeEntry[] = [];
+    for (const node of visibleMapNodes) {
+      const pos = nodePositions.get(node.nodeNum);
+      if (pos) out.push({ nodeNum: node.nodeNum, lat: pos[0], lng: pos[1] });
+    }
+    return out;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #4835 keyed on the drawn-node signature + nodePositions, like measurePoints
+  }, [showPacketFlights, packetFlightNodesSig, nodePositions]);
   // #4704: node features for the 3D surface — the same visible+positioned set
   // the 2D markers use, at the same (precision-offset) positions from
   // `nodePositions`. Computed unconditionally (no hooks); only consumed in 3D.
@@ -3183,6 +3204,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <span>{t('map.traceroute_confirmed.toggle', 'Traceroute-Confirmed Links')}</span>
                     </label>
                   )}
+                  {/* #4835: live packet traffic (dots flying to the receiver). */}
+                  <PacketFlightsControl
+                    checked={showPacketFlights}
+                    onCheckedChange={setShowPacketFlights}
+                    rate={packetFlightRate}
+                    onRateChange={setPacketFlightRate}
+                    dropped={packetFlightsDropped}
+                    disabledTitle={unavailableIn3DTitle}
+                  />
                   {/* #5734: tropospheric ducting overlay. Renders nothing
                       unless an admin turned the overlay on. */}
                   <DuctingControl
@@ -3697,6 +3727,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   enabled
                   sourceIds={[currentSourceId]}
                   lookbackHours={effectiveMapMaxAge}
+                />
+              )}
+
+              {/* Live packet traffic (#4835): mounted only while on, so the
+                  socket subscribes on mount and unsubscribes on unmount. */}
+              {showPacketFlights && currentSourceId && (
+                <PacketFlightsLayer
+                  sourceIds={[currentSourceId]}
+                  nodes={packetFlightNodes}
+                  maxPerSecond={packetFlightRate}
+                  onDroppedChange={setPacketFlightsDropped}
                 />
               )}
 

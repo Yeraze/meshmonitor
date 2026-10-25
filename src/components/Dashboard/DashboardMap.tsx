@@ -12,7 +12,7 @@
  */
 
 import { useTranslation } from 'react-i18next';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { Popup, useMap } from 'react-leaflet';
 import type { PathOptions } from 'leaflet';
@@ -82,6 +82,9 @@ import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { CrossSourceLinksLayer } from '../map/layers/CrossSourceLinksLayer';
+import { PacketFlightsLayer } from '../map/layers/PacketFlightsLayer';
+import { PacketFlightsControl } from '../map/PacketFlightsControl';
+import type { FlightNodeEntry } from '../../utils/packetFlightEdges';
 import { TracerouteConfirmedLinksLayer } from '../map/layers/TracerouteConfirmedLinksLayer';
 import DuctingLayer from '../map/layers/DuctingLayer';
 import { DuctingControl } from '../map/DuctingControl';
@@ -335,6 +338,10 @@ export default function DashboardMap({
     setShowCrossSourceLinks,
     showTracerouteConfirmedLinks,
     setShowTracerouteConfirmedLinks,
+    showPacketFlights,
+    setShowPacketFlights,
+    packetFlightRate,
+    setPacketFlightRate,
     showDucting,
     setShowDucting,
     ductingHoursAhead,
@@ -486,6 +493,25 @@ export default function DashboardMap({
     [nodesWithPosition, hidePositionlessAdverts],
   );
   const hasMeshCoreNodes = useMemo(() => nodes.some((n) => n.isMeshCore), [nodes]);
+
+  // #4835: live packet traffic resolves each flight against the markers this
+  // map draws. Built only while the layer is on. The Unified map colours a
+  // flight by its source, as it does the source's other overlays.
+  const [packetFlightsDropped, setPacketFlightsDropped] = useState(0);
+  const packetFlightNodes = useMemo<FlightNodeEntry[]>(() => {
+    if (!showPacketFlights) return [];
+    return markerNodes.map(({ node, pos }) => ({
+      nodeNum: node.isMeshCore ? null : node.nodeNum,
+      publicKey: node.isMeshCore ? node.publicKey : null,
+      lat: pos.lat,
+      lng: pos.lng,
+    }));
+  }, [showPacketFlights, markerNodes]);
+  const packetFlightSourceColor = useCallback(
+    (id: string) => (isUnified ? getSourceColor(id, colorSourceIds) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- #4835 colorSourceIds is rebuilt each render; keyed on its contents
+    [isUnified, colorSourceIds.join('|')],
+  );
 
   // Flight trails (#5364/#5365 Phase 3): one per aircraft this map draws a
   // marker for — `nodesWithPosition` is already past Hide / age / transport /
@@ -1023,6 +1049,16 @@ export default function DashboardMap({
 
         {/* Cross-source "heard here" edges (#5561). Mounted only while on, so
             it fetches nothing when off. */}
+        {/* Live packet traffic (#4835): mounted only while on. */}
+        {showPacketFlights && polarSourceIds.length > 0 && (
+          <PacketFlightsLayer
+            sourceIds={polarSourceIds}
+            nodes={packetFlightNodes}
+            maxPerSecond={packetFlightRate}
+            sourceColor={packetFlightSourceColor}
+            onDroppedChange={setPacketFlightsDropped}
+          />
+        )}
         {showCrossSourceLinks && polarSourceIds.length > 0 && (
           <CrossSourceLinksLayer enabled sourceIds={polarSourceIds} lookbackHours={effectiveMaxAge} />
         )}
@@ -1183,6 +1219,15 @@ export default function DashboardMap({
               <span>{t('map.traceroute_confirmed.toggle', 'Traceroute-Confirmed Links')}</span>
             </label>
           )}
+          {/* #4835: live packet traffic (dots flying to the receiver). */}
+          <PacketFlightsControl
+            checked={showPacketFlights === true}
+            onCheckedChange={setShowPacketFlights}
+            rate={packetFlightRate ?? 0}
+            onRateChange={setPacketFlightRate}
+            dropped={packetFlightsDropped}
+            disabledTitle={unavailableIn3DTitle}
+          />
           {/* #5734: tropospheric ducting overlay. Renders nothing unless an
               admin turned the overlay on. */}
           <DuctingControl

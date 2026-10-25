@@ -138,6 +138,7 @@ import {
 } from './services/mqttProxyBridge.js';
 import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport, isRfTransport, isNodeDbReplayForPacketLog } from './services/packetLogDedup.js';
 import { maybeRecordMeshtasticLink } from './services/crossSourceLinkRecorder.js';
+import { buildMeshtasticFlight, emitPacketFlight } from './services/packetFlights.js';
 import {
   isStaleCoverageRxTime,
   computeMeshtasticHopsAway,
@@ -158,6 +159,22 @@ import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
 import { safeJson } from './utils/redactSecrets.js';
+
+/** The MeshPacket fields `maybeEmitPacketFlight` reads (#4835). */
+interface PacketFlightSourcePacket {
+  from?: number | bigint | null;
+  to?: number | bigint | null;
+  id?: number | null;
+  decoded?: { portnum?: number } | null;
+  transportMechanism?: number;
+  viaMqtt?: boolean | null;
+  hopStart?: number;
+  hopLimit?: number;
+  relayNode?: number;
+  rxTime?: number | null;
+  rxSnr?: number;
+  rxRssi?: number | null;
+}
 
 const POST_RESET_COOLDOWN_MS = 5000;
 // AdminMessage.ConfigType.SECURITY_CONFIG, and how long a local read of it may
@@ -6437,6 +6454,41 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Process MeshPacket protobuf message
    */
+  /**
+   * Emit a `packet:flight` for a packet this source's radio received (#4835).
+   * Skips our own and internal packets, Store & Forward and Virtual Node
+   * replays, and firmware NodeDB replays: only live receptions fly. Sends
+   * nothing on the mesh, writes nothing, and never throws.
+   */
+  private maybeEmitPacketFlight(meshPacket: PacketFlightSourcePacket, context?: ProcessingContext): void {
+    emitPacketFlight(this.sourceId, () => {
+      if (context?.viaStoreForward === true || context?.virtualNodeRequestId != null) return null;
+      const localNodeNum = this.localNodeInfo?.nodeNum ?? null;
+      const fromNum = meshPacket.from ? Number(meshPacket.from) >>> 0 : 0;
+      if (!fromNum || localNodeNum == null || fromNum === localNodeNum) return null;
+      const toNum = meshPacket.to ? Number(meshPacket.to) : null;
+      const portnum = meshPacket.decoded?.portnum ?? 0;
+      if (shouldExcludeFromPacketLog(fromNum, toNum, portnum, localNodeNum)) return null;
+      if (isPhantomInternalPacket(fromNum, localNodeNum, meshPacket.transportMechanism, meshPacket.hopStart)) return null;
+      const transport = resolveRadioPacketTransport(meshPacket);
+      const rxTimeSec = meshPacket.rxTime != null ? Number(meshPacket.rxTime) : null;
+      const packetId = meshPacket.id ? Number(meshPacket.id) : 0;
+      if (isNodeDbReplayForPacketLog(transport, rxTimeSec, meshPacket.rxRssi, Date.now(), { fromNum, packetId })) return null;
+      return buildMeshtasticFlight({
+        sourceId: this.sourceId,
+        fromNum,
+        localNodeNum,
+        relayNode: meshPacket.relayNode,
+        hopStart: meshPacket.hopStart,
+        hopLimit: meshPacket.hopLimit,
+        kind: meshPacket.decoded ? meshtasticProtobufService.getPortNumName(portnum) : 'ENCRYPTED',
+        snr: meshPacket.rxSnr,
+        rssi: meshPacket.rxRssi,
+        viaMqtt: isViaMqtt(transport),
+      });
+    });
+  }
+
   private async processMeshPacket(meshPacket: any, context?: ProcessingContext): Promise<void> {
     logger.debug(`🔄 Processing MeshPacket: ID=${meshPacket.id}, from=${meshPacket.from}, to=${meshPacket.to}`);
 
@@ -6792,6 +6844,11 @@ class MeshtasticManager implements ISourceManager {
     // not packet logging is on (see meshtasticHeardRepeaters repo header).
     // Non-blocking: never delay packet processing on a diagnostics write.
     void this.maybeRecordHeardReflood(meshPacket, this.assessLocalSpoof(meshPacket));
+
+    // Live packet traffic on the map (#4835). Outside the packet_log gate:
+    // it works with logging off and stores nothing. A no-op unless a map is
+    // watching this source.
+    this.maybeEmitPacketFlight(meshPacket, context);
 
     // Cross-source "heard here" links (#5561): this radio hearing one of our
     // OTHER sources' radios. Outside the packet_log gate for the same reason

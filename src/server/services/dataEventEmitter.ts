@@ -15,6 +15,8 @@ import type {
   ReticulumMessageState,
   ReticulumMessageMethod,
 } from '../../db/repositories/reticulum.js';
+import type { PacketFlight } from '../../types/packetFlight.js';
+import { hasPacketFlightWatchers } from './packetFlightWatchers.js';
 import { logger } from '../../utils/logger.js';
 
 export type DataEventType =
@@ -48,6 +50,7 @@ export type DataEventType =
   | 'meshcore:channels:reordered'
   | 'meshcore:filters:changed'
   | 'meshcore:ota-packet'
+  | 'packet:flight'
   | 'meshbeacon:received'
   | 'reticulum:message'
   | 'reticulum:delivery-state:updated'
@@ -825,6 +828,22 @@ class DataEventEmitter extends EventEmitter {
       data: packet,
       timestamp: Date.now(),
       sourceId,
+    };
+    this.emit('data', event);
+  }
+
+  /**
+   * Emit one live packet flight for the map (#4835). A no-op unless some
+   * socket watches the flight's source, so it costs nothing while unused.
+   * The payload names the two ends and nothing of what the packet said.
+   */
+  emitPacketFlight(flight: PacketFlight): void {
+    if (!hasPacketFlightWatchers(flight.sourceId)) return;
+    const event: DataEvent = {
+      type: 'packet:flight',
+      data: flight,
+      timestamp: Date.now(),
+      sourceId: flight.sourceId,
     };
     this.emit('data', event);
   }
