@@ -12,6 +12,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MeshCoreMap } from './MeshCoreMap';
 import { HIDE_POSITIONLESS_ADVERT_STORAGE_KEY } from '../../utils/meshcoreAdvertPosition';
 
+// #4835: the live packet traffic layer pulls in the socket context; off by default here.
+vi.mock('../map/layers/PacketFlightsLayer', () => ({ PacketFlightsLayer: () => null }));
+
 vi.mock('../map/BaseMap', () => ({
   BaseMap: ({ children }: { children: ReactNode }) => <div data-testid="base-map">{children}</div>,
 }));

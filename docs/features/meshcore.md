@@ -146,6 +146,8 @@ The list header has two rows: search and filters on the first, sort and view con
 
 ![MeshCore Nodes list header with two rows](/images/features/5936-meshcore-nodes-header.png)
 
+**Live packet traffic** in the map's Features panel shows packets as your companion hears them, as dots flying from the last hop (or the sender) to your node. It works with the Packet Monitor log off. See [Live packet traffic](/features/maps#live-packet-traffic).
+
 On **mobile**, the node list and the map share the screen, and the map shows first, as on Meshtastic. **Node list** above the map opens the list, and the collapse button in the list header goes back to the map. On desktop, a collapse button collapses the list to a thin sidebar (preference persisted to `localStorage`).
 
 ### Channels
