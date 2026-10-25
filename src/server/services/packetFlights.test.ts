@@ -86,7 +86,15 @@ describe('MeshCore sender and flights', () => {
       .toBeNull();
   });
 
-  it('needs a receiver', () => {
+  it('drops a sender that matches the receiver (our own packet heard back), keeping the last hop', () => {
+    const ownHex = '0901a3cd' + LOCAL.slice(0, 2) + 'deadbeef';
+    expect(buildMeshCoreFlight({ sourceId: 'c', receiverPubKey: LOCAL, event: { route_type: 1, hop_count: 1, path_hops: ['a3'], raw_hex: ownHex } }))
+      .toMatchObject({ from: null, relay: 'a3' });
+    expect(buildMeshCoreFlight({ sourceId: 'c', receiverPubKey: LOCAL, event: { route_type: 1, hop_count: 0, path_hops: [], raw_hex: '0900cd' + LOCAL.slice(0, 2) + 'beef' } }))
+      .toBeNull();
+  });
+
+    it('needs a receiver', () => {
     expect(buildMeshCoreFlight({ sourceId: 'c', receiverPubKey: null, event: { raw_hex: ADVERT_HEX } })).toBeNull();
   });
 

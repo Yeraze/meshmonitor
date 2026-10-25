@@ -157,9 +157,11 @@ export function buildMeshCoreFlight(input: MeshCoreFlightInput): PacketFlight | 
   const relay = hopsUsed !== null && hopsUsed > 0 && pathHops.length > 0
     ? pathHops[pathHops.length - 1].toLowerCase()
     : null;
-  const from = meshcoreSenderOf(e.raw_hex);
+  // A sender that is (or, as a one-byte hash, may be) the receiver itself is
+  // most likely our own packet heard back: drop the sender, keep the last hop.
+  const sender = meshcoreSenderOf(e.raw_hex);
+  const from = sender && to.startsWith(sender) ? null : sender;
   if (!from && !relay) return null;
-  if (from && from === to) return null;
   const kind = e.payload_type_string
     ?? (typeof e.payload_type === 'number' ? meshcorePayloadTypeName(e.payload_type) : null);
   return {

@@ -13,6 +13,8 @@ import { MAX_CONCURRENT_FLIGHTS, flightDurationMs, type FlightEdge } from '../..
 
 /** How long a dot takes to fade once it lands, ms. */
 export const FLIGHT_FADE_MS = 400;
+/** The pane the dots draw in: above the node markers, so a dot landing on a node stays visible. */
+export const FLIGHT_PANE = 'packetFlightsPane';
 /** Trail length, as a share of the line. */
 const TRAIL_FRACTION = 0.18;
 
@@ -42,7 +44,14 @@ export class PacketFlightAnimator {
   constructor(
     private readonly map: L.Map,
     private readonly maxConcurrent: number = MAX_CONCURRENT_FLIGHTS,
-  ) {}
+  ) {
+    if (!map.getPane(FLIGHT_PANE)) {
+      const pane = map.createPane(FLIGHT_PANE);
+      // Above markerPane (600), below tooltips (650) and popups (700).
+      pane.style.zIndex = '640';
+      pane.style.pointerEvents = 'none';
+    }
+  }
 
   /** Dots now in flight or fading. */
   get activeCount(): number {
@@ -66,6 +75,7 @@ export class PacketFlightAnimator {
       opacity: baseGuideOpacity,
       dashArray: viaMesh ? '4 6' : undefined,
       interactive: false,
+      pane: FLIGHT_PANE,
       className: 'packet-flight-guide',
     }).addTo(this.map);
     const trail = L.polyline([pointAt(edge, 0), pointAt(edge, 0)], {
@@ -75,16 +85,18 @@ export class PacketFlightAnimator {
       lineCap: 'round',
       dashArray: viaMesh ? '2 4' : undefined,
       interactive: false,
+      pane: FLIGHT_PANE,
       className: 'packet-flight-trail',
     }).addTo(this.map);
     const dot = L.circleMarker(pointAt(edge, 0), {
-      radius: viaMesh ? 3 : 4,
+      radius: viaMesh ? 4 : 5,
       color,
       weight: 1,
       opacity: baseDotOpacity,
       fillColor: color,
       fillOpacity: baseDotOpacity,
       interactive: false,
+      pane: FLIGHT_PANE,
       className: 'packet-flight-dot',
     }).addTo(this.map);
     this.active.push({
