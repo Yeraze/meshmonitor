@@ -349,6 +349,7 @@
   "nodes.node_details": "Node Details",
   "nodes.expand_node_list": "Expand node list",
   "nodes.collapse_node_list": "Collapse node list",
+  "nodes.node_list": "Node list",
   "nodes.add_to_favorites": "Add to favorites",
   "nodes.remove_from_favorites": "Remove from favorites",
   "nodes.node_name": "Node Name",

@@ -2501,7 +2501,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           <button
             className="collapse-nodes-btn"
             onClick={handleCollapseNodeList}
-            title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
+            title={isNodeListCollapsed
+              ? t('nodes.expand_node_list', 'Expand node list')
+              : t('nodes.collapse_node_list', 'Collapse node list')}
+            aria-label={isNodeListCollapsed
+              ? t('nodes.expand_node_list', 'Expand node list')
+              : t('nodes.collapse_node_list', 'Collapse node list')}
+            aria-expanded={!isNodeListCollapsed}
           >
             <UiIcon name={isNodeListCollapsed ? 'forward' : 'back'} size={18} />
           </button>

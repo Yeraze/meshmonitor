@@ -45,8 +45,10 @@ import { ReticulumSubToolbar } from '../Reticulum/ReticulumSubToolbar';
 import { SourceNav } from './SourceNav';
 import {
   DEVICE_CONFIGURATION_NAV_ENTRY,
+  MAP_NAV_ENTRY,
   SOURCE_SETTINGS_NAV_ENTRY,
   deviceConfigurationNav,
+  mapNav,
   sourceSettingsNav,
 } from './sourceNavEntries';
 
@@ -66,23 +68,26 @@ const sidebarProps = {
 const noop = () => {};
 
 /** One nav per source type, with the id each gives the two shared entries. */
-const NAVS: Record<string, { render: () => RenderResult; deviceConfigId: string | null; settingsId: string }> = {
+const NAVS: Record<string, { render: () => RenderResult; deviceConfigId: string | null; settingsId: string; mapId: string }> = {
   meshtastic: {
     render: () => render(<Sidebar {...sidebarProps} />),
     deviceConfigId: 'configuration',
     settingsId: 'settings',
+    mapId: 'nodes',
   },
   meshcore: {
     render: () => render(
       <MeshCoreSubToolbar view="nodes" onSelect={noop} expanded onToggleExpanded={noop} />),
     deviceConfigId: 'configuration',
     settingsId: 'settings',
+    mapId: 'nodes',
   },
   reticulum: {
     render: () => render(
       <ReticulumSubToolbar view="destinations" onSelect={noop} expanded onToggleExpanded={noop} sourceMode="own" />),
     deviceConfigId: 'configuration',
     settingsId: 'settings',
+    mapId: 'map',
   },
   // An MQTT bridge has no device and no satellite entry. Its bridge setup
   // (MeshMonitor's own connection and filter settings) is a section of its
@@ -91,12 +96,14 @@ const NAVS: Record<string, { render: () => RenderResult; deviceConfigId: string 
     render: () => render(<Sidebar {...sidebarProps} mqttReadOnly />),
     deviceConfigId: null,
     settingsId: 'settings',
+    mapId: 'nodes',
   },
   // An MQTT broker source has no device and no bridge page.
   mqtt_broker: {
     render: () => render(<Sidebar {...sidebarProps} hideDeviceConfig />),
     deviceConfigId: null,
     settingsId: 'settings',
+    mapId: 'nodes',
   },
 };
 
@@ -135,6 +142,9 @@ describe('per-source nav convention (#5683)', () => {
     expect(DEVICE_CONFIGURATION_NAV_ENTRY.fallback).toBe(en[DEVICE_CONFIGURATION_NAV_ENTRY.labelKey]);
     expect(DEVICE_CONFIGURATION_NAV_ENTRY.shortFallback).toBe(en[DEVICE_CONFIGURATION_NAV_ENTRY.shortLabelKey]);
     expect(SOURCE_SETTINGS_NAV_ENTRY.fallback).toBe(en[SOURCE_SETTINGS_NAV_ENTRY.labelKey]);
+    expect(en[MAP_NAV_ENTRY.labelKey]).toBe('Map');
+    expect(MAP_NAV_ENTRY.icon).toBe('map');
+    expect(MAP_NAV_ENTRY.fallback).toBe(en[MAP_NAV_ENTRY.labelKey]);
   });
 
   it('gives the two entries different icons', () => {
@@ -142,6 +152,15 @@ describe('per-source nav convention (#5683)', () => {
   });
 
   describe.each(Object.entries(NAVS))('%s nav', (_type, nav) => {
+    it('shows Map with the shared icon and label (#5968)', () => {
+      const want = reference(mapNav(t));
+      const { container } = nav.render();
+      const got = seen(container, nav.mapId);
+      expect(got).not.toBeNull();
+      expect(got).toEqual(want);
+      expect(got!.label).toBe('Map');
+    });
+
     it('shows Settings with the shared icon and label', () => {
       const want = reference(sourceSettingsNav(t));
       const { container } = nav.render();
@@ -226,6 +245,12 @@ describe('no nav spells the shared entries itself (#5683)', () => {
     readFileSync(resolve(file), 'utf-8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
+
+  it.each(NAV_SOURCES)('%s takes the Map entry from sourceNavEntries (#5968)', (file) => {
+    const source = code(file);
+    expect(source).not.toMatch(/['"](nav\.nodes|meshcore\.nav\.nodes|reticulum\.nav\.map)['"]/);
+    expect(source).not.toMatch(/['"]Map['"]/);
+  });
 
   it.each(NAV_SOURCES)('%s takes both entries from sourceNavEntries', (file) => {
     const source = code(file);

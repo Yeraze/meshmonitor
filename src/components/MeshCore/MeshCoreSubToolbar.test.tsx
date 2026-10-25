@@ -91,7 +91,7 @@ describe('MeshCoreSubToolbar', () => {
     );
     expect(screen.queryByText('Device Configuration')).toBeNull();
     // Other tabs still visible.
-    expect(screen.getByText('Nodes')).toBeDefined();
+    expect(screen.getByText('Map')).toBeDefined();
     expect(screen.getByText('Channels')).toBeDefined();
     expect(screen.getByText('Node Details')).toBeDefined();
     expect(screen.getByText('Settings')).toBeDefined();
@@ -115,21 +115,21 @@ describe('MeshCoreSubToolbar', () => {
 
   it('shows the Settings tab with settings:read', () => {
     const { container } = renderWith(['settings']);
-    expect(labels(container)).toEqual(['Nodes', 'Node Info', 'Settings']);
+    expect(labels(container)).toEqual(['Map', 'Node Info', 'Settings']);
   });
 
-  it('the anonymous viewer from #5666 (connection, nodes, channel_0) sees Nodes, Channels and Node Info', () => {
+  it('the anonymous viewer from #5666 (connection, nodes, channel_0) sees Map, Channels and Node Info', () => {
     const { container } = renderWith(['connection', 'nodes', 'channel_0']);
-    expect(labels(container)).toEqual(['Nodes', 'Channels', 'Node Info']);
+    expect(labels(container)).toEqual(['Map', 'Channels', 'Node Info']);
   });
 
   it('messages:read adds Rooms and Node Details; a channel grant alone does not', () => {
-    expect(labels(renderWith(['messages']).container)).toEqual(['Nodes', 'Channels', 'Rooms', 'Node Details', 'Node Info']);
+    expect(labels(renderWith(['messages']).container)).toEqual(['Map', 'Channels', 'Rooms', 'Node Details', 'Node Info']);
   });
 
   it('each remaining tab follows its own grant', () => {
-    expect(labels(renderWith(['dashboard']).container)).toEqual(['Nodes', 'Telemetry', 'Node Info']);
-    expect(labels(renderWith(['packetmonitor']).container)).toEqual(['Nodes', 'Packet Monitor', 'Node Info']);
-    expect(labels(renderWith(['automation']).container)).toEqual(['Nodes', 'Node Info', 'Automations']);
+    expect(labels(renderWith(['dashboard']).container)).toEqual(['Map', 'Telemetry', 'Node Info']);
+    expect(labels(renderWith(['packetmonitor']).container)).toEqual(['Map', 'Packet Monitor', 'Node Info']);
+    expect(labels(renderWith(['automation']).container)).toEqual(['Map', 'Node Info', 'Automations']);
   });
 });

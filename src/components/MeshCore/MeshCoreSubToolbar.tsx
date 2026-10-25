@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { SourceNav, type SourceNavItem } from '../nav/SourceNav';
 import {
   DEVICE_CONFIGURATION_NAV_ENTRY,
+  MAP_NAV_ENTRY,
   SOURCE_SETTINGS_NAV_ENTRY,
   sharedSourceNavPresentation,
   type SharedSourceNavEntry,
@@ -33,7 +34,9 @@ interface Item extends SharedSourceNavEntry {
 }
 
 const ITEMS: Item[] = [
-  { id: 'nodes', labelKey: 'meshcore.nav.nodes', fallback: 'Nodes', icon: 'nodes' },
+  // The map plus the node list, as on Meshtastic (#5968). The view id stays
+  // 'nodes' so saved views and permissions do not change.
+  { id: 'nodes', ...MAP_NAV_ENTRY },
   { id: 'channels', labelKey: 'meshcore.nav.channels', fallback: 'Channels', icon: 'channels' },
   { id: 'rooms', labelKey: 'meshcore.nav.rooms', fallback: 'Rooms', icon: 'home' },
   // id/key remain 'dms' for backward-compat; the visible label was renamed to
