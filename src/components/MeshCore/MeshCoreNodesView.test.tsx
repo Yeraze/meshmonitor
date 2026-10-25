@@ -286,9 +286,25 @@ describe('MeshCoreNodesView — list collapse toggle (mobile map access)', () =>
     expect(document.querySelector('.meshcore-list-pane.collapsed')).not.toBeNull();
   });
 
+  it('on mobile, opens on the map, with a Node list button back to the list (#5968)', () => {
+    setViewportWidth(500);
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    expect(document.querySelector('.meshcore-two-pane.mobile-show-content')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Node list/ }));
+    expect(document.querySelector('.meshcore-two-pane.mobile-show-list')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /Node list/ })).toBeNull();
+  });
+
+  it('on desktop, opens with the list and map side by side, as before', () => {
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    expect(document.querySelector('.meshcore-two-pane.mobile-show-list')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /Node list/ })).toBeNull();
+  });
+
   it('on mobile, the toggle reveals the map instead of collapsing to a thin bar', () => {
     setViewportWidth(500);
     render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    fireEvent.click(screen.getByRole('button', { name: /Node list/ }));
     expect(document.querySelector('.meshcore-two-pane.mobile-show-list')).not.toBeNull();
     fireEvent.click(screen.getByTitle('Collapse node list'));
     // Reveals the map pane via the existing mobile pane-swap mechanism...

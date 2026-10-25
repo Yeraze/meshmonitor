@@ -17,6 +17,7 @@ import { SourceNav, type SourceNavItem } from '../nav/SourceNav';
 import type { ReticulumView } from '../../types/reticulum';
 import {
   DEVICE_CONFIGURATION_NAV_ENTRY,
+  MAP_NAV_ENTRY,
   SOURCE_SETTINGS_NAV_ENTRY,
   sharedSourceNavPresentation,
   type SharedSourceNavEntry,
@@ -52,7 +53,7 @@ const ITEMS: Item[] = [
   // Not mode-gated: the path table exists in every mode (build spec §4.4).
   { id: 'paths', labelKey: 'reticulum.nav.paths', fallback: 'Paths', icon: 'route' },
   // 'map' (Phase 3) — peer positions shared via Sideband telemetry. Always shown.
-  { id: 'map', labelKey: 'reticulum.nav.map', fallback: 'Map', icon: 'map' },
+  { id: 'map', ...MAP_NAV_ENTRY },
   // 'configuration' (Phase 3) — editable RNode radio config; own-mode only (filtered below).
   // Icon + label shared with every source type (#5683): never spell them here.
   { id: 'configuration', ...DEVICE_CONFIGURATION_NAV_ENTRY },
