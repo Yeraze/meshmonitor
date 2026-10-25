@@ -16,7 +16,7 @@ export const FLIGHT_FADE_MS = 400;
 /** The pane the dots draw in: above the node markers, so a dot landing on a node stays visible. */
 export const FLIGHT_PANE = 'packetFlightsPane';
 /** Trail length, as a share of the line. */
-const TRAIL_FRACTION = 0.18;
+const TRAIL_FRACTION = 0.25;
 
 interface ActiveFlight {
   edge: FlightEdge;
@@ -71,7 +71,7 @@ export class PacketFlightAnimator {
     const baseDotOpacity = viaMesh ? 0.55 : 0.95;
     const guide = L.polyline([[edge.from.lat, edge.from.lng], [edge.to.lat, edge.to.lng]], {
       color,
-      weight: 1.5,
+      weight: 2,
       opacity: baseGuideOpacity,
       dashArray: viaMesh ? '4 6' : undefined,
       interactive: false,
@@ -80,7 +80,7 @@ export class PacketFlightAnimator {
     }).addTo(this.map);
     const trail = L.polyline([pointAt(edge, 0), pointAt(edge, 0)], {
       color,
-      weight: 3,
+      weight: 5,
       opacity: baseTrailOpacity,
       lineCap: 'round',
       dashArray: viaMesh ? '2 4' : undefined,
@@ -89,9 +89,9 @@ export class PacketFlightAnimator {
       className: 'packet-flight-trail',
     }).addTo(this.map);
     const dot = L.circleMarker(pointAt(edge, 0), {
-      radius: viaMesh ? 4 : 5,
+      radius: viaMesh ? 5 : 7,
       color,
-      weight: 1,
+      weight: 2,
       opacity: baseDotOpacity,
       fillColor: color,
       fillOpacity: baseDotOpacity,
