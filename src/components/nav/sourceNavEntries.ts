@@ -1,5 +1,5 @@
 /**
- * The two per-source nav entries every source type shares (issue #5683).
+ * The per-source nav entries every source type shares (issues #5683, #5968).
  *
  * Each source type builds its own nav (Meshtastic's `Sidebar`, MeshCore's and
  * Reticulum's sub-toolbars), and each used to spell these two entries itself.
@@ -12,6 +12,7 @@
  * |----------------------|-----------------|------------------------|------------------------------------------------|
  * | Device Configuration | `configuration` | "Device Configuration" | settings held ON the radio and sent to it      |
  * | Settings             | `settings`      | "Settings"             | MeshMonitor's own behaviour for this source    |
+ * | Map                  | `map`           | "Map"                  | the source's map (with its node list, if any)  |
  *
  * A nav must take the icon AND the label from here, never one of them.
  * `sourceNavEntries.convention.test.ts` fails a nav that spells either itself.
@@ -41,6 +42,18 @@ export const DEVICE_CONFIGURATION_NAV_ENTRY = {
   fallback: 'Device Configuration',
   shortLabelKey: 'nav.device_configuration_short',
   shortFallback: 'Device Config',
+} as const satisfies SharedSourceNavEntry;
+
+/**
+ * The source's map (#5968). Meshtastic's tab is the map plus the node list
+ * (#4325), MeshCore's is the same, and Reticulum's is the map alone; all read
+ * "Map". The label key is `nav.nodes`, Meshtastic's original key, since every
+ * locale already translates it as "Map".
+ */
+export const MAP_NAV_ENTRY = {
+  icon: 'map',
+  labelKey: 'nav.nodes',
+  fallback: 'Map',
 } as const satisfies SharedSourceNavEntry;
 
 export const SOURCE_SETTINGS_NAV_ENTRY = {
@@ -101,6 +114,10 @@ export const deviceConfigurationNav = (t: Translate): SharedSourceNavPresentatio
 /** Icon + label of the entry that opens MeshMonitor's settings for the source. */
 export const sourceSettingsNav = (t: Translate): SharedSourceNavPresentation =>
   sharedSourceNavPresentation(SOURCE_SETTINGS_NAV_ENTRY, t);
+
+/** Icon + label of the entry that opens the source's map. */
+export const mapNav = (t: Translate): SharedSourceNavPresentation =>
+  sharedSourceNavPresentation(MAP_NAV_ENTRY, t);
 
 /** Icon + label of a link that opens the install-wide Global Settings page. */
 export const globalSettingsNav = (t: Translate): SharedSourceNavPresentation =>

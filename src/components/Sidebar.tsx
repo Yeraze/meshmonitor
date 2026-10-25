@@ -8,7 +8,7 @@ import SidebarFooter from './SidebarFooter';
 import { canOpenSourceSettings } from './nav/sourceSettingsAccess';
 import { SourceNav, type SourceNavItem, type SourceNavSection } from './nav/SourceNav';
 import { readSidebarPinned, useSidebarPin } from './nav/useSidebarPin';
-import { deviceConfigurationNav, sourceSettingsNav } from './nav/sourceNavEntries';
+import { deviceConfigurationNav, mapNav, sourceSettingsNav } from './nav/sourceNavEntries';
 
 interface UnreadCountsData {
   channels?: {[channelId: number]: number};
@@ -183,8 +183,9 @@ const Sidebar: React.FC<SidebarProps> = ({
        `nav.nodes` locale key are deliberately unchanged: the id is part of the
        route (/source/:id/nodes) so renaming it would break existing bookmarks,
        and the key is what every locale file is already translated against. Same
-       divergence as `nav.messages`, which reads "Node Details". */
-    navItem('nodes', t('nav.nodes'), 'nodes'),
+       divergence as `nav.messages`, which reads "Node Details". Shared with
+       MeshCore and Reticulum (#5968). */
+    sharedNavItem('nodes', mapNav(t)),
     ...(hasAnyChannelPermission()
       ? [navItem('channels', t('nav.channels'), 'channels', {
           onClick: onChannelsClick,

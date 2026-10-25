@@ -136,17 +136,17 @@ On stock firmware the Nodes and Packet Monitor tabs say what is missing and why.
 
 ## The MeshCore Page
 
-Each MeshCore source has its own multi-pane page accessible by clicking the source in the dashboard sidebar. The sidebar lists **Nodes**, **Channels**, **Rooms**, **Node Details**, **Telemetry**, **Packet Monitor**, **Node Info**, **Device Configuration**, **Automations**, **Notifications** and **Settings**. A tab shows only when you hold the read permission its data needs on that source. The main views:
+Each MeshCore source has its own multi-pane page accessible by clicking the source in the dashboard sidebar. The sidebar lists **Map**, **Channels**, **Rooms**, **Node Details**, **Telemetry**, **Packet Monitor**, **Node Info**, **Device Configuration**, **Automations**, **Notifications** and **Settings**. A tab shows only when you hold the read permission its data needs on that source. The main views:
 
-### Nodes
+### Map {#nodes}
 
-A map of every contact with valid coordinates, plus a styled row list aligned to the same visual vocabulary as the Meshtastic nodes view. The map honours zoom-based label visibility and falls through to the dashboard map when the source is selected at the dashboard level. A search/filter bar lets you quickly find contacts by name or public key prefix.
+The **Map** tab (called **Nodes** before 4.17.2, and named **Map** on every source type) holds a map of every contact with valid coordinates, plus a styled row list aligned to the same visual vocabulary as the Meshtastic nodes view. The map honours zoom-based label visibility and falls through to the dashboard map when the source is selected at the dashboard level. A search/filter bar lets you quickly find contacts by name or public key prefix.
 
 The list header has two rows: search and filters on the first, sort and view controls on the second.
 
 ![MeshCore Nodes list header with two rows](/images/features/5936-meshcore-nodes-header.png)
 
-On **mobile**, the node list and the map occupy the same area; a toggle button switches between them so the map is always reachable without first selecting a node. On desktop, a collapse button collapses the list to a thin sidebar (preference persisted to `localStorage`).
+On **mobile**, the node list and the map share the screen, and the map shows first, as on Meshtastic. **Node list** above the map opens the list, and the collapse button in the list header goes back to the map. On desktop, a collapse button collapses the list to a thin sidebar (preference persisted to `localStorage`).
 
 ### Channels
 

@@ -208,9 +208,9 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const [discovering, setDiscovering] = useState<DiscoverMode | null>(null);
   const [sortField, setSortField] = useState<SortField>('lastHeard');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [mobileShowContent, setMobileShowContent] = useState(
-    () => focusPublicKey != null && isMobileViewport(),
-  );
+  // On a phone the map shows first, with the list a tap away (#5968), as on
+  // Meshtastic, whose node list starts collapsed there.
+  const [mobileShowContent, setMobileShowContent] = useState(() => isMobileViewport());
   // Desktop list-pane collapse toggle (mirrors NodesTab's `collapse-nodes-btn`
   // / MeshCoreDirectMessagesView's `meshcore-collapse-btn`). Persisted so the
   // preference survives reloads on desktop; always false on mobile — the
@@ -671,7 +671,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               className="meshcore-mobile-back-btn"
               onClick={() => setMobileShowContent(false)}
             >
-              <UiIcon name="back" size={16} /> {t('common.back', 'Back')}
+              <UiIcon name="list" size={16} /> {t('nodes.node_list', 'Node list')}
             </button>
             {selectedRow && (
               <span className="meshcore-mobile-back-title">{selectedRow.name}</span>
