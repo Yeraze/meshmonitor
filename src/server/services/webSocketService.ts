@@ -38,6 +38,13 @@ import { automationTraceBus, MAX_TRACE_MS } from './automation/automationTraceBu
 import { onAccessChange, type AccessChange } from '../../db/accessChanges.js';
 import { gateFor, WITHHOLD, type SocketEventGate } from './socketEventGates.js';
 import {
+  watchPacketFlights,
+  unwatchPacketFlights,
+  isWatchingPacketFlights,
+  resetPacketFlightWatchers as unwatchAllPacketFlights,
+} from './packetFlightWatchers.js';
+import { PACKET_FLIGHTS_SUBSCRIBE, PACKET_FLIGHTS_UNSUBSCRIBE } from '../../types/packetFlight.js';
+import {
   SOCKET_ACCESS_TTL_MS,
   peekSocketViewer,
   loadSocketViewer,
@@ -221,7 +228,9 @@ function viewerFor(socket: Socket, state: SocketState): SocketViewer | Promise<S
 }
 
 /** True when the socket asked for this event's source. */
-function subscribed(state: SocketState, viewer: SocketViewer, event: DataEvent, gate: SocketEventGate): boolean {
+function subscribed(socket: Socket, state: SocketState, viewer: SocketViewer, event: DataEvent, gate: SocketEventGate): boolean {
+  // Live packet flights (#4835): only to a socket that asked for them on this source.
+  if (gate.subscription === 'packet-flights') return isWatchingPacketFlights(socket.id, event.sourceId);
   if (gate.scope === 'global' || !event.sourceId) return true;
   if (state.allSources || state.sources.has(event.sourceId)) return true;
   // An admin socket that joined nothing gets every source, as before.
@@ -261,7 +270,7 @@ function send(socket: Socket, state: SocketState, ctx: EventContext, outgoing: u
  */
 function deliverSync(socket: Socket, state: SocketState, viewer: SocketViewer, ctx: EventContext): boolean {
   const { event, gate } = ctx;
-  if (!subscribed(state, viewer, event, gate)) return true;
+  if (!subscribed(socket, state, viewer, event, gate)) return true;
   // The admin fast path: no gate, no event facts.
   if (!viewer.isAdmin) {
     if (gate.scope === 'source' && !event.sourceId) return true; // no source to check a grant on
@@ -283,7 +292,7 @@ async function deliverAsync(socket: Socket, state: SocketState, ctx: EventContex
   try {
     const viewer = await viewerFor(socket, state);
     if (!viewer || !socket.connected) return;
-    if (!subscribed(state, viewer, event, gate)) return;
+    if (!subscribed(socket, state, viewer, event, gate)) return;
     let outgoing: unknown;
     if (viewer.isAdmin) {
       outgoing = await ctx.payload();
@@ -322,8 +331,9 @@ function dispatch(event: DataEvent): void {
   for (const socket of sockets.values()) {
     const state = stateOf(socket);
     if (!state) continue;
-    // Joined other sources only: decided without the viewer.
-    if (sourceId && !state.allSources && state.sources.size > 0 && !state.sources.has(sourceId)) continue;
+    if (gate.subscription === 'packet-flights') {
+      if (!isWatchingPacketFlights(socket.id, event.sourceId)) continue;
+    } else if (sourceId && !state.allSources && state.sources.size > 0 && !state.sources.has(sourceId)) continue;
     const viewer = freshViewer(state, now);
     if (viewer && deliverSync(socket, state, viewer, ctx)) continue;
     (waiting ??= []).push([socket, state]);
@@ -567,6 +577,40 @@ export function initializeWebSocket(
       state.allSources = false;
     });
 
+    // ── Live packet traffic on the map (#4835) ─────────────────────────────
+    // A map sends this when its "Live packet traffic" layer turns on, naming
+    // the sources it draws. The ingest paths emit flights for a source only
+    // while some socket watches it. A source the user may not read in the
+    // Packet Monitor is refused here, so it never starts the emit; each event
+    // is still checked against the grant on its own source.
+    socket.on(PACKET_FLIGHTS_SUBSCRIBE, async (
+      raw: unknown,
+      ack?: (result: { ok: boolean; sourceIds: string[]; error?: string }) => void,
+    ) => {
+      const reply = typeof ack === 'function' ? ack : undefined;
+      const requested = Array.isArray(raw)
+        ? raw.filter((id): id is string => typeof id === 'string' && id.length > 0).slice(0, 256)
+        : [];
+      try {
+        const viewer = await viewerFor(socket, state);
+        if (!viewer || !socket.connected) return reply?.({ ok: false, sourceIds: [], error: 'unauthorized' });
+        const allowed = requested.filter((id) => viewer.isAdmin || viewer.can('packetmonitor', 'read', id));
+        for (const id of allowed) watchPacketFlights(socket.id, id);
+        reply?.({ ok: true, sourceIds: allowed });
+      } catch (err) {
+        logger.error('[WebSocket] packet-flights:subscribe failed:', err);
+        reply?.({ ok: false, sourceIds: [], error: 'internal' });
+      }
+    });
+
+    socket.on(PACKET_FLIGHTS_UNSUBSCRIBE, (raw: unknown) => {
+      if (Array.isArray(raw)) {
+        unwatchPacketFlights(socket.id, raw.filter((id): id is string => typeof id === 'string'));
+      } else {
+        unwatchPacketFlights(socket.id);
+      }
+    });
+
     // ── Automation Engine live-trace ("view logs") ─────────────────────────
     // Opt-in, per-rule, time-bounded debug stream. Gated on automations:read.
     socket.on('automation-trace:start', async (raw: { automationId?: string; durationMs?: number }) => {
@@ -611,6 +655,7 @@ export function initializeWebSocket(
     // Handle disconnect
     socket.on('disconnect', (reason) => {
       automationTraceBus.disarmSocket(socket.id);
+      unwatchPacketFlights(socket.id);
       // Keep the user's grants only while one of their sockets is connected.
       const stillConnected = io
         ? [...io.sockets.sockets.values()].some((other) => other !== socket && stateOf(other)?.userId === state.userId)
@@ -677,6 +722,7 @@ export async function shutdownWebSocket(): Promise<void> {
     stopAccessChanges?.();
     stopAccessChanges = null;
     invalidateSocketAccess();
+    unwatchAllPacketFlights();
 
     // Close all connections
     await new Promise<void>((resolve) => {

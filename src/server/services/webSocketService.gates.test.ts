@@ -59,6 +59,7 @@ const PAYLOADS: Record<DataEventType, (marker: string) => unknown> = {
   'meshcore:channels:reordered': (marker) => ({ sourceId: marker, moves: [{ from: 1, to: 2 }] }),
   'meshcore:filters:changed': (marker) => ({ sourceId: marker }),
   'meshcore:ota-packet': (marker) => ({ timestamp: Date.now(), payloadType: 2, rawHex: marker }),
+  'packet:flight': (marker) => ({ sourceId: 'x', protocol: 'meshtastic', receivedAt: Date.now(), from: NODE_NUM, to: 1, relay: null, hopsUsed: 0, kind: marker }),
   'meshbeacon:received': (marker) => ({ nodeNum: NODE_NUM, message: marker, offerChannelPsk: 'c2VjcmV0' }),
   'reticulum:message': (marker) => ({ id: marker, fromHash: 'aa', content: marker }),
   'reticulum:delivery-state:updated': (marker) => ({ sourceId: marker, id: marker, hash: 'aa', state: 'delivered' }),
@@ -66,6 +67,16 @@ const PAYLOADS: Record<DataEventType, (marker: string) => unknown> = {
 };
 
 const ALL_TYPES = Object.keys(PAYLOADS) as DataEventType[];
+/**
+ * Types a socket gets only after asking for them on the source, admins
+ * included (#4835 live packet flights: `packet-flights:subscribe`).
+ */
+const SUBSCRIPTION_ONLY: DataEventType[] = ['packet:flight'];
+const ROUTINE_TYPES = ALL_TYPES.filter((type) => !SUBSCRIPTION_ONLY.includes(type));
+
+/** Ask for live packet flights on these sources, as a map with the layer on does. */
+const watchFlights = (client: SocketTestClient, sourceIds: string[]): Promise<unknown> =>
+  new Promise((resolve) => client.socket.emit('packet-flights:subscribe', sourceIds, resolve));
 /** Types a viewer who is not an admin can never receive. */
 const ADMIN_ONLY: DataEventType[] = [
   'node:discovered', 'meshcore:node:changed', 'node:mobility', 'node:rebooted', 'node:powerChanged',
@@ -165,6 +176,9 @@ describe('WebSocket event gates', () => {
       await harness.grantEverythingOn(harness.limited.id, A);
       const user = await harness.connectAs(harness.limited, { join: 'all' });
       const admin = await harness.connectAs(harness.admin, { join: 'all' });
+      // Both ask for live packet flights everywhere; the user is held to A.
+      await watchFlights(user, [A, B]);
+      await watchFlights(admin, [A, B]);
 
       emitEveryType(B, 'MARK-B');
       emitEveryType(A, 'MARK-A');
@@ -211,7 +225,8 @@ describe('WebSocket event gates', () => {
       await user.settle();
       await admin.settle();
       expect(typesWith(user, 'MARK-A')).toEqual([]);
-      expect(typesWith(admin, 'MARK-A')).toEqual([...ALL_TYPES].sort());
+      // Live packet flights still need their own subscription.
+      expect(typesWith(admin, 'MARK-A')).toEqual([...ROUTINE_TYPES].sort());
     });
 
     it('a socket joined to A gets A and not another source it could read', async () => {

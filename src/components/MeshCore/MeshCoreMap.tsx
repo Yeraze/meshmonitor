@@ -14,6 +14,9 @@ import {
 } from '../../utils/nodeTypeCategory';
 import { createNodeIcon } from '../map/markerIcons';
 import { BaseMap } from '../map/BaseMap';
+import { PacketFlightsLayer } from '../map/layers/PacketFlightsLayer';
+import { PacketFlightsControl } from '../map/PacketFlightsControl';
+import type { FlightNodeEntry, PacketFlightStats } from '../../utils/packetFlightEdges';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
@@ -201,6 +204,34 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
 
   const [positionHistory, setPositionHistory] = useState<Map<string, [number, number][]>>(new Map());
 
+  // Live packet traffic (#4835). Same per-browser keys as MapContext uses for
+  // the other maps (this map sits outside a MapProvider). Off by default;
+  // the rate defaults to all (0).
+  const [showPacketFlights, setShowPacketFlights] = useState(() => {
+    try {
+      return localStorage.getItem('showPacketFlights') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [packetFlightRate, setPacketFlightRate] = useState<number>(() => {
+    try {
+      const n = Number(localStorage.getItem('packetFlightRate'));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [packetFlightsStats, setPacketFlightsStats] = useState<PacketFlightStats | null>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem('showPacketFlights', String(showPacketFlights));
+      localStorage.setItem('packetFlightRate', String(packetFlightRate));
+    } catch {
+      // storage unavailable: the toggle still works for this session
+    }
+  }, [showPacketFlights, packetFlightRate]);
+
   // Polar grid overlay (#4047 follow-up) — the same shared range-ring/azimuth-
   // sector grid NodesTab/DashboardMap/Map Analysis draw, centered on the LOCAL
   // MeshCore node's position. Persisted per-browser like the other MeshCore
@@ -296,6 +327,14 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       nodePassesTypeFilter({ advType: c.advType }, nodeTypeFilter)
       && (c.isLocal === true || !isHiddenByPositionlessAdvert(c, hidePositionlessAdverts))),
     [positioned, nodeTypeFilter, hidePositionlessAdverts],
+  );
+
+  // #4835: flights resolve against the contacts this map draws a marker for.
+  const packetFlightNodes: FlightNodeEntry[] = useMemo(
+    () => (showPacketFlights
+      ? visibleContacts.map(c => ({ publicKey: c.publicKey, lat: c.latitude as number, lng: c.longitude as number }))
+      : []),
+    [showPacketFlights, visibleContacts],
   );
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
@@ -601,6 +640,16 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
         ))}
 
         <NeighborLinksLayer links={neighborLinks} />
+
+        {/* Live packet traffic (#4835): mounted only while on. */}
+        {showPacketFlights && sourceId && (
+          <PacketFlightsLayer
+            sourceIds={[sourceId]}
+            nodes={packetFlightNodes}
+            maxPerSecond={packetFlightRate}
+            onStatsChange={setPacketFlightsStats}
+          />
+        )}
       </BaseMap>
 
       {isLoading && <MapLoadingOverlay />}
@@ -635,6 +684,14 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
             />
             <span>Show Neighbors</span>
           </label>
+          {/* #4835: live packet traffic (dots flying to the receiver). */}
+          <PacketFlightsControl
+            checked={showPacketFlights}
+            onCheckedChange={setShowPacketFlights}
+            rate={packetFlightRate}
+            onRateChange={setPacketFlightRate}
+            stats={packetFlightsStats}
+          />
           <label className="map-control-item">
             <input
               type="checkbox"

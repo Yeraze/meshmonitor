@@ -112,6 +112,8 @@ import {
 } from './mqttPacketFilter.js';
 import { maybeRecordMqttCoverageReception } from './utils/coverageMqtt.js';
 import { maybeRecordMqttLink } from './services/crossSourceLinkRecorder.js';
+import { buildMqttFlight, emitPacketFlight } from './services/packetFlights.js';
+import { parseGatewayNodeNum } from './utils/okToMqtt.js';
 import { recordMqttPositionHistory } from './utils/mqttPositionHistory.js';
 import { getCachedSignFlipContext, correctLatLon } from './services/signFlipCorrection.js';
 
@@ -852,6 +854,32 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
       sourceId: input.sourceId,
       envelope: input.envelope,
       localGatewayNodeNum: input.localGatewayNodeNum,
+    });
+  }
+  // Live packet traffic on the map (#4835): one flight per gateway reception,
+  // skipped for packets the node table refused. Not tied to the MQTT packet
+  // log setting, stores nothing, and a no-op while no map watches the source.
+  if (
+    result.reason !== 'no-packet' &&
+    result.reason !== 'ignored' &&
+    result.reason !== 'geo-ignored' &&
+    result.reason !== 'distance'
+  ) {
+    emitPacketFlight(input.sourceId, () => {
+      const p = input.envelope.packet;
+      if (!p) return null;
+      const portnum = typeof p.decoded?.portnum === 'number' ? p.decoded.portnum : result.portnum;
+      return buildMqttFlight({
+        sourceId: input.sourceId,
+        fromNum: p.from,
+        gatewayNodeNum: parseGatewayNodeNum(input.envelope.gatewayId),
+        relayNode: p.relayNode,
+        hopStart: p.hopStart,
+        hopLimit: p.hopLimit,
+        kind: typeof portnum === 'number' ? meshtasticProtobufService.getPortNumName(portnum) : 'ENCRYPTED',
+        snr: p.rxSnr,
+        rssi: p.rxRssi,
+      });
     });
   }
   if (
