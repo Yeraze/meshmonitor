@@ -4,7 +4,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 vi.mock('react-i18next', async () => {
@@ -13,8 +13,11 @@ vi.mock('react-i18next', async () => {
 });
 
 const getMock = vi.fn();
+const deleteMock = vi.fn();
 // Mocked the way the panel's own tests mock it: no ApiError export.
-vi.mock('../../services/api', () => ({ default: { get: (...a: unknown[]) => getMock(...a) } }));
+vi.mock('../../services/api', () => ({
+  default: { get: (...a: unknown[]) => getMock(...a), delete: (...a: unknown[]) => deleteMock(...a) },
+}));
 
 import { MeshCoreTraceSnrCard } from './MeshCoreTraceSnrCard';
 import { summarizeHopSnrLinks, sparklinePoints, HOP_SNR_POINTS_PER_LINK, type HopSnrSample } from '../../utils/meshcoreHopSnr';
@@ -126,5 +129,69 @@ describe('MeshCoreTraceSnrCard (#5722)', () => {
     getMock.mockReset();
     render(wrap(<MeshCoreTraceSnrCard sourceId={null} publicKey={ME} />));
     expect(getMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('MeshCoreTraceSnrCard clear history (#5970)', () => {
+  const URL = `/api/sources/src-1/meshcore/hop-snr?publicKey=${ME}`;
+  const links = summarizeHopSnrLinks([
+    sample({ snrQuarterDb: 20, timestamp: Date.now() - 120_000 }),
+    sample({ snrQuarterDb: 12, timestamp: Date.now() - 60_000 }),
+  ]);
+
+  beforeEach(() => {
+    getMock.mockReset();
+    deleteMock.mockReset();
+    getMock.mockResolvedValue({ success: true, data: { hours: 168, links } });
+  });
+
+  it('hides the clear button without traceroute:write', async () => {
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} />));
+    await screen.findByTestId('meshcore-trace-snr');
+    expect(screen.queryByRole('button', { name: 'Clear trace SNR history' })).not.toBeInTheDocument();
+  });
+
+  it('confirms, deletes this contact on this source, then reloads and tells siblings', async () => {
+    const onCleared = vi.fn();
+    deleteMock.mockResolvedValue({ success: true, data: { deleted: 2 } });
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME.toUpperCase()} canClear onCleared={onCleared} />));
+    const btn = await screen.findByRole('button', { name: 'Clear trace SNR history' });
+    expect(btn).toHaveAttribute('title', 'Clear trace SNR history');
+    fireEvent.click(btn);
+    expect(deleteMock).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Clear trace SNR history?');
+
+    getMock.mockResolvedValue({ success: true, data: { hours: 168, links: [] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(URL));
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    expect(getMock).toHaveBeenLastCalledWith(URL);
+    expect(onCleared).toHaveBeenCalledTimes(1);
+    // The reload came back empty: the card is gone.
+    await waitFor(() => expect(screen.queryByTestId('meshcore-trace-snr')).not.toBeInTheDocument());
+  });
+
+  it('cancel closes the dialog and does nothing', async () => {
+    const onCleared = vi.fn();
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} canClear onCleared={onCleared} />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear trace SNR history' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(deleteMock).not.toHaveBeenCalled();
+    expect(onCleared).not.toHaveBeenCalled();
+    expect(getMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('meshcore-trace-snr')).toBeInTheDocument();
+  });
+
+  it('a failed delete shows an error and keeps the chart', async () => {
+    const onCleared = vi.fn();
+    deleteMock.mockRejectedValue(Object.assign(new Error('nope'), { status: 500 }));
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} canClear onCleared={onCleared} />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear trace SNR history' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear history' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not clear the trace SNR history.');
+    expect(onCleared).not.toHaveBeenCalled();
+    expect(screen.getByTestId('meshcore-trace-snr')).toBeInTheDocument();
   });
 });

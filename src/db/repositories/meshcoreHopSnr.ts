@@ -144,6 +144,23 @@ export class MeshCoreHopSnrRepository extends BaseRepository {
     await this.db.delete(t).where(and(this.withSourceScope(t, sourceId), lt(t.timestamp, cutoffMs)));
   }
 
+  /**
+   * Clear the trace SNR history of one contact (#5970): every row of this
+   * source where `publicKey` is the sender or the receiver, at any age. This
+   * is the set `getHistoryForNode` reads, without its time window. Returns the
+   * number of rows deleted.
+   */
+  async deleteHistoryForNode(sourceId: string, publicKey: string): Promise<number> {
+    this.requireSource(sourceId, 'deleteHistoryForNode');
+    if (!publicKey) throw new Error('MeshCoreHopSnrRepository.deleteHistoryForNode requires a publicKey');
+    const t = this.tables.meshcoreHopSnr;
+    const result = await this.db.delete(t).where(and(
+      this.withSourceScope(t, sourceId),
+      or(eq(t.senderPublicKey, publicKey), eq(t.receiverPublicKey, publicKey)),
+    ));
+    return this.getAffectedRows(result);
+  }
+
   async deleteBySourceId(sourceId: string): Promise<void> {
     this.requireSource(sourceId, 'deleteBySourceId');
     const t = this.tables.meshcoreHopSnr;

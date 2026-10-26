@@ -220,4 +220,16 @@ describe('MeshCoreTraceSnrCharts (#5765)', () => {
     await Promise.resolve();
     expect(screen.queryByTestId('meshcore-trace-snr-charts')).not.toBeInTheDocument();
   });
+
+  it('a bumped reloadKey refetches and hides the section once the history is cleared (#5970)', async () => {
+    getMock.mockResolvedValueOnce({ success: true, data: { hours: 168, links } });
+    getMock.mockResolvedValueOnce({ success: true, data: { hours: 168, links: [] } });
+    const { rerender } = render(<MeshCoreTraceSnrCharts {...props} reloadKey={0} />);
+    await screen.findByTestId('meshcore-trace-snr-charts');
+    rerender(<MeshCoreTraceSnrCharts {...props} reloadKey={1} />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+    await Promise.resolve();
+    expect(screen.queryByTestId('meshcore-trace-snr-charts')).not.toBeInTheDocument();
+    expect(screen.queryByText('No samples in this range.')).not.toBeInTheDocument();
+  });
 });

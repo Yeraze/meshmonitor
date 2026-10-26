@@ -120,4 +120,58 @@ describe('MeshCore hop SNR route (#5722)', () => {
     await harness.grant(harness.anonymous.id, 'traceroute', 'read', harness.sourceA);
     expect((await anon.get(url(harness.sourceA))).status).toBe(200);
   });
+
+  describe('DELETE /hop-snr (#5970)', () => {
+    const del = (sourceId: string, q = `?publicKey=${K1}`) => url(sourceId, q);
+    const keysOf = async (sourceId: string) =>
+      (await harness.db.meshcoreHopSnr.getRecent(sourceId, 0)).map((r) => [r.senderPublicKey, r.receiverPublicKey]);
+
+    it('needs traceroute:write; read alone gets 403 and deletes nothing', async () => {
+      await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.delete(del(harness.sourceA))).status).toBe(403);
+      expect(await keysOf(harness.sourceA)).toHaveLength(3);
+      await harness.revokeAll(harness.limited.id);
+      await harness.grant(harness.limited.id, 'traceroute', 'write', harness.sourceA);
+      const res = await agent.delete(del(harness.sourceA));
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, data: { deleted: 3 } });
+    });
+
+    it('a write grant on source B cannot clear source A, and B keeps its rows when A is cleared', async () => {
+      await harness.grant(harness.limited.id, 'traceroute', 'write', harness.sourceB);
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.delete(del(harness.sourceA))).status).toBe(403);
+      expect(await keysOf(harness.sourceA)).toHaveLength(3);
+
+      const admin = await harness.loginAs(harness.admin);
+      expect((await admin.delete(del(harness.sourceA))).body.data.deleted).toBe(3);
+      expect(await keysOf(harness.sourceA)).toEqual([]);
+      expect(await keysOf(harness.sourceB)).toEqual([[K1, K2]]);
+    });
+
+    it('clears only the named contact, at any age, and the read then comes back empty', async () => {
+      const old = Date.now() - 200 * 24 * 60 * 60_000;
+      await harness.db.meshcoreHopSnr.insertHops(harness.sourceA, [
+        row(harness.sourceA, { senderPublicKey: K3, senderHash: 'cc', receiverPublicKey: K2, receiverHash: 'bb' }),
+        row(harness.sourceA, { timestamp: old }),
+      ]);
+      const admin = await harness.loginAs(harness.admin);
+      const res = await admin.delete(del(harness.sourceA, `?publicKey=${K1.toUpperCase()}`));
+      expect(res.body.data.deleted).toBe(4);
+      expect(await keysOf(harness.sourceA)).toEqual([[K3, K2]]);
+      expect((await admin.get(url(harness.sourceA, `?publicKey=${K1}`))).body.data.links).toEqual([]);
+      expect((await admin.get(url(harness.sourceA, `?publicKey=${K2}`))).body.data.links).toHaveLength(1);
+    });
+
+    it('rejects a missing or malformed publicKey with 400', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      for (const q of ['', '?publicKey=zz', `?publicKey=${K1}0`, `?publicKey=${K1}&publicKey=${K2}`]) {
+        const res = await admin.delete(del(harness.sourceA, q));
+        expect(res.status, q).toBe(400);
+        expect(res.body).toMatchObject({ success: false, code: 'INVALID_PUBLIC_KEY' });
+      }
+      expect(await keysOf(harness.sourceA)).toHaveLength(3);
+    });
+  });
 });

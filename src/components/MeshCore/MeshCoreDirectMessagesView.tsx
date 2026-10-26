@@ -661,6 +661,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 }}
                 canWriteNodes={canWriteNodes && connected}
                 canTraceroute={canTraceroute && connected}
+                canClearTraceSnr={canTraceroute}
                 isCompanion={isCompanion}
                 repeaters={contacts}
                 selfPublicKey={selfKey}
