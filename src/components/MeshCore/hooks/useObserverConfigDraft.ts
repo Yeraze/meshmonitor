@@ -106,7 +106,7 @@ export function useObserverConfigDraft(
     const sent = current.draft;
     const built = buildObserverConfig(sent);
     if (built.error) {
-      setError(t(built.error.key, built.error.fallback, built.error.params));
+      setError(t(built.error.key, built.error.fallback, built.error.params ?? {}));
       return;
     }
     if (!source || !built.config) return;

@@ -234,7 +234,11 @@ const ROLE_SUMMARY_MAX_COLORED_CATEGORIES = 8;
  */
 const RoleDistributionSummary = React.memo<{
   distribution: RoleGroupCount[];
-  t: (key: string, defaultValue: string, options?: Record<string, unknown>) => string;
+  // Overloads, not `options?`: i18next 26.5's TFunction rejects undefined options.
+  t: {
+    (key: string, defaultValue: string): string;
+    (key: string, defaultValue: string, options: Record<string, unknown>): string;
+  };
 }>(({ distribution, t }) => {
   const total = distribution.reduce((sum, r) => sum + r.count, 0);
   if (total === 0) return null;
