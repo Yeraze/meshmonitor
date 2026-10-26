@@ -117,7 +117,12 @@ const ERROR_CODE_MAP: Record<string, { key: string; fallback: string }> = {
  *  typed it, which is wrong when the device supplied it (§7). */
 const DEVICE_FAULT_CODES = new Set(['INVALID_KEY_LENGTH', 'INVALID_KEY_MATERIAL']);
 
-type TFunc = (key: string, fallback: string, opts?: Record<string, unknown>) => string;
+// Overloads, not `opts?`: i18next 26.5's TFunction has no 3-argument form
+// that takes `undefined` options, so an optional third parameter won't accept it.
+type TFunc = {
+  (key: string, fallback: string): string;
+  (key: string, fallback: string, opts: Record<string, unknown>): string;
+};
 
 /**
  * Resolve one `ObserverKeyError` to display text. `action` is the mutation
