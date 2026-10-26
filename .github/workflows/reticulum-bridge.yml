@@ -142,7 +142,7 @@ jobs:
       # Same auth pattern as docker-publish.yml's build-main job: GHCR via the
       # ambient GITHUB_TOKEN, no separate PAT/secret to manage.
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6  # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
