@@ -29,6 +29,8 @@ import { getMeshCoreChannelSendState, getMeshCoreDirectSendState } from '../../u
 import { directSendLabel } from './meshcoreSendLabel';
 import { parseSpip } from '../../utils/spip';
 import { SpipImage } from '../Spip/SpipImage';
+import { meshcoreDisplayTimeMs, meshcoreMessageClockOffsetMs } from '../../utils/meshcoreMessageTime';
+import { MeshCoreClockOffset } from './MeshCoreClockOffset';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -308,14 +310,14 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
       if (m.reactionEmoji) ownIds.add(m.id);
     }
     const anchorId = resolveUnreadAnchorId({
-      messages: messages.map(m => ({ id: m.id, sortTime: m.timestamp })),
+      messages: messages.map(m => ({ id: m.id, sortTime: meshcoreDisplayTimeMs(m) })),
       watermarkMs: unreadAnchorMs,
       mode: 'lastRead',
       ownMessageIds: ownIds,
     });
     return shouldSuppressDivider({
       anchorId,
-      messages: messages.map(m => ({ id: m.id, sortTime: m.timestamp })),
+      messages: messages.map(m => ({ id: m.id, sortTime: meshcoreDisplayTimeMs(m) })),
       hasMoreOlder,
     }) ? null : anchorId;
   }, [messages, selfPublicKey, unreadAnchorMs, hasMoreOlder]);
@@ -630,8 +632,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
             {emptyText ?? t('meshcore.no_messages', 'No messages')}
           </div>
         ) : messages.map((m, idx) => {
-          const currentDate = new Date(m.timestamp);
-          const prevDate = idx > 0 ? new Date(messages[idx - 1].timestamp) : null;
+          // Receipt time for DMs and channels, sender time for room posts (#5973).
+          const currentDate = new Date(meshcoreDisplayTimeMs(m));
+          const prevDate = idx > 0 ? new Date(meshcoreDisplayTimeMs(messages[idx - 1])) : null;
           const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
           const ignoredRun = ignoredRuns.get(idx);
           const runExpanded = !!ignoredRun && expandedIgnoredRuns.has(ignoredRun.key);
@@ -734,7 +737,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 )}
                 <span className="mc-message-meta">
                   <span className="mc-message-time">
-                  {formatTime(m.timestamp)}
+                  {formatTime(meshcoreDisplayTimeMs(m))}
+                  <MeshCoreClockOffset offsetMs={meshcoreMessageClockOffsetMs(m)} />
                   {/* Our own send's delivery mark (#5682). One selector per
                       kind, shared with Delivery Details, so the two agree.
                       A DM or room post has a real ack: a tick once it comes,

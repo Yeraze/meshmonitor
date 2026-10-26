@@ -65,8 +65,8 @@ describe('MeshCore reactions - per source (SQLite)', () => {
 
   it('counts and latest timestamps skip reactions per source', async () => {
     await repo.insertMessage({ ...base, id: 'a-m', text: 'hi' }, A);
-    await repo.insertMessage({ ...base, id: 'a-r', text: 'x', timestamp: NOW + 50, reactionEmoji: 'x' }, A);
-    await repo.insertMessage({ ...base, id: 'b-m', text: 'hi', timestamp: NOW + 9 }, B);
+    await repo.insertMessage({ ...base, id: 'a-r', text: 'x', timestamp: NOW + 50, createdAt: NOW + 50, reactionEmoji: 'x' }, A);
+    await repo.insertMessage({ ...base, id: 'b-m', text: 'hi', timestamp: NOW + 9, createdAt: NOW + 9 }, B);
     expect(await repo.getChannelMessageCounts([1], A)).toEqual({ 1: 1 });
     expect(await repo.getChannelLatestTimestamps([1], A)).toEqual({ 1: NOW });
     expect(await repo.getChannelLatestTimestamps([1], B)).toEqual({ 1: NOW + 9 });

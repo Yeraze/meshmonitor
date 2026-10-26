@@ -24,6 +24,7 @@ import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
 import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
 import loginProgressStyles from './MeshCoreLoginProgress.module.css';
+import { compareMeshCoreMessages } from './messageOrder';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -134,7 +135,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   );
 
   const filtered = useMemo(
-    () => messages.filter(activeFilter),
+    // Room posts keep sender-time order (#5973): a room replays its backlog on
+    // login, so receipt time is the login time. See ./messageOrder.ts.
+    () => messages.filter(activeFilter).sort(compareMeshCoreMessages),
     [messages, activeFilter],
   );
 

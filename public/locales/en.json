@@ -5643,6 +5643,7 @@
   "meshcore.no_contacts": "No contacts yet. Send an advert to discover nodes.",
   "meshcore.messages": "Messages",
   "meshcore.no_messages": "No messages yet",
+  "meshcore.clock_offset_title": "Sender's clock differs from receipt time by {{offset}}. The time shown is when MeshMonitor received the message.",
   "meshcore.broadcast": "Broadcast",
   "meshcore.type_message": "Type a message...",
   "meshcore.send": "Send",

@@ -154,6 +154,12 @@ On **mobile**, the node list and the map share the screen, and the map shows fir
 
 The device's channels with the most recent message stream. Channel-message senders are now extracted from the `"Name: body"` prefix that MeshCore embeds in the text body, so the sender column and the message body are no longer collapsed into one string.
 
+**Message time and order** — direct and channel messages show, and sort by, the time MeshMonitor received them. Every MeshCore node keeps its own clock and nothing keeps them in step, so a sender whose clock is a few minutes off would otherwise land out of sequence. When the sender's clock differs from receipt time by 5 seconds or more, the gap shows in parentheses after the time, as receipt time minus sender time: `8:00:00 PM (+15m30s)` means the sender's clock read 7:44:30 PM, and `(-15m30s)` means it read 8:15:30 PM. Hover the gap for a tooltip. No gap shows when the message carries no sender time, or when the sender's time is more than a day from receipt (an unset or broken clock). Unread markers use receipt time too. The same rules apply to messages from Companion, Repeater and MQTT sources, to the MQTT source's channel list, and to MeshCore messages on [Unified Messages](/features/multi-source), where a message heard by several sources shows the earliest receipt time.
+
+Room posts are the exception. A room server sends its backlog when you log in, so the receipt time of a replayed post is the login time. Room posts keep the sender's time and order, and show no gap.
+
+![MeshCore channel messages showing receipt time and the sender's clock offset](/images/features/5973-meshcore-receipt-time.png)
+
 **Unread indicators** — channels with messages newer than the last time you opened them show an unread dot and a **bold name** in the channel list. A header badge counts how many channels currently have unread messages, and an optional **"unread first"** sort toggle (persisted) floats those channels to the top. Opening a channel marks it read up to the newest visible message. Read markers are saved **on the server, per user and per source**, so they follow your account to another browser or device. The browser keeps a copy in `localStorage` so the list paints at once, and falls back to that copy when you are signed out.
 
 **Mute** — a signed-in user can mute a channel with the bell button beside the message box. A muted channel shows no unread dot and does not count in the header badge. The mute is yours alone, on this source.

@@ -33,6 +33,7 @@
  */
 
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
+import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 
 const CHANGE_EVENT = 'meshcore-unread-changed';
 
@@ -292,7 +293,7 @@ export function isChannelPseudoKey(k: string | null | undefined): boolean {
  * canonical peer keys.
  */
 export function computeUnreadDmPeers(params: {
-  messages: ReadonlyArray<{ fromPublicKey: string; toPublicKey?: string; timestamp: number; messageType?: string; filtered?: string; reactionEmoji?: string | null }>;
+  messages: ReadonlyArray<{ fromPublicKey: string; toPublicKey?: string; timestamp: number; receivedAt?: number; messageType?: string; filtered?: string; reactionEmoji?: string | null }>;
   contacts: ReadonlyArray<{ publicKey?: string }>;
   selfKey: string | undefined;
   dmLastRead: Record<string, number>;
@@ -327,7 +328,9 @@ export function computeUnreadDmPeers(params: {
     const peer = canon(m.fromPublicKey);
     if (peerKeysMatch(peer, selfKey)) continue;
     const prev = latestIncoming.get(peer) ?? 0;
-    if (m.timestamp > prev) latestIncoming.set(peer, m.timestamp);
+    // Receipt time (#5973), the clock the DM view marks read with.
+    const ts = meshcoreReceiptTimeMs(m);
+    if (ts > prev) latestIncoming.set(peer, ts);
   }
   const activeCanonical = activePeerKey ? canon(activePeerKey) : null;
   const unread = new Set<string>();

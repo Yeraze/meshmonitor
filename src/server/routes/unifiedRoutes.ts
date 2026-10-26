@@ -36,6 +36,7 @@ import {
 import { extractPacketIdFromRowId } from '../utils/messageRowId.js';
 import { getMaxNodeAgeHoursForSources } from '../services/nodeDisplaySettings.js';
 import { canonicalMessageTime, plausibleRxTime } from '../utils/messageTime.js';
+import { storedWireSecond } from '../../utils/meshcoreReactionTarget.js';
 import type { DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
@@ -280,7 +281,10 @@ router.get('/channels', async (req: Request, res: Response) => {
  *     text, emoji, replyId,
  *     meshcoreRowRefs?,                 // MeshCore non-reaction: dedupKey of each row behind it
  *     reactionEmoji?, reactionTargetRefs?, // MeshCore reaction: emoji; target row dedupKeys ([] = unmatched)
- *     timestamp,        // canonical device time (earliest rxTime seen) — for display
+ *     timestamp,        // canonical device time (earliest rxTime seen) — for display.
+ *                       // MeshCore DMs/channels: earliest receipt time (#5973);
+ *                       // MeshCore room posts keep the sender's time.
+ *     senderTimestamp?, // MeshCore DM/channel: wire sender second, for the clock-offset badge (#5973)
  *     createdAt,        // earliest server DB arrival time across receptions — for ordering/cursor
  *     receptions: [{ sourceId, sourceName, hopStart, hopLimit, hopCount,
  *                    rxSnr, rxRssi, rxTime, timestamp }]
@@ -353,6 +357,12 @@ router.get('/messages', async (req: Request, res: Response) => {
       reactionTargetRefs?: string[];
       /** MeshCore non-reaction entry: dedupKey of every row behind it. */
       meshcoreRowRefs?: string[];
+      /**
+       * MeshCore DM / channel entry (#5973): the wire sender second of the
+       * reception that opened the cluster, or null when none is stored. The
+       * client shows the sender's clock offset from it. Absent on room posts.
+       */
+      senderTimestamp?: number | null;
     };
 
     const merged = new Map<string, Merged>();
@@ -853,6 +863,10 @@ router.get('/messages', async (req: Request, res: Response) => {
       const m = first.row;
       if (before !== undefined && !(m.createdAt < before)) continue;
       const refs = meshcoreClusterRefs(cluster);
+      // #5973: a DM or channel entry shows its EARLIEST receipt time (members
+      // are in createdAt order) and carries the sender second for the offset.
+      // A room post replays on login, so it keeps the sender's time.
+      const roomPost = m.messageType === 'room_post';
       merged.set(cluster.dedupKey, {
         dedupKey: cluster.dedupKey,
         packetId: null,
@@ -870,8 +884,9 @@ router.get('/messages', async (req: Request, res: Response) => {
         text: m.text ?? '',
         emoji: null,
         replyId: null,
-        timestamp: m.timestamp,
+        timestamp: roomPost ? m.timestamp : m.createdAt,
         createdAt: m.createdAt,
+        ...(roomPost ? {} : { senderTimestamp: storedWireSecond(m) }),
         ...(refs.reactionEmoji
           ? { reactionEmoji: refs.reactionEmoji, reactionTargetRefs: refs.reactionTargetRefs ?? [] }
           : { meshcoreRowRefs: refs.rowRefs }),
@@ -885,7 +900,8 @@ router.get('/messages', async (req: Request, res: Response) => {
           rxSnr: x.row.snr ?? null,
           rxRssi: x.row.rssi ?? null,
           rxTime: null,
-          timestamp: x.row.timestamp,
+          // Each source's own receipt time, except on a room post (#5973).
+          timestamp: roomPost ? x.row.timestamp : x.row.createdAt,
           // MeshCore has no XEdDSA packet signing concept.
           xeddsaSigned: null,
         })),

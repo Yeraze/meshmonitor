@@ -1,0 +1,7 @@
+/* Sender clock offset beside a MeshCore message time (#5973). */
+.clockOffset {
+  margin-left: 0.3rem;
+  color: var(--color-text-subtle);
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}

@@ -55,6 +55,8 @@ import {
   MeshCoreUnmatchedReaction,
 } from '../components/MeshCore/MeshCoreReactionChips';
 import HopBadge from '../components/unified/HopBadge';
+import { MeshCoreClockOffset } from '../components/MeshCore/MeshCoreClockOffset';
+import { meshcoreClockOffsetMs } from '../utils/meshcoreMessageTime';
 import MessageExportDialog from '../components/MessageExportDialog/MessageExportDialog';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
@@ -102,6 +104,9 @@ interface UnifiedMessage {
   reactionEmoji?: string;
   /** Refs of the targeted rows; empty means unmatched. */
   reactionTargetRefs?: string[];
+  /** MeshCore DM / channel entry: wire sender second, for the clock offset (#5973).
+   *  Its `timestamp` is then the earliest receipt time. */
+  senderTimestamp?: number | null;
 }
 
 interface UnifiedChannel {
@@ -665,7 +670,12 @@ export default function UnifiedMessagesPage() {
                     </span>
                   )}
                   <span className="unified-msg-card__sender">{senderLabel(msg)}</span>
-                  <span className="unified-msg-card__time">{formatTime(msg.timestamp)}</span>
+                  <span className="unified-msg-card__time">
+                    {formatTime(msg.timestamp)}
+                    {msg.senderTimestamp !== undefined && (
+                      <MeshCoreClockOffset offsetMs={meshcoreClockOffsetMs(msg.createdAt, msg.senderTimestamp)} />
+                    )}
+                  </span>
                 </div>
 
                 {replyPreview.kind !== 'none' && (

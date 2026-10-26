@@ -27,6 +27,8 @@ import {
 } from './meshcoreUnreadStore';
 import { UiIcon } from '../icons';
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
+import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
+import { compareMeshCoreMessages } from './messageOrder';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -258,18 +260,18 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       if (selfKey && keysMatch(m.fromPublicKey, selfKey)) {
         const peer = canonicalize(m.toPublicKey);
         peers.add(peer);
-        noteMessage(peer, m.timestamp);
+        noteMessage(peer, meshcoreReceiptTimeMs(m));
       } else if (selfKey && keysMatch(m.toPublicKey, selfKey)) {
         const peer = canonicalize(m.fromPublicKey);
         peers.add(peer);
-        noteMessage(peer, m.timestamp);
+        noteMessage(peer, meshcoreReceiptTimeMs(m));
       } else {
         const a = canonicalize(m.fromPublicKey);
         const b = canonicalize(m.toPublicKey);
         peers.add(a);
         peers.add(b);
-        noteMessage(a, m.timestamp);
-        noteMessage(b, m.timestamp);
+        noteMessage(a, meshcoreReceiptTimeMs(m));
+        noteMessage(b, meshcoreReceiptTimeMs(m));
       }
     }
     // Always include all contacts so the user can start a new DM.
@@ -356,7 +358,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       if (selfKey && keysMatch(m.toPublicKey, selfKey) && keysMatch(m.fromPublicKey, selected)) return true;
       // No selfKey known — fall back to either direction matching the selected peer.
       return keysMatch(m.fromPublicKey, selected) || keysMatch(m.toPublicKey, selected);
-    });
+    }).sort(compareMeshCoreMessages); // receipt-time order (#5973), see ./messageOrder.ts
   }, [messages, selected, selfKey]);
 
   // Unread-marker re-read trigger (localStorage isn't reactive) (#3891).
@@ -388,7 +390,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   useEffect(() => {
     if (!sourceId || !selected) return;
     const peer = canonicalizePeerKey(selected, contacts);
-    const latest = filtered.reduce((mx, m) => Math.max(mx, m.timestamp), 0);
+    const latest = filtered.reduce((mx, m) => Math.max(mx, meshcoreReceiptTimeMs(m)), 0);
     markDmRead(sourceId, peer, latest || Date.now());
   }, [sourceId, selected, contacts, filtered]);
 

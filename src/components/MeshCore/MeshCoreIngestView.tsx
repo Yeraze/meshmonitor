@@ -24,6 +24,8 @@ import apiService from '../../services/api';
 import { UiIcon } from '../icons';
 import { MeshCorePacketMonitorView } from './MeshCorePacketMonitorView';
 import styles from './MeshCoreIngestView.module.css';
+import { MeshCoreClockOffset } from './MeshCoreClockOffset';
+import { meshcoreClockOffsetMs } from '../../utils/meshcoreMessageTime';
 
 type IngestTab = 'overview' | 'nodes' | 'channels' | 'packets';
 
@@ -61,6 +63,10 @@ interface IngestMessage {
   text?: string | null;
   fromName?: string | null;
   timestamp?: number | null;
+  /** Server arrival time (ms): the time shown (#5973). */
+  createdAt?: number | null;
+  /** Wire sender second, for the sender clock offset (#5973). */
+  senderTimestamp?: number | null;
   /** Ignore / Block (#5408): set by the server from the source's current lists. */
   filtered?: 'ignore' | 'block';
 }
@@ -312,7 +318,13 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
                     {m.channelIdx != null ? `#${m.channelIdx}` : ''} {m.fromName || ''}
                   </span>
                   <span className={styles.messageText}>{m.text}</span>
-                  <span className={styles.messageAge}>{formatAge(m.timestamp ?? null)}</span>
+                  <span className={styles.messageAge}>
+                    {/* Receipt time and sender clock offset (#5973). */}
+                    {formatAge(m.createdAt ?? m.timestamp ?? null)}
+                    {m.createdAt != null && (
+                      <MeshCoreClockOffset offsetMs={meshcoreClockOffsetMs(m.createdAt, m.senderTimestamp)} />
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>

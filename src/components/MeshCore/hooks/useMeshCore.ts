@@ -236,12 +236,13 @@ export interface MeshCoreMessage {
    * trigger stamped …213050, the reply stamped …213000 despite arriving 1.4s
    * later.
    *
-   * Ordering therefore compares `timestamp` at second granularity — all the
-   * wire actually gives us — and breaks ties on this field, a single monotonic
-   * clock across both directions. Display still uses `timestamp`.
+   * Since #5973, DMs and channel messages both SORT and DISPLAY by this
+   * clock; the sender's offset from it shows beside the time. Room posts
+   * keep `timestamp` (a room replays its backlog on login), with this as the
+   * tie-break. See `utils/meshcoreMessageTime.ts` and `../messageOrder.ts`.
    *
-   * Optional: rows persisted before this field existed carry no value, and
-   * `compareMeshCoreMessages` falls back to `timestamp` for those.
+   * Optional: reloaded rows carry the DB `createdAt` here; rows from before
+   * either existed fall back to `timestamp`.
    */
   receivedAt?: number;
 }
