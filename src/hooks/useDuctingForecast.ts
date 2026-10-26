@@ -61,16 +61,26 @@ export function useDuctingEnabled(): boolean {
   return data?.ductingOverlayEnabled === 'true';
 }
 
-export function ductingForecastQueryKey(hoursAhead: number): readonly unknown[] {
-  return ['ducting', 'forecast', hoursAhead] as const;
+export function ductingForecastQueryKey(hoursAhead: number, sourceId?: string | null): readonly unknown[] {
+  return sourceId ? (['ducting', 'forecast', hoursAhead, sourceId] as const) : (['ducting', 'forecast', hoursAhead] as const);
 }
 
-export function useDuctingForecast(hoursAhead: number, enabled: boolean): UseQueryResult<DuctingForecast> {
+/**
+ * `sourceId` (#5972) asks for that one source's area instead of the default
+ * one. The MeshCore map passes it: the default area holds only Meshtastic
+ * nodes, so a MeshCore source would have none.
+ */
+export function useDuctingForecast(
+  hoursAhead: number,
+  enabled: boolean,
+  sourceId?: string | null,
+): UseQueryResult<DuctingForecast> {
   return useQuery({
-    queryKey: ductingForecastQueryKey(hoursAhead),
+    queryKey: ductingForecastQueryKey(hoursAhead, sourceId),
     queryFn: async () => {
+      const scope = sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : '';
       const body = await apiService.get<{ success: boolean; data: DuctingForecast }>(
-        `/api/ducting/forecast?hoursAhead=${hoursAhead}`,
+        `/api/ducting/forecast?hoursAhead=${hoursAhead}${scope}`,
       );
       return body.data;
     },

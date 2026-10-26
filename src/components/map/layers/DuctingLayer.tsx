@@ -19,6 +19,8 @@ import styles from './DuctingLayer.module.css';
 export interface DuctingLayerProps {
   /** The forecast step to draw, hours ahead. */
   hoursAhead: number;
+  /** #5972: forecast this one source's area (the MeshCore map). */
+  sourceId?: string | null;
 }
 
 const TONE_CLASS = { super: styles.super, duct: styles.duct } as const;
@@ -50,9 +52,9 @@ export function DuctingCells({ forecast }: { forecast: DuctingForecast }) {
   return <>{cells}</>;
 }
 
-export default function DuctingLayer({ hoursAhead }: DuctingLayerProps) {
+export default function DuctingLayer({ hoursAhead, sourceId }: DuctingLayerProps) {
   const enabled = useDuctingEnabled();
-  const { data } = useDuctingForecast(hoursAhead, enabled);
+  const { data } = useDuctingForecast(hoursAhead, enabled, sourceId);
   if (!enabled || !data) return null;
   return <DuctingCells forecast={data} />;
 }

@@ -121,6 +121,7 @@ describe('GET /ducting/forecast', () => {
     await harness.db.settings.deleteSetting('ductingOverlayEnabled').catch(() => {});
     await harness.db.nodes.deleteAllNodes(harness.sourceA);
     await harness.db.nodes.deleteAllNodes(harness.sourceB);
+    await harness.db.meshcore.deleteAllNodes();
     await harness.cleanup();
   });
 
@@ -284,7 +285,112 @@ describe('GET /ducting/forecast', () => {
       expect(res.body.data.bbox).toEqual(TAMPA_BOX);
     });
 
-    it.each([['hoursAhead=73'], ['hoursAhead=-1'], ['hoursAhead=1.5'], ['bbox=nope']])(
+    describe('one source\'s area with sourceId (#5972, the MeshCore map)', () => {
+      const key = (n: number) => n.toString(16).padStart(2, '0').repeat(32);
+
+      /** MeshCore map access on source A: one `nodes` row with read and viewOnMap. */
+      async function grantMeshCoreViewerA() {
+        await harness.db.auth.deletePermissionsForUserByScope(harness.limited.id, harness.sourceA);
+        await harness.db.auth.createPermission({
+          userId: harness.limited.id, resource: 'nodes', canRead: true, canWrite: false, canViewOnMap: true,
+          sourceId: harness.sourceA, grantedAt: Date.now(), grantedBy: null,
+        });
+      }
+
+      /** A busier MeshCore cluster near Seattle, and the companion itself in Tampa (heard long ago). */
+      async function seedMeshCoreA() {
+        for (let i = 0; i < 5; i++) {
+          await harness.db.meshcore.upsertNode(
+            { publicKey: key(0x10 + i), name: `Seattle ${i}`, latitude: 47.6 + i * 0.01, longitude: -122.3, lastHeard: Date.now() },
+            harness.sourceA,
+          );
+        }
+        await harness.db.meshcore.upsertNode(
+          { publicKey: key(0x01), name: 'Companion', latitude: 27.5, longitude: -82.5, isLocalNode: true, lastHeard: Date.now() - 30 * 86400_000 },
+          harness.sourceA,
+        );
+      }
+
+      it("builds the area from the source's MeshCore contacts, anchored on its local node", async () => {
+        stubNoaa(200, FIXTURE);
+        await seedMeshCoreA();
+        // A Meshtastic node on another source must not stretch the box.
+        await harness.db.nodes.upsertNode(
+          { nodeNum: 0x5734c, nodeId: '!0005734c', latitude: 30.5, longitude: -97.5, lastHeard: now(), channel: 0 },
+          harness.sourceB,
+        );
+        await grantMeshCoreViewerA();
+        const user = await harness.loginAs(harness.limited);
+        const res = await user.get(`/ducting/forecast?sourceId=${harness.sourceA}`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.bbox).toEqual(TAMPA_BOX);
+      });
+
+      it('uses the busiest contact cluster when the source has no local node position', async () => {
+        stubNoaa(200, FIXTURE);
+        await harness.db.meshcore.upsertNode(
+          { publicKey: key(0x20), name: 'Tampa', latitude: 27.5, longitude: -82.5, lastHeard: Date.now() },
+          harness.sourceA,
+        );
+        await harness.db.meshcore.upsertNode(
+          { publicKey: key(0x21), name: 'Stale', latitude: 47.6, longitude: -122.3, lastHeard: Date.now() - 30 * 86400_000 },
+          harness.sourceA,
+        );
+        const admin = await harness.loginAs(harness.admin);
+        const res = await admin.get(`/ducting/forecast?sourceId=${harness.sourceA}`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.bbox).toEqual(TAMPA_BOX);
+      });
+
+      it("uses a contact's location override", async () => {
+        stubNoaa(200, FIXTURE);
+        await harness.db.meshcore.upsertNode(
+          { publicKey: key(0x30), name: 'Moved', latitude: 47.6, longitude: -122.3, lastHeard: Date.now() },
+          harness.sourceA,
+        );
+        await harness.db.meshcore.setNodePositionOverride(harness.sourceA, key(0x30), { enabled: true, latitude: 27.5, longitude: -82.5 });
+        const admin = await harness.loginAs(harness.admin);
+        const res = await admin.get(`/ducting/forecast?sourceId=${harness.sourceA}`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.bbox).toEqual(TAMPA_BOX);
+      });
+
+      it('leaves out MeshCore contacts the caller may not see on the map', async () => {
+        const fetchMock = stubNoaa(200, FIXTURE);
+        await seedMeshCoreA();
+        // nodes:read without nodes:viewOnMap.
+        await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+        const user = await harness.loginAs(harness.limited);
+        const res = await user.get(`/ducting/forecast?sourceId=${harness.sourceA}`);
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('NO_AREA');
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it('refuses a source the caller cannot read, and fetches nothing', async () => {
+        const fetchMock = stubNoaa(200, FIXTURE);
+        await seedMeshCoreA();
+        await grantMeshCoreViewerA();
+        const user = await harness.loginAs(harness.limited);
+        const res = await user.get(`/ducting/forecast?sourceId=${harness.sourceB}`);
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('FORBIDDEN');
+        expect((await user.get('/ducting/forecast?sourceId=no-such-source')).status).toBe(403);
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it('keeps MeshCore nodes out of the default (all-sources) area', async () => {
+        const fetchMock = stubNoaa(200, FIXTURE);
+        await seedMeshCoreA();
+        const admin = await harness.loginAs(harness.admin);
+        const res = await admin.get('/ducting/forecast');
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('NO_AREA');
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+    });
+
+    it.each([['hoursAhead=73'], ['hoursAhead=-1'], ['hoursAhead=1.5'], ['bbox=nope'], ['sourceId=']])(
       'rejects %s',
       async (query) => {
         const fetchMock = stubNoaa(200, FIXTURE);
