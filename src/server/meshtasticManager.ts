@@ -123,7 +123,8 @@ import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } fr
 import { automationPacketTracker, randomPacketId, type SendOrigin } from './utils/automationPacketTracker.js';
 import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy, WANT_CONFIG_NONCE_FULL, WANT_CONFIG_NONCE_ONLY_CONFIG } from './constants/meshtastic.js';
+import { QuickCloseDetector } from './meshtastic/quickCloseDetector.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
 import { MODULE_FIELD_BY_ADMIN_TYPE, CONFIG_TYPE_MAP } from './constants/configTypes.js';
 import { runStatusMessageReapply } from './services/statusMessageReapply.js';
@@ -683,6 +684,15 @@ class MeshtasticManager implements ISourceManager {
   //   * fast initial reconnect for the first post-sync drop
   private passiveMode = false;
   private lastDisconnectAt: number | null = null;
+  // When the last FULL config sync finished: set only when the node answers
+  // our full want_config_id with a matching config_complete_id (#5974). The
+  // passive skip requires it, so a sync that died part way — whose Config
+  // frames still filled actualDeviceConfig — cannot arm the skip. Kept across
+  // a passive disconnect along with the rest of the cache.
+  private lastCompletedSyncAt: number | null = null;
+  // Warns when the node keeps closing the link seconds after connect — the
+  // signature of a second TCP client taking the node's one slot (#5974).
+  private quickCloseDetector = new QuickCloseDetector();
   // Per-source override of PASSIVE_RESYNC_STALE_MS. null means "use the
   // class default". The reporter (#3122 follow-up) asked for this as an
   // advanced setting so operators can tune the window for their specific
@@ -2189,6 +2199,7 @@ class MeshtasticManager implements ISourceManager {
       logger.debug('🟡 [connect-race] handleConnected fired with no transport — skipping handshake (#3247)');
       return;
     }
+    this.quickCloseDetector.noteConnected();
 
     // Passive Mode (issue #3122): if we already have a cached snapshot of the
     // node and config, skip the destabilizing post-reconnect full sync.
@@ -2202,8 +2213,13 @@ class MeshtasticManager implements ISourceManager {
     // here, BEFORE the state write, and folded into ONE atomic
     // TRANSPORT_CONNECTED dispatch below — no intermediate "connected but
     // undecided" window between setting isConnected and picking a target.
+    //
+    // #5974: the cache must come from a sync that actually FINISHED. Any
+    // Config frame fills actualDeviceConfig, so a sync the node cut off part
+    // way used to arm the skip and the source never got a full sync at all.
     const passiveResyncFresh =
       this.passiveMode &&
+      this.lastCompletedSyncAt !== null &&
       this.localNodeInfo !== null &&
       this.actualDeviceConfig !== null &&
       this.lastDisconnectAt !== null &&
@@ -2248,19 +2264,37 @@ class MeshtasticManager implements ISourceManager {
 
     try {
       if (skipFullSync) {
-        // Skip the want_config_id handshake. Mesh traffic (received packets)
-        // continues to flow without it, and we already have a recent config
-        // snapshot. This is the core stability fix for large TCP nodes that
-        // close the socket under sync pressure (#3122). Mark capture complete
-        // so the post-config scheduler logic still runs (with passive-mode
-        // skips applied below).
+        // Skip the FULL sync (the NodeDB dump), not the handshake. The node
+        // sends a TCP client nothing at all until it asks with want_config_id
+        // (firmware PhoneAPI stays in STATE_SEND_NOTHING), so a session that
+        // skips it entirely is silent: no mesh packets arrive (#5974). Ask
+        // for config only (SPECIAL_NONCE_ONLY_CONFIG): MyInfo, our own
+        // NodeInfo, channels, config and module config, then the session goes
+        // live. That still spares a large node the NodeDB stream that made it
+        // close the socket (#3122). Mark capture complete now so the
+        // post-config scheduler logic runs once (with passive-mode skips
+        // applied); the config-only config_complete_id that follows is not
+        // treated as a sync (see the 'configComplete' case).
         const reason = consumeSuppressFlag
-          ? '🟡 [manual-resync recovery] Skipping want_config_id — using cached config'
-          : '🟢 [passive] Skipping want_config_id on reconnect — using cached config from last session';
+          ? '🟡 [manual-resync recovery] Requesting config only (no NodeDB) — using cached node list'
+          : '🟢 [passive] Requesting config only (no NodeDB) on reconnect — using cached node list from last session';
         logger.debug(reason);
         // 'completeConfigCapture' action — skip path marks the cached
         // snapshot current without a fresh sync.
         this.completeConfigCapture();
+        try {
+          await this.sendWantConfigId(WANT_CONFIG_NONCE_ONLY_CONFIG);
+        } catch (sendErr) {
+          // Unlike the full path, no capture state hangs on this send, so
+          // there is nothing to unwind: a dead socket surfaces through the
+          // transport's own close event and reconnect.
+          const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+          if (this.transport !== transportAtConnect) {
+            logger.debug(`🟡 [connect-race] config-only want_config_id aborted — transport replaced (${msg}) (#3247)`);
+          } else {
+            logger.warn(`⚠️ Could not send config-only want_config_id (${msg}); the node will send no packets on this session`);
+          }
+        }
         // A manual-resync recovery should also clear the in-flight latch so the
         // operator's button re-enables (the original sync never reached
         // configComplete, so the normal onConfigCaptureComplete handler
@@ -2569,6 +2603,24 @@ class MeshtasticManager implements ISourceManager {
     // pre-refactor behavior (only the resulting state and the notify call
     // were ever gated on it).
     const alreadyUserDisconnected = this.#state === ConnState.UserDisconnected;
+
+    // A node that keeps closing the link seconds after connect most likely
+    // has a second TCP client taking its single slot (#5974). The detector
+    // returns a message only after a streak, and at most once per window.
+    if (alreadyUserDisconnected) {
+      this.quickCloseDetector.reset();
+    } else {
+      const quickCloseWarning = this.quickCloseDetector.noteClosed();
+      if (quickCloseWarning) {
+        const cfg = this.sourceConfigOverride;
+        const target = cfg?.host ? ` (${cfg.host}:${cfg.port ?? 4403})` : '';
+        // Not awaited: the state write below must not wait on a DB lookup.
+        void this.getSourceName()
+          .catch(() => this.sourceId)
+          .then((name) => logger.warn(`⚠️ [${name}${target}] ${quickCloseWarning}`));
+      }
+    }
+
     const ctx = this.buildSmContext({ vnEnabled: this.virtualNodeServer !== undefined });
     const { next, actions } = dispatch(this.#state, 'TRANSPORT_DISCONNECTED', ctx);
     this.#state = alreadyUserDisconnected ? ConnState.UserDisconnected : next;
@@ -2600,6 +2652,8 @@ class MeshtasticManager implements ISourceManager {
           this.localNodeInfo = null;
           this.actualDeviceConfig = null;
           this.actualModuleConfig = null;
+          // The cache a completed sync filled is gone, so its marker goes too.
+          this.lastCompletedSyncAt = null;
           this.radioChannels.clear();
           // A sync that died mid-flight must not carry its deferred favorite
           // write-backs into the next session — the device re-reports its own
@@ -2764,16 +2818,18 @@ class MeshtasticManager implements ISourceManager {
   }
 
   // public: called by NodeDbMaintenanceService.refreshNodeDatabase (#3962 Phase 4.2a PR2 §4f)
-  async sendWantConfigId(): Promise<void> {
+  // `nonce` defaults to the full sync (config + NodeDB). Passive reconnects
+  // pass WANT_CONFIG_NONCE_ONLY_CONFIG to skip the NodeDB dump (#5974).
+  async sendWantConfigId(nonce: number = WANT_CONFIG_NONCE_FULL): Promise<void> {
     if (!this.transport) {
       throw new Error('Transport not initialized');
     }
 
     try {
-      logger.debug('Sending want_config_id to trigger configuration data...');
+      logger.debug(`Sending want_config_id ${nonce} to trigger configuration data...`);
 
       // Use the new protobuf service to create a proper want_config_id message
-      const wantConfigMessage = meshtasticProtobufService.createWantConfigRequest();
+      const wantConfigMessage = meshtasticProtobufService.createWantConfigRequest(nonce);
 
       await this.transport.send(wantConfigMessage);
       logger.debug('Successfully sent want_config_id request');
@@ -5262,7 +5318,20 @@ class MeshtasticManager implements ISourceManager {
           // Out-of-scope guard (task42b_spec.md §9): this dispatch case fires
           // the CONFIG_COMPLETE event into the SM, but its body (lastHeard
           // refresh above, #2425 migration, callback) is unchanged.
-          if (this.isCapturingInitConfig && !this.configCaptureComplete) {
+          //
+          // #5974: a config-only completion (our passive-reconnect request) is
+          // never a sync. It normally lands with capture already marked
+          // complete, so the block below is skipped anyway; the explicit check
+          // also keeps a late one from ending a full sync that began after it
+          // (a manual resync) before that sync's NodeDB arrived.
+          if (Number(parsed.data.configCompleteId) === WANT_CONFIG_NONCE_ONLY_CONFIG) {
+            logger.debug('✅ Config-only refresh complete — node list kept from the last full sync');
+          } else if (this.isCapturingInitConfig && !this.configCaptureComplete) {
+            // Only the answer to OUR full request counts as a completed sync,
+            // the marker the passive skip needs (#5974).
+            if (Number(parsed.data.configCompleteId) === WANT_CONFIG_NONCE_FULL) {
+              this.lastCompletedSyncAt = Date.now();
+            }
             const { next, actions } = dispatch(this.#state, 'CONFIG_COMPLETE', this.buildSmContext());
             this.#state = next;
             logger.debug(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);

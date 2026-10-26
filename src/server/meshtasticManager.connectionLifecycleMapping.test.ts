@@ -22,6 +22,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockGetSetting = vi.fn();
+const mockCreateWantConfigRequest = vi.fn(() => new Uint8Array([1, 2, 3]));
 const mockNotifyNodeConnected = vi.fn().mockResolvedValue(undefined);
 const mockNotifyNodeDisconnected = vi.fn().mockResolvedValue(undefined);
 const mockEmitConnectionStatus = vi.fn();
@@ -77,7 +78,7 @@ vi.mock('../services/database.js', () => ({
 vi.mock('./meshtasticProtobufService.js', () => ({
   default: {
     initialize: vi.fn().mockResolvedValue(undefined),
-    createWantConfigRequest: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3])),
+    createWantConfigRequest: mockCreateWantConfigRequest,
   },
 }));
 
@@ -174,6 +175,7 @@ describe('MeshtasticManager — connection-lifecycle SM mapping (#3962 Phase 4.2
     manager.actualDeviceConfig = null;
     manager.actualModuleConfig = null;
     manager.lastDisconnectAt = null;
+    manager.lastCompletedSyncAt = null;
     manager.preConfigChannelSnapshot = [];
     manager.initConfigCache = [];
     manager.configCaptureComplete = false;
@@ -238,25 +240,30 @@ describe('MeshtasticManager — connection-lifecycle SM mapping (#3962 Phase 4.2
   });
 
   describe('TRANSPORT_CONNECTED — skip via passive+fresh cache', () => {
-    it('marks capture complete immediately without sending want_config_id, keeps localNodeInfo', async () => {
+    it('marks capture complete immediately, asks for config only (69420), keeps localNodeInfo', async () => {
       const mockTransport = makeFakeTransport();
       manager.transport = mockTransport;
       manager.passiveMode = true;
       manager.localNodeInfo = { nodeNum: 1, nodeId: '!00000001' };
       manager.actualDeviceConfig = { device: {} };
+      manager.lastCompletedSyncAt = Date.now() - 2000; // a full sync finished (#5974)
       manager.lastDisconnectAt = Date.now() - 1000; // well within the 4h window
 
       await manager.handleConnected();
 
       expect(manager.isConnected).toBe(true);
       expect(manager.configCaptureComplete).toBe(true);
+      expect(manager.isCapturingInitConfig).toBe(false);
       expect(manager.localNodeInfo).not.toBeNull();
-      expect(mockTransport.send).not.toHaveBeenCalled();
+      // #5974: a session that sends no want_config_id gets no packets at all,
+      // so the skip asks for config without the NodeDB.
+      expect(mockTransport.send).toHaveBeenCalledTimes(1);
+      expect(mockCreateWantConfigRequest).toHaveBeenLastCalledWith(69420);
     });
   });
 
   describe('TRANSPORT_CONNECTED — skip via manual-resync recovery suppress latch', () => {
-    it('consumes the latch, clears manual-resync in-flight, skips want_config_id', async () => {
+    it('consumes the latch, clears manual-resync in-flight, asks for config only', async () => {
       const mockTransport = makeFakeTransport();
       manager.transport = mockTransport;
       manager.suppressNextAutoSync = true;
@@ -268,7 +275,8 @@ describe('MeshtasticManager — connection-lifecycle SM mapping (#3962 Phase 4.2
       expect(manager.suppressNextAutoSync).toBe(false);
       expect(manager.manualResyncInFlight).toBe(false);
       expect(manager.configCaptureComplete).toBe(true);
-      expect(mockTransport.send).not.toHaveBeenCalled();
+      expect(mockTransport.send).toHaveBeenCalledTimes(1);
+      expect(mockCreateWantConfigRequest).toHaveBeenLastCalledWith(69420);
     });
   });
 

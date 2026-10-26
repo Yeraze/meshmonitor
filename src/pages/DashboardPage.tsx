@@ -1092,7 +1092,7 @@ function DashboardInner() {
 
   // Manual Resync (#3122 follow-up). Operator-initiated full config refresh
   // for Meshtastic TCP sources — useful for Passive Mode sources where the
-  // automatic reconnect skips want_config_id while the cache is fresh.
+  // automatic reconnect skips the full NodeDB sync while the cache is fresh.
   // Cooldown / single-flight / watchdog all live on the server; the click
   // either succeeds (200) or is rejected (409) with state describing why.
   const onResyncSource = async (id: string) => {

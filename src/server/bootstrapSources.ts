@@ -33,6 +33,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from './meshcoreMqttManager.js';
 import { logger } from '../utils/logger.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
+import { warnOnDuplicateTcpEndpoints } from './utils/tcpEndpointDuplicates.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from './meshcoreConfig.js';
 import { reticulumConfigFromSource, ensureReticulumManagerStarted } from './reticulumConfig.js';
 import { buildMqttManagerForSource } from './routes/sourceRoutes.js';
@@ -172,6 +173,13 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
     t === 'mqtt_broker' ? 0 : t === 'mqtt_bridge' ? 2 : 1;
   const enabledSources = [...enabledSourcesRaw].sort(
     (a, b) => typeStartOrder(a.type) - typeStartOrder(b.type),
+  );
+
+  // Two sources on one node knock each other off its single TCP slot (#5974).
+  // Warn only; the operator decides which one to keep.
+  warnOnDuplicateTcpEndpoints(
+    enabledSourcesRaw.map((s) => ({ ...s, enabled: true })),
+    (msg) => logger.warn(msg),
   );
   let firstTcpSourceConfigured = false;
 

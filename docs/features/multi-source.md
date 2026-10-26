@@ -130,6 +130,29 @@ The [Docker Compose Configurator](/configurator) publishes one VN host port by d
 The old global env vars — `ENABLE_VIRTUAL_NODE`, `VIRTUAL_NODE_PORT`, `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` — **were removed** and no longer have any effect. If you upgraded from 3.x, re-enable VN on each source you want to expose.
 :::
 
+## Passive Mode
+
+Passive Mode is a per-source option for Meshtastic TCP sources, in **Dashboard → Edit Source**. Use it for a large or fragile node, such as a router with a big NodeDB, that closes the TCP link while MeshMonitor syncs.
+
+With Passive Mode on, MeshMonitor:
+
+- **Keeps its cached node list and config across a disconnect.**
+- **Skips the full NodeDB download on reconnect.** It asks the node for its config only, so packets keep flowing without the full NodeDB stream. It does this only after one full sync has finished; until then, every connect does a full sync.
+- **Sends no follow-up requests to the node** after a sync: no LoRa or module config requests, no time sync, no remote admin scanner, and no remote LocalStats polling. The config-only request already returns the LoRa and module config.
+
+The **Resync staleness window** (default 4 hours) sets how long the cache stays valid after a disconnect. A reconnect after a longer gap does a full sync again. **Resync** in the source's menu forces one full sync at any time.
+
+## One TCP client per node
+
+A Meshtastic node serves **one** TCP client at a time. When a second client connects, the node closes the first. Two clients pointed at one node take turns knocking each other off, so neither gets a stable link.
+
+MeshMonitor logs a warning when:
+
+- two enabled Meshtastic TCP sources point at the same host and port (at startup, and when you save a source), or
+- the node closes the link within seconds of connecting, several times in a row.
+
+See the [FAQ](/faq#my-meshtastic-tcp-source-keeps-connecting-and-disconnecting) for how to find the other client.
+
 ## Per-Source Permissions
 
 MeshMonitor's role-based access control treats sources as first-class resources. Admins can:

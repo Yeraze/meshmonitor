@@ -445,6 +445,25 @@ export function modemPresetChannelName(modemPreset: number | undefined | null): 
 export const CHANNEL_DB_OFFSET = 100;
 
 /**
+ * `want_config_id` nonces (ToRadio.want_config_id). The node echoes the nonce
+ * back as FromRadio.config_complete_id when it finishes the stream.
+ *
+ * - WANT_CONFIG_NONCE_FULL: our normal request — the full config plus the
+ *   whole NodeDB dump. Any value other than the two special ones below does
+ *   the same thing.
+ * - WANT_CONFIG_NONCE_ONLY_CONFIG: firmware `SPECIAL_NONCE_ONLY_CONFIG`
+ *   (src/mesh/PhoneAPI.h). MyInfo, own NodeInfo, metadata, channels, config and
+ *   module config, then config_complete_id — no other NodeInfos. The session
+ *   then goes live, so mesh packets flow (#5974).
+ * - WANT_CONFIG_NONCE_ONLY_NODES: firmware `SPECIAL_NONCE_ONLY_NODES` — the
+ *   NodeDB without config. MeshMonitor never sends it; the Virtual Node server
+ *   answers it.
+ */
+export const WANT_CONFIG_NONCE_FULL = 0xFFFFFFFF;
+export const WANT_CONFIG_NONCE_ONLY_CONFIG = 69420;
+export const WANT_CONFIG_NONCE_ONLY_NODES = 69421;
+
+/**
  * Maximum number of packets to process in a single retroactive decryption batch.
  * This can be overridden via environment variable RETROACTIVE_DECRYPTION_BATCH_SIZE.
  */
