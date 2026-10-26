@@ -15,6 +15,9 @@ type Descriptor = { key: string; eventHandlers?: { add?: (e: { target: unknown }
 let lastMarkers: Descriptor[] = [];
 const baseMapKeys: string[] = [];
 
+// #4835: the live packet traffic layer pulls in the socket context; off by default here.
+vi.mock('../map/layers/PacketFlightsLayer', () => ({ PacketFlightsLayer: () => null }));
+
 vi.mock('../map/BaseMap', () => ({
   BaseMap: ({ children, center, zoom }: { children: ReactNode; center: [number, number]; zoom: number }) => {
     baseMapKeys.push(`${center[0]}-${center[1]}-${zoom}`);

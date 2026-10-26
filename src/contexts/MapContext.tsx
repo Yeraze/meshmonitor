@@ -138,6 +138,12 @@ interface MapContextType {
   /** #5561: cross-source "heard here" edges. Per-browser (localStorage), default off. */
   showCrossSourceLinks: boolean;
   setShowCrossSourceLinks: (show: boolean) => void;
+  /** #4835: live packet traffic ("packet flights"). Per-browser (localStorage), default off. */
+  showPacketFlights: boolean;
+  setShowPacketFlights: (show: boolean) => void;
+  /** #4835: most packet flights drawn per second; 0 = all. Per-browser, default all. */
+  packetFlightRate: number;
+  setPacketFlightRate: (rate: number) => void;
   /** #5580: traceroute-confirmed reciprocal links, a sub-toggle of the one
    *  above (drawn only while both are on). Per-browser, default ON. */
   showTracerouteConfirmedLinks: boolean;
@@ -250,6 +256,21 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       return localStorage.getItem('showCrossSourceLinks') === 'true';
     } catch {
       return false;
+    }
+  });
+  const [showPacketFlights, setShowPacketFlightsState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('showPacketFlights') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [packetFlightRate, setPacketFlightRateState] = useState<number>(() => {
+    try {
+      const n = Number(localStorage.getItem('packetFlightRate'));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    } catch {
+      return 0;
     }
   });
   // #5580: default ON, so only an explicit 'false' turns it off.
@@ -428,6 +449,25 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       localStorage.setItem('showCrossSourceLinks', value.toString());
     } catch {
       // storage unavailable: the toggle still works for this session
+    }
+  }, []);
+
+  const setShowPacketFlights = React.useCallback((value: boolean) => {
+    setShowPacketFlightsState(value);
+    try {
+      localStorage.setItem('showPacketFlights', value.toString());
+    } catch {
+      // storage unavailable: the toggle still works for this session
+    }
+  }, []);
+
+  const setPacketFlightRate = React.useCallback((value: number) => {
+    const rate = Number.isFinite(value) && value > 0 ? value : 0;
+    setPacketFlightRateState(rate);
+    try {
+      localStorage.setItem('packetFlightRate', String(rate));
+    } catch {
+      // storage unavailable: the slider still works for this session
     }
   }, []);
 
@@ -697,6 +737,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowPolarGrid,
     showCrossSourceLinks,
     setShowCrossSourceLinks,
+    showPacketFlights,
+    setShowPacketFlights,
+    packetFlightRate,
+    setPacketFlightRate,
     showTracerouteConfirmedLinks,
     setShowTracerouteConfirmedLinks,
     showLocalMarkers,
@@ -756,6 +800,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showAccuracyRegions, setShowAccuracyRegions,
     showPolarGrid, setShowPolarGrid,
     showCrossSourceLinks, setShowCrossSourceLinks,
+    showPacketFlights, setShowPacketFlights,
+    packetFlightRate, setPacketFlightRate,
     showTracerouteConfirmedLinks, setShowTracerouteConfirmedLinks,
     showLocalMarkers, setShowLocalMarkers,
     showDucting, setShowDucting,

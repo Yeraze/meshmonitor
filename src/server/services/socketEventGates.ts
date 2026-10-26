@@ -75,6 +75,12 @@ export interface SocketEventGate {
   /** What a viewer who is not an admin must hold. Admins get every event. */
   rule: string;
   /**
+   * `packet-flights`: joining the source is not enough; the socket must also
+   * have asked for live packet flights on it (`packet-flights:subscribe`,
+   * #4835). Admins included.
+   */
+  subscription?: 'packet-flights';
+  /**
    * The payload as sent to an admin, computed once per event. Defaults to the
    * event's data unchanged.
    */
@@ -417,6 +423,17 @@ export const SOCKET_EVENT_GATES: Record<DataEventType, SocketEventGate> = {
   'meshcore:status:updated': needs('connection', 'read', MESHCORE_STATUS),
   'meshcore:local-node:updated': needs('connection', 'read', MESHCORE_STATUS),
   'meshcore:ota-packet': needs('packetmonitor', 'read', 'GET /api/sources/:id/meshcore/packets'),
+  // #4835: live packet traffic on the map. The same grant as the Packet
+  // Monitor routes, and only to sockets that asked for it on that source.
+  'packet:flight': {
+    ...needs(
+      'packetmonitor',
+      'read',
+      'None (live only). The same grant as GET /api/packets, GET /api/sources/:id/mqtt/packets and GET /api/sources/:id/meshcore/packets.',
+      '`packetmonitor:read` on the event\'s source, and a `packet-flights:subscribe` for that source.',
+    ),
+    subscription: 'packet-flights',
+  },
 
   'reticulum:message': needs('messages', 'read', RETICULUM_MESSAGES),
   'reticulum:delivery-state:updated': needs('messages', 'read', RETICULUM_MESSAGES),

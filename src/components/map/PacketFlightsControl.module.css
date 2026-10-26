@@ -1,0 +1,38 @@
+/* Live packet traffic control in the Map Features panels (#4835). */
+.root {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 6px 22px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.hint {
+  color: var(--color-text-subtle);
+}
+
+.rateLabel {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--color-text);
+}
+
+.slider {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.stats {
+  color: var(--color-text-muted);
+}
+
+.dropped {
+  color: var(--color-caution);
+}

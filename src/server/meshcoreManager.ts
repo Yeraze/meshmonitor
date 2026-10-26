@@ -145,6 +145,7 @@ import {
 } from './services/meshcoreFrameIngest.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
+import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops, hopByteForKey } from '../utils/meshcorePath.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
@@ -3166,6 +3167,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Best-effort: capture failures must never break the message stream.
    */
   private async handleOtaPacket(data: any): Promise<void> {
+    // Live packet traffic on the map (#4835), BEFORE the packet-log gate: it
+    // works with the monitor off and stores nothing. A no-op while no map
+    // watches this source.
+    emitPacketFlight(this.sourceId, () => buildMeshCoreFlight({
+      sourceId: this.sourceId,
+      receiverPubKey: this.localNode?.publicKey ?? null,
+      event: data ?? {},
+    }));
     try {
       if (!(await meshcorePacketLogService.isEnabled())) return;
 

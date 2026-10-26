@@ -13,6 +13,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MeshCoreMap } from './MeshCoreMap';
 
+// #4835: the live packet traffic layer pulls in the socket context; off by default here.
+vi.mock('../map/layers/PacketFlightsLayer', () => ({ PacketFlightsLayer: () => null }));
+
 vi.mock('../map/BaseMap', () => ({
   BaseMap: ({ children }: { children: ReactNode }) => <div data-testid="base-map">{children}</div>,
 }));

@@ -268,6 +268,54 @@ You need read access to both **nodes** and **traceroutes** on the source, and
 both nodes' positions must be visible to you on the map. A hidden or private
 node yields no line.
 
+### Live packet traffic {#live-packet-traffic}
+
+**Live packet traffic** (Map Features, off by default) shows packets as they
+arrive. Each packet a source receives draws a dot that flies, in about
+three seconds, from where it came from to the node that heard it. A ring
+then pulses out from that node as the dot fades. It is on the source **Map** tab (Meshtastic and MQTT sources), the
+**Dashboard** map (every source you can read, each in its source colour on the
+Unified map) and the **MeshCore** map. It is not on the 3D view, the embed map
+or Map Analysis.
+
+![Live packet traffic on the map](/images/features/4835-live-packet-traffic.png)
+
+What a dot flies along:
+
+| Source | Line |
+|---|---|
+| Meshtastic | Heard direct (0 hops): sender to your node. Relayed: the last relay to your node, when the packet's relay byte matches exactly one node on the map. |
+| MQTT | Sender to each gateway that heard it, one dot per gateway. With hops, the last relay to the gateway, by the same rule. |
+| MeshCore | A flood with hops: the last path hash to your companion, when it matches exactly one contact on the map. Heard direct: the sender to your companion, when the frame names it (adverts carry the full key; direct messages carry a one-byte hash, which must match one contact). |
+
+| Style | Meaning |
+|---|---|
+| Solid | The last hop is known: the sender heard direct, or a relay matched exactly one node |
+| Dashed and dimmer | **Via mesh**: the packet took hops, but the last relay is not known (no relay byte, or it matches several nodes or none), so the line runs from the sender. A Meshtastic packet your node got over its MQTT uplink is also dashed. |
+
+A packet is skipped when either end has no position on that map. Dots only
+use the nodes the map already shows you, so a flight never reveals a node or
+a position you could not otherwise see. A MeshCore channel message names no
+sender in the clear, so it is drawn only when its last hop resolves.
+
+**Max dots** sets how many dots a second the map draws for you: 1, 2, 5, 10,
+25, 50 or **All** (the default). Packets past that rate are dropped from the
+map, not from the server. Your
+browser also caps the dots in flight at 200 at once; a new one past the cap
+finishes the oldest first. The toggle and the rate are saved in your browser.
+
+Under the slider, a readout counts the last minute's packets: how many
+arrived, how many were drawn, how many were skipped because an end has no
+position on the map, and how many went over your **Max dots** limit. If it
+says **no packets yet**, the sources on that map have heard nothing in the
+last minute; if most land under **no position**, the senders or gateways are
+not on the map.
+
+You need **Packet Monitor read** (`packetmonitor:read`) on a source to see its
+traffic. It works with packet logging off and stores nothing. MeshMonitor
+sends the events only while a map has the layer on, so it costs nothing when
+no one watches, and it never transmits on the mesh.
+
 ### Waypoints
 
 Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-source dashboard map and the Map Analysis canvas, using each waypoint's emoji as its icon. Users with `waypoints:write` can create, edit, and delete waypoints in place from the **Map Features** panel. The same panel has a **Show Waypoints** checkbox (default on) that toggles waypoint marker visibility per-user — persisted alongside the other map feature toggles. See the dedicated [Waypoints](/features/waypoints) page for the full workflow, permissions, and REST API.

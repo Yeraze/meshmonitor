@@ -90,6 +90,7 @@ import {
   getMeshCoreObserverReceiverPosition,
 } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
+import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.js';
 import { isCoverageMqttEnabled } from './services/coverageMqttSettings.js';
 import { logger } from '../utils/logger.js';
 
@@ -448,6 +449,13 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // reconstructing the bridge shape.
       this.emit('ota_packet', decoded.event);
       void this.persistPacket(decoded);
+      // Live packet traffic on the map (#4835): the Observer is the receiver.
+      // Not tied to the packet-log setting; a no-op while no map watches.
+      emitPacketFlight(this.sourceId, () => buildMeshCoreFlight({
+        sourceId: this.sourceId,
+        receiverPubKey: decoded.originId,
+        event: decoded.event,
+      }));
       void this.ingestAdvert(decoded);
       void this.ingestChannelMessage(decoded);
       // Coverage Report (#5277 P3): opt-in per source (U1), reusing P2's
