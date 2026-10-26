@@ -141,7 +141,7 @@
     "@types/ws": "^8.18.2",
     "@types/yamljs": "^0.2.34",
     "@typescript-eslint/eslint-plugin": "^8.71.2",
-    "@typescript-eslint/parser": "^8.71.2",
+    "@typescript-eslint/parser": "^8.72.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
     "@vitest/ui": "^5.0.5",
