@@ -8,6 +8,7 @@ import {
   createFlightRateLimiter,
   flightDurationMs,
   flightKindColor,
+  createFlightStatsWindow,
   type FlightNodeEntry,
 } from './packetFlightEdges';
 import type { PacketFlight } from '../types/packetFlight';
@@ -191,10 +192,51 @@ describe('createFlightRateLimiter', () => {
   });
 });
 
+describe('createFlightStatsWindow', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-25T12:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('counts each outcome and sums them as received', () => {
+    const stats = createFlightStatsWindow();
+    stats.record('drawn');
+    stats.record('drawn');
+    stats.record('noPosition');
+    stats.record('overRate');
+    expect(stats.snapshot()).toEqual({ received: 4, drawn: 2, noPosition: 1, overRate: 1 });
+  });
+
+  it('forgets events older than the window', () => {
+    const stats = createFlightStatsWindow(60_000);
+    stats.record('drawn');
+    vi.advanceTimersByTime(30_000);
+    stats.record('noPosition');
+    expect(stats.snapshot().received).toBe(2);
+    vi.advanceTimersByTime(30_500);
+    expect(stats.snapshot()).toEqual({ received: 1, drawn: 0, noPosition: 1, overRate: 0 });
+    vi.advanceTimersByTime(60_000);
+    expect(stats.snapshot().received).toBe(0);
+  });
+
+  it('reuses a bucket after a full lap without keeping its old counts', () => {
+    const stats = createFlightStatsWindow(3_000);
+    stats.record('drawn');
+    vi.advanceTimersByTime(3_000);
+    stats.record('overRate');
+    expect(stats.snapshot()).toEqual({ received: 1, drawn: 0, noPosition: 0, overRate: 1 });
+    stats.reset();
+    expect(stats.snapshot().received).toBe(0);
+  });
+});
+
 describe('look', () => {
-  it('a typical hop takes about 1.5 s, a long one at most 2.5 s', () => {
-    expect(flightDurationMs({ lat: 0, lng: 0 }, { lat: 0.3, lng: 0.4 })).toBe(1500);
-    expect(flightDurationMs({ lat: 0, lng: 0 }, { lat: 10, lng: 10 })).toBe(2500);
+  it('a typical hop takes about 3 s, a long one at most 4.5 s', () => {
+    expect(flightDurationMs({ lat: 0, lng: 0 }, { lat: 0.3, lng: 0.4 })).toBe(3000);
+    expect(flightDurationMs({ lat: 0, lng: 0 }, { lat: 10, lng: 10 })).toBe(4500);
   });
 
   it('colours by kind with role tokens only', () => {

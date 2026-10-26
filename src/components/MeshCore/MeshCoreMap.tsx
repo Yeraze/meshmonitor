@@ -16,7 +16,7 @@ import { createNodeIcon } from '../map/markerIcons';
 import { BaseMap } from '../map/BaseMap';
 import { PacketFlightsLayer } from '../map/layers/PacketFlightsLayer';
 import { PacketFlightsControl } from '../map/PacketFlightsControl';
-import type { FlightNodeEntry } from '../../utils/packetFlightEdges';
+import type { FlightNodeEntry, PacketFlightStats } from '../../utils/packetFlightEdges';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
@@ -222,7 +222,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       return 0;
     }
   });
-  const [packetFlightsDropped, setPacketFlightsDropped] = useState(0);
+  const [packetFlightsStats, setPacketFlightsStats] = useState<PacketFlightStats | null>(null);
   useEffect(() => {
     try {
       localStorage.setItem('showPacketFlights', String(showPacketFlights));
@@ -647,7 +647,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
             sourceIds={[sourceId]}
             nodes={packetFlightNodes}
             maxPerSecond={packetFlightRate}
-            onDroppedChange={setPacketFlightsDropped}
+            onStatsChange={setPacketFlightsStats}
           />
         )}
       </BaseMap>
@@ -690,7 +690,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
             onCheckedChange={setShowPacketFlights}
             rate={packetFlightRate}
             onRateChange={setPacketFlightRate}
-            dropped={packetFlightsDropped}
+            stats={packetFlightsStats}
           />
           <label className="map-control-item">
             <input

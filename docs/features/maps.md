@@ -271,9 +271,9 @@ node yields no line.
 ### Live packet traffic {#live-packet-traffic}
 
 **Live packet traffic** (Map Features, off by default) shows packets as they
-arrive. Each packet a source receives draws a dot that flies, in about a
-second and a half, from where it came from to the node that heard it, then
-fades. It is on the source **Map** tab (Meshtastic and MQTT sources), the
+arrive. Each packet a source receives draws a dot that flies, in about
+three seconds, from where it came from to the node that heard it. A ring
+then pulses out from that node as the dot fades. It is on the source **Map** tab (Meshtastic and MQTT sources), the
 **Dashboard** map (every source you can read, each in its source colour on the
 Unified map) and the **MeshCore** map. It is not on the 3D view, the embed map
 or Map Analysis.
@@ -300,9 +300,16 @@ sender in the clear, so it is drawn only when its last hop resolves.
 
 **Max dots** sets how many dots a second the map draws for you: 1, 2, 5, 10,
 25, 50 or **All** (the default). Packets past that rate are dropped from the
-map, not from the server, and the panel shows an **N dropped** count. Your
+map, not from the server. Your
 browser also caps the dots in flight at 200 at once; a new one past the cap
 finishes the oldest first. The toggle and the rate are saved in your browser.
+
+Under the slider, a readout counts the last minute's packets: how many
+arrived, how many were drawn, how many were skipped because an end has no
+position on the map, and how many went over your **Max dots** limit. If it
+says **no packets yet**, the sources on that map have heard nothing in the
+last minute; if most land under **no position**, the senders or gateways are
+not on the map.
 
 You need **Packet Monitor read** (`packetmonitor:read`) on a source to see its
 traffic. It works with packet logging off and stores nothing. MeshMonitor

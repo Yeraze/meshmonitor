@@ -29,6 +29,10 @@
   accent-color: var(--color-accent);
 }
 
+.stats {
+  color: var(--color-text-muted);
+}
+
 .dropped {
   color: var(--color-caution);
 }

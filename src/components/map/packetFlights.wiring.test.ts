@@ -26,7 +26,7 @@ describe('live packet traffic wiring (#4835)', () => {
     const src = read(rel);
     expect(src).toMatch(/<PacketFlightsControl\s[^>]*onCheckedChange=\{setShowPacketFlights\}/);
     expect(src).toMatch(/<PacketFlightsControl\s[^>]*onRateChange=\{setPacketFlightRate\}/);
-    expect(src).toMatch(/<PacketFlightsControl\s[^>]*dropped=\{packetFlightsDropped\}/);
+    expect(src).toMatch(/<PacketFlightsControl\s[^>]*stats=\{packetFlightsStats\}/);
   });
 
   it.each(MAPS)('%s mounts the layer only while the toggle is on', (rel) => {

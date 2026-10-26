@@ -9,8 +9,12 @@
  * flight never reveals a node or a position the map does not already show.
  *
  * Rate: `maxPerSecond` (0 = all) caps the dots drawn per second; the excess is
- * dropped here and counted through `onDroppedChange`. Whatever the rate, at
- * most MAX_CONCURRENT_FLIGHTS dots animate at once.
+ * dropped here. Whatever the rate, at most MAX_CONCURRENT_FLIGHTS dots
+ * animate at once.
+ *
+ * Readout: `onStatsChange` gets the last minute's events by outcome (drawn,
+ * no position, over the rate) about once a second, so the panel shows whether
+ * events arrive and why some don't draw.
  */
 import { useEffect, useMemo, useRef } from 'react';
 import { useMap } from 'react-leaflet';
@@ -20,9 +24,11 @@ import type { PacketFlight } from '../../../types/packetFlight';
 import {
   buildFlightNodeIndex,
   createFlightRateLimiter,
+  createFlightStatsWindow,
   flightKindColor,
   resolveFlightEdge,
   type FlightNodeEntry,
+  type PacketFlightStats,
 } from '../../../utils/packetFlightEdges';
 import { resolveCssColor } from '../../../utils/sourceColors';
 import { PacketFlightAnimator } from './packetFlightAnimator';
@@ -36,14 +42,14 @@ export interface PacketFlightsLayerProps {
   maxPerSecond: number;
   /** The map's own colour for a flight's source, as a CSS colour or `var()`; null = colour by kind. */
   sourceColor?: (sourceId: string) => string | null;
-  /** Called with the running dropped count (0 on mount). */
-  onDroppedChange?: (dropped: number) => void;
+  /** Called about once a second with the last minute's counts; with null on unmount. */
+  onStatsChange?: (stats: PacketFlightStats | null) => void;
 }
 
-/** How often the dropped count is reported, ms. */
-const DROPPED_REPORT_MS = 1000;
+/** How often the readout is reported, ms. */
+const STATS_REPORT_MS = 1000;
 
-export function PacketFlightsLayer({ sourceIds, nodes, maxPerSecond, sourceColor, onDroppedChange }: PacketFlightsLayerProps) {
+export function PacketFlightsLayer({ sourceIds, nodes, maxPerSecond, sourceColor, onStatsChange }: PacketFlightsLayerProps) {
   const map = useMap();
   const { state } = useWebSocketContext();
 
@@ -52,8 +58,9 @@ export function PacketFlightsLayer({ sourceIds, nodes, maxPerSecond, sourceColor
   indexRef.current = index;
   const sourceColorRef = useRef(sourceColor);
   sourceColorRef.current = sourceColor;
-  const onDroppedRef = useRef(onDroppedChange);
-  onDroppedRef.current = onDroppedChange;
+  const onStatsRef = useRef(onStatsChange);
+  onStatsRef.current = onStatsChange;
+  const statsRef = useRef(createFlightStatsWindow());
 
   const limiterRef = useRef(createFlightRateLimiter(maxPerSecond));
   useEffect(() => {
@@ -70,23 +77,24 @@ export function PacketFlightsLayer({ sourceIds, nodes, maxPerSecond, sourceColor
     };
   }, [map]);
 
-  // Report the dropped count about once a second, and clear it on unmount.
+  // Report the readout about once a second, and clear it on unmount.
   useEffect(() => {
-    const limiter = limiterRef.current;
-    let reported = -1;
+    const stats = statsRef.current;
+    let reported = '';
     const report = () => {
-      const dropped = limiter.dropped();
-      if (dropped !== reported) {
-        reported = dropped;
-        onDroppedRef.current?.(dropped);
+      const snapshot = stats.snapshot();
+      const key = `${snapshot.drawn}|${snapshot.noPosition}|${snapshot.overRate}`;
+      if (key !== reported) {
+        reported = key;
+        onStatsRef.current?.(snapshot);
       }
     };
     report();
-    const timer = setInterval(report, DROPPED_REPORT_MS);
+    const timer = setInterval(report, STATS_REPORT_MS);
     return () => {
       clearInterval(timer);
-      limiter.resetDropped();
-      onDroppedRef.current?.(0);
+      stats.reset();
+      onStatsRef.current?.(null);
     };
   }, []);
 
@@ -104,8 +112,15 @@ export function PacketFlightsLayer({ sourceIds, nodes, maxPerSecond, sourceColor
     const animator = animatorRef.current;
     if (!animator) return;
     const edge = resolveFlightEdge(flight, indexRef.current);
-    if (!edge) return;
-    if (!limiterRef.current.allow()) return;
+    if (!edge) {
+      statsRef.current.record('noPosition');
+      return;
+    }
+    if (!limiterRef.current.allow()) {
+      statsRef.current.record('overRate');
+      return;
+    }
+    statsRef.current.record('drawn');
     const color = sourceColorRef.current?.(flight.sourceId) ?? flightKindColor(flight.kind);
     animator.add(edge, literal(color));
   };

@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import type { PacketFlight } from '../../../types/packetFlight';
+import type { PacketFlightStats } from '../../../utils/packetFlightEdges';
 
 type Handler = (...args: unknown[]) => void;
 
@@ -62,8 +63,8 @@ const flight = (sourceId = 'A'): PacketFlight => ({
   sourceId, protocol: 'meshtastic', receivedAt: 0, from: 2, to: 1, relay: null, hopsUsed: 0, kind: 'TEXT_MESSAGE_APP',
 });
 
-function Harness({ on, rate = 0, onDropped }: { on: boolean; rate?: number; onDropped?: (n: number) => void }) {
-  return on ? <PacketFlightsLayer sourceIds={['A']} nodes={NODES} maxPerSecond={rate} onDroppedChange={onDropped} /> : null;
+function Harness({ on, rate = 0, onStats }: { on: boolean; rate?: number; onStats?: (s: PacketFlightStats | null) => void }) {
+  return on ? <PacketFlightsLayer sourceIds={['A']} nodes={NODES} maxPerSecond={rate} onStatsChange={onStats} /> : null;
 }
 
 describe('PacketFlightsLayer', () => {
@@ -108,19 +109,23 @@ describe('PacketFlightsLayer', () => {
     expect(animator.add.mock.calls[0][0]).toEqual({ from: { lat: 31, lng: -91 }, to: { lat: 30, lng: -90 }, viaMesh: false });
   });
 
-  it('drops flights past the rate and reports the count', () => {
+  it('drops flights past the rate and reports the last minute by outcome', () => {
     vi.useFakeTimers();
     try {
-      const onDropped = vi.fn();
-      render(<Harness on rate={2} onDropped={onDropped} />);
+      const onStats = vi.fn();
+      const view = render(<Harness on rate={2} onStats={onStats} />);
+      expect(onStats).toHaveBeenLastCalledWith({ received: 0, drawn: 0, noPosition: 0, overRate: 0 });
       act(() => {
         for (let i = 0; i < 5; i++) (fakeSocket.fire as Handler)('packet:flight', flight());
+        (fakeSocket.fire as Handler)('packet:flight', { ...flight(), from: 99 });
       });
       expect(animator.add).toHaveBeenCalledTimes(2);
       act(() => {
         vi.advanceTimersByTime(1000);
       });
-      expect(onDropped).toHaveBeenLastCalledWith(3);
+      expect(onStats).toHaveBeenLastCalledWith({ received: 6, drawn: 2, noPosition: 1, overRate: 3 });
+      view.rerender(<Harness on={false} onStats={onStats} />);
+      expect(onStats).toHaveBeenLastCalledWith(null);
     } finally {
       vi.useRealTimers();
     }

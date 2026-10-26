@@ -1,6 +1,7 @@
 /**
  * The moving parts of the live packet traffic layer (#4835): a dot that flies
- * along a straight line with a short trail, then fades out.
+ * along a straight line with a short trail, then fades out while a ring
+ * pulses out from the node that heard it.
  *
  * Imperative Leaflet, one requestAnimationFrame loop for every dot in flight
  * (the AssetPlaybackBar pattern: rAF + setLatLng). The loop runs only while
@@ -13,6 +14,11 @@ import { MAX_CONCURRENT_FLIGHTS, flightDurationMs, type FlightEdge } from '../..
 
 /** How long a dot takes to fade once it lands, ms. */
 export const FLIGHT_FADE_MS = 400;
+/** How long the landing ring takes to spread and fade, ms. The flight ends with it. */
+export const FLIGHT_PULSE_MS = 900;
+/** The landing ring's radius at the start and end of its pulse, px. */
+const PULSE_RADIUS_FROM = 8;
+const PULSE_RADIUS_TO = 30;
 /** The pane the dots draw in: above the node markers, so a dot landing on a node stays visible. */
 export const FLIGHT_PANE = 'packetFlightsPane';
 /** Trail length, as a share of the line. */
@@ -25,6 +31,9 @@ interface ActiveFlight {
   guide: L.Polyline;
   trail: L.Polyline;
   dot: L.CircleMarker;
+  /** The landing ring, made when the dot lands. */
+  ring: L.CircleMarker | null;
+  color: string;
   baseGuideOpacity: number;
   baseTrailOpacity: number;
   baseDotOpacity: number;
@@ -89,7 +98,7 @@ export class PacketFlightAnimator {
       className: 'packet-flight-trail',
     }).addTo(this.map);
     const dot = L.circleMarker(pointAt(edge, 0), {
-      radius: viaMesh ? 5 : 7,
+      radius: viaMesh ? 6 : 9,
       color,
       weight: 2,
       opacity: baseDotOpacity,
@@ -106,6 +115,8 @@ export class PacketFlightAnimator {
       guide,
       trail,
       dot,
+      ring: null,
+      color,
       baseGuideOpacity,
       baseTrailOpacity,
       baseDotOpacity,
@@ -133,7 +144,7 @@ export class PacketFlightAnimator {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const f = this.active[i];
       const elapsed = now - f.start;
-      if (elapsed >= f.duration + FLIGHT_FADE_MS) {
+      if (elapsed >= f.duration + FLIGHT_PULSE_MS) {
         this.active.splice(i, 1);
         this.removeFlight(f);
         continue;
@@ -143,7 +154,21 @@ export class PacketFlightAnimator {
       f.dot.setLatLng(head);
       f.trail.setLatLngs([pointAt(f.edge, Math.max(0, t - TRAIL_FRACTION)), head]);
       if (elapsed > f.duration) {
-        const fade = 1 - (elapsed - f.duration) / FLIGHT_FADE_MS;
+        const fade = Math.max(0, 1 - (elapsed - f.duration) / FLIGHT_FADE_MS);
+        const pulse = Math.min(1, (elapsed - f.duration) / FLIGHT_PULSE_MS);
+        if (!f.ring) {
+          f.ring = L.circleMarker([f.edge.to.lat, f.edge.to.lng], {
+            radius: PULSE_RADIUS_FROM,
+            color: f.color,
+            weight: 3,
+            fill: false,
+            interactive: false,
+            pane: FLIGHT_PANE,
+            className: 'packet-flight-ring',
+          }).addTo(this.map);
+        }
+        f.ring.setRadius(lerp(PULSE_RADIUS_FROM, PULSE_RADIUS_TO, pulse));
+        f.ring.setStyle({ opacity: f.baseDotOpacity * (1 - pulse) });
         f.dot.setStyle({ opacity: f.baseDotOpacity * fade, fillOpacity: f.baseDotOpacity * fade });
         f.trail.setStyle({ opacity: f.baseTrailOpacity * fade });
         f.guide.setStyle({ opacity: f.baseGuideOpacity * fade });
@@ -156,5 +181,6 @@ export class PacketFlightAnimator {
     f.dot.remove();
     f.trail.remove();
     f.guide.remove();
+    f.ring?.remove();
   }
 }

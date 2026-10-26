@@ -184,8 +184,69 @@ export function flightDurationMs(from: FlightLatLng, to: FlightLatLng): number {
   const dLat = to.lat - from.lat;
   const dLng = to.lng - from.lng;
   const deg = Math.sqrt(dLat * dLat + dLng * dLng);
-  // ~1.5 s for a typical hop; at most 2.5 s for a very long line.
-  return Math.round(Math.min(2500, 1200 + deg * 600));
+  // ~3 s for a typical hop, slow enough to follow; at most 4.5 s for a very long line.
+  return Math.round(Math.min(4500, 2600 + deg * 800));
+}
+
+/** What became of one flight event: drawn, skipped for a missing position, or over the rate. */
+export type FlightOutcome = 'drawn' | 'noPosition' | 'overRate';
+
+/** Flight events in the last window, by outcome. `received` is their sum. */
+export interface PacketFlightStats {
+  received: number;
+  drawn: number;
+  noPosition: number;
+  overRate: number;
+}
+
+/** The readout's window, ms. */
+export const FLIGHT_STATS_WINDOW_MS = 60_000;
+
+export interface FlightStatsWindow {
+  record(outcome: FlightOutcome): void;
+  /** Counts over the last window. */
+  snapshot(): PacketFlightStats;
+  reset(): void;
+}
+
+/**
+ * Rolling counts of flight events, so the panel can say whether events
+ * arrive and why some don't draw. One bucket per second, so the cost does
+ * not grow with the rate. Reads `Date.now()`, so fake timers drive it.
+ */
+export function createFlightStatsWindow(windowMs: number = FLIGHT_STATS_WINDOW_MS): FlightStatsWindow {
+  const size = Math.max(1, Math.ceil(windowMs / 1000));
+  const buckets = Array.from({ length: size }, () => ({ second: -1, drawn: 0, noPosition: 0, overRate: 0 }));
+  const bucketFor = (second: number) => {
+    const b = buckets[second % size];
+    if (b.second !== second) {
+      b.second = second;
+      b.drawn = 0;
+      b.noPosition = 0;
+      b.overRate = 0;
+    }
+    return b;
+  };
+  return {
+    record(outcome) {
+      bucketFor(Math.floor(Date.now() / 1000))[outcome] += 1;
+    },
+    snapshot() {
+      const now = Math.floor(Date.now() / 1000);
+      const stats: PacketFlightStats = { received: 0, drawn: 0, noPosition: 0, overRate: 0 };
+      for (const b of buckets) {
+        if (b.second < 0 || b.second <= now - size || b.second > now) continue;
+        stats.drawn += b.drawn;
+        stats.noPosition += b.noPosition;
+        stats.overRate += b.overRate;
+      }
+      stats.received = stats.drawn + stats.noPosition + stats.overRate;
+      return stats;
+    },
+    reset() {
+      for (const b of buckets) b.second = -1;
+    },
+  };
 }
 
 export interface FlightRateLimiter {

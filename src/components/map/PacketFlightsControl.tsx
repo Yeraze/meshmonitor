@@ -1,12 +1,12 @@
 /**
  * Map Features control for live packet traffic (#4835): the toggle, a one-line
- * hint, the per-viewer rate slider and the "N dropped" count.
+ * hint, the per-viewer rate slider and a readout of the last minute's events.
  *
  * Rendered by the NodesTab and DashboardMap Map Features panels and by the
  * MeshCore map's own panel. Off by default.
  */
 import { useTranslation } from 'react-i18next';
-import { PACKET_FLIGHT_RATE_STEPS } from '../../utils/packetFlightEdges';
+import { PACKET_FLIGHT_RATE_STEPS, type PacketFlightStats } from '../../utils/packetFlightEdges';
 import styles from './PacketFlightsControl.module.css';
 
 export interface PacketFlightsControlProps {
@@ -15,8 +15,8 @@ export interface PacketFlightsControlProps {
   /** Most dots per second; 0 = all. */
   rate: number;
   onRateChange: (rate: number) => void;
-  /** Flights dropped by the rate limit since the layer turned on. */
-  dropped: number;
+  /** The last minute's events by outcome, from the layer; null before it reports. */
+  stats: PacketFlightStats | null;
   /** When set, the toggle is disabled with this title (e.g. in 3D view). */
   disabledTitle?: string;
 }
@@ -26,7 +26,7 @@ const stepIndexOf = (rate: number): number => {
   return i >= 0 ? i : PACKET_FLIGHT_RATE_STEPS.length - 1;
 };
 
-export function PacketFlightsControl({ checked, onCheckedChange, rate, onRateChange, dropped, disabledTitle }: PacketFlightsControlProps) {
+export function PacketFlightsControl({ checked, onCheckedChange, rate, onRateChange, stats, disabledTitle }: PacketFlightsControlProps) {
   const { t } = useTranslation();
   const active = checked && !disabledTitle;
   const stepIndex = stepIndexOf(rate);
@@ -69,9 +69,25 @@ export function PacketFlightsControl({ checked, onCheckedChange, rate, onRateCha
             aria-label={t('map.packet_flights.rate_label', 'Most packet dots per second')}
             aria-valuetext={rateLabel}
           />
-          {dropped > 0 && (
-            <div className={styles.dropped} role="status" data-testid="packet-flights-dropped">
-              {t('map.packet_flights.dropped', '{{count}} dropped', { count: dropped })}
+          {stats && (
+            <div className={styles.stats} role="status" data-testid="packet-flights-stats">
+              {stats.received === 0 ? (
+                t('map.packet_flights.stats_none', 'Last minute: no packets yet')
+              ) : (
+                <>
+                  {t('map.packet_flights.stats', 'Last minute: {{received}} received · {{drawn}} drawn · {{noPosition}} no position', {
+                    received: stats.received,
+                    drawn: stats.drawn,
+                    noPosition: stats.noPosition,
+                  })}
+                  {stats.overRate > 0 && (
+                    <span className={styles.dropped} data-testid="packet-flights-dropped">
+                      {' · '}
+                      {t('map.packet_flights.dropped', '{{count}} over the limit', { count: stats.overRate })}
+                    </span>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>

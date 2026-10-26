@@ -84,7 +84,7 @@ import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/N
 import { CrossSourceLinksLayer } from '../map/layers/CrossSourceLinksLayer';
 import { PacketFlightsLayer } from '../map/layers/PacketFlightsLayer';
 import { PacketFlightsControl } from '../map/PacketFlightsControl';
-import type { FlightNodeEntry } from '../../utils/packetFlightEdges';
+import type { FlightNodeEntry, PacketFlightStats } from '../../utils/packetFlightEdges';
 import { TracerouteConfirmedLinksLayer } from '../map/layers/TracerouteConfirmedLinksLayer';
 import DuctingLayer from '../map/layers/DuctingLayer';
 import { DuctingControl } from '../map/DuctingControl';
@@ -497,7 +497,7 @@ export default function DashboardMap({
   // #4835: live packet traffic resolves each flight against the markers this
   // map draws. Built only while the layer is on. The Unified map colours a
   // flight by its source, as it does the source's other overlays.
-  const [packetFlightsDropped, setPacketFlightsDropped] = useState(0);
+  const [packetFlightsStats, setPacketFlightsStats] = useState<PacketFlightStats | null>(null);
   const packetFlightNodes = useMemo<FlightNodeEntry[]>(() => {
     if (!showPacketFlights) return [];
     return markerNodes.map(({ node, pos }) => ({
@@ -1056,7 +1056,7 @@ export default function DashboardMap({
             nodes={packetFlightNodes}
             maxPerSecond={packetFlightRate}
             sourceColor={packetFlightSourceColor}
-            onDroppedChange={setPacketFlightsDropped}
+            onStatsChange={setPacketFlightsStats}
           />
         )}
         {showCrossSourceLinks && polarSourceIds.length > 0 && (
@@ -1225,7 +1225,7 @@ export default function DashboardMap({
             onCheckedChange={setShowPacketFlights}
             rate={packetFlightRate ?? 0}
             onRateChange={setPacketFlightRate}
-            dropped={packetFlightsDropped}
+            stats={packetFlightsStats}
             disabledTitle={unavailableIn3DTitle}
           />
           {/* #5734: tropospheric ducting overlay. Renders nothing unless an

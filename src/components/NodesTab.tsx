@@ -98,7 +98,7 @@ import DuctingLayer from './map/layers/DuctingLayer';
 import { DuctingControl } from './map/DuctingControl';
 import { PacketFlightsControl } from './map/PacketFlightsControl';
 import { PacketFlightsLayer } from './map/layers/PacketFlightsLayer';
-import type { FlightNodeEntry } from '../utils/packetFlightEdges';
+import type { FlightNodeEntry, PacketFlightStats } from '../utils/packetFlightEdges';
 import subToggleStyles from './map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -2007,7 +2007,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     .filter(node => isAgedOutAircraft(node) && passesMapFilters(node)).length;
   // #4835: live packet traffic resolves each flight against the nodes this
   // map draws, at their marker positions. Built only while the layer is on.
-  const [packetFlightsDropped, setPacketFlightsDropped] = useState(0);
+  const [packetFlightsStats, setPacketFlightsStats] = useState<PacketFlightStats | null>(null);
   const packetFlightNodesSig = showPacketFlights ? visibleMapNodes.map(n => n.nodeNum).join(',') : '';
   const packetFlightNodes: FlightNodeEntry[] = useMemo(() => {
     if (!showPacketFlights) return [];
@@ -3210,7 +3210,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     onCheckedChange={setShowPacketFlights}
                     rate={packetFlightRate}
                     onRateChange={setPacketFlightRate}
-                    dropped={packetFlightsDropped}
+                    stats={packetFlightsStats}
                     disabledTitle={unavailableIn3DTitle}
                   />
                   {/* #5734: tropospheric ducting overlay. Renders nothing
@@ -3737,7 +3737,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   sourceIds={[currentSourceId]}
                   nodes={packetFlightNodes}
                   maxPerSecond={packetFlightRate}
-                  onDroppedChange={setPacketFlightsDropped}
+                  onStatsChange={setPacketFlightsStats}
                 />
               )}
 
