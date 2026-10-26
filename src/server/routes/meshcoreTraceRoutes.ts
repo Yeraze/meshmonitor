@@ -7,7 +7,7 @@
  * contact's history (#5970) needs `traceroute:write` on that source.
  */
 import { Router, type Request, type Response } from 'express';
-import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requireAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
@@ -65,10 +65,11 @@ router.get(
 
 // DELETE /api/sources/:id/meshcore/hop-snr?publicKey=<64 hex>
 // Clears every stored sample where the contact is either end, on this source
-// only and at any age (#5970). Sends nothing over the radio.
+// only and at any age (#5970). Sends nothing over the radio. Like every
+// MeshCore write, it needs a signed-in user.
 router.delete(
   '/hop-snr',
-  optionalAuth(),
+  requireAuth(),
   requirePermission('traceroute', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {

@@ -164,6 +164,14 @@ describe('MeshCore hop SNR route (#5722)', () => {
       expect((await admin.get(url(harness.sourceA, `?publicKey=${K2}`))).body.data.links).toHaveLength(1);
     });
 
+    it('needs a signed-in user, even when the anonymous account holds the grant', async () => {
+      await harness.revokeAll(harness.anonymous.id);
+      await harness.grant(harness.anonymous.id, 'traceroute', 'write', harness.sourceA);
+      const anon = await harness.loginAs(null);
+      expect((await anon.delete(del(harness.sourceA))).status).toBe(401);
+      expect(await keysOf(harness.sourceA)).toHaveLength(3);
+    });
+
     it('rejects a missing or malformed publicKey with 400', async () => {
       const admin = await harness.loginAs(harness.admin);
       for (const q of ['', '?publicKey=zz', `?publicKey=${K1}0`, `?publicKey=${K1}&publicKey=${K2}`]) {
