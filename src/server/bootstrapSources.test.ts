@@ -37,6 +37,7 @@ import { getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
 import { bootstrapSources, type BootstrapDeps, type BootstrapDb } from './bootstrapSources.js';
 import type { Source } from '../db/repositories/sources.js';
 import type { ISourceManager } from './sourceManagerRegistry.js';
+import { logger } from '../utils/logger.js';
 
 // ---------------------------------------------------------------------------
 // Module mocks — applied before any import resolution by Vitest's hoisting.
@@ -474,6 +475,38 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
       // passiveMode should be absent or falsy — NOT forced to true or any default.
       expect(factoryCfg.passiveMode).toBeFalsy();
+    });
+  });
+
+  describe('Scenario 3c — two enabled tcp sources on one node warn at boot (#5974)', () => {
+    const slotWarnings = (spy: ReturnType<typeof vi.spyOn>) =>
+      spy.mock.calls.filter((c) => String(c[0]).includes('one TCP client at a time'));
+
+    it('warns once, naming both sources, when host:port differs only in case and port type', async () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+      const a = makeTcpSource('a', '192.168.1.192', 4403);
+      const b = makeTcpSource('b', ' 192.168.1.192 ', '4403' as any);
+      const db = makeDbStub([a, b]);
+      await bootstrapSources(makeDeps({ db, registry, makeMeshtastic: meshFactory.factory }));
+      const hits = slotWarnings(warn);
+      expect(hits).toHaveLength(1);
+      expect(String(hits[0][0])).toContain('192.168.1.192:4403');
+      expect(String(hits[0][0])).toContain('"TCP-a"');
+      expect(String(hits[0][0])).toContain('"TCP-b"');
+      // Diagnostic only: both still start.
+      expect(meshFactory.factory).toHaveBeenCalledTimes(2);
+      warn.mockRestore();
+    });
+
+    it('does not warn for distinct endpoints or when the twin is disabled', async () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+      const a = makeTcpSource('a', '10.0.0.1');
+      const b = makeTcpSource('b', '10.0.0.2');
+      const c = { ...makeTcpSource('c', '10.0.0.1'), enabled: false };
+      const db = makeDbStub([a, b, c]);
+      await bootstrapSources(makeDeps({ db, registry, makeMeshtastic: meshFactory.factory }));
+      expect(slotWarnings(warn)).toHaveLength(0);
+      warn.mockRestore();
     });
   });
 

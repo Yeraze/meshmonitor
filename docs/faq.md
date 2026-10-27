@@ -638,6 +638,35 @@ The steps below apply to a Meshtastic TCP source. For MeshCore see [MeshCore](/f
 
 ---
 
+### My Meshtastic TCP source keeps connecting and disconnecting
+
+A Meshtastic node serves **one TCP client at a time**. When a second client connects, the node closes the first one's link. If two clients point at one node, they keep knocking each other off, and the link drops seconds after each connect.
+
+MeshMonitor logs this warning when the node closes the link within seconds of connecting several times in a row:
+
+```
+Node closed the TCP link 3 times within seconds of connecting; another TCP client ... may be taking the node's single TCP slot.
+```
+
+Look for the other client:
+
+- The Meshtastic phone app connected to the node over WiFi (Bluetooth does not use the TCP slot).
+- Home Assistant, Node-RED, the Python CLI (`meshtastic --host`), or a script.
+- A second MeshMonitor source with the same host and port. MeshMonitor logs a warning at startup when two enabled sources share one, but it cannot tell that a host name and an IP address are the same node.
+- An old MeshMonitor container still running on another machine.
+
+To catch a client on another machine, watch new connections to the node from your router or any host on the same network:
+
+```bash
+tcpdump -n 'host 192.168.1.100 and port 4403 and tcp[tcpflags] & tcp-syn != 0'
+```
+
+The node's serial log also prints `Force close previous TCP connection` each time a new client takes the slot.
+
+If the node is large and closes the link during the initial sync even with no other client, turn on [Passive Mode](/features/multi-source#passive-mode) for the source.
+
+---
+
 ### MQTT messages only show up when another node repeats them over LoRa
 
 Your node is not getting the packets from the broker. The usual causes:

@@ -7,9 +7,24 @@
 import type { WireWaypoint } from './services/waypointGeofence.js';
 import { loadProtobufDefinitions, getProtobufRoot, type FromRadio, type MeshPacket } from './protobufLoader.js';
 import { logger } from '../utils/logger.js';
-import { PortNum, DEFAULT_HOP_LIMIT, resolveHopLimit } from './constants/meshtastic.js';
+import { PortNum, DEFAULT_HOP_LIMIT, resolveHopLimit, WANT_CONFIG_NONCE_FULL } from './constants/meshtastic.js';
 import { decodeTakV2Payload, takV2Variant, takV2DictName, TAK_V2_UNCOMPRESSED } from './takV2Decoder.js';
 import { safeJson } from './utils/redactSecrets.js';
+
+/**
+ * Hand-encode `ToRadio { want_config_id: nonce }` (field 3, varint) for when
+ * the protobuf definitions are unavailable.
+ */
+function encodeWantConfigFallback(nonce: number): Uint8Array {
+  const bytes = [0x18];
+  let v = nonce >>> 0;
+  while (v > 0x7f) {
+    bytes.push((v & 0x7f) | 0x80);
+    v >>>= 7;
+  }
+  bytes.push(v);
+  return new Uint8Array(bytes);
+}
 
 export class MeshtasticProtobufService {
   private static instance: MeshtasticProtobufService;
@@ -41,26 +56,25 @@ export class MeshtasticProtobufService {
   /**
    * Create a ToRadio message with want_config_id using proper protobuf encoding
    */
-  createWantConfigRequest(): Uint8Array {
+  createWantConfigRequest(nonce: number = WANT_CONFIG_NONCE_FULL): Uint8Array {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
-      // Fallback to simple manual encoding
-      return new Uint8Array([0x18, 0x01]);
+      return encodeWantConfigFallback(nonce);
     }
 
     try {
       const ToRadio = root.lookupType('meshtastic.ToRadio');
-      // Try sending a different config ID - maybe 0xFFFFFFFF to request all configs
+      // WANT_CONFIG_NONCE_FULL asks for config plus the whole NodeDB;
+      // WANT_CONFIG_NONCE_ONLY_CONFIG asks for config only (#5974).
       const toRadio = ToRadio.create({
-        wantConfigId: 0xFFFFFFFF  // Request ALL config sections
+        wantConfigId: nonce
       });
 
       return ToRadio.encode(toRadio).finish();
     } catch (error) {
       logger.error('❌ Failed to create want_config_id request:', error);
-      // Fallback to simple manual encoding
-      return new Uint8Array([0x18, 0x01]);
+      return encodeWantConfigFallback(nonce);
     }
   }
 
