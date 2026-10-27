@@ -37,6 +37,7 @@ import { BaseMap } from '../map/BaseMap';
 import { UiIcon } from '../icons';
 import './MeshCorePacketMonitor.css';
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
+import { meshcoreDisplayTimeMs } from '../../utils/meshcoreMessageTime';
 
 interface Props {
   message: MeshCoreMessage;
@@ -276,7 +277,7 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
           <section className="mcpm-dl-section">
             <h5>{t('meshcore.route_detail_message', 'Message')}</h5>
             <Row label={t('meshcore.route_detail_from', 'From')}>{fromLabel}</Row>
-            <Row label={t('meshcore.route_detail_time', 'Time')} mono>{new Date(message.timestamp).toLocaleString()}</Row>
+            <Row label={t('meshcore.route_detail_time', 'Time')} mono>{new Date(meshcoreDisplayTimeMs(message)).toLocaleString()}</Row>
             <Row label={t('meshcore.route_detail_hops', 'Hops')} mono>{typeof message.hopCount === 'number' ? message.hopCount : '—'}</Row>
             <Row label={t('meshcore.route_detail_scope', 'Scope')}>{scopeStr}</Row>
             {message.text && (

@@ -128,6 +128,41 @@ describe('GET /api/unified/messages — MeshCore cross-source merge (#5587)', ()
     }
   });
 
+  it('shows the EARLIEST receipt time and carries the sender second (#5973)', async () => {
+    // The sender's clock is 20 s slow. The repeater heard it first.
+    await companionRow(COMPANION, { createdAt: T0 + 25_000, senderTimestamp: SEC });
+    await repeaterRow({ createdAt: T0 + 20_000, senderTimestamp: SEC });
+
+    const { body } = await feed(harness.admin);
+    expect(body).toHaveLength(1);
+    expect(body[0].createdAt).toBe(T0 + 20_000);
+    expect(body[0].timestamp).toBe(T0 + 20_000);
+    expect(body[0].senderTimestamp).toBe(SEC);
+    // Each reception shows its own receipt time, earliest first.
+    expect(body[0].receptions.map((r: any) => r.timestamp)).toEqual([T0 + 20_000, T0 + 25_000]);
+  });
+
+  it('keeps the sender time on a room post and sends no sender second (#5973)', async () => {
+    await harness.db.meshcore.insertMessage(
+      {
+        id: `room-${++seq}`,
+        fromPublicKey: ALICE_KEY.slice(0, 12),
+        fromName: 'Alice',
+        toPublicKey: BOB_KEY,
+        text: 'backlog post',
+        timestamp: T0 - 3_600_000,
+        messageType: 'room_post',
+        createdAt: T0,
+      } as never,
+      COMPANION,
+    );
+    const { body } = await feed(harness.admin);
+    const post = body.find((m: any) => m.text === 'backlog post');
+    expect(post).toBeDefined();
+    expect(post.timestamp).toBe(T0 - 3_600_000);
+    expect(post.senderTimestamp).toBeUndefined();
+  });
+
   it('merges when the same channel sits in different slots on two companions', async () => {
     await harness.db.channels.upsertChannel(
       { id: 5, name: 'Ops', role: 2, psk: OPS_HEX } as never, REPEATER);
@@ -158,7 +193,9 @@ describe('GET /api/unified/messages — MeshCore cross-source merge (#5587)', ()
     const { body } = await feed(harness.admin);
     expect(body).toHaveLength(2);
     for (const m of body) expect(heardBy(m)).toEqual(['Hilltop Companion', 'Valley Repeater']);
-    expect(body.map((m: any) => m.timestamp).sort()).toEqual([T0, T0 + 4000]);
+    // Two sender seconds; each entry shows its earliest receipt time (#5973).
+    expect(body.map((m: any) => m.senderTimestamp).sort()).toEqual([SEC, SEC + 4]);
+    expect(body.map((m: any) => m.timestamp).sort()).toEqual([T0 + 300, T0 + 4300]);
   });
 
   it('keeps two clock-less copies heard by ONE source as two rows', async () => {

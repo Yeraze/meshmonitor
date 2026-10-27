@@ -2582,7 +2582,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // missing or implausible: drifted into the future, or more than a day
         // behind (a no-RTC node stuck at the firmware 2024 default, #5339) —
         // otherwise a broken sender clock pins this message at a bogus sort
-        // position forever (see messageOrder.ts, which sorts on `timestamp`).
+        // position forever. The client sorts and shows DMs and channel
+        // messages by `receivedAt` since #5973; `timestamp` still feeds
+        // search, export and the room-post order.
         timestamp: plausibleMeshCoreMessageTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision

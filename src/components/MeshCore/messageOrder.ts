@@ -1,90 +1,62 @@
 /**
  * Ordering for MeshCore message streams.
  *
- * Sorting on `timestamp` alone is wrong, because the two directions do not
- * share a clock or a resolution:
+ * ## DMs and channel messages: receipt time (#5973)
  *
- *   received:  timestamp = sender_timestamp * 1000   ← remote clock, WHOLE SECONDS
- *   sent:      timestamp = Date.now()                ← our clock, milliseconds
+ * These sort on MeshMonitor's own receipt clock (`receivedAt`, or `createdAt`
+ * on a raw DB row), not on the sender's `sender_timestamp`. Every MeshCore
+ * node keeps its own clock and nothing keeps them in step: a sender whose
+ * clock is 15 minutes off passes the #5339 plausibility gate and would still
+ * put its messages 15 minutes out of sequence. Our clock is the one clock
+ * every row shares, at millisecond resolution, for both directions, so it
+ * also settles the older same-second inversion (a remote auto-reply stamped
+ * in whole seconds sorting before the ms-precision send that triggered it).
  *
- * A remote auto-responder that replies within the same second as the message
- * that triggered it therefore sorts BEFORE its own trigger. Observed in the
- * field on a MeshCore channel:
+ * ## Room posts: sender time
  *
- *   trigger (ours)   timestamp 1785604213050   created 1785604213050
- *   reply   (remote) timestamp 1785604213000   observed 1785604214478
+ * A room server replays its backlog when we log in, so receipt time there is
+ * the login time, not the post time. Room posts keep the old rule: compare
+ * `timestamp` truncated to the second (the wire's real resolution) and break
+ * ties on the receipt clock. A stated time that could not have been real when
+ * we observed the post (#5339) is replaced by the receipt clock.
  *
- * The reply arrived 1.4 s later but carried a timestamp 50 ms earlier, purely
- * because the remote could only express whole seconds.
- *
- * So: compare `timestamp` truncated to the second — the real resolution of the
- * wire format — and break ties with `receivedAt`, MeshMonitor's own monotonic
- * clock, which is stamped identically for both directions. Sub-second detail in
- * a locally-sent `timestamp` is deliberately NOT used for ordering; it is
- * precision we cannot have for the other side, and trusting it is exactly what
- * produced the inversion.
- *
- * Display continues to use `timestamp` — the sender's stated time is still the
- * honest thing to show.
- *
- * One exception (#5339): a stated time that could not have been real when we
- * observed the message — a sender RTC drifted into the future, or more than a
- * day behind (a no-RTC node stuck at the firmware's 2024 default) — is replaced
- * by `receivedAt` for ordering.
- * Otherwise a single "2038" message sits at the bottom of the channel for the
- * next twelve years. The server already applies this rule at ingest; it is
- * repeated here so rows stored before that fix sort correctly too.
+ * Ties fall back to the receipt clock, then to `id`, so the order is total and
+ * never depends on input sequence.
  */
 import type { MeshCoreMessage } from './hooks/useMeshCore';
 import { isPlausibleMeshCoreMessageTimeMs } from '../../utils/meshcoreTimestamp';
+import { isMeshCoreRoomPost, meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 
-/**
- * The stated time used for ordering: `timestamp`, unless it is implausible
- * relative to when we observed the message, in which case `receivedAt`.
- */
-function orderingTime(m: Pick<MeshCoreMessage, 'timestamp' | 'receivedAt'>): number {
+type Orderable = Pick<MeshCoreMessage, 'id' | 'timestamp' | 'receivedAt' | 'messageType'> & {
+  createdAt?: number | null;
+};
+
+/** Primary sort key (ms). */
+function orderingTime(m: Orderable): number {
+  const receipt = meshcoreReceiptTimeMs(m);
+  if (!isMeshCoreRoomPost(m)) return receipt;
   const stated = m.timestamp ?? 0;
-  if (typeof m.receivedAt === 'number' && !isPlausibleMeshCoreMessageTimeMs(stated, m.receivedAt)) {
-    return m.receivedAt;
-  }
-  return stated;
-}
-
-/** Whole-second bucket of a message's stated time. */
-function timestampSecond(m: Pick<MeshCoreMessage, 'timestamp' | 'receivedAt'>): number {
-  return Math.floor(orderingTime(m) / 1000);
+  const hasReceipt = typeof m.receivedAt === 'number' || typeof m.createdAt === 'number';
+  if (hasReceipt && !isPlausibleMeshCoreMessageTimeMs(stated, receipt)) return receipt;
+  // Whole seconds: a room post's stated time has no finer resolution.
+  return Math.floor(stated / 1000) * 1000;
 }
 
 /**
- * Tie-break clock. Falls back to `timestamp` for rows persisted before
- * `receivedAt` existed, which keeps legacy history in a stable, sensible order
- * instead of collapsing it all to zero.
+ * Comparator for oldest-first message streams. Stable and total: equal keys
+ * fall back to the receipt clock, then to `id`.
  */
-function observedAt(m: Pick<MeshCoreMessage, 'timestamp' | 'receivedAt'>): number {
-  return typeof m.receivedAt === 'number' ? m.receivedAt : (m.timestamp ?? 0);
-}
+export function compareMeshCoreMessages(a: Orderable, b: Orderable): number {
+  const byKey = orderingTime(a) - orderingTime(b);
+  if (byKey !== 0) return byKey;
 
-/**
- * Comparator for oldest-first message streams. Stable and total: equal seconds
- * fall back to the observed clock, and identical observed clocks fall back to
- * `id` so the order never depends on input sequence.
- */
-export function compareMeshCoreMessages(
-  a: Pick<MeshCoreMessage, 'id' | 'timestamp' | 'receivedAt'>,
-  b: Pick<MeshCoreMessage, 'id' | 'timestamp' | 'receivedAt'>,
-): number {
-  const bySecond = timestampSecond(a) - timestampSecond(b);
-  if (bySecond !== 0) return bySecond;
-
-  const byObserved = observedAt(a) - observedAt(b);
+  const byObserved = meshcoreReceiptTimeMs(a) - meshcoreReceiptTimeMs(b);
   if (byObserved !== 0) return byObserved;
 
   return String(a.id).localeCompare(String(b.id));
 }
 
 /** Convenience: oldest-first copy of a message list. */
-export function sortMeshCoreMessages<T extends Pick<MeshCoreMessage, 'id' | 'timestamp' | 'receivedAt'>>(
-  messages: T[],
-): T[] {
+export function sortMeshCoreMessages<T extends Orderable>(messages: T[]): T[] {
   return [...messages].sort(compareMeshCoreMessages);
 }
