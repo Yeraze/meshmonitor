@@ -219,7 +219,7 @@ You can set these environment variables before launching MeshMonitor to override
 | `DATABASE_PATH` | Custom database location | `/path/to/meshmonitor.db` |
 | `SESSION_SECRET` | Custom session secret | `your-secret-key` |
 
-> **4.0 note:** Virtual Node is now configured per source through the Dashboard UI. The `ENABLE_VIRTUAL_NODE` / `VIRTUAL_NODE_PORT` / `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` environment variables have been removed.
+> **4.0 note:** Virtual Node is now configured per source through the Dashboard UI. `ENABLE_VIRTUAL_NODE` / `VIRTUAL_NODE_PORT` only seed the Default source on first boot (see [Headless installs](/configuration/virtual-node#headless-installs-first-boot-env-vars)); `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` has been removed.
 
 ### Virtual Node Server
 

@@ -68,7 +68,36 @@ This prevents mobile apps from accidentally or maliciously modifying your physic
 
 ## Configuration
 
-> **Breaking change in 4.0:** Virtual Node is now configured **per source** through the Dashboard UI. The legacy environment variables `ENABLE_VIRTUAL_NODE`, `VIRTUAL_NODE_PORT`, and `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` have been removed. Each `meshtastic_tcp` source owns its own Virtual Node endpoint, so two sources on different nodes can each expose a VN on different ports.
+> **Changed in 4.0:** Virtual Node is configured **per source** through the Dashboard UI. Each `meshtastic_tcp` source owns its own Virtual Node endpoint, so two sources on different nodes can each expose a VN on different ports. `ENABLE_VIRTUAL_NODE` and `VIRTUAL_NODE_PORT` now only seed the Default source on first boot (see [Headless installs](#headless-installs-first-boot-env-vars)); `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` is gone for good.
+
+### Headless installs: first-boot env vars
+
+To get a Virtual Node with no clicks in the UI (Docker, CI, sidecars), set these on the container:
+
+```yaml
+environment:
+  - MESHTASTIC_NODE_IP=192.168.1.50
+  - ENABLE_VIRTUAL_NODE=true
+  - VIRTUAL_NODE_PORT=4404   # optional, defaults to 4404
+ports:
+  - "4404:4404"
+```
+
+On the first boot, MeshMonitor creates the **Default** source with this block in its config:
+
+```json
+"virtualNode": { "enabled": true, "port": 4404, "allowAdminCommands": false }
+```
+
+Rules:
+
+- **First boot only.** The vars apply when the Default source is created. After that the saved source config owns the settings, and later restarts never change them, even if you edit or remove the vars. Use the UI (or `PUT /api/sources/:id`) to change them afterwards.
+- **Needs `MESHTASTIC_NODE_IP`.** Without it the Default source is created disabled, so a Virtual Node on it would never listen. MeshMonitor logs a warning and skips the Virtual Node.
+- **`VIRTUAL_NODE_PORT` alone does nothing.** Set `ENABLE_VIRTUAL_NODE=true` (`1` and `yes` work too). A port outside `1`–`65535` logs a warning and both vars are ignored; boot carries on.
+- **Admin commands are always off.** There is no env var for them. The Virtual Node port has no login, so anyone who can reach it could send admin commands to your node. If you need them, turn on **Allow admin commands** in the UI as a deliberate choice.
+- Remember to publish the port (`4404:4404` above).
+
+Pair this with `ADMIN_PASSWORD` (see [Environment Variables](/configuration/#environment-variables)) to set the first admin's password, so a headless install never runs with `changeme`.
 
 ### Enabling Virtual Node on a Source
 

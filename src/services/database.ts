@@ -4509,8 +4509,12 @@ class DatabaseService {
         logger.debug('🔐 Could not import systemRestoreService, proceeding without restore check');
       }
 
-      const password = 'changeme';
-      const adminUsername = getEnvironmentConfig().adminUsername;
+      // ADMIN_PASSWORD (#5874) applies only here, when the first admin is
+      // seeded. It never resets an existing admin's password.
+      const envConfig = getEnvironmentConfig();
+      const passwordFromEnv = envConfig.adminPasswordProvided && !!envConfig.adminPassword;
+      const password = passwordFromEnv ? envConfig.adminPassword! : 'changeme';
+      const adminUsername = envConfig.adminUsername;
 
       // Use AuthRepository for all database backends
       const allUsers = await this.auth.getAllUsers();
@@ -4565,9 +4569,14 @@ class DatabaseService {
       logger.warn('🔐 FIRST RUN: Admin user created');
       logger.warn('═══════════════════════════════════════════════════════════');
       logger.warn(`   Username: ${adminUsername}`);
-      logger.warn(`   Password: changeme`);
-      logger.warn('');
-      logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
+      if (passwordFromEnv) {
+        // Never log the value itself.
+        logger.warn('   Password: set from ADMIN_PASSWORD');
+      } else {
+        logger.warn(`   Password: changeme`);
+        logger.warn('');
+        logger.warn('   ⚠️  IMPORTANT: Change this password after first login!');
+      }
       logger.warn('═══════════════════════════════════════════════════════════');
       logger.warn('');
 

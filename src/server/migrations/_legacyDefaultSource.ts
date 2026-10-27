@@ -15,6 +15,7 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { logger } from '../../utils/logger.js';
+import { buildDefaultMeshtasticSourceConfigFromEnv } from '../config/defaultSourceConfig.js';
 
 interface LegacyDefaultSource {
   id: string;
@@ -36,15 +37,21 @@ interface LegacyDefaultSource {
 
 export function buildLegacyDefaultSource(): LegacyDefaultSource {
   const now = Date.now();
-  const envHost = process.env.MESHTASTIC_NODE_IP?.trim();
-  const host = envHost && envHost.length > 0 ? envHost : 'meshtastic.local';
-  const port = parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10) || 4403;
+  // Shared with bootstrapSources.ts so the two Default-source paths match,
+  // including the first-boot Virtual Node env vars (#5874).
+  const { config, hostProvided } = buildDefaultMeshtasticSourceConfigFromEnv(
+    process.env,
+    (msg) => logger.warn(msg),
+  );
+  if (config.virtualNode) {
+    logger.info(`📡 Default source gets a Virtual Node on port ${config.virtualNode.port} (ENABLE_VIRTUAL_NODE, first boot)`);
+  }
   return {
     id: randomUUID(),
     name: 'Default',
     type: 'meshtastic_tcp',
-    config: JSON.stringify({ host, port }),
-    enabled: envHost && envHost.length > 0 ? 1 : 0,
+    config: JSON.stringify(config),
+    enabled: hostProvided ? 1 : 0,
     createdAt: now,
     updatedAt: now,
   };

@@ -127,7 +127,7 @@ services:
 The [Docker Compose Configurator](/configurator) publishes one VN host port by default (`4404`). Match the VN port you choose in the UI to one of the published host ports.
 
 ::: warning Breaking change from 3.x
-The old global env vars — `ENABLE_VIRTUAL_NODE`, `VIRTUAL_NODE_PORT`, `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` — **were removed** and no longer have any effect. If you upgraded from 3.x, re-enable VN on each source you want to expose.
+The old global env vars no longer drive the Virtual Node at runtime. `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` **was removed**. `ENABLE_VIRTUAL_NODE` and `VIRTUAL_NODE_PORT` only seed the **Default** source when MeshMonitor first creates it (with `MESHTASTIC_NODE_IP` set); after that they do nothing. See [Headless installs](/configuration/virtual-node#headless-installs-first-boot-env-vars). Re-enable VN in the UI on any other source you want to expose.
 :::
 
 ## Passive Mode
@@ -194,7 +194,7 @@ For global behavior that isn't source-specific (theme, language, map center, pus
 If you're upgrading from 3.x:
 
 1. **Keep your env vars** — `MESHTASTIC_NODE_IP` / `MESHTASTIC_TCP_PORT` still seed the first source on a fresh install
-2. **Drop removed VN env vars** — `ENABLE_VIRTUAL_NODE`, `VIRTUAL_NODE_PORT`, `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` do nothing in 4.0
+2. **Check your VN env vars** — `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` does nothing in 4.0. `ENABLE_VIRTUAL_NODE` / `VIRTUAL_NODE_PORT` apply only when MeshMonitor creates the Default source, and never turn on admin commands
 3. **Re-enable VN per source** — Dashboard → Edit Source → Virtual Node on each TCP source you want to expose
 4. **Review permissions** — the per-source permission matrix may need admin review for non-admin users
 5. **Back up first** — use System Backup from the Settings page before upgrading. The sources table is included.
