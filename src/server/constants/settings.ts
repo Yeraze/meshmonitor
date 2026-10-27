@@ -208,6 +208,14 @@ export const VALID_SETTINGS_KEYS = [
   'autoEnrichmentIntervalMinutes',
   'autoEnrichmentCron',
   'autoEnrichmentPushToNodeDb',
+  // MeshWars forwarder: posts MeshCore heard-repeater results to MeshWars.
+  // Global, admin-only write (ADMIN_ONLY_SETTINGS_KEYS). The API key is
+  // server-only via the `_token` suffix. Its last-forward time is server-owned
+  // and written directly by meshwarsForwarder, so it is absent here.
+  'meshwarsEnabled',
+  'meshwarsSourceId',
+  'meshwarsBaseUrl',
+  'meshwars_api_token',
   // Mesh Issues Analysis (global, batch, passive — issue #4964)
   'mesh_issues_enabled',
   'mesh_issues_frequency_hours',
@@ -905,6 +913,10 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'autoEnrichmentIntervalMinutes',          // "
   'autoEnrichmentCron',                     // "
   'autoEnrichmentPushToNodeDb',             // "
+  'meshwarsEnabled',                        // global forwarder
+  'meshwarsSourceId',                       // "
+  'meshwarsBaseUrl',                        // "
+  'meshwars_api_token',                     // "
   'mesh_issues_enabled',                    // global batch job (#4964)
   'mesh_issues_frequency_hours',            // "
   'mesh_issues_lookback_hours',             // "
@@ -1105,6 +1117,11 @@ export const ADMIN_ONLY_SETTINGS_KEYS = new Set<string>([
   // escalation. Restricting the write to admins matches the UI and closes it.
   'analyticsProvider',
   'analyticsConfig',
+  // MeshWars forwarder: sends the radio's position to a third-party server.
+  'meshwarsEnabled',
+  'meshwarsSourceId',
+  'meshwarsBaseUrl',
+  'meshwars_api_token',
 ]);
 
 /**
