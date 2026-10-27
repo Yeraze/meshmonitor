@@ -1567,7 +1567,10 @@ export class MeshCoreRepository extends BaseRepository {
   // ============ Message Operations ============
 
   /**
-   * Get recent messages, optionally scoped to a source.
+   * Get recent messages, optionally scoped to a source. Newest first by
+   * server arrival time (`createdAt`), the clock DMs and channel messages
+   * order by (#5973): a sender whose clock runs fast must not crowd newer
+   * messages out of the window.
    */
   async getRecentMessages(
     limit: number = 50,
@@ -1583,7 +1586,7 @@ export class MeshCoreRepository extends BaseRepository {
       .select()
       .from(meshcoreMessages)
       .where(whereClause)
-      .orderBy(desc(meshcoreMessages.timestamp))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
       .limit(limit);
     return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
   }
@@ -1678,6 +1681,9 @@ export class MeshCoreRepository extends BaseRepository {
    *
    * `offset` paginates further into the channel's history (newest-first, so
    * offset 0 is the most recent page) for infinite-scroll load-older support.
+   *
+   * Ordered by server arrival time (`createdAt`), not the sender's clock, so
+   * page boundaries match the receipt-time order the client draws (#5973).
    */
   async getChannelMessages(
     channelIdx: number,
@@ -1691,7 +1697,7 @@ export class MeshCoreRepository extends BaseRepository {
       .select()
       .from(meshcoreMessages)
       .where(this.withKeyAccess(this.channelWhereClause(channelIdx, sourceId), keyAccess))
-      .orderBy(desc(meshcoreMessages.timestamp))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
       .limit(limit)
       .offset(offset);
     return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
@@ -1742,7 +1748,8 @@ export class MeshCoreRepository extends BaseRepository {
     const entries = await Promise.all(
       channelIndices.map(async (idx) => {
         const result = await this.db
-          .select({ latest: sql<number>`MAX(${meshcoreMessages.timestamp})` })
+          // Receipt time (#5973): the clock the channel view marks read with.
+          .select({ latest: sql<number>`MAX(${meshcoreMessages.createdAt})` })
           .from(meshcoreMessages)
           .where(and(
             this.withKeyAccess(this.channelWhereClause(idx, sourceId), keyAccess),

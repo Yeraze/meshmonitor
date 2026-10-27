@@ -24,6 +24,7 @@ import {
   computeUnreadDmPeers,
   isChannelPseudoKey,
 } from '../meshcoreUnreadStore';
+import { meshcoreReceiptTimeMs } from '../../../utils/meshcoreMessageTime';
 
 interface UseMeshCoreUnreadParams {
   baseUrl: string;
@@ -126,7 +127,7 @@ export function useMeshCoreUnread({
           : null;
       if (!key) continue;
       const idx = parseInt(key.slice('channel-'.length), 10);
-      if (Number.isInteger(idx)) map[idx] = Math.max(map[idx] ?? 0, m.timestamp);
+      if (Number.isInteger(idx)) map[idx] = Math.max(map[idx] ?? 0, meshcoreReceiptTimeMs(m));
     }
     return map;
   }, [channelLatest, messages]);

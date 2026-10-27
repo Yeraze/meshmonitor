@@ -38,6 +38,7 @@ import {
 } from './meshcoreChannelOrder';
 import { formatRelativeTime } from '../../utils/datetime';
 import styles from './MeshCoreChannelsView.module.css';
+import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -604,7 +605,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // unread. Falls back to "now" for an empty channel so opening it still clears
   // any stale marker. On mobile the channel isn't actually being viewed until
   // the operator drills in, so defer marking until the content pane is shown.
-  const newestVisibleTs = filtered.length > 0 ? filtered[filtered.length - 1].timestamp : 0;
+  const newestVisibleTs = filtered.length > 0 ? meshcoreReceiptTimeMs(filtered[filtered.length - 1]) : 0;
   useEffect(() => {
     if (isMobileViewport() && !mobileShowContent) return;
     markChannelRead(active.id, newestVisibleTs || Date.now());
@@ -620,7 +621,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       for (const m of liveMatch) {
         // Ignored messages never count as unread (#5408), nor do reactions (#5759).
         if (m.filtered || m.reactionEmoji) continue;
-        if (m.timestamp > (map[c.id] ?? 0)) map[c.id] = m.timestamp;
+        const ts = meshcoreReceiptTimeMs(m);
+        if (ts > (map[c.id] ?? 0)) map[c.id] = ts;
       }
     }
     return map;
