@@ -22,12 +22,14 @@ Sources are stored in the database and managed through the UI, not environment v
 
 ### Bootstrap (first run)
 
-On first startup, MeshMonitor creates a single `meshtastic_tcp` source from these environment variables:
+On first startup, MeshMonitor creates a `meshtastic_tcp` source named "Default" from these environment variables:
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `MESHTASTIC_NODE_IP` | `192.168.1.100` | Hostname or IP of your node |
+| `MESHTASTIC_NODE_IP` | _unset_ | Hostname or IP of your node. Unset → the Default source is created **disabled**, pointing at the placeholder `meshtastic.local` |
 | `MESHTASTIC_TCP_PORT` | `4403` | TCP port |
+
+For a MeshCore node, `MESHCORE_TCP_HOST` or `MESHCORE_SERIAL_PORT` creates a "Default MeshCore" source as well (see [MeshCore Default Source](/configuration/#meshcore-default-source)). With only the MeshCore vars set, the disabled Meshtastic placeholder is skipped.
 
 After that first boot, **the env vars are informational only**. Changing them won't rename or reconfigure the existing source — use the UI instead. This keeps your single-node `docker-compose.yml` familiar while unlocking multi-node.
 
