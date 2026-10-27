@@ -21,6 +21,7 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { logger } from '../../utils/logger.js';
+import { buildDefaultMeshtasticSourceConfigFromEnv } from '../config/defaultSourceConfig.js';
 
 /**
  * Build a default source config from env vars. Used by migration 029 when an
@@ -30,13 +31,14 @@ import { logger } from '../../utils/logger.js';
  */
 function buildLegacyDefaultSource(): { id: string; name: string; type: string; config: string; createdAt: number; updatedAt: number } {
   const now = Date.now();
-  const host = process.env.MESHTASTIC_NODE_IP || 'meshtastic.local';
-  const port = parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10) || 4403;
+  // Shared builder, so a v3 upgrade that still sets ENABLE_VIRTUAL_NODE /
+  // VIRTUAL_NODE_PORT gets the same Default source a fresh install does (#5874).
+  const { config } = buildDefaultMeshtasticSourceConfigFromEnv(process.env, (msg) => logger.warn(msg));
   return {
     id: randomUUID(),
     name: 'Default',
     type: 'meshtastic_tcp',
-    config: JSON.stringify({ host, port }),
+    config: JSON.stringify(config),
     createdAt: now,
     updatedAt: now,
   };

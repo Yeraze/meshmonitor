@@ -11,6 +11,8 @@ import Database from 'better-sqlite3';
 import {
   buildLegacyDefaultSource,
   ensureDefaultSourceIdSqlite,
+  ensureDefaultSourceIdPostgres,
+  ensureDefaultSourceIdMysql,
 } from './_legacyDefaultSource.js';
 
 function createSourcesTable(db: Database.Database) {
@@ -27,7 +29,13 @@ function createSourcesTable(db: Database.Database) {
   `);
 }
 
-const ENV_KEYS = ['MESHTASTIC_NODE_IP', 'MESHTASTIC_TCP_PORT'] as const;
+const ENV_KEYS = [
+  'MESHTASTIC_NODE_IP',
+  'MESHTASTIC_TCP_PORT',
+  'MESHTASTIC_NODE_PORT',
+  'ENABLE_VIRTUAL_NODE',
+  'VIRTUAL_NODE_PORT',
+] as const;
 type EnvSnapshot = Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>;
 
 function snapshotEnv(): EnvSnapshot {
@@ -50,8 +58,7 @@ describe('_legacyDefaultSource', () => {
 
   beforeEach(() => {
     envSnap = snapshotEnv();
-    delete process.env.MESHTASTIC_NODE_IP;
-    delete process.env.MESHTASTIC_TCP_PORT;
+    for (const key of ENV_KEYS) delete process.env[key];
     db = new Database(':memory:');
   });
 
@@ -137,6 +144,103 @@ describe('_legacyDefaultSource', () => {
         db.prepare(`SELECT COUNT(*) AS c FROM sources`).get() as { c: number }
       ).c;
       expect(count).toBe(1);
+    });
+  });
+
+  describe('first-boot Virtual Node env vars (#5874)', () => {
+    const VN = { enabled: true, port: 4499, allowAdminCommands: false };
+
+    it('adds virtualNode with admin commands off when ENABLE_VIRTUAL_NODE and MESHTASTIC_NODE_IP are set', () => {
+      process.env.MESHTASTIC_NODE_IP = '10.0.0.42';
+      process.env.ENABLE_VIRTUAL_NODE = 'true';
+      process.env.VIRTUAL_NODE_PORT = '4499';
+      const cfg = JSON.parse(buildLegacyDefaultSource().config);
+      expect(cfg.virtualNode).toEqual(VN);
+    });
+
+    it('uses port 4404 when VIRTUAL_NODE_PORT is unset', () => {
+      process.env.MESHTASTIC_NODE_IP = '10.0.0.42';
+      process.env.ENABLE_VIRTUAL_NODE = 'yes';
+      const cfg = JSON.parse(buildLegacyDefaultSource().config);
+      expect(cfg.virtualNode.port).toBe(4404);
+    });
+
+    it('adds no virtualNode when MESHTASTIC_NODE_IP is unset (source is disabled)', () => {
+      process.env.ENABLE_VIRTUAL_NODE = 'true';
+      const src = buildLegacyDefaultSource();
+      expect(src.enabled).toBe(0);
+      expect(JSON.parse(src.config).virtualNode).toBeUndefined();
+    });
+
+    it('adds no virtualNode for VIRTUAL_NODE_PORT alone', () => {
+      process.env.MESHTASTIC_NODE_IP = '10.0.0.42';
+      process.env.VIRTUAL_NODE_PORT = '4499';
+      expect(JSON.parse(buildLegacyDefaultSource().config).virtualNode).toBeUndefined();
+    });
+
+    it('adds no virtualNode for an out-of-range port', () => {
+      process.env.MESHTASTIC_NODE_IP = '10.0.0.42';
+      process.env.ENABLE_VIRTUAL_NODE = 'true';
+      process.env.VIRTUAL_NODE_PORT = '70000';
+      expect(JSON.parse(buildLegacyDefaultSource().config).virtualNode).toBeUndefined();
+    });
+
+    it('honours MESHTASTIC_NODE_PORT like environment.ts does', () => {
+      process.env.MESHTASTIC_NODE_IP = '10.0.0.42';
+      process.env.MESHTASTIC_NODE_PORT = '4410';
+      process.env.MESHTASTIC_TCP_PORT = '4403';
+      expect(JSON.parse(buildLegacyDefaultSource().config).port).toBe(4410);
+    });
+
+    it('SQLite: a second run with different env leaves the existing row alone', () => {
+      process.env.MESHTASTIC_NODE_IP = '10.0.0.42';
+      process.env.ENABLE_VIRTUAL_NODE = 'true';
+      process.env.VIRTUAL_NODE_PORT = '4499';
+      createSourcesTable(db);
+      const id = ensureDefaultSourceIdSqlite(db, 'test');
+      process.env.VIRTUAL_NODE_PORT = '5555';
+      process.env.ENABLE_VIRTUAL_NODE = 'false';
+      expect(ensureDefaultSourceIdSqlite(db, 'test')).toBe(id);
+      const rows = db.prepare(`SELECT config FROM sources`).all() as { config: string }[];
+      expect(rows).toHaveLength(1);
+      expect(JSON.parse(rows[0].config).virtualNode).toEqual(VN);
+    });
+
+    it('PostgreSQL path writes the same virtualNode block', async () => {
+      process.env.MESHTASTIC_NODE_IP = '10.0.0.42';
+      process.env.ENABLE_VIRTUAL_NODE = 'true';
+      process.env.VIRTUAL_NODE_PORT = '4499';
+      const calls: { sql: string; params?: unknown[] }[] = [];
+      const client = {
+        query: async (sql: string, params?: unknown[]) => {
+          calls.push({ sql, params });
+          if (sql.includes('to_regclass')) return { rows: [{ reg: 'sources' }] };
+          return { rows: [] };
+        },
+      };
+      await ensureDefaultSourceIdPostgres(client, 'test');
+      const insert = calls.find((c) => c.sql.includes('INSERT INTO sources'))!;
+      expect(JSON.parse(insert.params![3] as string).virtualNode).toEqual(VN);
+      expect(insert.params![4]).toBe(true);
+    });
+
+    it('MySQL path writes the same virtualNode block', async () => {
+      process.env.MESHTASTIC_NODE_IP = '10.0.0.42';
+      process.env.ENABLE_VIRTUAL_NODE = 'true';
+      process.env.VIRTUAL_NODE_PORT = '4499';
+      const calls: { sql: string; params?: unknown[] }[] = [];
+      const conn = {
+        query: async (sql: string, params?: unknown[]) => {
+          calls.push({ sql, params });
+          if (sql.includes('information_schema.tables')) return [[{ c: 1 }]];
+          return [[]];
+        },
+        release: () => {},
+      };
+      await ensureDefaultSourceIdMysql({ getConnection: async () => conn }, 'test');
+      const insert = calls.find((c) => c.sql.includes('INSERT INTO sources'))!;
+      expect(JSON.parse(insert.params![3] as string).virtualNode).toEqual(VN);
+      expect(insert.params![4]).toBe(1);
     });
   });
 });

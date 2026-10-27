@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { logger } from '../../utils/logger.js';
 import { getDataDir, getDefaultDatabasePath, getDefaultAccessLogPath } from './dataDir.js';
+import { parseVirtualNodeEnv } from './virtualNodeEnv.js';
 
 /**
  * Parse boolean environment variable
@@ -178,6 +179,38 @@ function parseEnum<T extends string>(
   return { value: defaultValue, wasProvided: false };
 }
 
+// ENABLE_VIRTUAL_NODE / VIRTUAL_NODE_PORT parsing lives in its own module so
+// the migrations can use it without importing (or mocking) this file.
+export {
+  DEFAULT_MESHTASTIC_VIRTUAL_NODE_PORT,
+  parseVirtualNodeEnv,
+  type VirtualNodeEnvConfig,
+} from './virtualNodeEnv.js';
+
+/** Shortest password MeshMonitor accepts anywhere (see auth/localAuth.ts). */
+export const MIN_ADMIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Parse ADMIN_PASSWORD (#5874): the first admin's password, used only when
+ * that admin is seeded. Empty or too-short values fall back to the default
+ * with a warning. The value is never logged.
+ */
+export function parseAdminPassword(
+  envValue: string | undefined,
+  warn: (msg: string) => void = () => {}
+): { value: string | undefined; wasProvided: boolean } {
+  if (envValue === undefined) return { value: undefined, wasProvided: false };
+  if (envValue.trim().length === 0) {
+    warn('⚠️  ADMIN_PASSWORD is set but empty. Ignoring it; the first admin gets the default password.');
+    return { value: undefined, wasProvided: false };
+  }
+  if (envValue.length < MIN_ADMIN_PASSWORD_LENGTH) {
+    warn(`⚠️  ADMIN_PASSWORD is shorter than ${MIN_ADMIN_PASSWORD_LENGTH} characters. Ignoring it; the first admin gets the default password.`);
+    return { value: undefined, wasProvided: false };
+  }
+  return { value: envValue, wasProvided: true };
+}
+
 /**
  * Environment configuration interface
  */
@@ -239,6 +272,11 @@ export interface EnvironmentConfig {
   meshtasticReconnectMaxDelayMsProvided: boolean;
   meshtasticModuleConfigDelayMs: number;
   meshtasticModuleConfigDelayMsProvided: boolean;
+  // First-boot Virtual Node for the Default source (#5874)
+  virtualNodeEnabled: boolean;
+  virtualNodeEnabledProvided: boolean;
+  virtualNodePort: number;
+  virtualNodePortProvided: boolean;
   timezone: string;
   timezoneProvided: boolean;
 
@@ -271,6 +309,9 @@ export interface EnvironmentConfig {
   disableAnonymousProvided: boolean;
   adminUsername: string;
   adminUsernameProvided: boolean;
+  /** First-admin password from ADMIN_PASSWORD (#5874). Never log this. */
+  adminPassword: string | undefined;
+  adminPasswordProvided: boolean;
 
   // Passkeys / WebAuthn (#5841). Both optional: when unset the RP ID and
   // origin come from each request (req.hostname / req.protocol).
@@ -558,6 +599,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     process.env.MESHTASTIC_MODULE_CONFIG_DELAY_MS,
     1000 // 1 second default
   );
+  const virtualNodeEnv = parseVirtualNodeEnv(process.env, (msg) => logger.warn(msg));
   const timezoneRaw = process.env.TZ || 'UTC';
   let timezone = { value: timezoneRaw, wasProvided: process.env.TZ !== undefined };
 
@@ -641,6 +683,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     value: process.env.ADMIN_USERNAME || 'admin',
     wasProvided: process.env.ADMIN_USERNAME !== undefined
   };
+  const adminPassword = parseAdminPassword(process.env.ADMIN_PASSWORD, (msg) => logger.warn(msg));
 
   // ============ PASSKEYS / WEBAUTHN (#5841) ============
   // A passkey is bound to one hostname (the RP ID). Behind a reverse proxy the
@@ -814,6 +857,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.debug(`   MESHTASTIC_RECONNECT_INITIAL_DELAY_MS: ${meshtasticReconnectInitialDelayMs.value}ms (${src(meshtasticReconnectInitialDelayMs.wasProvided)})`);
   logger.debug(`   MESHTASTIC_RECONNECT_MAX_DELAY_MS: ${meshtasticReconnectMaxDelayMs.value}ms (${src(meshtasticReconnectMaxDelayMs.wasProvided)})`);
   logger.debug(`   MESHTASTIC_MODULE_CONFIG_DELAY_MS: ${meshtasticModuleConfigDelayMs.value}ms (${src(meshtasticModuleConfigDelayMs.wasProvided)})`);
+  if (virtualNodeEnv.enabledProvided || virtualNodeEnv.portProvided) {
+    logger.info(`   ENABLE_VIRTUAL_NODE: ${virtualNodeEnv.enabled} (${src(virtualNodeEnv.enabledProvided)}; first boot only)`);
+    logger.info(`   VIRTUAL_NODE_PORT: ${virtualNodeEnv.port} (${src(virtualNodeEnv.portProvided)}; first boot only)`);
+  }
   if (oidcEnabled) {
     logger.debug('   --- OIDC ---');
     logger.debug(`   OIDC_ISSUER: ${oidcIssuer.value ? '***provided***' : 'not set'}`);
@@ -828,6 +875,9 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.debug(`   DISABLE_LOCAL_AUTH: ${disableLocalAuth.value} (${src(disableLocalAuth.wasProvided)})`);
   if (adminUsername.wasProvided) {
     logger.debug(`   ADMIN_USERNAME: ${adminUsername.value} (env)`);
+  }
+  if (adminPassword.wasProvided) {
+    logger.debug('   ADMIN_PASSWORD: ***provided*** (first admin only)');
   }
   if (proxyAuthEnabled.value) {
     logger.debug('   --- Proxy Authentication ---');
@@ -921,6 +971,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     meshtasticReconnectMaxDelayMsProvided: meshtasticReconnectMaxDelayMs.wasProvided,
     meshtasticModuleConfigDelayMs: meshtasticModuleConfigDelayMs.value,
     meshtasticModuleConfigDelayMsProvided: meshtasticModuleConfigDelayMs.wasProvided,
+    virtualNodeEnabled: virtualNodeEnv.enabled,
+    virtualNodeEnabledProvided: virtualNodeEnv.enabledProvided,
+    virtualNodePort: virtualNodeEnv.port,
+    virtualNodePortProvided: virtualNodeEnv.portProvided,
     timezone: timezone.value,
     timezoneProvided: timezone.wasProvided,
 
@@ -952,6 +1006,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     disableAnonymousProvided: disableAnonymous.wasProvided,
     adminUsername: adminUsername.value,
     adminUsernameProvided: adminUsername.wasProvided,
+    adminPassword: adminPassword.value,
+    adminPasswordProvided: adminPassword.wasProvided,
 
     // Passkeys / WebAuthn
     webauthnRpId: webauthnRpId.value,

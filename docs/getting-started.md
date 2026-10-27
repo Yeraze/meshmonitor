@@ -186,6 +186,8 @@ On first launch, MeshMonitor creates a default admin account:
 - **Username**: `admin`
 - **Password**: `changeme`
 
+To pick these yourself, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` (8+ characters) before the first start. They apply only when the first admin is created; later restarts never change the password.
+
 **Important**: After logging in, immediately:
 
 1. Click on your username in the top right

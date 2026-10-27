@@ -49,7 +49,7 @@ After deploying with the generated configuration:
 
 ### Security Options
 
-- **Plan to use Virtual Node**: Publishes a host port so mobile apps (and the optional MQTT Proxy) can reach MeshMonitor's Virtual Node once you enable it. In 4.0 the Virtual Node is a **per-source** setting — enable it and choose an in-container port in **Dashboard → Edit Source → Virtual Node** after startup. The legacy `ENABLE_VIRTUAL_NODE` / `VIRTUAL_NODE_PORT` / `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` environment variables were removed.
+- **Plan to use Virtual Node**: Publishes a host port so mobile apps (and the optional MQTT Proxy) can reach MeshMonitor's Virtual Node once you enable it. In 4.0 the Virtual Node is a **per-source** setting — enable it and choose an in-container port in **Dashboard → Edit Source → Virtual Node** after startup. For a headless install, add `ENABLE_VIRTUAL_NODE=true` (and optionally `VIRTUAL_NODE_PORT`) next to `MESHTASTIC_NODE_IP` to turn it on for the Default source on first boot only; see [Headless installs](/configuration/virtual-node#headless-installs-first-boot-env-vars). `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` was removed.
 - **Disable Anonymous Access**: When enabled, users must authenticate before accessing MeshMonitor. Useful for deployments accessible from the internet.
 
 ### Export Format

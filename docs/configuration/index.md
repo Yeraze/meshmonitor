@@ -109,7 +109,20 @@ told it about one.
 
 ### Virtual Node
 
-> **Breaking change in 4.0:** The `ENABLE_VIRTUAL_NODE`, `VIRTUAL_NODE_PORT`, and `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` environment variables have been **removed**. Virtual Node is now configured **per source** through the Dashboard UI — each `meshtastic_tcp` source owns its own VN endpoint.
+Virtual Node is a **per source** setting: each `meshtastic_tcp` source owns its own VN endpoint, and you manage it in **Dashboard → Edit Source → Virtual Node**.
+
+For headless installs, two env vars can turn it on for the **Default** source when that source is first created:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ENABLE_VIRTUAL_NODE` | `true` / `1` / `yes` adds a Virtual Node to the Default source on first boot. Needs `MESHTASTIC_NODE_IP` | _unset_ (off) |
+| `VIRTUAL_NODE_PORT` | Port for that Virtual Node, `1`–`65535`. Does nothing without `ENABLE_VIRTUAL_NODE`. An invalid value logs a warning and both vars are ignored | `4404` |
+
+::: warning First boot only
+These vars apply **once**, when the Default source is created. After that the source's saved config owns the Virtual Node settings, and later restarts never change them, even if you change or remove the vars. Change it in the UI from then on.
+:::
+
+Admin commands stay **off**: there is no env var for them (`VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` was removed in 4.0 and is not coming back). The Virtual Node port has no login, so anyone who can reach it could reconfigure your node. Turn that on in the UI only if you trust every client that can reach the port.
 
 See the [Virtual Node Server guide](/configuration/virtual-node) for details.
 
@@ -159,6 +172,7 @@ If you're running multiple MeshMonitor instances on the same host (different por
 | `DISABLE_ANONYMOUS` | Disable anonymous access - require login for all features | `false` |
 | `DISABLE_LOCAL_AUTH` | Disable local username/password authentication (OIDC only) | `false` |
 | `ADMIN_USERNAME` | Override default admin username on first run | `admin` |
+| `ADMIN_PASSWORD` | Password for the first admin, used **only** when that account is created on first boot. Never resets an existing admin's password. Must be at least 8 characters; an empty or shorter value logs a warning and falls back to `changeme`. Not printed in the log | `changeme` |
 
 ### Rate Limiting Variables
 

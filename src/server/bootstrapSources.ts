@@ -34,6 +34,8 @@ import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from './meshcoreMq
 import { logger } from '../utils/logger.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 import { warnOnDuplicateTcpEndpoints } from './utils/tcpEndpointDuplicates.js';
+import { buildDefaultMeshtasticSourceConfig } from './config/defaultSourceConfig.js';
+import { DEFAULT_MESHTASTIC_VIRTUAL_NODE_PORT } from './config/virtualNodeEnv.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from './meshcoreConfig.js';
 import { reticulumConfigFromSource, ensureReticulumManagerStarted } from './reticulumConfig.js';
 import { buildMqttManagerForSource } from './routes/sourceRoutes.js';
@@ -88,8 +90,8 @@ export interface BootstrapDeps {
    */
   db: BootstrapDb;
   /**
-   * Resolved environment config. Only meshtasticNodeIp, meshtasticNodeIpProvided
-   * and meshtasticTcpPort are read.
+   * Resolved environment config. Only meshtasticNodeIp, meshtasticNodeIpProvided,
+   * meshtasticTcpPort and the first-boot Virtual Node fields are read.
    *
    * `meshtasticNodeIpProvided` is false when MESHTASTIC_NODE_IP was never set,
    * in which case `meshtasticNodeIp` holds the placeholder '192.168.1.100' and
@@ -99,6 +101,10 @@ export interface BootstrapDeps {
     meshtasticNodeIp: string;
     meshtasticNodeIpProvided: boolean;
     meshtasticTcpPort: number;
+    /** ENABLE_VIRTUAL_NODE (#5874). Applied only when the Default source is created. */
+    virtualNodeEnabled?: boolean;
+    /** VIRTUAL_NODE_PORT (#5874). */
+    virtualNodePort?: number;
   };
   /** Registry that started managers are registered into. */
   registry: SourceManagerRegistry;
@@ -146,10 +152,24 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
         id: uuidv4(),
         name: 'Default',
         type: 'meshtastic_tcp',
-        config: { host: deps.env.meshtasticNodeIp, port: deps.env.meshtasticTcpPort },
+        // Same builder as migration 050's `_legacyDefaultSource.ts` (#5874).
+        config: buildDefaultMeshtasticSourceConfig({
+          host: deps.env.meshtasticNodeIp,
+          port: deps.env.meshtasticTcpPort,
+          hostProvided: true,
+          virtualNode: {
+            enabled: deps.env.virtualNodeEnabled === true,
+            port: deps.env.virtualNodePort ?? DEFAULT_MESHTASTIC_VIRTUAL_NODE_PORT,
+          },
+          warn: (msg) => logger.warn(msg),
+        }),
         enabled: true,
       });
       logger.info(`📡 Auto-created default source from environment config`);
+    } else if (deps.env.virtualNodeEnabled) {
+      logger.warn(
+        '⚠️  ENABLE_VIRTUAL_NODE is set but MESHTASTIC_NODE_IP is not, so no Default source was created and the Virtual Node env vars were ignored.',
+      );
     }
   }
 
