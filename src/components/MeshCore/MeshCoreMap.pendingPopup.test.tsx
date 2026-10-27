@@ -16,6 +16,14 @@ let lastMarkers: Descriptor[] = [];
 const baseMapKeys: string[] = [];
 
 // #4835: the live packet traffic layer pulls in the socket context; off by default here.
+// #5972: the ducting hooks need a QueryClient; with the admin switch off the
+// control renders nothing and the layer never mounts.
+vi.mock('../../hooks/useDuctingForecast', () => ({
+  useDuctingEnabled: () => false,
+  useDuctingForecast: () => ({ data: undefined }),
+  DUCTING_MAX_HOURS_AHEAD: 72,
+  DUCTING_STEP_HOURS: 3,
+}));
 vi.mock('../map/layers/PacketFlightsLayer', () => ({ PacketFlightsLayer: () => null }));
 
 vi.mock('../map/BaseMap', () => ({

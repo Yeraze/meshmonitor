@@ -1,7 +1,7 @@
 /**
  * Tropospheric ducting forecast (#5734).
  *
- * GET /api/ducting/forecast?hoursAhead=0..72
+ * GET /api/ducting/forecast?hoursAhead=0..72[&sourceId=<id>]
  *
  * Gates, in order:
  *  1. `ductingOverlayEnabled` (global, admin-set, off by default). While off,
@@ -14,7 +14,12 @@
  * CALLER could see on the map (their readable sources, through
  * `buildPositionFilter`), anchored on those sources' own local nodes (#5951),
  * so the box never hints at nodes on a source they cannot read. Viewers with the
- * same visible nodes share one box and so one cache entry. `bbox` stays
+ * same visible nodes share one box and so one cache entry.
+ *
+ * `sourceId` (#5972) scopes the area to one source the caller can read: its
+ * Meshtastic nodes, or its MeshCore nodes (through
+ * `buildMeshCorePositionFilter`), anchored on its local node. The MeshCore
+ * map passes it, since the default area holds only Meshtastic nodes. `bbox` stays
  * available to admins (debugging); others get 403, so a caller cannot make
  * the server fetch arbitrary boxes from NOAA.
  *
@@ -27,7 +32,12 @@ import { optionalAuth } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 import { resolvePermittedSourceIds } from '../utils/permittedSources.js';
-import { buildPositionFilter, loadNodesBySource } from '../utils/positionVisibility.js';
+import {
+  buildMeshCorePositionFilter,
+  buildPositionFilter,
+  loadMeshCoreNodesBySource,
+  loadNodesBySource,
+} from '../utils/positionVisibility.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { DuctingForecastService, MAX_HOURS_AHEAD } from '../services/ducting/ductingForecastService.js';
@@ -148,10 +158,11 @@ export function bboxFromPositions(points: readonly LatLon[], anchors: readonly L
  * caller's readable sources) and drops any node the map would not draw for
  * them (hidden, private position, channel without viewOnMap). Each source's
  * own local node, when the caller may see its position, anchors the box
- * (#5951), so it lands where the caller's radios are.
+ * (#5951), so it lands where the caller's radios are. `includeMeshCore`
+ * (#5972) adds the sources' MeshCore nodes under the MeshCore map's rules.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5734 req.user's shape isn't exported as a type (same as buildPositionFilter)
-async function nodeArea(user: any, sourceIds: string[]): Promise<BBox | null> {
+async function nodeArea(user: any, sourceIds: string[], includeMeshCore = false): Promise<BBox | null> {
   const cutoff = Math.floor(Date.now() / 1000) - NODE_WINDOW_S;
   const nodesBySource = await loadNodesBySource(sourceIds);
   const visible = await buildPositionFilter(user, sourceIds, nodesBySource);
@@ -172,6 +183,31 @@ async function nodeArea(user: any, sourceIds: string[]): Promise<BBox | null> {
       }
       if (n.lastHeard == null || n.lastHeard < cutoff) continue;
       points.push({ lat, lon });
+    }
+  }
+  // #5972: MeshCore nodes too, so a MeshCore source has an area. Only the
+  // MeshCore map asks for one (with `sourceId`), so this loads nothing on the
+  // default, all-sources request.
+  if (includeMeshCore) {
+    const mcNodesBySource = await loadMeshCoreNodesBySource(sourceIds);
+    const mcVisible = await buildMeshCorePositionFilter(user, sourceIds, mcNodesBySource);
+    const cutoffMs = cutoff * 1000;
+    for (const [sourceId, nodes] of mcNodesBySource) {
+      for (const n of nodes) {
+        if (!mcVisible({ sourceId, publicKey: n.publicKey })) continue;
+        // The filter already dropped a private override the caller may not see.
+        const useOverride = n.positionOverrideEnabled === true && n.latitudeOverride != null && n.longitudeOverride != null;
+        const lat = useOverride ? n.latitudeOverride : n.latitude;
+        const lon = useOverride ? n.longitudeOverride : n.longitude;
+        if (lat == null || lon == null || isBogusPosition(lat, lon)) continue;
+        if (n.isLocalNode === true) {
+          anchors.push({ lat, lon });
+          continue;
+        }
+        // MeshCore lastHeard is epoch milliseconds.
+        if (n.lastHeard == null || n.lastHeard < cutoffMs) continue;
+        points.push({ lat, lon });
+      }
     }
   }
   return bboxFromPositions(points, anchors);
@@ -196,6 +232,18 @@ router.get('/forecast', optionalAuth(), async (req: Request, res: Response) => {
   if (!Number.isInteger(hoursAhead) || hoursAhead < 0 || hoursAhead > MAX_HOURS_AHEAD) {
     return fail(res, 400, 'INVALID_INPUT', `hoursAhead must be an integer from 0 to ${MAX_HOURS_AHEAD}`);
   }
+  // #5972: one source's area (the MeshCore map). Only a source the caller
+  // can read, so the box never hints at a source they cannot see.
+  let areaSourceIds = sourceIds;
+  if (req.query.sourceId !== undefined) {
+    if (typeof req.query.sourceId !== 'string' || req.query.sourceId === '') {
+      return fail(res, 400, 'INVALID_INPUT', 'sourceId must be a source id');
+    }
+    if (!sourceIds.includes(req.query.sourceId)) {
+      return fail(res, 403, 'FORBIDDEN', 'Viewing the ducting overlay needs map access (nodes:read) on that source');
+    }
+    areaSourceIds = [req.query.sourceId];
+  }
   let bbox: BBox | null;
   if (req.query.bbox !== undefined) {
     if (!req.user?.isAdmin) {
@@ -206,7 +254,7 @@ router.get('/forecast', optionalAuth(), async (req: Request, res: Response) => {
     if (typeof parsed === 'string') return fail(res, 400, 'INVALID_INPUT', parsed);
     bbox = parsed;
   } else {
-    bbox = await nodeArea(req.user, sourceIds);
+    bbox = await nodeArea(req.user, areaSourceIds, req.query.sourceId !== undefined);
     if (!bbox) return fail(res, 400, 'NO_AREA', 'No recently heard node you can see has a position');
   }
   try {

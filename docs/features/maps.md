@@ -362,11 +362,11 @@ page.
 
 The overlay shades the map where the lower air bends radio further than usual, from a NOAA GFS forecast. It helps you spot when a long path may open. It is off until an admin turns on **Enable the ducting overlay (contacts NOAA)** in [Global Settings](/features/settings#tropospheric-ducting-overlay).
 
-With it on, the **Ducting** toggle appears in Map Features on both the Map tab and the Dashboard map. MeshMonitor saves the toggle per browser.
+With it on, the **Ducting** toggle appears in Map Features on the Map tab, the Dashboard map and a MeshCore source's Map tab (Companion and Repeater). MeshMonitor saves the toggle per browser.
 
 - **Scrubber.** Drag the slider to pick a forecast time, from now to +72 hours. It labels the step (`+N h`), the valid time in your time zone and the GFS run. The map loads a step after you stop moving the slider.
 - **Legend.** Normal air has no fill. A light tint marks super-refractive air (gradient at or below -79 N/km). A stronger tint in the caution color marks a duct (at or below -157 N/km), stronger for a stronger duct. Sub-refractive air has no fill, because it shortens range.
-- **Area.** The forecast covers the busiest group of nodes you can see on the map, up to 20 degrees on a side. When your sources have a local node with a position you may see, MeshMonitor centres the area on those nodes first. It uses only nodes you may see, so two viewers can get different areas.
+- **Area.** The forecast covers the busiest group of nodes you can see on the map, up to 20 degrees on a side. When your sources have a local node with a position you may see, MeshMonitor centres the area on those nodes first. It uses only nodes you may see, so two viewers can get different areas. On a MeshCore source's map, the area comes from that source's contacts you may see on the map, centred on the source's own radio when it has a position.
 - **Caveat.** GFS pressure levels sit 200 to 500 m apart near the ground, so a sharp duct can read weaker than it is.
 
 The server fetches a forecast step from NOAA only when a viewer opens a step it has not cached: one HTTPS request each, at most 25 per 6-hour GFS cycle. MeshMonitor sends nothing over the mesh. While the setting is off, the forecast route answers `403` with code `DUCTING_DISABLED`.

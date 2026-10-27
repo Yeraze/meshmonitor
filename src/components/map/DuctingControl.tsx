@@ -2,8 +2,9 @@
  * Map Features control for the ducting overlay (#5734): the toggle, the time
  * scrubber (now to +72 h in 3 h steps) and the legend.
  *
- * Rendered by BOTH Map Features panels (NodesTab and DashboardMap). It renders
- * nothing unless an admin switched the overlay on (`ductingOverlayEnabled`).
+ * Rendered by every Map Features panel (NodesTab, DashboardMap and, since
+ * #5972, MeshCoreMap). It renders nothing unless an admin switched the
+ * overlay on (`ductingOverlayEnabled`).
  *
  * The scrubber commits a step only after it has rested for
  * `DUCTING_SCRUB_DEBOUNCE_MS`, so dragging across 25 steps asks the server for
@@ -42,13 +43,15 @@ export interface DuctingControlProps {
   onHoursAheadChange: (hours: number) => void;
   /** When set, the toggle is disabled with this title (e.g. in 3D view). */
   disabledTitle?: string;
+  /** #5972: forecast this one source's area. Pass the same value as the map's DuctingLayer. */
+  sourceId?: string | null;
 }
 
-export function DuctingControl({ checked, onCheckedChange, hoursAhead, onHoursAheadChange, disabledTitle }: DuctingControlProps) {
+export function DuctingControl({ checked, onCheckedChange, hoursAhead, onHoursAheadChange, disabledTitle, sourceId }: DuctingControlProps) {
   const { t } = useTranslation();
   const enabled = useDuctingEnabled();
   const active = enabled && checked && !disabledTitle;
-  const query = useDuctingForecast(hoursAhead, active);
+  const query = useDuctingForecast(hoursAhead, active, sourceId);
 
   // The slider moves at once; the committed step follows after a rest.
   const [pendingStep, setPendingStep] = useState(Math.round(hoursAhead / DUCTING_STEP_HOURS));

@@ -148,6 +148,10 @@ The list header has two rows: search and filters on the first, sort and view con
 
 **Live packet traffic** in the map's Features panel shows packets as your companion hears them, as dots flying from the last hop (or the sender) to your node. It works with the Packet Monitor log off. See [Live packet traffic](/features/maps#live-packet-traffic).
 
+**Ducting**, in the same panel, shades where the lower air bends radio further than usual, from a NOAA forecast. It appears once an admin turns the overlay on, and the forecast covers this source's contacts. See [Tropospheric ducting overlay](/features/maps#tropospheric-ducting-overlay).
+
+![Ducting overlay on a MeshCore source's map](/images/features/5972-meshcore-ducting.png)
+
 On **mobile**, the node list and the map share the screen, and the map shows first, as on Meshtastic. **Node list** above the map opens the list, and the collapse button in the list header goes back to the map. On desktop, a collapse button collapses the list to a thin sidebar (preference persisted to `localStorage`).
 
 ### Channels

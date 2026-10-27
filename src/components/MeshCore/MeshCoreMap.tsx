@@ -16,6 +16,9 @@ import { createNodeIcon } from '../map/markerIcons';
 import { BaseMap } from '../map/BaseMap';
 import { PacketFlightsLayer } from '../map/layers/PacketFlightsLayer';
 import { PacketFlightsControl } from '../map/PacketFlightsControl';
+import DuctingLayer from '../map/layers/DuctingLayer';
+import { DuctingControl } from '../map/DuctingControl';
+import { useMapContextOptional } from '../../contexts/MapContext';
 import type { FlightNodeEntry, PacketFlightStats } from '../../utils/packetFlightEdges';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
@@ -231,6 +234,17 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       // storage unavailable: the toggle still works for this session
     }
   }, [showPacketFlights, packetFlightRate]);
+
+  // Tropospheric ducting overlay (#5972). The same toggle and step as the
+  // other maps: MeshCoreSourcePage wraps this map in a MapProvider. The local
+  // fallback only serves a bare render (component tests) with no provider.
+  const mapContext = useMapContextOptional();
+  const [localShowDucting, setLocalShowDucting] = useState(false);
+  const [localDuctingHoursAhead, setLocalDuctingHoursAhead] = useState(0);
+  const showDucting = mapContext?.showDucting ?? localShowDucting;
+  const setShowDucting = mapContext?.setShowDucting ?? setLocalShowDucting;
+  const ductingHoursAhead = mapContext?.ductingHoursAhead ?? localDuctingHoursAhead;
+  const setDuctingHoursAhead = mapContext?.setDuctingHoursAhead ?? setLocalDuctingHoursAhead;
 
   // Polar grid overlay (#4047 follow-up) — the same shared range-ring/azimuth-
   // sector grid NodesTab/DashboardMap/Map Analysis draw, centered on the LOCAL
@@ -650,6 +664,13 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
             onStatsChange={setPacketFlightsStats}
           />
         )}
+
+        {/* Tropospheric ducting overlay (#5972): mounted only while on. The
+            area comes from this source's own nodes (`sourceId`), since the
+            default area holds only Meshtastic nodes. */}
+        {showDucting && sourceId && (
+          <DuctingLayer hoursAhead={ductingHoursAhead} sourceId={sourceId} />
+        )}
       </BaseMap>
 
       {isLoading && <MapLoadingOverlay />}
@@ -692,6 +713,17 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
             onRateChange={setPacketFlightRate}
             stats={packetFlightsStats}
           />
+          {/* #5972: tropospheric ducting overlay. Renders nothing unless an
+              admin turned the overlay on. */}
+          {sourceId && (
+            <DuctingControl
+              checked={showDucting}
+              onCheckedChange={setShowDucting}
+              hoursAhead={ductingHoursAhead}
+              onHoursAheadChange={setDuctingHoursAhead}
+              sourceId={sourceId}
+            />
+          )}
           <label className="map-control-item">
             <input
               type="checkbox"
