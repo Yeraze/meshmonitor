@@ -1079,7 +1079,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           unreadAnchorMs={entryLastRead}
           backlogLoading={!historyReady}
           onLoadOlder={loadOlderHistory}
-          hasMoreOlder={hasMoreHistory}
+          hasMoreOlder={historyReady && hasMoreHistory}
           loadingOlder={loadingOlderHistory}
           maxBytes={
             showScopeOverride && overrideScope !== null && overrideScope !== ''

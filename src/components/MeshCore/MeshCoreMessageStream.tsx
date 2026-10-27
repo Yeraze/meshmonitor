@@ -477,10 +477,19 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
       container.scrollHeight - container.scrollTop - container.clientHeight < 100;
     setShowJumpToBottom(!isNearBottom);
 
+    // Never page older history before this conversation's entry scroll has
+    // landed. A switch replaces the rows, the browser clamps scrollTop to 0 and
+    // fires a scroll event; reading that as "scrolled to the top" loaded an
+    // older page whose restore then yanked the view off the unread divider.
+    // (A list with no laid-out height cannot be scrolled, so it never counts
+    // as pending; that also keeps jsdom, where scrollHeight is 0, working.)
+    const entryPending = !entryScrollRef.current.done && container.scrollHeight > 0;
     if (
       onLoadOlder &&
       hasMoreOlder &&
       !loadingOlder &&
+      !backlogLoading &&
+      !entryPending &&
       container.scrollTop < LOAD_OLDER_THRESHOLD_PX
     ) {
       const now = Date.now();
@@ -493,7 +502,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         onLoadOlder();
       }
     }
-  }, [onLoadOlder, hasMoreOlder, loadingOlder]);
+  }, [onLoadOlder, hasMoreOlder, loadingOlder, backlogLoading]);
 
   // Once a load-older request settles (loadingOlder flips back to false),
   // restore the viewport to the same content it was showing before older
