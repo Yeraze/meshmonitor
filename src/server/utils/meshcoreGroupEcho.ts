@@ -77,6 +77,20 @@ export function groupTextBodyMatchesRecv(decodedBody: string, recvText: unknown)
 }
 
 /**
+ * Identity of ONE physical received copy of an echoed channel packet (#6000):
+ * the GRP_TXT payload hex plus the relay chain that copy carried. Repeaters
+ * forward the payload byte-for-byte and only append to `path[]`, so the payload
+ * alone is shared by every re-flood of one message. Keying on payload alone made
+ * the copy via repeater B collide with the copy via repeater A, dropping B. With
+ * the path in the key, each distinct relay path is attributed, while hearing the
+ * very same copy twice (same payload, same path) is still attributed once
+ * (#3979). `pathHops` is the full ordered chain, lowercase hex.
+ */
+export function channelEchoKey(payloadHex: string, pathHops: readonly string[]): string {
+  return `${payloadHex.toLowerCase()}|${pathHops.join(',')}`;
+}
+
+/**
  * Derive the 1-byte MeshCore channel hash from a channel secret: the first byte
  * of SHA-256 over the secret (`BaseChatMesh::addChannel`). For MeshMonitor's
  * 16-byte AES-128 PSKs this hashes the 16 stored bytes.

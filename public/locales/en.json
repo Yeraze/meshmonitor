@@ -546,6 +546,8 @@
   "messages.translate_btn": "Translate",
   "messages.bytes_warning": "Warning: Translated message is {{bytes}} bytes (LoRa limit is ~200-220 bytes)",
   "meshcore.channels.order.sort_by": "Sort channels by",
+  "meshcore.heard_by_hops_one": "{{count}} hop",
+  "meshcore.heard_by_hops_other": "{{count}} hops",
   "meshcore.channels.order.device": "Device order",
   "meshcore.channels.order.name": "Channel name",
   "meshcore.channels.order.last_message": "Last message",

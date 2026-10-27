@@ -79,6 +79,8 @@ export interface HeardByEntry {
   hash: string;
   name?: string | null;
   snr?: number | null;
+  /** MeshCore: hops from the sender when this repeater relayed (#6000). */
+  hops?: number | null;
 }
 
 /**

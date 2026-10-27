@@ -741,6 +741,35 @@ describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
     expect(container.querySelector('.mc-heard-by-list')).not.toBeNull();
   });
 
+  it('shows each repeater\'s hop count, sorted by hops then SNR, old rows last (#6000)', () => {
+    const { container } = renderWithQuery(
+      <MeshCoreMessageStream
+        messages={[outgoingMessage({
+          heardBy: [
+            { hash: 'old1', name: 'OldRow', snr: 9, hops: null },
+            { hash: 'bb', name: 'Far', snr: 8, hops: 2 },
+            { hash: 'aa', name: 'NearWeak', snr: 1, hops: 0 },
+            { hash: 'cc', name: 'NearStrong', snr: 6, hops: 0 },
+          ],
+        })]}
+        selfPublicKey={SELF_KEY}
+        onSend={async () => true}
+      />,
+    );
+    fireEvent.click(container.querySelector('.mc-heard-by-badge')!);
+    const items = Array.from(container.querySelectorAll('.mc-heard-by-item'));
+    expect(items.map((li) => li.querySelector('.mc-heard-by-name')!.textContent)).toEqual([
+      'NearStrong',
+      'NearWeak',
+      'Far',
+      'OldRow',
+    ]);
+    expect(items[0].querySelector('.mc-heard-by-hops')!.textContent).toContain('0 hops');
+    expect(items[2].querySelector('.mc-heard-by-hops')!.textContent).toContain('2 hops');
+    // A row from before migration 218 has no hop count and shows none.
+    expect(items[3].querySelector('.mc-heard-by-hops')).toBeNull();
+  });
+
   it('does not disturb the route-detail popup', () => {
     // The route-detail chain link only renders on RECEIVED messages (the
     // stream gates it on `!outgoing`), so this needs a separate incoming

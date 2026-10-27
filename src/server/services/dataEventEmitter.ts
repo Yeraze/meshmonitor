@@ -773,7 +773,7 @@ class DataEventEmitter extends EventEmitter {
    * message so the client can replace its state idempotently.
    */
   emitMeshCoreChannelHeard(
-    data: { id: string; heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> },
+    data: { id: string; heardBy: Array<{ hash: string; name?: string | null; snr?: number | null; hops?: number | null }> },
     sourceId: string,
   ): void {
     const event: DataEvent = {

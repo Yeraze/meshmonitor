@@ -163,7 +163,7 @@ export interface MeshCoreMessage {
   /** Repeaters that re-flooded this outgoing channel message, inferred by
    *  self-echo correlation (#3700). Best-effort; `name` is null when the relay
    *  hash couldn't be resolved to a known contact. */
-  heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null }>;
+  heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null; hops?: number | null }>;
   /**
    * Signal-to-noise ratio (dB) of the received packet, as reported by the
    * companion. The server has always sent this; the client type just never
@@ -1025,7 +1025,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     const onChannelHeard = (evt: {
       sourceId: string;
       id: string;
-      heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }>;
+      heardBy: Array<{ hash: string; name?: string | null; snr?: number | null; hops?: number | null }>;
     }) => {
       if (evt.sourceId !== sourceId) return;
       setMessages(prev => prev.map(m =>

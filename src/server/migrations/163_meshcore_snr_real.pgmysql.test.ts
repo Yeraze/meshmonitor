@@ -100,6 +100,8 @@ describe.skipIf(!postgresAvailable)('migration 163 — PostgreSQL (container)', 
           "repeaterHash" TEXT NOT NULL,
           "repeaterName" TEXT,
           snr INTEGER,
+          -- Added by migration 218; Drizzle inserts name every schema column.
+          hops INTEGER,
           "heardAt" BIGINT NOT NULL,
           "createdAt" BIGINT NOT NULL
         )
@@ -223,6 +225,8 @@ describe.skipIf(!mysqlAvailable)('migration 163 — MySQL (container)', () => {
         repeaterHash VARCHAR(16) NOT NULL,
         repeaterName VARCHAR(128),
         snr INT,
+        -- Added by migration 218; Drizzle inserts name every schema column.
+        hops INT,
         heardAt BIGINT NOT NULL,
         createdAt BIGINT NOT NULL
       )

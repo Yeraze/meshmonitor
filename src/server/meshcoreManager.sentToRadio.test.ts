@@ -191,9 +191,9 @@ describe('MeshCore channel send: what the row proves (#5682)', () => {
     await (manager as any).correlateChannelEcho(frameOf('hello mesh', ['7f']));
 
     expect(await heardHashes(id, sourceId)).toEqual(['7f']);
-    expect(manager.getRecentMessages(10)[0].heardBy).toEqual([{ hash: '7f', name: null, snr: 5 }]);
+    expect(manager.getRecentMessages(10)[0].heardBy).toEqual([{ hash: '7f', name: null, snr: 5, hops: 0 }]);
     expect(heard).toHaveBeenCalledTimes(1);
-    expect(heard).toHaveBeenCalledWith({ id, heardBy: [{ hash: '7f', name: null, snr: 5 }] }, sourceId);
+    expect(heard).toHaveBeenCalledWith({ id, heardBy: [{ hash: '7f', name: null, snr: 5, hops: 0 }] }, sourceId);
     // What a restart reloads (connect() enriches rows from this same query).
     const reloaded = await databaseService.meshcore.getHeardRepeatersForMessages([id], sourceId);
     expect(reloaded[id].map(r => r.repeaterHash)).toEqual(['7f']);
@@ -210,7 +210,7 @@ describe('MeshCore channel send: what the row proves (#5682)', () => {
     await (manager as any).correlateChannelEcho(frameOf('hello mesh', ['7f']));
 
     expect(await heardHashes(id, sourceId)).toEqual(['7f']);
-    expect(manager.getRecentMessages(10)[0].heardBy).toEqual([{ hash: '7f', name: null, snr: 5 }]);
+    expect(manager.getRecentMessages(10)[0].heardBy).toEqual([{ hash: '7f', name: null, snr: 5, hops: 0 }]);
     expect(heard).toHaveBeenCalledTimes(1);
   });
 });
