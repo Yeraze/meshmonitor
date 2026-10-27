@@ -13,6 +13,7 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { getAllTilesets } from '../../config/tilesets';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useDashboardSources } from '../../hooks/useDashboardData';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory';
 import { EmbedDialogContent } from './EmbedDialogContent';
 import { UiIcon } from '../icons';
 import './EmbedSettings.css';
@@ -442,6 +443,14 @@ const EmbedSettings = () => {
                     </label>
                   ))}
                 </div>
+                {/* #5999: the channel list is Meshtastic-only. */}
+                {(form.sourceId === null
+                  ? sources.some(s => isAnyMeshCoreSourceType(s.type))
+                  : isAnyMeshCoreSourceType(sources.find(s => s.id === form.sourceId)?.type)) && (
+                  <p className="setting-description" data-testid="embed-channels-meshcore-hint">
+                    {t('settings.embed.channels_meshcore_hint', 'MeshCore nodes have no channel, so this filter applies only to Meshtastic nodes. MeshCore nodes with a position always show.')}
+                  </p>
+                )}
               </div>
 
               {/* Source filter — null = all sources */}
