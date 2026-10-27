@@ -352,6 +352,7 @@ setTimeout(async () => {
         meshtasticTcpPort: env.meshtasticTcpPort,
         virtualNodeEnabled: env.virtualNodeEnabled,
         virtualNodePort: env.virtualNodePort,
+        meshcoreDefault: env.meshcoreDefault,
       },
       registry: sourceManagerRegistry,
       makeMeshtastic: (id, cfg) => new MeshtasticManager(id, cfg),

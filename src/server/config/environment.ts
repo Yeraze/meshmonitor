@@ -17,6 +17,7 @@ import path from 'path';
 import { logger } from '../../utils/logger.js';
 import { getDataDir, getDefaultDatabasePath, getDefaultAccessLogPath } from './dataDir.js';
 import { parseVirtualNodeEnv } from './virtualNodeEnv.js';
+import { parseMeshCoreDefaultEnv, type MeshCoreDefaultEnv } from './meshcoreEnv.js';
 
 /**
  * Parse boolean environment variable
@@ -277,6 +278,8 @@ export interface EnvironmentConfig {
   virtualNodeEnabledProvided: boolean;
   virtualNodePort: number;
   virtualNodePortProvided: boolean;
+  /** First-boot MeshCore default source from MESHCORE_* (#5874). */
+  meshcoreDefault: MeshCoreDefaultEnv;
   timezone: string;
   timezoneProvided: boolean;
 
@@ -600,6 +603,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     1000 // 1 second default
   );
   const virtualNodeEnv = parseVirtualNodeEnv(process.env, (msg) => logger.warn(msg));
+  const meshcoreDefault = parseMeshCoreDefaultEnv(process.env, (msg) => logger.warn(msg));
   const timezoneRaw = process.env.TZ || 'UTC';
   let timezone = { value: timezoneRaw, wasProvided: process.env.TZ !== undefined };
 
@@ -861,6 +865,21 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     logger.info(`   ENABLE_VIRTUAL_NODE: ${virtualNodeEnv.enabled} (${src(virtualNodeEnv.enabledProvided)}; first boot only)`);
     logger.info(`   VIRTUAL_NODE_PORT: ${virtualNodeEnv.port} (${src(virtualNodeEnv.portProvided)}; first boot only)`);
   }
+  if (meshcoreDefault.transport) {
+    logger.debug('   --- MeshCore default source (first boot only) ---');
+    if (meshcoreDefault.transport === 'tcp') {
+      logger.info(`   MESHCORE_TCP_HOST: ${meshcoreDefault.tcpHost} (env; first boot only)`);
+      logger.info(`   MESHCORE_TCP_PORT: ${meshcoreDefault.tcpPort} (${src(meshcoreDefault.tcpPortProvided)}; first boot only)`);
+    } else {
+      logger.info(`   MESHCORE_SERIAL_PORT: ${meshcoreDefault.serialPort} (env; first boot only)`);
+      logger.info(`   MESHCORE_BAUD_RATE: ${meshcoreDefault.baudRate} (${src(meshcoreDefault.baudRateProvided)}; first boot only)`);
+    }
+    logger.info(`   MESHCORE_DEVICE_TYPE: ${meshcoreDefault.deviceType} (${src(meshcoreDefault.deviceTypeProvided)}; first boot only)`);
+    if (meshcoreDefault.virtualNode.enabledProvided || meshcoreDefault.virtualNode.portProvided) {
+      logger.info(`   MESHCORE_ENABLE_VIRTUAL_NODE: ${meshcoreDefault.virtualNode.enabled} (${src(meshcoreDefault.virtualNode.enabledProvided)}; first boot only)`);
+      logger.info(`   MESHCORE_VIRTUAL_NODE_PORT: ${meshcoreDefault.virtualNode.port} (${src(meshcoreDefault.virtualNode.portProvided)}; first boot only)`);
+    }
+  }
   if (oidcEnabled) {
     logger.debug('   --- OIDC ---');
     logger.debug(`   OIDC_ISSUER: ${oidcIssuer.value ? '***provided***' : 'not set'}`);
@@ -975,6 +994,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     virtualNodeEnabledProvided: virtualNodeEnv.enabledProvided,
     virtualNodePort: virtualNodeEnv.port,
     virtualNodePortProvided: virtualNodeEnv.portProvided,
+    meshcoreDefault,
     timezone: timezone.value,
     timezoneProvided: timezone.wasProvided,
 

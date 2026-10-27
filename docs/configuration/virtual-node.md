@@ -92,12 +92,27 @@ On the first boot, MeshMonitor creates the **Default** source with this block in
 Rules:
 
 - **First boot only.** The vars apply when the Default source is created. After that the saved source config owns the settings, and later restarts never change them, even if you edit or remove the vars. Use the UI (or `PUT /api/sources/:id`) to change them afterwards.
-- **Needs `MESHTASTIC_NODE_IP`.** Without it the Default source is created disabled, so a Virtual Node on it would never listen. MeshMonitor logs a warning and skips the Virtual Node.
+- **Needs `MESHTASTIC_NODE_IP`.** Without it the Default source is created disabled (or not at all, when the MeshCore vars are set), so a Virtual Node on it would never listen. MeshMonitor logs a warning and skips the Virtual Node.
 - **`VIRTUAL_NODE_PORT` alone does nothing.** Set `ENABLE_VIRTUAL_NODE=true` (`1` and `yes` work too). A port outside `1`–`65535` logs a warning and both vars are ignored; boot carries on.
 - **Admin commands are always off.** There is no env var for them. The Virtual Node port has no login, so anyone who can reach it could send admin commands to your node. If you need them, turn on **Allow admin commands** in the UI as a deliberate choice.
 - Remember to publish the port (`4404:4404` above).
 
 Pair this with `ADMIN_PASSWORD` (see [Environment Variables](/configuration/#environment-variables)) to set the first admin's password, so a headless install never runs with `changeme`.
+
+#### MeshCore Virtual Node
+
+A MeshCore source from the [MeshCore first-boot vars](/configuration/#meshcore-default-source) has its own pair, separate from the Meshtastic one:
+
+```yaml
+environment:
+  - MESHCORE_TCP_HOST=192.168.1.60
+  - MESHCORE_ENABLE_VIRTUAL_NODE=true
+  - MESHCORE_VIRTUAL_NODE_PORT=5000   # optional, defaults to 5000
+ports:
+  - "5000:5000"
+```
+
+The source gets `"virtualNode": { "enabled": true, "port": 5000, "allowAdminCommands": false, "allowPkiExport": false, "allowPkiImport": false }`. The same rules apply: first boot only, a port alone does nothing, a bad port is ignored with a warning. It also needs a **Companion**: with `MESHCORE_DEVICE_TYPE=repeater` MeshMonitor warns and adds no Virtual Node. If both Virtual Nodes ask for the same port, the Meshtastic one keeps it and the MeshCore one is skipped with a warning.
 
 ### Enabling Virtual Node on a Source
 

@@ -241,7 +241,7 @@ export const migration = {
   up: (db: Database): void => {
     logger.info(`${LABEL} (SQLite): promoting legacy global settings to default source`);
 
-    const defaultSourceId = ensureDefaultSourceIdSqlite(db, LABEL);
+    const defaultSourceId = ensureDefaultSourceIdSqlite(db, LABEL, { firstBoot: true });
     if (!defaultSourceId) {
       logger.debug(`${LABEL} (SQLite): sources table missing, nothing to promote`);
       return;
@@ -308,7 +308,7 @@ export const migration = {
 export async function runMigration050Postgres(client: any): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): promoting legacy global settings to default source`);
 
-  const defaultSourceId = await ensureDefaultSourceIdPostgres(client, LABEL);
+  const defaultSourceId = await ensureDefaultSourceIdPostgres(client, LABEL, { firstBoot: true });
   if (!defaultSourceId) {
     logger.debug(`${LABEL} (PostgreSQL): sources table missing, nothing to promote`);
     return;
@@ -379,7 +379,7 @@ export async function runMigration050Postgres(client: any): Promise<void> {
 export async function runMigration050Mysql(pool: any): Promise<void> {
   logger.info(`${LABEL} (MySQL): promoting legacy global settings to default source`);
 
-  const defaultSourceId = await ensureDefaultSourceIdMysql(pool, LABEL);
+  const defaultSourceId = await ensureDefaultSourceIdMysql(pool, LABEL, { firstBoot: true });
   if (!defaultSourceId) {
     logger.debug(`${LABEL} (MySQL): sources table missing, nothing to promote`);
     return;
