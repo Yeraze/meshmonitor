@@ -2088,6 +2088,7 @@
   "settings.tapback_reset_success": "Emojis reset to defaults",
   "settings.packet_monitor": "Packet Monitor",
   "settings.packet_monitor_description": "Configure the mesh traffic monitor that displays all packets on the network. Requires both channels:read and messages:read permissions.",
+  "settings.embed.channels_meshcore_hint": "MeshCore nodes have no channel, so this filter applies only to Meshtastic nodes. MeshCore nodes with a position always show.",
   "settings.enable_audio_notifications": "Enable Audio Notifications",
   "settings.enable_audio_notifications_description": "Play a sound when new messages arrive. Disable this if you experience audio issues in your browser.",
   "settings.channel_sounds_label": "Per-channel notification sound",
