@@ -31,6 +31,7 @@ import { parseSpip } from '../../utils/spip';
 import { SpipImage } from '../Spip/SpipImage';
 import { meshcoreDisplayTimeMs, meshcoreMessageClockOffsetMs } from '../../utils/meshcoreMessageTime';
 import { MeshCoreClockOffset } from './MeshCoreClockOffset';
+import { sortHeardBy } from '../../utils/meshcoreHeardBy';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -912,9 +913,14 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
               )}
               {outgoing && m.heardBy && m.heardBy.length > 0 && expandedHeardBy.has(m.id) && (
                 <ul className="mc-heard-by-list">
-                  {m.heardBy.map(h => (
+                  {sortHeardBy(m.heardBy).map(h => (
                     <li key={h.hash} className="mc-heard-by-item">
                       <span className="mc-heard-by-name">{h.name || h.hash}</span>
+                      {typeof h.hops === 'number' && (
+                        <span className="mc-heard-by-hops">
+                          {' '}{t('meshcore.heard_by_hops', { count: h.hops, defaultValue: '{{count}} hops' })}
+                        </span>
+                      )}
                       {typeof h.snr === 'number' && (
                         <span className="mc-heard-by-snr"> ({h.snr} dB)</span>
                       )}

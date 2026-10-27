@@ -236,6 +236,7 @@ import { migration as aircraftFlightMatchRechecksMigration, runMigration214Postg
 import { migration as addMeshcoreAdvertSignatureVerifiedMigration, runMigration215Postgres, runMigration215Mysql } from '../server/migrations/215_add_meshcore_advert_signature_verified.js';
 import { migration as addWaypointGeofenceMigration, runMigration216Postgres, runMigration216Mysql } from '../server/migrations/216_add_waypoint_geofence.js';
 import { migration as addNodeChannelLockedMigration, runMigration217Postgres, runMigration217Mysql } from '../server/migrations/217_add_node_channel_locked.js';
+import { migration as addMeshcoreHeardRepeaterHopsMigration, runMigration218Postgres, runMigration218Mysql } from '../server/migrations/218_add_meshcore_heard_repeater_hops.js';
 
 // ============================================================================
 // Registry
@@ -3505,4 +3506,19 @@ registry.register({
   sqlite: (db) => addNodeChannelLockedMigration.up(db),
   postgres: (client) => runMigration217Postgres(client),
   mysql: (pool) => runMigration217Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 218: meshcore_heard_repeaters.hops (#6000). PER-SOURCE (a column
+// on a per-source table). A repeater's index in the echoed copy's relay chain;
+// nullable, old rows stay null.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 218,
+  name: 'add_meshcore_heard_repeater_hops',
+  settingsKey: 'migration_218_add_meshcore_heard_repeater_hops',
+  sqlite: (db) => addMeshcoreHeardRepeaterHopsMigration.up(db),
+  postgres: (client) => runMigration218Postgres(client),
+  mysql: (pool) => runMigration218Mysql(pool),
 });

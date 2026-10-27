@@ -345,8 +345,8 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
       expect.objectContaining({
         id: 'sent-123',
         heardBy: [
-          { hash: 'a3', name: null, snr: 6 },
-          { hash: '7f', name: null, snr: 4 },
+          { hash: 'a3', name: null, snr: 6, hops: null },
+          { hash: '7f', name: null, snr: 4, hops: null },
         ],
       }),
       'src-a',
@@ -374,8 +374,9 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
    * tiny in-memory table that merges like the real repository: one row per
    * (messageId, repeaterHash), max non-null SNR.
    */
-  function useInMemoryHeardTable(): Map<string, { repeaterHash: string; repeaterName: string | null; snr: number | null }> {
-    const rows = new Map<string, { repeaterHash: string; repeaterName: string | null; snr: number | null }>();
+  type HeardRow = { repeaterHash: string; repeaterName: string | null; snr: number | null; hops: number | null };
+  function useInMemoryHeardTable(): Map<string, HeardRow> {
+    const rows = new Map<string, HeardRow>();
     recordHeardRepeater.mockImplementation(async (r: any) => {
       const key = `${r.messageId}|${r.repeaterHash}`;
       const prev = rows.get(key);
@@ -383,7 +384,11 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
       const snr = prev
         ? prev.snr === null ? incoming : incoming === null ? prev.snr : Math.max(prev.snr, incoming)
         : incoming;
-      const row = { repeaterHash: r.repeaterHash, repeaterName: r.repeaterName ?? null, snr };
+      const inHops = r.hops ?? null;
+      const hops = prev
+        ? prev.hops === null ? inHops : inHops === null ? prev.hops : Math.min(prev.hops, inHops)
+        : inHops;
+      const row = { repeaterHash: r.repeaterHash, repeaterName: r.repeaterName ?? null, snr, hops };
       rows.set(key, row);
       return { ...row, sourceId: r.sourceId, messageId: r.messageId, heardAt: r.heardAt, createdAt: r.heardAt };
     });
@@ -411,8 +416,8 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
     expect(last.id).toBe('sent-2r');
     expect(last.heardBy).toHaveLength(2);
     expect(last.heardBy).toEqual([
-      { hash: 'aa', name: null, snr: 5 },
-      { hash: 'bb', name: null, snr: 3 },
+      { hash: 'aa', name: null, snr: 5, hops: 0 },
+      { hash: 'bb', name: null, snr: 3, hops: 0 },
     ]);
   });
 
@@ -444,24 +449,40 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
     expect(rows.size).toBe(2);
     // 'aa' was heard directly (SNR 7) on the first copy; the second copy
     // carries it as an earlier hop with no SNR, which must not wipe the 7.
-    expect(rows.get('sent-ov|aa')).toEqual({ repeaterHash: 'aa', repeaterName: null, snr: 7 });
-    expect(rows.get('sent-ov|bb')).toEqual({ repeaterHash: 'bb', repeaterName: null, snr: 2 });
+    // Hop count = index in the relay chain: aa relayed first (0), bb relayed
+    // aa's copy (1).
+    expect(rows.get('sent-ov|aa')).toEqual({ repeaterHash: 'aa', repeaterName: null, snr: 7, hops: 0 });
+    expect(rows.get('sent-ov|bb')).toEqual({ repeaterHash: 'bb', repeaterName: null, snr: 2, hops: 1 });
     const last = emitMeshCoreChannelHeard.mock.calls.at(-1)![0];
-    expect(last.heardBy.map((h: { hash: string }) => h.hash)).toEqual(['aa', 'bb']);
+    expect(last.heardBy).toEqual([
+      { hash: 'aa', name: null, snr: 7, hops: 0 },
+      { hash: 'bb', name: null, snr: 2, hops: 1 },
+    ]);
   });
 
-  it('records the SNR against the last hop only (#6000)', async () => {
+  it('keeps the minimum hop count when a repeater shows up at different positions (#6000)', async () => {
+    const rows = useInMemoryHeardTable();
+    const m = makeManager();
+    registerSend(m, 'sent-min', 0, 'min hops');
+    dispatch(m, makeEcho({ secret: secret0, text: 'min hops', hops: ['cc', 'aa'], snr: 1 }));
+    dispatch(m, makeEcho({ secret: secret0, text: 'min hops', hops: ['aa'], snr: 4 }));
+    await flush();
+    expect(rows.get('sent-min|aa')!.hops).toBe(0);
+    expect(rows.get('sent-min|cc')!.hops).toBe(0);
+  });
+
+  it('records the SNR against the last hop only and the hop index per repeater (#6000)', async () => {
     useInMemoryHeardTable();
     const m = makeManager();
     registerSend(m, 'sent-snr', 0, 'snr hop');
     dispatch(m, makeEcho({ secret: secret0, text: 'snr hop', hops: ['11', '22', '33'], snr: -4.5 }));
     await flush();
 
-    const calls = recordHeardRepeater.mock.calls.map((c) => [c[0].repeaterHash, c[0].snr]);
+    const calls = recordHeardRepeater.mock.calls.map((c) => [c[0].repeaterHash, c[0].snr, c[0].hops]);
     expect(calls).toEqual([
-      ['11', null],
-      ['22', null],
-      ['33', -4.5],
+      ['11', null, 0],
+      ['22', null, 1],
+      ['33', -4.5, 2],
     ]);
   });
 
@@ -475,7 +496,7 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
   });
 
   it('updates the in-memory message pool with heardBy (#3813)', async () => {
-    getHeardRepeatersForMessage.mockResolvedValue([{ repeaterHash: 'a3', repeaterName: 'Relay1', snr: 7 }]);
+    getHeardRepeatersForMessage.mockResolvedValue([{ repeaterHash: 'a3', repeaterName: 'Relay1', snr: 7, hops: 0 }]);
     const m = makeManager();
     (m as any).messages = [{ id: 'sent-abc', fromPublicKey: 'mypk', text: 'hello', timestamp: 1000 }];
     registerSend(m, 'sent-abc', 0, 'hello');
@@ -484,7 +505,7 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
 
     const msgs = m.getRecentMessages(10);
     expect(msgs).toHaveLength(1);
-    expect(msgs[0].heardBy).toEqual([{ hash: 'a3', name: 'Relay1', snr: 7 }]);
+    expect(msgs[0].heardBy).toEqual([{ hash: 'a3', name: 'Relay1', snr: 7, hops: 0 }]);
   });
 
   it('does not record anything when no pending channel send matches', async () => {

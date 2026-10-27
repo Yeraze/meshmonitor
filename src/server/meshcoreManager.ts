@@ -1034,7 +1034,7 @@ export interface MeshCoreMessage extends MeshCoreReactionFields {
    *  self-echo correlation (#3700). Best-effort; only set on outgoing channel
    *  messages that were heard re-flooded. `name` is null when the relay hash
    *  couldn't be resolved to a known contact. */
-  heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null }>;
+  heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null; hops?: number | null }>;
   /** Hop count for a received message (from path_len); null = direct / unknown.
    *  Room messages carry no path, so this stays null for them. (#3742) */
   hopCount?: number | null;
@@ -1991,7 +1991,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         this.messages = this.messages.map(m => {
           const heard = heardByMap[m.id];
           return heard && heard.length > 0
-            ? { ...m, heardBy: heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr })) }
+            ? { ...m, heardBy: heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr, hops: r.hops ?? null })) }
             : m;
         });
         // Resend count + cooldown clock come from persisted events (#5512).
@@ -3373,9 +3373,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     snr: number | null,
     now: number,
   ): Promise<void> {
-    const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> = [];
+    const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null; hops?: number | null }> = [];
 
-    for (const hash of match.pathHops) {
+    // A repeater's index in the relay chain is its hop count from the sender
+    // (path [A,B]: A=0, B=1). The repository keeps the minimum across copies.
+    for (const [hops, hash] of match.pathHops.entries()) {
       const name = this.nameForRelayHash(hash);
       const merged = await databaseService.meshcore.recordHeardRepeater({
         sourceId: this.sourceId,
@@ -3383,9 +3385,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         repeaterHash: hash,
         repeaterName: name,
         snr: hash === match.lastHop ? snr : null,
+        hops,
         heardAt: now,
       });
-      heardBy.push({ hash: merged.repeaterHash, name: merged.repeaterName, snr: merged.snr });
+      heardBy.push({ hash: merged.repeaterHash, name: merged.repeaterName, snr: merged.snr, hops: merged.hops ?? null });
     }
 
     if (heardBy.length === 0) return;
@@ -3396,7 +3399,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       match.messageId,
       this.sourceId,
     );
-    const fullHeardBy = all.map((r) => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }));
+    const fullHeardBy = all.map((r) => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr, hops: r.hops ?? null }));
     // This relay count is surfaced to MeshMonitor's own UI only. It is NOT
     // forwarded to a Virtual Node companion, by protocol necessity (#3871):
     // a channel send is an unacked fire-and-forget flood, so the companion
@@ -11037,7 +11040,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const heard = heardByMap[dbMsg.id];
       const base = MeshCoreManager.dbRowToMessage(dbMsg);
       return heard && heard.length > 0
-        ? { ...base, heardBy: heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr })) }
+        ? { ...base, heardBy: heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr, hops: r.hops ?? null })) }
         : base;
     });
     return this.withAutoRetryFlag(await this.withResendInfo(mapped));
