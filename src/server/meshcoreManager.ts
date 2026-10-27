@@ -147,7 +147,7 @@ import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.j
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops, hopByteForKey } from '../utils/meshcorePath.js';
-import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
+import { MESHCORE_PUBLIC_CHANNEL_SECRET, channelEchoKey, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
 import {
@@ -1694,12 +1694,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private pendingChannelSends: Map<string, { channelIdx: number; sentAt: number; text: string }> = new Map();
 
   /**
-   * De-dup guard so a single echoed channel packet is attributed at most ONCE
-   * (#3979). Keyed by the GRP_TXT payload hex (channel_hash + MAC + ciphertext)
-   * — the MeshCore dedup identity, invariant across re-floods — mapped to the
-   * time it was attributed, so entries can be pruned by the heard window.
+   * De-dup guard so a single received copy of an echoed channel packet is
+   * attributed at most ONCE (#3979). Keyed by {@link channelEchoKey}: the
+   * GRP_TXT payload hex (invariant across re-floods) PLUS that copy's relay
+   * chain, so copies that reached us over different repeaters each add their
+   * repeaters (#6000). Mapped to the time it was attributed and pruned by the
+   * heard window, so the map holds at most (sends in window) x (distinct paths
+   * heard) entries.
    */
   private attributedChannelEchoes: Map<string, number> = new Map();
+
+  /**
+   * Serialises the DB write + broadcast step of channel-echo attribution
+   * (#6000). Copies of one message over different paths may now overlap (e.g.
+   * `[aa]` then `[aa,bb]`); running them one after another keeps the
+   * read-then-insert in `recordHeardRepeater` from racing on the
+   * (sourceId, messageId, repeaterHash) unique index.
+   */
+  private channelEchoAttributionQueue: Promise<void> = Promise.resolve();
 
   /**
    * In-flight DM sends awaiting a `SendConfirmed` ack, keyed by the *current*
@@ -3295,8 +3307,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * third-party chatter on the same channel and cross-attribution between two of
    * our own near-simultaneous sends. Each relay hash is resolved to a known
    * contact name when possible (raw hash otherwise), the max SNR is tracked per
-   * repeater, and the merged heard-by set is broadcast. Each echoed packet is
-   * attributed at most once (guarded by the invariant payload identity).
+   * repeater, and the merged heard-by set is broadcast. Each received copy is
+   * attributed at most once, keyed by payload + relay path (#3979, #6000), so
+   * copies relayed by different repeaters each add their repeaters.
    *
    * Failures are swallowed — correlation must never break the packet pipeline.
    */
@@ -3331,66 +3344,88 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       );
       if (!match) return;
 
-      // Attribute each distinct echoed packet at most once (#3979).
+      // Attribute each received copy (payload + relay path) at most once
+      // (#3979, #6000). Set synchronously, before any await, so a duplicate
+      // copy arriving mid-write is still dropped.
       if (this.attributedChannelEchoes.has(match.echoKey)) return;
       this.attributedChannelEchoes.set(match.echoKey, now);
 
       const snr = typeof data.snr === 'number' ? data.snr : null;
-      const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> = [];
-
-      for (const hash of match.pathHops) {
-        const name = this.nameForRelayHash(hash);
-        const merged = await databaseService.meshcore.recordHeardRepeater({
-          sourceId: this.sourceId,
-          messageId: match.messageId,
-          repeaterHash: hash,
-          repeaterName: name,
-          snr,
-          heardAt: now,
-        });
-        heardBy.push({ hash: merged.repeaterHash, name: merged.repeaterName, snr: merged.snr });
-      }
-
-      if (heardBy.length === 0) return;
-
-      // Broadcast the current full heard-by set (read back so concurrent
-      // echoes for the same message stay consistent).
-      const all = await databaseService.meshcore.getHeardRepeatersForMessage(
-        match.messageId,
-        this.sourceId,
-      );
-      const fullHeardBy = all.map((r) => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }));
-      // This relay count is surfaced to MeshMonitor's own UI only. It is NOT
-      // forwarded to a Virtual Node companion, by protocol necessity (#3871):
-      // a channel send is an unacked fire-and-forget flood, so the companion
-      // already got `Ok(0)` and closed the send; the count is a MeshMonitor-
-      // derived metric that accrues asynchronously (here, up to HEARD_WINDOW_MS
-      // later) and the companion protocol has no push frame or message handle to
-      // annotate an already-sent channel message with it. The DM ack path
-      // (SendConfirmed 0x82) IS bridged because DMs have real delivery semantics.
-      dataEventEmitter.emitMeshCoreChannelHeard({ id: match.messageId, heardBy: fullHeardBy }, this.sourceId);
-
-      // Mirror heardBy into the in-memory pool so getRecentMessages() returns
-      // correct data after subsequent fetchMessages() calls (#3813).
-      const msgIdx = this.messages.findIndex(m => m.id === match.messageId);
-      if (msgIdx !== -1) {
-        this.messages[msgIdx] = { ...this.messages[msgIdx], heardBy: fullHeardBy };
-      }
-
-      logger.debug(
-        `[MeshCore:${this.sourceId}] Channel echo: msg=${match.messageId} +${heardBy.length} repeater(s), total=${fullHeardBy.length}`,
-      );
+      const run = this.channelEchoAttributionQueue.then(() => this.attributeChannelEcho(match, snr, now));
+      this.channelEchoAttributionQueue = run.catch(() => undefined);
+      await run;
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] correlateChannelEcho failed: ${(err as Error).message}`);
     }
   }
 
   /**
+   * Record one matched echo copy's repeaters and broadcast the merged heard-by
+   * set. Runs on {@link channelEchoAttributionQueue}, one copy at a time.
+   *
+   * The copy's SNR/RSSI describes only the LAST hop, the repeater we heard
+   * directly (#6000). Earlier hops are recorded as heard with no SNR;
+   * `recordHeardRepeater` keeps the max non-null SNR, so a null never wipes a
+   * value another copy measured.
+   */
+  private async attributeChannelEcho(
+    match: { messageId: string; pathHops: string[]; lastHop: string },
+    snr: number | null,
+    now: number,
+  ): Promise<void> {
+    const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> = [];
+
+    for (const hash of match.pathHops) {
+      const name = this.nameForRelayHash(hash);
+      const merged = await databaseService.meshcore.recordHeardRepeater({
+        sourceId: this.sourceId,
+        messageId: match.messageId,
+        repeaterHash: hash,
+        repeaterName: name,
+        snr: hash === match.lastHop ? snr : null,
+        heardAt: now,
+      });
+      heardBy.push({ hash: merged.repeaterHash, name: merged.repeaterName, snr: merged.snr });
+    }
+
+    if (heardBy.length === 0) return;
+
+    // Broadcast the current full heard-by set (read back so concurrent
+    // echoes for the same message stay consistent).
+    const all = await databaseService.meshcore.getHeardRepeatersForMessage(
+      match.messageId,
+      this.sourceId,
+    );
+    const fullHeardBy = all.map((r) => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }));
+    // This relay count is surfaced to MeshMonitor's own UI only. It is NOT
+    // forwarded to a Virtual Node companion, by protocol necessity (#3871):
+    // a channel send is an unacked fire-and-forget flood, so the companion
+    // already got `Ok(0)` and closed the send; the count is a MeshMonitor-
+    // derived metric that accrues asynchronously (here, up to HEARD_WINDOW_MS
+    // later) and the companion protocol has no push frame or message handle to
+    // annotate an already-sent channel message with it. The DM ack path
+    // (SendConfirmed 0x82) IS bridged because DMs have real delivery semantics.
+    dataEventEmitter.emitMeshCoreChannelHeard({ id: match.messageId, heardBy: fullHeardBy }, this.sourceId);
+
+    // Mirror heardBy into the in-memory pool so getRecentMessages() returns
+    // correct data after subsequent fetchMessages() calls (#3813).
+    const msgIdx = this.messages.findIndex(m => m.id === match.messageId);
+    if (msgIdx !== -1) {
+      this.messages[msgIdx] = { ...this.messages[msgIdx], heardBy: fullHeardBy };
+    }
+
+    logger.debug(
+      `[MeshCore:${this.sourceId}] Channel echo: msg=${match.messageId} +${heardBy.length} repeater(s), total=${fullHeardBy.length}`,
+    );
+  }
+
+  /**
    * Decide whether an inbound OTA packet is a self-echo of a pending channel
    * send (#3700, #3979). Pure (no I/O) so it can be unit-tested directly against
    * real encrypted fixtures. Returns the matched message id, the de-duplicated
-   * relay-hash chain, and the echo's invariant payload identity (`echoKey`), or
-   * null.
+   * relay-hash chain, the last hop of the raw chain (`lastHop`, the repeater we
+   * heard directly), and the identity of this received copy (`echoKey` =
+   * payload + full relay path, #6000), or null.
    *
    * A match requires ALL of:
    *  - `payload_type === GRP_TXT`;
@@ -3421,17 +3456,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       selfName: string | null;
       resolveChannelSecret: (channelIdx: number) => Uint8Array | null;
     },
-  ): { messageId: string; channelIdx: number; pathHops: string[]; echoKey: string } | null {
+  ): { messageId: string; channelIdx: number; pathHops: string[]; lastHop: string; echoKey: string } | null {
     if (!data || data.payload_type !== MeshCoreManager.PAYLOAD_TYPE_GRP_TXT) return null;
 
     const rawHops: unknown = data.path_hops;
     if (!Array.isArray(rawHops) || rawHops.length === 0) return null;
     // De-dup while preserving order; normalise to lowercase hex strings.
+    // `fullPath` keeps every hop in order: it names this physical copy in
+    // `echoKey`, and its last entry is the repeater we heard directly.
     const seen = new Set<string>();
     const pathHops: string[] = [];
+    const fullPath: string[] = [];
     for (const h of rawHops) {
       if (typeof h !== 'string' || h.length === 0) continue;
       const hash = h.toLowerCase();
+      fullPath.push(hash);
       if (seen.has(hash)) continue;
       seen.add(hash);
       pathHops.push(hash);
@@ -3463,7 +3502,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Self-origin + exact-text check in one comparison: MeshCore prefixes the
       // sender name, so our own echo decrypts to `"<selfName>: <text>"`.
       if (plaintext.body !== `${selfName}: ${entry.text}`) continue;
-      return { messageId, channelIdx: entry.channelIdx, pathHops, echoKey: payloadHex };
+      return {
+        messageId,
+        channelIdx: entry.channelIdx,
+        pathHops,
+        lastHop: fullPath[fullPath.length - 1],
+        echoKey: channelEchoKey(payloadHex, fullPath),
+      };
     }
     return null;
   }

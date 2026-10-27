@@ -122,7 +122,8 @@ function registerSend(m: MeshCoreManager, messageId: string, channelIdx: number,
 }
 
 async function flush(): Promise<void> {
-  for (let i = 0; i < 6; i++) await Promise.resolve();
+  // Drain microtasks across the attribution queue's extra hops (#6000).
+  for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
 }
 
 describe('MeshCoreManager.findEchoMatch (pure, exact decrypt-match)', () => {
@@ -272,6 +273,22 @@ describe('MeshCoreManager.findEchoMatch (pure, exact decrypt-match)', () => {
     const data = makeEcho({ secret: secret0, text: 'hi', hops: ['A3', 'a3', '7F', '7f', 'A3'] });
     const match = MeshCoreManager.findEchoMatch(data, pending, now, WINDOW, opts({ 0: secret0 }));
     expect(match!.pathHops).toEqual(['a3', '7f']);
+    // lastHop comes from the raw chain, not the de-duplicated one.
+    expect(match!.lastHop).toBe('a3');
+  });
+
+  it('gives copies of one payload over different paths different echoKeys (#6000)', () => {
+    const now = 1_000_000;
+    const pending = new Map([['msg', { channelIdx: 0, sentAt: now, text: 'hi' }]]);
+    const viaA = makeEcho({ secret: secret0, text: 'hi', hops: ['aa'] });
+    const viaB = makeEcho({ secret: secret0, text: 'hi', hops: ['bb'] });
+    const a = MeshCoreManager.findEchoMatch(viaA, pending, now, WINDOW, opts({ 0: secret0 }));
+    const b = MeshCoreManager.findEchoMatch(viaB, pending, now, WINDOW, opts({ 0: secret0 }));
+    const a2 = MeshCoreManager.findEchoMatch(viaA, pending, now, WINDOW, opts({ 0: secret0 }));
+    expect(a!.echoKey).not.toBe(b!.echoKey);
+    expect(a2!.echoKey).toBe(a!.echoKey);
+    expect(a!.lastHop).toBe('aa');
+    expect(b!.lastHop).toBe('bb');
   });
 });
 
@@ -315,11 +332,13 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
     await flush();
 
     expect(recordHeardRepeater).toHaveBeenCalledTimes(2);
+    // The copy's SNR belongs to the last hop only (#6000); 'a3' was an
+    // earlier hop we did not hear directly.
     expect(recordHeardRepeater).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceId: 'src-a', messageId: 'sent-123', repeaterHash: 'a3', snr: 6 }),
+      expect.objectContaining({ sourceId: 'src-a', messageId: 'sent-123', repeaterHash: 'a3', snr: null }),
     );
     expect(recordHeardRepeater).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceId: 'src-a', messageId: 'sent-123', repeaterHash: '7f' }),
+      expect.objectContaining({ sourceId: 'src-a', messageId: 'sent-123', repeaterHash: '7f', snr: 6 }),
     );
     expect(emitMeshCoreChannelHeard).toHaveBeenCalledTimes(1);
     expect(emitMeshCoreChannelHeard).toHaveBeenCalledWith(
@@ -348,6 +367,102 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
     // Only the first dispatch attributes; the second is a no-op.
     expect(recordHeardRepeater).toHaveBeenCalledTimes(1);
     expect(emitMeshCoreChannelHeard).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Back the recordHeardRepeater / getHeardRepeatersForMessage mocks with a
+   * tiny in-memory table that merges like the real repository: one row per
+   * (messageId, repeaterHash), max non-null SNR.
+   */
+  function useInMemoryHeardTable(): Map<string, { repeaterHash: string; repeaterName: string | null; snr: number | null }> {
+    const rows = new Map<string, { repeaterHash: string; repeaterName: string | null; snr: number | null }>();
+    recordHeardRepeater.mockImplementation(async (r: any) => {
+      const key = `${r.messageId}|${r.repeaterHash}`;
+      const prev = rows.get(key);
+      const incoming = r.snr ?? null;
+      const snr = prev
+        ? prev.snr === null ? incoming : incoming === null ? prev.snr : Math.max(prev.snr, incoming)
+        : incoming;
+      const row = { repeaterHash: r.repeaterHash, repeaterName: r.repeaterName ?? null, snr };
+      rows.set(key, row);
+      return { ...row, sourceId: r.sourceId, messageId: r.messageId, heardAt: r.heardAt, createdAt: r.heardAt };
+    });
+    getHeardRepeatersForMessage.mockImplementation(async (messageId: string) =>
+      Array.from(rows.entries())
+        .filter(([k]) => k.startsWith(`${messageId}|`))
+        .map(([, v]) => v),
+    );
+    return rows;
+  }
+
+  it('records BOTH repeaters when one message is echoed by two repeaters (#6000)', async () => {
+    useInMemoryHeardTable();
+    const m = makeManager();
+    registerSend(m, 'sent-2r', 0, 'two repeaters');
+
+    dispatch(m, makeEcho({ secret: secret0, text: 'two repeaters', hops: ['aa'], snr: 5 }));
+    await flush();
+    dispatch(m, makeEcho({ secret: secret0, text: 'two repeaters', hops: ['bb'], snr: 3 }));
+    await flush();
+
+    expect(recordHeardRepeater).toHaveBeenCalledTimes(2);
+    expect(emitMeshCoreChannelHeard).toHaveBeenCalledTimes(2);
+    const last = emitMeshCoreChannelHeard.mock.calls.at(-1)![0];
+    expect(last.id).toBe('sent-2r');
+    expect(last.heardBy).toHaveLength(2);
+    expect(last.heardBy).toEqual([
+      { hash: 'aa', name: null, snr: 5 },
+      { hash: 'bb', name: null, snr: 3 },
+    ]);
+  });
+
+  it('attributes the same copy (same payload + same path) only once (#6000)', async () => {
+    useInMemoryHeardTable();
+    const m = makeManager();
+    registerSend(m, 'sent-dup', 0, 'dup copy');
+    const viaA = makeEcho({ secret: secret0, text: 'dup copy', hops: ['aa'], snr: 5 });
+
+    dispatch(m, viaA);
+    dispatch(m, viaA); // same copy again before the first finished
+    await flush();
+
+    expect(recordHeardRepeater).toHaveBeenCalledTimes(1);
+    expect(emitMeshCoreChannelHeard).toHaveBeenCalledTimes(1);
+  });
+
+  it('merges overlapping paths: [aa] then [aa,bb] keeps aa once and adds bb (#6000)', async () => {
+    const rows = useInMemoryHeardTable();
+    const m = makeManager();
+    registerSend(m, 'sent-ov', 0, 'overlap');
+
+    // Both copies dispatched back to back so their DB writes would overlap
+    // without the attribution queue.
+    dispatch(m, makeEcho({ secret: secret0, text: 'overlap', hops: ['aa'], snr: 7 }));
+    dispatch(m, makeEcho({ secret: secret0, text: 'overlap', hops: ['aa', 'bb'], snr: 2 }));
+    await flush();
+
+    expect(rows.size).toBe(2);
+    // 'aa' was heard directly (SNR 7) on the first copy; the second copy
+    // carries it as an earlier hop with no SNR, which must not wipe the 7.
+    expect(rows.get('sent-ov|aa')).toEqual({ repeaterHash: 'aa', repeaterName: null, snr: 7 });
+    expect(rows.get('sent-ov|bb')).toEqual({ repeaterHash: 'bb', repeaterName: null, snr: 2 });
+    const last = emitMeshCoreChannelHeard.mock.calls.at(-1)![0];
+    expect(last.heardBy.map((h: { hash: string }) => h.hash)).toEqual(['aa', 'bb']);
+  });
+
+  it('records the SNR against the last hop only (#6000)', async () => {
+    useInMemoryHeardTable();
+    const m = makeManager();
+    registerSend(m, 'sent-snr', 0, 'snr hop');
+    dispatch(m, makeEcho({ secret: secret0, text: 'snr hop', hops: ['11', '22', '33'], snr: -4.5 }));
+    await flush();
+
+    const calls = recordHeardRepeater.mock.calls.map((c) => [c[0].repeaterHash, c[0].snr]);
+    expect(calls).toEqual([
+      ['11', null],
+      ['22', null],
+      ['33', -4.5],
+    ]);
   });
 
   it('does NOT record a third-party same-channel GRP_TXT echo', async () => {
