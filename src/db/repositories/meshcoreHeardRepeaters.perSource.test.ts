@@ -121,6 +121,37 @@ describe('MeshCoreRepository — heard-repeaters', () => {
     expect(merged.snr).toBe(8);
   });
 
+  it('keeps the MINIMUM hop count on merge; null never overrides a number (#6000)', async () => {
+    const first = await repo.recordHeardRepeater({
+      sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', hops: 2, heardAt: HEARD_AT,
+    });
+    expect(first.hops).toBe(2);
+    const lower = await repo.recordHeardRepeater({
+      sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', hops: 0, heardAt: HEARD_AT + 1,
+    });
+    expect(lower.hops).toBe(0);
+    const higher = await repo.recordHeardRepeater({
+      sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', hops: 3, heardAt: HEARD_AT + 2,
+    });
+    expect(higher.hops).toBe(0);
+    const none = await repo.recordHeardRepeater({
+      sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', hops: null, heardAt: HEARD_AT + 3,
+    });
+    expect(none.hops).toBe(0);
+    const [row] = await repo.getHeardRepeatersForMessage('m1', 'src-a');
+    expect(row.hops).toBe(0);
+  });
+
+  it('a row first written with no hop count takes the first number it sees (#6000)', async () => {
+    await repo.recordHeardRepeater({ sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', heardAt: HEARD_AT });
+    const merged = await repo.recordHeardRepeater({
+      sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', hops: 1, heardAt: HEARD_AT + 1,
+    });
+    expect(merged.hops).toBe(1);
+    const [row] = await repo.getHeardRepeatersForMessage('m1', 'src-a');
+    expect(row.hops).toBe(1);
+  });
+
   it('getHeardRepeatersForMessage is scoped by sourceId', async () => {
     await repo.recordHeardRepeater({ sourceId: 'src-a', messageId: 'm1', repeaterHash: 'a3', snr: 5, heardAt: HEARD_AT });
     await repo.recordHeardRepeater({ sourceId: 'src-b', messageId: 'm1', repeaterHash: 'a3', snr: 5, heardAt: HEARD_AT });

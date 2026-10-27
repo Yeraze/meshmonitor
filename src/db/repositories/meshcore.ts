@@ -367,6 +367,12 @@ export interface DbMeshCoreHeardRepeater {
   repeaterName?: string | null;
   /** Best (max) SNR observed for this repeater across echoes. */
   snr?: number | null;
+  /**
+   * Fewest hops from the sender seen for this repeater across echoes: its
+   * index in a copy's relay chain (#6000). Null on rows from before migration
+   * 218.
+   */
+  hops?: number | null;
   /** When the echo was heard (Unix ms). */
   heardAt: number;
   createdAt: number;
@@ -377,6 +383,13 @@ function maxNullable(a: number | null, b: number | null): number | null {
   if (a === null) return b;
   if (b === null) return a;
   return Math.max(a, b);
+}
+
+/** Min of two nullable numbers; null only when both are null. */
+function minNullable(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.min(a, b);
 }
 
 /**
@@ -2371,6 +2384,7 @@ export class MeshCoreRepository extends BaseRepository {
       repeaterHash: string;
       repeaterName?: string | null;
       snr?: number | null;
+      hops?: number | null;
       heardAt: number;
     },
   ): Promise<DbMeshCoreHeardRepeater> {
@@ -2397,10 +2411,11 @@ export class MeshCoreRepository extends BaseRepository {
 
     if (existing) {
       const mergedSnr = maxNullable(existing.snr ?? null, record.snr ?? null);
+      const mergedHops = minNullable(existing.hops ?? null, record.hops ?? null);
       const mergedName = record.repeaterName ?? existing.repeaterName ?? null;
       await this.db
         .update(meshcoreHeardRepeaters)
-        .set({ snr: mergedSnr, repeaterName: mergedName, heardAt: record.heardAt })
+        .set({ snr: mergedSnr, hops: mergedHops, repeaterName: mergedName, heardAt: record.heardAt })
         .where(
           and(
             eq(meshcoreHeardRepeaters.sourceId, record.sourceId),
@@ -2408,7 +2423,7 @@ export class MeshCoreRepository extends BaseRepository {
             eq(meshcoreHeardRepeaters.repeaterHash, record.repeaterHash),
           ),
         );
-      return { ...existing, snr: mergedSnr, repeaterName: mergedName, heardAt: record.heardAt };
+      return { ...existing, snr: mergedSnr, hops: mergedHops, repeaterName: mergedName, heardAt: record.heardAt };
     }
 
     await this.db.insert(meshcoreHeardRepeaters).values({
@@ -2417,6 +2432,7 @@ export class MeshCoreRepository extends BaseRepository {
       repeaterHash: record.repeaterHash,
       repeaterName: record.repeaterName ?? null,
       snr: record.snr ?? null,
+      hops: record.hops ?? null,
       heardAt: record.heardAt,
       createdAt: now,
     });
@@ -2426,6 +2442,7 @@ export class MeshCoreRepository extends BaseRepository {
       repeaterHash: record.repeaterHash,
       repeaterName: record.repeaterName ?? null,
       snr: record.snr ?? null,
+      hops: record.hops ?? null,
       heardAt: record.heardAt,
       createdAt: now,
     };

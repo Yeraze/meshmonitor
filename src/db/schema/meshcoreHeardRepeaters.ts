@@ -16,7 +16,7 @@
  * multiple echoes stream in.
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, real as pgReal, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
+import { pgTable, text as pgText, real as pgReal, integer as pgInteger, bigint as pgBigint, serial as pgSerial } from 'drizzle-orm/pg-core';
 import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, bigint as myBigint } from 'drizzle-orm/mysql-core';
 
 // ============ SQLite Schema ============
@@ -34,6 +34,10 @@ export const meshcoreHeardRepeatersSqlite = sqliteTable('meshcore_heard_repeater
   // Best (max) SNR observed for this repeater across echoes (nullable,
   // fractional — MeshCore SNR is quarter-dB, e.g. -8.25).
   snr: real('snr'),
+  // Hops from the sender when this repeater relayed the message: its index in
+  // the echoed copy's relay chain (path [A,B]: A=0, B=1). Minimum across
+  // copies; null on rows written before migration 218 (#6000).
+  hops: integer('hops'),
   // When the echo was heard (Unix ms).
   heardAt: integer('heardAt').notNull(),
   createdAt: integer('createdAt').notNull(),
@@ -48,6 +52,7 @@ export const meshcoreHeardRepeatersPostgres = pgTable('meshcore_heard_repeaters'
   repeaterHash: pgText('repeaterHash').notNull(),
   repeaterName: pgText('repeaterName'),
   snr: pgReal('snr'),
+  hops: pgInteger('hops'),
   heardAt: pgBigint('heardAt', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
@@ -61,6 +66,7 @@ export const meshcoreHeardRepeatersMysql = mysqlTable('meshcore_heard_repeaters'
   repeaterHash: myVarchar('repeaterHash', { length: 16 }).notNull(),
   repeaterName: myVarchar('repeaterName', { length: 128 }),
   snr: myDouble('snr'),
+  hops: myInt('hops'),
   heardAt: myBigint('heardAt', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });

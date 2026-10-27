@@ -820,6 +820,9 @@
 .mc-heard-by-snr {
   color: var(--color-text-faint);
 }
+.mc-heard-by-hops {
+  color: var(--color-text-subtle);
+}
 
 .meshcore-send-bar {
   display: flex;
