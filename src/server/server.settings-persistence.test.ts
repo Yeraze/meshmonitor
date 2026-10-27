@@ -220,6 +220,8 @@ function validTestValue(key: string, suffix = ''): string {
     // known one (INVALID_ADSB_FEED otherwise).
     adsbMatchEnabled: 'true',
     adsbFeed: 'adsb.fi',
+    // MeshWars forwarder: the URL must be http(s) (INVALID_MESHWARS_BASE_URL).
+    meshwarsBaseUrl: 'https://meshwars.example.org',
     // Ducting overlay (#5734): strict boolean.
     ductingOverlayEnabled: 'true',
     // Reliable PKI (#5691): enums, INVALID_RELIABLE_PKI_MODE otherwise.

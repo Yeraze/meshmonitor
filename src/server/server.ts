@@ -429,6 +429,10 @@ setTimeout(async () => {
     // automation references beacons.
     startMeshBeaconOfferIngestion();
 
+    // MeshWars forwarder: posts MeshCore heard-repeater results to MeshWars.
+    // Does nothing unless meshwarsEnabled is on; sends nothing over the air.
+    meshwarsForwarder.start();
+
     // ADS-B flight matching for likely aircraft (#5374). Subscribes to the
     // Phase 1 transition event; does nothing unless adsbMatchEnabled is on.
     startAdsbFlightMatching();
@@ -729,6 +733,7 @@ import { MC_REACTION_FORMAT_VERSION } from '../utils/meshcoreReactions.js';
 import { startMeshCoreMentionNotifications } from './services/meshcoreMentionNotificationService.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
 import { startMeshBeaconOfferIngestion } from './services/meshBeaconOfferService.js';
+import { meshwarsForwarder } from './services/meshwarsForwarder.js';
 import { startAdsbFlightMatching } from './services/adsbMatchService.js';
 import { startAircraftPositionRequests } from './services/aircraftPositionRequestService.js';
 import userRoutes from './routes/userRoutes.js';
