@@ -381,6 +381,68 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
   // Scenario 3: DB-sources-only — 2 tcp rows exist, env is set
   // Asserts env is IGNORED for source creation when rows already exist.
   // -------------------------------------------------------------------------
+  describe('Scenario 2c — first-boot Virtual Node env vars (#5874)', () => {
+    const vnEnv = {
+      meshtasticNodeIp: '1.2.3.4',
+      meshtasticNodeIpProvided: true,
+      meshtasticTcpPort: 4403,
+      virtualNodeEnabled: true,
+      virtualNodePort: 4499,
+    };
+
+    it('adds a virtualNode block with admin commands off to the new Default source', async () => {
+      const db = makeDbStub([]);
+      await bootstrapSources(makeDeps({ db, registry, makeMeshtastic: meshFactory.factory, env: vnEnv }));
+      const createdArg = (db.sources.createSource as any).mock.calls[0][0];
+      expect(createdArg.config.virtualNode).toEqual({ enabled: true, port: 4499, allowAdminCommands: false });
+      const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
+      expect(factoryCfg.virtualNode).toEqual({ enabled: true, port: 4499, allowAdminCommands: false });
+    });
+
+    it('defaults the port to 4404 when only ENABLE_VIRTUAL_NODE is set', async () => {
+      const db = makeDbStub([]);
+      await bootstrapSources(makeDeps({
+        db, registry, makeMeshtastic: meshFactory.factory,
+        env: { ...vnEnv, virtualNodePort: undefined },
+      }));
+      const createdArg = (db.sources.createSource as any).mock.calls[0][0];
+      expect(createdArg.config.virtualNode.port).toBe(4404);
+    });
+
+    it('adds no virtualNode block when ENABLE_VIRTUAL_NODE is off', async () => {
+      const db = makeDbStub([]);
+      await bootstrapSources(makeDeps({
+        db, registry, makeMeshtastic: meshFactory.factory,
+        env: { ...vnEnv, virtualNodeEnabled: false },
+      }));
+      const createdArg = (db.sources.createSource as any).mock.calls[0][0];
+      expect(createdArg.config.virtualNode).toBeUndefined();
+    });
+
+    it('creates nothing when MESHTASTIC_NODE_IP is unset, even with ENABLE_VIRTUAL_NODE on', async () => {
+      const db = makeDbStub([]);
+      await bootstrapSources(makeDeps({
+        db, registry, makeMeshtastic: meshFactory.factory,
+        env: { ...vnEnv, meshtasticNodeIp: '192.168.1.100', meshtasticNodeIpProvided: false },
+      }));
+      expect(db.sources.createSource).not.toHaveBeenCalled();
+    });
+
+    it('a later boot with different env leaves the existing source config alone', async () => {
+      const row = makeTcpSource('existing-1', '1.2.3.4', 4403, {
+        virtualNode: { enabled: true, port: 4404, allowAdminCommands: false },
+      });
+      const db = makeDbStub([row]);
+      await bootstrapSources(makeDeps({
+        db, registry, makeMeshtastic: meshFactory.factory,
+        env: { ...vnEnv, virtualNodePort: 5555 },
+      }));
+      expect(db.sources.createSource).not.toHaveBeenCalled();
+      const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
+      expect(factoryCfg.virtualNode.port).toBe(4404);
+    });
+  });
+
   describe('Scenario 3 — DB-sources-only: 2 tcp rows, env set → env ignored', () => {
     it('(A) does NOT create a new source row (sourceCount > 0)', async () => {
       const row1 = makeTcpSource('src-1', '10.0.0.1');
