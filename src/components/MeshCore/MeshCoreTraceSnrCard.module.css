@@ -8,6 +8,42 @@
   background: var(--color-surface);
 }
 
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.clearBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+
+.clearBtn:hover:not(:disabled),
+.clearBtn:focus-visible {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.clearBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.error {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-error);
+}
+
 .title {
   display: flex;
   align-items: center;

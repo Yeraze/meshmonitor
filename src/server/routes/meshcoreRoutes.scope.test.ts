@@ -665,6 +665,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
   // #5722: per-hop trace SNR history. Stored data; sends nothing.
   trace: {
     'GET /hop-snr': 'read',
+    // #5970: clears one contact's stored history.
+    'DELETE /hop-snr': 'write',
   },
   // #5909: cross-source hop names. Stored data; sends nothing; off by default.
   hopCandidates: {

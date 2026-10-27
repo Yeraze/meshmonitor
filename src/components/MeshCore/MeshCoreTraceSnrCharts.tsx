@@ -46,6 +46,8 @@ export interface MeshCoreTraceSnrChartsProps {
   contacts?: ReadonlyArray<{ publicKey: string; name?: string | null; advName?: string | null }>;
   /** This source's own node, shown as "This node". */
   localPublicKey?: string | null;
+  /** Bump to reload from scratch, e.g. after the card cleared the history (#5970). */
+  reloadKey?: number;
 }
 
 interface Loaded {
@@ -58,10 +60,12 @@ interface Loaded {
 
 const endId = (end: HopSnrEnd): string => end.publicKey ?? (end.hash ? `h:${end.hash}` : '?');
 
-export const MeshCoreTraceSnrCharts: React.FC<MeshCoreTraceSnrChartsProps> = ({ sourceId, publicKey, contacts, localPublicKey }) => {
+export const MeshCoreTraceSnrCharts: React.FC<MeshCoreTraceSnrChartsProps> = ({ sourceId, publicKey, contacts, localPublicKey, reloadKey = 0 }) => {
   const { t } = useTranslation();
   const key = publicKey.toLowerCase();
-  const owner = `${sourceId ?? ''}|${key}`;
+  // The reload key is part of the owner, so a reload after a clear starts
+  // over: with no links left the section hides instead of showing an empty range.
+  const owner = `${sourceId ?? ''}|${key}|${reloadKey}`;
   const [hours, setHours] = useState<number>(DEFAULT_HOURS);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
 

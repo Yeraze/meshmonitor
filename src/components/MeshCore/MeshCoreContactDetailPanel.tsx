@@ -166,6 +166,9 @@ interface MeshCoreContactDetailPanelProps {
   onSetRemoteCli?: (publicKey: string, allowed: boolean) => Promise<string | null>;
   /** `configuration:write` on this source; the toggle needs it. */
   canWriteConfig?: boolean;
+  /** `traceroute:write` on this source: may clear trace SNR history (#5970).
+   *  Unlike `canTraceroute` it does not need a connected radio. */
+  canClearTraceSnr?: boolean;
 }
 
 /** ContactInfo.flags bit: this contact may run CLI commands on us (#5867). */
@@ -224,8 +227,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   localNativeCli = false,
   onSetRemoteCli,
   canWriteConfig = false,
+  canClearTraceSnr = false,
 }) => {
   const { t } = useTranslation();
+  // Bumped when the trace SNR card clears the history, so the charts reload.
+  const [traceSnrReloadKey, setTraceSnrReloadKey] = useState(0);
   const [remoteCliBusy, setRemoteCliBusy] = useState(false);
   const [remoteCliError, setRemoteCliError] = useState<string | null>(null);
   useEffect(() => { setRemoteCliError(null); }, [publicKey]);
@@ -1622,9 +1628,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
 
       {/* #5722: per-link SNR from traces this source heard. Hidden without
           traceroute:read or when there is no history. */}
-      <MeshCoreTraceSnrCard sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey} />
+      <MeshCoreTraceSnrCard sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey}
+        canClear={canClearTraceSnr} onCleared={() => setTraceSnrReloadKey((n) => n + 1)} />
       {/* #5765: the same data as full-size charts, one per link direction. */}
-      <MeshCoreTraceSnrCharts sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey} />
+      <MeshCoreTraceSnrCharts sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey}
+        reloadKey={traceSnrReloadKey} />
 
       {onSetRemoteCli && canWriteConfig && isCompanion && advType === 1 && (() => {
         const allowed = ((contact?.flags ?? 0) & CONTACT_FLAG_REMOTE_CLI) !== 0;
