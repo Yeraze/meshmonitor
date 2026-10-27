@@ -97,12 +97,39 @@ A couple of background-scheduler tuning knobs are still environment-driven:
 | `MESHCORE_TELEMETRY_INTERVAL_MS` | `300000` | How often (ms) to poll the **local** companion for telemetry. Default 5 minutes. |
 | `MESHCORE_REMOTE_TELEMETRY_TICK_MS` | `30000` | How often (ms) the remote-telemetry scheduler walks each source and picks an eligible node. |
 
-::: warning Removed in 4.6
-The 3.x `MESHCORE_ENABLED`, `MESHCORE_SERIAL_PORT`, `MESHCORE_BAUD_RATE`, `MESHCORE_TCP_HOST`, `MESHCORE_TCP_PORT`, and `MESHCORE_FIRMWARE_TYPE` env-var bootstrap was removed when MeshCore became a first-class source type. Add a MeshCore source from the Sources sidebar instead.
+### Headless installs: first-boot env vars
+
+To get a MeshCore source with no clicks in the UI, set these before the first start. They create a source named **Default MeshCore**, with the same config the Add Source form would save:
+
+```yaml
+services:
+  meshmonitor:
+    environment:
+      # TCP Companion (WiFi/Ethernet build)...
+      - MESHCORE_TCP_HOST=192.168.1.60
+      - MESHCORE_TCP_PORT=5000            # optional, defaults to 5000
+      # ...or a USB device instead:
+      # - MESHCORE_SERIAL_PORT=/dev/ttyACM0
+      # - MESHCORE_BAUD_RATE=115200       # optional
+      # - MESHCORE_DEVICE_TYPE=repeater   # optional: companion (default) or repeater
+      - MESHCORE_ENABLE_VIRTUAL_NODE=true # optional, Companion only
+    # devices:                            # needed for MESHCORE_SERIAL_PORT
+    #   - /dev/ttyACM0:/dev/ttyACM0
+```
+
+- **First boot only.** The vars apply when MeshMonitor first creates its sources. An install that already has sources never grows a MeshCore source because you added them later, and later restarts never change the source.
+- **Independent of Meshtastic.** `MESHTASTIC_NODE_IP` still creates the Meshtastic "Default" source. Set either, both, or neither. With only the MeshCore vars, the disabled Meshtastic placeholder is skipped.
+- **TCP or serial.** Set `MESHCORE_TCP_HOST` or `MESHCORE_SERIAL_PORT`. Both set: MeshMonitor warns and uses TCP. A Repeater needs serial; `MESHCORE_DEVICE_TYPE=repeater` with a TCP host warns and creates no source.
+- **Serial in Docker** needs the device mapped into the container with `devices:` (see [Requirements](#requirements)).
+- **Virtual Node** (`MESHCORE_ENABLE_VIRTUAL_NODE`, `MESHCORE_VIRTUAL_NODE_PORT`, default port `5000`): Companion only, with admin commands and PKI export/import off. See [Virtual Node → MeshCore Virtual Node](/configuration/virtual-node#meshcore-virtual-node).
+- The full list is in [Environment Variables → MeshCore Default Source](/configuration/#meshcore-default-source).
+
+::: info 3.x env vars
+3.x had a MeshCore env-var bootstrap that 4.6 removed. These vars reuse most of its names, but only seed a source on first boot. `MESHCORE_ENABLED` is gone, and `MESHCORE_FIRMWARE_TYPE` is now `MESHCORE_DEVICE_TYPE` (the old name logs a warning and is ignored).
 :::
 
 ::: tip
-`ENABLE_VIRTUAL_NODE` is a separate Meshtastic feature for proxying the Meshtastic protocol to mobile apps — it has **no relation** to MeshCore connectivity and is ignored by MeshCore sources.
+`ENABLE_VIRTUAL_NODE` is the Meshtastic Virtual Node var. It has **no effect** on MeshCore sources; use `MESHCORE_ENABLE_VIRTUAL_NODE` for the MeshCore one.
 :::
 
 ## Device Types

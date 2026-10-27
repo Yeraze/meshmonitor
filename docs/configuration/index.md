@@ -64,6 +64,7 @@ node(s) in **Dashboard → Sources**.
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `MESHTASTIC_NODE_IP` | Optional. Seeds a Meshtastic TCP source on first boot | `192.168.1.100` |
+| `MESHCORE_TCP_HOST` / `MESHCORE_SERIAL_PORT` | Optional. Seeds a MeshCore source on first boot ([details](#meshcore-default-source)) | `192.168.1.60` / `/dev/ttyACM0` |
 
 ### Optional Variables
 
@@ -86,8 +87,14 @@ node(s) in **Dashboard → Sources**.
 
 ::: tip 4.16.1 — set it, or leave it out
 Set `MESHTASTIC_NODE_IP` and a "Default" Meshtastic TCP source is created and
-connected on first boot. Leave it unset and **no source is created at all** —
-the Sources page starts empty and nothing is dialled.
+connected on first boot. Leave it unset and the "Default" source is still
+created, but **disabled**, pointing at the placeholder host `meshtastic.local`.
+Nothing is dialled until you edit it with your node's address and enable it, or
+delete it and add your own sources.
+
+If you set the [MeshCore first-boot vars](#meshcore-default-source) and leave
+`MESHTASTIC_NODE_IP` unset, the disabled placeholder is skipped: the only source
+is your MeshCore node.
 
 Earlier versions used `192.168.1.100` as a stand-in when the variable was
 missing, created an enabled source pointing at it, and reconnected to that
@@ -99,7 +106,7 @@ told it about one.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MESHTASTIC_NODE_IP` | IP address used to seed the first TCP source on first boot. Unset → no source is created | _unset_ |
+| `MESHTASTIC_NODE_IP` | IP address used to seed the first TCP source on first boot. Unset → the Default source is created disabled (host `meshtastic.local`), or skipped when the MeshCore vars below are set | _unset_ |
 | `MESHTASTIC_TCP_PORT` | TCP port used to seed the first TCP source on first boot | `4403` |
 | `MESHTASTIC_STALE_CONNECTION_TIMEOUT` | Connection timeout in milliseconds before reconnecting if no data received | `300000` (5 minutes) |
 | `MESHTASTIC_CONNECT_TIMEOUT_MS` | Initial TCP connection timeout in milliseconds | `10000` (10 seconds) |
@@ -125,6 +132,31 @@ These vars apply **once**, when the Default source is created. After that the so
 Admin commands stay **off**: there is no env var for them (`VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` was removed in 4.0 and is not coming back). The Virtual Node port has no login, so anyone who can reach it could reconfigure your node. Turn that on in the UI only if you trust every client that can reach the port.
 
 See the [Virtual Node Server guide](/configuration/virtual-node) for details.
+
+### MeshCore Default Source
+
+For a headless MeshCore install, these vars create a **"Default MeshCore"** source on first boot. They are independent of `MESHTASTIC_NODE_IP`: set either, both, or neither.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MESHCORE_TCP_HOST` | Host of a MeshCore Companion reachable over TCP. Creates a TCP source | _unset_ |
+| `MESHCORE_TCP_PORT` | Its TCP port. WiFi/Ethernet Companion builds listen on `5000` | `5000` |
+| `MESHCORE_SERIAL_PORT` | Serial path of a USB-attached device, e.g. `/dev/ttyACM0`. Creates a serial source. Map the device into the container with `devices:` | _unset_ |
+| `MESHCORE_BAUD_RATE` | Serial baud rate | `115200` |
+| `MESHCORE_DEVICE_TYPE` | `companion` or `repeater`. A Repeater needs `MESHCORE_SERIAL_PORT` (no Repeater over TCP). Anything else logs a warning and uses `companion` | `companion` |
+| `MESHCORE_ENABLE_VIRTUAL_NODE` | `true` / `1` / `yes` adds a MeshCore Virtual Node to that source. Companion only | _unset_ (off) |
+| `MESHCORE_VIRTUAL_NODE_PORT` | Port for that Virtual Node, `1`–`65535`. Does nothing without `MESHCORE_ENABLE_VIRTUAL_NODE` | `5000` |
+
+- Set `MESHCORE_TCP_HOST` **or** `MESHCORE_SERIAL_PORT`. If you set both, MeshMonitor logs a warning and uses TCP. Set neither and no MeshCore source is created.
+- The source is created enabled, with **Auto-connect** on and the same settings the Add Source form would save (Heartbeat 30 s for a Companion, off for a Repeater). It sends nothing over the radio that the same source added in the UI would not.
+- The Virtual Node keeps **Allow admin commands**, **Allow PKI export** and **Allow PKI import** off. There are no env vars for them. If its port equals the Meshtastic Virtual Node port, MeshMonitor logs a warning and skips the MeshCore Virtual Node.
+- With the MeshCore vars set and `MESHTASTIC_NODE_IP` unset, the disabled Meshtastic placeholder is not created.
+
+::: warning First boot only
+Like `MESHTASTIC_NODE_IP`, these vars apply **once**, when MeshMonitor first creates its sources. An install that already has sources never grows a MeshCore source because you added the vars later, and later restarts never change the source, even if you change or remove the vars. Add or edit MeshCore sources in **Dashboard → Sources** from then on. (As with `MESHTASTIC_NODE_IP`, if you delete *every* source and restart with the vars still set, MeshMonitor treats the empty Sources list as a first boot and creates them again.)
+:::
+
+See [MeshCore → Headless installs](/features/meshcore#headless-installs-first-boot-env-vars).
 
 ### Security & Reverse Proxy Variables
 

@@ -35,6 +35,9 @@ const ENV_KEYS = [
   'MESHTASTIC_NODE_PORT',
   'ENABLE_VIRTUAL_NODE',
   'VIRTUAL_NODE_PORT',
+  'MESHCORE_TCP_HOST',
+  'MESHCORE_SERIAL_PORT',
+  'MESHCORE_ENABLE_VIRTUAL_NODE',
 ] as const;
 type EnvSnapshot = Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>;
 
@@ -241,6 +244,69 @@ describe('_legacyDefaultSource', () => {
       const insert = calls.find((c) => c.sql.includes('INSERT INTO sources'))!;
       expect(JSON.parse(insert.params![3] as string).virtualNode).toEqual(VN);
       expect(insert.params![4]).toBe(1);
+    });
+  });
+
+  describe('MeshCore default source (#5874 follow-up)', () => {
+    it('v3-upgrade backfills (no firstBoot) never create a MeshCore source', () => {
+      process.env.MESHCORE_TCP_HOST = '192.0.2.10';
+      createSourcesTable(db);
+      ensureDefaultSourceIdSqlite(db, 'Migration 039');
+      const rows = db.prepare(`SELECT type, enabled FROM sources`).all() as { type: string; enabled: number }[];
+      expect(rows).toEqual([{ type: 'meshtastic_tcp', enabled: 0 }]);
+    });
+
+    it('firstBoot with MeshCore only returns the MeshCore source id', () => {
+      process.env.MESHCORE_TCP_HOST = '192.0.2.10';
+      createSourcesTable(db);
+      const id = ensureDefaultSourceIdSqlite(db, 'Migration 050', { firstBoot: true });
+      const rows = db.prepare(`SELECT id, type FROM sources`).all() as { id: string; type: string }[];
+      expect(rows).toEqual([{ id, type: 'meshcore' }]);
+    });
+
+    it('firstBoot with both returns the Meshtastic id (legacy data stays Meshtastic)', () => {
+      process.env.MESHTASTIC_NODE_IP = '192.0.2.1';
+      process.env.MESHCORE_SERIAL_PORT = '/dev/ttyUSB0';
+      createSourcesTable(db);
+      const id = ensureDefaultSourceIdSqlite(db, 'Migration 050', { firstBoot: true });
+      const rows = db.prepare(`SELECT id, type FROM sources ORDER BY createdAt`).all() as { id: string; type: string }[];
+      expect(rows.map((r) => r.type)).toEqual(['meshtastic_tcp', 'meshcore']);
+      expect(rows[0].id).toBe(id);
+    });
+
+    it('PostgreSQL firstBoot inserts both rows', async () => {
+      process.env.MESHTASTIC_NODE_IP = '192.0.2.1';
+      process.env.MESHCORE_TCP_HOST = '192.0.2.10';
+      const calls: { sql: string; params?: unknown[] }[] = [];
+      const client = {
+        query: async (sql: string, params?: unknown[]) => {
+          calls.push({ sql, params });
+          if (sql.includes('to_regclass')) return { rows: [{ reg: 'sources' }] };
+          return { rows: [] };
+        },
+      };
+      await ensureDefaultSourceIdPostgres(client, 'test', { firstBoot: true });
+      const inserts = calls.filter((c) => c.sql.includes('INSERT INTO sources'));
+      expect(inserts.map((c) => c.params![2])).toEqual(['meshtastic_tcp', 'meshcore']);
+      expect(inserts[1].params![4]).toBe(true);
+    });
+
+    it('MySQL firstBoot with MeshCore only inserts one meshcore row', async () => {
+      process.env.MESHCORE_TCP_HOST = '192.0.2.10';
+      const calls: { sql: string; params?: unknown[] }[] = [];
+      const conn = {
+        query: async (sql: string, params?: unknown[]) => {
+          calls.push({ sql, params });
+          if (sql.includes('information_schema.tables')) return [[{ c: 1 }]];
+          return [[]];
+        },
+        release: () => {},
+      };
+      await ensureDefaultSourceIdMysql({ getConnection: async () => conn }, 'test', { firstBoot: true });
+      const inserts = calls.filter((c) => c.sql.includes('INSERT INTO sources'));
+      expect(inserts).toHaveLength(1);
+      expect(inserts[0].params![2]).toBe('meshcore');
+      expect(inserts[0].params![4]).toBe(1);
     });
   });
 });

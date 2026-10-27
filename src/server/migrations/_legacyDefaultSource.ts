@@ -11,11 +11,21 @@
  *
  * Each migration owns its own UPDATE — only the default-source resolution
  * is shared here.
+ *
+ * First boot (#5874 follow-up): migration 050 is the call that fires on a
+ * fresh install, and it alone passes `{ firstBoot: true }`. That path also
+ * creates the "Default MeshCore" source from the MESHCORE_* vars, and skips
+ * the disabled Meshtastic placeholder when only MeshCore is configured. The
+ * v3-upgrade backfills (029/039/040) leave it off: their legacy rows are
+ * Meshtastic data and belong to a Meshtastic source.
  */
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { logger } from '../../utils/logger.js';
-import { buildDefaultMeshtasticSourceConfigFromEnv } from '../config/defaultSourceConfig.js';
+import {
+  buildDefaultMeshtasticSourceConfigFromEnv,
+  planDefaultSourcesFromEnv,
+} from '../config/defaultSourceConfig.js';
 
 interface LegacyDefaultSource {
   id: string;
@@ -57,6 +67,43 @@ export function buildLegacyDefaultSource(): LegacyDefaultSource {
   };
 }
 
+export interface EnsureDefaultSourceOptions {
+  /** Plan every first-boot default source, MeshCore included. Migration 050 only. */
+  firstBoot?: boolean;
+}
+
+/**
+ * The rows to insert into an empty sources table. The first row is the one
+ * the caller assigns legacy data to (Meshtastic when there is one).
+ */
+export function buildLegacyDefaultSources(opts: EnsureDefaultSourceOptions = {}): LegacyDefaultSource[] {
+  if (!opts.firstBoot) return [buildLegacyDefaultSource()];
+  const now = Date.now();
+  const plan = planDefaultSourcesFromEnv(process.env, (msg) => logger.warn(msg));
+  return plan.map((row, i) => {
+    if (row.type === 'meshtastic_tcp' && 'virtualNode' in row.config && row.config.virtualNode) {
+      logger.info(`📡 Default source gets a Virtual Node on port ${row.config.virtualNode.port} (ENABLE_VIRTUAL_NODE, first boot)`);
+    }
+    if (row.type === 'meshcore') {
+      const vn = 'virtualNode' in row.config ? row.config.virtualNode : undefined;
+      logger.info(
+        `📡 Creating "${row.name}" source from MESHCORE_* env vars (first boot)` +
+          (vn ? `, Virtual Node on port ${vn.port}` : ''),
+      );
+    }
+    // +i keeps ORDER BY createdAt stable: row 0 stays the oldest.
+    return {
+      id: randomUUID(),
+      name: row.name,
+      type: row.type,
+      config: JSON.stringify(row.config),
+      enabled: row.enabled ? 1 : 0,
+      createdAt: now + i,
+      updatedAt: now + i,
+    };
+  });
+}
+
 /**
  * Resolve the default sourceId for a SQLite migration. Synthesizes one if
  * the sources table is empty. Returns null if the sources table does not
@@ -65,6 +112,7 @@ export function buildLegacyDefaultSource(): LegacyDefaultSource {
 export function ensureDefaultSourceIdSqlite(
   db: Database,
   migrationLabel: string,
+  opts: EnsureDefaultSourceOptions = {},
 ): string | null {
   const sourcesExists = db
     .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='sources'`)
@@ -80,28 +128,32 @@ export function ensureDefaultSourceIdSqlite(
     return existing.id;
   }
 
-  const legacy = buildLegacyDefaultSource();
-  logger.info(
-    `${migrationLabel}: sources table empty; creating default source '${legacy.id}' (enabled=${legacy.enabled})`,
-  );
-  db.prepare(`
+  const rows = buildLegacyDefaultSources(opts);
+  const insert = db.prepare(`
     INSERT INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    legacy.id,
-    legacy.name,
-    legacy.type,
-    legacy.config,
-    legacy.enabled,
-    legacy.createdAt,
-    legacy.updatedAt,
-  );
-  return legacy.id;
+  `);
+  for (const legacy of rows) {
+    logger.info(
+      `${migrationLabel}: sources table empty; creating ${legacy.type} source '${legacy.name}' '${legacy.id}' (enabled=${legacy.enabled})`,
+    );
+    insert.run(
+      legacy.id,
+      legacy.name,
+      legacy.type,
+      legacy.config,
+      legacy.enabled,
+      legacy.createdAt,
+      legacy.updatedAt,
+    );
+  }
+  return rows[0].id;
 }
 
 export async function ensureDefaultSourceIdPostgres(
   client: any,
   migrationLabel: string,
+  opts: EnsureDefaultSourceOptions = {},
 ): Promise<string | null> {
   const tableCheck = await client.query(
     `SELECT to_regclass('public.sources') AS reg`
@@ -117,21 +169,24 @@ export async function ensureDefaultSourceIdPostgres(
     return existing.rows[0].id;
   }
 
-  const legacy = buildLegacyDefaultSource();
-  logger.info(
-    `${migrationLabel}: sources table empty; creating default source '${legacy.id}' (enabled=${legacy.enabled}) (PG)`,
-  );
-  await client.query(
-    `INSERT INTO sources (id, name, type, config, enabled, "createdAt", "updatedAt")
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [legacy.id, legacy.name, legacy.type, legacy.config, legacy.enabled === 1, legacy.createdAt, legacy.updatedAt],
-  );
-  return legacy.id;
+  const rows = buildLegacyDefaultSources(opts);
+  for (const legacy of rows) {
+    logger.info(
+      `${migrationLabel}: sources table empty; creating ${legacy.type} source '${legacy.name}' '${legacy.id}' (enabled=${legacy.enabled}) (PG)`,
+    );
+    await client.query(
+      `INSERT INTO sources (id, name, type, config, enabled, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [legacy.id, legacy.name, legacy.type, legacy.config, legacy.enabled === 1, legacy.createdAt, legacy.updatedAt],
+    );
+  }
+  return rows[0].id;
 }
 
 export async function ensureDefaultSourceIdMysql(
   pool: any,
   migrationLabel: string,
+  opts: EnsureDefaultSourceOptions = {},
 ): Promise<string | null> {
   const conn = await pool.getConnection();
   try {
@@ -151,16 +206,18 @@ export async function ensureDefaultSourceIdMysql(
       return existing.id;
     }
 
-    const legacy = buildLegacyDefaultSource();
-    logger.info(
-      `${migrationLabel}: sources table empty; creating default source '${legacy.id}' (enabled=${legacy.enabled}) (MySQL)`,
-    );
-    await conn.query(
-      `INSERT INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [legacy.id, legacy.name, legacy.type, legacy.config, legacy.enabled, legacy.createdAt, legacy.updatedAt],
-    );
-    return legacy.id;
+    const rows = buildLegacyDefaultSources(opts);
+    for (const legacy of rows) {
+      logger.info(
+        `${migrationLabel}: sources table empty; creating ${legacy.type} source '${legacy.name}' '${legacy.id}' (enabled=${legacy.enabled}) (MySQL)`,
+      );
+      await conn.query(
+        `INSERT INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [legacy.id, legacy.name, legacy.type, legacy.config, legacy.enabled, legacy.createdAt, legacy.updatedAt],
+      );
+    }
+    return rows[0].id;
   } finally {
     conn.release();
   }

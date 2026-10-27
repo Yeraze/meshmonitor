@@ -130,7 +130,9 @@ router.get('/status', async (req: Request, res: Response) => {
 // Check if admin is using default password
 router.get('/check-default-password', async (_req: Request, res: Response) => {
   try {
-    const admin = await databaseService.findUserByUsernameAsync('admin');
+    // ADMIN_USERNAME names the first admin (#5874), so look that user up
+    // rather than the literal 'admin'.
+    const admin = await databaseService.findUserByUsernameAsync(getEnvironmentConfig().adminUsername);
 
     if (!admin || !admin.passwordHash) {
       // No admin user or no password hash - not using default

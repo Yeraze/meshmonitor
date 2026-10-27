@@ -38,6 +38,7 @@ import { bootstrapSources, type BootstrapDeps, type BootstrapDb } from './bootst
 import type { Source } from '../db/repositories/sources.js';
 import type { ISourceManager } from './sourceManagerRegistry.js';
 import { logger } from '../utils/logger.js';
+import { parseMeshCoreDefaultEnv } from './config/meshcoreEnv.js';
 
 // ---------------------------------------------------------------------------
 // Module mocks — applied before any import resolution by Vitest's hoisting.
@@ -440,6 +441,56 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect(db.sources.createSource).not.toHaveBeenCalled();
       const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
       expect(factoryCfg.virtualNode.port).toBe(4404);
+    });
+  });
+
+  describe('Scenario 2d — MeshCore default source from MESHCORE_* (#5874)', () => {
+    const noMt = { meshtasticNodeIp: '192.168.1.100', meshtasticNodeIpProvided: false, meshtasticTcpPort: 4403 };
+    const mcEnv = (env: Record<string, string>) => parseMeshCoreDefaultEnv(env as NodeJS.ProcessEnv);
+
+    it('empty table + MeshCore only: creates and starts one MeshCore source, no Meshtastic row', async () => {
+      const db = makeDbStub([]);
+      await bootstrapSources(makeDeps({
+        db, registry, makeMeshtastic: meshFactory.factory,
+        env: { ...noMt, meshcoreDefault: mcEnv({ MESHCORE_TCP_HOST: '192.0.2.10', MESHCORE_ENABLE_VIRTUAL_NODE: 'true' }) },
+      }));
+      expect(db.sources.createSource).toHaveBeenCalledTimes(1);
+      const created = (db.sources.createSource as any).mock.calls[0][0];
+      expect(created).toMatchObject({ name: 'Default MeshCore', type: 'meshcore', enabled: true });
+      expect(created.config.virtualNode).toMatchObject({ enabled: true, port: 5000, allowAdminCommands: false });
+      expect(ensureMeshCoreManagerStarted).toHaveBeenCalledTimes(1);
+      expect(meshFactory.factory).not.toHaveBeenCalled();
+    });
+
+    it('empty table + both: Meshtastic Default then MeshCore', async () => {
+      const db = makeDbStub([]);
+      await bootstrapSources(makeDeps({
+        db, registry, makeMeshtastic: meshFactory.factory,
+        env: {
+          meshtasticNodeIp: '192.0.2.1', meshtasticNodeIpProvided: true, meshtasticTcpPort: 4403,
+          meshcoreDefault: mcEnv({ MESHCORE_SERIAL_PORT: '/dev/ttyUSB0' }),
+        },
+      }));
+      const types = (db.sources.createSource as any).mock.calls.map((c: any[]) => c[0].type);
+      expect(types).toEqual(['meshtastic_tcp', 'meshcore']);
+    });
+
+    it('existing install + new MESHCORE_* vars: no new source', async () => {
+      const db = makeDbStub([makeTcpSource('existing-1', '1.2.3.4')]);
+      await bootstrapSources(makeDeps({
+        db, registry, makeMeshtastic: meshFactory.factory,
+        env: { ...noMt, meshcoreDefault: mcEnv({ MESHCORE_TCP_HOST: '192.0.2.10' }) },
+      }));
+      expect(db.sources.createSource).not.toHaveBeenCalled();
+    });
+
+    it('a later boot with changed env leaves the MeshCore source alone', async () => {
+      const db = makeDbStub([makeMeshCoreSource('mc-1')]);
+      await bootstrapSources(makeDeps({
+        db, registry, makeMeshtastic: meshFactory.factory,
+        env: { ...noMt, meshcoreDefault: mcEnv({ MESHCORE_SERIAL_PORT: '/dev/ttyACM0' }) },
+      }));
+      expect(db.sources.createSource).not.toHaveBeenCalled();
     });
   });
 

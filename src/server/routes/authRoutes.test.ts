@@ -19,6 +19,7 @@ import { migration as baselineMigration } from '../migrations/001_v37_baseline.j
 import { migration as sourceIdPermsMigration } from '../migrations/022_add_source_id_to_permissions.js';
 import { migration as passkeysMigration } from '../migrations/207_create_user_passkeys.js';
 import authRoutes from './authRoutes.js';
+import { resetEnvironmentConfig } from '../config/environment.js';
 
 // Mock the DatabaseService to prevent auto-initialization
 vi.mock('../../services/database.js', () => ({
@@ -1046,6 +1047,60 @@ describe('Authentication Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.isDefaultPassword).toBe(false);
+    });
+
+    // ADMIN_USERNAME renames the first admin (#5874); the warning must follow it.
+    describe('with ADMIN_USERNAME set', () => {
+      const prev = process.env.ADMIN_USERNAME;
+      beforeEach(() => {
+        process.env.ADMIN_USERNAME = 'operator';
+        resetEnvironmentConfig();
+        db.prepare('DELETE FROM users').run();
+      });
+      afterEach(() => {
+        if (prev === undefined) delete process.env.ADMIN_USERNAME;
+        else process.env.ADMIN_USERNAME = prev;
+        resetEnvironmentConfig();
+      });
+
+      it('returns true when the custom-named admin still uses "changeme"', async () => {
+        await userModel.create({
+          username: 'operator',
+          password: 'changeme',
+          email: 'op@example.com',
+          authProvider: 'local',
+          isAdmin: true
+        });
+        const response = await request(app).get('/api/auth/check-default-password');
+        expect(response.status).toBe(200);
+        expect(response.body.isDefaultPassword).toBe(true);
+      });
+
+      it('returns false when the custom-named admin has another password', async () => {
+        await userModel.create({
+          username: 'operator',
+          password: 'a-real-password',
+          email: 'op@example.com',
+          authProvider: 'local',
+          isAdmin: true
+        });
+        const response = await request(app).get('/api/auth/check-default-password');
+        expect(response.status).toBe(200);
+        expect(response.body.isDefaultPassword).toBe(false);
+      });
+
+      it('ignores a literal "admin" user with "changeme" when ADMIN_USERNAME names someone else', async () => {
+        await userModel.create({
+          username: 'admin',
+          password: 'changeme',
+          email: 'admin3@example.com',
+          authProvider: 'local',
+          isAdmin: true
+        });
+        const response = await request(app).get('/api/auth/check-default-password');
+        expect(response.status).toBe(200);
+        expect(response.body.isDefaultPassword).toBe(false);
+      });
     });
   });
 
