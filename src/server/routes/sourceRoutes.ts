@@ -37,6 +37,7 @@ import { observerBrokerKey } from '../meshcoreConfig.js';
 import { getForwardingSummary } from '../services/forwardingStateService.js';
 import { getMeshCoreObserverCredentialStore } from '../services/meshcoreObserverCredentialStore.js';
 import { detachBridgePresetId, fillBridgeConfigFromPreset } from '../services/mqttBrokerPresetFill.js';
+import { findDuplicateTcpEndpoints, describeDuplicateTcpEndpoint } from '../utils/tcpEndpointDuplicates.js';
 import {
   mayViewSourceEndpoint,
   maskSourceConfigForEditor,
@@ -912,6 +913,27 @@ router.get('/:id', requirePermission('sources', 'read'), async (req: Request, re
 });
 
 // Create source
+/**
+ * Log a warning when a saved, enabled Meshtastic TCP source shares its node
+ * with another enabled one (#5974). The exact-match 409 below misses
+ * case/whitespace/port-type variants and rows that predate it; the node only
+ * serves one TCP client, so such a pair disconnects each other forever.
+ * Diagnostic only: never fails the request.
+ */
+async function warnIfSourceSharesTcpEndpoint(source: { id: string; type: string; enabled?: unknown }): Promise<void> {
+  if (source.type !== 'meshtastic_tcp' || !source.enabled) return;
+  try {
+    const all = await databaseService.sources.getAllSources();
+    for (const group of findDuplicateTcpEndpoints(all)) {
+      if (group.sources.some((s) => s.id === source.id)) {
+        logger.warn(describeDuplicateTcpEndpoint(group));
+      }
+    }
+  } catch (err) {
+    logger.debug(`Duplicate TCP endpoint check failed for source ${source.id}:`, err);
+  }
+}
+
 router.post('/', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
     const { name, type, config, enabled } = req.body;
@@ -1059,6 +1081,8 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     if (databaseService.drizzleDbType === 'mysql' && Buffer.byteLength(JSON.stringify(config), 'utf8') > 4096) {
       logger.warn(`Source ${source.id} config exceeds the MySQL varchar(4096) column width; the write may fail or truncate`);
     }
+
+    await warnIfSourceSharesTcpEndpoint(source);
 
     // Start manager if source is enabled and autoConnect is not explicitly false.
     // autoConnect=false means the source is registered but won't start monitoring
@@ -1323,6 +1347,8 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     ) {
       logger.warn(`Source ${source.id} config exceeds the MySQL varchar(4096) column width; the write may fail or truncate`);
     }
+
+    await warnIfSourceSharesTcpEndpoint(source);
 
     // Propagate name change to the live MeshCore/Reticulum manager so
     // getStatus() stays fresh without requiring a restart (#3962 WP3b — open

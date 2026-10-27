@@ -107,6 +107,26 @@ function runRepoSuite(getRepo: () => MeshCoreHopSnrRepository, clear: () => Prom
     expect((await repo.getRecent(SRC_A, 0)).every((r) => r.sourceId === SRC_A)).toBe(true);
   });
 
+  it('deleteHistoryForNode clears one contact at any age, only on that source (#5970)', async () => {
+    const C = 'c'.repeat(64);
+    const D = 'd'.repeat(64);
+    await repo.insertHops(SRC_A, [
+      row({ timestamp: 1 }),
+      row({ timestamp: 3000, senderPublicKey: K2, receiverPublicKey: K1 }),
+      row({ timestamp: 2000, senderPublicKey: C, receiverPublicKey: D }),
+      row({ timestamp: 2500, senderPublicKey: null, receiverPublicKey: K1 }),
+    ]);
+    await repo.insertHops(SRC_B, [row({ sourceId: SRC_B, timestamp: 9000 })]);
+    await expect(repo.deleteHistoryForNode('', K1)).rejects.toThrow(/sourceId/);
+    await expect(repo.deleteHistoryForNode(SRC_A, '')).rejects.toThrow(/publicKey/);
+
+    expect(await repo.deleteHistoryForNode(SRC_A, K1)).toBe(3);
+    expect(await repo.getHistoryForNode(SRC_A, K1, 0)).toEqual([]);
+    expect((await repo.getRecent(SRC_A, 0)).map((r) => r.senderPublicKey)).toEqual([C]);
+    expect(await repo.getHistoryForNode(SRC_B, K1, 0)).toHaveLength(1);
+    expect(await repo.deleteHistoryForNode(SRC_A, K1)).toBe(0);
+  });
+
   it('retention and source deletion touch only that source', async () => {
     await repo.insertHops(SRC_A, [row({ timestamp: 1000 }), row({ timestamp: 9000 })]);
     await repo.insertHops(SRC_B, [row({ sourceId: SRC_B, timestamp: 1000 })]);

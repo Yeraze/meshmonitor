@@ -2,11 +2,12 @@
  * MeshCore per-hop trace SNR history (#5722).
  *
  * Mounted under `/api/sources/:id/meshcore` (data routes: valid for any
- * MeshCore source). Read-only, gated by the per-source `traceroute:read`
- * grant, the same grant that covers Meshtastic traceroutes.
+ * MeshCore source). Reads are gated by the per-source `traceroute:read`
+ * grant, the same grant that covers Meshtastic traceroutes; clearing one
+ * contact's history (#5970) needs `traceroute:write` on that source.
  */
 import { Router, type Request, type Response } from 'express';
-import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requireAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
@@ -58,6 +59,31 @@ router.get(
     } catch (error) {
       logger.error('Error reading MeshCore hop SNR history:', error);
       return fail(res, 500, 'INTERNAL_ERROR', 'Failed to read trace SNR history');
+    }
+  },
+);
+
+// DELETE /api/sources/:id/meshcore/hop-snr?publicKey=<64 hex>
+// Clears every stored sample where the contact is either end, on this source
+// only and at any age (#5970). Sends nothing over the radio. Like every
+// MeshCore write, it needs a signed-in user.
+router.delete(
+  '/hop-snr',
+  requireAuth(),
+  requirePermission('traceroute', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = String((req.params as { id?: string }).id ?? '');
+      const rawKey = req.query.publicKey;
+      if (typeof rawKey !== 'string' || !PUBLIC_KEY_RE.test(rawKey)) {
+        return fail(res, 400, 'INVALID_PUBLIC_KEY', 'publicKey must be 64 hex characters');
+      }
+      const deleted = await databaseService.meshcoreHopSnr.deleteHistoryForNode(sourceId, rawKey.toLowerCase());
+      logger.info(`Cleared ${deleted} MeshCore trace SNR row(s) for ${rawKey.slice(0, 12)}… on source ${sourceId}`);
+      return ok(res, { deleted });
+    } catch (error) {
+      logger.error('Error clearing MeshCore hop SNR history:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to clear trace SNR history');
     }
   },
 );
