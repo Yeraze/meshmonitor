@@ -382,6 +382,105 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
   });
 });
 
+describe('MeshCoreChannelsView — entry scroll on channel switch', () => {
+  // Switching from a channel that shows the unread divider to one whose
+  // backlog is still in flight must not spend the new channel's one-shot entry
+  // scroll on the OLD channel's rows. Repro: the list stayed at scrollTop 0
+  // once the new backlog arrived.
+  let scrollIntoViewSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal('requestAnimationFrame', (cb: (time: number) => void) => {
+      cb(0);
+      return 0;
+    });
+    scrollIntoViewSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoViewSpy as unknown as typeof Element.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() { return 500; },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (Element.prototype as Partial<typeof Element.prototype>).scrollIntoView;
+    delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+    localStorage.clear();
+  });
+
+  it('lands at the bottom of the new channel when the previous one had an unread divider', async () => {
+    const now = Date.now();
+    const publicRows: MeshCoreMessage[] = [
+      { id: 'p1', fromPublicKey: 'channel-0', text: 'public read', timestamp: now - 30_000 },
+      { id: 'p2', fromPublicKey: 'channel-0', text: 'public unread one', timestamp: now - 20_000 },
+      { id: 'p3', fromPublicKey: 'channel-0', text: 'public unread two', timestamp: now - 10_000 },
+    ];
+    const townRows: MeshCoreMessage[] = [
+      { id: 't1', fromPublicKey: 'channel-1', text: 'town one', timestamp: now - 25_000 },
+      { id: 't2', fromPublicKey: 'channel-1', text: 'town two', timestamp: now - 5_000 },
+    ];
+    // Public was read up to p1, so it opens on the divider. Town is fully read.
+    localStorage.setItem(
+      'meshmonitor-meshcore-channel-lastread-src-a',
+      JSON.stringify({ 0: now - 25_000, 1: now }),
+    );
+
+    let releaseTown: (() => void) | null = null;
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }, { id: 1, name: 'Town' }]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: {}, latestTimestamps: {} }));
+      }
+      if (url.includes('/messages/channel/0')) {
+        return Promise.resolve(jsonResponse({ success: true, data: publicRows }));
+      }
+      if (url.includes('/messages/channel/1')) {
+        // Hold Town's backlog so the switch renders before it arrives.
+        return new Promise<Response>(resolve => {
+          releaseTown = () => resolve(jsonResponse({ success: true, data: townRows }));
+        });
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+
+    const { container } = render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('public unread two')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('[data-unread-divider]')).toBeTruthy());
+    // Public's own entry scroll lands on its divider.
+    await waitFor(() => expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    fireEvent.click(screen.getByText('# Town'));
+    await waitFor(() => expect(releaseTown).not.toBeNull());
+    // Town's backlog is still loading: Public's rows must not be shown under
+    // Town, and nothing may scroll yet.
+    expect(screen.queryByText('public unread two')).toBeNull();
+    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => { releaseTown!(); });
+    await waitFor(() => expect(screen.getByText('town two')).toBeTruthy());
+
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    await waitFor(() => expect(list.scrollTop).toBe(500));
+    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-unread-divider]')).toBeNull();
+  });
+});
+
 describe('MeshCoreChannelsView — infinite scroll pagination (#4460)', () => {
   // Routes the per-channel-messages endpoint to a different page depending on
   // whether the request carries an offset, so a scroll-to-top can be observed
@@ -624,9 +723,12 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
     fireEvent.click(screen.getByText('# Town'));
     await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeNull());
 
-    // The last-read marker was persisted for this source/channel.
-    const stored = JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-lastread-src-a') ?? '{}');
-    expect(stored['1']).toBeGreaterThanOrEqual(9999);
+    // The last-read marker was persisted for this source/channel, once Town's
+    // backlog has loaded (marking waits for it).
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-lastread-src-a') ?? '{}');
+      expect(stored['1']).toBeGreaterThanOrEqual(9999);
+    });
   });
 
   it('does not flag a channel unread when its last-read marker is current', async () => {

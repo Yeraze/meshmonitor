@@ -227,6 +227,34 @@ describe('MeshCoreMessageStream entry scroll (#3810)', () => {
     list = container.querySelector('.meshcore-message-list') as HTMLElement;
     expect(list.scrollTop).toBe(500);
   });
+
+  it('holds the entry scroll while backlogLoading, then runs it once the backlog lands', () => {
+    // Rows can be present before the backlog is: a live tail, or (before the
+    // fix) the previous conversation's rows. The shot must wait for the real
+    // history instead of spending itself on those.
+    const { container, rerender } = render(
+      <MeshCoreMessageStream
+        messages={threeMessages()}
+        conversationKey="channel-1"
+        backlogLoading
+        onSend={async () => true}
+      />,
+    );
+    let list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    expect(list.scrollTop).toBe(0);
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+
+    rerender(
+      <MeshCoreMessageStream
+        messages={threeMessages()}
+        conversationKey="channel-1"
+        backlogLoading={false}
+        onSend={async () => true}
+      />,
+    );
+    list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    expect(list.scrollTop).toBe(500);
+  });
 });
 
 describe('MeshCoreMessageStream load older (#4460)', () => {
@@ -276,6 +304,45 @@ describe('MeshCoreMessageStream load older (#4460)', () => {
     list.scrollTop = 10;
     fireEvent.scroll(list);
     expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onLoadOlder while the backlog is still loading', () => {
+    const onLoadOlder = vi.fn();
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-1"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder
+        backlogLoading
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 0;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).not.toHaveBeenCalled();
+  });
+
+  it('does not call onLoadOlder before the entry scroll has landed', () => {
+    // A channel switch swaps the rows and the browser clamps scrollTop to 0,
+    // firing a scroll event. That is not the user scrolling up: paging older
+    // history then, and restoring around it, yanked the view off the divider.
+    vi.stubGlobal('requestAnimationFrame', () => 0); // the entry frame never runs
+    const onLoadOlder = vi.fn();
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-1"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 0;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).not.toHaveBeenCalled();
   });
 
   it('does not call onLoadOlder when there is no older page', () => {
