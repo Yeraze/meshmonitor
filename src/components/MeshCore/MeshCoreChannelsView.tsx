@@ -153,6 +153,12 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // of the global recent-tail). Live updates still arrive via `messages` and
   // are merged in below.
   const [history, setHistory] = useState<MeshCoreMessage[]>([]);
+  // Which `${sourceId}:${channelIdx}` the fetched `history` belongs to. The
+  // fetch is async, so for a while after a channel switch `history` still holds
+  // the PREVIOUS channel's rows. Until this matches the active channel the
+  // backlog is treated as loading: its rows are not drawn, the stream's
+  // one-shot entry scroll waits, and the channel is not marked read.
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
   // Infinite-scroll pagination for the active channel's history (#4460): does
   // an older page exist beyond `history`, and is one currently being fetched.
   // Reset alongside `history` on every channel switch/reconnect.
@@ -514,12 +520,14 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         const data = await response.json();
         if (!cancelled) {
           setHistory(data?.success && Array.isArray(data.data) ? (data.data as MeshCoreMessage[]) : []);
+          setHistoryFor(`${sourceId}:${idx}`);
           setHasMoreHistory(Boolean(data?.hasMore));
         }
       } catch (err) {
         if (!cancelled) {
           console.error('Failed to fetch MeshCore channel messages:', err);
           setHistory([]);
+          setHistoryFor(`${sourceId}:${idx}`);
           setHasMoreHistory(false);
         }
       }
@@ -570,9 +578,16 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // pushes land in `messages`). Dedupe by id, letting the live copy win so
   // delivery-status updates (sent → delivered/failed) are reflected, then sort
   // oldest-first for the stream.
+  //
+  // While the active channel's backlog is still loading, `history` is the
+  // previous channel's: leave it out, or the stream draws (and entry-scrolls
+  // to) another channel's rows and unread divider.
+  const historyReady = !sourceId || historyFor === `${sourceId}:${active.id}`;
   const filtered = useMemo(() => {
     const byId = new Map<string, MeshCoreMessage>();
-    for (const m of history) byId.set(m.id, m);
+    if (historyReady) {
+      for (const m of history) byId.set(m.id, m);
+    }
     for (const m of messages) {
       if (activeFilter(m)) byId.set(m.id, m);
     }
@@ -581,7 +596,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     // Date.now(), so a same-second auto-reply sorted BEFORE its own trigger.
     // See ./messageOrder.ts.
     return Array.from(byId.values()).sort(compareMeshCoreMessages);
-  }, [history, messages, activeFilter]);
+  }, [history, historyReady, messages, activeFilter]);
 
   // Unread-divider anchor (#4607): the last-read marker frozen at the moment
   // this channel was opened. The effect below marks the channel read within a
@@ -608,8 +623,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const newestVisibleTs = filtered.length > 0 ? meshcoreReceiptTimeMs(filtered[filtered.length - 1]) : 0;
   useEffect(() => {
     if (isMobileViewport() && !mobileShowContent) return;
+    // Wait for this channel's backlog: until then `filtered` holds only the
+    // live tail, so "newest visible" would be a guess.
+    if (!historyReady) return;
     markChannelRead(active.id, newestVisibleTs || Date.now());
-  }, [active.id, newestVisibleTs, mobileShowContent, markChannelRead]);
+  }, [active.id, newestVisibleTs, mobileShowContent, markChannelRead, historyReady]);
 
   // Effective latest timestamp per channel: the persisted max from the
   // counts/latest endpoint, bumped by any newer live message in the shared pool
@@ -1059,6 +1077,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           onReply={handleReply}
           conversationKey={`channel-${active.id}`}
           unreadAnchorMs={entryLastRead}
+          backlogLoading={!historyReady}
           onLoadOlder={loadOlderHistory}
           hasMoreOlder={hasMoreHistory}
           loadingOlder={loadingOlderHistory}

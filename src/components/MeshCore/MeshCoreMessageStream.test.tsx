@@ -227,6 +227,34 @@ describe('MeshCoreMessageStream entry scroll (#3810)', () => {
     list = container.querySelector('.meshcore-message-list') as HTMLElement;
     expect(list.scrollTop).toBe(500);
   });
+
+  it('holds the entry scroll while backlogLoading, then runs it once the backlog lands', () => {
+    // Rows can be present before the backlog is: a live tail, or (before the
+    // fix) the previous conversation's rows. The shot must wait for the real
+    // history instead of spending itself on those.
+    const { container, rerender } = render(
+      <MeshCoreMessageStream
+        messages={threeMessages()}
+        conversationKey="channel-1"
+        backlogLoading
+        onSend={async () => true}
+      />,
+    );
+    let list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    expect(list.scrollTop).toBe(0);
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+
+    rerender(
+      <MeshCoreMessageStream
+        messages={threeMessages()}
+        conversationKey="channel-1"
+        backlogLoading={false}
+        onSend={async () => true}
+      />,
+    );
+    list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    expect(list.scrollTop).toBe(500);
+  });
 });
 
 describe('MeshCoreMessageStream load older (#4460)', () => {

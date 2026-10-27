@@ -92,6 +92,11 @@ interface MeshCoreMessageStreamProps {
    *  live value would evaporate before the line could be drawn. `null` /
    *  omitted means "no divider" (nothing unread, or unknown). */
   unreadAnchorMs?: number | null;
+  /** True while the parent is still fetching this conversation's backlog.
+   *  The one-shot entry scroll waits for it to clear, so it never runs
+   *  against a partial list (or a previous conversation's rows) and spends
+   *  the shot before the real history lands. */
+  backlogLoading?: boolean;
   /** Reaction id → target id, for reactions resolved after `messages` was
    *  loaded (#5759). Lets a view that pages its own history show the chip
    *  without a reload. */
@@ -161,6 +166,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   hasMoreOlder,
   loadingOlder,
   unreadAnchorMs,
+  backlogLoading = false,
   reactionResolutions,
 }) => {
   const { t } = useTranslation();
@@ -327,6 +333,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // scroll on every incoming message.
   const unreadAnchorIdRef = useRef<string | null>(unreadAnchorId);
   unreadAnchorIdRef.current = unreadAnchorId;
+  // Same for `backlogLoading`, read inside the deferred frame and the
+  // ResizeObserver below.
+  const backlogLoadingRef = useRef(backlogLoading);
+  backlogLoadingRef.current = backlogLoading;
 
   // Entry scroll: on conversation entry, land on the unread divider when there
   // is one, otherwise at the BOTTOM (newest messages).
@@ -382,13 +392,19 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }
     if (state.done) return;
     // Wait for the (possibly async) backlog before committing the entry scroll.
-    if (messages.length === 0) return;
+    // `messages.length > 0` alone is not enough: right after a switch the
+    // parent can still be passing a live tail, or the previous conversation's
+    // rows, and spending the shot on those strands the view (at the top, or at
+    // the old conversation's unread divider) once the real backlog lands.
+    if (messages.length === 0 || backlogLoading) return;
     requestAnimationFrame(() => {
-      // Re-check inside the frame: the pane may still be hidden.
-      if (entryScrollRef.current.done) return;
+      // Re-check inside the frame: the pane may still be hidden, or the
+      // conversation may have changed again.
+      if (entryScrollRef.current.done || backlogLoadingRef.current) return;
+      if (entryScrollRef.current.key !== conversationKey) return;
       if (runEntryScroll(container)) entryScrollRef.current.done = true;
     });
-  }, [conversationKey, messages.length, runEntryScroll]);
+  }, [conversationKey, messages.length, backlogLoading, runEntryScroll]);
 
   // Complete a deferred entry scroll the moment the list gains a real size —
   // i.e. when the hidden conversation pane is revealed. Nothing else changes at
@@ -418,7 +434,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
       // changes render timing enough to expose it: the list went 1 child ->
       // 203 children in a single step, while an authenticated session rendered
       // progressively and scrolled correctly by luck of ordering.
-      if (messageCountRef.current === 0) return;
+      if (messageCountRef.current === 0 || backlogLoadingRef.current) return;
       if (runEntryScroll(container)) state.done = true;
     });
     observer.observe(container);
