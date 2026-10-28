@@ -23,6 +23,14 @@ const FULL_MARKER_SPACING_PX = 10;
 /** Spacing at or above which a reduced (r: 1.5) marker is still worth drawing. */
 const SMALL_MARKER_SPACING_PX = 4;
 
+/**
+ * Above this many points a series is drawn line-only at any width. Each marker
+ * is its own SVG element that Recharts renders and diffs, and a trace of the
+ * Info tab spent seconds on hundreds of markers per chart before the card was
+ * even measured. `activeDot` still marks the hovered point for the tooltip.
+ */
+export const MAX_MARKER_POINTS = 100;
+
 export const FULL_MARKER_RADIUS = 3;
 export const SMALL_MARKER_RADIUS = 1.5;
 
@@ -33,10 +41,12 @@ export const SMALL_MARKER_RADIUS = 1.5;
  * @param containerWidth  measured width of the chart container in px; `0` when
  *                        it has not been measured yet (server render, first
  *                        paint, or a jsdom test without ResizeObserver), which
- *                        keeps the previous full-size markers rather than
- *                        flashing a line-only chart.
+ *                        keeps full-size markers on a series of up to
+ *                        `MAX_MARKER_POINTS` rather than flashing a line-only
+ *                        chart.
  */
 export function telemetryMarkerRadius(pointCount: number, containerWidth: number): number | null {
+  if (pointCount > MAX_MARKER_POINTS) return null;
   if (containerWidth <= 0) return FULL_MARKER_RADIUS;
   if (pointCount <= 1) return FULL_MARKER_RADIUS;
 
