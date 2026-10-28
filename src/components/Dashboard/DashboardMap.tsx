@@ -774,77 +774,124 @@ export default function DashboardMap({
   // that used to be duplicated inline here. `key` doubles as the spiderfier
   // tracking key (prefer the cross-source identity, fall back to nodeId so
   // MeshCore (no nodeNum) and unmerged rows still register).
-  const nodeMarkers: NodeMarkerDescriptor[] = markerNodes.map(({ node, pos }) => {
-    const hops = node.hopsAway ?? 999;
-    const shortName = node.shortName ?? node.user?.shortName;
-    const nodeId = node.nodeId ?? node.user?.id;
-    // #6008: shared infrastructure rule (ROUTER, ROUTER_LATE, CLIENT_BASE and
-    // the deprecated router roles), matching every other map surface. The role
-    // category drives the glyph or corner badge, and is in iconSig below so the
-    // icon cache tells it apart from a plain client with the same hops/name.
-    const { isRouter, roleCategory } = markerRoleProps(node);
-    // MeshCore nodes carry nodeNum 0 (they have no meshtastic nodeNum), so the
-    // `${sourceId}:${nodeNum}` scheme would collapse EVERY MeshCore node on a
-    // source onto the same key — React's duplicate-key reconciliation then
-    // duplicates markers and leaks them across source switches (#4234: MeshCore
-    // ghost markers visible on every source's map). Key them by their public-key
-    // identity instead.
-    const markerKey = String(
-      node.isMeshCore
-        ? unifiedNodeKey(node) ?? nodeId ?? node.publicKey
-        : node.sourceId != null && node.nodeNum != null
-          ? `${node.sourceId}:${node.nodeNum}`
-          : nodeId ?? node.nodeNum,
-    );
-    // #3886: fade markers by recency instead of a flat opacity — full when
-    // freshly heard, fading toward a floor as lastHeard nears the age cutoff
-    // (cutoffTime, seconds). Favorites bypass the age gate above so they stay
-    // fully opaque regardless of age. NOTE: here a missing lastHeard yields
-    // full opacity ("assume fresh"), which differs on purpose from Map
-    // Analysis where a missing timestamp sits at the floor — the Dashboard
-    // already age-gates upstream, so anything that reaches this loop is
-    // presumed current.
-    const ageOpacity = node.isFavorite
-      ? 1
-      : markerAgeOpacity(
-          nowMs,
-          cutoffTime * 1000,
-          node.lastHeard != null ? node.lastHeard * 1000 : null,
-        );
+  //
+  // Memoized, and each descriptor (with its <Popup> element) is reused per key
+  // while its node object, position and opacity are unchanged, so the
+  // memoized markers in NodeMarkersLayer skip every node a poll didn't touch.
+  const markerDescriptorCacheRef = useRef<Map<string, {
+    node: unknown;
+    lat: number;
+    lng: number;
+    opacity: number;
+    ctx: string;
+    onSelect: typeof onNodeSourceSelect;
+    descriptor: NodeMarkerDescriptor;
+  }>>(new Map());
+  const nodeMarkers: NodeMarkerDescriptor[] = useMemo(() => {
+    const prevCache = markerDescriptorCacheRef.current;
+    const nextCache: typeof prevCache = new Map();
+    const ctx = `${aircraftDisplayMode}|${mapPinStyle}|${mapPinColorMode}`;
+    const descriptors = markerNodes.map(({ node, pos }): NodeMarkerDescriptor => {
+      const hops = node.hopsAway ?? 999;
+      const shortName = node.shortName ?? node.user?.shortName;
+      const nodeId = node.nodeId ?? node.user?.id;
+      // #6008: shared infrastructure rule (ROUTER, ROUTER_LATE, CLIENT_BASE and
+      // the deprecated router roles), matching every other map surface. The role
+      // category drives the glyph or corner badge, and is in iconSig below so the
+      // icon cache tells it apart from a plain client with the same hops/name.
+      const { isRouter, roleCategory } = markerRoleProps(node);
+      // MeshCore nodes carry nodeNum 0 (they have no meshtastic nodeNum), so the
+      // `${sourceId}:${nodeNum}` scheme would collapse EVERY MeshCore node on a
+      // source onto the same key — React's duplicate-key reconciliation then
+      // duplicates markers and leaks them across source switches (#4234: MeshCore
+      // ghost markers visible on every source's map). Key them by their public-key
+      // identity instead.
+      const markerKey = String(
+        node.isMeshCore
+          ? unifiedNodeKey(node) ?? nodeId ?? node.publicKey
+          : node.sourceId != null && node.nodeNum != null
+            ? `${node.sourceId}:${node.nodeNum}`
+            : nodeId ?? node.nodeNum,
+      );
+      // #3886: fade markers by recency instead of a flat opacity — full when
+      // freshly heard, fading toward a floor as lastHeard nears the age cutoff
+      // (cutoffTime, seconds). Favorites bypass the age gate above so they stay
+      // fully opaque regardless of age. NOTE: here a missing lastHeard yields
+      // full opacity ("assume fresh"), which differs on purpose from Map
+      // Analysis where a missing timestamp sits at the floor — the Dashboard
+      // already age-gates upstream, so anything that reaches this loop is
+      // presumed current.
+      // Rounded to 0.01 (no visible difference) so a 15 s poll, which moves
+      // `nowMs` a hair, doesn't hand every marker a new opacity.
+      const ageOpacity = node.isFavorite
+        ? 1
+        : Math.round(markerAgeOpacity(
+            nowMs,
+            cutoffTime * 1000,
+            node.lastHeard != null ? node.lastHeard * 1000 : null,
+          ) * 100) / 100;
 
-    // Likely-aircraft badge (#5364/#5365 Phase 1 WP4): 'show' never marks.
-    // An aged-out aircraft (Phase 2, only here when "Show aged-out" is on) is
-    // always badged and dimmed so it reads as "not current".
-    const agedOut = isAgedOutAircraft(node);
-    const markAircraft = agedOut || (aircraftDisplayMode !== 'show' && node.likelyAircraft === true);
+      // Likely-aircraft badge (#5364/#5365 Phase 1 WP4): 'show' never marks.
+      // An aged-out aircraft (Phase 2, only here when "Show aged-out" is on) is
+      // always badged and dimmed so it reads as "not current".
+      const agedOut = isAgedOutAircraft(node);
+      const markAircraft = agedOut || (aircraftDisplayMode !== 'show' && node.likelyAircraft === true);
+      const opacity = agedOut ? AGED_OUT_AIRCRAFT_OPACITY : ageOpacity;
 
-    return {
-      key: markerKey,
-      position: [pos.lat, pos.lng],
-      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${markAircraft ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}`,
-      buildIcon: () =>
-        createNodeIcon({
-          variant: 'meshtastic',
-          hops,
-          isSelected: false,
-          isRouter,
-          roleCategory,
-          isUnmessagable: !!node.isUnmessagable,
-          isLikelyAircraft: markAircraft,
-          shortName,
-          showLabel: true,
-          pinStyle: mapPinStyle,
-          colorMode: mapPinColorMode,
-          nodeNum: Number.isFinite(Number(node.nodeNum)) ? Number(node.nodeNum) : undefined,
-        }),
-      opacity: agedOut ? AGED_OUT_AIRCRAFT_OPACITY : ageOpacity,
-      children: (
-        <Popup>
-          <DashboardNodePopup node={node} pos={pos} onSourceSelect={onNodeSourceSelect} />
-        </Popup>
-      ),
-    };
-  });
+      const cached = prevCache.get(markerKey);
+      if (
+        cached &&
+        cached.node === node &&
+        cached.lat === pos.lat &&
+        cached.lng === pos.lng &&
+        cached.opacity === opacity &&
+        cached.ctx === ctx &&
+        cached.onSelect === onNodeSourceSelect
+      ) {
+        nextCache.set(markerKey, cached);
+        return cached.descriptor;
+      }
+
+      const descriptor: NodeMarkerDescriptor = {
+        key: markerKey,
+        position: [pos.lat, pos.lng],
+        iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${markAircraft ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}`,
+        buildIcon: () =>
+          createNodeIcon({
+            variant: 'meshtastic',
+            hops,
+            isSelected: false,
+            isRouter,
+            roleCategory,
+            isUnmessagable: !!node.isUnmessagable,
+            isLikelyAircraft: markAircraft,
+            shortName,
+            showLabel: true,
+            pinStyle: mapPinStyle,
+            colorMode: mapPinColorMode,
+            nodeNum: Number.isFinite(Number(node.nodeNum)) ? Number(node.nodeNum) : undefined,
+          }),
+        opacity,
+        children: (
+          <Popup>
+            <DashboardNodePopup node={node} pos={pos} onSourceSelect={onNodeSourceSelect} />
+          </Popup>
+        ),
+      };
+      nextCache.set(markerKey, {
+        node,
+        lat: pos.lat,
+        lng: pos.lng,
+        opacity,
+        ctx,
+        onSelect: onNodeSourceSelect,
+        descriptor,
+      });
+      return descriptor;
+    });
+    markerDescriptorCacheRef.current = nextCache;
+    return descriptors;
+  }, [markerNodes, nowMs, cutoffTime, aircraftDisplayMode, mapPinStyle, mapPinColorMode, onNodeSourceSelect]);
 
   // Position accuracy regions — drawn from precision_bits, mirroring NodesTab.
   // Shares the cell geometry with Map Analysis via `precisionCellBounds`. Uses

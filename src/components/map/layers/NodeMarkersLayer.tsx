@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Marker } from 'react-leaflet';
 import type L from 'leaflet';
 import type { Marker as LeafletMarker, LeafletEventHandlerFnMap, LeafletMouseEvent } from 'leaflet';
@@ -38,6 +38,46 @@ export interface NodeMarkerDescriptor {
   /** `<Popup>`/`<Tooltip>` — consumer owns content (Phase 5, unchanged). */
   children?: ReactNode;
 }
+
+interface NodeMarkerItemProps {
+  markerRef: (m: LeafletMarker | null) => void;
+  position: [number, number];
+  icon: L.DivIcon;
+  opacity?: number;
+  zIndexOffset?: number;
+  eventHandlers?: LeafletEventHandlerFnMap;
+  children?: ReactNode;
+}
+
+/**
+ * One `<Marker>`, memoized: every prop it gets is cached per key by the layer
+ * (ref callback, position tuple, icon, click wrapper), so a re-render of the
+ * map that leaves a node unchanged skips its marker entirely. Consumers that
+ * also keep `children` (the popup) stable per node get the full benefit;
+ * a fresh `children` element just re-renders that marker, as before.
+ */
+const NodeMarkerItem = memo(function NodeMarkerItem({
+  markerRef,
+  position,
+  icon,
+  opacity,
+  zIndexOffset,
+  eventHandlers,
+  children,
+}: NodeMarkerItemProps) {
+  return (
+    <Marker
+      ref={markerRef}
+      position={position}
+      icon={icon}
+      opacity={opacity}
+      zIndexOffset={zIndexOffset}
+      eventHandlers={eventHandlers}
+    >
+      {children}
+    </Marker>
+  );
+});
 
 export interface NodeMarkersLayerProps {
   markers: NodeMarkerDescriptor[];
@@ -129,6 +169,14 @@ export function NodeMarkersLayer({
   // on a spiderfied marker snaps it back to its anchor, collapsing the fan.
   const positionCacheRef = useRef<Map<string, [number, number]>>(new Map());
   const iconCacheRef = useRef<Map<string, { sig: string; icon: L.DivIcon }>>(new Map());
+  // Below-zoom-gate click wrappers, cached per key (see resolveEventHandlers).
+  const gatedHandlerCacheRef = useRef<Map<string, {
+    src: LeafletEventHandlerFnMap | undefined;
+    isMarkerGated: typeof isMarkerGated;
+    handleGatedClick: typeof handleGatedClick;
+    onOmsClick: typeof onOmsClick;
+    handlers: LeafletEventHandlerFnMap;
+  }>>(new Map());
 
   const stablePosition = (key: string, lat: number, lng: number): [number, number] => {
     const cached = positionCacheRef.current.get(key);
@@ -187,6 +235,7 @@ export function NodeMarkersLayer({
       }
       markerByKey.current.delete(key);
       refHandlers.current.delete(key);
+      gatedHandlerCacheRef.current.delete(key);
       positionCacheRef.current.delete(key);
       iconCacheRef.current.delete(key);
     }
@@ -266,8 +315,32 @@ export function NodeMarkersLayer({
   // because a below-threshold marker isn't registered with OMS, so the OMS
   // 'click' listener above never fires for it; this mirrors that listener
   // exactly (onOmsClick when provided, else `marker.openPopup()`).
+  // The below-threshold wrapper is cached per key and rebuilt only when one of
+  // its inputs changes, so the memoized marker isn't handed a new handler map
+  // (and react-leaflet doesn't off()/on() every handler) on each render.
   const resolveEventHandlers = (d: NodeMarkerDescriptor): LeafletEventHandlerFnMap | undefined => {
     if (isAboveGateThreshold) return d.eventHandlers;
+    const cached = gatedHandlerCacheRef.current.get(d.key);
+    if (
+      cached &&
+      cached.src === d.eventHandlers &&
+      cached.isMarkerGated === isMarkerGated &&
+      cached.handleGatedClick === handleGatedClick &&
+      cached.onOmsClick === onOmsClick
+    ) {
+      return cached.handlers;
+    }
+    const handlers = buildGatedHandlers(d);
+    gatedHandlerCacheRef.current.set(d.key, {
+      src: d.eventHandlers,
+      isMarkerGated,
+      handleGatedClick,
+      onOmsClick,
+      handlers,
+    });
+    return handlers;
+  };
+  const buildGatedHandlers = (d: NodeMarkerDescriptor): LeafletEventHandlerFnMap => {
     return {
       ...d.eventHandlers,
       click: (e: LeafletMouseEvent) => {
@@ -289,9 +362,9 @@ export function NodeMarkersLayer({
   return (
     <>
       {markers.map((d) => (
-        <Marker
+        <NodeMarkerItem
           key={d.key}
-          ref={getMarkerRef(d.key)}
+          markerRef={getMarkerRef(d.key)}
           position={stablePosition(d.key, d.position[0], d.position[1])}
           icon={stableIcon(d.key, d.iconSig, d.buildIcon)}
           opacity={d.opacity}
@@ -299,7 +372,7 @@ export function NodeMarkersLayer({
           eventHandlers={resolveEventHandlers(d)}
         >
           {d.children}
-        </Marker>
+        </NodeMarkerItem>
       ))}
     </>
   );

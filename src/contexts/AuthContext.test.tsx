@@ -156,10 +156,39 @@ describe('AuthProvider — initial load', () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.authStatus?.channelDbPermissions[5]).toEqual({
-      viewOnMap: true,
-      read: true,
+    // Loaded after the auth status, without blocking it.
+    await waitFor(() =>
+      expect(result.current.authStatus?.channelDbPermissions[5]).toEqual({
+        viewOnMap: true,
+        read: true,
+      }),
+    );
+  });
+
+  it('publishes the auth status before channel db permissions arrive', async () => {
+    let resolvePerms: (v: unknown) => void = () => {};
+    mockApi.get.mockImplementation((url: string) => {
+      if (url === '/api/auth/status') return Promise.resolve(mockAuthStatus);
+      if (url.includes('channel-database-permissions')) {
+        return new Promise((resolve) => { resolvePerms = resolve; });
+      }
+      return Promise.resolve({});
     });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    // Resolved while the permissions request is still pending.
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.authStatus?.authenticated).toBe(true);
+    expect(result.current.authStatus?.channelDbPermissions).toEqual({});
+
+    await act(async () => {
+      resolvePerms({ data: [{ channelDatabaseId: 7, canViewOnMap: true, canRead: false }] });
+    });
+    await waitFor(() =>
+      expect(result.current.authStatus?.channelDbPermissions[7]).toEqual({ viewOnMap: true, read: false }),
+    );
+    expect(result.current.authStatus?.user?.username).toBe('admin');
   });
 
   it('does not fail when channel db permissions fetch errors', async () => {
