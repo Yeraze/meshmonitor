@@ -569,10 +569,8 @@ router.get('/messages', async (req: Request, res: Response) => {
           ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id)
           : false);
 
-        // Resolve channel name → channel number AND build node-name map in
-        // parallel. Both are independent reads against this source's DB slice
-        // and used only inside this per-source block, so we can fan them out
-        // instead of running them back-to-back.
+        // Sender display names, filled once this source's page of messages is
+        // known (see the lookup after the message fetch below).
         const nodeMap = new Map<number, { longName?: string; shortName?: string }>();
         // Channel numbers on THIS source to fetch messages from. For a named
         // channel request this is the physical slot AND/OR any virtual channel
@@ -584,9 +582,8 @@ router.get('/messages', async (req: Request, res: Response) => {
         // synthetic virtual channel numbers (CHANNEL_DB_OFFSET + vcId).
         let allowedChannelsOnSource: Set<number> | null = null;
 
-        const [chansResult, nodesResult] = await Promise.allSettled([
+        const [chansResult] = await Promise.allSettled([
           databaseService.channels.getAllChannels(source.id),
-          databaseService.nodes.getAllNodes(source.id),
         ]);
 
         const presetName = sourcePresets.get(source.id) ?? null;
@@ -687,17 +684,6 @@ router.get('/messages', async (req: Request, res: Response) => {
           if (allowedChannelsOnSource.size === 0 && !(canReadMessages && !allChannels)) return;
         }
 
-        if (nodesResult.status === 'fulfilled') {
-          for (const n of nodesResult.value) {
-            nodeMap.set(Number(n.nodeNum), {
-              longName: n.longName ?? undefined,
-              shortName: n.shortName ?? undefined,
-            });
-          }
-        } else {
-          logger.warn(`Failed to load nodes for source ${source.id}:`, nodesResult.reason);
-        }
-
         // Fetch messages. Kept sequential after the channel lookup because the
         // query depends on `channelNumbers`.
         let msgs: Awaited<ReturnType<typeof databaseService.messages.getMessages>>;
@@ -747,6 +733,24 @@ router.get('/messages', async (req: Request, res: Response) => {
               return allowedChannelsOnSource!.has(ch);
             });
           }
+        }
+
+        // Sender names for this page only, not every node on the source: the
+        // whole-source load cost ~250 ms per 10 s poll on a 17k-node install.
+        // A failed lookup leaves names blank; the messages still come through.
+        try {
+          const names = await databaseService.nodes.getNodeNamesByNums(
+            [...new Set(msgs.map((m) => Number(m.fromNodeNum)))],
+            [source.id],
+          );
+          for (const [nodeNum, n] of names) {
+            nodeMap.set(nodeNum, {
+              longName: n.longName ?? undefined,
+              shortName: n.shortName ?? undefined,
+            });
+          }
+        } catch (err) {
+          logger.warn(`Failed to load nodes for source ${source.id}:`, err);
         }
 
         for (const m of msgs) {

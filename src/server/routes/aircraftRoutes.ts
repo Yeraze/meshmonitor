@@ -26,6 +26,7 @@
  */
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
+import type { DbNode } from '../../db/types.js';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
@@ -68,7 +69,17 @@ router.get('/trails', async (req: Request, res: Response) => {
       sinceMs: Date.now() - hours * 3_600_000,
     });
 
-    const posFilter = await buildPositionFilter(req.user, trailSourceIds);
+    // The filter only ever sees flagged pairs (`wanted` is checked first), so
+    // it needs just those nodes' rows, not every node on each source.
+    const nodesBySource = new Map<string, DbNode[]>(
+      await Promise.all(
+        trailSourceIds.map(async (sourceId): Promise<[string, DbNode[]]> => {
+          const nums = pairs.filter((p) => p.sourceId === sourceId).map((p) => p.nodeNum);
+          return [sourceId, [...(await databaseService.nodes.getNodesByNums(nums, sourceId)).values()]];
+        }),
+      ),
+    );
+    const posFilter = await buildPositionFilter(req.user, trailSourceIds, nodesBySource);
     const visible = rows.filter((r) => wanted.has(`${r.sourceId}:${r.nodeNum}`) && posFilter(r));
 
     return ok(res, { trails: buildAircraftTrails(visible) });
