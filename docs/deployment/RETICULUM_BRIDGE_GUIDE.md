@@ -127,6 +127,41 @@ To switch to **tcp_peer mode**, edit the overlay:
    Point the source's bridge URL at `ws://meshmonitor-rns-bridge:8765`, and add
    `meshmonitor-rns-bridge` to `RETICULUM_BRIDGE_ALLOWED_HOSTS` if you set that variable.
 
+## Display name and announces
+
+Each Reticulum source has one LXMF identity. Its **Configuration** page (every mode;
+own mode adds the RNode radio settings below it) has an **LXMF Identity** section:
+
+![LXMF Identity section of the Reticulum Configuration page](/images/features/6011-reticulum-name-announce.png)
+
+- **Destination hash**: the address peers use to message this source. Shown while the
+  source is connected.
+- **Display name**: the name Sideband, NomadNet and other LXMF clients show for this
+  source. Up to 64 characters; leading and trailing spaces are trimmed. Leave it empty to
+  stay anonymous. MeshMonitor stores the name with the source, so it survives restarts,
+  and you can save it while the source is disconnected. On every connect MeshMonitor
+  hands the name to the bridge *before* the on-connect announce, so the first announce
+  already carries it. Saving the name does not announce; press **Announce now** to send it.
+- **Announce now**: sends one announce. Once per minute per source at most, counted from
+  the last announce of any kind (on-connect, manual or periodic). The server enforces the
+  limit; the button shows the seconds left.
+- **Periodic announce**: off by default. Pick an interval from 1 to 24 hours to have
+  MeshMonitor announce on a timer. MeshMonitor stores the time of the last announce, so a
+  restart or a settings save never sends an announce by itself, and the timer counts from
+  the last announce rather than starting over. An announce at connect pushes the next
+  periodic one back by a full interval.
+
+All three need **Configuration: write** on the source (**Configuration: read** to view
+the section). Users without it see the values but cannot change them.
+
+::: warning Airtime
+An LXMF announce is about 170 bytes with a name. It goes out on every interface the
+bridge has, an RNode LoRa interface included, and transport nodes pass it on. RNS caps
+announce traffic at 2% of each interface's bandwidth, but on a slow LoRa link that is
+still shared airtime. Keep the periodic interval long, and leave it off if peers
+already know this source.
+:::
+
 ## Kubernetes (Helm)
 
 The chart gates an optional second container in the MeshMonitor pod behind

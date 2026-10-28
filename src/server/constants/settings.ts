@@ -703,6 +703,10 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // Last flood advert sent from this source (ms). Server-managed floor for
   // automated flood adverts; see PER_SOURCE_KEYS_NOT_POSTABLE.
   'meshcoreLastFloodAdvertAt',
+  // Last LXMF announce from a Reticulum source (ms, #6011). Server-managed: it
+  // drives the Announce now cooldown and the periodic timer; see
+  // PER_SOURCE_KEYS_NOT_POSTABLE.
+  'reticulumLastAnnounceAt',
   // MeshCore auto-responder
   'meshcoreAutoResponderEnabled',
   'meshcoreAutoResponderTriggers',
@@ -986,6 +990,7 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'localNodeNum',           // meshtasticManager.ts:4688,4748
   'transportTrafficCheckpoint', // transportTrafficService.ts checkpointAll/restoreAndRecover (#5101 P3 WP3)
   'meshcoreLastFloodAdvertAt', // meshcoreManager.ts recordFloodAdvert (automated flood-advert floor)
+  'reticulumLastAnnounceAt', // reticulumManager.ts recordAnnounce (#6011; announce cooldown + periodic timer, persisted so a restart or save cannot reset them)
   'autoFavoriteAircraftStrikes', // favoritesService.ts autoFavoriteSweep (#5364/#5365 D19 two-strike rule)
   'aircraftAgeOutLastRunAt',  // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; persisted so a restart is not a run)
   'aircraftPositionRequestStarts',  // aircraftPositionRequestService.ts (#5704; persisted hourly cap, so a restart or save cannot reset it)

@@ -88,6 +88,7 @@ vi.mock('../reticulumConfig.js', () => ({
     configDir: '/data/rns',
   }),
   ensureReticulumManagerStarted: vi.fn().mockResolvedValue(undefined),
+  preserveReticulumManagedConfig: (_stored: unknown, next: Record<string, unknown>) => next,
 }));
 
 const mockDb = databaseService as any;

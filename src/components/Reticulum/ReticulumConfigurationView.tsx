@@ -1,11 +1,18 @@
 /**
- * ReticulumConfigurationView — RNode radio configuration + device info for an
- * `own`-mode Reticulum source (#3960 Phase 3). Only mounted in own mode (the
- * sub-toolbar hides the item otherwise), because editable radio params exist
- * only when the bridge drives the RNode directly. Write controls require
- * `configuration:write`, mirroring MeshCore's config view.
+ * ReticulumConfigurationView — the Reticulum source's Configuration page.
  *
- * Talks to WP4's routes:
+ * Every mode: the LXMF identity section (#6011): destination hash, display
+ * name, "Announce now" and the periodic announce interval
+ * (`ReticulumIdentitySection`).
+ *
+ * Own mode only (#3960 Phase 3): RNode radio configuration + device info,
+ * because editable radio params exist only when the bridge drives the RNode
+ * directly. `showRadio` turns those sections off for attach/tcp_peer.
+ *
+ * Write controls require `configuration:write` on this source, mirroring
+ * MeshCore's config view.
+ *
+ * Talks to:
  *   GET/PUT /api/sources/:id/reticulum/radio-config
  *   GET     /api/sources/:id/reticulum/device-info
  * Both use the ok() envelope, so responses are read via `.data`.
@@ -19,6 +26,7 @@ import styles from './ReticulumConfigurationView.module.css';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ReticulumIdentitySection } from './ReticulumIdentitySection';
 
 interface RadioConfig {
   frequency: number | null;
@@ -42,6 +50,8 @@ interface DeviceInfo {
 
 interface ReticulumConfigurationViewProps {
   sourceId: string;
+  /** Show the RNode radio + device sections. Only own mode has them; defaults to true. */
+  showRadio?: boolean;
 }
 
 const EMPTY: RadioConfig = {
@@ -56,14 +66,14 @@ function unwrap<T>(res: unknown): T | null {
   return (res as T) ?? null;
 }
 
-export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProps> = ({ sourceId }) => {
+export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProps> = ({ sourceId, showRadio = true }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
-  const canWrite = hasPermission('configuration', 'write');
+  const canWrite = hasPermission('configuration', 'write', { sourceId });
 
   const [config, setConfig] = useState<RadioConfig>(EMPTY);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(showRadio);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -72,6 +82,7 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
   const base = `/api/sources/${encodeURIComponent(sourceId)}/reticulum`;
 
   const load = useCallback(async () => {
+    if (!showRadio) return;
     setLoading(true);
     setError(null);
     try {
@@ -88,7 +99,7 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
     } finally {
       setLoading(false);
     }
-  }, [base, t]);
+  }, [base, t, showRadio]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -115,10 +126,6 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
     }
   };
 
-  if (loading) {
-    return <div className={styles.view}><div className={styles.muted}>{t('common.loading', 'Loading…')}</div></div>;
-  }
-
   const disabled = !canWrite || saving;
 
   return (
@@ -127,9 +134,14 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
       {!canWrite && (
         <div className={styles.banner} role="status">
           <UiIcon name="info" size={14} />
-          <span>{t('reticulum.config.readOnly', 'You have read-only access — radio configuration cannot be changed.')}</span>
+          <span>{t('reticulum.config.readOnlyAll', 'You have read-only access — this configuration cannot be changed.')}</span>
         </div>
       )}
+
+      <ReticulumIdentitySection sourceId={sourceId} canWrite={canWrite} />
+
+      {showRadio && loading && <div className={styles.muted}>{t('common.loading', 'Loading…')}</div>}
+      {showRadio && !loading && (<>
       {error && <div className={styles.error} role="alert">{error}</div>}
       {status && <div className={styles.success} role="status">{status}</div>}
 
@@ -197,6 +209,7 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
           <div className={styles.muted}>{t('reticulum.config.noDevice', 'Device info unavailable.')}</div>
         )}
       </section>
+      </>)}
     </div>
     </NumberInputScope>
   );
