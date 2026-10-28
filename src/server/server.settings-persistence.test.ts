@@ -151,6 +151,9 @@ function validTestValue(key: string, suffix = ''): string {
     automationAirtimeCutoffThreshold: '30',
     automationAirtimeCutoffSource: 'neighbors',
     automationAirtimeCutoffNeighborMaxHops: '1',
+    automationAirtimeCutoffNeighborMode: 'auto',
+    automationAirtimeCutoffNeighborSampleCount: '4',
+    automationAirtimeCutoffNeighborNodes: '[1,2,3]',
     autoResponderTriggers: JSON.stringify([
       { id: '1', trigger: 'test', responseType: 'text', response: 'hi' },
     ]),

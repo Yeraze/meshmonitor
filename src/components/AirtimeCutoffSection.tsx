@@ -8,19 +8,43 @@ import { UiIcon } from './icons';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
+import { getRoleName } from '../utils/nodeHelpers';
 
 interface AirtimeCutoffSectionProps {
   baseUrl: string;
 }
 
 type AirtimeSource = 'local' | 'neighbors';
+type NeighborMode = 'auto' | 'manual';
+type SkipReason = 'not_found' | 'mqtt' | 'not_infrastructure' | 'stale';
+
+interface SkippedNode {
+  nodeNum: number;
+  nodeId: string | null;
+  longName: string | null;
+  shortName: string | null;
+  reason: SkipReason;
+}
+
+/** An infrastructure node the manual picker may offer (never MQTT-heard). */
+interface AirtimeCandidate {
+  nodeNum: number;
+  nodeId: string | null;
+  longName: string | null;
+  shortName: string | null;
+  role: number;
+  hopsAway: number | null;
+  rssi: number | null;
+  channelUtilization: number | null;
+  channelUtilizationAt: number | null;
+}
 
 interface AirtimeContributor {
   nodeNum: number | null;
   nodeId: string | null;
   longName: string | null;
   shortName: string | null;
-  rssi: number;
+  rssi: number | null;
   channelUtilization: number;
 }
 
@@ -32,6 +56,13 @@ interface AirtimeStatus {
   sampleCount: number;
   contributors?: AirtimeContributor[];
   gated: boolean;
+  // Issue #6007 (neighbours mode only)
+  neighborMode?: NeighborMode;
+  targetCount?: number;
+  neighborAverage?: number | null;
+  localChannelUtilization?: number | null;
+  localUsed?: 'no_neighbors' | 'higher_than_neighbors' | null;
+  skipped?: SkippedNode[];
 }
 
 /** Trim a percentage to at most 2 decimal places (drops trailing zeros). */
@@ -42,6 +73,31 @@ const DEFAULT_SOURCE: AirtimeSource = 'local';
 const DEFAULT_MAX_HOPS = 0;
 const MAX_HOPS_CAP = 7;
 const STATUS_POLL_MS = 15000;
+const DEFAULT_MODE: NeighborMode = 'auto';
+// Issue #6007: average 3-5 nodes; the server clamps to the same range.
+const MIN_SAMPLES = 3;
+const MAX_SAMPLES = 5;
+const DEFAULT_SAMPLES = 3;
+
+const clampSamples = (n: number): number =>
+  Number.isFinite(n) ? Math.max(MIN_SAMPLES, Math.min(MAX_SAMPLES, Math.floor(n))) : DEFAULT_SAMPLES;
+
+/** Parse the stored manual pick list (JSON array of node numbers). */
+const parseNodeList = (raw: unknown): number[] => {
+  if (typeof raw !== 'string' || raw.trim() === '') return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map(Number).filter((n, i, all) => Number.isInteger(n) && n > 0 && all.indexOf(n) === i);
+  } catch {
+    return [];
+  }
+};
+
+const sameList = (a: number[], b: number[]): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
+
+const nodeLabel = (n: { longName: string | null; shortName: string | null; nodeId: string | null; nodeNum: number | null }): string =>
+  n.longName || n.shortName || n.nodeId || (n.nodeNum != null ? `!${n.nodeNum.toString(16).padStart(8, '0')}` : '?');
 
 /**
  * "Cutoff Airtime Utilization Threshold" — pauses all transmitting automations
@@ -61,6 +117,13 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
   const [initialSource, setInitialSource] = useState<AirtimeSource | null>(null);
   const [localMaxHops, setLocalMaxHops] = useState(DEFAULT_MAX_HOPS);
   const [initialMaxHops, setInitialMaxHops] = useState<number | null>(null);
+  const [localMode, setLocalMode] = useState<NeighborMode>(DEFAULT_MODE);
+  const [initialMode, setInitialMode] = useState<NeighborMode | null>(null);
+  const [localSamples, setLocalSamples] = useState(DEFAULT_SAMPLES);
+  const [initialSamples, setInitialSamples] = useState<number | null>(null);
+  const [localNodes, setLocalNodes] = useState<number[]>([]);
+  const [initialNodes, setInitialNodes] = useState<number[] | null>(null);
+  const [candidates, setCandidates] = useState<AirtimeCandidate[] | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<AirtimeStatus | null>(null);
@@ -81,6 +144,15 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
         setInitialSource(source);
         setLocalMaxHops(maxHops);
         setInitialMaxHops(maxHops);
+        const mode: NeighborMode = settings.automationAirtimeCutoffNeighborMode === 'manual' ? 'manual' : DEFAULT_MODE;
+        const samples = clampSamples(parseInt(settings.automationAirtimeCutoffNeighborSampleCount ?? String(DEFAULT_SAMPLES), 10));
+        const nodes = parseNodeList(settings.automationAirtimeCutoffNeighborNodes);
+        setLocalMode(mode);
+        setInitialMode(mode);
+        setLocalSamples(samples);
+        setInitialSamples(samples);
+        setLocalNodes(nodes);
+        setInitialNodes(nodes);
       }
     } catch (error) {
       console.error('Failed to fetch airtime cutoff settings:', error);
@@ -98,10 +170,28 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
     }
   }, [baseUrl, csrfFetch, sourceQuery]);
 
+  const fetchCandidates = useCallback(async () => {
+    try {
+      const res = await csrfFetch(`${baseUrl}/api/automation/airtime-candidates${sourceQuery}`);
+      if (res.ok) {
+        const body = await res.json();
+        setCandidates(Array.isArray(body?.data?.candidates) ? body.data.candidates : []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch airtime cutoff candidates:', error);
+    }
+  }, [baseUrl, csrfFetch, sourceQuery]);
+
   useEffect(() => {
     void fetchSettings();
     void fetchStatus();
   }, [fetchSettings, fetchStatus]);
+
+  // The manual picker needs the eligible nodes; load them only when shown.
+  const pickerShown = localSource === 'neighbors' && localMode === 'manual';
+  useEffect(() => {
+    if (pickerShown) void fetchCandidates();
+  }, [pickerShown, fetchCandidates]);
 
   // Poll the live status so the banner reflects current utilization.
   useEffect(() => {
@@ -110,16 +200,36 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
   }, [fetchStatus]);
 
   useEffect(() => {
-    if (initialThreshold === null || initialSource === null || initialMaxHops === null) return;
+    if (
+      initialThreshold === null || initialSource === null || initialMaxHops === null ||
+      initialMode === null || initialSamples === null || initialNodes === null
+    ) return;
     setHasChanges(
       localThreshold !== initialThreshold ||
       localSource !== initialSource ||
-      localMaxHops !== initialMaxHops,
+      localMaxHops !== initialMaxHops ||
+      localMode !== initialMode ||
+      localSamples !== initialSamples ||
+      !sameList(localNodes, initialNodes),
     );
-  }, [localThreshold, initialThreshold, localSource, initialSource, localMaxHops, initialMaxHops]);
+  }, [
+    localThreshold, initialThreshold, localSource, initialSource, localMaxHops, initialMaxHops,
+    localMode, initialMode, localSamples, initialSamples, localNodes, initialNodes,
+  ]);
+
+  const manualCountInvalid = localSource === 'neighbors' && localMode === 'manual' &&
+    (localNodes.length < MIN_SAMPLES || localNodes.length > MAX_SAMPLES);
 
   const handleSave = useCallback(async () => {
+    if (manualCountInvalid) {
+      showToast(
+        t('automation.airtime_cutoff.manual_count_error', 'Pick {{min}} to {{max}} infrastructure nodes for manual mode', { min: MIN_SAMPLES, max: MAX_SAMPLES }),
+        'error',
+      );
+      return;
+    }
     setIsSaving(true);
+    const samples = clampSamples(localSamples);
     try {
       const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
@@ -128,12 +238,19 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
           automationAirtimeCutoffThreshold: String(localThreshold),
           automationAirtimeCutoffSource: localSource,
           automationAirtimeCutoffNeighborMaxHops: String(localMaxHops),
+          automationAirtimeCutoffNeighborMode: localMode,
+          automationAirtimeCutoffNeighborSampleCount: String(samples),
+          automationAirtimeCutoffNeighborNodes: JSON.stringify(localNodes),
         }),
       });
       if (response.ok) {
         setInitialThreshold(localThreshold);
         setInitialSource(localSource);
         setInitialMaxHops(localMaxHops);
+        setInitialMode(localMode);
+        setLocalSamples(samples);
+        setInitialSamples(samples);
+        setInitialNodes(localNodes);
         setHasChanges(false);
         showToast(t('automation.airtime_cutoff.saved', 'Airtime cutoff settings saved'), 'success');
         void fetchStatus();
@@ -145,13 +262,27 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
     } finally {
       setIsSaving(false);
     }
-  }, [baseUrl, csrfFetch, sourceQuery, localThreshold, localSource, localMaxHops, showToast, t, fetchStatus]);
+  }, [
+    baseUrl, csrfFetch, sourceQuery, localThreshold, localSource, localMaxHops,
+    localMode, localSamples, localNodes, manualCountInvalid, showToast, t, fetchStatus,
+  ]);
 
   const resetChanges = useCallback(() => {
     if (initialThreshold !== null) setLocalThreshold(initialThreshold);
     if (initialSource !== null) setLocalSource(initialSource);
     if (initialMaxHops !== null) setLocalMaxHops(initialMaxHops);
-  }, [initialThreshold, initialSource, initialMaxHops]);
+    if (initialMode !== null) setLocalMode(initialMode);
+    if (initialSamples !== null) setLocalSamples(initialSamples);
+    if (initialNodes !== null) setLocalNodes(initialNodes);
+  }, [initialThreshold, initialSource, initialMaxHops, initialMode, initialSamples, initialNodes]);
+
+  const togglePick = useCallback((nodeNum: number) => {
+    setLocalNodes((prev) => {
+      if (prev.includes(nodeNum)) return prev.filter((n) => n !== nodeNum);
+      if (prev.length >= MAX_SAMPLES) return prev;
+      return [...prev, nodeNum];
+    });
+  }, []);
 
   const numberScope = useNumberInputScope();
   useSaveBar({
@@ -171,9 +302,62 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
   const statusSource: AirtimeSource = status?.source ?? localSource;
   const sampleCount = status?.sampleCount ?? 0;
   const contributors = status?.contributors ?? [];
-  const sourceLabel = statusSource === 'neighbors'
+  const localUsed = statusSource === 'neighbors' ? (status?.localUsed ?? null) : null;
+  const skipped = statusSource === 'neighbors' ? (status?.skipped ?? []) : [];
+  const targetCount = status?.targetCount ?? sampleCount;
+  const sourceLabel = statusSource === 'neighbors' && !localUsed
     ? t('automation.airtime_cutoff.source_neighbors_label', 'neighbour-averaged')
     : t('automation.airtime_cutoff.source_local_label', 'local');
+
+  const skipReasonLabel = (reason: SkipReason): string => {
+    switch (reason) {
+      case 'mqtt': return t('automation.airtime_cutoff.skip_mqtt', 'heard over MQTT');
+      case 'not_infrastructure': return t('automation.airtime_cutoff.skip_not_infrastructure', 'no longer an infrastructure role');
+      case 'not_found': return t('automation.airtime_cutoff.skip_not_found', 'not heard in the last day');
+      default: return t('automation.airtime_cutoff.skip_stale', 'no fresh Channel Utilization');
+    }
+  };
+
+  // Issue #6007: say when the local ChUtil filled the gap, and why.
+  let fillLine: string | null = null;
+  if (!disabled && statusSource === 'neighbors' && status) {
+    const local = status.localChannelUtilization;
+    const avg = status.neighborAverage;
+    if (localUsed === 'no_neighbors' && local != null) {
+      fillLine = t(
+        'automation.airtime_cutoff.fill_no_neighbors',
+        '0 of {{target}} infrastructure nodes qualify; using local {{local}}%.',
+        { target: targetCount, local: formatPercent(local) },
+      );
+    } else if (localUsed === 'higher_than_neighbors' && local != null && avg != null) {
+      fillLine = t(
+        'automation.airtime_cutoff.fill_local_higher',
+        '{{count}} of {{target}} infrastructure nodes qualify; using local {{local}}% (higher than their average {{avg}}%).',
+        { count: sampleCount, target: targetCount, local: formatPercent(local), avg: formatPercent(avg) },
+      );
+    } else if (sampleCount > 0 && sampleCount < targetCount && avg != null) {
+      fillLine = local != null
+        ? t(
+            'automation.airtime_cutoff.fill_local_lower',
+            '{{count}} of {{target}} infrastructure nodes qualify; local {{local}}% is lower, so their average {{avg}}% is used.',
+            { count: sampleCount, target: targetCount, local: formatPercent(local), avg: formatPercent(avg) },
+          )
+        : t(
+            'automation.airtime_cutoff.fill_local_unknown',
+            '{{count}} of {{target}} infrastructure nodes qualify; local Channel Utilization is not known yet.',
+            { count: sampleCount, target: targetCount },
+          );
+    }
+  }
+
+  const formatAge = (at: number | null): string => {
+    if (at == null) return t('automation.airtime_cutoff.age_unknown', 'no reading');
+    const mins = Math.max(0, Math.round((Date.now() - at) / 60000));
+    if (mins < 60) return t('automation.airtime_cutoff.age_minutes', '{{n}} min ago', { n: mins });
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return t('automation.airtime_cutoff.age_hours', '{{n}} h ago', { n: hours });
+    return t('automation.airtime_cutoff.age_days', '{{n}} d ago', { n: Math.round(hours / 24) });
+  };
 
   // Banner colour: red when paused, green when active, neutral when disabled/unknown.
   // The neutral sibling of the error/success roles below. Uses the text role
@@ -238,10 +422,20 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
               : gated
                 ? t('automation.airtime_cutoff.status_paused', 'Automations paused — {{source}} Channel Utilization {{util}}% exceeds {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })
                 : t('automation.airtime_cutoff.status_active', 'Automations active — {{source}} Channel Utilization {{util}}% is under {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })}
-          {!disabled && util != null && statusSource === 'neighbors' && (
+          {!disabled && util != null && statusSource === 'neighbors' && !localUsed && (
             <span style={{ fontWeight: 400, opacity: 0.85 }}>
               {' '}{t('automation.airtime_cutoff.status_neighbors_suffix', '(averaged from {{count}} infrastructure node(s))', { count: sampleCount })}
             </span>
+          )}
+          {fillLine && (
+            <div data-testid="airtime-fill-line" style={{ fontWeight: 400, marginTop: '0.25rem' }}>{fillLine}</div>
+          )}
+          {!disabled && skipped.length > 0 && (
+            <div data-testid="airtime-skipped-line" style={{ fontWeight: 400, marginTop: '0.25rem' }}>
+              {t('automation.airtime_cutoff.skipped_line', 'Skipped: {{list}}', {
+                list: skipped.map((n) => `${nodeLabel(n)} (${skipReasonLabel(n.reason)})`).join(', '),
+              })}
+            </div>
           )}
         </div>
 
@@ -273,7 +467,9 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                       {name}
                     </span>
                     <span style={{ color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}>
-                      {t('automation.airtime_cutoff.contributor_detail', '{{util}}% · {{rssi}} dBm', { util: formatPercent(node.channelUtilization), rssi: node.rssi })}
+                      {node.rssi != null
+                        ? t('automation.airtime_cutoff.contributor_detail', '{{util}}% · {{rssi}} dBm', { util: formatPercent(node.channelUtilization), rssi: node.rssi })
+                        : t('automation.airtime_cutoff.contributor_detail_no_rssi', '{{util}}%', { util: formatPercent(node.channelUtilization) })}
                     </span>
                   </li>
                 );
@@ -288,7 +484,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
             {t('automation.airtime_cutoff.source_label', 'Measure Channel Utilization from')}
             <span className="setting-description">
               {t('automation.airtime_cutoff.source_hint',
-                'Local node uses the connected node\'s own Channel Utilization. Nearby infrastructure averages the Channel Utilization of the 3 strongest-RSSI directly-heard router/repeater nodes — useful when your node is well-placed and under-reports the wider mesh.')}
+                'Local node uses the connected node\'s own Channel Utilization. Nearby infrastructure averages the Channel Utilization of nearby router/repeater nodes (the strongest RSSI, or the ones you pick) — useful when your node is well-placed and under-reports the wider mesh.')}
             </span>
           </label>
           <select
@@ -298,12 +494,144 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
             className="setting-input"
           >
             <option value="local">{t('automation.airtime_cutoff.source_local_option', 'Local node (own Channel Utilization)')}</option>
-            <option value="neighbors">{t('automation.airtime_cutoff.source_neighbors_option', 'Nearby infrastructure (avg of 3 strongest routers)')}</option>
+            <option value="neighbors">{t('automation.airtime_cutoff.source_neighbors_option', 'Nearby infrastructure (average of routers)')}</option>
           </select>
         </div>
 
-        {/* Neighbour candidate max-hops (only visible when the source is 'neighbors') */}
+        {/* Neighbour selection mode (issue #6007) */}
         {localSource === 'neighbors' && (
+          <div className="setting-item">
+            <label htmlFor="airtimeCutoffNeighborMode">
+              {t('automation.airtime_cutoff.mode_label', 'Choose infrastructure nodes')}
+              <span className="setting-description">
+                {t('automation.airtime_cutoff.mode_hint',
+                  'Auto averages the strongest-RSSI routers. Manual averages only the nodes you pick. Nodes heard over MQTT never count. When fewer nodes qualify than wanted, the higher of the local Channel Utilization and their average is used.')}
+              </span>
+            </label>
+            <select
+              id="airtimeCutoffNeighborMode"
+              value={localMode}
+              onChange={(e) => setLocalMode(e.target.value === 'manual' ? 'manual' : 'auto')}
+              className="setting-input"
+            >
+              <option value="auto">{t('automation.airtime_cutoff.mode_auto_option', 'Auto (strongest RSSI)')}</option>
+              <option value="manual">{t('automation.airtime_cutoff.mode_manual_option', 'Manual (selected nodes)')}</option>
+            </select>
+          </div>
+        )}
+
+        {/* Auto mode: how many strongest nodes to average (3-5) */}
+        {localSource === 'neighbors' && localMode === 'auto' && (
+          <div className="setting-item">
+            <label htmlFor="airtimeCutoffNeighborSampleCount">
+              {t('automation.airtime_cutoff.sample_count_label', 'Number of infrastructure nodes to average')}
+              <span className="setting-description">
+                {t('automation.airtime_cutoff.sample_count_hint', 'Between {{min}} and {{max}}; default {{def}}.', { min: MIN_SAMPLES, max: MAX_SAMPLES, def: DEFAULT_SAMPLES })}
+              </span>
+            </label>
+            <NumberInput
+              id="airtimeCutoffNeighborSampleCount"
+              min={MIN_SAMPLES}
+              max={MAX_SAMPLES}
+              value={localSamples}
+              integer
+              onChange={setLocalSamples}
+              className="setting-input"
+            />
+          </div>
+        )}
+
+        {/* Manual mode: pick 3-5 eligible infrastructure nodes */}
+        {pickerShown && (
+          <div className="setting-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+            <label>
+              {t('automation.airtime_cutoff.picker_label', 'Infrastructure nodes to average')}
+              <span className="setting-description">
+                {t('automation.airtime_cutoff.picker_hint',
+                  'Pick {{min}} to {{max}} Router, Router Late or Client Base nodes. Nodes heard over MQTT are not listed. A pick with no Channel Utilization reading in the last 3 hours is skipped.',
+                  { min: MIN_SAMPLES, max: MAX_SAMPLES })}
+              </span>
+            </label>
+            <div
+              data-testid="airtime-picker-count"
+              style={{ fontSize: '12px', margin: '0.35rem 0', color: manualCountInvalid ? 'var(--color-error)' : 'var(--color-text-muted)' }}
+            >
+              {t('automation.airtime_cutoff.picker_count', '{{count}} selected (pick {{min}}-{{max}})', { count: localNodes.length, min: MIN_SAMPLES, max: MAX_SAMPLES })}
+            </div>
+            {candidates == null ? (
+              <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                {t('automation.airtime_cutoff.picker_loading', 'Loading infrastructure nodes…')}
+              </div>
+            ) : candidates.length === 0 && localNodes.length === 0 ? (
+              <div style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                {t('automation.airtime_cutoff.picker_empty', 'No eligible infrastructure nodes heard in the last day.')}
+              </div>
+            ) : (
+              <ul data-testid="airtime-picker" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                {candidates.map((c) => {
+                  const checked = localNodes.includes(c.nodeNum);
+                  const full = !checked && localNodes.length >= MAX_SAMPLES;
+                  const inputId = `airtime-pick-${c.nodeNum}`;
+                  return (
+                    <li key={c.nodeNum}>
+                      <label
+                        htmlFor={inputId}
+                        style={{
+                          display: 'flex', flexDirection: 'row', justifyContent: 'flex-start', textAlign: 'left', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.6rem', margin: 0, fontWeight: 400,
+                          background: 'var(--color-surface)', border: '1px solid var(--color-surface-active)',
+                          borderRadius: '6px', fontSize: '13px', cursor: full ? 'not-allowed' : 'pointer',
+                          opacity: full ? 0.6 : 1,
+                        }}
+                      >
+                        <input
+                          id={inputId}
+                          style={{ width: 'auto', margin: 0, flex: '0 0 auto' }}
+                          type="checkbox"
+                          checked={checked}
+                          disabled={full}
+                          onChange={() => togglePick(c.nodeNum)}
+                        />
+                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--color-text)', fontWeight: 500 }}>
+                          {nodeLabel(c)}
+                        </span>
+                        <span style={{ color: 'var(--color-text-subtle)', whiteSpace: 'nowrap' }}>
+                          {t('automation.airtime_cutoff.picker_detail', '{{role}} · {{hops}} · {{util}} ({{age}})', {
+                            role: getRoleName(c.role) ?? String(c.role),
+                            hops: c.hopsAway == null
+                              ? t('automation.airtime_cutoff.hops_unknown', '? hops')
+                              : t('automation.airtime_cutoff.hops_count', '{{n}} hop(s)', { n: c.hopsAway }),
+                            util: c.channelUtilization == null ? '—' : `${formatPercent(c.channelUtilization)}%`,
+                            age: formatAge(c.channelUtilizationAt),
+                          })}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+                {/* Saved picks that are no longer eligible (e.g. now MQTT-only): shown so they can be removed */}
+                {localNodes.filter((n) => !candidates.some((c) => c.nodeNum === n)).map((nodeNum) => (
+                  <li key={`gone-${nodeNum}`}>
+                    <label
+                      htmlFor={`airtime-pick-${nodeNum}`}
+                      style={{
+                        display: 'flex', flexDirection: 'row', justifyContent: 'flex-start', textAlign: 'left', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.6rem', margin: 0, fontWeight: 400,
+                        border: '1px dashed var(--color-surface-active)', borderRadius: '6px', fontSize: '13px',
+                        color: 'var(--color-text-muted)',
+                      }}
+                    >
+                      <input id={`airtime-pick-${nodeNum}`} style={{ width: 'auto', margin: 0, flex: '0 0 auto' }} type="checkbox" checked onChange={() => togglePick(nodeNum)} />
+                      <span style={{ flex: 1 }}>{`!${nodeNum.toString(16).padStart(8, '0')}`}</span>
+                      <span>{t('automation.airtime_cutoff.picker_not_eligible', 'not eligible now (skipped)')}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* Neighbour candidate max-hops (auto mode only; manual picks name their nodes) */}
+        {localSource === 'neighbors' && localMode === 'auto' && (
           <div className="setting-item">
             <label htmlFor="airtimeCutoffNeighborMaxHops">
               {t('automation.airtime_cutoff.max_hops_label', 'Maximum hops for neighbour candidates')}

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
-import { fail } from '../utils/apiResponse.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { listPermittedSourceIds } from '../utils/sourceScopedAccess.js';
@@ -82,6 +82,17 @@ router.get('/automation/airtime-status', requireDeviceSourcePermission('automati
   } catch (error) {
     logger.error('Error fetching airtime cutoff status:', error);
     fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch airtime cutoff status');
+  }
+});
+
+// Infrastructure nodes the manual airtime-cutoff picker may offer (#6007):
+// same source and permission rules as the status route above. Read-only.
+router.get('/automation/airtime-candidates', requireDeviceSourcePermission('automation', 'read', 'query', 'airtime candidates'), async (req: Request, res: Response) => {
+  try {
+    ok(res, { candidates: await getDeviceSourceTarget(req).manager.getAirtimeCutoffCandidates() });
+  } catch (error) {
+    logger.error('Error fetching airtime cutoff candidates:', error);
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch airtime cutoff candidates');
   }
 });
 

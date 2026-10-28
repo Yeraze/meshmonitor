@@ -354,9 +354,21 @@ Built-in guards keep it polite to the mesh: per-tick **jitter**, a **schedule wi
 The airtime gate reads Channel Utilization from one of two sources, set on the Automation page:
 
 - **Local node** (default): the connected node's own self-reported ChUtil.
-- **Nearby infrastructure**: the average ChUtil of the strongest-RSSI router or repeater neighbours the local node has heard. Useful when the local node is well placed and its own reading under-represents the wider mesh.
+- **Nearby infrastructure**: the average ChUtil of router or repeater neighbours the local node has heard, either the strongest-RSSI ones or the ones you pick. Useful when the local node is well placed and its own reading under-represents the wider mesh.
 
-**Maximum hops for neighbour candidates** (`0`-`7`, default `0`): only reached when the source is Nearby infrastructure. `0` is strict, only directly heard routers count. Raise to `1` if a `CLIENT_BASE` (or similar) node relays routers into your local node, so those routers arrive as one hop away. If the "waiting for neighbours" banner persists after several minutes on a setup you expect to work, try `1` first. See [issue #4801](https://github.com/Yeraze/meshmonitor/issues/4801) for the details.
+**Choose infrastructure nodes** ([issue #6007](https://github.com/Yeraze/meshmonitor/issues/6007)), shown when the source is Nearby infrastructure:
+
+- **Auto (strongest RSSI)** (default): averages the strongest-RSSI routers within the maximum hops. **Number of infrastructure nodes to average** sets how many (`3`-`5`, default `3`).
+- **Manual (selected nodes)**: averages only the nodes you pick. The picker lists Router, Router Late and Client Base nodes (plus the deprecated Router Client and Repeater roles) heard in the last day, with role, hops, last ChUtil and how old that reading is. Pick `3` to `5`. A pick with no ChUtil reading in the last **3 hours** is skipped, and the status line names it. Use this when the strongest routers are not the ones that share your channel, for example a far router relayed by a strong local node.
+
+Rules that apply in both modes:
+
+- **Nodes heard over MQTT never count.** Their ChUtil describes a different RF area. The picker does not list them, and a saved pick that later becomes MQTT-only is skipped and named in the status line.
+- **The local reading fills the gap.** When fewer nodes qualify than wanted (the sample count in Auto, the pick count in Manual), the gate uses the higher of the local node's ChUtil and their average. With none qualifying it uses the local ChUtil. The status line says so, for example "2 of 3 infrastructure nodes qualify; using local 31% (higher than their average 18%)". If the local ChUtil is not known yet either, the gate stays open as before.
+
+![Airtime cutoff manual infrastructure picker](/images/features/6007-airtime-manual-infra.png)
+
+**Maximum hops for neighbour candidates** (`0`-`7`, default `0`): Auto mode only; Manual mode ignores it. `0` is strict, only directly heard routers count. Raise to `1` if a `CLIENT_BASE` (or similar) node relays routers into your local node, so those routers arrive as one hop away. If the "waiting for neighbours" banner persists after several minutes on a setup you expect to work, try `1` first. See [issue #4801](https://github.com/Yeraze/meshmonitor/issues/4801) for the details.
 
 ### Side Effects
 
