@@ -470,6 +470,10 @@ export const VALID_SETTINGS_KEYS = [
   // write (ADMIN_ONLY_SETTINGS_KEYS below). Not secret: every map viewer reads
   // it to decide whether to show the toggle.
   'ductingOverlayEnabled',
+  // Default Meshtastic source (#5245). Global, admin-only write
+  // (ADMIN_ONLY_SETTINGS_KEYS), hidden from non-admins (SECRET_SETTINGS_KEYS).
+  // Empty = Automatic (first TCP source started). Applied live to the registry.
+  'defaultMeshtasticSourceId',
   // ADS-B flight matching for likely aircraft (#5374). Global (not per-source):
   // it configures one outbound service, like elevation. `adsb_api_token` is
   // server-only via SECRET_SETTINGS_KEY_PATTERN (`_token` suffix).
@@ -906,6 +910,7 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)
   'elevationSourceUrl',                     // :305, also SECRET_SETTINGS_KEYS
   'ductingOverlayEnabled',                  // global outbound service (#5734), read via getSetting
+  'defaultMeshtasticSourceId',              // one install-wide default source (#5245), read via getSetting
   'adsbMatchEnabled',                       // global outbound service (#5374), read via getSetting
   'adsbFeed',                               // "
   'adsb_api_token',                         // ", secret via the _token pattern
@@ -1043,6 +1048,9 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
   'forwardingRules',
   // Forwarding master switch (#5537) — same reasoning as the rules.
   'forwardingEnabled',
+  // Default Meshtastic source (#5245). Not a secret, but it names a source a
+  // non-admin viewer may not be able to read, and only admins can change it.
+  'defaultMeshtasticSourceId',
 ]);
 
 /**
@@ -1055,6 +1063,8 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
  */
 export const ADMIN_ONLY_SETTINGS_KEYS = new Set<string>([
   'ductingOverlayEnabled',
+  // #5245: picks the radio every source-less send goes out on.
+  'defaultMeshtasticSourceId',
 ]);
 
 /**

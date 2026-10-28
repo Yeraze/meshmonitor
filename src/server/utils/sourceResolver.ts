@@ -13,6 +13,7 @@
 import type { Source } from '../../db/repositories/sources.js';
 import type { ResourceType, PermissionAction } from '../../types/permission.js';
 import databaseService from '../../services/database.js';
+import { preferConfiguredDefault, readConfiguredDefaultMeshtasticSourceId } from './defaultMeshtasticSource.js';
 
 export async function resolveDefaultSourceForUser(
   userId: number,
@@ -21,9 +22,15 @@ export async function resolveDefaultSourceForUser(
   action: PermissionAction
 ): Promise<Source | null> {
   const allSources = await databaseService.sources.getAllSources();
-  const sorted = [...allSources]
-    .filter((s) => s.enabled)
-    .sort((a, b) => a.createdAt - b.createdAt);
+  // #5245: the admin's default Meshtastic source goes first when it is
+  // enabled; the caller still needs the permission on it, else the walk
+  // below moves on to the oldest source they can use, as before.
+  const sorted = preferConfiguredDefault(
+    [...allSources]
+      .filter((s) => s.enabled)
+      .sort((a, b) => a.createdAt - b.createdAt),
+    await readConfiguredDefaultMeshtasticSourceId(databaseService),
+  );
   if (sorted.length === 0) return null;
 
   if (isAdmin) {

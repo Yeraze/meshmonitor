@@ -155,6 +155,19 @@ MeshMonitor logs a warning when:
 
 See the [FAQ](/faq#my-meshtastic-tcp-source-keeps-connecting-and-disconnecting) for how to find the other client.
 
+## Default Meshtastic source
+
+Some requests name no source: an API call to `POST /api/messages/send` without a `sourceId`, the v1 `default` source alias, and device pages opened without a source. They go to one Meshtastic TCP source, the **default**.
+
+By default this is **Automatic**: the first Meshtastic TCP source started at boot (sidebar order). To pick one yourself, an admin opens **Global Settings → Default Meshtastic source** and chooses a source. The change applies at once, without a restart, and survives restarts.
+
+- If the chosen source is disabled, not connected at boot, or set to not auto-connect, Automatic applies until it is running again. Then it takes over again on its own.
+- Deleting the chosen source resets the setting to Automatic.
+- Anything that names a source (a source page, an automation, an API call with `sourceId`) keeps using that source.
+- The section shows which source a source-less request uses right now.
+
+![Default Meshtastic source setting](/images/features/5245-default-meshtastic-source.png)
+
 ## Per-Source Permissions
 
 MeshMonitor's role-based access control treats sources as first-class resources. Admins can:
@@ -217,7 +230,7 @@ GET /api/v1/sources/{sourceId}/packets
 GET /api/v1/sources/{sourceId}/status
 ```
 
-Use `"default"` as `{sourceId}` to target the primary source. All v1 requests require `Authorization: Bearer mm_v1_...`. See the [API Reference](/development/api-reference) for complete documentation.
+Use `"default"` as `{sourceId}` to target the [default Meshtastic source](#default-meshtastic-source) when one is set and your token can read it, else the oldest enabled source your token can read. All v1 requests require `Authorization: Bearer mm_v1_...`. See the [API Reference](/development/api-reference) for complete documentation.
 
 ## Related
 

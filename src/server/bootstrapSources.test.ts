@@ -1126,3 +1126,152 @@ describe('identity/staleness pins (§2.5 documentation)', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// #5245 — configurable default Meshtastic source
+// ---------------------------------------------------------------------------
+describe('bootstrapSources — default Meshtastic source setting (#5245)', () => {
+  let registry: SourceManagerRegistry;
+  let meshFactory: ReturnType<typeof makeMeshMockFactory>;
+
+  beforeEach(() => {
+    registry = new SourceManagerRegistry();
+    meshFactory = makeMeshMockFactory();
+    vi.clearAllMocks();
+  });
+
+  function dbWithDefault(rows: SourceRow[], value: string | null) {
+    const db = makeDbStub(rows);
+    (db.settings.getSetting as any).mockImplementation(async (key: string) =>
+      key === 'defaultMeshtasticSourceId' ? value : null,
+    );
+    return db;
+  }
+
+  async function boot(db: BootstrapDb) {
+    await bootstrapSources(makeDeps({ db, registry, makeMeshtastic: meshFactory.factory }));
+  }
+
+  it('makes the chosen TCP source primary even when it starts last', async () => {
+    const db = dbWithDefault(
+      [makeTcpSource('a', '10.0.0.1'), makeTcpSource('b', '10.0.0.2'), makeTcpSource('c', '10.0.0.3')],
+      'c',
+    );
+    await boot(db);
+    expect(registry.getPrimaryMeshtasticSourceId()).toBe('c');
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('c');
+    // The automatic designation is still the first started, for when c goes away.
+    expect(registry.getAutomaticPrimaryMeshtasticSourceId()).toBe('a');
+  });
+
+  it('unset keeps the first-started rule', async () => {
+    const db = dbWithDefault([makeTcpSource('a', '10.0.0.1'), makeTcpSource('b', '10.0.0.2')], null);
+    await boot(db);
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+  });
+
+  it('blank keeps the first-started rule', async () => {
+    const db = dbWithDefault([makeTcpSource('a', '10.0.0.1'), makeTcpSource('b', '10.0.0.2')], '');
+    await boot(db);
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+  });
+
+  it('a disabled choice falls back to the first-started rule', async () => {
+    const db = dbWithDefault(
+      [makeTcpSource('a', '10.0.0.1'), { ...makeTcpSource('b', '10.0.0.2'), enabled: false }],
+      'b',
+    );
+    await boot(db);
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+  });
+
+  it('a missing choice falls back to the first-started rule', async () => {
+    const db = dbWithDefault([makeTcpSource('a', '10.0.0.1'), makeTcpSource('b', '10.0.0.2')], 'gone');
+    await boot(db);
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+  });
+
+  it('an autoConnect:false choice falls back to the first-started rule', async () => {
+    const db = dbWithDefault(
+      [makeTcpSource('a', '10.0.0.1'), makeTcpSource('b', '10.0.0.2', 4403, { autoConnect: false })],
+      'b',
+    );
+    await boot(db);
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+  });
+
+  it('a non-TCP choice is ignored', async () => {
+    (buildMqttManagerForSource as any).mockImplementation((id: string) => makeMqttManagerStub(id));
+    const db = dbWithDefault([makeBrokerSource('broker'), makeTcpSource('a', '10.0.0.1')], 'broker');
+    await boot(db);
+    expect(registry.getPrimaryMeshtasticSourceId()).toBe('a');
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+  });
+});
+
+describe('SourceManagerRegistry — default Meshtastic source at runtime (#5245)', () => {
+  function tcp(id: string): ISourceManager {
+    return {
+      sourceId: id,
+      sourceType: 'meshtastic_tcp',
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn(() => ({ sourceId: id, sourceName: id, sourceType: 'meshtastic_tcp' as const, connected: false })),
+      getLocalNodeInfo: vi.fn().mockReturnValue(null),
+      startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
+      stopDistanceDeleteScheduler: vi.fn(),
+    };
+  }
+
+  async function twoSources() {
+    const registry = new SourceManagerRegistry();
+    await registry.addManager(tcp('a'));
+    registry.setPrimaryMeshtasticSource('a');
+    await registry.addManager(tcp('b'));
+    return registry;
+  }
+
+  it('a save switches the primary; clearing goes back to automatic', async () => {
+    const registry = await twoSources();
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+    registry.setPreferredMeshtasticSource('b');
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('b');
+    registry.setPreferredMeshtasticSource('');
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+    registry.setPreferredMeshtasticSource('b');
+    registry.setPreferredMeshtasticSource(null);
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+  });
+
+  it('the chosen source going away falls back to automatic, and coming back restores it', async () => {
+    const registry = await twoSources();
+    registry.setPreferredMeshtasticSource('b');
+    const captured = getPrimaryMeshtasticManager(registry);
+    expect(captured?.sourceId).toBe('b');
+
+    await registry.removeManager('b'); // disabled or deleted
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+    // A caller that captured the manager before the change keeps it.
+    expect(captured?.sourceId).toBe('b');
+
+    await registry.addManager(tcp('b')); // re-enabled
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('b');
+  });
+
+  it('a removed automatic primary falls back to insertion order, and the choice still wins', async () => {
+    const registry = await twoSources();
+    await registry.addManager(tcp('c'));
+    await registry.removeManager('a');
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('b');
+    registry.setPreferredMeshtasticSource('c');
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('c');
+  });
+
+  it('a chosen id that is not a meshtastic_tcp manager is ignored', async () => {
+    const registry = await twoSources();
+    await registry.addManager({ ...tcp('mq'), sourceType: 'mqtt_broker' } as ISourceManager);
+    registry.setPreferredMeshtasticSource('mq');
+    expect(registry.getPrimaryMeshtasticSourceId()).toBe('a');
+    expect(getPrimaryMeshtasticManager(registry)?.sourceId).toBe('a');
+  });
+});

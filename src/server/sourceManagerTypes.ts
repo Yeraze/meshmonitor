@@ -115,7 +115,8 @@ export function isMqttBridgeManager(m: ISourceManager): m is MqttBridgeManager {
  * WP2 (this implementation): first checks the explicitly designated primary
  * via `registry.getPrimaryMeshtasticSourceId()` (set by
  * `registry.setPrimaryMeshtasticSource()` when the first TCP source is
- * registered at boot). Falls back to the first meshtastic_tcp manager in
+ * registered at boot), or the admin's default Meshtastic source (#5245)
+ * when one is set and its manager is registered. Falls back to the first meshtastic_tcp manager in
  * insertion order when no explicit designation exists (e.g. during tests that
  * use fresh registries, or before WP3 wires the designation call).
  *

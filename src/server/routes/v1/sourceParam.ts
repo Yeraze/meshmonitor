@@ -13,6 +13,10 @@
  *
  * Admin users bypass the permission probe and get the first enabled source by
  * `createdAt` when they request `default`.
+ *
+ * #5245: when the admin set a default Meshtastic source (Settings), `default`
+ * tries that source first, provided it is enabled and the caller holds the
+ * permission on it; otherwise the rule above applies unchanged.
  */
 
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
@@ -20,6 +24,7 @@ import type { Source } from '../../../db/repositories/sources.js';
 import type { ResourceType, PermissionAction } from '../../../types/permission.js';
 import type { User } from '../../../types/auth.js';
 import databaseService from '../../../services/database.js';
+import { preferConfiguredDefault, readConfiguredDefaultMeshtasticSourceId } from '../../utils/defaultMeshtasticSource.js';
 import { logger } from '../../../utils/logger.js';
 import { loadNodeViewAccess, type NodeViewAccess } from '../../utils/nodeEnhancer.js';
 import { fail } from '../../utils/apiResponse.js';
@@ -40,9 +45,15 @@ async function resolveDefaultForUser(
   const allSources = await databaseService.sources.getAllSources();
   // Stable order — first-created first. getAllSources doesn't guarantee this,
   // so sort explicitly.
-  const sorted = [...allSources]
-    .filter((s) => s.enabled)
-    .sort((a, b) => a.createdAt - b.createdAt);
+  // #5245: the admin's default Meshtastic source goes first when it is
+  // enabled; the caller still needs the permission on it, else the walk
+  // below moves on to the oldest source they can use, as before.
+  const sorted = preferConfiguredDefault(
+    [...allSources]
+      .filter((s) => s.enabled)
+      .sort((a, b) => a.createdAt - b.createdAt),
+    await readConfiguredDefaultMeshtasticSourceId(databaseService),
+  );
   if (sorted.length === 0) return null;
 
   if (isAdmin) {
