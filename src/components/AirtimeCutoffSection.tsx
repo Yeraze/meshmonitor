@@ -577,7 +577,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                       <label
                         htmlFor={inputId}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.6rem',
+                          display: 'flex', flexDirection: 'row', justifyContent: 'flex-start', textAlign: 'left', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.6rem', margin: 0, fontWeight: 400,
                           background: 'var(--color-surface)', border: '1px solid var(--color-surface-active)',
                           borderRadius: '6px', fontSize: '13px', cursor: full ? 'not-allowed' : 'pointer',
                           opacity: full ? 0.6 : 1,
@@ -585,6 +585,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                       >
                         <input
                           id={inputId}
+                          style={{ width: 'auto', margin: 0, flex: '0 0 auto' }}
                           type="checkbox"
                           checked={checked}
                           disabled={full}
@@ -613,12 +614,12 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                     <label
                       htmlFor={`airtime-pick-${nodeNum}`}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.6rem',
+                        display: 'flex', flexDirection: 'row', justifyContent: 'flex-start', textAlign: 'left', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.6rem', margin: 0, fontWeight: 400,
                         border: '1px dashed var(--color-surface-active)', borderRadius: '6px', fontSize: '13px',
                         color: 'var(--color-text-muted)',
                       }}
                     >
-                      <input id={`airtime-pick-${nodeNum}`} type="checkbox" checked onChange={() => togglePick(nodeNum)} />
+                      <input id={`airtime-pick-${nodeNum}`} style={{ width: 'auto', margin: 0, flex: '0 0 auto' }} type="checkbox" checked onChange={() => togglePick(nodeNum)} />
                       <span style={{ flex: 1 }}>{`!${nodeNum.toString(16).padStart(8, '0')}`}</span>
                       <span>{t('automation.airtime_cutoff.picker_not_eligible', 'not eligible now (skipped)')}</span>
                     </label>
