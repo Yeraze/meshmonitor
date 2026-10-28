@@ -4,7 +4,7 @@
  *
  * Rows are directional: `receiver` heard `sender` at `snrQuarterDb / 4` dB.
  */
-import { and, desc, eq, gte, lt, or } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -34,6 +34,15 @@ export interface MeshCoreHopSnrRow {
   initiated: boolean;
   /** ms since epoch */
   timestamp: number;
+}
+
+/**
+ * One end of a link, as `summarizeHopSnrLinks` groups it: a resolved key, an
+ * unresolved path hash, or unknown (both null). Keys and hashes are lowercase.
+ */
+export interface HopSnrLinkEnd {
+  publicKey: string | null;
+  hash: string | null;
 }
 
 /** Rows one history read returns by default. */
@@ -145,20 +154,34 @@ export class MeshCoreHopSnrRepository extends BaseRepository {
   }
 
   /**
-   * Clear the trace SNR history of one contact (#5970): every row of this
-   * source where `publicKey` is the sender or the receiver, at any age. This
-   * is the set `getHistoryForNode` reads, without its time window. Returns the
-   * number of rows deleted.
+   * Clear one directional link's trace SNR history (#5970): every row of this
+   * source whose sender is `sender` and whose receiver is `receiver`, at any
+   * age. An end matches the way `summarizeHopSnrLinks` groups rows into one
+   * graph: by public key when it is resolved, else by path hash (with no key),
+   * else unknown (no key and no hash). At least one end must be a resolved
+   * key. Returns the number of rows deleted.
    */
-  async deleteHistoryForNode(sourceId: string, publicKey: string): Promise<number> {
-    this.requireSource(sourceId, 'deleteHistoryForNode');
-    if (!publicKey) throw new Error('MeshCoreHopSnrRepository.deleteHistoryForNode requires a publicKey');
+  async deleteLink(sourceId: string, sender: HopSnrLinkEnd, receiver: HopSnrLinkEnd): Promise<number> {
+    this.requireSource(sourceId, 'deleteLink');
+    if (!sender.publicKey && !receiver.publicKey) {
+      throw new Error('MeshCoreHopSnrRepository.deleteLink requires a resolved publicKey on one end');
+    }
     const t = this.tables.meshcoreHopSnr;
     const result = await this.db.delete(t).where(and(
       this.withSourceScope(t, sourceId),
-      or(eq(t.senderPublicKey, publicKey), eq(t.receiverPublicKey, publicKey)),
+      this.endMatches('sender', sender),
+      this.endMatches('receiver', receiver),
     ));
     return this.getAffectedRows(result);
+  }
+
+  private endMatches(side: 'sender' | 'receiver', end: HopSnrLinkEnd): SQL | undefined {
+    const t = this.tables.meshcoreHopSnr;
+    const keyCol = side === 'sender' ? t.senderPublicKey : t.receiverPublicKey;
+    const hashCol = side === 'sender' ? t.senderHash : t.receiverHash;
+    if (end.publicKey) return eq(keyCol, end.publicKey);
+    if (end.hash) return and(isNull(keyCol), eq(hashCol, end.hash));
+    return and(isNull(keyCol), isNull(hashCol));
   }
 
   async deleteBySourceId(sourceId: string): Promise<void> {

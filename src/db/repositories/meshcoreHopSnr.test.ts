@@ -107,24 +107,36 @@ function runRepoSuite(getRepo: () => MeshCoreHopSnrRepository, clear: () => Prom
     expect((await repo.getRecent(SRC_A, 0)).every((r) => r.sourceId === SRC_A)).toBe(true);
   });
 
-  it('deleteHistoryForNode clears one contact at any age, only on that source (#5970)', async () => {
+  it('deleteLink clears one directional link at any age, only on that source (#5970)', async () => {
     const C = 'c'.repeat(64);
-    const D = 'd'.repeat(64);
     await repo.insertHops(SRC_A, [
-      row({ timestamp: 1 }),
-      row({ timestamp: 3000, senderPublicKey: K2, receiverPublicKey: K1 }),
-      row({ timestamp: 2000, senderPublicKey: C, receiverPublicKey: D }),
-      row({ timestamp: 2500, senderPublicKey: null, receiverPublicKey: K1 }),
+      row({ timestamp: 1 }), // K1 -> K2, very old
+      row({ timestamp: 4000 }), // K1 -> K2
+      row({ timestamp: 3000, senderPublicKey: K2, receiverPublicKey: K1 }), // reverse direction
+      row({ timestamp: 2000, receiverPublicKey: C }), // K1 -> C, another link
+      row({ timestamp: 2500, senderPublicKey: null, senderHash: 'ee', senderCandidates: 0, receiverPublicKey: K1 }),
+      row({ timestamp: 2600, senderPublicKey: null, senderHash: 'ff', senderCandidates: 2, receiverPublicKey: K1 }),
+      row({ timestamp: 2700, senderPublicKey: null, senderHash: null, senderCandidates: 0, receiverPublicKey: K1 }),
     ]);
     await repo.insertHops(SRC_B, [row({ sourceId: SRC_B, timestamp: 9000 })]);
-    await expect(repo.deleteHistoryForNode('', K1)).rejects.toThrow(/sourceId/);
-    await expect(repo.deleteHistoryForNode(SRC_A, '')).rejects.toThrow(/publicKey/);
+    const key = (k: string) => ({ publicKey: k, hash: null });
+    const links = async () => (await repo.getRecent(SRC_A, 0))
+      .map((r) => `${r.senderPublicKey?.[0] ?? r.senderHash ?? '?'}>${r.receiverPublicKey?.[0] ?? '?'}`).sort();
 
-    expect(await repo.deleteHistoryForNode(SRC_A, K1)).toBe(3);
-    expect(await repo.getHistoryForNode(SRC_A, K1, 0)).toEqual([]);
-    expect((await repo.getRecent(SRC_A, 0)).map((r) => r.senderPublicKey)).toEqual([C]);
+    await expect(repo.deleteLink('', key(K1), key(K2))).rejects.toThrow(/sourceId/);
+    await expect(repo.deleteLink(SRC_A, { publicKey: null, hash: 'ee' }, { publicKey: null, hash: null })).rejects.toThrow(/publicKey/);
+
+    expect(await repo.deleteLink(SRC_A, key(K1), key(K2))).toBe(2);
+    expect(await links()).toEqual(['?>a', 'a>c', 'b>a', 'ee>a', 'ff>a']);
+    // Source B keeps its K1 -> K2 row.
     expect(await repo.getHistoryForNode(SRC_B, K1, 0)).toHaveLength(1);
-    expect(await repo.deleteHistoryForNode(SRC_A, K1)).toBe(0);
+    expect(await repo.deleteLink(SRC_A, key(K1), key(K2))).toBe(0);
+
+    // A hash end matches only rows with no resolved key and that hash.
+    expect(await repo.deleteLink(SRC_A, { publicKey: null, hash: 'ee' }, key(K1))).toBe(1);
+    // The unknown end matches only rows with neither key nor hash.
+    expect(await repo.deleteLink(SRC_A, { publicKey: null, hash: null }, key(K1))).toBe(1);
+    expect(await links()).toEqual(['a>c', 'b>a', 'ff>a']);
   });
 
   it('retention and source deletion touch only that source', async () => {

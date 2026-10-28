@@ -121,8 +121,9 @@ describe('MeshCore hop SNR route (#5722)', () => {
     expect((await anon.get(url(harness.sourceA))).status).toBe(200);
   });
 
-  describe('DELETE /hop-snr (#5970)', () => {
-    const del = (sourceId: string, q = `?publicKey=${K1}`) => url(sourceId, q);
+  describe('DELETE /hop-snr, one link (#5970)', () => {
+    // Source A holds K1 -> K2 twice and K2 -> K1 once.
+    const del = (sourceId: string, q = `?from=${K1}&to=${K2}`) => url(sourceId, q);
     const keysOf = async (sourceId: string) =>
       (await harness.db.meshcoreHopSnr.getRecent(sourceId, 0)).map((r) => [r.senderPublicKey, r.receiverPublicKey]);
 
@@ -135,7 +136,7 @@ describe('MeshCore hop SNR route (#5722)', () => {
       await harness.grant(harness.limited.id, 'traceroute', 'write', harness.sourceA);
       const res = await agent.delete(del(harness.sourceA));
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ success: true, data: { deleted: 3 } });
+      expect(res.body).toEqual({ success: true, data: { deleted: 2 } });
     });
 
     it('a write grant on source B cannot clear source A, and B keeps its rows when A is cleared', async () => {
@@ -145,23 +146,29 @@ describe('MeshCore hop SNR route (#5722)', () => {
       expect(await keysOf(harness.sourceA)).toHaveLength(3);
 
       const admin = await harness.loginAs(harness.admin);
-      expect((await admin.delete(del(harness.sourceA))).body.data.deleted).toBe(3);
-      expect(await keysOf(harness.sourceA)).toEqual([]);
+      expect((await admin.delete(del(harness.sourceA))).body.data.deleted).toBe(2);
       expect(await keysOf(harness.sourceB)).toEqual([[K1, K2]]);
     });
 
-    it('clears only the named contact, at any age, and the read then comes back empty', async () => {
+    it('clears only that direction of that link, at any age; the other links stay', async () => {
       const old = Date.now() - 200 * 24 * 60 * 60_000;
       await harness.db.meshcoreHopSnr.insertHops(harness.sourceA, [
-        row(harness.sourceA, { senderPublicKey: K3, senderHash: 'cc', receiverPublicKey: K2, receiverHash: 'bb' }),
+        row(harness.sourceA, { receiverPublicKey: K3, receiverHash: 'cc' }),
         row(harness.sourceA, { timestamp: old }),
+        row(harness.sourceA, { senderPublicKey: null, senderHash: 'dd', senderCandidates: 0, receiverPublicKey: K2 }),
       ]);
       const admin = await harness.loginAs(harness.admin);
-      const res = await admin.delete(del(harness.sourceA, `?publicKey=${K1.toUpperCase()}`));
-      expect(res.body.data.deleted).toBe(4);
-      expect(await keysOf(harness.sourceA)).toEqual([[K3, K2]]);
-      expect((await admin.get(url(harness.sourceA, `?publicKey=${K1}`))).body.data.links).toEqual([]);
-      expect((await admin.get(url(harness.sourceA, `?publicKey=${K2}`))).body.data.links).toHaveLength(1);
+      const res = await admin.delete(del(harness.sourceA, `?from=${K1.toUpperCase()}&to=${K2}`));
+      expect(res.body.data.deleted).toBe(3);
+      expect((await keysOf(harness.sourceA)).sort()).toEqual([[K1, K3], [K2, K1], [null, K2]].sort());
+      const links = (await admin.get(url(harness.sourceA, `?publicKey=${K1}`))).body.data.links;
+      expect(links.map((l: { sender: { publicKey: string }; receiver: { publicKey: string } }) =>
+        [l.sender.publicKey, l.receiver.publicKey]).sort()).toEqual([[K1, K3], [K2, K1]].sort());
+
+      // A hash end, URL-encoded the way the card sends it.
+      const hashRes = await admin.delete(del(harness.sourceA, `?from=${encodeURIComponent('h:dd')}&to=${K2}`));
+      expect(hashRes.body.data.deleted).toBe(1);
+      expect(await keysOf(harness.sourceA)).toHaveLength(2);
     });
 
     it('needs a signed-in user, even when the anonymous account holds the grant', async () => {
@@ -172,12 +179,16 @@ describe('MeshCore hop SNR route (#5722)', () => {
       expect(await keysOf(harness.sourceA)).toHaveLength(3);
     });
 
-    it('rejects a missing or malformed publicKey with 400', async () => {
+    it('rejects missing, malformed, repeated or keyless ends with 400', async () => {
       const admin = await harness.loginAs(harness.admin);
-      for (const q of ['', '?publicKey=zz', `?publicKey=${K1}0`, `?publicKey=${K1}&publicKey=${K2}`]) {
+      for (const q of [
+        '', `?publicKey=${K1}`, `?from=${K1}`, `?to=${K2}`, `?from=zz&to=${K2}`, `?from=${K1}0&to=${K2}`,
+        `?from=${K1}&to=h:abc`, `?from=${K1}&to=h:`, `?from=${K1}&to=${K2}&to=${K3}`,
+        '?from=unknown&to=h:bb', '?from=h:aa&to=h:bb',
+      ]) {
         const res = await admin.delete(del(harness.sourceA, q));
         expect(res.status, q).toBe(400);
-        expect(res.body).toMatchObject({ success: false, code: 'INVALID_PUBLIC_KEY' });
+        expect(res.body).toMatchObject({ success: false, code: 'INVALID_LINK' });
       }
       expect(await keysOf(harness.sourceA)).toHaveLength(3);
     });
