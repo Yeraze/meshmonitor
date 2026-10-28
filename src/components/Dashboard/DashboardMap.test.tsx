@@ -1388,6 +1388,32 @@ describe('DashboardMap', () => {
     expect(screen.queryByTestId('map-3d-view')).not.toBeInTheDocument();
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
   });
+  describe('marker memoization (dashboard perf)', () => {
+    it('re-renders only the markers whose node changed', () => {
+      const other = {
+        ...nodeWithPosition,
+        user: { id: 'node-memo', shortName: 'NM', longName: 'Node Memo' },
+        position: { latitude: 35.5, longitude: -80.5 },
+      };
+      const { rerender } = render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, other]} />);
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(2);
+      const afterMount = mocks.markerRenders;
+
+      // Unrelated prop change, same nodes array: no marker renders.
+      rerender(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, other]} isLoading />);
+      expect(mocks.markerRenders).toBe(afterMount);
+
+      // A new array holding the same node objects (a poll that changed
+      // nothing for these nodes): still no marker renders.
+      rerender(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, other]} />);
+      expect(mocks.markerRenders).toBe(afterMount);
+
+      // One node moved: only its marker renders.
+      const moved = { ...other, position: { latitude: 35.6, longitude: -80.5 } };
+      rerender(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, moved]} />);
+      expect(mocks.markerRenders).toBe(afterMount + 1);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1569,30 +1595,4 @@ describe('DashboardMap — Map age filter names the Settings window (#5344)', ()
     expect(slider).toHaveAttribute('aria-valuetext', 'map.ageAllUnlimited');
   });
 
-  describe('marker memoization (dashboard perf)', () => {
-    it('re-renders only the markers whose node changed', () => {
-      const other = {
-        ...nodeWithPosition,
-        user: { id: 'node-memo', shortName: 'NM', longName: 'Node Memo' },
-        position: { latitude: 35.5, longitude: -80.5 },
-      };
-      const { rerender } = render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, other]} />);
-      expect(screen.getAllByTestId('map-marker')).toHaveLength(2);
-      const afterMount = mocks.markerRenders;
-
-      // Unrelated prop change, same nodes array: no marker renders.
-      rerender(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, other]} isLoading />);
-      expect(mocks.markerRenders).toBe(afterMount);
-
-      // A new array holding the same node objects (a poll that changed
-      // nothing for these nodes): still no marker renders.
-      rerender(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, other]} />);
-      expect(mocks.markerRenders).toBe(afterMount);
-
-      // One node moved: only its marker renders.
-      const moved = { ...other, position: { latitude: 35.6, longitude: -80.5 } };
-      rerender(<DashboardMap {...defaultProps} nodes={[nodeWithPosition, moved]} />);
-      expect(mocks.markerRenders).toBe(afterMount + 1);
-    });
-  });
 });
