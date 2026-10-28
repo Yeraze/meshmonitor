@@ -55,6 +55,7 @@ import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js
 import { bootstrapSources } from './bootstrapSources.js';
 import { transportTrafficService } from './services/transportTrafficService.js';
 import { migrateAutoResponderTriggers } from './services/autoResponderTriggerMigration.js';
+import { httpCompression } from './middleware/httpCompression.js';
 import { configureStaticServing, invalidateHtmlCache } from './staticServing.js';
 // Re-exported for backward compatibility — server.ts used to define
 // invalidateHtmlCache locally and `export function` it. No current importer
@@ -143,6 +144,10 @@ const helmetConfig =
       };
 
 app.use(helmet(helmetConfig));
+
+// Compress responses (API JSON, HTML, JS/CSS). Mounted before anything that
+// writes a body. Downloads and event streams are skipped; see httpCompression.ts.
+app.use(httpCompression());
 
 // Dynamic CSP middleware - adds custom tile server hostnames from database,
 // and sets frame-ancestors from IFRAME_ALLOWED_ORIGINS when configured.

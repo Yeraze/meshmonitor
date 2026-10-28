@@ -29,6 +29,48 @@ import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScr
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/** Vite content-hashes everything under `assets/`, so a name never changes meaning. */
+export const IMMUTABLE_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+/** Cache, but revalidate (ETag / Last-Modified) on every use. */
+export const REVALIDATE_CACHE_CONTROL = 'no-cache';
+
+/**
+ * Files that keep a fixed name across builds, so a browser must check for a new
+ * copy each time: the HTML shell, the service worker and its loader, the PWA
+ * manifest, and the translation files (`locales/*.json`, not hashed).
+ */
+function mustRevalidate(relPath: string): boolean {
+  const name = path.basename(relPath);
+  return (
+    name === 'sw.js' ||
+    name === 'registerSW.js' ||
+    name.endsWith('.webmanifest') ||
+    name.endsWith('.html') ||
+    relPath.split(path.sep)[0] === 'locales'
+  );
+}
+
+/**
+ * Picks the Cache-Control for a file under the build output. `express.static`
+ * defaults to `max-age=0`; anything not matched here keeps that default.
+ */
+export function cacheControlForBuildFile(buildPath: string, filePath: string): string | null {
+  const rel = path.relative(buildPath, filePath);
+  if (rel.split(path.sep)[0] === 'assets') return IMMUTABLE_ASSET_CACHE_CONTROL;
+  if (mustRevalidate(rel)) return REVALIDATE_CACHE_CONTROL;
+  return null;
+}
+
+function staticOptions(buildPath: string) {
+  return {
+    index: false,
+    setHeaders: (res: express.Response, filePath: string) => {
+      const value = cacheControlForBuildFile(buildPath, filePath);
+      if (value) res.setHeader('Cache-Control', value);
+    },
+  };
+}
+
 export interface StaticServingDeps {
   /** Override the build output directory (primarily for tests). Defaults to `<repo>/dist`. */
   buildPath?: string;
@@ -75,6 +117,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         .replace('"/sw.js"', `"${BASE_URL}/sw.js"`)
         .replace("scope: '/'", `scope: '${BASE_URL}/'`)
         .replace('scope: "/"', `scope: "${BASE_URL}/"`);
+      res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
       res.type('application/javascript').send(content);
     });
 
@@ -85,14 +128,17 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
       // Update manifest paths
       manifest.scope = `${BASE_URL}/`;
       manifest.start_url = `${BASE_URL}/`;
+      res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
       res.type('application/manifest+json').json(manifest);
     });
 
-    // Serve assets folder specifically
-    app.use(`${BASE_URL}/assets`, express.static(path.join(buildPath, 'assets')));
+    // Serve assets folder specifically (hashed names: cached for a year)
+    app.use(`${BASE_URL}/assets`, express.static(path.join(buildPath, 'assets'), {
+      setHeaders: (res) => res.setHeader('Cache-Control', IMMUTABLE_ASSET_CACHE_CONTROL),
+    }));
 
     // Create static middleware once and reuse it
-    const staticMiddleware = express.static(buildPath, { index: false });
+    const staticMiddleware = express.static(buildPath, staticOptions(buildPath));
 
     // Serve other static files (like favicon, logo, etc.) - but exclude /api
     app.use(BASE_URL, (req, res, next) => {
@@ -118,6 +164,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
       }
       res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
       res.send(cachedRewrittenEmbedHtml);
     });
 
@@ -130,6 +177,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         const analyticsScript = await getAnalyticsScript();
         cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
       }
+      res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
       res.type('html').send(cachedRewrittenHtml);
     });
     // Use a route pattern that Express 5 can handle
@@ -153,6 +201,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         const analyticsScript = await getAnalyticsScript();
         cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
       }
+      res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
       res.type('html').send(cachedRewrittenHtml);
     });
   } else {
@@ -164,7 +213,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
     // for `/` would be served by static middleware with the raw index.html,
     // bypassing analytics injection entirely — which is the bug that caused
     // GA4 tags to silently not appear on root deployments.
-    app.use(express.static(buildPath, { index: false }));
+    app.use(express.static(buildPath, staticOptions(buildPath)));
 
     // Serve robots.txt (before SPA fallback) — dynamic body gated on noIndexEnabled (#4202)
     app.get('/robots.txt', robotsTxtHandler);
@@ -181,6 +230,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
       }
       res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
       res.send(cachedRewrittenEmbedHtml);
     });
 
@@ -197,6 +247,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         const analyticsScript = await getAnalyticsScript();
         cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
       }
+      res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
       res.type('html').send(cachedRewrittenHtml);
     });
   }
