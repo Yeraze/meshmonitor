@@ -25,6 +25,12 @@ import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import {
+  clampNeighborSampleCount,
+  parseManualNeighborNodes,
+  MIN_NEIGHBOR_UTIL_SAMPLE_COUNT,
+  MAX_NEIGHBOR_UTIL_SAMPLE_COUNT,
+} from '../utils/airtimeCutoff.js';
 import { parseAutoPingSettingsUpdate, readAutoPingSettings } from '../utils/autoPingSettings.js';
 import { validateResponderTrigger } from '../utils/autoResponderMatcher.js';
 import { isResponderSyntax } from '../../utils/responderTrigger.js';
@@ -179,6 +185,10 @@ export interface SettingsCallbacks {
   setAutomationAirtimeCutoffThreshold?: (threshold: number, sourceId?: string | null) => void;
   setAutomationAirtimeCutoffSource?: (source: string, sourceId?: string | null) => void;
   setAutomationAirtimeCutoffNeighborMaxHops?: (hops: number, sourceId?: string | null) => void;
+  setAutomationAirtimeCutoffNeighborSelection?: (
+    selection: { mode?: string; sampleCount?: number | string; nodes?: unknown },
+    sourceId?: string | null,
+  ) => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
   // Global (default ON): push the new discard-invalid-positions value into the
@@ -210,6 +220,23 @@ export function setSettingsCallbacks(cb: SettingsCallbacks): void {
 // #4412 Phase 2: the three inactiveNodeNotificationService config keys.
 // Hoisted to module scope so both the per-source and global save paths reuse
 // the same list instead of each declaring their own copy.
+// Issue #6007: the airtime-cutoff neighbour selection keys, pushed to the
+// source's manager together after a save.
+const AIRTIME_NEIGHBOR_SELECTION_KEYS = [
+  'automationAirtimeCutoffNeighborMode',
+  'automationAirtimeCutoffNeighborSampleCount',
+  'automationAirtimeCutoffNeighborNodes',
+] as const;
+
+function airtimeNeighborSelection(settings: Record<string, unknown>): { mode?: string; sampleCount?: string; nodes?: string } {
+  const str = (v: unknown): string | undefined => (v === undefined ? undefined : String(v));
+  return {
+    mode: str(settings.automationAirtimeCutoffNeighborMode),
+    sampleCount: str(settings.automationAirtimeCutoffNeighborSampleCount),
+    nodes: str(settings.automationAirtimeCutoffNeighborNodes),
+  };
+}
+
 const INACTIVE_NODE_KEYS = [
   'inactiveNodeThresholdHours',
   'inactiveNodeCheckIntervalMinutes',
@@ -716,6 +743,49 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       }
     }
 
+    // Issue #6007: neighbour selection mode ('auto' | 'manual').
+    if ('automationAirtimeCutoffNeighborMode' in filteredSettings) {
+      const mode = filteredSettings.automationAirtimeCutoffNeighborMode;
+      if (mode !== 'auto' && mode !== 'manual') {
+        return fail(res, 400, 'INVALID_AIRTIME_NEIGHBOR_MODE', "automationAirtimeCutoffNeighborMode must be 'auto' or 'manual'");
+      }
+    }
+
+    // Issue #6007: sample count is user-set, clamped server-side to 3-5.
+    if ('automationAirtimeCutoffNeighborSampleCount' in filteredSettings) {
+      const count = parseInt(String(filteredSettings.automationAirtimeCutoffNeighborSampleCount), 10);
+      if (isNaN(count)) {
+        return fail(res, 400, 'INVALID_AIRTIME_SAMPLE_COUNT', 'automationAirtimeCutoffNeighborSampleCount must be a number (3-5)');
+      }
+      filteredSettings.automationAirtimeCutoffNeighborSampleCount = String(clampNeighborSampleCount(count));
+    }
+
+    // Issue #6007: manual picks are a JSON array of 3-5 unique node numbers
+    // (or empty, to clear). Manual mode needs a valid list in the same save.
+    if ('automationAirtimeCutoffNeighborNodes' in filteredSettings) {
+      const raw = filteredSettings.automationAirtimeCutoffNeighborNodes;
+      let arr: unknown;
+      try {
+        arr = typeof raw === 'string' ? JSON.parse(raw === '' ? '[]' : raw) : raw;
+      } catch {
+        arr = null;
+      }
+      const nodes = parseManualNeighborNodes(arr);
+      if (!Array.isArray(arr) || nodes.length !== arr.length) {
+        return fail(res, 400, 'INVALID_AIRTIME_NEIGHBOR_NODES', 'automationAirtimeCutoffNeighborNodes must be a JSON array of unique node numbers');
+      }
+      if (nodes.length !== 0 && (nodes.length < MIN_NEIGHBOR_UTIL_SAMPLE_COUNT || nodes.length > MAX_NEIGHBOR_UTIL_SAMPLE_COUNT)) {
+        return fail(res, 400, 'INVALID_AIRTIME_NEIGHBOR_NODES', `automationAirtimeCutoffNeighborNodes must list ${MIN_NEIGHBOR_UTIL_SAMPLE_COUNT}-${MAX_NEIGHBOR_UTIL_SAMPLE_COUNT} nodes`);
+      }
+      filteredSettings.automationAirtimeCutoffNeighborNodes = JSON.stringify(nodes);
+    }
+    if (filteredSettings.automationAirtimeCutoffNeighborMode === 'manual') {
+      const nodes = parseManualNeighborNodes(filteredSettings.automationAirtimeCutoffNeighborNodes);
+      if (nodes.length < MIN_NEIGHBOR_UTIL_SAMPLE_COUNT || nodes.length > MAX_NEIGHBOR_UTIL_SAMPLE_COUNT) {
+        return fail(res, 400, 'INVALID_AIRTIME_NEIGHBOR_NODES', `Manual mode needs automationAirtimeCutoffNeighborNodes with ${MIN_NEIGHBOR_UTIL_SAMPLE_COUNT}-${MAX_NEIGHBOR_UTIL_SAMPLE_COUNT} nodes`);
+      }
+    }
+
     // Validate autoResponderTriggers JSON
     if ('autoResponderTriggers' in filteredSettings) {
       try {
@@ -1156,6 +1226,9 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
           callbacks.setAutomationAirtimeCutoffNeighborMaxHops?.(hops, sourceId);
         }
       }
+      if (AIRTIME_NEIGHBOR_SELECTION_KEYS.some((key) => key in filteredSettings)) {
+        callbacks.setAutomationAirtimeCutoffNeighborSelection?.(airtimeNeighborSelection(filteredSettings), sourceId);
+      }
 
       // #4412: localStatsIntervalMinutes is read per-source by
       // applyManagerSettings.ts:42, but this branch never told the source's own
@@ -1335,6 +1408,10 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (!isNaN(hops) && hops >= 0 && hops <= 7) {
         callbacks.setAutomationAirtimeCutoffNeighborMaxHops?.(hops, sourceId);
       }
+    }
+
+    if (AIRTIME_NEIGHBOR_SELECTION_KEYS.some((key) => key in filteredSettings)) {
+      callbacks.setAutomationAirtimeCutoffNeighborSelection?.(airtimeNeighborSelection(filteredSettings), sourceId);
     }
 
     const keyRepairSettings = [

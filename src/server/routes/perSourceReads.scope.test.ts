@@ -786,6 +786,8 @@ const CLASSIFIED: Record<'connection' | 'status', Record<string, Kind>> = {
   status: {
     'GET /virtual-node/status': 'listed',
     'GET /automation/airtime-status': 'device',
+    // Issue #6007 manual picker list; per-source cases live in meshSourcePermission.scope.test.ts.
+    'GET /automation/airtime-candidates': 'device',
   },
 };
 
