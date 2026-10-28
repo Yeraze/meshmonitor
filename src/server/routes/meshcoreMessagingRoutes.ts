@@ -13,6 +13,7 @@
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime.js';
 import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
@@ -138,7 +139,7 @@ router.get('/messages/channel/:idx', optionalAuth(), requireMeshcoreChannelAcces
 const IGNORE_SCAN_PAGE = 50;
 async function latestExcludingIgnored(
   sourceId: string,
-  manager: { getChannelMessages(idx: number, limit: number, offset: number, keyAccess?: MeshCoreKeyAccessFilter): Promise<Array<{ timestamp: number; fromPublicKey: string; fromName?: string; text: string; messageType?: string; reactionEmoji?: string | null; filtered?: 'ignore' | 'block' }>>; getLocalNode(): { publicKey?: string } | null },
+  manager: { getChannelMessages(idx: number, limit: number, offset: number, keyAccess?: MeshCoreKeyAccessFilter): Promise<Array<{ timestamp: number; receivedAt?: number; fromPublicKey: string; fromName?: string; text: string; messageType?: string; reactionEmoji?: string | null; filtered?: 'ignore' | 'block' }>>; getLocalNode(): { publicKey?: string } | null },
   latest: Record<number, number>,
   keyAccess?: MeshCoreKeyAccessFilter,
 ): Promise<Record<number, number>> {
@@ -151,7 +152,8 @@ async function latestExcludingIgnored(
     let newest = 0;
     for (const m of page) {
       // A reaction row never counts toward the unread dot (#5759).
-      if (!m.filtered && !m.reactionEmoji && m.timestamp > newest) newest = m.timestamp;
+      const ts = meshcoreReceiptTimeMs(m);
+      if (!m.filtered && !m.reactionEmoji && ts > newest) newest = ts;
     }
     if (newest > 0) out[idx] = newest;
   }));
