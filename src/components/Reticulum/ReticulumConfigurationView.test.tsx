@@ -7,7 +7,7 @@
  * user lacks `configuration:write` (inputs disabled + banner shown).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ReticulumConfigurationView } from './ReticulumConfigurationView';
 import api from '../../services/api';
 
@@ -22,14 +22,16 @@ vi.mock('../../contexts/AuthContext', () => ({
 }));
 
 vi.mock('../../services/api', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
 }));
 
-const mockedApi = api as unknown as { get: ReturnType<typeof vi.fn>; post: ReturnType<typeof vi.fn> };
+const mockedApi = api as unknown as {
+  get: ReturnType<typeof vi.fn>; post: ReturnType<typeof vi.fn>; put: ReturnType<typeof vi.fn>;
+};
 
 const RADIO = {
   frequency: 915000000, bandwidth: 250000, spreadingFactor: 8, codingRate: 5,
-  txPower: 17, stAlock: null, ltAlock: null, radioState: 1,
+  txPower: 17, stAlock: null, ltAlock: null, radioState: true,
 };
 const DEVICE = { firmwareVersion: '1.79', mcu: 'ESP32', platform: 'Heltec' };
 
@@ -40,7 +42,8 @@ beforeEach(() => {
     if (url.endsWith('/device-info')) return Promise.resolve({ data: DEVICE });
     return Promise.resolve({ data: null });
   });
-  mockedApi.post.mockResolvedValue({ success: true });
+  mockedApi.post.mockReset();
+  mockedApi.put.mockReset().mockResolvedValue({ success: true });
 });
 
 describe('ReticulumConfigurationView', () => {
@@ -77,5 +80,28 @@ describe('ReticulumConfigurationView', () => {
     expect(mockedApi.get).toHaveBeenCalledWith(
       expect.stringContaining('/api/sources/src-rns/reticulum/device-info'),
     );
+  });
+
+  it('applies with PUT (the only verb the server accepts), leaving out blank fields', async () => {
+    render(<ReticulumConfigurationView sourceId="src-rns" />);
+    fireEvent.click(await screen.findByRole('button', { name: /apply/i }));
+    await waitFor(() => expect(mockedApi.put).toHaveBeenCalledTimes(1));
+    expect(mockedApi.post).not.toHaveBeenCalled();
+    const [url, body] = mockedApi.put.mock.calls[0];
+    expect(url).toBe('/api/sources/src-rns/reticulum/radio-config');
+    expect(body).toEqual({
+      frequency: 915000000, bandwidth: 250000, spreadingFactor: 8, codingRate: 5, txPower: 17, radioState: true,
+    });
+  });
+
+  it('shows the radio as on from the boolean radioState and sends a boolean back', async () => {
+    render(<ReticulumConfigurationView sourceId="src-rns" />);
+    const radioOn = (await screen.findByRole('checkbox')) as HTMLInputElement;
+    await waitFor(() => expect(radioOn.checked).toBe(true));
+    fireEvent.click(radioOn);
+    expect(radioOn.checked).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: /apply/i }));
+    await waitFor(() => expect(mockedApi.put).toHaveBeenCalledTimes(1));
+    expect(mockedApi.put.mock.calls[0][1].radioState).toBe(false);
   });
 });

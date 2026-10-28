@@ -30,9 +30,9 @@ vi.mock('../ToastContainer', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
-const { apiGetMock, apiPostMock } = vi.hoisted(() => ({ apiGetMock: vi.fn(), apiPostMock: vi.fn() }));
+const { apiGetMock, apiPostMock, apiPutMock } = vi.hoisted(() => ({ apiGetMock: vi.fn(), apiPostMock: vi.fn(), apiPutMock: vi.fn() }));
 vi.mock('../../services/api', () => ({
-  default: { get: apiGetMock, post: apiPostMock },
+  default: { get: apiGetMock, post: apiPostMock, put: apiPutMock },
   ApiError: class ApiError extends Error {},
 }));
 
@@ -51,7 +51,7 @@ vi.mock('../../hooks/useSaveBar', () => ({
 
 const RADIO = {
   frequency: 915000000, bandwidth: 250000, spreadingFactor: 8, codingRate: 5,
-  txPower: 17, stAlock: null, ltAlock: null, radioState: 1,
+  txPower: 17, stAlock: null, ltAlock: null, radioState: true,
 };
 
 describe('ReticulumConfigurationView number fields (#5649)', () => {
@@ -60,7 +60,7 @@ describe('ReticulumConfigurationView number fields (#5649)', () => {
       if (url.endsWith('/radio-config')) return Promise.resolve({ data: RADIO });
       return Promise.resolve({ data: null });
     });
-    apiPostMock.mockReset().mockResolvedValue({ success: true });
+    apiPutMock.mockReset().mockResolvedValue({ success: true });
   });
 
   const apply = () => screen.getByRole('button', { name: /apply/i }) as HTMLButtonElement;
@@ -76,7 +76,7 @@ describe('ReticulumConfigurationView number fields (#5649)', () => {
     expect(sf).toHaveAttribute('aria-invalid', 'true');
     expect(apply().disabled).toBe(true);
     await user.click(apply());
-    expect(apiPostMock).not.toHaveBeenCalled();
+    expect(apiPutMock).not.toHaveBeenCalled();
 
     await user.clear(sf);
     await user.type(sf, '9');
@@ -84,19 +84,19 @@ describe('ReticulumConfigurationView number fields (#5649)', () => {
     expect(apply().disabled).toBe(false);
 
     await user.click(apply());
-    await waitFor(() => expect(apiPostMock).toHaveBeenCalledTimes(1));
-    const [url, body] = apiPostMock.mock.calls[0];
+    await waitFor(() => expect(apiPutMock).toHaveBeenCalledTimes(1));
+    const [url, body] = apiPutMock.mock.calls[0];
     expect(url).toContain('/api/sources/src-rns/reticulum/radio-config');
     // Numbers stay numbers; nothing is sent as '' or NaN.
     expect(body.spreadingFactor).toBe(9);
     expect(body.frequency).toBe(915000000);
     for (const v of Object.values(body)) {
-      expect(v === null || typeof v === 'number').toBe(true);
+      expect(typeof v === 'number' || typeof v === 'boolean').toBe(true);
       if (typeof v === 'number') expect(Number.isFinite(v)).toBe(true);
     }
   });
 
-  it('keeps blank legal: a cleared field is sent as null and does not block Apply', async () => {
+  it('keeps blank legal: a cleared field is left out of the patch and does not block Apply', async () => {
     const user = userEvent.setup();
     render(<ReticulumConfigurationView sourceId="src-rns" />);
     const txPower = (await screen.findByDisplayValue('17')) as HTMLInputElement;
@@ -107,8 +107,11 @@ describe('ReticulumConfigurationView number fields (#5649)', () => {
     expect(apply().disabled).toBe(false);
 
     await user.click(apply());
-    await waitFor(() => expect(apiPostMock).toHaveBeenCalledTimes(1));
-    expect(apiPostMock.mock.calls[0][1].txPower).toBeNull();
+    await waitFor(() => expect(apiPutMock).toHaveBeenCalledTimes(1));
+    const body = apiPutMock.mock.calls[0][1];
+    // The server rejects null, so a blank field must not be sent at all.
+    expect(body).not.toHaveProperty('txPower');
+    expect(body.spreadingFactor).toBe(8);
   });
 
   it('blocks TX power above 22 dBm', async () => {

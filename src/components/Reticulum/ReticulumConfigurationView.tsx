@@ -28,7 +28,7 @@ interface RadioConfig {
   txPower: number | null;
   stAlock: number | null;
   ltAlock: number | null;
-  radioState: number | null;
+  radioState: boolean | null;
 }
 
 interface DeviceInfo {
@@ -80,7 +80,8 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
         api.get<unknown>(`${base}/device-info`).catch(() => null),
       ]);
       const cfg = unwrap<RadioConfig>(cfgRes);
-      if (cfg) setConfig({ ...EMPTY, ...cfg });
+      // The bridge reports radioState as a boolean; coerce defensively.
+      if (cfg) setConfig({ ...EMPTY, ...cfg, radioState: cfg.radioState == null ? null : Boolean(cfg.radioState) });
       const dev = devRes ? unwrap<DeviceInfo>(devRes) : null;
       setDeviceInfo(dev);
     } catch (e) {
@@ -105,7 +106,10 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
     setError(null);
     setStatus(null);
     try {
-      await api.post(`${base}/radio-config`, config);
+      // PUT is the server's verb; null (blank) fields are left out of the
+      // patch, as the server rejects a null value.
+      const patch = Object.fromEntries(Object.entries(config).filter(([, v]) => v !== null && v !== undefined));
+      await api.put(`${base}/radio-config`, patch);
       setStatus(t('reticulum.config.saved', 'Radio configuration applied'));
       void load();
     } catch (e) {
@@ -172,8 +176,8 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
               onChange={v => setField('ltAlock', v)} />
           </label>
           <label className={styles.checkField}>
-            <input type="checkbox" checked={config.radioState === 1} disabled={disabled}
-              onChange={e => setConfig(prev => ({ ...prev, radioState: e.target.checked ? 1 : 0 }))} />
+            <input type="checkbox" checked={config.radioState === true} disabled={disabled}
+              onChange={e => setConfig(prev => ({ ...prev, radioState: e.target.checked }))} />
             <span>{t('reticulum.config.radioOn', 'Radio on')}</span>
           </label>
         </div>
