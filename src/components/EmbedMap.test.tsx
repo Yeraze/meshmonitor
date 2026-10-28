@@ -32,8 +32,14 @@ interface MockChildProps {
   children?: ReactNode;
 }
 
+interface MockMarkerProps extends MockChildProps {
+  icon?: { options?: { html?: string } };
+}
+
 vi.mock('react-leaflet', () => ({
-  Marker: (props: MockChildProps) => <div data-testid="marker">{props.children}</div>,
+  Marker: (props: MockMarkerProps) => (
+    <div data-testid="marker" data-html={props.icon?.options?.html ?? ''}>{props.children}</div>
+  ),
   Tooltip: (props: MockChildProps) => <div data-testid="tooltip">{props.children}</div>,
   Popup: (props: MockChildProps) => <div data-testid="popup">{props.children}</div>,
   GeoJSON: () => <div data-testid="geojson" />,
@@ -487,5 +493,25 @@ describe('EmbedMap MeshCore nodes (#5999)', () => {
     expect(screen.getByText('Companion')).toBeInTheDocument();
     // A MeshCore node has no channel: no "Ch" row in its popup.
     expect(screen.getAllByText(/^Ch \d$/)).toHaveLength(1);
+  });
+});
+
+describe('EmbedMap Meshtastic role markers (#6008)', () => {
+  it('draws CLIENT_BASE as the base glyph and TRACKER with its corner badge', async () => {
+    mockFetchSequence({
+      nodes: [
+        { nodeNum: 201, nodeId: '!000000c9', user: { longName: 'Base', shortName: 'BS', hwModel: 9 },
+          position: { latitude: 40, longitude: -105 }, role: 12, channel: 0 },
+        { nodeNum: 202, nodeId: '!000000ca', user: { longName: 'Tracker', shortName: 'TR', hwModel: 9 },
+          position: { latitude: 40.1, longitude: -105.1 }, role: 5, channel: 0 },
+      ],
+    });
+    await renderEmbedMap();
+    await waitFor(() => expect(screen.getAllByTestId('marker')).toHaveLength(2));
+    const [base, tracker] = screen.getAllByTestId('marker').map((m) => m.getAttribute('data-html') ?? '');
+    // The white door rect is unique to the CLIENT_BASE glyph.
+    expect(base).toContain('<rect x="21" y="32" width="6" height="10" fill="white" />');
+    expect(base).not.toContain('data-role-badge');
+    expect(tracker).toContain('data-role-badge="tracker"');
   });
 });

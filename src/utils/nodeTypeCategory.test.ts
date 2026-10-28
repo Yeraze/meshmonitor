@@ -127,14 +127,17 @@ describe('categoryGlyphFamily', () => {
     expect(categoryGlyphFamily('mtRepeater')).toBe('router');
     expect(categoryGlyphFamily('repeater')).toBe('repeater');
   });
-  it('draws a Meshtastic sensor as the sensor glyph', () => {
-    expect(categoryGlyphFamily('mtSensor')).toBe('sensor');
+  it('draws the deprecated ROUTER_CLIENT as the router tower (#6008)', () => {
+    expect(categoryGlyphFamily('mtRouterClient')).toBe('router');
   });
-  it('falls back to the default pin (standard) for Meshtastic client-type roles', () => {
-    expect(categoryGlyphFamily('mtClient')).toBe('standard');
-    expect(categoryGlyphFamily('mtTracker')).toBe('standard');
-    expect(categoryGlyphFamily('mtTak')).toBe('standard');
-    expect(categoryGlyphFamily('mtClientBase')).toBe('standard');
+  it('draws CLIENT_BASE as its own base-station glyph (#6008)', () => {
+    expect(categoryGlyphFamily('mtClientBase')).toBe('clientBase');
+  });
+  it('falls back to the default pin (standard) for badge and client roles (#6008)', () => {
+    // SENSOR, TRACKER, TAK etc. keep the pin and get a corner badge instead.
+    for (const c of ['mtClient', 'mtClientMute', 'mtClientHidden', 'mtTracker', 'mtTakTracker', 'mtSensor', 'mtTak', 'mtLostAndFound'] as const) {
+      expect(categoryGlyphFamily(c)).toBe('standard');
+    }
   });
 });
 

@@ -1,12 +1,14 @@
 import L from 'leaflet';
 import { isEmoji } from '../../utils/text.js';
-import type { NodeTypeCategory } from '../../utils/nodeTypeCategory.js';
+import { categoryMarkerKind, type NodeTypeCategory } from '../../utils/nodeTypeCategory.js';
+import { isRoleBadgeKind } from '../../utils/nodeRoleMarker.js';
 import {
   roleGlyphInnerSvg,
   roleGlyphMarkerSvg,
   getHopColor,
   unmessageableBadgeSvg,
   aircraftBadgeSvg,
+  roleBadgeSvg,
 } from '../../utils/roleGlyphSvg.js';
 import { meshtasticNodeColor, readableTextColor } from '../../utils/nodeColor.js';
 
@@ -15,7 +17,7 @@ import { meshtasticNodeColor, readableTextColor } from '../../utils/nodeColor.js
 // pulling Leaflet into their bundle/tests. Re-exported here so every existing
 // importer of `markerIcons` (MapLegend, createNodeIcon callers, tests) keeps
 // its current import path unchanged.
-export { roleGlyphInnerSvg, roleGlyphMarkerSvg, getHopColor, unmessageableBadgeSvg, aircraftBadgeSvg };
+export { roleGlyphInnerSvg, roleGlyphMarkerSvg, getHopColor, unmessageableBadgeSvg, aircraftBadgeSvg, roleBadgeSvg };
 
 /** Default MeshCore badge color (mauve), matching the pre-migration
  *  `MeshCoreMap.tsx` `MESHCORE_COLOR` constant. Callers pass `fixedColor`
@@ -190,6 +192,28 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
       ">${aircraftBadgeSvg(aircraftBadgeSize)}</div>
     ` : '';
 
+  // Role corner badge (#6008): TRACKER / TAK_TRACKER, SENSOR, TAK,
+  // LOST_AND_FOUND and CLIENT_MUTE keep the ordinary marker and gain a small
+  // badge in the bottom-left corner. The other three corners are taken: the
+  // aircraft badge sits top-left, the unmessageable badge top-right, and the
+  // official style's infrastructure glyph bottom-right (a node has one role, so
+  // a role badge and that glyph never appear together anyway). Meshtastic
+  // variant only; MeshCore categories map to 'none'.
+  const roleKind = categoryMarkerKind(roleCategory);
+  const roleBadgeKind = isRoleBadgeKind(roleKind) ? roleKind : null;
+  const roleCornerBadgeSize = Math.round(size * 0.4);
+  const roleCornerBadge = roleBadgeKind ? `
+      <div class="node-role-badge" data-role-badge="${roleBadgeKind}" style="
+        position: absolute;
+        bottom: -2px;
+        left: -2px;
+        width: ${roleCornerBadgeSize}px;
+        height: ${roleCornerBadgeSize}px;
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+        pointer-events: none;
+      ">${roleBadgeSvg(roleBadgeKind, roleCornerBadgeSize)}</div>
+    ` : '';
+
   // Official Meshtastic style: Circle with always-visible label
   if (pinStyle === 'official') {
     const circleSize = size;
@@ -286,6 +310,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
         ${markerSvg}
         ${emojiOverlay}
         ${roleBadge}
+        ${roleCornerBadge}
         ${unmessageableBadge}
         ${aircraftBadge}
       </div>
@@ -365,6 +390,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     <div class="${classes}" style="position: relative; width: ${size}px; height: ${size}px;">
       ${markerSvg}
       ${label}
+      ${roleCornerBadge}
       ${unmessageableBadge}
       ${aircraftBadge}
     </div>

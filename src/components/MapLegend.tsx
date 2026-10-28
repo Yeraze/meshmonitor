@@ -5,6 +5,8 @@ import { formatDateTime } from '../utils/datetime';
 import { DraggableOverlay } from './DraggableOverlay';
 import { MESHCORE_CATEGORIES, NODE_TYPE_CATEGORY_META } from '../utils/nodeTypeCategory';
 import { roleGlyphMarkerSvg } from '../utils/mapIcons';
+import { roleMarkerLegendSvg } from '../utils/roleGlyphSvg';
+import { ROLE_MARKER_LEGEND } from '../utils/nodeRoleMarker';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 import './MapLegend.css';
 import { UiIcon } from './icons';
@@ -35,6 +37,10 @@ interface MapLegendProps {
   /** Render the MeshCore node-type glyph legend (issue #3546). Opt-in so the
    *  Meshtastic maps that share this component are unaffected. */
   showNodeTypes?: boolean;
+  /** Render the Meshtastic role markers and corner badges (#6008): router,
+   *  router late, client base, then the tracker / lost-and-found / sensor /
+   *  TAK / client-mute badges. Opt-in for maps that draw Meshtastic nodes. */
+  showRoleMarkers?: boolean;
   /**
    * Render inline inside the unified map sidebar (#4909) instead of as a
    * floating/draggable overlay: no drag wrapper, no mobile card, full column
@@ -51,7 +57,7 @@ const getDefaultPosition = () => ({
   y: 60 + 10 + 250 + 20 // header + features top + features height + gap = 340
 });
 
-const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, showNodeTypes, embedded = false }) => {
+const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, showNodeTypes, showRoleMarkers, embedded = false }) => {
   const { t } = useTranslation();
   const { overlayColors } = useSettings();
   const isMobile = useIsMobileViewport();
@@ -173,6 +179,30 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, s
           <span className="legend-label">{item.label}</span>
         </div>
       ))}
+      {showRoleMarkers && (
+        <>
+          <div className="legend-divider" />
+          <span className="legend-title">{t('map.legend.nodeRoles', 'Node Roles')}</span>
+          {ROLE_MARKER_LEGEND.map((entry) => (
+            <div
+              key={entry.kind}
+              className="legend-item"
+              data-testid={`legend-role-${entry.kind}`}
+              title={t(entry.hintKey, entry.hint)}
+            >
+              <span
+                className="legend-line-sample"
+                style={{ display: 'inline-flex', width: 20, height: 20 }}
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{
+                  __html: roleMarkerLegendSvg(entry.kind, overlayColors.hopColors.gradient[0], 20),
+                }}
+              />
+              <span className="legend-label">{t(entry.labelKey, entry.label)}</span>
+            </div>
+          ))}
+        </>
+      )}
       {showNodeTypes && (
         <>
           <div className="legend-divider" />

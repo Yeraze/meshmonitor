@@ -97,3 +97,23 @@ describe('MapAnalysis MapLegend — Node Types glyph dedupe (#4047 Phase 2)', ()
     expect(container.querySelector('.map-analysis-legend')).toBeNull();
   });
 });
+
+describe('MapAnalysis MapLegend — role markers (#6008)', () => {
+  it('lists CLIENT_BASE as a node type and TRACKER / TAK_TRACKER as one badge row', () => {
+    mockCtx.mockReturnValue({
+      config: configWithLayers({
+        markers: { enabled: true, lookbackHours: null },
+        hopShading: { enabled: false, lookbackHours: null },
+      }),
+    });
+    mockVisibleCategories.mockReturnValue(['mtRouter', 'mtClientBase', 'mtTracker', 'mtTakTracker', 'mtSensor', 'mtClient']);
+    const { container, getByText, getByTestId, queryByTestId } = render(<MapLegend />);
+    expect(getByText('map.legend.roleBadges')).toBeTruthy();
+    expect(container.textContent).toContain('map.nodeType.mtClientBase');
+    expect(getByTestId('analysis-legend-role-tracker').querySelector('[data-role-badge="tracker"]')).not.toBeNull();
+    expect(getByTestId('analysis-legend-role-sensor')).toBeTruthy();
+    // Roles not on the map get no row.
+    expect(queryByTestId('analysis-legend-role-lostAndFound')).toBeNull();
+    expect(container.querySelectorAll('[data-testid="analysis-legend-role-tracker"]')).toHaveLength(1);
+  });
+});

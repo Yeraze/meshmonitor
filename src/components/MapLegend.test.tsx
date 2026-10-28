@@ -291,3 +291,25 @@ describe('MapLegend — mobile card (#4389)', () => {
     expect(container.querySelector('.map-legend')).not.toHaveClass('collapsed');
   });
 });
+
+describe('MapLegend role markers (#6008)', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('lists every Meshtastic role marker and badge when showRoleMarkers is set', () => {
+    render(<MapLegend showRoleMarkers embedded />);
+    expect(screen.getByText('map.legend.nodeRoles')).toBeInTheDocument();
+    for (const kind of ['router', 'routerLate', 'clientBase', 'tracker', 'lostAndFound', 'sensor', 'tak', 'clientMute']) {
+      const row = screen.getByTestId(`legend-role-${kind}`);
+      expect(row.querySelector('svg')).not.toBeNull();
+      expect(row.getAttribute('title')).toBeTruthy();
+    }
+    expect(screen.getByText('map.legend.role.clientBase')).toBeInTheDocument();
+    expect(screen.getByText('map.legend.role.tracker')).toBeInTheDocument();
+    expect(screen.getByTestId('legend-role-tracker').querySelector('[data-role-badge="tracker"]')).not.toBeNull();
+  });
+
+  it('omits the section by default', () => {
+    render(<MapLegend embedded />);
+    expect(screen.queryByText('map.legend.nodeRoles')).toBeNull();
+  });
+});

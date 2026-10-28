@@ -7,7 +7,7 @@ import { useSettings } from '../../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { useAnalysisNodes, type NodeRecord } from '../useAnalysisNodes';
 import { createNodeIcon } from '../../../utils/mapIcons';
-import { getNodeTypeCategory } from '../../../utils/nodeTypeCategory';
+import { markerRoleProps } from '../../../utils/nodeTypeCategory';
 import { markerAgeOpacity, MIN_MARKER_OPACITY } from '../../../utils/markerAgeOpacity';
 import { isNodeEmphasized, selectionOpacity } from '../../../utils/nodeIdentity';
 import DashboardNodePopup, { type NodeSourceRef } from '../../Dashboard/DashboardNodePopup';
@@ -113,14 +113,8 @@ export default function NodeMarkersLayer() {
       selected?.type === 'node' &&
       selected.nodeNum === Number(n.nodeNum) &&
       (selected.sourceId ?? '') === sourceId;
-    const roleNum =
-      typeof n.user?.role === 'string'
-        ? parseInt(n.user.role, 10)
-        : typeof n.user?.role === 'number'
-          ? n.user.role
-          : 0;
-    const isRouter = roleNum === 2;
-    const roleCategory = getNodeTypeCategory(n);
+    // #6008: shared role helper, matching every other map surface.
+    const { isRouter, roleCategory } = markerRoleProps(n);
     const markerKey = keyOf(n);
     // Likely-aircraft badge (#5364/#5365 Phase 1 WP4): 'show' never marks.
     // Aged-out aircraft (Phase 2) are only here when "Show aged-out" is on:
