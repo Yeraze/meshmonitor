@@ -41,6 +41,32 @@ Each node is represented on the map with a marker that provides visual informati
 - **Per-node color** *(New in 4.15.2)*:
   - Every node gets a deterministic color derived from its NodeNum using the same algorithm the official Meshtastic app uses. The color is applied to the map pin and to the matching node's row in the sidebar list, so a node is easy to pick out at a glance across the map and the list. Signal-quality color coding above still applies where the underlying color is used as a fill — the per-node color drives the pin's outline / accent so the two signals don't collide.
 
+#### Role markers and badges
+
+A Meshtastic node's device role changes its marker, so you can tell fixed infrastructure from a moving asset at a glance. Every map (source Map tab, Dashboard, Map Analysis and embed maps) uses the same rules.
+
+Infrastructure roles replace the pin with a glyph:
+
+| Role | Marker |
+|---|---|
+| Router (and the deprecated Router Client and Repeater) | Router tower |
+| Router (Late) | Router tower with a clock |
+| Client (Base) | Base station: a house with an antenna |
+
+Other roles keep the normal pin and gain a small badge in its bottom-left corner:
+
+| Role | Badge |
+|---|---|
+| Tracker, TAK Tracker | Arrow: sends its position often, so follow its trail |
+| Lost and Found | Life buoy on a solid orange disc, so a lost device stands out |
+| Sensor | Thermometer: a telemetry-first station |
+| TAK | Crosshair |
+| Client (Mute) | Muted speaker: does not relay packets for others |
+
+Client and Client (Hidden) stay plain. Badges follow the light or dark theme. The other corners belong to other badges (likely aircraft top-left, cannot receive DMs top-right, and the infrastructure glyph bottom-right in the official pin style), so nothing overlaps. The map legend lists each marker under **Node Roles**. The 3D map draws the infrastructure glyphs but not the corner badges.
+
+![Role markers and badges on the map, with the legend](/images/features/6008-role-markers.png)
+
 #### Battery icons
 
 The node list, the header status, the map node popup and ATAK contact cards pick the battery icon from the charge level:
