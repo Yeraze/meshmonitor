@@ -171,7 +171,8 @@ describe('per-source settings key allowlist invariants', () => {
     // #5723 added tracePathScheduleState (persisted trace intervals + cap).
     // #5745 added statusMessageLastVerified (last verified Status Message).
     // MeshCore mention alerts added meshcoreMentionNotifyState (per-sender cooldown).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(33);
+    // #6011 added reticulumLastAnnounceAt (announce cooldown + periodic timer).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(34);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is
@@ -190,6 +191,14 @@ describe('per-source settings key allowlist invariants', () => {
     const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
     expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('meshcoreLastFloodAdvertAt')).toBe(true);
     expect(valid.has('meshcoreLastFloodAdvertAt')).toBe(false);
+  });
+
+  // #6011: a POST that cleared the last-announce time would clear the
+  // Announce now cooldown and re-time the periodic announce.
+  it('reticulumLastAnnounceAt is server-managed, never client-postable', () => {
+    const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('reticulumLastAnnounceAt')).toBe(true);
+    expect(valid.has('reticulumLastAnnounceAt')).toBe(false);
   });
 
   // #5364/#5365 D19: the two-strike counter must not be resettable from the
