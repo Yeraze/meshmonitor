@@ -44,7 +44,14 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isReticulumManager } from '../sourceManagerTypes.js';
 import type { ReticulumManager, SendReticulumMessageParams } from '../reticulumManager.js';
-import { reticulumConfigFromSource } from '../reticulumConfig.js';
+import { loadReticulumLastAnnounceAt, RETICULUM_ANNOUNCE_COOLDOWN_MS } from '../reticulumManager.js';
+import {
+  announceIntervalHoursFromConfig,
+  normalizeReticulumDisplayName,
+  reticulumConfigFromSource,
+  RETICULUM_DISPLAY_NAME_MAX_CHARS,
+} from '../reticulumConfig.js';
+import { RETICULUM_ANNOUNCE_HOURS } from '../utils/schedulerInterval.js';
 import { ReticulumBridgeError } from '../reticulumBridgeClient.js';
 import {
   reticulumInterfaceNodeId,
@@ -922,31 +929,220 @@ router.get(
   },
 );
 
+// ==========================================================================
+// LXMF identity settings: display name, Announce now, periodic announce (#6011)
+//
+// Resource: 'configuration' (sourcey), the same one that gates the rest of
+// the Reticulum Configuration page (GET/PUT /radio-config, GET /device-info).
+// The display name and interval are stored in the source's `sources.config`
+// row (`displayName`, `announceIntervalHours`), so they survive restarts and
+// can be saved while the source is disconnected; the manager re-applies the
+// name on every connect, before the on-connect announce.
+// ==========================================================================
+
+/** Load `:id` and confirm it is a Reticulum source; sends the error response itself and returns null otherwise. */
+async function loadReticulumSource(res: Response, sourceId: string) {
+  const source = await databaseService.sources.getSource(sourceId);
+  if (!source) {
+    fail(res, 404, 'SOURCE_NOT_FOUND', `Source ${sourceId} not found`);
+    return null;
+  }
+  if (source.type !== 'reticulum') {
+    fail(res, 400, 'NOT_A_RETICULUM_SOURCE', `Source ${sourceId} is not a Reticulum source`);
+    return null;
+  }
+  return source;
+}
+
+/** Write one Configuration-page key into the source config (`undefined` removes it). */
+async function saveReticulumConfigKey(
+  sourceId: string,
+  stored: Record<string, unknown> | null | undefined,
+  key: 'displayName' | 'announceIntervalHours',
+  value: string | number | undefined,
+): Promise<void> {
+  const next: Record<string, unknown> = { ...(stored ?? {}) };
+  if (value === undefined) delete next[key];
+  else next[key] = value;
+  await databaseService.sources.updateSource(sourceId, { config: next });
+}
+
+/**
+ * GET /announce-settings
+ * Everything the Configuration page's identity section shows: the saved name
+ * and interval, this source's LXMF destination hash (cached by the manager,
+ * no bridge round-trip; `null` while disconnected), the last announce time
+ * and the seconds left on the manual cooldown.
+ */
+router.get(
+  '/announce-settings',
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    try {
+      const source = await loadReticulumSource(res, sourceId);
+      if (!source) return;
+      const cfg = (source.config ?? {}) as Record<string, unknown>;
+      const name = normalizeReticulumDisplayName(cfg.displayName);
+      const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+      const connected = manager ? manager.isConnected() : false;
+      let lastAnnounceAt: number | null;
+      let cooldownRemainingSeconds = 0;
+      let nextPeriodicAnnounceAt: number | null = null;
+      if (manager) {
+        const state = await manager.getAnnounceState();
+        lastAnnounceAt = state.lastAnnounceAt;
+        cooldownRemainingSeconds = state.cooldownRemainingSeconds;
+        nextPeriodicAnnounceAt = state.nextPeriodicAnnounceAt;
+      } else {
+        lastAnnounceAt = await loadReticulumLastAnnounceAt(sourceId);
+        if (lastAnnounceAt !== null) {
+          cooldownRemainingSeconds = Math.max(0, Math.ceil((lastAnnounceAt + RETICULUM_ANNOUNCE_COOLDOWN_MS - Date.now()) / 1000));
+        }
+      }
+      return ok(res, {
+        connected,
+        destinationHash: manager?.getOwnAddresses()[0] ?? null,
+        displayName: name.ok ? name.name : null,
+        maxDisplayNameLength: RETICULUM_DISPLAY_NAME_MAX_CHARS,
+        announceIntervalHours: announceIntervalHoursFromConfig(cfg.announceIntervalHours),
+        announceIntervalRange: RETICULUM_ANNOUNCE_HOURS,
+        cooldownSeconds: RETICULUM_ANNOUNCE_COOLDOWN_MS / 1000,
+        lastAnnounceAt,
+        cooldownRemainingSeconds,
+        nextPeriodicAnnounceAt,
+      });
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error reading announce settings: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_ANNOUNCE_SETTINGS_FAILED', 'Failed to read Reticulum announce settings');
+    }
+  },
+);
+
 /**
  * PUT /display-name
- * Body: `{ name: string }`.
+ * Body: `{ name: string | null }`. Trimmed; empty or `null` = anonymous; at
+ * most RETICULUM_DISPLAY_NAME_MAX_CHARS characters. Saved to the source config
+ * whether or not the source is connected; applied to the bridge at once when
+ * it is. Does NOT announce: the new name goes out with the next announce
+ * (Announce now, the periodic timer, or the next connect).
  */
 router.put(
   '/display-name',
-  requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
-    const { name } = (req.body ?? {}) as { name?: unknown };
-    if (typeof name !== 'string' || name.length === 0) {
-      return fail(res, 400, 'INVALID_NAME', 'body.name must be a non-empty string');
+    const parsed = normalizeReticulumDisplayName((req.body ?? {}).name);
+    if (!parsed.ok) {
+      return fail(res, 400, 'INVALID_NAME', parsed.error);
+    }
+    try {
+      const source = await loadReticulumSource(res, sourceId);
+      if (!source) return;
+      await saveReticulumConfigKey(
+        sourceId,
+        source.config as Record<string, unknown> | null | undefined,
+        'displayName',
+        parsed.name ?? undefined,
+      );
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error saving display name: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_DISPLAY_NAME_FAILED', 'Failed to save Reticulum display name');
     }
 
     const manager = res.locals.reticulumManager as ReticulumManager | undefined;
-    if (!manager) {
+    let applied = false;
+    if (manager) {
+      try {
+        applied = await manager.setDisplayName(parsed.name);
+      } catch (err) {
+        logger.warn(`[Reticulum:${sourceId}] Display name saved but not applied: ${err instanceof Error ? err.message : String(err)}`);
+        return fail(
+          res,
+          502,
+          'RETICULUM_DISPLAY_NAME_NOT_APPLIED',
+          'Display name saved, but the bridge did not accept it. It will be applied on the next connect.',
+          { saved: true },
+        );
+      }
+    }
+    return ok(res, { displayName: parsed.name, applied });
+  },
+);
+
+/**
+ * PUT /announce-interval
+ * Body: `{ hours: number }`. 0 = periodic announce off (the default); otherwise
+ * a whole number of hours in RETICULUM_ANNOUNCE_HOURS (1–24). Saved to the
+ * source config; a connected manager re-arms its timer from the persisted
+ * last-announce time. Saving never announces and never clears the cooldown.
+ */
+router.put(
+  '/announce-interval',
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const { hours } = (req.body ?? {}) as { hours?: unknown };
+    const { min, max } = RETICULUM_ANNOUNCE_HOURS;
+    if (
+      typeof hours !== 'number' ||
+      !Number.isInteger(hours) ||
+      (hours !== 0 && (hours < min || hours > max))
+    ) {
+      return fail(res, 400, 'INVALID_ANNOUNCE_INTERVAL', `hours must be 0 (off) or a whole number from ${min} to ${max}`);
+    }
+    try {
+      const source = await loadReticulumSource(res, sourceId);
+      if (!source) return;
+      await saveReticulumConfigKey(
+        sourceId,
+        source.config as Record<string, unknown> | null | undefined,
+        'announceIntervalHours',
+        hours === 0 ? undefined : hours,
+      );
+      const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+      if (manager) await manager.setAnnounceInterval(hours);
+      return ok(res, { announceIntervalHours: hours });
+    } catch (err) {
+      logger.error(`[Reticulum:${sourceId}] Error saving announce interval: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_ANNOUNCE_INTERVAL_FAILED', 'Failed to save Reticulum announce interval');
+    }
+  },
+);
+
+/**
+ * POST /announce
+ * "Announce now": one LXMF announce of this source's identity. At most one
+ * per RETICULUM_ANNOUNCE_COOLDOWN_MS per source, counted from the last
+ * announce of any kind (on-connect, manual, periodic) and enforced here, on
+ * the server: inside the cooldown it answers 429 with `retryAfterSeconds`
+ * (and a Retry-After header). 409 SOURCE_NOT_CONNECTED while disconnected.
+ */
+router.post(
+  '/announce',
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const manager = res.locals.reticulumManager as ReticulumManager | undefined;
+    if (!manager || !manager.isConnected()) {
       return fail(res, 409, 'SOURCE_NOT_CONNECTED', `Reticulum source ${sourceId} has no active connection`);
     }
-
     try {
-      await manager.setDisplayName(name);
-      return ok(res, { displayName: name });
+      const result = await manager.announceNow();
+      if (!result.announced) {
+        res.setHeader('Retry-After', String(result.retryAfterSeconds));
+        return fail(
+          res,
+          429,
+          'ANNOUNCE_COOLDOWN',
+          `This source announced less than ${RETICULUM_ANNOUNCE_COOLDOWN_MS / 1000} seconds ago. Try again in ${result.retryAfterSeconds} s.`,
+          { retryAfterSeconds: result.retryAfterSeconds },
+        );
+      }
+      return ok(res, { announcedAt: result.announcedAt });
     } catch (err) {
-      logger.error(`[Reticulum:${sourceId}] Error setting display name: ${err instanceof Error ? err.message : String(err)}`);
-      return fail(res, 500, 'RETICULUM_DISPLAY_NAME_FAILED', 'Failed to set Reticulum display name');
+      logger.error(`[Reticulum:${sourceId}] Error announcing: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 500, 'RETICULUM_ANNOUNCE_FAILED', 'Failed to send Reticulum announce');
     }
   },
 );

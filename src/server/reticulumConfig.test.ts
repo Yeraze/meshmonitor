@@ -8,7 +8,15 @@
  * value; it has no bearing on the logic under test.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { reticulumConfigFromSource, ensureReticulumManagerStarted, type ReticulumSourceConfig } from './reticulumConfig.js';
+import {
+  reticulumConfigFromSource,
+  ensureReticulumManagerStarted,
+  normalizeReticulumDisplayName,
+  announceIntervalHoursFromConfig,
+  preserveReticulumManagedConfig,
+  RETICULUM_DISPLAY_NAME_MAX_CHARS,
+  type ReticulumSourceConfig,
+} from './reticulumConfig.js';
 import { PROTOCOL_VERSION } from './reticulumProtocol.js';
 import type { Source } from '../db/repositories/sources.js';
 import { logger } from '../utils/logger.js';
@@ -42,6 +50,8 @@ describe('reticulumConfigFromSource', () => {
         bridgeUrl: 'ws://127.0.0.1:8765',
         token: 'secret',
         protocolVersion: PROTOCOL_VERSION,
+        displayName: null,
+        announceIntervalHours: 0,
         configDir: '/rns',
       });
     });
@@ -149,6 +159,8 @@ describe('reticulumConfigFromSource', () => {
         bridgeUrl: 'ws://127.0.0.1:8765',
         token: 'secret',
         protocolVersion: PROTOCOL_VERSION,
+        displayName: null,
+        announceIntervalHours: 0,
         peers: [{ host: '10.0.0.5', port: 4242 }],
       });
     });
@@ -198,6 +210,8 @@ describe('reticulumConfigFromSource', () => {
         bridgeUrl: 'ws://127.0.0.1:8765',
         token: 'secret',
         protocolVersion: PROTOCOL_VERSION,
+        displayName: null,
+        announceIntervalHours: 0,
         device: '/dev/ttyUSB0',
         frequency: undefined,
         bandwidth: undefined,
@@ -359,5 +373,70 @@ describe('ensureReticulumManagerStarted', () => {
     const cfg = reticulumConfigFromSource(source);
     expect(cfg).not.toBeNull();
     await expect(ensureReticulumManagerStarted(source, cfg!)).resolves.toBeUndefined();
+  });
+});
+
+describe('LXMF identity config (#6011)', () => {
+  it('carries the saved display name and interval into the runtime config for every mode', () => {
+    for (const base of [
+      { mode: 'attach', configDir: '/rns' },
+      { mode: 'tcp_peer', peers: [{ host: 'h', port: 1 }] },
+      { mode: 'own', device: '/dev/ttyUSB0' },
+    ] as ReticulumSourceConfig[]) {
+      const cfg = reticulumConfigFromSource(fakeSource({ ...base, displayName: 'Base Camp', announceIntervalHours: 6 }));
+      expect(cfg?.displayName).toBe('Base Camp');
+      expect(cfg?.announceIntervalHours).toBe(6);
+    }
+  });
+
+  it('drops a stored name that no longer validates, and clamps a stored interval', () => {
+    const cfg = reticulumConfigFromSource(
+      fakeSource({ mode: 'attach', configDir: '/rns', displayName: 'x'.repeat(200), announceIntervalHours: 500 }),
+    );
+    expect(cfg?.displayName).toBeNull();
+    expect(cfg?.announceIntervalHours).toBe(24);
+  });
+
+  describe('normalizeReticulumDisplayName', () => {
+    it('trims, and maps empty / whitespace / null to anonymous (null)', () => {
+      expect(normalizeReticulumDisplayName('  Base Camp  ')).toEqual({ ok: true, name: 'Base Camp' });
+      expect(normalizeReticulumDisplayName('')).toEqual({ ok: true, name: null });
+      expect(normalizeReticulumDisplayName('   ')).toEqual({ ok: true, name: null });
+      expect(normalizeReticulumDisplayName(null)).toEqual({ ok: true, name: null });
+    });
+
+    it('accepts exactly the max length, counting characters not UTF-16 units', () => {
+      expect(normalizeReticulumDisplayName('a'.repeat(RETICULUM_DISPLAY_NAME_MAX_CHARS)).ok).toBe(true);
+      expect(normalizeReticulumDisplayName('a'.repeat(RETICULUM_DISPLAY_NAME_MAX_CHARS + 1)).ok).toBe(false);
+      // Astral characters are 2 UTF-16 units each but one character.
+      expect(normalizeReticulumDisplayName('\u{1F4E1}'.repeat(RETICULUM_DISPLAY_NAME_MAX_CHARS)).ok).toBe(true);
+    });
+
+    it('rejects non-strings and control characters', () => {
+      expect(normalizeReticulumDisplayName(42).ok).toBe(false);
+      expect(normalizeReticulumDisplayName('bad\nname').ok).toBe(false);
+    });
+  });
+
+  it('announceIntervalHoursFromConfig: absent/0/garbage = off, otherwise clamped to 1-24', () => {
+    expect(announceIntervalHoursFromConfig(undefined)).toBe(0);
+    expect(announceIntervalHoursFromConfig(0)).toBe(0);
+    expect(announceIntervalHoursFromConfig('6')).toBe(0);
+    expect(announceIntervalHoursFromConfig(6)).toBe(6);
+    expect(announceIntervalHoursFromConfig(0.2)).toBe(1);
+    expect(announceIntervalHoursFromConfig(48)).toBe(24);
+  });
+
+  it('preserveReticulumManagedConfig keeps Configuration-page keys a source-form save left out', () => {
+    const stored = { mode: 'attach', configDir: '/old', displayName: 'Base Camp', announceIntervalHours: 6 };
+    expect(preserveReticulumManagedConfig(stored, { mode: 'attach', configDir: '/new' })).toEqual({
+      mode: 'attach',
+      configDir: '/new',
+      displayName: 'Base Camp',
+      announceIntervalHours: 6,
+    });
+    // A key the save does send wins.
+    expect(preserveReticulumManagedConfig(stored, { mode: 'attach', displayName: 'New' }).displayName).toBe('New');
+    expect(preserveReticulumManagedConfig(null, { mode: 'attach' })).toEqual({ mode: 'attach' });
   });
 });

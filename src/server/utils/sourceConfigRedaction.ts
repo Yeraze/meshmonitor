@@ -554,6 +554,9 @@ const RETICULUM: Spec<ReticulumSourceConfig> = {
   stAlock: withheld,
   ltAlock: withheld,
   remoteAllowed: withheld,
+  // LXMF identity settings, edited on the Configuration page (#6011).
+  displayName: withheld,
+  announceIntervalHours: withheld,
 };
 
 /** Read for every type: the source card draws "Idle" and the Connect button from it. */

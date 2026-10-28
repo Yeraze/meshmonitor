@@ -36,6 +36,11 @@ export const TIME_SYNC_MINUTES: IntervalRange = { min: 15, max: 1440 };
 export const DISTANCE_DELETE_HOURS: IntervalRange = { min: 6, max: 48 };
 /** MeshCore Auto-Announce interval, hours (matches its save route). */
 export const MESHCORE_AUTO_ANNOUNCE_HOURS: IntervalRange = { min: 1, max: 168 };
+/**
+ * Reticulum periodic LXMF announce interval, hours (#6011). 0 = off is handled
+ * by the caller; the Configuration page offers 1–24.
+ */
+export const RETICULUM_ANNOUNCE_HOURS: IntervalRange = { min: 1, max: 24 };
 /** MeshCore Auto-Pathfinding gap between targets, minutes (matches its save route). */
 export const MESHCORE_PATHFINDING_INTERVAL_MINUTES: IntervalRange = { min: 3, max: 60 };
 /** MeshCore Auto-Pathfinding repeat, hours (matches its save route). */

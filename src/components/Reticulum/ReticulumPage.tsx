@@ -163,7 +163,7 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
           <ReticulumMap destinations={destinations} paths={paths} loading={loading} />
         )}
         {view === 'configuration' && (
-          <ReticulumConfigurationView sourceId={sourceId} />
+          <ReticulumConfigurationView sourceId={sourceId} showRadio={status?.mode === 'own'} />
         )}
         {view === 'info' && (
           <ReticulumInfoView status={status} loading={loading} />

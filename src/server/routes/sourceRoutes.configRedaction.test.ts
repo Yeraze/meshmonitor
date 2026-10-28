@@ -183,6 +183,8 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     stAlock: 10,
     ltAlock: 5,
     remoteAllowed: [`${PRIV}-remote-identity`],
+    displayName: `${PRIV}-rns-display-name`,
+    announceIntervalHours: 6,
     [UNCLASSIFIED]: `${SEC}-future-rns`,
   },
 };

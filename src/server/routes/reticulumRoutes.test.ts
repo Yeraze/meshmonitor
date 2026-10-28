@@ -1304,55 +1304,263 @@ describe('Reticulum routes', () => {
         expect(res.status).toBe(403);
       });
     });
+  });
 
-    // ── PUT /display-name ─────────────────────────────────────────────────
+  // ── LXMF identity settings (#6011) ─────────────────────────────────────
 
-    describe('PUT /:id/reticulum/display-name', () => {
-      beforeEach(async () => {
-        // Outer describe already granted messages:read on sourceA; revoke
-        // first since (user, resource, sourceId) is unique — write tests
-        // need write only.
-        await harness.revokeAll(harness.limited.id);
-        await harness.grant(harness.limited.id, 'messages', 'write', harness.sourceA);
+  describe('LXMF display name / Announce now / periodic announce (#6011)', () => {
+    const RNS = 'rt-rns-6011';
+
+    function fakeAnnounceManager(overrides: Partial<{
+      connected: boolean;
+      setDisplayName: ReturnType<typeof vi.fn>;
+      setAnnounceInterval: ReturnType<typeof vi.fn>;
+      announceNow: ReturnType<typeof vi.fn>;
+    }> = {}) {
+      return {
+        sourceType: 'reticulum',
+        isConnected: () => overrides.connected ?? true,
+        getOwnAddresses: () => ['ab'.repeat(16)],
+        setDisplayName: overrides.setDisplayName ?? vi.fn().mockResolvedValue(true),
+        setAnnounceInterval: overrides.setAnnounceInterval ?? vi.fn().mockResolvedValue(undefined),
+        announceNow: overrides.announceNow ?? vi.fn().mockResolvedValue({ announced: true, announcedAt: 1_700_000_000_000 }),
+        getAnnounceState: vi.fn().mockResolvedValue({
+          lastAnnounceAt: 1_700_000_000_000,
+          cooldownRemainingSeconds: 42,
+          nextPeriodicAnnounceAt: null,
+          announceIntervalHours: 0,
+        }),
+      };
+    }
+
+    async function storedConfig(): Promise<Record<string, unknown>> {
+      const src = await harness.db.sources.getSource(RNS);
+      return (src?.config ?? {}) as Record<string, unknown>;
+    }
+
+    beforeEach(async () => {
+      await harness.db.sources.deleteSource(RNS).catch(() => {});
+      await harness.db.sources.createSource({
+        id: RNS,
+        name: 'RNS 6011',
+        type: 'reticulum',
+        config: { mode: 'attach', configDir: '/rns' },
+        enabled: true,
       });
+      await harness.revokeAll(harness.limited.id);
+      await harness.grant(harness.limited.id, 'configuration', 'write', RNS);
+    });
 
-      it('calls manager.setDisplayName with the given name', async () => {
-        const setDisplayName = vi.fn().mockResolvedValue(undefined);
-        mockGetManager.mockReturnValue(fakeMessageManager({ setDisplayName }));
+    afterEach(async () => {
+      await harness.db.settings.deleteSourceSettings(RNS).catch(() => {});
+      await harness.db.sources.deleteSource(RNS).catch(() => {});
+    });
+
+    describe('PUT /display-name', () => {
+      it('saves the trimmed name to the source config and applies it live when connected', async () => {
+        const setDisplayName = vi.fn().mockResolvedValue(true);
+        mockGetManager.mockReturnValue(fakeAnnounceManager({ setDisplayName }));
         const agent = await harness.loginAs(harness.limited);
-        const res = await agent
-          .put(`/api/sources/${harness.sourceA}/reticulum/display-name`)
-          .send({ name: 'New Name' });
+        const res = await agent.put(`/api/sources/${RNS}/reticulum/display-name`).send({ name: '  Base Camp  ' });
         expect(res.status).toBe(200);
-        expect(setDisplayName).toHaveBeenCalledWith('New Name');
+        expect(res.body.data).toEqual({ displayName: 'Base Camp', applied: true });
+        expect(setDisplayName).toHaveBeenCalledWith('Base Camp');
+        expect((await storedConfig()).displayName).toBe('Base Camp');
+        // The rest of the config is untouched.
+        expect((await storedConfig()).configDir).toBe('/rns');
       });
 
-      it('400s on an empty name', async () => {
-        mockGetManager.mockReturnValue(fakeMessageManager());
-        const agent = await harness.loginAs(harness.limited);
-        const res = await agent
-          .put(`/api/sources/${harness.sourceA}/reticulum/display-name`)
-          .send({ name: '' });
-        expect(res.status).toBe(400);
-      });
-
-      it('409s with SOURCE_NOT_CONNECTED when no manager is registered', async () => {
+      it('saves the name while disconnected (no manager registered) without error', async () => {
         mockGetManager.mockReturnValue(undefined);
         const agent = await harness.loginAs(harness.limited);
-        const res = await agent
-          .put(`/api/sources/${harness.sourceA}/reticulum/display-name`)
-          .send({ name: 'New Name' });
+        const res = await agent.put(`/api/sources/${RNS}/reticulum/display-name`).send({ name: 'Offline Name' });
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ displayName: 'Offline Name', applied: false });
+        expect((await storedConfig()).displayName).toBe('Offline Name');
+      });
+
+      it('never announces when the name is saved', async () => {
+        const mgr = fakeAnnounceManager();
+        mockGetManager.mockReturnValue(mgr);
+        const agent = await harness.loginAs(harness.limited);
+        await agent.put(`/api/sources/${RNS}/reticulum/display-name`).send({ name: 'Quiet' });
+        expect(mgr.announceNow).not.toHaveBeenCalled();
+      });
+
+      it('an empty name clears it (anonymous) and removes the key', async () => {
+        await harness.db.sources.updateSource(RNS, { config: { mode: 'attach', configDir: '/rns', displayName: 'Old' } });
+        const setDisplayName = vi.fn().mockResolvedValue(true);
+        mockGetManager.mockReturnValue(fakeAnnounceManager({ setDisplayName }));
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${RNS}/reticulum/display-name`).send({ name: '   ' });
+        expect(res.status).toBe(200);
+        expect(res.body.data.displayName).toBeNull();
+        expect(setDisplayName).toHaveBeenCalledWith(null);
+        expect('displayName' in (await storedConfig())).toBe(false);
+      });
+
+      it('400s on a name over 64 characters, on a non-string, and on control characters', async () => {
+        mockGetManager.mockReturnValue(fakeAnnounceManager());
+        const agent = await harness.loginAs(harness.limited);
+        for (const name of ['x'.repeat(65), 42, 'two\nlines']) {
+          const res = await agent.put(`/api/sources/${RNS}/reticulum/display-name`).send({ name });
+          expect(res.status).toBe(400);
+          expect(res.body.code).toBe('INVALID_NAME');
+        }
+        expect('displayName' in (await storedConfig())).toBe(false);
+      });
+
+      it('requires configuration:write: messages:write alone is rejected', async () => {
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'write', RNS);
+        mockGetManager.mockReturnValue(fakeAnnounceManager());
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${RNS}/reticulum/display-name`).send({ name: 'Nope' });
+        expect(res.status).toBe(403);
+        expect('displayName' in (await storedConfig())).toBe(false);
+      });
+
+      it('a configuration:write grant on another source does not authorize this one', async () => {
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${RNS}/reticulum/display-name`).send({ name: 'Nope' });
+        expect(res.status).toBe(403);
+      });
+
+      it('400s on a source that is not Reticulum', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.put(`/api/sources/${harness.sourceA}/reticulum/display-name`).send({ name: 'X' });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('NOT_A_RETICULUM_SOURCE');
+      });
+    });
+
+    describe('POST /announce', () => {
+      it('announces through the manager and returns the time', async () => {
+        const mgr = fakeAnnounceManager();
+        mockGetManager.mockReturnValue(mgr);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post(`/api/sources/${RNS}/reticulum/announce`);
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ success: true, data: { announcedAt: 1_700_000_000_000 } });
+        expect(mgr.announceNow).toHaveBeenCalledTimes(1);
+      });
+
+      it('429s with retryAfterSeconds (body and Retry-After header) inside the cooldown', async () => {
+        mockGetManager.mockReturnValue(
+          fakeAnnounceManager({ announceNow: vi.fn().mockResolvedValue({ announced: false, retryAfterSeconds: 37 }) }),
+        );
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post(`/api/sources/${RNS}/reticulum/announce`);
+        expect(res.status).toBe(429);
+        expect(res.body.success).toBe(false);
+        expect(res.body.code).toBe('ANNOUNCE_COOLDOWN');
+        expect(res.body.retryAfterSeconds).toBe(37);
+        expect(res.headers['retry-after']).toBe('37');
+      });
+
+      it('409s while disconnected', async () => {
+        mockGetManager.mockReturnValue(fakeAnnounceManager({ connected: false }));
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post(`/api/sources/${RNS}/reticulum/announce`);
         expect(res.status).toBe(409);
         expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
       });
 
-      it('403s on a read-only grant (write required)', async () => {
+      it('requires configuration:write: messages:write alone is rejected', async () => {
         await harness.revokeAll(harness.limited.id);
-        await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+        await harness.grant(harness.limited.id, 'messages', 'write', RNS);
+        const mgr = fakeAnnounceManager();
+        mockGetManager.mockReturnValue(mgr);
         const agent = await harness.loginAs(harness.limited);
-        const res = await agent
-          .put(`/api/sources/${harness.sourceA}/reticulum/display-name`)
-          .send({ name: 'New Name' });
+        const res = await agent.post(`/api/sources/${RNS}/reticulum/announce`);
+        expect(res.status).toBe(403);
+        expect(mgr.announceNow).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('PUT /announce-interval', () => {
+      it('saves the interval and re-arms the manager', async () => {
+        const mgr = fakeAnnounceManager();
+        mockGetManager.mockReturnValue(mgr);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${RNS}/reticulum/announce-interval`).send({ hours: 6 });
+        expect(res.status).toBe(200);
+        expect((await storedConfig()).announceIntervalHours).toBe(6);
+        expect(mgr.setAnnounceInterval).toHaveBeenCalledWith(6);
+        expect(mgr.announceNow).not.toHaveBeenCalled();
+      });
+
+      it('0 turns it off and removes the key', async () => {
+        await harness.db.sources.updateSource(RNS, { config: { mode: 'attach', configDir: '/rns', announceIntervalHours: 3 } });
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${RNS}/reticulum/announce-interval`).send({ hours: 0 });
+        expect(res.status).toBe(200);
+        expect('announceIntervalHours' in (await storedConfig())).toBe(false);
+      });
+
+      it('400s outside 1-24 hours or on a fraction', async () => {
+        const agent = await harness.loginAs(harness.limited);
+        for (const hours of [25, -1, 0.5, '6', null]) {
+          const res = await agent.put(`/api/sources/${RNS}/reticulum/announce-interval`).send({ hours });
+          expect(res.status).toBe(400);
+          expect(res.body.code).toBe('INVALID_ANNOUNCE_INTERVAL');
+        }
+      });
+
+      it('requires configuration:write: messages:write alone is rejected', async () => {
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'write', RNS);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.put(`/api/sources/${RNS}/reticulum/announce-interval`).send({ hours: 6 });
+        expect(res.status).toBe(403);
+      });
+    });
+
+    describe('GET /announce-settings', () => {
+      it('returns the saved settings and the manager announce state', async () => {
+        await harness.db.sources.updateSource(RNS, {
+          config: { mode: 'attach', configDir: '/rns', displayName: 'Base Camp', announceIntervalHours: 6 },
+        });
+        mockGetManager.mockReturnValue(fakeAnnounceManager());
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'configuration', 'read', RNS);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${RNS}/reticulum/announce-settings`);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({
+          connected: true,
+          destinationHash: 'ab'.repeat(16),
+          displayName: 'Base Camp',
+          announceIntervalHours: 6,
+          maxDisplayNameLength: 64,
+          cooldownSeconds: 60,
+          cooldownRemainingSeconds: 42,
+          lastAnnounceAt: 1_700_000_000_000,
+        });
+      });
+
+      it('reads the persisted last-announce time when disconnected', async () => {
+        const recent = Date.now() - 10_000;
+        await harness.db.settings.setSourceSetting(RNS, 'reticulumLastAnnounceAt', String(recent));
+        mockGetManager.mockReturnValue(undefined);
+        const agent = await harness.loginAs(harness.admin);
+        const res = await agent.get(`/api/sources/${RNS}/reticulum/announce-settings`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.connected).toBe(false);
+        expect(res.body.data.destinationHash).toBeNull();
+        expect(res.body.data.lastAnnounceAt).toBe(recent);
+        expect(res.body.data.cooldownRemainingSeconds).toBeGreaterThan(45);
+        expect(res.body.data.cooldownRemainingSeconds).toBeLessThanOrEqual(50);
+      });
+
+      it('403s without configuration:read on the source', async () => {
+        await harness.revokeAll(harness.limited.id);
+        await harness.grant(harness.limited.id, 'messages', 'read', RNS);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.get(`/api/sources/${RNS}/reticulum/announce-settings`);
         expect(res.status).toBe(403);
       });
     });
