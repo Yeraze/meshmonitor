@@ -43,6 +43,11 @@ import {
   MIN_INTERVAL_MINUTES as AUTO_ENRICHMENT_MIN_INTERVAL_MINUTES,
   MAX_INTERVAL_MINUTES as AUTO_ENRICHMENT_MAX_INTERVAL_MINUTES,
 } from '../services/autoEnrichmentScheduler.js';
+import {
+  meshwarsForwarder,
+  MESHWARS_SETTINGS,
+  normalizeBaseUrl as normalizeMeshWarsBaseUrl,
+} from '../services/meshwarsForwarder.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import { NODE_DISPLAY_RANGES, SETTINGS_TAB_PER_SOURCE_KEYS, MAX_INFRA_NODE_AGE_HOURS_RANGE, TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE } from '../../constants/nodeDisplayDefaults.js';
 import { resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
@@ -611,6 +616,21 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
           return fail(res, 400, 'ADSB_OPENSKY_CREDENTIALS_REQUIRED',
             'OpenSky Network needs both a client ID and a client secret');
         }
+      }
+    }
+    // MeshWars forwarder: an http(s) base URL, and turning it on needs a
+    // source and an API key, whether they arrive in this save or are stored.
+    if ('meshwarsBaseUrl' in filteredSettings
+      && String(filteredSettings.meshwarsBaseUrl).trim() !== ''
+      && !normalizeMeshWarsBaseUrl(String(filteredSettings.meshwarsBaseUrl))) {
+      return fail(res, 400, 'INVALID_MESHWARS_BASE_URL', 'MeshWars URL must start with http:// or https://');
+    }
+    if (Object.values(MESHWARS_SETTINGS).some((k) => k in filteredSettings)) {
+      const effective = async (k: string): Promise<string> =>
+        String((k in filteredSettings ? filteredSettings[k] : await databaseService.settings.getSetting(k)) ?? '').trim();
+      if ((await effective(MESHWARS_SETTINGS.enabled)) === 'true'
+        && (!(await effective(MESHWARS_SETTINGS.sourceId)) || !(await effective(MESHWARS_SETTINGS.apiKey)))) {
+        return fail(res, 400, 'MESHWARS_CONFIG_REQUIRED', 'MeshWars needs a MeshCore source and an API key');
       }
     }
     if ('aircraftAgeOutAction' in filteredSettings
@@ -2293,6 +2313,20 @@ router.post('/position-estimation/run-now', requireAdmin(), async (req, res) => 
       ? 'Position estimation already in progress'
       : 'Failed to run position estimation';
     res.status(message.includes('in progress') ? 409 : 500).json({ error: message });
+  }
+});
+
+/**
+ * MeshWars forwarder status. Settings save through POST /api/settings; this
+ * reports what was last sent, never the API key. Admin only, like the
+ * settings themselves: it names the source whose position is being sent.
+ */
+router.get('/meshwars/status', requireAdmin(), async (_req, res) => {
+  try {
+    return ok(res, await meshwarsForwarder.getStatus());
+  } catch (error) {
+    logger.error('Error fetching MeshWars status:', error);
+    return fail(res, 500, 'MESHWARS_STATUS_FAILED', 'Failed to fetch MeshWars status');
   }
 });
 
