@@ -80,7 +80,7 @@ import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { useVersionCheck } from './hooks/useVersionCheck';
 import { useQueryClient } from '@tanstack/react-query';
-import { usePoll, type PollData, fetchPollData, sourcePollQueryKey } from './hooks/usePoll';
+import { usePoll, type PollData } from './hooks/usePoll';
 import { useCsrfFetch } from './hooks/useCsrfFetch';
 import { useNodes, useChannels, setNodeFieldInCache } from './hooks/useServerData';
 import { useSourceView } from './hooks/useSourceView';
@@ -110,20 +110,11 @@ import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 import { hopLimitSettingValue } from './utils/hopLimitOverride';
 import { resolveAutoAckMaxResponses } from './utils/autoAckMaxResponses';
+import { fetchConnectionStatus, mergeConnectionIntoPollCache, refreshPollCache } from './hooks/connectionCheck';
+import { useConnectionCheckLoop } from './hooks/useConnectionCheckLoop';
 
 // Icons and helpers are now imported from utils/
 
-/**
- * `staleTime` for `checkConnectionStatus`'s `fetchQuery` read of the poll
- * cache. Short enough that the 5s "not connected" loop, the post-reboot
- * reconnect wait (3s cadence), and the Retry button all get a live fetch
- * rather than an arbitrarily old cached snapshot — `usePoll()` itself is
- * disabled whenever `connectionStatus !== 'connected'`, so nothing else
- * refreshes this cache entry while any of those three are the ones calling.
- * Still long enough to dedupe a call that lands within the same tick as
- * another mount-time observer reading the same query key.
- */
-const POLL_STATUS_STALE_TIME_MS = 3000;
 
 function App() {
   const { t } = useTranslation();
@@ -432,9 +423,10 @@ function App() {
   const { nodes } = useNodes();
   const { channels } = useChannels();
   const queryClient = useQueryClient();
-  // Used only by checkConnectionStatus below, to read /api/poll through the
-  // same query-cache entry usePoll() uses (see fetchPollData) instead of a
-  // bare fetch the cache never sees.
+  // Used by checkConnectionStatus and the Retry button: /api/connection, and
+  // the one /api/poll read on reconnect through the same query-cache entry
+  // usePoll() uses (see refreshPollCache) instead of a bare fetch the cache
+  // never sees.
   const csrfFetch = useCsrfFetch();
 
   // Telemetry availability Sets (nodesWithTelemetry/nodesWithWeatherTelemetry/
@@ -1517,33 +1509,27 @@ function App() {
     previousUnreadTotal.current = totalUnread;
   }, [unreadCountsData, updateFavicon]);
 
-  // Connection status check (every 5 seconds when not connected)
-  // Note: Data polling is now handled by usePoll hook when connected
-  useEffect(() => {
-    const updateInterval = setInterval(() => {
-      // Use refs to get current values without adding to deps (prevents interval multiplication)
+  // Connection status check while not connected: reads the lightweight
+  // /api/connection, backing off from 5 s to 30 s while the status stays the
+  // same, and pausing while the tab is hidden (useConnectionCheckLoop). Data
+  // polling when connected is handled by usePoll.
+  useConnectionCheckLoop({
+    // Read through refs: the loop is created once.
+    shouldCheck: () => {
       const currentConnectionStatus = connectionStatusRef.current;
-      const currentShowRebootModal = showRebootModalRef.current;
-
       // Skip when user has manually disconnected or device is rebooting
       if (currentConnectionStatus === 'user-disconnected' || currentConnectionStatus === 'rebooting') {
-        return;
+        return false;
       }
-
       // Skip when RebootModal is active
-      if (currentShowRebootModal) {
-        return;
+      if (showRebootModalRef.current) {
+        return false;
       }
-
-      // Only check connection status when not connected
-      // Data polling when connected is handled by usePoll hook
-      if (currentConnectionStatus !== 'connected') {
-        void checkConnectionStatus();
-      }
-    }, 5000);
-
-    return () => clearInterval(updateInterval);
-  }, []); // Empty deps - interval created only once, uses refs for current values
+      return currentConnectionStatus !== 'connected';
+    },
+    // Called from a timer, after this render has defined checkConnectionStatus.
+    check: () => checkConnectionStatus(),
+  });
 
   // Scheduled node database refresh (every 60 minutes)
   useEffect(() => {
@@ -1697,53 +1683,29 @@ function App() {
     }
   };
 
-  const checkConnectionStatus = async () => {
+  const checkConnectionStatus = async (): Promise<string | null> => {
     try {
-      // Use consolidated polling endpoint to check connection status.
-      // When inside a SourceProvider (multi-source dashboard), pass sourceId
-      // so the server reads from the correct manager — otherwise the header
-      // would show the legacy singleton's status, which is "disconnected" in
-      // 4.0 multi-source mode.
-      //
-      // Read through queryClient.fetchQuery on usePoll's own query key/queryFn
-      // instead of a bare fetch, so it shares/dedupes with any other observer
-      // already fetching (or holding fresh data for) this same key — e.g.
-      // useNodes/useChannels/etc. in useServerData.ts fetch it at mount.
-      //
-      // staleTime is a short, few-second window (POLL_STATUS_STALE_TIME_MS),
-      // NOT Infinity. This function is also the only thing keeping this cache
-      // entry current while not connected: `usePoll()` itself is gated by
-      // `shouldPoll = connectionStatus === 'connected'`, so it is disabled for
-      // exactly the three callers that matter here — the 5s "not connected"
-      // poll loop, the post-reboot reconnect wait, and the Retry button. With
-      // `Infinity`, once any stale connection snapshot landed in the cache it
-      // would be treated as forever-fresh and never re-fetched, so none of
-      // those three paths could ever observe the node coming back. A short
-      // staleTime still dedupes calls that land within the same few seconds
-      // (the original mount-time-triple-fetch fix this replaced), while every
-      // call spaced further apart — which is every real caller here — gets a
-      // live fetch.
-      let pollData: PollData | undefined;
-      let pollOk = true;
+      // Reads the lightweight /api/connection, not the full /api/poll. This
+      // runs every few seconds while the source is not connected, and the full
+      // poll (nodes, messages, channels, traceroutes) was 4.7 MB per call on a
+      // large MQTT source. The full poll is read once, when the source comes
+      // back (below). When inside a SourceProvider, pass sourceId so the server
+      // reads from the correct manager.
+      let connection: PollData['connection'];
+      let statusOk = true;
       try {
-        pollData = await queryClient.fetchQuery({
-          queryKey: sourcePollQueryKey(sourceId),
-          queryFn: ({ signal }) => fetchPollData(csrfFetch, appBasename, sourceId, signal),
-          staleTime: POLL_STATUS_STALE_TIME_MS,
-        });
+        connection = await fetchConnectionStatus(csrfFetch, appBasename, sourceId);
       } catch {
-        pollOk = false;
+        statusOk = false;
       }
-      if (pollOk && pollData) {
-        const status = pollData.connection;
-
-        if (!status) {
-          logger.error('No connection status in poll response');
-          return;
-        }
+      if (statusOk && connection) {
+        // Keep pollData.connection current for its readers (useConnectionInfo,
+        // the firmware page) while the full poll is not being read.
+        mergeConnectionIntoPollCache(queryClient, sourceId, connection);
+        const status = connection;
 
         // Keep the displayed/error address in sync with the per-source address
-        // the server resolved for THIS poll (status.nodeIp comes from the active
+        // the server resolved for THIS check (status.nodeIp comes from the active
         // manager's own getConfig().nodeIp). This makes reconnects always show
         // the configured source's address instead of a stale value or the env
         // default (#3611). Anonymous users don't receive nodeIp — leave the
@@ -1762,15 +1724,15 @@ function App() {
           setConnectionStatus('user-disconnected');
 
           // Still fetch cached data from backend on page load. This ensures
-          // we show cached data even after refresh — poll data itself is
-          // already in the query cache from the fetchQuery call above, so
-          // only the (separately-cached) channel list needs an explicit fetch.
+          // we show cached data even after refresh — poll data itself is read
+          // on mount by usePoll()'s always-enabled observers (useNodes etc.),
+          // so only the (separately-cached) channel list needs an explicit fetch.
           try {
             await fetchChannels();
           } catch (error) {
             logger.error('Failed to fetch cached data while disconnected:', error);
           }
-          return;
+          return 'user-disconnected';
         }
 
         // Check if node is in initial config capture phase
@@ -1778,7 +1740,7 @@ function App() {
           logger.debug('⚙️  Node is downloading initial configuration');
           setConnectionStatus('configuring');
           setError(`Downloading initial configuration from node. The interface will be available shortly.`);
-          return;
+          return 'configuring';
         }
 
         // Check if server connected but node is not responsive
@@ -1788,7 +1750,7 @@ function App() {
           setError(
             `Connected to server, but Meshtastic node is not responding. Please check if the device is powered on and properly connected.`
           );
-          return;
+          return 'node-offline';
         }
 
         if (status.connected && status.nodeResponsive) {
@@ -1802,13 +1764,17 @@ function App() {
                 setConnectionStatus('configuring');
                 setError(null);
 
-                // Improved initialization sequence. Poll data itself is
-                // already in the query cache from the fetchQuery call above
-                // (or from usePoll's own always-enabled observers elsewhere) —
-                // an unconditional refetch here was the third of three
-                // redundant ~3MB /api/poll fetches firing within the first
-                // second of mount. usePoll()'s own query will pick up the
-                // cached data as soon as shouldPoll flips this hook enabled.
+                // The source just came back: read the full poll once. The
+                // connection check above read only /api/connection, and
+                // usePoll()'s observers do not poll while not connected.
+                // refreshPollCache shares a fetch with an observer that is
+                // running or finished within the last 3 s (the mount-time
+                // read), so this is not a second ~3MB /api/poll at mount.
+                try {
+                  await refreshPollCache(queryClient, csrfFetch, appBasename, sourceId);
+                } catch (pollError) {
+                  logger.error('❌ Poll refresh after reconnect failed:', pollError);
+                }
                 try {
                   await fetchChannels();
                   setConnectionStatus('connected');
@@ -1824,6 +1790,7 @@ function App() {
               return currentStatus;
             }
           });
+          return 'connected';
         } else {
           logger.debug('⚠️ Connection API returned connected=false');
           setConnectionStatus('disconnected');
@@ -1838,17 +1805,20 @@ function App() {
               ? `Cannot connect to Meshtastic node at ${resolvedAddress}. Please ensure the node is reachable and has HTTP API enabled.`
               : `Cannot connect to the Meshtastic node. Please ensure the node is reachable and has HTTP API enabled.`
           );
+          return 'disconnected';
         }
       } else {
         logger.debug('⚠️ Connection API request failed');
         setConnectionStatus('disconnected');
         setError('Failed to get connection status from server');
+        return 'request-failed';
       }
     } catch (err) {
       logger.debug('❌ Connection check error:', err);
       setConnectionStatus('disconnected');
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(`Server connection error: ${errorMessage}`);
+      return 'error';
     }
   };
 
@@ -3626,7 +3596,15 @@ function App() {
             <h3>Connection Error</h3>
             <p>{error}</p>
             <div className="error-actions">
-              <button onClick={() => checkConnectionStatus()} className="retry-btn">
+              <button
+                onClick={() => {
+                  // Manual retry: also re-read the full poll, which is not
+                  // read on the timer while the source is down.
+                  void refreshPollCache(queryClient, csrfFetch, appBasename, sourceId).catch(() => undefined);
+                  void checkConnectionStatus();
+                }}
+                className="retry-btn"
+              >
                 Retry Connection
               </button>
               <button onClick={() => setError(null)} className="dismiss-error">
