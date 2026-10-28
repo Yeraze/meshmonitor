@@ -691,7 +691,9 @@ Below it, **Trace SNR over time** draws the same readings as full-size charts, o
 - **The first sender of an overheard trace is unknown.** The trace does not carry who started it. For a trace you sent, it is your own node.
 - **Per source.** Each source keeps what its own radio heard. Reading the history needs **Traceroute: read** on that source.
 - **Kept for 90 days.** Included in system backups. Deleted with the source.
-- **Clear it yourself.** With **Traceroute: write** on the source, the trash button at the top right of the **Trace SNR history** card deletes every stored reading for that contact on that source, in both directions and at any age, after you confirm. Other contacts and other sources keep theirs. It sends nothing over the radio.
+- **Clear one link.** With **Traceroute: write** on the source, each row of the **Trace SNR history** card has a trash button to the right of its graph. After you confirm, it deletes every stored reading that row draws: one direction of one link ("Hilltop heard this contact"), on that source, at any age. The reverse direction is its own row and stays, as do the other links and other sources. It sends nothing over the radio.
+
+![Trace SNR history card with a clear button on each link](/images/features/5970-per-link-snr-clear.png)
 
 What a repeater source stores from a trace it hears part-way:
 
@@ -919,7 +921,7 @@ In 4.5 the global `meshcore` permission is gone. Migration 058 expanded every le
 | `nodes` | Per-source | Node list, contacts, map data. `nodes:write` covers favorites, Discover Path, the location override and Push to radio |
 | `messages` | Per-source | Read and send DMs / channel messages; resend a channel post |
 | `channel_0` to `channel_7` | Per-source | Read one channel slot without full `messages:read` |
-| `traceroute` | Per-source | `traceroute:read` shows Trace SNR history. `traceroute:write` lets you run Trace Path and clear a contact's Trace SNR history |
+| `traceroute` | Per-source | `traceroute:read` shows Trace SNR history. `traceroute:write` lets you run Trace Path and clear one link's Trace SNR history |
 | `packetmonitor` | Per-source | Read the Packet Monitor. Clearing its log is for administrators |
 | `remote_admin` | Per-source | The remote console for repeaters and room servers |
 | `automation` | Per-source | The Automations tab |
