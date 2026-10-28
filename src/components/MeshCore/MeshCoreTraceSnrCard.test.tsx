@@ -20,7 +20,9 @@ vi.mock('../../services/api', () => ({
 }));
 
 import { MeshCoreTraceSnrCard } from './MeshCoreTraceSnrCard';
-import { summarizeHopSnrLinks, sparklinePoints, HOP_SNR_POINTS_PER_LINK, type HopSnrSample } from '../../utils/meshcoreHopSnr';
+import {
+  summarizeHopSnrLinks, sparklinePoints, hopSnrEndParam, parseHopSnrEndParam, HOP_SNR_POINTS_PER_LINK, type HopSnrSample,
+} from '../../utils/meshcoreHopSnr';
 
 const ME = 'a'.repeat(64);
 const REP = 'b'.repeat(64);
@@ -132,66 +134,108 @@ describe('MeshCoreTraceSnrCard (#5722)', () => {
   });
 });
 
-describe('MeshCoreTraceSnrCard clear history (#5970)', () => {
-  const URL = `/api/sources/src-1/meshcore/hop-snr?publicKey=${ME}`;
-  const links = summarizeHopSnrLinks([
-    sample({ snrQuarterDb: 20, timestamp: Date.now() - 120_000 }),
-    sample({ snrQuarterDb: 12, timestamp: Date.now() - 60_000 }),
-  ]);
+describe('hopSnrEndParam / parseHopSnrEndParam (#5970)', () => {
+  it('round-trips the three kinds of link end', () => {
+    for (const end of [{ publicKey: ME, hash: null }, { publicKey: null, hash: 'c3' }, { publicKey: null, hash: null }]) {
+      expect(parseHopSnrEndParam(hopSnrEndParam(end))).toEqual(end);
+    }
+    // A resolved key wins over its hash, as in summarizeHopSnrLinks.
+    expect(hopSnrEndParam({ publicKey: ME.toUpperCase(), hash: 'aa' })).toBe(ME);
+    expect(hopSnrEndParam({ publicKey: null, hash: 'C3' })).toBe('h:c3');
+    expect(hopSnrEndParam({ publicKey: null, hash: null })).toBe('unknown');
+  });
+
+  it('rejects anything else', () => {
+    for (const v of [undefined, '', 'zz', `${ME}0`, 'h:', 'h:abc', 'h:zz', 'h:0123456789', 'Unknown', [ME]]) {
+      expect(parseHopSnrEndParam(v)).toBeNull();
+    }
+    expect(parseHopSnrEndParam('h:abcd1234')).toEqual({ publicKey: null, hash: 'abcd1234' });
+  });
+});
+
+describe('MeshCoreTraceSnrCard clear one link (#5970)', () => {
+  const base = `/api/sources/src-1/meshcore/hop-snr`;
+  const now = Date.now();
+  const outbound = sample({ snrQuarterDb: 20, timestamp: now - 120_000 });
+  const reverse = sample({ senderPublicKey: REP, senderHash: 'bb', receiverPublicKey: ME, receiverHash: 'aa', timestamp: now - 60_000 });
+  const hashed = sample({ senderPublicKey: null, senderHash: 'c3', senderCandidates: 2, receiverPublicKey: ME, timestamp: now - 30_000 });
+  const all = summarizeHopSnrLinks([outbound, sample({ timestamp: now - 90_000 }), reverse, hashed]);
+  const contacts = [{ publicKey: REP, name: 'Hilltop Repeater' }];
+  const clearLabel = (receiver: string, sender: string) => `Clear history: ${receiver} heard ${sender}`;
 
   beforeEach(() => {
     getMock.mockReset();
     deleteMock.mockReset();
-    getMock.mockResolvedValue({ success: true, data: { hours: 168, links } });
+    getMock.mockResolvedValue({ success: true, data: { hours: 168, links: all } });
   });
 
-  it('hides the clear button without traceroute:write', async () => {
-    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} />));
+  it('hides the clear buttons without traceroute:write', async () => {
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} contacts={contacts} />));
     await screen.findByTestId('meshcore-trace-snr');
-    expect(screen.queryByRole('button', { name: 'Clear trace SNR history' })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 
-  it('confirms, deletes this contact on this source, then reloads and tells siblings', async () => {
+  it('shows one clear button per graph, each in its own row', async () => {
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} contacts={contacts} canClear />));
+    const card = await screen.findByTestId('meshcore-trace-snr');
+    const rows = card.querySelectorAll('li');
+    expect(rows).toHaveLength(3);
+    rows.forEach((r) => expect(r.querySelectorAll('button')).toHaveLength(1));
+    expect(screen.getByRole('button', { name: clearLabel('Hilltop Repeater', 'this contact') })).toHaveAttribute(
+      'title', clearLabel('Hilltop Repeater', 'this contact'));
+    expect(screen.getByRole('button', { name: clearLabel('this contact', 'Hilltop Repeater') })).toBeInTheDocument();
+  });
+
+  it('confirms naming the link, deletes only that link, then reloads and tells siblings', async () => {
     const onCleared = vi.fn();
     deleteMock.mockResolvedValue({ success: true, data: { deleted: 2 } });
-    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME.toUpperCase()} canClear onCleared={onCleared} />));
-    const btn = await screen.findByRole('button', { name: 'Clear trace SNR history' });
-    expect(btn).toHaveAttribute('title', 'Clear trace SNR history');
-    fireEvent.click(btn);
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME.toUpperCase()} contacts={contacts} canClear onCleared={onCleared} />));
+    fireEvent.click(await screen.findByRole('button', { name: clearLabel('Hilltop Repeater', 'this contact') }));
     expect(deleteMock).not.toHaveBeenCalled();
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('Clear trace SNR history?');
+    expect(dialog).toHaveTextContent("Clear this link's trace SNR history?");
+    expect(dialog).toHaveTextContent('where Hilltop Repeater heard this contact');
 
-    getMock.mockResolvedValue({ success: true, data: { hours: 168, links: [] } });
+    getMock.mockResolvedValue({ success: true, data: { hours: 168, links: summarizeHopSnrLinks([reverse, hashed]) } });
     fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
-    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(URL));
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(`${base}?from=${ME}&to=${REP}`));
+    expect(deleteMock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
-    expect(getMock).toHaveBeenLastCalledWith(URL);
     expect(onCleared).toHaveBeenCalledTimes(1);
-    // The reload came back empty: the card is gone.
-    await waitFor(() => expect(screen.queryByTestId('meshcore-trace-snr')).not.toBeInTheDocument());
+    // The other two graphs remain.
+    await waitFor(() => expect(screen.getByTestId('meshcore-trace-snr').querySelectorAll('li')).toHaveLength(2));
+    expect(screen.queryByRole('button', { name: clearLabel('Hilltop Repeater', 'this contact') })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: clearLabel('this contact', 'Hilltop Repeater') })).toBeInTheDocument();
+  });
+
+  it('sends a hash end as h:<hash>', async () => {
+    deleteMock.mockResolvedValue({ success: true, data: { deleted: 1 } });
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} contacts={contacts} canClear />));
+    fireEvent.click(await screen.findByRole('button', { name: clearLabel('this contact', 'c3 (2 contacts share it)') }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear history' }));
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(`${base}?from=h%3Ac3&to=${ME}`));
   });
 
   it('cancel closes the dialog and does nothing', async () => {
     const onCleared = vi.fn();
-    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} canClear onCleared={onCleared} />));
-    fireEvent.click(await screen.findByRole('button', { name: 'Clear trace SNR history' }));
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} contacts={contacts} canClear onCleared={onCleared} />));
+    fireEvent.click(await screen.findByRole('button', { name: clearLabel('Hilltop Repeater', 'this contact') }));
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(deleteMock).not.toHaveBeenCalled();
     expect(onCleared).not.toHaveBeenCalled();
     expect(getMock).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('meshcore-trace-snr')).toBeInTheDocument();
+    expect(screen.getByTestId('meshcore-trace-snr').querySelectorAll('li')).toHaveLength(3);
   });
 
   it('a failed delete shows an error and keeps the chart', async () => {
     const onCleared = vi.fn();
     deleteMock.mockRejectedValue(Object.assign(new Error('nope'), { status: 500 }));
-    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} canClear onCleared={onCleared} />));
-    fireEvent.click(await screen.findByRole('button', { name: 'Clear trace SNR history' }));
+    render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} contacts={contacts} canClear onCleared={onCleared} />));
+    fireEvent.click(await screen.findByRole('button', { name: clearLabel('Hilltop Repeater', 'this contact') }));
     fireEvent.click(await screen.findByRole('button', { name: 'Clear history' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not clear the trace SNR history.');
     expect(onCleared).not.toHaveBeenCalled();
-    expect(screen.getByTestId('meshcore-trace-snr')).toBeInTheDocument();
+    expect(screen.getByTestId('meshcore-trace-snr').querySelectorAll('li')).toHaveLength(3);
   });
 });

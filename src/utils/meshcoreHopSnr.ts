@@ -53,6 +53,28 @@ const endKey = (publicKey: string | null, hash: string | null): string =>
   publicKey ? `k:${publicKey}` : hash ? `h:${hash}` : '?';
 
 /**
+ * One end of a link as a query value for the link delete (#5970): the 64-hex
+ * public key, `h:<hash>` for an unresolved path hash, or `unknown`. It names
+ * the same end `summarizeHopSnrLinks` grouped the graph by.
+ */
+export function hopSnrEndParam(end: Pick<HopSnrEnd, 'publicKey' | 'hash'>): string {
+  if (end.publicKey) return end.publicKey.toLowerCase();
+  if (end.hash) return `h:${end.hash.toLowerCase()}`;
+  return 'unknown';
+}
+
+/** Parse {@link hopSnrEndParam}'s output. Returns null when it is not valid. */
+export function parseHopSnrEndParam(value: unknown): { publicKey: string | null; hash: string | null } | null {
+  if (typeof value !== 'string') return null;
+  if (/^[0-9a-f]{64}$/i.test(value)) return { publicKey: value.toLowerCase(), hash: null };
+  // Path hashes are 1, 2 or 4 bytes (see the ingest service).
+  const m = /^h:([0-9a-f]{2}|[0-9a-f]{4}|[0-9a-f]{8})$/i.exec(value);
+  if (m) return { publicKey: null, hash: m[1].toLowerCase() };
+  if (value === 'unknown') return { publicKey: null, hash: null };
+  return null;
+}
+
+/**
  * Group hop rows into directional links, newest link first. Each link keeps
  * its newest `pointsPerLink` samples; the stats cover every row passed in.
  */

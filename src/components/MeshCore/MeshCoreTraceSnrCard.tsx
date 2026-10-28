@@ -6,8 +6,10 @@
  * measurement. Data comes from traces this source's radio heard, whether
  * MeshMonitor sent them or not. Renders nothing without `traceroute:read` on
  * the source or when there is no history. With `canClear` (traceroute:write on
- * the source) a trash button clears this contact's stored history after a
- * confirm (#5970); it touches the database only, never the radio.
+ * the source) each row has a trash button that clears that one link's stored
+ * history after a confirm (#5970): the samples that row's graph draws, at any
+ * age. Other rows, including the reverse direction, stay. It touches the
+ * database only, never the radio.
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +17,7 @@ import api from '../../services/api';
 import { UiIcon } from '../icons';
 import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
 import { formatRelativeTime } from '../../utils/datetime';
-import { SPARK_W, SPARK_H, sparklinePoints, hopSnrEndName, type HopSnrEnd, type HopSnrLink, type HopSnrTranslate } from '../../utils/meshcoreHopSnr';
+import { SPARK_W, SPARK_H, sparklinePoints, hopSnrEndName, hopSnrEndParam, type HopSnrEnd, type HopSnrLink, type HopSnrTranslate } from '../../utils/meshcoreHopSnr';
 import styles from './MeshCoreTraceSnrCard.module.css';
 
 interface Envelope { success: boolean; data?: { hours: number; links: HopSnrLink[] } }
@@ -27,7 +29,7 @@ export interface MeshCoreTraceSnrCardProps {
   contacts?: ReadonlyArray<{ publicKey: string; name?: string | null; advName?: string | null }>;
   /** This source's own node, shown as "This node". */
   localPublicKey?: string | null;
-  /** The viewer holds traceroute:write on this source: show the clear button. */
+  /** The viewer holds traceroute:write on this source: show the per-link clear buttons. */
   canClear?: boolean;
   /** Called after this card cleared the history, so siblings can reload. */
   onCleared?: () => void;
@@ -40,7 +42,8 @@ export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({
   const key = publicKey.toLowerCase();
   const [data, setData] = useState<HopSnrLink[] | null>(null);
   const [reloads, setReloads] = useState(0);
-  const [confirming, setConfirming] = useState(false);
+  // The link whose clear is waiting on the confirm prompt.
+  const [confirming, setConfirming] = useState<HopSnrLink | null>(null);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
   // A plain effect, like the rest of this panel (it is also rendered where no
@@ -65,15 +68,17 @@ export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({
   }, [sourceId, key, reloads]);
 
   // A different contact or source closes any open confirm.
-  useEffect(() => { setConfirming(false); setClearError(null); }, [sourceId, key]);
+  useEffect(() => { setConfirming(null); setClearError(null); }, [sourceId, key]);
 
-  const clearHistory = async () => {
-    setConfirming(false);
+  const clearLink = async (link: HopSnrLink) => {
+    setConfirming(null);
     if (!sourceId) return;
     setClearing(true);
     setClearError(null);
     try {
-      await api.delete(`/api/sources/${encodeURIComponent(sourceId)}/meshcore/hop-snr?publicKey=${key}`);
+      const from = encodeURIComponent(hopSnrEndParam(link.sender));
+      const to = encodeURIComponent(hopSnrEndParam(link.receiver));
+      await api.delete(`/api/sources/${encodeURIComponent(sourceId)}/meshcore/hop-snr?from=${from}&to=${to}`);
       setReloads((n) => n + 1);
       onCleared?.();
     } catch (e) {
@@ -91,19 +96,9 @@ export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({
 
   return (
     <div className={styles.card} data-testid="meshcore-trace-snr">
-      <div className={styles.header}>
-        <h4 className={styles.title}>
-          <UiIcon name="radioSignal" size={15} /> {t('meshcore.trace_snr.title', 'Trace SNR history')}
-        </h4>
-        {canClear && (
-          <button type="button" className={styles.clearBtn} disabled={clearing}
-            aria-label={t('meshcore.trace_snr.clear', 'Clear trace SNR history')}
-            title={t('meshcore.trace_snr.clear', 'Clear trace SNR history')}
-            onClick={() => setConfirming(true)}>
-            <UiIcon name="delete" size={15} />
-          </button>
-        )}
-      </div>
+      <h4 className={styles.title}>
+        <UiIcon name="radioSignal" size={15} /> {t('meshcore.trace_snr.title', 'Trace SNR history')}
+      </h4>
       <p className={styles.help}>
         {t('meshcore.trace_snr.help', 'From MeshCore traces this source heard. Each row is one direction: how well the receiver heard the sender.')}
       </p>
@@ -111,7 +106,7 @@ export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({
         {data.map((link, i) => {
           const thisIsReceiver = link.receiver.publicKey === key;
           return (
-            <li key={i} className={styles.row} data-direction={thisIsReceiver ? 'in' : 'out'}>
+            <li key={i} className={`${styles.row} ${canClear ? styles.rowClearable : ''}`} data-direction={thisIsReceiver ? 'in' : 'out'}>
               <span className={styles.direction}>
                 <strong>{nameOf(link.receiver)}</strong>{' '}
                 {t('meshcore.trace_snr.heard', 'heard')}{' '}
@@ -132,6 +127,17 @@ export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({
                   <polyline points={sparklinePoints(link.points)} fill="none" stroke="currentColor" strokeWidth="1.5" />
                 </svg>
               )}
+              {canClear && (() => {
+                const label = t('meshcore.trace_snr.clear_link', 'Clear history: {{receiver}} heard {{sender}}', {
+                  receiver: nameOf(link.receiver), sender: nameOf(link.sender),
+                });
+                return (
+                  <button type="button" className={styles.clearBtn} disabled={clearing}
+                    aria-label={label} title={label} onClick={() => setConfirming(link)}>
+                    <UiIcon name="delete" size={15} />
+                  </button>
+                );
+              })()}
             </li>
           );
         })}
@@ -139,12 +145,14 @@ export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({
       {clearError && <p className={styles.error} role="alert">{clearError}</p>}
       {confirming && (
         <ConfirmDialog
-          title={t('meshcore.trace_snr.clear_confirm_title', 'Clear trace SNR history?')}
-          message={t('meshcore.trace_snr.clear_confirm_message', 'This deletes every stored trace SNR sample for this contact on this source, in both directions and at any age. It cannot be undone.')}
+          title={t('meshcore.trace_snr.clear_link_confirm_title', 'Clear this link\'s trace SNR history?')}
+          message={t('meshcore.trace_snr.clear_link_confirm_message', 'This deletes every stored trace SNR sample where {{receiver}} heard {{sender}}, on this source and at any age. The reverse direction and the other links stay. It cannot be undone.', {
+            receiver: nameOf(confirming.receiver), sender: nameOf(confirming.sender),
+          })}
           confirmLabel={t('meshcore.trace_snr.clear_confirm', 'Clear history')}
           cancelLabel={t('common.cancel', 'Cancel')}
-          onConfirm={() => { void clearHistory(); }}
-          onCancel={() => setConfirming(false)}
+          onConfirm={() => { void clearLink(confirming); }}
+          onCancel={() => setConfirming(null)}
         />
       )}
     </div>

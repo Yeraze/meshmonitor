@@ -8,13 +8,6 @@
   background: var(--color-surface);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
 .clearBtn {
   display: inline-flex;
   align-items: center;
@@ -76,6 +69,17 @@
   border-top: 1px solid var(--color-border-subtle);
 }
 
+/* #5970: a per-link clear button after the sparkline. */
+.rowClearable {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+}
+
+/* Always the last cell of the first line, with or without a sparkline. */
+.rowClearable .clearBtn {
+  grid-row: 1;
+  grid-column: -2 / -1;
+}
+
 .row:first-child {
   padding-top: 0;
   border-top: none;
@@ -112,6 +116,10 @@
 @media (max-width: 480px) {
   .row {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .rowClearable {
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .spark {
