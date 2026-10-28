@@ -6,7 +6,7 @@
 
 ## Opening Global Settings
 
-Click the **gear icon** titled **Global Settings** in the dashboard sidebar footer (it collapses into a hamburger on mobile). The icon shows to anyone with **settings: read** on at least one source. Saving needs **settings: write**, and some sections show to administrators only: Remote Administration, Apprise API Server, Elevation / Terrain, Flight matching (ADS-B), Message Translation, Channel Database, Scripts and Analytics.
+Click the **gear icon** titled **Global Settings** in the dashboard sidebar footer (it collapses into a hamburger on mobile). The icon shows to anyone with **settings: read** on at least one source. Saving needs **settings: write**, and some sections show to administrators only: Default Meshtastic source, Remote Administration, Apprise API Server, Elevation / Terrain, Flight matching (ADS-B), Message Translation, Channel Database, Scripts and Analytics.
 
 ![Global Settings page with tabbed sections](/images/features/global-settings.png)
 
