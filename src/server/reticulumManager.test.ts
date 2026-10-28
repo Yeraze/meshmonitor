@@ -40,6 +40,8 @@ const getMessage = vi.fn();
 const updateDestinationPosition = vi.fn().mockResolvedValue(undefined);
 const insertTelemetryBatch = vi.fn().mockResolvedValue(0);
 const replacePaths = vi.fn().mockResolvedValue(undefined);
+const getSettingForSource = vi.fn().mockResolvedValue(null);
+const setSourceSetting = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../services/database.js', () => ({
   default: {
@@ -55,6 +57,10 @@ vi.mock('../services/database.js', () => ({
     },
     telemetry: {
       insertTelemetryBatch: (...args: unknown[]) => insertTelemetryBatch(...args),
+    },
+    settings: {
+      getSettingForSource: (...args: unknown[]) => getSettingForSource(...args),
+      setSourceSetting: (...args: unknown[]) => setSourceSetting(...args),
     },
   },
 }));
@@ -1137,6 +1143,259 @@ describe('ReticulumManager LXMF messaging (#3960 Phase 2 WP3)', () => {
     it('sendMessage throws immediately when not connected', async () => {
       const manager = new ReticulumManager('src-a');
       await expect(manager.sendMessage({ to: 'peer'.padEnd(32, '0'), content: 'hi' })).rejects.toThrow(/not connected/);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LXMF display name + announces (#6011)
+//
+// A stand-in bridge client is put on the manager directly, so the order of
+// bridge commands and the timer behaviour can be checked with fake timers and
+// no WebSocket. The on-connect path is driven through the real `ready`
+// handler.
+// ---------------------------------------------------------------------------
+
+describe('ReticulumManager LXMF display name + announces (#6011)', () => {
+  const HOUR = 60 * 60 * 1000;
+  const T0 = new Date('2026-10-28T12:00:00Z').getTime();
+
+  function fakeClient(calls: string[] = []) {
+    return {
+      calls,
+      connected: true,
+      isConnected() { return this.connected; },
+      setDisplayName: vi.fn(async (name: string) => { calls.push(`set_display_name:${name}`); return {}; }),
+      announceSelf: vi.fn(async () => { calls.push('announce_self'); return {}; }),
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(),
+    };
+  }
+
+  function managerWith(client: ReturnType<typeof fakeClient>, cfg: { displayName?: string | null; announceIntervalHours?: number } = {}) {
+    const manager = new ReticulumManager('src-a');
+    manager.configure({ mode: 'attach', bridgeUrl: 'ws://127.0.0.1:8765', token: 't', protocolVersion: 1, configDir: '/rns', ...cfg });
+    (manager as unknown as { client: unknown }).client = client;
+    return manager;
+  }
+
+  /** Fire the real `ready` handler and let its microtask + awaits settle. */
+  async function fireReady(manager: ReticulumManager): Promise<void> {
+    (manager as unknown as { handleReady: (m: unknown) => void }).handleReady({ v: 2, type: 'ready', ts: Date.now() });
+    await vi.advanceTimersByTimeAsync(0);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    getSettingForSource.mockReset().mockResolvedValue(null);
+    setSourceSetting.mockReset().mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('on connect', () => {
+    it('applies the saved name BEFORE the on-connect announce', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client, { displayName: 'Base Camp' });
+      await fireReady(manager);
+      expect(client.calls).toEqual(['set_display_name:Base Camp', 'announce_self']);
+    });
+
+    it('sends an empty name when anonymous, so a long-lived bridge drops a stale one', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await fireReady(manager);
+      expect(client.calls).toEqual(['set_display_name:', 'announce_self']);
+    });
+
+    it('still announces when set_display_name fails', async () => {
+      const client = fakeClient();
+      client.setDisplayName.mockRejectedValueOnce(new Error('boom'));
+      const manager = managerWith(client, { displayName: 'Base Camp' });
+      await fireReady(manager);
+      expect(client.announceSelf).toHaveBeenCalledTimes(1);
+    });
+
+    it('persists the on-connect announce time', async () => {
+      const manager = managerWith(fakeClient());
+      await fireReady(manager);
+      expect(setSourceSetting).toHaveBeenCalledWith('src-a', 'reticulumLastAnnounceAt', String(T0));
+    });
+  });
+
+  describe('setDisplayName', () => {
+    it('applies live while connected and never announces', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await expect(manager.setDisplayName('New')).resolves.toBe(true);
+      expect(client.calls).toEqual(['set_display_name:New']);
+      expect(manager.getDisplayName()).toBe('New');
+    });
+
+    it('only stores the name while disconnected; the next connect applies it', async () => {
+      const client = fakeClient();
+      client.connected = false;
+      const manager = managerWith(client);
+      await expect(manager.setDisplayName('Later')).resolves.toBe(false);
+      expect(client.setDisplayName).not.toHaveBeenCalled();
+      client.connected = true;
+      await fireReady(manager);
+      expect(client.calls).toEqual(['set_display_name:Later', 'announce_self']);
+    });
+  });
+
+  describe('announceNow cooldown', () => {
+    it('refuses a second announce within 60 s of the on-connect announce', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await fireReady(manager);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await expect(manager.announceNow()).resolves.toEqual({ announced: false, retryAfterSeconds: 40 });
+      expect(client.announceSelf).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(40_000);
+      await expect(manager.announceNow()).resolves.toEqual({ announced: true, announcedAt: T0 + 60_000 });
+      expect(client.announceSelf).toHaveBeenCalledTimes(2);
+      expect(setSourceSetting).toHaveBeenLastCalledWith('src-a', 'reticulumLastAnnounceAt', String(T0 + 60_000));
+    });
+
+    it('a restart does not clear the cooldown: a fresh manager reads the persisted time', async () => {
+      getSettingForSource.mockResolvedValue(String(T0 - 15_000));
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await expect(manager.announceNow()).resolves.toEqual({ announced: false, retryAfterSeconds: 45 });
+      expect(client.announceSelf).not.toHaveBeenCalled();
+      expect(getSettingForSource).toHaveBeenCalledWith('src-a', 'reticulumLastAnnounceAt');
+    });
+
+    it('two presses at once send one announce', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      const [a, b] = await Promise.all([manager.announceNow(), manager.announceNow()]);
+      expect([a.announced, b.announced].sort()).toEqual([false, true]);
+      expect(client.announceSelf).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed announce does not start the cooldown', async () => {
+      const client = fakeClient();
+      client.announceSelf.mockRejectedValueOnce(new Error('bridge down'));
+      const manager = managerWith(client);
+      await expect(manager.announceNow()).rejects.toThrow('bridge down');
+      await expect(manager.announceNow()).resolves.toMatchObject({ announced: true });
+    });
+
+    it('throws when not connected', async () => {
+      const client = fakeClient();
+      client.connected = false;
+      await expect(managerWith(client).announceNow()).rejects.toThrow(/not connected/);
+    });
+  });
+
+  describe('periodic announce', () => {
+    it('is off by default: no announce after a day', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await fireReady(manager);
+      await vi.advanceTimersByTimeAsync(48 * HOUR);
+      expect(client.announceSelf).toHaveBeenCalledTimes(1); // the on-connect one only
+    });
+
+    it('saving the interval never announces by itself; it fires one interval later', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await manager.setAnnounceInterval(6);
+      await vi.advanceTimersByTimeAsync(6 * HOUR - 1000);
+      expect(client.announceSelf).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(client.announceSelf).toHaveBeenCalledTimes(1);
+      expect(setSourceSetting).toHaveBeenCalledWith('src-a', 'reticulumLastAnnounceAt', String(T0 + 6 * HOUR));
+      // And keeps going.
+      await vi.advanceTimersByTimeAsync(6 * HOUR);
+      expect(client.announceSelf).toHaveBeenCalledTimes(2);
+    });
+
+    it('counts from the persisted last announce, so a restart does not re-arm it early or late', async () => {
+      getSettingForSource.mockResolvedValue(String(T0 - 5 * HOUR));
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await manager.setAnnounceInterval(6);
+      expect((await manager.getAnnounceState()).nextPeriodicAnnounceAt).toBe(T0 + HOUR);
+      await vi.advanceTimersByTimeAsync(HOUR - 1000);
+      expect(client.announceSelf).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(client.announceSelf).toHaveBeenCalledTimes(1);
+    });
+
+    it('an overdue schedule waits one full interval instead of firing on save', async () => {
+      getSettingForSource.mockResolvedValue(String(T0 - 30 * HOUR));
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await manager.setAnnounceInterval(6);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(client.announceSelf).not.toHaveBeenCalled();
+      expect((await manager.getAnnounceState()).nextPeriodicAnnounceAt).toBe(T0 + 6 * HOUR);
+    });
+
+    it('clamps the interval to 1-24 hours', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await manager.setAnnounceInterval(500);
+      expect((await manager.getAnnounceState()).announceIntervalHours).toBe(24);
+      expect((await manager.getAnnounceState()).nextPeriodicAnnounceAt).toBe(T0 + 24 * HOUR);
+      await manager.setAnnounceInterval(0.2);
+      expect((await manager.getAnnounceState()).announceIntervalHours).toBe(1);
+      await manager.setAnnounceInterval(0);
+      expect((await manager.getAnnounceState()).nextPeriodicAnnounceAt).toBeNull();
+    });
+
+    it('takes the interval from the source config and arms on connect', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client, { announceIntervalHours: 2 });
+      await fireReady(manager);
+      expect((await manager.getAnnounceState()).nextPeriodicAnnounceAt).toBe(T0 + 2 * HOUR);
+    });
+
+    it('the on-connect announce after a reconnect pushes the periodic one back: no double-up', async () => {
+      getSettingForSource.mockResolvedValue(String(T0 - HOUR + 60_000)); // periodic due in 1 min
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await manager.setAnnounceInterval(1);
+      await fireReady(manager); // reconnect: on-connect announce now
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(client.announceSelf).toHaveBeenCalledTimes(1);
+      expect((await manager.getAnnounceState()).nextPeriodicAnnounceAt).toBe(T0 + HOUR);
+    });
+
+    it('a manual announce also pushes the periodic one back', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await manager.setAnnounceInterval(3);
+      await vi.advanceTimersByTimeAsync(2 * HOUR);
+      await manager.announceNow();
+      expect((await manager.getAnnounceState()).nextPeriodicAnnounceAt).toBe(T0 + 5 * HOUR);
+    });
+
+    it('disconnect clears the timer', async () => {
+      const client = fakeClient();
+      const manager = managerWith(client);
+      await manager.setAnnounceInterval(1);
+      await manager.disconnect();
+      await vi.advanceTimersByTimeAsync(5 * HOUR);
+      expect(client.announceSelf).not.toHaveBeenCalled();
+      expect((await manager.getAnnounceState()).nextPeriodicAnnounceAt).toBeNull();
+    });
+
+    it('a failed periodic announce reschedules one interval out instead of retrying in a loop', async () => {
+      const client = fakeClient();
+      client.announceSelf.mockRejectedValue(new Error('bridge down'));
+      const manager = managerWith(client);
+      await manager.setAnnounceInterval(1);
+      await vi.advanceTimersByTimeAsync(HOUR);
+      expect(client.announceSelf).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(HOUR - 1000);
+      expect(client.announceSelf).toHaveBeenCalledTimes(1);
     });
   });
 });

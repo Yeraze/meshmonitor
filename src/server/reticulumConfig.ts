@@ -27,6 +27,7 @@ import { validateBridgeUrl, type ReticulumConnectParams } from './reticulumBridg
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { isReticulumManager } from './sourceManagerTypes.js';
 import { ReticulumManager } from './reticulumManager.js';
+import { clampIntervalSetting, RETICULUM_ANNOUNCE_HOURS } from './utils/schedulerInterval.js';
 
 /** Default bridge sidecar bind address (mirrors `bridge/meshmonitor_rns_bridge/config.py` DEFAULT_HOST/DEFAULT_PORT). */
 const DEFAULT_BRIDGE_HOST = '127.0.0.1';
@@ -65,6 +66,87 @@ export interface ReticulumSourceConfig {
    * lowercased/deduplicated by `reticulumConfigFromSource`.
    */
   remoteAllowed?: string[];
+  /**
+   * LXMF display name this source announces (#6011). Absent = anonymous.
+   * Written by `PUT /api/sources/:id/reticulum/display-name`, not by the
+   * source edit form; re-applied to the bridge on every connect, before the
+   * on-connect announce. See {@link normalizeReticulumDisplayName}.
+   */
+  displayName?: string;
+  /**
+   * Periodic LXMF announce interval in hours (#6011). Absent or 0 = off (the
+   * default); otherwise 1–24 ({@link RETICULUM_ANNOUNCE_HOURS}). Written by
+   * `PUT /api/sources/:id/reticulum/announce-interval`.
+   */
+  announceIntervalHours?: number;
+}
+
+/**
+ * `sources.config` keys owned by the Reticulum Configuration page rather than
+ * the source edit form (#6011). The form rebuilds `config` from its own fields,
+ * so a source save that leaves these out keeps the stored values
+ * ({@link preserveReticulumManagedConfig}).
+ */
+export const RETICULUM_MANAGED_CONFIG_KEYS = ['displayName', 'announceIntervalHours'] as const;
+
+/**
+ * Longest LXMF display name we accept, in characters (#6011). LXMF sets no
+ * limit of its own, but the name rides in the announce's app_data, and an RNS
+ * announce must fit one 500-byte packet. 64 characters is at most 256 UTF-8
+ * bytes, which still fits beside the announce's ~200 bytes of keys, hashes and
+ * signature, and is longer than any name Sideband or NomadNet shows in full.
+ */
+export const RETICULUM_DISPLAY_NAME_MAX_CHARS = 64;
+
+/**
+ * Validate a display name from a request body (#6011). Trims whitespace; an
+ * empty result (or `null`) means anonymous and comes back as `null`. Rejects a
+ * non-string, a name over {@link RETICULUM_DISPLAY_NAME_MAX_CHARS} characters,
+ * and control characters (they would end up in every peer's contact list).
+ */
+export function normalizeReticulumDisplayName(
+  raw: unknown,
+): { ok: true; name: string | null } | { ok: false; error: string } {
+  if (raw === null || raw === undefined) return { ok: true, name: null };
+  if (typeof raw !== 'string') return { ok: false, error: 'name must be a string or null' };
+  const name = raw.trim();
+  if (name.length === 0) return { ok: true, name: null };
+  if (Array.from(name).length > RETICULUM_DISPLAY_NAME_MAX_CHARS) {
+    return { ok: false, error: `name must be at most ${RETICULUM_DISPLAY_NAME_MAX_CHARS} characters` };
+  }
+  if (/[\u0000-\u001f\u007f]/.test(name)) {
+    return { ok: false, error: 'name must not contain control characters' };
+  }
+  return { ok: true, name };
+}
+
+/**
+ * Read the stored periodic-announce interval (#6011): 0 (off) when absent,
+ * zero or not a number; otherwise clamped into {@link RETICULUM_ANNOUNCE_HOURS},
+ * since nothing upstream of a hand-edited row bounds it.
+ */
+export function announceIntervalHoursFromConfig(raw: unknown, label = 'Reticulum announceIntervalHours'): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return 0;
+  return clampIntervalSetting(Math.round(raw), RETICULUM_ANNOUNCE_HOURS, label);
+}
+
+/**
+ * Put back the Configuration-page keys ({@link RETICULUM_MANAGED_CONFIG_KEYS})
+ * that a source-form save left out (#6011). A key the save does send, including
+ * an explicit `null`, wins.
+ */
+export function preserveReticulumManagedConfig(
+  stored: Record<string, unknown> | null | undefined,
+  next: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!stored) return next;
+  const out = { ...next };
+  for (const key of RETICULUM_MANAGED_CONFIG_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(next, key) && stored[key] !== undefined) {
+      out[key] = stored[key];
+    }
+  }
+  return out;
 }
 
 /** Runtime config consumed by `ReticulumBridgeClient.connect()` (a superset used as `ReticulumConnectParams` plus transport fields). */
@@ -73,6 +155,10 @@ export interface ReticulumConfig extends ReticulumConnectParams {
   bridgeUrl: string;
   token: string;
   protocolVersion: number;
+  /** Saved LXMF display name (#6011); `null`/absent = anonymous. Not sent in `configure`. */
+  displayName?: string | null;
+  /** Periodic announce interval in hours (#6011); 0/absent = off. */
+  announceIntervalHours?: number;
 }
 
 /**
@@ -120,6 +206,17 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
   // the same remote-fleet allowlist.
   const remoteAllowed = normalizeRemoteAllowed(cfg.remoteAllowed);
 
+  // #6011: LXMF identity settings, the same for every mode. A stored name that
+  // no longer validates (hand-edited row) is dropped rather than sent.
+  const storedName = normalizeReticulumDisplayName(cfg.displayName);
+  const identity = {
+    displayName: storedName.ok ? storedName.name : null,
+    announceIntervalHours: announceIntervalHoursFromConfig(
+      cfg.announceIntervalHours,
+      `Source ${source.id} announceIntervalHours`,
+    ),
+  };
+
   if (mode === 'attach') {
     const configDir = cfg.configDir?.trim();
     if (!configDir) return null;
@@ -130,6 +227,7 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
       protocolVersion: PROTOCOL_VERSION,
       configDir,
       remoteAllowed,
+      ...identity,
     };
   }
 
@@ -150,6 +248,7 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
       stAlock: finiteNumberOrUndefined(cfg.stAlock),
       ltAlock: finiteNumberOrUndefined(cfg.ltAlock),
       remoteAllowed,
+      ...identity,
     };
   }
 
@@ -163,6 +262,7 @@ export function reticulumConfigFromSource(source: Source): ReticulumConfig | nul
     protocolVersion: PROTOCOL_VERSION,
     peers,
     remoteAllowed,
+    ...identity,
   };
 }
 

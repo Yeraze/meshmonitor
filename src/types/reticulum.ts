@@ -16,7 +16,7 @@
  */
 
 /** Connectivity mode for a Reticulum source (see `src/server/reticulumConfig.ts`). */
-export type ReticulumMode = 'attach' | 'tcp_peer';
+export type ReticulumMode = 'attach' | 'tcp_peer' | 'own';
 
 /** `GET /api/sources/:id/reticulum/status` payload (inside the `{success,data}` envelope). */
 export interface ReticulumStatus {

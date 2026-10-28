@@ -65,6 +65,31 @@ import {
   RETICULUM_IFACE_RX_RATE,
   RETICULUM_IFACE_TX_RATE,
 } from './services/reticulumTelemetry.js';
+import { RETICULUM_ANNOUNCE_HOURS, clampIntervalSetting } from './utils/schedulerInterval.js';
+
+/**
+ * Per-source setting key holding the epoch-ms time of this source's last LXMF
+ * announce of any kind: on-connect, manual or periodic (#6011). Stored in the
+ * database, not only on the manager, so a restart or a settings save can never
+ * clear the manual cooldown or re-arm the periodic timer early.
+ */
+export const RETICULUM_LAST_ANNOUNCE_SETTING = 'reticulumLastAnnounceAt';
+
+/** Minimum gap between a manual "Announce now" and any earlier announce, per source (#6011). */
+export const RETICULUM_ANNOUNCE_COOLDOWN_MS = 60_000;
+
+/** Read the persisted last-announce time for a source (#6011). `null` when none is stored or the row is garbled. */
+export async function loadReticulumLastAnnounceAt(sourceId: string): Promise<number | null> {
+  const raw = await databaseService.settings.getSettingForSource(sourceId, RETICULUM_LAST_ANNOUNCE_SETTING);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Result of {@link ReticulumManager.announceNow}. */
+export type AnnounceNowResult =
+  | { announced: true; announcedAt: number }
+  | { announced: false; retryAfterSeconds: number };
 
 /**
  * Extract the DB `replyToHash`/`threadHash` columns from an LXMF message's
@@ -156,6 +181,30 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   private startRetryAttempts = 0;
   private lastStartError: string | null = null;
 
+  /**
+   * LXMF identity settings (#6011), staged from the source config by
+   * configure()/connect() and updated live by the Configuration-page routes.
+   * `displayName` null = anonymous; `announceIntervalHours` 0 = periodic
+   * announce off.
+   */
+  private displayName: string | null = null;
+  private announceIntervalHours = 0;
+
+  /**
+   * Epoch-ms of the last announce of any kind (#6011), mirrored from the
+   * {@link RETICULUM_LAST_ANNOUNCE_SETTING} row. Loaded lazily on first use;
+   * `lastAnnounceLoaded` tells "never announced" apart from "not read yet".
+   */
+  private lastAnnounceAt: number | null = null;
+  private lastAnnounceLoaded = false;
+
+  /** Manual-announce cooldown. Public so tests can shorten it. */
+  announceCooldownMs = RETICULUM_ANNOUNCE_COOLDOWN_MS;
+
+  /** The one periodic-announce timer for this source (#6011), and when it fires. */
+  private periodicAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private nextPeriodicAnnounceAt: number | null = null;
+
   constructor(sourceId: string, sourceName?: string) {
     super();
     if (!sourceId) {
@@ -178,6 +227,13 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
    */
   configure(cfg: ReticulumConfig): void {
     this.pendingConfig = cfg;
+    this.stageIdentityConfig(cfg);
+  }
+
+  /** Copy the #6011 identity settings out of a runtime config. */
+  private stageIdentityConfig(cfg: ReticulumConfig): void {
+    this.displayName = cfg.displayName ?? null;
+    this.announceIntervalHours = cfg.announceIntervalHours ?? 0;
   }
 
   /** Update the stored display name used by getStatus() when no override is passed. */
@@ -279,6 +335,7 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       await this.disconnect();
     }
     this.pendingConfig = cfg;
+    this.stageIdentityConfig(cfg);
 
     const client = new ReticulumBridgeClient({
       bridgeUrl: cfg.bridgeUrl,
@@ -294,6 +351,7 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   /** Tear down the bridge client, if any. Idempotent. */
   async disconnect(): Promise<void> {
     this.cancelStartRetry();
+    this.clearPeriodicAnnounce();
     const client = this.client;
     this.client = null;
     if (client) {
@@ -337,20 +395,200 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   // `sendMessage`'s existing not-connected guard below.
   // --------------------------------------------------------------------
 
-  /** Re-announce our own LXMF identity to the network (`announce_self`). */
+  /**
+   * Re-announce our own LXMF identity to the network (`announce_self`), with
+   * no cooldown check. Records the announce time. Routes use
+   * {@link announceNow}, which enforces the manual cooldown.
+   */
   async announceSelf(): Promise<void> {
     if (!this.client) {
       throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
     }
     await this.client.announceSelf();
+    await this.recordAnnounce(Date.now());
   }
 
-  /** Set this identity's LXMF display name (`set_display_name`). */
-  async setDisplayName(name: string): Promise<void> {
-    if (!this.client) {
+  /**
+   * Manual "Announce now" (#6011). Refused, with the seconds left, while the
+   * last announce of any kind (on-connect, manual, periodic) is younger than
+   * {@link announceCooldownMs}. The cooldown is read from the persisted
+   * timestamp, so a restart or settings save does not clear it.
+   *
+   * The announce time is claimed before the bridge round-trip, so two presses
+   * that arrive together send one announce, not two; a failed send gives the
+   * claim back.
+   */
+  async announceNow(): Promise<AnnounceNowResult> {
+    const client = this.client;
+    if (!client || !this.isConnected()) {
       throw new Error(`ReticulumManager(${this.sourceId}): not connected`);
     }
-    await this.client.setDisplayName(name);
+    await this.ensureLastAnnounceLoaded();
+    const remainingMs = this.announceCooldownRemainingMs();
+    if (remainingMs > 0) {
+      return { announced: false, retryAfterSeconds: Math.ceil(remainingMs / 1000) };
+    }
+    const previous = this.lastAnnounceAt;
+    const at = Date.now();
+    this.lastAnnounceAt = at;
+    try {
+      await client.announceSelf();
+    } catch (err) {
+      if (this.lastAnnounceAt === at) this.lastAnnounceAt = previous;
+      throw err;
+    }
+    await this.persistLastAnnounceAt(at);
+    logger.info(`[Reticulum:${this.sourceId}] Manual LXMF announce sent`);
+    this.schedulePeriodicAnnounce();
+    return { announced: true, announcedAt: at };
+  }
+
+  /**
+   * Set this identity's LXMF display name (#6011). `null` or '' = anonymous.
+   * Always stored on the manager, so the next connect applies it; applied to
+   * the bridge (`set_display_name`) only while connected. Never announces:
+   * the name goes out with the next announce. Resolves `true` when applied
+   * live, `false` when only stored.
+   */
+  async setDisplayName(name: string | null): Promise<boolean> {
+    this.displayName = name && name.length > 0 ? name : null;
+    if (!this.client || !this.isConnected()) return false;
+    // The bridge maps '' to None (anonymous): rns_manager.py set_display_name.
+    await this.client.setDisplayName(this.displayName ?? '');
+    return true;
+  }
+
+  /** The display name this manager will apply on the next connect (#6011). */
+  getDisplayName(): string | null {
+    return this.displayName;
+  }
+
+  /**
+   * Set the periodic announce interval (#6011). 0 = off; anything else is
+   * clamped to {@link RETICULUM_ANNOUNCE_HOURS}. Re-arms the timer from the
+   * persisted last-announce time and never announces by itself.
+   */
+  async setAnnounceInterval(hours: number): Promise<void> {
+    this.announceIntervalHours =
+      Number.isFinite(hours) && hours > 0
+        ? clampIntervalSetting(Math.round(hours), RETICULUM_ANNOUNCE_HOURS, `[Reticulum:${this.sourceId}] announceIntervalHours`)
+        : 0;
+    await this.ensureLastAnnounceLoaded();
+    this.schedulePeriodicAnnounce();
+  }
+
+  /** Snapshot of the announce state for the Configuration page (#6011). */
+  async getAnnounceState(): Promise<{
+    lastAnnounceAt: number | null;
+    cooldownRemainingSeconds: number;
+    nextPeriodicAnnounceAt: number | null;
+    announceIntervalHours: number;
+  }> {
+    await this.ensureLastAnnounceLoaded();
+    return {
+      lastAnnounceAt: this.lastAnnounceAt,
+      cooldownRemainingSeconds: Math.ceil(this.announceCooldownRemainingMs() / 1000),
+      nextPeriodicAnnounceAt: this.nextPeriodicAnnounceAt,
+      announceIntervalHours: this.announceIntervalHours,
+    };
+  }
+
+  private announceCooldownRemainingMs(now = Date.now()): number {
+    if (this.lastAnnounceAt === null) return 0;
+    return Math.max(0, this.lastAnnounceAt + this.announceCooldownMs - now);
+  }
+
+  private async ensureLastAnnounceLoaded(): Promise<void> {
+    if (this.lastAnnounceLoaded) return;
+    try {
+      const stored = await loadReticulumLastAnnounceAt(this.sourceId);
+      // An announce recorded while the read was in flight is newer: keep it.
+      if (!this.lastAnnounceLoaded && (this.lastAnnounceAt === null || (stored ?? 0) > this.lastAnnounceAt)) {
+        this.lastAnnounceAt = stored;
+      }
+      this.lastAnnounceLoaded = true;
+    } catch (err) {
+      logger.warn(
+        `[Reticulum:${this.sourceId}] failed to read last announce time: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /** Remember an announce (any kind) in memory and in the database. */
+  private async recordAnnounce(at: number): Promise<void> {
+    this.lastAnnounceAt = at;
+    this.lastAnnounceLoaded = true;
+    await this.persistLastAnnounceAt(at);
+  }
+
+  private async persistLastAnnounceAt(at: number): Promise<void> {
+    try {
+      await databaseService.settings.setSourceSetting(this.sourceId, RETICULUM_LAST_ANNOUNCE_SETTING, String(at));
+    } catch (err) {
+      logger.warn(
+        `[Reticulum:${this.sourceId}] failed to persist last announce time: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * (Re)arm the one periodic-announce timer (#6011). The next fire is one
+   * interval after the last announce of any kind. When that moment has already
+   * passed (the interval was just switched on, or shortened), it is one full
+   * interval from now instead: arming the timer, whether on connect, restart or
+   * settings save, never sends an announce by itself. Off, or not connected:
+   * no timer.
+   */
+  private schedulePeriodicAnnounce(now = Date.now()): void {
+    this.clearPeriodicAnnounce();
+    const hours = this.announceIntervalHours;
+    if (hours <= 0 || !this.isConnected()) return;
+    const intervalMs = hours * 60 * 60 * 1000;
+    let next = this.lastAnnounceAt !== null ? this.lastAnnounceAt + intervalMs : now + intervalMs;
+    if (next <= now) next = now + intervalMs;
+    this.nextPeriodicAnnounceAt = next;
+    this.periodicAnnounceTimer = setTimeout(() => {
+      this.periodicAnnounceTimer = null;
+      void this.runPeriodicAnnounce();
+    }, next - now);
+    this.periodicAnnounceTimer.unref?.();
+  }
+
+  private clearPeriodicAnnounce(): void {
+    if (this.periodicAnnounceTimer) {
+      clearTimeout(this.periodicAnnounceTimer);
+      this.periodicAnnounceTimer = null;
+    }
+    this.nextPeriodicAnnounceAt = null;
+  }
+
+  /**
+   * One periodic tick. Skips when disconnected (the `ready` handler re-arms on
+   * reconnect) and when another announce, e.g. the on-connect one after a
+   * reconnect, went out within the cooldown: no back-to-back announces.
+   */
+  private async runPeriodicAnnounce(): Promise<void> {
+    this.nextPeriodicAnnounceAt = null;
+    const client = this.client;
+    if (!client || !this.isConnected()) return;
+    if (this.announceCooldownRemainingMs() > 0) {
+      this.schedulePeriodicAnnounce();
+      return;
+    }
+    const previous = this.lastAnnounceAt;
+    const at = Date.now();
+    this.lastAnnounceAt = at;
+    try {
+      await client.announceSelf();
+      await this.persistLastAnnounceAt(at);
+      logger.debug(`[Reticulum:${this.sourceId}] Periodic LXMF announce sent`);
+    } catch (err) {
+      if (this.lastAnnounceAt === at) this.lastAnnounceAt = previous;
+      logger.warn(
+        `[Reticulum:${this.sourceId}] periodic announce_self failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    this.schedulePeriodicAnnounce();
   }
 
   /** Trigger a best-effort propagation-node sync (`sync_propagation`). */
@@ -556,13 +794,43 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
     if (msg.destinationHash) {
       this.ownDestinationHash = msg.destinationHash;
     }
+    const client = this.client;
     queueMicrotask(() => {
-      this.client?.announceSelf().catch((err: unknown) => {
-        logger.warn(
-          `[Reticulum:${this.sourceId}] announce_self failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      void this.announceOnReady(client);
     });
+  }
+
+  /**
+   * The on-connect sequence (#6011): apply the saved display name, THEN
+   * announce, so the first announce after a connect already carries the name
+   * (the bridge registers the identity anonymous on every start). The name is
+   * always sent, an empty one too, because a long-lived bridge may still hold
+   * a name cleared while MeshMonitor was away. Both steps stay fire-and-forget
+   * as described above: a failure is logged and never breaks the connect. The
+   * announce is recorded (it starts the manual cooldown) and the periodic
+   * timer is re-armed from it, so a periodic tick cannot follow right behind.
+   */
+  private async announceOnReady(client: ReticulumBridgeClient | null): Promise<void> {
+    if (!client || this.client !== client) return;
+    try {
+      await client.setDisplayName(this.displayName ?? '');
+    } catch (err) {
+      logger.warn(
+        `[Reticulum:${this.sourceId}] set_display_name failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (this.client !== client) return;
+    try {
+      await client.announceSelf();
+      await this.recordAnnounce(Date.now());
+    } catch (err) {
+      logger.warn(
+        `[Reticulum:${this.sourceId}] announce_self failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (this.client !== client) return;
+    await this.ensureLastAnnounceLoaded();
+    this.schedulePeriodicAnnounce();
   }
 
   /** `announce` -> `reticulum_destinations` upsert (build spec §3.5/§4.4). */

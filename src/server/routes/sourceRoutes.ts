@@ -8,7 +8,7 @@ import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegi
 import { MeshtasticManager } from '../meshtasticManager.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshcoreConfig.js';
 import { MeshCoreManager } from '../meshcoreManager.js';
-import { reticulumConfigFromSource, ensureReticulumManagerStarted } from '../reticulumConfig.js';
+import { reticulumConfigFromSource, ensureReticulumManagerStarted, preserveReticulumManagedConfig } from '../reticulumConfig.js';
 import { isMeshCoreManager, isMeshCoreMqttManager, isMeshtasticManager, isMqttBridgeManager, isReticulumManager } from '../sourceManagerTypes.js';
 import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
 import { isMqttProxyLinkMisconfigured } from '../../utils/mqttProxyLink.js';
@@ -1221,7 +1221,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       incomingConfig !== undefined && existing.type === 'mqtt_bridge'
         ? detachBridgePresetId(incomingConfig)
         : undefined;
-    const config: Record<string, any> | undefined =
+    const mergedConfig: Record<string, any> | undefined =
       incomingConfig === undefined
         ? undefined
         : mergeSourceConfigOnSave(
@@ -1232,6 +1232,12 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             incomingConfig,
             audience === 'admin' ? 'admin' : 'editor',
           );
+    // The Reticulum display name and announce interval live on the
+    // Configuration page, not the source form, so a form save keeps them (#6011).
+    const config: Record<string, any> | undefined =
+      mergedConfig !== undefined && existing.type === 'reticulum'
+        ? preserveReticulumManagedConfig(existing.config as Record<string, unknown> | null | undefined, mergedConfig)
+        : mergedConfig;
     if (config !== undefined && brokerPresetId !== undefined) {
       const upstream = config.upstream;
       if (upstream && typeof upstream === 'object' && !Array.isArray(upstream)) {

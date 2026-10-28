@@ -2,10 +2,10 @@
  * @vitest-environment jsdom
  *
  * ReticulumSubToolbar (#3960) — the per-source nav. Phase 3 added two items:
- * 'map' (always shown) and 'configuration' (own-mode only, since editable
- * RNode radio config exists only when the bridge owns the radio). These tests
- * lock in that gating so a mode regression can't silently expose the radio
- * form on an attach/tcp_peer source.
+ * 'map' and 'configuration'. 'configuration' was own-mode only until #6011
+ * put the LXMF identity settings (display name, Announce now) on it; it now
+ * shows in every mode, and the page itself hides the RNode radio form outside
+ * own mode (ReticulumConfigurationView `showRadio`).
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -40,19 +40,9 @@ describe('ReticulumSubToolbar', () => {
     expect(item('map')).not.toBeNull();
   });
 
-  it('shows the configuration item only in own mode', () => {
-    renderToolbar('own');
+  it.each(['own', 'attach', 'tcp_peer', null])('shows the configuration item in %s mode (#6011)', (mode) => {
+    renderToolbar(mode);
     expect(item('configuration')).not.toBeNull();
-  });
-
-  it('hides the configuration item in attach mode', () => {
-    renderToolbar('attach');
-    expect(item('configuration')).toBeNull();
-  });
-
-  it('hides the configuration item when mode is null/unknown', () => {
-    renderToolbar(null);
-    expect(item('configuration')).toBeNull();
   });
 
   it('keeps the pre-existing core items', () => {
