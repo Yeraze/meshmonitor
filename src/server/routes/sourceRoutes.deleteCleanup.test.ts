@@ -295,3 +295,30 @@ describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => 
     expect(await databaseService.sourcePkiKeys.getBySourceId(harness.sourceA)).not.toBeNull();
   });
 });
+
+describe('DELETE /api/sources/:id — default Meshtastic source (#5245)', () => {
+  let harness: RouteTestHarness;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', sourceRoutes) });
+  });
+
+  afterEach(async () => {
+    await databaseService.settings.deleteSetting('defaultMeshtasticSourceId').catch(() => {});
+    await harness.cleanup();
+  });
+
+  it('clears the setting when the chosen source is deleted', async () => {
+    await databaseService.settings.setSetting('defaultMeshtasticSourceId', harness.sourceA);
+    const admin = await harness.loginAs(harness.admin);
+    expect((await admin.delete(`/${harness.sourceA}`)).status).toBe(200);
+    expect(await databaseService.settings.getSetting('defaultMeshtasticSourceId')).toBe('');
+  });
+
+  it('leaves the setting alone when another source is deleted', async () => {
+    await databaseService.settings.setSetting('defaultMeshtasticSourceId', harness.sourceB);
+    const admin = await harness.loginAs(harness.admin);
+    expect((await admin.delete(`/${harness.sourceA}`)).status).toBe(200);
+    expect(await databaseService.settings.getSetting('defaultMeshtasticSourceId')).toBe(harness.sourceB);
+  });
+});

@@ -12,6 +12,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
+import { preferConfiguredDefault, readConfiguredDefaultMeshtasticSourceId } from '../../utils/defaultMeshtasticSource.js';
 import type { ResourceType } from '../../../types/permission.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -58,7 +59,12 @@ router.get('/', async (req: Request, res: Response) => {
       .filter((s) => s.enabled)
       .sort((a, b) => a.createdAt - b.createdAt);
 
-    const primaryId = sources[0]?.id ?? null;
+    // The source an admin's `default` alias resolves to: the configured
+    // default Meshtastic source when it is enabled (#5245), else the oldest.
+    const primaryId = preferConfiguredDefault(
+      sources,
+      await readConfiguredDefaultMeshtasticSourceId(databaseService),
+    )[0]?.id ?? null;
 
     const visible = user.isAdmin
       ? sources

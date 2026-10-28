@@ -55,7 +55,7 @@ List all configured sources. Authentication required.
 
 ### Per-source resource endpoints
 
-Replace `{sourceId}` with the `id` returned above, or use the literal string `"default"` to target the primary source.
+Replace `{sourceId}` with the `id` returned above, or use the literal string `"default"` to target the primary source: the [default Meshtastic source](/features/multi-source#default-meshtastic-source) set in Global Settings when it is enabled and the token can read it, else the oldest enabled source the token can read. `GET /api/v1/sources` marks that source with `isPrimary` (as an admin's `default` would resolve).
 
 | Legacy v1 path (≤ 4.12, deprecated)              | Canonical v1 path (4.13+)                              |
 | ------------------------------------------------- | ------------------------------------------------------- |

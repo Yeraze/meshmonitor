@@ -31,7 +31,7 @@ The old v1 root paths (`/api/v1/nodes`, `/api/v1/messages`, etc.) were deprecate
 
 All v1 requests require `Authorization: Bearer mm_v1_...` except `GET /api/v1/docs`.
 
-Use `"default"` as the `{sourceId}` to target the primary source without looking up its ID.
+Use `"default"` as the `{sourceId}` to target the primary source without looking up its ID. It resolves to the [default Meshtastic source](/features/multi-source#default-meshtastic-source) set in Global Settings, when that source is enabled and the token can read it; otherwise to the oldest enabled source the token can read.
 
 Per-source resources:
 - `GET /api/v1/sources` — list sources the token can read

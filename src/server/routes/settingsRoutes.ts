@@ -25,6 +25,9 @@ import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { DEFAULT_MESHTASTIC_SOURCE_SETTING, applyDefaultMeshtasticSource } from '../utils/defaultMeshtasticSource.js';
 import {
   clampNeighborSampleCount,
   parseManualNeighborNodes,
@@ -455,6 +458,24 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     if ('reliablePkiSourceMode' in filteredSettings
       && !isValidReliablePkiSourceMode(filteredSettings.reliablePkiSourceMode)) {
       return fail(res, 400, 'INVALID_RELIABLE_PKI_MODE', 'reliablePkiSourceMode must be "inherit", "off", "asNeeded" or "avoid"');
+    }
+
+    // Default Meshtastic source (#5245): blank (= Automatic) or the id of an
+    // existing meshtastic_tcp source. A disabled one is allowed: it takes over
+    // when it is enabled. Anything else would be stored and silently ignored.
+    // Checked only when the value changes: a stored choice whose source was
+    // deleted since must not make every later Settings save fail (#3806 shape).
+    if (DEFAULT_MESHTASTIC_SOURCE_SETTING in filteredSettings) {
+      const chosen = filteredSettings[DEFAULT_MESHTASTIC_SOURCE_SETTING].trim();
+      const stored = (currentSettings[DEFAULT_MESHTASTIC_SOURCE_SETTING] ?? '').trim();
+      if (chosen && chosen !== stored) {
+        const source = await databaseService.sources.getSource(chosen);
+        if (!source || source.type !== 'meshtastic_tcp') {
+          return fail(res, 400, 'INVALID_DEFAULT_MESHTASTIC_SOURCE',
+            'defaultMeshtasticSourceId must be blank (automatic) or the id of a Meshtastic TCP source');
+        }
+      }
+      filteredSettings[DEFAULT_MESHTASTIC_SOURCE_SETTING] = chosen;
     }
 
     // Auto-Enrichment schedule floor (#5287). The scheduler clamps and rejects
@@ -1335,6 +1356,11 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       }
     }
 
+    if (DEFAULT_MESHTASTIC_SOURCE_SETTING in filteredSettings) {
+      // Live, no restart: later source-less resolutions see the new primary.
+      applyDefaultMeshtasticSource(sourceManagerRegistry, filteredSettings[DEFAULT_MESHTASTIC_SOURCE_SETTING]);
+    }
+
     if ('customTilesets' in filteredSettings) {
       void callbacks.refreshTileHostnameCache?.();
       logger.debug('🗺️ Refreshed CSP tile hostname cache after customTilesets update');
@@ -1670,6 +1696,11 @@ router.delete('/', requirePermission('settings', 'write'), async (req: Request, 
       await databaseService.settings.deleteGlobalAndSourceSettings(writable);
     }
     callbacks.setTracerouteInterval?.(0);
+    // #5245: the reset removed the stored default, so go back to Automatic.
+    applyDefaultMeshtasticSource(
+      sourceManagerRegistry,
+      await databaseService.settings.getSetting(DEFAULT_MESHTASTIC_SOURCE_SETTING),
+    );
 
     void databaseService.auditLogAsync(
       req.user!.id,
@@ -2335,6 +2366,34 @@ router.post('/distance-delete/run-now', acrossSources('write'), async (req, res)
   } catch (error) {
     logger.error('Error running distance-delete:', error);
     fail(res, 500, 'INTERNAL_ERROR', 'Failed to run distance delete');
+  }
+});
+
+// GET /settings/default-meshtastic-source (#5245) — what a source-less request
+// resolves to right now, so the Settings page can show what "Automatic" picked
+// and whether the chosen default is in effect. Admin only, like the setting.
+//   mode 'automatic'  — no default set; effective = first TCP source started
+//   mode 'configured' — the chosen default is registered and in effect
+//   mode 'fallback'   — a default is set but not running (disabled, deleted,
+//                       not connected at boot); effective = the automatic pick
+router.get('/default-meshtastic-source', requireAdmin(), async (_req, res) => {
+  try {
+    const stored = await databaseService.settings.getSetting(DEFAULT_MESHTASTIC_SOURCE_SETTING);
+    const configuredSourceId = stored && stored.trim() ? stored.trim() : null;
+    const effectiveSourceId = getPrimaryMeshtasticManager(sourceManagerRegistry)?.sourceId ?? null;
+    const effective = effectiveSourceId ? await databaseService.sources.getSource(effectiveSourceId) : null;
+    const mode = !configuredSourceId
+      ? 'automatic'
+      : effectiveSourceId === configuredSourceId ? 'configured' : 'fallback';
+    return ok(res, {
+      configuredSourceId,
+      effectiveSourceId,
+      effectiveSourceName: effective?.name ?? null,
+      mode,
+    });
+  } catch (error) {
+    logger.error('Error resolving default Meshtastic source:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to resolve the default Meshtastic source');
   }
 });
 

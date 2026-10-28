@@ -70,8 +70,56 @@ export class SourceManagerRegistry extends EventEmitter {
     }
   }
 
-  /** Returns the explicitly designated primary meshtastic source id, or null. */
+  /**
+   * The source the admin chose as the default Meshtastic source (#5245), from
+   * the global `defaultMeshtasticSourceId` setting. null = Automatic.
+   *
+   * It is a preference, not a designation: it wins only while a
+   * `meshtastic_tcp` manager is registered under that id. When that source is
+   * disabled, deleted or never started, the automatic designation above (or
+   * the insertion-order fallback in getPrimaryMeshtasticManager) applies, and
+   * when its manager is registered again it wins again. Nothing has to react
+   * to those transitions; the answer is computed on each read.
+   */
+  private preferredMeshtasticSourceId: string | null = null;
+
+  /**
+   * Set (or clear, with null/empty) the admin's default Meshtastic source
+   * (#5245). Called at boot by bootstrapSources and on save by settingsRoutes.
+   * Callers that already captured a manager keep it; only later resolutions
+   * see the change (CLAUDE.md atomicity rule).
+   */
+  setPreferredMeshtasticSource(sourceId: string | null | undefined): void {
+    const next = sourceId ? sourceId : null;
+    if (next === this.preferredMeshtasticSourceId) return;
+    this.preferredMeshtasticSourceId = next;
+    logger.info(
+      next
+        ? `Default meshtastic source set to ${next}`
+        : 'Default meshtastic source cleared (automatic)',
+    );
+  }
+
+  /** The admin's default Meshtastic source id (#5245), registered or not. */
+  getPreferredMeshtasticSourceId(): string | null {
+    return this.preferredMeshtasticSourceId;
+  }
+
+  /** The automatic (first-started) designation, ignoring the preference. */
+  getAutomaticPrimaryMeshtasticSourceId(): string | null {
+    return this.primaryMeshtasticSourceId;
+  }
+
+  /**
+   * The effective primary meshtastic source id: the admin's default (#5245)
+   * while a meshtastic_tcp manager is registered under it, else the automatic
+   * first-started designation, else null.
+   */
   getPrimaryMeshtasticSourceId(): string | null {
+    const preferred = this.preferredMeshtasticSourceId;
+    if (preferred !== null && this.managers.get(preferred)?.sourceType === 'meshtastic_tcp') {
+      return preferred;
+    }
     return this.primaryMeshtasticSourceId;
   }
 

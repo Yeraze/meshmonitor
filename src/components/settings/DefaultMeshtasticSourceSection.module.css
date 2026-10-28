@@ -1,0 +1,49 @@
+/*
+ * DefaultMeshtasticSourceSection (#5245): one select in a Global Settings
+ * section. The card itself comes from the host page's `.settings-section`.
+ */
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field label {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.description {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.select {
+  max-width: 100%;
+  width: 320px;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-surface-active);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
