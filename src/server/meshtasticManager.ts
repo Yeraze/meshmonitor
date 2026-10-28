@@ -100,7 +100,7 @@ import { isForwardingEnabled } from './services/forwardingStateService.js';
 import { isOwnNodeNum } from './utils/ownNodes.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
-import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, DEFAULT_NEIGHBOR_UTIL_MAX_HOPS, MAX_NEIGHBOR_UTIL_MAX_HOPS, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
+import { shouldGateAutomations, computeNeighborUtilization, clampNeighborSampleCount, parseManualNeighborNodes, isPickableInfrastructureNode, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, DEFAULT_NEIGHBOR_UTIL_MAX_HOPS, DEFAULT_NEIGHBOR_SELECTION_MODE, MAX_NEIGHBOR_UTIL_MAX_HOPS, NEIGHBOR_UTIL_SAMPLE_COUNT, MAX_NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborSelectionMode, type NeighborUtilCandidate, type NeighborUtilContributor, type LocalFillReason, type SkippedNeighbor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
 import { resolveLastHeardSec, isLiveReception, isFirmwareReplayPacket, resolvePositionObservedAtMs, resolveNodeDbPositionObservedAtMs } from './utils/replayGuard.js';
@@ -162,6 +162,17 @@ import * as net from 'net';
 import { safeJson } from './utils/redactSecrets.js';
 
 /** The MeshPacket fields `maybeEmitPacketFlight` reads (#4835). */
+/** Effective ChUtil the airtime cutoff compares against; neighbour fields are set in `neighbors` mode (#6007). */
+interface EffectiveChannelUtilization {
+  value: number | null;
+  sampleCount: number;
+  contributors: NeighborUtilContributor[];
+  targetCount?: number;
+  neighborAverage?: number | null;
+  localUsed?: LocalFillReason | null;
+  skipped?: SkippedNeighbor[];
+}
+
 interface PacketFlightSourcePacket {
   from?: number | bigint | null;
   to?: number | bigint | null;
@@ -1103,9 +1114,14 @@ class MeshtasticManager implements ISourceManager {
   // Highest hopsAway a router may be reached at and still count as a
   // neighbour candidate (issue #4801). 0 = directly heard only.
   private automationAirtimeCutoffNeighborMaxHops: number = DEFAULT_NEIGHBOR_UTIL_MAX_HOPS;
+  // Issue #6007: how neighbours are chosen (strongest RSSI, or the user's
+  // picks), how many the auto mode averages (3-5), and the manual picks.
+  private automationAirtimeCutoffNeighborMode: NeighborSelectionMode = DEFAULT_NEIGHBOR_SELECTION_MODE;
+  private automationAirtimeCutoffNeighborSampleCount: number = NEIGHBOR_UTIL_SAMPLE_COUNT;
+  private automationAirtimeCutoffNeighborNodes: number[] = [];
   // Short-lived cache for the neighbour-averaged ChUtil so the per-fire gate
   // doesn't hit the database on every automation in `neighbors` mode.
-  private neighborUtilCache: { value: number | null; sampleCount: number; contributors: NeighborUtilContributor[]; at: number } | null = null;
+  private neighborUtilCache: (EffectiveChannelUtilization & { at: number }) | null = null;
   private static readonly NEIGHBOR_UTIL_TTL_MS = 30000;
   // Throttle the "automations gated" log so a busy mesh doesn't spam.
   private lastAirtimeGateLogTime: number = 0;
@@ -3247,6 +3263,32 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Set how the neighbour-averaged ChUtil picks its nodes (issue #6007). Any
+   * field left undefined keeps its current value. The sample count clamps to
+   * 3-5; the manual list keeps unique valid node numbers, at most 5.
+   */
+  setAutomationAirtimeCutoffNeighborSelection(selection: {
+    mode?: string;
+    sampleCount?: number | string;
+    nodes?: unknown;
+  }): void {
+    if (selection.mode !== undefined) {
+      this.automationAirtimeCutoffNeighborMode = selection.mode === 'manual' ? 'manual' : 'auto';
+    }
+    if (selection.sampleCount !== undefined) {
+      this.automationAirtimeCutoffNeighborSampleCount = clampNeighborSampleCount(selection.sampleCount);
+    }
+    if (selection.nodes !== undefined) {
+      this.automationAirtimeCutoffNeighborNodes = parseManualNeighborNodes(selection.nodes).slice(0, MAX_NEIGHBOR_UTIL_SAMPLE_COUNT);
+    }
+    this.neighborUtilCache = null; // force a fresh computation on the next check
+    logger.debug(
+      `📡 Airtime cutoff neighbour selection for ${this.sourceId}: mode=${this.automationAirtimeCutoffNeighborMode}, ` +
+        `samples=${this.automationAirtimeCutoffNeighborSampleCount}, picks=${this.automationAirtimeCutoffNeighborNodes.length}`
+    );
+  }
+
+  /**
    * Load the persisted airtime cutoff settings (threshold + source) for this
    * source. Falls back to defaults when unset or invalid.
    */
@@ -3266,11 +3308,20 @@ class MeshtasticManager implements ISourceManager {
         Number.isFinite(parsedHops) && parsedHops >= 0 && parsedHops <= MAX_NEIGHBOR_UTIL_MAX_HOPS
           ? parsedHops
           : DEFAULT_NEIGHBOR_UTIL_MAX_HOPS;
+
+      // Issue #6007: read per source (getSettingForSource), never the bare key.
+      const savedMode = await databaseService.settings.getSettingForSource(this.sourceId, 'automationAirtimeCutoffNeighborMode');
+      this.automationAirtimeCutoffNeighborMode = savedMode === 'manual' ? 'manual' : DEFAULT_NEIGHBOR_SELECTION_MODE;
+      const savedCount = await databaseService.settings.getSettingForSource(this.sourceId, 'automationAirtimeCutoffNeighborSampleCount');
+      this.automationAirtimeCutoffNeighborSampleCount = clampNeighborSampleCount(savedCount ?? NEIGHBOR_UTIL_SAMPLE_COUNT);
+      const savedNodes = await databaseService.settings.getSettingForSource(this.sourceId, 'automationAirtimeCutoffNeighborNodes');
+      this.automationAirtimeCutoffNeighborNodes = parseManualNeighborNodes(savedNodes).slice(0, MAX_NEIGHBOR_UTIL_SAMPLE_COUNT);
       this.neighborUtilCache = null;
 
       logger.debug(
         `📡 Airtime cutoff for ${this.sourceId}: ${this.automationAirtimeCutoffThreshold}% ` +
-          `(source: ${this.automationAirtimeCutoffSource}, maxHops: ${this.automationAirtimeCutoffNeighborMaxHops})` +
+          `(source: ${this.automationAirtimeCutoffSource}, maxHops: ${this.automationAirtimeCutoffNeighborMaxHops}, ` +
+          `mode: ${this.automationAirtimeCutoffNeighborMode}, samples: ${this.automationAirtimeCutoffNeighborSampleCount})` +
           (this.automationAirtimeCutoffThreshold === 0 ? ' (disabled)' : '')
       );
     } catch (error) {
@@ -3278,16 +3329,50 @@ class MeshtasticManager implements ISourceManager {
       this.automationAirtimeCutoffThreshold = DEFAULT_AIRTIME_CUTOFF_THRESHOLD;
       this.automationAirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
       this.automationAirtimeCutoffNeighborMaxHops = DEFAULT_NEIGHBOR_UTIL_MAX_HOPS;
+      this.automationAirtimeCutoffNeighborMode = DEFAULT_NEIGHBOR_SELECTION_MODE;
+      this.automationAirtimeCutoffNeighborSampleCount = NEIGHBOR_UTIL_SAMPLE_COUNT;
+      this.automationAirtimeCutoffNeighborNodes = [];
     }
   }
 
   /**
-   * Compute the Channel Utilization the cutoff should compare against, honoring
-   * the configured source. In 'neighbors' mode the value is the average ChUtil
-   * of the strongest-RSSI 0-hop infrastructure neighbours, cached briefly so the
-   * per-fire gate doesn't query the database on every automation.
+   * Candidate infrastructure neighbours for this source: nodes heard in the
+   * last day, minus the local node, with each node's newest ChUtil sample time
+   * (issue #6007) and its `viaMqtt` flag.
    */
-  private async getEffectiveChannelUtilization(): Promise<{ value: number | null; sampleCount: number; contributors: NeighborUtilContributor[] }> {
+  private async loadNeighborUtilCandidates(): Promise<NeighborUtilCandidate[]> {
+    const localNodeNum = this.localNodeInfo?.nodeNum;
+    const [nodes, samples] = await Promise.all([
+      databaseService.nodes.getActiveNodes(1, this.sourceId),
+      databaseService.telemetry.getLatestTelemetrySampleForAllNodes('channelUtilization', this.sourceId),
+    ]);
+    return nodes
+      .filter((n: any) => Number(n.nodeNum) !== localNodeNum)
+      .map((n: any) => {
+        const sample = n.nodeId ? samples.get(n.nodeId) : undefined;
+        return {
+          nodeNum: n.nodeNum != null ? Number(n.nodeNum) : null,
+          nodeId: n.nodeId,
+          longName: n.longName,
+          shortName: n.shortName,
+          role: n.role,
+          hopsAway: n.hopsAway,
+          rssi: n.rssi,
+          channelUtilization: n.channelUtilization ?? sample?.value ?? null,
+          channelUtilizationAt: sample?.timestamp ?? null,
+          viaMqtt: n.viaMqtt,
+        };
+      });
+  }
+
+  /**
+   * Compute the Channel Utilization the cutoff should compare against, honoring
+   * the configured source. In 'neighbors' mode the value comes from
+   * `computeNeighborUtilization` (auto or manual picks, MQTT excluded, local
+   * fills the gap), cached briefly so the per-fire gate doesn't query the
+   * database on every automation.
+   */
+  private async getEffectiveChannelUtilization(): Promise<EffectiveChannelUtilization> {
     if (this.automationAirtimeCutoffSource !== 'neighbors') {
       return {
         value: this.localChannelUtilization,
@@ -3298,39 +3383,36 @@ class MeshtasticManager implements ISourceManager {
 
     const now = Date.now();
     if (this.neighborUtilCache && now - this.neighborUtilCache.at < MeshtasticManager.NEIGHBOR_UTIL_TTL_MS) {
-      return {
-        value: this.neighborUtilCache.value,
-        sampleCount: this.neighborUtilCache.sampleCount,
-        contributors: this.neighborUtilCache.contributors,
-      };
+      const { at: _at, ...cached } = this.neighborUtilCache;
+      return cached;
     }
 
-    let result: { value: number | null; sampleCount: number; contributors: NeighborUtilContributor[] } = { value: null, sampleCount: 0, contributors: [] };
+    let result: EffectiveChannelUtilization;
     try {
-      const localNodeNum = this.localNodeInfo?.nodeNum;
-      const nodes = await databaseService.nodes.getActiveNodes(1, this.sourceId);
-      const candidates = nodes
-        .filter((n: any) => Number(n.nodeNum) !== localNodeNum)
-        .map((n: any) => ({
-          nodeNum: n.nodeNum,
-          nodeId: n.nodeId,
-          longName: n.longName,
-          shortName: n.shortName,
-          role: n.role,
-          hopsAway: n.hopsAway,
-          rssi: n.rssi,
-          channelUtilization: n.channelUtilization,
-        }));
-      result = averageStrongestNeighborUtilization(
-        candidates,
-        NEIGHBOR_UTIL_SAMPLE_COUNT,
-        this.automationAirtimeCutoffNeighborMaxHops,
-      );
+      const candidates = await this.loadNeighborUtilCandidates();
+      const r = computeNeighborUtilization(candidates, {
+        mode: this.automationAirtimeCutoffNeighborMode,
+        sampleCount: this.automationAirtimeCutoffNeighborSampleCount,
+        maxHops: this.automationAirtimeCutoffNeighborMaxHops,
+        manualNodeNums: this.automationAirtimeCutoffNeighborNodes,
+        localChannelUtilization: this.localChannelUtilization,
+        now,
+      });
+      result = {
+        value: r.value,
+        sampleCount: r.sampleCount,
+        contributors: r.contributors,
+        targetCount: r.targetCount,
+        neighborAverage: r.neighborAverage,
+        localUsed: r.localUsed,
+        skipped: r.skipped,
+      };
     } catch (error) {
       logger.error(`Failed to compute neighbour airtime utilization for ${this.sourceId}:`, error);
+      result = { value: null, sampleCount: 0, contributors: [] };
     }
 
-    this.neighborUtilCache = { value: result.value, sampleCount: result.sampleCount, contributors: result.contributors, at: now };
+    this.neighborUtilCache = { ...result, at: now };
     return result;
   }
 
@@ -3360,7 +3442,9 @@ class MeshtasticManager implements ISourceManager {
    * Current airtime-cutoff status for this source: the configured threshold and
    * measurement source, the effective Channel Utilization (or null if unknown),
    * the number of neighbours sampled (neighbours mode), and whether automations
-   * are currently gated. Used by the Automation page banner.
+   * are currently gated. Used by the Automation page banner. In neighbours
+   * mode it also says whether the local ChUtil filled the gap and which manual
+   * picks were skipped (issue #6007).
    */
   async getAirtimeCutoffStatus(): Promise<{
     threshold: number;
@@ -3370,17 +3454,70 @@ class MeshtasticManager implements ISourceManager {
     sampleCount: number;
     contributors: NeighborUtilContributor[];
     gated: boolean;
+    neighborMode?: NeighborSelectionMode;
+    neighborSampleCount?: number;
+    neighborNodes?: number[];
+    targetCount?: number;
+    neighborAverage?: number | null;
+    localChannelUtilization?: number | null;
+    localUsed?: LocalFillReason | null;
+    skipped?: SkippedNeighbor[];
   }> {
-    const { value, sampleCount, contributors } = await this.getEffectiveChannelUtilization();
-    return {
+    const eff = await this.getEffectiveChannelUtilization();
+    const base = {
       threshold: this.automationAirtimeCutoffThreshold,
       source: this.automationAirtimeCutoffSource,
       neighborMaxHops: this.automationAirtimeCutoffNeighborMaxHops,
-      channelUtilization: value,
-      sampleCount,
-      contributors,
-      gated: shouldGateAutomations(value, this.automationAirtimeCutoffThreshold),
+      channelUtilization: eff.value,
+      sampleCount: eff.sampleCount,
+      contributors: eff.contributors,
+      gated: shouldGateAutomations(eff.value, this.automationAirtimeCutoffThreshold),
     };
+    if (this.automationAirtimeCutoffSource !== 'neighbors') return base;
+    return {
+      ...base,
+      neighborMode: this.automationAirtimeCutoffNeighborMode,
+      neighborSampleCount: this.automationAirtimeCutoffNeighborSampleCount,
+      neighborNodes: [...this.automationAirtimeCutoffNeighborNodes],
+      targetCount: eff.targetCount,
+      neighborAverage: eff.neighborAverage ?? null,
+      localChannelUtilization: this.localChannelUtilization,
+      localUsed: eff.localUsed ?? null,
+      skipped: eff.skipped ?? [],
+    };
+  }
+
+  /**
+   * Infrastructure nodes the manual airtime-cutoff picker may offer (issue
+   * #6007): infrastructure roles heard in the last day, never MQTT-heard, with
+   * their hops, last ChUtil and that reading's time. Read-only, no traffic.
+   */
+  async getAirtimeCutoffCandidates(): Promise<Array<{
+    nodeNum: number;
+    nodeId: string | null;
+    longName: string | null;
+    shortName: string | null;
+    role: number;
+    hopsAway: number | null;
+    rssi: number | null;
+    channelUtilization: number | null;
+    channelUtilizationAt: number | null;
+  }>> {
+    const candidates = await this.loadNeighborUtilCandidates();
+    return candidates
+      .filter((n) => n.nodeNum != null && isPickableInfrastructureNode(n))
+      .map((n) => ({
+        nodeNum: n.nodeNum as number,
+        nodeId: n.nodeId ?? null,
+        longName: n.longName ?? null,
+        shortName: n.shortName ?? null,
+        role: n.role as number,
+        hopsAway: typeof n.hopsAway === 'number' ? n.hopsAway : null,
+        rssi: typeof n.rssi === 'number' ? n.rssi : null,
+        channelUtilization: typeof n.channelUtilization === 'number' ? n.channelUtilization : null,
+        channelUtilizationAt: n.channelUtilizationAt ?? null,
+      }))
+      .sort((a, b) => (a.hopsAway ?? 99) - (b.hopsAway ?? 99) || (b.rssi ?? -999) - (a.rssi ?? -999));
   }
 
   /**

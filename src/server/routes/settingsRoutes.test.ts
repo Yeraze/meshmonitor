@@ -1029,6 +1029,78 @@ describe('settingsRoutes', () => {
       });
     });
 
+    // (a3) issue #6007: neighbour selection mode, sample count (3-5, clamped)
+    // and the manual pick list (3-5 unique node numbers).
+    describe('(a3) airtime cutoff neighbour selection (#6007)', () => {
+      const selectionSpy = vi.fn();
+      beforeEach(() => {
+        selectionSpy.mockClear();
+        setSettingsCallbacks({ setAutomationAirtimeCutoffNeighborSelection: selectionSpy });
+      });
+      afterAll(() => setSettingsCallbacks({}));
+
+      it('rejects an unknown mode', async () => {
+        const res = await request(createApp(adminUser))
+          .post('/api/settings').send({ automationAirtimeCutoffNeighborMode: 'random' }).expect(400);
+        expect(res.body.code).toBe('INVALID_AIRTIME_NEIGHBOR_MODE');
+        expect(databaseService.settings.setSettings).not.toHaveBeenCalled();
+      });
+
+      it('rejects a non-numeric sample count', async () => {
+        const res = await request(createApp(adminUser))
+          .post('/api/settings').send({ automationAirtimeCutoffNeighborSampleCount: 'abc' }).expect(400);
+        expect(res.body.code).toBe('INVALID_AIRTIME_SAMPLE_COUNT');
+      });
+
+      it.each([['1', '3'], ['4', '4'], ['9', '5']])('clamps sample count %s to %s before saving', async (sent, stored) => {
+        await request(createApp(adminUser))
+          .post('/api/settings?sourceId=mqtt-broker-1')
+          .send({ automationAirtimeCutoffNeighborSampleCount: sent })
+          .expect(200);
+        expect(databaseService.settings.setSourceSettings).toHaveBeenCalledWith(
+          'mqtt-broker-1',
+          expect.objectContaining({ automationAirtimeCutoffNeighborSampleCount: stored }),
+        );
+        expect(selectionSpy).toHaveBeenCalledWith(expect.objectContaining({ sampleCount: stored }), 'mqtt-broker-1');
+      });
+
+      it.each([
+        ['two nodes', '[1,2]'],
+        ['six nodes', '[1,2,3,4,5,6]'],
+        ['duplicates', '[1,1,2]'],
+        ['not an array', '{"a":1}'],
+        ['bad JSON', '[1,'],
+        ['bad entries', '[1,2,"x"]'],
+      ])('rejects a manual list with %s', async (_label, nodes) => {
+        const res = await request(createApp(adminUser))
+          .post('/api/settings').send({ automationAirtimeCutoffNeighborNodes: nodes }).expect(400);
+        expect(res.body.code).toBe('INVALID_AIRTIME_NEIGHBOR_NODES');
+        expect(selectionSpy).not.toHaveBeenCalled();
+      });
+
+      it('rejects manual mode without 3-5 picks in the same save', async () => {
+        const res = await request(createApp(adminUser))
+          .post('/api/settings').send({ automationAirtimeCutoffNeighborMode: 'manual' }).expect(400);
+        expect(res.body.code).toBe('INVALID_AIRTIME_NEIGHBOR_NODES');
+      });
+
+      it('accepts manual mode with 3-5 picks and an empty list in auto mode', async () => {
+        await request(createApp(adminUser))
+          .post('/api/settings?sourceId=mqtt-broker-1')
+          .send({ automationAirtimeCutoffNeighborMode: 'manual', automationAirtimeCutoffNeighborNodes: '[10, 20, 30, 40, 50]' })
+          .expect(200);
+        expect(selectionSpy).toHaveBeenCalledWith(
+          { mode: 'manual', sampleCount: undefined, nodes: '[10,20,30,40,50]' },
+          'mqtt-broker-1',
+        );
+        await request(createApp(adminUser))
+          .post('/api/settings')
+          .send({ automationAirtimeCutoffNeighborMode: 'auto', automationAirtimeCutoffNeighborNodes: '[]' })
+          .expect(200);
+        expect(selectionSpy).toHaveBeenLastCalledWith({ mode: 'auto', sampleCount: undefined, nodes: '[]' }, null);
+      });
+    });
+
     // (b) a global-only key is dropped (never 400) under ?sourceId= and
     // reported in ignoredKeys (§2.3).
     it('(b) drops a global-only key under ?sourceId= and reports it in ignoredKeys', async () => {

@@ -85,6 +85,10 @@ export const VALID_SETTINGS_KEYS = [
   'automationAirtimeCutoffThreshold',
   'automationAirtimeCutoffSource',
   'automationAirtimeCutoffNeighborMaxHops',
+  // Issue #6007: auto vs manual neighbour picks, sample count (3-5), manual node list
+  'automationAirtimeCutoffNeighborMode',
+  'automationAirtimeCutoffNeighborSampleCount',
+  'automationAirtimeCutoffNeighborNodes',
   'autoAnnounceEnabled',
   'autoAnnounceIntervalHours',
   'autoAnnounceMessage',
@@ -570,6 +574,10 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'automationAirtimeCutoffThreshold',
   'automationAirtimeCutoffSource',
   'automationAirtimeCutoffNeighborMaxHops',
+  // Issue #6007: auto vs manual neighbour picks, sample count (3-5), manual node list
+  'automationAirtimeCutoffNeighborMode',
+  'automationAirtimeCutoffNeighborSampleCount',
+  'automationAirtimeCutoffNeighborNodes',
   // Auto-announce
   'autoAnnounceChannelIndexes',
   'autoAnnounceHopLimit',

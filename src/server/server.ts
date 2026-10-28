@@ -1160,6 +1160,16 @@ setSettingsCallbacks({
       }
     }
   },
+  setAutomationAirtimeCutoffNeighborSelection: (selection: { mode?: string; sampleCount?: number | string; nodes?: unknown }, sourceId?: string | null) => {
+    if (sourceId) {
+      const base = sourceManagerRegistry.getManager(sourceId);
+      if (base && isMeshtasticManager(base)) base.setAutomationAirtimeCutoffNeighborSelection(selection);
+    } else {
+      for (const mgr of sourceManagerRegistry.getAllManagers().filter(isMeshtasticManager)) {
+        mgr.setAutomationAirtimeCutoffNeighborSelection(selection);
+      }
+    }
+  },
   handleAutoWelcomeEnabled: () => { databaseService.handleAutoWelcomeEnabledAsync().catch(() => {}); return 0; },
   invalidateHtmlCache,
   setDiscardInvalidPositions: (enabled) => setDiscardInvalidPositions(enabled),
