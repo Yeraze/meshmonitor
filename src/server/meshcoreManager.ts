@@ -4836,6 +4836,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Add message with limit to prevent unbounded growth
    */
   private addMessage(message: MeshCoreMessage, extra?: { mc1Hash?: string | null }): Promise<boolean> {
+    // The live pool and DB aggregate must share one clock: unread markers use
+    // receivedAt, while channel-counts uses createdAt (#6013).
+    message.receivedAt ??= Date.now();
     this.messages.push(message);
     if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
       this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
@@ -4866,7 +4869,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         reactionTargetSender: message.reactionTargetSender ?? null,
         reactionTargetId: message.reactionTargetId ?? null,
         reactionRawText: message.reactionRawText ?? null,
-        createdAt: Date.now(),
+        createdAt: message.receivedAt,
       },
       this.sourceId,
     ).then(ok => ok !== false).catch(err => {
