@@ -31,6 +31,7 @@ import PkiDmDecryptionSection from './configuration/PkiDmDecryptionSection';
 import ReliablePkiSection from './settings/ReliablePkiSection';
 import MqttBridgeConfigurationView from './MQTT/MqttBridgeConfigurationView';
 import ReticulumRetentionSection from './settings/ReticulumRetentionSection';
+import DefaultMeshtasticSourceSection from './settings/DefaultMeshtasticSourceSection';
 import { MovedSettingNote } from './common/MovedSettingNote';
 import SignFlipCorrectionSettings from './settings/SignFlipCorrectionSettings';
 import { parseSignFlipSettings, clampSignFlipRangeKm, SIGN_FLIP_DEFAULT_RANGE_KM } from '../utils/signFlipPosition';
@@ -3260,6 +3261,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             sourceType={sourceType}
           />
         )}
+
+        {show('settings-default-source') && isAdmin && mode === 'global' && <DefaultMeshtasticSourceSection />}
 
         {show('settings-remote-admin') && isAdmin && <div id="settings-remote-admin" className="settings-section">
           <h3>{t('settings.remote_admin_section', 'Remote Administration')}</h3>

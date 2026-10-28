@@ -54,6 +54,8 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   'settings-appearance', 'settings-link-previews',
   'settings-privacy', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
+  // Default Meshtastic source (#5245): one install-wide choice.
+  'settings-default-source',
   'settings-remote-admin',
   'settings-apprise-server', 'settings-elevation',
   // Ducting overlay (#5734): one global outbound service, like elevation.
@@ -180,6 +182,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-reliable-pki', label: t('settings.reliable_pki.title', 'Reliable PKI'), keywords: ['pki', 'nodeinfo', 'node info', 'encryption', 'keys', 'prime', 'telemetry', 'dm'] },
     { id: 'settings-packet-monitor', label: t('settings.packet_monitor'), keywords: ['packets', 'logging', 'capture'] },
     { id: 'settings-solar', label: t('settings.solar_monitoring'), keywords: ['sun', 'panel', 'power', 'battery'] },
+    { id: 'settings-default-source', label: t('settings.default_source.title', 'Default Meshtastic source'), keywords: ['default', 'primary', 'source', 'radio', 'gateway', 'outbound', 'send', 'api'] },
     { id: 'settings-remote-admin', label: t('settings.remote_admin_section', 'Remote Administration'), keywords: ['admin', 'password', 'credentials'] },
     { id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server'), keywords: ['notifications', 'email', 'push', 'webhook'] },
     { id: 'settings-elevation', label: t('settings.elevation_section', 'Elevation / Terrain'), keywords: ['dem', 'terrain', 'altitude', 'height'] },
@@ -203,6 +206,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
   ];
 
   const adminOnly = new Set([
+    'settings-default-source',
     'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-ducting', 'settings-adsb',
     'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics',
   ]);

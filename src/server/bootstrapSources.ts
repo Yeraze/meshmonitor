@@ -27,6 +27,8 @@
  *  - Sources are sorted: mqtt_broker(0) < meshtastic_tcp/meshcore/reticulum(1) < mqtt_bridge(2).
  *  - ALL meshtastic_tcp sources: constructed via makeMeshtastic() uniformly.
  *  - First tcp source is designated primary via registry.setPrimaryMeshtasticSource().
+ *  - The `defaultMeshtasticSourceId` setting (#5245), when it names a TCP source
+ *    that registers, overrides that designation (registry.setPreferredMeshtasticSource).
  *  - autoConnect===false → skip that source for auto-connect.
  *  - No tcp source configured after loop → nothing connects (#5237).
  */
@@ -36,6 +38,7 @@ import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from './meshcoreMq
 import { logger } from '../utils/logger.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 import { warnOnDuplicateTcpEndpoints } from './utils/tcpEndpointDuplicates.js';
+import { DEFAULT_MESHTASTIC_SOURCE_SETTING, applyDefaultMeshtasticSource } from './utils/defaultMeshtasticSource.js';
 import { planDefaultSources } from './config/defaultSourceConfig.js';
 import { DEFAULT_MESHTASTIC_VIRTUAL_NODE_PORT } from './config/virtualNodeEnv.js';
 import type { MeshCoreDefaultEnv } from './config/meshcoreEnv.js';
@@ -231,6 +234,16 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
     (msg) => logger.warn(msg),
   );
   let firstTcpSourceConfigured = false;
+
+  // Default Meshtastic source (#5245). Set before any manager starts, so the
+  // primary is the chosen source from the moment it registers, whatever its
+  // place in the start order. The registry only honours it while that id is a
+  // registered meshtastic_tcp manager: a disabled, deleted, non-TCP or
+  // autoConnect:false choice leaves today's first-started rule in charge.
+  applyDefaultMeshtasticSource(
+    deps.registry,
+    await deps.db.settings.getSetting(DEFAULT_MESHTASTIC_SOURCE_SETTING),
+  );
 
   for (const source of enabledSources) {
     if (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge') {

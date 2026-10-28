@@ -23,7 +23,9 @@ info:
 
     The literal string `default` may be used for `{sourceId}` — it resolves to
     the first source the authenticated token has `read` permission on (or the
-    first enabled source for admin tokens). 404 if none is accessible.
+    first enabled source for admin tokens). When an admin has set a default
+    Meshtastic source in Global Settings, that source is tried first, provided
+    it is enabled and the token can read it. 404 if none is accessible.
 
     `GET /api/v1/sources` lists the sources the token can read.
 

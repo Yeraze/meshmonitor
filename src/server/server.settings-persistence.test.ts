@@ -50,6 +50,11 @@ vi.mock('../services/database.js', () => ({
       }),
     },
     handleAutoWelcomeEnabled: vi.fn(() => 0),
+    // defaultMeshtasticSourceId (#5245) is checked against the sources table:
+    // any id reads as a Meshtastic TCP source here.
+    sources: {
+      getSource: vi.fn(async (id: string) => ({ id, name: id, type: 'meshtastic_tcp', enabled: true })),
+    },
     sourcePkiKeys: {
       deleteAll: vi.fn(async () => 0),
     },

@@ -69,6 +69,10 @@ The destination retention cap. It applies to every Reticulum source. A Reticulum
 
 Shown on SQLite, PostgreSQL and MySQL installs. An optional scheduled job deletes messages, traceroutes, route segments, neighbor info, audit log entries and MeshCore CLI history older than the retention you set for each (7 to 365 days). It is off until an admin turns it on. On PostgreSQL and MySQL nothing is pruned until you do. See [Settings → Database Maintenance](/features/settings#database-maintenance).
 
+### Default Meshtastic source
+
+Admin only. Picks the Meshtastic TCP source used where a request names no source: API calls without a `sourceId`, the v1 `default` source, and device pages opened without a source. **Automatic** (the default) uses the first Meshtastic TCP source started at boot. The section shows which source is in use now. See [Multi-Source → Default Meshtastic source](/features/multi-source#default-meshtastic-source).
+
 ### Tropospheric ducting overlay
 
 An admin-only switch for the [ducting overlay](/features/maps#tropospheric-ducting-overlay) on the Map tab and the Dashboard map. Off by default. See [Settings → Tropospheric ducting overlay](/features/settings#tropospheric-ducting-overlay).

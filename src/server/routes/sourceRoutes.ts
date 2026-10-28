@@ -32,6 +32,7 @@ import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../servi
 import { mqttGeoSweepService, type GeoSweepStatsSink } from '../services/mqttGeoSweepService.js';
 import type { MqttFilterConfig } from '../mqttPacketFilter.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { DEFAULT_MESHTASTIC_SOURCE_SETTING, applyDefaultMeshtasticSource, readConfiguredDefaultMeshtasticSourceId } from '../utils/defaultMeshtasticSource.js';
 import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
 import { observerBrokerKey } from '../meshcoreConfig.js';
 import { getForwardingSummary } from '../services/forwardingStateService.js';
@@ -1754,6 +1755,20 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       await databaseService.deleteSourceSettingsAsync(req.params.id);
     } catch (settingsError) {
       logger.warn(`Failed to purge settings for deleted source ${req.params.id}:`, settingsError);
+    }
+
+    // #5245: a deleted source can no longer be the default Meshtastic source.
+    // The registry already falls back to Automatic (its manager is gone);
+    // clearing the stored id keeps Settings from showing a source that no
+    // longer exists. Best-effort, like the purges around it.
+    try {
+      const configuredDefault = await readConfiguredDefaultMeshtasticSourceId(databaseService);
+      if (configuredDefault === req.params.id) {
+        await databaseService.settings.setSetting(DEFAULT_MESHTASTIC_SOURCE_SETTING, '');
+        applyDefaultMeshtasticSource(sourceManagerRegistry, null);
+      }
+    } catch (defaultError) {
+      logger.warn(`Failed to clear the default Meshtastic source for deleted source ${req.params.id}:`, defaultError);
     }
 
     // #5596: per-source secrets live in their own tables, keyed by source id,
