@@ -6,6 +6,7 @@ import { DEFAULT_TILESET_ID } from '../config/tilesets';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { meshcoreRoleLabel, isMeshCoreInfrastructureAdvType } from './MeshCore/meshcoreRole';
+import { markerRoleProps } from '../utils/nodeTypeCategory';
 import GeoJsonOverlay from './GeoJsonOverlay';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import { getOverlayColors, getSchemeForTileset } from '../config/overlayColors';
@@ -260,14 +261,18 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     for (const node of filteredNodes) {
       const hops = node.hopsAway ?? 999;
       // A MeshCore repeater or room server draws as infrastructure, as a
-      // Meshtastic router does.
-      const isRouter = node.isMeshCore
-        ? isMeshCoreInfrastructureAdvType(node.advType)
-        : (node.role ?? 0) === 2;
+      // Meshtastic router does. Meshtastic roles go through the shared helper
+      // (#6008) and pass their category, so the embed draws the same glyphs and
+      // corner badges as the app's maps.
+      const meshtasticRole = node.isMeshCore ? null : markerRoleProps({ role: node.role });
+      const isRouter = meshtasticRole
+        ? meshtasticRole.isRouter
+        : isMeshCoreInfrastructureAdvType(node.advType);
       const icon = createNodeIcon({
         hops,
         isSelected: false,
         isRouter,
+        roleCategory: meshtasticRole?.roleCategory,
         shortName: node.user?.shortName,
         showLabel: false,
         pinStyle: 'meshmonitor',

@@ -19,7 +19,7 @@ import type { PathOptions } from 'leaflet';
 import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { markerAgeOpacity } from '../../utils/markerAgeOpacity';
-import { getNodeTypeCategory, categoryGlyphFamily } from '../../utils/nodeTypeCategory';
+import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps } from '../../utils/nodeTypeCategory';
 import { getHopColor } from '../../utils/mapIcons';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import type { CustomTileset } from '../../config/tilesets';
@@ -778,11 +778,11 @@ export default function DashboardMap({
     const hops = node.hopsAway ?? 999;
     const shortName = node.shortName ?? node.user?.shortName;
     const nodeId = node.nodeId ?? node.user?.id;
-    const isRouter = node.role === 2;
-    // #4075: role category drives the repeater-tower glyph for ROUTER_LATE
-    // (and REPEATER), not just ROUTER. Included in iconSig below so the icon
-    // cache distinguishes it from a plain client with the same hops/name.
-    const roleCategory = getNodeTypeCategory(node);
+    // #6008: shared infrastructure rule (ROUTER, ROUTER_LATE, CLIENT_BASE and
+    // the deprecated router roles), matching every other map surface. The role
+    // category drives the glyph or corner badge, and is in iconSig below so the
+    // icon cache tells it apart from a plain client with the same hops/name.
+    const { isRouter, roleCategory } = markerRoleProps(node);
     // MeshCore nodes carry nodeNum 0 (they have no meshtastic nodeNum), so the
     // `${sourceId}:${nodeNum}` scheme would collapse EVERY MeshCore node on a
     // source onto the same key — React's duplicate-key reconciliation then
@@ -1388,7 +1388,11 @@ export default function DashboardMap({
           </>
         </div>
         {/* Hops legend + tileset picker now live in the same sidebar (#4909). */}
-        {!effective3D && showLegend && <MapLegend embedded />}
+        {!effective3D && showLegend && (
+          // #6008: list the Meshtastic role markers when any Meshtastic node is
+          // on the map (a MeshCore-only dashboard has no use for them).
+          <MapLegend embedded showRoleMarkers={markerNodes.some(({ node }) => !node.isMeshCore)} />
+        )}
         {showTileSelector && (
           <TilesetSelector selectedTilesetId={tilesetId} onTilesetChange={setMapTileset} embedded />
         )}

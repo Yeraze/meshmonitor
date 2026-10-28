@@ -193,9 +193,14 @@ describe('roleGlyphMarkerSvg', () => {
   });
 
   it('renders Meshtastic role categories via their shared glyph family (issue #3610)', () => {
-    expect(roleGlyphMarkerSvg('mtSensor', COLOR, 24)).toBe(roleGlyphMarkerSvg('sensor', COLOR, 24));
-    // ROUTER and REPEATER share the Meshtastic tower.
+    // ROUTER, REPEATER and ROUTER_CLIENT share the Meshtastic tower.
     expect(roleGlyphMarkerSvg('mtRepeater', COLOR, 24)).toBe(roleGlyphMarkerSvg('mtRouter', COLOR, 24));
+    expect(roleGlyphMarkerSvg('mtRouterClient', COLOR, 24)).toBe(roleGlyphMarkerSvg('mtRouter', COLOR, 24));
+    // #6008: CLIENT_BASE has its own base-station glyph; SENSOR moved to a
+    // corner badge, so it no longer swaps the glyph.
+    expect(roleGlyphMarkerSvg('mtClientBase', COLOR, 24)).not.toBe('');
+    expect(roleGlyphMarkerSvg('mtClientBase', COLOR, 24)).not.toBe(roleGlyphMarkerSvg('mtRouter', COLOR, 24));
+    expect(roleGlyphMarkerSvg('mtSensor', COLOR, 24)).toBe('');
   });
 
   it('draws a Meshtastic ROUTER and a MeshCore Repeater with different glyphs (#5491)', () => {

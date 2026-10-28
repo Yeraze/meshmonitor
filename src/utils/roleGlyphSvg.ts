@@ -6,6 +6,7 @@
  */
 
 import { categoryGlyphFamily, type GlyphFamily, type NodeTypeCategory } from './nodeTypeCategory.js';
+import { isRoleBadgeKind, type MarkerRoleKind, type RoleBadgeKind } from './nodeRoleMarker.js';
 
 /**
  * Inner SVG markup for a node-type role glyph, drawn inside the 48×48 viewBox
@@ -14,9 +15,10 @@ import { categoryGlyphFamily, type GlyphFamily, type NodeTypeCategory } from './
  * glyph stays consistent with the marker's stroke.
  *
  * Meshtastic role categories (issue #3610) draw through {@link categoryGlyphFamily}:
- * a SENSOR reuses the MeshCore sensor glyph, while ROUTER / ROUTER_LATE /
- * REPEATER have their own `'router'` tower, apart from the MeshCore Repeater's
- * mesh relay (#5491).
+ * only infrastructure swaps the glyph (#6008). ROUTER / ROUTER_LATE / the
+ * deprecated ROUTER_CLIENT and REPEATER draw the `'router'` tower, apart from
+ * the MeshCore Repeater's mesh relay (#5491); CLIENT_BASE draws a base station.
+ * Other roles return '' and get a corner badge ({@link roleBadgeSvg}).
  */
 /**
  * The Meshtastic router tower silhouette (tower + signal waves): the `'router'`
@@ -48,6 +50,67 @@ function meshcoreRepeaterSvg(color: string): string {
         <circle cx="36.5" cy="33" r="4.5" fill="${color}" />
         <circle cx="24" cy="25" r="6" fill="#555" />
         <circle cx="24" cy="25" r="2.5" fill="white" />`;
+}
+
+/**
+ * The CLIENT_BASE glyph (#6008): a base station, a house with the router
+ * tower's antenna and signal waves on its roof. It shares the tower's grey
+ * body and hop-coloured waves so it reads as infrastructure, while the house
+ * shape keeps it apart from a ROUTER. Drawn in the 48x48 role-glyph viewBox.
+ */
+function clientBaseSvg(color: string): string {
+  return `
+        <rect x="22.5" y="5" width="3" height="11" fill="#555" />
+        <circle cx="24" cy="5" r="3" fill="${color}" />
+        <path d="M 17 9 C 14 9 11.5 11 11.5 13.5" stroke="${color}" stroke-width="2.5" fill="none" />
+        <path d="M 31 9 C 34 9 36.5 11 36.5 13.5" stroke="${color}" stroke-width="2.5" fill="none" />
+        <path d="M 9 28 L 24 15 L 39 28 Z" fill="#555" />
+        <rect x="13" y="27" width="22" height="15" fill="#555" />
+        <rect x="21" y="32" width="6" height="10" fill="white" />`;
+}
+
+/**
+ * Glyphs for the role corner badges (#6008), drawn in a 24x24 viewBox. Paths
+ * are from Lucide (ISC licence, https://lucide.dev), the set behind `UiIcon`:
+ * `navigation` (tracker), `life-buoy` (lost and found), `thermometer`
+ * (sensor, as UiIcon's `sensor`), `crosshair` (TAK, as UiIcon's `target`) and
+ * `volume-x` (client mute, as UiIcon's `muted`). Scaled to 60% about the
+ * centre so they clear the disc's edge.
+ */
+const ROLE_BADGE_GLYPHS: Record<RoleBadgeKind, string> = {
+  tracker: '<polygon points="3 11 22 2 13 21 11 13 3 11" />',
+  lostAndFound: '<circle cx="12" cy="12" r="10" /><path d="m4.93 4.93 4.24 4.24" /><path d="m14.83 9.17 4.24-4.24" /><path d="m14.83 14.83 4.24 4.24" /><path d="m9.17 14.83-4.24 4.24" /><circle cx="12" cy="12" r="4" />',
+  sensor: '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" />',
+  tak: '<circle cx="12" cy="12" r="10" /><line x1="22" x2="18" y1="12" y2="12" /><line x1="6" x2="2" y1="12" y2="12" /><line x1="12" x2="12" y1="6" y2="2" /><line x1="12" x2="12" y1="22" y2="18" />',
+  clientMute: '<path d="M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298z" /><path d="m16.5 14.5 5-5" /><path d="m16.5 9.5 5 5" />',
+};
+
+/**
+ * Theme role tokens for each badge: `disc` fills the badge, `ink` strokes the
+ * glyph and the disc's rim. Lost and Found inverts the pair (a solid caution
+ * disc) so a lost device stands out; Client Mute uses muted text so its mark
+ * stays quiet. Tokens resolve per theme, so the badge follows light and dark.
+ */
+const ROLE_BADGE_TOKENS: Record<RoleBadgeKind, { disc: string; ink: string }> = {
+  tracker: { disc: 'var(--color-bg-raised)', ink: 'var(--color-info)' },
+  lostAndFound: { disc: 'var(--color-caution)', ink: 'var(--color-bg-raised)' },
+  sensor: { disc: 'var(--color-bg-raised)', ink: 'var(--color-success)' },
+  tak: { disc: 'var(--color-bg-raised)', ink: 'var(--color-accent-alt)' },
+  clientMute: { disc: 'var(--color-bg-raised)', ink: 'var(--color-text-muted)' },
+};
+
+/**
+ * Role corner badge (#6008) as a complete `<svg>` string: a theme-coloured disc
+ * with a Lucide glyph. Colours are CSS custom properties, so the markup must be
+ * inlined into the page (a divIcon or `dangerouslySetInnerHTML`), not loaded as
+ * an image. `data-role-badge` names the kind for tests and styling.
+ */
+export function roleBadgeSvg(kind: RoleBadgeKind, size: number): string {
+  const { disc, ink } = ROLE_BADGE_TOKENS[kind];
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" data-role-badge="${kind}">`
+    + `<circle cx="12" cy="12" r="11" style="fill: ${disc}; stroke: ${ink}" stroke-width="1.5" />`
+    + `<g style="stroke: ${ink}" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(4.8 4.8) scale(0.6)">${ROLE_BADGE_GLYPHS[kind]}</g>`
+    + `</svg>`;
 }
 
 /**
@@ -108,6 +171,9 @@ export function glyphFamilyInnerSvg(family: GlyphFamily, color: string): string 
     case 'repeater':
       // MeshCore Repeater: mesh relay (#5491).
       return meshcoreRepeaterSvg(color);
+    case 'clientBase':
+      // Meshtastic CLIENT_BASE: base station (#6008).
+      return clientBaseSvg(color);
     case 'roomServer':
       // Stacked server rack with status LEDs.
       return `
@@ -161,6 +227,23 @@ function wrapGlyphMarker(inner: string, color: string, size: number): string {
   return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">`
     + `<circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="2" />`
     + `${inner}</svg>`;
+}
+
+/** The category whose glyph draws each infrastructure marker kind. */
+const INFRA_KIND_CATEGORY: Record<'router' | 'routerLate' | 'clientBase', NodeTypeCategory> = {
+  router: 'mtRouter',
+  routerLate: 'mtRouterLate',
+  clientBase: 'mtClientBase',
+};
+
+/**
+ * Legend swatch for a Meshtastic role marker kind (#6008): the infrastructure
+ * glyph over its disc, or the corner badge. Returns '' for `'none'`.
+ */
+export function roleMarkerLegendSvg(kind: MarkerRoleKind, color: string, size = 20): string {
+  if (kind === 'none') return '';
+  if (isRoleBadgeKind(kind)) return roleBadgeSvg(kind, size);
+  return roleGlyphMarkerSvg(INFRA_KIND_CATEGORY[kind], color, size);
 }
 
 /**

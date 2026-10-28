@@ -7,7 +7,7 @@ import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { nodePassesTransportFilter, transportCutoffSec, isMqttOnlySourceType } from '../utils/nodeTransport';
-import { getNodeTypeCategory, categoryGlyphFamily, NODE_TYPE_CATEGORY_META, NodeTypeCategory } from '../utils/nodeTypeCategory';
+import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps, NODE_TYPE_CATEGORY_META, NodeTypeCategory } from '../utils/nodeTypeCategory';
 import { buildGroupedNodeItems, countNodesByCategory, GroupedNodeListItem, RoleGroupCount } from '../utils/nodeGrouping';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
@@ -2082,14 +2082,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const nodeMarkers: NodeMarkerDescriptor[] = visibleMapNodes
     .map(node => {
       const markerKey = String(node.user?.id ?? node.nodeNum);
-      const roleNum = typeof node.user?.role === 'string'
-        ? parseInt(node.user.role, 10)
-        : (typeof node.user?.role === 'number' ? node.user.role : 0);
-      const isRouter = roleNum === 2;
-      // #4075: pass the role category so ROUTER_LATE (and REPEATER) get the
-      // repeater-tower glyph like ROUTER, matching MapAnalysis. isRouter alone
-      // is role===2 only, so ROUTER_LATE would fall through to the generic pin.
-      const roleCategory = getNodeTypeCategory(node);
+      // #6008: the shared helper decides infrastructure (ROUTER, ROUTER_LATE,
+      // CLIENT_BASE and the deprecated router roles), and the role category
+      // drives the glyph or corner badge in createNodeIcon, the same on every map.
+      const { isRouter, roleCategory } = markerRoleProps(node);
       const isSelected = selectedNodeId === node.user?.id;
       const isLocalNode = node.user?.id === currentNodeId;
       const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
@@ -3530,6 +3526,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <MapLegend
                   positionHistory={positionHistoryLegendData}
                   unmappedCount={unmappedCount}
+                  showRoleMarkers
                   embedded
                 />
               )}

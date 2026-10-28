@@ -779,6 +779,19 @@ describe('DashboardMap', () => {
     );
   });
 
+  it('marks CLIENT_BASE as infrastructure and passes TRACKER its badge category (#6008)', () => {
+    const clientBase = { ...nodeWithPosition, user: { id: 'node-base', shortName: 'BS', longName: 'Base' }, role: 12 };
+    const tracker = { ...nodeWithPosition, user: { id: 'node-trk', shortName: 'TR', longName: 'Tracker' }, role: 5, position: { latitude: 35.1, longitude: -80.1 } };
+    createNodeIconMock.mockClear();
+    render(<DashboardMap {...defaultProps} nodes={[clientBase, tracker]} />);
+    expect(createNodeIconMock).toHaveBeenCalledWith(
+      expect.objectContaining({ shortName: 'BS', isRouter: true, roleCategory: 'mtClientBase' }),
+    );
+    expect(createNodeIconMock).toHaveBeenCalledWith(
+      expect.objectContaining({ shortName: 'TR', isRouter: false, roleCategory: 'mtTracker' }),
+    );
+  });
+
   it('does not render markers for nodes without positions', () => {
     render(
       <DashboardMap

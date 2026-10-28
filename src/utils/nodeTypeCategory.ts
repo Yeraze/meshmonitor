@@ -25,6 +25,7 @@
  */
 
 import { DEVICE_ROLES } from './deviceRole.js';
+import { isInfrastructureRole, markerRoleBadge, type MarkerRoleKind } from './nodeRoleMarker.js';
 
 /** MeshCore advert-type categories (issue #3546). */
 export type MeshCoreCategory =
@@ -141,19 +142,36 @@ export const NODE_TYPE_CATEGORY_META: Record<NodeTypeCategory, NodeTypeCategoryM
 
 /**
  * Map glyph families: MeshCore's advert types plus `'router'`, the tower that
- * Meshtastic infrastructure roles draw with (#5491).
+ * Meshtastic infrastructure roles draw with (#5491), and `'clientBase'`, the
+ * base-station glyph for CLIENT_BASE (#6008).
  */
-export type GlyphFamily = MeshCoreCategory | 'router';
+export type GlyphFamily = MeshCoreCategory | 'router' | 'clientBase';
+
+/** Meshtastic category -> its numeric device role (inverse of {@link MESHTASTIC_ROLE_TO_CATEGORY}). */
+const MESHTASTIC_CATEGORY_TO_ROLE: Readonly<Record<string, number>> = Object.fromEntries(
+  Object.entries(MESHTASTIC_ROLE_TO_CATEGORY).map(([role, cat]) => [cat, Number(role)]),
+);
 
 /**
- * The glyph "family" a category draws with. Several Meshtastic roles share the
- * MeshCore glyph silhouettes (a SENSOR draws as a sensor broadcast, etc.) so map
- * icons stay recognizable without inventing a unique glyph per role.
- * `'standard'` = fall back to the default pin.
+ * The marker kind (#6008, {@link markerRoleBadge}) for a node-type category.
+ * MeshCore categories return `'none'`: their glyphs come from the advert type.
+ */
+export function categoryMarkerKind(category: NodeTypeCategory | undefined | null): MarkerRoleKind {
+  if (!category) return 'none';
+  const role = MESHTASTIC_CATEGORY_TO_ROLE[category];
+  return role === undefined ? 'none' : markerRoleBadge(role);
+}
+
+/**
+ * The glyph "family" a category draws with. `'standard'` = fall back to the
+ * default pin.
  *
- * Infrastructure is the exception (#5491): Meshtastic ROUTER / ROUTER_LATE /
- * REPEATER draw the `'router'` tower, and a MeshCore Repeater draws its own
- * `'repeater'` mesh-relay glyph, so the two read apart on the Unified map.
+ * MeshCore advert types each have their own glyph. For Meshtastic, only the
+ * infrastructure roles swap the glyph (#6008): ROUTER / ROUTER_LATE and the
+ * deprecated ROUTER_CLIENT / REPEATER draw the `'router'` tower, CLIENT_BASE
+ * draws `'clientBase'`. Every other Meshtastic role (TRACKER, SENSOR, TAK, ...)
+ * keeps the default pin and gets a corner badge instead, see
+ * `src/utils/nodeRoleMarker.ts`.
  */
 export function categoryGlyphFamily(category: NodeTypeCategory): GlyphFamily {
   switch (category) {
@@ -163,24 +181,12 @@ export function categoryGlyphFamily(category: NodeTypeCategory): GlyphFamily {
     case 'companion':
     case 'standard':
       return category;
-    case 'mtRouter':
-    case 'mtRouterLate':
-    case 'mtRepeater':
-      return 'router';
-    case 'mtSensor':
-      return 'sensor';
-    case 'mtClient':
-    case 'mtClientMute':
-    case 'mtClientHidden':
-    case 'mtClientBase':
-    case 'mtRouterClient':
-    case 'mtTracker':
-    case 'mtTak':
-    case 'mtTakTracker':
-    case 'mtLostAndFound':
+    default: {
+      const kind = categoryMarkerKind(category);
+      if (kind === 'router' || kind === 'routerLate') return 'router';
+      if (kind === 'clientBase') return 'clientBase';
       return 'standard';
-    default:
-      return 'standard';
+    }
   }
 }
 
@@ -230,6 +236,22 @@ export function getNodeTypeCategory(node: CategorizableNode): NodeTypeCategory {
   // default CLIENT bucket rather than an unrelated MeshCore "standard".
   const roleNum = toRoleNum(node.user?.role ?? node.role);
   return MESHTASTIC_ROLE_TO_CATEGORY[roleNum] ?? 'mtClient';
+}
+
+/**
+ * The role inputs every map surface passes to `createNodeIcon` (#6008):
+ * `roleCategory` picks the glyph or corner badge, `isRouter` is the shared
+ * infrastructure rule. One function so NodesTab, DashboardMap, Map Analysis and
+ * EmbedMap cannot drift apart again. MeshCore nodes are never Meshtastic
+ * infrastructure here; their glyph comes from the advert-type category.
+ */
+export function markerRoleProps(node: CategorizableNode): {
+  isRouter: boolean;
+  roleCategory: NodeTypeCategory;
+} {
+  const roleCategory = getNodeTypeCategory(node);
+  const isRouter = !isMeshCoreNode(node) && isInfrastructureRole(node.user?.role ?? node.role);
+  return { isRouter, roleCategory };
 }
 
 /** A node passes the filter when its category is enabled (default: enabled). */
