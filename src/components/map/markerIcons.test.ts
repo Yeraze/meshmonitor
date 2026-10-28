@@ -724,3 +724,78 @@ describe('createNodeIcon — official pin colour mode (#5018)', () => {
     expect(html).not.toContain(meshtasticNodeColor(base.nodeNum));
   });
 });
+
+describe('createNodeIcon — Meshtastic role markers and corner badges (#6008)', () => {
+  const html = (opts: Parameters<typeof createNodeIcon>[0]) =>
+    (createNodeIcon({ variant: 'meshtastic', hops: 1, shortName: 'X', ...opts }) as unknown as { html: string }).html;
+  const styles = ['meshmonitor', 'official'] as const;
+  const badgeCases: Array<[NodeTypeCategory, string]> = [
+    ['mtTracker', 'tracker'],
+    ['mtTakTracker', 'tracker'],
+    ['mtLostAndFound', 'lostAndFound'],
+    ['mtSensor', 'sensor'],
+    ['mtTak', 'tak'],
+    ['mtClientMute', 'clientMute'],
+  ];
+
+  it.each(styles)('draws CLIENT_BASE with its own base glyph, not the router tower (%s)', (pinStyle) => {
+    const base = html({ roleCategory: 'mtClientBase', isRouter: true, pinStyle });
+    const glyph = roleGlyphInnerSvg('mtClientBase', getHopColor(1));
+    expect(glyph).not.toBe('');
+    expect(glyph).not.toBe(roleGlyphInnerSvg('mtRouter', getHopColor(1)));
+    // meshmonitor swaps the pin for the glyph; official keeps the short-name
+    // circle and draws the glyph as its bottom-right infrastructure badge.
+    expect(base).toContain('<rect x="21" y="32" width="6" height="10" fill="white" />');
+    expect(base).not.toContain('data-role-badge');
+  });
+
+  it.each(styles)('draws the deprecated ROUTER_CLIENT as the router tower (%s)', (pinStyle) => {
+    const rc = html({ roleCategory: 'mtRouterClient', pinStyle });
+    expect(rc).toContain('<rect x="22.5" y="4" width="3" height="12" fill="#555" />');
+  });
+
+  for (const pinStyle of styles) {
+    it.each(badgeCases)(`badges %s as %s in the bottom-left corner (${pinStyle})`, (category, kind) => {
+      const out = html({ roleCategory: category, pinStyle });
+      expect(out).toContain(`data-role-badge="${kind}"`);
+      const at = out.indexOf('class="node-role-badge"');
+      const badgeStyle = out.slice(at, out.indexOf('">', at));
+      expect(badgeStyle).toContain('bottom: -2px');
+      expect(badgeStyle).toContain('left: -2px');
+    });
+  }
+
+  it.each(styles)('keeps CLIENT, CLIENT_HIDDEN and MeshCore categories plain (%s)', (pinStyle) => {
+    for (const category of ['mtClient', 'mtClientHidden'] as NodeTypeCategory[]) {
+      expect(html({ roleCategory: category, pinStyle })).not.toContain('data-role-badge');
+    }
+    expect(html({ roleCategory: undefined, pinStyle })).not.toContain('data-role-badge');
+  });
+
+  it('does not badge the MeshCore variant', () => {
+    expect(html({ variant: 'meshcore', roleCategory: 'sensor' })).not.toContain('data-role-badge');
+  });
+
+  it('a SENSOR is a badge on the default pin, not a sensor glyph swap', () => {
+    const sensor = html({ roleCategory: 'mtSensor', pinStyle: 'meshmonitor' });
+    expect(sensor).toContain('<!-- Pin shape -->');
+  });
+
+  it('coexists with the aircraft and unmessageable badges in separate corners', () => {
+    const out = html({ roleCategory: 'mtTracker', pinStyle: 'official', isLikelyAircraft: true, isUnmessagable: true });
+    expect(out).toContain('data-role-badge="tracker"');
+    expect(out).toContain('top: -2px;\n        left: -2px'); // aircraft, top-left
+    expect(out).toContain('top: -2px;\n        right: -2px'); // unmessageable, top-right
+    expect(out).toContain('bottom: -2px;\n        left: -2px'); // role badge, bottom-left
+  });
+
+  it('colours badges with theme role tokens only', () => {
+    for (const [category] of badgeCases) {
+      const out = html({ roleCategory: category, pinStyle: 'official' });
+      const at = out.indexOf('<svg', out.indexOf('class="node-role-badge"'));
+      const badge = out.slice(at, out.indexOf('</svg>', at));
+      expect(badge).toContain('var(--color-');
+      expect(badge).not.toMatch(/#[0-9a-fA-F]{3,6}\b/);
+    }
+  });
+});

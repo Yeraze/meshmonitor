@@ -10,6 +10,8 @@
  * Implements: https://github.com/Yeraze/meshmonitor/issues (airtime cutoff)
  */
 
+import { INFRASTRUCTURE_ROLES } from '../../utils/nodeRoleMarker.js';
+
 /** Default cutoff threshold (percent Channel Utilization) when unset. */
 export const DEFAULT_AIRTIME_CUTOFF_THRESHOLD = 30;
 
@@ -49,8 +51,11 @@ export const MAX_NEIGHBOR_UTIL_MAX_HOPS = 7;
  * Config.DeviceConfig.Role): Router (2), Router Client (3, deprecated),
  * Repeater (4, deprecated), Router Late (11), Client Base (12). Client Base
  * retransmits like Router Late, so it counts as infrastructure too.
+ *
+ * Defined once in `src/utils/nodeRoleMarker.ts` and shared with the map
+ * markers (#6008), so the two cannot drift.
  */
-export const INFRASTRUCTURE_ROLES: ReadonlySet<number> = new Set([2, 3, 4, 11, 12]);
+export { INFRASTRUCTURE_ROLES };
 
 /** A node considered as a possible infrastructure neighbour. */
 export interface NeighborUtilCandidate {

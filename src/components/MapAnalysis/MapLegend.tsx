@@ -19,8 +19,11 @@ import { useVisibleNodeTypeCategories } from './useVisibleNodeTypeCategories';
 import { roleGlyphMarkerSvg } from '../../utils/mapIcons';
 import {
   categoryGlyphFamily,
+  categoryMarkerKind,
   NODE_TYPE_CATEGORY_META,
 } from '../../utils/nodeTypeCategory';
+import { isRoleBadgeKind, ROLE_MARKER_LEGEND } from '../../utils/nodeRoleMarker';
+import { roleMarkerLegendSvg } from '../../utils/roleGlyphSvg';
 import { useSettings } from '../../contexts/SettingsContext';
 
 interface SwatchProps {
@@ -61,6 +64,14 @@ export default function MapLegend() {
   // buckets render as the default pin and would be a meaningless swatch.
   const legendCategories = visibleCategories.filter(
     (c) => categoryGlyphFamily(c) !== 'standard',
+  );
+  // Meshtastic roles drawn as a corner badge on the default pin (#6008).
+  // TRACKER and TAK_TRACKER share one badge, so rows are per badge kind.
+  const visibleBadgeKinds = new Set(
+    visibleCategories.map(categoryMarkerKind).filter(isRoleBadgeKind),
+  );
+  const badgeLegendEntries = ROLE_MARKER_LEGEND.filter(
+    (e) => isRoleBadgeKind(e.kind) && visibleBadgeKinds.has(e.kind),
   );
 
   const showTraceroutes = config.layers.traceroutes.enabled;
@@ -109,6 +120,27 @@ export default function MapLegend() {
                     dangerouslySetInnerHTML={{ __html: roleGlyphMarkerSvg(c, '#6698f5', 20) }}
                   />{' '}
                   {t(NODE_TYPE_CATEGORY_META[c].labelKey, NODE_TYPE_CATEGORY_META[c].label)}
+                </div>
+              ))}
+            </section>
+          )}
+          {showMarkers && badgeLegendEntries.length > 0 && (
+            <section>
+              <h4>{t('map.legend.roleBadges', 'Role Badges')}</h4>
+              {badgeLegendEntries.map((e) => (
+                <div
+                  className="row"
+                  key={e.kind}
+                  data-testid={`analysis-legend-role-${e.kind}`}
+                  title={t(e.hintKey, e.hint)}
+                >
+                  <span
+                    className="map-analysis-legend-swatch"
+                    style={{ background: 'transparent', width: 20, height: 20, display: 'inline-block' }}
+                    aria-hidden="true"
+                    dangerouslySetInnerHTML={{ __html: roleMarkerLegendSvg(e.kind, '', 20) }}
+                  />{' '}
+                  {t(e.labelKey, e.label)}
                 </div>
               ))}
             </section>

@@ -549,3 +549,25 @@ describe('map controls: attribution clearance + zoom-to-fit (#4495, #4496)', () 
     });
   });
 });
+
+// #6008: NodesTab's map is too heavy to render here, so pin the wiring at the
+// source boundary: markers take their role inputs from the shared helper
+// (unit-tested with CLIENT_BASE / TRACKER in nodeRoleMarker.test.ts, and the
+// rendered glyph/badge in markerIcons.test.ts), and the legend lists them.
+describe('NodesTab role markers (#6008)', () => {
+  const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
+
+  it('derives isRouter and roleCategory from markerRoleProps, not a role === 2 check', () => {
+    expect(src).toContain('const { isRouter, roleCategory } = markerRoleProps(node);');
+    expect(src).not.toMatch(/roleNum === 2/);
+    const call = src.slice(src.indexOf('createNodeIcon({', src.indexOf('markerRoleProps(node)')));
+    const args = call.slice(0, call.indexOf('})'));
+    expect(args).toContain('isRouter,');
+    expect(args).toContain('roleCategory,');
+  });
+
+  it('shows the role legend on the source map', () => {
+    const legend = src.slice(src.indexOf('<MapLegend'), src.indexOf('/>', src.indexOf('<MapLegend')));
+    expect(legend).toContain('showRoleMarkers');
+  });
+});
