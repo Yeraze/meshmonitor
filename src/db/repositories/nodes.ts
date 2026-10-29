@@ -4,7 +4,7 @@
  * Handles all node-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count, countDistinct } from 'drizzle-orm';
+import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count, countDistinct, getTableColumns } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope, SourceSetScope } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -549,12 +549,27 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Get all nodes ordered by update time
+   * Get all nodes ordered by update time.
+   *
+   * `omitColumns` leaves the named columns out of the SELECT, so the rows
+   * come back without those keys. The dashboard bundle uses it to skip
+   * columns no dashboard view reads: on a large mesh (18k rows, 93 columns)
+   * reading and copying the unused ones was a large share of each poll.
    */
-  async getAllNodes(sourceId: SourceSetScope): Promise<DbNode[]> {
+  async getAllNodes(
+    sourceId: SourceSetScope,
+    opts?: { omitColumns?: readonly string[] },
+  ): Promise<DbNode[]> {
     const { nodes } = this.tables;
-    const result = await this.db
-      .select()
+    const omit = opts?.omitColumns;
+    const query = omit && omit.length > 0
+      ? this.db.select(
+          Object.fromEntries(
+            Object.entries(getTableColumns(nodes)).filter(([key]) => !omit.includes(key)),
+          ) as ReturnType<typeof getTableColumns<typeof nodes>>,
+        )
+      : this.db.select();
+    const result = await query
       .from(nodes)
       .where(this.withSourceScope(nodes, sourceId))
       .orderBy(desc(nodes.updatedAt));
