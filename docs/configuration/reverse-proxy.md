@@ -401,6 +401,20 @@ spec:
               number: 8080
 ```
 
+## Compression and Caching
+
+MeshMonitor compresses its own responses (brotli or gzip, per what the browser
+accepts), so you don't need `gzip on;` in NGINX or `encode gzip` in Caddy. Leaving
+proxy compression on does no harm: the proxy sees `Content-Encoding` on the
+response and passes it through unchanged.
+
+MeshMonitor also sets `Cache-Control` itself. Files under `/assets/` have
+content hashes in their names and are cached for a year (`immutable`); the HTML
+page, `sw.js`, `registerSW.js`, the manifest and `/locales/*.json` use
+`no-cache`, so browsers check for a new copy on every load. Don't override
+these headers in the proxy: a long cache on the HTML page or `sw.js` keeps
+browsers on an old release after an upgrade.
+
 ## Security Considerations
 
 ### Security Headers
