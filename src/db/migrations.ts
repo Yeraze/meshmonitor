@@ -237,6 +237,7 @@ import { migration as addMeshcoreAdvertSignatureVerifiedMigration, runMigration2
 import { migration as addWaypointGeofenceMigration, runMigration216Postgres, runMigration216Mysql } from '../server/migrations/216_add_waypoint_geofence.js';
 import { migration as addNodeChannelLockedMigration, runMigration217Postgres, runMigration217Mysql } from '../server/migrations/217_add_node_channel_locked.js';
 import { migration as addMeshcoreHeardRepeaterHopsMigration, runMigration218Postgres, runMigration218Mysql } from '../server/migrations/218_add_meshcore_heard_repeater_hops.js';
+import { migration as automationFireStateMigration, runMigration219Postgres, runMigration219Mysql } from '../server/migrations/219_automation_fire_state.js';
 
 // ============================================================================
 // Registry
@@ -3521,4 +3522,19 @@ registry.register({
   sqlite: (db) => addMeshcoreHeardRepeaterHopsMigration.up(db),
   postgres: (client) => runMigration218Postgres(client),
   mysql: (pool) => runMigration218Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 219: automation_fire_state. GLOBAL (automations are global, no
+// sourceId). Persists the Automation Engine's cooldown and rate-limit state so
+// a restart or a disable/re-enable does not re-arm a rule. New empty table.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 219,
+  name: 'automation_fire_state',
+  settingsKey: 'migration_219_automation_fire_state',
+  sqlite: (db) => automationFireStateMigration.up(db),
+  postgres: (client) => runMigration219Postgres(client),
+  mysql: (pool) => runMigration219Mysql(pool),
 });

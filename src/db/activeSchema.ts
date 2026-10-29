@@ -183,6 +183,9 @@ import {
 import {
   automationHomeAnchorsSqlite, automationHomeAnchorsPostgres, automationHomeAnchorsMysql,
 } from './schema/automationHomeAnchors.js';
+import {
+  automationFireStateSqlite, automationFireStatePostgres, automationFireStateMysql,
+} from './schema/automationFireState.js';
 
 // MeshCore saved-regions catalog (global — no sourceId) (#3770)
 import {
@@ -413,6 +416,8 @@ export interface ActiveSchema {
   automationVariableValues: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches ActiveSchema per-dialect table pattern
   automationHomeAnchors: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3962 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  automationFireState: any;
 
   // MeshCore saved-regions catalog (global — no sourceId) (#3770)
   meshcoreSavedRegions: any;
@@ -559,6 +564,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationVariables: automationVariablesSqlite,
     automationVariableValues: automationVariableValuesSqlite,
     automationHomeAnchors: automationHomeAnchorsSqlite,
+    automationFireState: automationFireStateSqlite,
     meshcoreSavedRegions: meshcoreSavedRegionsSqlite,
     privacyDocuments: privacyDocumentsSqlite,
     solarNodeOverrides: solarNodeOverridesSqlite,
@@ -652,6 +658,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationVariables: automationVariablesPostgres,
     automationVariableValues: automationVariableValuesPostgres,
     automationHomeAnchors: automationHomeAnchorsPostgres,
+    automationFireState: automationFireStatePostgres,
     meshcoreSavedRegions: meshcoreSavedRegionsPostgres,
     privacyDocuments: privacyDocumentsPostgres,
     solarNodeOverrides: solarNodeOverridesPostgres,
@@ -745,6 +752,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationVariables: automationVariablesMysql,
     automationVariableValues: automationVariableValuesMysql,
     automationHomeAnchors: automationHomeAnchorsMysql,
+    automationFireState: automationFireStateMysql,
     meshcoreSavedRegions: meshcoreSavedRegionsMysql,
     privacyDocuments: privacyDocumentsMysql,
     solarNodeOverrides: solarNodeOverridesMysql,
