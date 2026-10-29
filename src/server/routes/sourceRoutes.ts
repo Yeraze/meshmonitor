@@ -30,6 +30,7 @@ import {
   applyDashboardAgeWindow,
   resolveDashboardAgeWindow,
   localNodeNums,
+  dashboardNodePrefilter,
 } from '../services/sourceDashboardData.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
 import { mqttGeoSweepService, type GeoSweepStatsSink } from '../services/mqttGeoSweepService.js';
@@ -2368,10 +2369,15 @@ router.get('/:id/dashboard', optionalAuth(), async (req: Request, res: Response)
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
     const user = (req as any).user ?? null;
-    const payload = await buildSourceDashboard(source, user);
     // `ageWindow=settings`: same opt-in age cut as GET /api/unified/dashboard.
-    if (req.query.ageWindow === 'settings') {
-      applyDashboardAgeWindow([payload], await resolveDashboardAgeWindow(), localNodeNums());
+    const ageCut = req.query.ageWindow === 'settings'
+      ? { window: await resolveDashboardAgeWindow(), keep: localNodeNums() }
+      : null;
+    const payload = await buildSourceDashboard(source, user, {
+      nodePrefilter: ageCut ? await dashboardNodePrefilter([source.id], ageCut.window, ageCut.keep) : undefined,
+    });
+    if (ageCut) {
+      applyDashboardAgeWindow([payload], ageCut.window, ageCut.keep);
     }
     res.json(payload);
   } catch (error) {

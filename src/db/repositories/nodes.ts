@@ -4,7 +4,7 @@
  * Handles all node-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count, countDistinct, getTableColumns } from 'drizzle-orm';
+import { eq, gt, gte, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count, countDistinct, getTableColumns } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope, SourceSetScope } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -136,6 +136,25 @@ export interface AircraftAgeOutCandidate {
   latitude: number | null;
   longitude: number | null;
   altitude: number | null;
+}
+
+/**
+ * Restricts getAllNodes to nodes with at least one "live" row across
+ * `sourceIds` (see NodesRepository.liveNodeNumsQuery). The dashboard age cut
+ * (#6032) keeps every row of a node when any row passes, so it filters on
+ * nodeNum, not on the row itself.
+ */
+export interface LiveNodeFilter {
+  sourceIds: string[];
+  /** Unix seconds. */
+  minLastHeard: number;
+  keepNodeNums: number[];
+  /**
+   * The nodeNums getLiveNodeNums returned for this filter. When set they are
+   * bound as a list, so a caller reading several sources runs the "which nodes
+   * are live" scan once instead of once per source.
+   */
+  nodeNums?: number[];
 }
 
 /**
@@ -558,10 +577,11 @@ export class NodesRepository extends BaseRepository {
    */
   async getAllNodes(
     sourceId: SourceSetScope,
-    opts?: { omitColumns?: readonly string[] },
+    opts?: { omitColumns?: readonly string[]; liveAcross?: LiveNodeFilter },
   ): Promise<DbNode[]> {
     const { nodes } = this.tables;
     const omit = opts?.omitColumns;
+    const live = opts?.liveAcross;
     const query = omit && omit.length > 0
       ? this.db.select(
           Object.fromEntries(
@@ -571,10 +591,60 @@ export class NodesRepository extends BaseRepository {
       : this.db.select();
     const result = await query
       .from(nodes)
-      .where(this.withSourceScope(nodes, sourceId))
-      .orderBy(desc(nodes.updatedAt));
+      .where(live
+        ? and(
+            this.withSourceScope(nodes, sourceId),
+            inArray(nodes.nodeNum, live.nodeNums ?? this.liveNodeNumsQuery(live)),
+          )
+        : this.withSourceScope(nodes, sourceId))
+      // nodeNum breaks updatedAt ties, so a `liveAcross` read (a different
+      // query plan) returns its rows in the same order as the full read.
+      .orderBy(desc(nodes.updatedAt), asc(nodes.nodeNum));
 
     return this.normalizeBigInts(result) as DbNode[];
+  }
+
+  /**
+   * nodeNums with at least one row in `filter.sourceIds` that is heard since
+   * `minLastHeard`, a favourite, an aged-out aircraft, or in `keepNodeNums`.
+   * A subquery, so the caller's row order and single round-trip are kept.
+   */
+  private liveNodeNumsQuery(filter: LiveNodeFilter) {
+    const { nodes } = this.tables;
+    const conds = [
+      gte(nodes.lastHeard, filter.minLastHeard),
+      eq(nodes.isFavorite, true),
+      isNotNull(nodes.aircraftAgedOutAt),
+    ];
+    if (filter.keepNodeNums.length > 0) conds.push(inArray(nodes.nodeNum, filter.keepNodeNums));
+    return this.db
+      .select({ nodeNum: nodes.nodeNum })
+      .from(nodes)
+      .where(and(inArray(nodes.sourceId, filter.sourceIds), or(...conds)));
+  }
+
+  /** The distinct nodeNums liveNodeNumsQuery selects (see LiveNodeFilter.nodeNums). */
+  async getLiveNodeNums(filter: LiveNodeFilter): Promise<number[]> {
+    const rows: Array<{ nodeNum: unknown }> = await this.liveNodeNumsQuery(filter);
+    return [...new Set(rows.map((r) => Number(r.nodeNum)))];
+  }
+
+  /**
+   * Row count per `channel` for one source. Lets a caller that reads only
+   * some rows (getAllNodes `liveAcross`) still report how many rows a
+   * channel-permission filter would pass over the whole source.
+   */
+  async countNodesByChannel(sourceId: SourceScope): Promise<Array<{ channel: number | null; count: number }>> {
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({ channel: nodes.channel, count: count() })
+      .from(nodes)
+      .where(this.withSourceScope(nodes, sourceId))
+      .groupBy(nodes.channel);
+    return rows.map((r: { channel: unknown; count: unknown }) => ({
+      channel: r.channel == null ? null : Number(r.channel),
+      count: Number(r.count),
+    }));
   }
 
   /**
