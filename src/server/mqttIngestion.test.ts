@@ -1524,3 +1524,51 @@ describe('ingestServiceEnvelope — replay guard for lastHeard', () => {
     expect(node.lastHeard).toBeGreaterThanOrEqual(nowSec - 5);
   });
 });
+
+describe('ingestServiceEnvelope — TELEMETRY_APP feeds trigger.telemetry', () => {
+  // Loaded lazily so the module mocks above stay the only setup.
+  const load = async () => ({
+    ...(await import('./services/dataEventEmitter.js')),
+    ...(await import('./services/ownTelemetryRequests.js')),
+  });
+  const flush = () => new Promise((r) => setImmediate(r));
+
+  beforeEach(() => { vi.clearAllMocks(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('emits each stored reading with its source', async () => {
+    const { dataEventEmitter } = await load();
+    const emit = vi.spyOn(dataEventEmitter, 'emitTelemetry').mockImplementation(() => {});
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: envFor(NODE_IN, 67 /* TELEMETRY_APP */) });
+    await flush();
+    expect(emit).toHaveBeenCalledTimes(1);
+    const [nodeNum, row, sourceId, meta] = emit.mock.calls[0];
+    expect(nodeNum).toBe(NODE_IN);
+    expect(row).toMatchObject({ telemetryType: 'batteryLevel', value: 90 });
+    expect(sourceId).toBe('bridge-1');
+    expect(meta).toEqual({ answersOwnRequest: false });
+  });
+
+  it('flags a reading that answers a telemetry request we sent (loop guard)', async () => {
+    const { dataEventEmitter, recordOwnTelemetryRequest, resetOwnTelemetryRequestsForTests } = await load();
+    resetOwnTelemetryRequestsForTests();
+    recordOwnTelemetryRequest(0x0badf00d);
+    const emit = vi.spyOn(dataEventEmitter, 'emitTelemetry').mockImplementation(() => {});
+    const envelope = envFor(NODE_IN, 67 /* TELEMETRY_APP */);
+    (envelope.packet as any).decoded.requestId = 0x0badf00d;
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope });
+    await flush();
+    expect(emit.mock.calls[0][3]).toEqual({ answersOwnRequest: true });
+  });
+
+  it('stores but does not emit a replayed frame', async () => {
+    const { dataEventEmitter } = await load();
+    const emit = vi.spyOn(dataEventEmitter, 'emitTelemetry').mockImplementation(() => {});
+    const envelope = envFor(NODE_IN, 67 /* TELEMETRY_APP */);
+    (envelope.packet as any).rxTime = Math.floor(Date.now() / 1000) - 7 * 3600;
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope });
+    await flush();
+    expect(databaseService.insertTelemetryAsync).toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
+  });
+});

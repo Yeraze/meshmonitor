@@ -104,6 +104,19 @@ const COOLDOWN: FieldDef = {
   placeholder: '0', help: 'Minimum seconds between firings — an anti-spam throttle. 0 = no limit.',
 };
 
+/**
+ * trigger.telemetry's cooldown. The engine raises any shorter cooldown to one
+ * hour per node (TELEMETRY_TRIGGER_MIN_COOLDOWN_SECONDS in
+ * src/types/automation.ts), so the field says so next to the input.
+ */
+export const TELEMETRY_COOLDOWN_NOTE = 'Telemetry triggers are limited to once per node per hour.';
+
+const TELEMETRY_COOLDOWN: FieldDef = {
+  ...COOLDOWN,
+  placeholder: '3600',
+  help: `Minimum seconds between firings. ${TELEMETRY_COOLDOWN_NOTE} A shorter value (or 0) is raised to 3600 seconds per node; a longer one is kept.`,
+};
+
 const COOLDOWN_SCOPE: FieldDef = {
   name: 'cooldownScope', label: 'Cooldown applies to', kind: 'select', advanced: true,
   // Values mirror CooldownScope in src/types/automation.ts. Kept as literals so
@@ -225,7 +238,7 @@ export const TRIGGERS: BlockDef[] = [
           { value: 'noiseFloor', label: 'Noise floor (dBm) — local node only' },
         ],
       },
-      COOLDOWN,
+      TELEMETRY_COOLDOWN,
       COOLDOWN_SCOPE,
     ],
   },

@@ -22,6 +22,7 @@ import {
   categoryOf,
   parseCooldownScope,
   parseRateLimit,
+  effectiveTelemetryCooldown,
   type AutomationGraph,
   type AutomationNode,
   type TriggerType,
@@ -378,8 +379,13 @@ export class AutomationEngineService {
     // No `as any` needed: params is Record<string, unknown> and parseRateLimit
     // takes unknown (same reasoning as the parseCooldownScope line above).
     const rateLimit = parseRateLimit(triggerNode.params?.rateLimit);
+    // Telemetry triggers get a per-node floor (once per node per hour) whatever
+    // the saved cooldown says — see TELEMETRY_TRIGGER_MIN_COOLDOWN_SECONDS.
+    const cooldown = triggerType === 'trigger.telemetry'
+      ? effectiveTelemetryCooldown(cooldownSeconds, cooldownScope)
+      : { cooldownSeconds, cooldownScope };
     return {
-      id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, cooldownSeconds, cooldownScope, rateLimit,
+      id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, ...cooldown, rateLimit,
     };
   }
 
@@ -1141,8 +1147,21 @@ export class AutomationEngineService {
     value: number,
     unit: string | undefined,
     sourceId: string | null,
+    opts: { answersOwnRequest?: boolean; localStats?: boolean } = {},
   ): Promise<number> {
-    if (await this.isSelfMeshtastic(sourceId, nodeNum)) return 0; // #3914: ignore our own telemetry
+    // Loop guard: a reading that answers a telemetry request WE sent never
+    // fires. Otherwise "telemetry → request telemetry from that node" repeats
+    // every round trip; the reply comes from a remote node, so #3914 below
+    // can't catch it.
+    if (opts.answersOwnRequest) return 0;
+    // Every live reading lands here; skip the self-origin lookups when no
+    // telemetry automation is loaded (the common case).
+    if (!this.index.get('trigger.telemetry')?.length) return 0;
+    // #3914: ignore our own telemetry — except LocalStats readings (noiseFloor,
+    // uptime, packet counters). Only our own node produces those, so the guard
+    // would drop every one. No action can make the radio emit LocalStats, so
+    // exempting them opens no loop.
+    if (!opts.localStats && await this.isSelfMeshtastic(sourceId, nodeNum)) return 0;
     const ctx = buildTelemetryContext(nodeNum, telemetryType, value, unit, sourceId, this.now());
     return this.runTrigger(
       ctx,

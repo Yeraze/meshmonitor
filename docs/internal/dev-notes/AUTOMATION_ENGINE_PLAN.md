@@ -257,6 +257,14 @@ in `src/services/database.ts`). **Resolution rules (apply to every field):**
 
 **`trigger.telemetry`** — payload `TelemetryBatchData {[nodeNum]: DbTelemetry[]}` (event `telemetry:batch`).
 > Engine **fans the batch out** into individual readings and evaluates the trigger once per reading. Pre-filter on `telemetryType`.
+>
+> **Emitters (the trigger was dead until these existed):** Meshtastic TCP `saveTelemetryMetrics` and MQTT `TELEMETRY_APP` ingest call `dataEventEmitter.emitTelemetry` after each stored reading. Rules:
+> - Live readings only: firmware 2.8 NodeDB replays and stale frames are stored but not emitted.
+> - **Loop guard:** a reading whose `decoded.requestId` names a telemetry request we sent (`src/server/services/ownTelemetryRequests.ts`) is flagged `answersOwnRequest` and never fires.
+> - **Self-origin (#3914):** our own telemetry is dropped, except LocalStats readings (flag `localStats`, e.g. `noiseFloor`), which only our own node produces.
+> - **Floor:** the engine raises any cooldown below `TELEMETRY_TRIGGER_MIN_COOLDOWN_SECONDS` (3600) to that, per node (`effectiveTelemetryCooldown` in `src/types/automation.ts`).
+> - Not wired: MeshCore (every reading answers our own poll/request, or carries a synthesized nodeNum and `mc_*` metric names), Reticulum, and derived rows (position, SNR/RSSI, hops, link quality, transport counters).
+> - Browsers receive `telemetry:batch` through its gate but no longer act on it (`useWebSocket.ts`).
 | field | source |
 |-------|--------|
 | `trigger.nodeNum` | batch key |

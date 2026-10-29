@@ -8,8 +8,8 @@
  */
 import { logger } from '../../../utils/logger.js';
 import databaseService from '../../../services/database.js';
-import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData, type MeshCoreNodeEventFacts } from '../dataEventEmitter.js';
-import type { DbMessage, DbTelemetry } from '../../../services/database.js';
+import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData, type MeshCoreNodeEventFacts, type TelemetryEventRow } from '../dataEventEmitter.js';
+import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import { AutomationEngineService } from './automationEngineService.js';
@@ -238,11 +238,14 @@ export async function routeEventToEngine(e: AutomationEngineService, event: Data
     }
 
     case 'telemetry:batch': {
-      const batch = event.data as Record<string, DbTelemetry[]>;
+      const batch = event.data as Record<string, TelemetryEventRow[]>;
       for (const [nodeNumStr, readings] of Object.entries(batch)) {
         const nodeNum = Number(nodeNumStr);
         for (const r of readings) {
-          await e.onTelemetry(nodeNum, r.telemetryType, r.value, r.unit, sourceId);
+          await e.onTelemetry(nodeNum, r.telemetryType, r.value, r.unit, sourceId, {
+            answersOwnRequest: r.answersOwnRequest === true,
+            localStats: r.localStats === true,
+          });
         }
       }
       break;

@@ -197,7 +197,7 @@ interface TracerouteCompleteEvent {
  */
 /**
  * Debounce window for the full-poll invalidation fallback used by
- * routing:update and telemetry:batch (see scheduleDebouncedPollInvalidate).
+ * routing:update (see scheduleDebouncedPollInvalidate).
  */
 const POLL_INVALIDATE_DEBOUNCE_MS = 2000;
 
@@ -353,12 +353,11 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     });
   }, [queryClient, sourceId]);
 
-  // routing:update and telemetry:batch (below) can't be merged into the
-  // cache from their event payloads without risking wrong data — see the
-  // handlers themselves for why — so they fall back to invalidating the
-  // full poll query. Debounce that invalidation so a burst of either event
-  // (the server itself batches telemetry every 1s, and a bulk send can
-  // trigger many acks in quick succession) collapses into one ~3MB refetch
+  // routing:update (below) can't be merged into the cache from its event
+  // payload without risking wrong data — see the handler for why — so it
+  // falls back to invalidating the full poll query. Debounce that
+  // invalidation so a burst (a bulk send can trigger many acks in quick
+  // succession) collapses into one ~3MB refetch
   // instead of one per event. usePoll's own 30s WebSocket-connected backup
   // poll already bounds worst-case staleness, so an unbounded trailing
   // debounce (no max-wait) is fine here.
@@ -489,17 +488,13 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       scheduleDebouncedPollInvalidate();
     });
 
-    // Can't merge: payload is raw per-metric telemetry rows (DbTelemetry —
-    // e.g. { telemetryType: 'batteryLevel', value: 85 }), not poll's
-    // aggregated nodes[].deviceMetrics/environmentMetrics shape, and there's
-    // no client-side telemetryType→field mapping to reconstruct it correctly.
-    // (Node-level metrics themselves already stay live via node:updated,
-    // which the ingest path emits separately — this event mainly exists to
-    // refresh telemetryNodes membership for newly-telemetry-bearing nodes.)
-    // Debounced full-poll invalidation instead.
-    socket.on('telemetry:batch', (_data: { [nodeNum: number]: unknown[] }) => {
-      scheduleDebouncedPollInvalidate();
-    });
+    // telemetry:batch is deliberately NOT handled. The server emits it for the
+    // automation engine (trigger.telemetry). Its rows can't be merged into the
+    // poll cache (raw per-metric rows, not nodes[].deviceMetrics), and the old
+    // fallback, a debounced full-poll invalidation, would refetch the ~3MB poll
+    // after almost every telemetry packet on a busy mesh. Node-level metrics
+    // stay live via node:updated, and usePoll's 30s backup poll picks up
+    // telemetryNodes membership.
 
     socket.on('firmware:status', (data: unknown) => {
       // Store firmware update status for the FirmwareUpdateSection to consume

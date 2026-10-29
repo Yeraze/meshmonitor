@@ -207,6 +207,35 @@ export function parseCooldownScope(raw: unknown): CooldownScope {
 }
 
 /**
+ * Floor on how often a `trigger.telemetry` automation may fire. Telemetry is
+ * the busiest event the engine sees (about 5 readings per device-metrics
+ * packet, every node, every source), and a saved cooldown defaults to 0, so
+ * without a floor one rule could act on every reading. The engine raises any
+ * shorter cooldown to this, per node. User decision, not a tuning knob.
+ */
+export const TELEMETRY_TRIGGER_MIN_COOLDOWN_SECONDS = 3600;
+
+/**
+ * The cooldown the engine actually applies to a `trigger.telemetry` automation.
+ *
+ * - Seconds: at least {@link TELEMETRY_TRIGGER_MIN_COOLDOWN_SECONDS}.
+ * - Scope: per node. `sourceNode` becomes `node` (one node heard on two sources
+ *   still fires once). `automation` is kept only when the user set a positive
+ *   cooldown, since one window for the whole rule is already stricter than one
+ *   per node; an unset cooldown parses to `automation` and becomes `node`.
+ */
+export function effectiveTelemetryCooldown(
+  cooldownSeconds: number,
+  scope: CooldownScope,
+): { cooldownSeconds: number; cooldownScope: CooldownScope } {
+  const seconds = Number.isFinite(cooldownSeconds) && cooldownSeconds > 0 ? cooldownSeconds : 0;
+  return {
+    cooldownSeconds: Math.max(seconds, TELEMETRY_TRIGGER_MIN_COOLDOWN_SECONDS),
+    cooldownScope: scope === 'automation' && seconds > 0 ? 'automation' : 'node',
+  };
+}
+
+/**
  * App-level DM resend cap for `action.sendMessage` (#4340 Phase 3).
  *
  * Mirrors MessageQueueService's own bound (src/server/messageQueueService.ts:
