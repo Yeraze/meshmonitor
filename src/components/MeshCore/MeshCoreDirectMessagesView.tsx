@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { MeshCoreVirtualList } from './MeshCoreVirtualList';
 import { companionHasNativeCli } from '../../utils/meshcoreCompanionCli';
 import { MeshCoreIgnoreBlockControls } from './MeshCoreIgnoreBlockControls';
 import type { MeshCoreFilterMode } from '../../hooks/useMeshCoreFilters';
@@ -530,8 +531,11 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               </button>
             )}
           </div>
-          <div className="meshcore-list-pane-body">
-            {filteredPeers.length === 0 ? (
+          <MeshCoreVirtualList
+            items={filteredPeers}
+            getKey={key => key}
+            estimateSize={56}
+            empty={(
               <div className="meshcore-empty-state">
                 {searchQuery
                   ? t('meshcore.no_search_results', 'No contacts match your search')
@@ -539,7 +543,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     ? t('meshcore.no_type_results', 'No contacts of this type')
                     : t('meshcore.no_contacts', 'No contacts yet')}
               </div>
-            ) : filteredPeers.map(key => {
+            )}
+            renderRow={key => {
               const c = contactsByKey.get(key);
               const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
               const isFavorite = favoriteByKey.get(key) ?? false;
@@ -577,8 +582,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   <div className="mc-node-row-key">{key.substring(0, 20)}…</div>
                 </button>
               );
-            })}
-          </div>
+            }}
+          />
           </>
         )}
       </div>

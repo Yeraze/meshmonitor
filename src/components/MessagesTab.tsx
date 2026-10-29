@@ -16,7 +16,6 @@ import { TimeFormat, DateFormat, useNotificationMuteSettings } from '../contexts
 import {
   formatDateTime,
   formatRelativeTime,
-  formatMessageTime,
   getMessageDateSeparator,
   shouldShowDateSeparator,
 } from '../utils/datetime';
@@ -31,11 +30,10 @@ import { useTraceroutePairHistory } from '../hooks/useTraceroutePairHistory';
 import { getMessageSortTime } from '../utils/messageSort';
 import KeyMismatchWarning from './security/KeyMismatchWarning';
 import { NodeIdentityChangeNotice } from './NodeIdentityChangeNotice';
-import { isReplyTo, isTapbackMessage, isTapbackOf } from '../utils/messageReplies';
-import { SenderAvatar, SenderNameButton, StatusEmojiIndicator } from './SenderAvatar';
+import { isTapbackMessage } from '../utils/messageReplies';
+import { SenderNameButton, StatusEmojiIndicator } from './SenderAvatar';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
 import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
-import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { mentionCandidatesFromNodes } from '../utils/mentionCandidates';
 import { getMessageContentMatchNodeIds } from '../utils/messageContentFilter';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId, formatSenderLabel } from '../utils/nodeHelpers';
@@ -47,8 +45,6 @@ import { nodeColorStyle } from '../utils/nodeColor';
 import { useDeviceNodes, useTelemetryNodes, setNodeFieldInCache } from '../hooks/useServerData';
 import { useQueryClient } from '@tanstack/react-query';
 import { sourcePollQueryKey } from '../hooks/pollQueryKey';
-import HopCountDisplay from './HopCountDisplay';
-import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
 import AircraftMarkMenuItems from './AircraftMarkMenuItems';
 import { type ChartDataEntry, DISTRIBUTION_COLORS } from './packetStatsChartData';
@@ -58,7 +54,6 @@ import { PacketDistributionStats } from '../types/packet';
 
 import MessageComposeInput from './MessageComposeInput';
 import { useComposeDraftStore } from '../contexts/composeDraftStore';
-import { MessageStatusIndicator } from './MessageStatusIndicator';
 import MessageDetailsModal from './diagnostics/MessageDetailsModal';
 import type { MessageDirection } from '../utils/deliveryDiagnostics/types';
 import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
@@ -68,15 +63,37 @@ import apiService, { type TracerouteParticipationEntry } from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSource } from '../contexts/SourceContext';
 import { sourceTypeMeshProtocol } from '../utils/meshProtocol';
-import protocolStripe from './messages/ProtocolStripe.module.css';
 import { computeMessagesReadOnlyState } from './messagesReadOnlyState';
 import { UiIcon } from './icons';
-import UnreadDivider from './messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnchor';
 import { TranslateModal } from './translation/TranslateModal';
-import { TranslatedMessage } from './translation/TranslatedMessage';
 import { useViewTranslations } from '../hooks/useViewTranslations';
 import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
+import { DmMessageRow, type MessageRowActions, type MessageRowNames } from './messages/DmMessageRow';
+import {
+  buildResponseIndex,
+  repliedMessageFor,
+  tapbacksFor,
+  useNodeNamesToken,
+} from './messages/messageRowSupport';
+import type { TranslatedMessageState } from './translation/TranslatedMessage';
+
+/** The latest handlers behind the stable row callbacks (see `rowActions`). */
+interface RowLatest {
+  getNodeName: (nodeId: string) => string;
+  getNodeShortName: (nodeId: string) => string;
+  getSenderLabel: (nodeId: string) => string;
+  handleSenderClick: (nodeId: string, event?: React.MouseEvent | React.KeyboardEvent) => void;
+  handleRelayClick: (msg: MeshMessage) => Promise<void>;
+  handleResendMessage: (msg: MeshMessage) => Promise<void>;
+  handleDeleteMessage: (msg: MeshMessage) => Promise<void>;
+  handleSendTapback: (emoji: string, msg: MeshMessage) => void;
+  setReplyingTo: (msg: MeshMessage | null) => void;
+  setEmojiPickerMessage: (msg: MeshMessage | null) => void;
+  translateMessage: (msgId: string, text: string, targetLang?: string) => Promise<void>;
+  dismissTranslation: (msgId: string) => void;
+  setDetailsState: (state: { message: MeshMessage; direction: MessageDirection } | null) => void;
+}
 
 // The DM pane's graphs are the tab's only recharts users: they load as lazy
 // chunks once a node is selected, not with the message list.
@@ -665,18 +682,48 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     [nodes]
   );
 
+  // The memoized message rows (DmMessageRow) get their name lookups and
+  // callbacks through these, so a poll that changes no name and no handler
+  // leaves every row's props equal. Each call reads the latest function from
+  // `rowLatestRef`, which the render body fills in below.
+  const rowLatestRef = useRef<RowLatest | null>(null);
+  const namesToken = useNodeNamesToken(nodes);
+  const rowNames = useMemo<MessageRowNames>(() => ({
+    token: namesToken,
+    name: (nodeId) => rowLatestRef.current!.getNodeName(nodeId),
+    short: (nodeId) => rowLatestRef.current!.getNodeShortName(nodeId),
+    label: (nodeId) => rowLatestRef.current!.getSenderLabel(nodeId),
+  }), [namesToken]);
+  const rowActions = useMemo<MessageRowActions>(() => ({
+    senderClick: (nodeId, event) => rowLatestRef.current!.handleSenderClick(nodeId, event),
+    relayClick: (msg) => { void rowLatestRef.current!.handleRelayClick(msg); },
+    resend: (msg) => { void rowLatestRef.current!.handleResendMessage(msg); },
+    reply: (msg) => {
+      rowLatestRef.current!.setReplyingTo(msg);
+      dmMessageInputRef.current?.focus();
+    },
+    emoji: (msg) => rowLatestRef.current!.setEmojiPickerMessage(msg),
+    translate: (msgId, text, lang) => { void rowLatestRef.current!.translateMessage(msgId, text, lang); },
+    dismissTranslation: (msgId) => rowLatestRef.current!.dismissTranslation(msgId),
+    remove: (msg) => { void rowLatestRef.current!.handleDeleteMessage(msg); },
+    tapback: (emoji, msg) => rowLatestRef.current!.handleSendTapback(emoji, msg),
+    showDetails: (msg) => rowLatestRef.current!.setDetailsState({ message: msg, direction: 'sent' }),
+  }), []);
+
   // Mention tokens resolve to the node's CURRENT name at render time (#5276).
+  // Keyed on the names token rather than the node list, so it stays the same
+  // object across polls that rename no one (it is a row prop).
   const mentionRenderOptions = useMemo(() => ({
     resolveNodeName: (nodeId: string) => {
-      const name = getNodeName(nodeId);
+      const name = rowNames.name(nodeId);
       return name && name !== nodeId ? name : undefined;
     },
     // Pass the real event: handleSenderClick measures event.currentTarget to
     // place the node popup next to what was clicked.
     onMentionClick: (nodeId: string, event: React.MouseEvent | React.KeyboardEvent) =>
-      handleSenderClick(nodeId, event as React.MouseEvent),
+      rowActions.senderClick(nodeId, event),
     selfNodeId: currentNodeId,
-  }), [getNodeName, handleSenderClick, currentNodeId]);
+  }), [rowNames, rowActions, currentNodeId]);
 
   // Status message per sender, for the avatar badge (#5645).
   const statusByNodeId = useMemo(() => {
@@ -980,6 +1027,23 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   );
   const { translationSettings, translatedMessages, translateMessage, dismissTranslation } =
     useViewTranslations(sourceId, storedTranslationIds);
+
+  // Latest handlers and name lookups for the stable `rowNames` / `rowActions`.
+  rowLatestRef.current = {
+    getNodeName,
+    getNodeShortName,
+    getSenderLabel,
+    handleSenderClick,
+    handleRelayClick,
+    handleResendMessage,
+    handleDeleteMessage,
+    handleSendTapback,
+    setReplyingTo,
+    setEmojiPickerMessage,
+    translateMessage,
+    dismissTranslation,
+    setDetailsState,
+  };
 
   // Permission check
   if (!hasPermission('messages', 'read')) {
@@ -2006,237 +2070,68 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 </div>
               )}
               {selectedDMMessages.length > 0 ? (
-                selectedDMMessages.map((msg, index) => {
-                  const isTraceroute = msg.portnum === 70;
-                  const isMine = isMyMessage(msg);
-                  const isReaction = isTapbackMessage(msg);
+                (() => {
+                  // One pass for tapbacks and quoted parents (was a filter +
+                  // find per row). Rules: utils/messageReplies via
+                  // messageRowSupport.
+                  const responseIndex = buildResponseIndex(selectedDMMessages);
+                  const today = new Date().toDateString();
+                  const canWrite = hasPermission('messages', 'write');
+                  return selectedDMMessages.map((msg, index) => {
+                    // Reactions show under their parent, not as rows.
+                    if (isTapbackMessage(msg)) return null;
+                    const isMine = isMyMessage(msg);
 
-                  // #4880: color an incoming ("theirs") bubble + sender dot by
-                  // the sender node under the active Node List Style. Own
-                  // messages keep the standard "mine" styling. Returns {} for
-                  // monochrome / unknown sender, leaving the theme look intact.
-                  const senderNode = isMine ? undefined : nodes.find(n => n.user?.id === msg.from);
-                  const senderColor = senderNode
-                    ? nodeColorStyle(nodeListStyle, {
-                        nodeNum: senderNode.nodeNum,
-                        hopsAway: senderNode.hopsAway,
-                        isFavorite: senderNode.isFavorite,
-                      })
-                    : {};
+                    // #4880: color an incoming ("theirs") bubble + sender dot by
+                    // the sender node under the active Node List Style. Own
+                    // messages keep the standard "mine" styling. Returns {} for
+                    // monochrome / unknown sender, leaving the theme look intact.
+                    const senderNode = isMine ? undefined : nodes.find(n => n.user?.id === msg.from);
+                    const senderColor = senderNode
+                      ? nodeColorStyle(nodeListStyle, {
+                          nodeNum: senderNode.nodeNum,
+                          hopsAway: senderNode.hopsAway,
+                          isFavorite: senderNode.isFavorite,
+                        })
+                      : {};
 
-                  if (isReaction) return null;
+                    const currentDate = new Date(msg.timestamp);
+                    const prevMsg = index > 0 ? selectedDMMessages[index - 1] : null;
+                    const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
+                    const dateSeparator = shouldShowDateSeparator(prevDate, currentDate)
+                      ? getMessageDateSeparator(currentDate, dateFormat)
+                      : null;
+                    const translation: TranslatedMessageState | undefined = translatedMessages[msg.id];
 
-                  // Reply / tapback rules live in utils/messageReplies — the
-                  // Auto-Acknowledge response cap counts with the same ones.
-                  const reactions = selectedDMMessages.filter(m => isTapbackOf(m, msg));
-
-                  const repliedMessage = selectedDMMessages.find(m => isReplyTo(msg, m)) ?? null;
-
-                  const currentDate = new Date(msg.timestamp);
-                  const prevMsg = index > 0 ? selectedDMMessages[index - 1] : null;
-                  const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
-                  const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
-
-                  if (isTraceroute) {
                     return (
-                      <React.Fragment key={msg.id}>
-                        {showSeparator && (
-                          <div className="date-separator">
-                            <span className="date-separator-text">
-                              {getMessageDateSeparator(currentDate, dateFormat)}
-                            </span>
-                          </div>
-                        )}
-                        {unreadAnchorId === msg.id && <UnreadDivider />}
-                        <div className="message-item traceroute">
-                          <div className="message-header">
-                            <span className="message-from">{getSenderLabel(msg.from)}</span>
-                            <span className="message-time">
-                              {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                              <HopCountDisplay
-                                hopStart={msg.hopStart}
-                                hopLimit={msg.hopLimit}
-                                rxSnr={msg.rxSnr}
-                                rxRssi={msg.rxRssi}
-                                relayNode={msg.relayNode}
-                                viaMqtt={msg.viaMqtt}
-                                viaStoreForward={msg.viaStoreForward}
-                                xeddsaSigned={msg.xeddsaSigned}
-                                onClick={() => handleRelayClick(msg)}
-                              />
-                            </span>
-                            <span className="traceroute-badge">{t('messages.traceroute_badge')}</span>
-                          </div>
-                          <div className="message-text" style={{ whiteSpace: 'pre-line', fontFamily: 'monospace' }}>
-                            {renderMessageWithLinks(msg.text)}
-                          </div>
-                        </div>
-                      </React.Fragment>
+                      <DmMessageRow
+                        key={msg.id}
+                        msg={msg}
+                        isMine={isMine}
+                        dateSeparator={dateSeparator}
+                        showUnreadDivider={unreadAnchorId === msg.id}
+                        reactions={tapbacksFor(responseIndex, msg)}
+                        repliedMessage={repliedMessageFor(responseIndex, msg)}
+                        senderStatus={statusByNodeId.get(msg.from)}
+                        senderBackground={senderColor.background}
+                        senderTextColor={senderColor.text}
+                        currentNodeId={currentNodeId}
+                        canWrite={canWrite}
+                        txDisabled={txDisabled}
+                        txDisabledTooltip={txDisabledTooltip}
+                        canTranslate={translationSettings.canTranslate}
+                        translation={translation}
+                        timeFormat={timeFormat}
+                        dateFormat={dateFormat}
+                        today={today}
+                        meshProtocol={meshProtocol}
+                        mentionOptions={mentionRenderOptions}
+                        names={rowNames}
+                        actions={rowActions}
+                      />
                     );
-                  }
-
-                  return (
-                    <React.Fragment key={msg.id}>
-                      {showSeparator && (
-                        <div className="date-separator">
-                          <span className="date-separator-text">
-                            {getMessageDateSeparator(currentDate, dateFormat)}
-                          </span>
-                        </div>
-                      )}
-                      {/* Red "New messages" line, directly above the oldest
-                          message unseen at entry (#4607). */}
-                      {unreadAnchorId === msg.id && <UnreadDivider />}
-                      <div 
-                        className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}
-                        data-message-id={msg.id}
-                      >
-                        {!isMine && (
-                          <SenderAvatar
-                            shortName={getNodeShortName(msg.from)}
-                            status={statusByNodeId.get(msg.from)}
-                            title={t('channels.sender_click_title', { name: getNodeName(msg.from) })}
-                            onActivate={e => handleSenderClick(msg.from, e)}
-                            style={senderColor.background ? { background: senderColor.background, color: senderColor.text } : undefined}
-                          />
-                        )}
-                        <div className="message-content">
-                          {msg.replyId && (
-                            <div className="replied-message">
-                              <div className="reply-arrow">↳</div>
-                              <div className="reply-content">
-                                {repliedMessage ? (
-                                  <>
-                                    <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
-                                    <div className="reply-text">{repliedMessage.text || t('messages.empty_message')}</div>
-                                  </>
-                                ) : (
-                                  <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
-                                    {t('messages.message_unavailable')}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          {hasPermission('messages', 'write') && (
-                            <div className="message-actions">
-                              {isMine ? (
-                                <button
-                                  className="resend-button"
-                                  onClick={() => handleResendMessage(msg)}
-                                  disabled={txDisabled}
-                                  title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : t('messages.resend_button_title')}
-                                  aria-label={t('messages.resend_button_title')}
-                                >
-                                  ↻
-                                </button>
-                              ) : (
-                                <button
-                                  className="reply-button"
-                                  onClick={() => {
-                                    setReplyingTo(msg);
-                                    dmMessageInputRef.current?.focus();
-                                  }}
-                                  title={t('messages.reply_button_title')}
-                                  aria-label={t('messages.reply_button_title')}
-                                >
-                                  <UiIcon name="reply" size={15} />
-                                </button>
-                              )}
-                              <button
-                                className="emoji-picker-button"
-                                onClick={() => setEmojiPickerMessage(msg)}
-                                disabled={txDisabled}
-                                title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : t('messages.emoji_button_title')}
-                                aria-label={t('messages.emoji_button_title')}
-                              >
-                                <UiIcon name="reaction" size={15} />
-                              </button>
-                              {translationSettings.canTranslate && msg.text && (
-                                <button
-                                  className="translate-button"
-                                  onClick={() => translateMessage(msg.id, msg.text)}
-                                  title={t('messages.translate', 'Translate')}
-                                  aria-label={t('messages.translate', 'Translate')}
-                                >
-                                  <UiIcon name="translate" size={15} />
-                                </button>
-                              )}
-                              <button
-                                className="delete-button"
-                                onClick={() => handleDeleteMessage(msg)}
-                                title={t('messages.delete_button_title')}
-                                aria-label={t('messages.delete_button_title')}
-                              >
-                                <UiIcon name="delete" size={15} />
-                              </button>
-                            </div>
-                          )}
-                          <div
-                            className={`message-bubble ${isMine ? 'mine' : 'theirs'}${senderColor.background ? ' message-bubble--colored' : ''} ${protocolStripe.stripe}`}
-                            data-protocol={meshProtocol}
-                            style={senderColor.background ? { background: senderColor.background, color: senderColor.text } : undefined}
-                          >
-                            <div className="message-text-row">
-                              <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
-                                {renderMessageWithLinks(msg.text, mentionRenderOptions)}
-                              </div>
-                              <div className="message-meta">
-                                <span className="message-time">
-                                  {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                  <HopCountDisplay
-                                    hopStart={msg.hopStart}
-                                    hopLimit={msg.hopLimit}
-                                    rxSnr={msg.rxSnr}
-                                    rxRssi={msg.rxRssi}
-                                    relayNode={msg.relayNode}
-                                    viaMqtt={msg.viaMqtt}
-                                    viaStoreForward={msg.viaStoreForward}
-                                    xeddsaSigned={msg.xeddsaSigned}
-                                    onClick={() => handleRelayClick(msg)}
-                                  />
-                                </span>
-                              </div>
-                            </div>
-                            <LinkPreview text={msg.text} />
-                            {translatedMessages[msg.id] && (
-                              <TranslatedMessage
-                                state={translatedMessages[msg.id]}
-                                onDismiss={() => dismissTranslation(msg.id)}
-                                onRetry={translationSettings.canTranslate ? () => translateMessage(msg.id, msg.text) : undefined}
-                                onChangeTargetLang={translationSettings.canTranslate ? (newLang) => translateMessage(msg.id, msg.text, newLang) : undefined}
-                              />
-                            )}
-                            {reactions.length > 0 && (
-                              <div className="message-reactions">
-                                {/* Reaction chips stay clickable even when txDisabled — see the
-                                    matching comment in ChannelsTab.tsx (epic #4294 Phase 2, §3.2/§3.3):
-                                    they double as the read affordance for "who reacted", and a
-                                    re-tap while TX is off is caught by the handleSendTapback
-                                    failure-branch toast in App.tsx rather than pre-emptively blocked. */}
-                                {reactions.map(reaction => (
-                                  <span
-                                    key={reaction.id}
-                                    className={`reaction ${isMyMessage(reaction) ? 'mine' : 'theirs'}`}
-                                    title={t('messages.reaction_tooltip', { name: getNodeShortName(reaction.from) })}
-                                    onClick={() => handleSendTapback(reaction.text, msg)}
-                                  >
-                                    {reaction.text}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {isMine && (
-                          <div className="message-status">
-                            <MessageStatusIndicator message={msg} onShowDetails={() => setDetailsState({ message: msg, direction: 'sent' })} />
-                          </div>
-                        )}
-                      </div>
-                    </React.Fragment>
-                  );
-                })
+                  });
+                })()
               ) : (
                 <p className="no-messages">{t('messages.no_dm_yet')}</p>
               )}
