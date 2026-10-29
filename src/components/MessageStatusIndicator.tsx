@@ -5,11 +5,11 @@
  * Used by both MessagesTab and ChannelsTab.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshMessage } from '../types/message';
 import { UiIcon, type UiIconName } from './icons';
-import { getMeshtasticDeliveryState } from '../utils/deliveryDiagnostics/status';
+import { getMeshtasticDeliveryState, TIMEOUT_MS } from '../utils/deliveryDiagnostics/status';
 import styles from './MessageStatusIndicator.module.css';
 
 interface MessageStatusIndicatorProps {
@@ -27,6 +27,18 @@ interface MessageStatusIndicatorProps {
 export function MessageStatusIndicator({ message, onShowDetails }: MessageStatusIndicatorProps): React.ReactElement {
   const { t } = useTranslation();
   const state = getMeshtasticDeliveryState(message);
+
+  // A pending message turns into "timeout" TIMEOUT_MS after it was sent. The
+  // message rows are memoized and no longer redraw on every poll or status
+  // tick, so the indicator re-renders itself once at that moment.
+  const [, setExpired] = useState(0);
+  const sentAt = message.timestamp.getTime();
+  useEffect(() => {
+    if (state !== 'pending') return;
+    const remaining = sentAt + TIMEOUT_MS - Date.now();
+    const timer = setTimeout(() => setExpired((n) => n + 1), Math.max(0, remaining) + 50);
+    return () => clearTimeout(timer);
+  }, [state, sentAt]);
 
   let className: string;
   let titleKey: string;

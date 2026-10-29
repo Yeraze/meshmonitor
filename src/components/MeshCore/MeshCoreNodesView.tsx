@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { MeshCoreVirtualList } from './MeshCoreVirtualList';
 import NodeQuickAgeFilter from '../NodeQuickAgeFilter';
 import { useNodeQuickAgeFilter } from '../../hooks/useNodeQuickAgeFilter';
 import { useTranslation } from 'react-i18next';
@@ -571,8 +572,11 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             </button>
           )}
         </div>
-        <div className="meshcore-list-pane-body">
-          {rows.length === 0 ? (
+        <MeshCoreVirtualList
+          items={rows}
+          getKey={row => row.publicKey}
+          estimateSize={76}
+          empty={(
             <div className="meshcore-empty-state">
               {searchQuery
                 ? t('meshcore.no_search_results', 'No nodes match your search')
@@ -583,7 +587,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                   )
                   : t('meshcore.no_nodes', 'No nodes seen yet')}
             </div>
-          ) : rows.map(row => {
+          )}
+          renderRow={row => {
             const roleIcon = meshcoreRoleIconName(row.advType);
             return (
             // Wrapper div (not a button) so the details quick-access can be a
@@ -658,8 +663,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               )}
             </div>
             );
-          })}
-        </div>
+          }}
+        />
         </>
         )}
       </div>

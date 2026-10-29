@@ -16,36 +16,53 @@ import { ResourceType } from '../types/permission';
 import { TimeFormat, DateFormat, useSettings, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import { formatPrecisionAccuracy } from '../utils/distance';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
-import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
+import { getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getMessageSortTime } from '../utils/messageSort';
-import { isReplyTo, isTapbackMessage, isTapbackOf } from '../utils/messageReplies';
-import { SenderAvatar, SenderNameButton } from './SenderAvatar';
+import { isTapbackMessage } from '../utils/messageReplies';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
-import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { mentionCandidatesFromNodes } from '../utils/mentionCandidates';
-import HopCountDisplay from './HopCountDisplay';
 import AeadBadge from './channels/AeadBadge';
-import LinkPreview from './LinkPreview';
 import MessageComposeInput from './MessageComposeInput';
 import { useComposeDraftStore } from '../contexts/composeDraftStore';
 import { logger } from '../utils/logger';
-import { MessageStatusIndicator } from './MessageStatusIndicator';
 import MessageDetailsModal from './diagnostics/MessageDetailsModal';
 import type { MessageDirection } from '../utils/deliveryDiagnostics/types';
 import { useNodes } from '../hooks/useServerData';
 import { UiIcon } from './icons';
-import UnreadDivider from './messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnchor';
 import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
 import { TranslateModal } from './translation/TranslateModal';
-import { TranslatedMessage } from './translation/TranslatedMessage';
 import { useViewTranslations } from '../hooks/useViewTranslations';
 // Default PSK value (publicly known key - not truly secure) — shared
 // definition lives in utils/publicChannel.ts (#4705).
 import { pskEncryptionStatus } from '../utils/publicChannel';
 import { useSource } from '../contexts/SourceContext';
 import { sourceTypeMeshProtocol } from '../utils/meshProtocol';
-import protocolStripe from './messages/ProtocolStripe.module.css';
+import { ChannelMessageRow } from './messages/ChannelMessageRow';
+import type { MessageRowActions, MessageRowNames } from './messages/DmMessageRow';
+import {
+  buildResponseIndex,
+  repliedMessageFor,
+  tapbacksFor,
+  useNodeNamesToken,
+} from './messages/messageRowSupport';
+import type { TranslatedMessageState } from './translation/TranslatedMessage';
+
+/** The latest handlers behind the stable row callbacks (see `rowActions`). */
+interface RowLatest {
+  getNodeName: (nodeId: string) => string;
+  getNodeShortName: (nodeId: string) => string;
+  handleSenderClick: (nodeId: string, event?: React.MouseEvent | React.KeyboardEvent) => void;
+  handleRelayClick: (msg: MeshMessage, direction: MessageDirection) => Promise<void>;
+  handleResendMessage: (msg: MeshMessage) => Promise<void>;
+  handleDeleteMessage: (msg: MeshMessage) => Promise<void>;
+  handleSendTapback: (emoji: string, msg: MeshMessage) => void;
+  setReplyingTo: (msg: MeshMessage | null) => void;
+  setEmojiPickerMessage: (msg: MeshMessage | null) => void;
+  translateMessage: (msgId: string, text: string, targetLang?: string) => Promise<void>;
+  dismissTranslation: (msgId: string) => void;
+  setDetailsState: (state: { message: MeshMessage; direction: MessageDirection } | null) => void;
+}
 
 // Offset for Channel Database channels
 // IMPORTANT: This value must match CHANNEL_DB_OFFSET in src/server/constants/meshtastic.ts
@@ -281,19 +298,50 @@ export default function ChannelsTab({
     () => mentionCandidatesFromNodes(nodes, currentNodeId),
     [nodes, currentNodeId]
   );
+  // The memoized message rows (ChannelMessageRow) get their name lookups and
+  // callbacks through these, so a poll that changes no name and no handler
+  // leaves every row's props equal. Each call reads the latest function from
+  // `rowLatestRef`, which the render body fills in just before it returns.
+  const rowLatestRef = useRef<RowLatest | null>(null);
+  const namesToken = useNodeNamesToken(nodes);
+  const rowNames = useMemo<MessageRowNames>(() => ({
+    token: namesToken,
+    name: (nodeId) => rowLatestRef.current!.getNodeName(nodeId),
+    short: (nodeId) => rowLatestRef.current!.getNodeShortName(nodeId),
+    // Channel rows show no "Long (SHRT)" label; kept for the shared type.
+    label: (nodeId) => rowLatestRef.current!.getNodeName(nodeId),
+  }), [namesToken]);
+  const rowActions = useMemo<MessageRowActions>(() => ({
+    senderClick: (nodeId, event) => rowLatestRef.current!.handleSenderClick(nodeId, event),
+    relayClick: (msg, direction) => { void rowLatestRef.current!.handleRelayClick(msg, direction ?? 'received'); },
+    resend: (msg) => { void rowLatestRef.current!.handleResendMessage(msg); },
+    reply: (msg) => {
+      rowLatestRef.current!.setReplyingTo(msg);
+      channelMessageInputRef.current?.focus();
+    },
+    emoji: (msg) => rowLatestRef.current!.setEmojiPickerMessage(msg),
+    translate: (msgId, text, lang) => { void rowLatestRef.current!.translateMessage(msgId, text, lang); },
+    dismissTranslation: (msgId) => rowLatestRef.current!.dismissTranslation(msgId),
+    remove: (msg) => { void rowLatestRef.current!.handleDeleteMessage(msg); },
+    tapback: (emoji, msg) => rowLatestRef.current!.handleSendTapback(emoji, msg),
+    showDetails: (msg) => rowLatestRef.current!.setDetailsState({ message: msg, direction: 'sent' }),
+  }), []);
+
   // Resolves a mention token to the node's CURRENT name at render time, so a
-  // rename shows through in old messages.
+  // rename shows through in old messages. Keyed on the names token rather than
+  // the name lookup, so it stays the same object across polls that rename no
+  // one (it is a row prop).
   const mentionRenderOptions = useMemo(() => ({
     resolveNodeName: (nodeId: string) => {
-      const name = getNodeName(nodeId);
+      const name = rowNames.name(nodeId);
       return name && name !== nodeId ? name : undefined;
     },
     // Pass the real event: handleSenderClick measures event.currentTarget to
     // place the node popup next to what was clicked.
     onMentionClick: (nodeId: string, event: React.MouseEvent | React.KeyboardEvent) =>
-      handleSenderClick(nodeId, event as React.MouseEvent),
+      rowActions.senderClick(nodeId, event),
     selfNodeId: currentNodeId,
-  }), [getNodeName, handleSenderClick, currentNodeId]);
+  }), [rowNames, rowActions, currentNodeId]);
 
   // State for "Jump to Bottom" button
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -652,6 +700,22 @@ export default function ChannelsTab({
       )}
     </>
   );
+
+  // Latest handlers and name lookups for the stable `rowNames` / `rowActions`.
+  rowLatestRef.current = {
+    getNodeName,
+    getNodeShortName,
+    handleSenderClick,
+    handleRelayClick,
+    handleResendMessage,
+    handleDeleteMessage,
+    handleSendTapback,
+    setReplyingTo,
+    setEmojiPickerMessage,
+    translateMessage,
+    dismissTranslation,
+    setDetailsState,
+  };
 
   return (
     <div className="tab-content channels-tab-content">
@@ -1179,224 +1243,56 @@ export default function ChannelsTab({
                       })();
 
                       return messagesForChannel && messagesForChannel.length > 0 ? (
-                        messagesForChannel.map((msg, index) => {
-                          const isMine = isMyMessage(msg);
-                          // Reply / tapback rules live in utils/messageReplies — the
-                          // Auto-Acknowledge response cap counts with the same ones.
-                          const repliedMessage = (channelMessages[messageChannel] || []).find(m => isReplyTo(msg, m)) ?? null;
-                          const isReaction = isTapbackMessage(msg);
+                        (() => {
+                          // Reactions and quoted parents come from the FULL
+                          // channel list (unfiltered), one pass instead of a
+                          // filter + find per row. Rules: utils/messageReplies
+                          // via messageRowSupport.
+                          const responseIndex = buildResponseIndex(channelMessages[messageChannel] || []);
+                          const today = new Date().toDateString();
+                          const canWrite = hasPermission(`channel_${selectedChannel}` as ResourceType, 'write');
+                          const isDeviceChannel = selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET;
+                          return messagesForChannel.map((msg, index) => {
+                            // Hide reactions (tapbacks) from main message list
+                            if (isTapbackMessage(msg)) return null;
 
-                          // Hide reactions (tapbacks) from main message list
-                          if (isReaction) {
-                            return null;
-                          }
+                            // Check if we should show a date separator
+                            const currentDate = new Date(msg.timestamp);
+                            const prevMsg = index > 0 ? messagesForChannel[index - 1] : null;
+                            const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
+                            const dateSeparator = shouldShowDateSeparator(prevDate, currentDate)
+                              ? getMessageDateSeparator(currentDate, dateFormat)
+                              : null;
+                            const translation: TranslatedMessageState | undefined = translatedMessages[msg.id];
 
-                          // Find ALL reactions in the full channel message list
-                          const allChannelMessages = channelMessages[messageChannel] || [];
-                          const reactions = allChannelMessages.filter(m => isTapbackOf(m, msg));
-
-                          // Check if we should show a date separator
-                          const currentDate = new Date(msg.timestamp);
-                          const prevMsg = index > 0 ? messagesForChannel[index - 1] : null;
-                          const prevDate = prevMsg ? new Date(prevMsg.timestamp) : null;
-                          const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
-
-                          return (
-                            <React.Fragment key={msg.id}>
-                              {showSeparator && (
-                                <div className="date-separator">
-                                  <span className="date-separator-text">
-                                    {getMessageDateSeparator(currentDate, dateFormat)}
-                                  </span>
-                                </div>
-                              )}
-                              {/* Red "New messages" line, directly above the
-                                  oldest message unseen at entry (#4607). */}
-                              {unreadAnchorId === msg.id && <UnreadDivider />}
-                              <div
-                                className={`message-bubble-container ${isMine ? 'mine' : 'theirs'}`}
-                                data-message-id={msg.id}
-                              >
-                                {!isMine && (
-                                  <SenderAvatar
-                                    shortName={getNodeShortName(msg.from)}
-                                    status={statusByNodeId.get(msg.from)}
-                                    title={t('channels.sender_click_title', { name: getNodeName(msg.from) })}
-                                    onActivate={e => handleSenderClick(msg.from, e)}
-                                  />
-                                )}
-                                <div className="message-content">
-                                  {!isMine && (
-                                    <SenderNameButton
-                                      name={getNodeName(msg.from)}
-                                      title={t('channels.sender_click_title', { name: getNodeName(msg.from) })}
-                                      onActivate={e => handleSenderClick(msg.from, e)}
-                                    />
-                                  )}
-                                  {msg.replyId && !isReaction && (
-                                    <div className="replied-message">
-                                      <div className="reply-arrow"><UiIcon name="reply" size={14} /></div>
-                                      <div className="reply-content">
-                                        {repliedMessage ? (
-                                          <>
-                                            <div className="reply-from">{getNodeShortName(repliedMessage.from)}</div>
-                                            <div className="reply-text">{repliedMessage.text || t('channels.empty_message')}</div>
-                                          </>
-                                        ) : (
-                                          <div className="reply-text" style={{ fontStyle: 'italic', opacity: 0.6 }}>
-                                            {t('channels.message_unavailable')}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                  <div
-                                    className={`message-bubble ${isMine ? 'mine' : 'theirs'}${msg.spoofSuspected ? ' spoofed' : ''} ${protocolStripe.stripe}`}
-                                    data-protocol={meshProtocol}
-                                  >
-                                    {msg.spoofSuspected && (
-                                      <div
-                                        className="message-spoof-warning"
-                                        title={t('channels.spoof_warning_title', 'This message claims to be from your node but arrived over RF — someone may be impersonating your node.')}
-                                      >
-                                        <UiIcon name="alert" size={15} /> {t('channels.spoof_warning', 'Possible impersonation of your node')}
-                                      </div>
-                                    )}
-                                    <div className="message-text-row">
-                                      <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
-                                        {renderMessageWithLinks(msg.text, mentionRenderOptions)}
-                                      </div>
-                                      <div className="message-meta">
-                                        <span className="message-time">
-                                          {formatMessageTime(currentDate, timeFormat, dateFormat)}
-                                          <HopCountDisplay
-                                            hopStart={msg.hopStart}
-                                            hopLimit={msg.hopLimit}
-                                            rxSnr={msg.rxSnr}
-                                            rxRssi={msg.rxRssi}
-                                            relayNode={msg.relayNode}
-                                            viaMqtt={msg.viaMqtt}
-                                            viaStoreForward={msg.viaStoreForward}
-                                            xeddsaSigned={msg.xeddsaSigned}
-                                            onClick={() => handleRelayClick(msg, isMine ? 'sent' : 'received')}
-                                          />
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <LinkPreview text={msg.text} />
-                                    {translatedMessages[msg.id] && (
-                                      <TranslatedMessage
-                                        state={translatedMessages[msg.id]}
-                                        onDismiss={() => dismissTranslation(msg.id)}
-                                        onRetry={translationSettings.canTranslate ? () => translateMessage(msg.id, msg.text) : undefined}
-                                        onChangeTargetLang={translationSettings.canTranslate ? (newLang) => translateMessage(msg.id, msg.text, newLang) : undefined}
-                                      />
-                                    )}
-                                    {reactions.length > 0 && (
-                                      <div className="message-reactions">
-                                        {reactions.map(reaction => {
-                                          // #4243: show WHO reacted inline. The short
-                                          // name was already resolved here for the
-                                          // tooltip, but a hover-only affordance is
-                                          // unusable on touch and invisible at a glance.
-                                          const reactorName = getNodeShortName(reaction.from);
-                                          // Reaction chips stay clickable even when txDisabled: they are
-                                          // also the read affordance for "who reacted" (hover tooltip +
-                                          // inline name), and disabling them would hide that read-only
-                                          // info. A re-tap while TX is off surfaces the 409 via the
-                                          // handleSendTapback failure-branch toast (App.tsx) instead of
-                                          // being pre-emptively blocked here (epic #4294 Phase 2, §3.2).
-                                          return (
-                                            <span
-                                              key={reaction.id}
-                                              className={`reaction ${isMyMessage(reaction) ? 'mine' : 'theirs'}`}
-                                              title={t('channels.reaction_tooltip', { name: reactorName })}
-                                              onClick={() => handleSendTapback(reaction.text, msg)}
-                                            >
-                                              {reaction.text}
-                                              {reactorName && (
-                                                <span className="reaction__author">{reactorName}</span>
-                                              )}
-                                            </span>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {/* Rendered AFTER the bubble (issue #4311): on touch/no-hover
-                                      displays .message-actions sits in normal flow, so keeping it
-                                      between .sender-name and .message-bubble pushed the long name
-                                      away from its own bubble. On hover displays it stays an
-                                      absolutely-positioned overlay (unaffected by DOM order). */}
-                                  {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
-                                    <div className="message-actions">
-                                      {/* Hide reply/resend for Channel Database channels (read-only) - device channels are 0-7 */}
-                                      {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
-                                        isMine ? (
-                                          <button
-                                            className="resend-button"
-                                            onClick={() => handleResendMessage(msg)}
-                                            title={t('channels.resend_button_title')}
-                                            aria-label={t('channels.resend_button_title')}
-                                          >
-                                            <UiIcon name="refresh" size={15} />
-                                          </button>
-                                        ) : (
-                                          <button
-                                            className="reply-button"
-                                            onClick={() => {
-                                              setReplyingTo(msg);
-                                              channelMessageInputRef.current?.focus();
-                                            }}
-                                            title={t('channels.reply_button_title')}
-                                            aria-label={t('channels.reply_button_title')}
-                                          >
-                                            <UiIcon name="reply" size={15} />
-                                          </button>
-                                        )
-                                      )}
-                                      {/* Hide emoji reactions for Channel Database channels (read-only) */}
-                                      {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
-                                        <button
-                                          className="emoji-picker-button"
-                                          onClick={() => setEmojiPickerMessage(msg)}
-                                          disabled={txDisabled}
-                                          title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : t('channels.emoji_button_title')}
-                                          aria-label={t('channels.emoji_button_title')}
-                                        >
-                                          <UiIcon name="reaction" size={15} />
-                                        </button>
-                                      )}
-                                      {translationSettings.canTranslate && msg.text && (
-                                        <button
-                                          className="translate-button"
-                                          onClick={() => translateMessage(msg.id, msg.text)}
-                                          title={t('messages.translate', 'Translate')}
-                                          aria-label={t('messages.translate', 'Translate')}
-                                        >
-                                          <UiIcon name="translate" size={15} />
-                                        </button>
-                                      )}
-                                      <button
-                                        className="delete-button"
-                                        onClick={() => handleDeleteMessage(msg)}
-                                        title={t('channels.delete_button_title')}
-                                        aria-label={t('channels.delete_button_title')}
-                                      >
-                                        <UiIcon name="delete" size={15} />
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                                {isMine && (
-                                  <div className="message-status">
-                                    <MessageStatusIndicator message={msg} onShowDetails={() => setDetailsState({ message: msg, direction: 'sent' })} />
-                                  </div>
-                                )}
-                              </div>
-                            </React.Fragment>
-                          );
-                        })
+                            return (
+                              <ChannelMessageRow
+                                key={msg.id}
+                                msg={msg}
+                                isMine={isMyMessage(msg)}
+                                dateSeparator={dateSeparator}
+                                showUnreadDivider={unreadAnchorId === msg.id}
+                                reactions={tapbacksFor(responseIndex, msg)}
+                                repliedMessage={repliedMessageFor(responseIndex, msg)}
+                                senderStatus={statusByNodeId.get(msg.from)}
+                                currentNodeId={currentNodeId}
+                                canWrite={canWrite}
+                                isDeviceChannel={isDeviceChannel}
+                                txDisabled={txDisabled}
+                                txDisabledTooltip={txDisabledTooltip}
+                                canTranslate={translationSettings.canTranslate}
+                                translation={translation}
+                                timeFormat={timeFormat}
+                                dateFormat={dateFormat}
+                                today={today}
+                                meshProtocol={meshProtocol}
+                                mentionOptions={mentionRenderOptions}
+                                names={rowNames}
+                                actions={rowActions}
+                              />
+                            );
+                          });
+                        })()
                       ) : (
                         <p className="no-messages">{t('channels.no_messages_yet')}</p>
                       );

@@ -25,7 +25,7 @@
  *    receptions, so this is a pure view filter).
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -38,7 +38,7 @@ import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
 import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
 import { UiIcon } from '../components/icons';
-import { resolveReplyPreview } from '../utils/replyPreview';
+import { resolveReplyPreview, type ReplyPreviewState } from '../utils/replyPreview';
 import { getSourceColor } from '../utils/sourceColors';
 import { MESH_PROTOCOL_LABEL, sourceTypeMeshProtocol } from '../utils/meshProtocol';
 import protocolStripe from '../components/messages/ProtocolStripe.module.css';
@@ -57,6 +57,8 @@ import {
 import HopBadge from '../components/unified/HopBadge';
 import { MeshCoreClockOffset } from '../components/MeshCore/MeshCoreClockOffset';
 import { meshcoreClockOffsetMs } from '../utils/meshcoreMessageTime';
+import { messageRowPropsEqual } from '../components/messages/messageRowSupport';
+import type { ReactionChip } from '../components/MeshCore/meshcoreReactionGroups';
 import MessageExportDialog from '../components/MessageExportDialog/MessageExportDialog';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
@@ -132,6 +134,161 @@ interface ChannelCollisionRow {
 function channelTag(msg: { channel: number; channelName?: string }): string {
   return msg.channelName || `Channel ${msg.channel}`;
 }
+
+const NO_UNIFIED_MESSAGES: UnifiedMessage[] = [];
+const NO_CHIPS: ReactionChip[] = [];
+
+interface UnifiedMessageRowProps {
+  msg: UnifiedMessage;
+  /** Day divider above the row, or null for none. */
+  dateLabel: string | null;
+  showChannelTag: boolean;
+  /** Source ids in view, in order: decides each source tag's colour. */
+  sourceOrder: string[];
+  reactions: UnifiedMessage[];
+  replyPreview: ReplyPreviewState<UnifiedMessage>;
+  chips: ReactionChip[];
+  onOpen: (msg: UnifiedMessage) => void;
+}
+
+/**
+ * One feed row, memoized: a poll that adds one message renders one row.
+ * Props compare by value (`messageRowPropsEqual`), since each poll rebuilds
+ * the per-row lookups.
+ */
+const UnifiedMessageRow = memo(function UnifiedMessageRow({
+  msg,
+  dateLabel,
+  showChannelTag,
+  sourceOrder,
+  reactions,
+  replyPreview,
+  chips,
+  onOpen,
+}: UnifiedMessageRowProps) {
+  const { t } = useTranslation();
+  // Left border = mesh protocol (#5744). Every reception of one packet
+  // is on the same protocol, so the first one decides. Source identity
+  // stays on the per-source tags below.
+  const protocol = sourceTypeMeshProtocol(msg.receptions[0]?.sourceType);
+  const receptionCount = msg.receptions.length;
+  const divider = dateLabel !== null && (
+    <div className="unified-date-divider">
+      <span>{dateLabel}</span>
+    </div>
+  );
+
+  if (msg.reactionEmoji) {
+    return (
+      <div>
+        {divider}
+        <MeshCoreUnmatchedReaction name={senderLabel(msg)} emoji={msg.reactionEmoji} />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {divider}
+      <div
+        className={`unified-msg-card unified-msg-card--clickable ${protocolStripe.stripe}`}
+        data-protocol={protocol}
+        title={t('unified.messages.protocol_title', {
+          defaultValue: '{{protocol}} message',
+          protocol: MESH_PROTOCOL_LABEL[protocol],
+        })}
+        onClick={() => onOpen(msg)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpen(msg);
+          }
+        }}
+      >
+        <div className="unified-msg-card__meta">
+          {showChannelTag && (
+            <span
+              className="unified-msg-card__channel-tag"
+              title={t('unified.messages.channel_label', { channel: channelTag(msg) })}
+            >
+              #{channelTag(msg)}
+            </span>
+          )}
+          {msg.receptions.map((r) => (
+            <span
+              key={r.sourceId}
+              className="unified-msg-card__source-tag"
+              style={{
+                background: `color-mix(in srgb, ${getSourceColor(r.sourceId, sourceOrder)} 15%, transparent)`,
+                color: getSourceColor(r.sourceId, sourceOrder),
+                border: `1px solid color-mix(in srgb, ${getSourceColor(r.sourceId, sourceOrder)} 35%, transparent)`,
+              }}
+              title={t('unified.messages.heard_by_source', { name: r.sourceName })}
+            >
+              {r.sourceName}
+              <HopBadge reception={r} sourceName={r.sourceName} />
+            </span>
+          ))}
+          {receptionCount > 1 && (
+            <span className="unified-msg-card__reception-count">
+              {t('unified.messages.heard_by_count', { count: receptionCount })}
+            </span>
+          )}
+          <span className="unified-msg-card__sender">{senderLabel(msg)}</span>
+          <span className="unified-msg-card__time">
+            {formatTime(msg.timestamp)}
+            {msg.senderTimestamp !== undefined && (
+              <MeshCoreClockOffset offsetMs={meshcoreClockOffsetMs(msg.createdAt, msg.senderTimestamp)} />
+            )}
+          </span>
+        </div>
+
+        {replyPreview.kind !== 'none' && (
+          <div className="unified-reply-preview">
+            <span className="unified-reply-preview__arrow">↳</span>
+            {replyPreview.kind === 'resolved' ? (
+              <>
+                <span className="unified-reply-preview__from">
+                  {shortSenderLabel(replyPreview.parent)}
+                </span>
+                <span className="unified-reply-preview__text">
+                  {replyPreview.parent.text || t('unified.no_text')}
+                </span>
+              </>
+            ) : (
+              // #4245: the parent packet was never received or has since
+              // been purged. Still show the reply box so the message is
+              // recognizable as a reply, rather than silently dropping
+              // replyId and rendering it as an ordinary message.
+              <span className="unified-reply-preview__text unified-reply-preview__text--unknown">
+                {t('unified.messages.unknown_parent', 'Unknown message')}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="unified-msg-card__text">
+          {msg.text ? renderMessageWithLinks(msg.text) : <em style={{ opacity: 0.4 }}>{t('unified.no_text')}</em>}
+        </div>
+        {msg.text && <LinkPreview text={msg.text} />}
+
+        {reactions.length > 0 && (
+          <div className="unified-reactions">
+            {reactions.map((r) => (
+              <span key={r.dedupKey} className="unified-reaction" title={senderLabel(r)}>
+                {r.text}
+                <span className="unified-reaction__from">{shortSenderLabel(r)}</span>
+              </span>
+            ))}
+          </div>
+        )}
+        <MeshCoreReactionChips chips={chips} />
+      </div>
+    </div>
+  );
+}, messageRowPropsEqual);
 
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 10_000;
@@ -586,142 +743,29 @@ export default function UnifiedMessagesPage() {
           </div>
         )}
 
-        {feedMessages.map((msg) => {
-          const dateLabel = formatDateDivider(msg.timestamp, t);
-          const showDivider = dateLabel !== lastDateLabel;
-          if (showDivider) lastDateLabel = dateLabel;
-
-          // Left border = mesh protocol (#5744). Every reception of one packet
-          // is on the same protocol, so the first one decides. Source identity
-          // stays on the per-source tags below.
-          const protocol = sourceTypeMeshProtocol(msg.receptions[0]?.sourceType);
-          const receptionCount = msg.receptions.length;
-
-          if (msg.reactionEmoji) {
+        {(() => {
+          const sourceOrder = sourcesInView.map((s) => s.id);
+          return feedMessages.map((msg) => {
+            const dateLabel = formatDateDivider(msg.timestamp, t);
+            const showDivider = dateLabel !== lastDateLabel;
+            if (showDivider) lastDateLabel = dateLabel;
             return (
-              <div key={msg.dedupKey}>
-                {showDivider && (
-                  <div className="unified-date-divider">
-                    <span>{dateLabel}</span>
-                  </div>
-                )}
-                <MeshCoreUnmatchedReaction name={senderLabel(msg)} emoji={msg.reactionEmoji} />
-              </div>
+              <UnifiedMessageRow
+                key={msg.dedupKey}
+                msg={msg}
+                dateLabel={showDivider ? dateLabel : null}
+                showChannelTag={selectedChannel === ALL_CHANNELS_PARAM}
+                sourceOrder={sourceOrder}
+                reactions={msg.packetId != null ? reactionsByParent.get(msg.packetId) ?? NO_UNIFIED_MESSAGES : NO_UNIFIED_MESSAGES}
+                // Reply preview: look up parent by packet id (firmware's reply_id
+                // points at the parent's meshpacket id, not its requestId).
+                replyPreview={resolveReplyPreview(msg.replyId, byPacketId)}
+                chips={mcReactions.chipsByTarget.get(msg.dedupKey) ?? NO_CHIPS}
+                onOpen={openStats}
+              />
             );
-          }
-
-          const reactions = msg.packetId != null ? reactionsByParent.get(msg.packetId) ?? [] : [];
-
-          // Reply preview: look up parent by packet id (firmware's reply_id
-          // points at the parent's meshpacket id, not its requestId).
-          const replyPreview = resolveReplyPreview(msg.replyId, byPacketId);
-
-          return (
-            <div key={msg.dedupKey}>
-              {showDivider && (
-                <div className="unified-date-divider">
-                  <span>{dateLabel}</span>
-                </div>
-              )}
-              <div
-                className={`unified-msg-card unified-msg-card--clickable ${protocolStripe.stripe}`}
-                data-protocol={protocol}
-                title={t('unified.messages.protocol_title', {
-                  defaultValue: '{{protocol}} message',
-                  protocol: MESH_PROTOCOL_LABEL[protocol],
-                })}
-                onClick={() => openStats(msg)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openStats(msg);
-                  }
-                }}
-              >
-                <div className="unified-msg-card__meta">
-                  {selectedChannel === ALL_CHANNELS_PARAM && (
-                    <span
-                      className="unified-msg-card__channel-tag"
-                      title={t('unified.messages.channel_label', { channel: channelTag(msg) })}
-                    >
-                      #{channelTag(msg)}
-                    </span>
-                  )}
-                  {msg.receptions.map((r) => (
-                    <span
-                      key={r.sourceId}
-                      className="unified-msg-card__source-tag"
-                      style={{
-                        background: `color-mix(in srgb, ${sourceColor(r.sourceId)} 15%, transparent)`,
-                        color: sourceColor(r.sourceId),
-                        border: `1px solid color-mix(in srgb, ${sourceColor(r.sourceId)} 35%, transparent)`,
-                      }}
-                      title={t('unified.messages.heard_by_source', { name: r.sourceName })}
-                    >
-                      {r.sourceName}
-                      <HopBadge reception={r} sourceName={r.sourceName} />
-                    </span>
-                  ))}
-                  {receptionCount > 1 && (
-                    <span className="unified-msg-card__reception-count">
-                      {t('unified.messages.heard_by_count', { count: receptionCount })}
-                    </span>
-                  )}
-                  <span className="unified-msg-card__sender">{senderLabel(msg)}</span>
-                  <span className="unified-msg-card__time">
-                    {formatTime(msg.timestamp)}
-                    {msg.senderTimestamp !== undefined && (
-                      <MeshCoreClockOffset offsetMs={meshcoreClockOffsetMs(msg.createdAt, msg.senderTimestamp)} />
-                    )}
-                  </span>
-                </div>
-
-                {replyPreview.kind !== 'none' && (
-                  <div className="unified-reply-preview">
-                    <span className="unified-reply-preview__arrow">↳</span>
-                    {replyPreview.kind === 'resolved' ? (
-                      <>
-                        <span className="unified-reply-preview__from">
-                          {shortSenderLabel(replyPreview.parent)}
-                        </span>
-                        <span className="unified-reply-preview__text">
-                          {replyPreview.parent.text || t('unified.no_text')}
-                        </span>
-                      </>
-                    ) : (
-                      // #4245: the parent packet was never received or has since
-                      // been purged. Still show the reply box so the message is
-                      // recognizable as a reply, rather than silently dropping
-                      // replyId and rendering it as an ordinary message.
-                      <span className="unified-reply-preview__text unified-reply-preview__text--unknown">
-                        {t('unified.messages.unknown_parent', 'Unknown message')}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                <div className="unified-msg-card__text">
-                  {msg.text ? renderMessageWithLinks(msg.text) : <em style={{ opacity: 0.4 }}>{t('unified.no_text')}</em>}
-                </div>
-                {msg.text && <LinkPreview text={msg.text} />}
-
-                {reactions.length > 0 && (
-                  <div className="unified-reactions">
-                    {reactions.map((r) => (
-                      <span key={r.dedupKey} className="unified-reaction" title={senderLabel(r)}>
-                        {r.text}
-                        <span className="unified-reaction__from">{shortSenderLabel(r)}</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <MeshCoreReactionChips chips={mcReactions.chipsByTarget.get(msg.dedupKey) ?? []} />
-              </div>
-            </div>
-          );
-        })}
+          });
+        })()}
       </div>
       </div>
 
