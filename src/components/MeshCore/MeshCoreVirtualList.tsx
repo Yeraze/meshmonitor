@@ -30,6 +30,21 @@ export interface MeshCoreVirtualListProps<T> {
 
 export const MESHCORE_VIRTUAL_THRESHOLD = 100;
 
+/**
+ * Scrolling re-renders the list on every frame to move the window. The row
+ * content only needs rendering when its item or the row renderer changes, so
+ * a row that stays in view is skipped.
+ */
+const VirtualRowContent = React.memo(function VirtualRowContent<T>({
+  item,
+  renderRow,
+}: {
+  item: T;
+  renderRow: (item: T) => React.ReactNode;
+}) {
+  return <>{renderRow(item)}</>;
+}) as <T>(props: { item: T; renderRow: (item: T) => React.ReactNode }) => React.ReactElement;
+
 export function MeshCoreVirtualList<T>({
   items,
   getKey,
@@ -68,7 +83,7 @@ export function MeshCoreVirtualList<T>({
               ref={virtualizer.measureElement}
               style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}
             >
-              {renderRow(item)}
+              <VirtualRowContent item={item} renderRow={renderRow} />
             </div>
           );
         })}
