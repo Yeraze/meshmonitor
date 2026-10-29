@@ -21,6 +21,12 @@ import { useSource } from "../contexts/SourceContext";
 import { applyPendingNodeOverrides } from "../utils/pendingToggles";
 import type { DeviceInfo, Channel } from "../types/device";
 
+// Shared empty fallbacks: a fresh `[]` / `{}` per render would give consumers
+// a new reference on every render while the poll has no data, breaking their
+// memos and effect dependencies.
+const EMPTY_CHANNELS: Channel[] = [];
+const EMPTY_UNREADS: Record<string, number> = {};
+
 /**
  * Hook to access nodes from the poll cache
  *
@@ -80,7 +86,7 @@ export function setNodeFieldInCache(
 export function useChannels() {
   const { data, isLoading, error } = usePoll();
   return {
-    channels: (data?.channels ?? []) as Channel[],
+    channels: (data?.channels ?? EMPTY_CHANNELS) as Channel[],
     isLoading,
     error,
   };
@@ -212,8 +218,8 @@ export function useDeviceNodes() {
 export function useUnreadCountsFromPoll() {
   const { data } = usePoll();
   return {
-    channelUnreads: data?.unreadCounts?.channels ?? {},
-    dmUnreads: data?.unreadCounts?.directMessages ?? {},
+    channelUnreads: data?.unreadCounts?.channels ?? EMPTY_UNREADS,
+    dmUnreads: data?.unreadCounts?.directMessages ?? EMPTY_UNREADS,
   };
 }
 

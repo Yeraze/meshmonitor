@@ -14,7 +14,7 @@
  *     omitting it must still render the original, non-interactive `<span>`.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import { MeshMessage, MessageDeliveryState } from '../types/message';
@@ -144,5 +144,25 @@ describe('MessageStatusIndicator', () => {
       />
     );
     expect(screen.getByRole('button')).toHaveAttribute('type', 'button');
+  });
+});
+
+// Perf P3-2: message rows are memoized and no longer redraw on every status
+// tick, so a pending indicator must flip to "timeout" on its own.
+describe('MessageStatusIndicator pending → timeout without a parent render', () => {
+  it('re-renders itself when the 30s ack window closes', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(NOW + 29_000);
+      const { container } = render(<MessageStatusIndicator message={baseMessage()} />);
+      expect(container.querySelector('.status-pending')).not.toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(1_500);
+      });
+      expect(container.querySelector('.status-pending')).toBeNull();
+      expect(container.querySelector('.status-timeout')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
