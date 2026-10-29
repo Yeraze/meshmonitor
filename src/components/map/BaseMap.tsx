@@ -1,9 +1,16 @@
-import { useCallback, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
+import { Suspense, useCallback, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import { getTilesetById, getRasterTileset, DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../../config/tilesets';
 import { withCartoKey } from '../../config/cartoKey';
-import { VectorTileLayer } from '../VectorTileLayer';
+import { lazyWithPreload } from '../../utils/lazyWithPreload';
+// MapLibre GL (~1.2 MB of JS) is needed only to draw a vector tileset, and the
+// default tileset is raster, so the vector layer loads on first use. Declared
+// here, where its static import was, so the eager-CSS walk keeps MapLibre's
+// stylesheet in the same cascade position (vite.config.ts).
+const VectorTileLayer = lazyWithPreload(() =>
+  import('../VectorTileLayer').then((m) => ({ default: m.VectorTileLayer })),
+);
 import ErrorBoundary from '../common/ErrorBoundary';
 import { MapUnavailablePanel } from './MapUnavailablePanel';
 import { VectorFallbackNotice } from './VectorFallbackNotice';
@@ -234,6 +241,9 @@ function BaseMapShell({
       >
         {drawVector
           ? (
+            // No fallback: the map container and its controls are already
+            // drawn; the basemap simply appears once MapLibre has loaded.
+            <Suspense fallback={null}>
             <VectorTileLayer
               key={resolvedId}
               url={tileset.url}
@@ -244,6 +254,7 @@ function BaseMapShell({
               cartoApiKey={cartoApiKey}
               onUnavailable={handleVectorUnavailable}
             />
+            </Suspense>
           )
           : (
             <>

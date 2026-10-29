@@ -1262,7 +1262,7 @@ describe('DashboardMap', () => {
     updatedAt: 0,
   };
 
-  it('forwards the active map style JSON into the vector tile layer', () => {
+  it('forwards the active map style JSON into the vector tile layer', async () => {
     const styleJson = { version: 8, sources: {}, layers: [] };
     mocks.settings.activeStyleJson = styleJson;
     render(
@@ -1272,10 +1272,10 @@ describe('DashboardMap', () => {
         customTilesets={[vectorCustomTileset]}
       />,
     );
-    expect(screen.getByTestId('vector-tile-layer').dataset.styleJson).toBe(JSON.stringify(styleJson));
+    expect((await screen.findByTestId('vector-tile-layer')).dataset.styleJson).toBe(JSON.stringify(styleJson));
   });
 
-  it('renders the vector tile layer without a style when no map style is active', () => {
+  it('renders the vector tile layer without a style when no map style is active', async () => {
     render(
       <DashboardMap
         {...defaultProps}
@@ -1283,7 +1283,7 @@ describe('DashboardMap', () => {
         customTilesets={[vectorCustomTileset]}
       />,
     );
-    expect(screen.getByTestId('vector-tile-layer').dataset.styleJson).toBe('');
+    expect((await screen.findByTestId('vector-tile-layer')).dataset.styleJson).toBe('');
   });
 
   // --- 2D/3D toggle (#4704) ---------------------------------------------------

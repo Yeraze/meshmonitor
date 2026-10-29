@@ -9,14 +9,15 @@
  * was already taken by message search, and the obvious palette chords collide
  * with the browser (Ctrl+Shift+P opens a private window in Firefox,
  * Ctrl+Shift+K opens its console).
+ *
+ * Only the shortcut and the open state live here. The palette itself
+ * (`ConfigSearchPanel`: the section catalogue and the modal) is a lazy chunk
+ * fetched on the first open, so hosting pages don't pay for it up front.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useAuth } from '../../contexts/AuthContext';
-import { useSource } from '../../contexts/SourceContext';
-import { useHealth } from '../../hooks/useHealth';
-import { buildConfigSurfaces } from './configSections';
-import ConfigSearchModal from './ConfigSearchModal';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
+import { lazyWithPreload } from '../../utils/lazyWithPreload';
+
+const ConfigSearchPanel = lazyWithPreload(() => import('./ConfigSearchPanel'));
 
 interface ConfigSearchHostProps {
   /** Base URL for the health probe, matching what the app already passes. */
@@ -29,43 +30,14 @@ interface ConfigSearchHostProps {
 }
 
 export const ConfigSearchHost: React.FC<ConfigSearchHostProps> = ({ baseUrl = '', registerOpener }) => {
-  const { t } = useTranslation();
-  const { authStatus, hasPermission } = useAuth();
-  // sourceType (#5277 P2 WP3) gates settings-coverage-mqtt to MQTT-only
-  // sources — without it the palette would never surface that section, even
-  // while viewing an MQTT source (settingsNavItems drops it silently).
-  const { sourceId, sourceType } = useSource();
   const [isOpen, setIsOpen] = useState(false);
+  // Stays true after the first open, so closing keeps the panel mounted (and
+  // its chunk loaded) rather than refetching on the next open.
+  const [wasOpened, setWasOpened] = useState(false);
 
-  // Shares TanStack's ['health', baseUrl] cache with App's own poll, so this is
-  // a cache read rather than a second request. It only decides whether two
-  // conditional sections (Database Maintenance, Firmware Updates) are offered.
-  const { data: health } = useHealth({ baseUrl, refetchInterval: 60000 });
-
-  const isAdmin = authStatus?.user?.isAdmin ?? false;
-  // Mirrors SettingsTab's own gate: the tab hosts global and per-source panels
-  // behind one mostly-unscoped permission, so anySource matches the server.
-  const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
-  // Sections that moved onto Settings keep their own grant (#5683 follow-up):
-  // the palette offers them to the viewers the page shows them to.
-  const canReadSources = hasPermission('sources', 'read');
-  const canReadConfiguration = hasPermission('configuration', 'read');
-
-  const surfaces = useMemo(
-    () =>
-      buildConfigSurfaces(t, {
-        sourceId,
-        sourceType,
-        isAdmin,
-        canWriteSettings,
-        canUseAdmin: isAdmin,
-        canReadSources,
-        canReadConfiguration,
-        databaseType: health?.databaseType ?? null,
-        firmwareOtaEnabled: health?.firmwareOtaEnabled ?? false,
-      }),
-    [t, sourceId, sourceType, isAdmin, canWriteSettings, canReadSources, canReadConfiguration, health?.databaseType, health?.firmwareOtaEnabled],
-  );
+  useEffect(() => {
+    if (isOpen) setWasOpened(true);
+  }, [isOpen]);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
@@ -85,7 +57,12 @@ export const ConfigSearchHost: React.FC<ConfigSearchHostProps> = ({ baseUrl = ''
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  return <ConfigSearchModal isOpen={isOpen} onClose={close} surfaces={surfaces} />;
+  if (!isOpen && !wasOpened) return null;
+  return (
+    <Suspense fallback={null}>
+      <ConfigSearchPanel baseUrl={baseUrl} isOpen={isOpen} onClose={close} />
+    </Suspense>
+  );
 };
 
 export default ConfigSearchHost;

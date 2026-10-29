@@ -4,3 +4,11 @@
   align-items: center;
   height: 100dvh;
 }
+
+/* Inside an already-drawn page (a lazy tab in the per-source app): fill the
+   content pane only, so the header and sidebar stay put. */
+.pane {
+  height: auto;
+  min-height: 12rem;
+  color: var(--color-text-muted);
+}
