@@ -9,6 +9,7 @@ import {
 } from '../utils/aircraftClassification';
 import { DEFAULT_AIRCRAFT_TRAIL_HOURS, clampAircraftTrailHours } from '../components/map/aircraftTrails';
 import { readShowAgedOutAircraft, writeShowAgedOutAircraft } from '../components/map/agedOutAircraft';
+import { MapViewContext, createMapViewStore } from './mapViewStore';
 
 export interface PositionHistoryItem {
   latitude: number;
@@ -161,10 +162,8 @@ interface MapContextType {
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
   setMapCenterTarget: (target: [number, number] | null) => void;
-  mapCenter: [number, number] | null;
-  setMapCenter: (center: [number, number] | null) => void;
-  mapZoom: number;
-  setMapZoom: (zoom: number) => void;
+  // The live map centre/zoom are NOT on this context: they change on every
+  // pan/zoom and would re-render every consumer. See `./mapViewStore`.
   traceroutes: DbTraceroute[];
   setTraceroutes: (traceroutes: DbTraceroute[]) => void;
   neighborInfo: EnrichedNeighborInfo[];
@@ -300,27 +299,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [ductingHoursAhead, setDuctingHoursAhead] = useState<number>(0);
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
-    const saved = localStorage.getItem('mapCenter');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
-  const [mapZoom, setMapZoom] = useState<number>(() => {
-    const saved = localStorage.getItem('mapZoom');
-    if (saved) {
-      const zoom = parseFloat(saved);
-      if (!isNaN(zoom)) {
-        return zoom;
-      }
-    }
-    return 13; // Default zoom level for initial view (city/neighborhood level)
-  });
+  // Centre/zoom live in an external store (one per provider) so a pan or
+  // zoom doesn't re-render every MapContext consumer.
+  const [mapViewStore] = useState(() => createMapViewStore());
   const [traceroutes, setTraceroutes] = useState<DbTraceroute[]>([]);
   const [neighborInfo, setNeighborInfo] = useState<EnrichedNeighborInfo[]>([]);
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
@@ -668,18 +649,6 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     void loadServerPreferences();
   }, []); // Run once on mount
 
-  // Persist map center to localStorage
-  useEffect(() => {
-    if (mapCenter) {
-      localStorage.setItem('mapCenter', JSON.stringify(mapCenter));
-    }
-  }, [mapCenter]);
-
-  // Persist map zoom to localStorage
-  useEffect(() => {
-    localStorage.setItem('mapZoom', mapZoom.toString());
-  }, [mapZoom]);
-
   // Trigger animation for a node (lasts 1 second)
   const triggerNodeAnimation = React.useCallback((nodeId: string) => {
     if (!showAnimations) return;
@@ -753,10 +722,6 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     triggerNodeAnimation,
     mapCenterTarget,
     setMapCenterTarget,
-    mapCenter,
-    setMapCenter,
-    mapZoom,
-    setMapZoom,
     traceroutes,
     setTraceroutes,
     neighborInfo,
@@ -808,8 +773,6 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     ductingHoursAhead, setDuctingHoursAhead,
     animatedNodes, triggerNodeAnimation,
     mapCenterTarget, setMapCenterTarget,
-    mapCenter, setMapCenter,
-    mapZoom, setMapZoom,
     traceroutes, setTraceroutes,
     neighborInfo, setNeighborInfo,
     positionHistory, setPositionHistory,
@@ -825,7 +788,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
 
   return (
     <MapContext.Provider value={value}>
-      {children}
+      <MapViewContext.Provider value={mapViewStore}>
+        {children}
+      </MapViewContext.Provider>
     </MapContext.Provider>
   );
 };
