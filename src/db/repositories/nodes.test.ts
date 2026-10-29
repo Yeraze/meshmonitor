@@ -654,6 +654,25 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(all.length).toBe(3);
   });
 
+  it('getAllNodes - omitColumns leaves those columns out and keeps the rest', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(510, { macaddr: 'AA:BB:CC:DD:EE:FF', longName: 'Slim' }));
+    const full = (await repo.getAllNodes(ALL_SOURCES)) as Array<Record<string, unknown>>;
+    const slim = (await repo.getAllNodes(ALL_SOURCES, { omitColumns: ['macaddr', 'updatedAt'] })) as Array<Record<string, unknown>>;
+
+    expect(slim).toHaveLength(1);
+    expect(full[0]).toHaveProperty('macaddr', 'AA:BB:CC:DD:EE:FF');
+    expect(slim[0]).not.toHaveProperty('macaddr');
+    expect(slim[0]).not.toHaveProperty('updatedAt');
+    const { macaddr: _m, updatedAt: _u, ...rest } = full[0];
+    expect(slim[0]).toEqual(rest);
+  });
+
   it('getAllNodes / getActiveNodes - a list of sources reads those sources only; an empty list reads none', async () => {
     const backend = getBackend();
     if (!backend.available) {

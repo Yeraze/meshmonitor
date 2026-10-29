@@ -34,6 +34,7 @@ import {
 import { modemPresetChannelName, TransportMechanism } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
 import { getMaxNodeAgeHours } from './nodeDisplaySettings.js';
+import { DASHBOARD_OMITTED_NODE_FIELDS } from '../../utils/dashboardNodeFields.js';
 import { effectiveIsMobile } from '../../utils/assetTracking.js';
 import { loadSignFlipContext, applySignFlipCorrection, getDisplayDbNodePosition, applySignFlipToTraceroute } from './signFlipCorrection.js';
 import type { ResourceType } from '../../types/permission.js';
@@ -43,8 +44,43 @@ type SourceRow = { id: string; name: string; type: string };
 // The request user (null when anonymous), as attached by optionalAuth/requirePermission.
 type ReqUser = User | null;
 
-/** Nodes for a source, channel-filtered and position-masked (mirrors GET /:id/nodes). */
-export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promise<unknown[]> {
+/**
+ * Omitted fields that buildSourceNodes still reads while it filters and masks
+ * (position-channel masking, the position override, the private-override
+ * strip). They are read from the database and dropped at the end.
+ */
+const DASHBOARD_PROCESSING_FIELDS = new Set([
+  'positionChannel',
+  'latitudeOverride', 'longitudeOverride', 'altitudeOverride',
+  'positionOverrideEnabled', 'positionOverrideIsPrivate',
+  'aircraftFixedLatitude', 'aircraftFixedLongitude',
+]);
+const DASHBOARD_OMITTED_SET = new Set(DASHBOARD_OMITTED_NODE_FIELDS);
+const DASHBOARD_UNSELECTED_COLUMNS = DASHBOARD_OMITTED_NODE_FIELDS.filter(
+  (k) => !DASHBOARD_PROCESSING_FIELDS.has(k),
+);
+
+/** Copy of `node` without the DASHBOARD_OMITTED_NODE_FIELDS keys. */
+function omitDashboardFields(node: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k in node) {
+    if (!DASHBOARD_OMITTED_SET.has(k)) out[k] = node[k];
+  }
+  return out;
+}
+
+/**
+ * Nodes for a source, channel-filtered and position-masked (mirrors GET /:id/nodes).
+ *
+ * `slim` (the dashboard bundles) leaves out DASHBOARD_OMITTED_NODE_FIELDS.
+ * Filtering and masking run on the same rows either way.
+ */
+export async function buildSourceNodes(
+  source: SourceRow,
+  user: ReqUser,
+  opts?: { slim?: boolean },
+): Promise<unknown[]> {
+  const slim = opts?.slim === true;
   // MeshCore sources don't share the meshtastic node table — pull contacts
   // (and localNode) directly from the per-source MeshCoreManager and map
   // them into the dashboard's flat node shape. These return early and never
@@ -122,7 +158,9 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
 
   // Nodes are stored per-source (composite PK (nodeNum, sourceId) since
   // migration 029). Filter strictly by this source.
-  const nodes = await databaseService.nodes.getAllNodes(source.id);
+  const nodes = slim
+    ? await databaseService.nodes.getAllNodes(source.id, { omitColumns: DASHBOARD_UNSELECTED_COLUMNS })
+    : await databaseService.nodes.getAllNodes(source.id);
 
   // The local node for this source may not be in DB yet (brand new device).
   const manager = sourceManagerRegistry.getManager(source.id);
@@ -206,7 +244,8 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
     const n = applySignFlipCorrection(node, signFlipCtx) as typeof node & { nodeNum?: unknown; mobile?: unknown };
     const entry = assets.get(Number(n.nodeNum));
     const asset = entry ? { retentionDays: entry.retentionDays } : undefined;
-    return { ...n, asset, isMobile: effectiveIsMobile(n.mobile, asset) };
+    const base = slim ? omitDashboardFields(n as Record<string, unknown>) : n;
+    return { ...base, asset, isMobile: effectiveIsMobile(n.mobile, asset) };
   });
 }
 
@@ -414,7 +453,7 @@ export async function buildSourceDashboard(
   const canReadTraceroutes = isAdmin || (user ? await hasPermission(user, 'traceroute', 'read', source.id) : false);
 
   const [nodes, traceroutes, neighborInfo, channels] = await Promise.all([
-    canReadNodes ? buildSourceNodes(source, user) : Promise.resolve([]),
+    canReadNodes ? buildSourceNodes(source, user, { slim: true }) : Promise.resolve([]),
     canReadTraceroutes ? buildSourceTraceroutes(source, user) : Promise.resolve([]),
     canReadNodes ? buildSourceNeighborInfo(source, user, opts?.maxNodeAgeHours) : Promise.resolve([]),
     buildSourceChannels(source, user),
