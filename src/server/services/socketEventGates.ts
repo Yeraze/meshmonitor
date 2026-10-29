@@ -11,8 +11,8 @@
  * `SocketViewer` (grants held in memory); what it needs about the event that
  * is not in the payload comes from `prepare`, run at most once per event.
  */
-import databaseService, { type DbMessage } from '../../services/database.js';
-import type { DataEvent, DataEventType, NodeUpdateData, ConnectionStatusData, TelemetryBatchData } from './dataEventEmitter.js';
+import databaseService, { type DbMessage, type DbNode } from '../../services/database.js';
+import type { DataEvent, DataEventType, NodeUpdateData, ConnectionStatusData, TelemetryBatchData, NodeBatchData } from './dataEventEmitter.js';
 import type { SocketViewer } from './socketAccess.js';
 import type { ResourceType, PermissionAction } from '../../types/permission.js';
 import { canonicalMessageTime, messageReceivedAt } from '../utils/messageTime.js';
@@ -304,6 +304,33 @@ export const SOCKET_EVENT_GATES: Record<DataEventType, SocketEventGate> = {
         const node = facts.get(nodeNum);
         if (!node || !viewer.canViewNode(sourceId, node.channel)) continue;
         visible[Number(nodeNum)] = rows;
+        any = true;
+      }
+      return any ? visible : WITHHOLD;
+    },
+  },
+
+  'node:batch': {
+    scope: 'source',
+    rest: 'GET /api/poll (`nodes`)',
+    rule: 'Per node, as `node:updated`: `channel_N:viewOnMap` on the source, N = the channel the node was last heard on. A private position override is removed without `nodes_private:read` on the source.',
+    prepare: async (event) => {
+      const facts = new Map<string, NodeFacts | null>();
+      for (const nodeNum of Object.keys(event.data as NodeBatchData)) {
+        facts.set(nodeNum, await loadNodeFacts(Number(nodeNum), event.sourceId));
+      }
+      return facts;
+    },
+    filter: (viewer, sourceId, payload: NodeBatchData, facts: Map<string, NodeFacts | null>) => {
+      const visible: NodeBatchData = {};
+      let any = false;
+      for (const [nodeNum, fields] of Object.entries(payload)) {
+        const node = facts.get(nodeNum);
+        if (!node || !viewer.canViewNode(sourceId, node.channel)) continue;
+        const carriesOverride = 'latitudeOverride' in fields || 'longitudeOverride' in fields || 'altitudeOverride' in fields;
+        visible[Number(nodeNum)] = node.isPrivate && carriesOverride && !viewer.canViewPrivate(sourceId)
+          ? withholdPrivateOverride<Partial<DbNode>>(fields)
+          : fields;
         any = true;
       }
       return any ? visible : WITHHOLD;

@@ -36,6 +36,7 @@ const PAYLOADS: Record<DataEventType, (marker: string) => unknown> = {
   'node:aircraft': (marker) => ({ nodeNum: NODE_NUM, previous: null, current: true, basis: 'agl', marker }),
   'channel:updated': (marker) => ({ id: 0, name: marker, psk: 'AQ==', role: 1 }),
   'telemetry:batch': (marker) => ({ [NODE_NUM]: [{ nodeId: NODE_ID, nodeNum: NODE_NUM, telemetryType: 'batteryLevel', value: 80, unit: marker }] }),
+  'node:batch': (marker) => ({ [NODE_NUM]: { longName: marker, lastHeard: 1, latitude: 30.1, longitude: -90.1 } }),
   'connection:status': (marker) => ({ connected: false, nodeId: marker, reason: `reset ${marker} at 192.0.2.7:4403` }),
   'client-notification': (marker) => ({ level: 30, message: marker }),
   'traceroute:complete': (marker) => ({
@@ -402,6 +403,33 @@ describe('WebSocket event gates', () => {
       emit('node:updated', A, '', update);
       await user.settle();
       expect(user.payloads('node:updated')[1]).toEqual(update);
+    });
+
+    it('node:batch keeps only the nodes the viewer may see, on the joined source only', async () => {
+      await harness.db.nodes.upsertNode({ nodeNum: 77, nodeId: '!0000004d', channel: 3 }, A);
+      await harness.grantRow(harness.limited.id, 'channel_0', { viewOnMap: true }, A);
+      const user = await harness.connectAs(harness.limited, { join: A });
+      const admin = await harness.connectAs(harness.admin, { join: A });
+      const batch = { [NODE_NUM]: { lastHeard: 5, longName: 'SEEN' }, 77: { lastHeard: 6, longName: 'HIDDEN' }, 4242: { lastHeard: 7 } };
+      emit('node:batch', A, '', batch);
+      // Another source's batch never reaches a socket that joined A.
+      emit('node:batch', B, '', { [NODE_NUM]: { lastHeard: 8, longName: 'OTHER-SOURCE' } });
+      await user.settle();
+      await admin.settle();
+      expect(user.payloads('node:batch')).toEqual([{ [NODE_NUM]: { lastHeard: 5, longName: 'SEEN' } }]);
+      expect(admin.payloads('node:batch')).toEqual([batch]);
+    });
+
+    it('node:batch removes a private position override without nodes_private:read', async () => {
+      await harness.db.nodes.upsertNode({
+        nodeNum: NODE_NUM, nodeId: NODE_ID, channel: 0,
+        positionOverrideEnabled: true, positionOverrideIsPrivate: true, latitudeOverride: 11.5, longitudeOverride: 22.5,
+      }, A);
+      await harness.grantRow(harness.limited.id, 'channel_0', { viewOnMap: true }, A);
+      const user = await harness.connectAs(harness.limited, { join: A });
+      emit('node:batch', A, '', { [NODE_NUM]: { lastHeard: 5, latitudeOverride: 11.5, longitudeOverride: 22.5 } });
+      await user.settle();
+      expect(user.payloads('node:batch')).toEqual([{ [NODE_NUM]: { lastHeard: 5 } }]);
     });
 
     it('telemetry:batch keeps only the nodes the viewer may see, and needs info or dashboard read', async () => {
