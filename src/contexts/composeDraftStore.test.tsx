@@ -11,7 +11,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act, fireEvent } from '@testing-library/react';
 import { MessagingProvider, useMessaging } from './MessagingContext';
 import { useComposeDraft, useComposeDraftStore, createComposeDraftStore } from './composeDraftStore';
-import ComposeDraftBinder from '../components/ComposeDraftBinder';
 
 let activeTab = 'messages';
 vi.mock('./AuthContext', () => ({ useAuth: () => ({ authStatus: { authenticated: false } }) }));
@@ -56,14 +55,12 @@ describe('compose draft render isolation', () => {
       store = useComposeDraftStore();
       return null;
     };
-    const Compose = () => (
-      <ComposeDraftBinder>
-        {(draft, setDraft) => {
-          counts.binder++;
-          return <textarea data-testid="compose" value={draft} onChange={(e) => setDraft(e.target.value)} />;
-        }}
-      </ComposeDraftBinder>
-    );
+    // Stands in for the compose box: the only draft subscriber.
+    const Compose = () => {
+      const [draft, setDraft] = useComposeDraft();
+      counts.binder++;
+      return <textarea data-testid="compose" value={draft} onChange={(e) => setDraft(e.target.value)} />;
+    };
     const utils = render(
       <MessagingProvider>
         <Consumer />

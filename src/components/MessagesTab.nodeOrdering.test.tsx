@@ -111,8 +111,6 @@ function makeProps(overrides: Partial<MessagesTabProps> = {}): MessagesTabProps 
     connectionStatus: 'connected',
     selectedDMNode: '!00000002',
     setSelectedDMNode: noop,
-    newMessage: '',
-    setNewMessage: noop,
     replyingTo: null,
     setReplyingTo: noop,
     unreadCountsData: null,

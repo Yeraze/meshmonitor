@@ -11,6 +11,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import MessagesTab from './MessagesTab';
+import { ComposeDraftContext, createComposeDraftStore } from '../contexts/composeDraftStore';
 import type { MeshMessage } from '../types/message';
 
 // MessagesTab pulls a lot of context/poll-cache hooks that are irrelevant to
@@ -151,8 +152,6 @@ function makeProps(overrides: Partial<MessagesTabProps> = {}): MessagesTabProps 
     connectionStatus: 'connected',
     selectedDMNode: DM_NODE_ID,
     setSelectedDMNode: noop,
-    newMessage: 'hi',
-    setNewMessage: noop,
     replyingTo: null,
     setReplyingTo: noop,
     unreadCountsData: null,
@@ -286,7 +285,13 @@ describe('MessagesTab txDisabled gating (#4294 Phase 2)', () => {
   });
 
   it('leaves DM controls enabled and reads working when txDisabled is false', () => {
-    render(<MessagesTab {...makeProps({ txDisabled: false })} />);
+    // The draft must be non-empty, or the send button's independent
+    // `!draft.trim()` guard would also disable it and mask this assertion.
+    render(
+      <ComposeDraftContext.Provider value={createComposeDraftStore('hi')}>
+        <MessagesTab {...makeProps({ txDisabled: false })} />
+      </ComposeDraftContext.Provider>
+    );
     const textarea = document.querySelector('textarea.message-input');
     expect(textarea).not.toBeDisabled();
     const sendBtn = document.querySelector('button.send-btn:not(.channel-action-btn)');

@@ -73,7 +73,6 @@ import type { PositionHistoryItem } from './contexts/MapContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext';
 import { useComposeDraftStore } from './contexts/composeDraftStore';
-import ComposeDraftBinder from './components/ComposeDraftBinder';
 import { UIProvider, useUI } from './contexts/UIContext';
 import { AutomationProvider, useAutomation } from './contexts/AutomationContext';
 import { useAuth } from './contexts/AuthContext';
@@ -3880,7 +3879,6 @@ function App() {
             path="channels"
             element={
               <ErrorBoundary fallbackTitle="Channels failed to load">
-          <ComposeDraftBinder>{(draft, setDraft) => (
           <ChannelsTab
             channels={channels}
             channelDatabaseEntries={channelDatabaseEntries}
@@ -3894,8 +3892,6 @@ function App() {
             selectedChannelRef={selectedChannelRef}
             showMqttMessages={showMqttMessages}
             setShowMqttMessages={setShowMqttMessages}
-            newMessage={draft}
-            setNewMessage={setDraft}
             replyingTo={replyingTo}
             setReplyingTo={setReplyingTo}
             unreadCounts={unreadCounts}
@@ -3928,7 +3924,6 @@ function App() {
             txDisabled={txGated}
             txDisabledTooltip={txDisabledTooltip}
           />
-          )}</ComposeDraftBinder>
               </ErrorBoundary>
             }
           />
@@ -3936,7 +3931,6 @@ function App() {
             path="messages"
             element={
               <ErrorBoundary fallbackTitle="Messages failed to load">
-          <ComposeDraftBinder>{(draft, setDraft) => (
           <MessagesTab
             processedNodes={processedNodes}
             nodes={nodes}
@@ -3947,8 +3941,6 @@ function App() {
             setSelectedDMNode={setSelectedDMNode}
             pendingComposeFocus={pendingComposeFocus}
             clearComposeFocus={clearComposeFocus}
-            newMessage={draft}
-            setNewMessage={setDraft}
             replyingTo={replyingTo}
             setReplyingTo={setReplyingTo}
             unreadCountsData={unreadCountsData}
@@ -4024,7 +4016,6 @@ function App() {
               }
             }}
           />
-          )}</ComposeDraftBinder>
               </ErrorBoundary>
             }
           />

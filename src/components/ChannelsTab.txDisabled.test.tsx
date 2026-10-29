@@ -12,6 +12,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import ChannelsTab from './ChannelsTab';
+import { ComposeDraftContext, createComposeDraftStore } from '../contexts/composeDraftStore';
 import type { MeshMessage } from '../types/message';
 
 vi.mock('../hooks/useServerData', async (importOriginal) => ({
@@ -95,8 +96,6 @@ function makeProps(overrides: Partial<ChannelsTabProps> = {}): ChannelsTabProps 
     selectedChannelRef: { current: 0 },
     showMqttMessages: true,
     setShowMqttMessages: noop,
-    newMessage: '',
-    setNewMessage: noop,
     replyingTo: null,
     setReplyingTo: noop,
     unreadCounts: {},
@@ -175,9 +174,13 @@ describe('ChannelsTab txDisabled gating (#4294 Phase 2)', () => {
   });
 
   it('leaves all controls enabled when txDisabled is false', () => {
-    // newMessage must be non-empty, or the send button's independent
-    // `!newMessage.trim()` guard would also disable it and mask this assertion.
-    render(<ChannelsTab {...makeProps({ txDisabled: false, newMessage: 'hi' })} />);
+    // The draft must be non-empty, or the send button's independent
+    // `!draft.trim()` guard would also disable it and mask this assertion.
+    render(
+      <ComposeDraftContext.Provider value={createComposeDraftStore('hi')}>
+        <ChannelsTab {...makeProps({ txDisabled: false })} />
+      </ComposeDraftContext.Provider>
+    );
     const textarea = document.querySelector('textarea.message-input');
     expect(textarea).not.toBeDisabled();
     document.querySelectorAll('button.send-btn').forEach(btn => {

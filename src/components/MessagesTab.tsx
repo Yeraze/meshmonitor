@@ -8,7 +8,6 @@
 import React, { Suspense, useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import '../styles/messages.css';
 import { useResizable } from '../hooks/useResizable';
-import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
@@ -32,15 +31,11 @@ import { useTraceroutePairHistory } from '../hooks/useTraceroutePairHistory';
 import { getMessageSortTime } from '../utils/messageSort';
 import KeyMismatchWarning from './security/KeyMismatchWarning';
 import { NodeIdentityChangeNotice } from './NodeIdentityChangeNotice';
-import { getUtf8ByteLength, formatByteCount } from '../utils/text';
 import { isReplyTo, isTapbackMessage, isTapbackOf } from '../utils/messageReplies';
 import { SenderAvatar, SenderNameButton, StatusEmojiIndicator } from './SenderAvatar';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
-import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
-import MentionAutocomplete from './mentions/MentionAutocomplete';
-import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
 import { mentionCandidatesFromNodes } from '../utils/mentionCandidates';
 import { getMessageContentMatchNodeIds } from '../utils/messageContentFilter';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId, formatSenderLabel } from '../utils/nodeHelpers';
@@ -61,7 +56,8 @@ import { lazyWithPreload } from '../utils/lazyWithPreload';
 import { getPacketDistributionStats } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
 
-import { MessageEmojiButton } from './MessageEmojiButton';
+import MessageComposeInput from './MessageComposeInput';
+import { useComposeDraftStore } from '../contexts/composeDraftStore';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import MessageDetailsModal from './diagnostics/MessageDetailsModal';
 import type { MessageDirection } from '../utils/deliveryDiagnostics/types';
@@ -191,9 +187,8 @@ export interface MessagesTabProps {
   clearComposeFocus?: () => void;
   setSelectedDMNode: (nodeId: string) => void;
 
-  // Message input
-  newMessage: string;
-  setNewMessage: (message: string) => void;
+  // Message input. The draft text itself is NOT a prop: MessageComposeInput
+  // reads it from the compose-draft store, so typing re-renders only the box.
   replyingTo: MeshMessage | null;
   setReplyingTo: (message: MeshMessage | null) => void;
 
@@ -314,8 +309,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   setSelectedDMNode,
   pendingComposeFocus = null,
   clearComposeFocus,
-  newMessage,
-  setNewMessage,
   replyingTo,
   setReplyingTo,
   unreadCountsData,
@@ -500,11 +493,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     return () => clearTimeout(timer);
   }, [focusMessageId, onFocusMessageHandled]);
 
-  // Memoize byte count to avoid redundant homoglyph optimization on each render
-  const byteCountDisplay = useMemo(() => {
-    const message = homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage;
-    return formatByteCount(getUtf8ByteLength(message));
-  }, [newMessage, homoglyphEnabled]);
+  // One-off reads/writes of the compose draft (bell, translate). Doesn't
+  // subscribe: only MessageComposeInput re-renders on a keystroke.
+  const composeDraftStore = useComposeDraftStore();
 
   // Telemetry request modal state
   const [showTelemetryRequestModal, setShowTelemetryRequestModal] = useState(false);
@@ -617,19 +608,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Refs
   const dmMessageInputRef = useRef<HTMLTextAreaElement>(null);
 
-  useAutoResizeTextarea(dmMessageInputRef, newMessage);
-
   // #5276: `@` mention autocomplete, same behaviour as the channel composer.
   const mentionCandidates = useMemo(
     () => mentionCandidatesFromNodes(nodes, currentNodeId),
     [nodes, currentNodeId]
   );
-  const mentions = useMentionAutocomplete({
-    value: newMessage,
-    onChange: setNewMessage,
-    textareaRef: dmMessageInputRef,
-    candidates: mentionCandidates,
-  });
 
   // Honor a "Send Direct Message" focus request from the node list (#4325).
   //
@@ -2292,95 +2275,43 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 )}
                 {hasPermission('messages', 'write') && (
                   <div className="message-input-container">
-                    <div className="input-with-counter" style={{ position: 'relative' }}>
-                      <MentionAutocomplete
-                        id="dm-mention-list"
-                        candidates={mentions.suggestions}
-                        activeIndex={mentions.activeIndex}
-                        onHover={mentions.setActiveIndex}
-                        onSelect={mentions.select}
-                      />
-                      <textarea
-                        ref={attachDmInput}
-                        value={newMessage}
-                        onChange={e => {
-                          setNewMessage(e.target.value);
-                          mentions.handleChange(e.target.value, e.target.selectionStart);
-                        }}
-                        onSelect={e => mentions.syncFromCaret(
-                          e.currentTarget.value,
-                          e.currentTarget.selectionStart
-                        )}
-                        onBlur={mentions.close}
-                        role="combobox"
-                        aria-expanded={mentions.isOpen}
-                        aria-controls={mentions.isOpen ? 'dm-mention-list' : undefined}
-                        aria-activedescendant={mentions.activeDescendantId('dm-mention-list')}
-                        aria-autocomplete="list"
-                        onFocus={scrollInputIntoView}
-                        placeholder={t('messages.dm_placeholder', { name: getNodeName(selectedDMNode) })}
-                        className="message-input"
-                        rows={1}
-                        disabled={txDisabled}
-                        title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
-                        onKeyDown={e => {
-                          // An open suggestion list claims Enter/Tab/arrows first.
-                          if (mentions.handleKeyDown(e)) return;
-                          if (
-                            txDisabled ||
-                            !(
-                              e.key === 'Enter' &&
-                              !e.shiftKey &&
-                              !e.ctrlKey &&
-                              !e.metaKey &&
-                              !e.altKey &&
-                              !e.nativeEvent.isComposing
-                            )
-                          ) {
-                            return;
-                          }
-                          e.preventDefault();
-                          void handleSendDirectMessage(selectedDMNode);
-                        }}
-                      />
-                      <div className={byteCountDisplay.className}>
-                        {byteCountDisplay.text}
-                      </div>
-                    </div>
-                    <MessageEmojiButton
+                    <MessageComposeInput
+                      listId="dm-mention-list"
                       textareaRef={dmMessageInputRef}
-                      value={newMessage}
-                      onChange={setNewMessage}
-                    />
-                    <button
-                      onClick={() => { void onSendBell?.(selectedDMNode, newMessage); setNewMessage(''); }}
+                      inputRef={attachDmInput}
+                      mentionCandidates={mentionCandidates}
+                      homoglyphEnabled={homoglyphEnabled}
+                      placeholder={t('messages.dm_placeholder', { name: getNodeName(selectedDMNode) })}
                       disabled={txDisabled}
-                      className="send-btn channel-action-btn"
-                      title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : 'Send alert bell'}
-                      aria-label="Send alert bell"
-                    >
-                      <UiIcon name="notifications" size={16} />
-                    </button>
-                    {translationSettings.canTranslate && (
-                      <button
-                        onClick={() => setTranslateModalOpen(true)}
-                        disabled={txDisabled}
-                        className="send-btn channel-action-btn"
-                        title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : t('messages.translate', 'Translate message')}
-                        aria-label={t('messages.translate', 'Translate message')}
-                      >
-                        <UiIcon name="translate" size={16} />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleSendDirectMessage(selectedDMNode)}
-                      disabled={!newMessage.trim() || txDisabled}
-                      className="send-btn"
-                      title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
-                      aria-label={t('common.send')}
-                    >
-                      <UiIcon name="send" size={16} />
-                    </button>
+                      disabledTitle={txDisabledTooltip ?? t('tx_disabled.control_tooltip')}
+                      onFocus={scrollInputIntoView}
+                      onSend={() => { void handleSendDirectMessage(selectedDMNode); }}
+                      sendAriaLabel={t('common.send')}
+                      actions={
+                        <>
+                          <button
+                            onClick={() => { void onSendBell?.(selectedDMNode, composeDraftStore.get()); composeDraftStore.set(''); }}
+                            disabled={txDisabled}
+                            className="send-btn channel-action-btn"
+                            title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : 'Send alert bell'}
+                            aria-label="Send alert bell"
+                          >
+                            <UiIcon name="notifications" size={16} />
+                          </button>
+                          {translationSettings.canTranslate && (
+                            <button
+                              onClick={() => setTranslateModalOpen(true)}
+                              disabled={txDisabled}
+                              className="send-btn channel-action-btn"
+                              title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : t('messages.translate', 'Translate message')}
+                              aria-label={t('messages.translate', 'Translate message')}
+                            >
+                              <UiIcon name="translate" size={16} />
+                            </button>
+                          )}
+                        </>
+                      }
+                    />
                   </div>
                 )}
               </div>
@@ -3119,10 +3050,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
         <TranslateModal
           isOpen={translateModalOpen}
           onClose={() => setTranslateModalOpen(false)}
-          initialText={newMessage}
+          initialText={composeDraftStore.get()}
           defaultTargetLanguage={translationSettings.defaultOutgoingLanguage}
           defaultSourceLanguage={translationSettings.defaultLanguage}
-          onApply={(translatedText) => setNewMessage(translatedText)}
+          onApply={(translatedText) => composeDraftStore.set(translatedText)}
         />
       )}
     </div>
