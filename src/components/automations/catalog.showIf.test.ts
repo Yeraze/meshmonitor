@@ -303,3 +303,15 @@ describe('movement trigger message hints', () => {
     expect(fieldPlaceholder(send!, 'trigger.message')).toBe('Hello {{ trigger.senderLabel }}!');
   });
 });
+
+describe('trigger.telemetry cooldown note', () => {
+  it('tells the user telemetry triggers are limited to once per node per hour, next to the cooldown input', async () => {
+    const { BLOCK_BY_TYPE, TELEMETRY_COOLDOWN_NOTE } = await import('./catalog');
+    const field = BLOCK_BY_TYPE['trigger.telemetry'].fields.find((f) => f.name === 'cooldownSeconds');
+    expect(TELEMETRY_COOLDOWN_NOTE).toBe('Telemetry triggers are limited to once per node per hour.');
+    expect(field?.help).toContain(TELEMETRY_COOLDOWN_NOTE);
+    // Other triggers keep the generic help.
+    const msg = BLOCK_BY_TYPE['trigger.message'].fields.find((f) => f.name === 'cooldownSeconds');
+    expect(msg?.help).not.toContain(TELEMETRY_COOLDOWN_NOTE);
+  });
+});

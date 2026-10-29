@@ -1,0 +1,44 @@
+/* One-time notice on the Automations page: telemetry triggers now fire.
+ * CSS module per CLAUDE.md's containment rule. */
+
+.notice {
+  border: 1px solid var(--color-warning);
+  background: var(--color-bg-raised);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.icon {
+  color: var(--color-warning);
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+
+.text {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+}
+
+.list {
+  margin: 0 0 0.5rem;
+  padding-left: 1.2rem;
+  font-size: 0.88rem;
+}
+
+.disabled {
+  color: var(--color-text-subtle);
+}
