@@ -27,6 +27,9 @@ import {
   buildSourceTraceroutes,
   buildSourceNeighborInfo,
   buildSourceDashboard,
+  applyDashboardAgeWindow,
+  resolveDashboardAgeWindow,
+  localNodeNums,
 } from '../services/sourceDashboardData.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
 import { mqttGeoSweepService, type GeoSweepStatsSink } from '../services/mqttGeoSweepService.js';
@@ -2366,6 +2369,10 @@ router.get('/:id/dashboard', optionalAuth(), async (req: Request, res: Response)
     if (!source) return res.status(404).json({ error: 'Source not found' });
     const user = (req as any).user ?? null;
     const payload = await buildSourceDashboard(source, user);
+    // `ageWindow=settings`: same opt-in age cut as GET /api/unified/dashboard.
+    if (req.query.ageWindow === 'settings') {
+      applyDashboardAgeWindow([payload], await resolveDashboardAgeWindow(), localNodeNums());
+    }
     res.json(payload);
   } catch (error) {
     logger.error('Error fetching dashboard data for source:', error);
