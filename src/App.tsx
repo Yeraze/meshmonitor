@@ -72,6 +72,7 @@ import { MapProvider, useMapContext } from './contexts/MapContext';
 import type { PositionHistoryItem } from './contexts/MapContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext';
+import { useComposeDraftStore } from './contexts/composeDraftStore';
 import { UIProvider, useUI } from './contexts/UIContext';
 import { AutomationProvider, useAutomation } from './contexts/AutomationContext';
 import { useAuth } from './contexts/AuthContext';
@@ -561,7 +562,6 @@ function App() {
     setSelectedDMNode,
     selectedChannel,
     setSelectedChannel,
-    newMessage,
     setNewMessage,
     openDmWithDraft,
     openDmForCompose,
@@ -580,6 +580,9 @@ function App() {
     markMessagesAsRead,
     unreadCountsData,
   } = useMessaging();
+  // The compose draft is read only at send time — App does not subscribe to
+  // it, so typing doesn't re-render App (see composeDraftStore).
+  const composeDraftStore = useComposeDraftStore();
 
   // The unreadCountsData ref-bridge for the poll callback (App's
   // processPollData is memoized without unreadCountsData in its deps) moved
@@ -2320,6 +2323,7 @@ function App() {
   };
 
   const handleSendDirectMessage = async (destinationNodeId: string) => {
+    const newMessage = composeDraftStore.get();
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
     }
@@ -2749,6 +2753,7 @@ function App() {
   };
 
   const handleSendMessage = async (channel: number = 0) => {
+    const newMessage = composeDraftStore.get();
     if (!newMessage.trim() || connectionStatus !== 'connected') {
       return;
     }
@@ -3887,8 +3892,6 @@ function App() {
             selectedChannelRef={selectedChannelRef}
             showMqttMessages={showMqttMessages}
             setShowMqttMessages={setShowMqttMessages}
-            newMessage={newMessage}
-            setNewMessage={setNewMessage}
             replyingTo={replyingTo}
             setReplyingTo={setReplyingTo}
             unreadCounts={unreadCounts}
@@ -3938,8 +3941,6 @@ function App() {
             setSelectedDMNode={setSelectedDMNode}
             pendingComposeFocus={pendingComposeFocus}
             clearComposeFocus={clearComposeFocus}
-            newMessage={newMessage}
-            setNewMessage={setNewMessage}
             replyingTo={replyingTo}
             setReplyingTo={setReplyingTo}
             unreadCountsData={unreadCountsData}

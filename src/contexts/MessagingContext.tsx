@@ -6,6 +6,7 @@ import { useAuth } from './AuthContext';
 import { useSource } from './SourceContext';
 import { useUI } from './UIContext';
 import { getComposeConversationKey, nextComposeDraftState } from '../utils/composeDraft';
+import { ComposeDraftContext, createComposeDraftStore, ComposeDraftUpdate } from './composeDraftStore';
 
 interface UnreadCounts {
   channels: { [channelId: number]: number };
@@ -17,8 +18,13 @@ interface MessagingContextType {
   setSelectedDMNode: React.Dispatch<React.SetStateAction<string>>;
   selectedChannel: number;
   setSelectedChannel: React.Dispatch<React.SetStateAction<number>>;
-  newMessage: string;
-  setNewMessage: React.Dispatch<React.SetStateAction<string>>;
+  /**
+   * Write the compose draft. The draft itself is NOT on this context: it
+   * changes per keystroke, and every consumer of this context would re-render
+   * with it. Read it with `useComposeDraft()` (subscribes) or
+   * `useComposeDraftStore().get()` (one-off read) from `./composeDraftStore`.
+   */
+  setNewMessage: (next: ComposeDraftUpdate) => void;
   /** Select a DM node and pre-fill the compose draft atomically (survives the #4183 draft-scoping clear). */
   openDmWithDraft: (nodeId: string, message: string) => void;
   /**
@@ -77,7 +83,11 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
 
   const [selectedDMNode, setSelectedDMNode] = useState<string>('');
   const [selectedChannel, setSelectedChannel] = useState<number>(-1);
-  const [newMessage, setNewMessage] = useState<string>('');
+  // One draft store per provider. Stable for the provider's lifetime, so its
+  // `set` is a stable setter and the context value below doesn't change when
+  // the user types.
+  const [composeDraftStore] = useState(() => createComposeDraftStore());
+  const setNewMessage = composeDraftStore.set;
   const [replyingTo, setReplyingTo] = useState<MeshMessage | null>(null);
   const [pendingMessages, setPendingMessages] = useState<Map<string, MeshMessage>>(new Map());
   const [unreadCounts, setUnreadCounts] = useState<{ [key: number]: number }>({});
@@ -85,7 +95,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
   const [isDMScrolledToBottom, setIsDMScrolledToBottom] = useState(true);
 
   // Scope the compose draft to the active conversation (#4183). The DM and
-  // channel compose boxes share this single `newMessage` state, so without
+  // channel compose boxes share this single draft (`composeDraftStore`), so without
   // this a draft typed in one conversation lingered after switching to another
   // and could be sent to the WRONG conversation (a private DM draft could even
   // be sent to a public channel). Clearing centrally here — keyed on the active
@@ -99,7 +109,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     const { key, clear } = nextComposeDraftState(composeConvKeyRef.current, nextKey);
     composeConvKeyRef.current = key;
     if (clear) setNewMessage('');
-  }, [activeTab, selectedDMNode, selectedChannel]);
+  }, [activeTab, selectedDMNode, selectedChannel, setNewMessage]);
 
   // Open a DM with a pre-filled draft — e.g. SecurityTab's "Send Notification"
   // button. The selection change and the pre-fill land in the same React batch,
@@ -110,7 +120,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     composeConvKeyRef.current = `dm:${nodeId}`;
     setSelectedDMNode(nodeId);
     setNewMessage(message);
-  }, []);
+  }, [setNewMessage]);
 
   // "Send Direct Message" from the node list (#4325). Selecting the node was
   // already enough to open the conversation, but the compose box was left
@@ -126,7 +136,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     setSelectedDMNode(nodeId);
     setNewMessage('');
     setPendingComposeFocus(nodeId);
-  }, []);
+  }, [setNewMessage]);
 
   const clearComposeFocus = useCallback(() => setPendingComposeFocus(null), []);
 
@@ -207,7 +217,6 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     setSelectedDMNode,
     selectedChannel,
     setSelectedChannel,
-    newMessage,
     setNewMessage,
     openDmWithDraft,
     openDmForCompose,
@@ -231,7 +240,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
   }), [
     selectedDMNode, setSelectedDMNode,
     selectedChannel, setSelectedChannel,
-    newMessage, setNewMessage,
+    setNewMessage,
     openDmWithDraft,
     openDmForCompose, pendingComposeFocus, clearComposeFocus,
     replyingTo, setReplyingTo,
@@ -248,7 +257,9 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
 
   return (
     <MessagingContext.Provider value={value}>
-      {children}
+      <ComposeDraftContext.Provider value={composeDraftStore}>
+        {children}
+      </ComposeDraftContext.Provider>
     </MessagingContext.Provider>
   );
 };

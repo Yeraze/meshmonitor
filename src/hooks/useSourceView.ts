@@ -32,6 +32,7 @@ import { DeviceInfo } from '../types/device';
 import { SortField, SortDirection, NodeFilters } from '../types/ui';
 import { useSettings } from '../contexts/SettingsContext';
 import { useMapContext } from '../contexts/MapContext';
+import { useMapViewSelector } from '../contexts/mapViewStore';
 import { useData } from '../contexts/DataContext';
 import { useMessaging } from '../contexts/MessagingContext';
 import { useUI } from '../contexts/UIContext';
@@ -39,6 +40,7 @@ import { useSource } from '../contexts/SourceContext';
 import { useToast } from '../components/ToastContainer';
 import { useNodes, useTelemetryNodes, setNodeFieldInCache } from './useServerData';
 import { useTraceroutePaths, type ThemeColors } from './useTraceroutePaths';
+import { TRACEROUTE_LOW_ZOOM } from '../utils/tracerouteSegments';
 import { isNodeComplete, getEffectivePosition } from '../utils/nodeHelpers';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { resolveNodeListAgeHours } from '../utils/nodeQuickAgeFilter';
@@ -177,9 +179,14 @@ export function useSourceView(params: UseSourceViewParams) {
     traceroutes,
     selectedNodeId,
     setSelectedNodeId,
-    mapZoom,
     mapMaxAgeHours,
   } = useMapContext();
+  // useTraceroutePaths only cares which side of its low-zoom threshold the map
+  // is on. Subscribing to that boolean (not the raw zoom, which isn't on
+  // MapContext any more) means App re-renders when it flips, not on every
+  // zoom step or pan.
+  const belowTracerouteLowZoom = useMapViewSelector(s => s.zoom < TRACEROUTE_LOW_ZOOM);
+  const mapZoom = belowTracerouteLowZoom ? TRACEROUTE_LOW_ZOOM - 1 : TRACEROUTE_LOW_ZOOM;
   // mqtt_bridge/mqtt_broker sources have no RF path — every node on them
   // arrived over MQTT, so the RF/UDP/MQTT toggles (and their saved
   // preferences) have no meaning and can only blank the map. Skip them

@@ -70,8 +70,6 @@ function makeProps(overrides: Partial<ChannelsTabProps> = {}): ChannelsTabProps 
     selectedChannelRef: { current: 0 },
     showMqttMessages: true,
     setShowMqttMessages: noop,
-    newMessage: '',
-    setNewMessage: noop,
     replyingTo: null,
     setReplyingTo: noop,
     unreadCounts: { 2: 3 },

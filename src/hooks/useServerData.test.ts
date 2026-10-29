@@ -14,6 +14,7 @@ import {
   useConnectionInfo,
   useTelemetryNodes,
   useDeviceConfig,
+  useDeviceNodes,
   useUnreadCountsFromPoll,
   getNodesFromCache,
   getChannelsFromCache,
@@ -289,6 +290,66 @@ describe('useServerData hooks', () => {
       expect(result.current.nodesWithWeather.size).toBe(0);
       expect(result.current.nodesWithEstimatedPosition.size).toBe(0);
       expect(result.current.nodesWithPKC.size).toBe(0);
+    });
+
+    it('keeps the same Set instances across renders and polls while contents are unchanged', () => {
+      mockUsePollReturn.mockReturnValue({ data: mockPollData, isLoading: false });
+      const { result, rerender } = renderHook(() => useTelemetryNodes(), { wrapper: createWrapper() });
+      const first = result.current;
+
+      rerender();
+      expect(result.current.nodesWithTelemetry).toBe(first.nodesWithTelemetry);
+      expect(result.current.nodesWithWeather).toBe(first.nodesWithWeather);
+      expect(result.current.nodesWithEstimatedPosition).toBe(first.nodesWithEstimatedPosition);
+      expect(result.current.nodesWithPKC).toBe(first.nodesWithPKC);
+      expect(result.current.estimatedUncertainty).toBe(first.estimatedUncertainty);
+
+      // A new poll response with equal (but freshly allocated) lists.
+      mockUsePollReturn.mockReturnValue({
+        data: { ...mockPollData, telemetryNodes: JSON.parse(JSON.stringify(mockPollData.telemetryNodes)) },
+        isLoading: false,
+      });
+      rerender();
+      expect(result.current.nodesWithTelemetry).toBe(first.nodesWithTelemetry);
+      expect(result.current.nodesWithPKC).toBe(first.nodesWithPKC);
+    });
+
+    it('returns a new Set when the contents change', () => {
+      mockUsePollReturn.mockReturnValue({ data: mockPollData, isLoading: false });
+      const { result, rerender } = renderHook(() => useTelemetryNodes(), { wrapper: createWrapper() });
+      const first = result.current;
+
+      mockUsePollReturn.mockReturnValue({
+        data: { ...mockPollData, telemetryNodes: { ...mockPollData.telemetryNodes!, nodes: ['!abc123', '!def456', '!0000beef'] } },
+        isLoading: false,
+      });
+      rerender();
+      expect(result.current.nodesWithTelemetry).not.toBe(first.nodesWithTelemetry);
+      expect(result.current.nodesWithTelemetry.has('!0000beef')).toBe(true);
+      // Unchanged lists keep their instance.
+      expect(result.current.nodesWithWeather).toBe(first.nodesWithWeather);
+    });
+  });
+
+  describe('useDeviceNodes', () => {
+    it('keeps the same Set while the list is unchanged and keeps the last list on an empty poll', () => {
+      mockUsePollReturn.mockReturnValue({ data: { deviceNodeNums: [1, 2, 3] }, isLoading: false });
+      const { result, rerender } = renderHook(() => useDeviceNodes(), { wrapper: createWrapper() });
+      const first = result.current;
+      expect([...first]).toEqual([1, 2, 3]);
+
+      mockUsePollReturn.mockReturnValue({ data: { deviceNodeNums: [1, 2, 3] }, isLoading: false });
+      rerender();
+      expect(result.current).toBe(first);
+
+      mockUsePollReturn.mockReturnValue({ data: { deviceNodeNums: [] }, isLoading: false });
+      rerender();
+      expect(result.current).toBe(first);
+
+      mockUsePollReturn.mockReturnValue({ data: { deviceNodeNums: [1, 2] }, isLoading: false });
+      rerender();
+      expect(result.current).not.toBe(first);
+      expect([...result.current]).toEqual([1, 2]);
     });
   });
 

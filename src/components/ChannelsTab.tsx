@@ -18,20 +18,16 @@ import { formatPrecisionAccuracy } from '../utils/distance';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getMessageSortTime } from '../utils/messageSort';
-import { getUtf8ByteLength, formatByteCount } from '../utils/text';
 import { isReplyTo, isTapbackMessage, isTapbackOf } from '../utils/messageReplies';
 import { SenderAvatar, SenderNameButton } from './SenderAvatar';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
-import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
-import MentionAutocomplete from './mentions/MentionAutocomplete';
-import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
 import { mentionCandidatesFromNodes } from '../utils/mentionCandidates';
-import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import HopCountDisplay from './HopCountDisplay';
 import AeadBadge from './channels/AeadBadge';
 import LinkPreview from './LinkPreview';
-import { MessageEmojiButton } from './MessageEmojiButton';
+import MessageComposeInput from './MessageComposeInput';
+import { useComposeDraftStore } from '../contexts/composeDraftStore';
 import { logger } from '../utils/logger';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import MessageDetailsModal from './diagnostics/MessageDetailsModal';
@@ -120,9 +116,8 @@ export interface ChannelsTabProps {
   showMqttMessages: boolean;
   setShowMqttMessages: (show: boolean) => void;
 
-  // Message input
-  newMessage: string;
-  setNewMessage: (message: string) => void;
+  // Message input. The draft text itself is NOT a prop: MessageComposeInput
+  // reads it from the compose-draft store, so typing re-renders only the box.
   replyingTo: MeshMessage | null;
   setReplyingTo: (message: MeshMessage | null) => void;
 
@@ -199,8 +194,6 @@ export default function ChannelsTab({
   selectedChannelRef,
   showMqttMessages,
   setShowMqttMessages,
-  newMessage,
-  setNewMessage,
   replyingTo,
   setReplyingTo,
   unreadCounts,
@@ -283,19 +276,11 @@ export default function ChannelsTab({
   // Refs
   const channelMessageInputRef = useRef<HTMLTextAreaElement>(null);
 
-  useAutoResizeTextarea(channelMessageInputRef, newMessage);
-
   // #5276: `@` mention autocomplete over the nodes this source knows.
   const mentionCandidates = useMemo(
     () => mentionCandidatesFromNodes(nodes, currentNodeId),
     [nodes, currentNodeId]
   );
-  const mentions = useMentionAutocomplete({
-    value: newMessage,
-    onChange: setNewMessage,
-    textareaRef: channelMessageInputRef,
-    candidates: mentionCandidates,
-  });
   // Resolves a mention token to the node's CURRENT name at render time, so a
   // rename shows through in old messages.
   const mentionRenderOptions = useMemo(() => ({
@@ -349,11 +334,9 @@ export default function ChannelsTab({
     void fetchHomoglyphSetting();
   }, []);
 
-  // Memoize byte count to avoid redundant homoglyph optimization on each render
-  const byteCountDisplay = useMemo(() => {
-    const message = homoglyphEnabled ? applyHomoglyphOptimization(newMessage) : newMessage;
-    return formatByteCount(getUtf8ByteLength(message));
-  }, [newMessage, homoglyphEnabled]);
+  // One-off reads/writes of the compose draft (bell, translate). Doesn't
+  // subscribe: only MessageComposeInput re-renders on a keystroke.
+  const composeDraftStore = useComposeDraftStore();
 
   // Compute auto-position channel: lowest-index channel with positionPrecision > 0
   const autoPositionChannelId = useMemo(() => {
@@ -639,7 +622,7 @@ export default function ChannelsTab({
   const channelSendActionButtons = (
     <>
       <button
-        onClick={() => { void onSendBell?.(selectedChannel, newMessage); setNewMessage(''); }}
+        onClick={() => { void onSendBell?.(selectedChannel, composeDraftStore.get()); composeDraftStore.set(''); }}
         disabled={txDisabled}
         className="send-btn channel-action-btn"
         title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : 'Send alert bell'}
@@ -1442,93 +1425,35 @@ export default function ChannelsTab({
                       {/* Hide message input for Channel Database channels (read-only) - device channels are 0-7 */}
                       {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
                         <div className="message-input-container">
-                          <div className="input-with-counter" style={{ position: 'relative' }}>
-                            <MentionAutocomplete
-                              id="channel-mention-list"
-                              candidates={mentions.suggestions}
-                              activeIndex={mentions.activeIndex}
-                              onHover={mentions.setActiveIndex}
-                              onSelect={mentions.select}
-                            />
-                            <textarea
-                              ref={channelMessageInputRef}
-                              value={newMessage}
-                              onChange={e => {
-                                setNewMessage(e.target.value);
-                                mentions.handleChange(e.target.value, e.target.selectionStart);
-                              }}
-                              onSelect={e => mentions.syncFromCaret(
-                                e.currentTarget.value,
-                                e.currentTarget.selectionStart
-                              )}
-                              onBlur={mentions.close}
-                              role="combobox"
-                              aria-expanded={mentions.isOpen}
-                              aria-controls={mentions.isOpen ? 'channel-mention-list' : undefined}
-                              aria-activedescendant={mentions.activeDescendantId('channel-mention-list')}
-                              aria-autocomplete="list"
-                              onFocus={scrollInputIntoView}
-                              placeholder={
-                                /* #5265: the composer is one row on mobile, so
-                                   the input is ~270px and the full "Send
-                                   message to X..." wraps to a second line
-                                   inside a single-line box — the text renders
-                                   half-clipped. The short form fits, and the
-                                   channel is already named in the selector
-                                   directly above. */
-                                isMobileViewport
-                                  ? t('channels.send_placeholder_short', { name: getChannelName(selectedChannel) })
-                                  : t('channels.send_placeholder', { name: getChannelName(selectedChannel) })
-                              }
-                              className="message-input"
-                              rows={1}
-                              disabled={txDisabled}
-                              title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
-                              onKeyDown={e => {
-                                // The open suggestion list claims Enter/Tab/arrows
-                                // first, or picking a node would send instead.
-                                if (mentions.handleKeyDown(e)) return;
-                                if (
-                                  txDisabled ||
-                                  !(
-                                    e.key === 'Enter' &&
-                                    !e.shiftKey &&
-                                    !e.ctrlKey &&
-                                    !e.metaKey &&
-                                    !e.altKey &&
-                                    !e.nativeEvent.isComposing
-                                  )
-                                ) {
-                                  return;
-                                }
-                                e.preventDefault();
-                                void handleSendMessage(selectedChannel);
-                              }}
-                            />
-                            <div className={byteCountDisplay.className}>
-                              {byteCountDisplay.text}
-                            </div>
-                          </div>
-                          <MessageEmojiButton
+                          <MessageComposeInput
+                            listId="channel-mention-list"
                             textareaRef={channelMessageInputRef}
-                            value={newMessage}
-                            onChange={setNewMessage}
+                            mentionCandidates={mentionCandidates}
+                            homoglyphEnabled={homoglyphEnabled}
+                            placeholder={
+                              /* #5265: the composer is one row on mobile, so
+                                 the input is ~270px and the full "Send
+                                 message to X..." wraps to a second line
+                                 inside a single-line box — the text renders
+                                 half-clipped. The short form fits, and the
+                                 channel is already named in the selector
+                                 directly above. */
+                              isMobileViewport
+                                ? t('channels.send_placeholder_short', { name: getChannelName(selectedChannel) })
+                                : t('channels.send_placeholder', { name: getChannelName(selectedChannel) })
+                            }
+                            disabled={txDisabled}
+                            disabledTitle={txDisabledTooltip ?? t('tx_disabled.control_tooltip')}
+                            onFocus={scrollInputIntoView}
+                            onSend={() => { void handleSendMessage(selectedChannel); }}
+                            /* #5265: on mobile these live in the action row under
+                               the header instead, so the composer is one row.
+                               Rendered in exactly one place either way — two
+                               copies would mean two elements sharing an
+                               aria-label, which is worse than the layout it
+                               would fix. */
+                            actions={!isMobileViewport && channelSendActionButtons}
                           />
-                          {/* #5265: on mobile these live in the action row under
-                              the header instead, so the composer is one row.
-                              Rendered in exactly one place either way — two
-                              copies would mean two elements sharing an
-                              aria-label, which is worse than the layout it
-                              would fix. */}
-                          {!isMobileViewport && channelSendActionButtons}
-                          <button
-                            onClick={() => handleSendMessage(selectedChannel)}
-                            disabled={!newMessage.trim() || txDisabled}
-                            className="send-btn"
-                            title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
-                          >
-                            <UiIcon name="send" size={16} />
-                          </button>
                         </div>
                       )}
                     </div>
@@ -1846,10 +1771,10 @@ export default function ChannelsTab({
         <TranslateModal
           isOpen={translateModalOpen}
           onClose={() => setTranslateModalOpen(false)}
-          initialText={newMessage}
+          initialText={composeDraftStore.get()}
           defaultTargetLanguage={translationSettings.defaultOutgoingLanguage}
           defaultSourceLanguage={translationSettings.defaultLanguage}
-          onApply={(translatedText) => setNewMessage(translatedText)}
+          onApply={(translatedText) => composeDraftStore.set(translatedText)}
         />
       )}
     </div>

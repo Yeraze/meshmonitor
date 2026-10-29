@@ -560,3 +560,6 @@ export function decomposeTracerouteLinks(
 
   return links;
 }
+
+/** Below this map zoom, only good/medium-SNR traceroute segments are drawn. */
+export const TRACEROUTE_LOW_ZOOM = 8;
