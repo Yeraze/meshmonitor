@@ -8,12 +8,21 @@ import {
   telemetryDotProp,
   FULL_MARKER_RADIUS,
   SMALL_MARKER_RADIUS,
+  MAX_MARKER_POINTS,
 } from './telemetryChartDensity';
 
 describe('telemetryMarkerRadius', () => {
   it('keeps full-size markers before the container has been measured', () => {
     // Server render / first paint / jsdom without ResizeObserver.
-    expect(telemetryMarkerRadius(500, 0)).toBe(FULL_MARKER_RADIUS);
+    expect(telemetryMarkerRadius(50, 0)).toBe(FULL_MARKER_RADIUS);
+    expect(telemetryMarkerRadius(MAX_MARKER_POINTS, 0)).toBe(FULL_MARKER_RADIUS);
+  });
+
+  it('draws a large series line-only at any width, measured or not', () => {
+    expect(telemetryMarkerRadius(MAX_MARKER_POINTS + 1, 0)).toBeNull();
+    expect(telemetryMarkerRadius(500, 0)).toBeNull();
+    // Even a very wide card, where spacing alone would allow markers.
+    expect(telemetryMarkerRadius(MAX_MARKER_POINTS + 1, 5000)).toBeNull();
   });
 
   it('keeps full-size markers on a sparse series, the case they are useful for', () => {

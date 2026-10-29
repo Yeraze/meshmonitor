@@ -28,6 +28,7 @@ import { useWidgetMode } from '../hooks/useWidgetMode';
 import { useWidgetRange } from '../hooks/useWidgetRange';
 import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
+import { telemetryDotProp } from '../utils/telemetryChartDensity';
 import { telemetryDisplayScale } from '../utils/telemetryFormat';
 import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetryChartCsv';
 import { downloadTextFile } from '../utils/nodeExport';
@@ -508,6 +509,58 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const [mode, setMode] = useWidgetMode(favorite.nodeId, favorite.telemetryType, baseUrl);
     const [range, setRange] = useWidgetRange(favorite.nodeId, favorite.telemetryType, baseUrl);
 
+    // Humanize uptime and auto-scale current/power (#3261). Shared with the
+    // per-node graphs (TelemetryGraphs) so the two surfaces cannot drift.
+    // Temperature keeps its own C/F handling below.
+    const display = useMemo(
+      () => telemetryDisplayScale(
+        favorite.telemetryType,
+        telemetryData.map(d => d.value),
+        telemetryData[0]?.unit || ''
+      ),
+      [favorite.telemetryType, telemetryData]
+    );
+    const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : display.unit;
+
+    // Built once per data change rather than on every render (this walks and
+    // labels every point). Declared above the early returns so the hook order
+    // stays fixed.
+    const scaledChartData = useMemo(() => {
+      if (telemetryData.length === 0) return [];
+      const chartData = prepareChartData(telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat);
+
+      // For combined paxcounter chart, merge BLE data
+      if (isPaxcounterCombined) {
+        const bleByTimestamp = new Map<number, number>();
+        paxBleData.forEach(item => bleByTimestamp.set(item.timestamp, item.value));
+        chartData.forEach(point => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const p = point as any;
+          p.paxWifi = point.value;
+          p.paxBle = bleByTimestamp.get(point.timestamp) ?? null;
+          bleByTimestamp.delete(point.timestamp);
+        });
+        bleByTimestamp.forEach((value, timestamp) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const point: any = {
+            timestamp,
+            value: null,
+            time: formatTime(new Date(timestamp), timeFormat),
+            paxWifi: null,
+            paxBle: value,
+          };
+          chartData.push(point);
+        });
+        chartData.sort((a, b) => a.timestamp - b.timestamp);
+      }
+
+      // Apply the chart's display scale to the plotted series. The solar overlay
+      // lives on its own axis (watt-hours) and is left untouched.
+      return !isTemperature && display.factor !== 1
+        ? chartData.map((d) => ({ ...d, value: d.value == null ? d.value : d.value * display.factor }))
+        : chartData;
+    }, [telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat, isPaxcounterCombined, paxBleData, display.factor]);
+
     // Loading state
     if (isLoading) {
       return (
@@ -577,50 +630,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
       );
     }
 
-    // Prepare chart data
-    const chartData = prepareChartData(telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat);
-    // Humanize uptime and auto-scale current/power (#3261). Shared with the
-    // per-node graphs (TelemetryGraphs) so the two surfaces cannot drift.
-    // Temperature keeps its own C/F handling below.
-    const display = telemetryDisplayScale(
-      favorite.telemetryType,
-      telemetryData.map(d => d.value),
-      telemetryData[0]?.unit || ''
-    );
-    const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : display.unit;
-
-    // For combined paxcounter chart, merge BLE data
-    if (isPaxcounterCombined) {
-      const bleByTimestamp = new Map<number, number>();
-      paxBleData.forEach(item => bleByTimestamp.set(item.timestamp, item.value));
-      chartData.forEach(point => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const p = point as any;
-        p.paxWifi = point.value;
-        p.paxBle = bleByTimestamp.get(point.timestamp) ?? null;
-        bleByTimestamp.delete(point.timestamp);
-      });
-      bleByTimestamp.forEach((value, timestamp) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const point: any = {
-          timestamp,
-          value: null,
-          time: formatTime(new Date(timestamp), timeFormat),
-          paxWifi: null,
-          paxBle: value,
-        };
-        chartData.push(point);
-      });
-      chartData.sort((a, b) => a.timestamp - b.timestamp);
-    }
-
     const latest = getLatestValue(telemetryData);
-
-    // Apply the chart's display scale to the plotted series. The solar overlay
-    // lives on its own axis (watt-hours) and is left untouched.
-    const scaledChartData = !isTemperature && display.factor !== 1
-      ? chartData.map((d) => ({ ...d, value: d.value == null ? d.value : d.value * display.factor }))
-      : chartData;
 
     const canExportCsv = scaledChartData.length > 0;
     const handleExportCsv = () => {
@@ -829,9 +839,10 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                     name="WiFi"
                     stroke={getColor('paxcounterWifi')}
                     strokeWidth={2}
-                    dot={{ fill: getColor('paxcounterWifi'), r: 3 }}
+                    dot={telemetryDotProp(scaledChartData.length, 0, getColor('paxcounterWifi'))}
                     activeDot={{ r: 5 }}
                     connectNulls={true}
+                    isAnimationActive={false}
                   />
                   <Line
                     yAxisId="left"
@@ -840,9 +851,10 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                     name="BLE"
                     stroke={getColor('paxcounterBle')}
                     strokeWidth={2}
-                    dot={{ fill: getColor('paxcounterBle'), r: 3 }}
+                    dot={telemetryDotProp(scaledChartData.length, 0, getColor('paxcounterBle'))}
                     activeDot={{ r: 5 }}
                     connectNulls={true}
+                    isAnimationActive={false}
                   />
                 </>
               ) : (
@@ -852,9 +864,10 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                   dataKey="value"
                   stroke={color}
                   strokeWidth={2}
-                  dot={{ fill: color, r: 3 }}
+                  dot={telemetryDotProp(scaledChartData.length, 0, color)}
                   activeDot={{ r: 5 }}
                   connectNulls={true}
+                  isAnimationActive={false}
                 />
               )}
             </ComposedChart>

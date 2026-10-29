@@ -311,6 +311,7 @@ const PacketRateGraphs: React.FC<PacketRateGraphsProps> = React.memo(
                   strokeWidth={2}
                   dot={false}
                   connectNulls={false}
+                  isAnimationActive={false}
                 />
               ))}
             </ComposedChart>
