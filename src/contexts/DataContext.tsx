@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
+import React, { useContext, useState, useMemo, ReactNode } from 'react';
 import { ConnectionStatus } from '../types/ui';
+import { DataContext } from './dataContextState';
 
 // messages/channelMessages (+ their channelHasMore/channelLoadingMore/
 // dmHasMore/dmLoadingMore pagination state) were removed (#3962 5.4 PR7).
@@ -24,14 +25,14 @@ import { ConnectionStatus } from '../types/ui';
 // connected/nodeResponsive/configuring/userDisconnected flags the server's
 // poll response reports) — and it's written from several places outside any
 // poll-processing path: checkConnectionStatus's own out-of-band
-// GET /api/poll health check, handleRebootDevice/handleConfigChangeTriggeringReboot/
+// GET /api/connection health check, handleRebootDevice/handleConfigChangeTriggeringReboot/
 // handleRebootModalClose, handleDisconnect/handleReconnect (all in App.tsx),
 // and FirmwareUpdateSection's OTA-update flow. Deleting it would require
 // inventing a new state-machine hook and touching every one of those call
 // sites plus ~10 prop consumers (AppHeader, NodesTab, MessagesTab,
 // ChannelsTab, NodePopup, InfoTab, useNotificationNavigationHandler) for a
 // behavior change, not a mechanical dedupe — out of scope for this PR.
-interface DataContextType {
+export interface DataContextType {
   connectionStatus: ConnectionStatus;
   setConnectionStatus: React.Dispatch<React.SetStateAction<ConnectionStatus>>;
   deviceInfo: any;
@@ -43,8 +44,6 @@ interface DataContextType {
   nodeAddress: string;
   setNodeAddress: React.Dispatch<React.SetStateAction<string>>;
 }
-
-const DataContext = createContext<DataContextType | undefined>(undefined);
 
 interface DataProviderProps {
   children: ReactNode;
