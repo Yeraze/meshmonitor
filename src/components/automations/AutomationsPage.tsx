@@ -16,6 +16,7 @@ import AutomationBuilder, { type VariableOption, type SourceOption, type Unified
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
 import TemplateGallery, { type InstalledAutomationRow } from './TemplateGallery';
+import TelemetryTriggerNotice from './TelemetryTriggerNotice';
 import { StepList, type TraceStep } from './outcomeMeta';
 import { summarizeTriggerEvent, parseJsonColumn } from './eventSummary';
 import { UiIcon } from '../icons';
@@ -218,6 +219,7 @@ function AutomationsList() {
         <button className="ae-btn" onClick={() => setBrowsing(true)}>Browse templates</button>
       </div>
       {error && <div className="ae-error-list">{error}</div>}
+      <TelemetryTriggerNotice automations={items} />
       {items.length === 0 && <div className="ae-empty">No automations yet. Create one to get started.</div>}
       {items.map((a) => {
         const windowStatus = scheduleStatus(a.config, Date.now());

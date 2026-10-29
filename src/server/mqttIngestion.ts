@@ -13,7 +13,8 @@
 
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
-import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { dataEventEmitter, type TelemetryEventMeta } from './services/dataEventEmitter.js';
+import { isAnswerToOwnTelemetryRequest } from './services/ownTelemetryRequests.js';
 import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import mqttPacketLogService from './services/mqttPacketLogService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
@@ -96,7 +97,7 @@ import {
 import { calculateDistance } from '../utils/distance.js';
 import { buildRoutePositionsSnapshot } from './utils/tracerouteSnapshot.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
-import { resolveLastHeardSec, resolvePositionObservedAtMs } from './utils/replayGuard.js';
+import { resolveLastHeardSec, resolvePositionObservedAtMs, isLiveReception, isFirmwareReplayPacket } from './utils/replayGuard.js';
 import { plausibleRxTime } from './utils/messageTime.js';
 import { shouldDiscardPosition } from '../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
@@ -735,6 +736,15 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       const t = payload as Record<string, any>;
       const ts = nowMs;
       const packetId = typeof packet.id === 'number' ? packet.id >>> 0 : undefined;
+      // trigger.telemetry feed, same rules as the TCP path: live readings only
+      // (a retained/replayed frame must not fire on stale values), and a
+      // reading that answers a telemetry request we sent through any source is
+      // flagged so telemetry triggers skip it (request → reply loop guard).
+      const rxTimeSec = typeof packet.rxTime === 'number' ? packet.rxTime : undefined;
+      const telemetryEventMeta: TelemetryEventMeta | undefined =
+        isLiveReception(rxTimeSec, nowMs) && !isFirmwareReplayPacket(fromNum, packetId, rxTimeSec ?? null)
+          ? { answersOwnRequest: isAnswerToOwnTelemetryRequest(Number((decoded as { requestId?: number | string }).requestId ?? 0)) }
+          : undefined;
       const metricsGroups: Array<[string, any]> = [
         ['device', t.deviceMetrics ?? t.device_metrics],
         ['environment', t.environmentMetrics ?? t.environment_metrics],
@@ -762,7 +772,11 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
             packetId,
             packetTimestamp: typeof t.time === 'number' ? t.time * 1000 : undefined,
           };
-          void databaseService.insertTelemetryAsync(tel, sourceId).catch(err => logger.error('MQTT insertTelemetry failed:', err));
+          void databaseService.insertTelemetryAsync(tel, sourceId)
+            .then(() => {
+              if (telemetryEventMeta) dataEventEmitter.emitTelemetry(fromNum, tel, sourceId, telemetryEventMeta);
+            })
+            .catch(err => logger.error('MQTT insertTelemetry failed:', err));
           any = true;
         }
       }

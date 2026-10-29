@@ -66,7 +66,8 @@ import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { pkiDecryptionService } from './services/pkiDecryptionService.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from './services/sourcePkiKeyStore.js';
-import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { dataEventEmitter, type TelemetryEventMeta } from './services/dataEventEmitter.js';
+import { recordOwnTelemetryRequest, isAnswerToOwnTelemetryRequest } from './services/ownTelemetryRequests.js';
 import { aircraftClassificationService } from './services/aircraftClassificationService.js';
 import { aircraftAgeOutService } from './services/aircraftAgeOutService.js';
 import {
@@ -1867,7 +1868,9 @@ class MeshtasticManager implements ISourceManager {
 
   /**
    * Save an array of telemetry metrics to the database
-   * Filters out undefined/null/NaN values before inserting
+   * Filters out undefined/null/NaN values before inserting.
+   * With `eventMeta`, each stored reading is also emitted for trigger.telemetry;
+   * without it (a replayed frame) the readings are stored only.
    */
   private async saveTelemetryMetrics(
     metricsToSave: Array<{ type: string; value: number | undefined; unit: string }>,
@@ -1875,7 +1878,8 @@ class MeshtasticManager implements ISourceManager {
     fromNum: number,
     timestamp: number,
     packetTimestamp: number | undefined,
-    packetId?: number
+    packetId?: number,
+    eventMeta?: TelemetryEventMeta
   ): Promise<void> {
     const now = Date.now();
     for (const metric of metricsToSave) {
@@ -1893,7 +1897,7 @@ class MeshtasticManager implements ISourceManager {
         if (metric.type === 'batteryLevel') {
           await this.detectPowerChangeFromBattery(nodeId, fromNum, Number(metric.value));
         }
-        await databaseService.telemetry.insertTelemetry({
+        const row = {
           nodeId,
           nodeNum: fromNum,
           telemetryType: metric.type,
@@ -1903,7 +1907,11 @@ class MeshtasticManager implements ISourceManager {
           createdAt: now,
           packetTimestamp,
           packetId
-        }, this.sourceId);
+        };
+        await databaseService.telemetry.insertTelemetry(row, this.sourceId);
+        // Feeds trigger.telemetry (batched by the emitter, 1s per source).
+        // No eventMeta = not a live reading (replay); store it, don't emit.
+        if (eventMeta) dataEventEmitter.emitTelemetry(fromNum, row, this.sourceId, eventMeta);
       }
     }
   }
@@ -8862,6 +8870,18 @@ class MeshtasticManager implements ISourceManager {
       if (replyRequestId) {
         this.resolvePendingTelemetryRequest(replyRequestId);
       }
+      // trigger.telemetry feed. Only live readings: a firmware 2.8 NodeDB
+      // replay (#5034/#5426, hourly and on every reconnect) re-sends old
+      // telemetry and must not fire automations on stale values. Loop guard: a
+      // reading that answers a telemetry request we sent (on any source) is
+      // flagged so telemetry triggers skip it.
+      const rxTimeSec = meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined;
+      const liveReading =
+        isLiveReception(rxTimeSec, now) &&
+        !isFirmwareReplayPacket(fromNum, meshPacket.id, rxTimeSec ?? null);
+      const eventMeta: TelemetryEventMeta | undefined = liveReading
+        ? { answersOwnRequest: isAnswerToOwnTelemetryRequest(replyRequestId) }
+        : undefined;
 
       // Track PKI encryption
       await this.trackPKIEncryption(meshPacket, fromNum);
@@ -8913,7 +8933,7 @@ class MeshtasticManager implements ISourceManager {
         // both serial and MQTT ingest write identical telemetryType/unit values.
         await this.saveTelemetryMetrics(
           this.buildCanonicalMetrics('device', deviceMetrics),
-          nodeId, fromNum, timestamp, packetTimestamp, packetId
+          nodeId, fromNum, timestamp, packetTimestamp, packetId, eventMeta
         );
       } else if (telemetry.environmentMetrics) {
         const envMetrics = telemetry.environmentMetrics;
@@ -8927,7 +8947,7 @@ class MeshtasticManager implements ISourceManager {
         // are handled centrally rather than with per-field fallbacks here.
         await this.saveTelemetryMetrics(
           this.buildCanonicalMetrics('environment', envMetrics),
-          nodeId, fromNum, timestamp, packetTimestamp, packetId
+          nodeId, fromNum, timestamp, packetTimestamp, packetId, eventMeta
         );
       } else if (telemetry.powerMetrics) {
         const powerMetrics = telemetry.powerMetrics;
@@ -8947,7 +8967,7 @@ class MeshtasticManager implements ISourceManager {
         // (ch1Voltage … ch8Current, units V / mA from CANONICAL_TELEMETRY_UNITS).
         await this.saveTelemetryMetrics(
           this.buildCanonicalMetrics('power', powerMetrics),
-          nodeId, fromNum, timestamp, packetTimestamp, packetId
+          nodeId, fromNum, timestamp, packetTimestamp, packetId, eventMeta
         );
       } else if (telemetry.airQualityMetrics) {
         const aqMetrics = telemetry.airQualityMetrics;
@@ -8962,7 +8982,7 @@ class MeshtasticManager implements ISourceManager {
         // automatically once their unit is added to CANONICAL_TELEMETRY_UNITS).
         await this.saveTelemetryMetrics(
           this.buildCanonicalMetrics('airQuality', aqMetrics),
-          nodeId, fromNum, timestamp, packetTimestamp, packetId
+          nodeId, fromNum, timestamp, packetTimestamp, packetId, eventMeta
         );
       } else if (telemetry.localStats) {
         const localStats = telemetry.localStats;
@@ -8975,7 +8995,7 @@ class MeshtasticManager implements ISourceManager {
         // in Meshtastic firmware 2.7.25 (#3396).
         await this.saveTelemetryMetrics(
           this.buildCanonicalMetrics('localStats', localStats),
-          nodeId, fromNum, timestamp, packetTimestamp, packetId
+          nodeId, fromNum, timestamp, packetTimestamp, packetId, eventMeta && { ...eventMeta, localStats: true }
         );
         await this.checkAutoHeapManagement(localStats.heapFreeBytes, fromNum);
       } else if (telemetry.hostMetrics) {
@@ -8987,7 +9007,7 @@ class MeshtasticManager implements ISourceManager {
         // — identical to the prior hand-maintained list (#3515).
         await this.saveTelemetryMetrics(
           this.buildCanonicalMetrics('host', hostMetrics),
-          nodeId, fromNum, timestamp, packetTimestamp, packetId
+          nodeId, fromNum, timestamp, packetTimestamp, packetId, eventMeta
         );
       } else if (telemetry.trafficManagementStats) {
         const tmStats = telemetry.trafficManagementStats;
@@ -8998,7 +9018,7 @@ class MeshtasticManager implements ISourceManager {
         // hand-maintained list (#3515).
         await this.saveTelemetryMetrics(
           this.buildCanonicalMetrics('trafficManagement', tmStats),
-          nodeId, fromNum, timestamp, packetTimestamp, packetId
+          nodeId, fromNum, timestamp, packetTimestamp, packetId, eventMeta
         );
       }
 
@@ -11812,6 +11832,7 @@ class MeshtasticManager implements ISourceManager {
         telemetryType,
         this.getConfiguredHopLimit()
       );
+      recordOwnTelemetryRequest(packetId); // loop guard: its reply must not fire trigger.telemetry
 
       const typeLabel = telemetryType || 'device';
       logger.debug(`📊 Telemetry request packet created: ${telemetryRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, type=${typeLabel}, packetId=${packetId}, requestId=${requestId}`);
@@ -11937,6 +11958,7 @@ class MeshtasticManager implements ISourceManager {
           this.localNodeInfo.nodeNum,
           0 // Channel 0 for local node communication
         );
+      recordOwnTelemetryRequest(packetId); // loop guard: its reply must not fire trigger.telemetry
 
       logger.debug(`📊 LocalStats request packet created: ${telemetryRequestData.length} bytes for local node ${this.localNodeInfo.nodeId}, packetId=${packetId}, requestId=${requestId}`);
 
@@ -11995,6 +12017,7 @@ class MeshtasticManager implements ISourceManager {
         'localStats',
         hopLimit
       );
+    recordOwnTelemetryRequest(packetId); // loop guard: its reply must not fire trigger.telemetry
 
     if (telemetryRequestData.length === 0) {
       throw new Error('Failed to build remote LocalStats request');

@@ -249,8 +249,31 @@ export interface AutoPingUpdateData {
   results: Array<{ pingNum: number; status: 'ack' | 'nak' | 'timeout'; durationMs?: number; sentAt: number }>;
 }
 
+/**
+ * Facts about one reading that the automation engine needs and the stored row
+ * does not carry. Two booleans; harmless if they reach a browser through the
+ * per-node `telemetry:batch` socket gate.
+ */
+export interface TelemetryEventMeta {
+  /**
+   * The reading answers a telemetry request we sent (its `decoded.requestId`
+   * names one of our requests). Telemetry triggers skip it: otherwise a
+   * telemetry trigger with a "request telemetry" action loops.
+   */
+  answersOwnRequest?: boolean;
+  /**
+   * The reading came from a LocalStats packet (noiseFloor, uptime, packet
+   * counters …). Our own node is the only source of these, so the #3914
+   * self-origin guard would drop every one; telemetry triggers exempt them.
+   */
+  localStats?: boolean;
+}
+
+/** A stored telemetry row plus its {@link TelemetryEventMeta}. */
+export type TelemetryEventRow = DbTelemetry & TelemetryEventMeta;
+
 export interface TelemetryBatchData {
-  [nodeNum: number]: DbTelemetry[];
+  [nodeNum: number]: TelemetryEventRow[];
 }
 
 /**
@@ -285,7 +308,7 @@ export interface ClientNotificationData {
 
 class DataEventEmitter extends EventEmitter {
   // Keyed by sourceId (or '__default__') → nodeNum → telemetry list
-  private telemetryBuffer: Map<string, Map<number, DbTelemetry[]>> = new Map();
+  private telemetryBuffer: Map<string, Map<number, TelemetryEventRow[]>> = new Map();
   private batchTimeout: NodeJS.Timeout | null = null;
   private batchIntervalMs: number = 1000; // 1 second batching window
 
@@ -437,9 +460,11 @@ class DataEventEmitter extends EventEmitter {
   }
 
   /**
-   * Buffer telemetry for batched emission (reduces WebSocket traffic)
+   * Buffer telemetry for batched emission. Feeds `trigger.telemetry`. Browsers
+   * get it through the per-node gate in socketEventGates but do not act on it
+   * (see useWebSocket). Call it after the row is stored, once per reading.
    */
-  emitTelemetry(nodeNum: number, telemetry: DbTelemetry, sourceId?: string): void {
+  emitTelemetry(nodeNum: number, telemetry: DbTelemetry, sourceId?: string, meta?: TelemetryEventMeta): void {
     const key = sourceId ?? '__default__';
     if (!this.telemetryBuffer.has(key)) {
       this.telemetryBuffer.set(key, new Map());
@@ -448,7 +473,7 @@ class DataEventEmitter extends EventEmitter {
     if (!sourceBuffer.has(nodeNum)) {
       sourceBuffer.set(nodeNum, []);
     }
-    sourceBuffer.get(nodeNum)!.push(telemetry);
+    sourceBuffer.get(nodeNum)!.push(meta ? { ...telemetry, ...meta } : telemetry);
 
     // Start batch timer if not already running
     if (!this.batchTimeout) {
