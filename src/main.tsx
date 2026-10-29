@@ -2,21 +2,14 @@
 // before any other modules are loaded
 import { appBasename } from './init';
 
-// Self-heal stale-deploy chunk failures (#4047 investigation): after a redeploy
-// rotates hashed chunk names, a browser holding cached HTML 404s on lazy
-// chunks — the dynamic import rejects and the affected subtree wedges (seen
-// as a dead map + unresponsive controls). Vite surfaces these as
-// `vite:preloadError`; reload once to pick up coherent HTML + chunks, with a
-// sessionStorage guard so a genuinely broken deploy can't reload-loop.
+// Reload once when a lazy chunk fails to load after a redeploy (see
+// chunkReload.ts). Installed first, before any lazy page can be requested.
+import { installChunkReloadHandler } from './utils/chunkReload';
 if (typeof window !== 'undefined') {
-  window.addEventListener('vite:preloadError', (event) => {
-    const KEY = 'mm-chunk-reload-at';
-    const last = Number(sessionStorage.getItem(KEY) ?? 0);
-    if (Date.now() - last > 30_000) {
-      sessionStorage.setItem(KEY, String(Date.now()));
-      event.preventDefault();
-      window.location.reload();
-    }
+  installChunkReloadHandler({
+    target: window,
+    getStorage: () => window.sessionStorage,
+    reload: () => window.location.reload(),
   });
 }
 // Before first paint, so the top bars never render inside iOS 27's
@@ -41,6 +34,7 @@ import RouteLoading from './components/RouteLoading/RouteLoading.tsx';
 import ErrorBoundary from './components/common/ErrorBoundary.tsx';
 import { AppErrorScreen } from './components/common/AppErrorScreen.tsx';
 import { useDashboardSources } from './hooks/useDashboardData';
+import { preloadAppTabForPath } from './appTabs';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { CsrfProvider } from './contexts/CsrfContext';
@@ -104,7 +98,7 @@ export function SourceApp() {
 }
 
 function SourceAppDispatch() {
-  const { sourceId } = useParams<{ sourceId: string }>();
+  const { sourceId, '*': splat } = useParams<{ sourceId: string; '*': string }>();
   const { data: sources, isLoading } = useDashboardSources();
 
   if (!sourceId) return <Navigate to="/" replace />;
@@ -153,6 +147,10 @@ function SourceAppDispatch() {
       </SourceProvider>
     );
   }
+
+  // Fetch the landing tab's chunk alongside App's own, rather than after App
+  // has loaded and rendered its (lazy) tab. Idempotent, so a re-render is free.
+  preloadAppTabForPath(splat);
 
   return (
     <SourceProvider sourceId={sourceId} sourceName={source?.name ?? null} sourceType={source?.type ?? null}>

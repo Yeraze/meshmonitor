@@ -94,11 +94,12 @@ describe('Map3DView', () => {
     mockState.tracerouteLines = [];
   });
 
-  it('composes Base3DMap with the nodes and merged neighbor+traceroute lines', () => {
+  // Base3DMap is a lazy chunk, so the first lookup in a test awaits it.
+  it('composes Base3DMap with the nodes and merged neighbor+traceroute lines', async () => {
     mockState.neighborLines = [line('mt:1')];
     mockState.tracerouteLines = [line('tr:x')];
     render(<Map3DView {...baseProps} />);
-    const map = screen.getByTestId('base-3d-map');
+    const map = await screen.findByTestId('base-3d-map');
     expect(map.dataset.nodeCount).toBe('2');
     expect(map.dataset.lineCount).toBe('2');
     expect(JSON.parse(map.dataset.lineKeys ?? '[]')).toEqual(['mt:1', 'tr:x']);
@@ -134,11 +135,11 @@ describe('Map3DView', () => {
     );
   });
 
-  it('#5561: cross-source lines are off by default and merged in when the toggle is on', () => {
+  it('#5561: cross-source lines are off by default and merged in when the toggle is on', async () => {
     crossSourceState.lines = [line('xs:1')];
     const { rerender } = render(<Map3DView {...baseProps} />);
     expect(crossSourceSpy).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
-    expect(screen.getByTestId('base-3d-map').getAttribute('data-line-keys')).not.toContain('xs:1');
+    expect((await screen.findByTestId('base-3d-map')).getAttribute('data-line-keys')).not.toContain('xs:1');
 
     rerender(<Map3DView {...baseProps} showCrossSourceLinks />);
     expect(crossSourceSpy).toHaveBeenLastCalledWith(
@@ -148,11 +149,11 @@ describe('Map3DView', () => {
     crossSourceState.lines = [];
   });
 
-  it('#5580: traceroute-confirmed lines are off by default and merged in when the host turns them on', () => {
+  it('#5580: traceroute-confirmed lines are off by default and merged in when the host turns them on', async () => {
     confirmedState.lines = [line('trc:1')];
     const { rerender } = render(<Map3DView {...baseProps} />);
     expect(confirmedSpy).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
-    expect(screen.getByTestId('base-3d-map').getAttribute('data-line-keys')).not.toContain('trc:1');
+    expect((await screen.findByTestId('base-3d-map')).getAttribute('data-line-keys')).not.toContain('trc:1');
 
     rerender(<Map3DView {...baseProps} showTracerouteConfirmedLinks />);
     expect(confirmedSpy).toHaveBeenLastCalledWith(
@@ -162,8 +163,8 @@ describe('Map3DView', () => {
     confirmedState.lines = [];
   });
 
-  it('forwards the exaggeration seed to Base3DMap', () => {
+  it('forwards the exaggeration seed to Base3DMap', async () => {
     render(<Map3DView {...baseProps} initialExaggeration={1.8} />);
-    expect(screen.getByTestId('base-3d-map').dataset.exaggeration).toBe('1.8');
+    expect((await screen.findByTestId('base-3d-map')).dataset.exaggeration).toBe('1.8');
   });
 });

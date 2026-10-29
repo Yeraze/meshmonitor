@@ -70,6 +70,12 @@ export function eagerCss(options: EagerCssOptions = {}): Plugin {
   const IMPORT_RE =
     /^\s*(?:import\s*|(?:import|export)\s+(type\s+)?[^'";()=]*?\sfrom\s*)['"]([^'"]+)['"]/gm
   const LAZY_RE = /lazy\(\s*\(\)\s*=>\s*import\(\s*['"]([^'"]+)['"]\s*\)/g
+  // `lazyWithPreload(() => import('x'))` (src/utils/lazyWithPreload.ts) in a
+  // walked module: a component split out of an already-lazy page, e.g. App's
+  // tabs (src/appTabs.ts). Followed in place, so its CSS keeps the cascade
+  // position its old static import had. Plain `lazy()` inside a page is not
+  // followed, matching the old build.
+  const PRELOAD_RE = /lazyWithPreload\(\s*\(\)\s*=>\s*import\(\s*['"]([^'"]+)['"]\s*\)/g
   let isBuild = false
   // Stylesheets the last `load` of the placeholder emitted; null = never ran.
   let emitted: number | null = null
@@ -95,9 +101,15 @@ export function eagerCss(options: EagerCssOptions = {}): Plugin {
         }
         if (!/\.[cm]?[jt]sx?$/.test(file) || file.includes('/node_modules/')) return
         const code = (await read(file)).replace(/\/\*[\s\S]*?\*\//g, '')
-        for (const m of code.matchAll(IMPORT_RE)) {
-          if (m[1]) continue // `import type` is erased at compile time
-          const resolved = await this.resolve(m[2], file)
+        // Static imports and split-out components, in source order.
+        const specs = [
+          ...[...code.matchAll(IMPORT_RE)]
+            .filter((m) => !m[1]) // `import type` is erased at compile time
+            .map((m) => ({ at: m.index ?? 0, spec: m[2] })),
+          ...[...code.matchAll(PRELOAD_RE)].map((m) => ({ at: m.index ?? 0, spec: m[1] })),
+        ].sort((a, b) => a.at - b.at)
+        for (const { spec } of specs) {
+          const resolved = await this.resolve(spec, file)
           if (resolved && !resolved.external) await walk(stripQuery(resolved.id))
         }
       }

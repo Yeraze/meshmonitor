@@ -1,5 +1,10 @@
-import { useMemo } from 'react';
-import { Base3DMap, type Node3DFeature, type Line3DFeature } from './Base3DMap';
+import { Suspense, useMemo } from 'react';
+import { lazyWithPreload } from '../../utils/lazyWithPreload';
+// MapLibre GL (~1.2 MB of JS) loads only when a host switches to 3D, not with
+// every 2D map that can offer the 3D toggle. Declared where its static import
+// was, so the eager-CSS walk keeps its stylesheet in place (vite.config.ts).
+const Base3DMap = lazyWithPreload(() => import('./Base3DMap').then((m) => ({ default: m.Base3DMap })));
+import type { Node3DFeature, Line3DFeature } from './Base3DMap';
 import type { ReactNode } from 'react';
 import type { Basemap3DSource } from '../../config/basemap3d';
 import { use3DNeighborLines } from '../MapAnalysis/use3DNeighborLines';
@@ -134,6 +139,7 @@ export function Map3DView({
   );
 
   return (
+    <Suspense fallback={null}>
     <Base3DMap
       center={center}
       zoom={zoom}
@@ -147,6 +153,7 @@ export function Map3DView({
       initialExaggeration={initialExaggeration}
       onExaggerationChange={onExaggerationChange}
     />
+    </Suspense>
   );
 }
 

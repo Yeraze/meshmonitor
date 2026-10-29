@@ -54,18 +54,19 @@ describe('ConfigSearchHost', () => {
     expect(palette()).toBeNull();
   });
 
-  it('opens on Ctrl+comma and toggles shut on a second press', () => {
+  // The palette body is a lazy chunk, so each first open awaits it.
+  it('opens on Ctrl+comma and toggles shut on a second press', async () => {
     renderHost();
     chord({ ctrlKey: true });
-    expect(palette()).not.toBeNull();
+    expect(await screen.findByRole('dialog')).not.toBeNull();
     chord({ ctrlKey: true });
     expect(palette()).toBeNull();
   });
 
-  it('opens on Cmd+comma for macOS', () => {
+  it('opens on Cmd+comma for macOS', async () => {
     renderHost();
     chord({ metaKey: true });
-    expect(palette()).not.toBeNull();
+    expect(await screen.findByRole('dialog')).not.toBeNull();
   });
 
   it('ignores a bare comma, so typing one never opens it', () => {
@@ -81,20 +82,20 @@ describe('ConfigSearchHost', () => {
     expect(palette()).toBeNull();
   });
 
-  it('publishes an opener so the sidebar entry can raise the same palette', () => {
+  it('publishes an opener so the sidebar entry can raise the same palette', async () => {
     let open: (() => void) | null = null;
     renderHost((fn) => {
       open = fn;
     });
     expect(open).toBeTypeOf('function');
     act(() => open!());
-    expect(palette()).not.toBeNull();
+    expect(await screen.findByRole('dialog')).not.toBeNull();
   });
 
-  it('searches the current source and the global settings page', () => {
+  it('searches the current source and the global settings page', async () => {
     renderHost();
     chord({ ctrlKey: true });
-    const input = screen.getByRole('textbox');
+    const input = await screen.findByRole('textbox');
     fireEvent.change(input, { target: { value: 'mqtt' } });
     // The Configuration tab's MQTT panel belongs to the source that useSource
     // reports; finding it proves the host built per-source surfaces.

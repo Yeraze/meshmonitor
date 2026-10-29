@@ -12,7 +12,7 @@
  */
 import { createRef } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, act, screen } from '@testing-library/react';
+import { render, cleanup, act, screen, waitFor } from '@testing-library/react';
 import L from 'leaflet';
 import { MapContainer } from 'react-leaflet';
 import { VectorTileLayer, CONTEXT_RESTORE_GRACE_MS } from './VectorTileLayer';
@@ -204,8 +204,7 @@ describe('VectorTileLayer when the WebGL context is lost', () => {
     expect(onUnavailable).not.toHaveBeenCalled();
   });
 
-  it('BaseMap swaps that one map to raster, and tries vector again on a new tileset', () => {
-    vi.useFakeTimers();
+  it('BaseMap swaps that one map to raster, and tries vector again on a new tileset', async () => {
     const mapRef = createRef<L.Map>();
     const ui = (tilesetId: string) => (
       <div style={{ width: 400, height: 300 }}>
@@ -213,7 +212,10 @@ describe('VectorTileLayer when the WebGL context is lost', () => {
       </div>
     );
     const { rerender } = render(ui('cartoPositron'));
-    expect(glMaps).toHaveLength(1);
+    // BaseMap loads the vector layer as a lazy chunk; wait for it on real
+    // timers, then fake them for the context-restore grace period.
+    await waitFor(() => expect(glMaps).toHaveLength(1));
+    vi.useFakeTimers();
     expect(screen.queryByTestId('vector-fallback-notice')).toBeNull();
 
     glMaps[0].fire('webglcontextlost');

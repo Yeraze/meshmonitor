@@ -31,6 +31,11 @@ export interface SourceNavItem {
   shortLabel?: string;
   icon: UiIconName;
   onClick: () => void;
+  /**
+   * Called when the pointer or focus lands on the entry, before a click. Lets
+   * the host start loading the destination's code early.
+   */
+  onIntent?: () => void;
   /** Renders a red unread dot on the icon (#3891). */
   unread?: boolean;
 }
@@ -227,6 +232,8 @@ export const SourceNav: React.FC<SourceNavProps> = ({
                     data-active={isActive ? 'true' : 'false'}
                     aria-current={isActive ? 'page' : undefined}
                     onClick={item.onClick}
+                    onPointerEnter={item.onIntent}
+                    onFocus={item.onIntent}
                     // Collapsed rails show no text, so the tooltip is the only
                     // affordance naming the destination.
                     title={collapsed ? item.label : undefined}
