@@ -64,7 +64,7 @@ describe('refreshPollCache', () => {
     const qc = new QueryClient();
     const authFetch = vi.fn().mockResolvedValue(jsonResponse({ nodes: [] }));
     await refreshPollCache(qc, authFetch, '', 's');
-    expect(authFetch.mock.calls[0][0]).toBe('/api/poll?sourceId=s');
+    expect(authFetch.mock.calls[0][0]).toBe('/api/poll?sourceId=s&cursor=');
     expect(qc.getQueryData(['poll', 's'])).toEqual({ nodes: [] });
   });
 

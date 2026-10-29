@@ -35,6 +35,7 @@ import { getEnvironmentConfig } from '../config/environment.js';
 import { mayViewSourceEndpointWith } from '../utils/sourceConfigRedaction.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 import { holdsAnyGrantOn } from '../utils/sourcePermissions.js';
+import { pollDeltaTracker, serializePollReply } from '../services/pollDeltaTracker.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -68,6 +69,19 @@ export const POLL_SECTION_GATES = {
 } as const;
 
 export type PollSection = keyof typeof POLL_SECTION_GATES;
+
+/**
+ * Keys an incremental reply adds (only when the caller sent `cursor`). They
+ * carry no data of their own: node numbers and section names of a reply the
+ * caller may already read. See `services/pollDeltaTracker.ts`.
+ */
+export const POLL_DELTA_KEYS = {
+  pollCursor: 'Send it back as `cursor` on the next poll.',
+  pollDelta: 'True when the reply holds only what changed since `cursor`.',
+  removedNodes: 'Delta: nodeNums gone from the `nodes` section since `cursor`.',
+  nodeOrder: 'Delta, when the order changed: every nodeNum of the `nodes` section, in order.',
+  unchangedSections: 'Delta: sections left out because the caller already holds them.',
+} as const;
 
 const DEVICE_CHANNEL_IDS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 const channelResource = (id: number): ResourceType => `channel_${id}` as ResourceType;
@@ -661,7 +675,32 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       result.deviceNodeNums = deviceNodeNums.filter((nodeNum) => visibleNums.has(Number(nodeNum)));
     }
 
-    res.json(result);
+    // Incremental reply (opt-in): a caller that sends `cursor` (empty on its
+    // first poll) gets only what changed since the reply that cursor names.
+    // The reply above is built in full either way, so every gate is applied
+    // exactly as before; the tracker only leaves out what the caller holds.
+    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
+    if (cursor === null) {
+      res.json(result);
+      return;
+    }
+    const { nodes, ...sections } = result;
+    const nodeList: Array<{ nodeNum: unknown }> = Array.isArray(nodes) ? nodes : [];
+    const sectionsJson: Record<string, string | undefined> = {};
+    for (const [name, value] of Object.entries(sections)) sectionsJson[name] = JSON.stringify(value);
+    const delta = pollDeltaTracker.apply(`${userId ?? 'anon'}|${pollSourceId ?? '*'}`, cursor, {
+      nodesJson: nodeList.map((node) => JSON.stringify(node)),
+      nodeNums: nodeList.map((node) => Number(node.nodeNum)),
+      sectionsJson,
+    });
+    for (const name of delta.unchangedSections ?? []) sectionsJson[name] = undefined;
+    res.type('application/json').send(serializePollReply(sectionsJson, delta.nodesJson, {
+      pollCursor: delta.cursor ?? undefined,
+      pollDelta: delta.delta || undefined,
+      removedNodes: delta.removedNodes,
+      nodeOrder: delta.nodeOrder,
+      unchangedSections: delta.unchangedSections,
+    }));
   } catch (error) {
     logger.error('Error in consolidated poll endpoint:', error);
     res.status(500).json({ error: 'Failed to fetch polling data' });
