@@ -5,6 +5,7 @@
  * with automatic polling every 15 seconds.
  */
 
+import { useMemo, useRef } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { appBasename } from '../init';
 import { useAuth } from '../contexts/AuthContext';
@@ -158,6 +159,25 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 /**
+ * Auth state for the auth-keyed dashboard queries. Their keys include
+ * `isAuthenticated` so a login/logout refetches with the new session, but
+ * until `/api/auth/status` answers that flag reads `false` for everyone. A
+ * query that ran then would fetch once as anonymous and again once auth
+ * resolves, so they wait for `authResolved` (two fetches of the full unified
+ * dashboard on every signed-in load otherwise).
+ */
+function useDashboardAuthGate(): { isAuthenticated: boolean; authResolved: boolean } {
+  const { authStatus, loading } = useAuth();
+  return {
+    isAuthenticated: authStatus?.authenticated ?? false,
+    // `loading` is true only until the first auth status lands.
+    authResolved: loading !== true,
+  };
+}
+
+const EMPTY: unknown[] = [];
+
+/**
  * Hook to fetch the list of all configured sources
  *
  * @returns TanStack Query result with DashboardSource[]
@@ -183,12 +203,12 @@ export function useDashboardSources() {
  * @returns Map from source ID to SourceStatus (or null on error)
  */
 export function useSourceStatuses(sourceIds: string[]): Map<string, SourceStatus | null> {
-  const { authStatus } = useAuth();
-  const isAuthenticated = authStatus?.authenticated ?? false;
+  const { isAuthenticated, authResolved } = useDashboardAuthGate();
   const results = useQueries({
     queries: sourceIds.map((id) => ({
       queryKey: ['dashboard', 'status', id, isAuthenticated],
       queryFn: () => fetchJson<SourceStatus>(`${appBasename}/api/sources/${id}/status`),
+      enabled: authResolved,
       refetchInterval: DASHBOARD_POLL_INTERVAL,
       retry: false,
     })),
@@ -226,11 +246,11 @@ export interface UnifiedStatus {
  * polls on the same cadence as the per-source status calls.
  */
 export function useUnifiedStatus(): UnifiedStatus | null {
-  const { authStatus } = useAuth();
-  const isAuthenticated = authStatus?.authenticated ?? false;
+  const { isAuthenticated, authResolved } = useDashboardAuthGate();
   const result = useQuery<UnifiedStatus>({
     queryKey: ['dashboard', 'unified-status', isAuthenticated],
     queryFn: () => fetchJson<UnifiedStatus>(`${appBasename}/api/unified/status`),
+    enabled: authResolved,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
     retry: false,
   });
@@ -260,8 +280,7 @@ export interface DashboardSourceData {
  * @returns Combined data object with loading/error state
  */
 export function useDashboardSourceData(sourceId: string | null): DashboardSourceData {
-  const { authStatus } = useAuth();
-  const isAuthenticated = authStatus?.authenticated ?? false;
+  const { isAuthenticated, authResolved } = useDashboardAuthGate();
   const enabled = sourceId !== null;
 
   // One bundled request for nodes+traceroutes+neighborInfo+channels instead of
@@ -270,7 +289,7 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   const dashboardQuery = useQuery({
     queryKey: ['dashboard', 'source-dashboard', sourceId, isAuthenticated],
     queryFn: () => fetchJson<SourceDashboardBundle>(`${appBasename}/api/sources/${sourceId}/dashboard`),
-    enabled,
+    enabled: enabled && authResolved,
     retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
@@ -278,7 +297,7 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   const statusQuery = useQuery({
     queryKey: ['dashboard', 'status', sourceId, isAuthenticated],
     queryFn: () => fetchJson<SourceStatus>(`${appBasename}/api/sources/${sourceId}/status`),
-    enabled,
+    enabled: enabled && authResolved,
     retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
@@ -299,10 +318,10 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   const isError = dashboardQuery.isError || statusQuery.isError;
 
   return {
-    nodes: dashboardQuery.data?.nodes ?? [],
-    traceroutes: dashboardQuery.data?.traceroutes ?? [],
-    neighborInfo: dashboardQuery.data?.neighborInfo ?? [],
-    channels: dashboardQuery.data?.channels ?? [],
+    nodes: dashboardQuery.data?.nodes ?? EMPTY,
+    traceroutes: dashboardQuery.data?.traceroutes ?? EMPTY,
+    neighborInfo: dashboardQuery.data?.neighborInfo ?? EMPTY,
+    channels: dashboardQuery.data?.channels ?? EMPTY,
     status: statusQuery.data ?? null,
     isLoading,
     isError,
@@ -533,6 +552,27 @@ export interface UnifiedSourceBundle {
   channels: unknown[];
 }
 
+interface CachedNodeMerge {
+  inputs: unknown[];
+  sourceSig: string;
+  merged: unknown;
+}
+
+/**
+ * Per-node merge results from the previous `mergeUnifiedSourceData` call, so an
+ * unchanged node keeps the same merged object (and the node array keeps its
+ * reference when nothing changed). Hold one per consumer, e.g. in a ref.
+ */
+export interface UnifiedMergeCache {
+  byKey: Map<string, CachedNodeMerge>;
+  nodes: unknown[] | null;
+  discard: boolean | null;
+}
+
+export function createUnifiedMergeCache(): UnifiedMergeCache {
+  return { byKey: new Map(), nodes: null, discard: null };
+}
+
 /**
  * Merge the same record type fetched from N sources into a single array.
  *
@@ -549,7 +589,17 @@ export interface UnifiedSourceBundle {
  */
 export function mergeUnifiedSourceData(
   perSource: UnifiedSourceBundle[],
+  cache?: UnifiedMergeCache,
 ): { nodes: unknown[]; traceroutes: unknown[]; neighborInfo: unknown[]; channels: unknown[] } {
+  // A change to the discard-invalid-positions toggle changes how positions
+  // merge, so nothing merged under the old value may be reused.
+  const discard = getDiscardInvalidPositions();
+  if (cache && cache.discard !== discard) {
+    cache.byKey = new Map();
+    cache.nodes = null;
+    cache.discard = discard;
+  }
+  const nextByKey = new Map<string, CachedNodeMerge>();
   // Keys are stringified and namespaced (`mt:`/`mc:`) so MeshCore contacts
   // (which carry no meshtastic nodeNum) don't collapse into the nodeNum=0
   // bucket. MeshCore nodes key on publicKey so the same physical node merges
@@ -618,8 +668,27 @@ export function mergeUnifiedSourceData(
     }
   }
 
-  const nodes = Array.from(recordsByKey.values()).map((entries) => {
-    const merged = mergeNodeRecords(entries.map((e) => e.node));
+  const nodes = Array.from(recordsByKey.entries()).map(([key, entries]) => {
+    const inputs = entries.map((e) => e.node);
+    const sourceSig = entries
+      .map((e) => (e.source ? `${e.source.sourceId}\u0001${e.source.sourceName}\u0001${e.source.protocol}` : ''))
+      .join('\u0002');
+    // Reuse last merge's object when this node's input records are the same
+    // objects as last time (TanStack's structural sharing keeps an unchanged
+    // record's reference across polls). That keeps an unchanged node's
+    // identity stable, so per-node memos and marker components downstream
+    // can skip it.
+    const prev = cache?.byKey.get(key);
+    if (
+      prev &&
+      prev.sourceSig === sourceSig &&
+      prev.inputs.length === inputs.length &&
+      prev.inputs.every((r, i) => r === inputs[i])
+    ) {
+      nextByKey.set(key, prev);
+      return prev.merged;
+    }
+    const merged = mergeNodeRecords(inputs);
     const seen = new Map<string, NodeSourceRef>();
     for (const e of entries) {
       if (e.source && !seen.has(e.source.sourceId)) seen.set(e.source.sourceId, e.source);
@@ -654,11 +723,23 @@ export function mergeUnifiedSourceData(
       for (const c of getNodeTransportClasses(e.node)) classes.add(c);
     }
     merged.transportClasses = Array.from(classes);
+    nextByKey.set(key, { inputs, sourceSig, merged });
     return merged;
   });
 
+  let stableNodes: unknown[] = nodes;
+  if (cache) {
+    // Every node reused in the same order: hand back last call's array too.
+    const prevNodes = cache.nodes;
+    if (prevNodes && prevNodes.length === nodes.length && prevNodes.every((n, i) => n === nodes[i])) {
+      stableNodes = prevNodes;
+    }
+    cache.byKey = nextByKey;
+    cache.nodes = stableNodes;
+  }
+
   return {
-    nodes,
+    nodes: stableNodes,
     traceroutes,
     neighborInfo,
     channels,
@@ -676,69 +757,92 @@ export function useDashboardUnifiedData(
   sources: Array<string | DashboardSource>,
   enabled: boolean,
 ): DashboardSourceData {
-  const { authStatus } = useAuth();
-  const isAuthenticated = authStatus?.authenticated ?? false;
+  const { isAuthenticated, authResolved } = useDashboardAuthGate();
   // Accept either bare source-id strings (MapAnalysis layers, which never use
   // the per-node `sources` field) or full DashboardSource objects (the Unified
   // dashboard map, which needs source names + protocol for the popup).
-  const sourceList = sources.map((s) => (typeof s === 'string' ? { id: s } : s));
-  const sourceIds = sourceList.map((s) => s.id);
+  // Callers usually pass a fresh array each render, so everything below keys
+  // on a string of the fields the merge reads rather than on `sources` itself.
+  const sourceMetaKey = JSON.stringify(
+    sources.map((s) =>
+      typeof s === 'string'
+        ? [s]
+        : [s.id, s.name, isAnyMeshCoreSourceType(s.type) ? 'MeshCore' : 'Meshtastic'],
+    ),
+  );
+  const sourceMeta = useMemo(
+    () => JSON.parse(sourceMetaKey) as Array<[string] | [string, string, 'MeshCore' | 'Meshtastic']>,
+    [sourceMetaKey],
+  );
+  const sourceIds = sourceMeta.map((m) => m[0]);
 
   // ONE request for the whole unified view instead of four GETs per source per
   // poll (#3735). The endpoint returns a per-source bundle array; we re-key it
   // by sourceId and stamp the caller's name/protocol metadata back on so the
   // merge can attribute each node to its source.
   const sourcesKey = sourceIds.join(',');
+  const active = enabled && sourceIds.length > 0;
   const query = useQuery({
     queryKey: ['dashboard', 'unified-dashboard', sourcesKey, isAuthenticated],
     queryFn: () =>
       fetchJson<SourceDashboardBundle[]>(
         `${appBasename}/api/unified/dashboard?sources=${encodeURIComponent(sourcesKey)}`,
       ),
-    enabled: enabled && sourceIds.length > 0,
+    enabled: active && authResolved,
     retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
 
-  if (!enabled || sourceIds.length === 0) {
-    return {
-      nodes: [],
-      traceroutes: [],
-      neighborInfo: [],
-      channels: [],
-      status: null,
-      isLoading: false,
-      isError: false,
-    };
-  }
+  // The merge is expensive on a large mesh (100+ ms), so it runs only when the
+  // fetched data, the source metadata or the position-discard toggle changes,
+  // not on every render of the consumer. The cache keeps unchanged nodes'
+  // merged objects (and the array itself) referentially stable across polls.
+  const mergeCacheRef = useRef<UnifiedMergeCache | null>(null);
+  const discardInvalid = getDiscardInvalidPositions();
+  const merged = useMemo(() => {
+    if (!active) return null;
+    // A toggle of discard-invalid-positions changes how positions merge, so
+    // start a fresh cache rather than reuse nodes merged under the old value.
+    if (!mergeCacheRef.current || mergeCacheRef.current.discard !== discardInvalid) {
+      mergeCacheRef.current = createUnifiedMergeCache();
+    }
+    const bundlesById = new Map<string, SourceDashboardBundle>(
+      (query.data ?? []).map((b: SourceDashboardBundle): [string, SourceDashboardBundle] => [b.sourceId, b]),
+    );
+    // Re-attach id/name/protocol so the merge can stamp `sources` onto every node
+    // (MeshCore source types map to the MeshCore protocol; everything else is
+    // Meshtastic). Bare-string callers carry no metadata, so merged nodes get no
+    // `sources` field — matching the previous behavior.
+    const perSource: UnifiedSourceBundle[] = sourceMeta.map((m) => {
+      const b = bundlesById.get(m[0]);
+      return {
+        sourceId: m.length > 1 ? m[0] : undefined,
+        sourceName: m.length > 1 ? m[1] : undefined,
+        protocol: m.length > 1 ? m[2] : undefined,
+        nodes: b?.nodes ?? [],
+        traceroutes: b?.traceroutes ?? [],
+        neighborInfo: b?.neighborInfo ?? [],
+        channels: b?.channels ?? [],
+      };
+    });
+    return mergeUnifiedSourceData(perSource, mergeCacheRef.current);
+  }, [active, query.data, sourceMeta, discardInvalid]);
 
-  const bundlesById = new Map<string, SourceDashboardBundle>(
-    (query.data ?? []).map((b: SourceDashboardBundle): [string, SourceDashboardBundle] => [b.sourceId, b]),
+  const isLoading = query.isLoading;
+  const isError = query.isError;
+  return useMemo<DashboardSourceData>(
+    () =>
+      merged
+        ? { ...merged, status: null, isLoading, isError }
+        : {
+            nodes: EMPTY,
+            traceroutes: EMPTY,
+            neighborInfo: EMPTY,
+            channels: EMPTY,
+            status: null,
+            isLoading: false,
+            isError: false,
+          },
+    [merged, isLoading, isError],
   );
-
-  // Re-attach id/name/protocol so the merge can stamp `sources` onto every node
-  // (MeshCore source types map to the MeshCore protocol; everything else is
-  // Meshtastic). Bare-string callers carry no metadata, so merged nodes get no
-  // `sources` field — matching the previous behavior.
-  const perSource: UnifiedSourceBundle[] = sourceList.map((s) => {
-    const b = bundlesById.get(s.id);
-    return {
-      sourceId: 'name' in s ? s.id : undefined,
-      sourceName: 'name' in s ? s.name : undefined,
-      protocol: 'type' in s ? (isAnyMeshCoreSourceType(s.type) ? 'MeshCore' : 'Meshtastic') : undefined,
-      nodes: b?.nodes ?? [],
-      traceroutes: b?.traceroutes ?? [],
-      neighborInfo: b?.neighborInfo ?? [],
-      channels: b?.channels ?? [],
-    };
-  });
-
-  const merged = mergeUnifiedSourceData(perSource);
-
-  return {
-    ...merged,
-    status: null,
-    isLoading: query.isLoading,
-    isError: query.isError,
-  };
 }

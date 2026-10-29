@@ -36,6 +36,7 @@ import { useToast } from '../ToastContainer';
 import { getTelemetryLabel } from '../TelemetryChart';
 import { UiIcon } from '../icons';
 import { logger } from '../../utils/logger';
+import { MAX_MARKER_POINTS } from '../../utils/telemetryChartDensity';
 import styles from './MeshCoreInfoView.module.css';
 
 const HOURS_OPTIONS = [1, 6, 24, 72, 168] as const;
@@ -483,7 +484,7 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
                           dataKey="value"
                           stroke={color}
                           strokeWidth={2}
-                          dot={{ fill: color, r: 2 }}
+                          dot={data.length > MAX_MARKER_POINTS ? false : { fill: color, r: 2 }}
                           activeDot={{ r: 4 }}
                           isAnimationActive={false}
                         />

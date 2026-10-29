@@ -4,7 +4,7 @@
  * Manages user authentication state, login/logout, and permissions
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api from '../services/api';
 import { signInWithPasskey, recoverWithCode as postRecoveryCode } from '../services/passkeyClient';
 import { logger } from '../utils/logger';
@@ -107,38 +107,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Bumped on every refresh so a slow channel-database-permissions reply from
+  // an older refresh can't overwrite a newer auth status.
+  const refreshSeq = useRef(0);
+
   // Check authentication status
   const refreshAuth = useCallback(async () => {
+    const seq = ++refreshSeq.current;
     try {
       const response = await api.get<AuthStatus>('/api/auth/status');
 
-      // Fetch channel database permissions if authenticated
-      const channelDbPermissions: ChannelDbPermissionSet = {};
-      if (response.authenticated && response.user) {
-        try {
-          const cdPermsResponse = await api.get<{
-            data: Array<{ channelDatabaseId: number; canViewOnMap: boolean; canRead: boolean }>;
-          }>(`/api/users/${response.user.id}/channel-database-permissions`);
-
-          for (const perm of cdPermsResponse.data || []) {
-            channelDbPermissions[perm.channelDatabaseId] = {
-              viewOnMap: perm.canViewOnMap,
-              read: perm.canRead
-            };
-          }
-        } catch (err) {
-          // Non-fatal - user may not have permissions to view this
-          logger.debug('Could not fetch channel database permissions:', err);
-        }
-      }
-
+      // Publish the auth status as soon as /api/auth/status answers. Auth-gated
+      // queries (the dashboard among them) wait on this, so it must not also
+      // wait on the channel-database permission fetch below.
       setAuthStatus({
         ...response,
-        channelDbPermissions
+        channelDbPermissions: {},
       });
       logger.debug('Auth status refreshed:', response.authenticated);
+
+      // Channel database (virtual channel) permissions load after, without
+      // blocking. Until they arrive, hasChannelDbPermission() denies non-admins
+      // (the same answer it gave when the fetch failed). Admins never need them.
+      if (response.authenticated && response.user) {
+        const userId = response.user.id;
+        void (async () => {
+          try {
+            const cdPermsResponse = await api.get<{
+              data: Array<{ channelDatabaseId: number; canViewOnMap: boolean; canRead: boolean }>;
+            }>(`/api/users/${userId}/channel-database-permissions`);
+
+            const channelDbPermissions: ChannelDbPermissionSet = {};
+            for (const perm of cdPermsResponse.data || []) {
+              channelDbPermissions[perm.channelDatabaseId] = {
+                viewOnMap: perm.canViewOnMap,
+                read: perm.canRead
+              };
+            }
+            if (seq !== refreshSeq.current) return;
+            setAuthStatus((prev) => (prev ? { ...prev, channelDbPermissions } : prev));
+          } catch (err) {
+            // Non-fatal - user may not have permissions to view this
+            logger.debug('Could not fetch channel database permissions:', err);
+          }
+        })();
+      }
     } catch (error) {
       logger.error('Failed to fetch auth status:', error);
+      if (seq !== refreshSeq.current) return;
       // Set unauthenticated state on error
       setAuthStatus({
         authenticated: false,

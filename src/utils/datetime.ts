@@ -1,25 +1,56 @@
 import { TimeFormat, DateFormat } from '../contexts/SettingsContext.js';
 
 /**
+ * Cache of `Intl.DateTimeFormat` instances keyed by locale + options.
+ *
+ * `Date.prototype.toLocaleTimeString(locale, options)` builds a fresh
+ * `Intl.DateTimeFormat` on every call, which is slow: the telemetry charts call
+ * `formatTime` once per data point and a trace of the Info tab spent ~0.9 s in
+ * it. `toLocaleTimeString`/`toLocaleString` are specified as "create a
+ * DateTimeFormat with these options, then format", so reusing one instance per
+ * (locale, options) pair gives the same string.
+ *
+ * Instances capture the runtime's default time zone when created, exactly as a
+ * fresh call would at that moment; the browser time zone does not change while
+ * a page is open.
+ */
+const dateTimeFormatCache = new Map<string, Intl.DateTimeFormat>();
+
+export function getCachedDateTimeFormat(
+  locale: string | string[] | undefined,
+  options: Intl.DateTimeFormatOptions
+): Intl.DateTimeFormat {
+  const key = `${JSON.stringify(locale ?? null)}|${JSON.stringify(options)}`;
+  let formatter = dateTimeFormatCache.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, options);
+    dateTimeFormatCache.set(key, formatter);
+  }
+  return formatter;
+}
+
+const TIME_12H_OPTIONS: Intl.DateTimeFormatOptions = {
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true
+};
+
+const TIME_24H_OPTIONS: Intl.DateTimeFormatOptions = {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false
+};
+
+/**
  * Formats a time according to the user's preferred time format
  * @param date - Date object to format
  * @param format - '12' for 12-hour format, '24' for 24-hour format
  * @returns Formatted time string
  */
 export function formatTime(date: Date, format: TimeFormat = '24'): string {
-  if (format === '12') {
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  } else {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-  }
+  // toLocaleTimeString returns this for an invalid date; Intl's format() throws.
+  if (Number.isNaN(date.getTime())) return 'Invalid Date';
+  return getCachedDateTimeFormat('en-US', format === '12' ? TIME_12H_OPTIONS : TIME_24H_OPTIONS).format(date);
 }
 
 /**
