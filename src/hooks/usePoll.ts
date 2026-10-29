@@ -32,6 +32,7 @@ import { useWebSocketConnected } from '../contexts/WebSocketContext';
 import { useSource } from '../contexts/SourceContext';
 import { useOptionalConnectionStatus } from '../contexts/dataContextState';
 import { POLL_QUERY_KEY, sourcePollQueryKey } from './pollQueryKey';
+import { getPollBase, setPollBase, mergePollReply, PollDeltaMismatchError, type PollReply } from './pollDelta';
 
 /**
  * Connection status from the server
@@ -226,13 +227,37 @@ export async function fetchPollData(
   const url = sourceId
     ? `${baseUrl}/api/poll?sourceId=${encodeURIComponent(sourceId)}`
     : `${baseUrl}/api/poll`;
-  const response = await authFetch(url, undefined, signal);
 
-  if (!response.ok) {
-    throw new Error(`Poll request failed: ${response.status}`);
+  // Incremental read: send the cursor of the last reply merged for this URL
+  // and merge the delta onto that same reply (see ./pollDelta). An empty
+  // cursor asks for the full reply and opts in to deltas after it.
+  const read = async (useBase: boolean): Promise<PollData> => {
+    const base = useBase ? getPollBase(url) : null;
+    const cursor = base?.cursor ?? '';
+    const response = await authFetch(
+      `${url}${url.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(cursor)}`,
+      undefined,
+      signal,
+    );
+
+    if (!response.ok) {
+      throw new Error(`Poll request failed: ${response.status}`);
+    }
+
+    const reply = (await response.json()) as PollReply;
+    const data = mergePollReply(base?.data ?? null, reply);
+    setPollBase(url, reply.pollCursor, data);
+    return data;
+  };
+
+  try {
+    return await read(true);
+  } catch (error) {
+    // A delta that does not fit the held reply: drop it and read in full.
+    if (!(error instanceof PollDeltaMismatchError)) throw error;
+    setPollBase(url, undefined, {});
+    return read(false);
   }
-
-  return response.json();
 }
 
 /**
