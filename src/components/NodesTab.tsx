@@ -34,8 +34,10 @@ import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops, getMapHoverTooltipMeta } from '../utils/nodeHops';
+import { sortNodesByField } from '../utils/nodeSort';
 import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '../utils/nodeExport';
 import { useMapContext } from '../contexts/MapContext';
+import { useMapViewStore, useMapViewSelector } from '../contexts/mapViewStore';
 import { useTelemetryNodes, useDeviceConfig, useNodes, useChannels, setNodeFieldInCache } from '../hooks/useServerData';
 import { useQueryClient } from '@tanstack/react-query';
 import { sourcePollQueryKey } from '../hooks/usePoll';
@@ -647,9 +649,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     triggerNodeAnimation,
     mapCenterTarget,
     setMapCenterTarget,
-    mapCenter,
-    mapZoom,
-    setMapZoom,
     selectedNodeId,
     setSelectedNodeId,
     neighborInfo,
@@ -661,6 +660,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mapMaxAgeHours,
     setMapMaxAgeHours,
   } = useMapContext();
+  const mapViewStore = useMapViewStore();
 
   const { currentNodeId } = useDeviceConfig();
   // `isLoading` reflects TanStack Query's pending state for the shared poll
@@ -1671,65 +1671,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }
   };
 
-  // Helper function to sort nodes
-  const sortNodes = useCallback((nodes: DeviceInfo[]): DeviceInfo[] => {
-    return [...nodes].sort((a, b) => {
-      let aVal: any, bVal: any;
-
-      switch (sortField) {
-        case 'longName':
-          aVal = a.user?.longName || `Node ${a.nodeNum}`;
-          bVal = b.user?.longName || `Node ${b.nodeNum}`;
-          break;
-        case 'shortName':
-          aVal = a.user?.shortName || '';
-          bVal = b.user?.shortName || '';
-          break;
-        case 'id':
-          aVal = a.user?.id || a.nodeNum;
-          bVal = b.user?.id || b.nodeNum;
-          break;
-        case 'lastHeard':
-          aVal = a.lastHeard || 0;
-          bVal = b.lastHeard || 0;
-          break;
-        case 'snr':
-          aVal = a.snr ?? -999;
-          bVal = b.snr ?? -999;
-          break;
-        case 'battery':
-          aVal = a.deviceMetrics?.batteryLevel ?? -1;
-          bVal = b.deviceMetrics?.batteryLevel ?? -1;
-          break;
-        case 'uptime':
-          // Never-reported uptime sorts to the bottom. Top-level uptimeSeconds is
-          // enriched by /api/nodes (#4814), with the device-metrics copy as fallback.
-          aVal = a.uptimeSeconds ?? a.deviceMetrics?.uptimeSeconds ?? -1;
-          bVal = b.uptimeSeconds ?? b.deviceMetrics?.uptimeSeconds ?? -1;
-          break;
-        case 'hwModel':
-          aVal = a.user?.hwModel ?? 0;
-          bVal = b.user?.hwModel ?? 0;
-          break;
-        case 'hops':
-          aVal = getEffectiveHops(a, nodeHopsCalculation, traceroutes, currentNodeNum);
-          bVal = getEffectiveHops(b, nodeHopsCalculation, traceroutes, currentNodeNum);
-          break;
-        default:
-          return 0;
-      }
-
-      // Compare values
-      let comparison = 0;
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        comparison = aVal.localeCompare(bVal);
-      } else {
-        comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-      }
-
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-  }, [sortField, sortDirection, nodeHopsCalculation, traceroutes, currentNodeNum]);
+  // Helper function to sort nodes. Keys are computed once per node rather
+  // than per comparison (see sortNodesByField) — the 'hops' key in
+  // traceroute mode scans and parses every traceroute.
+  const sortNodes = useCallback((nodes: DeviceInfo[]): DeviceInfo[] =>
+    sortNodesByField(nodes, sortField, sortDirection, node =>
+      getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum)),
+  [sortField, sortDirection, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
   // The filtered node set: processedNodes (text filter already applied upstream)
   // → security/channel/incomplete/remote-admin filters. Shared by the flat
@@ -1962,7 +1910,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     [nodePositions, nodesWithPosition.map(n => `${n.nodeNum}-${n.user?.shortName ?? ''}`).join(',')],
   );
 
-  const showLabel = mapZoom >= 13;
+  // Map centre/zoom live in the map view store (not MapContext) so a pan
+  // re-renders nothing and a zoom re-renders this tab only when a threshold
+  // it draws against flips.
+  const showLabel = useMapViewSelector(s => s.zoom >= 13);
 
   // Node marker descriptors for the shared NodeMarkersLayer (#4047 Phase 4,
   // WP6) — the layer owns spiderfy wiring, the icon/position caches that used
@@ -2356,7 +2307,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // for the arrow icons is now computed by the shared layer itself
   // (`bearingBetween`, verified to reproduce this file's former inline
   // `atan2` calculation exactly), so it's no longer computed here.
-  const neighborLinks: NeighborLinkDescriptor[] = (showNeighborInfo && neighborInfo.length > 0 && mapZoom >= neighborInfoMinZoom)
+  const zoomShowsNeighborLinks = useMapViewSelector(s => s.zoom >= neighborInfoMinZoom);
+  const neighborLinks: NeighborLinkDescriptor[] = (showNeighborInfo && neighborInfo.length > 0 && zoomShowsNeighborLinks)
     ? neighborInfo
         .map((ni, idx): NeighborLinkDescriptor | null => {
           // Anchor each endpoint to where the node's MARKER is rendered
@@ -2445,6 +2397,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
+  // Read (not subscribed): the result only seeds a map at mount — BaseMap and
+  // Map3DView treat center/zoom as mount-only — so this tab needn't re-render
+  // on every pan to keep it fresh; any later render reads the latest view.
+  const { center: mapCenter, zoom: mapZoom } = mapViewStore.get();
   const getMapCenter = (): { center: [number, number]; zoom: number } => {
     // 1. Saved localStorage position (logged-in user's last session)
     if (mapCenter) {
@@ -3607,7 +3563,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               />
               <TracerouteBoundsController bounds={tracerouteBounds} />
               <FitAllNodesController request={fitAllRequest} positions={fitAllPositions} />
-              <ZoomHandler onZoomChange={setMapZoom} />
+              <ZoomHandler onZoomChange={mapViewStore.setZoom} />
               <MapPositionHandler />
               <MapInstanceBridge onMap={setPlaybackMap} />
               <WaypointMapEventBridge

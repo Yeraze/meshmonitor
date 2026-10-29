@@ -1,13 +1,15 @@
 import { useEffect } from 'react';
 import { useMap } from 'react-leaflet';
-import { useMapContext } from '../contexts/MapContext';
+import { useMapViewStore } from '../contexts/mapViewStore';
 
 /**
- * Component that tracks map center changes and updates context
+ * Component that tracks map center changes and records them in the map view
+ * store (which persists them). It writes without subscribing, so a pan
+ * re-renders nothing.
  */
 const MapPositionHandler = () => {
   const map = useMap();
-  const { setMapCenter } = useMapContext();
+  const { setCenter: setMapCenter } = useMapViewStore();
 
   useEffect(() => {
     const handleMoveEnd = () => {

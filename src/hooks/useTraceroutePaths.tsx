@@ -25,6 +25,7 @@ import {
   isUnknownSnr,
   isValidRouteNode,
   averageNonSentinelSnr,
+  TRACEROUTE_LOW_ZOOM,
   type TracerouteRenderSegment,
 } from '../utils/tracerouteSegments';
 import { TraceroutePathsLayer } from '../components/map/layers/TraceroutePathsLayer';
@@ -442,7 +443,7 @@ export function useTraceroutePaths({
     }
 
     // Zoom-adaptive filtering: at low zoom levels, only show stronger segments
-    if (mapZoom !== undefined && mapZoom < 8) {
+    if (mapZoom !== undefined && mapZoom < TRACEROUTE_LOW_ZOOM) {
       // Regional view: only show segments with good or medium SNR (filter out poor/unknown)
       filteredSegments = filteredSegments.filter(segment => {
         const segKey = nodePairKey(segment.nodeNums[0], segment.nodeNums[1]);
