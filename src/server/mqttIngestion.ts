@@ -433,6 +433,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         updatedAt: nowMs,
       };
       void databaseService.upsertNodeAsync(node).catch(err => logger.error('MQTT upsertNode failed:', err));
+      dataEventEmitter.emitNodeBatchUpdate(fromNum, { lastHeard: lastHeardSec }, sourceId);
       return { ingested: true, portnum };
     }
 
@@ -624,6 +625,14 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
           aircraftAgeOutService.handlePositionReception(sourceId, fromNum, packet.rxTime, Date.now(), { classify: hasAlt });
         }
       }).catch(err => logger.error('MQTT upsertNode failed:', err));
+      // Live UI update, coalesced per source (no automation triggers). Same
+      // fields the TCP path sends on a position packet.
+      dataEventEmitter.emitNodeBatchUpdate(fromNum, {
+        lastHeard: node.lastHeard,
+        latitude: node.latitude,
+        longitude: node.longitude,
+        altitude: node.altitude,
+      }, sourceId);
       return { ingested: true, portnum };
     }
 
@@ -718,6 +727,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         createdAt: nowMs,
         updatedAt: nowMs,
       }, sourceId).catch(err => logger.error('MQTT upsertNode failed:', err));
+      dataEventEmitter.emitNodeBatchUpdate(fromNum, { lastHeard: lastHeardSec }, sourceId);
       return { ingested: true, portnum };
     }
 
@@ -790,6 +800,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         }
       }
       void databaseService.upsertNodeAsync(node, sourceId).catch(err => logger.error('MQTT upsertNode failed:', err));
+      dataEventEmitter.emitNodeBatchUpdate(fromNum, { lastHeard: lastHeardSec }, sourceId);
       return any ? { ingested: true, portnum } : { ingested: false, reason: 'decode-error', portnum };
     }
 

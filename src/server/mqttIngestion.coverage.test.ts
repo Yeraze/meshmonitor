@@ -289,7 +289,9 @@ describe('MQTT ingestion — Coverage Report gateway-reception recording (#5277 
   it('never emits on dataEventEmitter', async () => {
     await ingest(SOURCE_A, envFor(GATEWAY_1));
     await vi.waitFor(() => expect(recordReceptionMock).toHaveBeenCalledTimes(1));
-    expect(emitCalls).toEqual([]);
+    // The position upsert queues its UI-only `node:batch` live update; that is
+    // the node row, not the coverage reception, and it feeds no automation.
+    expect(emitCalls.filter((c) => c.method !== 'emitNodeBatchUpdate')).toEqual([]);
   });
 
   it('a settings flip takes effect after invalidateCoverageMqttEnabled, with no restart', async () => {

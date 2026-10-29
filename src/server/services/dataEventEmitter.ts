@@ -30,6 +30,7 @@ export type DataEventType =
   | 'message:new'
   | 'channel:updated'
   | 'telemetry:batch'
+  | 'node:batch'
   | 'connection:status'
   | 'client-notification'
   | 'traceroute:complete'
@@ -252,6 +253,20 @@ export interface TelemetryBatchData {
   [nodeNum: number]: DbTelemetry[];
 }
 
+/**
+ * Coalesced node changes for the UI only: nodeNum → the merged changed fields
+ * of every update queued for that node in the window. Raised by
+ * {@link DataEventEmitter.emitNodeBatchUpdate}. Unlike `node:updated` it does
+ * not feed the automation engine, so high-volume ingest (MQTT) can keep the
+ * client fresh without firing trigger.nodeUpdated / nodeOnline per packet.
+ */
+export interface NodeBatchData {
+  [nodeNum: number]: Partial<DbNode>;
+}
+
+/** Window for coalescing `node:batch` updates (per source). */
+export const NODE_BATCH_INTERVAL_MS = 2000;
+
 export interface ClientNotificationData {
   /** LogRecord.Level numeric value (WARNING=30, ERROR=40, …). */
   level: number;
@@ -277,6 +292,10 @@ class DataEventEmitter extends EventEmitter {
   // Keyed by sourceId → publicKey → contact (latest wins within window)
   private contactBuffer: Map<string, Map<string, MeshCoreContact>> = new Map();
   private contactBatchTimeout: NodeJS.Timeout | null = null;
+
+  // Keyed by sourceId → nodeNum → merged changed fields (latest value wins)
+  private nodeBatchBuffer: Map<string, Map<number, Partial<DbNode>>> = new Map();
+  private nodeBatchTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -463,6 +482,47 @@ class DataEventEmitter extends EventEmitter {
 
     this.telemetryBuffer.clear();
     this.batchTimeout = null;
+  }
+
+  /**
+   * Queue a UI-only node change; flushed as one `node:batch` event per source
+   * every {@link NODE_BATCH_INTERVAL_MS}. Repeated updates to one node inside
+   * the window merge, so a busy MQTT feed costs at most one event per source
+   * per window. Fields that are `undefined` are dropped. Requires a sourceId:
+   * the socket gate checks every event on its own source.
+   */
+  emitNodeBatchUpdate(nodeNum: number, node: Partial<DbNode>, sourceId: string): void {
+    if (!sourceId || !Number.isFinite(nodeNum)) return;
+    const fields: Partial<DbNode> = {};
+    let any = false;
+    for (const [key, value] of Object.entries(node)) {
+      if (value === undefined) continue;
+      (fields as Record<string, unknown>)[key] = value;
+      any = true;
+    }
+    if (!any) return;
+    let sourceBuffer = this.nodeBatchBuffer.get(sourceId);
+    if (!sourceBuffer) {
+      sourceBuffer = new Map();
+      this.nodeBatchBuffer.set(sourceId, sourceBuffer);
+    }
+    const prev = sourceBuffer.get(nodeNum);
+    sourceBuffer.set(nodeNum, prev ? { ...prev, ...fields } : fields);
+    if (!this.nodeBatchTimeout) {
+      this.nodeBatchTimeout = setTimeout(() => this.flushNodeBatch(), NODE_BATCH_INTERVAL_MS);
+    }
+  }
+
+  private flushNodeBatch(): void {
+    for (const [sourceId, sourceBuffer] of this.nodeBatchBuffer) {
+      const batch: NodeBatchData = {};
+      for (const [nodeNum, fields] of sourceBuffer) batch[nodeNum] = fields;
+      const event: DataEvent = { type: 'node:batch', data: batch, timestamp: Date.now(), sourceId };
+      this.emit('data', event);
+      logger.debug(`[DataEventEmitter] Node batch: ${sourceBuffer.size} nodes (source: ${sourceId})`);
+    }
+    this.nodeBatchBuffer.clear();
+    this.nodeBatchTimeout = null;
   }
 
   /**
@@ -923,6 +983,10 @@ class DataEventEmitter extends EventEmitter {
     if (this.contactBatchTimeout) {
       clearTimeout(this.contactBatchTimeout);
       this.flushContacts();
+    }
+    if (this.nodeBatchTimeout) {
+      clearTimeout(this.nodeBatchTimeout);
+      this.flushNodeBatch();
     }
   }
 }

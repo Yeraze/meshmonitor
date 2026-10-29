@@ -206,3 +206,63 @@ describe('mqttIngestion → dataEventEmitter (#4593)', () => {
     expect(databaseService.messages.insertMessage).not.toHaveBeenCalled();
   });
 });
+
+describe('mqttIngestion → node:batch live node updates', () => {
+  let events: DataEvent[];
+  let listener: (e: DataEvent) => void;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetMqttIngestCachesForTest();
+    dataEventEmitter.flushPending();
+    (databaseService.messages.insertMessage as any).mockResolvedValue(true);
+    (databaseService.messages.getMessage as any).mockResolvedValue(null);
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+    events = [];
+    listener = (e: DataEvent) => events.push(e);
+    dataEventEmitter.on('data', listener);
+  });
+
+  afterEach(() => {
+    dataEventEmitter.off('data', listener);
+  });
+
+  it('queues a lastHeard update for the sender, scoped to the ingesting source', async () => {
+    await ingestServiceEnvelope({ sourceId: SOURCE, envelope: envFor(4 /* NODEINFO_APP */) });
+    // Nothing goes out until the coalescing window closes.
+    expect(events.filter((e) => e.type === 'node:batch')).toHaveLength(0);
+    dataEventEmitter.flushPending();
+
+    const batches = events.filter((e) => e.type === 'node:batch');
+    expect(batches).toHaveLength(1);
+    expect(batches[0].sourceId).toBe(SOURCE);
+    const fields = (batches[0].data as Record<number, { lastHeard?: number }>)[SENDER];
+    expect(typeof fields.lastHeard).toBe('number');
+  });
+
+  it('coalesces many packets from one source into one event', async () => {
+    for (let i = 0; i < 5; i++) {
+      await ingestServiceEnvelope({ sourceId: SOURCE, envelope: envFor(1, { text: `m${i}`, id: 100 + i }) });
+    }
+    await ingestServiceEnvelope({ sourceId: SOURCE, envelope: envFor(4 /* NODEINFO_APP */) });
+    dataEventEmitter.flushPending();
+
+    const batches = events.filter((e) => e.type === 'node:batch');
+    expect(batches).toHaveLength(1);
+    expect(Object.keys(batches[0].data as object)).toEqual([String(SENDER)]);
+  });
+
+  it('never raises node:updated, so MQTT traffic does not fire node automations', async () => {
+    await ingestServiceEnvelope({ sourceId: SOURCE, envelope: envFor(4 /* NODEINFO_APP */) });
+    await ingestServiceEnvelope({ sourceId: SOURCE, envelope: envFor(1, { text: 'ping' }) });
+    dataEventEmitter.flushPending();
+    expect(events.filter((e) => e.type === 'node:updated')).toHaveLength(0);
+  });
+
+  it('queues nothing for an ignored sender', async () => {
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(true);
+    await ingestServiceEnvelope({ sourceId: SOURCE, envelope: envFor(4 /* NODEINFO_APP */) });
+    dataEventEmitter.flushPending();
+    expect(events.filter((e) => e.type === 'node:batch')).toHaveLength(0);
+  });
+});
