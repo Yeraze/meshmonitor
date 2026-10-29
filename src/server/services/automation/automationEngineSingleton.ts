@@ -76,6 +76,7 @@ export async function startAutomationEngine(): Promise<void> {
     deps: createMeshActionDeps(),
     data: createMeshNodeDataProvider(),
     homeAnchorsRepo: databaseService.automationHomeAnchorsRepo,
+    fireStateRepo: databaseService.automationFireStateRepo,
     estimateHomeFromHistory: async (nodeNum, thresholdMeters) => {
       const est = await estimateHomeFromNodeHistory(nodeNum, thresholdMeters);
       return est ? { latitude: est.latitude, longitude: est.longitude } : null;

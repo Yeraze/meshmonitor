@@ -88,6 +88,7 @@ import {
   AutomationsRepository,
   AutomationVariablesRepository,
   AutomationHomeAnchorsRepository,
+  AutomationFireStateRepository,
   SavedRegionsRepository,
   PrivacyDocumentsRepository,
   SolarNodeOverridesRepository,
@@ -659,6 +660,7 @@ class DatabaseService {
   public automationsRepo: AutomationsRepository | null = null;
   public automationVariablesRepo: AutomationVariablesRepository | null = null;
   public automationHomeAnchorsRepo: AutomationHomeAnchorsRepository | null = null;
+  public automationFireStateRepo: AutomationFireStateRepository | null = null;
   public savedRegionsRepo: SavedRegionsRepository | null = null;
   public privacyDocumentsRepo: PrivacyDocumentsRepository | null = null;
   public solarNodeOverridesRepo: SolarNodeOverridesRepository | null = null;
@@ -1287,6 +1289,7 @@ class DatabaseService {
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
       this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
       this.automationHomeAnchorsRepo = new AutomationHomeAnchorsRepository(drizzleDb, this.drizzleDbType);
+      this.automationFireStateRepo = new AutomationFireStateRepository(drizzleDb, this.drizzleDbType);
       this.savedRegionsRepo = new SavedRegionsRepository(drizzleDb, this.drizzleDbType);
       this.privacyDocumentsRepo = new PrivacyDocumentsRepository(drizzleDb, this.drizzleDbType);
       this.solarNodeOverridesRepo = new SolarNodeOverridesRepository(drizzleDb, this.drizzleDbType);

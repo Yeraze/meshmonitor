@@ -94,6 +94,7 @@ export const BACKUP_TABLES: string[] = [
   'automation_variables',
   'automation_variable_values',
   'automation_home_anchors',
+  'automation_fire_state',
   'custom_themes',
   'user_map_preferences',
   'embed_profiles',

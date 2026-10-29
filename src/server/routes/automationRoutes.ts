@@ -605,6 +605,14 @@ router.delete('/:id', canWrite, async (req: Request, res: Response) => {
     } catch (e) {
       logger.warn(`Failed to clean home anchors for automation ${req.params.id}: ${e instanceof Error ? e.message : String(e)}`);
     }
+    // Drop its stored cooldown / rate-limit state. (If this fails, or a fire
+    // queued just before the delete lands after it, the engine's load() removes
+    // rows whose automation no longer exists.)
+    try {
+      await databaseService.automationFireStateRepo?.deleteByAutomation(req.params.id);
+    } catch (e) {
+      logger.warn(`Failed to clean fire state for automation ${req.params.id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
     await reloadAutomations();
     res.json({ success: true });
   } catch (error) {
