@@ -177,6 +177,7 @@ export const TABLE_ORDER = [
   'automation_variables',
   'automation_variable_values',
   'automation_home_anchors',
+  'automation_fire_state',
   // 3770: global MeshCore saved-regions catalog. No sourceId / no FK.
   'meshcore_saved_regions',
   // 5277 P4b: global saved Coverage surveys (UUID PK, no sourceId, no FK).

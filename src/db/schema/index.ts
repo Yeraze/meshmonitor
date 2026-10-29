@@ -86,6 +86,7 @@ export * from './embedProfiles.js';
 export * from './automations.js';
 export * from './automationVariables.js';
 export * from './automationHomeAnchors.js';
+export * from './automationFireState.js';
 
 // MeshCore saved-regions catalog (global — no sourceId) (#3770)
 export * from './savedRegions.js';

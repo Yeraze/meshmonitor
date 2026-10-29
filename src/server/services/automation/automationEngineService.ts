@@ -16,6 +16,7 @@ import type { DbMessage } from '../../../services/database.js';
 import type { HopEmojiOverrides } from '../../../utils/hopEmoji.js';
 import type { AutomationsRepository, AutomationRecord } from '../../../db/repositories/automations.js';
 import type { AutomationHomeAnchorsRepository } from '../../../db/repositories/automationHomeAnchors.js';
+import type { AutomationFireStateRepository } from '../../../db/repositories/automationFireState.js';
 import { isMqttSourceType } from '../../../db/repositories/sources.js';
 import {
   validateAutomationGraph,
@@ -271,6 +272,11 @@ export interface EngineServiceOptions {
   /** Persists left-home anchors. Optional in unit tests that don't cover leftHome. */
   homeAnchorsRepo?: AutomationHomeAnchorsRepository | null;
   /**
+   * Persists cooldown + rate-limit state so a restart or a disable/re-enable
+   * does not re-arm a rule. Optional: without it that state lives in memory only.
+   */
+  fireStateRepo?: AutomationFireStateRepository | null;
+  /**
    * Optional: estimate a home lat/lon from stored position history (median +
    * inlier mean). Used on first establish / reset so a glitched first packet
    * does not become the anchor when history exists. Injected for testability.
@@ -293,6 +299,13 @@ export class AutomationEngineService {
   private readonly deps: ActionDeps;
   private readonly data: NodeDataProvider;
   private readonly homeAnchorsRepo: AutomationHomeAnchorsRepository | null;
+  private readonly fireStateRepo: AutomationFireStateRepository | null;
+  /**
+   * Fire-state writes run one after another on this chain, so a later write for
+   * a key never lands before an earlier one. Callers never await it (a fire must
+   * not wait on the database); load() and {@link flushFireState} do.
+   */
+  private fireStateChain: Promise<void> = Promise.resolve();
   private readonly estimateHomeFromHistory: EngineServiceOptions['estimateHomeFromHistory'];
   private readonly now: () => number;
   private readonly maxActions: number;
@@ -342,6 +355,7 @@ export class AutomationEngineService {
     });
     this.data = opts.data;
     this.homeAnchorsRepo = opts.homeAnchorsRepo ?? null;
+    this.fireStateRepo = opts.fireStateRepo ?? null;
     this.estimateHomeFromHistory = opts.estimateHomeFromHistory;
     this.now = opts.now ?? (() => Date.now());
     this.maxActions = opts.maxActions ?? 50;
@@ -398,16 +412,20 @@ export class AutomationEngineService {
       if (!index.has(entry.triggerType)) index.set(entry.triggerType, []);
       index.get(entry.triggerType)!.push(entry);
     }
+    // Restore persisted cooldown / rate-limit state BEFORE the new index goes
+    // live, so a rule that comes back (restart, re-enable) is gated by its last
+    // fire rather than firing at once. Restoring only reads; it never fires.
+    await this.restoreFireState(index);
     this.index = index;
     this.liveIds = new Set([...index.values()].flatMap((list) => list.map((a) => a.id)));
-    // Drop cooldown state for automations that are no longer loaded (deleted or
-    // disabled). They are unreachable — runTrigger/onSchedule/checkGeofences only
-    // iterate `this.index` — so this is unobservable while they stay out of the
-    // index. One observable edge, accepted: disabling and re-enabling a rule inside
-    // its own cooldown window now lets it fire immediately instead of waiting out
-    // the remainder. Erring toward firing is the safe direction, and without this a
-    // deleted node-scoped automation would strand up to COOLDOWN_KEYS_MAX entries
-    // forever.
+    // Drop in-memory cooldown state for automations that are no longer loaded
+    // (deleted or disabled). They are unreachable — runTrigger/onSchedule/
+    // checkGeofences only iterate `this.index` — and without this a deleted
+    // node-scoped automation would strand up to COOLDOWN_KEYS_MAX entries. With a
+    // fireStateRepo the state is also on disk, so a disabled rule that is
+    // re-enabled gets its last fire back from restoreFireState() and still waits
+    // out its cooldown; a deleted rule's rows are removed. Without a repo (unit
+    // tests), re-enabling inside the window lets the rule fire at once.
     const liveIds = new Set<string>();
     for (const list of index.values()) for (const a of list) liveIds.add(a.id);
     for (const id of this.lastFired.keys()) if (!liveIds.has(id)) this.lastFired.delete(id);
@@ -607,8 +625,9 @@ export class AutomationEngineService {
    * guard (#3914) has nothing to drop.
    *
    * Does NOT disturb the cron cadence: croner computes each next fire from the
-   * wall clock, and this method never touches the cron jobs nor persists any
-   * last-fire timestamp (the cooldown map is in-memory). Loads the row directly
+   * wall clock, and this method never touches the cron jobs. Its fire is stamped
+   * against the cooldown / rate-limit state like any other (and persisted with
+   * it, when a fireStateRepo is set). Loads the row directly
    * rather than the enabled index, so it works for disabled automations too.
    */
   async runNow(automationId: string): Promise<RunNowResult> {
@@ -616,6 +635,9 @@ export class AutomationEngineService {
     if (!row) return { ran: false, reason: 'not_found' };
     const a = this.buildEntry(row);
     if (!a) return { ran: false, reason: 'invalid' };
+    // A rule that is not loaded (disabled) has no state in memory after a
+    // restart; read its stored state so a manual fire still honours it.
+    if (!this.liveIds.has(a.id)) await this.restoreOne(a);
     const now = this.now();
     const ctx = buildScheduleContext(null, now);
     const gate = this.cooldownGate(a, ctx, now);
@@ -722,6 +744,7 @@ export class AutomationEngineService {
     let inner = this.lastFired.get(a.id);
     if (!inner) { inner = new Map(); this.lastFired.set(a.id, inner); }
     inner.set(key, now);
+    this.persistFireState(`cooldown for "${a.name}"`, (repo) => repo.upsertCooldown(a.id, key, now));
     if (inner.size > COOLDOWN_KEYS_MAX) this.pruneCooldownKeys(a, inner, now);
   }
 
@@ -735,6 +758,10 @@ export class AutomationEngineService {
     // subjects may fire once early rather than growing without bound.
     const byAge = [...inner.entries()].sort((x, y) => x[1] - y[1]);
     for (let i = 0; i < byAge.length - COOLDOWN_KEYS_TRIM_TO; i++) inner.delete(byAge[i][0]);
+    // Trim the stored rows to match: everything dropped above is older than the
+    // oldest key kept, so one ranged delete covers it.
+    const oldestKept = Math.min(...inner.values());
+    this.persistFireState(`cooldown trim for "${a.name}"`, (repo) => repo.deleteCooldownsBefore(a.id, oldestKept));
     logger.debug(`[AutomationEngine] "${a.name}" cooldown keys trimmed to ${inner.size} (scope=${a.cooldownScope})`);
   }
 
@@ -766,6 +793,140 @@ export class AutomationEngineService {
     const events = this.rateLimitEvents.get(a.id) ?? [];
     events.push(now);
     this.rateLimitEvents.set(a.id, events);
+    const snapshot = [...events];
+    this.persistFireState(`rate limit for "${a.name}"`, (repo) => repo.upsertRateEvents(a.id, snapshot));
+  }
+
+  /**
+   * Queue one fire-state write. Never awaited by the fire path; writes run in
+   * order on {@link fireStateChain}, and a failure is logged, not thrown (the
+   * in-memory guard still holds for this process).
+   */
+  private persistFireState(what: string, op: (repo: AutomationFireStateRepository) => Promise<void>): void {
+    const repo = this.fireStateRepo;
+    if (!repo) return;
+    this.fireStateChain = this.fireStateChain
+      .then(() => op(repo))
+      .catch((e) => logger.warn(`[AutomationEngine] could not save ${what}: ${e instanceof Error ? e.message : String(e)}`));
+  }
+
+  /** Wait for every queued fire-state write to land (tests, shutdown). */
+  async flushFireState(): Promise<void> {
+    await this.fireStateChain;
+  }
+
+  /**
+   * Bring persisted cooldown / rate-limit state into memory for the automations
+   * about to go live, and prune rows that can no longer suppress anything.
+   * Called by load(), so it runs on startup and after every save, enable,
+   * disable and delete.
+   *
+   *  - Rows for a deleted automation are removed.
+   *  - Cooldown rows older than the rule's current cooldown, and rate events
+   *    outside its current window, are removed (also for disabled rules).
+   *  - For a live rule, a stored cooldown merges with memory by taking the newer
+   *    time; stored rate events fill in only when memory has none. Restoring
+   *    never moves a fire time forward, so it can only suppress, never fire.
+   *  - A stored time in the future (clock stepped back) is clamped to now, so it
+   *    holds for one window rather than until the clock catches up.
+   *
+   * A changed cooldownScope changes the key shape ('' / node / source:node), so
+   * keys from the old scope stop matching: the rule starts fresh under the new
+   * scope, exactly as it did when this state lived only in memory. The old keys
+   * age out and are pruned here.
+   */
+  /** Take the newer of the in-memory and stored last fire for one cooldown key. */
+  private mergeCooldown(automationId: string, scopeKey: string, firedAt: number): void {
+    let inner = this.lastFired.get(automationId);
+    if (!inner) { inner = new Map(); this.lastFired.set(automationId, inner); }
+    const mem = inner.get(scopeKey);
+    if (mem == null || firedAt > mem) inner.set(scopeKey, firedAt);
+  }
+
+  /**
+   * Restore one automation's stored state into memory (no pruning). Used by
+   * runNow for a rule that load() did not restore because it is not live.
+   */
+  private async restoreOne(a: LoadedAutomation): Promise<void> {
+    const repo = this.fireStateRepo;
+    if (!repo) return;
+    try {
+      await this.fireStateChain;
+      const now = this.now();
+      for (const row of await repo.listByAutomation(a.id)) {
+        if (row.kind === 'cooldown') {
+          if (a.cooldownSeconds > 0) this.mergeCooldown(a.id, row.scopeKey, Math.min(row.firedAt, now));
+        } else if (a.rateLimit && !this.rateLimitEvents.has(a.id)) {
+          const windowMs = a.rateLimit.windowSeconds * 1000;
+          const events = (row.events ?? []).map((ts) => Math.min(ts, now)).filter((ts) => now - ts < windowMs).sort((x, y) => x - y);
+          if (events.length > 0) this.rateLimitEvents.set(a.id, events);
+        }
+      }
+    } catch (e) {
+      logger.warn(`[AutomationEngine] could not restore cooldown / rate-limit state for "${a.name}": ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  private async restoreFireState(index: Map<TriggerType, LoadedAutomation[]>): Promise<void> {
+    const repo = this.fireStateRepo;
+    if (!repo) return;
+    try {
+      // Let queued writes land first so the read below is current.
+      await this.fireStateChain;
+      const [rows, all] = await Promise.all([repo.listAll(), this.automationsRepo.listAutomations()]);
+      if (rows.length === 0) return;
+      const live = new Map<string, LoadedAutomation>();
+      for (const list of index.values()) for (const a of list) live.set(a.id, a);
+      const records = new Map(all.map((r) => [r.id, r]));
+      const entries = new Map<string, LoadedAutomation | null>();
+      const entryFor = (id: string): LoadedAutomation | null => {
+        if (live.has(id)) return live.get(id)!;
+        if (!entries.has(id)) entries.set(id, this.buildEntry(records.get(id)!));
+        return entries.get(id)!;
+      };
+      const now = this.now();
+      const orphans = new Set<string>();
+      const expiredCooldowns = new Map<string, number>();
+      const clearCooldowns = new Set<string>();
+      const clearRate = new Set<string>();
+      const rewriteRate = new Map<string, number[]>();
+      for (const row of rows) {
+        const id = row.automationId;
+        if (!records.has(id)) { orphans.add(id); continue; }
+        const a = entryFor(id);
+        // An unparseable config tells us nothing about the window; keep its rows.
+        if (!a) continue;
+        if (row.kind === 'cooldown') {
+          if (a.cooldownSeconds <= 0) { clearCooldowns.add(id); continue; }
+          const windowMs = a.cooldownSeconds * 1000;
+          const firedAt = Math.min(row.firedAt, now);
+          if (now - firedAt >= windowMs) {
+            // firedAt <= now - windowMs  ⇔  firedAt < now - windowMs + 1
+            expiredCooldowns.set(id, now - windowMs + 1);
+            continue;
+          }
+          if (live.has(id)) this.mergeCooldown(id, row.scopeKey, firedAt);
+        } else {
+          if (!a.rateLimit) { clearRate.add(id); continue; }
+          const windowMs = a.rateLimit.windowSeconds * 1000;
+          const stored = row.events ?? [];
+          const events = stored.map((ts) => Math.min(ts, now)).filter((ts) => now - ts < windowMs).sort((x, y) => x - y);
+          if (events.length === 0) { clearRate.add(id); continue; }
+          if (events.length !== stored.length) rewriteRate.set(id, events);
+          if (live.has(id) && !this.rateLimitEvents.has(id)) this.rateLimitEvents.set(id, [...events]);
+        }
+      }
+      for (const id of orphans) this.persistFireState(`cleanup for deleted automation ${id}`, (r) => r.deleteByAutomation(id));
+      for (const [id, cutoff] of expiredCooldowns) {
+        this.persistFireState(`expired cooldowns for ${id}`, (r) => r.deleteCooldownsBefore(id, cutoff));
+      }
+      for (const id of clearCooldowns) this.persistFireState(`cooldowns for ${id}`, (r) => r.deleteKind(id, 'cooldown'));
+      for (const id of clearRate) this.persistFireState(`rate limit for ${id}`, (r) => r.deleteKind(id, 'rate'));
+      for (const [id, events] of rewriteRate) this.persistFireState(`rate limit for ${id}`, (r) => r.upsertRateEvents(id, events));
+    } catch (e) {
+      // Fail toward the old behaviour (in-memory only) rather than not loading.
+      logger.warn(`[AutomationEngine] could not restore cooldown / rate-limit state: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   /** Prior inside/outside geofence state for (automation, node), or undefined on first sighting. */
