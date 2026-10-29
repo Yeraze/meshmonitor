@@ -26,6 +26,7 @@ import {
   applyDashboardAgeWindow,
   resolveDashboardAgeWindow,
   localNodeNums,
+  dashboardNodePrefilter,
 } from '../services/sourceDashboardData.js';
 import {
   getFavoriteTelemetrySeries,
@@ -1501,13 +1502,21 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       databaseService.settings,
       selected.map((s) => s.id),
     );
-    const bundles = await Promise.all(
-      selected.map((s) => buildSourceDashboard(s, user, { maxNodeAgeHours: ageBySource.get(s.id) })),
-    );
     // `ageWindow=settings`: drop nodes the Dashboard map hides by age. Opt-in,
     // because Map Analysis reads the same route and draws nodes of any age.
-    if (req.query.ageWindow === 'settings') {
-      applyDashboardAgeWindow(bundles, await resolveDashboardAgeWindow(), localNodeNums());
+    // The node read already skips most of them (nodePrefilter); the in-memory
+    // pass after it decides exactly.
+    const ageCut = req.query.ageWindow === 'settings'
+      ? { window: await resolveDashboardAgeWindow(), keep: localNodeNums() }
+      : null;
+    const nodePrefilter = ageCut
+      ? await dashboardNodePrefilter(selected.map((s) => s.id), ageCut.window, ageCut.keep)
+      : undefined;
+    const bundles = await Promise.all(
+      selected.map((s) => buildSourceDashboard(s, user, { maxNodeAgeHours: ageBySource.get(s.id), nodePrefilter })),
+    );
+    if (ageCut) {
+      applyDashboardAgeWindow(bundles, ageCut.window, ageCut.keep);
     }
     res.json(bundles);
   } catch (error) {
