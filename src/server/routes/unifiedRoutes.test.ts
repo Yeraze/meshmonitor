@@ -160,6 +160,19 @@ describe('Unified Routes', () => {
     mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: false });
     mockDb.checkPermissionAsync.mockResolvedValue(true);
     mockDb.nodes.getAllNodes.mockResolvedValue([NODE_ONE, NODE_TWO]);
+    // /messages reads sender names through getNodeNamesByNums. Derive it from
+    // the getAllNodes mock so each test's node fixture (and a source whose
+    // lookup rejects) drives both reads the same way.
+    mockDb.nodes.getNodeNamesByNums = vi.fn(async (nums: number[], sourceIds: string[]) => {
+      const rows = (await mockDb.nodes.getAllNodes(sourceIds[0])) as typeof NODE_ONE[];
+      const out = new Map<number, { longName: string | null; shortName: string | null }>();
+      for (const n of rows ?? []) {
+        if (nums.includes(Number(n.nodeNum))) {
+          out.set(Number(n.nodeNum), { longName: n.longName ?? null, shortName: n.shortName ?? null });
+        }
+      }
+      return out;
+    });
     // Default: no virtual channels / no virtual channel permissions. Tests
     // covering virtual channel behavior override these per-case.
     mockDb.channelDatabase.getAllAsync.mockResolvedValue([]);

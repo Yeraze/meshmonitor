@@ -6,10 +6,11 @@
  * The harness does not reset data between tests, so every node number here
  * is unique to this file and afterEach removes what it seeded.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import aircraftRoutes from './aircraftRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { AIRCRAFT_TRAIL_MAX_POINTS } from '../utils/aircraftTrails.js';
+import { buildPositionFilter } from '../utils/positionVisibility.js';
 
 const A_PLANE = 0x71000001;
 const A_AGED_OUT = 0x71000002;
@@ -158,6 +159,32 @@ describe('GET /api/aircraft/trails', () => {
     const admin = await harness.loginAs(harness.admin);
     const adminKeys = trailKeys((await admin.get('/trails')).body);
     expect(adminKeys).toContain(`${harness.sourceA}:${A_PRIVATE}`);
+  });
+
+  it('reads only the flagged nodes, with the same result as the whole-source filter', async () => {
+    // A flagged plane hidden from the map: the display gate needs its row.
+    await harness.db.nodes.setNodeHideFromMapAllSourcesAsync(A_AGED_OUT, true);
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceA);
+
+    for (const user of [harness.admin, harness.limited]) {
+      const spy = vi.spyOn(harness.db.nodes, 'getAllNodes');
+      const agent = await harness.loginAs(user);
+      const res = await agent.get('/trails');
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+
+      // The old path: buildPositionFilter loading every node on the sources.
+      const sources = user.isAdmin ? [harness.sourceA, harness.sourceB] : [harness.sourceA];
+      const legacy = await buildPositionFilter({ id: user.id, isAdmin: user.isAdmin }, sources);
+      const pairs = await harness.db.nodes.listAircraftTrailNodeNums(sources);
+      const expected = pairs
+        .filter((p) => legacy({ sourceId: p.sourceId, nodeNum: p.nodeNum } as never))
+        .map((p) => `${p.sourceId}:${p.nodeNum}`)
+        .sort();
+      expect(trailKeys(res.body)).toEqual(expected);
+      expect(trailKeys(res.body)).not.toContain(`${harness.sourceA}:${A_AGED_OUT}`);
+    }
   });
 
   it('drops trails on a channel without viewOnMap for a non-admin', async () => {

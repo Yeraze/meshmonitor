@@ -15,6 +15,9 @@ import type { TransportCounts } from '../../utils/transportSeries.js';
 import type { AircraftBasis } from '../../utils/aircraftClassification.js';
 import { resolveFirstHeard } from '../../utils/firstHeard.js';
 
+/** Max ids per `IN (...)` in the batched node lookups below. */
+const NODE_LOOKUP_BATCH = 500;
+
 /**
  * Hook for keeping an external in-memory node cache coherent with PG/MySQL writes.
  *
@@ -336,10 +339,18 @@ export class NodesRepository extends BaseRepository {
     if (validNums.length === 0) return map;
 
     const { nodes } = this.tables;
-    const result = await this.db
-      .select({ nodeNum: nodes.nodeNum, longName: nodes.longName, shortName: nodes.shortName })
-      .from(nodes)
-      .where(and(inArray(nodes.nodeNum, validNums), inArray(nodes.sourceId, sourceIds)));
+    const uniqueNums = [...new Set(validNums)];
+    const result: Array<{ nodeNum: unknown; longName: string | null; shortName: string | null }> = [];
+    // Batched so a large page never exceeds a backend's bound-parameter cap.
+    for (let i = 0; i < uniqueNums.length; i += NODE_LOOKUP_BATCH) {
+      const batch = uniqueNums.slice(i, i + NODE_LOOKUP_BATCH);
+      result.push(
+        ...(await this.db
+          .select({ nodeNum: nodes.nodeNum, longName: nodes.longName, shortName: nodes.shortName })
+          .from(nodes)
+          .where(and(inArray(nodes.nodeNum, batch), inArray(nodes.sourceId, sourceIds)))),
+      );
+    }
 
     for (const row of result) {
       // nodeNum is BIGINT on PG/MySQL and arrives as a string there — coerce
@@ -358,6 +369,40 @@ export class NodesRepository extends BaseRepository {
       });
     }
     return map;
+  }
+
+  /**
+   * The channel each of these nodeIds was last heard on, for the rows that
+   * exist in `sourceId` (or on any source for ALL_SOURCES). One entry per
+   * matching row; a nodeId with no row is absent.
+   *
+   * Exists so a route that only needs "which of these senders may the viewer
+   * see?" does not load and map every node on the source (the unread badge
+   * polls loaded ~17k rows to answer about a handful of DM senders).
+   */
+  async getNodeChannelsByNodeIds(
+    nodeIds: readonly string[],
+    sourceId: SourceScope,
+  ): Promise<Array<{ nodeId: string; channel: number | null }>> {
+    const unique = [...new Set(nodeIds.filter((id) => typeof id === 'string' && id.length > 0))];
+    if (unique.length === 0) return [];
+    const { nodes } = this.tables;
+    const out: Array<{ nodeId: string; channel: number | null }> = [];
+    for (let i = 0; i < unique.length; i += NODE_LOOKUP_BATCH) {
+      const batch = unique.slice(i, i + NODE_LOOKUP_BATCH);
+      const rows = await this.db
+        .select({ nodeId: nodes.nodeId, channel: nodes.channel })
+        .from(nodes)
+        .where(and(inArray(nodes.nodeId, batch), this.withSourceScope(nodes, sourceId)));
+      for (const row of rows as Array<{ nodeId: string | null; channel: unknown }>) {
+        if (typeof row.nodeId !== 'string') continue;
+        out.push({
+          nodeId: row.nodeId,
+          channel: row.channel === null || row.channel === undefined ? null : Number(row.channel),
+        });
+      }
+    }
+    return out;
   }
 
   /**
