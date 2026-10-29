@@ -21,7 +21,12 @@ import {
   getUserReadableVirtualChannelIds,
   canReadVirtualChannel,
 } from '../utils/virtualChannelPermissions.js';
-import { buildSourceDashboard } from '../services/sourceDashboardData.js';
+import {
+  buildSourceDashboard,
+  applyDashboardAgeWindow,
+  resolveDashboardAgeWindow,
+  localNodeNums,
+} from '../services/sourceDashboardData.js';
 import {
   getFavoriteTelemetrySeries,
   getLatestTelemetrySnapshot,
@@ -1471,7 +1476,8 @@ router.get('/status', async (req: Request, res: Response) => {
  * Each dataset is permission-gated inside `buildSourceDashboard` exactly as the
  * per-source endpoints are (unreadable datasets come back as []). An optional
  * `sources` filter scopes the response to the caller's known source list;
- * absent, every source is returned.
+ * absent, every source is returned. `ageWindow=settings` leaves out nodes the
+ * Dashboard map would hide by age (see applyDashboardAgeWindow).
  */
 router.get('/dashboard', async (req: Request, res: Response) => {
   try {
@@ -1498,6 +1504,11 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     const bundles = await Promise.all(
       selected.map((s) => buildSourceDashboard(s, user, { maxNodeAgeHours: ageBySource.get(s.id) })),
     );
+    // `ageWindow=settings`: drop nodes the Dashboard map hides by age. Opt-in,
+    // because Map Analysis reads the same route and draws nodes of any age.
+    if (req.query.ageWindow === 'settings') {
+      applyDashboardAgeWindow(bundles, await resolveDashboardAgeWindow(), localNodeNums());
+    }
     res.json(bundles);
   } catch (error) {
     logger.error('Error fetching unified dashboard data:', error);

@@ -136,6 +136,21 @@ export interface SourceDashboardBundle {
   traceroutes: unknown[];
   neighborInfo: unknown[];
   channels: unknown[];
+  /** Node rows before the server's age cut; present only with `ageWindow`. */
+  nodeCount?: number;
+}
+
+/**
+ * Options for the dashboard data hooks.
+ *
+ * `ageWindow`: ask the server to leave out nodes the Dashboard map hides by
+ * age (`?ageWindow=settings`). The server uses the widest node-age setting
+ * across every source, keeps favourites, aged-out aircraft and local nodes,
+ * and keeps every row of a node that any source heard inside the window. Only
+ * DashboardPage sets it: Map Analysis draws nodes of any age.
+ */
+export interface DashboardDataOptions {
+  ageWindow?: boolean;
 }
 
 /** Default poll interval for dashboard data (15 seconds) */
@@ -266,6 +281,8 @@ export interface DashboardSourceData {
   neighborInfo: unknown[];
   channels: unknown[];
   status: SourceStatus | null;
+  /** The source's node rows before the age cut (single source + `ageWindow` only). */
+  nodeCount?: number;
   isLoading: boolean;
   isError: boolean;
 }
@@ -279,7 +296,11 @@ export interface DashboardSourceData {
  * @param sourceId - The selected source ID, or null for no selection
  * @returns Combined data object with loading/error state
  */
-export function useDashboardSourceData(sourceId: string | null): DashboardSourceData {
+export function useDashboardSourceData(
+  sourceId: string | null,
+  options?: DashboardDataOptions,
+): DashboardSourceData {
+  const ageWindow = options?.ageWindow === true;
   const { isAuthenticated, authResolved } = useDashboardAuthGate();
   const enabled = sourceId !== null;
 
@@ -287,8 +308,11 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   // four separate GETs per poll (#3735). Status stays its own lightweight query
   // (cheap COUNT(*)s) and is also polled per-source by the sidebar.
   const dashboardQuery = useQuery({
-    queryKey: ['dashboard', 'source-dashboard', sourceId, isAuthenticated],
-    queryFn: () => fetchJson<SourceDashboardBundle>(`${appBasename}/api/sources/${sourceId}/dashboard`),
+    queryKey: ['dashboard', 'source-dashboard', sourceId, isAuthenticated, ageWindow],
+    queryFn: () =>
+      fetchJson<SourceDashboardBundle>(
+        `${appBasename}/api/sources/${sourceId}/dashboard${ageWindow ? '?ageWindow=settings' : ''}`,
+      ),
     enabled: enabled && authResolved,
     retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
@@ -323,6 +347,7 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
     neighborInfo: dashboardQuery.data?.neighborInfo ?? EMPTY,
     channels: dashboardQuery.data?.channels ?? EMPTY,
     status: statusQuery.data ?? null,
+    nodeCount: dashboardQuery.data?.nodeCount,
     isLoading,
     isError,
   };
@@ -756,8 +781,10 @@ export function mergeUnifiedSourceData(
 export function useDashboardUnifiedData(
   sources: Array<string | DashboardSource>,
   enabled: boolean,
+  options?: DashboardDataOptions,
 ): DashboardSourceData {
   const { isAuthenticated, authResolved } = useDashboardAuthGate();
+  const ageWindow = options?.ageWindow === true;
   // Accept either bare source-id strings (MapAnalysis layers, which never use
   // the per-node `sources` field) or full DashboardSource objects (the Unified
   // dashboard map, which needs source names + protocol for the popup).
@@ -783,10 +810,10 @@ export function useDashboardUnifiedData(
   const sourcesKey = sourceIds.join(',');
   const active = enabled && sourceIds.length > 0;
   const query = useQuery({
-    queryKey: ['dashboard', 'unified-dashboard', sourcesKey, isAuthenticated],
+    queryKey: ['dashboard', 'unified-dashboard', sourcesKey, isAuthenticated, ageWindow],
     queryFn: () =>
       fetchJson<SourceDashboardBundle[]>(
-        `${appBasename}/api/unified/dashboard?sources=${encodeURIComponent(sourcesKey)}`,
+        `${appBasename}/api/unified/dashboard?sources=${encodeURIComponent(sourcesKey)}${ageWindow ? '&ageWindow=settings' : ''}`,
       ),
     enabled: active && authResolved,
     retry: false,
