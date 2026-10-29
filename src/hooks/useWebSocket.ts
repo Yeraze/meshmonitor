@@ -227,6 +227,24 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     });
   }, [queryClient, sourceId]);
 
+  // Helper to merge a coalesced `node:batch` (nodeNum → changed fields) into
+  // the cache in one pass. Nodes not yet in the cache are skipped, as for
+  // `node:updated`; the next poll brings new nodes in.
+  const updateNodesInCache = useCallback((batch: Record<string, Partial<DeviceInfo>>) => {
+    const key = sourcePollQueryKey(sourceId);
+    queryClient.setQueryData<PollData>(key, (old) => {
+      if (!old?.nodes) return old;
+      let changed = false;
+      const updatedNodes = old.nodes.map((node) => {
+        const update = batch[node.nodeNum];
+        if (!update) return node;
+        changed = true;
+        return mergeNodeUpdate(node, update);
+      });
+      return changed ? { ...old, nodes: updatedNodes } : old;
+    });
+  }, [queryClient, sourceId]);
+
   // Helper to add a new message to the cache
   // Messages are ordered newest-first, so new messages go at the beginning
   const addMessageToCache = useCallback((message: RawMessage) => {
@@ -434,6 +452,12 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       updateNodeInCache(data.nodeNum, data.node);
     });
 
+    // Coalesced node changes from high-volume ingest (MQTT), one event per
+    // source every ~2 s.
+    socket.on('node:batch', (data: Record<string, Partial<DeviceInfo>>) => {
+      updateNodesInCache(data);
+    });
+
     socket.on('message:new', (data: RawMessage) => {
       addMessageToCache(data);
       void queryClient.invalidateQueries({ queryKey: ['unreadCounts'] });
@@ -506,7 +530,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     };
   // pollKey is derived from sourceId (primitive) — omit it here to avoid a new array
   // reference on every render triggering socket reconnects.
-  }, [enabled, queryClient, sourceId, updateNodeInCache, addMessageToCache, updateConnectionInCache, updateChannelInCache, addTracerouteToCache, scheduleDebouncedPollInvalidate]);
+  }, [enabled, queryClient, sourceId, updateNodeInCache, updateNodesInCache, addMessageToCache, updateConnectionInCache, updateChannelInCache, addTracerouteToCache, scheduleDebouncedPollInvalidate]);
 
   return state;
 }
