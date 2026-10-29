@@ -1475,6 +1475,88 @@ function runNodesTests(getBackend: () => TestBackend) {
       expect(cleared).toBe(1);
     }
   });
+
+  // --- getAllNodes liveAcross / countNodesByChannel (dashboard age cut in SQL) ---
+
+  it('getAllNodes liveAcross - keeps every row of a node with a live row in any listed source', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const fresh = now - 60;
+    const stale = now - 100 * 3600;
+    const minLastHeard = now - 48 * 3600;
+    const seed: Array<[number, string, Record<string, any>]> = [
+      [1, 'sA', { lastHeard: fresh }],
+      [2, 'sA', { lastHeard: stale }], // live through sB
+      [2, 'sB', { lastHeard: fresh }],
+      [3, 'sA', { lastHeard: stale }],
+      [4, 'sA', { lastHeard: stale, isFavorite: true }],
+      [5, 'sA', { lastHeard: stale }], // aged-out aircraft, below
+      [6, 'sA', { lastHeard: stale }], // in keepNodeNums
+      [7, 'sA', {}], // never heard
+      [8, 'sA', { lastHeard: stale }], // live only in sC, which is not listed
+      [8, 'sC', { lastHeard: fresh }],
+      [9, 'sA', { lastHeard: minLastHeard }], // exactly on the cutoff
+    ];
+    for (const [num, sourceId, extra] of seed) {
+      await repo.upsertNode(makeNode(num, { sourceId, ...extra }));
+    }
+    await repo.markAircraftAgedOut(5, 'sA', Date.now());
+
+    const live = await repo.getAllNodes('sA', {
+      liveAcross: { sourceIds: ['sA', 'sB'], minLastHeard, keepNodeNums: [6] },
+    });
+    const all = await repo.getAllNodes('sA');
+    const expected = [1, 2, 4, 5, 6, 9];
+    expect(live.map((n) => Number(n.nodeNum)).sort((a, b) => a - b)).toEqual(expected);
+    // Same rows, same order as the full read.
+    expect(live.map((n) => Number(n.nodeNum))).toEqual(
+      all.map((n) => Number(n.nodeNum)).filter((n) => expected.includes(n)),
+    );
+    expect(live.every((n) => n.sourceId === 'sA')).toBe(true);
+
+    // The same nodes, looked up once and bound as a list.
+    const filter = { sourceIds: ['sA', 'sB'], minLastHeard, keepNodeNums: [6] };
+    const nodeNums = await repo.getLiveNodeNums(filter);
+    expect([...nodeNums].sort((a, b) => a - b)).toEqual(expected);
+    const listed = await repo.getAllNodes('sA', { liveAcross: { ...filter, nodeNums } });
+    expect(listed.map((n) => Number(n.nodeNum))).toEqual(live.map((n) => Number(n.nodeNum)));
+    expect(await repo.getAllNodes('sA', { liveAcross: { ...filter, nodeNums: [] } })).toEqual([]);
+
+    // Composes with omitColumns, and an empty keep list is fine.
+    const slim = await repo.getAllNodes('sA', {
+      omitColumns: ['macaddr', 'updatedAt'],
+      liveAcross: { sourceIds: ['sA'], minLastHeard, keepNodeNums: [] },
+    });
+    expect(slim.map((n) => Number(n.nodeNum)).sort((a, b) => a - b)).toEqual([1, 4, 5, 9]);
+    expect('macaddr' in slim[0]).toBe(false);
+  });
+
+  it('countNodesByChannel - counts one source\'s rows per channel', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    await repo.upsertNode(makeNode(11, { sourceId: 'sA', channel: 0 }));
+    await repo.upsertNode(makeNode(12, { sourceId: 'sA', channel: 0 }));
+    await repo.upsertNode(makeNode(13, { sourceId: 'sA', channel: 2 }));
+    await repo.upsertNode(makeNode(14, { sourceId: 'sA' }));
+    await repo.upsertNode(makeNode(15, { sourceId: 'sB', channel: 0 }));
+
+    const groups = await repo.countNodesByChannel('sA');
+    const byChannel = new Map(groups.map((g) => [g.channel, g.count]));
+    const total = groups.reduce((sum, g) => sum + g.count, 0);
+    expect(total).toBe((await repo.getAllNodes('sA')).length);
+    expect(byChannel.get(2)).toBe(1);
+    // A row without a channel lands in the null group or channel 0 depending
+    // on the column default; either way the filter reads it as channel 0.
+    expect((byChannel.get(0) ?? 0) + (byChannel.get(null) ?? 0)).toBe(3);
+    expect(await repo.countNodesByChannel('sZ')).toEqual([]);
+  });
 }
 
 // --- SQLite Backend ---
