@@ -6,7 +6,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
 import { fallbackManager } from '../meshtasticManager.js';
-import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
+import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { refuseNonMeshtasticSource, isNonMeshtasticSource } from '../utils/requireMeshtasticDeviceSource.js';
 import {
   requireSourcePermission,
@@ -1243,13 +1243,24 @@ function canReadUnreadChannel(viewer: UnreadViewer, channelId: number, sourceId:
   return !!sourceId && viewer.permissions.can(`channel_${channelId}` as ResourceType, 'read', sourceId);
 }
 
-/** Node ids of the DM senders the viewer may see on this source. */
-async function visibleDmSenders(viewer: UnreadViewer, sourceId: string | undefined): Promise<Set<string>> {
-  const allNodes = await resolveSourceManager(sourceId).getAllNodesAsync(sourceId);
+/**
+ * Which of these DM senders the viewer may see on this source: those with a
+ * node row there (any source for the admin's every-source read) whose channel
+ * passes `canViewNode`. Looks up only the senders asked about, not every node
+ * on the source; an admin still needs the lookup, since a sender with no node
+ * row is dropped for them too.
+ */
+async function visibleDmSenders(
+  viewer: UnreadViewer,
+  sourceId: string | undefined,
+  senderIds: readonly string[],
+): Promise<Set<string>> {
+  if (senderIds.length === 0) return new Set();
+  const rows = await databaseService.nodes.getNodeChannelsByNodeIds(senderIds, sourceId ?? ALL_SOURCES); // cross-source only for an admin with no sourceId
   const visible = viewer.isAdmin
-    ? allNodes
-    : allNodes.filter((node) => viewer.nodes.canViewNode(sourceId, (node as { channel?: number }).channel));
-  return new Set(visible.map((n) => n.user?.id).filter((id): id is string => typeof id === 'string'));
+    ? rows
+    : rows.filter((row) => viewer.nodes.canViewNode(sourceId, row.channel));
+  return new Set(visible.map((row) => row.nodeId));
 }
 
 /**
@@ -1291,7 +1302,7 @@ async function unreadCountsFor(viewer: UnreadViewer, sourceId: string | undefine
 
   if (hasMessagesRead && localNodeInfo) {
     const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, viewer.userId, sourceId ?? ALL_SOURCES); // cross-source only for an admin with no sourceId
-    const visibleNodeIds = await visibleDmSenders(viewer, sourceId);
+    const visibleNodeIds = await visibleDmSenders(viewer, sourceId, Object.keys(allUnreadDMs));
     const directMessages: { [nodeId: string]: number } = {};
     for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
       if (visibleNodeIds.has(nodeId) && count > 0 && !mutedDMNodeIds.has(nodeId)) {
@@ -1649,7 +1660,7 @@ async function firstUnreadFor(viewer: UnreadViewer, sourceId: string | undefined
     }
   }
   if (hasMessagesRead && localNodeInfo) {
-    const visibleNodeIds = await visibleDmSenders(viewer, sourceId);
+    const visibleNodeIds = await visibleDmSenders(viewer, sourceId, Object.keys(raw.directMessages));
     for (const [nodeId, ts] of Object.entries(raw.directMessages)) {
       if (visibleNodeIds.has(nodeId)) result.directMessages[nodeId] = ts as number;
     }
