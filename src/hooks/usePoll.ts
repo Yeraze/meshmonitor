@@ -30,6 +30,7 @@ import type { DeviceInfo, Channel, LocalNodeInfo } from '../types/device';
 import { appBasename } from '../init';
 import { useWebSocketConnected } from '../contexts/WebSocketContext';
 import { useSource } from '../contexts/SourceContext';
+import { useOptionalConnectionStatus } from '../contexts/dataContextState';
 import { POLL_QUERY_KEY, sourcePollQueryKey } from './pollQueryKey';
 
 /**
@@ -283,6 +284,16 @@ export function usePoll({
   // When disconnected, poll frequently (5s) for real-time updates
   const effectiveInterval = pollInterval ?? (isWsConnected ? WEBSOCKET_POLL_INTERVAL : DEFAULT_POLL_INTERVAL);
 
+  // Inside App, a source that is not connected is App's to watch: its
+  // connection check reads the lightweight /api/connection and reads this
+  // query once when the source comes back. Every always-enabled observer here
+  // (useNodes, useChannels, ...) used to keep re-reading the full poll on its
+  // own timer and on window focus as well, for data that does not change while
+  // the source is down. They still read it once on mount. Outside a
+  // DataProvider there is no such check, so polling is unchanged there.
+  const appConnectionStatus = useOptionalConnectionStatus();
+  const sourceLinkUp = appConnectionStatus === undefined || appConnectionStatus === 'connected';
+
   return useQuery({
     queryKey: sourceId ? ['poll', sourceId] : POLL_QUERY_KEY,
     // Pass the AbortSignal to allow TanStack Query to cancel in-flight requests
@@ -291,6 +302,7 @@ export function usePoll({
     // Use function form to prevent overlapping requests on slow networks
     // Returns false (skip refetch) if a request is currently in progress
     refetchInterval: (query) => {
+      if (!sourceLinkUp) return false;
       if (query.state.fetchStatus === 'fetching') {
         return false; // Skip this interval, wait for current request to complete
       }
@@ -299,6 +311,6 @@ export function usePoll({
     staleTime: effectiveInterval - 1000, // Consider stale just before next poll
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     // Only refetch on window focus when WebSocket is disconnected
-    refetchOnWindowFocus: !isWsConnected,
+    refetchOnWindowFocus: !isWsConnected && sourceLinkUp,
   });
 }
