@@ -1,19 +1,10 @@
 import React, { useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
-// Color palette for distribution charts (Catppuccin-compatible)
-export const DISTRIBUTION_COLORS = [
-  '#89b4fa', '#a6e3a1', '#fab387', '#f5c2e7', '#cba6f7',
-  '#94e2d5', '#f9e2af', '#f38ba8', '#89dceb', '#b4befe', '#9399b2'
-];
-
-// Chart data entry interface
-export interface ChartDataEntry {
-  name: string;
-  value: number;
-  color: string;
-  [key: string]: string | number;  // Index signature for Recharts compatibility
-}
+// Data shapes live in a chart-free module so a consumer can build chart data
+// without loading recharts until it draws the chart.
+import type { ChartDataEntry } from './packetStatsChartData';
+export { DISTRIBUTION_COLORS, type ChartDataEntry } from './packetStatsChartData';
 
 // Reusable packet statistics chart component
 export interface PacketStatsChartProps {

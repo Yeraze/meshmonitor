@@ -95,7 +95,8 @@ describe('BaseMap', () => {
   });
 
   // 2. Vector branch
-  it('renders VectorTileLayer when the resolved tileset is a vector tileset', () => {
+  // The vector layer is a lazy chunk (MapLibre), so these await it.
+  it('renders VectorTileLayer when the resolved tileset is a vector tileset', async () => {
     vi.mocked(getTilesetById).mockReturnValueOnce({
       id: 'custom-vector',
       name: 'Vector',
@@ -105,7 +106,7 @@ describe('BaseMap', () => {
       isVector: true,
     });
     render(<BaseMap center={[0, 0]} zoom={3} tilesetId="custom-vector" />);
-    const vectorTile = screen.getByTestId('vector-tile');
+    const vectorTile = await screen.findByTestId('vector-tile');
     expect(vectorTile).toBeInTheDocument();
     expect(vectorTile.getAttribute('data-url')).toBe('https://x/{z}/{x}/{y}.pbf');
     expect(screen.queryByTestId('raster-tile')).not.toBeInTheDocument();
@@ -133,9 +134,9 @@ describe('BaseMap', () => {
 
   // 2c. CARTO vector presets (#5448): the style URL and key go to MapLibre;
   // the raster twin in `url` is NOT rendered as a TileLayer.
-  it('hands a CARTO style preset to VectorTileLayer with its styleUrl and the key', () => {
+  it('hands a CARTO style preset to VectorTileLayer with its styleUrl and the key', async () => {
     render(<BaseMap center={[0, 0]} zoom={3} tilesetId="cartoVoyager" cartoApiKey="KEY123" />);
-    const vectorTile = screen.getByTestId('vector-tile');
+    const vectorTile = await screen.findByTestId('vector-tile');
     expect(vectorTile.getAttribute('data-style-url')).toBe(
       'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
     );
@@ -143,9 +144,9 @@ describe('BaseMap', () => {
     expect(screen.queryByTestId('raster-tile')).not.toBeInTheDocument();
   });
 
-  it('hands the bundled Voyager Dark style to VectorTileLayer', () => {
+  it('hands the bundled Voyager Dark style to VectorTileLayer', async () => {
     render(<BaseMap center={[0, 0]} zoom={3} tilesetId="cartoVoyagerDark" />);
-    expect(screen.getByTestId('vector-tile').getAttribute('data-style-url')).toBe(
+    expect((await screen.findByTestId('vector-tile')).getAttribute('data-style-url')).toBe(
       'map-styles/carto-voyager-dark.json',
     );
   });

@@ -192,8 +192,11 @@ describe('BaseMap when the probe passes but MapLibre cannot get a context', () =
     getContext.mockReturnValueOnce({ getExtension: () => null } as never).mockReturnValue(null);
   });
 
-  it('catches the real GPUInitializationError and falls back to raster', () => {
+  // The vector layer is a lazy chunk, so each test first waits for it to load
+  // and fail (the fallback notice appears).
+  it('catches the real GPUInitializationError and falls back to raster', async () => {
     const { mapRef } = renderMap('cartoPositron');
+    await screen.findByTestId('vector-fallback-notice');
 
     const failures = consoleError.mock.calls.filter((c) => c[0] === 'Failed to create MapLibre GL layer:');
     expect(failures).toHaveLength(1);
@@ -208,15 +211,17 @@ describe('BaseMap when the probe passes but MapLibre cannot get a context', () =
     expect(isVectorRenderingAvailable()).toBe(false);
   });
 
-  it('move, zoom, resize and unmount do not throw after the failure', () => {
+  it('move, zoom, resize and unmount do not throw after the failure', async () => {
     const { mapRef, unmount } = renderMap('cartoPositron');
+    await screen.findByTestId('vector-fallback-notice');
     expect(() => driveMap(mapRef.current!)).not.toThrow();
     expect(() => unmount()).not.toThrow();
     expect(uncaught).toEqual([]);
   });
 
-  it('does not try again on the next map', () => {
+  it('does not try again on the next map', async () => {
     renderMap('cartoPositron');
+    await screen.findByTestId('vector-fallback-notice');
     cleanup();
     consoleError.mockClear();
     const { mapRef } = renderMap('cartoDarkMatter');

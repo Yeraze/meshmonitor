@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 // Popup and Polyline moved to useTraceroutePaths hook
 // Recharts imports moved to useTraceroutePaths hook
@@ -7,23 +7,27 @@ import 'leaflet/dist/leaflet.css';
 import './App.css';
 import './components/map/leafletDefaultIcon';
 
-import InfoTab from './components/InfoTab';
-import SettingsTab from './components/SettingsTab';
-import ConfigurationTab from './components/ConfigurationTab';
-import MqttBridgeConfigurationView from './components/MQTT/MqttBridgeConfigurationView';
+// Every tab is its own lazy chunk (rendered under the <Suspense> around the
+// tab <Routes> below); see appTabs.ts.
+import {
+  InfoTab,
+  SettingsTab,
+  ConfigurationTab,
+  MqttBridgeConfigurationView,
+  NotificationsTab,
+  UsersTab,
+  AuditLogTab,
+  SecurityTab,
+  AdminCommandsTab,
+  Dashboard,
+  NodesTab,
+  MessagesTab,
+  ChannelsTab,
+  PacketMonitorPanel,
+  MqttPacketMonitorView,
+  AutomationTab,
+} from './appTabs';
 import { canOpenSourceSettings } from './components/nav/sourceSettingsAccess';
-import NotificationsTab from './components/NotificationsTab';
-import UsersTab from './components/UsersTab';
-import AuditLogTab from './components/AuditLogTab';
-import { SecurityTab } from './components/SecurityTab';
-import AdminCommandsTab from './components/AdminCommandsTab';
-import Dashboard from './components/Dashboard';
-import NodesTab from './components/NodesTab';
-import MessagesTab from './components/MessagesTab';
-import ChannelsTab from './components/ChannelsTab';
-import PacketMonitorPanel from './components/PacketMonitorPanel';
-import MqttPacketMonitorView from './components/MQTT/MqttPacketMonitorView';
-import AutomationTab from './components/AutomationTab';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { shouldShowQuickStatus } from './components/QuickStatus/quickStatusGate';
 import DeviceNotificationToaster from './components/DeviceNotificationToaster';
@@ -92,6 +96,7 @@ import LoginPage from './components/LoginPage';
 import { SaveBarProvider, SaveBarGroup } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import RouteLoading from './components/RouteLoading/RouteLoading';
 
 // Pending favorite/ignored/hide-from-map toggle tracking lives in
 // src/utils/pendingToggles.ts as module-level singletons. Favorite/
@@ -3627,6 +3632,9 @@ function App() {
           their messaging state machinery into `useMessagingView`
           (src/hooks/useMessagingView.ts) — see that file's doc comment.
         */}
+        {/* Tabs are lazy chunks (appTabs.ts): the pane shows a placeholder
+            while a tab's code loads, and the header and sidebar stay put. */}
+        <Suspense fallback={<RouteLoading variant="pane" />}>
         <Routes>
           <Route index element={<Navigate to="nodes" replace />} />
           <Route
@@ -4021,6 +4029,7 @@ function App() {
               behavior for an unrecognized sub-path. */}
           <Route path="*" element={null} />
         </Routes>
+        </Suspense>
       </main>
 
       {/* Node Popup */}

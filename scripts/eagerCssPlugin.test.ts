@@ -150,3 +150,37 @@ describe('eagerCss() never does nothing quietly (#5558)', () => {
     expect(() => call('buildEnd')).not.toThrow();
   });
 });
+
+describe('eagerCss() and components split out with lazyWithPreload', () => {
+  const files = {
+    [`${SRC}/main.tsx`]: `const App = lazy(() => import('./App.tsx'))\n`,
+    [`${SRC}/App.tsx`]: [
+      `import './first.css'`,
+      `import { Tab } from './tabs.ts'`,
+      `import './last.css'`,
+      // A plain lazy() inside a page stays a lazy chunk with its own CSS.
+      `const Other = lazy(() => import('./Other.tsx'))`,
+    ].join('\n'),
+    [`${SRC}/tabs.ts`]: [
+      `export const Tab = lazyWithPreload(() => import('./Tab.tsx'))`,
+      `export const Named = lazyWithPreload(() =>\n  import('./Named.tsx').then((m) => ({ default: m.Named })),\n)`,
+    ].join('\n'),
+    [`${SRC}/Tab.tsx`]: `import './tab.css'\n`,
+    [`${SRC}/Named.tsx`]: `import './named.css'\n`,
+    [`${SRC}/Other.tsx`]: `import './other.css'\n`,
+  };
+
+  it('keeps their CSS in the entry sheet, at the position of the call', async () => {
+    const { call } = setup(files);
+    const code = (await call('load', VITE_EAGER_ID)) as string;
+    const order = ['first.css', 'tab.css', 'named.css', 'last.css'].map((f) => code.indexOf(`/${f}"`));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('does not follow a plain lazy() inside a walked module', async () => {
+    const { call } = setup(files);
+    const code = (await call('load', VITE_EAGER_ID)) as string;
+    expect(code).not.toContain('other.css');
+  });
+});

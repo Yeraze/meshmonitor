@@ -5,7 +5,7 @@
  * Handles the Messages/DM tab with node list and conversation view.
  */
 
-import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
+import React, { Suspense, useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import '../styles/messages.css';
 import { useResizable } from '../hooks/useResizable';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
@@ -56,10 +56,8 @@ import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
 import AircraftMarkMenuItems from './AircraftMarkMenuItems';
-import TelemetryGraphs from './TelemetryGraphs';
-import SmartHopsGraphs from './SmartHopsGraphs';
-import LinkQualityGraph from './LinkQualityGraph';
-import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketStatsChart';
+import { type ChartDataEntry, DISTRIBUTION_COLORS } from './packetStatsChartData';
+import { lazyWithPreload } from '../utils/lazyWithPreload';
 import { getPacketDistributionStats } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
 
@@ -83,6 +81,13 @@ import { TranslateModal } from './translation/TranslateModal';
 import { TranslatedMessage } from './translation/TranslatedMessage';
 import { useViewTranslations } from '../hooks/useViewTranslations';
 import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
+
+// The DM pane's graphs are the tab's only recharts users: they load as lazy
+// chunks once a node is selected, not with the message list.
+const TelemetryGraphs = lazyWithPreload(() => import('./TelemetryGraphs'));
+const SmartHopsGraphs = lazyWithPreload(() => import('./SmartHopsGraphs'));
+const LinkQualityGraph = lazyWithPreload(() => import('./LinkQualityGraph'));
+const PacketStatsChart = lazyWithPreload(() => import('./PacketStatsChart'));
 
 // Types for node with message metadata
 interface NodeWithMessages extends DeviceInfo {
@@ -3023,6 +3028,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 </div>
               )}
 
+              <Suspense fallback={null}>
               <TelemetryGraphs
                 nodeId={selectedDMNode}
                 temperatureUnit={temperatureUnit}
@@ -3048,6 +3054,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   chartId="node-packet-type"
                 />
               )}
+              </Suspense>
             </div>
             {/* End of dm-send-section */}
           </div>
