@@ -132,7 +132,7 @@ describe('usePoll', () => {
 
       await waitFor(() => {
         // authFetch is called with (url, options, signal) for abort support
-        expect(mockFetch).toHaveBeenCalledWith('/api/poll', undefined, expect.any(AbortSignal));
+        expect(mockFetch).toHaveBeenCalledWith('/api/poll?cursor=', undefined, expect.any(AbortSignal));
       });
     });
 
@@ -146,7 +146,7 @@ describe('usePoll', () => {
 
       await waitFor(() => {
         // authFetch is called with (url, options, signal) for abort support
-        expect(mockFetch).toHaveBeenCalledWith('http://custom.url/api/poll', undefined, expect.any(AbortSignal));
+        expect(mockFetch).toHaveBeenCalledWith('http://custom.url/api/poll?cursor=', undefined, expect.any(AbortSignal));
       });
     });
   });

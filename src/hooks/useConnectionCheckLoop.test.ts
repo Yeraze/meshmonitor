@@ -143,7 +143,7 @@ describe('useConnectionCheckLoop', () => {
 
     up = true;
     await advance(30000);
-    expect(urls().filter((u) => u.startsWith('/api/poll'))).toEqual(['/api/poll?sourceId=src-1']);
+    expect(urls().filter((u) => u.startsWith('/api/poll'))).toEqual(['/api/poll?sourceId=src-1&cursor=']);
 
     await advance(120000); // connected: the loop makes no more requests
     expect(urls().filter((u) => u.startsWith('/api/poll'))).toHaveLength(1);

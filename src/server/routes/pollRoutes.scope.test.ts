@@ -14,7 +14,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-import pollRoutes, { POLL_SECTION_GATES } from './pollRoutes.js';
+import pollRoutes, { POLL_SECTION_GATES, POLL_DELTA_KEYS } from './pollRoutes.js';
+import { pollDeltaTracker } from '../services/pollDeltaTracker.js';
+import { mergePollReply, type PollReply } from '../../hooks/pollDelta.js';
+import type { PollData } from '../../hooks/usePoll.js';
 import databaseService from '../../services/database.js';
 import { createRouteTestApp, type RouteTestHarness, type SeededUser } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
@@ -798,6 +801,127 @@ describe('GET /poll: every section is gated on the source its data comes from', 
     });
   });
 
+  // ── Incremental replies (`cursor`) ────────────────────────────────────────
+  describe('incremental replies', () => {
+    /** A client that sends its cursor and merges each reply, as usePoll does. */
+    const deltaClient = (agent: Awaited<ReturnType<RouteTestHarness['loginAs']>>, query: Record<string, string>) => {
+      let base: PollData | null = null;
+      let cursor = '';
+      return async (): Promise<{ reply: PollReply; data: PollData }> => {
+        const res = await agent.get('/poll').query({ ...query, cursor });
+        expect(res.status).toBe(200);
+        const reply = res.body as PollReply;
+        const data = mergePollReply(base, reply);
+        base = data;
+        cursor = reply.pollCursor ?? '';
+        return { reply, data };
+      };
+    };
+    /** What a caller that sends no cursor gets right now. */
+    const fullRead = async (agent: Awaited<ReturnType<RouteTestHarness['loginAs']>>, query: Record<string, string>) => {
+      const res = await agent.get('/poll').query(query);
+      return JSON.parse(JSON.stringify(res.body)) as PollData;
+    };
+    /** Node order aside (the route reads rows in no fixed order), the merge equals the full read. */
+    const sameAsFull = (data: PollData, full: PollData): void => {
+      const byNum = (p: PollData) => ({ ...p, nodes: [...(p.nodes ?? [])].sort((a, b) => Number(a.nodeNum) - Number(b.nodeNum)) });
+      expect(byNum(data)).toEqual(byNum(full));
+    };
+
+    beforeEach(() => pollDeltaTracker.reset());
+
+    it('admin: the first reply is full, the next sends only what changed, and the merge equals a full read', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const poll = deltaClient(agent, { sourceId: harness.sourceA });
+
+      const first = await poll();
+      expect(first.reply.pollDelta).toBeUndefined();
+      expect(first.reply.pollCursor).toBeTruthy();
+      sameAsFull(first.data, await fullRead(agent, { sourceId: harness.sourceA }));
+
+      const idle = await poll();
+      expect(idle.reply.pollDelta).toBe(true);
+      expect(idle.reply.nodes).toEqual([]);
+      expect(idle.reply.removedNodes).toEqual([]);
+      expect(idle.reply.unchangedSections).toEqual(expect.arrayContaining(['channels', 'messages', 'traceroutes']));
+      expect(idle.data.nodes).toBe(first.data.nodes);
+
+      // A second node heard on A: only it is sent.
+      await databaseService.nodes.upsertNode(
+        { nodeNum: 0x0a0a0a01, nodeId: '!0a0a0a01', longName: 'AA-NEW', shortName: 'N', hwModel: 43, channel: 0, lastHeard: Math.floor(Date.now() / 1000) },
+        harness.sourceA,
+      );
+      const added = await poll();
+      expect(added.reply.pollDelta).toBe(true);
+      expect(added.reply.nodes?.map((n) => n.nodeNum)).toEqual([0x0a0a0a01]);
+      sameAsFull(added.data, await fullRead(agent, { sourceId: harness.sourceA }));
+
+      // Deleted: sent as a removal.
+      await databaseService.nodes.deleteNodeRecord(0x0a0a0a01, harness.sourceA);
+      const removed = await poll();
+      expect(removed.reply.removedNodes).toEqual([0x0a0a0a01]);
+      sameAsFull(removed.data, await fullRead(agent, { sourceId: harness.sourceA }));
+    });
+
+    it('a permission change shows and hides nodes through the delta, and never leaks B', async () => {
+      await giveEverythingOn(harness.sourceA);
+      await give('info', ['read']);
+      const agent = await harness.loginAs(limited);
+      const poll = deltaClient(agent, {});
+
+      const first = await poll();
+      expectNoB(first.reply, harness.sourceB);
+      expect(nodeNames(first.data as Body)).toEqual([A.name]);
+
+      // Granted B: B's nodes arrive in the delta.
+      await give('channel_0', ['read', 'viewOnMap'], harness.sourceB);
+      await give('nodes', ['read'], harness.sourceB);
+      const granted = await poll();
+      expect(text(granted.data)).toContain(B_ONLY_NAME);
+      sameAsFull(granted.data, await fullRead(agent, {}));
+
+      // Revoked again: B's nodes leave in the delta, nothing of B stays.
+      await harness.revokeAll(limited.id);
+      await giveEverythingOn(harness.sourceA);
+      await give('info', ['read']);
+      const revoked = await poll();
+      expect(revoked.reply.pollDelta).toBe(true);
+      expect(revoked.reply.removedNodes).toContain(ONLY_B_NUM);
+      // The removal names a node this caller was shown before, and nothing else of B.
+      expectNoB({ ...revoked.reply, removedNodes: undefined }, harness.sourceB);
+      expectNoB(revoked.data, harness.sourceB);
+      sameAsFull(revoked.data, await fullRead(agent, {}));
+    });
+
+    it('naming B without a grant there: no delta carries anything of B', async () => {
+      await giveEverythingOn(harness.sourceA);
+      const agent = await harness.loginAs(limited);
+      const poll = deltaClient(agent, { sourceId: harness.sourceB });
+      for (let i = 0; i < 3; i++) {
+        const { reply, data } = await poll();
+        expectNoB(reply, harness.sourceB);
+        expectNoB(data, harness.sourceB);
+        expectEmptySections(data as Body);
+      }
+    });
+
+    it('a restart (state dropped) answers the old cursor with a full reply', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const poll = deltaClient(agent, { sourceId: harness.sourceA });
+      await poll();
+      pollDeltaTracker.reset();
+      const after = await poll();
+      expect(after.reply.pollDelta).toBeUndefined();
+      sameAsFull(after.data, await fullRead(agent, { sourceId: harness.sourceA }));
+    });
+
+    it('a caller that sends no cursor gets the reply as before, with no delta keys', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/poll').query({ sourceId: harness.sourceA });
+      for (const key of Object.keys(POLL_DELTA_KEYS)) expect(res.body).not.toHaveProperty(key);
+    });
+  });
+
   // ── Guard: every key of the reply has a declared gate ─────────────────────
   describe('guard', () => {
     it('no reply carries a top-level key without a declared gate', async () => {
@@ -814,6 +938,13 @@ describe('GET /poll: every section is gated on the source its data comes from', 
           for (const key of Object.keys(res.body)) {
             seen.add(key);
             expect(declared.has(key), `"${key}" is in the poll reply but has no entry in POLL_SECTION_GATES`).toBe(true);
+          }
+          // An incremental reply adds only the declared control keys.
+          for (const cursor of ['', (await agent.get('/poll').query({ ...query, cursor: '' })).body.pollCursor]) {
+            const inc = await agent.get('/poll').query({ ...query, cursor });
+            for (const key of Object.keys(inc.body)) {
+              expect(declared.has(key) || key in POLL_DELTA_KEYS, `"${key}" is in an incremental poll reply but is not declared`).toBe(true);
+            }
           }
         }
       }
