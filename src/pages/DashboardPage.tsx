@@ -24,7 +24,7 @@ import {
 } from '../hooks/useDashboardData';
 import { useMeshCoreNeighbors } from '../hooks/useMapAnalysisData';
 import { useMaxNodeAgeHoursAcross, useMaxInfraNodeAgeHoursAcross } from '../hooks/useNodeDisplaySettings';
-import type { DashboardSource, SourceStatus } from '../hooks/useDashboardData';
+import type { DashboardSource, SourceStatus, DashboardDataOptions } from '../hooks/useDashboardData';
 import {
   hasHiddenUrlParts,
   hasStoredSecret,
@@ -69,6 +69,9 @@ import { UiIcon } from '../components/icons';
 
 /** The bridge URL a Reticulum source uses when the field is left blank. */
 const RETICULUM_DEFAULT_BRIDGE_URL = 'ws://127.0.0.1:8765';
+
+/** Stable options object for the dashboard data hooks (see DashboardDataOptions). */
+const DASHBOARD_DATA_OPTIONS: DashboardDataOptions = { ageWindow: true };
 
 function DashboardInner() {
   const { t } = useTranslation();
@@ -311,8 +314,9 @@ function DashboardInner() {
 
   // Run both data hooks but disable whichever is not active so we don't fan
   // out N parallel fetches when the user is on a single-source view.
-  const singleSourceData = useDashboardSourceData(isUnifiedSelected ? null : selectedSourceId);
-  const unifiedSourceData = useDashboardUnifiedData(sources, isUnifiedSelected);
+  // `ageWindow`: the server leaves out nodes this map hides by age.
+  const singleSourceData = useDashboardSourceData(isUnifiedSelected ? null : selectedSourceId, DASHBOARD_DATA_OPTIONS);
+  const unifiedSourceData = useDashboardUnifiedData(sources, isUnifiedSelected, DASHBOARD_DATA_OPTIONS);
   const sourceData = isUnifiedSelected ? unifiedSourceData : singleSourceData;
 
   // MeshCore neighbor links for the map. Fetched only when the "Show Neighbors"
@@ -398,7 +402,8 @@ function DashboardInner() {
   // count when Unified is selected and the polled value hasn't arrived yet.
   const nodeCounts = new Map<string, number>(
     sources.map((s) => {
-      if (s.id === selectedSourceId) return [s.id, sourceData.nodes.length];
+      // nodeCount: the total before the server's age cut (ageWindow below).
+      if (s.id === selectedSourceId) return [s.id, sourceData.nodeCount ?? sourceData.nodes.length];
       const status = statusMap.get(s.id);
       return [s.id, status?.nodeCount ?? 0];
     }),

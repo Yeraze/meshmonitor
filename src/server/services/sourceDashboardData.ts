@@ -35,6 +35,13 @@ import { modemPresetChannelName, TransportMechanism } from '../constants/meshtas
 import { transformChannel } from '../utils/channelView.js';
 import { getMaxNodeAgeHours } from './nodeDisplaySettings.js';
 import { DASHBOARD_OMITTED_NODE_FIELDS } from '../../utils/dashboardNodeFields.js';
+import { unifiedNodeKey } from '../../utils/nodeIdentity.js';
+import {
+  NODE_DISPLAY_NUMERIC_DEFAULTS,
+  MAX_INFRA_NODE_AGE_HOURS_DEFAULT,
+  parseNodeDisplayNumber,
+  parseMaxInfraNodeAgeHours,
+} from '../../constants/nodeDisplayDefaults.js';
 import { effectiveIsMobile } from '../../utils/assetTracking.js';
 import { loadSignFlipContext, applySignFlipCorrection, getDisplayDbNodePosition, applySignFlipToTraceroute } from './signFlipCorrection.js';
 import type { ResourceType } from '../../types/permission.js';
@@ -430,6 +437,8 @@ export interface SourceDashboardPayload {
   traceroutes: unknown[];
   neighborInfo: unknown[];
   channels: unknown[];
+  /** Node rows before the age window cut; set only when it ran (applyDashboardAgeWindow). */
+  nodeCount?: number;
 }
 
 /**
@@ -460,4 +469,142 @@ export async function buildSourceDashboard(
   ]);
 
   return { sourceId: source.id, nodes, traceroutes, neighborInfo, channels };
+}
+
+/**
+ * Node age windows the dashboard map filters on, in hours (<= 0 = no limit).
+ * See resolveDashboardAgeWindow.
+ */
+export interface DashboardAgeWindow {
+  nodeHours: number;
+  infraHours: number;
+}
+
+/**
+ * Extra seconds the server keeps past the window. The client compares
+ * `lastHeard` against its own clock some time after this response was built,
+ * so a node near the edge must reach it and let the client decide.
+ */
+export const DASHBOARD_AGE_GRACE_SEC = 3600;
+
+/**
+ * The widest window the Dashboard map can apply, across EVERY source.
+ *
+ * The map's cutoff is `useMaxNodeAgeHoursAcross` / `useMaxInfraNodeAgeHoursAcross`
+ * over the sources it lists, each read from GET /api/settings?sourceId (the
+ * per-source row, else the global row, else the default). This takes every
+ * configured source and includes the default, so it is never narrower than
+ * what the client computes, including while the client's settings queries are
+ * still loading (it then uses the default). A 0 ("no limit") on any source
+ * turns the cutoff off. The map slider can only narrow the window, never widen
+ * it (MapAgeFilterControl), so the setting is the upper bound.
+ */
+export async function resolveDashboardAgeWindow(): Promise<DashboardAgeWindow> {
+  const sources = await databaseService.sources.getAllSources();
+  const ids = sources.map((s) => s.id);
+  const settings = databaseService.settings;
+  const [nodeGlobal, infraGlobal, nodeBySource, infraBySource] = await Promise.all([
+    settings.getSetting('maxNodeAgeHours'),
+    settings.getSetting('maxInfraNodeAgeHours'),
+    settings.getSettingForSources(ids, 'maxNodeAgeHours'),
+    settings.getSettingForSources(ids, 'maxInfraNodeAgeHours'),
+  ]);
+  const nodeValues: number[] = [NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours];
+  const infraValues: number[] = [MAX_INFRA_NODE_AGE_HOURS_DEFAULT];
+  for (const id of ids) {
+    nodeValues.push(parseNodeDisplayNumber('maxNodeAgeHours', nodeBySource.get(id) ?? nodeGlobal));
+    infraValues.push(parseMaxInfraNodeAgeHours(infraBySource.get(id) ?? infraGlobal));
+  }
+  const widest = (values: number[]) => (values.some((v) => v <= 0) ? 0 : Math.max(...values));
+  return { nodeHours: widest(nodeValues), infraHours: widest(infraValues) };
+}
+
+/** nodeNums of every source's local node: the map's polar grid centres on them even when stale. */
+export function localNodeNums(): Set<number> {
+  const out = new Set<number>();
+  for (const m of sourceManagerRegistry.getAllManagers()) {
+    const num = Number(m.getLocalNodeInfo()?.nodeNum);
+    if (Number.isFinite(num) && num > 0) out.add(num);
+  }
+  return out;
+}
+
+type AgeRow = {
+  nodeNum?: unknown;
+  isMeshCore?: unknown;
+  advType?: unknown;
+  lastHeard?: unknown;
+  isFavorite?: unknown;
+  aircraftAgedOutAt?: unknown;
+};
+
+/**
+ * Whether one node row could pass the Dashboard map's age gate
+ * (DashboardMap `passesAgeGate`). It errs towards keeping: the client still
+ * applies its own gate, so a kept row costs bytes, a dropped one hides a node.
+ */
+function rowPassesAgeWindow(
+  row: AgeRow,
+  nodeCutoff: number,
+  infraCutoff: number,
+  keepNodeNums: Set<number>,
+): boolean {
+  if (row.isFavorite) return true;
+  // Aged-out aircraft skip the age gate (isAgedOutAircraft); any row with the
+  // mark is kept, ignored or not, as a superset.
+  if (row.aircraftAgedOutAt != null) return true;
+  if (!row.isMeshCore && keepNodeNums.has(Number(row.nodeNum))) return true;
+  if (row.lastHeard == null) return false;
+  const lastHeard = Number(row.lastHeard);
+  if (!Number.isFinite(lastHeard)) return true;
+  // MeshCore repeaters and room servers (advType 2/3) use the infra window
+  // (isMeshCoreInfrastructureAdvType in components/MeshCore/meshcoreRole.ts).
+  const isInfra = row.isMeshCore === true && (row.advType === 2 || row.advType === 3);
+  return lastHeard >= (isInfra ? infraCutoff : nodeCutoff);
+}
+
+/**
+ * Drop node rows the Dashboard map would hide by age.
+ *
+ * Works on the unified node key (`unifiedNodeKey`, the key the client merge
+ * buckets on): if ANY row of a node passes, every row of that node is kept
+ * across all `bundles`. The merged node takes `lastHeard` as the max over
+ * rows, `isFavorite` as an OR, and its position from whichever row has one, so
+ * dropping an old row of a live node could move or hide its marker.
+ *
+ * Sets `nodeCount` on each bundle to its row count before the cut, so the
+ * sidebar's per-source node total does not shrink. Mutates `bundles`.
+ */
+export function applyDashboardAgeWindow(
+  bundles: SourceDashboardPayload[],
+  window: DashboardAgeWindow,
+  keepNodeNums: Set<number>,
+  nowSec: number = Date.now() / 1000,
+): void {
+  // "No limit" on both windows: nothing to cut.
+  if (window.nodeHours <= 0 && window.infraHours <= 0) {
+    for (const b of bundles) b.nodeCount = b.nodes.length;
+    return;
+  }
+  const nodeCutoff = window.nodeHours <= 0 ? -Infinity : nowSec - window.nodeHours * 3600 - DASHBOARD_AGE_GRACE_SEC;
+  const infraCutoff = window.infraHours <= 0 ? -Infinity : nowSec - window.infraHours * 3600 - DASHBOARD_AGE_GRACE_SEC;
+
+  const liveKeys = new Set<string>();
+  for (const b of bundles) {
+    for (const row of b.nodes as AgeRow[]) {
+      const key = unifiedNodeKey(row as Parameters<typeof unifiedNodeKey>[0]);
+      if (key !== null && !liveKeys.has(key) && rowPassesAgeWindow(row, nodeCutoff, infraCutoff, keepNodeNums)) {
+        liveKeys.add(key);
+      }
+    }
+  }
+  for (const b of bundles) {
+    b.nodeCount = b.nodes.length;
+    b.nodes = b.nodes.filter((row) => {
+      const key = unifiedNodeKey(row as Parameters<typeof unifiedNodeKey>[0]);
+      // No identity: the unified merge drops it; a single-source view still
+      // draws it, so keep it.
+      return key === null || liveKeys.has(key);
+    });
+  }
 }
