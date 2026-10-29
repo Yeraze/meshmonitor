@@ -104,6 +104,10 @@ let isAboveGateThresholdMock = true;
 // describing the crowded case they were written for.
 let isMarkerGatedMock = true;
 
+// Stable across renders like the real hook's useCallback; reads the mutable
+// verdict at call time.
+const isMarkerGatedFn = () => isMarkerGatedMock;
+
 // #4551: records the resolved options the layer hands the hook, so the
 // threshold-precedence tests can assert on them.
 let lastSpiderfierOptions: Record<string, unknown> | undefined;
@@ -117,7 +121,7 @@ vi.mock('../../../hooks/useMarkerSpiderfier', () => ({
       addListener: addListenerMock,
       removeListener: removeListenerMock,
       isAboveGateThreshold: isAboveGateThresholdMock,
-      isMarkerGated: () => isMarkerGatedMock,
+      isMarkerGated: isMarkerGatedFn,
       handleGatedClick: handleGatedClickMock,
     };
   },
@@ -412,6 +416,50 @@ describe('NodeMarkersLayer', () => {
         />,
       );
       expect(lastSpiderfierOptions?.zoomGateThreshold).toBe(16);
+    });
+  });
+
+  describe('memoized markers (dashboard perf)', () => {
+    it('does not re-render a marker whose descriptor values are unchanged', () => {
+      const { rerender } = render(
+        <NodeMarkersLayer markers={[descriptor({ key: 'a', opacity: 0.5 }), descriptor({ key: 'b', opacity: 0.5 })]} />,
+      );
+      expect(renderLog).toHaveLength(2);
+      // New descriptor objects, same values: both markers skip.
+      rerender(
+        <NodeMarkersLayer markers={[descriptor({ key: 'a', opacity: 0.5 }), descriptor({ key: 'b', opacity: 0.5 })]} />,
+      );
+      expect(renderLog).toHaveLength(2);
+      // Only the changed marker re-renders.
+      rerender(
+        <NodeMarkersLayer markers={[descriptor({ key: 'a', opacity: 0.5 }), descriptor({ key: 'b', opacity: 0.7 })]} />,
+      );
+      expect(renderLog).toHaveLength(3);
+      expect(renderLog.at(-1)?.opacity).toBe(0.7);
+    });
+
+    it('keeps below-threshold click wrappers stable so unchanged markers still skip', () => {
+      isAboveGateThresholdMock = false;
+      const handlers = { click: vi.fn() };
+      const { rerender } = render(
+        <NodeMarkersLayer markers={[descriptor({ key: 'a', eventHandlers: handlers })]} />,
+      );
+      const first = renderLog.at(-1)?.eventHandlers;
+      rerender(<NodeMarkersLayer markers={[descriptor({ key: 'a', eventHandlers: handlers })]} />);
+      expect(renderLog).toHaveLength(1);
+      // A new consumer handler map rebuilds the wrapper.
+      rerender(<NodeMarkersLayer markers={[descriptor({ key: 'a', eventHandlers: { click: vi.fn() } })]} />);
+      expect(renderLog).toHaveLength(2);
+      expect(renderLog.at(-1)?.eventHandlers).not.toBe(first);
+    });
+
+    it('re-renders a marker when its children element changes', () => {
+      const { rerender } = render(
+        <NodeMarkersLayer markers={[descriptor({ key: 'a', children: <span>one</span> })]} />,
+      );
+      rerender(<NodeMarkersLayer markers={[descriptor({ key: 'a', children: <span>two</span> })]} />);
+      expect(renderLog).toHaveLength(2);
+      expect(screen.getByText('two')).toBeTruthy();
     });
   });
 });

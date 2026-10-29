@@ -6,7 +6,7 @@
  * per-source data fetched via the useDashboardData hooks.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -109,7 +109,8 @@ function DashboardInner() {
    * Node Details (Messages) tab focused on the node's DM; MeshCore sources use
    * their own internal panes, so we just switch to that source.
    */
-  const handleNodeSourceSelect = (source: NodeSourceRef, nodeId: string | undefined) => {
+  // Stable so the map's memoized marker popups don't rebuild on every render.
+  const handleNodeSourceSelect = useCallback((source: NodeSourceRef, nodeId: string | undefined) => {
     if (source.protocol === 'MeshCore') {
       void navigate(`/source/${source.sourceId}/`);
       return;
@@ -117,7 +118,7 @@ function DashboardInner() {
     void navigate(`/source/${source.sourceId}/#messages`, {
       state: nodeId ? { focusDmNodeId: nodeId } : undefined,
     });
-  };
+  }, [navigate]);
 
   const isAuthenticated = authStatus?.authenticated ?? false;
   const isAdmin = authStatus?.user?.isAdmin ?? false;
