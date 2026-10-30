@@ -104,10 +104,17 @@ export function transformChannelForResponse(channel: any, includeFullPsk: boolea
     // 'meshtastic' or 'meshcore' (#5552).
     protocol: channel.protocol === 'meshcore' ? 'meshcore' : 'meshtastic',
     pskLength: channel.pskLength,
+    // MM-SEC (MISC-11 / #6087): never leak raw key bytes to non-privileged
+    // callers. The old masked preview showed the first 8 base64 chars (~6 bytes
+    // of the key) to anyone with channel_database:read — including the anonymous
+    // account's default grant — which both confirmed a PSK was set AND let a
+    // caller spot channels sharing a key by matching previews. Non-write callers
+    // now get a constant sentinel: PSK presence is still conveyed (pskLength /
+    // '(hidden)' vs '(none)'), but no key material and no cross-channel oracle.
     pskPreview: includeFullPsk
       ? channel.psk
       : channel.psk
-        ? `${channel.psk.substring(0, 8)}...`
+        ? '(hidden)'
         : '(none)',
     psk: includeFullPsk ? channel.psk : undefined,
     description: channel.description,
@@ -174,6 +181,46 @@ function forbidden(res: Response, message: string) {
     error: 'Forbidden',
     message,
   });
+}
+
+/**
+ * MM-SEC (AUTHZ-08 / #6072): ownership gate for per-entry channel-database
+ * mutations (update / delete / ACL management).
+ *
+ * `channel_database:write` is a flat global grant (the table is global-by-design
+ * — see CLAUDE.md), so the resource-level `hasWrite` check alone let ANY write
+ * holder overwrite another user's PSK or re-grant another user's ACLs — including
+ * entries created by an admin. The resource grant says "may manage channel-db
+ * entries"; it does not say "may manage everyone's". This adds the missing
+ * ownership boundary WITHOUT turning the table into a per-source resource:
+ *
+ *   - Admins may manage any entry.
+ *   - A non-admin write holder may manage only entries they created
+ *     (`createdBy === their own user id`).
+ *   - Entries with no recorded creator (`createdBy == null`) are admin-only — the
+ *     fail-safe direction.
+ *
+ * Callers must have already passed the `hasWrite` gate; this is the second,
+ * per-row check.
+ */
+function canManageEntry(
+  scope: { isAdmin: boolean; userId: number | null },
+  entry: { createdBy?: number | null },
+): boolean {
+  if (scope.isAdmin) return true;
+  return (
+    scope.userId !== null &&
+    entry.createdBy != null &&
+    entry.createdBy === scope.userId
+  );
+}
+
+/** 403 helper for the ownership gate above. */
+function forbiddenNotOwner(res: Response) {
+  return forbidden(
+    res,
+    'You can only manage channel database entries you created; this entry belongs to another user.',
+  );
 }
 
 // ============================================================================
@@ -548,6 +595,11 @@ export async function updateChannelHandler(req: Request, res: Response) {
       });
     }
 
+    // AUTHZ-08 (#6072): only the entry's creator (or an admin) may change it.
+    if (!canManageEntry(scope, existing)) {
+      return forbiddenNotOwner(res);
+    }
+
     const { name, psk, pskLength, description, isEnabled, enforceNameValidation, sortOrder, useAead } = req.body;
     const updates: any = {};
 
@@ -698,6 +750,11 @@ export async function deleteChannelHandler(req: Request, res: Response) {
         error: 'Not Found',
         message: `Channel database entry ${id} not found`,
       });
+    }
+
+    // AUTHZ-08 (#6072): only the entry's creator (or an admin) may delete it.
+    if (!canManageEntry(scope, existing)) {
+      return forbiddenNotOwner(res);
     }
 
     await databaseService.channelDatabase.deleteAsync(id);
@@ -940,6 +997,12 @@ export async function getChannelPermissionsHandler(req: Request, res: Response) 
       });
     }
 
+    // AUTHZ-08 (#6072): the ACL of an entry is visible only to its creator (or
+    // an admin), not to every channel_database:write holder.
+    if (!canManageEntry(scope, channel)) {
+      return forbiddenNotOwner(res);
+    }
+
     const permissions = await databaseService.channelDatabase.getPermissionsForChannelAsync(id);
 
     res.json({
@@ -998,6 +1061,12 @@ export async function setChannelPermissionHandler(req: Request, res: Response) {
         error: 'Not Found',
         message: `Channel database entry ${channelId} not found`,
       });
+    }
+
+    // AUTHZ-08 (#6072): only the entry's creator (or an admin) may grant/modify
+    // other users' access to it — not every channel_database:write holder.
+    if (!canManageEntry(scope, channel)) {
+      return forbiddenNotOwner(res);
     }
 
     const targetUser = await databaseService.findUserByIdAsync(targetUserId);
@@ -1084,6 +1153,12 @@ export async function deleteChannelPermissionHandler(req: Request, res: Response
         error: 'Not Found',
         message: `Channel database entry ${channelId} not found`,
       });
+    }
+
+    // AUTHZ-08 (#6072): only the entry's creator (or an admin) may revoke other
+    // users' access to it — not every channel_database:write holder.
+    if (!canManageEntry(scope, channel)) {
+      return forbiddenNotOwner(res);
     }
 
     await databaseService.channelDatabase.deletePermissionAsync(targetUserId, channelId);

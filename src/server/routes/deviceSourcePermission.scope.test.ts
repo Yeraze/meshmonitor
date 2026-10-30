@@ -159,7 +159,10 @@ const CASES: RouteCase[] = [
   },
   // These two stop at their own validation (a 400 the gate did not send), so
   // the allowed path proves the gate passed without starting a device write.
-  { router: 'channels', method: 'post', route: '/encode-url', action: 'read', from: 'body', payload: { channelIds: 'not-an-array' }, allowed: 400, explicitOnly: true },
+  // encode-url embeds full AES PSKs in the returned URL, so it is gated on
+  // `configuration:write`, not `:read` (MISC-02 / #6058). With action:'write'
+  // the shared cases below also assert a configuration:read-only caller is 403'd.
+  { router: 'channels', method: 'post', route: '/encode-url', action: 'write', from: 'body', payload: { channelIds: 'not-an-array' }, allowed: 400, explicitOnly: true },
   { router: 'channels', method: 'post', route: '/import-config', action: 'write', from: 'body', payload: {}, allowed: 400, explicitOnly: true },
   {
     router: 'backup', method: 'post', route: '/restore/:filename', path: '/restore/backup-1.yaml', action: 'write', from: 'body', allowed: 200,

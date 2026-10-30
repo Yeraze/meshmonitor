@@ -139,7 +139,9 @@ describe('Legacy mount — GET / permission filtering', () => {
     expect(res.status).toBe(200);
     expect(res.body.count).toBe(1);
     expect(res.body.data[0].psk).toBeUndefined();
-    expect(res.body.data[0].pskPreview).toMatch(/\.\.\.$/);
+    // MISC-11 (#6087): masked callers get a constant sentinel, never key bytes.
+    expect(res.body.data[0].pskPreview).toBe('(hidden)');
+    expect(res.body.data[0].pskPreview).not.toContain('q6ur');
   });
 
   it('non-admin without :read: returns 403', async () => {
@@ -166,7 +168,8 @@ describe('Legacy mount — GET / permission filtering', () => {
     expect(res.body.data[0].id).toBe(1);
     // PSK stays masked — per-entry read never exposes the raw key.
     expect(res.body.data[0].psk).toBeUndefined();
-    expect(res.body.data[0].pskPreview).toMatch(/\.\.\.$/);
+    // MISC-11 (#6087): masked callers get a constant sentinel, never key bytes.
+    expect(res.body.data[0].pskPreview).toBe('(hidden)');
   });
 
   it('non-admin with neither resource :read nor any per-entry canRead: returns 403', async () => {
@@ -194,6 +197,10 @@ describe('Legacy mount — GET / permission filtering', () => {
     expect(res.status).toBe(200);
     expect(res.body.count).toBe(1);
     expect(res.body.data[0].psk).toBeUndefined();
+    // MISC-11 (#6087): an anonymous caller must not receive even a partial key
+    // preview — no first-8-chars oracle, no shared-key fingerprint.
+    expect(res.body.data[0].pskPreview).toBe('(hidden)');
+    expect(res.body.data[0].pskPreview).not.toContain('q6ur');
   });
 
   it('ANONYMOUS with no grants: GET / reaches the handler (403), not a 401 auth wall', async () => {
@@ -217,7 +224,8 @@ describe('Legacy mount — GET /:id permission filtering', () => {
     const res = await agent.get('/api/channel-database/1');
     expect(res.status).toBe(200);
     expect(res.body.data.psk).toBeUndefined();
-    expect(res.body.data.pskPreview).toMatch(/\.\.\.$/);
+    // MISC-11 (#6087): masked callers get a constant sentinel, never key bytes.
+    expect(res.body.data.pskPreview).toBe('(hidden)');
   });
 
   it('non-admin with :read but no per-entry row: returns 404', async () => {
@@ -241,7 +249,8 @@ describe('Legacy mount — GET /:id permission filtering', () => {
     const res = await agent.get('/api/channel-database/1');
     expect(res.status).toBe(200);
     expect(res.body.data.psk).toBeUndefined();
-    expect(res.body.data.pskPreview).toMatch(/\.\.\.$/);
+    // MISC-11 (#6087): masked callers get a constant sentinel, never key bytes.
+    expect(res.body.data.pskPreview).toBe('(hidden)');
   });
 
   it('non-admin with neither :read nor per-entry canRead: returns 404 (masks existence)', async () => {
@@ -289,5 +298,96 @@ describe('Legacy mount — Write endpoints require channel_database:write', () =
       .post('/api/channel-database')
       .send({ name: 'AdminChannel', psk: fakePsk });
     expect(res.status).toBe(201);
+  });
+});
+
+// ── describe 5: AUTHZ-08 (#6072) — per-entry ownership on mutations ───────────
+//
+// channel_database:write is a flat global grant. Before the fix, ANY write
+// holder could overwrite another user's PSK and re-grant another user's ACLs on
+// an entry they did not create. These tests pin the ownership boundary:
+//   - a non-admin write holder may mutate ONLY entries they created,
+//   - an admin may mutate any entry.
+
+describe('AUTHZ-08 — ownership check on channel-database mutations', () => {
+  // An entry created by someone OTHER than `harness.limited`.
+  const foreignEntry = { ...channel1, createdBy: 999999 };
+
+  beforeEach(async () => {
+    // Every test below acts as a non-admin WITH the global write grant — the
+    // resource gate passes, so only the new per-row ownership check can deny.
+    await harness.grant(harness.limited.id, 'channel_database', 'write');
+  });
+
+  it('PUT /:id → 403 when a write holder edits an entry they did not create', async () => {
+    vi.spyOn(databaseService.channelDatabase, 'getByIdAsync').mockResolvedValue(foreignEntry as any);
+    const updateSpy = vi.spyOn(databaseService.channelDatabase, 'updateAsync').mockResolvedValue(undefined as any);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.put('/api/channel-database/1').send({ name: 'hijacked' });
+    expect(res.status).toBe(403);
+    // The PSK/ACL must be untouched: the handler must bail before writing.
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /:id → 403 when a write holder deletes an entry they did not create', async () => {
+    vi.spyOn(databaseService.channelDatabase, 'getByIdAsync').mockResolvedValue(foreignEntry as any);
+    const deleteSpy = vi.spyOn(databaseService.channelDatabase, 'deleteAsync').mockResolvedValue(undefined as any);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.delete('/api/channel-database/1');
+    expect(res.status).toBe(403);
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  it('PUT /:id/permissions/:userId → 403 when a write holder grants ACLs on an entry they did not create', async () => {
+    vi.spyOn(databaseService.channelDatabase, 'getByIdAsync').mockResolvedValue(foreignEntry as any);
+    const setSpy = vi.spyOn(databaseService.channelDatabase, 'setPermissionAsync').mockResolvedValue(undefined as any);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent
+      .put(`/api/channel-database/1/permissions/${harness.anonymous.id}`)
+      .send({ canViewOnMap: true, canRead: true });
+    expect(res.status).toBe(403);
+    expect(setSpy).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /:id/permissions/:userId → 403 when a write holder revokes ACLs on an entry they did not create', async () => {
+    vi.spyOn(databaseService.channelDatabase, 'getByIdAsync').mockResolvedValue(foreignEntry as any);
+    const delPermSpy = vi.spyOn(databaseService.channelDatabase, 'deletePermissionAsync').mockResolvedValue(undefined as any);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.delete(`/api/channel-database/1/permissions/${harness.anonymous.id}`);
+    expect(res.status).toBe(403);
+    expect(delPermSpy).not.toHaveBeenCalled();
+  });
+
+  it('GET /:id/permissions → 403 when a write holder views ACLs of an entry they did not create', async () => {
+    vi.spyOn(databaseService.channelDatabase, 'getByIdAsync').mockResolvedValue(foreignEntry as any);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/api/channel-database/1/permissions');
+    expect(res.status).toBe(403);
+  });
+
+  it('PUT /:id → 200 when the write holder edits an entry THEY created (feature still works)', async () => {
+    const ownEntry = { ...channel1, createdBy: harness.limited.id };
+    vi.spyOn(databaseService.channelDatabase, 'getByIdAsync').mockResolvedValue(ownEntry as any);
+    const updateSpy = vi.spyOn(databaseService.channelDatabase, 'updateAsync').mockResolvedValue(undefined as any);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.put('/api/channel-database/1').send({ name: 'my own rename' });
+    expect(res.status).toBe(200);
+    expect(updateSpy).toHaveBeenCalled();
+  });
+
+  it('PUT /:id → 200 when an ADMIN edits an entry created by someone else (admin bypass intact)', async () => {
+    vi.spyOn(databaseService.channelDatabase, 'getByIdAsync').mockResolvedValue(foreignEntry as any);
+    const updateSpy = vi.spyOn(databaseService.channelDatabase, 'updateAsync').mockResolvedValue(undefined as any);
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.put('/api/channel-database/1').send({ name: 'admin rename' });
+    expect(res.status).toBe(200);
+    expect(updateSpy).toHaveBeenCalled();
   });
 });

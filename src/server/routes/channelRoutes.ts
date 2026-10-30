@@ -361,18 +361,21 @@ router.get('/:id/export', requireAuth(), requireSourceId('query'), async (req: R
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
 
-    // MM-SEC-4: gate per-channel. Export includes the raw PSK, so the caller
-    // must have read permission for the SPECIFIC channel they're exporting,
-    // not just channel_0.
+    // MM-SEC-4 + MM-SEC (MISC-03 / #6059): gate per-channel. The export body
+    // includes the raw AES PSK — key material that decrypts all traffic on the
+    // channel and lets the holder inject authenticated packets. A read-only
+    // caller sees only `pskSet` in the channel listing, so exporting the raw key
+    // is a privileged action and requires WRITE permission for the SPECIFIC
+    // channel being exported, not just `:read` (and not just channel_0).
     // Presence is validated by requireSourceId('query'). The permission is
     // per-source, so it is checked on the source being exported from.
     const exportSourceId = req.query.sourceId as string;
     const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'read', exportSourceId))) {
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'write', exportSourceId))) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
-        required: { resource: channelResource, action: 'read' },
+        required: { resource: channelResource, action: 'write' },
       });
     }
 
@@ -1123,7 +1126,13 @@ router.post('/decode-url', requirePermission('configuration', 'read'), async (re
 });
 
 // Encode current configuration to Meshtastic URL
-router.post('/encode-url', requireSourceId('body'), requireDeviceSourcePermission('configuration', 'read', 'body'), async (req: Request, res: Response) => {
+// MM-SEC (MISC-02 / #6058): the encoded URL embeds each channel's full AES PSK in
+// its protobuf payload — key material that decrypts all traffic on the channel and
+// lets the holder inject authenticated packets. Exporting it is a privileged action,
+// so it requires `configuration:write`, not merely `:read`. The channel-listing
+// endpoint masks PSKs for read-only callers; this endpoint must not hand them the
+// raw key by a side door.
+router.post('/encode-url', requireSourceId('body'), requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
   try {
     const { channelIds, includeLoraConfig } = req.body;
     const { manager: encodeUrlManager, sourceId: encodeUrlSourceScope } = getDeviceSourceTarget(req);

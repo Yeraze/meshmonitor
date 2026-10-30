@@ -520,8 +520,11 @@ describe('single-source routes: permission is checked on the target source', () 
 
     const channelCases: ChannelCase[] = [
       {
+        // Export returns the raw AES PSK, so it requires channel_N:WRITE, not
+        // :read (MISC-03 / #6059). The source-B 403 case below still proves the
+        // per-source scoping of that write gate.
         name: 'GET /channels/:id/export',
-        grants: [['channel_1', 'read']],
+        grants: [['channel_1', 'write']],
         send: (agent, sourceId) => agent.get('/channels/1/export').query({ sourceId }),
       },
       {
