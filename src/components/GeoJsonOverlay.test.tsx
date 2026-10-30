@@ -77,14 +77,17 @@ function makeLayer(overrides: Partial<GeoJsonLayer> = {}): GeoJsonLayer {
 }
 
 /** Renders the overlay and runs its `onEachFeature` against a stub leaflet layer. */
-async function bindFirstFeature(layer: GeoJsonLayer): Promise<LayerStub> {
+async function bindFirstFeature(
+  layer: GeoJsonLayer,
+  properties: Record<string, unknown> = { name: 'Sector 7', note: 'restricted' }
+): Promise<LayerStub> {
   render(<GeoJsonOverlay layers={[layer]} />);
   await waitFor(() => expect(mocks.capturedGeoJsonProps.length).toBeGreaterThan(0));
 
   const stub: LayerStub = { bindPopup: vi.fn(), bindTooltip: vi.fn() };
   const last = mocks.capturedGeoJsonProps[mocks.capturedGeoJsonProps.length - 1];
   (last.onEachFeature as OnEachFeature)(
-    { properties: { name: 'Sector 7', note: 'restricted' } },
+    { properties },
     stub
   );
   return stub;
@@ -127,5 +130,52 @@ describe('GeoJsonOverlay — disablePopup (#4344)', () => {
 
     expect(stub.bindPopup).toHaveBeenCalledTimes(1);
     expect(stub.bindTooltip).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GeoJsonOverlay — stored XSS escaping (#6065 / #6066)', () => {
+  const IMG_PAYLOAD =
+    '<img src=x onerror="document.title=\'XSS\'">';
+
+  beforeEach(() => {
+    mocks.capturedGeoJsonProps.length = 0;
+  });
+
+  it('escapes a popup property value so injected markup is inert (#6065)', async () => {
+    const stub = await bindFirstFeature(makeLayer(), {
+      name: 'Null Island',
+      info: IMG_PAYLOAD,
+    });
+
+    const popupHtml = String(stub.bindPopup.mock.calls[0][0]);
+    // The raw executable tag must NOT survive into the innerHTML string.
+    expect(popupHtml).not.toContain('<img');
+    expect(popupHtml).not.toContain('onerror="');
+    // It is present only in escaped, inert form.
+    expect(popupHtml).toContain('&lt;img');
+    expect(popupHtml).toContain('&quot;');
+  });
+
+  it('escapes a popup property KEY as well as the value (#6065)', async () => {
+    const stub = await bindFirstFeature(makeLayer(), {
+      // malicious key, benign-looking value
+      '<img src=x onerror=alert(1)>': 'ok',
+      name: 'Null Island',
+    });
+
+    const popupHtml = String(stub.bindPopup.mock.calls[0][0]);
+    expect(popupHtml).not.toContain('<img');
+    expect(popupHtml).toContain('&lt;img');
+  });
+
+  it('escapes the tooltip label so injected markup is inert (#6066)', async () => {
+    const stub = await bindFirstFeature(makeLayer(), {
+      name: IMG_PAYLOAD,
+    });
+
+    const tooltipLabel = String(stub.bindTooltip.mock.calls[0][0]);
+    expect(tooltipLabel).not.toContain('<img');
+    expect(tooltipLabel).not.toContain('onerror="');
+    expect(tooltipLabel).toContain('&lt;img');
   });
 });
