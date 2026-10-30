@@ -65,6 +65,17 @@ describe('appriseNotificationService.notifyDirect', () => {
     expect(r.message).toContain('400');
   });
 
+  it('allows up to 30 s for the Apprise API to send a notification', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(new AbortController().signal);
+    try {
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
+      await appriseNotificationService.notifyDirect({ sourceId: 'default', title: 'T', body: 'B' });
+      expect(timeout).toHaveBeenCalledWith(30_000);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
   it('does not call the API when Apprise is disabled for the source', async () => {
     settings.getSettingForSource.mockImplementation(async (_s: string, key: string) =>
       key === 'apprise_enabled' ? 'false' : null,
