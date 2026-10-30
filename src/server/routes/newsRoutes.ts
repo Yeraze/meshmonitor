@@ -80,6 +80,19 @@ router.post('/user/status', requireAuth(), async (req, res) => {
     const { lastSeenNewsId, dismissedNewsIds } = req.body;
 
     // Validate input
+    // lastSeenNewsId must be a string (news IDs are string GUIDs). A non-string
+    // (e.g. the integer 99999) is coerced by SQLite into a float string like
+    // "99999.0" that never matches a real ID, corrupting the user's news state
+    // (#6086). Reject anything that is not a string, null, or absent.
+    if (
+      lastSeenNewsId !== undefined &&
+      lastSeenNewsId !== null &&
+      typeof lastSeenNewsId !== 'string'
+    ) {
+      res.status(400).json({ error: 'lastSeenNewsId must be a string' });
+      return;
+    }
+
     if (dismissedNewsIds !== undefined && !Array.isArray(dismissedNewsIds)) {
       res.status(400).json({ error: 'dismissedNewsIds must be an array' });
       return;

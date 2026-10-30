@@ -484,6 +484,14 @@ export interface ThemeDefinition {
   chatBubbleReceivedText?: string;
 }
 
+/**
+ * Fixed cost-10 bcrypt hash used to equalize login timing for unknown users
+ * (#6081). It is never a valid credential — it hashes a throwaway string — and
+ * exists only so `authenticateAsync` spends the same time whether or not the
+ * username exists, closing the enumeration side-channel.
+ */
+const DUMMY_PASSWORD_HASH = '$2b$10$uIwhve/fLYXbLsXbYYNgbuSNcpUylCSbVN6Y3J80Ik4XNQsI02vOq';
+
 class DatabaseService {
   public db: BetterSqlite3Database.Database;
   private isInitialized = false;
@@ -5168,11 +5176,18 @@ class DatabaseService {
    * Returns the user if authentication succeeds, null otherwise.
    */
   async authenticateAsync(username: string, password: string): Promise<any | null> {
+    const bcrypt = await import('bcrypt');
     const dbUser = await this.auth.getUserByUsername(username);
-    if (!dbUser || !dbUser.passwordHash) return null;
+    if (!dbUser || !dbUser.passwordHash) {
+      // Timing equalization (#6081): a missing user must take as long as a wrong
+      // password, or response latency leaks which usernames exist. Run a bcrypt
+      // compare against a fixed cost-10 dummy hash (same cost as real hashes),
+      // then fail.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      return null;
+    }
 
     // Verify password using bcrypt
-    const bcrypt = await import('bcrypt');
     const isValid = await bcrypt.compare(password, dbUser.passwordHash);
     if (!isValid) return null;
 
@@ -5442,10 +5457,13 @@ class DatabaseService {
   }
 
   /**
-   * Update backup codes for a user (after one is consumed).
+   * Consume an MFA backup code atomically (#6075). Writes `remainingCodes` only
+   * while the stored list still equals `expectedCodes`, so two concurrent
+   * requests submitting the same code cannot both succeed. Returns false when
+   * the stored codes changed underneath (the racing request lost).
    */
-  async consumeBackupCodeAsync(userId: number, remainingCodes: string): Promise<void> {
-    await this.auth.updateUser(userId, { mfaBackupCodes: remainingCodes });
+  async consumeBackupCodeAsync(userId: number, expectedCodes: string, remainingCodes: string): Promise<boolean> {
+    return this.auth.consumeBackupCode(userId, expectedCodes, remainingCodes);
   }
 
   // ============ ASYNC PASSKEY METHODS (#5841) ============
@@ -5535,6 +5553,15 @@ class DatabaseService {
 
   async cleanupExpiredSessionsAsync(): Promise<number> {
     return this.auth.cleanupExpiredSessions();
+  }
+
+  /**
+   * Invalidate active sessions for a user (#6074 / #6077). Pass `exceptSid` to
+   * keep the caller's own session (self password change); omit it to terminate
+   * every session (admin reset). Returns the number of sessions removed.
+   */
+  async deleteSessionsByUserIdAsync(userId: number, exceptSid?: string): Promise<number> {
+    return this.auth.deleteSessionsByUserId(userId, exceptSid);
   }
 
   // ============ ASYNC CHANNEL DATABASE METHODS ============

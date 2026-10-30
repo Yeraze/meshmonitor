@@ -12,22 +12,29 @@ const moduleStartTime = Date.now();
 
 const router = Router();
 
-// Primary health check used by upgrade watchdog and external monitoring
-router.get('/', (_req: Request, res: Response) => {
+// Health check used by container/orchestrator probes, the upgrade watchdog, and
+// the authenticated frontend (SettingsTab, useHealth, ConfigurationTab).
+//
+// Anonymous callers get only { status: 'ok' } — enough for a load-balancer or
+// k8s probe, which only needs HTTP 200. The exact version, database backend,
+// uptime, and firmware-OTA flag are reconnaissance aids (#6084), so they are
+// returned only to an authenticated caller. The frontend fetches same-origin,
+// so its session cookie reaches this route and it still receives full detail.
+router.get('/', optionalAuth(), (req: Request, res: Response) => {
+  // optionalAuth attaches the shared "anonymous" account when no real user is
+  // signed in, so presence of req.user is not enough — check the username.
+  const isAuthenticated = !!req.user && req.user.username !== 'anonymous';
+  if (!isAuthenticated) {
+    return res.json({ status: 'ok' });
+  }
+
+  const env = getEnvironmentConfig();
   res.json({
     status: 'ok',
     version: packageJson.version,
     uptime: Date.now() - moduleStartTime,
     databaseType: databaseService.drizzleDbType,
     firmwareOtaEnabled: process.env.IS_DESKTOP !== 'true',
-  });
-});
-
-// Secondary health check endpoint (returns environment info)
-router.get('/', optionalAuth(), (_req: Request, res: Response) => {
-  const env = getEnvironmentConfig();
-  res.json({
-    status: 'ok',
     timestamp: new Date().toISOString(),
     nodeEnv: env.nodeEnv,
   });

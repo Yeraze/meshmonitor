@@ -19,7 +19,7 @@ import {
   handleOIDCCallback,
   generateRandomString
 } from '../auth/oidcAuth.js';
-import { requireAuth } from '../auth/authMiddleware.js';
+import { requireAuth, optionalAuth } from '../auth/authMiddleware.js';
 import { authLimiter } from '../middleware/rateLimiters.js';
 import { mfaService } from '../services/mfa.js';
 import databaseService from '../../services/database.js';
@@ -127,9 +127,18 @@ router.get('/status', async (req: Request, res: Response) => {
   }
 });
 
-// Check if admin is using default password
-router.get('/check-default-password', async (_req: Request, res: Response) => {
+// Check if admin is using default password.
+// Gated to authenticated admins (#6082): exposing the default-password status
+// to anonymous callers advertises an exploitable instance (admin/changeme) to
+// internet scanners. Only an admin can act on the warning, and the banner that
+// reads it is shown post-login, so this change keeps the UX intact. Anyone not
+// an authenticated admin gets a non-revealing `false`.
+router.get('/check-default-password', optionalAuth(), async (req: Request, res: Response) => {
   try {
+    if (!req.user?.isAdmin) {
+      return res.json({ isDefaultPassword: false });
+    }
+
     // ADMIN_USERNAME names the first admin (#5874), so look that user up
     // rather than the literal 'admin'.
     const admin = await databaseService.findUserByUsernameAsync(getEnvironmentConfig().adminUsername);
@@ -384,18 +393,27 @@ router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
     if (token) {
       verified = mfaService.verifyToken(user.mfaSecret, token);
     } else if (backupCode) {
-      const hashedCodes: string[] = JSON.parse(user.mfaBackupCodes || '[]');
+      const storedCodes = user.mfaBackupCodes ?? '[]';
+      const hashedCodes: string[] = JSON.parse(storedCodes);
       const remaining = await mfaService.verifyBackupCode(backupCode, hashedCodes);
       if (remaining !== null) {
-        verified = true;
-        await databaseService.consumeBackupCodeAsync(user.id, JSON.stringify(remaining));
-        void databaseService.auditLogAsync(
+        // Atomic consume closes a TOCTOU race (#6075): two concurrent requests
+        // with the same code both verify, but only the first CAS write wins.
+        const consumed = await databaseService.consumeBackupCodeAsync(
           user.id,
-          'mfa_backup_code_used',
-          'auth',
-          JSON.stringify({ username: user.username, action: 'login' }),
-          req.ip || null
+          storedCodes,
+          JSON.stringify(remaining)
         );
+        if (consumed) {
+          verified = true;
+          void databaseService.auditLogAsync(
+            user.id,
+            'mfa_backup_code_used',
+            'auth',
+            JSON.stringify({ username: user.username, action: 'login' }),
+            req.ip || null
+          );
+        }
       }
     }
 
@@ -489,6 +507,15 @@ router.post('/change-password', requireAuth(), async (req: Request, res: Respons
       await changePassword(req.user.id, currentPassword, newPassword);
     }
     req.session.passwordChangeRequired = undefined;
+
+    // Invalidate the user's other active sessions (#6077) so a stolen cookie
+    // stops working the moment its owner changes the password. The current
+    // session (the one making this request) is preserved by sid.
+    try {
+      await databaseService.deleteSessionsByUserIdAsync(req.user.id, req.sessionID);
+    } catch (err) {
+      logger.warn('Failed to invalidate other sessions after password change:', err);
+    }
 
     return res.json({
       success: true,

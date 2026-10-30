@@ -375,6 +375,23 @@ export class AuthRepository extends BaseRepository {
   }
 
   /**
+   * Spend an MFA backup code atomically. Writes `remainingCodes` but only while
+   * the stored list is still `expectedCodes`. Two requests racing with the same
+   * code both read the old list; only the first write matches it and wins, so a
+   * one-time code works once. False when another write got there first (#6075).
+   */
+  async consumeBackupCode(userId: number, expectedCodes: string, remainingCodes: string): Promise<boolean> {
+    const { users } = this.tables;
+    const set: Record<string, unknown> = { mfaBackupCodes: remainingCodes };
+    if (!this.isSQLite()) set.updatedAt = Date.now();
+    const result = await this.db
+      .update(users)
+      .set(set)
+      .where(and(eq(users.id, userId), eq(users.mfaBackupCodes, expectedCodes)));
+    return this.getAffectedRows(result) > 0;
+  }
+
+  /**
    * Get user count
    */
   async getUserCount(): Promise<number> {
@@ -1037,6 +1054,39 @@ export class AuthRepository extends BaseRepository {
     for (const session of toDelete) {
       await this.db.delete(sessions).where(eq(sessions.sid, session.sid));
     }
+    return toDelete.length;
+  }
+
+  /**
+   * Delete every session belonging to a user, optionally keeping one (the
+   * caller's current session). Used to terminate active sessions after a
+   * password reset or change (#6074 / #6077) so a stolen cookie stops working.
+   *
+   * The owning user is stored inside the serialized session JSON, not a column,
+   * so we scan rows and match in JS — portable across all three backends and
+   * cheap given the small session count.
+   */
+  async deleteSessionsByUserId(userId: number, exceptSid?: string): Promise<number> {
+    const { sessions } = this.tables;
+    const rows = await this.db
+      .select({ sid: sessions.sid, sess: sessions.sess })
+      .from(sessions);
+
+    const toDelete: string[] = [];
+    for (const row of rows) {
+      if (exceptSid && row.sid === exceptSid) continue;
+      try {
+        const parsed = JSON.parse(row.sess) as { userId?: unknown };
+        if (parsed && Number(parsed.userId) === Number(userId)) {
+          toDelete.push(row.sid);
+        }
+      } catch {
+        // Unparseable session row — leave it for the expiry sweep.
+      }
+    }
+
+    if (toDelete.length === 0) return 0;
+    await this.db.delete(sessions).where(inArray(sessions.sid, toDelete));
     return toDelete.length;
   }
 
