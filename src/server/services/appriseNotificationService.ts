@@ -6,6 +6,18 @@ import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { notificationDedup, type NotificationDedupSpec } from './notificationDedup.js';
+import { safeFetch } from '../utils/ssrfGuard.js';
+
+/**
+ * SSRF options for every outbound call to the operator-configured Apprise API
+ * server (SSRF-03, issue #6078). The bundled Apprise server ships on
+ * `http://localhost:8000` inside the Docker image, so loopback is permitted and
+ * RFC1918 is allowed (non-strict) for LAN / docker-network deployments — but
+ * cloud-metadata, link-local, multicast and the IPv4-mapped IPv6 bypass are
+ * blocked. A stolen settings:write token can therefore no longer aim Apprise
+ * notifications at an IMDS endpoint.
+ */
+const APPRISE_SSRF_OPTS = { strict: false, allowLoopback: true } as const;
 
 export interface AppriseNotificationPayload {
   title: string;
@@ -167,10 +179,10 @@ class AppriseNotificationService {
     }
 
     try {
-      const response = await fetch(`${config.url}/health`, {
+      const response = await safeFetch(`${config.url}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
-      });
+      }, APPRISE_SSRF_OPTS);
 
       if (!response.ok) {
         return {
@@ -207,13 +219,13 @@ class AppriseNotificationService {
     }
 
     try {
-      const response = await fetch(`${config.url}/config`, {
+      const response = await safeFetch(`${config.url}/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ urls })
-      });
+      }, APPRISE_SSRF_OPTS);
 
       if (!response.ok) {
         let errorDetails = '';
@@ -272,7 +284,7 @@ class AppriseNotificationService {
 
     try {
       // Apprise API supports sending to specific URLs via the 'urls' parameter
-      const response = await fetch(appriseNotifyEndpoint(config.url), {
+      const response = await safeFetch(appriseNotifyEndpoint(config.url), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -284,7 +296,7 @@ class AppriseNotificationService {
           type: payload.type || 'info'
         }),
         signal: AbortSignal.timeout(10000)
-      });
+      }, APPRISE_SSRF_OPTS);
 
       if (!response.ok) {
         let errorDetails = '';
@@ -339,12 +351,12 @@ class AppriseNotificationService {
     try {
       const reqBody: Record<string, unknown> = { title: payload.title, body: payload.body, type };
       if (cleanUrls.length > 0) reqBody.urls = cleanUrls;
-      const response = await fetch(appriseNotifyEndpoint(config.url), {
+      const response = await safeFetch(appriseNotifyEndpoint(config.url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reqBody),
         signal: AbortSignal.timeout(10000),
-      });
+      }, APPRISE_SSRF_OPTS);
       if (!response.ok) {
         const detail = await response.text().catch(() => '');
         const msg = `Apprise API ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`;

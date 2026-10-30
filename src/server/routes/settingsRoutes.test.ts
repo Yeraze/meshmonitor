@@ -52,6 +52,15 @@ vi.mock('../services/securityDigestService.js', () => ({
   }
 }));
 
+// The Apprise probe now runs the target URL through the SSRF guard (SSRF-04,
+// issue #6079), which resolves the host via DNS. The test hostnames are not
+// real, so stub the resolver to a public IP; the guard then passes through to
+// the stubbed `fetch` these tests assert on. `localhost` resolves to this same
+// public IP, which is fine — allowLoopback is irrelevant once it is public.
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+}));
+
 const adminUser = {
   id: 1,
   username: 'admin',
@@ -931,6 +940,32 @@ describe('settingsRoutes', () => {
 
       expect(res.body.ok).toBe(false);
       expect(res.body.error).toContain('Invalid URL');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    // SSRF-04 (issue #6079): the old hand-rolled denylist only matched the
+    // dotted-decimal 169.254/16 form and two metadata hostnames, so the
+    // IPv4-mapped IPv6 metadata form slipped through to fetch().
+    it('rejects the IPv4-mapped IPv6 metadata address with 400 (no fetch)', async () => {
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'http://[::ffff:a9fe:a9fe]:8000' })
+        .expect(400);
+
+      expect(res.body.ok).toBe(false);
+      expect(res.body.error).toMatch(/not permitted/i);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a dotted-decimal cloud-metadata URL with 400 (no fetch)', async () => {
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'http://169.254.169.254/latest/meta-data/' })
+        .expect(400);
+
+      expect(res.body.ok).toBe(false);
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
