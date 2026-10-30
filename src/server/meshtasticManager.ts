@@ -111,7 +111,7 @@ import { isUptimeReboot } from './utils/rebootDetection.js';
 import { isPowered, detectPowerTransition } from './utils/poweredState.js';
 import { autoAckIsIp, autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { hopCountEmoji, HOP_COUNT_EMOJIS, parseHopEmojiOverrides } from '../utils/hopEmoji.js';
-import { scriptDependencyEnv } from './utils/scriptRunner.js';
+import { buildScriptChildEnv } from './utils/scriptRunner.js';
 import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
@@ -4614,7 +4614,7 @@ class MeshtasticManager implements ISourceManager {
 
       const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
         timeout: 30000,
-        env: { ...scriptEnv, ...scriptDependencyEnv(ext, scriptEnv) },
+        env: buildScriptChildEnv(scriptEnv, ext),
         maxBuffer: 1024 * 1024,
       });
 
@@ -4870,7 +4870,7 @@ class MeshtasticManager implements ISourceManager {
       // Execute script with 30-second timeout (longer than auto-responder for scheduled tasks)
       const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
         timeout: 30000,
-        env: { ...scriptEnv, ...scriptDependencyEnv(ext, scriptEnv) },
+        env: buildScriptChildEnv(scriptEnv, ext),
         maxBuffer: 1024 * 1024, // 1MB max output
       });
 
@@ -13455,7 +13455,7 @@ class MeshtasticManager implements ISourceManager {
               // Use resolvedPath (actual file path) instead of scriptPath (API format)
               const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
                 timeout: SCRIPT_AUTO_RESPONDER_TIMEOUT_MS,
-                env: { ...scriptEnv, ...scriptDependencyEnv(ext, scriptEnv) },
+                env: buildScriptChildEnv(scriptEnv, ext),
                 maxBuffer: 1024 * 1024, // 1MB max output
               });
 

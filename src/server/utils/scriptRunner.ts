@@ -100,6 +100,75 @@ export function scriptDependencyEnv(ext: string, baseEnv: NodeJS.ProcessEnv): Re
 }
 
 /**
+ * Environment variables that must never reach a user script's child process.
+ *
+ * User scripts run arbitrary, uploaded code. Handing them the server's own
+ * secrets (session key, admin password, DB connection string, OIDC/VAPID keys,
+ * API tokens) turns any script execution into a one-shot credential dump
+ * (INJ-01). Scripts receive only the explicit MESH/NODE/GEOFENCE/TIMER vars
+ * their callers set, plus harmless process basics (PATH, HOME, LANG, …).
+ *
+ * The match is a denylist rather than an allowlist so scripts keep the mundane
+ * process environment they rely on (PATH for the interpreter, plus PYTHONPATH
+ * and NODE_PATH for installed deps) while every known secret shape is dropped.
+ */
+const SECRET_ENV_EXACT = new Set<string>(['SESSION_SECRET', 'ADMIN_PASSWORD']);
+const SECRET_ENV_PREFIXES = ['DATABASE_', 'OIDC_', 'VAPID_', 'SMTP_'];
+// Any var whose name advertises a secret: *SECRET*, *PASSWORD*/*PASSWD*,
+// *TOKEN*, *PRIVATE_KEY*, *CREDENTIAL*, *API_KEY*/*APIKEY*.
+const SECRET_ENV_PATTERN = /SECRET|PASSWORD|PASSWD|TOKEN|PRIVATE_KEY|CREDENTIAL|API_?KEY/i;
+
+/** True when `key` names an environment variable that must be withheld from scripts. */
+export function isSecretEnvKey(key: string): boolean {
+  if (SECRET_ENV_EXACT.has(key)) return true;
+  if (SECRET_ENV_PREFIXES.some((p) => key.startsWith(p))) return true;
+  return SECRET_ENV_PATTERN.test(key);
+}
+
+/**
+ * Copy `env` without the keys `isSecretEnvKey` flags. Returns a fresh object;
+ * never mutates the input. Undefined values are dropped so the result is a
+ * clean string map suitable for `child_process` `env`.
+ */
+export function sanitizeScriptEnv(env: NodeJS.ProcessEnv | Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined) continue;
+    if (isSecretEnvKey(k)) continue;
+    out[k] = String(v);
+  }
+  return out;
+}
+
+/**
+ * Build the final child environment for a script spawn: strip the server's
+ * secrets (INJ-01), layer on the dependency path (PYTHONPATH / NODE_PATH), and
+ * — for Python — stop CPython from prepending the script's own directory
+ * (`/data/scripts`) to `sys.path`. Without that last step an uploaded
+ * `requests.py` / `os.py` silently shadows the real module for every later
+ * Python run (MISC-01). `PYTHONSAFEPATH` is the documented env equivalent of
+ * `python -P`, honoured by CPython 3.11+, and leaves `PYTHONPATH` (our deps
+ * mechanism) intact. It is harmless for non-Python interpreters.
+ *
+ * NOTE: CPython < 3.11 silently ignores `PYTHONSAFEPATH`, which would re-open
+ * MISC-01. The production Docker image ships Python 3.12 (apprise venv), so the
+ * floor is met; if that Python is ever downgraded, switch to the `-P` CLI flag
+ * (also 3.11+) or filter `sys.path` explicitly instead.
+ */
+export function buildScriptChildEnv(
+  baseEnv: NodeJS.ProcessEnv | Record<string, string>,
+  ext: string,
+): Record<string, string> {
+  const sanitized = sanitizeScriptEnv(baseEnv);
+  const depEnv = scriptDependencyEnv(ext, sanitized);
+  const childEnv: Record<string, string> = { ...sanitized, ...depEnv };
+  if (ext === 'py') {
+    childEnv.PYTHONSAFEPATH = '1';
+  }
+  return childEnv;
+}
+
+/**
  * Resolve a user-supplied script identifier to an absolute path inside
  * the scripts directory. Rejects traversal (`..`) and anything outside
  * the directory. Returns null if the file doesn't exist or isn't
@@ -225,15 +294,15 @@ export async function runScript(opts: RunScriptOptions): Promise<RunScriptResult
   const interpreter = pickInterpreter(ext);
   const args = [resolvedPath, ...(opts.scriptArgs || [])];
 
-  // Expose installed user dependencies (PYTHONPATH / NODE_PATH) so scripts can
-  // import third-party packages installed via the dependency manifests.
-  const baseEnv = { ...process.env, ...opts.env };
-  const depEnv = scriptDependencyEnv(ext, baseEnv);
+  // Build the child env: strip server secrets (INJ-01), expose installed user
+  // dependencies (PYTHONPATH / NODE_PATH), and block Python module shadowing
+  // (MISC-01). See buildScriptChildEnv.
+  const childEnv = buildScriptChildEnv({ ...process.env, ...opts.env }, ext);
 
   try {
     const { stdout, stderr } = await execFileAsync(interpreter, args, {
       timeout: timeoutMs,
-      env: { ...baseEnv, ...depEnv },
+      env: childEnv,
       maxBuffer: 1024 * 1024,
     });
     const parsed = parseScriptOutput(stdout);

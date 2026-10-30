@@ -21,7 +21,7 @@ import path from 'path';
 import fs from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { getScriptsDir, PYTHON_DEPS_SUBDIR, NODE_DEPS_SUBDIR, pickInterpreter } from '../utils/scriptRunner.js';
+import { getScriptsDir, PYTHON_DEPS_SUBDIR, NODE_DEPS_SUBDIR, pickInterpreter, sanitizeScriptEnv } from '../utils/scriptRunner.js';
 import { logger } from '../../utils/logger.js';
 
 const execFileAsync = promisify(execFile);
@@ -107,11 +107,17 @@ export async function getDependencyStatus(): Promise<DependencyStatus> {
 /** Run one install command, capturing combined output without throwing. */
 async function runInstall(cmd: string, args: string[], cwd: string): Promise<{ ok: boolean; output: string }> {
   try {
+    // Strip the server's own secrets from the installer's environment (INJ-01 /
+    // INJ-04): pip/npm download and may run third-party code, and have no need
+    // for SESSION_SECRET, ADMIN_PASSWORD, DATABASE_*, etc. PYTHONSAFEPATH stops
+    // CPython (incl. `python -m pip`, which runs with cwd on sys.path) from
+    // importing a shadow module dropped into the scripts directory (MISC-01).
+    const installEnv: Record<string, string> = { ...sanitizeScriptEnv(process.env), PYTHONSAFEPATH: '1' };
     const { stdout, stderr } = await execFileAsync(cmd, args, {
       cwd,
       timeout: INSTALL_TIMEOUT_MS,
       maxBuffer: MAX_INSTALL_BUFFER,
-      env: process.env,
+      env: installEnv,
     });
     return { ok: true, output: stdout + (stderr ? `\n${stderr}` : '') };
   } catch (err) {
@@ -157,7 +163,11 @@ export async function installDependencies(): Promise<InstallResult> {
     const nodeManifest = path.join(dir, NODE_MANIFEST);
     if (fs.existsSync(nodeManifest)) {
       ranSomething = true;
-      const args = ['install', '--no-audit', '--no-fund', '--omit=dev'];
+      // --ignore-scripts (INJ-04 #6056): never run package lifecycle hooks
+      // (preinstall/install/postinstall). A malicious package.json in the
+      // scripts directory, or a compromised dependency, must not be able to
+      // execute arbitrary commands during `npm install`.
+      const args = ['install', '--no-audit', '--no-fund', '--omit=dev', '--ignore-scripts'];
       log += `\n$ npm ${args.join(' ')} (in ${dir})\n`;
       const r = await runInstall('npm', args, dir);
       log += r.output + '\n';
