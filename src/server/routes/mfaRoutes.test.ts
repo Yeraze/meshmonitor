@@ -391,7 +391,8 @@ describe('MFA Routes', () => {
       const remainingCodes = ['$2b$hash2'];
       mockDatabase.findUserByIdAsync.mockResolvedValue(mfaEnabledUser);
       mockMfaService.verifyBackupCode.mockResolvedValue(remainingCodes);
-      mockDatabase.consumeBackupCodeAsync.mockResolvedValue(undefined);
+      // Atomic consume (#6075) now returns a boolean — true = this request won.
+      mockDatabase.consumeBackupCodeAsync.mockResolvedValue(true);
       mockDatabase.clearUserMfaAsync.mockResolvedValue(undefined);
       const app = createApp({ user: mfaEnabledUser });
 
@@ -407,6 +408,7 @@ describe('MFA Routes', () => {
       );
       expect(mockDatabase.consumeBackupCodeAsync).toHaveBeenCalledWith(
         defaultUser.id,
+        mfaEnabledUser.mfaBackupCodes,
         JSON.stringify(remainingCodes)
       );
       expect(mockDatabase.auditLogAsync).toHaveBeenCalledWith(
@@ -424,6 +426,23 @@ describe('MFA Routes', () => {
         expect.any(String),
         expect.any(String)
       );
+    });
+
+    it('rejects a backup code that lost the atomic consume race (#6075)', async () => {
+      const remainingCodes = ['$2b$hash2'];
+      mockDatabase.findUserByIdAsync.mockResolvedValue(mfaEnabledUser);
+      mockMfaService.verifyBackupCode.mockResolvedValue(remainingCodes);
+      // A concurrent request already consumed the code, so the CAS write fails.
+      mockDatabase.consumeBackupCodeAsync.mockResolvedValue(false);
+      const app = createApp({ user: mfaEnabledUser });
+
+      const response = await request(app)
+        .post('/api/mfa/disable')
+        .send({ backupCode: 'CODE0001' });
+
+      // The code did not verify: MFA stays enabled and no success is returned.
+      expect(response.status).toBe(401);
+      expect(mockDatabase.clearUserMfaAsync).not.toHaveBeenCalled();
     });
   });
 });

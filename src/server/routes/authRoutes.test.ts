@@ -81,6 +81,8 @@ describe('Authentication Routes', () => {
     (DatabaseService as any).updatePasswordAsync = async (userId: number, newPassword: string) => userModel.updatePassword(userId, newPassword);
     // Passkey-only switch (#5841): change-password reads it.
     (DatabaseService as any).getPasskeyOnlyStateAsync = async (userId: number) => authRepo.getPasskeyOnlyState(userId);
+    // Session invalidation on password change (#6077).
+    (DatabaseService as any).deleteSessionsByUserIdAsync = vi.fn().mockResolvedValue(0);
 
     app.use('/api/auth', authRoutes);
   });
@@ -328,6 +330,28 @@ describe('Authentication Routes', () => {
         .expect(200);
 
       expect(loginResponse.body.success).toBe(true);
+    });
+
+    it('invalidates other sessions but keeps the current one (#6077)', async () => {
+      (DatabaseService as any).deleteSessionsByUserIdAsync.mockClear();
+
+      await agent
+        .post('/api/auth/login')
+        .send({ username: 'testuser', password: 'password123' });
+
+      await agent
+        .post('/api/auth/change-password')
+        .send({ currentPassword: 'password123', newPassword: 'newpassword456' })
+        .expect(200);
+
+      // Called with the authenticated user's id and a current-session sid to
+      // preserve (the second argument is defined, not undefined).
+      expect((DatabaseService as any).deleteSessionsByUserIdAsync).toHaveBeenCalledTimes(1);
+      const [calledUserId, exceptSid] =
+        (DatabaseService as any).deleteSessionsByUserIdAsync.mock.calls[0];
+      expect(calledUserId).toBe(testUser.id);
+      expect(typeof exceptSid).toBe('string');
+      expect(exceptSid.length).toBeGreaterThan(0);
     });
 
     it('should reject password change with wrong current password', async () => {
@@ -1011,17 +1035,64 @@ describe('Authentication Routes', () => {
   });
 
   describe('GET /check-default-password', () => {
-    it('should return isDefaultPassword=false when admin uses non-default password', async () => {
-      // admin user already created with 'admin123' which is not 'changeme'
-      const response = await request(app)
-        .get('/api/auth/check-default-password');
+    // #6082: the endpoint is gated to authenticated admins so anonymous
+    // scanners cannot discover an instance still on admin/changeme. A helper
+    // logs in as the given admin credentials before querying.
+    const adminAgentChecking = async (username: string, password: string) => {
+      const a = request.agent(app);
+      await a.post('/api/auth/login').send({ username, password }).expect(200);
+      return a.get('/api/auth/check-default-password');
+    };
 
+    it('does NOT reveal default-password status to anonymous callers (#6082)', async () => {
+      // Admin is on the default password, but an unauthenticated probe must not
+      // learn that — it always gets false.
+      db.prepare('DELETE FROM users').run();
+      await userModel.create({
+        username: 'admin',
+        password: 'changeme',
+        email: 'admin2@example.com',
+        authProvider: 'local',
+        isAdmin: true
+      });
+
+      const response = await request(app).get('/api/auth/check-default-password');
+      expect(response.status).toBe(200);
+      expect(response.body.isDefaultPassword).toBe(false);
+    });
+
+    it('does NOT reveal default-password status to a non-admin user (#6082)', async () => {
+      db.prepare('DELETE FROM users').run();
+      await userModel.create({
+        username: 'admin',
+        password: 'changeme',
+        email: 'admin2@example.com',
+        authProvider: 'local',
+        isAdmin: true
+      });
+      const normal = await userModel.create({
+        username: 'normal',
+        password: 'normalpass1',
+        email: 'normal@example.com',
+        authProvider: 'local',
+        isAdmin: false
+      });
+      await permissionModel.grantDefaultPermissions(normal.id, false);
+
+      const response = await adminAgentChecking('normal', 'normalpass1');
+      expect(response.status).toBe(200);
+      expect(response.body.isDefaultPassword).toBe(false);
+    });
+
+    it('returns isDefaultPassword=false to an admin using a non-default password', async () => {
+      // admin user already created with 'admin123' which is not 'changeme'
+      const response = await adminAgentChecking('admin', 'admin123');
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('isDefaultPassword');
       expect(response.body.isDefaultPassword).toBe(false);
     });
 
-    it('should return isDefaultPassword=true when admin uses "changeme"', async () => {
+    it('returns isDefaultPassword=true to an admin when admin uses "changeme"', async () => {
       // Create admin with 'changeme' password
       db.prepare('DELETE FROM users').run();
       await userModel.create({
@@ -1032,21 +1103,9 @@ describe('Authentication Routes', () => {
         isAdmin: true
       });
 
-      const response = await request(app)
-        .get('/api/auth/check-default-password');
-
+      const response = await adminAgentChecking('admin', 'changeme');
       expect(response.status).toBe(200);
       expect(response.body.isDefaultPassword).toBe(true);
-    });
-
-    it('should return isDefaultPassword=false when no admin user exists', async () => {
-      db.prepare('DELETE FROM users').run();
-
-      const response = await request(app)
-        .get('/api/auth/check-default-password');
-
-      expect(response.status).toBe(200);
-      expect(response.body.isDefaultPassword).toBe(false);
     });
 
     // ADMIN_USERNAME renames the first admin (#5874); the warning must follow it.
@@ -1071,7 +1130,7 @@ describe('Authentication Routes', () => {
           authProvider: 'local',
           isAdmin: true
         });
-        const response = await request(app).get('/api/auth/check-default-password');
+        const response = await adminAgentChecking('operator', 'changeme');
         expect(response.status).toBe(200);
         expect(response.body.isDefaultPassword).toBe(true);
       });
@@ -1084,7 +1143,7 @@ describe('Authentication Routes', () => {
           authProvider: 'local',
           isAdmin: true
         });
-        const response = await request(app).get('/api/auth/check-default-password');
+        const response = await adminAgentChecking('operator', 'a-real-password');
         expect(response.status).toBe(200);
         expect(response.body.isDefaultPassword).toBe(false);
       });
@@ -1097,7 +1156,7 @@ describe('Authentication Routes', () => {
           authProvider: 'local',
           isAdmin: true
         });
-        const response = await request(app).get('/api/auth/check-default-password');
+        const response = await adminAgentChecking('admin', 'changeme');
         expect(response.status).toBe(200);
         expect(response.body.isDefaultPassword).toBe(false);
       });

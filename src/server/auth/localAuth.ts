@@ -256,6 +256,16 @@ export async function resetUserPassword(
     // in (#5841): password login turns back on and the recovery codes go.
     await databaseService.clearPasskeyOnlyAsync(userId);
 
+    // Terminate the target user's active sessions (#6074). A reset is an
+    // incident-response action, so any stolen session cookie must stop working
+    // immediately rather than surviving to its 24h TTL. The admin runs under a
+    // different user, so their own session is untouched.
+    try {
+      await databaseService.deleteSessionsByUserIdAsync(userId);
+    } catch (err) {
+      logger.warn('Failed to invalidate sessions after password reset:', err);
+    }
+
     logger.debug(`✅ Password reset for user: ${user.username}`);
 
     // Audit log
