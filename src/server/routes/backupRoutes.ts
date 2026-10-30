@@ -78,8 +78,12 @@ backupRouter.post('/settings', requirePermission('configuration', 'write'), asyn
   }
 });
 
-// List all backups
-backupRouter.get('/list', requirePermission('configuration', 'read'), async (_req: Request, res: Response) => {
+// List all backups.
+// Device config backups belong to the connected Meshtastic device, so the
+// check is scoped to the target source (named `?sourceId`, else the primary),
+// not a plain `configuration:read` that a grant on ANY source would satisfy
+// (#6073).
+backupRouter.get('/list', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups'), async (_req: Request, res: Response) => {
   try {
     const backups = await backupFileService.listBackups();
     res.json(backups);
@@ -92,8 +96,8 @@ backupRouter.get('/list', requirePermission('configuration', 'read'), async (_re
   }
 });
 
-// Download a specific backup
-backupRouter.get('/download/:filename', requirePermission('configuration', 'read'), async (req: Request, res: Response) => {
+// Download a specific backup. Source-scoped like `/list` (#6073).
+backupRouter.get('/download/:filename', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups'), async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
 
@@ -118,8 +122,9 @@ backupRouter.get('/download/:filename', requirePermission('configuration', 'read
   }
 });
 
-// Delete a specific backup
-backupRouter.delete('/delete/:filename', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+// Delete a specific backup. Source-scoped like `/list` (#6073); a plain
+// `configuration:write` on any source must not delete another source's backups.
+backupRouter.delete('/delete/:filename', requireDeviceSourcePermission('configuration', 'write', 'query', 'device backups'), async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
 
@@ -188,7 +193,12 @@ const systemBackupRouter = Router();
 // Create a system backup (exports all database tables to JSON).
 // The export streams every table to disk; a database with millions of rows
 // takes minutes, so the request outlives the default 30 s socket timeout.
-systemBackupRouter.post('/', extendRequestTimeout(SYSTEM_BACKUP_TIMEOUT_MS), requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+// Admin only. A system backup is the whole database across every source —
+// password hashes, API token hashes, channel decryption keys in the clear, and
+// the encrypted PKI/Observer keys. `configuration:write` can be granted to a
+// non-admin on a single source, and a single-source grant must not trigger a
+// full cross-source export (#6053). Matches the download gate below.
+systemBackupRouter.post('/', extendRequestTimeout(SYSTEM_BACKUP_TIMEOUT_MS), requireAdmin(), async (req: Request, res: Response) => {
   try {
     logger.debug('📦 System backup requested...');
 
@@ -222,8 +232,10 @@ systemBackupRouter.post('/', extendRequestTimeout(SYSTEM_BACKUP_TIMEOUT_MS), req
   }
 });
 
-// List all system backups
-systemBackupRouter.get('/list', requirePermission('configuration', 'read'), async (_req: Request, res: Response) => {
+// List all system backups. Admin only: the listing exposes server-internal
+// dirnames/sizes for full cross-source archives, and a single-source
+// `configuration:write/read` grant must not enumerate them (#6067).
+systemBackupRouter.get('/list', requireAdmin(), async (_req: Request, res: Response) => {
   try {
     const backups = await systemBackupService.listBackups();
     res.json(backups);
@@ -313,8 +325,10 @@ systemBackupRouter.get('/download/:dirname', requireAdmin(), async (req: Request
   }
 });
 
-// Delete a system backup
-systemBackupRouter.delete('/delete/:dirname', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+// Delete a system backup. Admin only: deleting cross-source archives is a
+// disaster-recovery concern, and a single-source grant must not control them
+// (#6067).
+systemBackupRouter.delete('/delete/:dirname', requireAdmin(), async (req: Request, res: Response) => {
   try {
     const { dirname } = req.params;
 
