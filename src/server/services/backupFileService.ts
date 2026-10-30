@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
 import { getBackupDir } from '../config/dataDir.js';
+import { resolveWithinDir } from '../utils/pathContainment.js';
 import databaseService from '../../services/database.js';
 
 interface BackupFile {
@@ -114,7 +115,11 @@ class BackupFileService {
       if (!row) {
         throw new Error('Backup not found');
       }
-      const filepath = row.filePath;
+      // Confine the stored path to the backup directory before reading it. The
+      // filename is regex-validated at the route, but filePath comes from the
+      // database column and could point anywhere if that row was tampered with
+      // (#6055).
+      const filepath = resolveWithinDir(getBackupDir(), row.filePath);
 
       if (!fs.existsSync(filepath)) {
         throw new Error('Backup file not found on disk');
@@ -136,7 +141,9 @@ class BackupFileService {
       if (!row) {
         throw new Error('Backup not found');
       }
-      const filepath = row.filePath;
+      // Confine the stored path to the backup directory before deleting it, so a
+      // tampered filePath column cannot wipe an arbitrary file (#6054).
+      const filepath = resolveWithinDir(getBackupDir(), row.filePath);
 
       // Delete file from disk
       if (fs.existsSync(filepath)) {
@@ -181,9 +188,16 @@ class BackupFileService {
       logger.debug(`🧹 Purging ${oldBackups.length} old backups (max: ${limit})...`);
 
       for (const backup of oldBackups) {
-        // Delete file from disk
-        if (fs.existsSync(backup.filePath)) {
-          fs.unlinkSync(backup.filePath);
+        // Delete file from disk, confined to the backup directory. A tampered
+        // filePath that escapes the directory is skipped (not wiped) but its
+        // history row is still removed (#6054).
+        try {
+          const filepath = resolveWithinDir(getBackupDir(), backup.filePath);
+          if (fs.existsSync(filepath)) {
+            fs.unlinkSync(filepath);
+          }
+        } catch (err) {
+          logger.warn(`⚠️  Skipping on-disk purge of ${backup.filename}: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         // Delete from database

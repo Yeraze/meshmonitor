@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
 import { getSystemBackupDir } from '../config/dataDir.js';
+import { resolveWithinDir } from '../utils/pathContainment.js';
 import databaseService from '../../services/database.js';
 import {
   BACKUP_TABLES,
@@ -609,10 +610,17 @@ class SystemBackupService {
       logger.debug(`🧹 Purging ${oldBackups.length} old system backups (max: ${limit})...`);
 
       for (const backup of oldBackups) {
-        // Delete directory from disk
-        const backupPath = path.join(getSystemBackupDir(), backup.backupPath);
-        if (fs.existsSync(backupPath)) {
-          fs.rmSync(backupPath, { recursive: true, force: true });
+        // Delete directory from disk, confined to the system-backup directory.
+        // A tampered backupPath that escapes the directory (e.g. "../../") would
+        // otherwise recursively wipe an arbitrary tree, so skip the on-disk
+        // delete and only drop the poisoned history row (#6054).
+        try {
+          const backupPath = resolveWithinDir(getSystemBackupDir(), backup.backupPath);
+          if (fs.existsSync(backupPath)) {
+            fs.rmSync(backupPath, { recursive: true, force: true });
+          }
+        } catch (err) {
+          logger.warn(`⚠️  Skipping on-disk purge of ${backup.backupPath}: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         // Delete from database
@@ -645,7 +653,10 @@ class SystemBackupService {
    * Get backup directory path (for external access)
    */
   getBackupPath(dirname: string): string {
-    return path.join(getSystemBackupDir(), dirname);
+    // Confine the resolved path to the system-backup directory. Callers validate
+    // the dirname format, but this is the choke point that guarantees the path
+    // never escapes the root even if a stored value is reused here (#6054).
+    return resolveWithinDir(getSystemBackupDir(), dirname);
   }
 
   /**

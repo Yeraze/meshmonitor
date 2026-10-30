@@ -165,6 +165,11 @@ const CASES: RouteCase[] = [
     router: 'backup', method: 'post', route: '/restore/:filename', path: '/restore/backup-1.yaml', action: 'write', from: 'body', allowed: 200,
     reached: (_sourceId, manager) => expect(deviceRestoreService.restoreBackup).toHaveBeenCalledWith(manager, expect.any(String)),
   },
+  // Device-backup reads are scoped to the target source too (#6073): a
+  // `configuration:read` grant on another source must not enumerate or download
+  // them. The handlers hit the mocked backupFileService, not a device method.
+  { router: 'backup', method: 'get', route: '/list', action: 'read', from: 'query', allowed: 200 },
+  { router: 'backup', method: 'get', route: '/download/:filename', path: '/download/backup-1.yaml', action: 'read', from: 'query', allowed: 200 },
 ];
 
 const label = (c: RouteCase): string => `${c.method.toUpperCase()} ${MOUNT[c.router]}${c.route}`;
@@ -504,11 +509,10 @@ describe('guard: device-config routes are registered with a source-scoped gate',
 
     // decode-url parses a URL the caller supplies. It touches no source.
     expect(unscoped(channelRoutes)).toEqual(['POST /decode-url']);
-    // The saved-backup store on disk and its schedule are not per-source.
+    // Only the schedule settings stay unscoped: the backup store's list,
+    // download, and delete are source-scoped now (#6073). The settings are a
+    // single global schedule, not per-source.
     expect(unscoped(backupRouter)).toEqual([
-      'DELETE /delete/:filename',
-      'GET /download/:filename',
-      'GET /list',
       'GET /settings',
       'POST /settings',
     ]);
