@@ -1065,6 +1065,14 @@ export const ADMIN_ONLY_SETTINGS_KEYS = new Set<string>([
   'ductingOverlayEnabled',
   // #5245: picks the radio every source-less send goes out on.
   'defaultMeshtasticSourceId',
+  // #6064: the analytics provider + config inject a <script> into the HTML
+  // <head> served to EVERY visitor, and the `custom` provider is intentional
+  // arbitrary-script injection. The Settings UI already gates this section on
+  // isAdmin; without this the server let any `settings:write` grantee (not just
+  // an admin) POST a stored XSS that runs in an admin's browser — a privilege
+  // escalation. Restricting the write to admins matches the UI and closes it.
+  'analyticsProvider',
+  'analyticsConfig',
 ]);
 
 /**
