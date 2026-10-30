@@ -6,7 +6,7 @@ import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { notificationDedup, type NotificationDedupSpec } from './notificationDedup.js';
-import { safeFetch } from '../utils/ssrfGuard.js';
+import { assertSafeUrl } from '../utils/ssrfGuard.js';
 
 /**
  * SSRF options for every outbound call to the operator-configured Apprise API
@@ -18,6 +18,17 @@ import { safeFetch } from '../utils/ssrfGuard.js';
  * notifications at an IMDS endpoint.
  */
 const APPRISE_SSRF_OPTS = { strict: false, allowLoopback: true } as const;
+
+/**
+ * Validate an Apprise API server URL against the SSRF guard, then fetch it.
+ * Passes the original string to `fetch` (not a parsed URL) so the egress
+ * contract is unchanged for callers and tests; a blocked target throws
+ * SsrfBlockedError before any socket is opened.
+ */
+async function appriseGuardedFetch(url: string, init: RequestInit): Promise<Response> {
+  await assertSafeUrl(url, APPRISE_SSRF_OPTS);
+  return fetch(url, init);
+}
 
 export interface AppriseNotificationPayload {
   title: string;
@@ -179,10 +190,10 @@ class AppriseNotificationService {
     }
 
     try {
-      const response = await safeFetch(`${config.url}/health`, {
+      const response = await appriseGuardedFetch(`${config.url}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
-      }, APPRISE_SSRF_OPTS);
+      });
 
       if (!response.ok) {
         return {
@@ -219,13 +230,13 @@ class AppriseNotificationService {
     }
 
     try {
-      const response = await safeFetch(`${config.url}/config`, {
+      const response = await appriseGuardedFetch(`${config.url}/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ urls })
-      }, APPRISE_SSRF_OPTS);
+      });
 
       if (!response.ok) {
         let errorDetails = '';
@@ -284,7 +295,7 @@ class AppriseNotificationService {
 
     try {
       // Apprise API supports sending to specific URLs via the 'urls' parameter
-      const response = await safeFetch(appriseNotifyEndpoint(config.url), {
+      const response = await appriseGuardedFetch(appriseNotifyEndpoint(config.url), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -296,7 +307,7 @@ class AppriseNotificationService {
           type: payload.type || 'info'
         }),
         signal: AbortSignal.timeout(10000)
-      }, APPRISE_SSRF_OPTS);
+      });
 
       if (!response.ok) {
         let errorDetails = '';
@@ -351,12 +362,12 @@ class AppriseNotificationService {
     try {
       const reqBody: Record<string, unknown> = { title: payload.title, body: payload.body, type };
       if (cleanUrls.length > 0) reqBody.urls = cleanUrls;
-      const response = await safeFetch(appriseNotifyEndpoint(config.url), {
+      const response = await appriseGuardedFetch(appriseNotifyEndpoint(config.url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reqBody),
         signal: AbortSignal.timeout(10000),
-      }, APPRISE_SSRF_OPTS);
+      });
       if (!response.ok) {
         const detail = await response.text().catch(() => '');
         const msg = `Apprise API ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`;

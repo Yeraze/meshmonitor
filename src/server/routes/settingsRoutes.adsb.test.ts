@@ -51,8 +51,11 @@ describe('/api/settings — ADS-B flight matching (#5374)', () => {
   });
 
   // A non-admin never receives the key, so their Settings save carries it
-  // blank; that save must not wipe it (and can't set it either).
-  it('a non-admin save neither wipes nor sets the API key', async () => {
+  // blank; that save must not wipe it. Nor may a non-admin set adsbMatchEnabled:
+  // it is a GLOBAL_ONLY, install-wide outbound-service toggle, so AUTHZ-06
+  // (#6070) now drops it for any non-admin writer — the request still 200s, but
+  // the global-only key is ignored.
+  it('a non-admin save neither wipes the API key nor sets the global-only toggle', async () => {
     await harness.db.settings.setSetting('adsb_api_token', 'secret-key');
     await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
     const agent = await harness.loginAs(harness.limited);
@@ -60,7 +63,8 @@ describe('/api/settings — ADS-B flight matching (#5374)', () => {
     const res = await agent.post('/api/settings').send({ adsbMatchEnabled: 'true', adsb_api_token: '' });
     expect(res.status).toBe(200);
     expect(await harness.db.settings.getSetting('adsb_api_token')).toBe('secret-key');
-    expect(await harness.db.settings.getSetting('adsbMatchEnabled')).toBe('true');
+    // AUTHZ-06: adsbMatchEnabled is global-only, so a non-admin cannot set it.
+    expect(await harness.db.settings.getSetting('adsbMatchEnabled')).toBeNull();
 
     await agent.post('/api/settings').send({ adsb_api_token: 'attacker' });
     expect(await harness.db.settings.getSetting('adsb_api_token')).toBe('secret-key');
