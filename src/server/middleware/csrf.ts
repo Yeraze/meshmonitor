@@ -8,6 +8,7 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { logger } from '../../utils/logger.js';
+import databaseService from '../../services/database.js';
 
 // Methods that require CSRF protection
 const PROTECTED_METHODS = ['POST', 'PUT', 'DELETE', 'PATCH'];
@@ -37,19 +38,42 @@ export function csrfTokenMiddleware(req: Request, _res: Response, next: NextFunc
 /**
  * Middleware to validate CSRF token
  */
-export function csrfProtection(req: Request, res: Response, next: NextFunction) {
+export async function csrfProtection(req: Request, res: Response, next: NextFunction) {
   // Skip CSRF check for safe methods
   if (!PROTECTED_METHODS.includes(req.method)) {
     return next();
   }
 
-  // Skip CSRF check for API token authenticated requests (Bearer token)
-  // CSRF protection is for browser-based sessions using cookies
-  // API tokens are not stored in cookies and must be explicitly provided,
-  // so they are inherently protected against CSRF attacks
+  // Skip CSRF only for requests authenticated by a VALID API token.
+  //
+  // CSRF attacks rely on the browser attaching an ambient credential (the
+  // session cookie) to a cross-site request automatically. An API token is NOT
+  // ambient: a browser never attaches it on its own, so the caller must set it
+  // explicitly. A request proven to be authenticated by a valid token therefore
+  // cannot be forged cross-site and does not need a CSRF token.
+  //
+  // We MUST validate the token, not merely detect a `Bearer ` prefix. The old
+  // code skipped CSRF whenever any `Authorization: Bearer <anything>` header was
+  // present. Because `requireAuth`/`optionalAuth` resolve the session cookie
+  // BEFORE the Bearer token, a request carrying a real session cookie plus a
+  // bogus Bearer value was still authenticated by the (CSRF-able) cookie, yet
+  // skipped CSRF entirely. An attacker able to trigger a cross-site request (the
+  // cookie rides along automatically) only had to add `Authorization: Bearer x`
+  // to defeat CSRF on every state-mutating route (#6050).
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    return next();
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    try {
+      const tokenUser = await databaseService.validateApiTokenAsync(token);
+      if (tokenUser && tokenUser.isActive) {
+        return next();
+      }
+    } catch (error) {
+      // Fail closed: a validation error must never grant the exemption.
+      logger.error('CSRF: error validating API token; enforcing CSRF check', error);
+    }
+    // No valid token — fall through to normal CSRF enforcement. A bogus Bearer
+    // header no longer bypasses protection for a cookie-authenticated request.
   }
 
   // Skip CSRF check for endpoints that must be accessible without tokens
