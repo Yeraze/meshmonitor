@@ -16,6 +16,24 @@ interface GeoJsonOverlayProps {
 
 type GeoJsonData = GeoJSON.GeoJsonObject;
 
+/**
+ * Escape untrusted text for safe interpolation into an HTML string.
+ *
+ * GeoJSON feature property keys and values are attacker-controlled (any user
+ * with upload rights can supply them, and public layers reach anonymous embed
+ * viewers). Leaflet renders popup/tooltip content via `node.innerHTML`, so a
+ * raw `<img onerror=…>` in a property would execute. Escaping the HTML
+ * metacharacters renders such payloads inert as plain text (issues #6065/#6066).
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({
   layers,
   dataPathPrefix = '/api/geojson/layers',
@@ -106,14 +124,19 @@ const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({
                 // (e.g. create Waypoint) still fire over the overlay. The hover
                 // tooltip below is deliberately unaffected either way.
                 if (!layer.disablePopup) {
-                  // Build popup with all non-empty string properties
+                  // Build popup with all non-empty string properties. Keys and
+                  // values are untrusted (user-uploaded GeoJSON) and Leaflet sets
+                  // this string via innerHTML, so every interpolated piece is
+                  // HTML-escaped to keep injected markup inert (issue #6065).
                   const popupLines = Object.entries(props)
                     .filter(([, v]) => v && typeof v === 'string' && String(v).length < 200)
                     .slice(0, 10)
-                    .map(([k, v]) => `<b>${k}:</b> ${v}`);
+                    .map(([k, v]) => `<b>${escapeHtml(k)}:</b> ${escapeHtml(String(v))}`);
                   leafletLayer.bindPopup(popupLines.join('<br/>'));
                 }
-                leafletLayer.bindTooltip(label, { permanent: false, sticky: true });
+                // The tooltip label is also untrusted and rendered via innerHTML,
+                // so it is escaped too (issue #6066).
+                leafletLayer.bindTooltip(escapeHtml(label), { permanent: false, sticky: true });
               }
             }}
           />
