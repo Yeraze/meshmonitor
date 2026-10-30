@@ -1,7 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+
+// Capture the install subprocess invocations without spawning anything real.
+// execFile is wrapped with util.promisify in the service, so the mock supplies
+// the well-known promisify.custom implementation.
+const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+vi.mock('child_process', () => {
+  const execFile: unknown = () => {};
+  (execFile as Record<symbol, unknown>)[Symbol.for('nodejs.util.promisify.custom')] = (
+    cmd: string,
+    args: string[]
+  ) => {
+    spawnCalls.push({ cmd, args });
+    return Promise.resolve({ stdout: 'ok', stderr: '' });
+  };
+  return { execFile };
+});
+
 import { getDependencyStatus, installDependencies } from './scriptDependencyService.js';
 
 let root: string;
@@ -62,9 +79,24 @@ describe('getDependencyStatus', () => {
 });
 
 describe('installDependencies', () => {
+  beforeEach(() => {
+    spawnCalls.length = 0;
+  });
+
   it('returns an error without spawning anything when no manifest exists', async () => {
     const r = await installDependencies();
     expect(r.success).toBe(false);
     expect(r.error).toMatch(/No requirements\.txt or package\.json/);
+  });
+
+  it('passes --ignore-scripts to npm so package lifecycle hooks never run (INJ-04)', async () => {
+    fs.writeFileSync(path.join(scriptsDir, 'package.json'), '{"name":"x","version":"1.0.0"}');
+    const r = await installDependencies();
+    expect(r.success).toBe(true);
+
+    const npm = spawnCalls.find((c) => c.cmd === 'npm');
+    expect(npm, 'npm install should have been invoked').toBeTruthy();
+    expect(npm!.args).toContain('install');
+    expect(npm!.args).toContain('--ignore-scripts');
   });
 });

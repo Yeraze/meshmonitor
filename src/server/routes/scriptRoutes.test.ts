@@ -8,6 +8,7 @@ vi.mock('../config/environment.js', () => ({
 
 vi.mock('../utils/scriptRunner.js', () => ({
   scriptDependencyEnv: vi.fn().mockReturnValue({}),
+  buildScriptChildEnv: vi.fn().mockReturnValue({}),
 }));
 
 vi.mock('../../utils/autoResponderUtils.js', () => ({
@@ -35,6 +36,7 @@ vi.mock('../services/scriptDependencyService.js', () => mockDeps);
 
 vi.mock('../auth/authMiddleware.js', () => ({
   requirePermission: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
+  requireAdmin: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
 }));
 
 // scriptRoutes imports the database singleton (for the inventory endpoint);

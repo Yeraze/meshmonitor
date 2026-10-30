@@ -2,11 +2,11 @@ import express, { Request, Response, Router } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { requirePermission } from '../auth/authMiddleware.js';
+import { requirePermission, requireAdmin } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { dataPath } from '../config/dataDir.js';
 import { getEnvironmentConfig } from '../config/environment.js';
-import { scriptDependencyEnv } from '../utils/scriptRunner.js';
+import { buildScriptChildEnv } from '../utils/scriptRunner.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { normalizeTriggerPatterns } from '../../utils/autoResponderUtils.js';
 import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
@@ -350,7 +350,14 @@ router.get('/scripts/inventory', requirePermission('settings', 'read'), async (_
 
 // Script test endpoint - allows testing script execution with sample parameters
 // Supports triggerType: 'auto-responder' (default), 'geofence', or 'timer'
-router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requirePermission('settings', 'read'), async (req: Request, res: Response) => {
+//
+// Admin-only (#6052/#6051). This endpoint executes arbitrary code from the
+// scripts directory as the server process, so it must require at least the same
+// privilege as uploading a script (which is also admin). `settings` is a
+// per-source resource, and omitting `sourceIdFrom` on a global capability like
+// this let any single-source settings grant reach it (AUTHZ-01); scripts are
+// global infrastructure with no sourceId, so the correct gate is admin.
+router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requireAdmin(), async (req: Request, res: Response) => {
   const startTime = Date.now();
   try {
     const {
@@ -659,36 +666,45 @@ router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requi
       scriptEnv.MESHCORE_DEVICE_TYPE = String(meshcoreDeviceType || 'companion');
     }
 
-    // Build script arguments if provided
+    // Build script arguments if provided.
     const scriptArgList: string[] = [resolvedPath];
     if (scriptArgs) {
-      // Token expansion for script args (basic expansion for test)
-      let expandedArgs = scriptArgs
-        .replace(/\{IP\}/g, scriptEnv.IP)
-        .replace(/\{PORT\}/g, scriptEnv.PORT)
-        .replace(/\{VERSION\}/g, scriptEnv.VERSION)
-        .replace(/\{NODE_ID\}/g, mockNodeNum)
-        .replace(/\{NODE_NUM\}/g, mockNodeNum)
-        .replace(/\{SHORT_NAME\}/g, mockShortName)
-        .replace(/\{LONG_NAME\}/g, mockLongName);
+      // MISC-06 (#6076): tokenize the template into argv FIRST, then expand the
+      // tokens inside each resulting element. Expanding before the split let a
+      // user-controlled token value (e.g. a SHORT_NAME of "legit --flag x")
+      // break into extra argv elements. Per-element expansion keeps each token's
+      // value confined to the single argument it appears in.
+      const rawParts = (scriptArgs.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [])
+        .map((arg: string) => arg.replace(/^["']|["']$/g, ''));
 
-      if (triggerType === 'geofence') {
-        expandedArgs = expandedArgs
-          .replace(/\{GEOFENCE_NAME\}/g, scriptEnv.GEOFENCE_NAME)
-          .replace(/\{EVENT\}/g, scriptEnv.GEOFENCE_EVENT)
-          .replace(/\{NODE_LAT\}/g, mockNodeLat)
-          .replace(/\{NODE_LON\}/g, mockNodeLon);
-      }
+      const expandArg = (arg: string): string => {
+        let out = arg
+          .replace(/\{IP\}/g, scriptEnv.IP)
+          .replace(/\{PORT\}/g, scriptEnv.PORT)
+          .replace(/\{VERSION\}/g, scriptEnv.VERSION)
+          .replace(/\{NODE_ID\}/g, mockNodeNum)
+          .replace(/\{NODE_NUM\}/g, mockNodeNum)
+          .replace(/\{SHORT_NAME\}/g, mockShortName)
+          .replace(/\{LONG_NAME\}/g, mockLongName);
 
-      // Split args respecting both single and double quotes
-      const argParts = expandedArgs.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
-      scriptArgList.push(...argParts.map((arg: string) => arg.replace(/^["']|["']$/g, '')));
+        if (triggerType === 'geofence') {
+          out = out
+            .replace(/\{GEOFENCE_NAME\}/g, scriptEnv.GEOFENCE_NAME)
+            .replace(/\{EVENT\}/g, scriptEnv.GEOFENCE_EVENT)
+            .replace(/\{NODE_LAT\}/g, mockNodeLat)
+            .replace(/\{NODE_LON\}/g, mockNodeLon);
+        }
+        return out;
+      };
+
+      scriptArgList.push(...rawParts.map(expandArg));
     }
 
     try {
       const { stdout, stderr } = await execFileAsync(interpreter, scriptArgList, {
         timeout: 30000,
-        env: { ...scriptEnv, ...scriptDependencyEnv(ext, scriptEnv) },
+        // Strip server secrets + block Python module shadowing (INJ-01/MISC-01).
+        env: buildScriptChildEnv(scriptEnv, ext ?? ''),
         maxBuffer: 1024 * 1024, // 1MB max output
       });
 
@@ -876,10 +892,17 @@ router.post('/http/test', requirePermission('settings', 'read'), async (req: Req
   }
 });
 
-// Script import endpoint - upload a script file
+// Script import endpoint - upload a script file.
+//
+// Admin-only (#6052/#6051). Uploading a script places executable code in the
+// scripts directory that the auto-responder, timers, geofence triggers and the
+// automation engine will run as the server process — i.e. remote code
+// execution. `settings` is per-source, so the prior check granted this to any
+// user holding settings:write on a single source (AUTHZ-01). Scripts are global
+// with no sourceId to scope against, so this is gated on admin.
 router.post(
   '/scripts/import',
-  requirePermission('settings', 'write'),
+  requireAdmin(),
   express.raw({ type: '*/*', limit: '5mb' }),
   async (req: Request, res: Response) => {
     try {
@@ -990,7 +1013,9 @@ router.get('/scripts/dependencies', requirePermission('settings', 'read'), async
   }
 });
 
-router.post('/scripts/dependencies/install', extendRequestTimeout(SCRIPT_DEPENDENCY_INSTALL_TIMEOUT_MS), requirePermission('settings', 'write'), async (_req: Request, res: Response) => {
+// Admin-only (#6052/#6051/#6056): installing downloads and runs third-party
+// package code next to the scripts. Same global-RCE reasoning as import/test.
+router.post('/scripts/dependencies/install', extendRequestTimeout(SCRIPT_DEPENDENCY_INSTALL_TIMEOUT_MS), requireAdmin(), async (_req: Request, res: Response) => {
   try {
     const result = await installDependencies();
     res.status(result.success ? 200 : 400).json(result);
@@ -1023,7 +1048,8 @@ router.get('/scripts/updates', requirePermission('settings', 'read'), async (_re
 });
 
 // Point a script at a GitHub file, for scripts whose own mm_meta names none.
-router.put('/scripts/:filename/source', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+// Admin-only (#6051): feeds the update endpoint, which fetches and writes code.
+router.put('/scripts/:filename/source', requireAdmin(), async (req: Request, res: Response) => {
   const filename = path.basename(req.params.filename);
   try {
     if (!fs.existsSync(path.join(getScriptsDirectory(), filename))) {
@@ -1039,7 +1065,9 @@ router.put('/scripts/:filename/source', requirePermission('settings', 'write'), 
   }
 });
 
-router.post('/scripts/:filename/update', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+// Admin-only (#6051): fetches code from GitHub and writes it into the scripts
+// directory, so it carries the same RCE weight as import.
+router.post('/scripts/:filename/update', requireAdmin(), async (req: Request, res: Response) => {
   const filename = path.basename(req.params.filename);
   try {
     const scriptsDir = getScriptsDirectory();
@@ -1066,7 +1094,8 @@ router.post('/scripts/:filename/update', requirePermission('settings', 'write'),
   }
 });
 
-router.post('/scripts/:filename/rollback', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+// Admin-only (#6051): rewrites the on-disk script from a backup copy.
+router.post('/scripts/:filename/rollback', requireAdmin(), async (req: Request, res: Response) => {
   const filename = path.basename(req.params.filename);
   try {
     const scriptsDir = getScriptsDirectory();
@@ -1085,8 +1114,9 @@ router.post('/scripts/:filename/rollback', requirePermission('settings', 'write'
   }
 });
 
-// Script delete endpoint
-router.delete('/scripts/:filename', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+// Script delete endpoint. Admin-only (#6051): part of the admin-gated script
+// management surface, matching import/update/rollback.
+router.delete('/scripts/:filename', requireAdmin(), async (req: Request, res: Response) => {
   try {
     const filename = req.params.filename;
 

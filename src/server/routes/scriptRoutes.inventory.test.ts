@@ -35,6 +35,7 @@ vi.mock('../services/scriptDependencyService.js', () => ({
 
 vi.mock('../auth/authMiddleware.js', () => ({
   requirePermission: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
+  requireAdmin: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
 }));
 
 const mockDb = vi.hoisted(() => ({
