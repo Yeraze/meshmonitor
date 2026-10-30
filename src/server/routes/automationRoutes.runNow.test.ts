@@ -19,9 +19,24 @@ vi.mock('../services/automation/automationEngineSingleton.js', () => ({
 }));
 
 import automationRouter from './automationRoutes.js';
+import databaseService from '../../services/database.js';
 import { getAutomationEngine } from '../services/automation/automationEngineSingleton.js';
 
 const mockedGetEngine = getAutomationEngine as unknown as ReturnType<typeof vi.fn>;
+
+/** A schedule-triggered graph that flips forwarding off on each target source. */
+function fwdGraph(...targets: string[]) {
+  return {
+    version: 1,
+    nodes: [
+      { id: 't', type: 'trigger.schedule', params: { cron: '0 22 * * *' } },
+      ...targets.map((sourceId, i) => ({
+        id: `f${i}`, type: 'action.setSourceForwardingEnabled', params: { sourceId, mode: 'set', enabled: 'false' },
+      })),
+    ],
+    edges: targets.map((_s, i) => ({ from: i === 0 ? 't' : `f${i - 1}`, to: `f${i}` })),
+  };
+}
 
 describe('POST /api/automations/:id/run-now', () => {
   let harness: RouteTestHarness;
@@ -99,5 +114,63 @@ describe('POST /api/automations/:id/run-now', () => {
     expect(res.status).toBe(503);
     expect(res.body.code).toBe('ENGINE_NOT_READY');
     expect(runNow).not.toHaveBeenCalled();
+  });
+
+  // #6071 (AUTHZ-07): run-now fires live actions, so the per-source gate that
+  // the save paths enforce must also apply at execute time. A user with only
+  // the global `automations:write` grant must not fire a forwarding-toggle
+  // automation against a source they lack per-source `automation` write on.
+  describe('per-source authorization at execute time (#6071)', () => {
+    it('refuses run-now on a forwarding-toggle automation without per-source grant', async () => {
+      const row = await databaseService.automations.createAutomation({
+        name: 'Quiet A', enabled: false, config: JSON.stringify(fwdGraph(harness.sourceA)),
+      });
+      await harness.grant(harness.limited.id, 'automations', 'write'); // global only
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post(`/api/automations/${row.id}/run-now`);
+      expect(res.status).toBe(403);
+      expect(res.body).toMatchObject({ success: false, code: 'FORWARDING_SOURCE_FORBIDDEN', sourceIds: [harness.sourceA] });
+      expect(runNow).not.toHaveBeenCalled();
+    });
+
+    it('allows run-now once the caller holds per-source automation write', async () => {
+      const row = await databaseService.automations.createAutomation({
+        name: 'Quiet A', enabled: false, config: JSON.stringify(fwdGraph(harness.sourceA)),
+      });
+      await harness.grant(harness.limited.id, 'automations', 'write');
+      await harness.grant(harness.limited.id, 'automation', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post(`/api/automations/${row.id}/run-now`);
+      expect(res.status).toBe(200);
+      expect(runNow).toHaveBeenCalledWith(row.id);
+    });
+
+    it('admins pass the per-source gate', async () => {
+      const row = await databaseService.automations.createAutomation({
+        name: 'Quiet A', enabled: false, config: JSON.stringify(fwdGraph(harness.sourceA)),
+      });
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post(`/api/automations/${row.id}/run-now`);
+      expect(res.status).toBe(200);
+      expect(runNow).toHaveBeenCalledWith(row.id);
+    });
+
+    it('an automation without a forwarding-toggle action is unaffected', async () => {
+      const row = await databaseService.automations.createAutomation({
+        name: 'Plain', enabled: false, config: JSON.stringify({
+          version: 1,
+          nodes: [
+            { id: 't', type: 'trigger.schedule', params: { cron: '0 22 * * *' } },
+            { id: 'n', type: 'action.notify', params: { body: 'b' } },
+          ],
+          edges: [{ from: 't', to: 'n' }],
+        }),
+      });
+      await harness.grant(harness.limited.id, 'automations', 'write'); // global only
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post(`/api/automations/${row.id}/run-now`);
+      expect(res.status).toBe(200);
+      expect(runNow).toHaveBeenCalledWith(row.id);
+    });
   });
 });
