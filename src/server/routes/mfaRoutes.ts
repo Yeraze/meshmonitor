@@ -161,19 +161,27 @@ router.post('/disable', requireAuth(), authLimiter, async (req: Request, res: Re
       verified = mfaService.verifyToken(freshUser.mfaSecret, token);
     } else if (backupCode) {
       // Verify backup code
-      const hashedCodes: string[] = JSON.parse(freshUser.mfaBackupCodes || '[]');
+      const storedCodes = freshUser.mfaBackupCodes ?? '[]';
+      const hashedCodes: string[] = JSON.parse(storedCodes);
       const remaining = await mfaService.verifyBackupCode(backupCode, hashedCodes);
       if (remaining !== null) {
-        verified = true;
-        // Update remaining backup codes
-        await databaseService.consumeBackupCodeAsync(user.id, JSON.stringify(remaining));
-        void databaseService.auditLogAsync(
+        // Atomic consume closes a TOCTOU race (#6075): only the first CAS write
+        // for a given code wins, so a one-time code cannot be spent twice.
+        const consumed = await databaseService.consumeBackupCodeAsync(
           user.id,
-          'mfa_backup_code_used',
-          'auth',
-          JSON.stringify({ username: user.username, action: 'disable' }),
-          req.ip || null
+          storedCodes,
+          JSON.stringify(remaining)
         );
+        if (consumed) {
+          verified = true;
+          void databaseService.auditLogAsync(
+            user.id,
+            'mfa_backup_code_used',
+            'auth',
+            JSON.stringify({ username: user.username, action: 'disable' }),
+            req.ip || null
+          );
+        }
       }
     } else {
       return res.status(400).json({ error: 'A TOTP code or backup code is required to disable MFA' });

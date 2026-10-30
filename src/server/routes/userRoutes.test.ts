@@ -168,6 +168,8 @@ describe('User Management Routes', () => {
     // turns password login back on.
     (DatabaseService as any).countPasskeysByUserAsync = async () => new Map<number, number>();
     (DatabaseService as any).clearPasskeyOnlyAsync = async (userId: number) => authRepo.clearPasskeyOnly(userId);
+    // Session invalidation on admin password reset (#6074).
+    (DatabaseService as any).deleteSessionsByUserIdAsync = vi.fn().mockResolvedValue(0);
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
     };
@@ -474,6 +476,8 @@ describe('User Management Routes', () => {
       const users = await userModel.findAll();
       const userId = users.find(u => u.username === 'user')!.id;
 
+      (DatabaseService as any).deleteSessionsByUserIdAsync.mockClear();
+
       const response = await adminAgent
         .post(`/api/users/${userId}/reset-password`)
         .expect(200);
@@ -481,6 +485,9 @@ describe('User Management Routes', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.password).toBeDefined();
       expect(response.body.password.length).toBeGreaterThan(0);
+
+      // The reset must terminate the target user's active sessions (#6074).
+      expect((DatabaseService as any).deleteSessionsByUserIdAsync).toHaveBeenCalledWith(userId);
     });
 
     it('should deny regular user from resetting passwords', async () => {
