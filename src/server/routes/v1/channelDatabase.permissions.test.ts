@@ -136,7 +136,8 @@ describe('GET / — list with permission filtering', () => {
     expect(res.body.count).toBe(1);
     expect(res.body.data[0].id).toBe(1);
     expect(res.body.data[0].psk).toBeUndefined();
-    expect(res.body.data[0].pskPreview).toMatch(/\.\.\.$/);
+    // MISC-11 (#6087): masked callers get a constant sentinel, never key bytes.
+    expect(res.body.data[0].pskPreview).toBe('(hidden)');
   });
 
   it('non-admin with :read but no per-entry rows: returns empty list', async () => {
@@ -189,7 +190,8 @@ describe('GET /:id — single-entry permission filtering', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.id).toBe(1);
     expect(res.body.data.psk).toBeUndefined();
-    expect(res.body.data.pskPreview).toMatch(/\.\.\.$/);
+    // MISC-11 (#6087): masked callers get a constant sentinel, never key bytes.
+    expect(res.body.data.pskPreview).toBe('(hidden)');
   });
 
   it('non-admin with :read but no per-entry row: returns 404 (entry hidden)', async () => {
@@ -230,7 +232,8 @@ describe('GET /:id — single-entry permission filtering', () => {
     const res = await request(createApp(readerUser)).get('/api/v1/channel-database/1');
     expect(res.status).toBe(200);
     expect(res.body.data.psk).toBeUndefined();
-    expect(res.body.data.pskPreview).toMatch(/\.\.\.$/);
+    // MISC-11 (#6087): masked callers get a constant sentinel, never key bytes.
+    expect(res.body.data.pskPreview).toBe('(hidden)');
   });
 
   it('non-admin with neither :read nor per-entry canRead: returns 404 (masks existence)', async () => {
