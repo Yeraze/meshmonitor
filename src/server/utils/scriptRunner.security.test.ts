@@ -13,8 +13,11 @@ describe('isSecretEnvKey', () => {
       'DATABASE_URL',
       'DATABASE_PATH',
       'OIDC_CLIENT_SECRET',
+      'OIDC_ISSUER',
       'VAPID_PRIVATE_KEY',
+      'VAPID_PUBLIC_KEY',
       'SMTP_PASSWORD',
+      'SMTP_HOST',
     ]) {
       expect(isSecretEnvKey(k), k).toBe(true);
     }

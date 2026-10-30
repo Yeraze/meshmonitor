@@ -149,6 +149,11 @@ export function sanitizeScriptEnv(env: NodeJS.ProcessEnv | Record<string, string
  * Python run (MISC-01). `PYTHONSAFEPATH` is the documented env equivalent of
  * `python -P`, honoured by CPython 3.11+, and leaves `PYTHONPATH` (our deps
  * mechanism) intact. It is harmless for non-Python interpreters.
+ *
+ * NOTE: CPython < 3.11 silently ignores `PYTHONSAFEPATH`, which would re-open
+ * MISC-01. The production Docker image ships Python 3.12 (apprise venv), so the
+ * floor is met; if that Python is ever downgraded, switch to the `-P` CLI flag
+ * (also 3.11+) or filter `sys.path` explicitly instead.
  */
 export function buildScriptChildEnv(
   baseEnv: NodeJS.ProcessEnv | Record<string, string>,
