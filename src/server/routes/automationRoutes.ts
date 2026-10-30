@@ -583,6 +583,16 @@ router.post('/:id/run-now', canWrite, async (req: Request, res: Response) => {
   try {
     const engine = getAutomationEngine();
     if (!engine) return fail(res, 503, 'ENGINE_NOT_READY', 'automation engine not started');
+    // Run-now dispatches LIVE actions, so re-apply the per-source gate that the
+    // save paths (create/update/import/duplicate) enforce (#6071). A user with
+    // only the global `automations:write` grant must not be able to fire a
+    // forwarding-toggle automation against a source they lack per-source
+    // `automation` write on — otherwise run-now is a way around the save-time
+    // check for a rule someone else authored. Mirrors the duplicate handler's
+    // stored-config check. When the row is absent the gate is skipped and the
+    // engine reports `not_found` below.
+    const auto = await databaseService.automations.getAutomation(req.params.id);
+    if (auto && !(await checkForwardingTogglePermission(req, res, auto.config))) return;
     const result = await engine.runNow(req.params.id);
     if (result.reason === 'not_found') return fail(res, 404, 'AUTOMATION_NOT_FOUND', 'automation not found');
     if (result.reason === 'invalid') return fail(res, 400, 'INVALID_AUTOMATION', 'automation config is invalid');
