@@ -455,8 +455,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           {onImportContact && (
             <button
               type="button"
-              className="btn-secondary"
-              style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem' }}
+              className={`btn-secondary ${styles.actionBtn}`}
               onClick={() => { setImportHex(''); setImportError(null); setImportDialogOpen(true); }}
             >
               {t('meshcore.import_contact.button', 'Import')}
@@ -466,8 +465,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             <div className="mc-discover-menu-anchor">
               <button
                 type="button"
-                className="btn-secondary"
-                style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem' }}
+                className={`btn-secondary ${styles.actionBtn}`}
                 onClick={() => setDiscoverMenuOpen((open) => !open)}
                 disabled={discovering !== null}
                 aria-haspopup="menu"
@@ -521,7 +519,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           )}
           </div>
           {!isListCollapsed && (
-          <div className={styles.row}>
+          <div className={`${styles.row} ${styles.toolbar}`}>
           <NodeQuickAgeFilter settingsHours={maxNodeAgeHours} variant="meshcore" />
           <div className="sort-controls meshcore-sort-controls">
             <select
