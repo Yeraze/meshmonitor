@@ -560,6 +560,42 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('port');
     });
+
+    // SSRF-05 (issue #6080): a TCP connect must not be usable to reach loopback,
+    // link-local or cloud-metadata addresses.
+    it('should reject a loopback tcpHost', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/connect')
+        .send({ connectionType: 'tcp', tcpHost: '127.0.0.1', tcpPort: 8000 });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/not permitted/i);
+    });
+
+    it('should reject the IPv4-mapped IPv6 loopback tcpHost (hex-group bypass)', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/connect')
+        .send({ connectionType: 'tcp', tcpHost: '::ffff:7f00:1', tcpPort: 8000 });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/not permitted/i);
+    });
+
+    it('should reject the cloud-metadata tcpHost', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/connect')
+        .send({ connectionType: 'tcp', tcpHost: '169.254.169.254', tcpPort: 80 });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/not permitted/i);
+    });
+
+    it('should allow a LAN (RFC1918) tcpHost — connecting to a local device is the feature', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/connect')
+        .send({ connectionType: 'tcp', tcpHost: '192.168.1.50', tcpPort: 5000 });
+      // Host validation passes (RFC1918 allowed); the stub manager.connect
+      // resolves, so the route returns 200.
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    });
   });
 
   describe('POST /api/sources/test-source/meshcore/messages/send', () => {

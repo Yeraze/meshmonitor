@@ -5,7 +5,7 @@ vi.mock('node:dns/promises', () => ({
 }));
 
 import { lookup } from 'node:dns/promises';
-import { assertSafeUrl, SsrfBlockedError } from './ssrfGuard.js';
+import { assertSafeUrl, assertSafeHost, SsrfBlockedError } from './ssrfGuard.js';
 
 const mockedLookup = lookup as unknown as ReturnType<typeof vi.fn>;
 
@@ -182,6 +182,98 @@ describe('assertSafeUrl', () => {
         reason: 'loopback',
       });
       expect(mockedLookup).not.toHaveBeenCalled();
+    });
+  });
+
+  // SSRF-01 (issue #6060): the WHATWG URL parser normalizes every IPv4-mapped
+  // IPv6 form to the hex-group representation (::ffff:127.0.0.1 -> ::ffff:7f00:1)
+  // before the guard runs, so a regex matching only the dotted form was dead
+  // code and the hex-group form bypassed all IP classification.
+  describe('IPv4-mapped IPv6 hex-group bypass (SSRF-01)', () => {
+    it('blocks hex-group mapped loopback [::ffff:7f00:1]', async () => {
+      await expect(assertSafeUrl('http://[::ffff:7f00:1]:8000/')).rejects.toMatchObject({
+        reason: 'loopback',
+      });
+      expect(mockedLookup).not.toHaveBeenCalled();
+    });
+
+    it('blocks dotted mapped loopback [::ffff:127.0.0.1] (parser normalizes it)', async () => {
+      await expect(assertSafeUrl('http://[::ffff:127.0.0.1]:8000/')).rejects.toMatchObject({
+        reason: 'loopback',
+      });
+    });
+
+    it('blocks hex-group mapped cloud metadata [::ffff:a9fe:a9fe] (169.254.169.254)', async () => {
+      // 169.254.169.254 is link-local; the guard must reject it either as
+      // metadata or link_local, never pass it through.
+      let caught: unknown;
+      try {
+        await assertSafeUrl('http://[::ffff:a9fe:a9fe]/');
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(SsrfBlockedError);
+      expect(['metadata', 'link_local']).toContain((caught as SsrfBlockedError).reason);
+    });
+
+    it('blocks hex-group mapped RFC1918 in strict mode [::ffff:c0a8:101] (192.168.1.1)', async () => {
+      await expect(
+        assertSafeUrl('http://[::ffff:c0a8:101]/', { strict: true }),
+      ).rejects.toMatchObject({ reason: 'private' });
+    });
+
+    it('classifies mapped addresses the same via resolved DNS', async () => {
+      mockedLookup.mockResolvedValue([{ address: '::ffff:7f00:1', family: 6 }]);
+      await expect(assertSafeUrl('http://host.example/')).rejects.toMatchObject({
+        reason: 'loopback',
+      });
+    });
+  });
+
+  describe('allowLoopback option', () => {
+    it('permits literal loopback when allowLoopback is set', async () => {
+      await expect(
+        assertSafeUrl('http://127.0.0.1:8000/', { allowLoopback: true }),
+      ).resolves.toBeInstanceOf(URL);
+    });
+
+    it('permits hex-group mapped loopback when allowLoopback is set', async () => {
+      await expect(
+        assertSafeUrl('http://[::ffff:7f00:1]:8000/', { allowLoopback: true }),
+      ).resolves.toBeInstanceOf(URL);
+    });
+
+    it('still blocks link-local/metadata even with allowLoopback', async () => {
+      await expect(
+        assertSafeUrl('http://[::ffff:a9fe:a9fe]/', { allowLoopback: true }),
+      ).rejects.toBeInstanceOf(SsrfBlockedError);
+    });
+  });
+
+  describe('assertSafeHost (host/port callers, e.g. MeshCore TCP)', () => {
+    it('blocks literal loopback by default', async () => {
+      await expect(assertSafeHost('127.0.0.1')).rejects.toMatchObject({ reason: 'loopback' });
+    });
+
+    it('blocks the hex-group mapped loopback literal', async () => {
+      await expect(assertSafeHost('::ffff:7f00:1')).rejects.toMatchObject({ reason: 'loopback' });
+    });
+
+    it('blocks cloud metadata 169.254.169.254', async () => {
+      // 169.254.169.254 is in BLOCKED_HOSTS, so it trips 'blocked_host' first.
+      await expect(assertSafeHost('169.254.169.254')).rejects.toBeInstanceOf(SsrfBlockedError);
+    });
+
+    it('blocks the hex-group mapped metadata address (normalized before the always-blocked check)', async () => {
+      await expect(assertSafeHost('::ffff:a9fe:a9fe')).rejects.toMatchObject({ reason: 'metadata' });
+    });
+
+    it('allows a LAN RFC1918 device in non-strict mode (the MeshCore TCP case)', async () => {
+      await expect(assertSafeHost('192.168.1.50')).resolves.toBeTruthy();
+    });
+
+    it('strips IPv6 brackets', async () => {
+      await expect(assertSafeHost('[::1]')).rejects.toMatchObject({ reason: 'loopback' });
     });
   });
 

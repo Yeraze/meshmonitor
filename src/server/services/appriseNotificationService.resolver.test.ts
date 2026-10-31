@@ -41,6 +41,10 @@ vi.mock('../meshtasticManager.js', () => ({
 
 vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
 vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => undefined }));
+// SSRF guard on the Apprise egress (SSRF-03, #6078) resolves the host via DNS.
+// Stub the resolver to a public IP so these functional tests (which mock fetch)
+// reach the mocked fetch instead of a real/failed DNS lookup.
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]) }));
 
 vi.mock('../utils/notificationFiltering.js', () => ({
   getUserNotificationPreferencesAsync: vi.fn().mockResolvedValue(null),

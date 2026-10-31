@@ -216,6 +216,57 @@ describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)
   });
 });
 
+// AUTHZ-06 (issue #6070): a non-admin holding settings:write on a single source
+// could overwrite install-wide, security-relevant GLOBAL_ONLY_SETTINGS_KEYS
+// (externalUrl, pkiDmDecryptionGloballyEnabled, position_estimation_*, …) via an
+// unscoped (no ?sourceId=) POST, because the global-only filter only applied
+// when sourceId was truthy. Per PHASE6 §11 the unscoped write itself must stay
+// 200 (so a single-source grantee can still save non-privileged global
+// settings), but global-only keys must now be dropped for a non-admin in ANY
+// scope — only an admin writing globally may set them.
+describe('POST /api/settings — global-only keys are admin-gated (AUTHZ-06, #6070)', () => {
+  let harness: RouteTestHarness;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({
+      mount: (app) => app.use('/api/settings', settingsRoutes),
+    });
+  });
+
+  afterEach(async () => {
+    await harness.db.settings.deleteSetting('externalUrl').catch(() => {});
+    await harness.cleanup();
+  });
+
+  it('a non-admin settings:write grant cannot write a global-only key on the unscoped POST', async () => {
+    await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
+    const agent = await harness.loginAs(harness.limited);
+
+    const res = await agent
+      .post('/api/settings')
+      .send({ externalUrl: 'http://authz.attacker.invalid', meshName: 'Ok' });
+
+    // The request still succeeds (§11), but the global-only key was dropped...
+    expect(res.status).toBe(200);
+    expect(res.body?.settings?.externalUrl).toBeUndefined();
+    // ...and never reached the database.
+    const stored = await harness.db.settings.getSetting('externalUrl');
+    expect(stored).not.toBe('http://authz.attacker.invalid');
+  });
+
+  it('an admin CAN write a global-only key on the unscoped POST', async () => {
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent
+      .post('/api/settings')
+      .send({ externalUrl: 'https://mesh.example.org' });
+
+    expect(res.status).toBe(200);
+    const stored = await harness.db.settings.getSetting('externalUrl');
+    expect(stored).toBe('https://mesh.example.org');
+  });
+});
+
 // #4419(a): POST /api/settings compared the auto-ack change-detection guard against
 // `currentSettings.<bareKey>` (the GLOBAL row) even on a scoped (?sourceId=) write.
 // getAllSettings() returns both namespaces in one snapshot, so the correct comparison
