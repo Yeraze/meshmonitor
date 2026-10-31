@@ -735,6 +735,15 @@ See the [Serial Bridge configuration guide](/configuration/serial-bridge) for de
 
 ## 🎨 Interface & Features
 
+### I used to run MeshManager — are its features in MeshMonitor?
+
+Yes. MeshManager is winding down, and MeshMonitor now does its main jobs on its own:
+
+- **Many nodes at once** — add each node as a [source](/features/multi-source) and watch them all from one place.
+- **Analysis reports** — the built-in [Analysis Reports](/features/analysis-reports) cover solar monitoring, NodeInfo enrichment, and ok_to_mqtt checks. The **Solar Monitoring Analysis** report finds solar nodes and projects battery state, so you no longer need the old MeshManager solar-forecast script.
+
+You do not need a running MeshManager instance for any of this.
+
 ### What do the icons in the Node List mean?
 
 When viewing nodes in the **Nodes** tab, you'll see various icons next to each node that indicate different statuses and capabilities:
