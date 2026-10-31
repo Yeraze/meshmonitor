@@ -124,6 +124,14 @@ describe('parseMc1ChannelReaction', () => {
     ok('@[Alice]👍\nreceived', { hash: 'rece1ved' });
   });
 
+  it('tolerates a space separator before the hash (#6039)', () => {
+    // Some firmware/transport hands our own channel-reaction echo back with the
+    // `\n` turned into a space; the channel parser must still fold it.
+    ok('@[AlphaNode]👍 7f3a9c12', { format: 'mc1-channel', emoji: '👍', targetSender: 'AlphaNode', hash: '7f3a9c12' });
+    ok('@[ERA-3 (SI)]👍 7f3a9c12', { format: 'mc1-channel', emoji: '👍', targetSender: 'ERA-3 (SI)', hash: '7f3a9c12' });
+    ok('👍@[AlphaNode] 7f3a9c12', { format: 'mc1-channel-legacy', emoji: '👍', targetSender: 'AlphaNode', hash: '7f3a9c12' });
+  });
+
   it('parses legacy order', () => {
     ok('👍@[AlphaNode]\n7f3a9c12', { format: 'mc1-channel-legacy', emoji: '👍', targetSender: 'AlphaNode' });
     ok(`👍@[a]b]\n${H}`, { format: 'mc1-channel-legacy', targetSender: 'a]b' });
@@ -155,6 +163,9 @@ describe('parseMc1ChannelReaction', () => {
     `@[Node]1\n${H}`, `@[a]b]👍\n${H}`, `@[A]👍@[B]\n${H}`, `@[Node]👍\r\n${H}`,
     `@[Node]👍\n${H}\r`, `@[Node]👍\n${H}\n`, `@[Node]👍\n\n${H}`, ` @[Node]👍\n${H}`,
     `@[Node] 👍\n${H}`, '👍\n7f3a9c12', '', '\n',
+    // #6039 space-separator tolerance must stay channel-shaped: no `@[` marker,
+    // a space before the emoji, or a non-hash tail is still refused.
+    'chatting about abcd1234', '@[Node] 👍 abcd1234', '@[Node]👍 toolongforhash',
   ])('refuses %j', (text) => {
     parseInputs.push(text);
     expect(parseMc1ChannelReaction(text)).toBeNull();
@@ -176,6 +187,9 @@ describe('parseMc1DmReaction', () => {
   it.each([
     '👍', '@[Node]👍\nabcd1234', `👍@[\n${H}`, `👍\nuuuuuuuu`, `A\n${H}`, `1\n${H}`,
     'ok\nreceived', '🎉 on my way\npassword', `👍\r\n${H}`, `👍\n\n${H}`, `\n${H}`, '',
+    // #6039 relaxes the CHANNEL parser only: a DM reaction still needs the `\n`
+    // separator, so a space form stays a plain message here.
+    '👍 7f3a9c12', `${HEART} a1b2c3d4`,
   ])('refuses %j', (text) => {
     parseInputs.push(text);
     expect(parseMc1DmReaction(text)).toBeNull();
