@@ -44,12 +44,17 @@ import type {
 } from '../../db/repositories/nodes.js';
 
 /**
- * Why a job was queued. Only 'position' can emit the became-aircraft event;
- * 'manual' (#5715, a person set or cleared a mark) and 'backfill' are silent,
- * so a click in the UI never fires automations or anything hung off them.
+ * Why a job was queued. Only 'position' — a live broadcast position fix —
+ * can emit the became-aircraft event. Every other reason is silent, so it
+ * never fires automations, ADS-B lookups, or position requests:
+ *   - 'replay' (#6045): a replayed/retained position frame, a telemetry
+ *     packet, or a NodeInfo-carried position. None is a fresh live
+ *     observation, so a stale fix must not pose as a new aircraft sighting.
+ *   - 'manual' (#5715): a person set or cleared a mark in the UI.
+ *   - 'backfill' (D11): the one-time startup sweep.
  */
-export type AircraftClassifyReason = 'position' | 'manual' | 'backfill';
-const REASON_PRIORITY: Record<AircraftClassifyReason, number> = { position: 2, manual: 1, backfill: 0 };
+export type AircraftClassifyReason = 'position' | 'replay' | 'manual' | 'backfill';
+const REASON_PRIORITY: Record<AircraftClassifyReason, number> = { position: 3, manual: 2, replay: 1, backfill: 0 };
 
 /** What a person asked for in Node Details (#5715). */
 export type AircraftManualMarkMode = 'not_aircraft' | 'aircraft' | 'clear';

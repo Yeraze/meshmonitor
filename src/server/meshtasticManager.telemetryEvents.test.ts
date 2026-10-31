@@ -11,10 +11,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockInsertTelemetry = vi.fn().mockResolvedValue(undefined);
 const mockUpsertNode = vi.fn().mockResolvedValue(undefined);
+const mockGetLatestTelemetryForType = vi.fn().mockResolvedValue(null);
 
 vi.mock('../services/database.js', () => ({
   default: {
-    telemetry: { insertTelemetry: mockInsertTelemetry },
+    telemetry: {
+      insertTelemetry: mockInsertTelemetry,
+      getLatestTelemetryForType: mockGetLatestTelemetryForType,
+    },
     nodes: { upsertNode: mockUpsertNode, getAllNodes: vi.fn().mockResolvedValue([]) },
   },
 }));
@@ -93,6 +97,45 @@ describe('MeshtasticManager telemetry → trigger.telemetry events', () => {
     expect(emitSpy).toHaveBeenCalledTimes(2);
     for (const call of emitSpy.mock.calls) expect(call[3]).toEqual({ answersOwnRequest: false, localStats: true });
     expect(emitSpy.mock.calls.map((c: any[]) => c[1].telemetryType)).toContain('noiseFloor');
+  });
+
+  it('does not fire node:rebooted or node:powerChanged on a replayed frame (#6099)', async () => {
+    // Prior baselines that WOULD look like a reboot (uptime dropped) and a
+    // power transition (battery crossed the >100 "powered" line) if the
+    // detectors ran.
+    mockGetLatestTelemetryForType.mockImplementation(async (_nodeId: string, type: string) =>
+      type === 'uptimeSeconds' ? { value: 5000 } : type === 'batteryLevel' ? { value: 90 } : null,
+    );
+    const rebootSpy = vi.spyOn(dataEventEmitter, 'emitNodeRebooted').mockImplementation(() => {});
+    const powerSpy = vi.spyOn(dataEventEmitter, 'emitNodePowerChanged').mockImplementation(() => {});
+
+    await manager.processTelemetryMessageProtobuf(
+      // Stale rx_time ⇒ replay ⇒ no eventMeta ⇒ detectors gated off.
+      { from: 0x22222222, id: 110, rxTime: nowSec() - 7 * 3600 },
+      { deviceMetrics: { uptimeSeconds: 100, batteryLevel: 101 } },
+    );
+
+    // Stored, but neither detector event fired.
+    expect(mockInsertTelemetry).toHaveBeenCalled();
+    expect(rebootSpy).not.toHaveBeenCalled();
+    expect(powerSpy).not.toHaveBeenCalled();
+  });
+
+  it('still fires node:rebooted and node:powerChanged on a live frame (#6099)', async () => {
+    mockGetLatestTelemetryForType.mockImplementation(async (_nodeId: string, type: string) =>
+      type === 'uptimeSeconds' ? { value: 5000 } : type === 'batteryLevel' ? { value: 90 } : null,
+    );
+    const rebootSpy = vi.spyOn(dataEventEmitter, 'emitNodeRebooted').mockImplementation(() => {});
+    const powerSpy = vi.spyOn(dataEventEmitter, 'emitNodePowerChanged').mockImplementation(() => {});
+
+    await manager.processTelemetryMessageProtobuf(
+      // Live rx_time ⇒ eventMeta present ⇒ detectors run.
+      { from: 0x22222222, id: 111, rxTime: nowSec() },
+      { deviceMetrics: { uptimeSeconds: 100, batteryLevel: 101 } },
+    );
+
+    expect(rebootSpy).toHaveBeenCalledTimes(1);
+    expect(powerSpy).toHaveBeenCalledTimes(1);
   });
 
   it('remembers the packet id of a telemetry request it sends', async () => {

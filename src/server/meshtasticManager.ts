@@ -1884,18 +1884,26 @@ class MeshtasticManager implements ISourceManager {
     const now = Date.now();
     for (const metric of metricsToSave) {
       if (metric.value !== undefined && metric.value !== null && !isNaN(Number(metric.value))) {
-        // Device Health (#4558 Phase B): an uptime reset is a reboot. Read the
-        // PRIOR stored uptime (persistent baseline — restart-safe) BEFORE
-        // inserting this reading and compare. DB read only, no packet sent.
-        if (metric.type === 'uptimeSeconds') {
-          await this.detectRebootFromUptime(nodeId, fromNum, Number(metric.value));
-        }
-        // Device Health (#4558 Phase C): a batteryLevel crossing the firmware's
-        // "powered" threshold (> 100) is an external-power transition. Read the
-        // PRIOR stored batteryLevel (persistent baseline — restart-safe) BEFORE
-        // inserting this reading and compare. DB read only, no packet sent.
-        if (metric.type === 'batteryLevel') {
-          await this.detectPowerChangeFromBattery(nodeId, fromNum, Number(metric.value));
+        // Device Health detectors emit automation events (node:rebooted /
+        // node:powerChanged), so run them ONLY for a live reading — the exact
+        // signal the emit below uses (no eventMeta = a replay). A firmware 2.8
+        // NodeDB replay (#5034/#5426, hourly and on every reconnect) re-sends
+        // old telemetry; without this gate a replayed uptime/battery value
+        // fired a spurious reboot/power-change event (#6099).
+        if (eventMeta) {
+          // Device Health (#4558 Phase B): an uptime reset is a reboot. Read the
+          // PRIOR stored uptime (persistent baseline — restart-safe) BEFORE
+          // inserting this reading and compare. DB read only, no packet sent.
+          if (metric.type === 'uptimeSeconds') {
+            await this.detectRebootFromUptime(nodeId, fromNum, Number(metric.value));
+          }
+          // Device Health (#4558 Phase C): a batteryLevel crossing the firmware's
+          // "powered" threshold (> 100) is an external-power transition. Read the
+          // PRIOR stored batteryLevel (persistent baseline — restart-safe) BEFORE
+          // inserting this reading and compare. DB read only, no packet sent.
+          if (metric.type === 'batteryLevel') {
+            await this.detectPowerChangeFromBattery(nodeId, fromNum, Number(metric.value));
+          }
         }
         const row = {
           nodeId,
@@ -10806,8 +10814,12 @@ class MeshtasticManager implements ISourceManager {
         );
 
         // Likely-aircraft classification (#5364/#5365): non-throwing,
-        // coalescing queue — see aircraftClassificationService.ts.
-        aircraftClassificationService.schedule(this.sourceId, nodeNumForTelemetry);
+        // coalescing queue — see aircraftClassificationService.ts. A position
+        // carried in a NodeInfo is whatever the radio's NodeDB last stored
+        // (possibly days old, and re-sent on every config sync / PhoneAPI
+        // replay), never a fresh live broadcast — so classify SILENTLY so it
+        // can't fire the became-aircraft event on a stale fix (#6045).
+        aircraftClassificationService.schedule(this.sourceId, nodeNumForTelemetry, 'replay');
       }
     } catch (error) {
       logger.error('❌ Error processing NodeInfo protobuf:', error);
