@@ -1,12 +1,17 @@
-/* Nodes list header (#5936). The pane is a fixed 320px with overflow
+/* Nodes list header (#5936, #6040). The pane is a fixed 320px with overflow
    hidden, so one row of title + filter + Import + Discover + sort clipped
-   Discover. Stack two rows instead. The doubled class beats the global
+   Discover. Stack two rows: title + actions on top, filter + sort below.
+   The doubled class beats the global
    `.meshcore-list-pane-header { align-items: center }` whatever the
    stylesheet load order. */
 .header.header {
   flex-direction: column;
   align-items: stretch;
   gap: 0.4rem;
+  /* One control height shared by every button and select in both rows, so
+     the two rows read as a grid with matching heights and baselines
+     (#6040). */
+  --mc-header-ctrl-h: 1.75rem;
 }
 
 .row {
@@ -16,6 +21,7 @@
   min-width: 0;
 }
 
+/* Row 1: title + count on the left, the action buttons hug the right edge. */
 .actions {
   margin-left: auto;
   display: flex;
@@ -23,23 +29,74 @@
   gap: 0.4rem;
 }
 
+/* Import + Discover — one shared height/padding so they match each other and
+   the toolbar row below (replaces the old per-button inline sizing). */
+.actionBtn {
+  height: var(--mc-header-ctrl-h);
+  padding: 0 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+/* Row 2 toolbar: the age/type filter on the left, the sort controls hug the
+   right edge so they line up under Discover. */
+.toolbar {
+  justify-content: flex-start;
+}
+
+/* The shared quick-age filter is styled to sit inline beside a count (leading
+   "·" separator + left margin). As the first control of this toolbar it wants
+   a clean left edge and the shared height instead. */
+.toolbar :global([data-testid="node-age-window"]) {
+  margin-left: 0;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+
+.toolbar :global([data-testid="node-age-window"]) > span[aria-hidden="true"] {
+  display: none;
+}
+
+.toolbar :global([data-testid="node-age-window"]) select {
+  height: var(--mc-header-ctrl-h);
+  box-sizing: border-box;
+}
+
+/* The global .sort-controls wraps and adds a top margin (#5420), which drops
+   the direction button onto a third line here. Keep it on the row, push it to
+   the right edge (matching Discover above), and cap the select so filter +
+   sort fit in 320px. */
+.toolbar.toolbar :global(.sort-controls) {
+  flex-wrap: nowrap;
+  margin-top: 0;
+  margin-left: auto;
+  gap: 0.4rem;
+}
+
+.toolbar.toolbar :global(.sort-dropdown) {
+  flex: 0 0 5.5rem;
+  min-width: 0;
+  height: var(--mc-header-ctrl-h);
+  padding: 0 0.5rem;
+  font-size: 0.8rem;
+  box-sizing: border-box;
+}
+
+.toolbar.toolbar :global(.sort-direction-btn) {
+  height: var(--mc-header-ctrl-h);
+  min-width: var(--mc-header-ctrl-h);
+  padding: 0;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
 /* Discover now sits at the right edge, so open its menu leftwards or the
    pane clips it. */
 .discoverMenu.discoverMenu {
   left: auto;
   right: 0;
-}
-
-/* The global .sort-controls wraps and adds a top margin (#5420), which
-   drops the direction button onto a third line here. Keep it on the row and
-   cap the select (overriding its global min-width) so filter + sort fit in
-   320px. */
-.row :global(.sort-controls) {
-  flex-wrap: nowrap;
-  margin-top: 0;
-}
-
-.row :global(.sort-dropdown) {
-  flex: 0 0 5.5rem;
-  min-width: 0;
 }
