@@ -363,6 +363,67 @@ router.post(
 );
 
 /**
+ * GET /api/sources/:id/meshcore/nodes/purge-non-favourites/preview
+ *
+ * Count how many MeshCore nodes the purge would delete for this source
+ * (#6041) — every node that is NOT a device-starred favourite. Feeds the
+ * confirm dialog's "will delete N" line before the user commits. DB read
+ * only; nothing on the radio is touched.
+ *
+ * Declared before `/nodes/:publicKey/...` so "purge-non-favourites" never
+ * reads as a public key.
+ */
+router.get(
+  '/nodes/purge-non-favourites/preview',
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = req.params.id;
+      const count = await databaseService.meshcore.countNonFavoriteNodes(sourceId);
+      return ok(res, { count });
+    } catch (error) {
+      logger.error('[API] Error counting non-favourite MeshCore nodes:', error);
+      return fail(res, 500, 'PURGE_PREVIEW_FAILED', 'Failed to count non-favourite nodes');
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/nodes/purge-non-favourites
+ *
+ * Delete every non-favourite MeshCore node row for this source from
+ * MeshMonitor's database (#6041), keeping only the device-starred favourites
+ * (isFavorite = true). Scoped by sourceId, so another source's nodes are
+ * untouched, and each removed node's rename history goes with it — the same
+ * cascade `deleteNode` runs for a single node. Returns `{ deleted }`.
+ *
+ * Mesh impact: a DB purge only, no RF and no serial write — so no
+ * requireMeshcoreTx() gate. The radio's own contact table is left alone
+ * (that is the separate /contacts/remove-non-favorites action).
+ */
+router.post(
+  '/nodes/purge-non-favourites',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = req.params.id;
+      const deleted = await databaseService.meshcore.deleteNonFavoriteNodes(sourceId);
+      auditMeshcoreEvent(req, 'meshcore_nodes_purge_non_favourites', 'configuration', {
+        sourceId,
+        deleted,
+      });
+      return ok(res, { deleted });
+    } catch (error) {
+      logger.error('[API] Error purging non-favourite MeshCore nodes:', error);
+      return fail(res, 500, 'PURGE_NON_FAVOURITES_FAILED', 'Failed to purge non-favourite nodes');
+    }
+  },
+);
+
+/**
  * POST /api/sources/:id/meshcore/contacts/:publicKey/reset-path
  *
  * Clear the cached forwarding route ("out_path") for a contact on the

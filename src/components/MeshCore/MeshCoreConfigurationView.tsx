@@ -8,6 +8,7 @@ import { MeshCoreLocalConsole } from './MeshCoreLocalConsole';
 import { MeshCoreObserverSection } from './MeshCoreObserverSection';
 import { MeshCoreContactSyncSection } from './MeshCoreContactSyncSection';
 import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
+import { MeshCoreNodePurgeSection } from './MeshCoreNodePurgeSection';
 import { MeshCorePathHashSection } from './MeshCorePathHashSection';
 import { MeshCoreDefaultScopeSection } from './MeshCoreDefaultScopeSection';
 import { ConfigSection } from '../shared/config/ConfigSection';
@@ -728,6 +729,16 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           component does its own configuration:read / configuration:write gating. */}
       {showObserver && sourceId && (
         <MeshCoreObserverSection sourceId={sourceId} connected={connected} deviceType={local?.advType} />
+      )}
+
+      {/* Purge non-favourite nodes from MeshMonitor's DB (#6041). A DB-only
+          action, so it is shown for every device type and whether connected or
+          not; it gates itself on nodes:write. The radio is never touched. */}
+      {sourceId && (
+        <MeshCoreNodePurgeSection
+          sourceId={sourceId}
+          canWriteNodes={canWriteNodes}
+        />
       )}
 
       {/* Device Management — danger zone operations. Companion only. */}

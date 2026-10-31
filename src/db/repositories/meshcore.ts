@@ -1558,6 +1558,64 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * WHERE clause for "not a favourite" node on a source (#6041). A favourite
+   * is the device-starred contact (`isFavorite = true`, synced to the radio's
+   * flags & 0x01 by `MeshCoreManager.setNodeFavorite`). Everything else — a row
+   * explicitly non-favourite, or one that predates the column and reads NULL —
+   * is a non-favourite, so the purge keeps only the explicit `true` rows.
+   */
+  private nonFavoriteForSource(sourceId: string): SQL {
+    const { meshcoreNodes } = this.tables;
+    return and(
+      eq(meshcoreNodes.sourceId, sourceId),
+      or(eq(meshcoreNodes.isFavorite, false), isNull(meshcoreNodes.isFavorite)),
+    ) as SQL;
+  }
+
+  /**
+   * Count the non-favourite nodes for a source (#6041). Feeds the purge
+   * confirm dialog's "will delete N" preview before the user commits.
+   */
+  async countNonFavoriteNodes(sourceId: string): Promise<number> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.countNonFavoriteNodes requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(meshcoreNodes)
+      .where(this.nonFavoriteForSource(sourceId));
+    return Number(result[0]?.count ?? 0);
+  }
+
+  /**
+   * Delete every non-favourite node for a source, keeping the device-starred
+   * favourites (#6041). Scoped by `sourceId`, so another source's rows are
+   * untouched. Mirrors `deleteNode`'s cascade: each removed node's rename
+   * history goes with it (#5862), while a favourite's history is kept because
+   * only non-favourite keys are dropped. Returns the count of node rows removed.
+   */
+  async deleteNonFavoriteNodes(sourceId: string): Promise<number> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.deleteNonFavoriteNodes requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const where = this.nonFavoriteForSource(sourceId);
+    // Capture the keys first so each one's rename history can go with it, the
+    // same cascade the single-node deleteNode runs.
+    const rows = await this.db
+      .select({ publicKey: meshcoreNodes.publicKey })
+      .from(meshcoreNodes)
+      .where(where);
+    if (rows.length === 0) return 0;
+    await this.db.delete(meshcoreNodes).where(where);
+    for (const row of rows) {
+      await this.dropNameHistory(h => h.deleteForNode('meshcore', row.publicKey as string, sourceId));
+    }
+    return rows.length;
+  }
+
+  /**
    * Get node count
    */
   async getNodeCount(): Promise<number> {
