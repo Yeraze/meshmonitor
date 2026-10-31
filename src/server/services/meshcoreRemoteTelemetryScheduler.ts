@@ -53,8 +53,25 @@ export interface RemoteTelemetrySchedulerDatabase {
   meshcore: {
     getTelemetryEnabledNodes: (sourceId: string) => Promise<DbMeshCoreNode[]>;
     markTelemetryRequested: (sourceId: string, publicKey: string, when?: number) => Promise<void>;
+    // Retry-burst / cooldown persistence (#6033). Optional only so the many
+    // minimal test doubles keep compiling; `databaseService.meshcore` always
+    // provides them in production.
+    markTelemetrySuccess?: (sourceId: string, publicKey: string, when?: number) => Promise<void>;
+    setTelemetryRetryState?: (
+      sourceId: string,
+      publicKey: string,
+      state: { missCount: number; cooldownUntil: number | null },
+      when?: number,
+    ) => Promise<void>;
     upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<void>;
     markHeard: (sourceId: string, publicKey: string, heardAtMs: number) => Promise<void>;
+  };
+  /**
+   * Per-source settings reader (#6033). Optional so existing tests that
+   * construct a minimal database keep working — absent → approved defaults.
+   */
+  settings?: {
+    getSettingForSource: (sourceId: string | null | undefined, key: string) => Promise<string | null>;
   };
   telemetry: {
     insertTelemetryBatch: (rows: DbTelemetry[], sourceId?: string) => Promise<number>;
@@ -77,6 +94,30 @@ const MIN_TICK_MS = 1_000;
 
 /** Sanity ceiling on the per-node interval the UI can set, in minutes. */
 export const MAX_INTERVAL_MINUTES = 24 * 60;
+
+// Retry-burst / cooldown policy (#6033). Defined in a dependency-free module
+// shared with the Meshtastic remote-LocalStats scheduler; re-exported here so
+// existing importers (and this file's tests) keep their import site.
+export {
+  DEFAULT_RETRY_DELAY_SECONDS,
+  DEFAULT_RETRY_MAX_ATTEMPTS,
+  DEFAULT_RETRY_COOLDOWN_MINUTES,
+  RETRY_DELAY_SETTING_KEY,
+  RETRY_MAX_ATTEMPTS_SETTING_KEY,
+  RETRY_COOLDOWN_SETTING_KEY,
+  DEFAULT_RETRY_CONFIG,
+  resolveRetryConfig,
+} from './telemetryRetryPolicy.js';
+import {
+  DEFAULT_RETRY_CONFIG,
+  resolveRetryConfig,
+  nextRetryState,
+  RETRY_DELAY_SETTING_KEY,
+  RETRY_MAX_ATTEMPTS_SETTING_KEY,
+  RETRY_COOLDOWN_SETTING_KEY,
+  type TelemetryRetryConfig,
+} from './telemetryRetryPolicy.js';
+export type { TelemetryRetryConfig } from './telemetryRetryPolicy.js';
 
 export interface MeshCoreRemoteTelemetrySchedulerOptions {
   registry: SourceManagerRegistry;
@@ -128,39 +169,76 @@ const LPP_TYPE_NAMES: Record<number, { type: string; unit?: string }> = {
 };
 
 /**
+ * Is a node currently inside a retry burst (#6033)? A burst runs while the
+ * consecutive-miss count is in `[1, maxAttempts)` and no cooldown is active;
+ * during it the eligibility gate is the short `retryDelayMs` instead of the
+ * full per-node interval. At `maxAttempts` the scheduler converts the burst
+ * into a cooldown and resets the counter, so a stored count never sits at or
+ * above the cap.
+ */
+export function isInRetryBurst(
+  node: DbMeshCoreNode,
+  now: number,
+  retry: TelemetryRetryConfig = DEFAULT_RETRY_CONFIG,
+): boolean {
+  const cooldownUntil = node.telemetryCooldownUntil ?? 0;
+  if (cooldownUntil > now) return false;
+  const misses = node.telemetryMissCount ?? 0;
+  return misses > 0 && misses < retry.maxAttempts;
+}
+
+/**
  * Decide whether a node is currently eligible for a fresh telemetry
  * request. Pure function, exported for the unit test.
+ *
+ * Retry-aware (#6033): a node in an active cooldown is never eligible; a node
+ * in a retry burst is eligible once `retryDelayMs` has passed since the last
+ * request (not the full interval); otherwise the normal per-node interval
+ * applies. The cooldown and the interval are BOTH required even on the normal
+ * path, so airtime never exceeds today's ceiling.
  */
 export function isNodeEligible(
   node: DbMeshCoreNode,
   now: number,
+  retry: TelemetryRetryConfig = DEFAULT_RETRY_CONFIG,
 ): boolean {
   if (!node.telemetryEnabled) return false;
   const interval = node.telemetryIntervalMinutes;
   if (interval === null || interval === undefined || interval <= 0) return false;
+  const cooldownUntil = node.telemetryCooldownUntil ?? 0;
+  if (cooldownUntil > now) return false;
   const last = node.lastTelemetryRequestAt ?? 0;
   const overdueBy = now - last;
+  if (isInRetryBurst(node, now, retry)) {
+    return overdueBy >= retry.retryDelayMs;
+  }
   return overdueBy >= interval * 60_000;
 }
 
 /**
- * Pick the most overdue eligible node from a list, or undefined if none.
- * Stable tiebreaker on publicKey so two nodes that came due in the same
- * tick don't ping-pong on every cycle.
+ * Pick the target node for this tick, or undefined if none is eligible.
+ *
+ * Due normal-interval nodes take PRIORITY over retry-burst nodes (#6033) so a
+ * flapping multi-hop node can never starve nodes that are simply due. Within
+ * the chosen pool the most-overdue node wins, with a stable publicKey
+ * tiebreaker so two nodes that came due in the same tick don't ping-pong.
  */
 export function pickMostOverdue(
   nodes: DbMeshCoreNode[],
   now: number,
+  retry: TelemetryRetryConfig = DEFAULT_RETRY_CONFIG,
 ): DbMeshCoreNode | undefined {
-  const eligible = nodes.filter((n) => isNodeEligible(n, now));
+  const eligible = nodes.filter((n) => isNodeEligible(n, now, retry));
   if (eligible.length === 0) return undefined;
-  eligible.sort((a, b) => {
+  const normalDue = eligible.filter((n) => !isInRetryBurst(n, now, retry));
+  const pool = normalDue.length > 0 ? normalDue : eligible;
+  pool.sort((a, b) => {
     const aOver = now - (a.lastTelemetryRequestAt ?? 0);
     const bOver = now - (b.lastTelemetryRequestAt ?? 0);
     if (aOver !== bOver) return bOver - aOver;
     return a.publicKey.localeCompare(b.publicKey);
   });
-  return eligible[0];
+  return pool[0];
 }
 
 /**
@@ -381,7 +459,8 @@ export class MeshCoreRemoteTelemetryScheduler {
     const nodes = await this.database.meshcore.getTelemetryEnabledNodes(manager.sourceId);
     if (nodes.length === 0) return;
 
-    const target = pickMostOverdue(nodes, now);
+    const retry = await this.resolveRetryConfig(manager.sourceId);
+    const target = pickMostOverdue(nodes, now, retry);
     if (!target) return;
 
     const isRepeaterLike = typeof target.advType === 'number' && REPEATER_ADV_TYPES.has(target.advType);
@@ -403,10 +482,65 @@ export class MeshCoreRemoteTelemetryScheduler {
     // companions only ship LPP. Throttle/stamp bookkeeping is owned here
     // (above); the actual request → convert → insert is shared with the
     // manual-poll routes via requestTelemetryForNode.
-    await this.requestTelemetryForNode(manager, target, {
+    const result = await this.requestTelemetryForNode(manager, target, {
       includeStatus: isRepeaterLike,
       includeLpp: true,
     });
+
+    // Retry-burst / cooldown accounting (#6033). A poll that wrote rows is a
+    // success → reset the counter and lift any cooldown. An empty/timeout
+    // result is a miss → bump the counter; once it reaches the attempt cap,
+    // convert the burst into a cooldown and reset the counter so the node
+    // rejoins the normal interval afterwards. All of this is persisted to the
+    // DB, so a settings save or a restart neither re-arms nor clears it.
+    try {
+      if (result.written > 0) {
+        await this.database.meshcore.markTelemetrySuccess?.(manager.sourceId, target.publicKey, now);
+      } else {
+        const next = nextRetryState({ missCount: target.telemetryMissCount }, 'miss', now, retry);
+        await this.database.meshcore.setTelemetryRetryState?.(
+          manager.sourceId,
+          target.publicKey,
+          next,
+          now,
+        );
+        if (next.cooldownUntil !== null) {
+          logger.debug(
+            `[MeshCoreRemoteTelem:${manager.sourceId}] ${keyShort}… hit the miss cap — cooling down ${Math.round(retry.cooldownMs / 60_000)}min`,
+          );
+        } else {
+          logger.debug(
+            `[MeshCoreRemoteTelem:${manager.sourceId}] ${keyShort}… miss ${next.missCount}/${retry.maxAttempts} — retry eligible in ${Math.round(retry.retryDelayMs / 1000)}s`,
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        `[MeshCoreRemoteTelem:${manager.sourceId}] Failed to persist retry state for ${keyShort}…:`,
+        err,
+      );
+    }
+  }
+
+  /**
+   * Read the per-source retry policy (#6033), defaulting to the approved
+   * 90s / 5 / 30m. Read with the PER-SOURCE key via `getSettingForSource`
+   * (#5080) — the bare key would hand a job a null and silently use defaults.
+   */
+  private async resolveRetryConfig(sourceId: string): Promise<TelemetryRetryConfig> {
+    const settings = this.database.settings;
+    if (!settings) return DEFAULT_RETRY_CONFIG;
+    try {
+      const [delaySeconds, maxAttempts, cooldownMinutes] = await Promise.all([
+        settings.getSettingForSource(sourceId, RETRY_DELAY_SETTING_KEY),
+        settings.getSettingForSource(sourceId, RETRY_MAX_ATTEMPTS_SETTING_KEY),
+        settings.getSettingForSource(sourceId, RETRY_COOLDOWN_SETTING_KEY),
+      ]);
+      return resolveRetryConfig({ delaySeconds, maxAttempts, cooldownMinutes });
+    } catch (err) {
+      logger.warn(`[MeshCoreRemoteTelem:${sourceId}] Failed to read retry settings, using defaults:`, err);
+      return DEFAULT_RETRY_CONFIG;
+    }
   }
 
   /**
