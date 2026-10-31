@@ -115,4 +115,33 @@ describe('generateAnalyticsScript — XSS hardening', () => {
       expect(generateAnalyticsScript('custom', { script: 'not a script' })).toBe('');
     });
   });
+
+  describe('CSP nonce stamping (MISC-09 / #6085)', () => {
+    it('stamps a nonce on the inline GA4 config script', () => {
+      const out = generateAnalyticsScript('ga4', { measurementId: 'G-ABC123' }, 'N0nCe==');
+      // Both the external loader and the inline config carry the nonce.
+      const count = (out.match(/<script nonce="N0nCe=="/g) || []).length;
+      expect(count).toBe(2);
+      // No bare <script that lacks the nonce attribute.
+      expect(out).not.toMatch(/<script(?! nonce=)/);
+    });
+
+    it('stamps a nonce on the inline posthog bootstrap script', () => {
+      const out = generateAnalyticsScript('posthog', { apiKey: 'phc_abc', apiHost: 'https://ph.example.com' }, 'XYZ');
+      expect(out.startsWith('<script nonce="XYZ">')).toBe(true);
+      // The string "script" occurrences inside the inline JS must NOT be stamped.
+      expect(out).toContain('createElement("script")');
+      expect(out).not.toContain('<script nonce="XYZ">createElement');
+    });
+
+    it('stamps a nonce on a custom admin-provided inline script', () => {
+      const script = '<script>console.log("hi")</script>';
+      expect(generateAnalyticsScript('custom', { script }, 'abc')).toBe('<script nonce="abc">console.log("hi")</script>');
+    });
+
+    it('is a no-op when no nonce is supplied (output unchanged)', () => {
+      const withNonce = generateAnalyticsScript('ga4', { measurementId: 'G-ABC123' });
+      expect(withNonce).not.toContain('nonce=');
+    });
+  });
 });

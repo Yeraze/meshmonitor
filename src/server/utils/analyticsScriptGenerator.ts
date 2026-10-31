@@ -54,8 +54,32 @@ function escapeJsString(value: string): string {
 }
 
 /**
+ * Add a CSP `nonce` attribute to every `<script>` opening tag in `markup`.
+ *
+ * Used so the analytics snippets we inject into `<head>` can run under a
+ * nonce-based Content-Security-Policy that has NO `'unsafe-inline'` in
+ * `script-src` (MISC-09 / #6085). The match is on the literal `<script`
+ * element-open token only; string occurrences inside the inline JS itself
+ * (e.g. `createElement("script")`, `getElementsByTagName("script")`) contain
+ * no leading `<` and are deliberately left untouched.
+ *
+ * `nonce` is generally the `__CSP_NONCE__` placeholder at generation time; the
+ * HTML is cached once and the placeholder is substituted with the real
+ * per-request nonce when the page is served (see staticServing.ts).
+ */
+function applyNonceToScripts(markup: string, nonce: string): string {
+  if (!markup || !nonce) return markup;
+  return markup.replace(/<script\b/gi, `<script nonce="${nonce}"`);
+}
+
+/**
  * Generate analytics script tags for injection into HTML <head>.
  * Returns empty string if provider is 'none' or config is invalid.
+ *
+ * When `nonce` is provided, every emitted `<script>` tag is stamped with that
+ * CSP nonce so the inline snippets run under a strict, `'unsafe-inline'`-free
+ * `script-src` (MISC-09 / #6085). Pass the `__CSP_NONCE__` placeholder here and
+ * substitute the real per-request value at serve time.
  *
  * SECURITY: admin-supplied values interpolated into the emitted markup are
  * either strictly allowlisted (e.g. GA4 / Cloudflare ids) or context-encoded
@@ -63,7 +87,11 @@ function escapeJsString(value: string): string {
  * interpolate a raw config value into the output without one of those — the
  * result is served verbatim in the HTML <head> to every visitor.
  */
-export function generateAnalyticsScript(provider: AnalyticsProvider, config: AnalyticsConfig): string {
+export function generateAnalyticsScript(provider: AnalyticsProvider, config: AnalyticsConfig, nonce?: string): string {
+  return applyNonceToScripts(generateAnalyticsScriptInner(provider, config), nonce ?? '');
+}
+
+function generateAnalyticsScriptInner(provider: AnalyticsProvider, config: AnalyticsConfig): string {
   switch (provider) {
     case 'ga4': {
       const id = config.measurementId?.trim();
