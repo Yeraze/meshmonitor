@@ -1641,6 +1641,47 @@ export default function ChannelsTab({
                   </div>
                 )}
               </div>
+              {hasPermission(`channel_${CHANNEL_DB_OFFSET + virtualChannelInfoModal.id}` as ResourceType, 'write') && (
+                <div
+                  style={{
+                    marginTop: '1.5rem',
+                    paddingTop: '1rem',
+                    borderTop: '1px solid var(--color-surface-active)',
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      const channelNum = CHANNEL_DB_OFFSET + virtualChannelInfoModal.id;
+                      setVirtualChannelInfoModal(null);
+                      void handlePurgeChannelMessages(channelNum);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      backgroundColor: 'var(--color-danger)',
+                      color: 'var(--color-bg)',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '0.95rem',
+                    }}
+                    title={t('channels.purge_messages_title')}
+                  >
+                    {t('channels.purge_all_messages')}
+                  </button>
+                  <p
+                    style={{
+                      marginTop: '0.5rem',
+                      fontSize: '0.85rem',
+                      color: 'var(--color-text-subtle)',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {t('channels.cannot_undo')}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
