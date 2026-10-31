@@ -28,7 +28,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { isLiveReception } from '../utils/replayGuard.js';
-import { aircraftClassificationService, AIRCRAFT_EXCLUDED_SOURCE_TYPES } from './aircraftClassificationService.js';
+import { aircraftClassificationService, AIRCRAFT_EXCLUDED_SOURCE_TYPES, type AircraftClassifyReason } from './aircraftClassificationService.js';
 import { adsbMatchService } from './adsbMatchService.js';
 import {
   AIRCRAFT_FIXED_WINDOW_MS,
@@ -61,7 +61,7 @@ export interface AircraftAgeOutDeps {
   isIgnoredCached(nodeNum: number, sourceId: string): boolean;
   liftAircraftIgnore(nodeNum: number, sourceId: string): Promise<boolean>;
   clearAgedOut(nodeNum: number, sourceId: string): Promise<void>;
-  scheduleClassification(sourceId: string, nodeNum: number): void;
+  scheduleClassification(sourceId: string, nodeNum: number, reason?: AircraftClassifyReason): void;
   /** Silent recompute of every stored verdict for a source (no DEM fetch). */
   reclassifyStored(sourceId: string): Promise<number>;
   /** #5374: ADS-B lookup 2 check for a live position (no-op unless the node is flagged). */
@@ -119,7 +119,13 @@ function defaultDeps(): AircraftAgeOutDeps {
     isIgnoredCached: (nodeNum, sourceId) => databaseService.ignoredNodes.isIgnoredCached(nodeNum, sourceId),
     liftAircraftIgnore: (nodeNum, sourceId) => databaseService.liftAircraftIgnoreAsync(nodeNum, sourceId),
     clearAgedOut: (nodeNum, sourceId) => databaseService.clearAircraftAgedOutAsync(nodeNum, sourceId),
-    scheduleClassification: (sourceId, nodeNum) => aircraftClassificationService.schedule(sourceId, nodeNum),
+    scheduleClassification: (sourceId, nodeNum, reason) =>
+      // Don't forward a trailing `undefined`: the live path calls this with no
+      // reason and must reach schedule() as a 2-arg call so it keeps the
+      // emitting 'position' default (#6045). Only the replay branch passes one.
+      reason === undefined
+        ? aircraftClassificationService.schedule(sourceId, nodeNum)
+        : aircraftClassificationService.schedule(sourceId, nodeNum, reason),
     reclassifyStored: (sourceId) => aircraftClassificationService.reclassifySource(sourceId),
     onLiveAdsbPosition: (sourceId, nodeNum) => adsbMatchService.onLivePosition(sourceId, nodeNum),
   };
@@ -268,7 +274,11 @@ export class AircraftAgeOutService {
         // #5374: a flagged node's next live fix may be due its second ADS-B lookup.
         this.deps.onLiveAdsbPosition(sourceId, nodeNum);
       } else if (opts.classify !== false) {
-        this.deps.scheduleClassification(sourceId, nodeNum);
+        // Replayed / retained frame (fw2.8 NodeDB replay, retained MQTT): still
+        // (re)classify from the stored values, but SILENTLY — a stale fix must
+        // not fire the became-aircraft event (automations, ADS-B lookup,
+        // position request) as if the node were just seen aloft (#6045).
+        this.deps.scheduleClassification(sourceId, nodeNum, 'replay');
       }
     } catch (err) {
       logger.debug(`Aircraft position hook failed for ${nodeNum}@${sourceId}: ${err}`);

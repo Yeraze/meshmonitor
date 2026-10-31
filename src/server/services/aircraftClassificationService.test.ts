@@ -370,6 +370,26 @@ describe('AircraftClassificationService — node:aircraft events (D9)', () => {
     await svc.drainForTest();
     expect(emitFn).toHaveBeenCalledTimes(1);
   });
+
+  it('never emits for a replay job, even on a null->true transition (#6045)', async () => {
+    const { deps, nodes, emitFn, writeFn } = makeDeps();
+    nodes.set('src-a:300', makeNode({ nodeNum: 300, altitude: 6000, latitude: null, longitude: null }));
+    const svc = new AircraftClassificationService(deps);
+
+    // A replayed/retained frame (or a telemetry/NodeInfo-triggered recompute)
+    // still writes the verdict but must stay silent — no became-aircraft event.
+    svc.schedule('src-a', 300, 'replay');
+    await svc.drainForTest();
+    expect(emitFn).not.toHaveBeenCalled();
+    expect(writeFn).toHaveBeenCalled(); // verdict still computed + stored
+
+    // Contrast: a LIVE position for a different fresh node does emit.
+    nodes.set('src-a:301', makeNode({ nodeNum: 301, altitude: 6000, latitude: null, longitude: null }));
+    svc.schedule('src-a', 301, 'position');
+    await svc.drainForTest();
+    expect(emitFn).toHaveBeenCalledTimes(1);
+    expect(emitFn.mock.calls[0][0]).toMatchObject({ nodeNum: 301, previous: null, current: true });
+  });
 });
 
 describe('AircraftClassificationService — disabled source (D7)', () => {
