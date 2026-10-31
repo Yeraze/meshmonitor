@@ -387,7 +387,9 @@ describe('AircraftAgeOutService — live-position lift (D3)', () => {
     await Promise.resolve();
     expect(deps.getAgedOutAt).not.toHaveBeenCalled();
     expect(deps.liftAircraftIgnore).not.toHaveBeenCalled();
-    expect(deps.scheduleClassification).toHaveBeenCalledWith(SRC, 5);
+    // #6045: a replay reclassifies SILENTLY ('replay'), never as a live
+    // 'position' job that could fire the became-aircraft event.
+    expect(deps.scheduleClassification).toHaveBeenCalledWith(SRC, 5, 'replay');
     // #5374: a replay is not a "next live position" for ADS-B lookup 2.
     expect(deps.onLiveAdsbPosition).not.toHaveBeenCalled();
   });
