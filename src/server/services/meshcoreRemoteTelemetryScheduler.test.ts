@@ -18,9 +18,15 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   MeshCoreRemoteTelemetryScheduler,
   isNodeEligible,
+  isInRetryBurst,
   pickMostOverdue,
   recordToTelemetryRows,
   statusToTelemetryRows,
+  resolveRetryConfig,
+  DEFAULT_RETRY_CONFIG,
+  DEFAULT_RETRY_DELAY_SECONDS,
+  DEFAULT_RETRY_MAX_ATTEMPTS,
+  DEFAULT_RETRY_COOLDOWN_MINUTES,
   MIN_INTERVAL_BETWEEN_REQUESTS_MS,
 } from './meshcoreRemoteTelemetryScheduler.js';
 import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
@@ -933,5 +939,274 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager — receive-only (#454
 
     expect(getNodes).toHaveBeenCalled();
     expect((manager as any)._state.callOrder).toContain('requestRemoteTelemetry');
+  });
+});
+
+// ============ Retry-burst / cooldown (#6033) ============
+
+describe('resolveRetryConfig', () => {
+  it('uses the approved defaults (90s / 5 / 30m) on absent values', () => {
+    const cfg = resolveRetryConfig({});
+    expect(cfg.retryDelayMs).toBe(DEFAULT_RETRY_DELAY_SECONDS * 1000);
+    expect(cfg.maxAttempts).toBe(DEFAULT_RETRY_MAX_ATTEMPTS);
+    expect(cfg.cooldownMs).toBe(DEFAULT_RETRY_COOLDOWN_MINUTES * 60_000);
+    expect(cfg).toEqual(DEFAULT_RETRY_CONFIG);
+  });
+
+  it('parses and clamps per-source overrides', () => {
+    const cfg = resolveRetryConfig({ delaySeconds: '120', maxAttempts: '3', cooldownMinutes: '10' });
+    expect(cfg.retryDelayMs).toBe(120_000);
+    expect(cfg.maxAttempts).toBe(3);
+    expect(cfg.cooldownMs).toBe(10 * 60_000);
+  });
+
+  it('falls back to defaults on non-positive / garbage values', () => {
+    const cfg = resolveRetryConfig({ delaySeconds: '0', maxAttempts: '-2', cooldownMinutes: 'x' });
+    expect(cfg).toEqual(DEFAULT_RETRY_CONFIG);
+  });
+});
+
+describe('isNodeEligible / isInRetryBurst — retry policy', () => {
+  const now = 100_000_000;
+
+  it('a node with a fresh miss is eligible again after the retry delay, not the full interval', () => {
+    // interval 60min; one miss; last request 95s ago → inside interval but past 90s retry delay.
+    const node = makeNode({
+      telemetryIntervalMinutes: 60,
+      telemetryMissCount: 1,
+      lastTelemetryRequestAt: now - 95_000,
+    });
+    expect(isInRetryBurst(node, now)).toBe(true);
+    expect(isNodeEligible(node, now)).toBe(true);
+  });
+
+  it('a freshly-missed node is NOT eligible before the retry delay elapses', () => {
+    const node = makeNode({
+      telemetryIntervalMinutes: 60,
+      telemetryMissCount: 1,
+      lastTelemetryRequestAt: now - 30_000, // only 30s ago, < 90s
+    });
+    expect(isNodeEligible(node, now)).toBe(false);
+  });
+
+  it('a node in an active cooldown is never eligible, regardless of interval', () => {
+    const node = makeNode({
+      telemetryIntervalMinutes: 1,
+      telemetryMissCount: 0,
+      lastTelemetryRequestAt: now - 10 * 60_000, // far past the 1-min interval
+      telemetryCooldownUntil: now + 5 * 60_000, // 5 min of cooldown left
+    });
+    expect(isInRetryBurst(node, now)).toBe(false);
+    expect(isNodeEligible(node, now)).toBe(false);
+  });
+
+  it('resumes the normal interval once the cooldown has expired', () => {
+    const node = makeNode({
+      telemetryIntervalMinutes: 10,
+      telemetryMissCount: 0,
+      lastTelemetryRequestAt: now - 11 * 60_000,
+      telemetryCooldownUntil: now - 1000, // expired
+    });
+    expect(isNodeEligible(node, now)).toBe(true);
+  });
+});
+
+describe('pickMostOverdue — due normal nodes take priority over retries', () => {
+  const now = 100_000_000;
+
+  it('prefers a normal-interval-due node over a retry-burst node', () => {
+    const retryNode = makeNode({
+      publicKey: 'retry',
+      telemetryIntervalMinutes: 60,
+      telemetryMissCount: 2,
+      lastTelemetryRequestAt: now - 10 * 60_000, // long past the 90s retry delay
+    });
+    const normalNode = makeNode({
+      publicKey: 'normal',
+      telemetryIntervalMinutes: 5,
+      telemetryMissCount: 0,
+      lastTelemetryRequestAt: now - 6 * 60_000, // just past its interval
+    });
+    const picked = pickMostOverdue([retryNode, normalNode], now);
+    expect(picked?.publicKey).toBe('normal');
+  });
+
+  it('falls back to a retry node when no normal node is due', () => {
+    const retryNode = makeNode({
+      publicKey: 'retry',
+      telemetryIntervalMinutes: 60,
+      telemetryMissCount: 2,
+      lastTelemetryRequestAt: now - 10 * 60_000,
+    });
+    const notDue = makeNode({
+      publicKey: 'notdue',
+      telemetryIntervalMinutes: 60,
+      telemetryMissCount: 0,
+      lastTelemetryRequestAt: now - 60_000, // 1 min ago, not due
+    });
+    expect(pickMostOverdue([retryNode, notDue], now)?.publicKey).toBe('retry');
+  });
+});
+
+describe('MeshCoreRemoteTelemetryScheduler — retry accounting', () => {
+  function makeRetryDb(opts: {
+    nodes: DbMeshCoreNode[];
+    written: number;
+    settings?: Record<string, string>;
+  }) {
+    const markTelemetrySuccess = vi.fn().mockResolvedValue(undefined);
+    const setTelemetryRetryState = vi.fn().mockResolvedValue(undefined);
+    const markTelemetryRequested = vi.fn().mockResolvedValue(undefined);
+    const settingsMap = opts.settings ?? {};
+    return {
+      spies: { markTelemetrySuccess, setTelemetryRetryState, markTelemetryRequested },
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue(opts.nodes),
+          markTelemetryRequested,
+          markTelemetrySuccess,
+          setTelemetryRetryState,
+          upsertNode: vi.fn().mockResolvedValue(undefined),
+          markHeard: vi.fn().mockResolvedValue(undefined),
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(opts.written) },
+        settings: {
+          getSettingForSource: vi.fn(async (_sourceId: string | null | undefined, key: string) =>
+            key in settingsMap ? settingsMap[key] : null,
+          ),
+        },
+      },
+    };
+  }
+
+  it('records a miss (missCount=1, no cooldown) when the poll returns no rows', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({ recordsToReturn: [] });
+    const node = makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null, telemetryMissCount: 0 });
+    const { spies, database } = makeRetryDb({ nodes: [node], written: 0 });
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database,
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(spies.markTelemetrySuccess).not.toHaveBeenCalled();
+    expect(spies.setTelemetryRetryState).toHaveBeenCalledWith(
+      'src-a',
+      'a',
+      { missCount: 1, cooldownUntil: null },
+      now,
+    );
+  });
+
+  it('after the 5th miss, arms a 30-minute cooldown and resets the counter', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({ recordsToReturn: [] });
+    // 4 misses already recorded → this empty poll is the 5th.
+    const node = makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null, telemetryMissCount: 4 });
+    const { spies, database } = makeRetryDb({ nodes: [node], written: 0 });
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database,
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(spies.setTelemetryRetryState).toHaveBeenCalledWith(
+      'src-a',
+      'a',
+      { missCount: 0, cooldownUntil: now + DEFAULT_RETRY_COOLDOWN_MINUTES * 60_000 },
+      now,
+    );
+  });
+
+  it('a successful poll resets the counter via markTelemetrySuccess', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({ recordsToReturn: [{ channel: 1, type: 116, value: 3.7 }] });
+    const node = makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null, telemetryMissCount: 3 });
+    const { spies, database } = makeRetryDb({ nodes: [node], written: 1 });
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database,
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(spies.markTelemetrySuccess).toHaveBeenCalledWith('src-a', 'a', now);
+    expect(spies.setTelemetryRetryState).not.toHaveBeenCalled();
+  });
+
+  it('honours a per-source retry-attempt override from settings', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({ recordsToReturn: [] });
+    // maxAttempts overridden to 2; node already has 1 miss → this empty poll is the 2nd → cooldown.
+    const node = makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null, telemetryMissCount: 1 });
+    const { spies, database } = makeRetryDb({
+      nodes: [node],
+      written: 0,
+      settings: { telemetryRetryMaxAttempts: '2', telemetryRetryCooldownMinutes: '10' },
+    });
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database,
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(spies.setTelemetryRetryState).toHaveBeenCalledWith(
+      'src-a',
+      'a',
+      { missCount: 0, cooldownUntil: now + 10 * 60_000 },
+      now,
+    );
+    // Confirms the scheduler read the PER-SOURCE key (#5080), not a bare global.
+    expect(database.settings.getSettingForSource).toHaveBeenCalledWith('src-a', 'telemetryRetryMaxAttempts');
+  });
+
+  it('survives a restart: a persisted cooldown still blocks a fresh scheduler and is not reset', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({});
+    // Simulate the DB row as it would be re-read after a process restart: a
+    // cooldown written before the restart is still in the future.
+    const node = makeNode({
+      publicKey: 'a',
+      telemetryEnabled: true,
+      telemetryIntervalMinutes: 1,
+      lastTelemetryRequestAt: now - 10 * 60_000,
+      telemetryMissCount: 0,
+      telemetryCooldownUntil: now + 20 * 60_000,
+    });
+    const { spies, database } = makeRetryDb({ nodes: [node], written: 1 });
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database,
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    // No request issued, cooldown untouched, no re-arm.
+    expect(spies.markTelemetryRequested).not.toHaveBeenCalled();
+    expect(spies.setTelemetryRetryState).not.toHaveBeenCalled();
+    expect(spies.markTelemetrySuccess).not.toHaveBeenCalled();
+    expect((manager as any)._state.lastRequestedKey).toBeNull();
+  });
+
+  it('a retry-eligible node still respects the per-source 60s gate', async () => {
+    const now = 10_000_000;
+    // Manager transmitted 30s ago → under the 60s minimum, so even a
+    // retry-eligible node must be skipped (airtime never exceeds the ceiling).
+    const manager = makeFakeManager({ lastMeshTxAt: now - 30_000 });
+    const node = makeNode({
+      publicKey: 'a',
+      telemetryEnabled: true,
+      telemetryMissCount: 1,
+      lastTelemetryRequestAt: now - 95_000, // past 90s retry delay
+    });
+    const { spies, database } = makeRetryDb({ nodes: [node], written: 0 });
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database,
+      minIntervalMs: MIN_INTERVAL_BETWEEN_REQUESTS_MS,
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(spies.markTelemetryRequested).not.toHaveBeenCalled();
+    expect(spies.setTelemetryRetryState).not.toHaveBeenCalled();
   });
 });

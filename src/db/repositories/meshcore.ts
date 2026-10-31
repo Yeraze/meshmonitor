@@ -142,6 +142,16 @@ export interface DbMeshCoreNode {
   telemetryIntervalMinutes?: number | null;
   lastTelemetryRequestAt?: number | null;
   /**
+   * Retry-burst / cooldown state (migration 220, #6033). Persisted so a
+   * settings save or a process restart never re-arms a cooldown or resets
+   * the miss count. `lastTelemetrySuccessAt` = last poll that returned rows;
+   * `telemetryMissCount` = consecutive empty/timeout count; `telemetryCooldownUntil`
+   * (epoch ms) blocks eligibility until it passes. NULL = none.
+   */
+  lastTelemetrySuccessAt?: number | null;
+  telemetryMissCount?: number | null;
+  telemetryCooldownUntil?: number | null;
+  /**
    * Per-node neighbours-retrieval config (migration 153, #4618). Controls
    * whether the MeshCoreNeighboursScheduler periodically requests this
    * node's neighbour table and at what cadence — independent of the
@@ -1097,6 +1107,60 @@ export class MeshCoreRepository extends BaseRepository {
     await this.db
       .update(meshcoreNodes)
       .set({ lastTelemetryRequestAt: when, updatedAt: when })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Record a SUCCESSFUL scheduled telemetry poll (#6033). Stamps
+   * `lastTelemetrySuccessAt`, clears the consecutive-miss counter, and
+   * lifts any active cooldown — a single good response returns the node to
+   * the normal interval. Persisted (not an in-memory field) so a restart or
+   * a settings save cannot un-reset it.
+   */
+  async markTelemetrySuccess(
+    sourceId: string,
+    publicKey: string,
+    when: number = this.now(),
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.markTelemetrySuccess requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({
+        lastTelemetrySuccessAt: when,
+        telemetryMissCount: 0,
+        telemetryCooldownUntil: null,
+        updatedAt: when,
+      })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Persist the retry-burst / cooldown state after an empty/timeout poll
+   * (#6033). The scheduler computes the new `missCount` and, once the attempt
+   * cap is hit, the `cooldownUntil` (epoch ms) — this method only writes them.
+   * Writing explicit values (rather than a SQL increment) keeps the statement
+   * dialect-agnostic and the arithmetic unit-testable in the scheduler.
+   */
+  async setTelemetryRetryState(
+    sourceId: string,
+    publicKey: string,
+    state: { missCount: number; cooldownUntil: number | null },
+    when: number = this.now(),
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setTelemetryRetryState requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({
+        telemetryMissCount: state.missCount,
+        telemetryCooldownUntil: state.cooldownUntil,
+        updatedAt: when,
+      })
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
   }
 

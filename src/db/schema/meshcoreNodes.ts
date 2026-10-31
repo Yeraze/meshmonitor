@@ -100,6 +100,15 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   telemetryEnabled: integer('telemetryEnabled', { mode: 'boolean' }).default(false),
   telemetryIntervalMinutes: integer('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: integer('lastTelemetryRequestAt'),
+  // Retry-burst / cooldown state (migration 220, #6033). Distinct from
+  // lastTelemetryRequestAt (a request stamp) so a save or restart never
+  // re-arms a cooldown or resets the miss count. lastTelemetrySuccessAt is
+  // the last time a scheduled poll actually returned rows; telemetryMissCount
+  // is the consecutive empty/timeout count; telemetryCooldownUntil (epoch ms)
+  // blocks eligibility until it passes. NULL = none.
+  lastTelemetrySuccessAt: integer('lastTelemetrySuccessAt'),
+  telemetryMissCount: integer('telemetryMissCount').default(0),
+  telemetryCooldownUntil: integer('telemetryCooldownUntil'),
 
   // Per-node neighbours-retrieval config (migration 153, #4618). Read by the
   // MeshCoreNeighboursScheduler; a separate column set from the telemetry trio
@@ -200,6 +209,10 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   telemetryEnabled: pgBoolean('telemetryEnabled').default(false),
   telemetryIntervalMinutes: pgInteger('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: pgBigint('lastTelemetryRequestAt', { mode: 'number' }),
+  // Retry-burst / cooldown state (migration 220, #6033). See SQLite comment.
+  lastTelemetrySuccessAt: pgBigint('lastTelemetrySuccessAt', { mode: 'number' }),
+  telemetryMissCount: pgInteger('telemetryMissCount').default(0),
+  telemetryCooldownUntil: pgBigint('telemetryCooldownUntil', { mode: 'number' }),
 
   neighborsEnabled: pgBoolean('neighborsEnabled').default(false),
   neighborsIntervalMinutes: pgInteger('neighborsIntervalMinutes').default(60),
@@ -287,6 +300,10 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   telemetryEnabled: myBoolean('telemetryEnabled').default(false),
   telemetryIntervalMinutes: myInt('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: myBigint('lastTelemetryRequestAt', { mode: 'number' }),
+  // Retry-burst / cooldown state (migration 220, #6033). See SQLite comment.
+  lastTelemetrySuccessAt: myBigint('lastTelemetrySuccessAt', { mode: 'number' }),
+  telemetryMissCount: myInt('telemetryMissCount').default(0),
+  telemetryCooldownUntil: myBigint('telemetryCooldownUntil', { mode: 'number' }),
 
   neighborsEnabled: myBoolean('neighborsEnabled').default(false),
   neighborsIntervalMinutes: myInt('neighborsIntervalMinutes').default(60),
