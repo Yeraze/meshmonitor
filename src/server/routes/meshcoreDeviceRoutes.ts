@@ -18,6 +18,7 @@ import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisable
 import { meshcoreChannelIdx } from '../services/socketEventGates.js';
 import type { ResourceType, PermissionAction } from '../../types/permission.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { assertSafeHost, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { isReactionsOutboundEnabled } from '../services/meshcoreReactionSend.js';
 import {
   type MeshCoreAdvertMode,
@@ -82,6 +83,26 @@ router.post('/connect', extendRequestTimeout(CONNECT_TIMEOUT_MS), meshcoreDevice
     });
     if (!validation.valid) {
       return res.status(400).json({ success: false, error: validation.error });
+    }
+
+    // SSRF-05 (issue #6080): a TCP connect opens a raw socket to an operator-
+    // supplied host. Connecting to a LAN MeshCore device IS the feature, so
+    // RFC1918 stays allowed (non-strict, loopback blocked), but reject loopback,
+    // link-local and cloud-metadata targets so this endpoint can't be turned
+    // into an internal port scanner / IMDS reach. DNS resolution of the host is
+    // validated too, closing the hostname path.
+    if (connectionType === 'tcp' && typeof tcpHost === 'string' && tcpHost.trim().length > 0) {
+      try {
+        await assertSafeHost(tcpHost.trim(), { strict: false });
+      } catch (err) {
+        if (err instanceof SsrfBlockedError) {
+          return res.status(400).json({
+            success: false,
+            error: 'TCP host is not permitted (loopback, link-local and metadata addresses are blocked)',
+          });
+        }
+        throw err;
+      }
     }
 
     const firmwareType: 'companion' | 'repeater' = deviceType === 'repeater' ? 'repeater' : 'companion';

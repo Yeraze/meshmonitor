@@ -1,6 +1,11 @@
 import type { TranslationProvider } from '../../../../types/translation.js';
 import type { ITranslationProvider, ProviderConfig, TranslationProviderResult } from './types.js';
 import { buildServiceEndpoint } from './translateUtils.js';
+import { assertSafeUrl } from '../../../utils/ssrfGuard.js';
+import { logger } from '../../../../utils/logger.js';
+
+/** SSRF guard options for translation backends (SSRF-02, issue #6061). */
+const TRANSLATION_SSRF_OPTS = { strict: false, allowLoopback: true } as const;
 
 export class DeepLProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'deepl';
@@ -54,6 +59,8 @@ export class DeepLProvider implements ITranslationProvider {
       body.source_lang = this.mapSourceLanguage(sourceLang);
     }
 
+    // Guarded against SSRF; upstream body never surfaced to the caller (SSRF-02).
+    await assertSafeUrl(endpoint, TRANSLATION_SSRF_OPTS);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -66,7 +73,8 @@ export class DeepLProvider implements ITranslationProvider {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      throw new Error(`DeepL API error (${response.status}): ${errText || response.statusText}`);
+      if (errText) logger.debug(`DeepL error body (${response.status}): ${errText}`);
+      throw new Error(`DeepL API error (${response.status}): ${response.statusText || 'request failed'}`);
     }
 
     const data = (await response.json()) as {

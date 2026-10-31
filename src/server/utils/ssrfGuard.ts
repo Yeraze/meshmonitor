@@ -85,6 +85,34 @@ function classifyIPv4(ip: string): {
   };
 }
 
+/**
+ * Extract the embedded IPv4 address from an IPv4-mapped IPv6 address, in BOTH
+ * representations, or null if `ip` is not IPv4-mapped.
+ *
+ * The WHATWG URL parser (and Node's `net`/`dns` layers) normalize every
+ * IPv4-mapped form to the hex-group representation — `::ffff:127.0.0.1` becomes
+ * `::ffff:7f00:1` — before this guard ever sees the address. A regex that only
+ * matched the dotted-decimal form was therefore dead code at runtime, letting
+ * `http://[::ffff:7f00:1]/` (loopback) and `http://[::ffff:a9fe:a9fe]/`
+ * (169.254.169.254 / cloud metadata) slip past classification entirely
+ * (SSRF-01, issue #6060). Normalizing both forms here closes that bypass for
+ * every caller of the guard.
+ */
+function ipv4FromMappedV6(ip: string): string | null {
+  const lower = ip.toLowerCase();
+  // Dotted-decimal form: ::ffff:127.0.0.1
+  const dotted = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (dotted) return dotted[1];
+  // Hex-group form: ::ffff:7f00:1 (what the URL/DNS layers actually emit).
+  const hex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hex) {
+    const hi = parseInt(hex[1], 16);
+    const lo = parseInt(hex[2], 16);
+    return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+  }
+  return null;
+}
+
 function classifyIPv6(ip: string): {
   loopback: boolean;
   linkLocal: boolean;
@@ -93,10 +121,11 @@ function classifyIPv6(ip: string): {
   reserved: boolean;
 } {
   const lower = ip.toLowerCase();
-  // Normalize IPv4-mapped like ::ffff:127.0.0.1 by extracting the v4 portion.
-  const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) {
-    const v4 = classifyIPv4(mapped[1]);
+  // Normalize IPv4-mapped (both ::ffff:127.0.0.1 and ::ffff:7f00:1) to the v4
+  // portion and classify as IPv4.
+  const mappedV4 = ipv4FromMappedV6(lower);
+  if (mappedV4) {
+    const v4 = classifyIPv4(mappedV4);
     return {
       loopback: v4.loopback,
       linkLocal: v4.linkLocal,
@@ -119,6 +148,14 @@ export interface SsrfCheckOptions {
   protocols?: string[];
   /** When true, also rejects RFC1918 private ranges and IPv6 ULA. */
   strict?: boolean;
+  /**
+   * When true, permit loopback (127.0.0.0/8, ::1) targets. Used by features
+   * whose legitimate default IS loopback — the bundled Apprise API server lives
+   * on `http://localhost:8000` inside the Docker image, and a self-hosted
+   * translation backend may run on the same host. Link-local, cloud-metadata,
+   * multicast, broadcast and reserved ranges are still blocked regardless.
+   */
+  allowLoopback?: boolean;
 }
 
 export class SsrfBlockedError extends Error {
@@ -140,7 +177,6 @@ export async function assertSafeUrl(
   opts: SsrfCheckOptions = {}
 ): Promise<URL> {
   const protocols = opts.protocols ?? ['http:', 'https:'];
-  const strict = opts.strict ?? false;
 
   let parsed: URL;
   try {
@@ -161,21 +197,46 @@ export async function assertSafeUrl(
     throw new SsrfBlockedError('URL has no host', 'no_host');
   }
 
+  await assertSafeHost(host, opts);
+
+  return parsed;
+}
+
+/**
+ * Resolve a bare host (hostname or IP literal, with or without IPv6 brackets)
+ * and reject it if it points at a disallowed range. Throws SsrfBlockedError on
+ * a block; resolves to the classified IP list on success.
+ *
+ * Shared by `assertSafeUrl` and by callers that only have a host/port pair
+ * (e.g. the MeshCore TCP connect endpoint, which opens a raw socket rather than
+ * an HTTP fetch).
+ */
+export async function assertSafeHost(
+  rawHost: string,
+  opts: SsrfCheckOptions = {}
+): Promise<Array<{ address: string; family: number }>> {
+  const strict = opts.strict ?? false;
+  const allowLoopback = opts.allowLoopback ?? false;
+
+  // URL.hostname keeps brackets for IPv6 literals (e.g. "[::1]"). Strip them
+  // before passing to isIP() and for downstream comparisons.
+  const host = rawHost.startsWith('[') && rawHost.endsWith(']')
+    ? rawHost.slice(1, -1)
+    : rawHost;
+
+  if (!host) {
+    throw new SsrfBlockedError('Host is empty', 'no_host');
+  }
+
   if (BLOCKED_HOSTS.has(host.toLowerCase())) {
     throw new SsrfBlockedError('Target host is blocked', 'blocked_host');
   }
 
-  // URL.hostname keeps brackets for IPv6 literals (e.g. "[::1]"). Strip them
-  // before passing to isIP() and for downstream comparisons.
-  const bareHost = host.startsWith('[') && host.endsWith(']')
-    ? host.slice(1, -1)
-    : host;
-
   // If host is already an IP literal, classify directly; otherwise resolve DNS.
-  const literalIpFamily = isIP(bareHost);
+  const literalIpFamily = isIP(host);
   let resolved: Array<{ address: string; family: number }>;
   if (literalIpFamily) {
-    resolved = [{ address: bareHost, family: literalIpFamily }];
+    resolved = [{ address: host, family: literalIpFamily }];
   } else {
     try {
       resolved = await lookup(host, { all: true });
@@ -188,12 +249,16 @@ export async function assertSafeUrl(
   }
 
   for (const { address, family } of resolved) {
-    if (ALWAYS_BLOCKED_IPS.has(address.toLowerCase())) {
+    // Normalize an IPv4-mapped IPv6 literal (either textual form) to the v4
+    // address before the always-blocked check so the hex-group cloud-metadata
+    // form (::ffff:a9fe:a9fe) can never slip past it (SSRF-01, issue #6060).
+    const normalized = ipv4FromMappedV6(address) ?? address;
+    if (ALWAYS_BLOCKED_IPS.has(normalized.toLowerCase())) {
       throw new SsrfBlockedError('Cloud metadata target blocked', 'metadata');
     }
     if (family === 4) {
       const c = classifyIPv4(address);
-      if (c.loopback) throw new SsrfBlockedError('Loopback target blocked', 'loopback');
+      if (c.loopback && !allowLoopback) throw new SsrfBlockedError('Loopback target blocked', 'loopback');
       if (c.linkLocal) throw new SsrfBlockedError('Link-local target blocked', 'link_local');
       if (c.multicast) throw new SsrfBlockedError('Multicast target blocked', 'multicast');
       if (c.broadcast) throw new SsrfBlockedError('Broadcast target blocked', 'broadcast');
@@ -203,7 +268,7 @@ export async function assertSafeUrl(
       }
     } else if (family === 6) {
       const c = classifyIPv6(address);
-      if (c.loopback) throw new SsrfBlockedError('Loopback target blocked', 'loopback');
+      if (c.loopback && !allowLoopback) throw new SsrfBlockedError('Loopback target blocked', 'loopback');
       if (c.linkLocal) throw new SsrfBlockedError('Link-local target blocked', 'link_local');
       if (c.multicast) throw new SsrfBlockedError('Multicast target blocked', 'multicast');
       if (c.reserved) throw new SsrfBlockedError('Reserved-range target blocked', 'reserved');
@@ -213,7 +278,7 @@ export async function assertSafeUrl(
     }
   }
 
-  return parsed;
+  return resolved;
 }
 
 /**

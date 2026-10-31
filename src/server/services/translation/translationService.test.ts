@@ -14,6 +14,11 @@ import {
 } from './translationCache.js';
 import { computeTranslationCacheKey } from './cacheKey.js';
 
+// Translation providers now SSRF-guard the endpoint (SSRF-02, #6061), resolving
+// the host via DNS. Stub the resolver to a public IP so these tests (which mock
+// fetch) reach the mocked fetch rather than a real/failed DNS lookup.
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]) }));
+
 vi.mock('../../../services/database.js', () => ({
   default: {
     getSettingAsync: vi.fn(),

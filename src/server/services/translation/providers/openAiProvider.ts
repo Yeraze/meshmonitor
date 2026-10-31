@@ -1,6 +1,11 @@
 import type { TranslationProvider } from '../../../../types/translation.js';
 import type { ITranslationProvider, ProviderConfig, TranslationProviderResult } from './types.js';
 import { buildServiceEndpoint } from './translateUtils.js';
+import { assertSafeUrl } from '../../../utils/ssrfGuard.js';
+import { logger } from '../../../../utils/logger.js';
+
+/** SSRF guard options for translation backends (SSRF-02, issue #6061). */
+const TRANSLATION_SSRF_OPTS = { strict: false, allowLoopback: true } as const;
 
 export class OpenAIProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'openai';
@@ -43,6 +48,8 @@ Guidelines:
       temperature: 0.1,
     };
 
+    // Guarded against SSRF; upstream body never surfaced to the caller (SSRF-02).
+    await assertSafeUrl(endpoint, TRANSLATION_SSRF_OPTS);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers,
@@ -52,7 +59,8 @@ Guidelines:
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      throw new Error(`OpenAI-compatible endpoint error (${response.status}): ${errText || response.statusText}`);
+      if (errText) logger.debug(`OpenAI-compatible endpoint error body (${response.status}): ${errText}`);
+      throw new Error(`OpenAI-compatible endpoint error (${response.status}): ${response.statusText || 'request failed'}`);
     }
 
     const data = (await response.json()) as {

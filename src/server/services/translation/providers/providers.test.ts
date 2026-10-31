@@ -8,6 +8,14 @@ import {
   GoogleProvider,
 } from './index.js';
 
+// Providers now run the configured endpoint through the SSRF guard (SSRF-02,
+// issue #6061), which resolves the host via DNS. The test hostnames are not
+// real, so stub the resolver to a public IP; that lets the guard pass through to
+// the stubbed `global.fetch` (which is what these tests actually assert on).
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+}));
+
 describe('Translation Providers', () => {
   const originalFetch = global.fetch;
 
@@ -220,7 +228,7 @@ describe('Translation Providers', () => {
       );
     });
 
-    it('should throw descriptive error on non-ok HTTP response', async () => {
+    it('throws a status-only error on non-ok HTTP response (SSRF-02: no body reflection)', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 400,
@@ -228,12 +236,15 @@ describe('Translation Providers', () => {
         text: async () => '{"message":"Value for target_lang not supported"}',
       } as unknown as Response);
 
-      await expect(
-        provider.translate('Hello', 'auto', 'invalid', {
-          apiKey: 'test-key:fx',
-          deeplUrl: 'https://api-free.deepl.com/v2/translate',
-        })
-      ).rejects.toThrow('DeepL API error (400): {"message":"Value for target_lang not supported"}');
+      // The upstream body is an SSRF exfiltration channel when the endpoint is
+      // an internal service (#6061): it must NOT appear in the thrown error.
+      const err = await provider.translate('Hello', 'auto', 'invalid', {
+        apiKey: 'test-key:fx',
+        deeplUrl: 'https://api-free.deepl.com/v2/translate',
+      }).then(() => null, (e: Error) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err!.message).toBe('DeepL API error (400): Bad Request');
+      expect(err!.message).not.toContain('target_lang not supported');
     });
 
     it('should fall back to statusText on non-ok HTTP response when text() fails', async () => {
@@ -356,7 +367,7 @@ describe('Translation Providers', () => {
       );
     });
 
-    it('should throw descriptive error on non-ok HTTP response', async () => {
+    it('throws a status-only error on non-ok HTTP response (SSRF-02: no body reflection)', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
@@ -364,9 +375,12 @@ describe('Translation Providers', () => {
         text: async () => 'Server error',
       } as unknown as Response);
 
-      await expect(
-        provider.translate('Hello', 'auto', 'nb', { url: 'http://libretranslate:5000/translate' })
-      ).rejects.toThrow('LibreTranslate error (500): Server error');
+      const err = await provider
+        .translate('Hello', 'auto', 'nb', { url: 'http://libretranslate:5000/translate' })
+        .then(() => null, (e: Error) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err!.message).toBe('LibreTranslate error (500): Internal Server Error');
+      expect(err!.message).not.toContain('Server error');
     });
 
     it('should fall back to statusText on non-ok HTTP response when text() fails', async () => {
@@ -516,7 +530,7 @@ describe('Translation Providers', () => {
       );
     });
 
-    it('should throw descriptive error on non-ok HTTP response', async () => {
+    it('throws a status-only error on non-ok HTTP response (SSRF-02: no body reflection)', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 401,
@@ -524,9 +538,12 @@ describe('Translation Providers', () => {
         text: async () => 'Incorrect API key',
       } as unknown as Response);
 
-      await expect(
-        provider.translate('Hello', 'auto', 'nb', { openAiBaseUrl: 'http://host:11434/v1/chat/completions' })
-      ).rejects.toThrow('OpenAI-compatible endpoint error (401): Incorrect API key');
+      const err = await provider
+        .translate('Hello', 'auto', 'nb', { openAiBaseUrl: 'http://host:11434/v1/chat/completions' })
+        .then(() => null, (e: Error) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err!.message).toBe('OpenAI-compatible endpoint error (401): Unauthorized');
+      expect(err!.message).not.toContain('Incorrect API key');
     });
 
     it('should fall back to statusText on non-ok HTTP response when text() fails', async () => {

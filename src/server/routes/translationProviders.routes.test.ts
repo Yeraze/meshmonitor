@@ -23,6 +23,13 @@ vi.mock('../middleware/rateLimiters.js', async (importOriginal) => ({
   translateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
+// The translation providers now SSRF-guard the endpoint (SSRF-02, issue #6061),
+// resolving the host via DNS. Stub the resolver to a public IP so the guard lets
+// the (stubbed) fetch through for the non-real test hostnames.
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+}));
+
 const SECRET_VALUE = (key: string) => `SECRET-${key}`;
 
 describe('translation provider settings routes (#5518)', () => {

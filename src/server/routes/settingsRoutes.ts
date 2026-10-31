@@ -25,6 +25,7 @@ import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { assertSafeUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { DEFAULT_MESHTASTIC_SOURCE_SETTING, applyDefaultMeshtasticSource } from '../utils/defaultMeshtasticSource.js';
@@ -402,7 +403,14 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (!isAdminWriter && isSecretSettingKey(key)) continue;
       // Admin-only keys (#5734): dropped for non-admins, like secrets above.
       if (!isAdminWriter && ADMIN_ONLY_SETTINGS_KEYS.has(key)) continue;
-      if (sourceId && GLOBAL_ONLY_SETTINGS_KEYS.has(key)) {
+      // Global-only keys (AUTHZ-06, issue #6070). These are install-wide and
+      // security-relevant (externalUrl, pkiDmDecryptionGloballyEnabled,
+      // position_estimation_*, …). They are dropped from a per-source save
+      // (meaningless in a source namespace) AND from any non-admin save — a
+      // non-admin holding settings:write on a single source must not be able to
+      // overwrite them via a global (no-sourceId) POST. Only an admin writing
+      // in the global scope reaches the write below.
+      if (GLOBAL_ONLY_SETTINGS_KEYS.has(key) && (sourceId || !isAdminWriter)) {
         ignoredKeys.push(key);
         continue;
       }
@@ -1635,8 +1643,16 @@ router.post('/test-apprise', requirePermission('settings', 'write'), async (req:
       return res.status(400).json({ ok: false, error: validation.error || 'Invalid URL', url: target });
     }
     const probeUrl = validation.probeUrl;
+    // Route the probe through the SSRF guard (SSRF-04, issue #6079). The
+    // hand-rolled denylist in validateAppriseProbeUrl only blocked the
+    // dotted-decimal 169.254/16 form and two metadata hostnames — it missed the
+    // IPv4-mapped IPv6 metadata form and every other link-local/multicast range.
+    // allowLoopback keeps the bundled Apprise server on localhost:8000 testable;
+    // non-strict keeps LAN/docker targets testable. A blocked target throws
+    // SsrfBlockedError, handled in the catch as a 400.
     const start = Date.now();
     try {
+      await assertSafeUrl(probeUrl, { strict: false, allowLoopback: true });
       const response = await fetch(probeUrl, {
         method: 'GET',
         signal: AbortSignal.timeout(5000),
@@ -1660,6 +1676,11 @@ router.post('/test-apprise', requirePermission('settings', 'write'), async (req:
         url: target,
       });
     } catch (error: any) {
+      // A blocked target is a validation failure, not a probe result — return
+      // 400 so we don't hand back a timing/status oracle for it (SSRF-04).
+      if (error instanceof SsrfBlockedError) {
+        return res.status(400).json({ ok: false, error: 'Host is not permitted', url: target });
+      }
       const latencyMs = Date.now() - start;
       const isTimeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
       const message = isTimeout
