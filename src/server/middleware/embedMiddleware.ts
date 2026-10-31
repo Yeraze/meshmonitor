@@ -40,10 +40,22 @@ export function createEmbedCspMiddleware() {
         ? '*'
         : ['\'self\'', ...profile.allowedOrigins].join(' ');
 
-      // Build a minimal embed-specific CSP
+      // Build a minimal embed-specific CSP.
+      //
+      // script-src drops 'unsafe-inline' in favour of the per-request nonce set
+      // by dynamicCspMiddleware (MISC-09 / #6085). The embed HTML's own scripts
+      // are all external `src=` files (covered by 'self'); the only inline
+      // script is the optional analytics snippet, which carries the nonce
+      // placeholder that staticServing substitutes at serve time. If no nonce
+      // is present (unexpected — the global middleware always sets one), fall
+      // back to 'unsafe-inline' so the page keeps working.
+      const nonce = res.locals.cspNonce as string | undefined;
+      const scriptSrc = nonce ? `script-src 'self' 'nonce-${nonce}'` : "script-src 'self' 'unsafe-inline'";
       const cspDirectives = [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline'",
+        scriptSrc,
+        // style-src keeps 'unsafe-inline': the embedded Leaflet/MapLibre map
+        // sets per-element style attributes that a nonce cannot cover.
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://basemaps.cartocdn.com https://server.arcgisonline.com",
         "connect-src 'self' ws: wss: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://basemaps.cartocdn.com https://server.arcgisonline.com",

@@ -25,6 +25,20 @@ import { robotsTxtHandler } from './middleware/robotsTag.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import { rewriteHtml } from './utils/htmlRewriter.js';
 import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
+import { CSP_NONCE_PLACEHOLDER } from './middleware/dynamicCsp.js';
+
+/**
+ * Send a cached HTML page, substituting the per-request CSP nonce for the
+ * `__CSP_NONCE__` placeholder baked into the cached markup. The nonce is set on
+ * `res.locals.cspNonce` by `dynamicCspMiddleware` (for the main SPA) and, for
+ * the embed page, by `createEmbedCspMiddleware`. If no nonce is present the
+ * placeholder is stripped, which is correct in development (where `script-src`
+ * carries `'unsafe-inline'` and no nonce is enforced).
+ */
+function sendHtmlWithNonce(res: express.Response, html: string): void {
+  const nonce = (res.locals.cspNonce as string | undefined) ?? '';
+  res.type('html').send(html.split(CSP_NONCE_PLACEHOLDER).join(nonce));
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,7 +107,11 @@ async function getAnalyticsScript(): Promise<string> {
     if (provider === 'none') return '';
     const configStr = await databaseService.settings.getSetting('analyticsConfig') || '{}';
     const config = JSON.parse(configStr);
-    return generateAnalyticsScript(provider, config);
+    // Stamp each emitted inline <script> with the nonce placeholder; the real
+    // per-request nonce is substituted at serve time (sendHtmlWithNonce). The
+    // HTML is cached once, so a placeholder — not a live nonce — must be baked
+    // in here (MISC-09 / #6085).
+    return generateAnalyticsScript(provider, config, CSP_NONCE_PLACEHOLDER);
   } catch {
     return '';
   }
@@ -165,7 +183,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
       }
       res.setHeader('Content-Type', 'text/html');
       res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
-      res.send(cachedRewrittenEmbedHtml);
+      sendHtmlWithNonce(res, cachedRewrittenEmbedHtml);
     });
 
     // Catch all handler for SPA routing - but exclude /api
@@ -178,7 +196,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
       }
       res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
-      res.type('html').send(cachedRewrittenHtml);
+      sendHtmlWithNonce(res, cachedRewrittenHtml);
     });
     // Use a route pattern that Express 5 can handle
     app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -202,7 +220,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
       }
       res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
-      res.type('html').send(cachedRewrittenHtml);
+      sendHtmlWithNonce(res, cachedRewrittenHtml);
     });
   } else {
     // Normal static file serving for root deployment.
@@ -231,7 +249,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
       }
       res.setHeader('Content-Type', 'text/html');
       res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
-      res.send(cachedRewrittenEmbedHtml);
+      sendHtmlWithNonce(res, cachedRewrittenEmbedHtml);
     });
 
     // Catch all handler for SPA routing - skip API routes
@@ -248,7 +266,7 @@ export function configureStaticServing(app: express.Express, deps: StaticServing
         cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
       }
       res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
-      res.type('html').send(cachedRewrittenHtml);
+      sendHtmlWithNonce(res, cachedRewrittenHtml);
     });
   }
 }

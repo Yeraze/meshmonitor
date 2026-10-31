@@ -14,7 +14,7 @@ vi.mock('../../services/database.js', () => ({
   },
 }));
 
-import { buildCspHeader, extractHostFromUrl } from './dynamicCsp.js';
+import { buildCspHeader, extractHostFromUrl, generateCspNonce } from './dynamicCsp.js';
 import databaseService from '../../services/database.js';
 import { TILESETS } from '../../config/tilesets.js';
 
@@ -91,6 +91,56 @@ describe('buildCspHeader - frame-ancestors', () => {
   });
 });
 
+describe('buildCspHeader - script-src nonce hardening (MISC-09 / #6085)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('production script-src is strict with no nonce when none is supplied', async () => {
+    const header = await buildCspHeader(true, false, []);
+    const directives = directivesFromHeader(header);
+    expect(directives['script-src']).toBe("'self'");
+  });
+
+  it('production adds a nonce source and never unsafe-inline/unsafe-eval', async () => {
+    const header = await buildCspHeader(true, false, [], 'abc123==');
+    const directives = directivesFromHeader(header);
+    expect(directives['script-src']).toBe("'self' 'nonce-abc123=='");
+    expect(directives['script-src']).not.toContain("'unsafe-inline'");
+    expect(directives['script-src']).not.toContain("'unsafe-eval'");
+  });
+
+  it('production stays strict even when cookieSecure is false (HTTP deploy hole)', async () => {
+    // The real-world MISC-09 hole: COOKIE_SECURE unset/false is the Quick-Start
+    // default, and it must NOT loosen script-src in production.
+    const header = await buildCspHeader(true, false, [], 'nonce-value');
+    const directives = directivesFromHeader(header);
+    expect(directives['script-src']).not.toContain("'unsafe-inline'");
+    expect(directives['script-src']).not.toContain("'unsafe-eval'");
+  });
+
+  it('development keeps the loose policy for the Vite toolchain', async () => {
+    const header = await buildCspHeader(false, false, [], 'ignored-in-dev');
+    const directives = directivesFromHeader(header);
+    expect(directives['script-src']).toContain("'unsafe-inline'");
+    expect(directives['script-src']).toContain("'unsafe-eval'");
+  });
+
+  it('style-src keeps unsafe-inline (runtime inline styles from maps/React)', async () => {
+    const header = await buildCspHeader(true, false, [], 'n');
+    const directives = directivesFromHeader(header);
+    expect(directives['style-src']).toBe("'self' 'unsafe-inline'");
+  });
+
+  it('generateCspNonce returns a fresh, non-empty base64 value each call', () => {
+    const a = generateCspNonce();
+    const b = generateCspNonce();
+    expect(a).not.toBe(b);
+    expect(a.length).toBeGreaterThan(0);
+    expect(a).toMatch(/^[A-Za-z0-9+/=]+$/);
+  });
+});
+
 describe('buildCspHeader - custom analytics CSP domains (#3409)', () => {
   beforeEach(() => {
     mockGetSetting.mockReset();
@@ -118,8 +168,11 @@ describe('buildCspHeader - custom analytics CSP domains (#3409)', () => {
     expect(directives['script-src']).toContain('https://cdn.example.com');
     expect(directives['connect-src']).toContain('https://analytics.example.com');
     expect(directives['connect-src']).toContain('https://cdn.example.com');
-    // Inline analytics snippets need 'unsafe-inline' on script-src.
-    expect(directives['script-src']).toContain("'unsafe-inline'");
+    // MISC-09 (#6085): inline analytics snippets now run under a per-request
+    // nonce, NOT 'unsafe-inline'. Production script-src must never widen to
+    // 'unsafe-inline' or 'unsafe-eval'.
+    expect(directives['script-src']).not.toContain("'unsafe-inline'");
+    expect(directives['script-src']).not.toContain("'unsafe-eval'");
   });
 
   it('reduces bare hostnames / non-URL entries to nothing (requires a scheme)', async () => {
