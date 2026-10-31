@@ -450,6 +450,14 @@ router.put('/:id', canWrite, async (req: Request, res: Response) => {
       if (!(await checkForwardingTogglePermission(req, res, v.json))) return;
       patch.config = v.json;
       warnings = v.warnings;
+    } else if (patch.enabled === true) {
+      // Enabling without supplying a new config arms the stored graph's
+      // scheduler, so gate against the stored config (#6096) — the same path
+      // the dedicated /enable handler guards. (A new config above is already
+      // gated; when the row is absent the gate is skipped and the update below
+      // 404s.)
+      const existing = await databaseService.automations.getAutomation(req.params.id);
+      if (existing && !(await checkForwardingTogglePermission(req, res, existing.config))) return;
     }
     const updated = await databaseService.automations.updateAutomation(req.params.id, patch);
     if (!updated) return res.status(404).json({ error: 'automation not found' });
@@ -463,6 +471,16 @@ router.put('/:id', canWrite, async (req: Request, res: Response) => {
 
 router.post('/:id/enable', canWrite, async (req: Request, res: Response) => {
   try {
+    // Enabling arms the scheduler: a forwarding-toggle automation will later
+    // fire on its own against the sources its graph targets. So re-apply the
+    // per-source gate the save/run-now paths enforce (#6071/#6096). A user with
+    // only the global `automations:write` grant must not activate a
+    // forwarding-toggle rule someone else authored against a source they lack
+    // per-source `automation` write on — otherwise /enable is a way around the
+    // save-time check. Mirrors the run-now handler's stored-config check; when
+    // the row is absent the gate is skipped and setEnabled is a harmless no-op.
+    const auto = await databaseService.automations.getAutomation(req.params.id);
+    if (auto && !(await checkForwardingTogglePermission(req, res, auto.config))) return;
     await databaseService.automations.setEnabled(req.params.id, true);
     await reloadAutomations();
     res.json({ success: true });
