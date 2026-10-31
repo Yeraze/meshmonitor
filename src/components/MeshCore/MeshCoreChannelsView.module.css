@@ -131,3 +131,19 @@
 .muteMenuItem:hover {
   background: var(--color-surface-hover);
 }
+
+/* Landing pane (#6049): shown in the main pane while no channel is selected.
+   A separate element so richer content can be added here later. */
+.landingPane {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.landingText {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}

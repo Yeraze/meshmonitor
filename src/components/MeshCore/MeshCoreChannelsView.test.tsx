@@ -214,9 +214,11 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
     );
 
     await waitFor(() => screen.getByText('# Public'));
+    // #6049: no channel opens by default — select Public first.
+    fireEvent.click(screen.getByText('# Public'));
 
-    // Default selected channel is 0. waitFor lets the per-channel backlog fetch
-    // settle (it returns empty here; the live `messages` prop supplies content).
+    // waitFor lets the per-channel backlog fetch settle (it returns empty here;
+    // the live `messages` prop supplies content).
     await waitFor(() => {
       expect(screen.getByText('hi from chan 0')).toBeTruthy();
       expect(screen.getByText('legacy local on 0')).toBeTruthy();
@@ -292,6 +294,8 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('backlog on public')).toBeTruthy());
 
     // The per-channel endpoint was hit for channel 0.
@@ -326,6 +330,8 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('old backlog')).toBeTruthy());
     expect(screen.getByText('fresh live')).toBeTruthy();
     // Deduped — only one node for the shared id.
@@ -374,6 +380,8 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('public backlog')).toBeTruthy());
 
     fireEvent.click(screen.getByText('# Town'));
@@ -458,6 +466,8 @@ describe('MeshCoreChannelsView — entry scroll on channel switch', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('public unread two')).toBeTruthy());
     await waitFor(() => expect(container.querySelector('[data-unread-divider]')).toBeTruthy());
     // Public's own entry scroll lands on its divider.
@@ -521,6 +531,8 @@ describe('MeshCoreChannelsView — infinite scroll pagination (#4460)', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('recent message')).toBeTruthy());
     expect(screen.queryByText('much older message')).toBeNull();
 
@@ -586,6 +598,8 @@ describe('MeshCoreChannelsView — infinite scroll pagination (#4460)', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('only message')).toBeTruthy());
     const callCountBeforeScroll = csrfFetchMock.mock.calls.length;
 
@@ -692,6 +706,8 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
     );
 
     await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    // #6049: no channel opens by default — select Public so it is the active channel.
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeTruthy());
 
     // The active channel (Public) must NOT be unread.
@@ -717,7 +733,13 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
       />,
     );
 
-    await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    // #6049: select Public first (it becomes active + read) so only Town stays unread.
+    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => {
+      const publicRow = screen.getByText('# Public').closest('.mc-channel-row');
+      expect(publicRow?.classList.contains('unread')).toBe(false);
+    });
 
     // Open Town — it becomes the active/viewed channel and should clear.
     fireEvent.click(screen.getByText('# Town'));
@@ -753,6 +775,8 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
     );
 
     await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    // #6049: select Public so it is active (and thus never flagged unread).
+    fireEvent.click(screen.getByText('# Public'));
     // Give the counts/latest fetch a tick to resolve (both rows show "1 messages").
     await waitFor(() => expect(screen.getAllByText('1 messages').length).toBe(2));
     expect(container.querySelector('.mc-channel-unread-dot')).toBeNull();
@@ -808,6 +832,8 @@ describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', ()
     render(
       <MeshCoreChannelsView messages={scoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
     );
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => screen.getByText('scoped hi'));
     // The send-scope widget is hidden until a reply (or manual toggle).
     expect(screen.queryByLabelText('Send scope')).toBeNull();
@@ -823,6 +849,8 @@ describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', ()
     render(
       <MeshCoreChannelsView messages={unscoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
     );
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => screen.getByText('plain hi'));
     fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
     const scopeInput = (await screen.findByLabelText('Send scope')) as HTMLInputElement;
@@ -836,6 +864,8 @@ describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', ()
     render(
       <MeshCoreChannelsView messages={unknown} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
     );
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => screen.getByText('mystery scope'));
     fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
     // Region name isn't recoverable from the code → scope override stays hidden
@@ -864,6 +894,7 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
       <MeshCoreChannelsView messages={[]} contacts={contacts} status={makeStatus()} actions={actions} baseUrl="" sourceId="src-a" />,
     );
     await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
 
     // Open the scope-override control (collapsed by default).
     fireEvent.click(screen.getByText('Scope: unscoped'));
@@ -892,6 +923,7 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
       <MeshCoreChannelsView messages={[]} contacts={contacts} status={makeStatus()} actions={actions} baseUrl="" sourceId="src-a" />,
     );
     await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
 
     // Open the control but do NOT click Unscoped — overrideScope stays null.
     fireEvent.click(screen.getByText('Scope: unscoped'));
@@ -913,6 +945,8 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
     render(
       <MeshCoreChannelsView messages={unscoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
     );
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => screen.getByText('plain hi'));
     fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
 
@@ -965,6 +999,8 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('delete me')).toBeTruthy());
 
     await act(async () => {
@@ -992,6 +1028,8 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('keep me')).toBeTruthy());
     await act(async () => {
       fireEvent.click(document.querySelector('.mc-message-delete') as Element);
@@ -1018,6 +1056,8 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('still here')).toBeTruthy());
     await act(async () => {
       fireEvent.click(document.querySelector('.mc-message-delete') as Element);
@@ -1044,6 +1084,8 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
       />,
     );
 
+    await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     await waitFor(() => expect(screen.getByText('first')).toBeTruthy());
     // #4888: the conversation toolbar sits inside the shared horizontal row.
     const toolbarRow = document.querySelector('.meshcore-toolbar-row');
@@ -1162,6 +1204,7 @@ describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () =>
       />,
     );
     await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     const input = screen.getByPlaceholderText('Type a message…');
     expect(input).toBeDisabled();
     expect(input).toHaveAttribute(
@@ -1188,6 +1231,7 @@ describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () =>
         />,
       );
       await waitFor(() => screen.getByText('# Public'));
+      fireEvent.click(screen.getByText('# Public'));
 
       // Open the scope-override control (user-initiated).
       fireEvent.click(screen.getByText('Scope: unscoped'));
@@ -1223,6 +1267,7 @@ describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () =>
       />,
     );
     await waitFor(() => screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('# Public'));
     const input = screen.getByPlaceholderText('Type a message…');
     expect(input).not.toBeDisabled();
     expect(input).not.toHaveAttribute('title');
@@ -1470,5 +1515,132 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
 
     await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
     expect(localStorage.getItem('meshmonitor-meshcore-channel-custom-order-src-a')).toBeNull();
+  });
+});
+
+describe('MeshCoreChannelsView — no auto-select + landing pane + click-to-deselect (#6049)', () => {
+  const LASTREAD_KEY = 'meshmonitor-meshcore-channel-lastread-src-a';
+
+  function routedFetch() {
+    return vi.fn((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([
+          { id: 0, name: 'Public' },
+          { id: 1, name: 'Town' },
+        ]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: { 0: 1, 1: 1 }, latestTimestamps: {} }));
+      }
+      const m = url.match(/\/messages\/channel\/(\d+)/);
+      if (m) {
+        const idx = Number(m[1]);
+        const data = idx === 0
+          ? [{ id: 'p0', fromPublicKey: 'channel-0', text: 'public backlog row', timestamp: 500 }]
+          : [];
+        return Promise.resolve(jsonResponse({ success: true, data }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+  }
+
+  const hitBacklog = () => csrfFetchMock.mock.calls.some(
+    c => typeof c[0] === 'string' && /\/meshcore\/messages\/channel\/\d+/.test(c[0] as string),
+  );
+
+  beforeEach(() => {
+    localStorage.clear();
+    csrfFetchMock.mockImplementation(routedFetch());
+  });
+
+  function renderView() {
+    return render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+  }
+
+  it('opens with no channel selected and shows the landing pane', async () => {
+    const { container } = renderView();
+    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+
+    // The landing prompt is shown, no row is selected, and no message stream renders.
+    expect(screen.getByText('Select a channel')).toBeTruthy();
+    expect(container.querySelector('.mc-channel-row.selected')).toBeNull();
+    expect(screen.queryByPlaceholderText('Type a message…')).toBeNull();
+    expect(screen.queryByText('public backlog row')).toBeNull();
+  });
+
+  it('does not mark any channel read or fetch a backlog while nothing is selected', async () => {
+    renderView();
+    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    // Let any effects settle.
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+
+    expect(hitBacklog()).toBe(false);
+    expect(localStorage.getItem(LASTREAD_KEY)).toBeNull();
+  });
+
+  it('selecting a channel shows its stream, fetches the backlog, and marks it read', async () => {
+    const { container } = renderView();
+    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('# Public'));
+
+    // Landing pane is replaced by the channel's stream + its backlog.
+    await waitFor(() => expect(screen.getByText('public backlog row')).toBeTruthy());
+    expect(screen.queryByText('Select a channel')).toBeNull();
+    expect(container.querySelector('.mc-channel-row.selected')).toBeTruthy();
+    expect(hitBacklog()).toBe(true);
+
+    // The channel is now marked read for this source.
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem(LASTREAD_KEY) ?? '{}');
+      expect(stored['0']).toBeGreaterThan(0);
+    });
+  });
+
+  it('clicking the selected channel again de-selects it (desktop) and returns to the landing pane', async () => {
+    const { container } = renderView();
+    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => expect(container.querySelector('.mc-channel-row.selected')).toBeTruthy());
+
+    // Click the already-selected channel again → de-select, back to landing.
+    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => expect(screen.getByText('Select a channel')).toBeTruthy());
+    expect(container.querySelector('.mc-channel-row.selected')).toBeNull();
+    expect(screen.queryByPlaceholderText('Type a message…')).toBeNull();
+  });
+
+  it('mobile: re-tapping the same row after Back reopens the channel (does not de-select)', async () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
+    try {
+      renderView();
+      await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+
+      // Tap opens the channel (mobile drills into the content pane).
+      fireEvent.click(screen.getByText('# Public'));
+      await waitFor(() => expect(screen.getByText('Back')).toBeTruthy());
+
+      // Back returns to the list; selection is retained.
+      fireEvent.click(screen.getByText('Back'));
+      await waitFor(() => expect(screen.queryByText('Back')).toBeNull());
+
+      // Re-tapping the SAME row must REOPEN it, never de-select it.
+      fireEvent.click(screen.getByText('# Public'));
+      await waitFor(() => expect(screen.getByText('Back')).toBeTruthy());
+      expect(screen.queryByText('Select a channel')).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+    }
   });
 });
