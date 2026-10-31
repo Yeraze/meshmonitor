@@ -375,7 +375,7 @@ router.post(
  */
 router.get(
   '/nodes/purge-non-favourites/preview',
-  optionalAuth(),
+  requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {

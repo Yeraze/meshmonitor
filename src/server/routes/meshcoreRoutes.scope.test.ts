@@ -522,6 +522,9 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'GET /contacts/device-sync': 'read',
     'POST /contacts/push-to-device': 'write',
     'POST /contacts/remove-non-favorites': 'write',
+    // #6041: purge non-favourite nodes from MeshMonitor's DB (preview + delete).
+    'GET /nodes/purge-non-favourites/preview': 'write',
+    'POST /nodes/purge-non-favourites': 'write',
     'POST /contacts/:publicKey/reset-path': 'write',
     'POST /contacts/:publicKey/discover-path': 'write',
     'POST /discover': 'write',
