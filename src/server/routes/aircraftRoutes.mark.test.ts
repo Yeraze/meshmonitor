@@ -289,6 +289,98 @@ describe('POST /api/aircraft/mark', () => {
     });
   });
 
+  describe('allSources (#6046)', () => {
+    // PLANE is seeded on sourceA at (30, -80) in the outer beforeEach; add it to
+    // sourceB at a slightly different lat (~890 m north, within the 1 km hold
+    // radius so the not_aircraft recompute keeps the mark) so the shared-anchor
+    // behaviour is observable: both rows must anchor at sourceA's 30.0, not B's.
+    const seedPlaneOnB = () => seedNode(PLANE, harness.sourceB, { altitude: 3000, lat: 30.008, lon: -80.0 });
+
+    it('applies to every source carrying the node and reuses one shared anchor', async () => {
+      await seedPlaneOnB();
+      const agent = await harness.loginAs(harness.admin);
+      const res = await post(agent, { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'not_aircraft', allSources: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.allSources).toBe(true);
+      const applied = (res.body.data.applied as Array<{ sourceId: string }>).map((s) => s.sourceId).sort();
+      expect(applied).toEqual([harness.sourceA, harness.sourceB].sort());
+      expect(res.body.data.skipped).toEqual([]);
+
+      const a = await row(PLANE, harness.sourceA);
+      const b = await row(PLANE, harness.sourceB);
+      expect(a?.aircraftManualMark).toBe('not_aircraft');
+      expect(b?.aircraftManualMark).toBe('not_aircraft');
+      expect(Boolean(a?.likelyAircraft)).toBe(false);
+      expect(Boolean(b?.likelyAircraft)).toBe(false);
+      // Shared anchor: BOTH rows anchor at sourceA's 30.0, not B's own 30.008.
+      // toBeCloseTo(30.0, 2) passes for 30.0 but rejects 30.008 (|diff| > 0.005).
+      expect(Number(a?.aircraftFixedLatitude)).toBeCloseTo(30.0, 2);
+      expect(Number(b?.aircraftFixedLatitude)).toBeCloseTo(30.0, 2);
+      expect(Number(b?.aircraftFixedLongitude)).toBeCloseTo(-80.0, 2);
+    });
+
+    it('skips and reports sources the caller cannot nodes:write', async () => {
+      await seedPlaneOnB();
+      await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await post(agent, { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'not_aircraft', allSources: true });
+
+      expect(res.status).toBe(200);
+      expect((res.body.data.applied as Array<{ sourceId: string }>).map((s) => s.sourceId)).toEqual([harness.sourceA]);
+      const skipped = res.body.data.skipped as Array<{ sourceId: string; code: string }>;
+      expect(skipped).toHaveLength(1);
+      expect(skipped[0]).toMatchObject({ sourceId: harness.sourceB, code: 'NO_WRITE_PERMISSION' });
+      // The unwritable source is untouched; the anchor source got the mark.
+      expect((await row(PLANE, harness.sourceB))?.aircraftManualMark ?? null).toBeNull();
+      expect((await row(PLANE, harness.sourceA))?.aircraftManualMark).toBe('not_aircraft');
+    });
+
+    it('reports a source that cannot take the mark (detection off) without failing', async () => {
+      await seedPlaneOnB();
+      await harness.db.settings.setSourceSetting(harness.sourceB, 'aircraftDetectionEnabled', 'false');
+      const agent = await harness.loginAs(harness.admin);
+      const res = await post(agent, { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'aircraft', allSources: true });
+
+      expect(res.status).toBe(200);
+      expect((res.body.data.applied as Array<{ sourceId: string }>).map((s) => s.sourceId)).toEqual([harness.sourceA]);
+      const skipped = res.body.data.skipped as Array<{ sourceId: string; code: string }>;
+      expect(skipped).toHaveLength(1);
+      expect(skipped[0]).toMatchObject({ sourceId: harness.sourceB, code: 'AIRCRAFT_DETECTION_DISABLED' });
+      await harness.db.settings.setSourceSetting(harness.sourceB, 'aircraftDetectionEnabled', 'true');
+    });
+
+    it('clear removes the mark from every writable source', async () => {
+      await seedPlaneOnB();
+      const agent = await harness.loginAs(harness.admin);
+      await post(agent, { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'aircraft', allSources: true });
+      expect((await row(PLANE, harness.sourceA))?.aircraftManualMark).toBe('aircraft');
+      expect((await row(PLANE, harness.sourceB))?.aircraftManualMark).toBe('aircraft');
+
+      const res = await post(agent, { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'clear', allSources: true });
+      expect(res.status).toBe(200);
+      expect((await row(PLANE, harness.sourceA))?.aircraftManualMark ?? null).toBeNull();
+      expect((await row(PLANE, harness.sourceB))?.aircraftManualMark ?? null).toBeNull();
+    });
+
+    it('default (no allSources) marks only the acted-on source', async () => {
+      await seedPlaneOnB();
+      const agent = await harness.loginAs(harness.admin);
+      const res = await post(agent, { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'aircraft' });
+      expect(res.body).toEqual({ success: true, data: { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'aircraft' } });
+      expect((await row(PLANE, harness.sourceA))?.aircraftManualMark).toBe('aircraft');
+      expect((await row(PLANE, harness.sourceB))?.aircraftManualMark ?? null).toBeNull();
+    });
+
+    it('rejects a non-boolean allSources', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await post(agent, { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'clear', allSources: 'true' });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_PARAMETER_TYPE');
+    });
+  });
+
   it('writes an audit entry with who, node, source and mode', async () => {
     await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceA);
     const agent = await harness.loginAs(harness.limited);
