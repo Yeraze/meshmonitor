@@ -7396,6 +7396,7 @@
   "meshcore.channels.secret_copied": "Secret copied to clipboard",
   "meshcore.channels.secret_copy_failed": "Failed to copy secret",
   "meshcore.channels.secret_label": "Secret (hex, 32 chars)",
+  "meshcore.channels.select_prompt": "Select a channel",
   "meshcore.channels.show_secret": "Show secret",
   "meshcore.channels.sort_unread_first": "Show channels with unread messages first",
   "meshcore.channels.title": "Channels",
