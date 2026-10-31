@@ -6,9 +6,28 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { randomBytes } from 'crypto';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { AnalyticsProvider, getAnalyticsCspDomains } from '../utils/analyticsScriptGenerator.js';
+
+/**
+ * Placeholder token baked into the cached HTML wherever a per-request CSP
+ * nonce belongs (the analytics inline `<script>` snippets). The SPA HTML is
+ * rendered and cached once, so the real nonce — which must differ on every
+ * response — is substituted for this token at serve time (see
+ * `staticServing.ts`). Keep it in sync with any consumer that does the
+ * substitution.
+ */
+export const CSP_NONCE_PLACEHOLDER = '__CSP_NONCE__';
+
+/**
+ * Generate a fresh CSP nonce for one response. 128 bits of entropy, base64 —
+ * well above the 128-bit floor the CSP spec recommends for unguessability.
+ */
+export function generateCspNonce(): string {
+  return randomBytes(16).toString('base64');
+}
 
 // Cache for custom tileset hostnames
 let cachedTileHostnames: string[] = [];
@@ -163,18 +182,36 @@ async function getAnalyticsCspFromSettings(): Promise<{ scriptSrc: string[]; con
 export async function buildCspHeader(
   isProduction: boolean,
   cookieSecure: boolean,
-  iframeAllowedOrigins: string[] = []
+  iframeAllowedOrigins: string[] = [],
+  nonce?: string
 ): Promise<string> {
   const connectSrc = await buildConnectSrcDirective(isProduction, cookieSecure);
   const analyticsCsp = await getAnalyticsCspFromSettings();
 
-  const scriptSrc = isProduction && cookieSecure
-    ? ["'self'"]
+  // Production (NODE_ENV=production) always gets a strict, nonce-based
+  // `script-src` with NO `'unsafe-inline'` and NO `'unsafe-eval'` — this is the
+  // XSS-mitigation hardening in MISC-09 (#6085).
+  //
+  // The strictness is keyed on `isProduction` ONLY, deliberately decoupled from
+  // `cookieSecure`. The real-world hole was that the common HTTP deployment
+  // (`COOKIE_SECURE` unset/false — the Quick-Start default, typical behind a
+  // TLS-terminating reverse proxy) fell into the loose branch and shipped
+  // `'unsafe-inline' 'unsafe-eval'` to every visitor. The app's own scripts are
+  // all external `src=` files (covered by `'self'`); only the trusted inline
+  // analytics snippets need inline execution, and they carry the per-request
+  // nonce (see `generateAnalyticsScript`).
+  //
+  // Development keeps the loose policy: the Vite toolchain injects un-nonced
+  // inline scripts and relies on `eval` for HMR, so a nonce cannot reach them.
+  const scriptSrc = isProduction
+    ? ["'self'", ...(nonce ? [`'nonce-${nonce}'`] : [])]
     : ["'self'", "'unsafe-inline'", "'unsafe-eval'"];
 
-  // Add analytics script domains and allow inline scripts for analytics snippets
+  // Add analytics script domains. In production the inline analytics snippet
+  // runs under the nonce, so we do NOT widen `script-src` to `'unsafe-inline'`.
+  // In development the loose policy already permits inline scripts.
   if (analyticsCsp.scriptSrc.length > 0) {
-    if (!scriptSrc.includes("'unsafe-inline'")) {
+    if (!isProduction && !scriptSrc.includes("'unsafe-inline'")) {
       scriptSrc.push("'unsafe-inline'");
     }
     for (const domain of analyticsCsp.scriptSrc) {
@@ -194,6 +231,12 @@ export async function buildCspHeader(
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
     'script-src': scriptSrc,
+    // style-src keeps 'unsafe-inline': Leaflet and MapLibre (and React inline
+    // style props) set per-element `style="…"` attributes at runtime, which a
+    // nonce cannot cover (nonces apply to <style>/<script> elements, not style
+    // attributes). Removing it blanks the maps and breaks layout. This is the
+    // standard, accepted trade-off; script-src (the XSS-execution vector) is
+    // what is now locked down.
     'style-src': ["'self'", "'unsafe-inline'"],
     'img-src': ["'self'", 'data:', 'http:', 'https:'],
     'connect-src': connectSrc,
@@ -235,8 +278,12 @@ export function dynamicCspMiddleware(
   }
 
   return async (_req: Request, res: Response, next: NextFunction) => {
+    // Generate the per-response nonce first, outside the try, so it is always
+    // available to the HTML serving layer even if header construction fails.
+    const nonce = generateCspNonce();
+    res.locals.cspNonce = nonce;
     try {
-      const cspHeader = await buildCspHeader(isProduction, cookieSecure, iframeAllowedOrigins);
+      const cspHeader = await buildCspHeader(isProduction, cookieSecure, iframeAllowedOrigins, nonce);
       res.setHeader('Content-Security-Policy', cspHeader);
       next();
     } catch (error) {
