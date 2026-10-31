@@ -156,8 +156,28 @@ function splitHash(text: string): { head: string; hash: string } | null {
   return { head: text.slice(0, i), hash };
 }
 
+/**
+ * Like {@link splitHash}, but for channel reactions it also tolerates the hash
+ * being separated from the head by a space instead of the spec's `\n` (#6039).
+ * Some MeshCore firmware/transport hands our OWN channel-reaction echo back
+ * with the newline turned into a space, which the strict newline split rejected
+ * — so the echo was stored as a plain text bubble instead of folding. This is
+ * channel-only (DMs keep {@link splitHash}): the caller requires an `@[` marker
+ * and a valid reaction emoji, so an ordinary message that merely ends in an
+ * 8-char token is never newly matched.
+ */
+function splitHashChannel(text: string): { head: string; hash: string } | null {
+  const strict = splitHash(text);
+  if (strict) return strict;
+  const i = text.lastIndexOf(' ');
+  if (i < 0) return null;
+  const hash = normalizeMc1ReactionHash(text.slice(i + 1));
+  if (hash === null) return null;
+  return { head: text.slice(0, i), hash };
+}
+
 export function parseMc1ChannelReaction(text: string): Mc1ChannelReaction | null {
-  const parts = splitHash(text);
+  const parts = splitHashChannel(text);
   if (!parts) return null;
   const { head, hash } = parts;
   const at = head.indexOf('@[');
@@ -273,5 +293,12 @@ export function isReactionText(text: string | null | undefined): boolean {
   if (typeof text !== 'string') return false;
   const n = text.length;
   if (n >= 9 && text.charCodeAt(0) === 0x72 && text.charCodeAt(1) === 0x3a) return true;
-  return n >= 10 && text.charCodeAt(n - 9) === 0x0a;
+  if (n >= 10 && text.charCodeAt(n - 9) === 0x0a) return true;
+  // #6039: an MC1 channel reaction's `\n` separator can reach us as a space
+  // (seen on our own channel-reaction echo). Treat `@[…]emoji hash` with a
+  // space before the 8-char tail as a candidate too, gated on the `@[` channel
+  // marker so an ordinary message or DM ending in an 8-char word is not newly
+  // matched. A true result still needs a successful parse to confirm.
+  if (n >= 10 && text.charCodeAt(n - 9) === 0x20 && text.includes('@[')) return true;
+  return false;
 }

@@ -85,6 +85,32 @@ describe('MeshCoreManager.sendReaction (#5762)', () => {
     expect(msg.deliveryStatus).toBeUndefined();
   });
 
+  it('our own channel reaction echoed back with a space separator folds, not a text bubble (#6039)', async () => {
+    const { m, i, calls, target } = await withChannelTarget();
+    const msg = await m.sendReaction(target.id, THUMBS);
+    await settle();
+    const sent = sends(calls)[0];
+    const wire = sent.params.text as string; // `@[Bob]👍\n<hash>`
+    const sec = sent.params.sender_timestamp as number;
+    expect(wire).toContain('\n');
+
+    // The companion hears its OWN channel reaction re-flooded and surfaces it as
+    // a received channel message, but the firmware/transport delivers the body
+    // with the wire newline turned into a space. Before #6039 this failed the
+    // strict newline parser and was stored as a plain `@[...]` text bubble; it
+    // must now be recognised as our reaction and deduped against the sent row.
+    i.handleBridgeEvent(channelEvent(`${SELF_NAME}: ${wire.replace('\n', ' ')}`, sec, 3));
+    await settle();
+
+    const all = await rows(src);
+    expect(all.some(r => r.text.startsWith('@['))).toBe(false);
+    const reactions = all.filter(r => r.reactionEmoji);
+    expect(reactions).toHaveLength(1);
+    expect(reactions[0].id).toBe(msg.id);
+    expect(reactions[0].reactionTargetId).toBe(target.id);
+    expect(reactions[0].text).toBe(THUMBS);
+  });
+
   it('sends a DM reaction to the full peer key', async () => {
     const { m, i, calls } = makeManager(src);
     i.handleBridgeEvent(dmEvent('Hello'));
