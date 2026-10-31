@@ -4605,10 +4605,13 @@ class MeshtasticManager implements ISourceManager {
       // Expand tokens in script args if provided
       let scriptArgsList: string[] = [];
       if (trigger.scriptArgs) {
-        const expandedArgs = await this.replaceGeofenceTokens(
-          trigger.scriptArgs, trigger, nodeNum, lat, lng, eventType
+        // SECURITY (#6090): tokenize the admin template FIRST, then expand the
+        // OTA-sourced tokens per argv element so a crafted node name cannot
+        // inject extra arguments. See expandScriptArgsTokens.
+        scriptArgsList = await this.expandScriptArgsTokens(
+          trigger.scriptArgs,
+          (part) => this.replaceGeofenceTokens(part, trigger, nodeNum, lat, lng, eventType),
         );
-        scriptArgsList = this.parseScriptArgs(expandedArgs);
         logger.debug(`📍 Geofence script args expanded: ${trigger.scriptArgs} -> ${safeJson(scriptArgsList)}`);
       }
 
@@ -4862,8 +4865,13 @@ class MeshtasticManager implements ISourceManager {
       // Expand tokens in script args if provided
       let scriptArgsList: string[] = [];
       if (scriptArgs) {
-        const expandedArgs = await this.replaceAnnouncementTokens(scriptArgs);
-        scriptArgsList = this.parseScriptArgs(expandedArgs);
+        // SECURITY (#6090): tokenize the admin template FIRST, then expand
+        // tokens per argv element so a token value carrying spaces/quotes
+        // cannot inject extra arguments. See expandScriptArgsTokens.
+        scriptArgsList = await this.expandScriptArgsTokens(
+          scriptArgs,
+          (part) => this.replaceAnnouncementTokens(part),
+        );
         logger.debug(`⏱️ Timer script args expanded: ${scriptArgs} -> ${safeJson(scriptArgsList)}`);
       }
 
@@ -13442,12 +13450,19 @@ class MeshtasticManager implements ISourceManager {
               // Expand tokens in script args if provided
               let scriptArgsList: string[] = [];
               if (trigger.scriptArgs) {
-                const expandedArgs = await this.replaceAcknowledgementTokens(
-                  trigger.scriptArgs, nodeId, message.fromNodeNum, hopsTraveled,
-                  receivedDate, receivedTime, message.channel, isDirectMessage,
-                  message.rxSnr, message.rxRssi, message.viaMqtt, false, message.relayNode
+                // SECURITY (#6090): tokenize the admin template FIRST, then
+                // expand the OTA-sourced tokens (node name, etc.) per argv
+                // element so a crafted node name cannot inject extra arguments
+                // when this auto-responder script fires. See
+                // expandScriptArgsTokens.
+                scriptArgsList = await this.expandScriptArgsTokens(
+                  trigger.scriptArgs,
+                  (part) => this.replaceAcknowledgementTokens(
+                    part, nodeId, message.fromNodeNum, hopsTraveled,
+                    receivedDate, receivedTime, message.channel, isDirectMessage,
+                    message.rxSnr, message.rxRssi, message.viaMqtt, false, message.relayNode
+                  ),
                 );
-                scriptArgsList = this.parseScriptArgs(expandedArgs);
                 logger.debug(`🤖 Script args expanded: ${trigger.scriptArgs} -> ${safeJson(scriptArgsList)}`);
               }
 
@@ -14527,6 +14542,35 @@ class MeshtasticManager implements ISourceManager {
       args.push(current);
     }
     return args;
+  }
+
+  /**
+   * SECURITY (#6090; mirrors MISC-06 / #6076 in scriptRoutes): expand an
+   * admin-authored script-args template into argv WITHOUT letting an
+   * OTA-sourced token value split into extra argv elements.
+   *
+   * The script-args template holds tokens like `{SHORT_NAME}` / `{LONG_NAME}`
+   * whose values come from over-the-air mesh traffic (a node's self-reported
+   * name). Expanding the whole template string and THEN splitting it let a
+   * crafted node name carrying spaces or quotes break into additional argv
+   * elements when a configured auto-responder / geofence / timer script trigger
+   * fired — a remote argv-injection vector.
+   *
+   * The fix tokenizes the template into argv FIRST (`parseScriptArgs` — the
+   * quote/space boundaries chosen by the trusted admin author), THEN expands
+   * the template tokens inside each resulting element. Per-element expansion
+   * confines each token's value to the single argument it appears in, so a
+   * hostile OTA name can never add new arguments.
+   *
+   * `expandElement` receives one raw argv token and returns its expanded form;
+   * it must NOT re-split its result.
+   */
+  private async expandScriptArgsTokens(
+    argsTemplate: string,
+    expandElement: (part: string) => Promise<string>,
+  ): Promise<string[]> {
+    const rawParts = this.parseScriptArgs(argsTemplate);
+    return Promise.all(rawParts.map(expandElement));
   }
 
   /**
