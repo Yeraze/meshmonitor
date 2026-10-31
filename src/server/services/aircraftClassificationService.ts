@@ -64,6 +64,25 @@ export type AircraftManualMarkResult =
   | { ok: true; previousMark: AircraftManualMark | null; anchor: { lat: number; lon: number } | null }
   | { ok: false; status: number; code: string; message: string };
 
+/** A source that carried the node but could not take the all-sources mark (#6046). */
+export interface AircraftManualMarkSkip {
+  sourceId: string;
+  code: string;
+  message: string;
+}
+
+/** Outcome of an all-sources mark (#6046): the anchor source's own result, plus
+ *  which other sources took the mark and which were skipped (and why). */
+export type AircraftManualMarkManyResult =
+  | {
+      ok: true;
+      previousMark: AircraftManualMark | null;
+      anchor: { lat: number; lon: number } | null;
+      applied: string[];
+      skipped: AircraftManualMarkSkip[];
+    }
+  | { ok: false; status: number; code: string; message: string };
+
 /** Max points per `ElevationProvider.sample()` call (spec §4.2). */
 export const MAX_BATCH = 100;
 /** Backstop against an unbounded queue; overflow drops the new key (logged at most once a minute). */
@@ -571,6 +590,62 @@ export class AircraftClassificationService {
     mode: AircraftManualMarkMode,
     byUserId: number | null,
   ): Promise<AircraftManualMarkResult> {
+    return this.writeMarkToSource(sourceId, nodeNum, mode, byUserId);
+  }
+
+  /**
+   * #6046: apply the same mark to every source that carries the node, reusing
+   * ONE shared anchor across all `not_aircraft` rows.
+   *
+   * `anchorSourceId` is the source the person acted on. It is written first,
+   * with the usual per-source validation, and the position it anchors at (for
+   * `not_aircraft`) becomes the shared anchor for every other source — so a
+   * node heard by several sources ends up with one consistent anchor rather
+   * than each source's own slightly different fix. A failure on the anchor
+   * source fails the whole call (and nothing on it is written past that point).
+   * Every OTHER target that cannot take the mark — detection off, unsupported
+   * type, node absent — is skipped and reported, never fatal.
+   *
+   * The caller owns the per-source `nodes:write` check: only sources the person
+   * may write should appear in `targetSourceIds` (it must include the anchor).
+   */
+  async applyManualMarkMany(
+    anchorSourceId: string,
+    nodeNum: number,
+    mode: AircraftManualMarkMode,
+    byUserId: number | null,
+    targetSourceIds: string[],
+  ): Promise<AircraftManualMarkManyResult> {
+    const anchorRes = await this.writeMarkToSource(anchorSourceId, nodeNum, mode, byUserId);
+    if (!anchorRes.ok) return anchorRes;
+
+    // The anchor source's own position (for not_aircraft) is reused verbatim on
+    // every other source, so one node has one anchor across the whole mesh.
+    const sharedAnchor = anchorRes.anchor ?? undefined;
+    const applied: string[] = [anchorSourceId];
+    const skipped: AircraftManualMarkSkip[] = [];
+    for (const sid of targetSourceIds) {
+      if (sid === anchorSourceId) continue;
+      const r = await this.writeMarkToSource(sid, nodeNum, mode, byUserId, sharedAnchor);
+      if (r.ok) applied.push(sid);
+      else skipped.push({ sourceId: sid, code: r.code, message: r.message });
+    }
+    return { ok: true, previousMark: anchorRes.previousMark, anchor: anchorRes.anchor, applied, skipped };
+  }
+
+  /**
+   * One source's write of the manual mark, with the validate → write →
+   * recompute → schedule flow. `sharedAnchor`, when given, is used verbatim for
+   * `not_aircraft` instead of the source's own effective position (#6046), so
+   * an all-sources mark anchors every row at one point.
+   */
+  private async writeMarkToSource(
+    sourceId: string,
+    nodeNum: number,
+    mode: AircraftManualMarkMode,
+    byUserId: number | null,
+    sharedAnchor?: { lat: number; lon: number },
+  ): Promise<AircraftManualMarkResult> {
     const type = await this.deps.getSourceType(sourceId);
     if (type === null) {
       return { ok: false, status: 404, code: 'SOURCE_NOT_FOUND', message: 'Source not found' };
@@ -602,13 +677,19 @@ export class AircraftClassificationService {
     const atMs = this.deps.now();
     let anchor: { lat: number; lon: number } | null = null;
     if (mode === 'not_aircraft') {
-      const eff = getEffectiveDbNodePosition(node);
-      anchor = positionOf(eff);
-      if (!anchor || isBogusPosition(anchor.lat, anchor.lon, node.positionPrecisionBits)) {
-        return {
-          ok: false, status: 400, code: 'AIRCRAFT_NO_POSITION',
-          message: 'This node has no known position to anchor the mark to',
-        };
+      if (sharedAnchor) {
+        // All-sources write: anchor every row at the position the acted-on
+        // source resolved, not this source's own fix.
+        anchor = sharedAnchor;
+      } else {
+        const eff = getEffectiveDbNodePosition(node);
+        anchor = positionOf(eff);
+        if (!anchor || isBogusPosition(anchor.lat, anchor.lon, node.positionPrecisionBits)) {
+          return {
+            ok: false, status: 400, code: 'AIRCRAFT_NO_POSITION',
+            message: 'This node has no known position to anchor the mark to',
+          };
+        }
       }
       await this.deps.setManualMark(nodeNum, sourceId, { mode: 'not_aircraft', atMs, byUserId, ...anchor });
     } else if (mode === 'aircraft') {

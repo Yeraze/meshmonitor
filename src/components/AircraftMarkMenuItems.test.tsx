@@ -127,3 +127,58 @@ describe('AircraftMarkMenuItems — clicks', () => {
     expect(post).toHaveBeenCalledWith('/api/aircraft/mark', { sourceId: 'src-a', nodeNum: 0x1234, mode: 'clear' });
   });
 });
+
+describe('AircraftMarkMenuItems — all sources (#6046)', () => {
+  it('offers an "apply to all sources" toggle', () => {
+    renderItems(node({ likelyAircraft: true }));
+    expect(screen.getByTestId('aircraft-mark-all-sources-checkbox')).toBeTruthy();
+  });
+
+  it('omits allSources from the body when the toggle is off (default)', async () => {
+    const { onDone } = renderItems(node({ likelyAircraft: true }));
+    fireEvent.click(screen.getByTestId('aircraft-mark-not-aircraft'));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(post).toHaveBeenLastCalledWith('/api/aircraft/mark', { sourceId: 'src-a', nodeNum: 0x1234, mode: 'not_aircraft' });
+  });
+
+  it('sends allSources: true and reports the sources carrying the mark and the skips', async () => {
+    post.mockResolvedValue({
+      success: true,
+      data: {
+        applied: [
+          { sourceId: 'src-a', sourceName: 'Alpha' },
+          { sourceId: 'src-b', sourceName: 'Bravo' },
+        ],
+        skipped: [{ sourceId: 'src-c', sourceName: 'Charlie', code: 'NO_WRITE_PERMISSION', message: 'x' }],
+      },
+    });
+    const { onDone } = renderItems(node({ likelyAircraft: true }));
+    fireEvent.click(screen.getByTestId('aircraft-mark-all-sources-checkbox'));
+    fireEvent.click(screen.getByTestId('aircraft-mark-not-aircraft'));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(post).toHaveBeenLastCalledWith('/api/aircraft/mark', {
+      sourceId: 'src-a',
+      nodeNum: 0x1234,
+      mode: 'not_aircraft',
+      allSources: true,
+    });
+    // A skip downgrades the toast to a warning and the text names applied + skipped sources.
+    expect(showToast.mock.calls[0][1]).toBe('warning');
+    expect(showToast.mock.calls[0][0]).toMatch(/Alpha/);
+    expect(showToast.mock.calls[0][0]).toMatch(/Bravo/);
+    expect(showToast.mock.calls[0][0]).toMatch(/Charlie/);
+  });
+
+  it('shows a success toast naming the sources when nothing is skipped', async () => {
+    post.mockResolvedValue({
+      success: true,
+      data: { applied: [{ sourceId: 'src-a', sourceName: 'Alpha' }], skipped: [] },
+    });
+    const { onDone } = renderItems(node({ likelyAircraft: true }));
+    fireEvent.click(screen.getByTestId('aircraft-mark-all-sources-checkbox'));
+    fireEvent.click(screen.getByTestId('aircraft-mark-not-aircraft'));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(showToast.mock.calls[0][1]).toBe('success');
+    expect(showToast.mock.calls[0][0]).toMatch(/Alpha/);
+  });
+});
