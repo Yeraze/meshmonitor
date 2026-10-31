@@ -65,11 +65,6 @@
     "githubPath": "Yoss101/MM-Weather/index.js"
   },
   {
-    "filename": "solar-forecast.py",
-    "name": "MeshManager Solar Forecast",
-    "githubPath": "Yeraze/meshmanager/main/examples/auto-responder-scripts/solar-forecast.py"
-  },
-  {
     "filename": "mm_radio_id_qth.py",
     "name": "Radio Identity + QTH",
     "githubPath": "maxhayim/meshmonitor-radio-id-qth/mm_radio_id_qth.py"

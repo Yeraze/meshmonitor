@@ -12,7 +12,7 @@ A sixth report, **[Traceroute Explorer](./traceroute-explorer)**, lists every st
 
 ## Solar Monitoring Analysis
 
-Identifies solar-powered nodes by analyzing battery and voltage telemetry over a configurable lookback window and looking for the characteristic morning-low → afternoon-peak charging curve, followed by overnight discharge. Ports the proven detection algorithm from MeshManager.
+Identifies solar-powered nodes by analyzing battery and voltage telemetry over a configurable lookback window and looking for the characteristic morning-low → afternoon-peak charging curve, followed by overnight discharge.
 
 ### What gets analyzed
 
