@@ -238,6 +238,7 @@ import { migration as addWaypointGeofenceMigration, runMigration216Postgres, run
 import { migration as addNodeChannelLockedMigration, runMigration217Postgres, runMigration217Mysql } from '../server/migrations/217_add_node_channel_locked.js';
 import { migration as addMeshcoreHeardRepeaterHopsMigration, runMigration218Postgres, runMigration218Mysql } from '../server/migrations/218_add_meshcore_heard_repeater_hops.js';
 import { migration as automationFireStateMigration, runMigration219Postgres, runMigration219Mysql } from '../server/migrations/219_automation_fire_state.js';
+import { migration as meshcoreTelemetryRetryStateMigration, runMigration220Postgres, runMigration220Mysql } from '../server/migrations/220_add_meshcore_telemetry_retry_state.js';
 
 // ============================================================================
 // Registry
@@ -3537,4 +3538,19 @@ registry.register({
   sqlite: (db) => automationFireStateMigration.up(db),
   postgres: (client) => runMigration219Postgres(client),
   mysql: (pool) => runMigration219Mysql(pool),
+});
+
+// Migration 220: meshcore_nodes retry-burst / cooldown state (#6033).
+// PER-SOURCE (columns on the per-source meshcore_nodes table). Lets a missed
+// scheduled telemetry pull become a short retry burst then a cooldown, with
+// the state persisted so a save/restart never re-arms or clears it.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 220,
+  name: 'add_meshcore_telemetry_retry_state',
+  settingsKey: 'migration_220_add_meshcore_telemetry_retry_state',
+  sqlite: (db) => meshcoreTelemetryRetryStateMigration.up(db),
+  postgres: (client) => runMigration220Postgres(client),
+  mysql: (pool) => runMigration220Mysql(pool),
 });

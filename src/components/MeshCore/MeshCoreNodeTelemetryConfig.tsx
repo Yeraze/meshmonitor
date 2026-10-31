@@ -37,13 +37,32 @@ interface TelemetryConfigState {
   enabled: boolean;
   intervalMinutes: number;
   lastRequestAt: number | null;
+  // Retry-burst / cooldown state (#6033).
+  lastSuccessAt: number | null;
+  missCount: number;
+  cooldownUntil: number | null;
 }
 
 const DEFAULT_CFG: TelemetryConfigState = {
   enabled: false,
   intervalMinutes: 60,
   lastRequestAt: null,
+  lastSuccessAt: null,
+  missCount: 0,
+  cooldownUntil: null,
 };
+
+/** Map the telemetry-config API payload into local state (shared read/save). */
+function toCfgState(data: Record<string, unknown>): TelemetryConfigState {
+  return {
+    enabled: Boolean(data.enabled),
+    intervalMinutes: typeof data.intervalMinutes === 'number' ? data.intervalMinutes : 60,
+    lastRequestAt: typeof data.lastRequestAt === 'number' ? data.lastRequestAt : null,
+    lastSuccessAt: typeof data.lastSuccessAt === 'number' ? data.lastSuccessAt : null,
+    missCount: typeof data.missCount === 'number' ? data.missCount : 0,
+    cooldownUntil: typeof data.cooldownUntil === 'number' ? data.cooldownUntil : null,
+  };
+}
 
 const MIN_INTERVAL = 1;
 const MAX_INTERVAL = 24 * 60;
@@ -92,11 +111,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
         const data = await response.json();
         if (cancelled) return;
         if (data.success && data.data) {
-          const next: TelemetryConfigState = {
-            enabled: Boolean(data.data.enabled),
-            intervalMinutes: typeof data.data.intervalMinutes === 'number' ? data.data.intervalMinutes : 60,
-            lastRequestAt: data.data.lastRequestAt ?? null,
-          };
+          const next = toCfgState(data.data);
           setCfg(next);
           setIntervalDraft(String(next.intervalMinutes));
         } else {
@@ -131,11 +146,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
       const data = await response.json();
       if (isStale()) return;
       if (data.success && data.data) {
-        setCfg({
-          enabled: Boolean(data.data.enabled),
-          intervalMinutes: typeof data.data.intervalMinutes === 'number' ? data.data.intervalMinutes : 60,
-          lastRequestAt: data.data.lastRequestAt ?? null,
-        });
+        setCfg(toCfgState(data.data));
         setSaved(true);
         window.setTimeout(() => setSaved(false), 1800);
       } else {
@@ -289,15 +300,51 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
           </div>
 
           {cfg.lastRequestAt && (
-            <div className="node-detail-card node-detail-card-2col">
+            <div className="node-detail-card">
               <div className="node-detail-label">
-                {t('meshcore.telemetry_config.last_request', 'Last request')}
+                {t('meshcore.telemetry_config.last_request', 'Last attempt')}
               </div>
               <div className="node-detail-value">
                 {new Date(cfg.lastRequestAt).toLocaleString()}
               </div>
             </div>
           )}
+
+          {cfg.lastSuccessAt && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">
+                {t('meshcore.telemetry_config.last_success', 'Last success')}
+              </div>
+              <div className="node-detail-value">
+                {new Date(cfg.lastSuccessAt).toLocaleString()}
+              </div>
+            </div>
+          )}
+
+          {/* Retry-burst / cooldown status (#6033). Only shown while a node is
+              actually retrying or cooling down, so a healthy node stays uncluttered. */}
+          {cfg.cooldownUntil && cfg.cooldownUntil > Date.now() ? (
+            <div className="node-detail-card node-detail-card-2col">
+              <div className="node-detail-label">
+                {t('meshcore.telemetry_config.retry_status', 'Retry status')}
+              </div>
+              <div className="node-detail-value" style={{ color: 'var(--color-warning)' }}>
+                {t(
+                  'meshcore.telemetry_config.cooling_down',
+                  `Cooling down until ${new Date(cfg.cooldownUntil).toLocaleString()} after repeated misses`,
+                )}
+              </div>
+            </div>
+          ) : cfg.missCount > 0 ? (
+            <div className="node-detail-card node-detail-card-2col">
+              <div className="node-detail-label">
+                {t('meshcore.telemetry_config.retry_status', 'Retry status')}
+              </div>
+              <div className="node-detail-value" style={{ color: 'var(--color-warning)' }}>
+                {t('meshcore.telemetry_config.retrying', `Retrying — ${cfg.missCount} consecutive miss(es)`)}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 

@@ -62,6 +62,14 @@ import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
 import { deadDropService, nodeIdHex } from './services/deadDropService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { transportTrafficService } from './services/transportTrafficService.js';
+import {
+  resolveRetryConfig as resolveTelemetryRetryConfig,
+  nextRetryState as nextTelemetryRetryState,
+  RETRY_DELAY_SETTING_KEY,
+  RETRY_MAX_ATTEMPTS_SETTING_KEY,
+  RETRY_COOLDOWN_SETTING_KEY,
+  type TelemetryRetryConfig,
+} from './services/telemetryRetryPolicy.js';
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { pkiDecryptionService } from './services/pkiDecryptionService.js';
@@ -668,6 +676,25 @@ interface PendingTelemetryRequest {
   packetIds: Set<number>; // every packet id belonging to this logical request
   retryTimers: Array<ReturnType<typeof setTimeout>>;
 }
+
+/**
+ * Persisted per-node retry/cooldown state for the remote-LocalStats scheduler
+ * (#6033). Keyed by nodeNum inside a per-source settings JSON blob
+ * (`remoteLocalStatsRetryState`), so a restart or a settings save can neither
+ * re-arm nor clear a cooldown — mirrors autoAnnounceService persisting
+ * `lastAnnouncementTime`. `lastRequestAt` is when we last polled the node;
+ * `settledAt` marks the request we already resolved into success/miss, so a
+ * single poll is counted once.
+ */
+interface RemoteLocalStatsRetryEntry {
+  missCount: number;
+  cooldownUntil: number | null;
+  lastRequestAt: number | null;
+  settledAt: number | null;
+}
+
+/** Per-source key under which the above map is persisted. */
+const REMOTE_LOCALSTATS_RETRY_STATE_KEY = 'remoteLocalStatsRetryState';
 
 /**
  * Bounds for `autoAckCooldowns` (#4399). It was previously never evicted at
@@ -3198,9 +3225,26 @@ class MeshtasticManager implements ISourceManager {
           return;
         }
 
-        const candidates = await databaseService.getNodesNeedingRemoteLocalStatsAsync(this.localNodeInfo.nodeNum, this.sourceId);
+        // Retry-burst / cooldown parity (#6033). Load the per-source policy and
+        // the persisted per-node state, then settle the outcome of earlier polls
+        // (success if telemetry arrived since the request, a miss otherwise)
+        // before choosing this tick's target. Persisted to a per-source settings
+        // blob, so a restart or a settings save never re-arms or clears a cooldown.
+        const retryConfig = await this.resolveRemoteLocalStatsRetryConfig();
+        const retryState = await this.loadRemoteLocalStatsRetryState();
+        const settleChanged = await this.settleRemoteLocalStatsRetries(retryState, retryConfig, Date.now());
+
+        const allCandidates = await databaseService.getNodesNeedingRemoteLocalStatsAsync(this.localNodeInfo.nodeNum, this.sourceId);
+        // Drop nodes serving a cooldown after repeated misses so a persistently
+        // unreachable multi-hop node stops burning airtime every round-robin cycle.
+        const nowMs = Date.now();
+        const candidates = allCandidates.filter(n => {
+          const st = retryState.get(Number(n.nodeNum));
+          return !(st && st.cooldownUntil !== null && st.cooldownUntil > nowMs);
+        });
         if (candidates.length === 0) {
-          logger.debug('📊 Remote LocalStats: No matching target nodes');
+          if (settleChanged) await this.saveRemoteLocalStatsRetryState(retryState);
+          logger.debug('📊 Remote LocalStats: No matching target nodes (after cooldown filter)');
           return;
         }
 
@@ -3221,6 +3265,13 @@ class MeshtasticManager implements ISourceManager {
 
         this.remoteLocalStatsLastSentAt.set(Number(target.nodeNum), Date.now());
         this.lastRemoteLocalStatsSentTime = Date.now();
+        // Record the request so the NEXT tick settles it into success/miss.
+        const sentAt = Date.now();
+        const entry = retryState.get(Number(target.nodeNum))
+          ?? { missCount: 0, cooldownUntil: null, lastRequestAt: null, settledAt: null };
+        entry.lastRequestAt = sentAt;
+        retryState.set(Number(target.nodeNum), entry);
+        await this.saveRemoteLocalStatsRetryState(retryState);
         await this.requestRemoteLocalStats(target.nodeNum, channel, hopLimit, { origin: 'automation' });
       } catch (error) {
         logger.error('❌ Error in remote LocalStats automation:', error);
@@ -3232,6 +3283,115 @@ class MeshtasticManager implements ISourceManager {
       executeRemoteLocalStats().catch(err => logger.error('Remote LocalStats scheduler error:', err));
       this.remoteLocalStatsInterval = setInterval(executeRemoteLocalStats, intervalMs);
     }, initialJitterMs);
+  }
+
+  /**
+   * Resolve the per-source retry policy for remote-LocalStats (#6033),
+   * defaulting to the approved 90s / 5 / 30m. Read with the PER-SOURCE key
+   * (#5080) so a job never silently gets the bare-key null.
+   */
+  private async resolveRemoteLocalStatsRetryConfig(): Promise<TelemetryRetryConfig> {
+    try {
+      const [delaySeconds, maxAttempts, cooldownMinutes] = await Promise.all([
+        databaseService.settings.getSettingForSource(this.sourceId, RETRY_DELAY_SETTING_KEY),
+        databaseService.settings.getSettingForSource(this.sourceId, RETRY_MAX_ATTEMPTS_SETTING_KEY),
+        databaseService.settings.getSettingForSource(this.sourceId, RETRY_COOLDOWN_SETTING_KEY),
+      ]);
+      return resolveTelemetryRetryConfig({ delaySeconds, maxAttempts, cooldownMinutes });
+    } catch {
+      return resolveTelemetryRetryConfig({});
+    }
+  }
+
+  /**
+   * Load the persisted per-node retry/cooldown state for this source (#6033).
+   * Returns an empty map on absent / malformed data — the scheduler then
+   * behaves exactly as before for every node.
+   */
+  private async loadRemoteLocalStatsRetryState(): Promise<Map<number, RemoteLocalStatsRetryEntry>> {
+    const map = new Map<number, RemoteLocalStatsRetryEntry>();
+    try {
+      const raw = await databaseService.settings.getSettingForSource(this.sourceId, REMOTE_LOCALSTATS_RETRY_STATE_KEY);
+      if (!raw) return map;
+      const parsed = JSON.parse(raw) as Record<string, Partial<RemoteLocalStatsRetryEntry>>;
+      for (const [k, v] of Object.entries(parsed)) {
+        const nodeNum = Number(k);
+        if (!Number.isFinite(nodeNum) || !v || typeof v !== 'object') continue;
+        map.set(nodeNum, {
+          missCount: typeof v.missCount === 'number' ? v.missCount : 0,
+          cooldownUntil: typeof v.cooldownUntil === 'number' ? v.cooldownUntil : null,
+          lastRequestAt: typeof v.lastRequestAt === 'number' ? v.lastRequestAt : null,
+          settledAt: typeof v.settledAt === 'number' ? v.settledAt : null,
+        });
+      }
+    } catch (err) {
+      logger.warn(`📊 Remote LocalStats: failed to load retry state for source ${this.sourceId}:`, err);
+    }
+    return map;
+  }
+
+  /**
+   * Persist the per-node retry/cooldown state, pruning fully-settled, clean,
+   * non-cooling entries so the per-source blob stays bounded.
+   */
+  private async saveRemoteLocalStatsRetryState(state: Map<number, RemoteLocalStatsRetryEntry>): Promise<void> {
+    try {
+      const now = Date.now();
+      const obj: Record<string, RemoteLocalStatsRetryEntry> = {};
+      for (const [nodeNum, e] of [...state.entries()]) {
+        const cooldownActive = e.cooldownUntil !== null && e.cooldownUntil > now;
+        const outstanding = e.lastRequestAt !== null && e.lastRequestAt !== e.settledAt;
+        if (e.missCount === 0 && !cooldownActive && !outstanding) {
+          state.delete(nodeNum);
+          continue;
+        }
+        obj[String(nodeNum)] = e;
+      }
+      await databaseService.settings.setSourceSetting(
+        this.sourceId,
+        REMOTE_LOCALSTATS_RETRY_STATE_KEY,
+        JSON.stringify(obj),
+      );
+    } catch (err) {
+      logger.warn(`📊 Remote LocalStats: failed to persist retry state for source ${this.sourceId}:`, err);
+    }
+  }
+
+  /**
+   * Resolve the outcome of earlier remote-LocalStats polls (#6033). For each
+   * node with an unsettled request older than the retry delay, success is
+   * "fresh telemetry arrived since the request" and anything else is a miss;
+   * the shared `nextRetryState` folds that into the miss counter / cooldown.
+   * Mutates `state` in place and returns whether anything changed. Restart-safe:
+   * an outstanding request simply settles once the delay has passed, which is
+   * the correct outcome, never a spurious miss.
+   */
+  private async settleRemoteLocalStatsRetries(
+    state: Map<number, RemoteLocalStatsRetryEntry>,
+    config: TelemetryRetryConfig,
+    now: number,
+  ): Promise<boolean> {
+    let changed = false;
+    for (const [nodeNum, entry] of [...state.entries()]) {
+      const lastReq = entry.lastRequestAt;
+      if (lastReq === null) continue;
+      if (entry.settledAt === lastReq) continue;          // already resolved this poll
+      if (now - lastReq < config.retryDelayMs) continue;  // give the reply time to arrive
+      let heard: boolean;
+      try {
+        const rows = await databaseService.telemetry.getLatestTelemetryPerNodeAndTypeSince(this.sourceId, lastReq);
+        heard = rows.some(r => Number(r.nodeNum) === nodeNum && (r.timestamp ?? 0) > lastReq);
+      } catch (err) {
+        logger.warn(`📊 Remote LocalStats: telemetry freshness check failed for node ${nodeNum}:`, err);
+        continue; // leave unsettled; retry the check next tick
+      }
+      const next = nextTelemetryRetryState(entry, heard ? 'success' : 'miss', now, config);
+      entry.missCount = next.missCount;
+      entry.cooldownUntil = next.cooldownUntil;
+      entry.settledAt = lastReq;
+      changed = true;
+    }
+    return changed;
   }
 
   /**
