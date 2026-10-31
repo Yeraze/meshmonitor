@@ -119,7 +119,13 @@ function defaultDeps(): AircraftAgeOutDeps {
     isIgnoredCached: (nodeNum, sourceId) => databaseService.ignoredNodes.isIgnoredCached(nodeNum, sourceId),
     liftAircraftIgnore: (nodeNum, sourceId) => databaseService.liftAircraftIgnoreAsync(nodeNum, sourceId),
     clearAgedOut: (nodeNum, sourceId) => databaseService.clearAircraftAgedOutAsync(nodeNum, sourceId),
-    scheduleClassification: (sourceId, nodeNum, reason) => aircraftClassificationService.schedule(sourceId, nodeNum, reason),
+    scheduleClassification: (sourceId, nodeNum, reason) =>
+      // Don't forward a trailing `undefined`: the live path calls this with no
+      // reason and must reach schedule() as a 2-arg call so it keeps the
+      // emitting 'position' default (#6045). Only the replay branch passes one.
+      reason === undefined
+        ? aircraftClassificationService.schedule(sourceId, nodeNum)
+        : aircraftClassificationService.schedule(sourceId, nodeNum, reason),
     reclassifyStored: (sourceId) => aircraftClassificationService.reclassifySource(sourceId),
     onLiveAdsbPosition: (sourceId, nodeNum) => adsbMatchService.onLivePosition(sourceId, nodeNum),
   };
