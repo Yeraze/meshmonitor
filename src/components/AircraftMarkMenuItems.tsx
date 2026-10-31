@@ -29,6 +29,16 @@ interface Props {
   onDone: () => void;
 }
 
+/** Shape of the all-sources mark response (#6046). */
+interface MarkSource {
+  sourceId: string;
+  sourceName: string;
+}
+interface AllSourcesMarkResponse {
+  success: boolean;
+  data?: { applied?: MarkSource[]; skipped?: (MarkSource & { code: string; message: string })[] };
+}
+
 const AircraftMarkMenuItems: React.FC<Props> = ({ node, onDone }) => {
   const { t } = useTranslation();
   const { hasPermission, authStatus } = useAuth();
@@ -36,6 +46,8 @@ const AircraftMarkMenuItems: React.FC<Props> = ({ node, onDone }) => {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+  // Opt-in: apply the mark to every source that carries the node (#6046).
+  const [allSources, setAllSources] = useState(false);
 
   if (!sourceId) return null;
   if (sourceType && AIRCRAFT_EXCLUDED_SOURCE_TYPES.has(sourceType)) return null;
@@ -44,11 +56,21 @@ const AircraftMarkMenuItems: React.FC<Props> = ({ node, onDone }) => {
   const actions = aircraftMarkActions(node);
   if (!actions.notAircraft && !actions.aircraft && !actions.clear) return null;
 
+  const baseToast = (mode: Mode): string =>
+    mode === 'not_aircraft'
+      ? t('aircraft_mark.toast_not_aircraft', 'Marked as not aircraft')
+      : mode === 'aircraft'
+        ? t('aircraft_mark.toast_aircraft', 'Marked as aircraft')
+        : t('aircraft_mark.toast_cleared', 'Aircraft override cleared');
+
   const run = async (mode: Mode) => {
     if (busy) return;
     setBusy(true);
     try {
-      await apiService.post('/api/aircraft/mark', { sourceId, nodeNum: node.nodeNum, mode });
+      const body = allSources
+        ? { sourceId, nodeNum: node.nodeNum, mode, allSources: true }
+        : { sourceId, nodeNum: node.nodeNum, mode };
+      const resp = await apiService.post<AllSourcesMarkResponse>('/api/aircraft/mark', body);
       const now = Date.now();
       const by = authStatus?.user?.id ?? null;
       const patch: Partial<DeviceInfo> =
@@ -59,14 +81,31 @@ const AircraftMarkMenuItems: React.FC<Props> = ({ node, onDone }) => {
             : { aircraftManualMark: null, aircraftManualMarkAt: null, aircraftManualMarkBy: null, aircraftFixedAt: null };
       setNodeFieldInCache(queryClient, sourceId, node.nodeNum, patch);
       void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
-      showToast(
-        mode === 'not_aircraft'
-          ? t('aircraft_mark.toast_not_aircraft', 'Marked as not aircraft')
-          : mode === 'aircraft'
-            ? t('aircraft_mark.toast_aircraft', 'Marked as aircraft')
-            : t('aircraft_mark.toast_cleared', 'Aircraft override cleared'),
-        'success',
-      );
+      if (allSources) {
+        const applied = resp?.data?.applied ?? [];
+        const skipped = resp?.data?.skipped ?? [];
+        // The applied list names which sources now carry the mark; skipped
+        // names the ones the user cannot write (or that can't take it).
+        const appliedMsg = t('aircraft_mark.toast_all_applied', '{{base}} on {{count}} source(s): {{names}}', {
+          base: baseToast(mode),
+          count: applied.length,
+          names: applied.map((s) => s.sourceName).join(', '),
+        });
+        if (skipped.length > 0) {
+          showToast(
+            t('aircraft_mark.toast_all_skipped', '{{applied}}. Skipped {{count}}: {{names}}', {
+              applied: appliedMsg,
+              count: skipped.length,
+              names: skipped.map((s) => s.sourceName).join(', '),
+            }),
+            'warning',
+          );
+        } else {
+          showToast(appliedMsg, 'success');
+        }
+      } else {
+        showToast(baseToast(mode), 'success');
+      }
     } catch (err) {
       const code = (err as { code?: string })?.code;
       showToast(
@@ -85,6 +124,16 @@ const AircraftMarkMenuItems: React.FC<Props> = ({ node, onDone }) => {
 
   return (
     <>
+      <label className="actions-menu-item" data-testid="aircraft-mark-all-sources">
+        <input
+          type="checkbox"
+          checked={allSources}
+          disabled={busy}
+          onChange={(e) => setAllSources(e.target.checked)}
+          data-testid="aircraft-mark-all-sources-checkbox"
+        />
+        {t('aircraft_mark.apply_all_sources', 'Apply to all sources')}
+      </label>
       {actions.notAircraft && (
         <button className="actions-menu-item" disabled={busy} onClick={() => void run('not_aircraft')} data-testid="aircraft-mark-not-aircraft">
           <UiIcon name="aircraft" /> {t('aircraft_mark.mark_not_aircraft', 'Mark as not aircraft')}
