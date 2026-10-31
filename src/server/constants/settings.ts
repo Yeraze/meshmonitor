@@ -22,6 +22,14 @@ export const VALID_SETTINGS_KEYS = [
   'telemetryVisualizationHours',
   'telemetryFavorites',
   'telemetryCustomOrder',
+  // Scheduled-telemetry retry burst + cooldown (#6033). Per-source: after a
+  // missed/timed-out scheduled pull, a node retries after N seconds up to M
+  // attempts, then cools down for K minutes. Defaults 90s / 5 / 30m. Shared by
+  // the MeshCore remote-telemetry scheduler and the Meshtastic remote-LocalStats
+  // scheduler (each reads them per its own source).
+  'telemetryRetryDelaySeconds',
+  'telemetryRetryMaxAttempts',
+  'telemetryRetryCooldownMinutes',
   'dashboardWidgets',
   'dashboardSolarVisibility',
   'autoAckEnabled',
@@ -829,6 +837,16 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'remoteLocalStatsFilterRegexEnabled',
   'remoteLocalStatsFilterLastHeardEnabled',
   'remoteLocalStatsFilterLastHeardHours',
+  // Scheduled-telemetry retry burst + cooldown (#6033). Per-source, POSTable,
+  // shared by the MeshCore remote-telemetry scheduler and the Meshtastic
+  // remote-LocalStats scheduler (each reads them for its own source).
+  'telemetryRetryDelaySeconds',
+  'telemetryRetryMaxAttempts',
+  'telemetryRetryCooldownMinutes',
+  // Server-managed Meshtastic remote-LocalStats retry/cooldown state (#6033).
+  // JSON map keyed by nodeNum, written ONLY by meshtasticManager — see
+  // PER_SOURCE_KEYS_NOT_POSTABLE.
+  'remoteLocalStatsRetryState',
   // Coverage Report MQTT gateway-reception recording (#5277 P2). Per-source,
   // MQTT sources only, default off. Read via coverageMqttSettings.ts.
   'coverage_mqtt_enabled',
@@ -1010,6 +1028,7 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'statusMessageLastVerified',  // deviceAdminService.ts rememberVerifiedStatusMessage (#5745; last Status Message a read-back confirmed on the node)
   'tracePathScheduleState',  // tracePathScheduleService.ts (#5723; persisted per-path intervals and hourly cap)
   'meshcoreMentionNotifyState',  // meshcoreMentionNotificationService.ts (persisted per-sender mention cooldown, never client-writable)
+  'remoteLocalStatsRetryState',  // meshtasticManager.ts remote-LocalStats scheduler (#6033; persisted per-node miss counter + cooldown, so a restart/save cannot re-arm or clear it)
   'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)
   // POST /api/sources/:id/forwarding (forwardingRoutes.ts, #5446) — gated on
   // per-source `automation` write, so the generic `settings` POST must not

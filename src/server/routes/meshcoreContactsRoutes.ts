@@ -1152,6 +1152,10 @@ router.get(
           enabled: Boolean(node?.telemetryEnabled),
           intervalMinutes: node?.telemetryIntervalMinutes ?? 60,
           lastRequestAt: node?.lastTelemetryRequestAt ?? null,
+          // Retry-burst / cooldown state (#6033).
+          lastSuccessAt: node?.lastTelemetrySuccessAt ?? null,
+          missCount: node?.telemetryMissCount ?? 0,
+          cooldownUntil: node?.telemetryCooldownUntil ?? null,
         },
       });
     } catch (error) {
@@ -1343,6 +1347,10 @@ router.patch(
           enabled: Boolean(node?.telemetryEnabled),
           intervalMinutes: node?.telemetryIntervalMinutes ?? 60,
           lastRequestAt: node?.lastTelemetryRequestAt ?? null,
+          // Retry-burst / cooldown state (#6033).
+          lastSuccessAt: node?.lastTelemetrySuccessAt ?? null,
+          missCount: node?.telemetryMissCount ?? 0,
+          cooldownUntil: node?.telemetryCooldownUntil ?? null,
         },
       });
     } catch (error) {

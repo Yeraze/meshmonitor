@@ -172,7 +172,9 @@ describe('per-source settings key allowlist invariants', () => {
     // #5745 added statusMessageLastVerified (last verified Status Message).
     // MeshCore mention alerts added meshcoreMentionNotifyState (per-sender cooldown).
     // #6011 added reticulumLastAnnounceAt (announce cooldown + periodic timer).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(34);
+    // #6033 added remoteLocalStatsRetryState (Meshtastic remote-LocalStats
+    // retry/cooldown state, server-written per-source JSON blob).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(35);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is
