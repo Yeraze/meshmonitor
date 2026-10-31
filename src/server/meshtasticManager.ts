@@ -124,7 +124,7 @@ import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } fr
 import { automationPacketTracker, randomPacketId, type SendOrigin } from './utils/automationPacketTracker.js';
 import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy, WANT_CONFIG_NONCE_FULL, WANT_CONFIG_NONCE_ONLY_CONFIG } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy, WANT_CONFIG_NONCE_FULL, WANT_CONFIG_NONCE_ONLY_CONFIG, modemPresetChannelName } from './constants/meshtastic.js';
 import { QuickCloseDetector } from './meshtastic/quickCloseDetector.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
 import { MODULE_FIELD_BY_ADMIN_TYPE, CONFIG_TYPE_MAP } from './constants/configTypes.js';
@@ -7637,22 +7637,14 @@ class MeshtasticManager implements ISourceManager {
           // This prevents database channels from "shadowing" device channels with the same key (#2375, #2413)
           const dbChannel = await databaseService.channelDatabase.getByIdAsync(context.decryptedChannelId);
           const deviceChannels = await databaseService.channels.getAllChannels(this.sourceId);
-          // Match by BOTH psk AND name. Channels share PSK by default — Meshtastic
-          // ships with the sentinel `AQ==` (single byte 0x01) on every preset
-          // slot. Matching on PSK alone would route every default-PSK packet to
-          // whatever slot scans first (typically slot 0 = primary), no matter
-          // which named slot actually originated the packet. The on-wire channel
-          // hash is `xorHash(name) ^ xorHash(psk)`, so name participates in the
-          // identity — two slots with the same PSK but different names are
-          // genuinely different channels and must not be conflated.
-          const dbName = (dbChannel?.name ?? '').trim();
-          const matchingDeviceChannel = dbChannel?.psk
-            ? deviceChannels.find(dc =>
-                dc.psk === dbChannel.psk
-                && (dc.name ?? '').trim() === dbName
-                && dc.role !== 0,
-              )
-            : null;
+          // Match by BOTH psk AND name (see matchDeviceChannelForDbChannel for
+          // the full rationale — the on-wire hash includes the name, so two
+          // slots sharing the default PSK but differing in name are distinct
+          // channels). A blank-name primary slot compares against the source's
+          // modem-preset name so default-key LongFast traffic lands on Primary
+          // #0 rather than a virtual CHANNEL_DB_OFFSET channel (#6044).
+          const presetName = await this.resolveSourceModemPresetName();
+          const matchingDeviceChannel = this.matchDeviceChannelForDbChannel(dbChannel, deviceChannels, presetName);
 
           if (matchingDeviceChannel) {
             // Device channel has the same PSK — use device channel slot instead of database channel
@@ -8276,6 +8268,69 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Resolve this source's persisted modem preset to its firmware-derived
+   * channel name ("LongFast", "MediumSlow", …), or `null` when no usable preset
+   * is stored. Used to give a blank-name primary slot its effective on-air name
+   * when matching server-decrypted traffic to a device channel (#6044).
+   *
+   * Best-effort: a missing or non-numeric `lora.preset.<sourceId>` setting (an
+   * early-boot or MQTT-only source with no device config) resolves to `null`,
+   * which the caller treats as a blank name — i.e. no widening, unchanged
+   * behavior. Never throws.
+   */
+  private async resolveSourceModemPresetName(): Promise<string | null> {
+    try {
+      const raw = await databaseService.settings.getSetting(`lora.preset.${this.sourceId}`);
+      const presetNum = raw != null ? Number(raw) : NaN;
+      return Number.isFinite(presetNum) ? modemPresetChannelName(presetNum) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Find the device channel slot that owns a server-decrypted Channel Database
+   * entry's traffic, matching on BOTH psk AND name. Channels share a PSK by
+   * default — Meshtastic ships the sentinel `AQ==` (single byte 0x01) on every
+   * preset slot — so matching on PSK alone would route every default-PSK packet
+   * to whatever slot scans first (typically slot 0 = primary), no matter which
+   * named slot actually originated it. The on-wire channel hash is
+   * `xorHash(name) ^ xorHash(psk)`, so the name participates in the identity:
+   * two slots with the same PSK but different names are genuinely different
+   * channels and must not be conflated (#2375, #2413).
+   *
+   * Blank-primary exception (#6044): a freshly-connected device reports its
+   * primary slot (role 1, id 0) with an empty name until config syncs, while
+   * the auto-seeded channel-DB row carries the firmware-derived preset name
+   * ("LongFast"). PSK matches (`AQ==`) but `"" !== "LongFast"`, so default-key
+   * primary traffic from the MQTT-proxy path lands on a virtual
+   * `CHANNEL_DB_OFFSET` channel instead of Primary #0. We therefore treat a
+   * blank primary's effective name as `presetName` for the comparison. The
+   * widening is narrow and deliberate: only the blank primary slot is affected,
+   * and only when its preset name equals the DB row's name — a named slot, or a
+   * non-matching preset (e.g. MediumSlow), is never conflated with LongFast
+   * traffic. When `presetName` is `null` the effective name stays blank, so the
+   * seeded "LongFast" row does not match and behavior is unchanged.
+   */
+  private matchDeviceChannelForDbChannel<T extends { id: number; name?: string | null; psk?: string | null; role?: number }>(
+    dbChannel: { psk?: string | null; name?: string | null } | null | undefined,
+    deviceChannels: T[],
+    presetName: string | null,
+  ): T | null {
+    if (!dbChannel?.psk) return null;
+    const dbName = (dbChannel.name ?? '').trim();
+    return (
+      deviceChannels.find(dc => {
+        if (dc.psk !== dbChannel.psk || dc.role === 0) return false;
+        const name = (dc.name ?? '').trim();
+        // Only a blank-name PRIMARY slot (role 1, id 0) borrows the preset name.
+        const effectiveName = name === '' && dc.role === 1 && dc.id === 0 ? (presetName ?? '') : name;
+        return effectiveName === dbName;
+      }) ?? null
+    );
+  }
+
+  /**
    * Resolve the broadcast channel slot/index for a packet from its decryption
    * context, falling back to the raw `meshPacket.channel` only when there is no
    * server-decryption context.
@@ -8297,17 +8352,13 @@ class MeshtasticManager implements ISourceManager {
       // This prevents database channels from "shadowing" device channels with the same key (#2375, #2413)
       const dbChannel = await databaseService.channelDatabase.getByIdAsync(context.decryptedChannelId);
       const deviceChannels = await databaseService.channels.getAllChannels(this.sourceId);
-      // Match by BOTH psk AND name (see processTextMessageProtobuf for the
+      // Match by BOTH psk AND name (see matchDeviceChannelForDbChannel for the
       // detailed rationale — the on-wire hash includes the name, so two slots
       // sharing the default PSK but differing in name are distinct channels).
-      const dbName = (dbChannel?.name ?? '').trim();
-      const matchingDeviceChannel = dbChannel?.psk
-        ? deviceChannels.find(dc =>
-            dc.psk === dbChannel.psk
-            && (dc.name ?? '').trim() === dbName
-            && dc.role !== 0,
-          )
-        : null;
+      // Mirrors the TEXT_MESSAGE_APP path, including the blank-primary → preset
+      // name substitution (#6044).
+      const presetName = await this.resolveSourceModemPresetName();
+      const matchingDeviceChannel = this.matchDeviceChannelForDbChannel(dbChannel, deviceChannels, presetName);
 
       if (matchingDeviceChannel) {
         logger.debug(`📡 Server-decrypted packet matches device channel ${matchingDeviceChannel.id} ("${matchingDeviceChannel.name}") — using device channel instead of database channel`);
