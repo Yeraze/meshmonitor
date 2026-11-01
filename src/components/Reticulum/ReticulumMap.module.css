@@ -28,6 +28,48 @@
   pointer-events: none;
 }
 
+.modeToggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1100;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 2px 8px var(--color-bg-sunken);
+}
+
+.modeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.modeButton:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.modeButtonActive {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.modeButtonActive:hover {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
 .popup {
   min-width: 200px;
 }
