@@ -384,6 +384,23 @@ def _normalize_interface(raw: dict) -> dict:
         "bitrate": raw.get("bitrate"),
         "txBytes": int(raw.get("txb") or 0),
         "rxBytes": int(raw.get("rxb") or 0),
+        # Live RNode interface gauges (issue #6120). RNS's get_interface_stats()
+        # only populates these for an RNode LoRa interface (Reticulum.py
+        # ~L1534-1562); every other interface type leaves them absent, so they
+        # pass through as null. Values are already percentages (airtime/
+        # channel_load/cpu_load) or dBm (noise_floor/interference) exactly as
+        # rnstatus prints them -- no scaling here.
+        "airtimeShort": raw.get("airtime_short"),
+        "airtimeLong": raw.get("airtime_long"),
+        "channelLoadShort": raw.get("channel_load_short"),
+        "channelLoadLong": raw.get("channel_load_long"),
+        "noiseFloor": raw.get("noise_floor"),
+        "interference": raw.get("interference"),
+        "interferenceLastTs": raw.get("interference_last_ts"),
+        "interferenceLastDbm": raw.get("interference_last_dbm"),
+        "cpuLoad": raw.get("cpu_load"),
+        "batteryState": raw.get("battery_state"),
+        "batteryPercent": raw.get("battery_percent"),
     }
 
 

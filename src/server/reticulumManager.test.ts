@@ -211,7 +211,53 @@ describe('ReticulumManager DB persistence', () => {
       txBytes: 100,
       rxBytes: 50,
       lastSeenAt: 1_700_000_000_000,
+      // Live RNode gauges (#6120) — null for this non-RNode interface.
+      airtimeShort: null,
+      airtimeLong: null,
+      channelLoadShort: null,
+      channelLoadLong: null,
+      noiseFloor: null,
+      interference: null,
+      interferenceLastTs: null,
+      interferenceLastDbm: null,
+      cpuLoad: null,
+      batteryState: null,
+      batteryPercent: null,
     });
+  });
+
+  it('interface_stats -> upsertInterface passes through the live RNode gauges (#6120)', async () => {
+    const manager = new ReticulumManager('src-a');
+    const rnode: InterfaceStatsEntry = {
+      ...IFACE_A,
+      name: 'RNode LoRa Interface',
+      type: 'RNodeInterface',
+      airtimeShort: 0,
+      airtimeLong: 0.12,
+      channelLoadShort: 2.44,
+      channelLoadLong: 1.15,
+      noiseFloor: -109,
+      interference: -86,
+      interferenceLastTs: 1_700_000_000,
+      interferenceLastDbm: -86,
+      cpuLoad: 4.2,
+      batteryState: 'discharging',
+      batteryPercent: 100,
+    };
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleInterfaceStats(makeInterfaceStats([rnode]));
+
+    expect(upsertInterface).toHaveBeenCalledWith('src-a', expect.objectContaining({
+      airtimeLong: 0.12,
+      channelLoadShort: 2.44,
+      noiseFloor: -109,
+      interference: -86,
+      interferenceLastTs: 1_700_000_000,
+      interferenceLastDbm: -86,
+      cpuLoad: 4.2,
+      batteryState: 'discharging',
+      batteryPercent: 100,
+    }));
   });
 
   it('a failed upsertInterface for one interface does not block persistence of the others', async () => {

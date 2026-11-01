@@ -197,6 +197,24 @@ export const reticulumInterfacesSqlite = sqliteTable('reticulum_interfaces', {
   radioState: integer('radioState', { mode: 'boolean' }),
   /** Loose JSON text — read-only RNode board/firmware info (R2). */
   deviceInfoJson: text('deviceInfoJson'),
+  /**
+   * Live RNode interface gauges (migration 222, issue #6120). RNS's
+   * `get_interface_stats()` only reports these for an RNode LoRa interface;
+   * every other interface leaves them NULL. Airtime/channel-load/cpu-load are
+   * percentages and noise-floor/interference are dBm, exactly as `rnstatus`
+   * prints them. `interferenceLastTs` is RNS epoch SECONDS (not ms).
+   */
+  airtimeShort: real('airtimeShort'),
+  airtimeLong: real('airtimeLong'),
+  channelLoadShort: real('channelLoadShort'),
+  channelLoadLong: real('channelLoadLong'),
+  noiseFloor: real('noiseFloor'),
+  interference: real('interference'),
+  interferenceLastTs: real('interferenceLastTs'),
+  interferenceLastDbm: real('interferenceLastDbm'),
+  cpuLoad: real('cpuLoad'),
+  batteryState: text('batteryState'),
+  batteryPercent: real('batteryPercent'),
 }, (t) => ({
   sourceNameIdx: uniqueIndex('reticulum_interfaces_source_name_idx').on(t.sourceId, t.interfaceName),
 }));
@@ -228,6 +246,18 @@ export const reticulumInterfacesPostgres = pgTable('reticulum_interfaces', {
   ltAlock: pgDoublePrecision('ltAlock'),
   radioState: pgBoolean('radioState'),
   deviceInfoJson: pgText('deviceInfoJson'),
+  // Live RNode interface gauges (migration 222, issue #6120). Null for non-RNode interfaces.
+  airtimeShort: pgDoublePrecision('airtimeShort'),
+  airtimeLong: pgDoublePrecision('airtimeLong'),
+  channelLoadShort: pgDoublePrecision('channelLoadShort'),
+  channelLoadLong: pgDoublePrecision('channelLoadLong'),
+  noiseFloor: pgDoublePrecision('noiseFloor'),
+  interference: pgDoublePrecision('interference'),
+  interferenceLastTs: pgDoublePrecision('interferenceLastTs'),
+  interferenceLastDbm: pgDoublePrecision('interferenceLastDbm'),
+  cpuLoad: pgDoublePrecision('cpuLoad'),
+  batteryState: pgText('batteryState'),
+  batteryPercent: pgDoublePrecision('batteryPercent'),
 }, (t) => ({
   sourceNameIdx: pgUniqueIndex('reticulum_interfaces_source_name_idx').on(t.sourceId, t.interfaceName),
 }));
@@ -258,6 +288,18 @@ export const reticulumInterfacesMysql = mysqlTable('reticulum_interfaces', {
   ltAlock: myDouble('ltAlock'),
   radioState: myBoolean('radioState'),
   deviceInfoJson: myText('deviceInfoJson'),
+  // Live RNode interface gauges (migration 222, issue #6120). Null for non-RNode interfaces.
+  airtimeShort: myDouble('airtimeShort'),
+  airtimeLong: myDouble('airtimeLong'),
+  channelLoadShort: myDouble('channelLoadShort'),
+  channelLoadLong: myDouble('channelLoadLong'),
+  noiseFloor: myDouble('noiseFloor'),
+  interference: myDouble('interference'),
+  interferenceLastTs: myDouble('interferenceLastTs'),
+  interferenceLastDbm: myDouble('interferenceLastDbm'),
+  cpuLoad: myDouble('cpuLoad'),
+  batteryState: myVarchar('batteryState', { length: 32 }),
+  batteryPercent: myDouble('batteryPercent'),
 }, (t) => ({
   sourceNameIdx: myUniqueIndex('reticulum_interfaces_source_name_idx').on(t.sourceId, t.interfaceName),
 }));
