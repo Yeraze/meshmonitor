@@ -6148,6 +6148,8 @@
   "analysis.coverage.sender_own_source": "our source {{source}}",
   "analysis.coverage.cross_source_only": "Cross-source only",
   "analysis.coverage.cross_source_only_hint": "Show only fixes sent by one of your own sources and heard by another of them.",
+  "map.colorNodesBySource": "Colour nodes by source",
+  "map.colorNodesBySourceHelp": "Draw a coloured ring around each node marker in its source’s colour, matching the colours used in Unified Messages and the map legend. The role glyph and age fade stay unchanged.",
   "map.cross_source.toggle": "Show Cross-Source Links",
   "map.packet_flights.toggle": "Live packet traffic",
   "map.packet_flights.toggle_hint": "Shows packets as they arrive, as dots flying to the node that heard them.",

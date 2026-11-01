@@ -239,6 +239,7 @@ import { migration as addNodeChannelLockedMigration, runMigration217Postgres, ru
 import { migration as addMeshcoreHeardRepeaterHopsMigration, runMigration218Postgres, runMigration218Mysql } from '../server/migrations/218_add_meshcore_heard_repeater_hops.js';
 import { migration as automationFireStateMigration, runMigration219Postgres, runMigration219Mysql } from '../server/migrations/219_automation_fire_state.js';
 import { migration as meshcoreTelemetryRetryStateMigration, runMigration220Postgres, runMigration220Mysql } from '../server/migrations/220_add_meshcore_telemetry_retry_state.js';
+import { migration as colorNodesBySourcePrefMigration, runMigration221Postgres, runMigration221Mysql } from '../server/migrations/221_user_map_preferences_color_nodes_by_source.js';
 
 // ============================================================================
 // Registry
@@ -3553,4 +3554,20 @@ registry.register({
   sqlite: (db) => meshcoreTelemetryRetryStateMigration.up(db),
   postgres: (client) => runMigration220Postgres(client),
   mysql: (pool) => runMigration220Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 221: user_map_preferences.color_nodes_by_source (#6125).
+// PER-USER opt-in toggle. When on, the Dashboard Unified map draws a per-source
+// coloured ring around each node marker (reusing getSourceColor). Default
+// FALSE keeps today's behaviour.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 221,
+  name: 'user_map_preferences_color_nodes_by_source',
+  settingsKey: 'migration_221_user_map_preferences_color_nodes_by_source',
+  sqlite: (db) => colorNodesBySourcePrefMigration.up(db),
+  postgres: (client) => runMigration221Postgres(client),
+  mysql: (pool) => runMigration221Mysql(pool),
 });
