@@ -52,6 +52,7 @@ import { useUI } from '../contexts/UIContext';
 import { useSettings, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import { useToast } from '../components/ToastContainer';
 import api from '../services/api';
+import { isNearBottom, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX } from '../utils/scrollNearBottom';
 import { logger } from '../utils/logger';
 import { playSound, playChannelSound, DEFAULT_SOUND_ID } from '../utils/notificationSounds';
 import type { PollData, RawMessage } from './usePoll';
@@ -325,11 +326,17 @@ export function useMessagingView() {
 
   // Check if container is scrolled near bottom (within 100px)
   const isScrolledNearBottom = useCallback((container: HTMLDivElement | null): boolean => {
-    if (!container) return true;
-    const threshold = 100;
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    return scrollHeight - scrollTop - clientHeight < threshold;
+    return isNearBottom(container, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX);
   }, []);
+
+  // Whether each container was near the bottom BEFORE the latest render.
+  // Captured from the scroll handlers (pre-commit layout) and consulted by the
+  // auto-scroll effects below. Measuring inside those effects reads the DOM
+  // after the new row has grown `scrollHeight`, so a tall message could fail
+  // the near-bottom test even when the user sat at the bottom — the #6124
+  // post-render false negative. Default true so a stream at the bottom follows.
+  const channelWasNearBottomRef = useRef(true);
+  const dmWasNearBottomRef = useRef(true);
 
   // Check if container is scrolled near top (within 100px)
   const isScrolledNearTop = useCallback((container: HTMLDivElement | null): boolean => {
@@ -341,6 +348,7 @@ export function useMessagingView() {
   const handleChannelScroll = useCallback(() => {
     if (channelMessagesContainerRef.current) {
       const atBottom = isScrolledNearBottom(channelMessagesContainerRef.current);
+      channelWasNearBottomRef.current = atBottom;
       setIsChannelScrolledToBottom(atBottom);
 
       // Check if scrolled near top and trigger load more (throttled to 200ms)
@@ -355,6 +363,7 @@ export function useMessagingView() {
   const handleDMScroll = useCallback(() => {
     if (dmMessagesContainerRef.current) {
       const atBottom = isScrolledNearBottom(dmMessagesContainerRef.current);
+      dmWasNearBottomRef.current = atBottom;
       setIsDMScrolledToBottom(atBottom);
 
       // Check if scrolled near top and trigger load more (throttled to 200ms)
@@ -433,26 +442,31 @@ export function useMessagingView() {
   // Non-gated companion to GATED EFFECT #2 below (channels vs DMs) — preserved
   // as-is (no activeTab guard existed here pre-migration).
   const prevChannelMsgCountRef = useRef<Record<number, number>>({});
+  const prevChannelLastIdRef = useRef<Record<number, string | undefined>>({});
   useEffect(() => {
     const currentMessages = channelMessages[selectedChannel] || [];
     const prevCount = prevChannelMsgCountRef.current[selectedChannel] || 0;
     const currentCount = currentMessages.length;
+    const prevLastId = prevChannelLastIdRef.current[selectedChannel];
+    const currentLastId = currentMessages[currentCount - 1]?.id;
 
-    if (currentCount > prevCount && prevCount > 0) {
-      // New messages arrived — auto-scroll if user was near the bottom
+    // Follow an APPEND (a new row at the bottom), never a prepend of older
+    // history: a load-older page grows the count but leaves the last id
+    // unchanged, and must not force-scroll (#4476). Scroll only when the user
+    // was near the bottom BEFORE this row committed — reading the pre-commit
+    // position (captured in the scroll handler) avoids a tall new bubble
+    // failing a post-render re-measure of the already-grown container (#6124).
+    if (currentCount > prevCount && prevCount > 0 && currentLastId !== prevLastId) {
       const container = channelMessagesContainerRef.current;
-      if (container) {
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-        if (isNearBottom) {
-          setTimeout(() => {
-            if (channelMessagesContainerRef.current) {
-              channelMessagesContainerRef.current.scrollTo({
-                top: channelMessagesContainerRef.current.scrollHeight,
-                behavior: 'smooth'
-              });
-            }
-          }, 50);
-        }
+      if (container && channelWasNearBottomRef.current) {
+        setTimeout(() => {
+          if (channelMessagesContainerRef.current) {
+            channelMessagesContainerRef.current.scrollTo({
+              top: channelMessagesContainerRef.current.scrollHeight,
+              behavior: 'smooth'
+            });
+          }
+        }, 50);
       }
     }
 
@@ -460,33 +474,46 @@ export function useMessagingView() {
       ...prevChannelMsgCountRef.current,
       [selectedChannel]: currentCount
     };
+    prevChannelLastIdRef.current = {
+      ...prevChannelLastIdRef.current,
+      [selectedChannel]: currentLastId
+    };
   }, [channelMessages, selectedChannel]);
 
   // Auto-scroll DMs to bottom when new messages arrive and user is at the bottom
   // [GATED EFFECT #2 — task54_spec.md §1.3]
   const prevDMMsgCountRef = useRef(0);
+  const prevDMLastIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const currentCount = messages.length;
     const prevCount = prevDMMsgCountRef.current;
+    const prevLastId = prevDMLastIdRef.current;
+    const currentLastId = messages[currentCount - 1]?.id;
 
-    if (currentCount > prevCount && prevCount > 0 && activeTab === 'messages') {
+    // Follow an append, not a prepend of older history (#4476), and only when
+    // the user was near the bottom BEFORE this row committed (see channel
+    // effect above and #6124).
+    if (
+      currentCount > prevCount &&
+      prevCount > 0 &&
+      currentLastId !== prevLastId &&
+      activeTab === 'messages'
+    ) {
       const container = dmMessagesContainerRef.current;
-      if (container) {
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-        if (isNearBottom) {
-          setTimeout(() => {
-            if (dmMessagesContainerRef.current) {
-              dmMessagesContainerRef.current.scrollTo({
-                top: dmMessagesContainerRef.current.scrollHeight,
-                behavior: 'smooth'
-              });
-            }
-          }, 50);
-        }
+      if (container && dmWasNearBottomRef.current) {
+        setTimeout(() => {
+          if (dmMessagesContainerRef.current) {
+            dmMessagesContainerRef.current.scrollTo({
+              top: dmMessagesContainerRef.current.scrollHeight,
+              behavior: 'smooth'
+            });
+          }
+        }, 50);
       }
     }
 
     prevDMMsgCountRef.current = currentCount;
+    prevDMLastIdRef.current = currentLastId;
   }, [messages, activeTab]);
 
   // Auto-load more channel messages if container doesn't have a scrollbar
