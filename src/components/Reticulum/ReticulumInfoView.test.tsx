@@ -11,7 +11,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ReticulumInfoView } from './ReticulumInfoView';
-import type { ReticulumStatus } from '../../types/reticulum';
+import type { ReticulumStatus, ReticulumInterfaceRow } from '../../types/reticulum';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -24,6 +24,46 @@ function baseStatus(overrides: Partial<ReticulumStatus> = {}): ReticulumStatus {
     mode: 'attach',
     interfaceCount: 2,
     destinationCount: 5,
+    ...overrides,
+  };
+}
+
+/** A ReticulumInterfaceRow with every live gauge null — override as needed. */
+function makeIface(overrides: Partial<ReticulumInterfaceRow> = {}): ReticulumInterfaceRow {
+  return {
+    sourceId: 'src-1',
+    interfaceName: 'iface',
+    interfaceType: 'TCPClientInterface',
+    interfaceHash: null,
+    mode: 'full',
+    status: 'up',
+    online: true,
+    bitrate: null,
+    txBytes: 0,
+    rxBytes: 0,
+    lastSeenAt: 0,
+    createdAt: 0,
+    updatedAt: 0,
+    frequency: null,
+    bandwidth: null,
+    spreadingFactor: null,
+    codingRate: null,
+    txPower: null,
+    stAlock: null,
+    ltAlock: null,
+    radioState: null,
+    deviceInfoJson: null,
+    airtimeShort: null,
+    airtimeLong: null,
+    channelLoadShort: null,
+    channelLoadLong: null,
+    noiseFloor: null,
+    interference: null,
+    interferenceLastTs: null,
+    interferenceLastDbm: null,
+    cpuLoad: null,
+    batteryState: null,
+    batteryPercent: null,
     ...overrides,
   };
 }
@@ -69,5 +109,67 @@ describe('ReticulumInfoView', () => {
     render(<ReticulumInfoView status={baseStatus({ rnsVersion: '0.8.1', bridgeVersion: '1.2.3' })} />);
     expect(screen.getByTestId('reticulum-info-rns-version')).toHaveTextContent('0.8.1');
     expect(screen.getByTestId('reticulum-info-bridge-version')).toHaveTextContent('1.2.3');
+  });
+
+  // ── Interface status card (#6120) ─────────────────────────────────────────
+
+  it('hides the interface-status section entirely when no interface reports a gauge', () => {
+    render(
+      <ReticulumInfoView
+        status={baseStatus()}
+        interfaces={[makeIface({ interfaceName: 'AutoInterface', interfaceType: 'AutoInterface' })]}
+      />,
+    );
+    expect(screen.queryByTestId('reticulum-info-interface-status')).toBeNull();
+  });
+
+  it('renders a status card and shows only the rows that have a value (hides empty rows)', () => {
+    // An RNode interface that reports battery + channel load + noise floor, but
+    // NOT airtime, interference, or CPU load — the absent fields must not render.
+    render(
+      <ReticulumInfoView
+        status={baseStatus()}
+        interfaces={[
+          makeIface({
+            interfaceName: 'RNode LoRa Interface',
+            interfaceType: 'RNodeInterface',
+            batteryPercent: 100,
+            batteryState: 'discharging',
+            channelLoadShort: 2.44,
+            channelLoadLong: 1.15,
+            noiseFloor: -109,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId('reticulum-info-interface-status')).toBeInTheDocument();
+    const card = screen.getByTestId('reticulum-info-iface-RNode LoRa Interface');
+    expect(card).toBeInTheDocument();
+
+    // Present rows render...
+    expect(screen.getByTestId('reticulum-info-iface-RNode LoRa Interface-battery')).toHaveTextContent('100% (discharging)');
+    expect(screen.getByTestId('reticulum-info-iface-RNode LoRa Interface-channel_load')).toHaveTextContent('2.44% (15s) · 1.15% (1h)');
+    expect(screen.getByTestId('reticulum-info-iface-RNode LoRa Interface-noise_floor')).toHaveTextContent('-109 dBm');
+
+    // ...absent ones do not.
+    expect(screen.queryByTestId('reticulum-info-iface-RNode LoRa Interface-airtime')).toBeNull();
+    expect(screen.queryByTestId('reticulum-info-iface-RNode LoRa Interface-interference')).toBeNull();
+    expect(screen.queryByTestId('reticulum-info-iface-RNode LoRa Interface-cpu_load')).toBeNull();
+  });
+
+  it('skips interfaces that report nothing but still renders the one that does', () => {
+    render(
+      <ReticulumInfoView
+        status={baseStatus()}
+        interfaces={[
+          makeIface({ interfaceName: 'AutoInterface', interfaceType: 'AutoInterface' }),
+          makeIface({ interfaceName: 'RNode LoRa Interface', interfaceType: 'RNodeInterface', airtimeLong: 0.12 }),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId('reticulum-info-iface-RNode LoRa Interface')).toBeInTheDocument();
+    expect(screen.queryByTestId('reticulum-info-iface-AutoInterface')).toBeNull();
+    expect(screen.getByTestId('reticulum-info-iface-RNode LoRa Interface-airtime')).toHaveTextContent('0.12% (1h)');
   });
 });

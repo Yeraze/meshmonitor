@@ -36,8 +36,68 @@ from meshmonitor_rns_bridge.rns_manager import (
     _load_or_create_lxmf_identity,
     _lxmf_method_to_wire,
     _lxmf_state_to_wire,
+    _normalize_interface,
     _sanitize_lxmf_fields,
 )
+
+
+# --------------------------------------------------------------------------
+# _normalize_interface — live RNode gauges (issue #6120)
+# --------------------------------------------------------------------------
+
+
+def test_normalize_interface_passes_through_live_rnode_gauges():
+    out = _normalize_interface({
+        "short_name": "RNode LoRa Interface",
+        "type": "RNodeInterface",
+        "status": True,
+        "mode": 1,
+        "txb": 1460,
+        "rxb": 54020,
+        "airtime_short": 0.0,
+        "airtime_long": 0.12,
+        "channel_load_short": 2.44,
+        "channel_load_long": 1.15,
+        "noise_floor": -109,
+        "interference": -86,
+        "interference_last_ts": 1700000000,
+        "interference_last_dbm": -86,
+        "cpu_load": 4.2,
+        "battery_state": "discharging",
+        "battery_percent": 100,
+    })
+    assert out["airtimeShort"] == 0.0
+    assert out["airtimeLong"] == 0.12
+    assert out["channelLoadShort"] == 2.44
+    assert out["channelLoadLong"] == 1.15
+    assert out["noiseFloor"] == -109
+    assert out["interference"] == -86
+    assert out["interferenceLastTs"] == 1700000000
+    assert out["interferenceLastDbm"] == -86
+    assert out["cpuLoad"] == 4.2
+    assert out["batteryState"] == "discharging"
+    assert out["batteryPercent"] == 100
+
+
+def test_normalize_interface_live_gauges_null_for_non_rnode():
+    out = _normalize_interface({
+        "name": "AutoInterface",
+        "type": "AutoInterface",
+        "status": True,
+        "txb": 547,
+        "rxb": 1290,
+    })
+    # Base fields still populated...
+    assert out["name"] == "AutoInterface"
+    assert out["txBytes"] == 547
+    assert out["online"] is True
+    # ...every live gauge absent from RNS passes through as None.
+    for key in (
+        "airtimeShort", "airtimeLong", "channelLoadShort", "channelLoadLong",
+        "noiseFloor", "interference", "interferenceLastTs", "interferenceLastDbm",
+        "cpuLoad", "batteryState", "batteryPercent",
+    ):
+        assert out[key] is None
 
 # --------------------------------------------------------------------------
 # Delivery-state mapping

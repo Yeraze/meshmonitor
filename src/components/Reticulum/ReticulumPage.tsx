@@ -32,7 +32,7 @@ import { ReticulumSettingsView } from './ReticulumSettingsView';
 import { ReticulumMap } from './ReticulumMap';
 import { ReticulumConfigurationView } from './ReticulumConfigurationView';
 import { ReticulumPathsView } from './ReticulumPathsView';
-import type { ReticulumStatus, ReticulumView } from '../../types/reticulum';
+import type { ReticulumStatus, ReticulumView, ReticulumInterfaceRow } from '../../types/reticulum';
 import { UiIcon } from '../icons';
 import styles from './ReticulumPage.module.css';
 
@@ -45,9 +45,12 @@ interface ReticulumPageProps {
   /** When provided, the parent renders its own connection chip (see
    *  `ReticulumSourcePage`'s topbar) and can mirror this page's status. */
   onStatusChange?: (status: ReticulumStatus | null) => void;
+  /** When provided, mirrors the polled interface list to the parent so the
+   *  source header can read the live RNode gauges (battery / Ch / Air, #6120). */
+  onInterfacesChange?: (interfaces: ReticulumInterfaceRow[]) => void;
 }
 
-export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId, enabled, onStatusChange }) => {
+export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId, enabled, onStatusChange, onInterfacesChange }) => {
   const { t } = useTranslation();
   const {
     status, destinations, interfaces, loading, error, refresh, toggleFavorite,
@@ -73,6 +76,10 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
   useEffect(() => {
     onStatusChange?.(status);
   }, [status, onStatusChange]);
+
+  useEffect(() => {
+    onInterfacesChange?.(interfaces);
+  }, [interfaces, onInterfacesChange]);
 
   const connected = status?.connected ?? false;
 
@@ -180,7 +187,7 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
           <ReticulumConfigurationView sourceId={sourceId} showRadio={status?.mode === 'own'} />
         )}
         {view === 'info' && (
-          <ReticulumInfoView status={status} loading={loading} />
+          <ReticulumInfoView status={status} interfaces={interfaces} loading={loading} />
         )}
         {view === 'settings' && (
           <ReticulumSettingsView sourceId={sourceId} />

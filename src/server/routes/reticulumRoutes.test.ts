@@ -366,6 +366,53 @@ describe('Reticulum routes', () => {
       const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/interfaces`);
       expect(res.status).toBe(403);
     });
+
+    it('returns the live RNode gauges when present and null when absent (#6120)', async () => {
+      // An RNode interface the bridge reported gauges for...
+      await harness.db.reticulum.upsertInterface(harness.sourceA, {
+        interfaceName: 'rnode-a',
+        interfaceType: 'RNodeInterface',
+        status: 'up',
+        online: true,
+        txBytes: 1460,
+        rxBytes: 54020,
+        airtimeShort: 0,
+        airtimeLong: 0.12,
+        channelLoadShort: 2.44,
+        channelLoadLong: 1.15,
+        noiseFloor: -109,
+        interference: -86,
+        interferenceLastTs: 1_700_000_000,
+        interferenceLastDbm: -86,
+        cpuLoad: 4.2,
+        batteryState: 'discharging',
+        batteryPercent: 100,
+      });
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/api/sources/${harness.sourceA}/reticulum/interfaces`);
+      expect(res.status).toBe(200);
+      const rows: Array<Record<string, unknown>> = res.body.data;
+      const rnode = rows.find((i) => i.interfaceName === 'rnode-a');
+      expect(rnode).toBeDefined();
+      expect(rnode!.airtimeLong).toBe(0.12);
+      expect(rnode!.channelLoadShort).toBe(2.44);
+      expect(rnode!.noiseFloor).toBe(-109);
+      expect(rnode!.interference).toBe(-86);
+      expect(rnode!.interferenceLastTs).toBe(1_700_000_000);
+      expect(rnode!.interferenceLastDbm).toBe(-86);
+      expect(rnode!.cpuLoad).toBe(4.2);
+      expect(rnode!.batteryState).toBe('discharging');
+      expect(rnode!.batteryPercent).toBe(100);
+
+      // ...while the plain tcp-a interface (seeded without gauges) reports null.
+      const tcp = rows.find((i) => i.interfaceName === 'tcp-a');
+      expect(tcp).toBeDefined();
+      expect(tcp!.airtimeShort).toBeNull();
+      expect(tcp!.channelLoadLong).toBeNull();
+      expect(tcp!.noiseFloor).toBeNull();
+      expect(tcp!.batteryState).toBeNull();
+      expect(tcp!.batteryPercent).toBeNull();
+    });
   });
 
   // ── GET /interfaces/:name/history ────────────────────────────────────────

@@ -57,7 +57,10 @@ const SQLITE_CREATE = `
     lastSeenAt INTEGER NOT NULL,
     createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
     frequency REAL, bandwidth REAL, spreadingFactor INTEGER, codingRate INTEGER, txPower INTEGER,
-    stAlock REAL, ltAlock REAL, radioState INTEGER, deviceInfoJson TEXT
+    stAlock REAL, ltAlock REAL, radioState INTEGER, deviceInfoJson TEXT,
+    airtimeShort REAL, airtimeLong REAL, channelLoadShort REAL, channelLoadLong REAL,
+    noiseFloor REAL, interference REAL, interferenceLastTs REAL, interferenceLastDbm REAL,
+    cpuLoad REAL, batteryState TEXT, batteryPercent REAL
   );
   CREATE UNIQUE INDEX reticulum_interfaces_source_name_idx ON reticulum_interfaces(sourceId, interfaceName);
   CREATE TABLE settings (
@@ -95,7 +98,12 @@ const POSTGRES_CREATE = `
     "createdAt" BIGINT NOT NULL, "updatedAt" BIGINT NOT NULL,
     frequency DOUBLE PRECISION, bandwidth DOUBLE PRECISION, "spreadingFactor" INTEGER,
     "codingRate" INTEGER, "txPower" INTEGER, "stAlock" DOUBLE PRECISION, "ltAlock" DOUBLE PRECISION,
-    "radioState" BOOLEAN, "deviceInfoJson" TEXT
+    "radioState" BOOLEAN, "deviceInfoJson" TEXT,
+    "airtimeShort" DOUBLE PRECISION, "airtimeLong" DOUBLE PRECISION,
+    "channelLoadShort" DOUBLE PRECISION, "channelLoadLong" DOUBLE PRECISION,
+    "noiseFloor" DOUBLE PRECISION, interference DOUBLE PRECISION,
+    "interferenceLastTs" DOUBLE PRECISION, "interferenceLastDbm" DOUBLE PRECISION,
+    "cpuLoad" DOUBLE PRECISION, "batteryState" TEXT, "batteryPercent" DOUBLE PRECISION
   );
   CREATE UNIQUE INDEX reticulum_interfaces_source_name_idx ON reticulum_interfaces("sourceId", "interfaceName");
   CREATE TABLE settings (
@@ -133,6 +141,9 @@ const MYSQL_CREATE = `
     createdAt BIGINT NOT NULL, updatedAt BIGINT NOT NULL,
     frequency DOUBLE, bandwidth DOUBLE, spreadingFactor INT, codingRate INT, txPower INT,
     stAlock DOUBLE, ltAlock DOUBLE, radioState TINYINT(1), deviceInfoJson TEXT,
+    airtimeShort DOUBLE, airtimeLong DOUBLE, channelLoadShort DOUBLE, channelLoadLong DOUBLE,
+    noiseFloor DOUBLE, interference DOUBLE, interferenceLastTs DOUBLE, interferenceLastDbm DOUBLE,
+    cpuLoad DOUBLE, batteryState VARCHAR(32), batteryPercent DOUBLE,
     UNIQUE KEY reticulum_interfaces_source_name_idx (sourceId, interfaceName)
   );
   CREATE TABLE settings (
@@ -287,6 +298,50 @@ function runReticulumTests(getBackend: () => TestBackend) {
     expect(row!.online).toBe(true);
     expect(row!.txBytes).toBe(100);
     expect(row!.rxBytes).toBe(200);
+  });
+
+  it('upsertInterface - round-trips the live RNode gauges (#6120) and leaves them null when absent', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // An RNode interface reports the gauges...
+    await repo.upsertInterface(SRC_A, makeIface({
+      interfaceName: 'RNode LoRa Interface',
+      interfaceType: 'RNodeInterface',
+      airtimeShort: 0,
+      airtimeLong: 0.12,
+      channelLoadShort: 2.44,
+      channelLoadLong: 1.15,
+      noiseFloor: -109,
+      interference: -86,
+      interferenceLastTs: 1_700_000_000,
+      interferenceLastDbm: -86,
+      cpuLoad: 3.5,
+      batteryState: 'discharging',
+      batteryPercent: 100,
+    }));
+    const rnode = await repo.getInterface(SRC_A, 'RNode LoRa Interface');
+    expect(rnode!.airtimeLong).toBe(0.12);
+    expect(rnode!.channelLoadShort).toBe(2.44);
+    expect(rnode!.noiseFloor).toBe(-109);
+    expect(rnode!.interference).toBe(-86);
+    expect(rnode!.interferenceLastTs).toBe(1_700_000_000);
+    expect(rnode!.interferenceLastDbm).toBe(-86);
+    expect(rnode!.cpuLoad).toBe(3.5);
+    expect(rnode!.batteryState).toBe('discharging');
+    expect(rnode!.batteryPercent).toBe(100);
+
+    // ...a non-RNode interface that reports none leaves every gauge null.
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'AutoInterface', interfaceType: 'AutoInterface' }));
+    const auto = await repo.getInterface(SRC_A, 'AutoInterface');
+    expect(auto!.airtimeShort).toBeNull();
+    expect(auto!.channelLoadLong).toBeNull();
+    expect(auto!.noiseFloor).toBeNull();
+    expect(auto!.batteryState).toBeNull();
+    expect(auto!.batteryPercent).toBeNull();
   });
 
   it('upsertInterface - repeated poll overwrites the full snapshot, preserves createdAt', async () => {

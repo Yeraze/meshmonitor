@@ -240,6 +240,7 @@ import { migration as addMeshcoreHeardRepeaterHopsMigration, runMigration218Post
 import { migration as automationFireStateMigration, runMigration219Postgres, runMigration219Mysql } from '../server/migrations/219_automation_fire_state.js';
 import { migration as meshcoreTelemetryRetryStateMigration, runMigration220Postgres, runMigration220Mysql } from '../server/migrations/220_add_meshcore_telemetry_retry_state.js';
 import { migration as colorNodesBySourcePrefMigration, runMigration221Postgres, runMigration221Mysql } from '../server/migrations/221_user_map_preferences_color_nodes_by_source.js';
+import { migration as reticulumInterfaceLiveStatsMigration, runMigration222Postgres, runMigration222Mysql } from '../server/migrations/222_add_reticulum_interface_live_stats.js';
 
 // ============================================================================
 // Registry
@@ -3570,4 +3571,19 @@ registry.register({
   sqlite: (db) => colorNodesBySourcePrefMigration.up(db),
   postgres: (client) => runMigration221Postgres(client),
   mysql: (pool) => runMigration221Mysql(pool),
+});
+
+// Migration 222: add live RNode interface-gauge columns (airtime, channel
+// load, noise floor, interference, CPU load, battery) to `reticulum_interfaces`
+// (#6120). Null for non-RNode interfaces. PER-SOURCE (columns on the per-source
+// reticulum_interfaces table). Display-only; the bridge now relays these fields.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 222,
+  name: 'add_reticulum_interface_live_stats',
+  settingsKey: 'migration_222_add_reticulum_interface_live_stats',
+  sqlite: (db) => reticulumInterfaceLiveStatsMigration.up(db),
+  postgres: (client) => runMigration222Postgres(client),
+  mysql: (pool) => runMigration222Mysql(pool),
 });
