@@ -32,6 +32,7 @@ import { SpipImage } from '../Spip/SpipImage';
 import { meshcoreDisplayTimeMs, meshcoreMessageClockOffsetMs } from '../../utils/meshcoreMessageTime';
 import { MeshCoreClockOffset } from './MeshCoreClockOffset';
 import { sortHeardBy } from '../../utils/meshcoreHeardBy';
+import { isNearBottom, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX } from '../../utils/scrollNearBottom';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -215,13 +216,37 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }
   }, [resendConfirm, onResendMessage]);
 
+  // When the heard-by (antenna) badge expands a repeater list, scroll the row
+  // into view so the newly-revealed list is on screen (#6124). We only scroll
+  // on expand, never on collapse, and the scroll runs from a post-commit effect
+  // because the list is not in the DOM until after `expandedHeardBy` commits.
+  const pendingHeardByScrollRef = useRef<string | null>(null);
   const toggleHeardBy = useCallback((id: string) => {
+    const willExpand = !expandedHeardBy.has(id);
     setExpandedHeardBy(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  }, []);
+    if (willExpand) pendingHeardByScrollRef.current = id;
+  }, [expandedHeardBy]);
+
+  useEffect(() => {
+    const id = pendingHeardByScrollRef.current;
+    if (!id) return;
+    pendingHeardByScrollRef.current = null;
+    const container = listRef.current;
+    if (!container) return;
+    const escaped = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
+      ? CSS.escape(id)
+      : id;
+    const row = container.querySelector<HTMLElement>(`[data-message-id="${escaped}"]`);
+    // `nearest` leaves the view untouched if the bubble is already fully
+    // visible, so an expand that needs no scroll does not jump the user.
+    if (row && typeof row.scrollIntoView === 'function') {
+      row.scrollIntoView({ block: 'nearest' });
+    }
+  }, [expandedHeardBy]);
 
   // MeshCore inbound messages carry `pubkey_prefix` (typically 6-byte / 12-char
   // hex) in `fromPublicKey`, while contacts are keyed by full pubkey. Match by
@@ -442,16 +467,32 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     return () => observer.disconnect();
   }, [runEntryScroll]);
 
-  // Auto-scroll on new messages only when the user is already near the bottom.
+  // Whether the viewport was near the bottom BEFORE the latest render. Captured
+  // from `handleScroll` (pre-commit layout) and consulted by the auto-scroll
+  // effect below. Measuring inside that effect instead would read the DOM
+  // AFTER the new row has grown `scrollHeight`, so a tall bubble could fail the
+  // near-bottom test even though the user was sitting at the bottom — the
+  // #6124 post-render false negative. Defaults to true so a fresh stream, or
+  // one whose entry scroll put it at the bottom, follows the first message.
+  const wasNearBottomRef = useRef(true);
+  const prevLastMessageIdRef = useRef<string | undefined>(messages[messages.length - 1]?.id);
+
+  // Auto-scroll on new messages only when the user was already near the bottom
+  // before this row committed (see `wasNearBottomRef`). Follow an APPEND only,
+  // never a prepend of older history: a load-older page grows the count but
+  // leaves the last id unchanged, and the restore effect below keeps its
+  // position (#4476).
   useEffect(() => {
     const container = listRef.current;
+    const currentLastId = messages[messages.length - 1]?.id;
+    const prevLastId = prevLastMessageIdRef.current;
+    prevLastMessageIdRef.current = currentLastId;
     if (!container) return;
-    const isNearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-    if (isNearBottom) {
+    if (currentLastId === prevLastId) return;
+    if (wasNearBottomRef.current) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [messages.length]);
+  }, [messages]);
 
   // Scroll metrics captured right before a load-older request fires, so the
   // restore effect below can keep the same content under the viewport once
@@ -474,9 +515,11 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const handleScroll = useCallback(() => {
     const container = listRef.current;
     if (!container) return;
-    const isNearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-    setShowJumpToBottom(!isNearBottom);
+    const nearBottom = isNearBottom(container, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX);
+    // Capture the pre-commit position so the auto-scroll effect can follow new
+    // messages even when a tall row would fail a post-render re-measure (#6124).
+    wasNearBottomRef.current = nearBottom;
+    setShowJumpToBottom(!nearBottom);
 
     // Never page older history before this conversation's entry scroll has
     // landed. A switch replaces the rows, the browser clamps scrollTop to 0 and
