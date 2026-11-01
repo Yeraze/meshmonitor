@@ -9,7 +9,7 @@
  */
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ReticulumMap } from './ReticulumMap';
 import type { ReticulumDestinationRow, ReticulumPathRow } from '../../types/reticulum';
 import type { NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
@@ -147,6 +147,28 @@ describe('ReticulumMap', () => {
         paths={[path({ destinationHash: 'aaaa', viaHash: null })]}
       />);
       expect(screen.queryByTestId('neighbor-links-layer')).toBeNull();
+    });
+  });
+
+  describe('Locations/Connections toggle (#6119)', () => {
+    it('defaults to Locations (geographic map) and offers both tabs', () => {
+      render(<ReticulumMap destinations={[dest({ latitude: 40.1, longitude: -105.2 })]} />);
+      expect(screen.getByTestId('base-map')).toBeTruthy();
+      expect(screen.getByRole('tab', { name: /Locations/i }).getAttribute('aria-selected')).toBe('true');
+      expect(screen.getByRole('tab', { name: /Connections/i }).getAttribute('aria-selected')).toBe('false');
+      expect(screen.queryByTestId('reticulum-connections-graph')).toBeNull();
+    });
+
+    it('switches to the position-free Connections graph when the tab is clicked', () => {
+      render(<ReticulumMap
+        destinations={[dest({ destinationHash: 'aaaa', displayName: 'Alice' })]}
+        paths={[path({ destinationHash: 'aaaa', viaHash: null })]}
+      />);
+      fireEvent.click(screen.getByRole('tab', { name: /Connections/i }));
+      expect(screen.getByTestId('reticulum-connections-graph')).toBeTruthy();
+      expect(screen.getByTestId('reticulum-graph-node-dest:aaaa')).toBeTruthy();
+      // Geographic map is no longer mounted.
+      expect(screen.queryByTestId('base-map')).toBeNull();
     });
   });
 });

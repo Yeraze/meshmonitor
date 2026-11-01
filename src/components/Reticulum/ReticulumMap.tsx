@@ -14,8 +14,13 @@
  * — an edge is drawn ONLY when both endpoints resolve to a positioned
  * destination in the current `destinations` set; rows with a null `viaHash`
  * (destination IS the next hop / zero-hop) never draw an edge.
+ *
+ * A Locations/Connections toggle (#6119) switches between this geographic map
+ * and a position-free topology graph (`ReticulumConnectionsGraph`) built from
+ * the same path table — most Reticulum clients share no location, so the
+ * geographic map alone shows very few of them.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Popup, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -29,7 +34,12 @@ import { createNodeIcon } from '../map/markerIcons';
 import { shouldDiscardPosition } from '../../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 import type { ReticulumDestinationRow, ReticulumPathRow } from '../../types/reticulum';
+import { ReticulumConnectionsGraph } from './ReticulumConnectionsGraph';
+import { ReticulumDestinationDetail } from './ReticulumDestinationDetail';
+import { UiIcon } from '../icons';
 import styles from './ReticulumMap.module.css';
+
+type ReticulumMapMode = 'locations' | 'connections';
 
 const RETICULUM_COLOR = '#94e2d5';
 const DEFAULT_CENTER: [number, number] = [0, 0];
@@ -58,6 +68,7 @@ export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, paths,
   const { t } = useTranslation();
   const { setMapTileset } = useSettings();
   const baseMapSettings = useBaseMapSettings();
+  const [mode, setMode] = useState<ReticulumMapMode>('locations');
 
   const positioned = useMemo(
     () => destinations.filter(d =>
@@ -87,24 +98,13 @@ export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, paths,
               {typeof d.rssi === 'number' && <><br />RSSI: {d.rssi} dBm</>}
             </Tooltip>
             <Popup>
-              <div className={styles.popup}>
-                <div className={styles.popupName}>{name}</div>
-                <dl className={styles.popupGrid}>
-                  <dt>{t('reticulum.map.hash', 'Hash')}</dt><dd className={styles.mono}>{shortHash(d.destinationHash)}</dd>
-                  {d.appName && (<><dt>{t('reticulum.map.app', 'App')}</dt><dd>{d.appName}</dd></>)}
-                  {typeof d.hops === 'number' && (<><dt>{t('reticulum.map.hops', 'Hops')}</dt><dd>{d.hops}</dd></>)}
-                  {typeof d.rssi === 'number' && (<><dt>RSSI</dt><dd>{d.rssi} dBm</dd></>)}
-                  {typeof d.snr === 'number' && (<><dt>SNR</dt><dd>{d.snr} dB</dd></>)}
-                  {typeof d.altitude === 'number' && (<><dt>{t('reticulum.map.altitude', 'Altitude')}</dt><dd>{d.altitude} m</dd></>)}
-                  {typeof d.speed === 'number' && (<><dt>{t('reticulum.map.speed', 'Speed')}</dt><dd>{d.speed} m/s</dd></>)}
-                </dl>
-              </div>
+              <ReticulumDestinationDetail destination={d} name={name} />
             </Popup>
           </>
         ),
       };
     }),
-    [positioned, t],
+    [positioned],
   );
 
   const positionByHash = useMemo(() => {
@@ -142,24 +142,53 @@ export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, paths,
 
   return (
     <div className={styles.mapPane}>
-      <BaseMap
-        key={`${center[0]}-${center[1]}-${zoom}`}
-        center={center}
-        zoom={zoom}
-        {...baseMapSettings}
-        onTilesetChange={setMapTileset}
-        resizeTrigger={resizeTrigger}
-      >
-        <NodeMarkersLayer markers={markers} />
-        {pathLinks.length > 0 && <NeighborLinksLayer links={pathLinks} />}
-      </BaseMap>
+      <div className={styles.modeToggle} role="tablist" aria-label={t('reticulum.map.view_toggle', 'Map view')}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'locations'}
+          className={`${styles.modeButton} ${mode === 'locations' ? styles.modeButtonActive : ''}`}
+          onClick={() => setMode('locations')}
+        >
+          <UiIcon name="location" size={13} />
+          {t('reticulum.map.mode_locations', 'Locations')}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'connections'}
+          className={`${styles.modeButton} ${mode === 'connections' ? styles.modeButtonActive : ''}`}
+          onClick={() => setMode('connections')}
+        >
+          <UiIcon name="network" size={13} />
+          {t('reticulum.map.mode_connections', 'Connections')}
+        </button>
+      </div>
 
-      {loading && <MapLoadingOverlay />}
+      {mode === 'connections' ? (
+        <ReticulumConnectionsGraph paths={paths ?? []} destinations={destinations} loading={loading} />
+      ) : (
+        <>
+          <BaseMap
+            key={`${center[0]}-${center[1]}-${zoom}`}
+            center={center}
+            zoom={zoom}
+            {...baseMapSettings}
+            onTilesetChange={setMapTileset}
+            resizeTrigger={resizeTrigger}
+          >
+            <NodeMarkersLayer markers={markers} />
+            {pathLinks.length > 0 && <NeighborLinksLayer links={pathLinks} />}
+          </BaseMap>
 
-      {!loading && positioned.length === 0 && (
-        <div className={styles.emptyState} role="status">
-          {t('reticulum.map.empty', 'No peers are sharing position/telemetry with this identity yet.')}
-        </div>
+          {loading && <MapLoadingOverlay />}
+
+          {!loading && positioned.length === 0 && (
+            <div className={styles.emptyState} role="status">
+              {t('reticulum.map.empty', 'No peers are sharing position/telemetry with this identity yet.')}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
