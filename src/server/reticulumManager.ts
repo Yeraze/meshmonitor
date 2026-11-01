@@ -875,6 +875,18 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
           txBytes: iface.txBytes,
           rxBytes: iface.rxBytes,
           lastSeenAt: msg.ts,
+          // Live RNode interface gauges (issue #6120) — null for non-RNode ifaces.
+          airtimeShort: iface.airtimeShort ?? null,
+          airtimeLong: iface.airtimeLong ?? null,
+          channelLoadShort: iface.channelLoadShort ?? null,
+          channelLoadLong: iface.channelLoadLong ?? null,
+          noiseFloor: iface.noiseFloor ?? null,
+          interference: iface.interference ?? null,
+          interferenceLastTs: iface.interferenceLastTs ?? null,
+          interferenceLastDbm: iface.interferenceLastDbm ?? null,
+          cpuLoad: iface.cpuLoad ?? null,
+          batteryState: iface.batteryState ?? null,
+          batteryPercent: iface.batteryPercent ?? null,
         });
       } catch (err) {
         logger.warn(

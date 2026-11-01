@@ -492,6 +492,24 @@ export interface InterfaceStatsEntry {
   bitrate?: number | null;
   txBytes: number;
   rxBytes: number;
+  /**
+   * Live RNode interface gauges (issue #6120). The bridge sends these on every
+   * poll; RNS populates them only for an RNode LoRa interface, so they are
+   * null/absent for every other interface type. Airtime/channel-load/cpu-load
+   * are percentages, noise-floor/interference are dBm, battery-percent is
+   * 0-100, and `interferenceLastTs` is RNS epoch SECONDS.
+   */
+  airtimeShort?: number | null;
+  airtimeLong?: number | null;
+  channelLoadShort?: number | null;
+  channelLoadLong?: number | null;
+  noiseFloor?: number | null;
+  interference?: number | null;
+  interferenceLastTs?: number | null;
+  interferenceLastDbm?: number | null;
+  cpuLoad?: number | null;
+  batteryState?: string | null;
+  batteryPercent?: number | null;
 }
 
 export interface InterfaceStatsMessage extends Envelope {

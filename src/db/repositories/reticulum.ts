@@ -139,6 +139,24 @@ export interface ReticulumInterfaceRow {
   radioState: boolean | null;
   /** Loose JSON text — read-only RNode board/firmware info (R2). */
   deviceInfoJson: string | null;
+  /**
+   * Live RNode interface gauges (migration 222, issue #6120). RNS reports
+   * these only for an RNode LoRa interface; null for every other interface.
+   * Airtime/channel-load/cpu-load are percentages, noise-floor/interference
+   * are dBm, battery-percent is 0-100, and `interferenceLastTs` is RNS epoch
+   * SECONDS.
+   */
+  airtimeShort: number | null;
+  airtimeLong: number | null;
+  channelLoadShort: number | null;
+  channelLoadLong: number | null;
+  noiseFloor: number | null;
+  interference: number | null;
+  interferenceLastTs: number | null;
+  interferenceLastDbm: number | null;
+  cpuLoad: number | null;
+  batteryState: string | null;
+  batteryPercent: number | null;
 }
 
 /** The radio-config + device-info subset of {@link ReticulumInterfaceRow} (migration 145). */
@@ -185,6 +203,22 @@ export interface UpsertInterfaceInput {
   rxBytes: number;
   /** ms epoch of this poll; defaults to `Date.now()`. */
   lastSeenAt?: number;
+  /**
+   * Live RNode interface gauges (migration 222, issue #6120). The bridge sends
+   * these on every poll — null for non-RNode interfaces. Omitted (undefined)
+   * is treated the same as null.
+   */
+  airtimeShort?: number | null;
+  airtimeLong?: number | null;
+  channelLoadShort?: number | null;
+  channelLoadLong?: number | null;
+  noiseFloor?: number | null;
+  interference?: number | null;
+  interferenceLastTs?: number | null;
+  interferenceLastDbm?: number | null;
+  cpuLoad?: number | null;
+  batteryState?: string | null;
+  batteryPercent?: number | null;
 }
 
 export interface ReticulumMessageRow {
@@ -621,6 +655,19 @@ export class ReticulumRepository extends BaseRepository {
       lastSeenAt,
       createdAt: now,
       updatedAt: now,
+      // Live RNode interface gauges (migration 222, #6120). Each poll is a full
+      // snapshot, so these are overwritten every time — null for non-RNode ifaces.
+      airtimeShort: iface.airtimeShort ?? null,
+      airtimeLong: iface.airtimeLong ?? null,
+      channelLoadShort: iface.channelLoadShort ?? null,
+      channelLoadLong: iface.channelLoadLong ?? null,
+      noiseFloor: iface.noiseFloor ?? null,
+      interference: iface.interference ?? null,
+      interferenceLastTs: iface.interferenceLastTs ?? null,
+      interferenceLastDbm: iface.interferenceLastDbm ?? null,
+      cpuLoad: iface.cpuLoad ?? null,
+      batteryState: iface.batteryState ?? null,
+      batteryPercent: iface.batteryPercent ?? null,
     };
     const updateSet = {
       interfaceType: values.interfaceType,
@@ -633,6 +680,17 @@ export class ReticulumRepository extends BaseRepository {
       rxBytes: values.rxBytes,
       lastSeenAt: values.lastSeenAt,
       updatedAt: now,
+      airtimeShort: values.airtimeShort,
+      airtimeLong: values.airtimeLong,
+      channelLoadShort: values.channelLoadShort,
+      channelLoadLong: values.channelLoadLong,
+      noiseFloor: values.noiseFloor,
+      interference: values.interference,
+      interferenceLastTs: values.interferenceLastTs,
+      interferenceLastDbm: values.interferenceLastDbm,
+      cpuLoad: values.cpuLoad,
+      batteryState: values.batteryState,
+      batteryPercent: values.batteryPercent,
       // createdAt intentionally omitted — preserved from the original insert.
     };
 

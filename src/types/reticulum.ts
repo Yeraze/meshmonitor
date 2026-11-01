@@ -77,11 +77,11 @@ export interface ReticulumDestinationRow {
 /**
  * One row from `GET /api/sources/:id/reticulum/interfaces` (mirrors the
  * server's `ReticulumInterfaceRow`, `src/db/repositories/reticulum.ts`).
- * R1 (interface gauges DESCOPE, Phase 1b build spec §0): deliberately
- * excludes Phase-3-only fields like airtime/channel-load/noise-floor/battery
- * — those don't exist on `reticulum_interfaces` yet.
  * Phase 3 (migration 145) adds the own-mode radio-config + device-info
  * columns below — null for attach/tcp_peer sources, which never write them.
+ * Issue #6120 (migration 222) adds the live RNode interface gauges (airtime,
+ * channel load, noise floor, interference, CPU load, battery) — reported by
+ * RNS for an RNode LoRa interface in any mode, null for every other interface.
  */
 export interface ReticulumInterfaceRow {
   id?: number;
@@ -109,6 +109,24 @@ export interface ReticulumInterfaceRow {
   radioState: boolean | null;
   /** Loose JSON text — read-only RNode board/firmware info (R2). */
   deviceInfoJson: string | null;
+  /**
+   * Live RNode interface gauges (migration 222, issue #6120). RNS reports
+   * these only for an RNode LoRa interface; null for every other interface.
+   * Airtime/channel-load/cpu-load are percentages, noise-floor/interference
+   * are dBm, battery-percent is 0-100, and `interferenceLastTs` is RNS epoch
+   * SECONDS.
+   */
+  airtimeShort: number | null;
+  airtimeLong: number | null;
+  channelLoadShort: number | null;
+  channelLoadLong: number | null;
+  noiseFloor: number | null;
+  interference: number | null;
+  interferenceLastTs: number | null;
+  interferenceLastDbm: number | null;
+  cpuLoad: number | null;
+  batteryState: string | null;
+  batteryPercent: number | null;
 }
 
 /** Sub-toolbar view identifiers for `ReticulumPage`/`ReticulumSubToolbar` (WP2; 'dms' added Phase 2 WP5; 'map'/'configuration' added Phase 3; 'paths' added Phase 4 WP4). */
