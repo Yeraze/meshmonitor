@@ -430,6 +430,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // leaks between conversations. Cleared on reload (not persisted).
   const [unmessageableOverrides, setUnmessageableOverrides] = useState<Set<string>>(new Set());
 
+  // #6116: freeze the mobile "Select a conversation" <select> option list while
+  // the native picker is open/focused. On iOS Safari, re-rendering or reordering
+  // a native <select>'s <option> children while the picker is open resets its
+  // scroll to the top. A poll re-renders the labels (live SNR/battery/unread) and
+  // — with the #6115 unread-first rule — can reorder them, so an unread
+  // conversation made the open picker jump. Snapshot the options on focus, render
+  // the frozen list until blur, then settle to the live order.
+  const [frozenDropdownOptions, setFrozenDropdownOptions] = useState<
+    Array<{ key: string; value: string; label: string }> | null
+  >(null);
+
   // Handle scroll to detect if user has scrolled up
   const handleScroll = useCallback(() => {
     const container = dmMessagesContainerRef.current;
@@ -1144,11 +1155,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       }
     })
     .sort((a, b) => {
-      // Sticky nodes always come first
+      // Sticky nodes always come first. Sticky is a deliberate user pin, so it
+      // outranks the unread-first rule below (#6115 decision: sticky > unread).
       const aSticky = stickyNodes.has(a.nodeNum);
       const bSticky = stickyNodes.has(b.nodeNum);
       if (aSticky && !bSticky) return -1;
       if (!aSticky && bSticky) return 1;
+
+      // #6115: conversations with unread DMs sort to the top — ahead of
+      // favorites and of every filter's ordering — newest message first. A new
+      // DM from a non-favorite node must not sit below favorites or get buried
+      // by a hops-based filter.
+      const aUnread = a.unreadCount > 0;
+      const bUnread = b.unreadCount > 0;
+      if (aUnread && !bUnread) return -1;
+      if (!aUnread && bUnread) return 1;
+      if (aUnread && bUnread) {
+        const unreadMsgDiff = (b.lastMessageTime || 0) - (a.lastMessageTime || 0);
+        if (unreadMsgDiff !== 0) return unreadMsgDiff;
+      }
 
       // For hops-based filters, sort by hops ascending
       if (['hops', 'favorites', 'withPosition', 'noInfra'].includes(dmFilter)) {
@@ -1185,6 +1210,46 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       (node.user?.id ? messageContentMatchNodeIds.has(node.user.id) : false)
     );
   });
+
+  // Options for the mobile "Select a conversation" <select>, built from the
+  // same sorted list as the desktop node list so both agree on order (#6115).
+  // Labels are flattened to strings so a frozen snapshot (#6116) can be compared
+  // and re-rendered identically without touching the DOM.
+  const mobileDropdownOptions = sortedNodesWithMessages
+    .filter(node => {
+      if (!showIncompleteNodes && !isNodeComplete(node)) return false;
+      if (!messagesNodeFilter) return true;
+      const searchTerm = messagesNodeFilter.toLowerCase();
+      return (
+        node.user?.longName?.toLowerCase().includes(searchTerm) ||
+        node.user?.shortName?.toLowerCase().includes(searchTerm) ||
+        node.user?.id?.toLowerCase().includes(searchTerm) ||
+        // Issue #3922: also match conversations by message content.
+        (node.user?.id ? messageContentMatchNodeIds.has(node.user.id) : false)
+      );
+    })
+    .map(node => {
+      const displayName = node.user?.longName || `Node ${node.nodeNum}`;
+      const shortName = node.user?.shortName || '-';
+      const snr = node.snr != null ? ` ${node.snr.toFixed(1)}dB` : '';
+      const battery =
+        node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null
+          ? node.deviceMetrics.batteryLevel === 101
+            ? ` ${t('node_popup.power_plugged', 'Plugged In')}`
+            : ` ${node.deviceMetrics.batteryLevel}%`
+          : '';
+      const unread = node.unreadCount > 0 ? ` (${node.unreadCount})` : '';
+      const favPrefix = node.isFavorite ? `[${t('meshcore.favorite.is_favorite', 'Favorite')}] ` : '';
+      return {
+        key: node.user?.id || String(node.nodeNum),
+        value: node.user?.id || '',
+        label: `${favPrefix}${displayName} (${shortName})${snr}${battery}${unread}`,
+      };
+    });
+
+  // #6116: while the native picker is focused/open, render the frozen snapshot
+  // captured on focus; otherwise render the live (and possibly reordered) list.
+  const renderedDropdownOptions = frozenDropdownOptions ?? mobileDropdownOptions;
 
   // Get DM messages for selected node
   const selectedDMMessages = selectedDMNode
@@ -1508,6 +1573,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           <select
             className="node-dropdown-select"
             value={selectedDMNode || ''}
+            onFocus={() => setFrozenDropdownOptions(mobileDropdownOptions)}
+            onBlur={() => setFrozenDropdownOptions(null)}
             onChange={e => {
               const nodeId = e.target.value;
               setSelectedDMNode(nodeId);
@@ -1516,40 +1583,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             }}
           >
             <option value="">{t('messages.select_conversation')}</option>
-            {sortedNodesWithMessages
-              .filter(node => {
-                if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-                if (!messagesNodeFilter) return true;
-                const searchTerm = messagesNodeFilter.toLowerCase();
-                return (
-                  node.user?.longName?.toLowerCase().includes(searchTerm) ||
-                  node.user?.shortName?.toLowerCase().includes(searchTerm) ||
-                  node.user?.id?.toLowerCase().includes(searchTerm) ||
-                  // Issue #3922: also match conversations by message content.
-                  (node.user?.id ? messageContentMatchNodeIds.has(node.user.id) : false)
-                );
-              })
-              .map(node => {
-                const displayName = node.user?.longName || `Node ${node.nodeNum}`;
-                const shortName = node.user?.shortName || '-';
-                const snr = node.snr != null ? ` ${node.snr.toFixed(1)}dB` : '';
-                const battery =
-                  node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null
-                    ? node.deviceMetrics.batteryLevel === 101
-                      ? ` ${t('node_popup.power_plugged', 'Plugged In')}`
-                      : ` ${node.deviceMetrics.batteryLevel}%`
-                    : '';
-                const unread = node.unreadCount > 0 ? ` (${node.unreadCount})` : '';
-
-                return (
-                  <option key={node.user?.id || node.nodeNum} value={node.user?.id || ''}>
-                    {node.isFavorite ? `[${t('meshcore.favorite.is_favorite', 'Favorite')}] ` : ''}
-                    {displayName} ({shortName}){snr}
-                    {battery}
-                    {unread}
-                  </option>
-                );
-              })}
+            {renderedDropdownOptions.map(opt => (
+              <option key={opt.key} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </div>
 
