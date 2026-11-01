@@ -8,7 +8,7 @@
  * own mode (ReticulumConfigurationView `showRadio`).
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ReticulumSubToolbar } from './ReticulumSubToolbar';
 
 // The nav foot links to Global Settings (#5683 follow-up) for a viewer with
@@ -74,5 +74,31 @@ describe('ReticulumSubToolbar', () => {
   it('shows the paths item when mode is null/unknown', () => {
     renderToolbar(null);
     expect(item('paths')).not.toBeNull();
+  });
+
+  // #6118: Pin sidebar parity with Meshtastic and MeshCore. The pin control
+  // only renders when `onTogglePin` is wired (SourceNav guards on it).
+  it('renders the Pin sidebar control and fires onTogglePin when both props are set', () => {
+    const onTogglePin = vi.fn();
+    render(
+      <ReticulumSubToolbar
+        view="destinations"
+        onSelect={() => {}}
+        expanded
+        onToggleExpanded={() => {}}
+        pinned={false}
+        onTogglePin={onTogglePin}
+      />,
+    );
+    const pin = document.querySelector('[data-source-nav-pin]');
+    expect(pin).not.toBeNull();
+    expect(pin?.getAttribute('data-pinned')).toBe('false');
+    fireEvent.click(pin as Element);
+    expect(onTogglePin).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the Pin sidebar control when onTogglePin is not provided', () => {
+    renderToolbar('own');
+    expect(document.querySelector('[data-source-nav-pin]')).toBeNull();
   });
 });

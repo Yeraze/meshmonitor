@@ -18,11 +18,12 @@
  * their real components into the marked seams without needing to touch this
  * file's structure.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useReticulum } from './hooks/useReticulum';
 import { ReticulumSubToolbar } from './ReticulumSubToolbar';
 import { SourceNavLayout } from '../nav/SourceNavLayout';
+import { readSidebarPinned, useSidebarPin } from '../nav/useSidebarPin';
 import { ReticulumDestinationsView } from './ReticulumDestinationsView';
 import { ReticulumInterfacesView } from './ReticulumInterfacesView';
 import { ReticulumDmsView } from './ReticulumDmsView';
@@ -56,7 +57,18 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
   } = useReticulum({ sourceId, enabled });
 
   const [view, setView] = useState<ReticulumView>('destinations');
-  const [toolbarExpanded, setToolbarExpanded] = useState(false);
+  // Same Pin sidebar behaviour as the Meshtastic and MeshCore sidebars
+  // (#5481/#6118): one global pin, the nav starts expanded when pinned, and an
+  // unpinned nav collapses after a nav click.
+  const { isPinned: navPinned, togglePin: toggleNavPin } = useSidebarPin();
+  const [toolbarExpanded, setToolbarExpanded] = useState(readSidebarPinned);
+  const selectView = useCallback((next: ReticulumView) => {
+    setView(next);
+    if (!navPinned) setToolbarExpanded(false);
+  }, [navPinned]);
+  const handleToggleNavPin = useCallback(() => {
+    if (toggleNavPin()) setToolbarExpanded(true);
+  }, [toggleNavPin]);
 
   useEffect(() => {
     onStatusChange?.(status);
@@ -109,9 +121,11 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
         nav={(
           <ReticulumSubToolbar
             view={view}
-            onSelect={setView}
+            onSelect={selectView}
             expanded={toolbarExpanded}
             onToggleExpanded={() => setToolbarExpanded(v => !v)}
+            pinned={navPinned}
+            onTogglePin={handleToggleNavPin}
             sourceMode={status?.mode ?? null}
           />
         )}
