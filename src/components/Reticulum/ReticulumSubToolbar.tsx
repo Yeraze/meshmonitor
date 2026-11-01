@@ -32,6 +32,9 @@ interface ReticulumSubToolbarProps {
   onSelect: (view: ReticulumView) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
+  /** Shared "Pin sidebar" state (#5481/#6118); the toggle shows when both are set. */
+  pinned?: boolean;
+  onTogglePin?: () => void;
   /** Source connection mode. Not used to filter items any more: the
    *  'configuration' page holds the LXMF identity settings in every mode
    *  (#6011); only its RNode radio sections are own-mode only. */
@@ -72,6 +75,8 @@ export const ReticulumSubToolbar: React.FC<ReticulumSubToolbarProps> = ({
   onSelect,
   expanded,
   onToggleExpanded,
+  pinned,
+  onTogglePin,
 }) => {
   const { t } = useTranslation();
 
@@ -91,6 +96,10 @@ export const ReticulumSubToolbar: React.FC<ReticulumSubToolbarProps> = ({
       collapsed={!expanded}
       mobileVariant="bottom-bar"
       onToggleCollapsed={onToggleExpanded}
+      pinned={pinned}
+      onTogglePin={onTogglePin}
+      pinLabel={t('nav.pin_sidebar', 'Pin sidebar')}
+      unpinLabel={t('nav.unpin_sidebar', 'Unpin sidebar')}
       collapseLabel={t('reticulum.nav.collapse', 'Collapse')}
       expandLabel={t('reticulum.nav.expand', 'Expand')}
       ariaLabel={t('reticulum.nav.label', 'Reticulum navigation')}
