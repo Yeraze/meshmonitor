@@ -60,10 +60,10 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
       await databaseService.setShowMqttMessagesForSourceAsync(req.user!.id, sourceId, showMqttMessages);
     }
 
-    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours, unreadIndicatorEnabled, spreadNodes, aircraftDisplayMode, showAircraftTrails, aircraftTrailHours } = req.body;
+    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours, unreadIndicatorEnabled, spreadNodes, colorNodesBySource, aircraftDisplayMode, showAircraftTrails, aircraftTrailHours } = req.body;
 
     // Validate boolean values
-    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, unreadIndicatorEnabled, spreadNodes, showAircraftTrails };
+    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, unreadIndicatorEnabled, spreadNodes, colorNodesBySource, showAircraftTrails };
     for (const [key, value] of Object.entries(booleanFields)) {
       if (value !== undefined && typeof value !== 'boolean') {
         return fail(res, 400, 'INVALID_PREFERENCE', `${key} must be a boolean`);
@@ -121,6 +121,7 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
       mapMaxAgeHours,
       unreadIndicatorEnabled,
       spreadNodes,
+      colorNodesBySource,
       aircraftDisplayMode,
       showAircraftTrails,
       aircraftTrailHours,

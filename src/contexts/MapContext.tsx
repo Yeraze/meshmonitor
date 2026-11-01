@@ -80,6 +80,15 @@ interface MapContextType {
   spreadNodes: boolean;
   setSpreadNodes: (value: boolean) => void;
   /**
+   * #6125: when on (default off), draw a per-source coloured ring around each
+   * node marker on cross-source (Unified) maps so the arriving source is
+   * visible at a glance. Reuses `getSourceColor` so the ring matches the colour
+   * that source already uses in Unified Messages/Telemetry, flight lines, and
+   * legends. Single-source views ignore it.
+   */
+  colorNodesBySource: boolean;
+  setColorNodesBySource: (value: boolean) => void;
+  /**
    * Likely-aircraft display mode for the map (#5364/#5365 Phase 1 WP4):
    * 'show' (no badge, no filtering), 'mark' (badge only, default), or 'hide'
    * (marker suppressed, except favourites). Persisted server-side via
@@ -219,6 +228,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [unreadIndicatorEnabled, setUnreadIndicatorEnabledState] = useState<boolean>(true);
   // #5177: default true = preserve the existing within-cell offset behaviour.
   const [spreadNodes, setSpreadNodesState] = useState<boolean>(true);
+  // #6125: default false = opt-in per-source ring around node markers.
+  const [colorNodesBySource, setColorNodesBySourceState] = useState<boolean>(false);
   // #5364/#5365 Phase 1 WP4: localStorage-first (validated), else 'mark',
   // overridden by the server preference once it loads (see the loader below).
   const [aircraftDisplayMode, setAircraftDisplayModeState] = useState<AircraftDisplayMode>(() => {
@@ -356,6 +367,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setSpreadNodesState(value);
     void savePreferenceToServer({ spreadNodes: value });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- #5177 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
+  }, []);
+
+  const setColorNodesBySource = React.useCallback((value: boolean) => {
+    setColorNodesBySourceState(value);
+    void savePreferenceToServer({ colorNodesBySource: value });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #6125 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
   }, []);
 
   const setAircraftDisplayMode = React.useCallback((value: AircraftDisplayMode) => {
@@ -593,6 +610,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.spreadNodes !== undefined) {
               setSpreadNodesState(preferences.spreadNodes);
             }
+            if (preferences.colorNodesBySource !== undefined) {
+              setColorNodesBySourceState(preferences.colorNodesBySource);
+            }
             if (preferences.showMeshCoreNodes !== undefined) {
               setShowMeshCoreNodesState(preferences.showMeshCoreNodes);
             }
@@ -683,6 +703,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setUnreadIndicatorEnabled,
     spreadNodes,
     setSpreadNodes,
+    colorNodesBySource,
+    setColorNodesBySource,
     pendingCenterNodeNum,
     setPendingCenterNodeNum,
     setShowRfNodes,
@@ -754,6 +776,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showRfNodes, setShowRfNodes,
     unreadIndicatorEnabled, setUnreadIndicatorEnabled,
     spreadNodes, setSpreadNodes,
+    colorNodesBySource, setColorNodesBySource,
     pendingCenterNodeNum, setPendingCenterNodeNum,
     showMeshCoreNodes, setShowMeshCoreNodes,
     showWaypoints, setShowWaypoints,

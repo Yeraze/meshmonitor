@@ -52,6 +52,8 @@ export class MapPreferencesRepository extends BaseRepository {
         // defaults on (#5124) — so null reads as true, not false.
         unreadIndicatorEnabled: row.unreadIndicatorEnabled ?? true,
         spreadNodes: row.spreadNodes ?? true,
+        // NULL on a pre-migration-221 row reads as false — the ring is opt-in (#6125).
+        colorNodesBySource: row.colorNodesBySource ?? false,
         // NULL reads as 'mark' (badge the marker, no filtering) — matches
         // today's behaviour for everyone who has not chosen anything else.
         aircraftDisplayMode: row.aircraftDisplayMode ?? 'mark',
@@ -93,6 +95,8 @@ export class MapPreferencesRepository extends BaseRepository {
     showAtakContacts?: boolean;
     unreadIndicatorEnabled?: boolean;
     spreadNodes?: boolean;
+    /** Per-source coloured ring around node markers on Unified maps (#6125). */
+    colorNodesBySource?: boolean;
     /** Likely-aircraft map display choice (#5364/#5365). Null clears to the 'mark' default. */
     aircraftDisplayMode?: string | null;
     /** Flight trails toggle (#5364/#5365 Phase 3). */
@@ -131,6 +135,7 @@ export class MapPreferencesRepository extends BaseRepository {
         if (preferences.showAtakContacts !== undefined) set.showAtakContacts = preferences.showAtakContacts;
         if (preferences.unreadIndicatorEnabled !== undefined) set.unreadIndicatorEnabled = preferences.unreadIndicatorEnabled;
         if (preferences.spreadNodes !== undefined) set.spreadNodes = preferences.spreadNodes;
+        if (preferences.colorNodesBySource !== undefined) set.colorNodesBySource = preferences.colorNodesBySource;
         if (preferences.aircraftDisplayMode !== undefined) set.aircraftDisplayMode = preferences.aircraftDisplayMode;
         if (preferences.showAircraftTrails !== undefined) set.showAircraftTrails = preferences.showAircraftTrails;
         if (preferences.aircraftTrailHours !== undefined) set.aircraftTrailHours = preferences.aircraftTrailHours;
@@ -163,6 +168,7 @@ export class MapPreferencesRepository extends BaseRepository {
           showAtakContacts: preferences.showAtakContacts ?? false,
           unreadIndicatorEnabled: preferences.unreadIndicatorEnabled ?? true,
           spreadNodes: preferences.spreadNodes ?? true,
+          colorNodesBySource: preferences.colorNodesBySource ?? false,
           aircraftDisplayMode: preferences.aircraftDisplayMode ?? null,
           showAircraftTrails: preferences.showAircraftTrails ?? false,
           aircraftTrailHours: preferences.aircraftTrailHours ?? 6,

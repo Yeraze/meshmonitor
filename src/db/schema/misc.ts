@@ -126,6 +126,10 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   // Default true = today's decluttering behaviour; false pins every node at
   // exactly the position it reported.
   spreadNodes: integer('spread_nodes', { mode: 'boolean' }).default(true),
+  // Per-source coloured ring around node markers on Unified maps (#6125).
+  // Default false = opt-in; the ring reuses getSourceColor so it matches the
+  // colour that source already uses elsewhere.
+  colorNodesBySource: integer('color_nodes_by_source', { mode: 'boolean' }).default(false),
   // Likely-aircraft map display choice (#5364/#5365, migration 176):
   // 'show' | 'mark' | 'hide'. NULL reads as 'mark'.
   aircraftDisplayMode: text('aircraft_display_mode'),
@@ -170,6 +174,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showAtakContacts: pgBoolean('show_atak_contacts').default(false),
   unreadIndicatorEnabled: pgBoolean('unread_indicator_enabled').default(true),
   spreadNodes: pgBoolean('spread_nodes').default(true),
+  colorNodesBySource: pgBoolean('color_nodes_by_source').default(false),
   aircraftDisplayMode: pgText('aircraft_display_mode'),
   showAircraftTrails: pgBoolean('show_aircraft_trails').default(false),
   aircraftTrailHours: pgInteger('aircraft_trail_hours').default(6),
@@ -430,6 +435,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showAtakContacts: myBoolean('show_atak_contacts').default(false),
   unreadIndicatorEnabled: myBoolean('unread_indicator_enabled').default(true),
   spreadNodes: myBoolean('spread_nodes').default(true),
+  colorNodesBySource: myBoolean('color_nodes_by_source').default(false),
   aircraftDisplayMode: myVarchar('aircraft_display_mode', { length: 8 }),
   showAircraftTrails: myBoolean('show_aircraft_trails').default(false),
   aircraftTrailHours: myInt('aircraft_trail_hours').default(6),
