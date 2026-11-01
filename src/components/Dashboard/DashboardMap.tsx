@@ -45,6 +45,7 @@ import {
   type DashboardSource,
 } from '../../hooks/useDashboardData';
 import { getSourceColor, resolveSourceColor } from '../../utils/sourceColors';
+import { nodeSourceRingColor, applyNodeSourceRing } from './nodeSourceRing';
 import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter, isMqttOnlySourceType } from '../../utils/nodeTransport';
 import {
@@ -358,6 +359,8 @@ export default function DashboardMap({
     setMapMaxAgeHours,
     spreadNodes,
     setSpreadNodes,
+    colorNodesBySource,
+    setColorNodesBySource,
     aircraftDisplayMode,
     setAircraftDisplayMode,
     showAgedOutAircraft,
@@ -790,7 +793,11 @@ export default function DashboardMap({
   const nodeMarkers: NodeMarkerDescriptor[] = useMemo(() => {
     const prevCache = markerDescriptorCacheRef.current;
     const nextCache: typeof prevCache = new Map();
-    const ctx = `${aircraftDisplayMode}|${mapPinStyle}|${mapPinColorMode}`;
+    // #6125: the per-source ring flag and the source ordering both change the
+    // ring colour without changing the node reference, so they belong in `ctx`
+    // — the per-marker cache below reuses a descriptor whenever `node` and
+    // `ctx` match, so a toggle flip must invalidate every cached entry.
+    const ctx = `${aircraftDisplayMode}|${mapPinStyle}|${mapPinColorMode}|${colorNodesBySource && isUnified ? 1 : 0}|${colorSourceIds.join(',')}`;
     const descriptors = markerNodes.map(({ node, pos }): NodeMarkerDescriptor => {
       const hops = node.hopsAway ?? 999;
       const shortName = node.shortName ?? node.user?.shortName;
@@ -852,12 +859,18 @@ export default function DashboardMap({
         return cached.descriptor;
       }
 
+      // #6125: per-source ring colour (null unless the toggle is on, this is
+      // the Unified map, and the node has a source). Folded into iconSig so the
+      // icon rebuilds when the toggle flips or a node's source changes; NEVER
+      // folded into opacity/selection (those are applied outside buildIcon).
+      const sourceRingColor = nodeSourceRingColor(colorNodesBySource, isUnified, node.sourceId, colorSourceIds);
+
       const descriptor: NodeMarkerDescriptor = {
         key: markerKey,
         position: [pos.lat, pos.lng],
-        iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${markAircraft ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}`,
+        iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${markAircraft ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}|${sourceRingColor ?? ''}`,
         buildIcon: () =>
-          createNodeIcon({
+          applyNodeSourceRing(createNodeIcon({
             variant: 'meshtastic',
             hops,
             isSelected: false,
@@ -870,7 +883,7 @@ export default function DashboardMap({
             pinStyle: mapPinStyle,
             colorMode: mapPinColorMode,
             nodeNum: Number.isFinite(Number(node.nodeNum)) ? Number(node.nodeNum) : undefined,
-          }),
+          }), sourceRingColor),
         opacity,
         children: (
           <Popup>
@@ -891,7 +904,8 @@ export default function DashboardMap({
     });
     markerDescriptorCacheRef.current = nextCache;
     return descriptors;
-  }, [markerNodes, nowMs, cutoffTime, aircraftDisplayMode, mapPinStyle, mapPinColorMode, onNodeSourceSelect]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #6125 colorSourceIds is a fresh array each render (see line ~255), so it is listed by its stable join like the sourceColorFor callback above (#4835); isUnified/colorNodesBySource drive the ring and are plain values.
+  }, [markerNodes, nowMs, cutoffTime, aircraftDisplayMode, mapPinStyle, mapPinColorMode, onNodeSourceSelect, colorNodesBySource, isUnified, colorSourceIds.join(',')]);
 
   // Position accuracy regions — drawn from precision_bits, mirroring NodesTab.
   // Shares the cell geometry with Map Analysis via `precisionCellBounds`. Uses
@@ -1144,6 +1158,38 @@ export default function DashboardMap({
         </div>
       )}
 
+      {/* #6125: source → colour key for the per-source ring. Reuses the polar
+          grid legend's styling. Shown only on the Unified map while the toggle
+          is on; moved to the top-left when the polar-grid legend already holds
+          the bottom-left corner so the two never overlap. */}
+      {isUnified && colorNodesBySource && colorSourceIds.length > 0 && (
+        <div
+          className="dashboard-polar-grid-legend dashboard-source-color-legend"
+          role="note"
+          aria-label="Node source colours"
+          style={
+            !effective3D && showPolarGrid && ownNodePositions.length > 0
+              ? { bottom: 'auto', top: 12 }
+              : undefined
+          }
+        >
+          <div className="dashboard-polar-grid-legend__title">
+            {t('map.colorNodesBySource', 'Colour nodes by source')}
+          </div>
+          {colorSourceIds.map((sid) => (
+            <div key={`src-color-${sid}`} className="dashboard-polar-grid-legend__row">
+              <span
+                className="dashboard-polar-grid-legend__swatch"
+                style={{ background: getSourceColor(sid, colorSourceIds) }}
+              />
+              <span className="dashboard-polar-grid-legend__name">
+                {sourceNameById.get(sid) ?? sid}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Unified map controls sidebar (#4909): Features toggles + Hops legend +
           tileset picker in one collapsible right-edge panel (full-screen on
           mobile) instead of independently-floating, overlapping panels. */}
@@ -1309,6 +1355,22 @@ export default function DashboardMap({
             />
             <span>Spread Nodes</span>
           </label>
+          {/* #6125: per-source ring around each node marker. Unified map only —
+              a single-source map has one colour, so the ring carries no
+              information there. Keeps the role glyph and age opacity intact. */}
+          {isUnified && (
+            <label
+              className="map-control-item"
+              title={t('map.colorNodesBySourceHelp', 'Draw a coloured ring around each node marker in its source’s colour, matching the colours used in Unified Messages and the map legend. The role glyph and age fade stay unchanged.')}
+            >
+              <input
+                type="checkbox"
+                checked={colorNodesBySource}
+                onChange={(e) => setColorNodesBySource(e.target.checked)}
+              />
+              <span>{t('map.colorNodesBySource', 'Colour nodes by source')}</span>
+            </label>
+          )}
           {/* RF/UDP/MQTT transport toggles have no meaning on an MQTT-only
               source (mqtt_bridge/mqtt_broker) — every node there arrived
               over MQTT, so the filter is skipped outright above and the

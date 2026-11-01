@@ -5865,6 +5865,8 @@ class DatabaseService {
     positionHistoryPointsOnly?: boolean;
       unreadIndicatorEnabled?: boolean;
       spreadNodes?: boolean;
+      /** Per-source coloured ring around node markers on Unified maps (#6125). */
+      colorNodesBySource?: boolean;
       /** Likely-aircraft map display choice (#5364/#5365). Null clears to the 'mark' default. */
       aircraftDisplayMode?: 'show' | 'mark' | 'hide' | null;
       /** Flight trails (#5364/#5365 Phase 3). */
