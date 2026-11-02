@@ -1,10 +1,15 @@
 /**
- * Reorder mode for the MeshCore Channels list (#5379).
+ * Reorder mode for MeshCore list views (#5379).
  *
  * Sets a MeshMonitor-side display order only; no device writes, no airtime.
  * Rows drag by their handle (mouse, touch, keyboard via dnd-kit) and also carry
  * explicit move up / move down buttons, so reordering never depends on a drag
- * gesture. Save hands the new slot-id order to the parent; Cancel drops it.
+ * gesture. Save hands the new id order to the parent; Cancel drops it.
+ *
+ * Generic over the row id type `K` (#6148): channels pass integer slot ids and
+ * rooms pass public-key strings. dnd-kit's `UniqueIdentifier` already covers
+ * both, so a string id matches the `SortableContext` items the same way a
+ * numeric one does.
  */
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,23 +31,23 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { UiIcon } from '../icons';
 import { DRAG_HANDLE_TOUCH_STYLE } from '../dragHandleStyle';
-import { moveItem } from './meshcoreChannelOrder';
+import { moveItem, type OrderKey } from './meshcoreChannelOrder';
 import styles from './MeshCoreChannelReorderList.module.css';
 
-export interface ReorderChannel {
-  id: number;
+export interface ReorderChannel<K extends OrderKey = number> {
+  id: K;
   label: string;
 }
 
-interface MeshCoreChannelReorderListProps {
-  /** Channels in the order the list starts from. */
-  channels: ReorderChannel[];
-  onSave: (order: number[]) => void;
+interface MeshCoreChannelReorderListProps<K extends OrderKey> {
+  /** Rows in the order the list starts from. */
+  channels: ReorderChannel<K>[];
+  onSave: (order: K[]) => void;
   onCancel: () => void;
 }
 
 interface SortableRowProps {
-  channel: ReorderChannel;
+  channel: ReorderChannel<OrderKey>;
   index: number;
   count: number;
   onMove: (from: number, to: number) => void;
@@ -50,8 +55,9 @@ interface SortableRowProps {
 
 const SortableRow: React.FC<SortableRowProps> = ({ channel, index, count, onMove }) => {
   const { t } = useTranslation();
-  // `id` must be the same numeric value as the SortableContext items — dnd-kit
-  // looks rows up with indexOf, so a string id would never match (#5324).
+  // `id` is the same value as the SortableContext items — dnd-kit looks rows
+  // up by it, so the two must match exactly (#5324). A string id (room) or a
+  // numeric id (channel) both work as long as they are consistent.
   const {
     attributes,
     listeners,
@@ -105,13 +111,13 @@ const SortableRow: React.FC<SortableRowProps> = ({ channel, index, count, onMove
   );
 };
 
-export const MeshCoreChannelReorderList: React.FC<MeshCoreChannelReorderListProps> = ({
+export function MeshCoreChannelReorderList<K extends OrderKey = number>({
   channels,
   onSave,
   onCancel,
-}) => {
+}: MeshCoreChannelReorderListProps<K>) {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState<ReorderChannel[]>(channels);
+  const [draft, setDraft] = useState<ReorderChannel<K>[]>(channels);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -159,4 +165,4 @@ export const MeshCoreChannelReorderList: React.FC<MeshCoreChannelReorderListProp
       </div>
     </div>
   );
-};
+}

@@ -25,6 +25,20 @@ import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
 import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
 import loginProgressStyles from './MeshCoreLoginProgress.module.css';
 import { compareMeshCoreMessages } from './messageOrder';
+import { useSettingsOptional } from '../../contexts/SettingsContext';
+import { calculateDistance, formatDistance } from '../../utils/distance';
+import { advertHasPosition } from '../../utils/meshcoreAdvertPosition';
+import { MeshCoreChannelReorderList } from './MeshCoreChannelReorderList';
+import {
+  type RoomSortMode,
+  sortItems,
+  loadRoomSortMode,
+  saveRoomSortMode,
+  loadRoomCustomOrder,
+  saveRoomCustomOrder,
+  type OrderableItem,
+} from './meshcoreChannelOrder';
+import styles from './MeshCoreRoomsView.module.css';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -59,17 +73,29 @@ function formatTimestamp(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
+/** The name a room row shows: advertised name, then stored name, then a short
+ *  public-key prefix. Also the key the Room-name sort collates on (#6148). */
+function roomLabel(room: MeshCoreContact): string {
+  return room.advName || room.name || room.publicKey.substring(0, 12) + '…';
+}
+
+/** A room wrapped for the shared ordering engine: keyed by `publicKey`. */
+interface OrderableRoom extends OrderableItem<string> {
+  room: MeshCoreContact;
+}
+
 export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   messages,
   contacts,
   status,
   actions,
-  sourceId: _sourceId,
+  sourceId,
   onNodeNameClick,
   receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  const distanceUnit = useSettingsOptional()?.distanceUnit ?? 'km';
   const canSend = hasPermission('messages', 'write');
   const canConfig = hasPermission('configuration', 'write');
 
@@ -85,6 +111,13 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const [rememberPassword, setRememberPassword] = useState(false);
   const [mobileShowContent, setMobileShowContent] = useState(false);
 
+  // Display-only list order (#6148). Persisted per source in localStorage, so a
+  // read-only viewer can sort without `settings:write`. Default: Room name.
+  const [sortMode, setSortMode] = useState<RoomSortMode>(() => loadRoomSortMode(sourceId));
+  const [customOrder, setCustomOrder] = useState<string[]>(() => loadRoomCustomOrder(sourceId));
+  // The room-set key the reorder panel was opened against, or null when closed.
+  const [reorderingFor, setReorderingFor] = useState<string | null>(null);
+
   useEffect(() => {
     const onResize = () => {
       if (!isMobileViewport()) setMobileShowContent(false);
@@ -92,6 +125,13 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Reload the per-source sort preference when the source changes.
+  useEffect(() => {
+    setSortMode(loadRoomSortMode(sourceId));
+    setCustomOrder(loadRoomCustomOrder(sourceId));
+    setReorderingFor(null);
+  }, [sourceId]);
 
   // Credential persistence state
   const [canRemember, setCanRemember] = useState(false);
@@ -123,6 +163,82 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     () => contacts.filter(c => c.advType === 3),
     [contacts],
   );
+
+  // Per-room post count and newest post time, computed once per render so the
+  // sort does not re-run `buildRoomFilter` for every comparison (#6148). Count
+  // matches the per-row filter; Last message uses SENDER time (`m.timestamp`),
+  // not receipt time, so a backlog replay at login does not jump a room to the
+  // top (#5973).
+  const roomStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const latest: Record<string, number> = {};
+    for (const room of roomServers) counts[room.publicKey] = 0;
+    for (const m of messages) {
+      if (m.messageType !== 'room_post' || !m.toPublicKey) continue;
+      for (const room of roomServers) {
+        const pk = room.publicKey;
+        if (m.toPublicKey === pk || m.toPublicKey.startsWith(pk) || pk.startsWith(m.toPublicKey)) {
+          counts[pk] = (counts[pk] ?? 0) + 1;
+          if (m.timestamp > (latest[pk] ?? 0)) latest[pk] = m.timestamp;
+        }
+      }
+    }
+    return { counts, latest };
+  }, [messages, roomServers]);
+
+  // Distance (km) from the source node to each room, for the Distance sort.
+  // 0/0 and absent coordinates count as "no location" (`advertHasPosition`),
+  // so such rooms sink to the bottom. With no source-node fix there is no
+  // distance for any room, and the Distance option is disabled below.
+  const selfLat = status?.localNode?.latitude;
+  const selfLon = status?.localNode?.longitude;
+  const selfHasLocation = advertHasPosition(selfLat, selfLon);
+  const roomDistances = useMemo(() => {
+    const out: Record<string, number> = {};
+    if (!selfHasLocation || selfLat == null || selfLon == null) return out;
+    for (const room of roomServers) {
+      if (advertHasPosition(room.latitude, room.longitude)) {
+        out[room.publicKey] = calculateDistance(selfLat, selfLon, room.latitude!, room.longitude!);
+      }
+    }
+    return out;
+  }, [roomServers, selfHasLocation, selfLat, selfLon]);
+
+  // The room list in the operator's chosen display order.
+  const displayRooms = useMemo<OrderableRoom[]>(() => {
+    const items: OrderableRoom[] = roomServers.map(room => ({
+      id: room.publicKey,
+      name: roomLabel(room),
+      room,
+    }));
+    return sortItems(items, sortMode, {
+      customOrder,
+      latest: roomStats.latest,
+      counts: roomStats.counts,
+      distances: roomDistances,
+    });
+  }, [roomServers, sortMode, customOrder, roomStats, roomDistances]);
+
+  // A stable key for the current room set; the reorder panel closes when the
+  // set changes under it (a room joins or leaves).
+  const roomIdsKey = useMemo(() => roomServers.map(r => r.publicKey).join(','), [roomServers]);
+  const reordering = reorderingFor !== null && reorderingFor === roomIdsKey;
+  useEffect(() => {
+    setReorderingFor(prev => (prev !== null && prev !== roomIdsKey ? null : prev));
+  }, [roomIdsKey]);
+
+  const handleSortModeChange = useCallback((mode: RoomSortMode) => {
+    setSortMode(mode);
+    saveRoomSortMode(sourceId, mode);
+  }, [sourceId]);
+
+  const handleSaveRoomOrder = useCallback((order: string[]) => {
+    setCustomOrder(order);
+    saveRoomCustomOrder(sourceId, order);
+    setSortMode('custom');
+    saveRoomSortMode(sourceId, 'custom');
+    setReorderingFor(null);
+  }, [sourceId]);
 
   const activeRoom = useMemo(
     () => roomServers.find(r => r.publicKey === selectedRoom) ?? null,
@@ -206,16 +322,33 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   }, [actions]);
 
   const handleSelectRoom = useCallback((pubkey: string) => {
-    setSelectedRoom(pubkey);
+    const mobile = isMobileViewport();
+    // Desktop (#6149): a click on the already-open room de-selects it and
+    // returns to the landing pane. Mobile keeps its behaviour — the list IS the
+    // landing view and Back leaves `selectedRoom` set, so a tap on the same row
+    // must REOPEN the room, never de-select it.
+    const deselect = !mobile && selectedRoom === pubkey;
+
+    // Clear the login and sync form state on both paths (same as a normal
+    // select). `loggedInRooms` is NOT cleared: de-selecting is a view change,
+    // not a logout.
     setLoginError(null);
     setLoginNotice(null);
     setLoginPassword('');
     setRememberPassword(false);
     setSyncConfigDirty(false);
     setSyncFailure(null);
+
+    if (deselect) {
+      // Skip loadSyncConfig — there is no selected room to read config for.
+      setSelectedRoom(null);
+      return;
+    }
+
+    setSelectedRoom(pubkey);
     void loadSyncConfig(pubkey);
-    if (isMobileViewport()) setMobileShowContent(true);
-  }, [loadSyncConfig]);
+    if (mobile) setMobileShowContent(true);
+  }, [selectedRoom, loadSyncConfig]);
 
   const handleLogin = useCallback(async () => {
     if (!selectedRoom) return;
@@ -316,6 +449,35 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
           <span>{t('meshcore.nav.rooms', 'Rooms')}</span>
           <span className="pane-count">{roomServers.length}</span>
         </div>
+        {roomServers.length > 0 && (
+          <div className={styles.orderBar}>
+            <select
+              className={styles.sortSelect}
+              value={sortMode}
+              onChange={e => handleSortModeChange(e.target.value as RoomSortMode)}
+              disabled={reordering}
+              aria-label={t('meshcore.rooms.order.sort_by', 'Sort rooms by')}
+              title={t('meshcore.rooms.order.sort_by', 'Sort rooms by')}
+            >
+              <option value="name">{t('meshcore.rooms.order.name', 'Room name')}</option>
+              <option value="lastMessage">{t('meshcore.rooms.order.last_message', 'Last message')}</option>
+              <option value="messageCount">{t('meshcore.rooms.order.message_count', 'Message count')}</option>
+              <option value="distance" disabled={!selfHasLocation}>{t('meshcore.rooms.order.distance', 'Distance')}</option>
+              <option value="custom">{t('meshcore.rooms.order.custom', 'Custom')}</option>
+            </select>
+            {roomServers.length > 1 && (
+              <button
+                type="button"
+                className={`${styles.reorderButton} ${reordering ? styles.active : ''}`}
+                onClick={() => setReorderingFor(prev => (prev === roomIdsKey ? null : roomIdsKey))}
+                aria-pressed={reordering}
+                title={t('meshcore.rooms.order.reorder_title', 'Sort the room list in your own order (MeshMonitor display only)')}
+              >
+                <UiIcon name="dragHandle" size={14} /> {t('meshcore.rooms.order.reorder', 'Sort')}
+              </button>
+            )}
+          </div>
+        )}
         <div className="meshcore-list-pane-body">
           {roomServers.length === 0 && (
             <div className="mc-channel-row" style={{ opacity: 0.6 }}>
@@ -324,26 +486,35 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               </div>
             </div>
           )}
-          {roomServers.map(room => {
-            const filter = buildRoomFilter(room.publicKey);
-            const count = messages.filter(filter).length;
-            const loggedIn = isLoggedIn(room.publicKey);
-            const hasSaved = storedCreds.has(room.publicKey);
+          {reordering ? (
+            <MeshCoreChannelReorderList<string>
+              channels={displayRooms.map(r => ({ id: r.id, label: r.name }))}
+              onSave={handleSaveRoomOrder}
+              onCancel={() => setReorderingFor(null)}
+            />
+          ) : displayRooms.map(({ id: pubkey, name }) => {
+            const count = roomStats.counts[pubkey] ?? 0;
+            const loggedIn = isLoggedIn(pubkey);
+            const hasSaved = storedCreds.has(pubkey);
+            const distanceKm = roomDistances[pubkey];
             return (
               <button
-                key={room.publicKey}
-                className={`mc-channel-row ${selectedRoom === room.publicKey ? 'selected' : ''}`}
-                onClick={() => handleSelectRoom(room.publicKey)}
+                key={pubkey}
+                className={`mc-channel-row ${selectedRoom === pubkey ? 'selected' : ''}`}
+                onClick={() => handleSelectRoom(pubkey)}
               >
                 <div className="mc-channel-row-name">
                   <span className={`mc-room-row-status ${loggedIn ? 'logged-in' : hasSaved ? 'has-saved' : 'not-logged-in'}`}>
                     <UiIcon name={loggedIn ? 'statusOn' : hasSaved ? 'statusPartial' : 'statusOff'} size={12} />
                   </span>
                   {' '}
-                  {room.advName || room.name || room.publicKey.substring(0, 12) + '…'}
+                  {name}
                 </div>
                 <div className="mc-channel-row-meta">
                   {count} {t('meshcore.messages', 'messages')}
+                  {sortMode === 'distance' && typeof distanceKm === 'number' && (
+                    <span className={styles.distanceMeta}> &middot; {formatDistance(distanceKm, distanceUnit)}</span>
+                  )}
                 </div>
               </button>
             );
@@ -507,7 +678,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
             <MeshCoreMessageStream
               messages={filtered}
               contacts={contacts}
-              sourceId={_sourceId}
+              sourceId={sourceId}
               selfPublicKey={selfKey}
               disabled={!connected || !canSend || receiveOnly}
               disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
