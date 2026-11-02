@@ -76,6 +76,7 @@ vi.mock('./meshtasticProtobufService.js', () => {
     getPortNumName: (n: number) => `PORT_${n}`,
     normalizePortNum: (n: any) => (typeof n === 'number' ? n : 0),
     processPayload: vi.fn(),
+    parseIncomingData: vi.fn(),
   };
   return { default: svc, meshtasticProtobufService: svc };
 });
@@ -95,6 +96,7 @@ vi.mock('./services/serverEventNotificationService.js', () => ({
 
 import { MeshtasticManager } from './meshtasticManager.js';
 import { isTxDisabledError } from './errors/txDisabledError.js';
+import { meshtasticProtobufService } from './meshtasticProtobufService.js';
 
 /** Seeds the minimal private state each primitive's early checks read. */
 function makeReadyManager(): MeshtasticManager {
@@ -309,5 +311,65 @@ describe('MeshtasticManager.getCurrentConfig() firmware version for the Config t
 
   it('leaves it undefined until DeviceMetadata arrives', () => {
     expect(makeReadyManager().getCurrentConfig().localNodeInfo.firmwareVersion).toBeUndefined();
+  });
+});
+
+// #6142: Proto3 omits a false bool, so a receive-only radio (tx_enabled=false)
+// reports a lora block with txEnabled absent. Both default passes must backfill
+// it to false, or every reader falls back to true — the UI shows TX on and a
+// LoRa save re-enables TX, defeating the #4294 receive-only guarantee. The only
+// case that stays fail-open true is "no lora block at all" (no config yet),
+// handled by the readers, not by these passes.
+describe('MeshtasticManager — lora.txEnabled Proto3 default backfill (#6142)', () => {
+  beforeEach(() => {
+    (meshtasticProtobufService.parseIncomingData as any).mockReset();
+  });
+
+  describe('config-receive pass', () => {
+    it('backfills txEnabled=false when the lora block omits it (receive-only radio)', async () => {
+      const mgr = makeReadyManager();
+      (meshtasticProtobufService.parseIncomingData as any).mockReturnValue({
+        type: 'config',
+        data: { lora: { region: 1, hopLimit: 3 } },
+      });
+
+      await mgr.processIncomingData(new Uint8Array([1]));
+
+      expect((mgr as any).actualDeviceConfig.lora.txEnabled).toBe(false);
+      expect(mgr.isTxEnabled()).toBe(false);
+    });
+
+    it('preserves an explicit txEnabled=true', async () => {
+      const mgr = makeReadyManager();
+      (meshtasticProtobufService.parseIncomingData as any).mockReturnValue({
+        type: 'config',
+        data: { lora: { region: 1, txEnabled: true } },
+      });
+
+      await mgr.processIncomingData(new Uint8Array([1]));
+
+      expect((mgr as any).actualDeviceConfig.lora.txEnabled).toBe(true);
+      expect(mgr.isTxEnabled()).toBe(true);
+    });
+  });
+
+  describe('getCurrentConfig() / loraConfigWithDefaults', () => {
+    it('returns txEnabled=false when the stored lora block omits it', () => {
+      const mgr = makeReadyManager();
+      (mgr as any).actualDeviceConfig = { lora: { region: 1, hopLimit: 3 } };
+      expect(mgr.getCurrentConfig().deviceConfig.lora.txEnabled).toBe(false);
+    });
+
+    it('preserves an explicit txEnabled=true', () => {
+      const mgr = makeReadyManager();
+      (mgr as any).actualDeviceConfig = { lora: { region: 1, txEnabled: true } };
+      expect(mgr.getCurrentConfig().deviceConfig.lora.txEnabled).toBe(true);
+    });
+
+    it('does not synthesize a lora block when none has arrived (fail-open stays in readers)', () => {
+      const mgr = makeReadyManager();
+      expect((mgr as any).actualDeviceConfig).toBeNull();
+      expect(mgr.getCurrentConfig().deviceConfig.lora).toBeUndefined();
+    });
   });
 });
