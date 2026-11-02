@@ -47,7 +47,7 @@
     "@michaelhart/meshcore-decoder": "^0.3.0",
     "@simplewebauthn/browser": "14.0.0",
     "@simplewebauthn/server": "14.0.3",
-    "@tanstack/react-query": "^5.104.5",
+    "@tanstack/react-query": "^5.105.0",
     "@tanstack/react-virtual": "^3.14.24",
     "@tmcw/togeojson": "^7.1.3",
     "@types/leaflet.heat": "^0.2.5",
