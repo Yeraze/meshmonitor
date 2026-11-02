@@ -132,4 +132,24 @@ describe('MeshCoreLocalConsole receive-only mode — Repeater device (ACL form)'
     const advertBtn = screen.getByText('Zero-hop advert').closest('button');
     expect(advertBtn).toBeDisabled();
   });
+
+  it('disables (not removes) the "Discover neighbors" action while receive-only (#3351)', () => {
+    const actions = makeActions();
+    render(
+      <MeshCoreLocalConsole
+        sourceId="src-1"
+        deviceType={2}
+        connected
+        actions={actions}
+        receiveOnly
+      />,
+    );
+    // discover.neighbors transmits, so it is disabled like advert — but kept
+    // visible (a vanished button teaches nothing).
+    const discoverBtn = screen.getByText('Discover neighbors').closest('button');
+    expect(discoverBtn).toBeDisabled();
+    expect(discoverBtn).toHaveAttribute('title', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.');
+    // A non-transmitting read (Neighbors) stays enabled.
+    expect(screen.getByText('Neighbors').closest('button')).not.toBeDisabled();
+  });
 });

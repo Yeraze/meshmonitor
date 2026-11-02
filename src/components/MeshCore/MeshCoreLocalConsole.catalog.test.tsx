@@ -38,6 +38,23 @@ describe('MeshCoreLocalConsole Companion catalog (#5868)', () => {
     expect(screen.queryByText('Radio')).not.toBeInTheDocument();
   });
 
+  it('offers "Discover neighbors" on a Repeater (deviceType 2) only (#3351)', () => {
+    render(<MeshCoreLocalConsole sourceId="s" deviceType={2} connected actions={actions()} />);
+    expect(screen.getByText('Discover neighbors')).toBeInTheDocument();
+  });
+
+  it('hides "Discover neighbors" on a Room Server (deviceType 3) — repeater-only firmware', () => {
+    render(<MeshCoreLocalConsole sourceId="s" deviceType={3} connected actions={actions()} />);
+    // Room Servers share the Repeater catalog but lack the simple_repeater verb.
+    expect(screen.getByText('Neighbors')).toBeInTheDocument();
+    expect(screen.queryByText('Discover neighbors')).not.toBeInTheDocument();
+  });
+
+  it.each([1, 3])('hides "Discover neighbors" for non-Repeater deviceType %s', (deviceType) => {
+    render(<MeshCoreLocalConsole sourceId="s" deviceType={deviceType} firmwareVer={14} connected actions={actions()} />);
+    expect(screen.queryByText('Discover neighbors')).not.toBeInTheDocument();
+  });
+
   it('disables only the zero-hop advert while receive-only', () => {
     render(<MeshCoreLocalConsole sourceId="s" deviceType={1} firmwareVer={14} connected actions={actions()} receiveOnly />);
     expect(screen.getByText('Zero-hop advert').closest('button')).toBeDisabled();

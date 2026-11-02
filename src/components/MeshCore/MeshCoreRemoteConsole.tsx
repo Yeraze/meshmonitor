@@ -22,7 +22,7 @@
  * leaves the server process.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreActions, MeshCoreRemoteAdminSession } from './hooks/useMeshCore';
 import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
@@ -51,6 +51,7 @@ import { PasswordField } from '../shared/config/PasswordField';
 const REMOTE_ACTION_CATALOG: ActionCommand[] = [
   { key: 'ver',       labelKey: 'meshcore.remoteConsole.action.ver',       defaultLabel: 'Version',  command: 'ver' },
   { key: 'neighbors', labelKey: 'meshcore.remoteConsole.action.neighbors', defaultLabel: 'Neighbors', command: 'neighbors' },
+  { key: 'discover_neighbors', labelKey: 'meshcore.remoteConsole.action.discover_neighbors', defaultLabel: 'Discover neighbors', command: 'discover.neighbors' },
   { key: 'clock',     labelKey: 'meshcore.remoteConsole.action.clock',     defaultLabel: 'Clock',    command: 'clock' },
   { key: 'clock_sync', labelKey: 'meshcore.remoteConsole.action.clock_sync', defaultLabel: 'Sync clock', command: 'clock sync' },
   { key: 'advert',    labelKey: 'meshcore.remoteConsole.action.advert',    defaultLabel: 'Send advert', command: 'advert' },
@@ -91,6 +92,10 @@ interface MeshCoreRemoteConsoleProps {
    *  list (#5349). The radio cannot send a login, status request, or CLI
    *  command to it, so those controls are disabled with an explanation. */
   notOnDevice?: boolean;
+  /** True when the contact is a Repeater (advType===2). `discover.neighbors`
+   *  is simple_repeater-only firmware, so the quick action is only offered
+   *  for Repeaters and hidden for Room Servers (#3351). */
+  isRepeater?: boolean;
 }
 
 export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
@@ -99,6 +104,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   actions,
   receiveOnly = false,
   notOnDevice = false,
+  isRepeater = false,
 }) => {
   const { t } = useTranslation();
   const { sourceId } = useSource();
@@ -347,6 +353,13 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     [actions, publicKey],
   );
 
+  // `discover.neighbors` is simple_repeater-only firmware, so drop it for
+  // Room Servers (#3351). Everything else is shared by both device types.
+  const actionCatalog = useMemo(
+    () => isRepeater ? REMOTE_ACTION_CATALOG : REMOTE_ACTION_CATALOG.filter(a => a.key !== 'discover_neighbors'),
+    [isRepeater],
+  );
+
   return (
     <section className="meshcore-remote-console" aria-label={t('meshcore.remoteConsole.title', 'Remote administration')}>
       <header className="mrc-header">
@@ -499,7 +512,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         targetName={contactName}
         history={sourceId ? { sourceId, target: publicKey } : undefined}
         runCommand={runCommand}
-        actionCatalog={loggedIn ? REMOTE_ACTION_CATALOG : []}
+        actionCatalog={loggedIn ? actionCatalog : []}
         disabled={!loggedIn || blocked}
         disabledPlaceholder={blockedTitle}
         timeoutHint={

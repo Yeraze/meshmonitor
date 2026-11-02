@@ -63,6 +63,7 @@ const REPEATER_ACTION_CATALOG: ActionCommand[] = [
   { key: 'ver',       labelKey: 'meshcore.remoteConsole.action.ver',       defaultLabel: 'Version',  command: 'ver' },
   { key: 'stats',     labelKey: 'meshcore.remoteConsole.action.stats',     defaultLabel: 'Stats',    command: 'stats' },
   { key: 'neighbors', labelKey: 'meshcore.remoteConsole.action.neighbors', defaultLabel: 'Neighbors', command: 'neighbors' },
+  { key: 'discover_neighbors', labelKey: 'meshcore.remoteConsole.action.discover_neighbors', defaultLabel: 'Discover neighbors', command: 'discover.neighbors' },
   { key: 'clock',     labelKey: 'meshcore.remoteConsole.action.clock',     defaultLabel: 'Clock',    command: 'clock' },
   { key: 'advert',    labelKey: 'meshcore.localConsole.action.advert_zerohop', defaultLabel: 'Zero-hop advert', command: 'advert.zerohop' },
   { key: 'reboot',    labelKey: 'meshcore.remoteConsole.action.reboot',    defaultLabel: 'Reboot',   command: 'reboot', danger: true },
@@ -111,18 +112,21 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
   // the user can still type free-form commands.
   //
   // The console itself stays enabled while receive-only (local serial CLI is
-  // explicitly allowed — interview decision 2); only the synthetic `advert`
-  // verb transmits, so it alone is disabled (with a tooltip) via
-  // ActionCommand.disabled rather than being filtered out of the catalog —
+  // explicitly allowed — interview decision 2); the `advert` and
+  // `discover.neighbors` verbs transmit, so they are disabled (with a tooltip)
+  // via ActionCommand.disabled rather than being filtered out of the catalog —
   // a vanished button teaches the user nothing (#4547 Phase 2 §3.5).
+  // `discover.neighbors` is simple_repeater-only firmware, so it is dropped
+  // for Room Servers (deviceType 3) even though they share the catalog (#3351).
   const actionCatalog = useMemo<ActionCommand[]>(() => {
-    const base =
+    let base =
       deviceType === 2 || deviceType === 3 ? REPEATER_ACTION_CATALOG :
       nativeCompanionCli ? COMPANION_NATIVE_ACTION_CATALOG :
       deviceType === 1 ? COMPANION_ACTION_CATALOG :
       [];
+    if (deviceType !== 2) base = base.filter(a => a.key !== 'discover_neighbors');
     if (!receiveOnly) return base;
-    return base.map(action => action.key === 'advert' ? { ...action, disabled: true } : action);
+    return base.map(action => (action.key === 'advert' || action.key === 'discover_neighbors') ? { ...action, disabled: true } : action);
   }, [deviceType, nativeCompanionCli, receiveOnly]);
 
   const runCommand = useCallback(
