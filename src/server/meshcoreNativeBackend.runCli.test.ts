@@ -12,6 +12,8 @@ const PushCodes = { Advert: 0x80 };
 class MockConnection extends EventEmitter {
   /** 'ok' = fw 1.18 answers 29; 'err' = older firmware answers Err; 'silent' = no answer. */
   mode: 'ok' | 'err' | 'silent' = 'ok';
+  /** Emit frames as plain number[], as meshcore.js's serial and TCP transports do. */
+  plainArray = false;
   reply = '> 915.0,250,11,5';
   frames: number[][] = [];
   async connect() { /* no-op */ }
@@ -28,7 +30,7 @@ class MockConnection extends EventEmitter {
       const out = new Uint8Array(1 + body.length);
       out[0] = 29;
       out.set(body, 1);
-      this.emit('rx', out);
+      this.emit('rx', this.plainArray ? Array.from(out) : out);
     }, 1);
   }
 }
@@ -55,6 +57,13 @@ describe('MeshCoreNativeBackend run_cli (#5866)', () => {
     const { backend, conn } = await connected();
     const res = await backend.sendCommand('run_cli', { command: 'get radio' });
     expect(conn.frames).toEqual([[66, ...new TextEncoder().encode('get radio')]]);
+    expect(res).toMatchObject({ success: true, data: { reply: '> 915.0,250,11,5' } });
+  });
+
+  it('reads a reply delivered as a plain array (serial / TCP transport)', async () => {
+    const { backend, conn } = await connected();
+    conn.plainArray = true;
+    const res = await backend.sendCommand('run_cli', { command: 'get radio' });
     expect(res).toMatchObject({ success: true, data: { reply: '> 915.0,250,11,5' } });
   });
 

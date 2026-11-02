@@ -228,8 +228,10 @@ export const CONTACT_FLAG_REMOTE_CLI = 0x10;
  * `[7][pubKeyPrefix x6][pathLen][txtType][senderTimestamp u32le][author x4][body…]`.
  * The author prefix is raw key bytes and the body is UTF-8 text.
  */
-export function splitSignedPlainPayload(frame: Uint8Array): { authorPrefixHex: string; body: string } {
-  const payload = frame.subarray(13);
+export function splitSignedPlainPayload(frame: ArrayLike<number>): { authorPrefixHex: string; body: string } {
+  // meshcore.js's serial and TCP transports hand frames over as plain number[].
+  const bytes = frame instanceof Uint8Array ? frame : Uint8Array.from(frame);
+  const payload = bytes.subarray(13);
   return {
     authorPrefixHex: bytesToHex(payload.subarray(0, 4)),
     body: new TextDecoder().decode(payload.subarray(4)),
@@ -1158,9 +1160,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
     //   0x90               — a new contact could not be stored: table full
     // Remember the latest ContactMsgRecv frame: meshcore.js emits 'rx' with the
     // frame and then, synchronously, the decoded event for that same frame.
-    this.connection.on('rx', (frame: Uint8Array) => {
+    // The serial and TCP transports emit a plain number[] (not a Uint8Array):
+    // copy it, so later byte operations never meet an array without subarray.
+    this.connection.on('rx', (frame: ArrayLike<number>) => {
       this.lastContactMsgFrame =
-        frame && frame.length > 0 && frame[0] === CONTACT_MSG_RECV_CODE ? frame : null;
+        frame && frame.length > 0 && frame[0] === CONTACT_MSG_RECV_CODE ? Uint8Array.from(frame) : null;
     });
 
     const PUSH_CONTACT_DELETED = 0x8F;
@@ -1657,7 +1661,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
       const onRx = (f: Uint8Array) => {
         if (!f || f.length < 1) return;
         if (f[0] === RESP_CODE_CLI_REPLY) {
-          done({ kind: 'reply', text: new TextDecoder().decode(f.subarray(1)) });
+          // Serial/TCP frames are plain number[]: copy before decoding.
+          done({ kind: 'reply', text: new TextDecoder().decode(Uint8Array.from(f).subarray(1)) });
         } else if (f[0] === K.ResponseCodes.Err) {
           done({ kind: 'err' });
         }
