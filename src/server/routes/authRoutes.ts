@@ -32,7 +32,11 @@ import { regenerateSession } from '../auth/regenerateSession.js';
 const router = Router();
 
 // Get authentication status
-router.get('/status', async (req: Request, res: Response) => {
+// This can be the browser's first request after signing in through a reverse proxy.
+// Without optionalAuth(), the proxy identity has not been bound to the session,
+// so the response says authenticated: false and the UI shows the login screen.
+// Authenticate this request before reading the session below.
+router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const envConfig = getEnvironmentConfig();
     const localAuthDisabled = envConfig.disableLocalAuth;
