@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   applyCustomOrder,
   sortChannels,
+  sortItems,
   moveItem,
   loadChannelSortMode,
   saveChannelSortMode,
@@ -13,6 +14,12 @@ import {
   channelCustomOrderKey,
   channelSortModeKey,
   remapChannelCustomOrder,
+  loadRoomSortMode,
+  saveRoomSortMode,
+  loadRoomCustomOrder,
+  saveRoomCustomOrder,
+  roomSortModeKey,
+  roomCustomOrderKey,
 } from './meshcoreChannelOrder';
 
 const ch = (id: number, name: string) => ({ id, name });
@@ -120,5 +127,96 @@ describe('remapChannelCustomOrder (#5379)', () => {
   it('does not create an order when none was saved', () => {
     remapChannelCustomOrder('a', [{ from: 1, to: 2 }, { from: 2, to: 1 }]);
     expect(localStorage.getItem(channelCustomOrderKey('a'))).toBeNull();
+  });
+});
+
+// --- String-keyed items: the Rooms list keys on publicKey (#6148) ---
+
+const room = (id: string, name: string) => ({ id, name });
+const rids = (list: { id: string }[]) => list.map(r => r.id);
+
+// pk ids chosen so id order != name order, to prove each sort is distinct.
+const rooms = [
+  room('pkC', 'zulu'),
+  room('pkA', 'Alpha'),
+  room('pkD', ''),
+  room('pkB', 'mike'),
+];
+
+describe('sortItems with string ids (rooms)', () => {
+  it('name order collates by display name, case-insensitive (empty name first)', () => {
+    expect(rids(sortItems(rooms, 'name'))).toEqual(['pkD', 'pkA', 'pkB', 'pkC']);
+  });
+
+  it('last message puts newest first, silent rooms last by id order', () => {
+    const latest = { pkC: 500, pkA: 900 };
+    expect(rids(sortItems(rooms, 'lastMessage', { latest }))).toEqual(['pkA', 'pkC', 'pkB', 'pkD']);
+  });
+
+  it('message count puts the busiest first, empty rooms last by id order', () => {
+    const counts = { pkC: 40, pkA: 7, pkD: 40 };
+    expect(rids(sortItems(rooms, 'messageCount', { counts }))).toEqual(['pkC', 'pkD', 'pkA', 'pkB']);
+  });
+
+  it('distance puts nearest first; no-location rooms sink, ordered by name', () => {
+    const distances = { pkC: 5, pkA: 20 };
+    // pkC(5) < pkA(20) first; then no-location pkB('mike') and pkD('') by name
+    // → '' before 'mike'.
+    expect(rids(sortItems(rooms, 'distance', { distances }))).toEqual(['pkC', 'pkA', 'pkD', 'pkB']);
+  });
+
+  it('distance with no distances at all falls back to name order (no self fix)', () => {
+    expect(rids(sortItems(rooms, 'distance', {}))).toEqual(['pkD', 'pkA', 'pkB', 'pkC']);
+  });
+
+  it('custom order follows the saved order and appends unknown rooms by id', () => {
+    expect(rids(sortItems(rooms, 'custom', { customOrder: ['pkD', 'pkB'] })))
+      .toEqual(['pkD', 'pkB', 'pkA', 'pkC']); // named first; rest by id order
+  });
+
+  it('applyCustomOrder appends rooms missing from the order and drops stale ids', () => {
+    expect(rids(applyCustomOrder(rooms, ['zzz', 'pkC', 'pkA'])))
+      .toEqual(['pkC', 'pkA', 'pkB', 'pkD']); // named first, rest by id order
+  });
+});
+
+describe('room persistence (#6148)', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('defaults to name order and ignores junk / channel-only values', () => {
+    expect(loadRoomSortMode('src-a')).toBe('name');
+    localStorage.setItem(roomSortModeKey('src-a'), 'bogus');
+    expect(loadRoomSortMode('src-a')).toBe('name');
+    // 'device' is a channel-only mode and is not valid for rooms.
+    localStorage.setItem(roomSortModeKey('src-a'), 'device');
+    expect(loadRoomSortMode('src-a')).toBe('name');
+  });
+
+  it('round-trips the mode and the string custom order per source', () => {
+    saveRoomSortMode('src-a', 'distance');
+    saveRoomCustomOrder('src-a', ['pkB', 'pkA']);
+    expect(loadRoomSortMode('src-a')).toBe('distance');
+    expect(loadRoomCustomOrder('src-a')).toEqual(['pkB', 'pkA']);
+    // A different source is untouched.
+    expect(loadRoomSortMode('src-b')).toBe('name');
+    expect(loadRoomCustomOrder('src-b')).toEqual([]);
+  });
+
+  it('uses a different localStorage key from the channel order', () => {
+    expect(roomCustomOrderKey('s')).not.toBe(channelCustomOrderKey('s'));
+    expect(roomSortModeKey('s')).not.toBe(channelSortModeKey('s'));
+  });
+
+  it('sanitises a corrupt custom order and dedupes', () => {
+    localStorage.setItem(roomCustomOrderKey('src-a'), '{not json');
+    expect(loadRoomCustomOrder('src-a')).toEqual([]);
+    localStorage.setItem(roomCustomOrderKey('src-a'), JSON.stringify(['pkA', 1, '', 'pkA', 'pkB']));
+    expect(loadRoomCustomOrder('src-a')).toEqual(['pkA', 'pkB']);
+  });
+});
+
+describe('sortChannels stays a channel-flavoured alias of sortItems', () => {
+  it('is the same function', () => {
+    expect(sortChannels).toBe(sortItems);
   });
 });
