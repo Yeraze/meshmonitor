@@ -431,22 +431,27 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
 > is logged as skipped, with the reason. See [The empty-send rule](#the-empty-send-rule).
 
 - **Send via sources** — a multi-select of which radios to transmit through. **MQTT sources are
-  receive-only and excluded.** Both **Meshtastic and MeshCore** sources are valid send targets.
+  receive-only and excluded.** **Meshtastic, MeshCore and Reticulum** sources are all valid send
+  targets, shown with **MT / MC / RET badges**.
   Leave it empty to use the source that triggered the automation — but a source **is required** for
   source-less triggers (System events and Schedules).
 - **On channels** — a multi-select of channels, **unified across sources by protocol + name** and
   shown with **MC / MT badges**. The correct local slot is resolved per source, and a Meshtastic
   channel is never sent to a MeshCore source (and vice-versa). Disabled channel slots are excluded.
-  Raw channel PSKs are never sent to the browser.
+  Raw channel PSKs are never sent to the browser. **Reticulum has no channels**, so a channel
+  selection never applies to a Reticulum source — see [Reticulum (LXMF) support](#reticulum-lxmf-support).
 - **DM to node #** — send as a direct message instead of to a channel. On Meshtastic give a node
-  number; on MeshCore give the contact's public key. `{{ trigger.from }}` replies to the sender of
-  a Meshtastic message or a MeshCore DM. It does not work for a MeshCore channel post, which
-  carries no sender key.
+  number; on MeshCore give the contact's public key; on **Reticulum** give the destination's LXMF
+  hash. `{{ trigger.from }}` replies to the sender of a Meshtastic message, a MeshCore DM, or a
+  Reticulum message. It does not work for a MeshCore channel post, which carries no sender key. A
+  Reticulum send **always** needs a destination — with none, the step is a recorded skip (there is
+  no broadcast fallback).
 - **Reply to the triggering message** — on **Meshtastic** this threads the reply as a tapback (via
   the triggering packet id). MeshCore has no packet-id/thread concept on the wire, so on **MeshCore**
   this instead **auto-prepends the sender mention** `@[<senderLabel>]: ` to the outgoing text — the same
   `@[Name]:` markup the in-app reply button uses — so an automation can reply to whoever sent the
-  triggering message without hand-writing the mention. The label comes from
+  triggering message without hand-writing the mention. On **Reticulum** the reply is threaded natively:
+  the outgoing LXMF message carries the triggering message's hash as its `replyToHash`. The label comes from
   `{{ trigger.senderLabel }}` (sender name → channel name → id), so even an anonymous channel post
   still gets a sensible mention; if nothing at all can be resolved nothing is prepended, and if your
   text already begins with an `@[…]` mention it is left as-is (no double mention). See
@@ -501,6 +506,58 @@ slot of each selected channel.
 > retries user-typed messages, never retries direct messages (those have their own always-on ACK
 > retry), and the resend can never trigger a fresh automation. See
 > [Automated Channel-Send Auto-Retry](/features/meshcore#automated-channel-send-auto-retry).
+
+### Reticulum (LXMF) support {#reticulum-lxmf-support}
+
+Reticulum sources take part in the same **A message is received** trigger as Meshtastic and
+MeshCore — one `trigger.message` automation fires across all three protocols — and can be a target
+of the **Send a message** action. Reticulum carries LXMF, an address-to-address messaging layer
+with **no channels and no broadcast**: every message is a direct message between two LXMF
+destination hashes. That one fact drives everything below.
+
+**As a trigger.** An inbound LXMF message fires **A message is received**. Because LXMF has no
+channel concept, only the **text** filters apply:
+
+| Filter | Reticulum |
+|--------|-----------|
+| **Message contains** (`textContains`) | **Matches** (case-insensitive substring of the body). |
+| **Matches regex** (`regex`) | **Matches** (against the body). |
+| **On channels / On channel (name) / On channel #** | **Never matches** — LXMF has no channels. A rule that filters by channel never fires on a Reticulum message. |
+| **From / To / Port number** | **Never matches** — these are Meshtastic-only filters. |
+
+Your own outbound LXMF messages never fire a rule: `ReticulumManager`'s self-origin guard drops
+them before the trigger is ever raised.
+
+**Tokens.** A Reticulum `trigger.message` exposes the universal tokens plus LXMF-specific ones.
+Fields with no equivalent on LXMF are **always blank**:
+
+- `{{ trigger.fromName }}` / `{{ trigger.senderLabel }}` — the sender's announced display name,
+  falling back to the raw LXMF hash when the sender has not announced a name.
+- `{{ trigger.from }}` / `{{ trigger.fromId }}` / `{{ trigger.to }}` / `{{ trigger.toId }}` — the
+  LXMF destination hashes.
+- `{{ trigger.title }}`, `{{ trigger.quality }}`, `{{ trigger.method }}`,
+  `{{ trigger.signatureValidated }}`, `{{ trigger.ratcheted }}`, `{{ trigger.replyToHash }}`,
+  `{{ trigger.threadHash }}` — LXMF-only; empty on Meshtastic and MeshCore.
+- `{{ trigger.protocol }}` is `reticulum` and `{{ trigger.protocolShort }}` is `RET`.
+- **Always blank on Reticulum:** `channel`, `channelName`, `packetId`, `hops`, `hopStart`,
+  `hopLimit`, `portnum`, `wantAck`, and the MeshCore scope tokens (`scopeName`/`scopeCode`/`scoped`)
+  — none exist in LXMF.
+
+**Send and reply.** When a Reticulum source is a **Send a message** target:
+
+- **A destination is required.** Give the recipient's LXMF hash in **DM to node #**, or use
+  `{{ trigger.from }}` to reply to the sender. With no resolvable destination the step is a
+  **recorded skip** — there is no channel to fall back to.
+- **On channels is ignored** for a Reticulum source.
+- **Reply to the triggering message** sets the outgoing LXMF `replyToHash` to the triggering
+  message's hash, threading the reply natively.
+- The step **fails** (not skips) when the Reticulum source is not connected or the send is
+  rejected — the same failure semantics as a MeshCore send.
+
+**Protocol-specific actions are skipped.** The Meshtastic/MeshCore-only actions — **Send a tapback**,
+**Manage the node**, **Request data from a node**, **Device reboot**, and **Trace MeshCore paths on
+a schedule** — have no Reticulum equivalent, so targeting a Reticulum source records a **skip** with
+the reason rather than failing the run.
 
 ### Manage the node
 

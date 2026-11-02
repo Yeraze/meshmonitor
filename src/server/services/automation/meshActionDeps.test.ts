@@ -560,3 +560,50 @@ describe('createMeshActionDeps sendTapback — MeshCore reactions (#5762)', () =
       .rejects.toBeInstanceOf(TxDisabledError);
   });
 });
+
+// #6143: a Reticulum manager's sendMessage takes ONE object ({ to, content, … }),
+// not the positional form. ReticulumManager ALSO has a `sendMessage` method, so
+// this branch must win over the MeshCore duck-typed branch.
+describe('createMeshActionDeps sendMessage — Reticulum (#6143)', () => {
+  beforeEach(() => { getManager.mockReset(); });
+
+  it('calls sendMessage with the object form { to, content } for a Reticulum DM', async () => {
+    const sendMessage = vi.fn().mockResolvedValue({ id: 'ret_x', state: 'outbound' });
+    getManager.mockReturnValue({ sourceType: 'reticulum', sendMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'ret', text: 'pong', channel: 0, destination: 'a1b2c3d4e5f6' });
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith({ to: 'a1b2c3d4e5f6', content: 'pong' });
+  });
+
+  it('threads replyToHash into the object when replying to the triggering message', async () => {
+    const sendMessage = vi.fn().mockResolvedValue({ id: 'ret_x', state: 'outbound' });
+    getManager.mockReturnValue({ sourceType: 'reticulum', sendMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'ret', text: 'pong', channel: 0, destination: 'a1b2c3d4e5f6', replyToHash: 'lxmf-9' });
+
+    expect(sendMessage).toHaveBeenCalledWith({ to: 'a1b2c3d4e5f6', content: 'pong', replyToHash: 'lxmf-9' });
+  });
+
+  it('throws (failed step) when a Reticulum send has no destination address', async () => {
+    const sendMessage = vi.fn();
+    getManager.mockReturnValue({ sourceType: 'reticulum', sendMessage });
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'ret', text: 'pong', channel: 0 }))
+      .rejects.toThrow(/destination/i);
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('propagates a send rejection as a failed step (not connected / rejected)', async () => {
+    const sendMessage = vi.fn().mockRejectedValue(new Error('ReticulumManager(ret): not connected'));
+    getManager.mockReturnValue({ sourceType: 'reticulum', sendMessage });
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'ret', text: 'pong', channel: 0, destination: 'a1b2c3' }))
+      .rejects.toThrow(/not connected/);
+  });
+});

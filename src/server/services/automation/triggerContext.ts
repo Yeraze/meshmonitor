@@ -349,22 +349,39 @@ export function buildMeshCoreMessageContext(
  * DM), so `channel`/`channelName` are always unset here — a rule filtering
  * on either never matches a Reticulum message (see
  * {@link reticulumMessageMatchesFilter}).
+ *
+ * `opts.displayName` is the sender's announced display name (from the
+ * `reticulum_destinations` row), resolved by the engine call site; it fills
+ * `fromName`/`senderLabel` so a reply can address the sender by name. Both
+ * fall back to the raw LXMF hash when no name has been announced.
+ *
+ * `messageHash` is this message's own LXMF hash (the part of `msg.id` after the
+ * `${sourceId}_` prefix), so "Reply to the triggering message" can set it as
+ * the outgoing `replyToHash`. (`replyToHash`/`threadHash` on the context are the
+ * INBOUND message's own reply/thread markers, not a handle to reply TO it.)
  */
 export function buildReticulumMessageContext(
   msg: ReticulumMessageRow,
   sourceId: string | null,
   timestamp: number,
+  opts: { displayName?: string | null } = {},
 ): TriggerContext {
   const fromId = msg.fromHash;
-  const senderLabel = fromId;
+  const displayName = opts.displayName?.trim() || undefined;
+  const senderLabel = displayName ?? fromId;
+  // The LXMF hash of THIS message (id = `${sourceId}_${hash}`), for replyToHash.
+  const id = typeof msg.id === 'string' ? msg.id : '';
+  const prefix = `${msg.sourceId ?? ''}_`;
+  const messageHash = id.startsWith(prefix) ? id.slice(prefix.length) : id;
   const fields: Record<string, unknown> = {
     from: msg.fromHash,
     fromId: msg.fromHash,
-    fromName: undefined,
+    fromName: displayName,
     to: msg.toHash,
     toId: msg.toHash,
     text: msg.content,
     title: msg.title,
+    messageHash,
     channel: undefined,
     channelName: undefined,
     senderLabel,

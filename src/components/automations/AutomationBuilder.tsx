@@ -45,24 +45,33 @@ const isSendableSource = (s: SourceOption): boolean =>
   s.enabled !== false && !String(s.type ?? '').startsWith('mqtt');
 
 /** Short protocol badge for a source type / channel protocol. */
-const protoBadge = (proto?: string): 'MC' | 'MT' | null => {
+const protoBadge = (proto?: string): 'MC' | 'MT' | 'RET' | null => {
   const t = String(proto ?? '');
   if (t === 'meshcore') return 'MC';
+  if (t === 'reticulum') return 'RET';
   if (t.startsWith('meshtastic')) return 'MT';
   return null;
 };
 
+/** Extra CSS class for a protocol badge, so Reticulum (RET) reads as its own
+ *  protocol with a distinct (tokenised) colour (#6143). */
+const protoBadgeClass = (badge: 'MC' | 'MT' | 'RET' | null): string =>
+  badge === 'RET' ? 'ae-chip ae-chip--ret' : 'ae-chip';
+
 /**
- * Does a source match a field's `protocolFilter`? MeshCore is the explicit side
- * (`type === 'meshcore'`); everything else — native Meshtastic AND MQTT
- * bridge/broker sources — is Meshtastic-protocol. So `'meshtastic'` means "not
- * MeshCore" rather than a `startsWith('meshtastic')` check, which would wrongly
- * drop MQTT sources.
+ * Does a source match a field's `protocolFilter`? MeshCore (`type === 'meshcore'`)
+ * and Reticulum (`type === 'reticulum'`) are each their own protocol; everything
+ * else — native Meshtastic AND MQTT bridge/broker sources — is Meshtastic-protocol.
+ * So `'meshtastic'` means "not MeshCore and not Reticulum" rather than a
+ * `startsWith('meshtastic')` check, which would wrongly drop MQTT sources — and a
+ * Meshtastic-only field never offers a Reticulum source (#6143).
  */
 const sourceMatchesProtocol = (s: SourceOption, filter?: 'meshtastic' | 'meshcore'): boolean => {
   if (!filter) return true;
-  const isMeshCore = String(s.type ?? '') === 'meshcore';
-  return filter === 'meshcore' ? isMeshCore : !isMeshCore;
+  const type = String(s.type ?? '');
+  const isMeshCore = type === 'meshcore';
+  const isReticulum = type === 'reticulum';
+  return filter === 'meshcore' ? isMeshCore : (!isMeshCore && !isReticulum);
 };
 
 /** Channel counterpart of {@link sourceMatchesProtocol}, keyed off `UnifiedChannelOption.protocol`. */
@@ -437,7 +446,7 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
               <label key={s.id} className="ae-switch" style={{ display: 'block', marginBottom: '0.2rem' }}>
                 <input type="checkbox" checked={sel.includes(s.id)} onChange={(e) =>
                   onChange(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} />
-                {' '}{s.name}{badge ? <span className="ae-chip">{badge}</span> : null}
+                {' '}{s.name}{badge ? <span className={protoBadgeClass(badge)}>{badge}</span> : null}
                 {/* Prefer canTransmit: a TX-disabled radio with UDP Broadcast on
                     still delivers, so it must not be flagged (#4394). Older
                     servers omit the field — fall back to the raw radio flag. */}
@@ -522,7 +531,7 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
                   ? [...sel, { name: c.name, protocol: c.protocol }]
                   : sel.filter((x) => !same(x, c)))} />
               {' '}{c.name || '(Primary)'}
-              {protoBadge(c.protocol) ? <span className="ae-chip">{protoBadge(c.protocol)}</span> : null}
+              {protoBadge(c.protocol) ? <span className={protoBadgeClass(protoBadge(c.protocol))}>{protoBadge(c.protocol)}</span> : null}
               {c.encryption ? <span className="ae-chip">{c.encryption}</span> : null}
               {c.sources && c.sources.length > 1 ? <span className="ae-chip">{c.sources.length} sources</span> : null}
             </label>

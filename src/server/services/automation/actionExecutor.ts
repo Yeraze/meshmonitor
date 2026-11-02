@@ -56,6 +56,13 @@ export interface ActionDeps {
      * with no ACK request and no queue retry.
      */
     hopLimitOverride?: number;
+    /**
+     * Reticulum/LXMF only (#6143): the LXMF hash of the message this send
+     * replies to. Set when "Reply to the triggering message" is ticked on a
+     * Reticulum target. Ignored by Meshtastic/MeshCore, which thread replies
+     * via the packet id / `@[name]` mention instead.
+     */
+    replyToHash?: string;
   }): Promise<unknown>;
   sendTapback(a: {
     sourceId: string | null;
@@ -257,6 +264,19 @@ async function str(ctx: EngineEvalContext, raw: unknown): Promise<string | undef
 async function isMeshCoreSource(ctx: EngineEvalContext, sourceId: string | null): Promise<boolean> {
   if (!sourceId) return false;
   return (await ctx.data.getSourceProtocol?.(sourceId)) === 'meshcore';
+}
+
+/**
+ * True when the action's target source speaks Reticulum (LXMF) (#6143). Same
+ * best-effort contract as {@link isMeshCoreSource}: a provider that can't report
+ * a protocol returns false, so behavior is unchanged. Reticulum is its own
+ * protocol — Meshtastic/MeshCore-only actions (tapback, node manage, request
+ * data, device reboot) are recorded no-ops on it, and a send resolves the DM
+ * target as an LXMF hash string rather than a node number.
+ */
+async function isReticulumSource(ctx: EngineEvalContext, sourceId: string | null): Promise<boolean> {
+  if (!sourceId) return false;
+  return (await ctx.data.getSourceProtocol?.(sourceId)) === 'reticulum';
 }
 
 /**
@@ -487,6 +507,33 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       for (const sid of sourceIds) {
         const proto = (await ctx.data.getSourceProtocol?.(sid)) ?? null;
         const meshcore = proto === 'meshcore';
+
+        // Reticulum/LXMF (#6143): every message is a direct address-to-address
+        // send — there are NO channels and no broadcast. A send therefore needs
+        // a destination LXMF hash (resolved as a string, never through num()).
+        // With none, record a clear skip rather than falling back to a channel
+        // broadcast the way Meshtastic/MeshCore do. "On channels" is ignored.
+        if (proto === 'reticulum') {
+          const to = rawTo == null ? undefined : await str(ctx, rawTo);
+          if (to == null) {
+            results.push({
+              skipped: true,
+              reason: 'Reticulum/LXMF has no channels, so a message needs a destination address — none resolved, nothing was sent',
+            });
+            continue;
+          }
+          // "Reply to the triggering message" → set the outgoing replyToHash to
+          // the triggering LXMF message's own hash (carried on the context).
+          const triggerHash = ctx.trigger.fields.messageHash;
+          const replyToHashArg = p.replyToTrigger
+            && ctx.trigger.triggerType === 'trigger.message'
+            && typeof triggerHash === 'string' && triggerHash.length > 0
+            ? { replyToHash: triggerHash }
+            : {};
+          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination: to, ...replyToHashArg }));
+          continue;
+        }
+
         // MeshCore DM targets are contact public-key strings; Meshtastic DM
         // targets are node numbers (#4018) — resolve per the target source's
         // own protocol, not the trigger's. A `to` value can't be valid for both
@@ -635,6 +682,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
 
       const results: unknown[] = [];
       for (const sid of sourceIds) {
+        // Reticulum/LXMF has no tapback/reaction concept (#6143): recorded skip.
+        if (await isReticulumSource(ctx, sid)) {
+          results.push({ skipped: true, reason: 'tapback is not supported on Reticulum' });
+          continue;
+        }
         // MeshCore (#5762): react only to a MeshCore message this same source
         // received. Anything else is a recorded skip, not a failed run.
         if (await isMeshCoreSource(ctx, sid)) {
@@ -660,6 +712,13 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
 
     case 'action.nodeManage': {
       const op = String(p.op ?? '') as NodeManageOp;
+      // Reticulum has no Meshtastic node numbers and no favorite/ignore/node DB
+      // of this shape (#6143), so every nodeManage op is a recorded no-op on it
+      // — checked before the node-number resolution so a Reticulum trigger
+      // (no subject node number) records a skip rather than throwing.
+      if (await isReticulumSource(ctx, sourceId)) {
+        return { skipped: true, reason: `nodeManage:${op || '(none)'} is not supported on Reticulum` };
+      }
       const nodeNum = p.nodeNum != null ? await num(ctx, p.nodeNum) : (ctx.trigger.subjectNodeNum ?? undefined);
       if (nodeNum == null) throw new Error('action.nodeManage: no target node');
       if (!['favorite', 'unfavorite', 'ignore', 'unignore', 'delete'].includes(op)) {
@@ -696,6 +755,12 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
 
       const results: unknown[] = [];
       for (const sid of sourceIds) {
+        // Reticulum has no telemetry/traceroute/nodeinfo/advert request mechanism
+        // of this shape (#6143) → recorded no-op, like the MeshCore skips below.
+        if (await isReticulumSource(ctx, sid)) {
+          results.push({ skipped: true, reason: `${op} request is not supported on Reticulum` });
+          continue;
+        }
         const meshcore = await isMeshCoreSource(ctx, sid);
         // MeshCore has no position / nodeinfo-exchange request → skip as a no-op.
         if (meshcore && (op === 'position' || op === 'nodeinfo')) {
@@ -773,6 +838,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         : [sourceId];
       const results: unknown[] = [];
       for (const sid of sourceIds) {
+        // Reticulum has no device-reboot mechanism (#6143) → recorded no-op.
+        if (await isReticulumSource(ctx, sid)) {
+          results.push({ skipped: true, reason: 'device reboot is not supported on Reticulum' });
+          continue;
+        }
         // A remote-admin target rides the Meshtastic session-passkey mechanism,
         // which MeshCore sources don't have. In a mixed multi-source select,
         // skip those as a recorded no-op (matching tapback/nodeManage) instead
