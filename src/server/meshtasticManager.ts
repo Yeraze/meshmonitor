@@ -5365,6 +5365,10 @@ class MeshtasticManager implements ISourceManager {
               parsed.data.lora.configOkToMqtt = false;
               logger.debug('📊 Set configOkToMqtt to false (was undefined - Proto3 default)');
             }
+            if (parsed.data.lora.txEnabled === undefined) {
+              parsed.data.lora.txEnabled = false;
+              logger.debug('📊 Set txEnabled to false (was undefined - Proto3 default, receive-only radio)');
+            }
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.lora.frequencyOffset === undefined) {
@@ -6406,6 +6410,7 @@ class MeshtasticManager implements ISourceManager {
         sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain !== undefined ? deviceConfig.lora.sx126xRxBoostedGain : false,
         ignoreMqtt: deviceConfig.lora.ignoreMqtt !== undefined ? deviceConfig.lora.ignoreMqtt : false,
         configOkToMqtt: deviceConfig.lora.configOkToMqtt !== undefined ? deviceConfig.lora.configOkToMqtt : false,
+        txEnabled: deviceConfig.lora.txEnabled !== undefined ? deviceConfig.lora.txEnabled : false,
         frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0,
         overrideFrequency: deviceConfig.lora.overrideFrequency !== undefined ? deviceConfig.lora.overrideFrequency : 0,
         modemPreset: deviceConfig.lora.modemPreset !== undefined ? deviceConfig.lora.modemPreset : 0,
