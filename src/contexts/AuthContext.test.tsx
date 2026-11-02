@@ -144,6 +144,52 @@ describe('AuthProvider — initial load', () => {
     expect(result.current.authStatus?.user).toBeNull();
   });
 
+  it.each([403, 500])('finishes loading and can retry after /auth/status returns %s', async status => {
+    const error = Object.assign(new Error(status === 403 ? 'Proxy group denied' : 'Session regeneration failed'), {
+      status,
+      code: status === 403 ? 'FORBIDDEN_PROXY_GROUP' : 'SESSION_REGENERATION_FAILED',
+    });
+    mockApi.get.mockRejectedValueOnce(error);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.authStatus).toMatchObject({
+      authenticated: false,
+      user: null,
+      permissions: { global: {}, bySource: {} },
+      channelDbPermissions: {},
+    });
+    expect(result.current.hasPermission('nodes', 'read', { sourceId: TEST_SOURCE_ID })).toBe(false);
+    expect(mockApi.get).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await expect(result.current.refreshAuth()).resolves.toBeUndefined();
+    });
+    expect(result.current.authStatus?.authenticated).toBe(true);
+  });
+
+  it.each([403, 500])('clears a previously signed-in user when /auth/status returns %s', async status => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.authStatus?.channelDbPermissions[1]).toBeDefined());
+    expect(result.current.authStatus?.authenticated).toBe(true);
+
+    mockApi.get.mockRejectedValueOnce(Object.assign(new Error('Auth status rejected'), { status }));
+    await act(async () => {
+      await expect(result.current.refreshAuth()).resolves.toBeUndefined();
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.authStatus).toMatchObject({
+      authenticated: false,
+      user: null,
+      permissions: { global: {}, bySource: {} },
+      channelDbPermissions: {},
+    });
+    expect(result.current.hasPermission('nodes', 'read', { sourceId: TEST_SOURCE_ID })).toBe(false);
+  });
+
   it('fetches channel db permissions when authenticated', async () => {
     mockApi.get.mockImplementation((url: string) => {
       if (url === '/api/auth/status') return Promise.resolve(mockAuthStatus);
