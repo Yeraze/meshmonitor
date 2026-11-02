@@ -666,6 +666,27 @@ describe('buildReticulumMessageContext (#3960 Phase 2 WP3)', () => {
     expect(ctx.fields.replyToHash).toBe('reply'.padEnd(32, '0'));
     expect(ctx.fields.threadHash).toBe('thread'.padEnd(32, '0'));
   });
+
+  it('#6143: messageHash is the LXMF hash (id with the `${sourceId}_` prefix stripped)', () => {
+    const ctx = buildReticulumMessageContext(retMsg({ id: 'src_abc123' }), 'src', 1000);
+    expect(ctx.fields.messageHash).toBe('abc123');
+  });
+
+  it('#6143: fromName/senderLabel use the announced display name when given', () => {
+    const ctx = buildReticulumMessageContext(retMsg(), 'src', 1000, { displayName: 'Alice' });
+    expect(ctx.fields.fromName).toBe('Alice');
+    expect(ctx.fields.senderLabel).toBe('Alice');
+  });
+
+  it('#6143: fromName/senderLabel fall back to the raw hash when no/blank display name', () => {
+    const hash = 'peer'.padEnd(32, '0');
+    const none = buildReticulumMessageContext(retMsg(), 'src', 1000);
+    expect(none.fields.fromName).toBeUndefined();
+    expect(none.fields.senderLabel).toBe(hash);
+    const blank = buildReticulumMessageContext(retMsg(), 'src', 1000, { displayName: '   ' });
+    expect(blank.fields.fromName).toBeUndefined();
+    expect(blank.fields.senderLabel).toBe(hash);
+  });
 });
 
 describe('protocolShort token (#4577)', () => {

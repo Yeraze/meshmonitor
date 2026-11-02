@@ -1225,3 +1225,96 @@ describe('executeAction', () => {
     });
   });
 });
+
+// ── Reticulum / LXMF (#6143) ───────────────────────────────────────────────
+describe('executeAction — Reticulum (#6143)', () => {
+  it('sendMessage: DM target resolves as a string LXMF hash (not through num())', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'pong', to: '{{ trigger.from }}' }),
+      ctx({ from: 'a1b2c3d4e5f6', isDM: true, protocol: 'reticulum', messageHash: 'h1' }, 'ret', 'reticulum'),
+      deps,
+    );
+    // The bug this guards: num() made the LXMF hash NaN → lost. It must be the raw string.
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toMatchObject({ sourceId: 'ret', destination: 'a1b2c3d4e5f6', text: 'pong' });
+    // No channel-oriented args leak into a Reticulum send.
+    expect(calls[0].args.scopeOverride).toBeUndefined();
+  });
+
+  it('sendMessage: "reply to the triggering message" maps to replyToHash = the trigger message hash', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'pong', to: '{{ trigger.from }}', replyToTrigger: true }),
+      ctx({ from: 'a1b2c3d4e5f6', isDM: true, protocol: 'reticulum', messageHash: 'lxmf-hash-9' }, 'ret', 'reticulum'),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ destination: 'a1b2c3d4e5f6', replyToHash: 'lxmf-hash-9' });
+  });
+
+  it('sendMessage: no resolvable destination is a recorded skip (no broadcast fallback)', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.sendMessage', { text: 'hello' }), // no `to`
+      ctx({ protocol: 'reticulum' }, 'ret', 'reticulum'),
+      deps,
+    );
+    expect(calls).toHaveLength(0);
+    expect(result).toMatchObject({ skipped: true, reason: expect.stringMatching(/no channels/i) });
+  });
+
+  it('sendMessage: a channel selection does not create a Reticulum broadcast — still a no-destination skip', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.sendMessage', { text: 'hello', channels: [{ name: 'gauntlet', protocol: 'meshtastic' }] }),
+      ctx({ protocol: 'reticulum' }, 'ret', 'reticulum'),
+      deps,
+    );
+    expect(calls).toHaveLength(0);
+    expect(result).toMatchObject({ skipped: true });
+  });
+
+  it('tapback on a Reticulum source is a recorded skip', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emoji: '👍' }),
+      ctx({ protocol: 'reticulum' }, 'ret', 'reticulum'),
+      deps,
+    );
+    expect(calls).toHaveLength(0);
+    expect(result).toMatchObject({ skipped: true, reason: expect.stringMatching(/not supported on Reticulum/) });
+  });
+
+  it('nodeManage on a Reticulum source is a recorded skip (even with no subject node)', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.nodeManage', { op: 'favorite' }),
+      ctx({ protocol: 'reticulum' }, 'ret', 'reticulum'),
+      deps,
+    );
+    expect(calls).toHaveLength(0);
+    expect(result).toMatchObject({ skipped: true, reason: expect.stringMatching(/not supported on Reticulum/) });
+  });
+
+  it('requestData on a Reticulum source is a recorded skip', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.requestData', { op: 'telemetry', to: 'a1b2c3' }),
+      ctx({ protocol: 'reticulum' }, 'ret', 'reticulum'),
+      deps,
+    );
+    expect(calls).toHaveLength(0);
+    expect(result).toMatchObject({ skipped: true, reason: expect.stringMatching(/not supported on Reticulum/) });
+  });
+
+  it('deviceReboot on a Reticulum source is a recorded skip', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.deviceReboot', {}),
+      ctx({ protocol: 'reticulum' }, 'ret', 'reticulum'),
+      deps,
+    );
+    expect(calls).toHaveLength(0);
+    expect(result).toMatchObject({ skipped: true, reason: expect.stringMatching(/not supported on Reticulum/) });
+  });
+});

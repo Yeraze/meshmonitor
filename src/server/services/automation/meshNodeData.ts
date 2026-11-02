@@ -137,6 +137,16 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
       }
     },
 
+    async getReticulumDisplayName(sourceId, hash) {
+      try {
+        if (!sourceId || !hash) return null;
+        const dest = await databaseService.reticulum.getDestination(sourceId, hash);
+        return dest?.displayName ?? null;
+      } catch {
+        return null;
+      }
+    },
+
     async getHopEmojiOverrides(sourceId) {
       try {
         const s = databaseService.settings;

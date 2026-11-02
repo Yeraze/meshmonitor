@@ -6,6 +6,7 @@ describe('sourceProtocol', () => {
     expect(sourceProtocol('meshtastic_tcp')).toBe('meshtastic');
     expect(sourceProtocol('meshtastic_serial')).toBe('meshtastic');
     expect(sourceProtocol('meshcore')).toBe('meshcore');
+    expect(sourceProtocol('reticulum')).toBe('reticulum');
     expect(sourceProtocol('mqtt_broker')).toBe('other');
     expect(sourceProtocol(undefined)).toBe('other');
   });

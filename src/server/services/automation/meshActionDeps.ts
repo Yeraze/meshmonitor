@@ -18,7 +18,7 @@ import { logger } from '../../../utils/logger.js';
 import { waypointService } from '../waypointService.js';
 import { isForwardingEnabled, setForwardingEnabled } from '../forwardingStateService.js';
 import type { ISourceManager } from '../../sourceManagerRegistry.js';
-import { isMeshCoreManager } from '../../sourceManagerTypes.js';
+import { isMeshCoreManager, isReticulumManager } from '../../sourceManagerTypes.js';
 import { isMeshCoreReactionError, MESHCORE_REACTION_SKIP_CODES } from '../../errors/meshcoreReactionError.js';
 import type { ActionDeps } from './actionExecutor.js';
 import type { SendOrigin } from '../../utils/automationPacketTracker.js';
@@ -117,9 +117,29 @@ async function sendTextVia(
   scopeOverride?: string | null,
   maxAttempts?: number,
   hopLimitOverride?: number,
+  replyToHash?: string,
 ): Promise<unknown> {
   if (!sourceId) throw new Error('automation action requires a target source');
-  const raw = resolveManager(sourceId) as
+  const manager = resolveManager(sourceId) as ISourceManager | undefined;
+
+  // Reticulum/LXMF (#6143). ReticulumManager.sendMessage takes an OBJECT
+  // ({ to, content, … }), not the positional form the meshtastic/meshcore
+  // branches use — and it ALSO has a `sendMessage` method, so this check MUST
+  // run before the MeshCore `typeof raw.sendMessage === 'function'` branch
+  // below, or a Reticulum target would be handed a bare string and break.
+  // A Reticulum send is always a DM to an LXMF hash; the executor records a
+  // skip when there is no destination, so one is expected here. `sendMessage`
+  // throws when the source is not connected or the send rejects — that
+  // surfaces as a failed step, mirroring the MeshCore path.
+  if (manager && isReticulumManager(manager)) {
+    const to = typeof destination === 'string' ? destination.trim() : '';
+    if (!to) {
+      throw new Error(`source "${sourceId}" needs a destination LXMF address for a Reticulum send`);
+    }
+    return manager.sendMessage({ to, content: text, ...(replyToHash ? { replyToHash } : {}) });
+  }
+
+  const raw = manager as
     (Partial<MeshSendManager> & Partial<MeshCoreSendManager>) | undefined;
   if (raw && typeof raw.sendTextMessage === 'function') {
     // Meshtastic has no scope/region concept — scopeOverride is dropped.
@@ -180,8 +200,8 @@ async function sendTextVia(
 
 export function createMeshActionDeps(): ActionDeps {
   return {
-    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts, hopLimitOverride }) {
-      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts, hopLimitOverride);
+    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts, hopLimitOverride, replyToHash }) {
+      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts, hopLimitOverride, replyToHash);
     },
 
     // #5482: the service owns the persisted 30-minute floor, onlyWhenChanged,

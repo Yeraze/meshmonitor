@@ -1263,7 +1263,15 @@ export class AutomationEngineService {
    * doc comment.
    */
   async onReticulumMessage(msg: ReticulumMessageRow, sourceId: string | null): Promise<number> {
-    const ctx = buildReticulumMessageContext(msg, sourceId, this.now());
+    // Sender display name (announced in the destination row), so fromName /
+    // senderLabel address the sender by name — same DB-free hot path gate as
+    // onMessage: only look it up when a message automation is actually loaded.
+    let displayName: string | null | undefined;
+    const hasMessageAutomations = (this.index.get('trigger.message') ?? []).length > 0;
+    if (hasMessageAutomations && this.data.getReticulumDisplayName) {
+      displayName = await this.data.getReticulumDisplayName(sourceId, msg.fromHash);
+    }
+    const ctx = buildReticulumMessageContext(msg, sourceId, this.now(), { displayName });
     return this.runTrigger(
       ctx,
       (a) => reticulumMessageMatchesFilter(msg, a.triggerNode.params ?? {}),
