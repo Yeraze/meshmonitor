@@ -36,12 +36,21 @@ vi.mock('./MeshCoreAclManager', () => ({
   ),
 }));
 vi.mock('./CliConsoleBody', () => ({
-  CliConsoleBody: (props: { disabled?: boolean; disabledPlaceholder?: string }) => (
+  CliConsoleBody: (props: {
+    disabled?: boolean;
+    disabledPlaceholder?: string;
+    actionCatalog?: Array<{ key: string; defaultLabel: string }>;
+  }) => (
     <div
       data-testid="cli-console-body"
       data-disabled={String(!!props.disabled)}
       data-disabled-placeholder={props.disabledPlaceholder ?? ''}
-    />
+      data-action-keys={(props.actionCatalog ?? []).map((a) => a.key).join(',')}
+    >
+      {(props.actionCatalog ?? []).map((a) => (
+        <span key={a.key}>{a.defaultLabel}</span>
+      ))}
+    </div>
   ),
 }));
 
@@ -179,5 +188,42 @@ describe('MeshCoreRemoteConsole receive-only mode (#4547 Phase 2 WP3)', () => {
     const savedBtn = await screen.findByText('Log in with saved password');
     expect(savedBtn.closest('button')).not.toBeDisabled();
     expect(savedBtn.closest('button')).not.toHaveAttribute('title');
+  });
+});
+
+describe('MeshCoreRemoteConsole discover.neighbors quick action (#3351)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Log in with the saved password so the quick-action catalog is threaded
+  // into CliConsoleBody (it is empty until logged in).
+  async function renderLoggedIn(isRepeater: boolean) {
+    const actions = makeActions();
+    render(
+      <MeshCoreRemoteConsole
+        publicKey={PK}
+        contactName="Repeater"
+        actions={actions as any}
+        isRepeater={isRepeater}
+      />,
+    );
+    const btn = await screen.findByText('Log in with saved password');
+    fireEvent.click(btn);
+    await waitFor(() => expect(actions.loginRemoteWithSaved).toHaveBeenCalled());
+    return actions;
+  }
+
+  it('offers "Discover neighbors" for a Repeater once logged in', async () => {
+    await renderLoggedIn(true);
+    await waitFor(() => expect(screen.getByText('Discover neighbors')).toBeInTheDocument());
+  });
+
+  it('hides "Discover neighbors" for a Room Server (isRepeater=false)', async () => {
+    await renderLoggedIn(false);
+    // The shared "Neighbors" action is still there; the repeater-only
+    // "Discover neighbors" action is dropped.
+    await waitFor(() => expect(screen.getByText('Neighbors')).toBeInTheDocument());
+    expect(screen.queryByText('Discover neighbors')).not.toBeInTheDocument();
   });
 });

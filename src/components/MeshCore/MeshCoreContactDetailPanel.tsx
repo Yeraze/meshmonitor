@@ -1700,6 +1700,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           actions={remoteAdminActions}
           receiveOnly={receiveOnly}
           notOnDevice={contact?.onDevice === false}
+          isRepeater={advType === 2}
         />
       )}
 
