@@ -110,6 +110,12 @@ export interface NodeDataProvider {
    */
   getSourceProtocol?(sourceId: string | null): Promise<string | null>;
   /**
+   * Announced display name of a Reticulum destination (LXMF hash), for the
+   * `fromName`/`senderLabel` message tokens (#6143). Optional; absent or null →
+   * the builder falls back to the raw hash.
+   */
+  getReticulumDisplayName?(sourceId: string | null, hash: string): Promise<string | null>;
+  /**
    * Exact configured type of a source (`meshtastic_tcp` | `mqtt_broker` |
    * `mqtt_bridge` | `meshcore`), where `getSourceProtocol` only exposes the
    * coarse protocol family. Used to tell "arrived through an MQTT source" from
