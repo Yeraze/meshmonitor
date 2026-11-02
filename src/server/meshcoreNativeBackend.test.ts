@@ -993,7 +993,7 @@ describe('MeshCoreNativeBackend', () => {
   // went through a lossy UTF-8 decode (#5774).
   function emitRoomFrame(
     conn: MockConnection,
-    opts: { prefix: number[]; body: string; tx?: number; skipRx?: boolean; senderPrefix?: number[] },
+    opts: { prefix: number[]; body: string; tx?: number; skipRx?: boolean; senderPrefix?: number[]; plainArray?: boolean },
   ): void {
     const senderPrefix = opts.senderPrefix ?? [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
     const bodyBytes = new TextEncoder().encode(opts.body);
@@ -1003,7 +1003,9 @@ describe('MeshCoreNativeBackend', () => {
       ts & 0xff, (ts >> 8) & 0xff, (ts >> 16) & 0xff, (ts >>> 24) & 0xff,
       ...opts.prefix, ...bodyBytes,
     ]);
-    if (!opts.skipRx) conn.emit('rx', frame);
+    // meshcore.js's serial and TCP transports assemble frames in a plain
+    // number[] (readBuffer.slice), not a Uint8Array.
+    if (!opts.skipRx) conn.emit('rx', opts.plainArray ? Array.from(frame) : frame);
     conn.emit(ResponseCodes.ContactMsgRecv, {
       pubKeyPrefix: Uint8Array.from(senderPrefix),
       pathLen: 2,
@@ -1046,6 +1048,16 @@ describe('MeshCoreNativeBackend', () => {
     const room = events.find((e) => e.event_type === 'room_message');
     expect(room.data.author_pubkey_prefix).toBe(hex);
     expect(room.data.text).toBe('hi \u{1F44B} caf\u00e9');
+  });
+
+  it('reads a room post from a serial frame delivered as a plain array', async () => {
+    // A number[] frame used to throw "frame.subarray is not a function" inside
+    // the listener, which crashed the server and lost every room post.
+    const { events, conn } = await connectBackend();
+    expect(() => emitRoomFrame(conn, { prefix: [0xe1, 0x9c, 0xa7, 0xf0], body: 'ciao caf\u00e9', plainArray: true })).not.toThrow();
+    const room = events.find((e) => e.event_type === 'room_message');
+    expect(room.data.author_pubkey_prefix).toBe('e19ca7f0');
+    expect(room.data.text).toBe('ciao caf\u00e9');
   });
 
   it('leaves the author unknown when no raw frame was seen (#5774)', async () => {
