@@ -753,6 +753,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
+import meshtasticAdminRoutes from './routes/meshtasticAdminRoutes.js';
 import { unifiedCliHistoryRouter } from './routes/meshcoreCliHistoryRoutes.js';
 import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
@@ -909,6 +910,11 @@ apiRouter.use('/read-state', readStateRoutes);
 apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
 // MeshCore CLI command history across every readable source (#5892).
 apiRouter.use('/meshcore/cli-history', unifiedCliHistoryRouter);
+
+// Meshtastic remote-admin routes — nested under `/api/sources/:id/meshtastic/*`
+// so each request resolves the manager (and its Virtual Node) bound to a
+// specific source. Hosts the free-form remote-admin CLI console (#6154).
+apiRouter.use('/sources/:id/meshtastic', meshtasticAdminRoutes);
 
 // MQTT Packet Monitor routes — nested under `/api/sources/:id/mqtt/packets`
 // so each request resolves the retention log bound to a specific source.
