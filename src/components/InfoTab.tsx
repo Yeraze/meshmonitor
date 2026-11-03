@@ -485,6 +485,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           {deviceInfo?.deviceMetadata?.rebootCount !== undefined && (
             <p><strong>{t('info.reboot_count')}</strong> {deviceInfo.deviceMetadata.rebootCount}</p>
           )}
+          {typeof deviceInfo?.deviceMetadata?.bleAddress === 'string' && deviceInfo.deviceMetadata.bleAddress && (
+            <p><strong>{t('info.ble_address')}</strong> {deviceInfo.deviceMetadata.bleAddress}</p>
+          )}
         </div>
 
         {deviceConfig && (

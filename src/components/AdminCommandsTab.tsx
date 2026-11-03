@@ -198,6 +198,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     hasRemoteHardware: boolean;
     /** Firmware 2.8+ build capability: XEdDSA signature verification compiled in (#3923). */
     hasXeddsa?: boolean;
+    /** #6157: DeviceMetadata.ble_address — the BLE MAC the node advertises. Present only when non-empty. */
+    bleAddress?: string;
   } | null>(null);
   // The node `deviceMetadata` was read from. It is not cleared when the
   // selection changes, so anything that gates on it must check this first.
@@ -2327,6 +2329,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
                   <span style={{ color: 'var(--color-text-subtle)', fontWeight: 500 }}>{t('admin_commands.position_flags', 'Position Flags')}:</span>
                   <span style={{ color: 'var(--color-text)' }}>{decodePositionFlagNames(deviceMetadata.positionFlags ?? 0)}</span>
+
+                  {typeof deviceMetadata.bleAddress === 'string' && deviceMetadata.bleAddress && (
+                    <>
+                      <span style={{ color: 'var(--color-text-subtle)', fontWeight: 500 }}>{t('admin_commands.ble_address', 'BLE Address')}:</span>
+                      <span style={{ color: 'var(--color-text)' }}>{deviceMetadata.bleAddress}</span>
+                    </>
+                  )}
                 </div>
               </div>
             )}

@@ -599,3 +599,29 @@ describe('InfoTab node address', () => {
     expect(addressLine()).toBeNull();
   });
 });
+
+describe('InfoTab BLE address line (#6157)', () => {
+  it('renders the BLE address when the local node advertises one', () => {
+    render(
+      <InfoTab
+        {...baseProps}
+        nodes={[]}
+        deviceInfo={{ deviceMetadata: { bleAddress: 'AA:BB:CC:DD:EE:FF' } }}
+      />,
+    );
+    expect(screen.getByText('info.ble_address')).toBeTruthy();
+    expect(screen.getByText('AA:BB:CC:DD:EE:FF')).toBeTruthy();
+  });
+
+  it('hides the BLE address line when the field is an empty string', () => {
+    render(
+      <InfoTab {...baseProps} nodes={[]} deviceInfo={{ deviceMetadata: { bleAddress: '' } }} />,
+    );
+    expect(screen.queryByText('info.ble_address')).toBeNull();
+  });
+
+  it('hides the BLE address line when the field is absent', () => {
+    render(<InfoTab {...baseProps} nodes={[]} deviceInfo={{ deviceMetadata: {} }} />);
+    expect(screen.queryByText('info.ble_address')).toBeNull();
+  });
+});
