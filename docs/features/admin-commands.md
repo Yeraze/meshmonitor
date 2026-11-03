@@ -486,6 +486,59 @@ Reboot into DFU mode and both factory resets are for the local node only. See [P
 - **Response Time**: Commands may take longer to execute on remote nodes
 - **Reliability**: Success depends on mesh network connectivity and node availability
 
+## Remote CLI Console
+
+The **Remote CLI console** (at the bottom of the Admin Commands tab) is a
+free-form terminal for the selected remote node, mirroring the MeshCore remote
+console. You type only the arguments; MeshMonitor shows the fixed prefix and
+runs the `meshtastic` CLI for you:
+
+```
+meshtastic --dest !xxxxxxxx <your arguments>
+```
+
+For example, typing `--set device.role CLIENT` runs
+`meshtastic --dest !xxxxxxxx --set device.role CLIENT`, and the command's output
+is shown in the transcript below the input. Use the ↑/↓ keys to recall previous
+commands.
+
+### How it connects
+
+Commands are relayed to the node through that source's **Virtual Node**, exactly
+like the `remote-admin.sh` auto-responder script — so they ride MeshMonitor's
+existing connection instead of opening a second link to the radio.
+
+- **The Virtual Node must be enabled** for the source. When it is disabled, the
+  console refuses with a clear error (it will **not** fall back to the physical
+  radio, which would drop MeshMonitor's own connection). Enable it in the
+  source's settings.
+- The console is **remote-only** — every command targets `--dest`. There is no
+  local-node mode here; use the sections above for the local node.
+
+### Full pass-through and safety
+
+Every CLI flag is passed through — there is **no allowlist**. This is a
+deliberate design choice: it keeps the full power of the `meshtastic` CLI
+available (including flags such as `--export-config` and `--configure`). The
+safeguards are:
+
+- **No shell.** Your text is split into arguments by a quote-aware splitter and
+  run directly with `execFile` — it never reaches a shell, so characters like
+  `;`, `|`, `&&` and `$()` are inert, literal argument text.
+- **Destructive commands need confirmation.** A command containing `--reboot`,
+  `--factory-reset`, `--shutdown`, `--reset-nodedb`, `--remove-node`,
+  `--enter-dfu` (and similar) opens a modal that asks you to type the node's
+  name before it will send. The server enforces this against the *parsed*
+  arguments — so a script, a direct API call, or evasive quoting such as
+  `--rebo"o"t` cannot skip the prompt.
+- **Transport is fixed.** You cannot re-specify `--host`, `--port`, or `--dest`
+  in your arguments — those are injected by MeshMonitor to keep the console
+  VN-only and remote-only, and are rejected if you include them.
+- **Transmit must be enabled.** A receive-only / TX-disabled source refuses the
+  command server-side rather than relaying admin packets over RF.
+- **Permission-gated.** Requires `remote_admin:write` on that specific source,
+  and is rate-limited like other device operations.
+
 ## Best Practices
 
 ### Before Making Changes

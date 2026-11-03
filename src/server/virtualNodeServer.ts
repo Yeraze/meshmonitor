@@ -1330,6 +1330,15 @@ export class VirtualNodeServer extends EventEmitter {
     return this.server !== null;
   }
 
+  /**
+   * TCP port this virtual node listens on. Used by the remote-admin CLI
+   * console to point the `meshtastic` CLI at the VN loopback endpoint
+   * instead of opening a second connection to the physical radio.
+   */
+  public getPort(): number {
+    return this.config.port;
+  }
+
   public isAdminCommandsAllowed(): boolean {
     return this.allowAdminCommands;
   }

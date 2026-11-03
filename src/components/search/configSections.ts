@@ -384,6 +384,7 @@ export function adminCommandsNavItems(t: Translate): NavItem[] {
     { id: 'admin-import-export', label: t('admin_commands.config_import_export', 'Import/Export'), keywords: ['backup', 'restore'] },
     { id: 'admin-node-management', label: t('admin_commands.node_favorites_ignored', 'Node Management'), keywords: ['favorites', 'ignored', 'reboot'] },
     { id: 'admin-auto-favorites', label: t('auto_favorite.nav', 'Automatic Favorites'), keywords: ['star', 'favourite'] },
+    { id: 'admin-cli-console', label: t('admin_commands.cli_console.title', 'Remote CLI console'), keywords: ['cli', 'console', 'terminal', 'command'] },
   ];
 }
 
