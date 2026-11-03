@@ -25,6 +25,7 @@ import { DeviceConfigurationSection } from './admin-commands/DeviceConfiguration
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { DeviceActionsSection } from './admin-commands/DeviceActionsSection';
+import { MeshtasticRemoteCliConsole } from './admin-commands/MeshtasticRemoteCliConsole';
 import { useAdminCommandsState, buildMeshBeaconConfigPayload } from './admin-commands/useAdminCommandsState';
 import { buildAdminMqttSavePayload } from './admin-commands/mqttSavePayload';
 import {
@@ -3814,6 +3815,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           executeCommand={executeCommand}
         />
       </CollapsibleSection>
+
+      {/* Free-form remote-admin CLI console (#6154) */}
+      <div id="admin-cli-console" className="settings-section">
+        <h3>{t('admin_commands.cli_console.title', 'Remote CLI console')}</h3>
+        <MeshtasticRemoteCliConsole
+          sourceId={sourceId}
+          destNodeId={selectedNode?.nodeId}
+          destNodeName={selectedNode?.longName}
+          isLocalNode={selectedNode?.isLocal ?? false}
+          disabled={remoteAdminBlocked}
+        />
+      </div>
 
       {/* Import/Export Config Modals */}
       {showConfigImportModal && (

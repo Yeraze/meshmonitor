@@ -1677,6 +1677,22 @@ class MeshtasticManager implements ISourceManager {
     };
   }
 
+  /**
+   * Loopback endpoint of this source's Virtual Node, or null when the VN is
+   * not enabled for the source.
+   *
+   * The remote-admin CLI console (#6154) runs the `meshtastic` CLI against this
+   * endpoint so commands relay through MeshMonitor's existing connection
+   * (exactly like examples/auto-responder-scripts/remote-admin.sh, which reads
+   * MESHTASTIC_IP/MESHTASTIC_PORT). The VN is the only transport the console
+   * uses — when it is disabled the console refuses rather than opening a second
+   * TCP session to the physical radio (which would kill MeshMonitor's own link).
+   */
+  getVirtualNodeTarget(): { host: string; port: number } | null {
+    if (!this.virtualNodeServer) return null;
+    return { host: '127.0.0.1', port: this.virtualNodeServer.getPort() };
+  }
+
   // Per-source message queue — each MeshtasticManager instance gets its own queue
   // so the sendCallback routes to THIS source's device. A singleton queue would
   // overwrite its callback on every new manager constructor, causing all auto-acks

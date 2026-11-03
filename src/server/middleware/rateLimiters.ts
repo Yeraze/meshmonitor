@@ -176,6 +176,25 @@ export const meshcoreDeviceLimiter = rateLimit({
   ...rateLimitConfig,
 });
 
+// Rate limiting for Meshtastic device operations (the remote-admin CLI console,
+// #6154). Each call spawns the `meshtastic` CLI and relays over RF, so it is
+// capped like the MeshCore device limiter rather than general API.
+// Default: 10 operations per minute in production, 60 in development.
+export const meshtasticDeviceLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: env.isProduction ? 10 : 60,
+  message: 'Too many device operations, please slow down',
+  handler: (req, res) => {
+    const ip = req.ip || 'unknown';
+    logger.warn(`🚫 Rate limit exceeded for MESHTASTIC DEVICE - IP: ${ip}, Path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many device operations, please slow down',
+      retryAfter: '1 minute'
+    });
+  },
+  ...rateLimitConfig,
+});
+
 // Elevation profile/test — each call fans out to N outbound tile fetches, so
 // this is stricter than general API. Private network IPs (RFC 1918 + loopback)
 // are exempt via rateLimitConfig's keyGenerator/skip behavior below.

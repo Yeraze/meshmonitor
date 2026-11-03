@@ -565,6 +565,29 @@ class ApiService {
   }
 
   /**
+   * Run a free-form Meshtastic remote-admin CLI command against a remote node
+   * through the source's Virtual Node (#6154). `args` is the user's raw
+   * argument string (everything after `meshtastic --dest !xxxxxxxx`). Throws
+   * ApiError on a non-2xx response; the error body carries `code` and `output`.
+   */
+  async sendMeshtasticCli(
+    sourceId: string,
+    destNodeId: string,
+    args: string,
+    opts?: { confirm?: boolean }
+  ): Promise<{ output: string; stdout: string; stderr: string; exitCode: number; elapsedMs: number }> {
+    const body = await this.post<{
+      success: boolean;
+      data: { output: string; stdout: string; stderr: string; exitCode: number; elapsedMs: number };
+    }>(`/api/sources/${encodeURIComponent(sourceId)}/meshtastic/admin/cli`, {
+      destNodeId,
+      args,
+      ...(opts?.confirm ? { confirm: true } : {}),
+    });
+    return body.data;
+  }
+
+  /**
    * Set the base URL directly, skipping auto-detection
    * Useful when the app already knows the base path from pathname
    */

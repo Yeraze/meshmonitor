@@ -1,0 +1,35 @@
+.console {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.help {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+  line-height: 1.4;
+}
+
+.prefixRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.prefixLabel {
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.prefix {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background-color: var(--color-surface);
+  color: var(--color-accent);
+  border: 1px solid var(--color-surface-active);
+  white-space: nowrap;
+}
