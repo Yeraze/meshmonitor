@@ -601,6 +601,11 @@ describe('Settings Persistence', () => {
         'ductingOverlayEnabled',
         // OpenSky credentials (#5877), same pattern.
         'adsb_opensky_client_id', 'adsb_opensky_client_secret',
+        // Virtual Node message replay (#6160) — loaded directly by SettingsTab
+        // into its own initial* snapshot (global, settings:write-gated, no
+        // SettingsContext hook), same Category C pattern as ductingOverlayEnabled
+        // above. Read server-side only by VirtualNodeServer via getSetting.
+        'virtualNodeReplayEnabled', 'virtualNodeReplayExcludeIps',
         // Translation settings (global) — loaded directly by SettingsTab into
         // its initial* snapshot; read server-side by translationService.
         'translationEnabled', 'translationProvider', 'translationDefaultLanguage',
