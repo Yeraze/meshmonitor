@@ -11596,6 +11596,7 @@ class MeshtasticManager implements ISourceManager {
             requestId: messageId,
             replyId: replyId || null,
             emoji: emoji || null,
+            pkiEncrypted: !!destination && pkiEncrypted,
           });
           if (fromRadioData) {
             await virtualNodeServer.broadcastToClients(fromRadioData);
