@@ -41,6 +41,8 @@ interface Marks {
   localId: string;
   localName: string;
   firmware: string;
+  /** #6157: DeviceMetadata.ble_address the local node advertises. */
+  bleAddress: string;
   deviceConfig: string;
   nodeIp: string;
   /** The radio's own node database. */
@@ -59,6 +61,7 @@ const A: Marks = {
   localId: '!000003e7',
   localName: 'AA-LOCAL-A',
   firmware: '2.7.11-AA',
+  bleAddress: 'AA:AA:AA:AA:AA:AA',
   deviceConfig: 'AA-DEVICECONFIG-A',
   nodeIp: '10.11.11.11',
   deviceNodeNums: [SHARED_NUM],
@@ -76,6 +79,8 @@ const B: Marks = {
   localId: '!000003e8',
   localName: 'ZZ-LOCAL-B',
   firmware: '2.7.22-ZZ',
+  // B's firmware predates the field — it advertises no BLE address.
+  bleAddress: '',
   deviceConfig: 'ZZ-DEVICECONFIG-B',
   nodeIp: '10.66.66.66',
   deviceNodeNums: [SHARED_NUM, ONLY_B_NUM],
@@ -114,6 +119,8 @@ describe('GET /poll: every section is gated on the source its data comes from', 
       getLocalNodeInfo: vi.fn().mockReturnValue({
         nodeNum: marks.localNum, nodeId: marks.localId, longName: marks.localName, shortName: 'L',
         firmwareVersion: marks.firmware, rebootCount: 3,
+        // #6157: empty string means "no BLE address" — left out of the payload.
+        bleAddress: marks.bleAddress || undefined,
       }),
       // The real read and the real row mapping (the one MeshtasticManager
       // uses), so the route's per-source filter is what the test sees.
@@ -504,6 +511,11 @@ describe('GET /poll: every section is gated on the source its data comes from', 
       const own = await agent.get('/poll').query({ sourceId: harness.sourceA });
       expect(own.body.config.localNodeInfo).toMatchObject({ nodeId: A.localId, longName: A.localName });
       expect(own.body.config.deviceMetadata).toMatchObject({ firmwareVersion: A.firmware });
+      // #6157: A advertises a BLE address; B's empty string is omitted.
+      expect(own.body.config.deviceMetadata.bleAddress).toBe(A.bleAddress);
+      await give('channel_0', ['read'], harness.sourceB);
+      const ownB = await agent.get('/poll').query({ sourceId: harness.sourceB });
+      expect(ownB.body.config.deviceMetadata).not.toHaveProperty('bleAddress');
     });
 
     it('device node numbers are limited to the nodes the caller may see on that source', async () => {

@@ -87,6 +87,9 @@ export interface PollConfig {
     // True when the node is reached via a serial/BLE-to-TCP bridge and cannot
     // be flashed over the air. Gates the OTA firmware update UI.
     isBridged?: boolean;
+    // #6157: DeviceMetadata.ble_address — the BLE MAC the node advertises.
+    // Present only when non-empty (firmware-develop only today).
+    bleAddress?: string;
   };
   localNodeInfo?: LocalNodeInfo;
 }

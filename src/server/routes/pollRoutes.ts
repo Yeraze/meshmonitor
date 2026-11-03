@@ -534,6 +534,9 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         // True when the node is reached via a bridge/proxy (no native IP) and
         // therefore cannot do OTA firmware updates. See isLocalNodeBridged().
         isBridged: deviceManager.isLocalNodeBridged(),
+        // #6157: DeviceMetadata.ble_address — included only when the node
+        // reports a non-empty address (firmware-develop only today).
+        ...(managerNodeInfo.bleAddress ? { bleAddress: managerNodeInfo.bleAddress } : {}),
       } : undefined;
 
       const pollLocalNodeInfo = managerNodeInfo ? {
