@@ -174,8 +174,15 @@ export class VirtualNodeServer extends EventEmitter {
       return;
     }
 
-    // #6160: restore the persisted replay mark before we accept any client.
-    await this.loadReplayMark();
+    // #6160: kick off the replay-mark load but do NOT await it here. start()
+    // must create the server synchronously — issue #4000's listen-error
+    // recovery (and its test) relies on `new Server()` running in the same
+    // tick as the start() call. The mark is only read after a client finishes
+    // its config handshake (≥ the settle delay later), so this floating load
+    // always resolves well before the first replay.
+    void this.loadReplayMark().catch((error) => {
+      logger.warn('Virtual node: failed to load replay mark:', error);
+    });
 
     return new Promise((resolve, reject) => {
       this.server = new Server((socket) => this.handleNewClient(socket));
