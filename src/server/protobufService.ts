@@ -773,7 +773,7 @@ class ProtobufService {
     }
   }
 
-  createAddContactMessage(nodeNum: number, nodeId: string, longName: string, shortName: string, publicKeyBase64: string, hwModel?: number): Uint8Array {
+  createAddContactMessage(nodeNum: number, nodeId: string, longName: string, shortName: string, publicKeyBase64: string, hwModel?: number, sessionPasskey?: Uint8Array): Uint8Array {
     try {
       const root = getProtobufRoot();
       const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
@@ -781,7 +781,7 @@ class ProtobufService {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
 
-      const adminMsg = AdminMessage.create({
+      const adminMsgData: Record<string, unknown> = {
         addContact: buildSharedContactPayload(
           {
             nodeNum,
@@ -798,7 +798,17 @@ class ProtobufService {
             validateIdentity: false,
           },
         ),
-      });
+      };
+
+      // Only include sessionPasskey if provided — remote targets reject
+      // state-changing admin messages without it (firmware AdminModule.cpp),
+      // while local sends must omit it (mirrors createSetFavoriteNodeMessage).
+      // The passkey is a field on the AdminMessage, not inside addContact.
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
       logger.debug(`⚙️ Created AddContact admin message for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);

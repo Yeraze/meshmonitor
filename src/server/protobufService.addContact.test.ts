@@ -71,6 +71,41 @@ describe('createAddContactMessage', () => {
     expect(decoded.addContact.user.hwModel).toBeFalsy();
   });
 
+  it('attaches sessionPasskey on the AdminMessage when provided (#6153)', () => {
+    const passkey = new Uint8Array([10, 20, 30, 40]);
+    const encoded = protobufService.createAddContactMessage(
+      0x12345678,
+      '!12345678',
+      'PK Node',
+      'PK',
+      'AQID',
+      undefined,
+      passkey,
+    );
+
+    const root = getProtobufRoot()!;
+    const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+    const decoded = AdminMessage.decode(encoded) as any;
+
+    expect(decoded.addContact).toBeTruthy();
+    expect(Buffer.from(decoded.sessionPasskey).toString('base64')).toBe(Buffer.from(passkey).toString('base64'));
+  });
+
+  it('omits sessionPasskey when empty or not provided (#6153)', () => {
+    const root = getProtobufRoot()!;
+    const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+
+    const encodedNone = protobufService.createAddContactMessage(0x12345678, '!12345678', 'N', 'N', 'AQID');
+    const decodedNone = AdminMessage.decode(encodedNone) as any;
+    expect(decodedNone.sessionPasskey == null || decodedNone.sessionPasskey.length === 0).toBe(true);
+
+    const encodedEmpty = protobufService.createAddContactMessage(
+      0x12345678, '!12345678', 'N', 'N', 'AQID', undefined, new Uint8Array(),
+    );
+    const decodedEmpty = AdminMessage.decode(encodedEmpty) as any;
+    expect(decodedEmpty.sessionPasskey == null || decodedEmpty.sessionPasskey.length === 0).toBe(true);
+  });
+
   it('preserves the legacy pass-through behavior for inconsistent identities', () => {
     const encoded = protobufService.createAddContactMessage(
       0,
