@@ -1644,6 +1644,8 @@ export class MeshtasticProtobufService {
     rxRssi?: number | null;
     replyId?: number | null;
     emoji?: number | null;
+    /** Mark the packet pki_encrypted so clients (Android) file the DM under the PKC channel, not channel 0 */
+    pkiEncrypted?: boolean;
   }): Promise<Uint8Array | null> {
     const root = getProtobufRoot();
     if (!root) {
@@ -1714,6 +1716,7 @@ export class MeshtasticProtobufService {
         rxSnr: message.rxSnr || 0,
         rxRssi: message.rxRssi || 0,
         hopLimit: message.hopLimit || 3,
+        ...(message.pkiEncrypted ? { pkiEncrypted: true } : {}),
       });
 
       // Wrap in FromRadio
