@@ -465,6 +465,15 @@ export class VirtualNodeServer extends EventEmitter {
                 );
                 if (adminMsg && adminMsg.addContact !== undefined && adminMsg.addContact !== null) {
                   logger.warn(`Virtual node: Blocked addContact admin message from ${clientId} - this would corrupt PKI keys on the physical node`);
+                  // Ack-and-drop (issue #6163): the Android app awaits a routing ack
+                  // for add_contact before sending a DM and otherwise stalls ~30 s.
+                  const requestId = Number(toRadio.packet.id) >>> 0;
+                  const ackFromNodeNum = this.config.meshtasticManager.getLocalNodeInfo()?.nodeNum ?? Number(toRadio.packet.to);
+                  const requesterNodeNum = Number(toRadio.packet.from) || ackFromNodeNum;
+                  const ackBytes = await meshtasticProtobufService.createFakeRoutingAck(requestId, requesterNodeNum, ackFromNodeNum);
+                  if (ackBytes) {
+                    await this.sendToClient(clientId, ackBytes);
+                  }
                   return;
                 }
               } catch (decodeError) {
