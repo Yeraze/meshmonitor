@@ -35,11 +35,13 @@ vi.mock('../../services/database.js', () => ({
 
 const createSetFavoriteNodeMessage = vi.fn();
 const createRemoveFavoriteNodeMessage = vi.fn();
+const createAddContactMessage = vi.fn();
 
 vi.mock('../protobufService.js', () => ({
   default: {
     createSetFavoriteNodeMessage: (...args: unknown[]) => createSetFavoriteNodeMessage(...args),
     createRemoveFavoriteNodeMessage: (...args: unknown[]) => createRemoveFavoriteNodeMessage(...args),
+    createAddContactMessage: (...args: unknown[]) => createAddContactMessage(...args),
   },
 }));
 
@@ -120,6 +122,7 @@ beforeEach(() => {
   setNodeFavorite.mockReset().mockResolvedValue(undefined);
   createSetFavoriteNodeMessage.mockReset().mockReturnValue(new Uint8Array([1]));
   createRemoveFavoriteNodeMessage.mockReset().mockReturnValue(new Uint8Array([2]));
+  createAddContactMessage.mockReset().mockReturnValue(new Uint8Array([3]));
 });
 
 describe('FavoritesService.supportsFavorites — version-keyed cache (mirrors meshtasticManager.favoritesSupport.test.ts)', () => {
@@ -249,6 +252,133 @@ describe('FavoritesService.sendFavoriteNodeAwaitAck — delegation to AdminTrans
     const result = await svc.sendFavoriteNodeAwaitAck(5, 222, 1234);
     expect(adminTx.sendAdminCommandAwaitAck).toHaveBeenCalledWith(expect.any(Uint8Array), 222, 1234);
     expect(result).toEqual({ acked: false, errorReason: 5, timedOut: false });
+  });
+});
+
+describe('FavoritesService — add_contact before set_favorite_node (#6153)', () => {
+  const CLIENT_BASE = 12; // DeviceRole.CLIENT_BASE
+  const PASSKEY = new Uint8Array([7, 7]);
+
+  // Favorited node 5 carries real user data; destination radio 222 carries the
+  // role under test. getNode is keyed on nodeNum so the two lookups diverge.
+  function setupNodes(opts: { favoritedUser?: Record<string, unknown> | null; destRole?: number | null } = {}) {
+    const favorited = opts.favoritedUser === null
+      ? null
+      : { nodeId: '!00000005', longName: 'Favd', shortName: 'FV', publicKey: 'AA==', hwModel: 9, ...(opts.favoritedUser ?? {}) };
+    getNode.mockImplementation(async (num: number) => {
+      if (num === 5) return favorited;
+      if (num === 222) return { nodeId: '!000000de', role: opts.destRole ?? null };
+      return null;
+    });
+  }
+
+  it('(a) known non-CLIENT_BASE role: sends add_contact, does NOT send set_favorite_node', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ destRole: ROUTER });
+
+    await svc.sendFavoriteNode(5, 222);
+
+    expect(createAddContactMessage).toHaveBeenCalledWith(5, '!00000005', 'Favd', 'FV', 'AA==', 9, PASSKEY);
+    expect(createSetFavoriteNodeMessage).not.toHaveBeenCalled();
+    expect(adminTx.sendAdminCommand).toHaveBeenCalledTimes(1);
+    expect(adminTx.sendAdminCommand).toHaveBeenCalledWith(new Uint8Array([3]), 222);
+  });
+
+  it('(b) CLIENT_BASE role: sends add_contact AND set_favorite_node', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ destRole: CLIENT_BASE });
+
+    await svc.sendFavoriteNode(5, 222);
+
+    expect(createAddContactMessage).toHaveBeenCalled();
+    expect(createSetFavoriteNodeMessage).toHaveBeenCalledWith(5, PASSKEY);
+    expect(adminTx.sendAdminCommand).toHaveBeenCalledTimes(2);
+  });
+
+  it('(c) unknown destination role: sends add_contact AND set_favorite_node', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ destRole: null });
+
+    await svc.sendFavoriteNode(5, 222);
+
+    expect(createAddContactMessage).toHaveBeenCalled();
+    expect(createSetFavoriteNodeMessage).toHaveBeenCalled();
+    expect(adminTx.sendAdminCommand).toHaveBeenCalledTimes(2);
+  });
+
+  it('(d) no stored user data: skips add_contact, still sends set_favorite_node', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ favoritedUser: { longName: null, shortName: null, publicKey: null } });
+
+    await svc.sendFavoriteNode(5, 222);
+
+    expect(createAddContactMessage).not.toHaveBeenCalled();
+    expect(createSetFavoriteNodeMessage).toHaveBeenCalledWith(5, PASSKEY);
+    expect(adminTx.sendAdminCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it('(d2) favorited node absent entirely: skips add_contact, still sends set_favorite_node', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ favoritedUser: null });
+
+    await svc.sendFavoriteNode(5, 222);
+
+    expect(createAddContactMessage).not.toHaveBeenCalled();
+    expect(createSetFavoriteNodeMessage).toHaveBeenCalled();
+  });
+
+  it('(e) add_contact throws: still sends set_favorite_node (never worse than today)', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    // add_contact message is [3]; make only that send reject.
+    adminTx.sendAdminCommand.mockImplementation(async (msg: Uint8Array) => {
+      if (msg[0] === 3) throw new Error('add_contact rejected');
+    });
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ destRole: ROUTER }); // known role, yet failure forces the fallback
+
+    await svc.sendFavoriteNode(5, 222);
+
+    expect(createSetFavoriteNodeMessage).toHaveBeenCalled();
+    expect(adminTx.sendAdminCommand).toHaveBeenCalledWith(new Uint8Array([1]), 222);
+  });
+
+  it('awaitAck, known non-CLIENT_BASE role: returns the add_contact ACK and sends only add_contact', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    adminTx.sendAdminCommandAwaitAck.mockResolvedValue({ packetId: 7, acked: true, errorReason: 0, timedOut: false });
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ destRole: ROUTER });
+
+    const result = await svc.sendFavoriteNodeAwaitAck(5, 222, 1234);
+
+    expect(createAddContactMessage).toHaveBeenCalled();
+    expect(createSetFavoriteNodeMessage).not.toHaveBeenCalled();
+    expect(adminTx.sendAdminCommandAwaitAck).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ acked: true, errorReason: 0, timedOut: false });
+  });
+
+  it('awaitAck, CLIENT_BASE role: awaits add_contact then sends set_favorite_node', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ destRole: CLIENT_BASE });
+
+    await svc.sendFavoriteNodeAwaitAck(5, 222, 1234);
+
+    expect(createAddContactMessage).toHaveBeenCalled();
+    expect(createSetFavoriteNodeMessage).toHaveBeenCalled();
+    expect(adminTx.sendAdminCommandAwaitAck).toHaveBeenCalledTimes(2);
   });
 });
 

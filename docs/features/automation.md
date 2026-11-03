@@ -2298,7 +2298,7 @@ Favorite commands sent over Remote Admin request a response, so the target node 
 
 The same confirmation is shown as a toast on the manual **Set Favorite** / **Remove Favorite** buttons in Node Management.
 
-> **Caveat:** an ACK confirms the *remote processed the request*. If the favorited node is not yet in the remote node's database, the firmware accepts and ACKs the command but the favorite is a no-op there until that node is known. This is why the **re-favorite** pass exists — it re-sends previously assigned favorites (un-confirmed ones first) to recover any whose command was dropped or didn't stick.
+> **Caveat:** an ACK confirms the *remote processed the request*. Historically, if the favorited node was not yet in the remote node's database, the firmware accepted and ACKed `set_favorite_node` but the favorite was a no-op there until that node was known. MeshMonitor now sends an `add_contact` admin message **before** `set_favorite_node` (#6153), built from the node's stored user data. The firmware's `addFromContact` creates the NodeDB entry and, for most device roles, sets the favorite flag in the same step — so MeshMonitor only sends the extra `set_favorite_node` follow-up when the target radio's role is `CLIENT_BASE` (which skips the flag in `addFromContact`) or when MeshMonitor does not know the target's role. For every other known role the `add_contact` alone sets the favorite, saving one admin packet. If MeshMonitor holds essentially no user data for the node, it skips `add_contact` and falls back to sending `set_favorite_node` alone. The **re-favorite** pass still exists to recover any favorites whose command was dropped or didn't stick.
 
 ### Configuration
 
