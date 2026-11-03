@@ -1631,7 +1631,7 @@ export class MeshtasticProtobufService {
    * @returns Encoded FromRadio bytes or null on failure
    */
   async createFromRadioTextMessage(message: {
-    id?: string;  // Database message ID (format: "fromNum_packetId") - used to extract original packet ID
+    id?: string;  // Database message ID (format: "${sourceId}_${fromNum}_${packetId}"; packet id is the last segment) - used to extract original packet ID
     fromNodeNum: number;
     toNodeNum: number;
     text: string;
@@ -1680,13 +1680,14 @@ export class MeshtasticProtobufService {
       const dataMessage = Data.create(dataFields);
 
       // Generate a packet ID - prefer the original packet ID if available
-      // Message IDs are stored in format "fromNum_packetId", so we can extract the original
+      // Message IDs are stored as "${sourceId}_${fromNodeNum}_${packetId}" (older rows may be
+      // "fromNum_packetId"), so the packet id is always the last segment (#6164)
       // This is critical for tapbacks to link correctly to their original messages
       let packetId = message.requestId;
       if (!packetId && message.id) {
         const idParts = message.id.split('_');
         if (idParts.length > 1) {
-          const extractedId = parseInt(idParts[1], 10);
+          const extractedId = parseInt(idParts[idParts.length - 1], 10);
           if (!isNaN(extractedId) && extractedId > 0) {
             packetId = extractedId;
           }
