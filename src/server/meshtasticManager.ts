@@ -1689,7 +1689,11 @@ class MeshtasticManager implements ISourceManager {
    * TCP session to the physical radio (which would kill MeshMonitor's own link).
    */
   getVirtualNodeTarget(): { host: string; port: number } | null {
-    if (!this.virtualNodeServer) return null;
+    // Gate on isRunning(), not merely on the object existing: a VN whose
+    // start() failed (caught + logged) stays assigned but is not listening, so
+    // returning its endpoint would hand the CLI an ECONNREFUSED instead of the
+    // clear VIRTUAL_NODE_DISABLED the caller expects.
+    if (!this.virtualNodeServer?.isRunning()) return null;
     return { host: '127.0.0.1', port: this.virtualNodeServer.getPort() };
   }
 

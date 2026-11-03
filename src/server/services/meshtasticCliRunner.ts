@@ -22,6 +22,8 @@ export interface MeshtasticCliResult {
   exitCode: number | null;
   /** True when the child was killed because it exceeded the timeout. */
   timedOut: boolean;
+  /** True when the child was killed because its output exceeded maxBuffer. */
+  outputTooLarge: boolean;
   elapsedMs: number;
 }
 
@@ -79,18 +81,24 @@ export async function runMeshtasticCli(
             reject(new Error('meshtastic CLI binary not found'));
             return;
           }
-          const timedOut = e.killed === true || e.signal === 'SIGKILL' || e.signal === 'SIGTERM';
+          // A maxBuffer overflow ALSO kills the child (sets `killed`), so it
+          // must be distinguished BEFORE the timeout check — otherwise an
+          // over-chatty command reads as a 504 timeout. Node marks it with
+          // code ERR_CHILD_PROCESS_STDIO_MAXBUFFER.
+          const outputTooLarge = e.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
+          const timedOut = !outputTooLarge && (e.killed === true || e.signal === 'SIGKILL' || e.signal === 'SIGTERM');
           resolve({
             stdout: out,
             stderr: err,
             exitCode: typeof e.code === 'number' ? e.code : null,
             timedOut,
+            outputTooLarge,
             elapsedMs,
           });
           return;
         }
 
-        resolve({ stdout: out, stderr: err, exitCode: 0, timedOut: false, elapsedMs });
+        resolve({ stdout: out, stderr: err, exitCode: 0, timedOut: false, outputTooLarge: false, elapsedMs });
       },
     );
   });

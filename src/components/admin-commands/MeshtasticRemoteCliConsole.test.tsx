@@ -84,6 +84,18 @@ describe('MeshtasticRemoteCliConsole', () => {
     await waitFor(() => expect(sendMock).toHaveBeenCalledWith('s1', DEST, '--reboot', { confirm: true }));
   });
 
+  it('opens the danger modal for a Meshtastic-specific destructive flag (shared pattern)', () => {
+    render(<MeshtasticRemoteCliConsole sourceId="s1" destNodeId={DEST} destNodeName="Node Alpha" isLocalNode={false} />);
+    const input = screen.getByPlaceholderText(/CLI arguments/) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '--reset-nodedb' } });
+    fireEvent.click(screen.getByText('Send'));
+    // --reset-nodedb is Meshtastic-specific and NOT in the shared MeshCore
+    // pattern — the modal only appears because the console passes its own
+    // dangerPattern to CliConsoleBody.
+    expect(screen.getByText('Confirm destructive command')).toBeTruthy();
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
   it('renders the server error output and code on failure', async () => {
     sendMock.mockRejectedValue(new ApiError('nonzero', 422, { code: 'CLI_NONZERO_EXIT', body: { output: 'Error: no route to node' } }));
     render(<MeshtasticRemoteCliConsole sourceId="s1" destNodeId={DEST} destNodeName="Node Alpha" isLocalNode={false} />);

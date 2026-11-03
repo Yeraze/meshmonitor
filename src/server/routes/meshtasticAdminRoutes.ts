@@ -40,6 +40,7 @@ import {
   isDangerCommand,
   isValidMeshtasticNodeId,
   redactCliArgsForAudit,
+  findReservedFlag,
   CliArgParseError,
 } from '../services/meshtasticCli.js';
 import { runMeshtasticCli } from '../services/meshtasticCliRunner.js';
@@ -103,19 +104,10 @@ router.post(
         return fail(res, 400, 'CLI_ARGS_EMPTY', 'args must be a non-empty string');
       }
 
-      // Danger guard — enforced server-side so a script or direct API call
-      // cannot skip the frontend's typed-name confirmation modal. Keep the
-      // pattern in sync with CliConsoleBody.tsx's DANGER_COMMAND_PATTERN.
-      if (isDangerCommand(args) && confirm !== true) {
-        auditCli(req, 'meshtastic_remote_cli_blocked', {
-          sourceId,
-          destNodeId,
-          args: redactCliArgsForAudit(args.split(/\s+/)),
-          reason: 'DANGER_CONFIRM_REQUIRED',
-        });
-        return fail(res, 400, 'DANGER_CONFIRM_REQUIRED', 'Destructive command requires confirm:true in the request body');
-      }
-
+      // Parse FIRST (quote-aware, shell-free) so every subsequent check runs
+      // against the actual argv — not the raw string, which evasive quoting
+      // such as `--rebo"o"t` could use to slip a destructive flag past the
+      // danger guard.
       let userArgs: string[];
       try {
         userArgs = parseCliArgs(args);
@@ -126,12 +118,47 @@ router.post(
         throw err;
       }
 
+      // Reject any attempt to re-specify the injected transport / destination
+      // flags. argparse is last-wins, so a trailing `--host`/`--port`/`--dest`
+      // would override the VN endpoint or target another node — defeating the
+      // VN-only and remote-only invariants (full pass-through covers other
+      // flags, not these).
+      const reserved = findReservedFlag(userArgs);
+      if (reserved) {
+        return fail(
+          res,
+          400,
+          'CLI_ARGS_INVALID',
+          `${reserved} may not be set — the console always targets the selected remote node through the Virtual Node`,
+        );
+      }
+
+      // Danger guard — run against the PARSED argv so quoting cannot evade it.
+      // Enforced server-side so a script or direct API call cannot skip the
+      // frontend's typed-name confirmation modal. The pattern is shared with
+      // the client via src/utils/meshtasticCliDanger.ts.
+      if (isDangerCommand(userArgs.join(' ')) && confirm !== true) {
+        auditCli(req, 'meshtastic_remote_cli_blocked', {
+          sourceId,
+          destNodeId,
+          args: redactCliArgsForAudit(userArgs),
+          reason: 'DANGER_CONFIRM_REQUIRED',
+        });
+        return fail(res, 400, 'DANGER_CONFIRM_REQUIRED', 'Destructive command requires confirm:true in the request body');
+      }
+
       // VN-only transport. A non-Meshtastic source has no manager; a Meshtastic
-      // source without the VN enabled has no loopback endpoint. Either way we
+      // source without the VN running has no loopback endpoint. Either way we
       // refuse rather than touch the physical radio.
       const manager = resolveOwnMeshtasticManager(sourceId);
       if (!manager) {
         return fail(res, 400, 'SOURCE_NOT_MESHTASTIC', 'This source is not a Meshtastic node source.');
+      }
+      // Receive-only / TX-disabled sources must not relay admin packets over
+      // RF. Enforced server-side (the frontend gate is only a courtesy), using
+      // the same capability the transmit primitives use.
+      if (!manager.canTransmit()) {
+        return fail(res, 403, 'TX_DISABLED', 'Transmit is disabled on this source — the remote-admin CLI cannot send.');
       }
       const target = manager.getVirtualNodeTarget();
       if (!target) {
@@ -162,6 +189,15 @@ router.post(
       }
 
       const output = [result.stdout, result.stderr].filter((s) => s && s.length > 0).join('\n').trim();
+
+      if (result.outputTooLarge) {
+        auditCli(req, 'meshtastic_remote_cli_failed', {
+          sourceId, destNodeId, args: redactedArgs, error: 'CLI_OUTPUT_TOO_LARGE', elapsedMs: result.elapsedMs,
+        });
+        return fail(res, 422, 'CLI_OUTPUT_TOO_LARGE', 'Command output was too large and was truncated — narrow the command', {
+          elapsedMs: result.elapsedMs,
+        });
+      }
 
       if (result.timedOut) {
         auditCli(req, 'meshtastic_remote_cli_failed', {

@@ -13,20 +13,30 @@
  * `$()`, backticks, `&&`) are inert — they become literal argv tokens.
  */
 
+import { MESHTASTIC_DANGER_COMMAND_PATTERN, isMeshtasticDangerCommand } from '../../utils/meshtasticCliDanger.js';
+
 /**
- * Server-enforced regex for destructive commands. Kept VERBATIM in sync with
- * the client-side DANGER_COMMAND_PATTERN in
- * src/components/MeshCore/CliConsoleBody.tsx (the shared console primitive the
- * frontend reuses). It matches the Meshtastic destructive flags `--reboot`,
- * `--factory-reset`, `--shutdown`, and the equivalent bare verbs. The trailing
- * `(?!\.)` excludes a danger word used as the prefix of a dotted key.
+ * Server-enforced danger pattern. The single source of truth lives in
+ * src/utils/meshtasticCliDanger.ts and is shared VERBATIM with the client
+ * console (passed to CliConsoleBody as its `dangerPattern`), so the typed-name
+ * modal and this server guard always agree on what is destructive.
  *
  * The frontend opens a typed-name confirmation modal for a matching command;
  * this server check means a script or a direct API call cannot bypass the
  * prompt by simply not rendering it — the request is refused without
- * `confirm: true` (DANGER_CONFIRM_REQUIRED).
+ * `confirm: true` (DANGER_CONFIRM_REQUIRED). Re-exported here for callers and
+ * tests that import it from this module.
  */
-export const MESHTASTIC_DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory|poweroff|shutdown)\b(?!\.)/i;
+export { MESHTASTIC_DANGER_COMMAND_PATTERN };
+
+/**
+ * Transport / destination flags the console injects and the user may NOT
+ * re-specify. Python `meshtastic` argparse is last-wins, so a trailing
+ * `--host`/`--port`/`--dest` in the user's args would override the injected
+ * values and defeat the VN-only + remote-only invariants. These are rejected
+ * up front (`--flag` and `--flag=value` forms).
+ */
+const RESERVED_FLAG_PATTERN = /^--(host|port|dest)(=|$)/i;
 
 /** Max length of the free-form argument string the user may submit. */
 export const MAX_CLI_ARGS_LENGTH = 2000;
@@ -139,9 +149,25 @@ export function parseCliArgs(input: string): string[] {
   return args;
 }
 
-/** True when the raw argument string contains a destructive command. */
+/**
+ * True when the argument text names a destructive command. Callers MUST pass
+ * the QUOTE-AWARE parsed argv joined with spaces (e.g. `userArgs.join(' ')`),
+ * NOT the raw user string — otherwise evasive quoting such as `--rebo"o"t`
+ * (which parses to `--reboot`) slips past the guard.
+ */
 export function isDangerCommand(args: string): boolean {
-  return MESHTASTIC_DANGER_COMMAND_PATTERN.test(args);
+  return isMeshtasticDangerCommand(args);
+}
+
+/**
+ * The first injected-transport/dest flag the user tried to re-specify, or null.
+ * See RESERVED_FLAG_PATTERN — these cannot be overridden by free-form args.
+ */
+export function findReservedFlag(userArgs: string[]): string | null {
+  for (const tok of userArgs) {
+    if (RESERVED_FLAG_PATTERN.test(tok)) return tok;
+  }
+  return null;
 }
 
 export const REDACTED = '********';
@@ -189,9 +215,13 @@ export function isValidMeshtasticNodeId(id: unknown): id is string {
 /**
  * Build the full argv for a remote-admin CLI invocation. Always targets a
  * remote node via `--dest` through the Virtual Node loopback endpoint — there
- * is no local-node (no-`--dest`) mode. User args come LAST so they cannot
- * override the leading transport/dest flags with a shell; they are still
- * literal tokens either way.
+ * is no local-node (no-`--dest`) mode.
+ *
+ * User args come LAST, which means Python argparse (last-wins) WOULD let a
+ * trailing `--host`/`--port`/`--dest` override the injected transport/dest.
+ * That is why the caller MUST reject such args first via {@link findReservedFlag}
+ * before calling this — the ordering here does not protect the invariants on
+ * its own.
  */
 export function buildCliArgv(
   target: { host: string; port: number },

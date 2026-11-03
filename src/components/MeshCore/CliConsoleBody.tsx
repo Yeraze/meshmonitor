@@ -107,6 +107,11 @@ interface CliConsoleBodyProps {
   /** When set, a collapsible panel under the input shows the server-side
    *  history of commands sent to this target (#5892). */
   history?: CliHistoryTarget;
+  /** Override the destructive-command pattern that opens the typed-name
+   *  confirmation modal. Defaults to the MeshCore {@link DANGER_COMMAND_PATTERN};
+   *  the Meshtastic console passes its own (shared with its server guard) so the
+   *  two agree on what is destructive (#6154). */
+  dangerPattern?: RegExp;
 }
 
 const nextId = (() => {
@@ -127,6 +132,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
     emptyTextEnabled,
     timeoutHint,
     history,
+    dangerPattern = DANGER_COMMAND_PATTERN,
   },
   ref,
 ) {
@@ -283,12 +289,12 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
   const handleSend = useCallback(async () => {
     const trimmed = command.trim();
     if (!trimmed || sending) return;
-    if (DANGER_COMMAND_PATTERN.test(trimmed)) {
+    if (dangerPattern.test(trimmed)) {
       setDangerConfirm({ command: trimmed, typedName: '' });
       return;
     }
     await runAndLog(trimmed);
-  }, [command, runAndLog, sending]);
+  }, [command, dangerPattern, runAndLog, sending]);
 
   const handleActionClick = useCallback((action: ActionCommand) => {
     if (action.danger) {

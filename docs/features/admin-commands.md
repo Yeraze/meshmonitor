@@ -522,13 +522,20 @@ deliberate design choice: it keeps the full power of the `meshtastic` CLI
 available (including flags such as `--export-config` and `--configure`). The
 safeguards are:
 
-- **No shell.** Your text is split into arguments and run directly with
-  `execFile` — it never reaches a shell, so characters like `;`, `|`, `&&` and
-  `$()` are inert, literal argument text.
+- **No shell.** Your text is split into arguments by a quote-aware splitter and
+  run directly with `execFile` — it never reaches a shell, so characters like
+  `;`, `|`, `&&` and `$()` are inert, literal argument text.
 - **Destructive commands need confirmation.** A command containing `--reboot`,
-  `--factory-reset`, `--shutdown` (and similar) opens a modal that asks you to
-  type the node's name before it will send. The server enforces this too, so a
-  script or direct API call cannot skip the prompt.
+  `--factory-reset`, `--shutdown`, `--reset-nodedb`, `--remove-node`,
+  `--enter-dfu` (and similar) opens a modal that asks you to type the node's
+  name before it will send. The server enforces this against the *parsed*
+  arguments — so a script, a direct API call, or evasive quoting such as
+  `--rebo"o"t` cannot skip the prompt.
+- **Transport is fixed.** You cannot re-specify `--host`, `--port`, or `--dest`
+  in your arguments — those are injected by MeshMonitor to keep the console
+  VN-only and remote-only, and are rejected if you include them.
+- **Transmit must be enabled.** A receive-only / TX-disabled source refuses the
+  command server-side rather than relaying admin packets over RF.
 - **Permission-gated.** Requires `remote_admin:write` on that specific source,
   and is rate-limited like other device operations.
 

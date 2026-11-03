@@ -17,6 +17,7 @@ import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CliConsoleBody, type CliRunResult } from '../MeshCore/CliConsoleBody';
 import apiService, { ApiError } from '../../services/api';
+import { MESHTASTIC_DANGER_COMMAND_PATTERN } from '../../utils/meshtasticCliDanger';
 import styles from './MeshtasticRemoteCliConsole.module.css';
 
 interface MeshtasticRemoteCliConsoleProps {
@@ -88,6 +89,7 @@ export const MeshtasticRemoteCliConsole: React.FC<MeshtasticRemoteCliConsoleProp
         targetName={destNodeName ?? destNodeId ?? ''}
         runCommand={runCommand}
         actionCatalog={[]}
+        dangerPattern={MESHTASTIC_DANGER_COMMAND_PATTERN}
         disabled={consoleDisabled}
         disabledPlaceholder={disabledPlaceholder}
         placeholder={t('admin_commands.cli_console.input_placeholder', 'CLI arguments (e.g. --set device.role CLIENT)')}

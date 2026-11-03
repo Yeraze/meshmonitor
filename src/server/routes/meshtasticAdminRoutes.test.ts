@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+import databaseService from '../../services/database.js';
 import meshtasticAdminRoutes from './meshtasticAdminRoutes.js';
 
 vi.mock('../utils/resolveSourceManager.js', () => ({
@@ -25,16 +26,17 @@ import { runMeshtasticCli } from '../services/meshtasticCliRunner.js';
 const resolveMock = resolveOwnMeshtasticManager as unknown as Mock;
 const runMock = runMeshtasticCli as unknown as Mock;
 
-/** A fake Meshtastic manager whose VN target is controllable. */
-function fakeManager(target: { host: string; port: number } | null) {
+/** A fake Meshtastic manager whose VN target + TX capability are controllable. */
+function fakeManager(target: { host: string; port: number } | null, canTransmit = true) {
   return {
     sourceType: 'meshtastic_tcp',
     getVirtualNodeTarget: () => target,
+    canTransmit: () => canTransmit,
   };
 }
 
 function okRun(stdout = 'Connected to radio\nOK', stderr = '') {
-  return { stdout, stderr, exitCode: 0, timedOut: false, elapsedMs: 42 };
+  return { stdout, stderr, exitCode: 0, timedOut: false, outputTooLarge: false, elapsedMs: 42 };
 }
 
 describe('meshtastic remote-admin CLI route', () => {
@@ -148,7 +150,7 @@ describe('meshtastic remote-admin CLI route', () => {
   });
 
   it('maps a timeout to 504 CLI_TIMEOUT', async () => {
-    runMock.mockResolvedValue({ stdout: '', stderr: '', exitCode: null, timedOut: true, elapsedMs: 60000 });
+    runMock.mockResolvedValue({ stdout: '', stderr: '', exitCode: null, timedOut: true, outputTooLarge: false, elapsedMs: 60000 });
     await harness.grant(harness.limited.id, 'remote_admin', 'write', harness.sourceA);
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args: '--info' });
@@ -157,13 +159,91 @@ describe('meshtastic remote-admin CLI route', () => {
   });
 
   it('maps a non-zero exit to 422 CLI_NONZERO_EXIT with output', async () => {
-    runMock.mockResolvedValue({ stdout: '', stderr: 'Error: Timed out waiting for connection', exitCode: 1, timedOut: false, elapsedMs: 10 });
+    runMock.mockResolvedValue({ stdout: '', stderr: 'Error: Timed out waiting for connection', exitCode: 1, timedOut: false, outputTooLarge: false, elapsedMs: 10 });
     await harness.grant(harness.limited.id, 'remote_admin', 'write', harness.sourceA);
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args: '--info' });
     expect(res.status).toBe(422);
     expect(res.body.code).toBe('CLI_NONZERO_EXIT');
     expect(res.body.output).toContain('Timed out');
+  });
+
+  it('blocks an evasive-quoted destructive flag without confirm (danger on parsed argv)', async () => {
+    await harness.grant(harness.limited.id, 'remote_admin', 'write', harness.sourceA);
+    const agent = await harness.loginAs(harness.limited);
+    // `--rebo"o"t` parses to `--reboot`; the raw string does not match the
+    // danger pattern, the parsed argv does.
+    const res = await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args: '--rebo"o"t' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('DANGER_CONFIRM_REQUIRED');
+    expect(runMock).not.toHaveBeenCalled();
+
+    // …and it runs once confirmed.
+    const ok = await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args: '--rebo"o"t', confirm: true });
+    expect(ok.status).toBe(200);
+    const [argv] = runMock.mock.calls[0];
+    expect(argv).toContain('--reboot');
+  });
+
+  it.each(['--reset-nodedb', '--remove-node !aabbccee', '--enter-dfu'])(
+    'flags the Meshtastic-specific destructive flag %s without confirm',
+    async (args) => {
+      await harness.grant(harness.limited.id, 'remote_admin', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('DANGER_CONFIRM_REQUIRED');
+      expect(runMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['--host 10.0.0.1 --info', '--port 4404 --info', '--dest !deadbeef --info', '--host=1.2.3.4 --info'])(
+    'rejects an attempt to re-specify a reserved transport/dest flag: %s',
+    async (args) => {
+      await harness.grant(harness.limited.id, 'remote_admin', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('CLI_ARGS_INVALID');
+      expect(runMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns 403 TX_DISABLED when the source cannot transmit', async () => {
+    resolveMock.mockReturnValue(fakeManager({ host: '127.0.0.1', port: 4403 }, false));
+    await harness.grant(harness.limited.id, 'remote_admin', 'write', harness.sourceA);
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args: '--info' });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('TX_DISABLED');
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a maxBuffer overflow to 422 CLI_OUTPUT_TOO_LARGE (not a timeout)', async () => {
+    runMock.mockResolvedValue({ stdout: 'x'.repeat(10), stderr: '', exitCode: null, timedOut: false, outputTooLarge: true, elapsedMs: 10 });
+    await harness.grant(harness.limited.id, 'remote_admin', 'write', harness.sourceA);
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args: '--info' });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('CLI_OUTPUT_TOO_LARGE');
+  });
+
+  it('audits a blocked danger command with the quote-aware parsed+redacted argv (#7)', async () => {
+    const auditSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined as never);
+    try {
+      await harness.grant(harness.limited.id, 'remote_admin', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      // Danger verb + a secret value with spaces: naive whitespace-splitting
+      // would misalign the redaction and leak "e c"; parsed argv masks it whole.
+      await agent.post(url(harness.sourceA)).send({ destNodeId: DEST, args: '--reboot --set security.admin_key "s e c"' });
+      const blocked = auditSpy.mock.calls.find((c) => c[1] === 'meshtastic_remote_cli_blocked');
+      expect(blocked).toBeTruthy();
+      const details = JSON.parse(blocked![3] as string) as { args: string };
+      expect(details.args).toContain('security.admin_key ********');
+      expect(details.args).not.toContain('e c');
+    } finally {
+      auditSpy.mockRestore();
+    }
   });
 
   it('enforces per-source scope (grant on A does not authorize B)', async () => {

@@ -5,6 +5,7 @@ import {
   isDangerCommand,
   isValidMeshtasticNodeId,
   redactCliArgsForAudit,
+  findReservedFlag,
   CliArgParseError,
   MAX_CLI_ARG_COUNT,
   REDACTED,
@@ -55,10 +56,15 @@ describe('parseCliArgs', () => {
 describe('isDangerCommand', () => {
   it.each([
     '--reboot',
+    '--reboot-ota',
     '--factory-reset',
+    '--factory-reset-device',
     '--shutdown',
     'reboot',
     '--reboot 10',
+    '--reset-nodedb',
+    '--remove-node !aabbccdd',
+    '--enter-dfu',
   ])('flags %s as destructive', (cmd) => {
     expect(isDangerCommand(cmd)).toBe(true);
   });
@@ -67,8 +73,24 @@ describe('isDangerCommand', () => {
     '--info',
     '--set device.role CLIENT',
     '--get lora.region',
+    '--nodes',
+    '--get reboot.interval',
   ])('does not flag %s', (cmd) => {
     expect(isDangerCommand(cmd)).toBe(false);
+  });
+});
+
+describe('findReservedFlag', () => {
+  it.each(['--host', '--port', '--dest', '--host=1.2.3.4', '--DEST', '--port=4403'])(
+    'rejects reserved flag %s',
+    (flag) => {
+      expect(findReservedFlag(['--info', flag, 'x'])).toBe(flag);
+    },
+  );
+  it('returns null when no reserved flag is present', () => {
+    expect(findReservedFlag(['--set', 'device.role', 'CLIENT'])).toBeNull();
+    // A value that merely looks like a host is fine; only the flag itself is reserved.
+    expect(findReservedFlag(['--set-owner', '--host-ish-name'])).toBeNull();
   });
 });
 
