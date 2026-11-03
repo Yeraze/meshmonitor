@@ -106,8 +106,19 @@ describe('trigger placeholder locales', () => {
       // Absent or "" (Weblate's untranslated marker) both fall back to English.
       if (value === undefined || value === '') continue;
       expect(typeof value, file).toBe('string');
-      expect((value as string).trim(), file).not.toBe('');
-      expect(value as string, file).not.toMatch(/,/);
+      const str = value as string;
+      expect(str.trim(), file).not.toBe('');
+      // #5465 guarded against the stale LIST shape — several comma-separated
+      // examples, e.g. "Przykład: pogoda, pogoda {location}, p {location}" —
+      // which overflowed the field or blanked it. A normal single-example
+      // translation may legitimately carry one comma (Spanish "p. ej., tiempo
+      // {location}"), so reject only the list shape: two or more commas, a
+      // repeated {location} token, or an implausibly long value.
+      const commaCount = (str.match(/,/g) ?? []).length;
+      const tokenCount = (str.match(/\{location\}/g) ?? []).length;
+      expect(commaCount, `${file}: ${str}`).toBeLessThanOrEqual(1);
+      expect(tokenCount, `${file}: ${str}`).toBeLessThanOrEqual(1);
+      expect(str.length, `${file}: ${str}`).toBeLessThanOrEqual(80);
     }
     const i18n = read('../config/i18n.ts');
     expect(i18n).toMatch(/fallbackLng:\s*'en'/);
