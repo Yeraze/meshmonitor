@@ -64,6 +64,7 @@ import type { MeshtasticManager } from '../meshtasticManager.js';
 import type { AdminTransactionService } from './adminTransactionService.js';
 import databaseService from '../../services/database.js';
 import protobufService from '../protobufService.js';
+import { DeviceRole } from '../../constants/index.js';
 import { isAutoFavoriteEligible } from '../constants/autoFavorite.js';
 import { logger } from '../../utils/logger.js';
 import { normalizeLikelyAircraft } from '../../utils/aircraftClassification.js';
@@ -124,6 +125,55 @@ export class FavoritesService {
   }
 
   /**
+   * Build an AddContact admin message for the favorited node from the user
+   * data MeshMonitor already holds (#6153). Returns null when there is
+   * essentially no user data — in that case the caller falls back to today's
+   * behavior (set_favorite_node only) rather than sending an empty contact
+   * that would overwrite the target's possibly-fresher user fields with blanks.
+   *
+   * `addFromContact` requires `has_user`, so the payload always carries a user
+   * block; `buildSharedContactPayload` omits the fields we pass as null/empty.
+   */
+  private async buildFavoritedContactMessage(
+    nodeNum: number,
+    sessionPasskey: Uint8Array,
+  ): Promise<Uint8Array | null> {
+    const node = await databaseService.nodes.getNode(nodeNum, this.mgr.sourceId);
+    if (!node) return null;
+
+    // Require at least one real identity field. A contact carrying only the
+    // id derived from nodeNum tells the target nothing and risks clobbering
+    // fresher data, so skip add_contact entirely in that case.
+    const hasUserData = Boolean(node.longName || node.shortName || node.publicKey);
+    if (!hasUserData) return null;
+
+    return protobufService.createAddContactMessage(
+      nodeNum,
+      node.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`,
+      node.longName || '',
+      node.shortName || '',
+      node.publicKey || '',
+      node.hwModel ?? undefined,
+      sessionPasskey,
+    );
+  }
+
+  /**
+   * Decide whether a set_favorite_node follow-up is needed after add_contact
+   * (#6153). Firmware `addFromContact` sets the favorite flag itself for most
+   * roles, but deliberately skips it for CLIENT_BASE (NodeDB.cpp:3848-3853).
+   * Send the follow-up only when the administered radio's role is CLIENT_BASE,
+   * or when MeshMonitor does not know its role (so we cannot assume add_contact
+   * set it). For every other known role, add_contact alone sets the favorite —
+   * skip the extra admin packet.
+   */
+  private async needsSetFavoriteFollowup(destNode: number): Promise<boolean> {
+    const node = await databaseService.nodes.getNode(destNode, this.mgr.sourceId);
+    const role = node?.role;
+    return role == null || role === DeviceRole.CLIENT_BASE;
+  }
+
+  /**
    * Send admin message to set a node as favorite on the device
    */
   async sendFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
@@ -153,9 +203,32 @@ export class FavoritesService {
         }
       }
 
-      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
-      await this.adminTx.sendAdminCommand(setFavoriteMsg, destNode);
-      logger.debug(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
+      // #6153: create the NodeDB entry first so set_favorite_node is not a
+      // no-op on a target that doesn't yet hold this node. addFromContact also
+      // sets the favorite flag itself for most roles. Never make favorites
+      // worse than today — if add_contact fails, warn and still send
+      // set_favorite_node.
+      let addContactSent = false;
+      const contactMsg = await this.buildFavoritedContactMessage(nodeNum, sessionPasskey);
+      if (contactMsg) {
+        try {
+          await this.adminTx.sendAdminCommand(contactMsg, destNode);
+          addContactSent = true;
+          logger.debug(`📇 Sent add_contact for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode} before set_favorite_node`);
+        } catch (error) {
+          logger.warn(`⚠️ add_contact for ${nodeNum} failed; proceeding to set_favorite_node anyway:`, error);
+        }
+      }
+
+      // Follow up with set_favorite_node only when add_contact didn't run
+      // (fallback), or the destination role is CLIENT_BASE / unknown.
+      if (!addContactSent || await this.needsSetFavoriteFollowup(destNode)) {
+        const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
+        await this.adminTx.sendAdminCommand(setFavoriteMsg, destNode);
+        logger.debug(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
+      } else {
+        logger.debug(`⭐ add_contact set the favorite for ${nodeNum} on role-known node ${destNode}; skipped redundant set_favorite_node`);
+      }
     } catch (error) {
       logger.error('❌ Error sending favorite node admin message:', error);
       throw error;
@@ -230,6 +303,31 @@ export class FavoritesService {
         if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
         sessionPasskey = requested;
       }
+    }
+
+    // #6153: send add_contact first and await its ACK, so the favorite isn't a
+    // no-op on a target missing this node from its NodeDB. addFromContact sets
+    // the favorite itself for most roles.
+    let addContactSent = false;
+    let addContactResult: { acked: boolean; errorReason: number | null; timedOut: boolean } | null = null;
+    const contactMsg = await this.buildFavoritedContactMessage(nodeNum, sessionPasskey);
+    if (contactMsg) {
+      try {
+        const r = await this.adminTx.sendAdminCommandAwaitAck(contactMsg, destNode, timeoutMs);
+        addContactResult = { acked: r.acked, errorReason: r.errorReason, timedOut: r.timedOut };
+        addContactSent = true;
+        logger.debug(`📇 add_contact ${nodeNum} → node ${destNode}: acked=${r.acked} timedOut=${r.timedOut} err=${r.errorReason}`);
+      } catch (error) {
+        logger.warn(`⚠️ add_contact for ${nodeNum} failed; proceeding to set_favorite_node anyway:`, error);
+      }
+    }
+
+    // When add_contact ran and the destination role is a known non-CLIENT_BASE
+    // role, addFromContact already set the favorite — skip the extra packet and
+    // return the add_contact ACK as the result.
+    if (addContactSent && addContactResult && !(await this.needsSetFavoriteFollowup(destNode))) {
+      logger.debug(`⭐ add_contact set the favorite for ${nodeNum} on role-known node ${destNode}; skipped redundant set_favorite_node`);
+      return addContactResult;
     }
 
     const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
