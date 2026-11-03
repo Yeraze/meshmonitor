@@ -513,6 +513,14 @@ export const VALID_SETTINGS_KEYS = [
   'translationProvider',
   'translationDefaultLanguage',
   'translationDefaultOutgoingLanguage',
+  // Virtual Node message replay (#6160). Global, opt-in (default off). When on,
+  // a reconnecting app is re-sent the text messages stored since its last sign
+  // of life. The exclude list (CSV of IPs for scripts/loggers) overrides the
+  // VN_REPLAY_EXCLUDE_IPS env var when non-empty. Read globally via getSetting;
+  // the per-source last-seen mark lives under virtualNode.replayLastSeen.<id>,
+  // written directly by the server (not POSTable).
+  'virtualNodeReplayEnabled',
+  'virtualNodeReplayExcludeIps',
   ...TRANSLATION_PROVIDER_SETTING_KEYS,
 ] as const;
 
@@ -974,6 +982,11 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'translationDefaultLanguage',
   'translationDefaultOutgoingLanguage',
   ...TRANSLATION_PROVIDER_SETTING_KEYS,
+  // Virtual Node message replay (#6160). One switch + one exclude list for the
+  // install, read by the VirtualNodeServer via getSetting — no per-source
+  // variant to read, so a source copy would be stored and never used.
+  'virtualNodeReplayEnabled',
+  'virtualNodeReplayExcludeIps',
 ]);
 
 /**
