@@ -318,4 +318,32 @@ describe('adminRoutes — one-shot device actions', () => {
       expect(await localMetadata(undefined)).toBeNull();
     });
   });
+
+  describe('POST /get-device-metadata — ble_address for the local node (#6157)', () => {
+    async function localMetadata(bleAddress: string | undefined) {
+      await sourceManagerRegistry.removeManager(harness.sourceA);
+      await sourceManagerRegistry.addManager(makeManager({
+        getLocalNodeInfo: vi.fn().mockReturnValue({
+          nodeNum: LOCAL, nodeId: '!00000001', longName: 'Local', shortName: 'LOC', firmwareVersion: '2.8.0', bleAddress,
+        }),
+        isLocalNodeBridged: vi.fn().mockReturnValue(false),
+      }));
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/get-device-metadata').send({ sourceId: harness.sourceA, nodeNum: LOCAL });
+      expect(res.status).toBe(200);
+      return res.body.deviceMetadata;
+    }
+
+    it('includes bleAddress when the node reports one', async () => {
+      expect((await localMetadata('AA:BB:CC:DD:EE:FF')).bleAddress).toBe('AA:BB:CC:DD:EE:FF');
+    });
+
+    it('omits bleAddress when the node reports an empty string', async () => {
+      expect((await localMetadata('')).bleAddress).toBeUndefined();
+    });
+
+    it('omits bleAddress when the node has not reported one', async () => {
+      expect((await localMetadata(undefined)).bleAddress).toBeUndefined();
+    });
+  });
 });

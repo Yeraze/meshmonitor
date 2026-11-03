@@ -997,7 +997,11 @@ router.post('/get-device-metadata', extendRequestTimeout(GET_DEVICE_METADATA_TIM
             canShutdown: localNodeInfo.canShutdown ?? null,
             hasRemoteHardware: false,
             deviceStateVersion: 0,
-            positionFlags: 0
+            positionFlags: 0,
+            // #6157: DeviceMetadata.ble_address — the BLE MAC the node
+            // advertises. Only present when non-empty (firmware-develop only
+            // today); omitted otherwise so the UI shows nothing.
+            ...(localNodeInfo.bleAddress ? { bleAddress: localNodeInfo.bleAddress } : {})
           }
         });
       } else {
@@ -1037,7 +1041,12 @@ router.post('/get-device-metadata', extendRequestTimeout(GET_DEVICE_METADATA_TIM
             // field 14): whether XEdDSA packet signature verification is
             // compiled in. Distinguishes "this node cannot sign" from "this
             // node did not sign this packet" (#3923).
-            hasXeddsa: metadata.hasXeddsa || false
+            hasXeddsa: metadata.hasXeddsa || false,
+            // #6157: DeviceMetadata.ble_address — only when the remote node
+            // reports a non-empty address (firmware-develop only today).
+            ...(typeof metadata.bleAddress === 'string' && metadata.bleAddress
+              ? { bleAddress: metadata.bleAddress }
+              : {})
           }
         });
       } else {

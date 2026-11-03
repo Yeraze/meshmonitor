@@ -103,6 +103,58 @@ describe('configRoutes', () => {
       }
     });
 
+    // #6157: DeviceMetadata.ble_address lives only in the live manager's
+    // in-memory state (not the nodes row), so the handler reads it from the
+    // resolved source manager and includes it only when non-empty.
+    it('includes the manager\'s bleAddress when the node advertises one, omits it otherwise', async () => {
+      await harness.db.nodes.upsertNode(
+        {
+          nodeNum: 2732916558,
+          nodeId: '!a2e175ba',
+          longName: 'BLE Node',
+          shortName: 'BLE',
+          firmwareVersion: '2.8.0',
+          rebootCount: 1,
+          lastHeard: Math.floor(Date.now() / 1000),
+        },
+        harness.sourceA,
+      );
+      const writerKey = new MeshtasticManager(harness.sourceA).localNodeSettingKey('localNodeNum');
+      await harness.db.settings.setSetting(writerKey, '2732916558');
+
+      const makeManager = (bleAddress: string | undefined): ISourceManager =>
+        ({
+          sourceId: harness.sourceA,
+          sourceType: 'meshtastic_tcp',
+          start: vi.fn().mockResolvedValue(undefined),
+          stop: vi.fn().mockResolvedValue(undefined),
+          getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'A', sourceType: 'meshtastic_tcp', connected: true }),
+          getLocalNodeInfo: vi.fn().mockReturnValue({
+            nodeNum: 2732916558, nodeId: '!a2e175ba', longName: 'BLE Node', shortName: 'BLE',
+            firmwareVersion: '2.8.0', bleAddress,
+          }),
+          isLocalNodeBridged: vi.fn().mockReturnValue(false),
+        }) as unknown as ISourceManager;
+
+      try {
+        const agent = await harness.loginAs(harness.admin);
+
+        await sourceManagerRegistry.addManager(makeManager('AA:BB:CC:DD:EE:FF'));
+        const present = await agent.get('/').query({ sourceId: harness.sourceA });
+        expect(present.status).toBe(200);
+        expect(present.body.deviceMetadata.bleAddress).toBe('AA:BB:CC:DD:EE:FF');
+        await sourceManagerRegistry.removeManager(harness.sourceA);
+
+        await sourceManagerRegistry.addManager(makeManager(undefined));
+        const absent = await agent.get('/').query({ sourceId: harness.sourceA });
+        expect(absent.status).toBe(200);
+        expect(absent.body.deviceMetadata).not.toHaveProperty('bleAddress');
+      } finally {
+        await sourceManagerRegistry.removeManager(harness.sourceA);
+        await harness.db.settings.deleteSetting(writerKey);
+      }
+    });
+
     it('falls back to the migration-050 per-source row for a source not reconnected since (#5377)', async () => {
       await harness.db.nodes.upsertNode(
         {

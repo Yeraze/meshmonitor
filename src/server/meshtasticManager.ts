@@ -1249,6 +1249,10 @@ class MeshtasticManager implements ISourceManager {
     // this firmware build left out. Undefined until a device reports it, which
     // means "nothing excluded"; see src/server/utils/excludedModules.ts.
     excludedModules?: number;
+    // #6157: DeviceMetadata.ble_address — the BLE MAC the node advertises
+    // ("AA:BB:CC:DD:EE:FF"). Firmware-develop only today; empty/absent on
+    // current releases, left undefined then so the UI shows nothing.
+    bleAddress?: string;
     // #3684: User capability flags from the local node's NodeInfo, surfaced to the
     // frontend Config tab via getCurrentConfig().localNodeInfo.
     isUnmessagable?: boolean;
@@ -6067,7 +6071,7 @@ class MeshtasticManager implements ISourceManager {
     // Note: Local node's public key is extracted from security config when received
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean; hasXeddsa?: boolean; canShutdown?: boolean } | null {
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean; hasXeddsa?: boolean; canShutdown?: boolean; bleAddress?: string } | null {
     return this.localNodeInfo;
   }
 
@@ -6725,6 +6729,16 @@ class MeshtasticManager implements ISourceManager {
     localNodeInfo.excludedModules = excludedModules;
     if (excludedModules !== undefined) {
       logger.debug(`📱 Device reports excluded modules: 0x${excludedModules.toString(16)}`);
+    }
+    // #6157: DeviceMetadata.ble_address (protobufjs camelCases it to bleAddress).
+    // Empty string means the firmware predates the field or advertises no BLE
+    // address — treat it as absent so the UI shows nothing.
+    const bleAddress = typeof metadata.bleAddress === 'string' && metadata.bleAddress
+      ? metadata.bleAddress
+      : undefined;
+    localNodeInfo.bleAddress = bleAddress;
+    if (bleAddress) {
+      logger.debug(`📱 Device reports BLE address: ${bleAddress}`);
     }
     if (this.isLocalNodeBridged()) {
       logger.debug('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
