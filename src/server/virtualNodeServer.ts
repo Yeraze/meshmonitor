@@ -6,6 +6,7 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
+import type { DbMessage } from '../db/types.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { MODEM_PRESET_CHANNEL_NAMES } from '../utils/loraFrequency.js';
 import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
@@ -66,6 +67,18 @@ interface ConnectedClient {
    * app in proxy mode). See hasMqttProxyClient().
    */
   sentMqttProxy?: boolean;
+  // ── Message replay (#6160) ────────────────────────────────────────────────
+  /** True once this client qualifies for replay (not loopback/excluded). Set
+   *  when its first replay runs; only then may it advance the shared mark. */
+  replayTarget?: boolean;
+  /** Replay window start (ms), captured when the replay for this client runs. */
+  replaySince?: number;
+  /** This client's replay finished sending. Gates mark advancement. */
+  replayDone?: boolean;
+  /** A replay is in flight for this client — guards against double-fire. */
+  replayRunning?: boolean;
+  /** Settle-delay timer armed after config_complete; reset by a follow-up. */
+  replayTimer?: NodeJS.Timeout | null;
 }
 
 interface QueuedMessage {
@@ -114,6 +127,29 @@ export class VirtualNodeServer extends EventEmitter {
     8,   // NODEINFO_APP (can trigger config changes)
   ];
 
+  // ── Message replay (#6160) ──────────────────────────────────────────────
+  // Android freezes the Meshtastic app and MeshMonitor drops idle VN clients
+  // after 5 min, so text messages stored meanwhile never reach the app. After
+  // the config handshake we re-send stored text messages since the app's last
+  // sign of life; the app's own packet-id dedup absorbs the overlap. Opt-in
+  // (off by default), confirmed limits below (issue #6160). No LoRa airtime —
+  // replay only travels the local TCP link to the app.
+  private readonly REPLAY_FIRST_TIME_MS = 24 * 60 * 60 * 1000; // no mark yet: last 24 h
+  private readonly REPLAY_MARGIN_MS = 10 * 60 * 1000;          // re-send from lastSeen − 10 min
+  private readonly REPLAY_MAX_MESSAGES = 2000;                 // cap per connection, keep newest
+  private readonly REPLAY_SETTLE_MS = 3000;                    // wait for a follow-up want_config
+  private readonly REPLAY_GAP_MS = 50;                         // pacing between messages
+  private readonly REPLAY_SAVE_EVERY_MS = 60000;               // throttle the persisted mark write
+  // Env-var fallback for the exclude list (scripts, loggers). The typed
+  // `virtualNodeReplayExcludeIps` setting overrides it when non-empty.
+  private readonly REPLAY_ENV_EXCLUDE_IPS = (process.env.VN_REPLAY_EXCLUDE_IPS ?? '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  // Shared across all target clients (same phone shows up on LAN/VPN with
+  // different IPs). ms; null until the first replay completes. Persisted per
+  // source so it survives restarts.
+  private replayLastSeen: number | null = null;
+  private replayLastSaved = 0;
+
   constructor(config: VirtualNodeServerOptions) {
     super();
     this.config = config;
@@ -137,6 +173,9 @@ export class VirtualNodeServer extends EventEmitter {
       logger.warn('Virtual node server already started');
       return;
     }
+
+    // #6160: restore the persisted replay mark before we accept any client.
+    await this.loadReplayMark();
 
     return new Promise((resolve, reject) => {
       this.server = new Server((socket) => this.handleNewClient(socket));
@@ -187,6 +226,10 @@ export class VirtualNodeServer extends EventEmitter {
 
     // Disconnect all clients
     for (const client of this.clients.values()) {
+      if (client.replayTimer) {
+        clearTimeout(client.replayTimer);
+        client.replayTimer = null;
+      }
       client.socket.destroy();
     }
     this.clients.clear();
@@ -253,6 +296,17 @@ export class VirtualNodeServer extends EventEmitter {
     const client = this.clients.get(clientId);
     if (client) {
       this.clients.delete(clientId);
+      // #6160: tear down any pending settle timer. Advance the shared mark to
+      // this client's last activity ONLY if its replay actually finished — a
+      // client that left mid-replay keeps the mark put, so the next connect
+      // replays the whole set again.
+      if (client.replayTimer) {
+        clearTimeout(client.replayTimer);
+        client.replayTimer = null;
+      }
+      if (client.replayTarget && client.replayDone) {
+        void this.saveReplayMark(client.lastActivity.getTime(), true);
+      }
       logger.debug(`📱 Virtual node client disconnected: ${clientId} (${this.clients.size} remaining)`);
 
       // Audit log the disconnection (fire-and-forget async)
@@ -281,6 +335,13 @@ export class VirtualNodeServer extends EventEmitter {
 
     // Update last activity timestamp
     client.lastActivity = new Date();
+
+    // #6160: the app is alive, so keep the shared replay mark current — but
+    // only once this client's own replay has finished. Until then the mark
+    // stays put so a mid-replay write cannot skip the rest of the backlog.
+    if (client.replayTarget && client.replayDone) {
+      void this.saveReplayMark(client.lastActivity.getTime());
+    }
 
     // Append to client's buffer
     client.buffer = Buffer.concat([client.buffer, data]);
@@ -962,6 +1023,7 @@ export class VirtualNodeServer extends EventEmitter {
         if (client) {
           client.lastConfigSentAt = new Date();
           client.lastConfigId = configId;
+          this.scheduleReplay(clientId); // #6160
         }
         return;
       }
@@ -1081,6 +1143,7 @@ export class VirtualNodeServer extends EventEmitter {
       if (client) {
         client.lastConfigSentAt = new Date();
         client.lastConfigId = configId;
+        this.scheduleReplay(clientId); // #6160
       }
     } catch (error) {
       logger.error(`Virtual node: Error sending initial config to ${clientId}:`, error);
@@ -1198,6 +1261,235 @@ export class VirtualNodeServer extends EventEmitter {
       // self-contained like broadcastToClients — a failed delegate write must
       // never throw into the packet-processing path.
       logger.error(`Virtual node: Failed to send proxy frame to ${delegateId}:`, (error as Error).message);
+    }
+  }
+
+  // ── Message replay for the owner's app (#6160) ─────────────────────────────
+  // A phone app is closed/frozen to save battery; on reconnect a real node
+  // hands it the queue it missed. MeshMonitor stores every text message, so
+  // after the config handshake we re-send the ones stored since the app's last
+  // sign of life (minus a 10-min margin). Each goes out with its ORIGINAL
+  // packet id and sender, so the app drops duplicates by itself. The mark is
+  // shared across all target clients (one phone, many IPs on LAN/VPN).
+
+  /** Opt-in master switch (global setting, default off). */
+  private async isReplayEnabled(): Promise<boolean> {
+    try {
+      const raw = await databaseService.settings.getSetting('virtualNodeReplayEnabled');
+      return raw === '1' || raw === 'true';
+    } catch (error) {
+      logger.warn('Virtual node replay: could not read the enable flag:', error);
+      return false;
+    }
+  }
+
+  /** Excluded IPs (scripts, loggers). The typed setting wins over the env var
+   *  when it has any entry; otherwise the env var fallback applies. */
+  private async getReplayExcludedIps(): Promise<string[]> {
+    try {
+      const raw = await databaseService.settings.getSetting('virtualNodeReplayExcludeIps');
+      const fromSetting = (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      return fromSetting.length > 0 ? fromSetting : this.REPLAY_ENV_EXCLUDE_IPS;
+    } catch (error) {
+      logger.warn('Virtual node replay: could not read the exclude list:', error);
+      return this.REPLAY_ENV_EXCLUDE_IPS;
+    }
+  }
+
+  /** Any client except localhost and the excluded IPs (scripts, loggers). */
+  private isReplayTarget(remoteAddress: string | undefined, excludedIps: string[]): boolean {
+    const ip = (remoteAddress || '').replace(/^::ffff:/, '');
+    if (!ip || ip === '127.0.0.1' || ip === '::1') {
+      return false;
+    }
+    return !excludedIps.includes(ip);
+  }
+
+  private replayMarkKey(): string {
+    return `virtualNode.replayLastSeen.${this.config.meshtasticManager.sourceId}`;
+  }
+
+  private async loadReplayMark(): Promise<void> {
+    try {
+      const raw = await databaseService.settings.getSetting(this.replayMarkKey());
+      const n = raw != null ? Number(raw) : NaN;
+      if (Number.isFinite(n) && n > 0) {
+        this.replayLastSeen = n;
+        this.replayLastSaved = n;
+      }
+      logger.info(`📬 Virtual node replay: last sign of life ${this.replayLastSeen ? new Date(this.replayLastSeen).toISOString() : 'none (first replay sends the last 24 h)'}`);
+    } catch (error) {
+      logger.warn('Virtual node replay: could not load the mark:', error);
+    }
+  }
+
+  /** Advance the shared mark; written to the DB at most once a minute unless forced. */
+  private async saveReplayMark(ms: number, force = false): Promise<void> {
+    if (ms > (this.replayLastSeen ?? 0)) {
+      this.replayLastSeen = ms;
+    }
+    const pending = (this.replayLastSeen ?? 0) - this.replayLastSaved;
+    if (pending <= 0 || (!force && pending < this.REPLAY_SAVE_EVERY_MS)) {
+      return;
+    }
+    this.replayLastSaved = this.replayLastSeen ?? 0;
+    try {
+      await databaseService.settings.setSetting(this.replayMarkKey(), String(this.replayLastSeen));
+    } catch (error) {
+      logger.warn('Virtual node replay: could not save the mark:', error);
+    }
+  }
+
+  private computeReplaySince(): number {
+    return this.replayLastSeen
+      ? this.replayLastSeen - this.REPLAY_MARGIN_MS
+      : Date.now() - this.REPLAY_FIRST_TIME_MS;
+  }
+
+  /**
+   * Called after each ConfigComplete. Waits a settle delay in case the app
+   * asks for config again, so we do not replay twice; a follow-up resets it.
+   */
+  private scheduleReplay(clientId: string): void {
+    const client = this.clients.get(clientId);
+    if (!client || client.replayDone) {
+      return;
+    }
+    if (client.replayTimer) {
+      clearTimeout(client.replayTimer);
+    }
+    client.replayTimer = setTimeout(() => {
+      client.replayTimer = null;
+      void this.replayToClient(clientId);
+    }, this.REPLAY_SETTLE_MS);
+  }
+
+  /** Stored text messages only (portnum 1, reactions/replies included); skip
+   *  MeshMonitor's own notes and the app's own sends; DMs only when they
+   *  involve the local node. */
+  private isReplayableMessage(m: DbMessage, localNodeNum: number): boolean {
+    if (Number(m.portnum) !== 1) { // TEXT_MESSAGE_APP (reactions and replies included)
+      return false;
+    }
+    if (!String(m.id).includes('_')) {
+      return false; // MeshMonitor's own notes (e.g. "User info exchange requested"), not mesh packets
+    }
+    const from = Number(m.fromNodeNum) >>> 0;
+    const to = Number(m.toNodeNum) >>> 0;
+    if (from === localNodeNum && m.sourcePath === 'tcp_radio') {
+      return false; // the app already stored its own send
+    }
+    const channel = Number(m.channel);
+    if (channel === -1) {
+      return from === localNodeNum || to === localNodeNum; // DM must involve the local node
+    }
+    return channel >= 0 && channel <= 7;
+  }
+
+  /**
+   * A DM is PKI-encrypted when it involves the local node, the peer has a
+   * public key, and no key mismatch is flagged for that peer. #6166 only set
+   * this on the live broadcast copy; the replay rebuilds each packet from the
+   * stored row, so recompute it here — otherwise Android files replayed DMs
+   * under channel 0 (#6162). Cached per peer for the duration of one run.
+   */
+  private async computePkiEncrypted(
+    m: DbMessage,
+    localNodeNum: number,
+    pkiCache: Map<number, boolean>,
+  ): Promise<boolean> {
+    if (Number(m.channel) !== -1) {
+      return false; // channel messages are never PKI-encrypted DMs
+    }
+    const from = Number(m.fromNodeNum) >>> 0;
+    const to = Number(m.toNodeNum) >>> 0;
+    if (from !== localNodeNum && to !== localNodeNum) {
+      return false; // not a DM with the local node
+    }
+    const peer = from === localNodeNum ? to : from;
+    if (!pkiCache.has(peer)) {
+      const node = await databaseService.nodes.getNode(peer, this.config.meshtasticManager.sourceId);
+      pkiCache.set(peer, !!node?.publicKey && !node.keyMismatchDetected);
+    }
+    return pkiCache.get(peer) ?? false;
+  }
+
+  /** Replay the stored backlog to one client, paced 50 ms apart. */
+  private async replayToClient(clientId: string): Promise<void> {
+    const client = this.clients.get(clientId);
+    if (!client || client.replayDone || client.replayRunning) {
+      return;
+    }
+
+    // Opt-in: do nothing (and never touch the mark) unless the operator turned
+    // it on. Read fresh so a runtime toggle takes effect without a restart.
+    if (!(await this.isReplayEnabled())) {
+      return;
+    }
+
+    // Loopback and excluded IPs are never replay targets and never move the mark.
+    const excludedIps = await this.getReplayExcludedIps();
+    client.replayTarget = this.isReplayTarget(client.socket.remoteAddress, excludedIps);
+    if (!client.replayTarget) {
+      return;
+    }
+
+    client.replayRunning = true;
+    try {
+      const manager = this.config.meshtasticManager;
+      const localNodeInfo = manager.getLocalNodeInfo();
+      if (!localNodeInfo) {
+        logger.warn(`Virtual node replay: no local node info yet, nothing replayed to ${clientId}`);
+        return;
+      }
+      const localNodeNum = Number(localNodeInfo.nodeNum) >>> 0;
+      const since = this.computeReplaySince();
+      client.replaySince = since;
+
+      const rows = await databaseService.messages.getMessagesAfterTimestamp(since, manager.sourceId);
+      let selected = rows.filter((m) => this.isReplayableMessage(m, localNodeNum));
+      if (selected.length > this.REPLAY_MAX_MESSAGES) {
+        selected = selected.slice(-this.REPLAY_MAX_MESSAGES); // keep the newest, preserve order
+      }
+
+      const pkiCache = new Map<number, boolean>();
+      let sent = 0;
+      for (const m of selected) {
+        const current = this.clients.get(clientId);
+        if (!current || current.socket.destroyed) {
+          logger.warn(`Virtual node replay: ${clientId} left after ${sent}/${selected.length} messages; the mark is kept for next time`);
+          return; // replayDone stays false, so the mark is not advanced
+        }
+        const pkiEncrypted = await this.computePkiEncrypted(m, localNodeNum, pkiCache);
+        const data = await meshtasticProtobufService.createFromRadioTextMessage({
+          id: m.id, // original packet id = last '_' segment (#6168)
+          fromNodeNum: Number(m.fromNodeNum) >>> 0,
+          toNodeNum: Number(m.toNodeNum) >>> 0,
+          text: m.text || '',
+          channel: Number(m.channel), // DM (-1) maps to channel 0 inside
+          timestamp: Number(m.timestamp),
+          rxTime: m.rxTime ?? null,
+          rxSnr: m.rxSnr ?? null,
+          rxRssi: m.rxRssi ?? null,
+          hopLimit: m.hopLimit ?? null,
+          replyId: m.replyId ?? null,
+          emoji: m.emoji ?? null,
+          pkiEncrypted,
+        });
+        if (data) {
+          await this.sendToClient(clientId, data);
+          sent++;
+        }
+        await new Promise((resolve) => setTimeout(resolve, this.REPLAY_GAP_MS));
+      }
+
+      client.replayDone = true;
+      void this.saveReplayMark(client.lastActivity.getTime(), true);
+      logger.info(`📬 Virtual node replay: sent ${sent} message(s) stored since ${new Date(since).toISOString()} to ${clientId} (${client.socket.remoteAddress})`);
+    } catch (error) {
+      logger.error(`Virtual node replay: failed for ${clientId}:`, error);
+    } finally {
+      client.replayRunning = false;
     }
   }
 

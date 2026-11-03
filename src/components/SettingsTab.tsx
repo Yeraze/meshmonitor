@@ -244,6 +244,11 @@ interface SettingsDraft {
   // server, not per-source — mirrors the elevation fields above.
   cotFeedEnabled: boolean;
   cotFeedPort: number;
+  // Virtual Node message replay (#6160). Global, opt-in (default off). Same
+  // Category C pattern as the fields above — no SettingsContext home; read
+  // server-side by VirtualNodeServer. Exclude list is a CSV of IPs.
+  virtualNodeReplayEnabled: boolean;
+  virtualNodeReplayExcludeIps: string;
   // Translation settings (global)
   translationEnabled: boolean;
   translationProvider: TranslationProvider;
@@ -595,6 +600,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     cartoApiKey: '',
     cotFeedEnabled: false,
     cotFeedPort: 8088,
+    virtualNodeReplayEnabled: false,
+    virtualNodeReplayExcludeIps: '',
     translationEnabled: false,
     translationProvider: DEFAULT_TRANSLATION_PROVIDER,
     ...emptyTranslationProviderFieldValues(),
@@ -675,6 +682,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // global singleton, no context/prop home, default OFF / port 8088.
   const [initialCotFeedEnabled, setInitialCotFeedEnabled] = useState(false);
   const [initialCotFeedPort, setInitialCotFeedPort] = useState(8088);
+  // Virtual Node message replay (#6160). Same Category C pattern as cotFeed above.
+  const [initialVirtualNodeReplayEnabled, setInitialVirtualNodeReplayEnabled] = useState(false);
+  const [initialVirtualNodeReplayExcludeIps, setInitialVirtualNodeReplayExcludeIps] = useState('');
   // Translation settings (global)
   const [initialTranslationEnabled, setInitialTranslationEnabled] = useState(false);
   const [initialTranslationProvider, setInitialTranslationProvider] = useState<TranslationProvider>(DEFAULT_TRANSLATION_PROVIDER);
@@ -965,6 +975,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('cotFeedPort', cotFeedPort);
           setInitialCotFeedPort(cotFeedPort);
 
+          // Load Virtual Node message replay settings (#6160). Default OFF.
+          const vnReplayOn = settings.virtualNodeReplayEnabled === '1' || settings.virtualNodeReplayEnabled === 'true';
+          updateField('virtualNodeReplayEnabled', vnReplayOn);
+          setInitialVirtualNodeReplayEnabled(vnReplayOn);
+          const vnReplayExcludeIps = typeof settings.virtualNodeReplayExcludeIps === 'string' ? settings.virtualNodeReplayExcludeIps : '';
+          updateField('virtualNodeReplayExcludeIps', vnReplayExcludeIps);
+          setInitialVirtualNodeReplayExcludeIps(vnReplayExcludeIps);
+
           // Load Translation settings
           const translationOn = settings.translationEnabled === 'true' || settings.translationEnabled === '1';
           updateField('translationEnabled', translationOn);
@@ -1106,6 +1124,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       cartoApiKey: initialCartoApiKey,
       cotFeedEnabled: initialCotFeedEnabled,
       cotFeedPort: initialCotFeedPort,
+      virtualNodeReplayEnabled: initialVirtualNodeReplayEnabled,
+      virtualNodeReplayExcludeIps: initialVirtualNodeReplayExcludeIps,
       translationEnabled: initialTranslationEnabled,
       translationProvider: initialTranslationProvider,
       ...initialTranslationFields,
@@ -1129,6 +1149,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
+      initialVirtualNodeReplayEnabled, initialVirtualNodeReplayExcludeIps,
       initialDuctingOverlayEnabled,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
       initialAdsbOpenSkyClientId, initialAdsbOpenSkyClientSecret,
@@ -1347,6 +1368,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialCartoApiKey(d.cartoApiKey.trim());
     setInitialCotFeedEnabled(d.cotFeedEnabled);
     setInitialCotFeedPort(d.cotFeedPort);
+    setInitialVirtualNodeReplayEnabled(d.virtualNodeReplayEnabled);
+    setInitialVirtualNodeReplayExcludeIps(d.virtualNodeReplayExcludeIps.trim());
     setInitialTranslationEnabled(d.translationEnabled);
     setInitialTranslationProvider(d.translationProvider);
     const savedTranslationFields = emptyTranslationProviderFieldValues();
@@ -1463,6 +1486,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         cartoApiKey: draft.cartoApiKey.trim(),
         cotFeedEnabled: draft.cotFeedEnabled ? '1' : '0',
         cotFeedPort: String(draft.cotFeedPort),
+        // Virtual Node message replay (#6160). Opt-in; exclude list trimmed.
+        virtualNodeReplayEnabled: draft.virtualNodeReplayEnabled ? '1' : '0',
+        virtualNodeReplayExcludeIps: draft.virtualNodeReplayExcludeIps.trim(),
         translationEnabled: draft.translationEnabled ? 'true' : 'false',
         translationProvider: draft.translationProvider,
         // Provider fields (#5518). Hand-written: the persistence test reads
@@ -3633,6 +3659,48 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               value={draft.cotFeedPort}
               onChange={(n) => updateField('cotFeedPort', n)}
               className="setting-input"
+            />
+          </div>
+        </div>}
+
+        {show('settings-virtual-node-replay') && mode !== 'source' && <div id="settings-virtual-node-replay" className="settings-section">
+          <h3>{t('settings.vn_replay_section', 'Virtual Node message replay')}</h3>
+          <p className="setting-description">
+            {t(
+              'settings.vn_replay_section_description',
+              'When a phone app reconnects to a Virtual Node, re-send the text messages stored while it was asleep (since its last sign of life, minus a 10-minute overlap). The app drops duplicates by packet id, so no gaps and no duplicates. No LoRa airtime — this only travels the local link to the app. Paced 50 ms apart, up to 2000 newest messages; the first connection sends the last 24 hours.'
+            )}
+          </p>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="virtualNodeReplayEnabled"
+                type="checkbox"
+                checked={draft.virtualNodeReplayEnabled}
+                onChange={(e) => updateField('virtualNodeReplayEnabled', e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.vn_replay_enabled_label', 'Replay missed messages on reconnect')}</span>
+            </label>
+            <span className="setting-description">
+              {t('settings.vn_replay_enabled_description', 'Opt-in; off by default. Applies to every Virtual Node source.')}
+            </span>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="virtualNodeReplayExcludeIps">
+              {t('settings.vn_replay_exclude_ips_label', 'Never replay to these IPs')}
+              <span className="setting-description">
+                {t('settings.vn_replay_exclude_ips_description', 'Comma-separated client IPs that never receive a replay (scripts, loggers). Localhost is always excluded. Overrides the VN_REPLAY_EXCLUDE_IPS environment variable when set.')}
+              </span>
+            </label>
+            <input
+              id="virtualNodeReplayExcludeIps"
+              type="text"
+              className="setting-input"
+              placeholder="192.168.1.50, 10.0.0.9"
+              disabled={!draft.virtualNodeReplayEnabled}
+              value={draft.virtualNodeReplayExcludeIps}
+              onChange={(e) => updateField('virtualNodeReplayExcludeIps', e.target.value)}
             />
           </div>
         </div>}
