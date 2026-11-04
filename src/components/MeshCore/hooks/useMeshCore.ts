@@ -25,6 +25,7 @@ import { useToast } from '../../ToastContainer';
 import { isTxDisabledBody } from '../../../utils/txDisabled';
 import { parseJsonResponse } from '../../../utils/parseJsonResponse';
 import { buildOptimisticReaction } from '../meshcoreReactionClient';
+import { mergeMeshCoreHeardBy } from '../../../utils/meshcoreHeardBy';
 import { createNeighboursFetchActions, type MeshCoreNeighboursFetchActions } from './meshcoreNeighboursFetchApi';
 import type { MeshCoreAdvertMode } from '../../../types/meshcoreAdvert';
 import type {
@@ -656,6 +657,16 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const [nodes, setNodes] = useState<MeshCoreNode[]>([]);
   const [contacts, setContacts] = useState<MeshCoreContact[]>([]);
   const [messages, setMessages] = useState<MeshCoreMessage[]>([]);
+  // Keep relay pushes even if their message has not loaded yet, and preserve
+  // them across HTTP responses that were captured before the push arrived.
+  const heardByRef = useRef(new Map<string, MeshCoreMessage['heardBy']>());
+  useEffect(() => { heardByRef.current.clear(); }, [sourceId]);
+  const withKnownHeardBy = useCallback((message: MeshCoreMessage): MeshCoreMessage => {
+    const heardBy = mergeMeshCoreHeardBy(heardByRef.current.get(message.id), message.heardBy);
+    if (!heardBy?.length) return message;
+    heardByRef.current.set(message.id, heardBy);
+    return { ...message, heardBy };
+  }, []);
   // Reaction id → target id, for reactions resolved after they were stored
   // (#5759). Views that hold paged history in their own state read this map,
   // since the hook cannot patch rows it does not own.
@@ -801,11 +812,11 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     try {
       const response = await csrfFetch(`${mcPrefix}/messages?limit=100`);
       const data = await parseJsonResponse(response);
-      if (data.success) setMessages(data.data ?? []);
+      if (data.success) setMessages((data.data ?? []).map(withKnownHeardBy));
     } catch (_err) {
       console.error('Failed to fetch meshcore messages:', _err);
     }
-  }, [enabled, mcPrefix, csrfFetch]);
+  }, [enabled, mcPrefix, csrfFetch, withKnownHeardBy]);
 
   // Single-call initial load. Returns status, contacts, nodes, messages and
   // a seqCursor (newest message timestamp) for reconnect catch-up. Replaces
@@ -823,7 +834,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       contactsRef.current = new Map(stampedContacts.map((c) => [c.publicKey, c]));
       setContacts(stampedContacts);
       setNodes(snap.nodes ?? []);
-      setMessages(snap.messages ?? []);
+      setMessages((snap.messages ?? []).map(withKnownHeardBy));
       seqCursorRef.current = snap.seqCursor ?? 0;
       setMeshCoreNodes(mapContactsToNodes(stampedContacts));
       return snap.status?.connected ?? false;
@@ -831,7 +842,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       console.error('Failed to load meshcore snapshot:', _err);
       return false;
     }
-  }, [enabled, mcPrefix, csrfFetch, setMeshCoreNodes, stampLocal]);
+  }, [enabled, mcPrefix, csrfFetch, setMeshCoreNodes, stampLocal, withKnownHeardBy]);
 
   useEffect(() => {
     connectedRef.current = status?.connected ?? false;
@@ -894,7 +905,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         if (enriched.expectedAckCrc && enriched.estTimeout) {
           startAckTimeout(enriched.expectedAckCrc, enriched.estTimeout);
         }
-        return [...prev, enriched];
+        return [...prev, withKnownHeardBy(enriched)];
       });
       if (msg.timestamp > seqCursorRef.current) seqCursorRef.current = msg.timestamp;
     };
@@ -956,7 +967,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
               for (const m of additions) {
                 if (m.timestamp > seqCursorRef.current) seqCursorRef.current = m.timestamp;
               }
-              return [...prev, ...additions];
+              return [...prev, ...additions.map(withKnownHeardBy)];
             });
           }
         } catch (_err) {
@@ -1032,15 +1043,18 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
 
     // Channel "heard repeaters" (#3700): a repeater re-flooded one of our
     // outgoing channel messages and the server correlated the self-echo. The
-    // event carries the current full heard-by set, so we replace state by id.
+    // Remember the observation before updating state: the row may still be
+    // loading, and an older HTTP response must not erase its relay evidence.
     const onChannelHeard = (evt: {
       sourceId: string;
       id: string;
       heardBy: Array<{ hash: string; name?: string | null; snr?: number | null; hops?: number | null }>;
     }) => {
       if (evt.sourceId !== sourceId) return;
+      const heardBy = mergeMeshCoreHeardBy(heardByRef.current.get(evt.id), evt.heardBy);
+      heardByRef.current.set(evt.id, heardBy);
       setMessages(prev => prev.map(m =>
-        m.id === evt.id ? { ...m, heardBy: evt.heardBy } : m,
+        m.id === evt.id ? withKnownHeardBy(m) : m,
       ));
     };
 
@@ -1132,7 +1146,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       socket.off('meshcore:channel-heard', onChannelHeard);
       socket.io.off('reconnect', onReconnect);
     };
-  }, [enabled, sourceId, socket, mcPrefix, csrfFetch, setMeshCoreNodes, recomputeNodes, stampLocal]);
+  }, [enabled, sourceId, socket, mcPrefix, csrfFetch, setMeshCoreNodes, recomputeNodes, stampLocal, withKnownHeardBy]);
 
   // Ignore / Block (#5408): the ignored flag is computed by the server at read
   // time, so reload the message pool whenever this source's lists change —
