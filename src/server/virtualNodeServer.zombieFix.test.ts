@@ -440,3 +440,96 @@ describe('VirtualNodeServer — removeByNodenum ack-and-drop (issue #2602)', () 
     expect(createFakeRoutingAckMock).not.toHaveBeenCalled();
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// 3. addContact ack-and-drop (issue #6163)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal toRadio object the way meshtasticProtobufService.parseToRadio
+ * would return it for an ADMIN_APP packet carrying addContact. Mirrors
+ * makeRemoveByNodenumPacket above; only the admin payload semantics differ
+ * (decodeAdminMessage is mocked, so these bytes are never actually parsed).
+ */
+function makeAddContactPacket(opts: {
+  packetId?: number;
+  fromNum?: number;
+  toNum?: number;
+} = {}) {
+  return {
+    packet: {
+      id: opts.packetId ?? 0xdead_beef,
+      from: opts.fromNum ?? 0xaa00aa00,
+      to: opts.toNum ?? 0xff_ff_ff_ff,
+      decoded: {
+        portnum: 6, // ADMIN_APP
+        payload: new Uint8Array([5, 6, 7, 8]),
+      },
+    },
+  };
+}
+
+describe('VirtualNodeServer — addContact ack-and-drop (issue #6163)', () => {
+  beforeEach(() => {
+    parseToRadioMock.mockReset();
+    decodeAdminMessageMock.mockReset();
+    createFakeRoutingAckMock.mockReset();
+    createFakeRoutingAckMock.mockResolvedValue(new Uint8Array([0xa, 0xc, 0xc]));
+    normalizePortNumMock.mockClear();
+    normalizePortNumMock.mockImplementation((n: any) => (typeof n === 'number' ? n : 0));
+  });
+
+  it('blocks addContact (never forwards to the physical node) and acks the requesting client', async () => {
+    parseToRadioMock.mockResolvedValue(makeAddContactPacket({ packetId: 0xdead_beef, fromNum: 0xaa00aa00 }));
+    // addContact carries a SharedContact protobuf; the exact shape is irrelevant
+    // here — the guard only checks that `addContact` is neither undefined nor null.
+    decodeAdminMessageMock.mockReturnValue({ addContact: { publicKey: new Uint8Array([1, 2, 3]) } });
+
+    const fakeMgr = makeFakeManager('src-1', 0x11223344);
+    const vn = new VirtualNodeServer({
+      port: 4503,
+      meshtasticManager: fakeMgr,
+      allowAdminCommands: false, // addContact is blocked in the default (secure) mode
+    });
+    const { writes } = attachFakeClient(vn, 'client-1');
+
+    await (vn as any).handleClientMessage('client-1', new Uint8Array([0]));
+
+    // A routing ack was fabricated for the requesting client so the app's
+    // sendAdminAwait doesn't stall its full 30 s routing-ack timeout.
+    expect(createFakeRoutingAckMock).toHaveBeenCalledTimes(1);
+    const [requestId, requesterNodeNum, ackFromNodeNum] = createFakeRoutingAckMock.mock.calls[0];
+    // The ack's requestId must match the original ToRadio packet id.
+    expect(requestId).toBe(0xdead_beef);
+    expect(requesterNodeNum).toBe(0xaa00aa00);
+    expect(ackFromNodeNum).toBe(0x11223344);
+
+    // The fabricated ack must have been written back to *this* client's socket.
+    expect(writes.length).toBeGreaterThanOrEqual(1);
+
+    // Critically: the PKI-corrupting addContact must NOT reach the physical node.
+    expect((fakeMgr as Mock & any).processIncomingData).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fabricate an ack for a non-addContact admin message (e.g. setFavoriteNode)', async () => {
+    parseToRadioMock.mockResolvedValue(makeAddContactPacket({ packetId: 7 }));
+    // setFavoriteNode is handled by the existing favorite intercept, not the
+    // addContact ack-and-drop path. The new path must leave it alone.
+    decodeAdminMessageMock.mockReturnValue({ setFavoriteNode: 999 });
+
+    const fakeMgr = makeFakeManager();
+    const vn = new VirtualNodeServer({
+      port: 4503,
+      meshtasticManager: fakeMgr,
+      allowAdminCommands: false,
+    });
+    attachFakeClient(vn);
+
+    await (vn as any).handleClientMessage('client-1', new Uint8Array([0])).catch(() => {
+      // The favorite intercept path may touch database methods that aren't
+      // fully mocked here — fine, we only assert the addContact path didn't fire.
+    });
+
+    expect(createFakeRoutingAckMock).not.toHaveBeenCalled();
+  });
+});
