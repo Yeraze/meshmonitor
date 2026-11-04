@@ -40,6 +40,7 @@ const getMessage = vi.fn();
 const updateDestinationPosition = vi.fn().mockResolvedValue(undefined);
 const insertTelemetryBatch = vi.fn().mockResolvedValue(0);
 const replacePaths = vi.fn().mockResolvedValue(undefined);
+const pruneInterfacesNotIn = vi.fn().mockResolvedValue(undefined);
 const getSettingForSource = vi.fn().mockResolvedValue(null);
 const setSourceSetting = vi.fn().mockResolvedValue(undefined);
 
@@ -48,6 +49,7 @@ vi.mock('../services/database.js', () => ({
     reticulum: {
       upsertDestination: (...args: unknown[]) => upsertDestination(...args),
       upsertInterface: (...args: unknown[]) => upsertInterface(...args),
+      pruneInterfacesNotIn: (...args: unknown[]) => pruneInterfacesNotIn(...args),
       upsertMessage: (...args: unknown[]) => upsertMessage(...args),
       updateMessageState: (...args: unknown[]) => updateMessageState(...args),
       renameMessageId: (...args: unknown[]) => renameMessageId(...args),
@@ -151,6 +153,7 @@ describe('ReticulumManager DB persistence', () => {
     upsertDestination.mockClear();
     upsertInterface.mockClear();
     insertTelemetryBatch.mockClear();
+    pruneInterfacesNotIn.mockClear();
   });
 
   it('announce -> upsertDestination with mapped fields (aspects joined, q renamed to quality)', async () => {
@@ -274,6 +277,39 @@ describe('ReticulumManager DB persistence', () => {
     // @ts-expect-error - exercising the private handler directly
     await manager.handleInterfaceStats(makeInterfaceStats([IFACE_A]));
     expect(insertTelemetryBatch).not.toHaveBeenCalled();
+  });
+
+  it('interface_stats -> prunes interfaces absent from the latest snapshot (#6121)', async () => {
+    const manager = new ReticulumManager('src-a');
+    const ifaceB: InterfaceStatsEntry = { ...IFACE_A, name: 'AutoInterface' };
+
+    // Poll 1 reports two interfaces.
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleInterfaceStats(makeInterfaceStats([IFACE_A, ifaceB]));
+    expect(pruneInterfacesNotIn).toHaveBeenLastCalledWith('src-a', ['TCP Client', 'AutoInterface']);
+
+    // Poll 2 drops AutoInterface — the prune is called with only the surviving
+    // name, so the repo deletes the now-absent AutoInterface row for this source.
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleInterfaceStats(makeInterfaceStats([IFACE_A]));
+    expect(pruneInterfacesNotIn).toHaveBeenLastCalledWith('src-a', ['TCP Client']);
+  });
+
+  it('interface_stats -> prune runs even on the first poll, when no throughput rows are produced (#6121)', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleInterfaceStats(makeInterfaceStats([IFACE_A]));
+    // First poll writes no telemetry history, but the prune must still run.
+    expect(insertTelemetryBatch).not.toHaveBeenCalled();
+    expect(pruneInterfacesNotIn).toHaveBeenCalledTimes(1);
+    expect(pruneInterfacesNotIn).toHaveBeenCalledWith('src-a', ['TCP Client']);
+  });
+
+  it('interface_stats -> an empty snapshot prunes all interfaces for the source (#6121)', async () => {
+    const manager = new ReticulumManager('src-a');
+    // @ts-expect-error - exercising the private handler directly
+    await manager.handleInterfaceStats(makeInterfaceStats([]));
+    expect(pruneInterfacesNotIn).toHaveBeenCalledWith('src-a', []);
   });
 
   it('a second poll with advanced counters writes throttled tx/rx-rate rows', async () => {

@@ -31,6 +31,7 @@ from meshmonitor_rns_bridge.rns_manager import (
     RemoteManagementDeniedError,
     RNSManager,
     RNSStartupError,
+    EXCLUDED_INTERFACE_TYPES,
     _build_rnode_ifconf,
     _jsonify_field_value,
     _load_or_create_lxmf_identity,
@@ -39,6 +40,15 @@ from meshmonitor_rns_bridge.rns_manager import (
     _normalize_interface,
     _sanitize_lxmf_fields,
 )
+
+
+def test_excluded_interface_types_includes_autointerface_peer():
+    # #6121: AutoInterfacePeer duplicates its parent AutoInterface's counters
+    # and renders as a confusing `None` card, so it is excluded alongside the
+    # shared-instance plumbing interfaces.
+    assert "AutoInterfacePeer" in EXCLUDED_INTERFACE_TYPES
+    assert "LocalServerInterface" in EXCLUDED_INTERFACE_TYPES
+    assert "LocalClientInterface" in EXCLUDED_INTERFACE_TYPES
 
 
 # --------------------------------------------------------------------------
@@ -897,6 +907,10 @@ def test_get_remote_status_happy_path_normalizes_status_and_path():
                     "rxb": 362,
                 },
                 {"type": "LocalClientInterface", "short_name": "local", "status": True},
+                # AutoInterfacePeer (#6121): a peer sub-interface that duplicates
+                # its parent AutoInterface's counters and renders as a confusing
+                # `None` card. Must not survive normalization.
+                {"type": "AutoInterfacePeer", "short_name": None, "status": True},
             ]
         },
         2,
@@ -914,9 +928,13 @@ def test_get_remote_status_happy_path_normalizes_status_and_path():
 
     assert result["ok"] is True
     # WP0 correction #2's plumbing-interface filter applies to the remote's
-    # interfaces too -- LocalClientInterface must not survive normalization.
+    # interfaces too -- LocalClientInterface and AutoInterfacePeer (#6121) must
+    # not survive normalization.
     assert len(result["status"]["interfaces"]) == 1
     assert result["status"]["interfaces"][0]["name"] == "TCP Server Interface"
+    assert "AutoInterfacePeer" not in {
+        i["type"] for i in result["status"]["interfaces"]
+    }
     assert result["status"]["interfaces"][0]["online"] is True
     assert result["status"]["linkCount"] == 2
     assert result["path"][0]["destinationHash"] == "a1b2c3d4"

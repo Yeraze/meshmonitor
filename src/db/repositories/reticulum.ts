@@ -16,7 +16,7 @@
  * the full column rationale (rssi/snr/quality included, position/telemetry
  * and LoRa-parameter columns excluded — those are Phase 3).
  */
-import { and, asc, desc, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { SettingsRepository } from './settings.js';
@@ -724,6 +724,46 @@ export class ReticulumRepository extends BaseRepository {
       .from(reticulumInterfaces)
       .where(this.withSourceScope(reticulumInterfaces, sourceId));
     return Number(rows[0]?.count ?? 0);
+  }
+
+  /**
+   * Prune interface rows for `sourceId` that are absent from the latest
+   * `interface_stats` snapshot. `interface_stats` is a full snapshot each poll
+   * (like `path_table`), so an interface disabled in the RNS config simply
+   * stops appearing — but {@link upsertInterface} only ever upserts the names
+   * it is given, so a removed interface's last status would otherwise linger
+   * forever (issue #6121). This mirrors {@link replacePaths}'s snapshot
+   * semantics, but as a *prune* rather than a delete-then-reinsert: the
+   * per-interface upsert is kept so radio-config fields written elsewhere
+   * (see {@link setInterfaceRadioConfig}) survive, and only the names no longer
+   * present are removed.
+   *
+   * `keepNames` is the set of interface names in the current snapshot. An empty
+   * `keepNames` deletes ALL rows for the source (the snapshot reports zero
+   * interfaces) — `notInArray` against an empty list is skipped to avoid any
+   * dialect's invalid-SQL edge case, and a plain source-scoped delete is used
+   * instead. Fail-closed on a missing/empty `sourceId`, so this can never touch
+   * another source's rows.
+   */
+  async pruneInterfacesNotIn(sourceId: string, keepNames: string[]): Promise<void> {
+    if (!sourceId) {
+      throw new Error('ReticulumRepository.pruneInterfacesNotIn requires a sourceId');
+    }
+    const { reticulumInterfaces } = this.tables;
+
+    if (keepNames.length === 0) {
+      await this.db
+        .delete(reticulumInterfaces)
+        .where(this.withSourceScope(reticulumInterfaces, sourceId));
+      return;
+    }
+
+    await this.db
+      .delete(reticulumInterfaces)
+      .where(and(
+        this.withSourceScope(reticulumInterfaces, sourceId),
+        notInArray(reticulumInterfaces.interfaceName, keepNames),
+      ));
   }
 
   /** Get a single interface row scoped by `(sourceId, interfaceName)`. */

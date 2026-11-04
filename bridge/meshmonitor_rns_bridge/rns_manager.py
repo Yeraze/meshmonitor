@@ -57,7 +57,13 @@ DEFAULT_REMOTE_STATUS_TIMEOUT_S = 15.0
 PROBE_SIZE_BYTES = 16  # matches RNS.Utilities.rnprobe's DEFAULT_PROBE_SIZE
 
 # WP0 §6.2: RNS's own shared-instance plumbing interfaces, never real user interfaces.
-EXCLUDED_INTERFACE_TYPES = frozenset({"LocalServerInterface", "LocalClientInterface"})
+# `AutoInterfacePeer` (issue #6121) is a per-peer sub-interface of an `AutoInterface`:
+# it duplicates its parent's byte counters and surfaces as a confusing `None`-named
+# card, so it is filtered out too — the parent `AutoInterface` already reports the
+# real traffic.
+EXCLUDED_INTERFACE_TYPES = frozenset(
+    {"LocalServerInterface", "LocalClientInterface", "AutoInterfacePeer"}
+)
 
 # Well-known aspect paths we can positively identify without guessing. Announces for
 # any other app/aspect combination still come through (the wildcard handler receives
