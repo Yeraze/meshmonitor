@@ -12,6 +12,7 @@ vi.mock('../services/database.js', () => ({
 vi.mock('./utils/okToMqtt.js', () => ({
   allowsUplink: () => true,
   resolveOkToMqttForEnvelope: async () => 'allowed',
+  isOwnMapReport: () => false,
 }));
 vi.mock('./mqttIngestion.js', () => ({
   ingestServiceEnvelope: vi.fn().mockResolvedValue({ ingested: true }),
