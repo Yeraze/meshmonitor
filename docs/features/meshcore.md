@@ -369,7 +369,7 @@ This view is only available when the page is mounted from a per-source URL — t
 Where you change the device's settings:
 
 - **Identity** — Name and advert
-- **Location** — Position and advert-location policy
+- **Location** — Position and advert-location policy. Type the coordinates or click the map to drop a pin (drag it to move it, or use **Use this device's location**), then press **Save location**.
 - **Radio** — Frequency, bandwidth, spreading factor, coding rate (now with a preset selector)
 - **Telemetry mode** — Which telemetry classes the device emits (see [Telemetry Modes](#telemetry-modes))
 - **Default path hash size** and **Default region / scope** — separate sections after Telemetry
