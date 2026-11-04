@@ -7437,6 +7437,8 @@
   "meshcore.channels.unnamed": "Channel {{idx}}",
   "meshcore.channels.unread_badge": "Unread messages",
   "meshcore.channels.unread_total_title": "{{count}} channel(s) with unread messages",
+  "meshcore.channels.virtual_tag": "(Virtual)",
+  "meshcore.channels.virtual_title": "Decrypted with a Channel Database key; not set on this radio (receive-only)",
   "forwarding.title": "Forwarding",
   "forwarding.channel_n": "Channel {{index}}",
   "forwarding.count_one": "{{count}} rule",
