@@ -168,7 +168,8 @@ const featuresSidebar = [
       { text: 'MeshCore Overview', link: '/features/meshcore' },
       { text: 'Receive-Only Mode', link: '/features/meshcore-receive-only' },
       { text: 'Analyzer Observer', link: '/features/meshcore-analyzer-observer' },
-      { text: 'MQTT Ingest', link: '/features/meshcore-mqtt-ingest' }
+      { text: 'MQTT Ingest', link: '/features/meshcore-mqtt-ingest' },
+      { text: 'MeshWars', link: '/features/meshwars' }
     ]
   },
   {

@@ -60,6 +60,7 @@ import {
 } from './search/configSections';
 import PositionEstimationSection from './PositionEstimationSection';
 import AutoEnrichmentSection from './AutoEnrichmentSection';
+import MeshWarsSection from './MeshWarsSection';
 import MeshIssuesSection from './MeshIssuesSection';
 import TapbackEmojiSettings from './TapbackEmojiSettings';
 import EmbedSettings from './settings/EmbedSettings';
@@ -3601,6 +3602,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             />
           </div>
         </div>}
+
+        {show('settings-meshwars') && isAdmin && (
+        <div id="settings-meshwars" className="settings-section">
+          <MeshWarsSection baseUrl={baseUrl} />
+        </div>
+        )}
 
         {show('settings-translation') && isAdmin && (
           <TranslationConfigSection

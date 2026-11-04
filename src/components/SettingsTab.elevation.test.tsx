@@ -173,6 +173,7 @@ vi.mock('./CustomThemeManagement', () => ({ CustomThemeManagement: () => null })
 vi.mock('./CustomTilesetManager', () => ({ CustomTilesetManager: () => null }));
 vi.mock('./LanguageSelector', () => ({ LanguageSelector: () => null }));
 vi.mock('./PositionEstimationSection', () => ({ default: () => null }));
+vi.mock('./MeshWarsSection', () => ({ default: () => null }));
 vi.mock('./TapbackEmojiSettings', () => ({ default: () => null }));
 vi.mock('./settings/EmbedSettings', () => ({ default: () => null }));
 vi.mock('./configuration/DefaultMapCenterPicker', () => ({ DefaultMapCenterPicker: () => null }));
