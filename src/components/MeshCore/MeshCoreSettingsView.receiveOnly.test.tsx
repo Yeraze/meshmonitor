@@ -41,6 +41,8 @@ vi.mock('./MeshCoreMessageFiltersSection', () => ({ MeshCoreMessageFiltersSectio
 vi.mock('./MeshCoreContactSyncSection', () => ({ MeshCoreContactSyncSection: () => null }));
 // Loads its own settings on mount (#5759); stubbed so the call counts below stay about receive-only.
 vi.mock('./MeshCoreReactionsSection', () => ({ MeshCoreReactionsSection: () => null }));
+// Loads its own setting on mount (#6178); stubbed so the call counts stay about receive-only.
+vi.mock('./MeshCoreRequiredRepeaterSection', () => ({ MeshCoreRequiredRepeaterSection: () => null }));
 vi.mock('./MeshCoreNodeDisplaySection', () => ({
   MeshCoreNodeDisplaySection: () => null,
 }));
@@ -79,6 +81,7 @@ function renderView(
       actions={makeActions(overrides)}
       baseUrl=""
       sourceId="src-a"
+      contacts={[]}
       receiveOnly={receiveOnly}
       {...props}
     />,

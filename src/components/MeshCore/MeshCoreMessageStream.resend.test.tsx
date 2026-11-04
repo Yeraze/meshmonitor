@@ -169,6 +169,53 @@ describe('MeshCoreMessageStream — resend (#5512)', () => {
   });
 });
 
+describe('MeshCoreMessageStream — Required Repeater gate (#6178)', () => {
+  const REQ = 'b'.repeat(64);
+  const OTHER = 'c'.repeat(64);
+  const contacts = [
+    { publicKey: REQ, advType: 2, advName: 'Backbone' },
+    { publicKey: OTHER, advType: 2, advName: 'Nearby' },
+  ];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0 + 31_000);
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const renderRequired = (messages: MeshCoreMessage[]) =>
+    render(
+      <MeshCoreMessageStream
+        messages={messages}
+        selfPublicKey={SELF}
+        contacts={contacts}
+        requiredRepeaterPublicKey={REQ}
+        onSend={async () => true}
+        onResendMessage={vi.fn(async () => null)}
+      />,
+    );
+
+  it('keeps Resend when only a DIFFERENT repeater relayed it', () => {
+    renderRequired([sent({ heardBy: [{ hash: 'cc', name: 'Nearby', snr: 3 }] })]);
+    const btn = screen.queryByRole('button', { name: 'Resend' });
+    expect(btn).not.toBeNull();
+    // Tooltip explains the required repeater has not relayed it yet.
+    expect(btn!.getAttribute('title')).toContain('Backbone');
+  });
+
+  it('hides Resend once the REQUIRED repeater is uniquely heard', () => {
+    renderRequired([sent({ heardBy: [{ hash: 'bb', name: 'Backbone', snr: 3 }] })]);
+    expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull();
+  });
+
+  it('keeps Resend (default tooltip) when no repeater has been heard yet', () => {
+    renderRequired([sent()]);
+    const btn = screen.queryByRole('button', { name: 'Resend' });
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('title')).not.toContain('Backbone');
+  });
+});
+
 describe('resendAvailability (#5512)', () => {
   it('distinguishes never / wait / ready', () => {
     expect(resendAvailability(sent(), SELF, T0 + 31_000).kind).toBe('ready');

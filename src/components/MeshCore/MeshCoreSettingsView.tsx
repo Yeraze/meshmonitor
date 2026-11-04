@@ -15,6 +15,8 @@ import { MeshCoreIgnoredNodesSection } from './MeshCoreIgnoredNodesSection';
 import { MeshCoreMessageFiltersSection } from './MeshCoreMessageFiltersSection';
 import { MeshCoreContactSyncSection } from './MeshCoreContactSyncSection';
 import { MeshCoreReactionsSection } from './MeshCoreReactionsSection';
+import { MeshCoreRequiredRepeaterSection } from './MeshCoreRequiredRepeaterSection';
+import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
 /**
  * MeshCoreSettingsView — what MeshMonitor stores and does for this MeshCore
@@ -44,6 +46,9 @@ interface MeshCoreSettingsViewProps {
   baseUrl: string;
   /** Source UUID — passed through to MeshCoreNodeDisplaySection (#4412 Phase 4 WP2). */
   sourceId: string;
+  /** This source's contacts — the Required Repeater picker (#6178) lists the
+   *  relays among them. */
+  contacts: MeshCoreContact[];
   /** True when this MeshCore source is in strict receive-only mode (#4547
    *  Phase 2). Plumbed here in WP1; WP2 wires the toggle itself plus the
    *  gating of Send advert / Discover ×3 / Discover regions. */
@@ -61,6 +66,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   actions,
   baseUrl,
   sourceId,
+  contacts,
   receiveOnly = false,
   canOpenDeviceConfiguration = true,
   onOpenDeviceConfiguration,
@@ -293,6 +299,12 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
         baseUrl={baseUrl}
         sourceId={sourceId}
         onOutboundChanged={() => { void actions.refreshStatus(); }}
+      />
+
+      <MeshCoreRequiredRepeaterSection
+        baseUrl={baseUrl}
+        sourceId={sourceId}
+        contacts={contacts}
       />
 
       {/* Radio contact list sync and the device actions live on Device
