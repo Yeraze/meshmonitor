@@ -51,11 +51,18 @@ export const MIN_FORWARD_INTERVAL_MS = 5 * 60_000;
 /** How long to keep collecting repeaters for one message before sending. */
 export const COLLECT_WINDOW_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 10_000;
+/** How long the cached on/off + source settings are trusted before a re-read. */
+export const CONFIG_CACHE_MS = 60_000;
 
 export interface HeardRepeater {
   hash: string;
   name?: string | null;
   snr?: number | null;
+  /**
+   * Position on the echo's relay path (#6001): 1 = heard our transmission
+   * directly, 2+ = further along the flood. null/absent = unknown.
+   */
+  hops?: number | null;
 }
 
 export interface MeshWarsPing {
@@ -81,7 +88,10 @@ export interface MeshWarsStatus {
 
 /**
  * Build a MeshWars ping, or null when the radio has no position or key or
- * nothing heard the message. `heard_repeats` is MeshMapper's
+ * no repeater heard the message directly. Only repeaters with `hops === 1`
+ * count: a repeater further along the flood heard a relay, not the radio, so
+ * reporting it would claim reach the player doesn't have from this square.
+ * `heard_repeats` is MeshMapper's
  * "id(snr),id(snr)" string; a repeater with no SNR gets 0, since MeshWars
  * ignores an entry without the parenthesis and SNR plays no part in scoring.
  */
@@ -99,6 +109,7 @@ export function buildPing(
   const seen = new Set<string>();
   const entries: string[] = [];
   for (const r of heardBy) {
+    if (r.hops !== 1) continue;
     const id = (r.hash || '').trim().toLowerCase();
     if (!/^[0-9a-f]+$/.test(id) || seen.has(id)) continue;
     seen.add(id);
@@ -142,12 +153,17 @@ class MeshWarsForwarder {
   private lastResult: MeshWarsStatus['lastResult'] = null;
   private forwardedCount = 0;
   private skippedCount = 0;
+  /** Source MeshWars is on for, or null when off. Cached so events skip early. */
+  private activeSourceId: string | null = null;
+  private configReadAt = 0;
+  private configRefresh: Promise<void> | null = null;
 
   /** Subscribe to heard-repeater events. Idempotent. */
   start(): void {
     if (this.started) return;
     this.started = true;
     dataEventEmitter.on('data', this.onEvent);
+    void this.refreshConfig();
     logger.debug('[MeshWars] forwarder started');
   }
 
@@ -160,10 +176,41 @@ class MeshWarsForwarder {
     this.pending.clear();
   }
 
+  /**
+   * Re-read whether MeshWars is on and for which source. Called on start and
+   * after a settings save or reset; also re-run lazily once the cache is older
+   * than CONFIG_CACHE_MS, so a restore or other write is picked up too.
+   */
+  refreshConfig(): Promise<void> {
+    if (this.configRefresh) return this.configRefresh;
+    this.configRefresh = (async () => {
+      try {
+        const enabled = (await this.setting(MESHWARS_SETTINGS.enabled)) === 'true';
+        const sourceId = (await this.setting(MESHWARS_SETTINGS.sourceId)) ?? '';
+        this.activeSourceId = enabled && sourceId ? sourceId : null;
+        this.configReadAt = Date.now();
+        if (this.activeSourceId === null) {
+          // Turned off: drop anything still collecting.
+          for (const t of this.timers) clearTimeout(t);
+          this.timers.clear();
+          this.pending.clear();
+        }
+      } catch (e) {
+        logger.debug(`[MeshWars] settings read failed: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        this.configRefresh = null;
+      }
+    })();
+    return this.configRefresh;
+  }
+
   private onEvent = (event: DataEvent): void => {
     if (event.type !== 'meshcore:channel-heard') return;
     const data = event.data as { id?: string; heardBy?: HeardRepeater[] } | undefined;
     if (!data?.id || !Array.isArray(data.heardBy) || !event.sourceId) return;
+    if (Date.now() - this.configReadAt > CONFIG_CACHE_MS) void this.refreshConfig();
+    // Off, or on for another source: no pending entry, no timer.
+    if (event.sourceId !== this.activeSourceId) return;
     this.noteHeard(event.sourceId, data.id, data.heardBy, event.timestamp ?? Date.now());
   };
 

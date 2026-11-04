@@ -1367,6 +1367,7 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     }
 
     await databaseService.settings.setSettings(filteredSettings);
+    if (Object.values(MESHWARS_SETTINGS).some((k) => k in filteredSettings)) void meshwarsForwarder.refreshConfig();
 
     // ─── Side effects ───────────────────────────────────────────────────
     // PKI DM decryption master switch (#3441): invalidate the cached flag, and
@@ -1733,6 +1734,7 @@ router.delete('/', requirePermission('settings', 'write'), async (req: Request, 
     const writable = await listPermittedSourceIds(req.user, 'settings', 'write');
     if (writable === 'all') {
       await databaseService.settings.deleteAllSettings();
+      void meshwarsForwarder.refreshConfig();
     } else {
       await databaseService.settings.deleteGlobalAndSourceSettings(writable);
     }
