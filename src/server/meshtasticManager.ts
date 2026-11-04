@@ -771,6 +771,10 @@ class MeshtasticManager implements ISourceManager {
   private static readonly MANUAL_RESYNC_COOLDOWN_MS = 30_000;
   private static readonly MANUAL_RESYNC_WATCHDOG_MS = 120_000;
   private manualResyncInFlight = false;
+  /** #6161: until this time, config-burst FromRadio types are not relayed to virtual node clients. */
+  private vnConfigRelaySuppressedUntil = 0;
+  private static readonly VN_CONFIG_RELAY_SUPPRESS_MS = 120000;
+  private static readonly VN_CONFIG_BURST_TYPES = new Set(['myInfo', 'metadata', 'config', 'moduleConfig', 'nodeInfo']);
   private manualResyncLastAt: number | null = null;
   private manualResyncWatchdog: NodeJS.Timeout | null = null;
   // Latches across the next disconnect/reconnect so recovery skips the
@@ -2907,6 +2911,11 @@ class MeshtasticManager implements ISourceManager {
     if (!this.transport) {
       throw new Error('Transport not initialized');
     }
+
+    // #6161: the answer to this request is a config burst (my_info, metadata,
+    // config, moduleConfig, node_info...) that virtual node clients never asked
+    // for. Stop relaying those types until configComplete (bounded by a deadline).
+    this.vnConfigRelaySuppressedUntil = Date.now() + MeshtasticManager.VN_CONFIG_RELAY_SUPPRESS_MS;
 
     try {
       logger.debug(`Sending want_config_id ${nonce} to trigger configuration data...`);
@@ -5282,7 +5291,17 @@ class MeshtasticManager implements ISourceManager {
       //   this as "config done with zero channels" and clears its channel list.
       // If parsing failed, still broadcast the raw data (clients may understand it even if
       // the server can't parse it).
-      const shouldBroadcast = !context?.skipVirtualNodeBroadcast &&
+      // #6161: also drop the config burst answering our own want_config_id (my_info,
+      // metadata, config, moduleConfig, node_info). Without the channels and the
+      // config_complete (filtered above) apps restart a config that never finishes
+      // and lose their channel names. Apps already got the full config from sendInitialConfig().
+      if (parsed?.type === 'configComplete') {
+        this.vnConfigRelaySuppressedUntil = 0;
+      }
+      const suppressConfigBurst = !!parsed &&
+        Date.now() < this.vnConfigRelaySuppressedUntil &&
+        MeshtasticManager.VN_CONFIG_BURST_TYPES.has(parsed.type);
+      const shouldBroadcast = !context?.skipVirtualNodeBroadcast && !suppressConfigBurst &&
         (!parsed || (parsed.type !== 'channel' && parsed.type !== 'configComplete'));
       if (shouldBroadcast) {
         const virtualNodeServer = this.virtualNodeServer;
