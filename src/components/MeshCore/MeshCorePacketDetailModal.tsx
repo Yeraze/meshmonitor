@@ -10,19 +10,28 @@
  * only when this viewer may read a channel holding the key; otherwise the
  * frame stays ciphertext under an "Unknown channel" note.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 import { UiIcon } from '../icons';
 import apiService, { type MeshCoreGroupPacketPlaintext } from '../../services/api';
+import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import { useResolvedRouteHops } from './useResolvedRouteHops';
+import { RouteHopRows } from './MeshCoreRouteHops';
 import styles from './MeshCorePacketDetailModal.module.css';
+
+/** Stable empty default so an absent `contacts` prop keeps the hook's memo. */
+const NO_CONTACTS: MeshCoreContact[] = [];
 
 interface Props {
   packet: MeshCoreOtaPacketEvent;
-  /** The source being viewed. Without it a group packet stays ciphertext. */
+  /** The source being viewed. Without it a group packet stays ciphertext, and
+   *  relay hops are resolved from own contacts only (no cross-source lookup). */
   sourceId?: string;
+  /** This source's contacts, used to name the relay-chain hops (#6190). */
+  contacts?: MeshCoreContact[];
   onClose: () => void;
 }
 
@@ -58,14 +67,22 @@ const Row: React.FC<{ label: string; children: React.ReactNode; mono?: boolean; 
 
 const fmtHex = (n: number) => `0x${n.toString(16).padStart(2, '0')}`;
 
-const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, sourceId, onClose }) => {
+const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, sourceId, contacts = NO_CONTACTS, onClose }) => {
   const { t } = useTranslation();
   const { contentRef, onKeyDown } = useDialogA11y(onClose);
   const rawHex = packet.rawHex ?? '';
-  const decoded = decodeMeshCorePacket(rawHex);
+  const decoded = useMemo(() => decodeMeshCorePacket(rawHex), [rawHex]);
   // GRP_TXT and GRP_DATA share one outer frame; see meshcorePacketDecode.
   const group = decoded?.payload.groupText ?? decoded?.payload.groupData;
   const hasGroup = !!group;
+
+  // Relay chain resolved per hop, named like the Message Route modal (#6190):
+  // own contacts first, then cross-source candidates for whatever is unknown.
+  const relayHops = useMemo(
+    () => (decoded && !decoded.path.direct ? decoded.path.hops : []),
+    [decoded],
+  );
+  const { rows: relayRows } = useResolvedRouteHops(relayHops, sourceId, contacts);
 
   const [groupDecode, setGroupDecode] = useState<GroupDecodeState>({ status: 'idle' });
   useEffect(() => {
@@ -150,9 +167,7 @@ const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, sourceId, onClose 
                   <>
                     <Row label={t('meshcore.packets.hops', 'Hops')} mono>{decoded.path.hopCount}</Row>
                     <Row label={t('meshcore.packets.hashWidth', 'Hash width')} mono>{decoded.path.hashSize} B</Row>
-                    <Row label={t('meshcore.packets.relayChain', 'Relay chain')} mono wrap>
-                      {decoded.path.hops.length ? decoded.path.hops.join(' to ') : '—'}
-                    </Row>
+                    <RouteHopRows rows={relayRows} />
                   </>
                 )}
               </section>
