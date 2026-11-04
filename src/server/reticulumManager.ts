@@ -900,6 +900,24 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       this.pushInterfaceHistoryRows(rows, iface, msg.ts, writtenAt);
     }
 
+    // `interface_stats` is a full snapshot each poll, so an interface disabled
+    // in the RNS config simply stops appearing. Prune the rows absent from this
+    // snapshot so disabled interfaces don't linger Online forever (issue #6121).
+    // This MUST run even when no throughput rows were produced, so it comes
+    // before the early-return below.
+    try {
+      await databaseService.reticulum.pruneInterfacesNotIn(
+        this.sourceId,
+        msg.interfaces.map((i) => i.name),
+      );
+    } catch (err) {
+      logger.warn(
+        `[Reticulum:${this.sourceId}] failed to prune stale interface rows: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
     if (rows.length === 0) return;
     try {
       await databaseService.telemetry.insertTelemetryBatch(rows, this.sourceId);

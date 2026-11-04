@@ -382,6 +382,64 @@ function runReticulumTests(getBackend: () => TestBackend) {
     expect(onB.map((i) => i.interfaceName)).toEqual(['iface-3']);
   });
 
+  it('pruneInterfacesNotIn - deletes rows absent from the snapshot, keeps present ones, scoped to source (#6121)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // SRC_A has three interfaces; SRC_B has one.
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'keep-1' }));
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'keep-2' }));
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'drop-me' }));
+    await repo.upsertInterface(SRC_B, makeIface({ interfaceName: 'other-source' }));
+
+    // Latest snapshot for SRC_A lists only keep-1 and keep-2 — drop-me is gone.
+    await repo.pruneInterfacesNotIn(SRC_A, ['keep-1', 'keep-2']);
+
+    const onA = await repo.listInterfaces(SRC_A);
+    expect(onA.map((i) => i.interfaceName).sort()).toEqual(['keep-1', 'keep-2']);
+    expect(await repo.getInterface(SRC_A, 'drop-me')).toBeNull();
+    expect(await repo.countInterfaces(SRC_A)).toBe(2);
+
+    // The other source is untouched — the prune never crosses source boundaries.
+    const onB = await repo.listInterfaces(SRC_B);
+    expect(onB.map((i) => i.interfaceName)).toEqual(['other-source']);
+    expect(await repo.countInterfaces(SRC_B)).toBe(1);
+  });
+
+  it('pruneInterfacesNotIn - empty keepNames deletes all rows for the source only (#6121)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'a-1' }));
+    await repo.upsertInterface(SRC_A, makeIface({ interfaceName: 'a-2' }));
+    await repo.upsertInterface(SRC_B, makeIface({ interfaceName: 'b-1' }));
+
+    // Snapshot reports zero interfaces for SRC_A — clear them all.
+    await repo.pruneInterfacesNotIn(SRC_A, []);
+
+    expect(await repo.countInterfaces(SRC_A)).toBe(0);
+    expect(await repo.listInterfaces(SRC_A)).toHaveLength(0);
+    // SRC_B is unaffected.
+    expect(await repo.countInterfaces(SRC_B)).toBe(1);
+    expect((await repo.listInterfaces(SRC_B)).map((i) => i.interfaceName)).toEqual(['b-1']);
+  });
+
+  it('pruneInterfacesNotIn - throws without a sourceId', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await expect(repo.pruneInterfacesNotIn('', ['x'])).rejects.toThrow(/sourceId/);
+  });
+
   it('upsertDestination - retention: prunes oldest non-favorite rows beyond reticulum_destinations_max', async () => {
     const backend = getBackend();
     if (!backend.available) {
