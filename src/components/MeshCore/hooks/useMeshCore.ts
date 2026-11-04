@@ -439,6 +439,17 @@ export interface MeshCoreActions {
   clearChannelMessages: (channelIdx: number) => Promise<boolean>;
   /** Purge every MeshCore message (channel + DM) for this source (#3981). */
   purgeAllMessages: () => Promise<boolean>;
+  /** Load a peer's DM backlog from the server (#6186), independent of the
+   *  shared 100-message window. Prefix-aware peer match; `offset` pages older. */
+  fetchDmMessages: (publicKey: string, opts?: { limit?: number; offset?: number }) => Promise<{ messages: MeshCoreMessage[]; hasMore: boolean }>;
+  /** DM threads with stored history + their latest DM time (#6186), from a
+   *  server query rather than the live window. */
+  fetchDmPeers: () => Promise<Array<{ publicKey: string; lastMessageAt: number }>>;
+  /** Load a room's post backlog from the server (#6186). Sender-time order;
+   *  `offset` pages older. */
+  fetchRoomMessages: (publicKey: string, opts?: { limit?: number; offset?: number }) => Promise<{ messages: MeshCoreMessage[]; hasMore: boolean }>;
+  /** Per-room post count + latest-post time (#6186), from a server query. */
+  fetchRoomStats: () => Promise<Array<{ roomPublicKey: string; count: number; latest: number }>>;
   setDeviceName: (name: string) => Promise<boolean>;
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
   setTxPower: (power: number) => Promise<boolean>;
@@ -2248,6 +2259,66 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  // #6186: per-peer DM history and the DM thread list, read from the server so
+  // they survive channel traffic that evicts them from the shared window.
+  const fetchDmMessages = useCallback(async (
+    publicKey: string,
+    opts?: { limit?: number; offset?: number },
+  ): Promise<{ messages: MeshCoreMessage[]; hasMore: boolean }> => {
+    if (!enabled) return { messages: [], hasMore: false };
+    const limit = opts?.limit ?? 200;
+    const offset = opts?.offset ?? 0;
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/dm/${encodeURIComponent(publicKey)}?limit=${limit}&offset=${offset}`);
+      const data = await parseJsonResponse(response);
+      if (data.success && Array.isArray(data.data)) {
+        return { messages: data.data as MeshCoreMessage[], hasMore: Boolean(data.hasMore) };
+      }
+    } catch { /* fall through to empty */ }
+    return { messages: [], hasMore: false };
+  }, [enabled, mcPrefix, csrfFetch]);
+
+  const fetchDmPeers = useCallback(async (): Promise<Array<{ publicKey: string; lastMessageAt: number }>> => {
+    if (!enabled) return [];
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/dm-peers`);
+      const data = await parseJsonResponse(response);
+      if (data.success && Array.isArray(data.data)) {
+        return data.data as Array<{ publicKey: string; lastMessageAt: number }>;
+      }
+    } catch { /* fall through to empty */ }
+    return [];
+  }, [enabled, mcPrefix, csrfFetch]);
+
+  const fetchRoomMessages = useCallback(async (
+    publicKey: string,
+    opts?: { limit?: number; offset?: number },
+  ): Promise<{ messages: MeshCoreMessage[]; hasMore: boolean }> => {
+    if (!enabled) return { messages: [], hasMore: false };
+    const limit = opts?.limit ?? 200;
+    const offset = opts?.offset ?? 0;
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/room/${encodeURIComponent(publicKey)}?limit=${limit}&offset=${offset}`);
+      const data = await parseJsonResponse(response);
+      if (data.success && Array.isArray(data.data)) {
+        return { messages: data.data as MeshCoreMessage[], hasMore: Boolean(data.hasMore) };
+      }
+    } catch { /* fall through to empty */ }
+    return { messages: [], hasMore: false };
+  }, [enabled, mcPrefix, csrfFetch]);
+
+  const fetchRoomStats = useCallback(async (): Promise<Array<{ roomPublicKey: string; count: number; latest: number }>> => {
+    if (!enabled) return [];
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/room-stats`);
+      const data = await parseJsonResponse(response);
+      if (data.success && Array.isArray(data.data)) {
+        return data.data as Array<{ roomPublicKey: string; count: number; latest: number }>;
+      }
+    } catch { /* fall through to empty */ }
+    return [];
+  }, [enabled, mcPrefix, csrfFetch]);
+
   const setDeviceName = useCallback(async (name: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/name`, {
@@ -2563,6 +2634,10 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       clearConversation,
       clearChannelMessages,
       purgeAllMessages,
+      fetchDmMessages,
+      fetchDmPeers,
+      fetchRoomMessages,
+      fetchRoomStats,
       setDeviceName,
       setRadioParams,
       setTxPower,

@@ -218,6 +218,124 @@ router.get('/messages/channel-counts', optionalAuth(), async (req: Request, res:
 });
 
 /**
+ * GET /api/sources/:id/meshcore/messages/dm-peers
+ * DM threads that have stored history, with their latest DM time (#6186). The
+ * thread list is built from this server query rather than the shared
+ * 100-message window, so a thread never drops out under channel traffic.
+ * Registered before /messages/:messageId so the specific path wins.
+ */
+router.get('/messages/dm-peers', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const peers = await managerFor(req, res).getDmPeers();
+    res.json({ success: true, data: peers });
+  } catch (error) {
+    logger.error('[API] Error getting MeshCore DM peers:', error);
+    res.status(500).json({ success: false, error: 'Failed to get DM peers' });
+  }
+});
+
+/**
+ * GET /api/sources/:id/meshcore/messages/room-stats
+ * Per-room post count + latest-post time (#6186), straight from the DB so the
+ * room list's counts/ordering don't depend on the shared 100-message window.
+ */
+router.get('/messages/room-stats', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const stats = await managerFor(req, res).getRoomStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    logger.error('[API] Error getting MeshCore room stats:', error);
+    res.status(500).json({ success: false, error: 'Failed to get room stats' });
+  }
+});
+
+/**
+ * GET /api/sources/:id/meshcore/messages/dm/:publicKey
+ * Per-peer DM backlog (#6186). Unlike /messages (a global recent-tail shared by
+ * every channel and DM), this returns just this conversation's history, so a
+ * busy channel can't push a DM thread out of the visible window. `publicKey`
+ * may be a pubkey prefix or full 64-hex key; the match is prefix-aware both
+ * directions (inbound DMs store a sender prefix). Supports `offset` for
+ * load-older paging (#4460); `hasMore` says whether an older page exists.
+ * Registered before /messages/:messageId so the two-segment path wins.
+ */
+router.get('/messages/dm/:publicKey', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const publicKey = String(req.params.publicKey || '').toLowerCase();
+    if (!/^[0-9a-f]{2,64}$/.test(publicKey)) {
+      return res.status(400).json({ success: false, error: 'publicKey must be a hex string' });
+    }
+    let limit = parseInt(req.query.limit as string || '100', 10);
+    if (isNaN(limit) || limit < 1) {
+      limit = 100;
+    } else if (limit > VALIDATION.MAX_MESSAGE_LIMIT) {
+      limit = VALIDATION.MAX_MESSAGE_LIMIT;
+    }
+    let offset = parseInt(req.query.offset as string || '0', 10);
+    if (isNaN(offset) || offset < 0) {
+      offset = 0;
+    } else if (offset > VALIDATION.MAX_MESSAGE_OFFSET) {
+      offset = VALIDATION.MAX_MESSAGE_OFFSET;
+    }
+    // The manager reverses the DB's newest-first rows to oldest-first, so the
+    // extra lookahead row (limit+1) is the oldest one — index 0 — drop it.
+    const manager = managerFor(req, res);
+    const keyAccess = await resolveMeshcoreKeyAccess(req.user);
+    const page = await manager.getConversationMessages(publicKey, limit + 1, offset, keyAccess);
+    const hasMore = page.length > limit;
+    const messages = meshcoreMessageFilter.annotate(
+      req.params.id,
+      hasMore ? page.slice(1) : page,
+      manager.getLocalNode?.()?.publicKey,
+    );
+    res.json({ success: true, data: messages, count: messages.length, hasMore });
+  } catch (error) {
+    logger.error('[API] Error getting MeshCore DM messages:', error);
+    res.status(500).json({ success: false, error: 'Failed to get DM messages' });
+  }
+});
+
+/**
+ * GET /api/sources/:id/meshcore/messages/room/:publicKey
+ * Per-room post backlog (#6186). Same shape as /messages/dm/:publicKey, but
+ * room posts keep SENDER-time order (#5973). `offset` pages further back.
+ * Registered before /messages/:messageId so the two-segment path wins.
+ */
+router.get('/messages/room/:publicKey', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const publicKey = String(req.params.publicKey || '').toLowerCase();
+    if (!/^[0-9a-f]{2,64}$/.test(publicKey)) {
+      return res.status(400).json({ success: false, error: 'publicKey must be a hex string' });
+    }
+    let limit = parseInt(req.query.limit as string || '100', 10);
+    if (isNaN(limit) || limit < 1) {
+      limit = 100;
+    } else if (limit > VALIDATION.MAX_MESSAGE_LIMIT) {
+      limit = VALIDATION.MAX_MESSAGE_LIMIT;
+    }
+    let offset = parseInt(req.query.offset as string || '0', 10);
+    if (isNaN(offset) || offset < 0) {
+      offset = 0;
+    } else if (offset > VALIDATION.MAX_MESSAGE_OFFSET) {
+      offset = VALIDATION.MAX_MESSAGE_OFFSET;
+    }
+    const manager = managerFor(req, res);
+    const keyAccess = await resolveMeshcoreKeyAccess(req.user);
+    const page = await manager.getRoomMessages(publicKey, limit + 1, offset, keyAccess);
+    const hasMore = page.length > limit;
+    const messages = meshcoreMessageFilter.annotate(
+      req.params.id,
+      hasMore ? page.slice(1) : page,
+      manager.getLocalNode?.()?.publicKey,
+    );
+    res.json({ success: true, data: messages, count: messages.length, hasMore });
+  } catch (error) {
+    logger.error('[API] Error getting MeshCore room messages:', error);
+    res.status(500).json({ success: false, error: 'Failed to get room messages' });
+  }
+});
+
+/**
  * DELETE /api/sources/:id/meshcore/messages
  * Purge EVERY MeshCore message (channel + DM) for this source (#3981). The
  * MeshCore analogue of the Meshtastic "purge all messages" admin action.

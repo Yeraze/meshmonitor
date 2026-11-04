@@ -1108,6 +1108,172 @@ describe('MeshCoreRepository — sourceId stamping', () => {
       expect(latest).toEqual({ 0: 30, 1: 40 });
     });
   });
+
+  // getConversationMessages returns one DM peer's full backlog, independent of
+  // the shared recent-tail — the fix for #6186 (DMs dropping out of the window).
+  describe('getConversationMessages (#6186)', () => {
+    const self = 'aa'.repeat(32);       // 64-hex local key
+    const peerFull = 'bb'.repeat(32);   // peer full key (outbound / contacts)
+    const peerPrefix = 'bb'.repeat(6);  // 12-hex inbound sender prefix
+    const otherFull = 'cc'.repeat(32);
+    const insert = (
+      id: string,
+      fields: { from: string; to?: string | null; ts: number; messageType?: string },
+      sourceId: string,
+    ) =>
+      repo.insertMessage(
+        {
+          id, fromPublicKey: fields.from, toPublicKey: fields.to ?? null, text: id,
+          timestamp: fields.ts, createdAt: fields.ts, messageType: fields.messageType ?? null,
+        },
+        sourceId,
+      );
+
+    it('matches the peer on either endpoint, prefix-aware, source-scoped', async () => {
+      await insert('out', { from: self, to: peerFull, ts: 100 }, 'src-a');     // outbound, exact on to
+      await insert('in', { from: peerPrefix, to: self, ts: 110 }, 'src-a');    // inbound, prefix on from
+      await insert('other', { from: self, to: otherFull, ts: 120 }, 'src-a');  // different peer
+      await insert('chan', { from: 'channel-1', to: null, ts: 130 }, 'src-a'); // channel traffic
+      await insert('room', { from: self, to: peerFull, ts: 140, messageType: 'room_post' }, 'src-a'); // room post
+      await insert('leak', { from: self, to: peerFull, ts: 150 }, 'src-b');    // other source
+
+      const rows = await repo.getConversationMessages(peerFull, 100, 'src-a');
+      expect(rows.map(r => r.id).sort()).toEqual(['in', 'out']);
+    });
+
+    it('returns newest-first by createdAt and honors limit + offset', async () => {
+      for (let i = 0; i < 5; i++) {
+        await insert(`m${i}`, {
+          from: i % 2 === 0 ? self : peerPrefix,
+          to: i % 2 === 0 ? peerFull : self,
+          ts: 200 + i,
+        }, 'src-a');
+      }
+      const first = await repo.getConversationMessages(peerFull, 2, 'src-a', 0);
+      expect(first.map(r => r.id)).toEqual(['m4', 'm3']);
+      const second = await repo.getConversationMessages(peerFull, 2, 'src-a', 2);
+      expect(second.map(r => r.id)).toEqual(['m2', 'm1']);
+    });
+
+    it('matches when the selected key is itself a prefix', async () => {
+      await insert('out', { from: self, to: peerFull, ts: 300 }, 'src-a'); // to is full
+      await insert('in', { from: peerPrefix, to: self, ts: 310 }, 'src-a'); // from is prefix
+      const rows = await repo.getConversationMessages(peerPrefix, 100, 'src-a');
+      expect(rows.map(r => r.id).sort()).toEqual(['in', 'out']);
+    });
+
+    // The exact regression: a DM survives 100+ newer channel messages.
+    it('returns a DM buried under newer channel traffic', async () => {
+      await insert('dm-old', { from: peerPrefix, to: self, ts: 1 }, 'src-a');
+      for (let i = 0; i < 150; i++) {
+        await insert(`chan-${i}`, { from: 'channel-1', to: null, ts: 100 + i }, 'src-a');
+      }
+      const rows = await repo.getConversationMessages(peerFull, 100, 'src-a');
+      expect(rows.map(r => r.id)).toEqual(['dm-old']);
+    });
+  });
+
+  describe('getDmConversationEndpoints (#6186)', () => {
+    const self = 'aa'.repeat(32);
+    const peerFull = 'bb'.repeat(32);
+    const peerPrefix = 'bb'.repeat(6);
+    const insert = (
+      id: string,
+      fields: { from: string; to?: string | null; ts: number; messageType?: string; reactionEmoji?: string },
+      sourceId: string,
+    ) =>
+      repo.insertMessage(
+        {
+          id, fromPublicKey: fields.from, toPublicKey: fields.to ?? null, text: id,
+          timestamp: fields.ts, createdAt: fields.ts,
+          messageType: fields.messageType ?? null, reactionEmoji: fields.reactionEmoji ?? null,
+        },
+        sourceId,
+      );
+
+    it('groups DM endpoints with latest time; excludes channels/rooms/reactions; source-scoped', async () => {
+      await insert('out', { from: self, to: peerFull, ts: 100 }, 'src-a');
+      await insert('in', { from: peerPrefix, to: self, ts: 150 }, 'src-a');
+      await insert('chan', { from: 'channel-1', to: null, ts: 160 }, 'src-a');
+      await insert('room', { from: self, to: peerFull, ts: 170, messageType: 'room_post' }, 'src-a');
+      await insert('react', { from: self, to: peerFull, ts: 180, reactionEmoji: '👍' }, 'src-a');
+      await insert('leak', { from: self, to: peerFull, ts: 190 }, 'src-b');
+
+      const rows = await repo.getDmConversationEndpoints('src-a');
+      const groups = rows.map(r => `${r.fromPublicKey}|${r.toPublicKey}|${r.lastMessageAt}`).sort();
+      expect(groups).toEqual([`${peerPrefix}|${self}|150`, `${self}|${peerFull}|100`].sort());
+    });
+  });
+
+  // getRoomMessages / getRoomStats back the Rooms-view fix (same #6186 window bug).
+  describe('getRoomMessages (#6186)', () => {
+    const roomFull = 'dd'.repeat(32);
+    const roomPrefix = 'dd'.repeat(6);
+    const sender = 'ee'.repeat(32);
+    const insert = (
+      id: string,
+      fields: { to?: string | null; ts: number; messageType?: string },
+      sourceId: string,
+    ) =>
+      repo.insertMessage(
+        {
+          id, fromPublicKey: sender, toPublicKey: fields.to ?? null, text: id,
+          timestamp: fields.ts, createdAt: 9_999_999, // createdAt deliberately uniform: order must use sender time
+          messageType: fields.messageType ?? null,
+        },
+        sourceId,
+      );
+
+    it('returns room posts, prefix-aware, SENDER-time order, source-scoped', async () => {
+      await insert('p1', { to: roomFull, ts: 300, messageType: 'room_post' }, 'src-a');
+      await insert('p2', { to: roomPrefix, ts: 320, messageType: 'room_post' }, 'src-a'); // stored under a prefix
+      await insert('dm', { to: roomFull, ts: 330 }, 'src-a');                              // not a room post
+      await insert('other', { to: 'ff'.repeat(32), ts: 340, messageType: 'room_post' }, 'src-a');
+      await insert('leak', { to: roomFull, ts: 350, messageType: 'room_post' }, 'src-b');
+
+      const rows = await repo.getRoomMessages(roomFull, 100, 'src-a');
+      expect(rows.map(r => r.id)).toEqual(['p2', 'p1']); // newest sender-time first
+    });
+
+    it('honors limit + offset in sender-time order', async () => {
+      for (let i = 0; i < 4; i++) {
+        await insert(`r${i}`, { to: roomFull, ts: 400 + i, messageType: 'room_post' }, 'src-a');
+      }
+      const first = await repo.getRoomMessages(roomFull, 2, 'src-a', 0);
+      expect(first.map(r => r.id)).toEqual(['r3', 'r2']);
+      const second = await repo.getRoomMessages(roomFull, 2, 'src-a', 2);
+      expect(second.map(r => r.id)).toEqual(['r1', 'r0']);
+    });
+  });
+
+  describe('getRoomStats (#6186)', () => {
+    const roomFull = 'dd'.repeat(32);
+    const sender = 'ee'.repeat(32);
+    const insert = (
+      id: string,
+      fields: { to?: string | null; ts: number; messageType?: string; reactionEmoji?: string },
+      sourceId: string,
+    ) =>
+      repo.insertMessage(
+        {
+          id, fromPublicKey: sender, toPublicKey: fields.to ?? null, text: id,
+          timestamp: fields.ts, createdAt: fields.ts,
+          messageType: fields.messageType ?? null, reactionEmoji: fields.reactionEmoji ?? null,
+        },
+        sourceId,
+      );
+
+    it('per-room count + latest sender time; excludes reactions/non-posts; source-scoped', async () => {
+      await insert('p1', { to: roomFull, ts: 300, messageType: 'room_post' }, 'src-a');
+      await insert('p2', { to: roomFull, ts: 360, messageType: 'room_post' }, 'src-a');
+      await insert('react', { to: roomFull, ts: 380, messageType: 'room_post', reactionEmoji: '👍' }, 'src-a');
+      await insert('dm', { to: 'ab'.repeat(32), ts: 390 }, 'src-a');
+      await insert('leak', { to: roomFull, ts: 400, messageType: 'room_post' }, 'src-b');
+
+      const stats = await repo.getRoomStats('src-a');
+      expect(stats).toEqual([{ roomPublicKey: roomFull, count: 2, latest: 360 }]);
+    });
+  });
 });
 
 /**

@@ -26,6 +26,8 @@ vi.mock('../../contexts/AuthContext', () => ({
 vi.mock('../../contexts/SettingsContext', () => ({
   useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY', temperatureUnit: 'F', telemetryVisualizationHours: 48 }),
+  // LinkPreview (mounted inside rendered message bubbles) reads this.
+  useSettingsOptional: () => ({ linkPreviewsEnabled: false }),
 }));
 
 const csrfFetchMock = vi.fn();
@@ -95,8 +97,13 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     getRemoteAdminCapability: vi.fn().mockResolvedValue(null),
     forgetRemoteCredential: vi.fn().mockResolvedValue(true),
     getRemoteStatus: vi.fn().mockResolvedValue(null),
+    // #6186: server-backed DM history + thread list.
+    fetchDmMessages: vi.fn().mockResolvedValue({ messages: [], hasMore: false }),
+    fetchDmPeers: vi.fn().mockResolvedValue([]),
+    fetchRoomMessages: vi.fn().mockResolvedValue({ messages: [], hasMore: false }),
+    fetchRoomStats: vi.fn().mockResolvedValue([]),
     ...overrides,
-  };
+  } as unknown as MeshCoreActions;
 }
 
 function makeStatus(): ConnectionStatus {
@@ -717,5 +724,44 @@ describe('MeshCoreDirectMessagesView — receive-only mode (#4547 Phase 2 WP3)',
     const input = screen.getByPlaceholderText('Type a message…');
     expect(input).not.toBeDisabled();
     expect(input).not.toHaveAttribute('title');
+  });
+});
+
+describe('MeshCoreDirectMessagesView — server-backed DM history (#6186)', () => {
+  it("shows a peer's DM history even when 100+ newer channel messages fill the window", async () => {
+    const SELF = 'self'.padEnd(64, '0');
+    const buriedDm: MeshCoreMessage = {
+      id: 'buried-dm', fromPublicKey: REAL_PK, toPublicKey: SELF,
+      text: 'buried message', timestamp: 1, messageType: 'text',
+    } as unknown as MeshCoreMessage;
+    // 150 newer channel messages — the window that used to evict the DM.
+    const noise: MeshCoreMessage[] = Array.from({ length: 150 }, (_, i) => ({
+      id: `chan-${i}`, fromPublicKey: 'channel-1', toPublicKey: 'channel-1',
+      text: `noise ${i}`, timestamp: 100 + i, messageType: 'channel',
+    })) as unknown as MeshCoreMessage[];
+    const fetchDmMessages = vi.fn().mockResolvedValue({ messages: [buriedDm], hasMore: false });
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={noise}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions({ fetchDmMessages })}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Remote Bob'));
+
+    // The DM pane loads this peer's history from the server, not the window.
+    await waitFor(() => {
+      expect(fetchDmMessages).toHaveBeenCalledWith(REAL_PK, expect.objectContaining({ offset: 0 }));
+    });
+    await waitFor(() => {
+      expect(screen.getByText('buried message')).toBeTruthy();
+    });
+    // Channel noise never leaks into the DM pane.
+    expect(screen.queryByText('noise 0')).toBeNull();
   });
 });

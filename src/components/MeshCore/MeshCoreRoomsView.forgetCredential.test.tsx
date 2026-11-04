@@ -50,6 +50,8 @@ function makeActions(overrides?: Record<string, unknown>) {
     }),
     loginRoom: vi.fn().mockResolvedValue({ success: true }),
     sendRoomPost: vi.fn().mockResolvedValue(true),
+    fetchRoomMessages: vi.fn().mockResolvedValue({ messages: [], hasMore: false }),
+    fetchRoomStats: vi.fn().mockResolvedValue([]),
     forgetRoomCredential: vi.fn().mockResolvedValue(true),
     getRoomSyncConfig: vi.fn().mockResolvedValue({
       enabled: false,

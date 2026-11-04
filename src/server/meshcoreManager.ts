@@ -11179,6 +11179,93 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Per-peer DM backlog (#6186), queried straight from the DB so a conversation
+   * keeps its full history independent of the shared in-memory pool / global
+   * recent-tail. Prefix-aware peer match (mirrors {@link getChannelMessages}).
+   * Returns oldest-first; `offset` pages further back (infinite-scroll).
+   */
+  async getConversationMessages(
+    publicKey: string,
+    limit: number = 100,
+    offset: number = 0,
+    keyAccess?: MeshCoreKeyAccessFilter,
+  ): Promise<MeshCoreMessage[]> {
+    const stored = await databaseService.meshcore.getConversationMessages(
+      publicKey,
+      limit,
+      this.sourceId,
+      offset,
+      keyAccess,
+    );
+    const heardByMap = await databaseService.meshcore.getHeardRepeatersForMessages(
+      stored.map(m => m.id),
+      this.sourceId,
+    );
+    // DB returns newest-first; reverse to oldest-first for the UI.
+    const mapped: MeshCoreMessage[] = stored.reverse().map(dbMsg => {
+      const heard = heardByMap[dbMsg.id];
+      const base = MeshCoreManager.dbRowToMessage(dbMsg);
+      return heard && heard.length > 0
+        ? { ...base, heardBy: heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr, hops: r.hops ?? null })) }
+        : base;
+    });
+    return this.withAutoRetryFlag(await this.withResendInfo(mapped));
+  }
+
+  /**
+   * Per-room post backlog (#6186), queried from the DB. Room posts keep
+   * SENDER-time order (#5973): a room replays its backlog at login, so receipt
+   * time is the login time. The DB returns timestamp-newest-first; this
+   * reverses to oldest-first. `offset` pages further back.
+   */
+  async getRoomMessages(
+    roomPublicKey: string,
+    limit: number = 100,
+    offset: number = 0,
+    keyAccess?: MeshCoreKeyAccessFilter,
+  ): Promise<MeshCoreMessage[]> {
+    const stored = await databaseService.meshcore.getRoomMessages(
+      roomPublicKey,
+      limit,
+      this.sourceId,
+      offset,
+      keyAccess,
+    );
+    return stored.reverse().map(dbMsg => MeshCoreManager.dbRowToMessage(dbMsg));
+  }
+
+  /**
+   * DM peers that have at least one stored message, with their latest DM time
+   * (#6186). Resolves the non-self endpoint of each conversation (only the
+   * manager knows the local node's key), so the DM thread list no longer
+   * depends on the shared 100-message window.
+   */
+  async getDmPeers(): Promise<Array<{ publicKey: string; lastMessageAt: number }>> {
+    const rows = await databaseService.meshcore.getDmConversationEndpoints(this.sourceId);
+    const selfKey = this.localNode?.publicKey;
+    const latest = new Map<string, number>();
+    const note = (key: string | null | undefined, ts: number) => {
+      if (!key || key.startsWith('channel-')) return;
+      if (selfKey && MeshCoreManager.keysMatch(key, selfKey)) return;
+      if (ts > (latest.get(key) ?? 0)) latest.set(key, ts);
+    };
+    for (const r of rows) {
+      note(r.fromPublicKey, r.lastMessageAt);
+      note(r.toPublicKey, r.lastMessageAt);
+    }
+    return Array.from(latest.entries()).map(([publicKey, lastMessageAt]) => ({ publicKey, lastMessageAt }));
+  }
+
+  /**
+   * Per-room post counts + latest-post time (#6186), straight from the DB so
+   * the room list no longer derives them from the 100-message window. Keyed by
+   * the stored recipient key; the client maps each to its room prefix-aware.
+   */
+  async getRoomStats(): Promise<Array<{ roomPublicKey: string; count: number; latest: number }>> {
+    return databaseService.meshcore.getRoomStats(this.sourceId);
+  }
+
+  /**
    * Fold persisted resend history (#5512) into messages that can be resent
    * (those carrying a stored `senderTimestamp`): `resendCount` = user resends,
    * `lastResendAt` = latest resend of any kind. One batched query. Never

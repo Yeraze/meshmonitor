@@ -111,6 +111,19 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const [rememberPassword, setRememberPassword] = useState(false);
   const [mobileShowContent, setMobileShowContent] = useState(false);
 
+  // #6186: the selected room's posts and the per-room stats, read from the
+  // server so they survive channel/DM traffic evicting them from the shared
+  // `messages` window. Mirrors the channel view's backlog + load-older (#4460).
+  const { fetchRoomMessages, fetchRoomStats } = actions;
+  const [roomHistory, setRoomHistory] = useState<MeshCoreMessage[]>([]);
+  const [roomHistoryFor, setRoomHistoryFor] = useState<string | null>(null);
+  const [roomHasMore, setRoomHasMore] = useState(false);
+  const [roomLoadingOlder, setRoomLoadingOlder] = useState(false);
+  const [serverRoomStats, setServerRoomStats] = useState<Array<{ roomPublicKey: string; count: number; latest: number }>>([]);
+  const roomHistoryRef = useRef<MeshCoreMessage[]>([]);
+  const activeRoomRef = useRef<string | null>(null);
+  useEffect(() => { roomHistoryRef.current = roomHistory; }, [roomHistory]);
+
   // Display-only list order (#6148). Persisted per source in localStorage, so a
   // read-only viewer can sort without `settings:write`. Default: Room name.
   const [sortMode, setSortMode] = useState<RoomSortMode>(() => loadRoomSortMode(sourceId));
@@ -164,11 +177,14 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     [contacts],
   );
 
-  // Per-room post count and newest post time, computed once per render so the
-  // sort does not re-run `buildRoomFilter` for every comparison (#6148). Count
-  // matches the per-row filter; Last message uses SENDER time (`m.timestamp`),
-  // not receipt time, so a backlog replay at login does not jump a room to the
-  // top (#5973).
+  // Per-room post count and newest post time (#6148). Count matches the per-row
+  // filter; Last message uses SENDER time (`m.timestamp`), not receipt time, so
+  // a backlog replay at login does not jump a room to the top (#5973).
+  //
+  // Baseline is the live window; the server query (#6186) then overrides with
+  // the true totals whenever it reports more than the bounded window could see,
+  // so counts/ordering no longer collapse once 100 newer messages arrive.
+  // Prefix-aware room match mirrors `buildRoomFilter`.
   const roomStats = useMemo(() => {
     const counts: Record<string, number> = {};
     const latest: Record<string, number> = {};
@@ -183,8 +199,24 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
         }
       }
     }
+    for (const s of serverRoomStats) {
+      for (const room of roomServers) {
+        const pk = room.publicKey;
+        if (s.roomPublicKey === pk || s.roomPublicKey.startsWith(pk) || pk.startsWith(s.roomPublicKey)) {
+          if (s.count > (counts[pk] ?? 0)) counts[pk] = s.count;
+          if (s.latest > (latest[pk] ?? 0)) latest[pk] = s.latest;
+        }
+      }
+    }
     return { counts, latest };
-  }, [messages, roomServers]);
+  }, [serverRoomStats, messages, roomServers]);
+
+  // Count of room posts in the live window — bumps when a new post arrives, so
+  // the server room-stats fetch re-runs and the list counts stay current.
+  const liveRoomPostCount = useMemo(
+    () => messages.reduce((n, m) => (m.messageType === 'room_post' ? n + 1 : n), 0),
+    [messages],
+  );
 
   // Distance (km) from the source node to each room, for the Distance sort.
   // 0/0 and absent coordinates count as "no location" (`advertHasPosition`),
@@ -250,12 +282,78 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     [selectedRoom],
   );
 
+  // The server backlog is "ready" only once it matches the selected room, so a
+  // previous room's posts are never drawn while this one loads (#6186).
+  const roomHistoryReady = !sourceId || !selectedRoom || roomHistoryFor === `${sourceId}:${selectedRoom}`;
   const filtered = useMemo(
-    // Room posts keep sender-time order (#5973): a room replays its backlog on
-    // login, so receipt time is the login time. See ./messageOrder.ts.
-    () => messages.filter(activeFilter).sort(compareMeshCoreMessages),
-    [messages, activeFilter],
+    // Merge the server backlog (full history, #6186) with any live posts from
+    // the shared window. Dedupe by id, live copy wins, then sort sender-time
+    // (#5973): a room replays its backlog on login, so receipt time is the
+    // login time. See ./messageOrder.ts.
+    () => {
+      const byId = new Map<string, MeshCoreMessage>();
+      if (roomHistoryReady) {
+        for (const m of roomHistory) byId.set(m.id, m);
+      }
+      for (const m of messages) {
+        if (activeFilter(m)) byId.set(m.id, m);
+      }
+      return Array.from(byId.values()).sort(compareMeshCoreMessages);
+    },
+    [messages, activeFilter, roomHistory, roomHistoryReady],
   );
+
+  // Load the selected room's backlog from the server. Resets paging on every
+  // room/source switch (and after a login that syncs new posts) so an in-flight
+  // load-older for the previous room can't land in the new one.
+  useEffect(() => {
+    if (!sourceId || !selectedRoom) return;
+    let cancelled = false;
+    activeRoomRef.current = selectedRoom;
+    setRoomHasMore(false);
+    setRoomLoadingOlder(false);
+    void (async () => {
+      const { messages: hist, hasMore } = await fetchRoomMessages(selectedRoom, { offset: 0, limit: 200 });
+      if (cancelled) return;
+      setRoomHistory(hist);
+      setRoomHistoryFor(`${sourceId}:${selectedRoom}`);
+      setRoomHasMore(hasMore);
+    })();
+    return () => { cancelled = true; };
+  }, [sourceId, selectedRoom, fetchRoomMessages, status?.connected, loggedInRooms]);
+
+  // Refresh server room stats on source/connect change and whenever a new live
+  // room post arrives (so list counts stay current without the window).
+  useEffect(() => {
+    if (!sourceId) { setServerRoomStats([]); return; }
+    let cancelled = false;
+    void (async () => {
+      const stats = await fetchRoomStats();
+      if (!cancelled) setServerRoomStats(stats);
+    })();
+    return () => { cancelled = true; };
+  }, [sourceId, fetchRoomStats, status?.connected, liveRoomPostCount]);
+
+  // Load an older page of the selected room's posts (#4460 infinite scroll).
+  const loadOlderRoomHistory = useCallback(() => {
+    if (!sourceId || !selectedRoom || roomLoadingOlder || !roomHasMore) return;
+    const room = selectedRoom;
+    const offset = roomHistoryRef.current.length;
+    setRoomLoadingOlder(true);
+    void (async () => {
+      try {
+        const { messages: older, hasMore } = await fetchRoomMessages(room, { offset, limit: 100 });
+        if (activeRoomRef.current !== room) return;
+        setRoomHistory(prev => {
+          const seen = new Set(prev.map(m => m.id));
+          return [...older.filter(m => !seen.has(m.id)), ...prev];
+        });
+        setRoomHasMore(hasMore);
+      } finally {
+        if (activeRoomRef.current === room) setRoomLoadingOlder(false);
+      }
+    })();
+  }, [sourceId, selectedRoom, roomLoadingOlder, roomHasMore, fetchRoomMessages]);
 
   const newestPostTs = useMemo(() => {
     if (filtered.length === 0) return null;
@@ -686,6 +784,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               onSend={handleSend}
               onNodeNameClick={onNodeNameClick}
               conversationKey={`room-${selectedRoom}`}
+              onLoadOlder={loadOlderRoomHistory}
+              hasMoreOlder={roomHistoryReady && roomHasMore}
+              loadingOlder={roomLoadingOlder}
             />
           </>
         )}
