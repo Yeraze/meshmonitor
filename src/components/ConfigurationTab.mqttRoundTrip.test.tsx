@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   showToast: vi.fn(),
   getCurrentConfig: vi.fn(),
   setMQTTConfig: vi.fn(),
+  refreshNodes: vi.fn(),
 }));
 
 vi.mock('react-i18next', async () => {
@@ -32,6 +33,7 @@ vi.mock('../services/api', () => ({
     getCurrentConfig: h.getCurrentConfig,
     getSecurityKeys: vi.fn().mockResolvedValue({}),
     setMQTTConfig: h.setMQTTConfig,
+    refreshNodes: h.refreshNodes,
   },
 }));
 
@@ -45,6 +47,7 @@ vi.mock('./configuration/MQTTConfigSection', () => ({
   default: (p: Record<string, unknown> & {
     mapPositionPrecision: number;
     mapShouldReportLocation: boolean;
+    mapReportingEnabled: boolean;
     setMapShouldReportLocation: (v: boolean) => void;
     setMapReportingEnabled: (v: boolean) => void;
     onSave: () => Promise<void>;
@@ -52,6 +55,7 @@ vi.mock('./configuration/MQTTConfigSection', () => ({
     <div>
       <span data-testid="mqtt-precision">{String(p.mapPositionPrecision)}</span>
       <span data-testid="mqtt-consent">{String(p.mapShouldReportLocation)}</span>
+      <span data-testid="mqtt-map">{String(p.mapReportingEnabled)}</span>
       <button data-testid="mqtt-consent-off" onClick={() => p.setMapShouldReportLocation(false)}>off</button>
       <button data-testid="mqtt-consent-on" onClick={() => p.setMapShouldReportLocation(true)}>on</button>
       <button data-testid="mqtt-map-off" onClick={() => p.setMapReportingEnabled(false)}>map off</button>
@@ -133,6 +137,7 @@ async function save(): Promise<Record<string, unknown>> {
 beforeEach(() => {
   vi.clearAllMocks();
   h.setMQTTConfig.mockResolvedValue({ success: true });
+  h.refreshNodes.mockResolvedValue({ success: true });
 });
 
 describe('ConfigurationTab: local MQTT save round trip', () => {
@@ -199,5 +204,36 @@ describe('ConfigurationTab: local MQTT save round trip', () => {
 
     const sent = await save();
     expect(sent.mapReportSettings).toEqual({ publishIntervalSecs: 0, positionPrecision: 0, shouldReportLocation: false });
+  });
+});
+
+describe('ConfigurationTab: Reload Config re-reads map reporting', () => {
+  async function reloadWith(mqtt: Record<string, unknown>) {
+    h.getCurrentConfig.mockResolvedValue(nodeWith(mqtt));
+    fireEvent.click(await screen.findByRole('button', { name: /reload_config/i }));
+    await waitFor(() => expect(h.refreshNodes).toHaveBeenCalled());
+  }
+
+  it('picks up Report Location turned on at the radio', async () => {
+    await renderLoaded({ ...FULL_MQTT, mapReportSettings: { publishIntervalSecs: 7200, positionPrecision: 12, shouldReportLocation: false } });
+    await waitFor(() => expect(screen.getByTestId('mqtt-precision').textContent).toBe('12'));
+    expect(screen.getByTestId('mqtt-consent').textContent).toBe('false');
+
+    await reloadWith(FULL_MQTT);
+    await waitFor(() => expect(screen.getByTestId('mqtt-consent').textContent).toBe('true'), { timeout: 5000 });
+
+    // A save after the reload sends the radio's value, not the stale one.
+    expect((await save()).mapReportSettings).toEqual(FULL_MQTT.mapReportSettings);
+  });
+
+  it('reads an elided flag as off (proto3 drops false)', async () => {
+    await renderLoaded(FULL_MQTT);
+    await waitFor(() => expect(screen.getByTestId('mqtt-consent').textContent).toBe('true'));
+    expect(screen.getByTestId('mqtt-map').textContent).toBe('true');
+
+    const { mapReportingEnabled: _m, ...rest } = FULL_MQTT;
+    await reloadWith({ ...rest, mapReportSettings: { publishIntervalSecs: 7200, positionPrecision: 12 } });
+    await waitFor(() => expect(screen.getByTestId('mqtt-consent').textContent).toBe('false'), { timeout: 5000 });
+    expect(screen.getByTestId('mqtt-map').textContent).toBe('false');
   });
 });
