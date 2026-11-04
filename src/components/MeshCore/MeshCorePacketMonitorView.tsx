@@ -20,6 +20,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { useAuth } from '../../contexts/AuthContext';
 import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
+import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import {
   MESHCORE_PAYLOAD_TYPES as PAYLOAD_TYPES,
   MESHCORE_ROUTE_TYPES as ROUTE_TYPES,
@@ -35,6 +36,8 @@ interface MeshCorePacketMonitorViewProps {
   /** True for a MeshCore Repeater (serial CLI) source (#5500). Stock repeater
    *  firmware doesn't stream packets over serial, so an empty log says so. */
   isRepeaterSource?: boolean;
+  /** This source's contacts, used to name the Packet Decode relay chain (#6190). */
+  contacts?: MeshCoreContact[];
 }
 
 type Packet = MeshCoreOtaPacketEvent;
@@ -85,7 +88,7 @@ function formatTime(ts: number): string {
   return d.toLocaleTimeString([], { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
-export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps> = ({ baseUrl, sourceId, isRepeaterSource = false }) => {
+export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps> = ({ baseUrl, sourceId, isRepeaterSource = false, contacts }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { state: wsState } = useWebSocketContext();
@@ -501,7 +504,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
 
       {selectedPacket &&
         createPortal(
-          <MeshCorePacketDetailModal packet={selectedPacket} sourceId={sourceId} onClose={() => setSelectedPacket(null)} />,
+          <MeshCorePacketDetailModal packet={selectedPacket} sourceId={sourceId} contacts={contacts} onClose={() => setSelectedPacket(null)} />,
           document.body
         )}
     </div>

@@ -288,6 +288,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             baseUrl={baseUrl}
             sourceId={sourceId}
             isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
+            contacts={contacts}
           />
         )}
         {view === 'info' && (

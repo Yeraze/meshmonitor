@@ -16,25 +16,17 @@
  * the hash, the nearest is shown as a guess with "?" and the full list sits in
  * an expandable list; a guess never carries a position onto the flow map.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import L from 'leaflet';
 import { CircleMarker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import type { MeshCoreMessage } from './hooks/useMeshCore';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
-import {
-  parsePathHops,
-  pathHashBytesOf,
-  resolveRoute,
-  resolveRouteWithFallback,
-  type CrossSourceHopPool,
-  type ResolvedRouteHopWithFallback,
-} from '../../utils/meshcorePath';
-import apiService from '../../services/api';
-import styles from './MeshCoreMessageRouteModal.module.css';
+import { parsePathHops } from '../../utils/meshcorePath';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 import { BaseMap } from '../map/BaseMap';
-import { UiIcon } from '../icons';
+import { useResolvedRouteHops, contactPosition } from './useResolvedRouteHops';
+import { RouteHopRows } from './MeshCoreRouteHops';
 import './MeshCorePacketMonitor.css';
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 import { meshcoreDisplayTimeMs } from '../../utils/meshcoreMessageTime';
@@ -50,109 +42,6 @@ interface Props {
    */
   sourceId?: string;
   onClose: () => void;
-}
-
-interface HopCandidatesResponse {
-  success?: boolean;
-  data?: { enabled?: boolean; candidates?: CrossSourceHopPool };
-}
-
-/**
- * Fetch other-source candidates for the hops own contacts left unknown. Skips
- * the call when every hop resolved, so a fully-known route costs nothing.
- */
-function useCrossSourceHopPool(sourceId: string | undefined, unknownHops: string[]): CrossSourceHopPool | null {
-  const [pool, setPool] = useState<CrossSourceHopPool | null>(null);
-  const key = unknownHops.join(',');
-  useEffect(() => {
-    setPool(null);
-    if (!sourceId || key === '') return;
-    let cancelled = false;
-    apiService
-      .get<HopCandidatesResponse>(
-        `/api/sources/${encodeURIComponent(sourceId)}/meshcore/hop-candidates?prefixes=${encodeURIComponent(key)}`,
-      )
-      .then((res) => {
-        if (cancelled || !res?.data?.enabled) return;
-        setPool(res.data.candidates ?? {});
-      })
-      .catch(() => {
-        // Best effort: the route still shows the hashes it could not name.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sourceId, key]);
-  return pool;
-}
-
-/** One hop's name, styled by where it came from. */
-const HopName: React.FC<{ row: ResolvedRouteHopWithFallback }> = ({ row }) => {
-  const { t } = useTranslation();
-  if (row.origin === 'own') return <>{row.name}</>;
-  if (row.origin === 'none') return <>{t('meshcore.route_detail_unknown', 'unknown repeater')}</>;
-  const count = row.candidates.length;
-  const via = row.via?.sourceName ?? '';
-  if (row.tentative) {
-    return (
-      <>
-        <span className={styles.tentativeName}>{row.name}?</span>{' '}
-        <span className={styles.via}>
-          ({t('meshcore.route_detail_via_candidates', 'via {{source}}, {{count}} candidates', { source: via, count })})
-        </span>
-      </>
-    );
-  }
-  if (row.name) {
-    return (
-      <>
-        <span className={styles.otherName}>{row.name}</span>{' '}
-        <span className={styles.via}>({t('meshcore.route_detail_via', 'via {{source}}', { source: via })})</span>
-      </>
-    );
-  }
-  return (
-    <span className={styles.tentativeName}>
-      {t('meshcore.route_detail_candidates', '{{count}} candidates', { count })}
-    </span>
-  );
-};
-
-/** The full candidate list for a shared hash, collapsed by default. */
-const CandidateList: React.FC<{ row: ResolvedRouteHopWithFallback }> = ({ row }) => {
-  const { t } = useTranslation();
-  if (row.origin !== 'other' || row.candidates.length < 2) return null;
-  return (
-    <details className={styles.candidates}>
-      <summary>
-        {row.tentative
-          ? t('meshcore.route_detail_show_candidates_ranked', 'Show all {{count}} candidates (nearest first)', { count: row.candidates.length })
-          : t('meshcore.route_detail_show_candidates', 'Show all {{count}} candidates', { count: row.candidates.length })}
-      </summary>
-      <ol className={styles.candidateList}>
-        {row.candidates.map((c) => (
-          <li key={`${c.sourceId}-${c.publicKey}`}>
-            {c.name}{' '}
-            <span className={styles.via}>({t('meshcore.route_detail_via', 'via {{source}}', { source: c.sourceName })})</span>{' '}
-            <span className={styles.candidateKey}>{c.publicKey.slice(0, 8)}…</span>
-          </li>
-        ))}
-      </ol>
-    </details>
-  );
-};
-
-/** Plain-text label for the summary row and map tooltips. */
-function hopText(r: ResolvedRouteHopWithFallback): string {
-  if (!r.name) return r.byte;
-  if (r.tentative) return `${r.name}?`;
-  return r.name;
-}
-
-/** Hover text listing every candidate for a shared hash. */
-function candidatesTitle(r: ResolvedRouteHopWithFallback): string | undefined {
-  if (r.origin !== 'other' || r.candidates.length < 2) return undefined;
-  return r.candidates.map((c) => `${c.name} (${c.sourceName})`).join('\n');
 }
 
 const Row: React.FC<{ label: string; children: React.ReactNode; mono?: boolean; wrap?: boolean }> = ({ label, children, mono, wrap }) => (
@@ -186,33 +75,12 @@ const FitFlowBounds: React.FC<{ points: FlowPoint[] }> = ({ points }) => {
   return null;
 };
 
-/** A usable contact position: finite coords, excluding null island. */
-function contactPosition(c: MeshCoreContact | undefined): { lat: number; lon: number } | null {
-  if (!c) return null;
-  const { latitude: lat, longitude: lon } = c;
-  if (typeof lat !== 'number' || !isFinite(lat)) return null;
-  if (typeof lon !== 'number' || !isFinite(lon)) return null;
-  if (lat === 0 && lon === 0) return null;
-  return { lat, lon };
-}
-
 const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contacts, sourceId, onClose }) => {
   const { t } = useTranslation();
   const { contentRef, onKeyDown } = useDialogA11y(onClose);
 
   const hops = useMemo(() => parsePathHops(message.routePath), [message.routePath]);
-  const width = pathHashBytesOf(hops);
-  const ownRows = useMemo(() => resolveRoute(hops, contacts), [hops, contacts]);
-  const unknownHops = useMemo(
-    () => [...new Set(ownRows.filter((r) => r.matchCount === 0).map((r) => r.byte))],
-    [ownRows],
-  );
-  const pool = useCrossSourceHopPool(sourceId, unknownHops);
-  const receiverPos = useMemo(() => contactPosition(contacts.find((c) => c.isLocal === true)), [contacts]);
-  const rows = useMemo(
-    () => resolveRouteWithFallback(hops, contacts, pool, receiverPos),
-    [hops, contacts, pool, receiverPos],
-  );
+  const { rows, width } = useResolvedRouteHops(hops, sourceId, contacts);
 
   // Geospatial flow line: shown only when EVERY relay hop resolved to a
   // positioned contact (a partial line would misrepresent the path). The
@@ -288,35 +156,7 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
           <section className="mcpm-dl-section">
             <h5>{t('meshcore.route_detail_route', 'Route')}</h5>
             <Row label={t('meshcore.packets.hashWidth', 'Hash width')} mono>{width} B</Row>
-            {rows.length === 0 ? (
-              <Row label={t('meshcore.packets.routing', 'Routing')}>{t('meshcore.packets.directNoRelay', 'Direct (no relays)')}</Row>
-            ) : (
-              <>
-                {rows.map((r, i) => (
-                  <Row key={`${r.byte}-${i}`} label={`#${i + 1}`} mono>
-                    {r.byte}
-                    {' '}<UiIcon name="forward" size={12} />{' '}
-                    <span title={candidatesTitle(r)}><HopName row={r} /></span>
-                    {r.origin === 'own' && r.matchCount > 1 && (
-                      <span className="mc-route-best-guess">
-                        {' '}({t('meshcore.route_detail_best_guess', 'best guess of')} {r.matchCount} {t('meshcore.route_detail_matches', 'matches')})
-                      </span>
-                    )}
-                    <CandidateList row={r} />
-                  </Row>
-                ))}
-                <Row label={t('meshcore.route_detail_resolved', 'Resolved')} wrap>
-                  <span className="mc-route-resolved">
-                    {rows.map((r, i) => (
-                      <React.Fragment key={`${r.byte}-${i}`}>
-                        {hopText(r)}
-                        {i < rows.length - 1 && <> <UiIcon name="forward" size={12} /> </>}
-                      </React.Fragment>
-                    ))}
-                  </span>
-                </Row>
-              </>
-            )}
+            <RouteHopRows rows={rows} />
           </section>
 
           {flowPoints && flowPoints.length > 0 && (
