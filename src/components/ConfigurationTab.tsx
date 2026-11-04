@@ -2016,7 +2016,20 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         if (mqtt.jsonEnabled !== undefined) setMqttJsonEnabled(mqtt.jsonEnabled);
         if (mqtt.root !== undefined) setMqttRoot(mqtt.root);
         if (mqtt.proxyToClientEnabled !== undefined) setMqttProxyToClientEnabled(mqtt.proxyToClientEnabled);
-        if (mqtt.mapReportingEnabled !== undefined) setMqttMapReportingEnabled(mqtt.mapReportingEnabled);
+        // Map reporting: read like the initial load. proto3 elides `false`, so
+        // an absent flag is off; skipping it on `undefined` left a box ticked
+        // after it was turned off on the radio. Report Location was never
+        // re-read at all.
+        const newMapReportingEnabled = mqtt.mapReportingEnabled === true;
+        if (newMapReportingEnabled !== mqttMapReportingEnabled) {
+          changes.push({ field: 'MQTT: Map Reporting', oldValue: formatValue(mqttMapReportingEnabled), newValue: formatValue(newMapReportingEnabled) });
+          setMqttMapReportingEnabled(newMapReportingEnabled);
+        }
+        const newMapShouldReportLocation = mqtt.mapReportSettings?.shouldReportLocation === true;
+        if (newMapShouldReportLocation !== mqttMapShouldReportLocation) {
+          changes.push({ field: 'MQTT: Map Report Location', oldValue: formatValue(mqttMapShouldReportLocation), newValue: formatValue(newMapShouldReportLocation) });
+          setMqttMapShouldReportLocation(newMapShouldReportLocation);
+        }
         if (mqtt.mapReportSettings?.publishIntervalSecs !== undefined) setMqttMapPublishIntervalSecs(mqtt.mapReportSettings.publishIntervalSecs);
         if (mqtt.mapReportSettings?.positionPrecision !== undefined) setMqttMapPositionPrecision(mqtt.mapReportSettings.positionPrecision);
       }
