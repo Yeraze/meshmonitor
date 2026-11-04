@@ -69,6 +69,10 @@ interface ChannelRow {
   /** A keyed channel (#5551): decrypted with another source's key, so this
    *  source has no slot to send on. View only. */
   readOnly?: boolean;
+  /** A MeshCore virtual channel (#5552/#6159): decrypted with a key held only
+   *  in the Channel Database, not on the radio. Shown with a `(Virtual)` marker
+   *  and no send bar — the key is not on the device, so it is receive-only. */
+  virtual?: boolean;
 }
 
 /** Synthesised pseudo-pubkey used to scope channel messages. Must match the
@@ -335,6 +339,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 name: String(c.name ?? ''),
                 scope: typeof c?.scope === 'string' && c.scope ? c.scope : null,
                 readOnly: c?.readOnly === true,
+                virtual: c?.virtual === true,
               }))
               .sort((a, b) => a.id - b.id)
           : [];
@@ -900,6 +905,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 )}
                 <div className="mc-channel-row-name">
                   {channelLabel(c)}
+                  {c.virtual && (
+                    <sup className={styles.virtualTag} title={t('meshcore.channels.virtual_title', 'Decrypted with a Channel Database key; not set on this radio (receive-only)')}>
+                      {t('meshcore.channels.virtual_tag', '(Virtual)')}
+                    </sup>
+                  )}
                   {isChannelMuted(c.id) && (
                     <span
                       className={styles.mutedIcon}
@@ -949,13 +959,20 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 active.name,
                 t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: active.id }),
               )}
+              {active.virtual && (
+                <sup className={styles.virtualTag} title={t('meshcore.channels.virtual_title', 'Decrypted with a Channel Database key; not set on this radio (receive-only)')}>
+                  {t('meshcore.channels.virtual_tag', '(Virtual)')}
+                </sup>
+              )}
             </span>
           </div>
         )}
         {/* `|| canMute`: a signed-in reader without send rights still gets the row, for the mute bell alone. */}
         {((canSend && (connected || filtered.length > 0)) || canMute) && (
         <div className="meshcore-toolbar-row">
-        {canSend && connected && (
+        {/* No send scope on a virtual channel (#6159): its key is not on the
+            radio, so there is nothing to send and the control would mislead. */}
+        {canSend && connected && !active.virtual && (
           <div className="mc-scope-override">
             {showScopeOverride ? (
               <div className="mc-scope-override-row">
@@ -1094,6 +1111,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           contacts={contacts}
           sourceId={sourceId}
           selfPublicKey={selfKey}
+          // #6159: a virtual channel's key is not on the radio — hide the send
+          // bar entirely (receive-only), rather than just disabling it.
+          hideComposer={active?.virtual === true}
           disabled={!connected || !canSend || receiveOnly || active?.readOnly === true}
           disabledReason={receiveOnly
             ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')

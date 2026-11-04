@@ -228,6 +228,26 @@ export async function decryptGroupTextFrame(
   return null;
 }
 
+/**
+ * True when any of `secretsHex` hashes to `channelHashHex` — i.e. the caller
+ * already holds a key for this frame's channel.
+ *
+ * The Companion OTA path (#6159) uses this as a double-store guard: a channel
+ * SET on the radio is delivered by the firmware as a normal channel message,
+ * so the raw-frame decrypt path must skip any frame whose channel hash it
+ * already holds a device key for. Pure computation, no I/O.
+ */
+export function anySecretMatchesChannelHash(
+  channelHashHex: string,
+  secretsHex: Iterable<string>,
+): boolean {
+  const want = channelHashHex.toLowerCase();
+  for (const secretHex of secretsHex) {
+    if (secretHex && ChannelCrypto.calculateChannelHash(secretHex) === want) return true;
+  }
+  return false;
+}
+
 /** A GRP_TXT or GRP_DATA body opened with one specific key. */
 export type OpenedGroupFrame =
   | {

@@ -147,3 +147,15 @@
   color: var(--color-text-muted);
   font-size: 0.95rem;
 }
+
+/* (Virtual) marker next to a virtual-channel name (#6159): decrypted with a
+   Channel Database key that is not on the radio, so the channel is
+   receive-only. A muted superscript, not a loud badge. */
+.virtualTag {
+  margin-left: 0.3em;
+  color: var(--color-text-muted);
+  font-size: 0.7em;
+  font-weight: 500;
+  vertical-align: super;
+  white-space: nowrap;
+}

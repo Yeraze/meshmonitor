@@ -19,6 +19,10 @@ export interface KeyedChannelEntry {
   id: number;
   name: string;
   keyFingerprint: string;
+  /** True when the key is a MeshCore virtual channel (#5552, a
+   *  `channel_database` row), not another source's device slot. The channels
+   *  view shows a `(Virtual)` marker and hides the send bar for these (#6159). */
+  virtual: boolean;
 }
 
 function parseChannelKey(key: string): number | null {
@@ -52,14 +56,20 @@ export async function listKeyedChannels(
   }
 
   // A virtual channel's own name (#5552) wins over a same-secret device slot:
-  // it is the name an admin gave the key on purpose.
+  // it is the name an admin gave the key on purpose. The same pass records the
+  // fingerprints that belong to a virtual channel, so the keyed entry can be
+  // marked `virtual` (#6159).
+  const virtualFps = new Set<string>();
   try {
     for (const vc of await databaseService.channelDatabase.getAllAsync('meshcore')) {
       const secretHex = pskToHex(vc.psk);
-      if (secretHex && vc.name) nameByFp.set(channelKeyFingerprint(secretHex), vc.name);
+      if (!secretHex) continue;
+      const fp = channelKeyFingerprint(secretHex);
+      virtualFps.add(fp);
+      if (vc.name) nameByFp.set(fp, vc.name);
     }
   } catch {
-    // Names fall back to the device rows.
+    // Names fall back to the device rows; virtual marking is best-effort.
   }
 
   const byId = new Map<number, KeyedChannelEntry>();
@@ -71,6 +81,7 @@ export async function listKeyedChannels(
       id,
       name: recorded || nameByFp.get(s.keyFingerprint) || '',
       keyFingerprint: s.keyFingerprint,
+      virtual: virtualFps.has(s.keyFingerprint),
     });
   }
   return [...byId.values()].sort((a, b) => a.id - b.id);

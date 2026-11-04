@@ -51,6 +51,10 @@ interface MeshCoreMessageStreamProps {
    *  hover in every browser, so the enclosing element carries it too. Only
    *  meaningful while `disabled` is true; ignored otherwise. */
   disabledReason?: string;
+  /** Hide the composer (text box + Send button + byte counter) entirely, for a
+   *  view-only channel such as a MeshCore virtual channel whose key is not on
+   *  the radio (#6159). The stream still renders its messages. */
+  hideComposer?: boolean;
   onSend: (text: string) => Promise<boolean>;
   onNodeNameClick?: (publicKey: string) => void;
   /** When provided, received channel messages show a Reply button (#3851). The
@@ -155,6 +159,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   emptyText,
   disabled,
   disabledReason,
+  hideComposer = false,
   onSend,
   onNodeNameClick,
   onReply,
@@ -1006,6 +1011,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           );
         })}
       </div>
+      {!hideComposer && (<>
       <div className="meshcore-send-bar" title={disabled ? disabledReason : undefined} style={{ position: 'relative' }}>
         <MentionAutocomplete
           id="meshcore-mention-list"
@@ -1047,6 +1053,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           {byteCounter.text}
         </div>
       )}
+      </>)}
       {routeDetail && (
         <MeshCoreMessageRouteModal
           message={routeDetail}
