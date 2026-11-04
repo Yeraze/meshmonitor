@@ -46,6 +46,7 @@ import {
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import type { DbMeshCoreMessage } from '../db/repositories/meshcore.js';
 import { isReactionText, isReactionEmoji, mc1ChannelBody } from '../utils/meshcoreReactions.js';
+import { requiredRepeaterHeard } from '../utils/meshcoreHeardBy.js';
 import {
   foldReactionEmoji,
   meshcoreWireSecond,
@@ -6485,18 +6486,29 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // for a genuine echo is already persisted by now. A repeater heard AFTER
     // this read (extremely-late echo) at worst yields one accepted duplicate,
     // which the opt-in explicitly tolerates.
-    let heardCount: number;
+    let heard: Array<{ repeaterHash: string }>;
     try {
-      const heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
-      heardCount = heard.length;
+      heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] channel-retry heard-count read failed: ${(err as Error).message}`);
       return; // can't confirm a miss → don't risk a needless duplicate
     }
 
-    if (heardCount > 0) {
+    // #6178: honour the per-source Required Repeater gate here too, with the same
+    // shared matcher as the user resend. Unset = default "heard by any".
+    const requiredRepeater =
+      (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRequiredRepeater')) || null;
+    const heardForRetry = requiredRepeater
+      ? requiredRepeaterHeard(
+          heard.map((h) => ({ hash: h.repeaterHash })),
+          requiredRepeater,
+          [...this.contacts.values()].map((c) => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
+        )
+      : heard.length > 0;
+    if (heardForRetry) {
       logger.debug(
-        `[MeshCore:${this.sourceId}] Channel send ${messageId} heard by ${heardCount} repeater(s) within window; no retry`,
+        `[MeshCore:${this.sourceId}] Channel send ${messageId} heard by ${heard.length} repeater(s) within window` +
+        `${requiredRepeater ? ' (required repeater relayed it)' : ''}; no retry`,
       );
       return;
     }
@@ -6677,7 +6689,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // An echo that lands after this read and before the RF send costs at most
       // one copy that repeaters which heard the original drop by hash.
       const heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
-      if (heard.length > 0) {
+      // #6178: with a per-source Required Repeater set, the send counts as heard
+      // only once THAT repeater is heard relaying it (conservative unique-prefix
+      // match, shared with the UI via `requiredRepeaterHeard`). Unset = today's
+      // "heard by any repeater" rule, byte-for-byte.
+      const requiredRepeater =
+        (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRequiredRepeater')) || null;
+      const alreadyHeard = requiredRepeater
+        ? requiredRepeaterHeard(
+            heard.map((h) => ({ hash: h.repeaterHash })),
+            requiredRepeater,
+            [...this.contacts.values()].map((c) => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
+          )
+        : heard.length > 0;
+      if (alreadyHeard) {
         throw new MeshCoreResendError('ALREADY_HEARD', 'A repeater already relayed this message');
       }
       const events = await databaseService.messageEvents.getEventsForMessages(this.sourceId, [messageId], 'retry');

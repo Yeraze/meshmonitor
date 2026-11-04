@@ -17,6 +17,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import { parseJsonResponse } from '../../utils/parseJsonResponse';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
 import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
@@ -141,6 +142,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const isChannelMutedFn = muteSettings?.isChannelMuted;
   const canMute = !!muteSettings && authStatus?.authenticated === true;
   const [showMuteMenu, setShowMuteMenu] = useState(false);
+  // #6178: per-source Required Repeater (full public key, hex) or null. Gates
+  // the resend ↻ button so it stays until that one repeater relays the message.
+  const [requiredRepeater, setRequiredRepeater] = useState<string | null>(null);
 
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   // No channel is selected when the view opens (#6049) — the operator must pick
@@ -247,6 +251,27 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   useEffect(() => {
     localStorage.setItem(SORT_UNREAD_FIRST_KEY, String(sortUnreadFirst));
   }, [sortUnreadFirst]);
+
+  // #6178: read this source's Required Repeater setting. Re-read on source
+  // change (the setting is per-source); switching to the Settings tab and back
+  // remounts this view, so a change made there is picked up on return.
+  useEffect(() => {
+    if (!sourceId) { setRequiredRepeater(null); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await csrfFetch(`${baseUrl}/api/settings?sourceId=${encodeURIComponent(sourceId)}`);
+        if (!res.ok) return;
+        const settings = await parseJsonResponse(res);
+        if (cancelled || !settings) return;
+        const raw = settings.meshcoreRequiredRepeater;
+        setRequiredRepeater(typeof raw === 'string' && raw.trim() ? raw.trim() : null);
+      } catch {
+        // Keep the default (none); the resend button behaves as before.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [baseUrl, sourceId, csrfFetch]);
 
   // Mark a channel read up to `ts`, persisting to localStorage. Never moves the
   // marker backwards. `ts` defaults to now so opening an empty/quiet channel
@@ -1111,6 +1136,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           contacts={contacts}
           sourceId={sourceId}
           selfPublicKey={selfKey}
+          requiredRepeaterPublicKey={requiredRepeater}
           // #6159: a virtual channel's key is not on the radio — hide the send
           // bar entirely (receive-only), rather than just disabling it.
           hideComposer={active?.virtual === true}
