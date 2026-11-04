@@ -27,6 +27,8 @@ const SECRET_B64 = Buffer.from(SECRET).toString('base64');
 
 let sourceCounter = 0;
 let retryEnabled = false;
+// #6178: per-source Required Repeater setting the mocked settings store returns.
+let requiredRepeaterSetting: string | null = null;
 
 function makeManager(sourceId: string): { manager: MeshCoreManager; calls: BridgeCall[] } {
   const m = new MeshCoreManager(sourceId);
@@ -90,13 +92,15 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
   beforeEach(() => {
     sourceId = `resend-src-${++sourceCounter}`;
     retryEnabled = false;
+    requiredRepeaterSetting = null;
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(T0);
     vi.spyOn(databaseService, 'channels', 'get').mockReturnValue({
       getChannelById: vi.fn(async (idx: number) => (idx === CHANNEL ? { id: CHANNEL, psk: SECRET_B64 } : null)),
     } as any);
     vi.spyOn(databaseService, 'settings', 'get').mockReturnValue({
-      getSettingForSource: vi.fn(async () => null),
+      getSettingForSource: vi.fn(async (_src: string, key: string) =>
+        key === 'meshcoreRequiredRepeater' ? requiredRepeaterSetting : null),
       setSourceSetting: vi.fn(async () => {}),
       getSettingAsBoolean: vi.fn(async (_key: string, def: boolean) => (retryEnabled ? true : def)),
     } as any);
@@ -272,6 +276,60 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
     });
     vi.setSystemTime(T0 + 31_000);
     await expectRefusal(manager.resendChannelMessage(id), 'ALREADY_HEARD');
+  });
+
+  describe('Required Repeater gate (#6178)', () => {
+    const REQ = 'bb'.repeat(32); // 64-char full repeater public key
+    const OTHER = 'cc'.repeat(32);
+
+    const addRelay = (m: MeshCoreManager, publicKey: string) => {
+      (m as any).contacts.set(publicKey, { publicKey, advType: MeshCoreDeviceType.REPEATER });
+    };
+
+    it('refuses only once the REQUIRED repeater is uniquely heard', async () => {
+      const { manager } = makeManager(sourceId);
+      addRelay(manager, REQ);
+      addRelay(manager, OTHER);
+      requiredRepeaterSetting = REQ;
+      const id = await sendOne(manager);
+      // 'bb' uniquely resolves to REQ among the known relays.
+      await databaseService.meshcore.recordHeardRepeater({
+        sourceId, messageId: id, repeaterHash: 'bb', repeaterName: null, snr: 4, heardAt: T0 + 1000,
+      });
+      vi.setSystemTime(T0 + 31_000);
+      await expectRefusal(manager.resendChannelMessage(id), 'ALREADY_HEARD');
+    });
+
+    it('still resends when a DIFFERENT repeater relayed it', async () => {
+      const { manager, calls } = makeManager(sourceId);
+      addRelay(manager, REQ);
+      addRelay(manager, OTHER);
+      requiredRepeaterSetting = REQ;
+      const id = await sendOne(manager);
+      const before = sends(calls).length;
+      // 'cc' resolves to OTHER, not the required REQ → not heard → resend allowed.
+      await databaseService.meshcore.recordHeardRepeater({
+        sourceId, messageId: id, repeaterHash: 'cc', repeaterName: null, snr: 4, heardAt: T0 + 1000,
+      });
+      vi.setSystemTime(T0 + 31_000);
+      await manager.resendChannelMessage(id);
+      expect(sends(calls).length).toBe(before + 1);
+    });
+
+    it('still resends when the heard prefix is ambiguous', async () => {
+      const { manager, calls } = makeManager(sourceId);
+      addRelay(manager, REQ);
+      addRelay(manager, 'bb' + 'ab'.repeat(31)); // also starts with 'bb'
+      requiredRepeaterSetting = REQ;
+      const id = await sendOne(manager);
+      const before = sends(calls).length;
+      await databaseService.meshcore.recordHeardRepeater({
+        sourceId, messageId: id, repeaterHash: 'bb', repeaterName: null, snr: 4, heardAt: T0 + 1000,
+      });
+      vi.setSystemTime(T0 + 31_000);
+      await manager.resendChannelMessage(id);
+      expect(sends(calls).length).toBe(before + 1);
+    });
   });
 
   it('never resends a reaction row (#5762)', async () => {

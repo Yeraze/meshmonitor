@@ -334,6 +334,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
                 actions={actions}
                 baseUrl={baseUrl}
                 sourceId={sourceId}
+                contacts={contacts}
                 receiveOnly={receiveOnly}
                 canOpenDeviceConfiguration={canOpenDeviceConfiguration}
                 onOpenDeviceConfiguration={openDeviceConfiguration}

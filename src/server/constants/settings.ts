@@ -465,6 +465,10 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreReactionsInboundEnabled',
   // MeshCore outbound reactions (#5762) — per source; default in MESHCORE_REACTIONS_OUTBOUND_DEFAULT
   'meshcoreReactionsOutboundEnabled',
+  // MeshCore Required Repeater (#6178) — per source. Full public key (hex) of
+  // the one repeater whose relay keeps a channel send "unheard" (so the resend
+  // button stays). Empty/unset = default "heard by any repeater".
+  'meshcoreRequiredRepeater',
   // Terrain Link Profile / elevation backend (#4111 Phase 1). Global (not
   // per-source) — elevation is source-agnostic public DEM data.
   // `elevationEnabled` is the public availability flag the Map Analysis page
@@ -759,6 +763,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreReactionsInboundEnabled',
   // MeshCore outbound reactions (#5762) — per source; default in MESHCORE_REACTIONS_OUTBOUND_DEFAULT
   'meshcoreReactionsOutboundEnabled',
+  // MeshCore Required Repeater (#6178) — per source (full repeater public key)
+  'meshcoreRequiredRepeater',
   // Node Display (#4412 / per-source node display epic). All ten keys in the
   // Settings → Node Display section are per-source as of Phase 1; Phase 2 converts
   // the server reads to getSettingForSource(). `localStatsIntervalMinutes` is

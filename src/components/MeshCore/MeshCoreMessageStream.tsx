@@ -18,7 +18,7 @@ import { findIgnoredRuns } from './meshcoreIgnoredRuns';
 import { groupMeshCoreReactions } from './meshcoreReactionGroups';
 import { MeshCoreReactionChips, MeshCoreUnmatchedReaction } from './MeshCoreReactionChips';
 import Modal from '../common/Modal';
-import { resendAvailability, RESEND_MAX } from './meshcoreResend';
+import { resendAvailability, RESEND_MAX, type ResendAvailabilityOpts } from './meshcoreResend';
 import { EmojiPickerModal, type TapbackEmoji } from '../EmojiPickerModal/EmojiPickerModal';
 import { isReactableRow, reactionEmojiOptions } from './meshcoreReactionClient';
 import { isReactionEmoji } from '../../utils/meshcoreReactions';
@@ -31,7 +31,7 @@ import { parseSpip } from '../../utils/spip';
 import { SpipImage } from '../Spip/SpipImage';
 import { meshcoreDisplayTimeMs, meshcoreMessageClockOffsetMs } from '../../utils/meshcoreMessageTime';
 import { MeshCoreClockOffset } from './MeshCoreClockOffset';
-import { sortHeardBy } from '../../utils/meshcoreHeardBy';
+import { sortHeardBy, requiredRepeaterHeard, RELAY_ADV_TYPES } from '../../utils/meshcoreHeardBy';
 import { isNearBottom, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX } from '../../utils/scrollNearBottom';
 
 interface MeshCoreMessageStreamProps {
@@ -107,6 +107,11 @@ interface MeshCoreMessageStreamProps {
    *  loaded (#5759). Lets a view that pages its own history show the chip
    *  without a reload. */
   reactionResolutions?: Record<string, string>;
+  /** Per-source Required Repeater (#6178): full public key (hex) of the one
+   *  repeater whose relay ends a channel send's resend window. When set, the ↻
+   *  button stays until THAT repeater is heard; unset = default "heard by any".
+   *  The matcher reads candidate relays from `contacts`. */
+  requiredRepeaterPublicKey?: string | null;
 }
 
 /** Scroll-to-top distance (px) that triggers a load-older request. */
@@ -175,6 +180,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   unreadAnchorMs,
   backlogLoading = false,
   reactionResolutions,
+  requiredRepeaterPublicKey,
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
@@ -297,10 +303,32 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // keyed by the run's first message id; `expandedIgnoredRuns` holds the runs
   // shown open.
   const ignoredRuns = useMemo(() => findIgnoredRuns(messages), [messages]);
-  const needsResendClock = useMemo(
-    () => resendEnabled && messages.some(m => resendAvailability(m, selfPublicKey, Date.now()).kind !== 'never'),
-    [resendEnabled, messages, selfPublicKey],
+  // #6178: the source's known relays (repeater / room-server), the candidate
+  // set the Required Repeater matcher resolves path-hash prefixes against.
+  const repeaters = useMemo(
+    () => (contacts ?? [])
+      .filter(c => c.publicKey && (c.advType == null || RELAY_ADV_TYPES.has(c.advType)))
+      .map(c => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
+    [contacts],
   );
+  // Opts bag passed to `resendAvailability`; when no Required Repeater is set
+  // this is undefined, so the default "heard by any" path runs unchanged.
+  const resendOpts = useMemo<ResendAvailabilityOpts | undefined>(
+    () => (requiredRepeaterPublicKey ? { requiredRepeaterPublicKey, repeaters } : undefined),
+    [requiredRepeaterPublicKey, repeaters],
+  );
+  const needsResendClock = useMemo(
+    () => resendEnabled && messages.some(m => resendAvailability(m, selfPublicKey, Date.now(), resendOpts).kind !== 'never'),
+    [resendEnabled, messages, selfPublicKey, resendOpts],
+  );
+  // Display name of the configured Required Repeater (#6178), for the
+  // required-aware tooltips. Falls back to a short pubkey when it has no name.
+  const requiredRepeaterName = useMemo(() => {
+    if (!requiredRepeaterPublicKey) return null;
+    const want = requiredRepeaterPublicKey.toLowerCase();
+    const hit = (contacts ?? []).find(c => c.publicKey && c.publicKey.toLowerCase() === want);
+    return hit?.advName || hit?.name || `${requiredRepeaterPublicKey.slice(0, 12)}…`;
+  }, [requiredRepeaterPublicKey, contacts]);
   useEffect(() => {
     if (!needsResendClock) return;
     setNow(Date.now());
@@ -859,28 +887,53 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       </button>
                     );
                   })()}
+                  {(() => {
+                    // #6178: when a Required Repeater is set and this send was
+                    // heard by others but NOT (yet) by that repeater, the badge
+                    // and resend tooltips explain why the button is still here.
+                    const requiredNotHeard =
+                      !!requiredRepeaterPublicKey &&
+                      !!m.heardBy && m.heardBy.length > 0 &&
+                      !requiredRepeaterHeard(m.heardBy, requiredRepeaterPublicKey, repeaters);
+                    return (
+                      <>
                   {outgoing && m.heardBy && m.heardBy.length > 0 && (
                     <button
                       type="button"
                       className="mc-heard-by-badge"
-                      title={t('meshcore.heard_by_tooltip', 'Repeaters that relayed this message')}
+                      title={requiredNotHeard
+                        ? t('meshcore.heard_by_required_tooltip', {
+                            count: m.heardBy.length,
+                            name: requiredRepeaterName,
+                            defaultValue: 'Heard by {{count}} repeater(s), but the required repeater ({{name}}) has not relayed this yet',
+                          })
+                        : t('meshcore.heard_by_tooltip', 'Repeaters that relayed this message')}
                       aria-expanded={expandedHeardBy.has(m.id)}
                       onClick={() => toggleHeardBy(m.id)}
                     >
                       <UiIcon name="radioSignal" size={13} /> {m.heardBy.length}
                     </button>
                   )}
-                  {resendEnabled && resendAvailability(m, selfPublicKey, now).kind === 'ready' && (
+                  {resendEnabled && resendAvailability(m, selfPublicKey, now, resendOpts).kind === 'ready' && (
                     <button
                       type="button"
                       className={styles.resendButton}
-                      title={t('meshcore.resend.tooltip', 'No repeater was heard relaying this message. Resend it.')}
+                      title={requiredNotHeard
+                        ? t('meshcore.resend.required_tooltip', {
+                            count: m.heardBy!.length,
+                            name: requiredRepeaterName,
+                            defaultValue: 'Heard by {{count}} repeater(s), but the required repeater ({{name}}) has not relayed this yet. Resend it.',
+                          })
+                        : t('meshcore.resend.tooltip', 'No repeater was heard relaying this message. Resend it.')}
                       aria-label={t('meshcore.resend.button', 'Resend')}
                       onClick={() => setResendConfirm(m)}
                     >
                       <UiIcon name="resend" size={13} /> {t('meshcore.resend.button', 'Resend')}
                     </button>
                   )}
+                      </>
+                    );
+                  })()}
                   </span>
                   {reactEnabled && isReactableRow(m, selfPublicKey) && (
                     <button

@@ -70,6 +70,7 @@ function renderView(props: { canOpenDeviceConfiguration?: boolean; onOpenDeviceC
       actions={actions as never}
       baseUrl=""
       sourceId="src-a"
+      contacts={[]}
       {...props}
     />,
   );
