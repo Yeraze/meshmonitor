@@ -142,6 +142,8 @@ import {
   keyedChannelIndex,
   frameChannelMessageId,
   noteVirtualChannelDecrypt,
+  anySecretMatchesChannelHash,
+  type DecryptedGroupText,
 } from './services/meshcoreFrameIngest.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
@@ -3140,6 +3142,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // opt-in; gate persistence on the setting so we don't write a row for
       // every received packet unless the user has turned the monitor on.
       void this.handleOtaPacket(data);
+      // #6159: decrypt GRP_TXT the Companion heard OTA against MeshCore virtual
+      // channels (#5552) and any other source's channel key the viewer may read
+      // — the same keys the Repeater RAW path uses. A channel SET on this radio
+      // is delivered as a normal channel message, so those are skipped (no
+      // double-store). Receive-only: stores/displays only, sends nothing. NOT
+      // gated on the packet-monitor setting — virtual-channel decrypt is the
+      // feature, independent of the raw packet log.
+      void this.ingestCompanionGroupText(data);
       // Cross-source "heard here" links (#5561): this companion hearing one
       // of our OTHER MeshCore sources (a signed zero-hop advert, or a flood
       // whose last hop matches). Independent of the packet-monitor setting.
@@ -4627,10 +4637,104 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!group) return;
     const plain = await decryptGroupTextFrame(group);
     if (!plain) return;
+    await this.storeDecryptedGroupText(plain, {
+      rawHex: p.rawHex,
+      snr: p.snr,
+      rssi: p.rssi,
+      hopCount,
+      hops,
+      idPrefix: 'rpt',
+    });
+  }
 
+  /**
+   * A GRP_TXT frame this Companion heard over the air (`ota_packet`, LogRxData
+   * 0x88), decrypted against MeshCore virtual channels (#5552) and any other
+   * source's channel key the viewer may read — the same keys the Repeater RAW
+   * path uses (#6159). Filed under a keyed channel index like that path, so the
+   * existing `/api/channels/all` + `/channels/:idx/messages` machinery lists it
+   * and gates it per-source and per-key. Pure RX: nothing is sent.
+   *
+   * Double-store guard: a channel SET on this Companion is ALSO delivered by
+   * the firmware as a normal channel message, so a frame whose channel hash we
+   * already hold a device key for (incl. the always-present Public slot) is
+   * skipped here. Only virtual / cross-source keys reach storage, and a virtual
+   * channel's decrypt count is incremented only for a message it actually
+   * opened. Best-effort: a decode / DB failure never breaks the packet stream.
+   */
+  private async ingestCompanionGroupText(data: { raw_hex?: unknown; snr?: unknown; rssi?: unknown; hop_count?: unknown; path_hops?: unknown }): Promise<void> {
+    try {
+      const rawHex = typeof data?.raw_hex === 'string' ? data.raw_hex : null;
+      if (!rawHex) return;
+      const group = decodeMeshCorePacket(rawHex)?.payload?.groupText;
+      if (!group) return;
+      // The firmware already surfaces channels we hold a key for; don't store
+      // a second copy of a message it delivers as a normal channel message.
+      if (this.companionHoldsChannelHash(group.channelHash)) return;
+      const plain = await decryptGroupTextFrame(group);
+      if (!plain) return;
+      await this.storeDecryptedGroupText(plain, {
+        rawHex,
+        snr: typeof data.snr === 'number' ? data.snr : undefined,
+        rssi: typeof data.rssi === 'number' ? data.rssi : undefined,
+        hopCount: typeof data.hop_count === 'number' ? data.hop_count : undefined,
+        hops: Array.isArray(data.path_hops) ? (data.path_hops as string[]) : undefined,
+        idPrefix: 'cmp',
+      });
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] Companion GRP_TXT ingest failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * True when this Companion already holds a channel key whose hash matches the
+   * frame's — so the firmware delivers that message through the normal
+   * channel-message event and the OTA decrypt path must not store it again
+   * (#6159). Reads the in-memory secret cache ({@link channelSecrets}) plus the
+   * always-present Public slot, so there is no DB round-trip on the packet hot
+   * path. The cache is refreshed on connect and on channel changes (#5357), so
+   * at worst a message added in a sub-second window is stored twice until the
+   * next refresh — self-correcting, never a persistent duplicate.
+   */
+  private companionHoldsChannelHash(channelHashHex: string): boolean {
+    const secretsHex: string[] = [Buffer.from(MESHCORE_PUBLIC_CHANNEL_SECRET).toString('hex')];
+    for (const secret of this.channelSecrets.values()) {
+      secretsHex.push(Buffer.from(secret).toString('hex'));
+    }
+    return anySecretMatchesChannelHash(channelHashHex, secretsHex);
+  }
+
+  /**
+   * Store a decrypted GRP_TXT body as a channel message on this source (#5551,
+   * #6159), filed under a keyed channel index derived from the secret and
+   * stamped with the key's `keySourceId` / `keyChannelIdx` / `keyFingerprint`.
+   * Every read path gates the row on the viewer's access to that key
+   * (`utils/meshcoreKeyAccess.ts`). Shared by the Repeater RAW path and the
+   * Companion OTA path; pure RX — nothing here sends.
+   *
+   * `idPrefix` namespaces the content-derived id per ingest kind ('rpt'
+   * repeater, 'cmp' companion). The id also carries `sourceId`, so the same
+   * flood heard several times on one source collapses to ONE row —
+   * `insertMessage` returns false for the copies. Messages that sound like our
+   * own (a sender name matching a local MeshCore node) are stored but flagged
+   * `selfOrigin`, so an automation replying on a sibling companion cannot
+   * re-trigger itself (#3914 feedback loop).
+   */
+  private async storeDecryptedGroupText(
+    plain: DecryptedGroupText,
+    frame: {
+      rawHex: string;
+      snr: number | null | undefined;
+      rssi: number | null | undefined;
+      hopCount: number | null | undefined;
+      hops: string[] | null | undefined;
+      idPrefix: string;
+    },
+  ): Promise<void> {
+    const { rawHex, snr, rssi, hopCount, hops, idPrefix } = frame;
     const fingerprint = channelKeyFingerprint(plain.key.secretHex);
     const channelIdx = keyedChannelIndex(plain.key.secretHex);
-    const id = frameChannelMessageId('rpt', this.sourceId, fingerprint, plain.timestampSec, plain.text);
+    const id = frameChannelMessageId(idPrefix, this.sourceId, fingerprint, plain.timestampSec, plain.text);
     const now = Date.now();
     // Raw wire second (#5759): the MC1 reaction hash input.
     const sec = meshcoreWireSecond(plain.timestampSec);
@@ -4643,8 +4747,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Sender's clock when it has one, else when we heard it.
       timestamp: plain.timestampSec > 0 ? plain.timestampSec * 1000 : now,
       receivedAt: now,
-      rssi: typeof p.rssi === 'number' ? p.rssi : undefined,
-      snr: typeof p.snr === 'number' ? p.snr : undefined,
+      rssi: typeof rssi === 'number' ? rssi : undefined,
+      snr: typeof snr === 'number' ? snr : undefined,
       sourceId: this.sourceId,
       messageType: 'channel',
       hopCount: typeof hopCount === 'number' ? hopCount : null,
@@ -4722,7 +4826,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       });
     }
 
-    const packetHash = meshCorePacketHashOrUndefined(p.rawHex);
+    const packetHash = meshCorePacketHashOrUndefined(rawHex);
     const selfOrigin = await isLocalMeshCoreSenderName(plain.senderName);
     const event: MeshCoreMessage = {
       ...poolMessage,

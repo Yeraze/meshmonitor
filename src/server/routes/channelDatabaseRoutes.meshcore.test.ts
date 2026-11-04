@@ -276,7 +276,7 @@ describe('MeshCore virtual channels (#5552)', () => {
       });
       expect(await resolveMeshcoreKeyAccess(limited)).toEqual([channelKeyFingerprint(SECRET)]);
       expect(await listKeyedChannelsForViewer(limited, A)).toEqual([
-        { id: keyedChannelIndex(SECRET), name: 'vc', keyFingerprint: channelKeyFingerprint(SECRET) },
+        { id: keyedChannelIndex(SECRET), name: 'vc', keyFingerprint: channelKeyFingerprint(SECRET), virtual: true },
       ]);
 
       // A disabled row stops decrypting new traffic.

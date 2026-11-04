@@ -180,6 +180,10 @@ router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
               encryptionStatus: 'secure',
               keyed: true,
               readOnly: true,
+              // #6159: a virtual channel (channel_database) vs another source's
+              // device slot. The Channels view marks virtual ones `(Virtual)`
+              // and hides the send bar for them.
+              virtual: k.virtual,
             });
           }
         }
