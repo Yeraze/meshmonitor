@@ -645,6 +645,10 @@ Always select the correct region for your location. Using incorrect frequency ba
 - **Longitude**: Decimal degrees (-180 to 180)
 - **Altitude**: Meters above sea level
 
+**Pick on map**: Below the fields is a map, like **Set fixed position** in the Meshtastic iOS app. Click the map to drop a pin, or drag the pin to move it, and the latitude and longitude fields update. **Use this device's location** puts the pin at the location your browser reports (the browser asks for permission first). Nothing is sent to the node until you press **Save**.
+
+![Fixed position map pin](/images/features/fixed-position-map-pin.png)
+
 **Side Effects**:
 - Position never updates even if device moves
 - GPS hardware is not used (saves power)

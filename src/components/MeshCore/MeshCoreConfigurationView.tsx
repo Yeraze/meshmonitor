@@ -23,6 +23,7 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import SectionNav from '../SectionNav';
 import { meshcoreConfigurationNavItems } from '../search/configSections';
 import navStyles from './MeshCoreSectionNav.module.css';
+import { LocationPinPicker } from '../map/LocationPinPicker';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
@@ -378,7 +379,15 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               </NumberInputScope>
             </div>
           </div>
-          <div>
+          <LocationPinPicker
+            lat={lat}
+            lon={lon}
+            onChange={(la, lo) => { setLat(la); setLon(lo); }}
+            disabled={!connected || savingLocation || !canWriteConfig}
+            decimals={6}
+            testId="meshcore-location-map"
+          />
+          <div style={{ marginTop: '0.5rem' }}>
             <button
               onClick={() => void handleSaveLocation()}
               disabled={

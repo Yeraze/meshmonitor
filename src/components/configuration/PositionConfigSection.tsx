@@ -8,6 +8,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { LocationPinPicker } from '../map/LocationPinPicker';
 
 interface PositionConfigSectionProps {
   /** False disables every control: no configuration:write on this source (#5830). */
@@ -265,6 +266,20 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               value={fixedAltitude}
               onChange={setFixedAltitude}
               className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label>
+              {t('position_config.pick_on_map', 'Pick on map')}
+              <span className="setting-description">{t('position_config.pick_on_map_description', 'Click the map or drag the pin to set the fixed position, then save.')}</span>
+            </label>
+            <LocationPinPicker
+              lat={fixedLatitude}
+              lon={fixedLongitude}
+              onChange={(la, lo) => { setFixedLatitude(la); setFixedLongitude(lo); }}
+              disabled={!canWrite}
+              decimals={7}
+              testId="fixed-position-map"
             />
           </div>
         </>
