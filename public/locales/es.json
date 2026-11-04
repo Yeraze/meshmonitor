@@ -7872,5 +7872,11 @@
     "node_details.channel_edit_hint": "Si está desbloqueado, el siguiente paquete descifrado con una clave de canal lo vuelve a actualizar.",
     "node_details.channel_save_failed": "No se pudo guardar el canal",
     "node_details.channel_saved": "Canal guardado",
-    "device_notification.unsigned_update_ignored": "{{node}} envió un cambio de nombre o de rol sin firma. Tu nodo lo ignoró porque su nivel de protección es {{level}}. Quita ese nodo de tu lista de nodos para aceptar sus actualizaciones sin firma."
+    "device_notification.unsigned_update_ignored": "{{node}} envió un cambio de nombre o de rol sin firma. Tu nodo lo ignoró porque su nivel de protección es {{level}}. Quita ese nodo de tu lista de nodos para aceptar sus actualizaciones sin firma.",
+    "settings.vn_replay_section": "Reenvío de mensajes del nodo virtual",
+    "settings.vn_replay_section_description": "Cuando una app del móvil se reconecta a un nodo virtual, se le reenvían los mensajes de texto guardados mientras estaba dormida (desde su última señal de vida, con 10 minutos de solape). La app descarta los duplicados por el id del paquete: ni huecos ni duplicados. No gasta tiempo de aire LoRa; solo viaja por la conexión local con la app. Con 50 ms entre mensajes, hasta los 2000 más recientes; la primera conexión recibe las últimas 24 horas.",
+    "settings.vn_replay_enabled_label": "Reenviar los mensajes perdidos al reconectar",
+    "settings.vn_replay_enabled_description": "Opcional; desactivado por defecto. Se aplica a todas las fuentes con nodo virtual.",
+    "settings.vn_replay_exclude_ips_label": "No reenviar nunca a estas IP",
+    "settings.vn_replay_exclude_ips_description": "IP de clientes, separadas por comas, que nunca reciben el reenvío (scripts, registradores). Localhost queda siempre excluido. Si se rellena, sustituye a la variable de entorno VN_REPLAY_EXCLUDE_IPS."
 }
