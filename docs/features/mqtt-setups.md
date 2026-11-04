@@ -83,7 +83,7 @@ Use a **broker and an attached bridge**, not a bridge alone. A node linked strai
 A node with **OK to MQTT** on marks every packet it sends as fine to publish, including MeshMonitor's automated replies. On a busy channel, Auto Acknowledge alone can publish a tapback for every message it answers. **Don't uplink MeshMonitor automation traffic** is the only setting that stops these, and it works only on traffic that passes through the bridge. A node whose own MQTT module connects straight to the upstream server bypasses it.
 :::
 
-The bridge also honours each packet's **OK to MQTT** setting. It publishes a packet only when the sender allowed it, and **drops encrypted packets it cannot read**. If a channel's packets never reach the upstream server, add that channel's key to the [Channel Database](/features/channel-database) so the bridge can read the setting. **Uplink all packets (ignore ok_to_mqtt bit)** turns the check off; use it only on a private server whose gateways have all agreed.
+The bridge also honours each packet's **OK to MQTT** setting. It publishes a packet only when the sender allowed it, and **drops encrypted packets it cannot read**. If a channel's packets never reach the upstream server, add that channel's key to the [Channel Database](/features/channel-database) so the bridge can read the setting. A node's own **map report** (what public maps such as the Meshtastic map use for its position) has no OK to MQTT setting; its opt-in is the node's **Map Reporting** option, so the bridge always passes it through. **Uplink all packets (ignore ok_to_mqtt bit)** turns the check off; use it only on a private server whose gateways have all agreed.
 
 ## Setup 2: Several nodes to an upstream server
 
