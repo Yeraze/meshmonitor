@@ -1839,6 +1839,134 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * One page of a single DM conversation's history (#6186), scoped to a source.
+   *
+   * Unlike {@link getRecentMessages} (one global tail slice shared by every
+   * channel and DM), this returns the peer's own backlog, so a busy channel
+   * can't evict a DM thread from the visible window — the bug this fixes.
+   *
+   * Rows match the peer on either endpoint, prefix-aware (inbound DMs store a
+   * sender *prefix*; outbound rows and contacts use the full key). Newest-first
+   * by server arrival time (`createdAt`, #5973) — the same clock the DM view
+   * draws by — with `offset` paging further back for load-older support.
+   */
+  async getConversationMessages(
+    publicKey: string,
+    limit: number = 100,
+    sourceId?: string,
+    offset: number = 0,
+    keyAccess?: MeshCoreKeyAccessFilter,
+  ): Promise<DbMeshCoreMessage[]> {
+    const { meshcoreMessages } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(this.withKeyAccess(this.conversationWhereClause(publicKey, sourceId), keyAccess))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
+      .limit(limit)
+      .offset(offset);
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
+   * One page of a single room server's posts (#6186), scoped to a source.
+   *
+   * Room posts are ordered by SENDER time (`timestamp`), NOT receipt time: a
+   * room replays its whole backlog at login, so receipt time collapses to the
+   * login moment and would mis-sort (#5973 / #6148). `offset` pages further
+   * back for load-older support.
+   */
+  async getRoomMessages(
+    roomPublicKey: string,
+    limit: number = 100,
+    sourceId?: string,
+    offset: number = 0,
+    keyAccess?: MeshCoreKeyAccessFilter,
+  ): Promise<DbMeshCoreMessage[]> {
+    const { meshcoreMessages } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(this.withKeyAccess(this.roomWhereClause(roomPublicKey, sourceId), keyAccess))
+      .orderBy(desc(meshcoreMessages.timestamp), desc(meshcoreMessages.id))
+      .limit(limit)
+      .offset(offset);
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
+   * Distinct DM conversation endpoints for a source (#6186), each with the
+   * latest message time (`MAX(createdAt)`), so the DM thread list can be built
+   * from the DB rather than the shared 100-message window. Reactions are
+   * excluded (they target an existing message and never start a thread); room
+   * posts and channel pseudo-keys are excluded via {@link directMessageClause}.
+   * The caller resolves which endpoint is the peer (it alone knows the local
+   * node's key).
+   */
+  async getDmConversationEndpoints(
+    sourceId: string,
+  ): Promise<Array<{ fromPublicKey: string; toPublicKey: string; lastMessageAt: number }>> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getDmConversationEndpoints requires a sourceId');
+    }
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({
+        fromPublicKey: meshcoreMessages.fromPublicKey,
+        toPublicKey: meshcoreMessages.toPublicKey,
+        lastMessageAt: sql<number>`MAX(${meshcoreMessages.createdAt})`,
+      })
+      .from(meshcoreMessages)
+      .where(and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        this.directMessageClause(),
+        this.notRoomPostClause(),
+        isNull(meshcoreMessages.reactionEmoji),
+      ))
+      .groupBy(meshcoreMessages.fromPublicKey, meshcoreMessages.toPublicKey);
+    return rows.map((r: { fromPublicKey: string; toPublicKey: string | null; lastMessageAt: number | null }) => ({
+      fromPublicKey: r.fromPublicKey,
+      toPublicKey: r.toPublicKey as string,
+      lastMessageAt: Number(r.lastMessageAt ?? 0),
+    }));
+  }
+
+  /**
+   * Per-room post count and latest post time (SENDER time, #5973) for a source
+   * (#6186), grouped by the stored recipient key. The caller maps each stored
+   * key to its room prefix-aware (rooms can be keyed by prefix or full key),
+   * just like {@link roomWhereClause}. Lets the room list show accurate counts
+   * and ordering without the shared 100-message window.
+   */
+  async getRoomStats(
+    sourceId: string,
+  ): Promise<Array<{ roomPublicKey: string; count: number; latest: number }>> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getRoomStats requires a sourceId');
+    }
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({
+        roomPublicKey: meshcoreMessages.toPublicKey,
+        count: sql<number>`COUNT(*)`,
+        latest: sql<number>`MAX(${meshcoreMessages.timestamp})`,
+      })
+      .from(meshcoreMessages)
+      .where(and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        eq(meshcoreMessages.messageType, 'room_post'),
+        isNotNull(meshcoreMessages.toPublicKey),
+        isNull(meshcoreMessages.reactionEmoji),
+      ))
+      .groupBy(meshcoreMessages.toPublicKey);
+    return rows.map((r: { roomPublicKey: string | null; count: number | null; latest: number | null }) => ({
+      roomPublicKey: r.roomPublicKey as string,
+      count: Number(r.count ?? 0),
+      latest: Number(r.latest ?? 0),
+    }));
+  }
+
+  /**
    * Total message count per channel index for a source, e.g. for the channel
    * list's "N messages" badge. Returns a map keyed by channel index; indices
    * with no messages are omitted. Uses the same channel-scoping rules as
@@ -1955,6 +2083,76 @@ export class MeshCoreRepository extends BaseRepository {
       sql`${meshcoreMessages.toPublicKey} NOT LIKE 'channel-%'`,
       sql`${meshcoreMessages.fromPublicKey} NOT LIKE 'channel-%'`,
     ) as SQL;
+  }
+
+  /**
+   * True when a stored column holds the same MeshCore peer as `peerKey` —
+   * prefix-aware in both directions, since inbound DMs store a sender *prefix*
+   * (typically 12 hex chars) while outbound rows and contacts use the full
+   * 64-hex key. Mirrors `MeshCoreManager.keysMatch` and the frontend.
+   *
+   * Direction 1 uses LIKE with a JS-built literal pattern; direction 2 uses
+   * SUBSTR/LENGTH. Deliberately NOT string concatenation (`||` is logical-OR in
+   * MySQL, so `LIKE col || '%'` would be wrong there), and deliberately no
+   * integer bind parameter inside SUBSTR (its length arg is the column
+   * expression `length(col)`, avoiding a param-type mismatch on PostgreSQL).
+   * LIKE/SUBSTR/LENGTH behave identically across SQLite, PostgreSQL and MySQL
+   * for these lowercase ASCII-hex keys (no `%`/`_` metacharacters appear).
+   */
+  private prefixAwareKeyMatch(col: SQL, peerKey: string): SQL {
+    return or(
+      // col starts with peerKey (equal, or the stored key is longer).
+      sql`${col} LIKE ${peerKey + '%'}`,
+      // peerKey starts with col (the stored key is a shorter prefix).
+      sql`${col} = substr(${peerKey}, 1, length(${col}))`,
+    ) as SQL;
+  }
+
+  /** `messageType` that is anything but a room post (incl. legacy null rows). */
+  private notRoomPostClause(): SQL {
+    const { meshcoreMessages } = this.tables;
+    return or(
+      isNull(meshcoreMessages.messageType),
+      ne(meshcoreMessages.messageType, 'room_post'),
+    ) as SQL;
+  }
+
+  /**
+   * WHERE clause for one DM conversation with `publicKey` (#6186): a real DM
+   * (see {@link directMessageClause}, excludes channel pseudo-keys and null
+   * recipients), never a room post, where the peer appears on either endpoint,
+   * prefix-aware. Optionally source-scoped.
+   */
+  private conversationWhereClause(publicKey: string, sourceId?: string): SQL | undefined {
+    const { meshcoreMessages } = this.tables;
+    const from = sql`${meshcoreMessages.fromPublicKey}`;
+    const to = sql`${meshcoreMessages.toPublicKey}`;
+    const peer = or(
+      this.prefixAwareKeyMatch(from, publicKey),
+      this.prefixAwareKeyMatch(to, publicKey),
+    ) as SQL;
+    const base = and(this.directMessageClause(), this.notRoomPostClause(), peer) as SQL;
+    return sourceId
+      ? (and(eq(meshcoreMessages.sourceId, sourceId), base) as SQL)
+      : base;
+  }
+
+  /**
+   * WHERE clause for one room's posts (#6186): `messageType = 'room_post'` with
+   * a present recipient whose key prefix-matches `roomPublicKey` on either
+   * direction. Mirrors the frontend `buildRoomFilter`. Optionally source-scoped.
+   */
+  private roomWhereClause(roomPublicKey: string, sourceId?: string): SQL | undefined {
+    const { meshcoreMessages } = this.tables;
+    const to = sql`${meshcoreMessages.toPublicKey}`;
+    const match = and(
+      eq(meshcoreMessages.messageType, 'room_post'),
+      isNotNull(meshcoreMessages.toPublicKey),
+      this.prefixAwareKeyMatch(to, roomPublicKey),
+    ) as SQL;
+    return sourceId
+      ? (and(eq(meshcoreMessages.sourceId, sourceId), match) as SQL)
+      : match;
   }
 
   /**

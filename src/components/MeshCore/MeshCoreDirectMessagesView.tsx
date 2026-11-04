@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MeshCoreVirtualList } from './MeshCoreVirtualList';
 import { companionHasNativeCli } from '../../utils/meshcoreCompanionCli';
 import { MeshCoreIgnoreBlockControls } from './MeshCoreIgnoreBlockControls';
@@ -140,6 +140,76 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileShowContent, setMobileShowContent] = useState(false);
 
+  // #6186: the selected peer's DM history, read from the server so it survives
+  // channel traffic evicting it from the shared `messages` window. Mirrors the
+  // channel view's per-channel backlog + load-older paging (#4460).
+  const { fetchDmMessages, fetchDmPeers } = actions;
+  const [dmHistory, setDmHistory] = useState<MeshCoreMessage[]>([]);
+  const [dmHistoryFor, setDmHistoryFor] = useState<string | null>(null);
+  const [dmHasMore, setDmHasMore] = useState(false);
+  const [dmLoadingOlder, setDmLoadingOlder] = useState(false);
+  // DM threads that have stored history, sourced from a server query so a
+  // thread whose whole history aged out of the window still shows.
+  const [serverPeers, setServerPeers] = useState<Array<{ publicKey: string; lastMessageAt: number }>>([]);
+  const dmHistoryRef = useRef<MeshCoreMessage[]>([]);
+  const activePeerRef = useRef<string | null>(null);
+  useEffect(() => { dmHistoryRef.current = dmHistory; }, [dmHistory]);
+
+  // Refresh the server-sourced DM thread list on source/connect change. New DMs
+  // also arrive live in `messages`, so this mainly catches old threads that are
+  // no longer in the window.
+  useEffect(() => {
+    if (!sourceId) { setServerPeers([]); return; }
+    let cancelled = false;
+    void (async () => {
+      const peers = await fetchDmPeers();
+      if (!cancelled) setServerPeers(peers);
+    })();
+    return () => { cancelled = true; };
+  }, [sourceId, fetchDmPeers, status?.connected]);
+
+  // Load the selected peer's backlog from the server. Resets paging on every
+  // peer/source switch so an in-flight load-older for the previous peer can't
+  // land in the new conversation.
+  useEffect(() => {
+    if (!sourceId || !selected) return;
+    let cancelled = false;
+    activePeerRef.current = selected;
+    setDmHasMore(false);
+    setDmLoadingOlder(false);
+    void (async () => {
+      const { messages: hist, hasMore } = await fetchDmMessages(selected, { offset: 0, limit: 200 });
+      if (cancelled) return;
+      setDmHistory(hist);
+      setDmHistoryFor(`${sourceId}:${selected}`);
+      setDmHasMore(hasMore);
+    })();
+    return () => { cancelled = true; };
+  }, [sourceId, selected, fetchDmMessages, status?.connected]);
+
+  // Load an older page of the selected peer's history (#4460 infinite scroll).
+  // Offset is the current backlog length; dedupe by id against a live DM that
+  // may have slid the window between pages.
+  const loadOlderDmHistory = useCallback(() => {
+    if (!sourceId || !selected || dmLoadingOlder || !dmHasMore) return;
+    const peer = selected;
+    const offset = dmHistoryRef.current.length;
+    setDmLoadingOlder(true);
+    void (async () => {
+      try {
+        const { messages: older, hasMore } = await fetchDmMessages(peer, { offset, limit: 100 });
+        if (activePeerRef.current !== peer) return;
+        setDmHistory(prev => {
+          const seen = new Set(prev.map(m => m.id));
+          return [...older.filter(m => !seen.has(m.id)), ...prev];
+        });
+        setDmHasMore(hasMore);
+      } finally {
+        if (activePeerRef.current === peer) setDmLoadingOlder(false);
+      }
+    })();
+  }, [sourceId, selected, dmLoadingOlder, dmHasMore, fetchDmMessages]);
+
   useEffect(() => {
     const onResize = () => {
       if (!isMobileViewport()) setMobileShowContent(false);
@@ -275,6 +345,15 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         noteMessage(b, meshcoreReceiptTimeMs(m));
       }
     }
+    // #6186: threads whose entire history has aged out of the live window still
+    // appear, sourced from the server-side DM-peer query.
+    countsAsMessage = true;
+    for (const sp of serverPeers) {
+      if (isChannelPseudoKey(sp.publicKey)) continue;
+      const peer = canonicalize(sp.publicKey);
+      peers.add(peer);
+      noteMessage(peer, sp.lastMessageAt);
+    }
     // Always include all contacts so the user can start a new DM.
     // Exclude room servers (advType=3) — they belong in the Rooms view.
     for (const c of contacts) {
@@ -311,7 +390,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       const bt = lastMessageAt.get(b) ?? 0;
       return (at - bt) * dir;
     });
-  }, [messages, contacts, selfKey, canonicalize, contactsByKey, favoriteByKey, sortField, sortDirection, ignoredModeByKey, selected]);
+  }, [messages, contacts, selfKey, canonicalize, contactsByKey, favoriteByKey, sortField, sortDirection, ignoredModeByKey, selected, serverPeers]);
 
   // Issue #3922 (MeshCore): let the conversation filter match on message
   // *content*, not just the contact's name / public key. Precompute the set of
@@ -349,9 +428,12 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     });
   }, [dmPeers, searchQuery, contactsByKey, typeFilter, messageContentMatchKeys]);
 
+  // The server backlog is "ready" only once it matches the selected peer, so a
+  // previous peer's history is never drawn while this one loads (#6186).
+  const dmHistoryReady = !sourceId || !selected || dmHistoryFor === `${sourceId}:${selected}`;
   const filtered = useMemo(() => {
     if (!selected) return [];
-    return messages.filter(m => {
+    const matchesPeer = (m: MeshCoreMessage): boolean => {
       if (!m.toPublicKey) return false;
       if (m.messageType === 'room_post') return false;
       if (isChannelPseudoKey(m.toPublicKey) || isChannelPseudoKey(m.fromPublicKey)) return false;
@@ -359,8 +441,19 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       if (selfKey && keysMatch(m.toPublicKey, selfKey) && keysMatch(m.fromPublicKey, selected)) return true;
       // No selfKey known — fall back to either direction matching the selected peer.
       return keysMatch(m.fromPublicKey, selected) || keysMatch(m.toPublicKey, selected);
-    }).sort(compareMeshCoreMessages); // receipt-time order (#5973), see ./messageOrder.ts
-  }, [messages, selected, selfKey]);
+    };
+    // Merge the server backlog (full history, #6186) with any live DMs from the
+    // shared window (socket pushes land there). Dedupe by id, live copy wins so
+    // delivery-status updates show, then sort receipt-time (#5973).
+    const byId = new Map<string, MeshCoreMessage>();
+    if (dmHistoryReady) {
+      for (const m of dmHistory) byId.set(m.id, m);
+    }
+    for (const m of messages) {
+      if (matchesPeer(m)) byId.set(m.id, m);
+    }
+    return Array.from(byId.values()).sort(compareMeshCoreMessages);
+  }, [messages, selected, selfKey, dmHistory, dmHistoryReady]);
 
   // Unread-marker re-read trigger (localStorage isn't reactive) (#3891).
   const [unreadTick, setUnreadTick] = useState(0);
@@ -638,6 +731,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   conversationKey={`dm-${selected}`}
                   unreadAnchorMs={entryLastRead}
                   maxBytes={150}
+                  onLoadOlder={loadOlderDmHistory}
+                  hasMoreOlder={dmHistoryReady && dmHasMore}
+                  loadingOlder={dmLoadingOlder}
                 />
               </>
             )}
