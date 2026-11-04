@@ -1255,7 +1255,7 @@ describe('MqttBridgeManager', () => {
         channel: 0,
         id: 0x40000010,
         decoded: {
-          portnum: 73,
+          portnum: PortNum.MAP_REPORT_APP,
           payload: MapReport.encode(MapReport.create({ longName: 'Test', latitudeI: 515_000_000, longitudeI: 0 })).finish(),
         },
       },

@@ -20,6 +20,7 @@
 
 import type { ServiceEnvelopeShape } from '../mqttPacketFilter.js';
 import { channelDecryptionService } from '../services/channelDecryptionService.js';
+import { PortNum } from '../constants/meshtastic.js';
 
 /**
  * Tri-state result of resolving a packet's `ok_to_mqtt` preference.
@@ -106,9 +107,6 @@ export function allowsUplink(state: OkToMqttState): boolean {
   return state === 'yes';
 }
 
-/** `PortNum.MAP_REPORT_APP`. */
-const MAP_REPORT_PORTNUM = 73;
-
 /**
  * True when the envelope is a node's own map report: an unencrypted
  * `MAP_REPORT_APP` packet whose sender is the gateway that published it.
@@ -123,7 +121,7 @@ const MAP_REPORT_PORTNUM = 73;
 export function isOwnMapReport(envelope: ServiceEnvelopeShape): boolean {
   const packet = envelope.packet;
   if (!packet?.decoded || packet.encrypted?.length) return false;
-  if (Number(packet.decoded.portnum) !== MAP_REPORT_PORTNUM) return false;
+  if (Number(packet.decoded.portnum) !== PortNum.MAP_REPORT_APP) return false;
   if (typeof packet.from !== 'number') return false;
   const gateway = parseGatewayNodeNum(envelope.gatewayId);
   return gateway !== null && (packet.from >>> 0) === gateway;
