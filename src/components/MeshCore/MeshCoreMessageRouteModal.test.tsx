@@ -67,10 +67,12 @@ describe('MeshCoreMessageRouteModal', () => {
     expect(screen.getByText('Message Route')).toBeTruthy();
     expect(screen.getByText('Sender')).toBeTruthy();
     expect(screen.getByText('test ping')).toBeTruthy();
-    // Per-hop rows resolve to names; the summary row joins them (icon arrows).
-    const resolved = document.querySelector('.mc-route-resolved');
-    expect(resolved?.textContent).toContain('Hilltop');
-    expect(resolved?.textContent).toContain('Downtown Room');
+    // Each hop resolves to its repeater name on its own row.
+    expect(screen.getByText('Hilltop')).toBeTruthy();
+    expect(screen.getByText('Downtown Room')).toBeTruthy();
+    // The redundant "Resolved" summary row is gone (#6190).
+    expect(document.querySelector('.mc-route-resolved')).toBeNull();
+    expect(screen.queryByText('Resolved')).toBeNull();
     // Hash width inferred from the hop hex length (2 chars = 1 byte).
     expect(screen.getByText('1 B')).toBeTruthy();
   });
@@ -90,12 +92,14 @@ describe('MeshCoreMessageRouteModal', () => {
     );
     // Collision → alphabetical first (no positions) + best-guess note.
     expect(screen.getAllByText(/best guess of/).length).toBeGreaterThan(0);
-    // Unknown hash "ff" falls back to raw hex in the summary.
-    const resolved = document.querySelector('.mc-route-resolved');
-    expect(resolved?.textContent).toContain('Twin One');
-    expect(resolved?.textContent).toContain('ff');
+    // The best-guess name shows on its hop row.
+    expect(screen.getByText('Twin One')).toBeTruthy();
+    // Unknown hash "ff" falls back to its raw hex on the hop row.
+    expect(screen.getByText('ff')).toBeTruthy();
     // Per-hop row text is split around the arrow icon — match on substring.
     expect(screen.getAllByText(/unknown repeater/).length).toBeGreaterThan(0);
+    // No redundant "Resolved" summary row (#6190).
+    expect(document.querySelector('.mc-route-resolved')).toBeNull();
   });
 
   it('shows the direct fallback when the message has no relay path', () => {

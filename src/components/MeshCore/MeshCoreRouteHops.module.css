@@ -1,4 +1,6 @@
-/* #5909: hop names borrowed from another source, kept apart from own contacts. */
+/* Shared per-hop route rendering for the Message Route and Packet Decode
+ * modals (#6190). #5909: hop names borrowed from another source are kept
+ * visually apart from own contacts. */
 
 .otherName {
   color: var(--color-info);
@@ -11,6 +13,11 @@
 
 .via {
   color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.bestGuess {
+  color: var(--color-text-subtle);
   font-style: italic;
 }
 

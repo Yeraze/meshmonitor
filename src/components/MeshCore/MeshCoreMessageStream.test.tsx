@@ -523,10 +523,12 @@ describe('MeshCoreMessageStream route-detail popup', () => {
     // No modal until the chain is clicked.
     expect(container.querySelector('.mcpm-modal')).toBeNull();
     fireEvent.click(container.querySelector('.mc-route-chain-link')!);
-    expect(container.querySelector('.mcpm-modal')).not.toBeNull();
-    const resolved = container.querySelector('.mc-route-resolved');
-    expect(resolved?.textContent).toContain('Hilltop');
-    expect(resolved?.textContent).toContain('Downtown Room');
+    const modal = container.querySelector('.mcpm-modal');
+    expect(modal).not.toBeNull();
+    // Names now render in the per-hop rows (the redundant "Resolved" row was
+    // removed in #6190); assert them in the modal body.
+    expect(modal?.textContent).toContain('Hilltop');
+    expect(modal?.textContent).toContain('Downtown Room');
     // Close via the backdrop.
     fireEvent.click(container.querySelector('.mcpm-modal')!);
     expect(container.querySelector('.mcpm-modal')).toBeNull();

@@ -8,12 +8,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import MeshCorePacketDetailModal from './MeshCorePacketDetailModal';
 import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
+import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { buildGrpTxtFrame, buildGrpDataFrame } from '../../server/test-helpers/meshcoreFrames';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode';
 
 const decodeMeshCoreGroupPacket = vi.fn();
+const apiGet = vi.fn();
 vi.mock('../../services/api', () => ({
-  default: { decodeMeshCoreGroupPacket: (...a: unknown[]) => decodeMeshCoreGroupPacket(...a) },
+  default: {
+    decodeMeshCoreGroupPacket: (...a: unknown[]) => decodeMeshCoreGroupPacket(...a),
+    get: (...a: unknown[]) => apiGet(...a),
+  },
 }));
 
 vi.mock('react-i18next', async () => {
@@ -78,6 +83,55 @@ describe('MeshCorePacketDetailModal', () => {
   it('renders a no-raw notice when rawHex is empty', () => {
     render(<MeshCorePacketDetailModal packet={baseEvent({ rawHex: '' })} onClose={vi.fn()} />);
     expect(screen.getByText('No raw packet bytes available to decode.')).toBeTruthy();
+  });
+});
+
+/**
+ * Relay chain (#6190): the Packet Decode window shows each hop on its own row
+ * with the hash first and the resolved repeater name, reusing the Message Route
+ * resolver — not a single `aa to bb` line.
+ */
+describe('MeshCorePacketDetailModal: relay chain (#6190)', () => {
+  // TXT_MSG + TRANSPORT_FLOOD, path_len 0x02 (2 hops, 1-byte width), hops a3,7f,
+  // then dest/src + a short ciphertext.
+  function buildRelayTxtHex(): string {
+    const parts = [(0x02 << 2) | 0x01, 0x02, 0xa3, 0x7f, 0x12, 0x34, 0xde, 0xad];
+    return parts.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  const contacts: MeshCoreContact[] = [
+    { publicKey: 'a3' + 'b'.repeat(62), advType: 2, advName: 'Hilltop' },
+    { publicKey: '7f' + 'c'.repeat(62), advType: 3, advName: 'Downtown Room' },
+  ];
+
+  it('resolves each relay hop to its repeater name on its own row', () => {
+    const rawHex = buildRelayTxtHex();
+    render(
+      <MeshCorePacketDetailModal
+        packet={baseEvent({ payloadType: 0x02, rawHex, payloadSize: rawHex.length / 2 })}
+        contacts={contacts}
+        onClose={vi.fn()}
+      />,
+    );
+    // Per-hop rows carry the resolved names; the old single joined line is gone.
+    expect(screen.getByText('Hilltop')).toBeTruthy();
+    expect(screen.getByText('Downtown Room')).toBeTruthy();
+    expect(screen.queryByText('a3 to 7f')).toBeNull();
+  });
+
+  it('shows the raw hash for a hop no contact matches', () => {
+    const rawHex = buildRelayTxtHex();
+    render(
+      <MeshCorePacketDetailModal
+        packet={baseEvent({ payloadType: 0x02, rawHex, payloadSize: rawHex.length / 2 })}
+        onClose={vi.fn()}
+      />,
+    );
+    // No contacts → both hops stay unknown, shown as their hex bytes.
+    expect(screen.getByText('a3')).toBeTruthy();
+    expect(screen.getByText('7f')).toBeTruthy();
+    expect(screen.getAllByText('unknown repeater').length).toBe(2);
+    // No cross-source lookup happens without a sourceId.
+    expect(apiGet).not.toHaveBeenCalled();
   });
 });
 
