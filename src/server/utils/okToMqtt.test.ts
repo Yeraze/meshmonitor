@@ -17,7 +17,9 @@ import {
   allowsUplink,
   parseGatewayNodeNum,
   detectOkToMqttViolation,
+  isOwnMapReport,
 } from './okToMqtt.js';
+import { PortNum } from '../constants/meshtastic.js';
 
 const ORIGINATOR = 0x11111111;
 const GATEWAY = 0x22222222;
@@ -319,4 +321,27 @@ describe('detectOkToMqttViolation — §2(f) predicate table', () => {
   // envelope ever reaches ingestServiceEnvelope, so detectOkToMqttViolation is
   // never invoked for them. Nothing to unit test here; noted for table
   // completeness (epic decision 3, #4114).
+});
+
+describe('isOwnMapReport', () => {
+  const mapReport = (over: Partial<NonNullable<ServiceEnvelopeShape['packet']>> = {}, gatewayId = gwId(GATEWAY)): ServiceEnvelopeShape => ({
+    channelId: 'LongFast',
+    gatewayId,
+    packet: { from: GATEWAY, to: 0xffffffff, id: 1, decoded: { portnum: PortNum.MAP_REPORT_APP, payload: new Uint8Array([1]) }, ...over },
+  });
+
+  it('accepts a node\'s own unencrypted map report, which never carries the bit', () => {
+    expect(isOwnMapReport(mapReport())).toBe(true);
+  });
+
+  it('rejects a map report published by a different gateway', () => {
+    expect(isOwnMapReport(mapReport({ from: ORIGINATOR }))).toBe(false);
+    expect(isOwnMapReport(mapReport({}, ''))).toBe(false);
+  });
+
+  it('rejects other portnums and encrypted packets', () => {
+    expect(isOwnMapReport(mapReport({ decoded: { portnum: PortNum.POSITION_APP, payload: new Uint8Array([1]) } }))).toBe(false);
+    expect(isOwnMapReport(mapReport({ decoded: undefined, encrypted: new Uint8Array([1, 2]) }))).toBe(false);
+    expect(isOwnMapReport(mapReport({ encrypted: new Uint8Array([1, 2]) }))).toBe(false);
+  });
 });

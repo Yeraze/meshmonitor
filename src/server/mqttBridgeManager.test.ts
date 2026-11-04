@@ -1215,6 +1215,81 @@ describe('MqttBridgeManager', () => {
     await new Promise<void>((r) => localClient.end(true, {}, () => r()));
   });
 
+  it('uplinks a node\'s own map report, which has no ok_to_mqtt bit, but still gates other packets', async () => {
+    const upstreamTopics: string[] = [];
+    upstream.aedes.on('publish', (packet, client) => {
+      if (client) upstreamTopics.push(packet.topic);
+    });
+
+    bridge = new MqttBridgeManager('map-report-bridge', 'MapReport', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: [],
+      mode: 'publish_only',
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    const localClient = connect(`mqtt://127.0.0.1:${localPort}`, {
+      username: 'u',
+      password: 'p',
+      reconnectPeriod: 0,
+      clientId: '!33333333',
+    });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('local connect timeout')), 3000);
+      localClient.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+
+    // What firmware MQTT::perhapsReportToMap publishes: MAP_REPORT_APP from
+    // the gateway itself, unencrypted, no Data.bitfield.
+    const r = getProtobufRoot();
+    if (!r) throw new Error('protobuf root not loaded');
+    const MapReport = r.lookupType('meshtastic.MapReport');
+    const mapBytes = meshtasticProtobufService.encodeServiceEnvelope({
+      packet: {
+        from: 0x33333333,
+        to: 0xffffffff,
+        channel: 0,
+        id: 0x40000010,
+        decoded: {
+          portnum: PortNum.MAP_REPORT_APP,
+          payload: MapReport.encode(MapReport.create({ longName: 'Test', latitudeI: 515_000_000, longitudeI: 0 })).finish(),
+        },
+      },
+      channelId: 'LongFast',
+      gatewayId: '!33333333',
+    });
+    if (!mapBytes) throw new Error('encode failed');
+    // A normal packet with the bit clear is still dropped.
+    const optOut = buildPositionEnvelope({
+      from: 0x33333333,
+      latI: 515_000_000,
+      lngI: 0,
+      channelId: 'LongFast',
+      gatewayId: '!33333333',
+      packetId: 0x40000011,
+      bitfield: 0,
+    });
+
+    localClient.publish('msh/EU_868/2/map/', Buffer.from(mapBytes));
+    localClient.publish('msh/EU_868/2/e/LongFast/!33333333', optOut);
+
+    await vi.waitFor(
+      () => expect(upstreamTopics).toContain('msh/EU_868/2/map/'),
+      { timeout: 5000, interval: 25 },
+    );
+    await vi.waitFor(
+      () => expect(bridge.getStatus().uplinkOkToMqttDrops).toBe(1),
+      { timeout: 5000, interval: 25 },
+    );
+    expect(upstreamTopics).not.toContain('msh/EU_868/2/e/LongFast/!33333333');
+
+    await new Promise<void>((r2) => localClient.end(true, {}, () => r2()));
+  });
+
   it('ignoreOkToMqtt: true uplinks packets regardless of the bit', async () => {
     const publishesByClient: Array<{ clientId: string | null; topic: string }> = [];
     upstream.aedes.on('publish', (packet, client) => {

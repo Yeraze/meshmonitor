@@ -48,7 +48,7 @@ import {
   type PoolPublishResult,
   type PublisherStatus,
 } from './mqttBridgePublisherPool.js';
-import { allowsUplink, resolveOkToMqttForEnvelope } from './utils/okToMqtt.js';
+import { allowsUplink, isOwnMapReport, resolveOkToMqttForEnvelope } from './utils/okToMqtt.js';
 import { automationPacketTracker } from './utils/automationPacketTracker.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { mqttGeoSweepService, type GeoSweepStats } from './services/mqttGeoSweepService.js';
@@ -1286,7 +1286,9 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // Honor the originator's `ok_to_mqtt` preference unless the operator
     // has explicitly opted out for this bridge. See evaluateOkToMqtt for
     // the policy details — bridge-level gate, not part of the filter chain.
-    if (!this.config.ignoreOkToMqtt) {
+    // A node's own map report never carries the bit (firmware sends it outside
+    // MQTT::onSend; Map Reporting is its opt-in), so it is not gated here.
+    if (!this.config.ignoreOkToMqtt && !isOwnMapReport(p.envelope)) {
       const allow = await this.evaluateOkToMqtt(p.envelope);
       if (!allow) {
         this.uplinkOkToMqttDrops++;

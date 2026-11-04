@@ -10,6 +10,7 @@ vi.mock('../services/database.js', () => ({ default: {} }));
 vi.mock('./utils/okToMqtt.js', () => ({
   allowsUplink: () => true,
   resolveOkToMqttForEnvelope: async () => 'allowed',
+  isOwnMapReport: () => false,
 }));
 
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from './mqttBridgeManager.js';

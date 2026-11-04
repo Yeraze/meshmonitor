@@ -20,6 +20,7 @@
 
 import type { ServiceEnvelopeShape } from '../mqttPacketFilter.js';
 import { channelDecryptionService } from '../services/channelDecryptionService.js';
+import { PortNum } from '../constants/meshtastic.js';
 
 /**
  * Tri-state result of resolving a packet's `ok_to_mqtt` preference.
@@ -104,6 +105,26 @@ export async function resolveOkToMqttForEnvelope(
  */
 export function allowsUplink(state: OkToMqttState): boolean {
   return state === 'yes';
+}
+
+/**
+ * True when the envelope is a node's own map report: an unencrypted
+ * `MAP_REPORT_APP` packet whose sender is the gateway that published it.
+ *
+ * Firmware builds these in `MQTT::perhapsReportToMap` and publishes them
+ * straight to the `/2/map/` topic without going through `MQTT::onSend`, so
+ * they never carry the `ok_to_mqtt` bit. The node's own "Map Reporting"
+ * setting is the opt-in. Gating them on the bit (always `'unknown'` here)
+ * dropped every map report a bridge saw, so nodes behind a MeshMonitor
+ * broker + bridge never showed a position on public maps.
+ */
+export function isOwnMapReport(envelope: ServiceEnvelopeShape): boolean {
+  const packet = envelope.packet;
+  if (!packet?.decoded || packet.encrypted?.length) return false;
+  if (Number(packet.decoded.portnum) !== PortNum.MAP_REPORT_APP) return false;
+  if (typeof packet.from !== 'number') return false;
+  const gateway = parseGatewayNodeNum(envelope.gatewayId);
+  return gateway !== null && (packet.from >>> 0) === gateway;
 }
 
 /**
