@@ -97,10 +97,10 @@ describe('MeshCoreChannelsConfigSection — list rendering', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('# Public')).toBeTruthy();
-      expect(screen.getByText('# Town')).toBeTruthy();
+      expect(screen.getByText('Public')).toBeTruthy();
+      expect(screen.getByText('Town')).toBeTruthy();
       // Unnamed slot falls back to "Channel N".
-      expect(screen.getByText('# Channel 2')).toBeTruthy();
+      expect(screen.getByText('Channel 2')).toBeTruthy();
     });
 
     const calledUrl = channelCalls[0][0] as string;
@@ -124,7 +124,7 @@ describe('MeshCoreChannelsConfigSection — list rendering', () => {
     render(
       <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={false} />,
     );
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
     expect((button('Edit') as HTMLButtonElement).disabled).toBe(true);
     expect((button('Delete') as HTMLButtonElement).disabled).toBe(true);
     expect((addButton() as HTMLButtonElement).disabled).toBe(true);
@@ -144,7 +144,7 @@ describe('MeshCoreChannelsConfigSection — add channel', () => {
     render(
       <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
     );
-    await waitFor(() => screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
 
     fireEvent.click(addButton());
 
@@ -192,7 +192,7 @@ describe('MeshCoreChannelsConfigSection — add channel', () => {
     render(
       <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
     );
-    await waitFor(() => screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
 
     fireEvent.click(addButton());
     const nameInput = screen.getByLabelText('Name') as HTMLInputElement;
@@ -215,7 +215,7 @@ describe('MeshCoreChannelsConfigSection — add channel', () => {
     expect(body.psk).toBe('AQIDBAUGBwgJCgsMDQ4PEA==');
 
     // Re-fetch happened (third csrfFetch call is a GET).
-    await waitFor(() => screen.getByText('# NewChan'));
+    await waitFor(() => screen.getByText('NewChan'));
   });
 });
 
@@ -376,7 +376,7 @@ describe('MeshCoreChannelsConfigSection — delete + secret-visibility', () => {
     render(
       <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
     );
-    await waitFor(() => screen.getByText('# GoneSoon'));
+    await waitFor(() => screen.getByText('GoneSoon'));
 
     // Find the row with GoneSoon and click its Delete button (the second one).
     // Slot 0 (Public) has no Delete (#5826), so GoneSoon's is the only one.
@@ -397,7 +397,7 @@ describe('MeshCoreChannelsConfigSection — delete + secret-visibility', () => {
     expect(deleteCall![0]).toBe('/api/channels/1?sourceId=src-a');
 
     await waitFor(() => {
-      expect(screen.queryByText('# GoneSoon')).toBeNull();
+      expect(screen.queryByText('GoneSoon')).toBeNull();
     });
   });
 
@@ -409,7 +409,7 @@ describe('MeshCoreChannelsConfigSection — delete + secret-visibility', () => {
     render(
       <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
     );
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
 
     fireEvent.click(button('Edit'));
     const secretInput = screen.getByLabelText('Secret (hex, 32 chars)') as HTMLInputElement;
@@ -429,7 +429,7 @@ describe('MeshCoreChannelsConfigSection — slot 0 is the Public channel (#5826)
       { id: 1, name: 'Town', psk: 'EBESExQVFhcYGRobHB0eHw==' },
     ]));
     render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
 
     expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
@@ -443,7 +443,7 @@ describe('MeshCoreChannelsConfigSection — slot 0 is the Public channel (#5826)
       .mockResolvedValueOnce(jsonResponse({ success: true }))
       .mockResolvedValueOnce(jsonResponse([{ id: 0, name: 'Public', psk: null }]));
     render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
-    await waitFor(() => screen.getByText('# Wrong'));
+    await waitFor(() => screen.getByText('Wrong'));
 
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
     fireEvent.click(button('Reset to Public'));
@@ -466,14 +466,14 @@ describe('MeshCoreChannelsConfigSection — one editing model (#5829)', () => {
   it('sends nothing but reads on mount', async () => {
     csrfFetchMock.mockResolvedValueOnce(jsonResponse(ROWS));
     render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
     expect(channelCalls.every(c => !c[1]?.method || c[1].method === 'GET')).toBe(true);
   });
 
   it('collapsed cards show the slot, the encryption status and the scope', async () => {
     csrfFetchMock.mockResolvedValueOnce(jsonResponse(ROWS));
     render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
     const cards = screen.getAllByTestId('mc-channel-card');
     expect(cards[0].textContent).toContain('Slot 0');
     expect(cards[0].textContent).toContain('Public key');
@@ -489,7 +489,7 @@ describe('MeshCoreChannelsConfigSection — one editing model (#5829)', () => {
       .mockResolvedValueOnce(jsonResponse({ success: true }))
       .mockResolvedValueOnce(jsonResponse(ROWS));
     render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
     expect((saveButton() as HTMLButtonElement).disabled).toBe(true);
@@ -513,7 +513,7 @@ describe('MeshCoreChannelsConfigSection — one editing model (#5829)', () => {
   it('Cancel drops the draft and writes nothing', async () => {
     csrfFetchMock.mockResolvedValueOnce(jsonResponse(ROWS));
     render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Changed' } });
@@ -528,7 +528,7 @@ describe('MeshCoreChannelsConfigSection — one editing model (#5829)', () => {
   it('asks before opening another card over unsaved edits', async () => {
     csrfFetchMock.mockResolvedValueOnce(jsonResponse(ROWS));
     render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Changed' } });
@@ -547,7 +547,7 @@ describe('MeshCoreChannelsConfigSection — one editing model (#5829)', () => {
   it('opening a card with no edits switches without asking', async () => {
     csrfFetchMock.mockResolvedValueOnce(jsonResponse(ROWS));
     render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
-    await waitFor(() => screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
     fireEvent.click(button('Edit'));
     expect(screen.queryByRole('dialog')).toBeNull();

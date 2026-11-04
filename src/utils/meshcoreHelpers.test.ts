@@ -68,13 +68,13 @@ describe('formatMeshCoreChannelName', () => {
     expect(formatMeshCoreChannelName('#general', 'Channel 0')).toBe('#general');
   });
 
-  it('decoratively prepends "# " for plain names', () => {
-    expect(formatMeshCoreChannelName('Public', 'Channel 0')).toBe('# Public');
+  it('shows plain names as-is, with no decorative prefix (#6170)', () => {
+    expect(formatMeshCoreChannelName('Public', 'Channel 0')).toBe('Public');
   });
 
   it('falls back to the supplied label for empty names', () => {
-    expect(formatMeshCoreChannelName('', 'Channel 5')).toBe('# Channel 5');
-    expect(formatMeshCoreChannelName(null, 'Channel 5')).toBe('# Channel 5');
+    expect(formatMeshCoreChannelName('', 'Channel 5')).toBe('Channel 5');
+    expect(formatMeshCoreChannelName(null, 'Channel 5')).toBe('Channel 5');
   });
 });
 

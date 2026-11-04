@@ -122,37 +122,37 @@ describe('MeshCoreChannelsView — channel mute (#5487)', () => {
   it('a muted channel shows no unread dot and is left out of the header total', async () => {
     muted = new Set([2]);
     const { container } = renderView();
-    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
     // #6049: no channel opens by default — select Public so it is the active (never-unread) channel.
-    fireEvent.click(screen.getByText('# Public'));
-    await waitFor(() => expect(rowFor('# Town').classList.contains('unread')).toBe(true));
-    expect(rowFor('# Market').classList.contains('unread')).toBe(false);
+    fireEvent.click(screen.getByText('Public'));
+    await waitFor(() => expect(rowFor('Town').classList.contains('unread')).toBe(true));
+    expect(rowFor('Market').classList.contains('unread')).toBe(false);
     expect(container.querySelectorAll('.mc-channel-unread-dot')).toHaveLength(1);
     expect(container.querySelector('.mc-channel-unread-total')?.textContent).toBe('1');
-    expect(rowFor('# Market').querySelector('[aria-label="Notifications muted"]')).toBeTruthy();
-    expect(rowFor('# Town').querySelector('[aria-label="Notifications muted"]')).toBeNull();
+    expect(rowFor('Market').querySelector('[aria-label="Notifications muted"]')).toBeTruthy();
+    expect(rowFor('Town').querySelector('[aria-label="Notifications muted"]')).toBeNull();
   });
 
   it('"unread first" does not lift a muted channel', async () => {
     muted = new Set([2]);
     const { container } = renderView();
-    await waitFor(() => expect(rowFor('# Town').classList.contains('unread')).toBe(true));
+    await waitFor(() => expect(rowFor('Town').classList.contains('unread')).toBe(true));
     fireEvent.click(screen.getByTitle('Show channels with unread messages first'));
     await waitFor(() => {
       const names = Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
-      expect(names[0]).toBe('# Town');
+      expect(names[0]).toBe('Town');
     });
     const names = Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
     // Market (muted, newest) stays in base order behind Public.
-    expect(names.indexOf('# Market')).toBeGreaterThan(names.indexOf('# Public'));
+    expect(names.indexOf('Market')).toBeGreaterThan(names.indexOf('Public'));
   });
 
   it('with every unread channel muted, no header total is shown', async () => {
     muted = new Set([1, 2]);
     const { container } = renderView();
-    await waitFor(() => expect(screen.getByText('# Market')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Market')).toBeTruthy());
     // #6049: select Public so it is active; the only remaining unread channels are muted.
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getAllByText('1 messages').length).toBe(3));
     expect(container.querySelector('.mc-channel-unread-total')).toBeNull();
     expect(container.querySelector('.mc-channel-unread-dot')).toBeNull();
@@ -160,8 +160,8 @@ describe('MeshCoreChannelsView — channel mute (#5487)', () => {
 
   it('the bell menu mutes the active channel by index, with the Meshtastic durations', async () => {
     renderView();
-    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
-    fireEvent.click(screen.getByText('# Town'));
+    await waitFor(() => expect(screen.getByText('Town')).toBeTruthy());
+    fireEvent.click(screen.getByText('Town'));
     fireEvent.click(screen.getByLabelText('Mute notifications'));
     expect(screen.getByText(/Mute for 1 hour/)).toBeTruthy();
     expect(screen.getByText(/Mute for 1 week/)).toBeTruthy();
@@ -178,9 +178,9 @@ describe('MeshCoreChannelsView — channel mute (#5487)', () => {
   it('offers Unmute for a muted active channel', async () => {
     muted = new Set([0]);
     renderView();
-    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
     // #6049: no channel opens by default — select Public to reveal its mute bell.
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
     fireEvent.click(screen.getByLabelText('Muted — click to change'));
     fireEvent.click(screen.getByText(/Unmute/));
     expect(unmuteChannel).toHaveBeenCalledWith(0);
@@ -189,8 +189,8 @@ describe('MeshCoreChannelsView — channel mute (#5487)', () => {
   it('opening a muted channel still clears its last-read marker', async () => {
     muted = new Set([2]);
     renderView();
-    await waitFor(() => expect(screen.getByText('# Market')).toBeTruthy());
-    fireEvent.click(screen.getByText('# Market'));
+    await waitFor(() => expect(screen.getByText('Market')).toBeTruthy());
+    fireEvent.click(screen.getByText('Market'));
     await waitFor(() => {
       const stored = JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-lastread-src-a') ?? '{}');
       expect(stored['2']).toBeGreaterThan(0);
@@ -200,7 +200,7 @@ describe('MeshCoreChannelsView — channel mute (#5487)', () => {
   it('hides the bell for an anonymous viewer', async () => {
     authenticated = false;
     renderView();
-    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Town')).toBeTruthy());
     expect(screen.queryByLabelText('Mute notifications')).toBeNull();
   });
 });

@@ -105,9 +105,9 @@ describe('MeshCoreChannelsView — channel list rendering', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('# Public')).toBeTruthy();
-      expect(screen.getByText('# Town')).toBeTruthy();
-      expect(screen.getByText('# Operators')).toBeTruthy();
+      expect(screen.getByText('Public')).toBeTruthy();
+      expect(screen.getByText('Town')).toBeTruthy();
+      expect(screen.getByText('Operators')).toBeTruthy();
     });
 
     // Called the source-scoped /all endpoint.
@@ -138,7 +138,7 @@ describe('MeshCoreChannelsView — channel list rendering', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('# Public')).toBeTruthy();
+      expect(screen.getByText('Public')).toBeTruthy();
     });
   });
 
@@ -165,7 +165,7 @@ describe('MeshCoreChannelsView — channel list rendering', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('# Channel 5')).toBeTruthy();
+      expect(screen.getByText('Channel 5')).toBeTruthy();
     });
   });
 });
@@ -213,9 +213,9 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
     // #6049: no channel opens by default — select Public first.
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
 
     // waitFor lets the per-channel backlog fetch settle (it returns empty here;
     // the live `messages` prop supplies content).
@@ -241,8 +241,8 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Town'));
-    fireEvent.click(screen.getByText('# Town'));
+    await waitFor(() => screen.getByText('Town'));
+    fireEvent.click(screen.getByText('Town'));
 
     await waitFor(() => {
       expect(screen.getByText('hi from chan 1')).toBeTruthy();
@@ -294,8 +294,8 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('backlog on public')).toBeTruthy());
 
     // The per-channel endpoint was hit for channel 0.
@@ -330,8 +330,8 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('old backlog')).toBeTruthy());
     expect(screen.getByText('fresh live')).toBeTruthy();
     // Deduped — only one node for the shared id.
@@ -358,7 +358,7 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Town')).toBeTruthy());
     // Town's badge reflects the 137 persisted messages despite an empty live pool.
     await waitFor(() => expect(screen.getByText('137 messages')).toBeTruthy());
   });
@@ -380,11 +380,11 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('public backlog')).toBeTruthy());
 
-    fireEvent.click(screen.getByText('# Town'));
+    fireEvent.click(screen.getByText('Town'));
     await waitFor(() => expect(screen.getByText('town backlog')).toBeTruthy());
     expect(screen.queryByText('public backlog')).toBeNull();
   });
@@ -466,15 +466,15 @@ describe('MeshCoreChannelsView — entry scroll on channel switch', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('public unread two')).toBeTruthy());
     await waitFor(() => expect(container.querySelector('[data-unread-divider]')).toBeTruthy());
     // Public's own entry scroll lands on its divider.
     await waitFor(() => expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1));
 
-    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
-    fireEvent.click(screen.getByText('# Town'));
+    await waitFor(() => expect(screen.getByText('Town')).toBeTruthy());
+    fireEvent.click(screen.getByText('Town'));
     await waitFor(() => expect(releaseTown).not.toBeNull());
     // Town's backlog is still loading: Public's rows must not be shown under
     // Town, and nothing may scroll yet.
@@ -531,8 +531,8 @@ describe('MeshCoreChannelsView — infinite scroll pagination (#4460)', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('recent message')).toBeTruthy());
     expect(screen.queryByText('much older message')).toBeNull();
 
@@ -598,8 +598,8 @@ describe('MeshCoreChannelsView — infinite scroll pagination (#4460)', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('only message')).toBeTruthy());
     const callCountBeforeScroll = csrfFetchMock.mock.calls.length;
 
@@ -636,8 +636,8 @@ describe('MeshCoreChannelsView — sending', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Ops'));
-    fireEvent.click(screen.getByText('# Ops'));
+    await waitFor(() => screen.getByText('Ops'));
+    fireEvent.click(screen.getByText('Ops'));
 
     const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'channel ops msg' } });
@@ -705,13 +705,13 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Town')).toBeTruthy());
     // #6049: no channel opens by default — select Public so it is the active channel.
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeTruthy());
 
     // The active channel (Public) must NOT be unread.
-    const publicRow = screen.getByText('# Public').closest('.mc-channel-row');
+    const publicRow = screen.getByText('Public').closest('.mc-channel-row');
     expect(publicRow?.classList.contains('unread')).toBe(false);
   });
 
@@ -733,16 +733,16 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Town')).toBeTruthy());
     // #6049: select Public first (it becomes active + read) so only Town stays unread.
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => {
-      const publicRow = screen.getByText('# Public').closest('.mc-channel-row');
+      const publicRow = screen.getByText('Public').closest('.mc-channel-row');
       expect(publicRow?.classList.contains('unread')).toBe(false);
     });
 
     // Open Town — it becomes the active/viewed channel and should clear.
-    fireEvent.click(screen.getByText('# Town'));
+    fireEvent.click(screen.getByText('Town'));
     await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeNull());
 
     // The last-read marker was persisted for this source/channel, once Town's
@@ -774,9 +774,9 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Town')).toBeTruthy());
     // #6049: select Public so it is active (and thus never flagged unread).
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
     // Give the counts/latest fetch a tick to resolve (both rows show "1 messages").
     await waitFor(() => expect(screen.getAllByText('1 messages').length).toBe(2));
     expect(container.querySelector('.mc-channel-unread-dot')).toBeNull();
@@ -803,13 +803,13 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
 
     // Default order: Public (idx 0) first.
     const names = Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
-    expect(names[0]).toBe('# Public');
+    expect(names[0]).toBe('Public');
 
     // Enable "unread first" — Town (unread) should jump to the top.
     fireEvent.click(screen.getByTitle('Show channels with unread messages first'));
     await waitFor(() => {
       const reordered = Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
-      expect(reordered[0]).toBe('# Town');
+      expect(reordered[0]).toBe('Town');
     });
     expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-unread-first')).toBe('true');
   });
@@ -832,8 +832,8 @@ describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', ()
     render(
       <MeshCoreChannelsView messages={scoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
     );
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => screen.getByText('scoped hi'));
     // The send-scope widget is hidden until a reply (or manual toggle).
     expect(screen.queryByLabelText('Send scope')).toBeNull();
@@ -849,8 +849,8 @@ describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', ()
     render(
       <MeshCoreChannelsView messages={unscoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
     );
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => screen.getByText('plain hi'));
     fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
     const scopeInput = (await screen.findByLabelText('Send scope')) as HTMLInputElement;
@@ -864,8 +864,8 @@ describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', ()
     render(
       <MeshCoreChannelsView messages={unknown} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
     );
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => screen.getByText('mystery scope'));
     fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
     // Region name isn't recoverable from the code → scope override stays hidden
@@ -893,8 +893,8 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
     render(
       <MeshCoreChannelsView messages={[]} contacts={contacts} status={makeStatus()} actions={actions} baseUrl="" sourceId="src-a" />,
     );
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
 
     // Open the scope-override control (collapsed by default).
     fireEvent.click(screen.getByText('Scope: unscoped'));
@@ -922,8 +922,8 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
     render(
       <MeshCoreChannelsView messages={[]} contacts={contacts} status={makeStatus()} actions={actions} baseUrl="" sourceId="src-a" />,
     );
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
 
     // Open the control but do NOT click Unscoped — overrideScope stays null.
     fireEvent.click(screen.getByText('Scope: unscoped'));
@@ -945,8 +945,8 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
     render(
       <MeshCoreChannelsView messages={unscoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
     );
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => screen.getByText('plain hi'));
     fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
 
@@ -999,8 +999,8 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('delete me')).toBeTruthy());
 
     await act(async () => {
@@ -1028,8 +1028,8 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('keep me')).toBeTruthy());
     await act(async () => {
       fireEvent.click(document.querySelector('.mc-message-delete') as Element);
@@ -1056,8 +1056,8 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('still here')).toBeTruthy());
     await act(async () => {
       fireEvent.click(document.querySelector('.mc-message-delete') as Element);
@@ -1084,8 +1084,8 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
       />,
     );
 
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('first')).toBeTruthy());
     // #4888: the conversation toolbar sits inside the shared horizontal row.
     const toolbarRow = document.querySelector('.meshcore-toolbar-row');
@@ -1203,8 +1203,8 @@ describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () =>
         receiveOnly
       />,
     );
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     const input = screen.getByPlaceholderText('Type a message…');
     expect(input).toBeDisabled();
     expect(input).toHaveAttribute(
@@ -1230,8 +1230,8 @@ describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () =>
           receiveOnly
         />,
       );
-      await waitFor(() => screen.getByText('# Public'));
-      fireEvent.click(screen.getByText('# Public'));
+      await waitFor(() => screen.getByText('Public'));
+      fireEvent.click(screen.getByText('Public'));
 
       // Open the scope-override control (user-initiated).
       fireEvent.click(screen.getByText('Scope: unscoped'));
@@ -1266,8 +1266,8 @@ describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () =>
         sourceId="src-a"
       />,
     );
-    await waitFor(() => screen.getByText('# Public'));
-    fireEvent.click(screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
     const input = screen.getByPlaceholderText('Type a message…');
     expect(input).not.toBeDisabled();
     expect(input).not.toHaveAttribute('title');
@@ -1314,10 +1314,10 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
   it('defaults to device order and sorts by name from the dropdown, persisted per source', async () => {
     csrfFetchMock.mockImplementation(orderFetch());
     const { container } = renderView();
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha']));
 
     fireEvent.change(screen.getByLabelText('Sort channels by'), { target: { value: 'name' } });
-    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['alpha', 'Public', 'zulu']));
     expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-mode-src-a')).toBe('name');
     expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-mode-src-b')).toBeNull();
   });
@@ -1325,10 +1325,10 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
   it('sorts by message count, busiest first (#5503)', async () => {
     csrfFetchMock.mockImplementation(orderFetch({}, { 0: 3, 1: 12, 2: 0 }));
     const { container } = renderView();
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha']));
 
     fireEvent.change(screen.getByLabelText('Sort channels by'), { target: { value: 'messageCount' } });
-    await waitFor(() => expect(rowNames(container)).toEqual(['# zulu', '# Public', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['zulu', 'Public', 'alpha']));
     expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-mode-src-a')).toBe('messageCount');
   });
 
@@ -1336,14 +1336,14 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     const recent = Date.now() - 5 * 60 * 1000;
     csrfFetchMock.mockImplementation(orderFetch({ 1: recent }));
     const { container } = renderView();
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha']));
     expect(container.textContent).not.toContain('5 minutes ago');
 
     fireEvent.change(screen.getByLabelText('Sort channels by'), { target: { value: 'lastMessage' } });
-    await waitFor(() => expect(rowNames(container)[0]).toBe('# zulu'));
-    const zulu = screen.getByText('# zulu').closest('.mc-channel-row');
+    await waitFor(() => expect(rowNames(container)[0]).toBe('zulu'));
+    const zulu = screen.getByText('zulu').closest('.mc-channel-row');
     expect(zulu?.textContent).toContain('5 minutes ago');
-    const alpha = screen.getByText('# alpha').closest('.mc-channel-row');
+    const alpha = screen.getByText('alpha').closest('.mc-channel-row');
     expect(alpha?.textContent).not.toContain('ago');
   });
 
@@ -1351,24 +1351,24 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     csrfFetchMock.mockImplementation(orderFetch({ 1: 100, 2: 900 }));
     localStorage.setItem('meshmonitor-meshcore-channel-sort-mode-src-a', 'lastMessage');
     const { container } = renderView();
-    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# zulu', '# Public']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['alpha', 'zulu', 'Public']));
   });
 
   it('reorder mode saves a custom order without touching the device', async () => {
     csrfFetchMock.mockImplementation(orderFetch());
     const actions = makeActions();
     const { container } = renderView(actions);
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha']));
 
     fireEvent.click(screen.getByRole('button', { name: /^Sort$/ }));
     expect(await screen.findAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
 
     // Move alpha to the top with the keyboard-friendly arrow buttons.
-    fireEvent.click(screen.getByLabelText('Move # alpha up'));
-    fireEvent.click(screen.getByLabelText('Move # alpha up'));
+    fireEvent.click(screen.getByLabelText('Move alpha up'));
+    fireEvent.click(screen.getByLabelText('Move alpha up'));
     fireEvent.click(screen.getByText('Save order'));
 
-    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['alpha', 'Public', 'zulu']));
     expect(JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-custom-order-src-a') ?? '[]'))
       .toEqual([2, 0, 1]);
     expect((screen.getByLabelText('Sort channels by') as HTMLSelectElement).value).toBe('custom');
@@ -1384,7 +1384,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     csrfFetchMock.mockImplementation(orderFetch());
     localStorage.setItem('meshmonitor-meshcore-channel-sort-mode-src-a', 'name');
     const { container, rerender } = renderView();
-    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['alpha', 'Public', 'zulu']));
 
     rerender(
       <MeshCoreChannelsView
@@ -1397,7 +1397,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
       />,
     );
     await waitFor(() => expect((screen.getByLabelText('Sort channels by') as HTMLSelectElement).value).toBe('device'));
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha']));
   });
 
   it('hides the Sort button when there is only one channel', async () => {
@@ -1406,7 +1406,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
       return Promise.resolve(jsonResponse({ success: true, data: [] }));
     });
     renderView();
-    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
     expect(screen.queryByRole('button', { name: /^Sort$/ })).toBeNull();
   });
 
@@ -1425,7 +1425,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     localStorage.setItem('meshmonitor-meshcore-channel-sort-mode-src-a', 'custom');
     localStorage.setItem('meshmonitor-meshcore-channel-custom-order-src-a', JSON.stringify([2, 0, 1]));
     const { container } = renderView();
-    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['alpha', 'Public', 'zulu']));
 
     swapped = true;
     const moves = [{ from: 1, to: 2 }, { from: 2, to: 1 }];
@@ -1435,7 +1435,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
       emitChannelsReordered({ sourceId: 'src-a', moves });
     });
 
-    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['alpha', 'Public', 'zulu']));
     expect(JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-custom-order-src-a') ?? '[]'))
       .toEqual([1, 0, 2]);
   });
@@ -1485,7 +1485,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
       />
     );
     const { container, rerender } = render(view(true));
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha']));
 
     fireEvent.click(screen.getByRole('button', { name: /^Sort$/ }));
     expect(await screen.findAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
@@ -1500,20 +1500,20 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     extra = true;
     rerender(view(false));
     rerender(view(true));
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha', '# bravo']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha', 'bravo']));
     expect(screen.queryAllByTestId('mc-channel-reorder-row')).toHaveLength(0);
   });
 
   it('cancel discards the draft order', async () => {
     csrfFetchMock.mockImplementation(orderFetch());
     const { container } = renderView();
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha']));
 
     fireEvent.click(screen.getByRole('button', { name: /^Sort$/ }));
-    fireEvent.click(await screen.findByLabelText('Move # Public down'));
+    fireEvent.click(await screen.findByLabelText('Move Public down'));
     fireEvent.click(screen.getByText('Cancel'));
 
-    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    await waitFor(() => expect(rowNames(container)).toEqual(['Public', 'zulu', 'alpha']));
     expect(localStorage.getItem('meshmonitor-meshcore-channel-custom-order-src-a')).toBeNull();
   });
 });
@@ -1568,7 +1568,7 @@ describe('MeshCoreChannelsView — no auto-select + landing pane + click-to-dese
 
   it('opens with no channel selected and shows the landing pane', async () => {
     const { container } = renderView();
-    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
 
     // The landing prompt is shown, no row is selected, and no message stream renders.
     expect(screen.getByText('Select a channel')).toBeTruthy();
@@ -1579,7 +1579,7 @@ describe('MeshCoreChannelsView — no auto-select + landing pane + click-to-dese
 
   it('does not mark any channel read or fetch a backlog while nothing is selected', async () => {
     renderView();
-    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
     // Let any effects settle.
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
 
@@ -1589,9 +1589,9 @@ describe('MeshCoreChannelsView — no auto-select + landing pane + click-to-dese
 
   it('selecting a channel shows its stream, fetches the backlog, and marks it read', async () => {
     const { container } = renderView();
-    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
 
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
 
     // Landing pane is replaced by the channel's stream + its backlog.
     await waitFor(() => expect(screen.getByText('public backlog row')).toBeTruthy());
@@ -1608,13 +1608,13 @@ describe('MeshCoreChannelsView — no auto-select + landing pane + click-to-dese
 
   it('clicking the selected channel again de-selects it (desktop) and returns to the landing pane', async () => {
     const { container } = renderView();
-    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
 
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(container.querySelector('.mc-channel-row.selected')).toBeTruthy());
 
     // Click the already-selected channel again → de-select, back to landing.
-    fireEvent.click(screen.getByText('# Public'));
+    fireEvent.click(screen.getByText('Public'));
     await waitFor(() => expect(screen.getByText('Select a channel')).toBeTruthy());
     expect(container.querySelector('.mc-channel-row.selected')).toBeNull();
     expect(screen.queryByPlaceholderText('Type a message…')).toBeNull();
@@ -1625,10 +1625,10 @@ describe('MeshCoreChannelsView — no auto-select + landing pane + click-to-dese
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
     try {
       renderView();
-      await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+      await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
 
       // Tap opens the channel (mobile drills into the content pane).
-      fireEvent.click(screen.getByText('# Public'));
+      fireEvent.click(screen.getByText('Public'));
       await waitFor(() => expect(screen.getByText('Back')).toBeTruthy());
 
       // Back returns to the list; selection is retained.
@@ -1636,7 +1636,7 @@ describe('MeshCoreChannelsView — no auto-select + landing pane + click-to-dese
       await waitFor(() => expect(screen.queryByText('Back')).toBeNull());
 
       // Re-tapping the SAME row must REOPEN it, never de-select it.
-      fireEvent.click(screen.getByText('# Public'));
+      fireEvent.click(screen.getByText('Public'));
       await waitFor(() => expect(screen.getByText('Back')).toBeTruthy());
       expect(screen.queryByText('Select a channel')).toBeNull();
     } finally {
