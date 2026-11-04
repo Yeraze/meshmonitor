@@ -182,16 +182,14 @@ export function sha256PureJS(data: Uint8Array): Uint8Array {
 /**
  * Format a MeshCore channel name for display.
  *
- * Names are shown with a leading `# ` as a decorative convention. Hashtag
- * channels already store the `#` as part of the name (e.g. `#general`), so we
- * must NOT prepend another one or they render as `# #general`. Empty names fall
- * back to the supplied label (e.g. "Channel 0").
+ * Names are shown as stored. Hashtag channels keep their leading `#` because it
+ * is part of the name (e.g. `#general`); plain names are shown as-is (e.g.
+ * `Public`), with no decorative prefix (#6170). Empty names fall back to the
+ * supplied label (e.g. "Channel 0").
  */
 export function formatMeshCoreChannelName(name: string | null | undefined, fallback: string): string {
   const trimmed = (name ?? '').trim();
-  if (!trimmed) return `# ${fallback}`;
-  if (trimmed.startsWith('#')) return trimmed;
-  return `# ${trimmed}`;
+  return trimmed || fallback;
 }
 
 /**
