@@ -62,6 +62,8 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   'settings-ducting',
   // ADS-B flight matching (#5374): one global outbound service, like elevation.
   'settings-adsb',
+  // MeshWars forwarder: one global outbound service, like ADS-B.
+  'settings-meshwars',
   'settings-atak-cot',
   // Virtual Node message replay (#6160): one global, opt-in switch for the
   // install, like the CoT feed above.
@@ -193,6 +195,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-ducting', label: t('settings.ducting_section', 'Tropospheric ducting overlay'), keywords: ['ducting', 'tropo', 'tropospheric', 'refraction', 'gfs', 'noaa', 'propagation', 'weather'] },
     { id: 'settings-adsb', label: t('settings.adsb_section', 'Flight matching (ADS-B)'), keywords: ['adsb', 'ads-b', 'aircraft', 'flight', 'plane', 'callsign', 'adsb.lol', 'adsb.fi'] },
     { id: 'settings-virtual-node-replay', label: t('settings.vn_replay_section', 'Virtual Node message replay'), keywords: ['virtual node', 'vn', 'replay', 'reconnect', 'missed', 'messages', 'android', 'app', 'backlog'] },
+    { id: 'settings-meshwars', label: t('settings.meshwars.title', 'MeshWars'), keywords: ['meshwars', 'game', 'territory', 'wardriving', 'meshmapper', 'meshcore'] },
     { id: 'settings-translation', label: t('settings.translation_section', 'Message Translation'), keywords: ['translate', 'translation', 'language', 'libretranslate', 'openai', 'deepl', 'ollama'] },
     { id: 'settings-backup', label: t('settings.system_backup', 'System Backup'), keywords: ['restore', 'export', 'import', 'archive'] },
     { id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database'), keywords: ['psk', 'decrypt', 'channels', 'keys'] },
@@ -212,7 +215,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
 
   const adminOnly = new Set([
     'settings-default-source',
-    'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-ducting', 'settings-adsb',
+    'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-ducting', 'settings-adsb', 'settings-meshwars',
     'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics',
   ]);
   const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt']);
