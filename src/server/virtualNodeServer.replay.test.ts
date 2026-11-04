@@ -348,6 +348,24 @@ describe('VirtualNodeServer replay — replayToClient (#6160)', () => {
     expect(dbMock.nodes.getNode).toHaveBeenCalledTimes(1);
   });
 
+  it('passes the stored hop fields through so the app can show hops', async () => {
+    enableReplay(true);
+    vi.useFakeTimers();
+    const vn = makeServer();
+    dbMock.messages.getMessagesAfterTimestamp.mockResolvedValue([
+      textRow({ hopStart: 7, hopLimit: 4, viaMqtt: false }),
+      textRow({ id: `src-1_${PEER}_2`, hopStart: 6, hopLimit: 0, viaMqtt: true }),
+    ]);
+    attachClient(vn, 'c1');
+
+    const run = (vn as any).replayToClient('c1');
+    await vi.runAllTimersAsync();
+    await run;
+
+    expect(createFromRadio.mock.calls[0][0]).toMatchObject({ hopStart: 7, hopLimit: 4, viaMqtt: false });
+    expect(createFromRadio.mock.calls[1][0]).toMatchObject({ hopStart: 6, hopLimit: 0, viaMqtt: true });
+  });
+
   it('does not set pki_encrypted for a channel message', async () => {
     enableReplay(true);
     vi.useFakeTimers();

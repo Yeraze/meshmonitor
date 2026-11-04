@@ -1639,6 +1639,10 @@ export class MeshtasticProtobufService {
     timestamp: number;
     requestId?: number | null;
     hopLimit?: number | null;
+    /** Original hop_start; with it, clients show hops away = hopStart - hopLimit */
+    hopStart?: number | null;
+    /** The packet reached us over MQTT */
+    viaMqtt?: boolean | null;
     rxTime?: number | null;
     rxSnr?: number | null;
     rxRssi?: number | null;
@@ -1716,7 +1720,12 @@ export class MeshtasticProtobufService {
         rxTime: rxTimeSeconds,
         rxSnr: message.rxSnr || 0,
         rxRssi: message.rxRssi || 0,
-        hopLimit: message.hopLimit || 3,
+        // With hop_start the clients show hops away = hopStart - hopLimit, so the
+        // stored hopLimit is kept as is (0 included). Without it, keep the old default.
+        ...(Number(message.hopStart) > 0
+          ? { hopStart: Number(message.hopStart), hopLimit: Number(message.hopLimit ?? 0) }
+          : { hopLimit: message.hopLimit || 3 }),
+        ...(message.viaMqtt ? { viaMqtt: true } : {}),
         ...(message.pkiEncrypted ? { pkiEncrypted: true } : {}),
       });
 
