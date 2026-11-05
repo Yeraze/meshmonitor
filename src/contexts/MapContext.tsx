@@ -89,6 +89,15 @@ interface MapContextType {
   colorNodesBySource: boolean;
   setColorNodesBySource: (value: boolean) => void;
   /**
+   * #6175: colour each node's marker ring by the GATEWAY it was last relayed
+   * through, on cross-source (Unified) maps. The gateway analogue of
+   * `colorNodesBySource` — the two are the non-off states of one 3-state UI
+   * control and are kept mutually exclusive by their setters. localStorage-only
+   * (opt-in, default false); single-source views ignore it.
+   */
+  colorNodesByGateway: boolean;
+  setColorNodesByGateway: (value: boolean) => void;
+  /**
    * Likely-aircraft display mode for the map (#5364/#5365 Phase 1 WP4):
    * 'show' (no badge, no filtering), 'mark' (badge only, default), or 'hide'
    * (marker suppressed, except favourites). Persisted server-side via
@@ -230,6 +239,16 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [spreadNodes, setSpreadNodesState] = useState<boolean>(true);
   // #6125: default false = opt-in per-source ring around node markers.
   const [colorNodesBySource, setColorNodesBySourceState] = useState<boolean>(false);
+  // #6175: default false = opt-in per-gateway ring. localStorage-only (no
+  // migration): the colour-by mode is a 3-state Off / By source / By gateway in
+  // the UI, and these two booleans are kept mutually exclusive by the setters.
+  const [colorNodesByGateway, setColorNodesByGatewayState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('meshmonitor-colorNodesByGateway') === 'true';
+    } catch {
+      return false;
+    }
+  });
   // #5364/#5365 Phase 1 WP4: localStorage-first (validated), else 'mark',
   // overridden by the server preference once it loads (see the loader below).
   const [aircraftDisplayMode, setAircraftDisplayModeState] = useState<AircraftDisplayMode>(() => {
@@ -371,8 +390,26 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
 
   const setColorNodesBySource = React.useCallback((value: boolean) => {
     setColorNodesBySourceState(value);
+    // Mutual exclusivity (#6175): turning the source ring on clears the gateway
+    // ring so the UI's 3-state Off / By source / By gateway choice stays single.
+    if (value) {
+      setColorNodesByGatewayState(false);
+      try { localStorage.setItem('meshmonitor-colorNodesByGateway', 'false'); } catch { /* best-effort */ }
+    }
     void savePreferenceToServer({ colorNodesBySource: value });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- #6125 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
+  }, []);
+
+  const setColorNodesByGateway = React.useCallback((value: boolean) => {
+    setColorNodesByGatewayState(value);
+    try { localStorage.setItem('meshmonitor-colorNodesByGateway', String(value)); } catch { /* best-effort */ }
+    // Mutual exclusivity (#6175): the gateway ring and the source ring are the
+    // two non-off states of one control, so turning one on turns the other off.
+    if (value) {
+      setColorNodesBySourceState(false);
+      void savePreferenceToServer({ colorNodesBySource: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #6175 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
   }, []);
 
   const setAircraftDisplayMode = React.useCallback((value: AircraftDisplayMode) => {
@@ -705,6 +742,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setSpreadNodes,
     colorNodesBySource,
     setColorNodesBySource,
+    colorNodesByGateway,
+    setColorNodesByGateway,
     pendingCenterNodeNum,
     setPendingCenterNodeNum,
     setShowRfNodes,
@@ -777,6 +816,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     unreadIndicatorEnabled, setUnreadIndicatorEnabled,
     spreadNodes, setSpreadNodes,
     colorNodesBySource, setColorNodesBySource,
+    colorNodesByGateway, setColorNodesByGateway,
     pendingCenterNodeNum, setPendingCenterNodeNum,
     showMeshCoreNodes, setShowMeshCoreNodes,
     showWaypoints, setShowWaypoints,

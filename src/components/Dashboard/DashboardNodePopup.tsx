@@ -53,7 +53,7 @@ export default function DashboardNodePopup({ node, pos, onSourceSelect }: Dashbo
             timeFormat={timeFormat}
             dateFormat={dateFormat}
           />
-          <SourcesList sources={model.sources} nodeId={model.nodeId} onSourceSelect={onSourceSelect} />
+          <SourcesList sources={model.sources} gateways={model.gateways} nodeId={model.nodeId} onSourceSelect={onSourceSelect} />
         </>
       }
     />

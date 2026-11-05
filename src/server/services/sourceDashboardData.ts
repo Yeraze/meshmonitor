@@ -44,6 +44,8 @@ import {
 } from '../../constants/nodeDisplayDefaults.js';
 import { effectiveIsMobile } from '../../utils/assetTracking.js';
 import { loadSignFlipContext, applySignFlipCorrection, getDisplayDbNodePosition, applySignFlipToTraceroute } from './signFlipCorrection.js';
+import mqttPacketLogService from './mqttPacketLogService.js';
+import type { MqttNodeGatewayRow } from '../../db/repositories/mqttPacketLog.js';
 import type { ResourceType } from '../../types/permission.js';
 import type { LiveNodeFilter } from '../../db/repositories/nodes.js';
 import type { DbNode } from '../../db/types.js';
@@ -472,7 +474,28 @@ export interface SourceDashboardPayload {
   channels: unknown[];
   /** Node rows before the age window cut; set only when it ran (applyDashboardAgeWindow). */
   nodeCount?: number;
+  /**
+   * Per-`(node, gateway)` membership for the "colour nodes by gateway" view
+   * (#6175). Present only for MQTT sources (`mqtt_broker`/`mqtt_bridge`) when
+   * the viewer can read this source's nodes AND the packet-log capture is
+   * enabled; `[]`/absent otherwise. Read-only over already-ingested rows — no
+   * mesh traffic. Gated by the SAME `nodes:read` permission as `nodes`, so a
+   * viewer who can't read a source never sees its gateways.
+   */
+  gatewayMembership?: MqttNodeGatewayRow[];
 }
+
+/** MQTT source types that carry a gateway-membership view (#6175). */
+function isMqttSourceType(type: string): boolean {
+  return type === 'mqtt_broker' || type === 'mqtt_bridge';
+}
+
+/**
+ * Lookback for the gateway-membership read (#6175). Scoped to the source's own
+ * node age window when known, else a conservative default that comfortably
+ * covers the packet log's own 24 h default retention.
+ */
+const DEFAULT_GATEWAY_MEMBERSHIP_HOURS = 48;
 
 /**
  * Aggregate the four dashboard datasets for a source in one shot, applying the
@@ -509,6 +532,33 @@ export async function buildSourceDashboard(
   // Only a prefiltered read knows the uncut count; applyDashboardAgeWindow
   // fills it in from nodes.length otherwise.
   if (nodeResult.uncutCount !== undefined) payload.nodeCount = nodeResult.uncutCount;
+
+  // Gateway membership (#6175): MQTT sources only, gated by the SAME
+  // `nodes:read` grant as the node list, so a viewer who can't read this
+  // source never learns which gateways it saw. The service itself returns []
+  // when packet-log capture is off, so a disabled install degrades to no
+  // gateways and the map behaves exactly as before.
+  //
+  // This is an ADDITIVE, optional dataset: a failure fetching it must never
+  // sink the whole bundle. Any throw (service/method unavailable, read error)
+  // degrades to an empty membership and the other datasets still return 200 —
+  // the same graceful posture as capture being disabled.
+  if (canReadNodes && isMqttSourceType(source.type)) {
+    const hours = opts?.maxNodeAgeHours && opts.maxNodeAgeHours > 0
+      ? opts.maxNodeAgeHours
+      : DEFAULT_GATEWAY_MEMBERSHIP_HOURS;
+    const since = Date.now() - hours * 60 * 60 * 1000;
+    try {
+      payload.gatewayMembership = await mqttPacketLogService.getNodeGatewayMembership({
+        sourceIds: [source.id],
+        since,
+      });
+    } catch (error) {
+      logger.warn(`Gateway membership read failed for source ${source.id}; returning empty (#6175):`, error);
+      payload.gatewayMembership = [];
+    }
+  }
+
   return payload;
 }
 

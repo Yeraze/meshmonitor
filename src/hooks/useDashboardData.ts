@@ -138,6 +138,27 @@ export interface SourceDashboardBundle {
   channels: unknown[];
   /** Node rows before the server's age cut; present only with `ageWindow`. */
   nodeCount?: number;
+  /**
+   * Per-`(node, gateway)` membership for "colour nodes by gateway" (#6175).
+   * Present only for MQTT sources whose packet log is enabled and that the
+   * viewer can read; absent/empty otherwise.
+   */
+  gatewayMembership?: MqttGatewayMembershipRow[];
+}
+
+/**
+ * One `(node, gateway)` membership row from the server bundle (#6175). Mirrors
+ * `MqttNodeGatewayRow` on the backend, carried per source so the unified merge
+ * can attach a deduped per-node `gateways` list.
+ */
+export interface MqttGatewayMembershipRow {
+  sourceId: string;
+  fromNode: number;
+  fromNodeId: string | null;
+  gatewayId: string;
+  gatewayNodeNum: number | null;
+  receptionCount: number;
+  lastHeard: number;
 }
 
 /**
@@ -563,6 +584,20 @@ export interface NodeSourceRef {
 }
 
 /**
+ * Describes one gateway that relayed a node, attached to each merged Unified
+ * node (#6175). Carries `sourceId` so the popup can nest gateway chips under
+ * their owning MQTT source, and `lastHeard` so the map can ring a multi-gateway
+ * node by its most-recently-heard gateway. Deduped by `(sourceId, gatewayId)`.
+ */
+export interface NodeGatewayRef {
+  sourceId: string;
+  gatewayId: string;
+  gatewayNodeNum: number | null;
+  receptionCount: number;
+  lastHeard: number;
+}
+
+/**
  * One source's data bundle plus its identifying metadata. The metadata is
  * optional so legacy callers (and tests) that only pass data still work — when
  * absent, merged nodes simply carry no `sources` array.
@@ -575,11 +610,15 @@ export interface UnifiedSourceBundle {
   traceroutes: unknown[];
   neighborInfo: unknown[];
   channels: unknown[];
+  /** Per-`(node, gateway)` membership for this source (#6175); MQTT-only. */
+  gatewayMembership?: MqttGatewayMembershipRow[];
 }
 
 interface CachedNodeMerge {
   inputs: unknown[];
   sourceSig: string;
+  /** Signature of the node's gateway membership (#6175); a change re-merges. */
+  gatewaySig: string;
   merged: unknown;
 }
 
@@ -632,6 +671,12 @@ export function mergeUnifiedSourceData(
   // node record with the source it came from so we can rebuild `sources` after
   // the field-level merge collapses the records.
   const recordsByKey = new Map<string, Array<{ node: any; source: NodeSourceRef | null }>>();
+  // #6175: gateway membership per `(sourceId, fromNode)`, assembled from every
+  // per-source bundle, so each merged node can be given a deduped `gateways`
+  // list. MQTT-only; non-MQTT/disabled sources carry no membership, so this map
+  // is simply empty for them and the node gets no `gateways` field.
+  const gatewayBySourceNode = new Map<string, MqttGatewayMembershipRow[]>();
+  const gatewayKey = (sourceId: string, fromNode: number) => `${sourceId}\u0001${fromNode}`;
   const traceroutes: unknown[] = [];
   const neighborInfo: unknown[] = [];
   // Tracks canonical (min,max) nodeNum pairs already added to neighborInfo so the
@@ -691,6 +736,14 @@ export function mergeUnifiedSourceData(
     if (channels.length === 0 && ps.channels.length > 0) {
       channels = ps.channels;
     }
+    // #6175: index this source's gateway membership by (sourceId, fromNode).
+    for (const row of ps.gatewayMembership ?? []) {
+      if (row == null || row.gatewayId == null) continue;
+      const k = gatewayKey(row.sourceId, Number(row.fromNode));
+      const bucket = gatewayBySourceNode.get(k);
+      if (bucket) bucket.push(row);
+      else gatewayBySourceNode.set(k, [row]);
+    }
   }
 
   const nodes = Array.from(recordsByKey.entries()).map(([key, entries]) => {
@@ -698,15 +751,46 @@ export function mergeUnifiedSourceData(
     const sourceSig = entries
       .map((e) => (e.source ? `${e.source.sourceId}\u0001${e.source.sourceName}\u0001${e.source.protocol}` : ''))
       .join('\u0002');
+    // #6175: this node's gateway membership across every source that heard it,
+    // deduped by (sourceId, gatewayId), newest gateway first. The server
+    // already collapses to one row per (sourceId, fromNode, gatewayId), so the
+    // dedup here only guards against a node reported by multiple sources.
+    const gatewaySeen = new Map<string, NodeGatewayRef>();
+    for (const e of entries) {
+      if (!e.source) continue;
+      const nodeNum = Number(e.node?.nodeNum);
+      if (!Number.isFinite(nodeNum)) continue;
+      for (const row of gatewayBySourceNode.get(gatewayKey(e.source.sourceId, nodeNum)) ?? []) {
+        const dk = `${row.sourceId}\u0001${row.gatewayId}`;
+        const existing = gatewaySeen.get(dk);
+        if (!existing || row.lastHeard > existing.lastHeard) {
+          gatewaySeen.set(dk, {
+            sourceId: row.sourceId,
+            gatewayId: row.gatewayId,
+            gatewayNodeNum: row.gatewayNodeNum ?? null,
+            receptionCount: row.receptionCount,
+            lastHeard: row.lastHeard,
+          });
+        }
+      }
+    }
+    const nodeGateways = Array.from(gatewaySeen.values()).sort(
+      (a, b) => b.lastHeard - a.lastHeard || a.gatewayId.localeCompare(b.gatewayId),
+    );
+    const gatewaySig = nodeGateways
+      .map((g) => `${g.sourceId}\u0001${g.gatewayId}\u0001${g.lastHeard}\u0001${g.receptionCount}`)
+      .join('\u0002');
     // Reuse last merge's object when this node's input records are the same
     // objects as last time (TanStack's structural sharing keeps an unchanged
     // record's reference across polls). That keeps an unchanged node's
     // identity stable, so per-node memos and marker components downstream
-    // can skip it.
+    // can skip it. The gateway signature is part of the key so a membership
+    // change forces a fresh merge even when the node records are unchanged.
     const prev = cache?.byKey.get(key);
     if (
       prev &&
       prev.sourceSig === sourceSig &&
+      prev.gatewaySig === gatewaySig &&
       prev.inputs.length === inputs.length &&
       prev.inputs.every((r, i) => r === inputs[i])
     ) {
@@ -719,6 +803,7 @@ export function mergeUnifiedSourceData(
       if (e.source && !seen.has(e.source.sourceId)) seen.set(e.source.sourceId, e.source);
     }
     if (seen.size > 0) merged.sources = Array.from(seen.values());
+    if (nodeGateways.length > 0) merged.gateways = nodeGateways;
     // Union of transport classes across every per-source record so the map's
     // RF/UDP/MQTT toggles are additive — a node heard via RF on one source and
     // MQTT on another stays visible under "Show RF" even with "Show MQTT" off.
@@ -748,7 +833,7 @@ export function mergeUnifiedSourceData(
       for (const c of getNodeTransportClasses(e.node)) classes.add(c);
     }
     merged.transportClasses = Array.from(classes);
-    nextByKey.set(key, { inputs, sourceSig, merged });
+    nextByKey.set(key, { inputs, sourceSig, gatewaySig, merged });
     return merged;
   });
 
@@ -850,6 +935,7 @@ export function useDashboardUnifiedData(
         traceroutes: b?.traceroutes ?? [],
         neighborInfo: b?.neighborInfo ?? [],
         channels: b?.channels ?? [],
+        gatewayMembership: b?.gatewayMembership ?? [],
       };
     });
     return mergeUnifiedSourceData(perSource, mergeCacheRef.current);

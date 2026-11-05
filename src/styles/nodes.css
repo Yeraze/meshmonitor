@@ -2389,6 +2389,41 @@
   white-space: nowrap;
 }
 
+/* #6175: gateway chips nested under an MQTT source's "Seen by" row. */
+.node-popup-source-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.node-popup-gateways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0 0.25rem 1.6rem;
+}
+
+.node-popup-gateways-label {
+  color: var(--color-text-subtle);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.node-popup-gateway-chip {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  font-size: 0.72rem;
+  font-family: var(--font-mono, monospace);
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .node-popup-protocol-badge {
   flex-shrink: 0;
   font-size: 0.68rem;
@@ -2732,6 +2767,44 @@
 }
 
 .map-control-item span {
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* #6175: 3-state "Colour nodes by" radio group (Off / By source / By gateway).
+   Stacks its options vertically instead of the single-row checkbox layout. */
+.map-control-item-group {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+.map-control-group-title {
+  color: var(--color-text-subtle);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.map-control-subitem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  padding-left: 0.5rem;
+}
+
+.map-control-subitem input[type='radio'] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent-alt);
+}
+
+.map-control-subitem span {
   color: var(--color-text);
   font-size: 0.9rem;
   font-weight: 500;

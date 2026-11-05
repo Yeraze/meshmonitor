@@ -28,6 +28,38 @@ export function nodeSourceRingColor(
   return getSourceColor(String(sourceId), colorSourceIds);
 }
 
+/** Minimal gateway shape the ring reads — avoids a hook import cycle. */
+export interface NodeGatewayRingRef {
+  gatewayId: string;
+  lastHeard: number;
+}
+
+/**
+ * #6175: the per-gateway ring colour for a node, or null when no ring should be
+ * drawn. The gateway analogue of {@link nodeSourceRingColor}: returns null
+ * unless the "Colour by gateway" mode is on AND this is the Unified map AND the
+ * node carries at least one gateway membership.
+ *
+ * A node heard by several gateways rings by its MOST-RECENT gateway (max
+ * `lastHeard`), so the colour follows wherever the node was last relayed. The
+ * colour reuses {@link getSourceColor} against the stable gateway-id domain, so
+ * it draws from the SAME categorical palette as colour-by-source — no new
+ * colour code.
+ */
+export function nodeGatewayRingColor(
+  colorNodesByGateway: boolean,
+  isUnified: boolean,
+  gateways: NodeGatewayRingRef[] | null | undefined,
+  gatewayIds: string[],
+): string | null {
+  if (!colorNodesByGateway || !isUnified || !gateways || gateways.length === 0) return null;
+  let latest = gateways[0];
+  for (const g of gateways) {
+    if (g.lastHeard > latest.lastHeard) latest = g;
+  }
+  return getSourceColor(latest.gatewayId, gatewayIds);
+}
+
 /**
  * Wrap a node marker's divIcon in a per-source coloured ring.
  *

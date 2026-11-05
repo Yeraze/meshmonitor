@@ -648,6 +648,78 @@ describe('mergeUnifiedSourceData', () => {
     expect((merged.nodes[0] as any).sources).toBeUndefined();
   });
 
+  // #6175: per-node `gateways` array built from the bundle's gatewayMembership.
+  it('attaches a deduped, newest-first gateways list without altering the sources array', () => {
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 'src-1',
+        sourceName: 'Broker',
+        protocol: 'Meshtastic',
+        nodes: [{ nodeNum: 500, lastHeard: 100 }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+        gatewayMembership: [
+          { sourceId: 'src-1', fromNode: 500, fromNodeId: '!000001f4', gatewayId: '!gw000001', gatewayNodeNum: 1, receptionCount: 2, lastHeard: 100 },
+          { sourceId: 'src-1', fromNode: 500, fromNodeId: '!000001f4', gatewayId: '!gw000002', gatewayNodeNum: 2, receptionCount: 5, lastHeard: 300 },
+          // A different node's membership must not attach to node 500.
+          { sourceId: 'src-1', fromNode: 999, fromNodeId: '!000003e7', gatewayId: '!gw000003', gatewayNodeNum: 3, receptionCount: 1, lastHeard: 400 },
+        ],
+      },
+    ]);
+    const node = merged.nodes.find((n) => (n as any).nodeNum === 500) as any;
+    expect(node.gateways).toHaveLength(2);
+    // Newest gateway (lastHeard 300) first.
+    expect(node.gateways.map((g: any) => g.gatewayId)).toEqual(['!gw000002', '!gw000001']);
+    // The sources array is unchanged (single source, no gateway leakage into it).
+    expect(node.sources).toEqual([{ sourceId: 'src-1', sourceName: 'Broker', protocol: 'Meshtastic' }]);
+  });
+
+  it('dedupes gateways reported across sources by (sourceId, gatewayId) and omits gateways when none are supplied', () => {
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 'src-1',
+        sourceName: 'Broker A',
+        protocol: 'Meshtastic',
+        nodes: [{ nodeNum: 700, lastHeard: 100 }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+        gatewayMembership: [
+          { sourceId: 'src-1', fromNode: 700, fromNodeId: '!000002bc', gatewayId: '!gwA', gatewayNodeNum: 1, receptionCount: 1, lastHeard: 100 },
+          { sourceId: 'src-1', fromNode: 700, fromNodeId: '!000002bc', gatewayId: '!gwA', gatewayNodeNum: 1, receptionCount: 1, lastHeard: 100 },
+        ],
+      },
+      {
+        sourceId: 'src-2',
+        sourceName: 'Broker B',
+        protocol: 'Meshtastic',
+        nodes: [{ nodeNum: 700, lastHeard: 200 }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+        gatewayMembership: [
+          { sourceId: 'src-2', fromNode: 700, fromNodeId: '!000002bc', gatewayId: '!gwA', gatewayNodeNum: 1, receptionCount: 1, lastHeard: 150 },
+        ],
+      },
+    ]);
+    const node = merged.nodes.find((n) => (n as any).nodeNum === 700) as any;
+    // (src-1,!gwA) collapses to one; (src-2,!gwA) is a distinct source so kept.
+    expect(node.gateways).toHaveLength(2);
+    const bySource = node.gateways.map((g: any) => g.sourceId).sort();
+    expect(bySource).toEqual(['src-1', 'src-2']);
+  });
+
+  it('leaves nodes without a gateways field when no membership is supplied', () => {
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 'src-1', sourceName: 'Broker', protocol: 'Meshtastic',
+        nodes: [{ nodeNum: 800, lastHeard: 100 }], traceroutes: [], neighborInfo: [], channels: [],
+      },
+    ]);
+    expect((merged.nodes[0] as any).gateways).toBeUndefined();
+  });
+
   it('merges a MeshCore node across sources by publicKey (not the source-scoped nodeId)', () => {
     // Regression: the server builds MeshCore nodeId as `mc:<sourceId>:<pubkey>`,
     // so the same physical contact heard by two sources had two different
