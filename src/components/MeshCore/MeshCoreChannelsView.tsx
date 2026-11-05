@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { parseJsonResponse } from '../../utils/parseJsonResponse';
+import { readRequiredRepeaters, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
 import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
@@ -142,9 +143,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const isChannelMutedFn = muteSettings?.isChannelMuted;
   const canMute = !!muteSettings && authStatus?.authenticated === true;
   const [showMuteMenu, setShowMuteMenu] = useState(false);
-  // #6178: per-source Required Repeater (full public key, hex) or null. Gates
-  // the resend ↻ button so it stays until that one repeater relays the message.
-  const [requiredRepeater, setRequiredRepeater] = useState<string | null>(null);
+  // #6178 → #6193: per-source Required Repeaters list + ANY/ALL mode. Gates the
+  // resend ↻ button so it stays until the gate is satisfied.
+  const [requiredRepeaterKeys, setRequiredRepeaterKeys] = useState<string[]>([]);
+  const [requiredRepeaterMode, setRequiredRepeaterMode] = useState<RequiredRepeaterMode>('any');
 
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   // No channel is selected when the view opens (#6049) — the operator must pick
@@ -252,11 +254,13 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     localStorage.setItem(SORT_UNREAD_FIRST_KEY, String(sortUnreadFirst));
   }, [sortUnreadFirst]);
 
-  // #6178: read this source's Required Repeater setting. Re-read on source
-  // change (the setting is per-source); switching to the Settings tab and back
-  // remounts this view, so a change made there is picked up on return.
+  // #6178 → #6193: read this source's Required Repeaters list + mode. The shared
+  // reader prefers the new list keys but falls back to the legacy single key, so
+  // existing #6178 setups keep working with no migration. Re-read on source
+  // change (per-source); switching to the Settings tab and back remounts this
+  // view, so a change made there is picked up on return.
   useEffect(() => {
-    if (!sourceId) { setRequiredRepeater(null); return; }
+    if (!sourceId) { setRequiredRepeaterKeys([]); setRequiredRepeaterMode('any'); return; }
     let cancelled = false;
     void (async () => {
       try {
@@ -264,8 +268,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         if (!res.ok) return;
         const settings = await parseJsonResponse(res);
         if (cancelled || !settings) return;
-        const raw = settings.meshcoreRequiredRepeater;
-        setRequiredRepeater(typeof raw === 'string' && raw.trim() ? raw.trim() : null);
+        const { keys, mode } = readRequiredRepeaters(settings);
+        setRequiredRepeaterKeys(keys);
+        setRequiredRepeaterMode(mode);
       } catch {
         // Keep the default (none); the resend button behaves as before.
       }
@@ -1136,7 +1141,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           contacts={contacts}
           sourceId={sourceId}
           selfPublicKey={selfKey}
-          requiredRepeaterPublicKey={requiredRepeater}
+          requiredRepeaterKeys={requiredRepeaterKeys}
+          requiredRepeaterMode={requiredRepeaterMode}
           // #6159: a virtual channel's key is not on the radio — hide the send
           // bar entirely (receive-only), rather than just disabling it.
           hideComposer={active?.virtual === true}

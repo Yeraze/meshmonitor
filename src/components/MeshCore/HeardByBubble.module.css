@@ -1,0 +1,36 @@
+/*
+ * HeardByBubble (#6193): the shared "heard by" antenna badge + expandable
+ * repeater list. The structural classes (mc-heard-by-badge / -list / -item /
+ * -name / -hops / -snr) stay global (MeshCorePage.css); this module adds only
+ * the required-row ✓/✗ markers. Colours are var(--color-*) role tokens only.
+ */
+
+.bubble {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-left: 0.25rem;
+}
+
+.requiredRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem;
+}
+
+/* Heard: green check. Uses the success role token. */
+.heardMark {
+  display: inline-flex;
+  color: var(--color-success);
+}
+
+/* Not relayed yet: red cross. Uses the error role token. */
+.missMark {
+  display: inline-flex;
+  color: var(--color-error);
+}
+
+.missLabel {
+  color: var(--color-text-faint);
+  font-style: italic;
+}

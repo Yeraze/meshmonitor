@@ -46,7 +46,7 @@ import {
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import type { DbMeshCoreMessage } from '../db/repositories/meshcore.js';
 import { isReactionText, isReactionEmoji, mc1ChannelBody } from '../utils/meshcoreReactions.js';
-import { requiredRepeaterHeard } from '../utils/meshcoreHeardBy.js';
+import { readRequiredRepeaters, requiredRepeatersHeard } from '../utils/meshcoreHeardBy.js';
 import {
   foldReactionEmoji,
   meshcoreWireSecond,
@@ -6471,6 +6471,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
+  /**
+   * Resolve this source's Required Repeaters gate config (#6193). Reads the
+   * new list + mode keys and the legacy single key, then folds them through the
+   * shared `readRequiredRepeaters` reader so the server and the UI can never
+   * drift. No migration — these are KV settings.
+   */
+  private async resolveRequiredRepeaters(): Promise<{ keys: string[]; mode: 'any' | 'all' }> {
+    const [list, legacy, mode] = await Promise.all([
+      databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRequiredRepeaters'),
+      databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRequiredRepeater'),
+      databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRequiredRepeaterMode'),
+    ]);
+    return readRequiredRepeaters({
+      meshcoreRequiredRepeaters: list,
+      meshcoreRequiredRepeater: legacy,
+      meshcoreRequiredRepeaterMode: mode,
+    });
+  }
+
   /** Body of {@link handleChannelRetryTimeout}; `onResent` fires with the
    *  resend time when the one-shot resend actually went out. */
   private async runChannelRetry(
@@ -6494,21 +6513,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return; // can't confirm a miss → don't risk a needless duplicate
     }
 
-    // #6178: honour the per-source Required Repeater gate here too, with the same
-    // shared matcher as the user resend. Unset = default "heard by any".
-    const requiredRepeater =
-      (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRequiredRepeater')) || null;
-    const heardForRetry = requiredRepeater
-      ? requiredRepeaterHeard(
-          heard.map((h) => ({ hash: h.repeaterHash })),
-          requiredRepeater,
-          [...this.contacts.values()].map((c) => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
-        )
-      : heard.length > 0;
+    // #6178 → #6193: honour the per-source Required Repeaters gate here too,
+    // with the same shared matcher as the user resend. Empty list = default
+    // "heard by any". The reader prefers the #6193 list but falls back to the
+    // legacy single key, so existing setups keep working with no migration.
+    const required = await this.resolveRequiredRepeaters();
+    const heardForRetry = requiredRepeatersHeard(
+      heard.map((h) => ({ hash: h.repeaterHash })),
+      required.keys,
+      required.mode,
+      [...this.contacts.values()].map((c) => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
+    );
     if (heardForRetry) {
       logger.debug(
         `[MeshCore:${this.sourceId}] Channel send ${messageId} heard by ${heard.length} repeater(s) within window` +
-        `${requiredRepeater ? ' (required repeater relayed it)' : ''}; no retry`,
+        `${required.keys.length > 0 ? ` (required repeater gate '${required.mode}' satisfied)` : ''}; no retry`,
       );
       return;
     }
@@ -6689,19 +6708,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // An echo that lands after this read and before the RF send costs at most
       // one copy that repeaters which heard the original drop by hash.
       const heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
-      // #6178: with a per-source Required Repeater set, the send counts as heard
-      // only once THAT repeater is heard relaying it (conservative unique-prefix
-      // match, shared with the UI via `requiredRepeaterHeard`). Unset = today's
-      // "heard by any repeater" rule, byte-for-byte.
-      const requiredRepeater =
-        (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRequiredRepeater')) || null;
-      const alreadyHeard = requiredRepeater
-        ? requiredRepeaterHeard(
-            heard.map((h) => ({ hash: h.repeaterHash })),
-            requiredRepeater,
-            [...this.contacts.values()].map((c) => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
-          )
-        : heard.length > 0;
+      // #6178 → #6193: with a per-source Required Repeaters list set, the send
+      // counts as heard only once the ANY/ALL gate is satisfied (conservative
+      // unique-prefix match per key, shared with the UI via
+      // `requiredRepeatersHeard`). Empty list = today's "heard by any repeater"
+      // rule, byte-for-byte. The reader folds the legacy single key in too.
+      const required = await this.resolveRequiredRepeaters();
+      const alreadyHeard = requiredRepeatersHeard(
+        heard.map((h) => ({ hash: h.repeaterHash })),
+        required.keys,
+        required.mode,
+        [...this.contacts.values()].map((c) => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
+      );
       if (alreadyHeard) {
         throw new MeshCoreResendError('ALREADY_HEARD', 'A repeater already relayed this message');
       }

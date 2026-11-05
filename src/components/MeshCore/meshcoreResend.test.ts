@@ -24,7 +24,7 @@ describe('resendAvailability', () => {
     expect(resendAvailability(m, SELF, NOW, {}).kind).toBe('never');
   });
 
-  describe('#6178 Required Repeater gate', () => {
+  describe('#6178 → #6193 Required Repeaters gate', () => {
     const REQ = 'bb'.repeat(16); // 32-char full pubkey
     const OTHER = 'cc'.repeat(16);
     const repeaters = [
@@ -34,12 +34,12 @@ describe('resendAvailability', () => {
 
     it('hides resend only once the required repeater is uniquely heard', () => {
       const m = own({ heardBy: [{ hash: 'bb' }] });
-      expect(resendAvailability(m, SELF, NOW, { requiredRepeaterPublicKey: REQ, repeaters }).kind).toBe('never');
+      expect(resendAvailability(m, SELF, NOW, { requiredRepeaterKeys: [REQ], repeaters }).kind).toBe('never');
     });
 
     it('keeps resend when a DIFFERENT repeater relayed it', () => {
       const m = own({ heardBy: [{ hash: 'cc' }] });
-      expect(resendAvailability(m, SELF, NOW, { requiredRepeaterPublicKey: REQ, repeaters }).kind).toBe('ready');
+      expect(resendAvailability(m, SELF, NOW, { requiredRepeaterKeys: [REQ], repeaters }).kind).toBe('ready');
     });
 
     it('keeps resend on an ambiguous prefix collision', () => {
@@ -48,7 +48,7 @@ describe('resendAvailability', () => {
       const m = own({ heardBy: [{ hash: 'bb' }] });
       expect(
         resendAvailability(m, SELF, NOW, {
-          requiredRepeaterPublicKey: REQ,
+          requiredRepeaterKeys: [REQ],
           repeaters: [{ publicKey: REQ, advType: 2 }, { publicKey: decoy, advType: 2 }],
         }).kind,
       ).toBe('ready');
@@ -56,7 +56,19 @@ describe('resendAvailability', () => {
 
     it('keeps resend when no repeater has been heard yet', () => {
       const m = own();
-      expect(resendAvailability(m, SELF, NOW, { requiredRepeaterPublicKey: REQ, repeaters }).kind).toBe('ready');
+      expect(resendAvailability(m, SELF, NOW, { requiredRepeaterKeys: [REQ], repeaters }).kind).toBe('ready');
+    });
+
+    it('ANY mode: one of the listed repeaters heard hides resend', () => {
+      const m = own({ heardBy: [{ hash: 'cc' }] });
+      expect(resendAvailability(m, SELF, NOW, { requiredRepeaterKeys: [REQ, OTHER], requiredRepeaterMode: 'any', repeaters }).kind).toBe('never');
+    });
+
+    it('ALL mode: keeps resend until every listed repeater is heard', () => {
+      const partial = own({ heardBy: [{ hash: 'bb' }] });
+      expect(resendAvailability(partial, SELF, NOW, { requiredRepeaterKeys: [REQ, OTHER], requiredRepeaterMode: 'all', repeaters }).kind).toBe('ready');
+      const full = own({ heardBy: [{ hash: 'bb' }, { hash: 'cc' }] });
+      expect(resendAvailability(full, SELF, NOW, { requiredRepeaterKeys: [REQ, OTHER], requiredRepeaterMode: 'all', repeaters }).kind).toBe('never');
     });
   });
 });
