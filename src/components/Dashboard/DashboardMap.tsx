@@ -45,7 +45,8 @@ import {
   type DashboardSource,
 } from '../../hooks/useDashboardData';
 import { getSourceColor, resolveSourceColor } from '../../utils/sourceColors';
-import { nodeSourceRingColor, applyNodeSourceRing } from './nodeSourceRing';
+import { nodeSourceRingColor, nodeGatewayRingColor, applyNodeSourceRing } from './nodeSourceRing';
+import type { NodeGatewayRef } from '../../hooks/useDashboardData';
 import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter, isMqttOnlySourceType } from '../../utils/nodeTransport';
 import {
@@ -361,6 +362,8 @@ export default function DashboardMap({
     setSpreadNodes,
     colorNodesBySource,
     setColorNodesBySource,
+    colorNodesByGateway,
+    setColorNodesByGateway,
     aircraftDisplayMode,
     setAircraftDisplayMode,
     showAgedOutAircraft,
@@ -496,6 +499,21 @@ export default function DashboardMap({
     [nodesWithPosition, hidePositionlessAdverts],
   );
   const hasMeshCoreNodes = useMemo(() => nodes.some((n) => n.isMeshCore), [nodes]);
+
+  // #6175: stable, sorted gateway-id domain across every node that carries
+  // gateway membership. Drives the per-gateway ring colour and the legend — the
+  // same list keyed into `getSourceColor` so a gateway keeps one colour in both.
+  // Built from all merged nodes (not just positioned ones) so the colour mapping
+  // is stable as positionless nodes come and go across polls.
+  const gatewayIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const n of nodes) {
+      const gws = (n as { gateways?: NodeGatewayRef[] }).gateways;
+      if (!Array.isArray(gws)) continue;
+      for (const g of gws) if (g?.gatewayId) ids.add(g.gatewayId);
+    }
+    return Array.from(ids).sort();
+  }, [nodes]);
 
   // #4835: live packet traffic resolves each flight against the markers this
   // map draws. Built only while the layer is on. The Unified map colours a
@@ -797,7 +815,7 @@ export default function DashboardMap({
     // ring colour without changing the node reference, so they belong in `ctx`
     // — the per-marker cache below reuses a descriptor whenever `node` and
     // `ctx` match, so a toggle flip must invalidate every cached entry.
-    const ctx = `${aircraftDisplayMode}|${mapPinStyle}|${mapPinColorMode}|${colorNodesBySource && isUnified ? 1 : 0}|${colorSourceIds.join(',')}`;
+    const ctx = `${aircraftDisplayMode}|${mapPinStyle}|${mapPinColorMode}|${colorNodesBySource && isUnified ? 1 : 0}|${colorSourceIds.join(',')}|${colorNodesByGateway && isUnified ? 1 : 0}|${gatewayIds.join(',')}`;
     const descriptors = markerNodes.map(({ node, pos }): NodeMarkerDescriptor => {
       const hops = node.hopsAway ?? 999;
       const shortName = node.shortName ?? node.user?.shortName;
@@ -859,11 +877,15 @@ export default function DashboardMap({
         return cached.descriptor;
       }
 
-      // #6125: per-source ring colour (null unless the toggle is on, this is
-      // the Unified map, and the node has a source). Folded into iconSig so the
-      // icon rebuilds when the toggle flips or a node's source changes; NEVER
-      // folded into opacity/selection (those are applied outside buildIcon).
-      const sourceRingColor = nodeSourceRingColor(colorNodesBySource, isUnified, node.sourceId, colorSourceIds);
+      // #6125/#6175: the marker ring colour. Off / By source / By gateway are a
+      // single 3-state mode (the two context booleans are mutually exclusive),
+      // so at most one path produces a colour. "By source" is unchanged from
+      // #6125; "By gateway" rings by the node's most-recent gateway (#6175).
+      // Folded into iconSig so the icon rebuilds when the mode flips or a node's
+      // source/gateway changes; NEVER folded into opacity/selection.
+      const sourceRingColor = colorNodesByGateway
+        ? nodeGatewayRingColor(colorNodesByGateway, isUnified, (node as { gateways?: NodeGatewayRef[] }).gateways, gatewayIds)
+        : nodeSourceRingColor(colorNodesBySource, isUnified, node.sourceId, colorSourceIds);
 
       const descriptor: NodeMarkerDescriptor = {
         key: markerKey,
@@ -904,8 +926,8 @@ export default function DashboardMap({
     });
     markerDescriptorCacheRef.current = nextCache;
     return descriptors;
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- #6125 colorSourceIds is a fresh array each render (see line ~255), so it is listed by its stable join like the sourceColorFor callback above (#4835); isUnified/colorNodesBySource drive the ring and are plain values.
-  }, [markerNodes, nowMs, cutoffTime, aircraftDisplayMode, mapPinStyle, mapPinColorMode, onNodeSourceSelect, colorNodesBySource, isUnified, colorSourceIds.join(',')]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #6125/#6175 colorSourceIds/gatewayIds are fresh arrays each render (see line ~255), listed by their stable join like the sourceColorFor callback above (#4835); isUnified/colorNodesBySource/colorNodesByGateway drive the ring and are plain values.
+  }, [markerNodes, nowMs, cutoffTime, aircraftDisplayMode, mapPinStyle, mapPinColorMode, onNodeSourceSelect, colorNodesBySource, colorNodesByGateway, isUnified, colorSourceIds.join(','), gatewayIds.join(',')]);
 
   // Position accuracy regions — drawn from precision_bits, mirroring NodesTab.
   // Shares the cell geometry with Map Analysis via `precisionCellBounds`. Uses
@@ -1190,6 +1212,35 @@ export default function DashboardMap({
         </div>
       )}
 
+      {/* #6175: gateway → colour key for the per-gateway ring. Mirrors the
+          source-colour legend above; shown only on the Unified map while the
+          gateway mode is on and some node carries gateway membership. */}
+      {isUnified && colorNodesByGateway && gatewayIds.length > 0 && (
+        <div
+          className="dashboard-polar-grid-legend dashboard-source-color-legend"
+          role="note"
+          aria-label="Node gateway colours"
+          style={
+            !effective3D && showPolarGrid && ownNodePositions.length > 0
+              ? { bottom: 'auto', top: 12 }
+              : undefined
+          }
+        >
+          <div className="dashboard-polar-grid-legend__title">
+            {t('map.colorNodesByGateway', 'Colour nodes by gateway')}
+          </div>
+          {gatewayIds.map((gid) => (
+            <div key={`gw-color-${gid}`} className="dashboard-polar-grid-legend__row">
+              <span
+                className="dashboard-polar-grid-legend__swatch"
+                style={{ background: getSourceColor(gid, gatewayIds) }}
+              />
+              <span className="dashboard-polar-grid-legend__name">{gid}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Unified map controls sidebar (#4909): Features toggles + Hops legend +
           tileset picker in one collapsible right-edge panel (full-screen on
           mobile) instead of independently-floating, overlapping panels. */}
@@ -1355,21 +1406,57 @@ export default function DashboardMap({
             />
             <span>Spread Nodes</span>
           </label>
-          {/* #6125: per-source ring around each node marker. Unified map only —
-              a single-source map has one colour, so the ring carries no
-              information there. Keeps the role glyph and age opacity intact. */}
+          {/* #6125/#6175: coloured ring around each node marker — Off / By source
+              / By gateway, a single 3-state mode. Unified map only (a
+              single-source map has one colour, so the ring carries no
+              information there). Keeps the role glyph and age opacity intact.
+              "By gateway" needs the MQTT packet log enabled to have any data;
+              with it off the gateway domain is empty and the ring draws
+              nothing, so the map behaves exactly like "Off". */}
           {isUnified && (
-            <label
-              className="map-control-item"
-              title={t('map.colorNodesBySourceHelp', 'Draw a coloured ring around each node marker in its source’s colour, matching the colours used in Unified Messages and the map legend. The role glyph and age fade stay unchanged.')}
+            <div
+              className="map-control-item map-control-item-group"
+              role="radiogroup"
+              aria-label={t('map.colorNodesBy', 'Colour nodes by')}
             >
-              <input
-                type="checkbox"
-                checked={colorNodesBySource}
-                onChange={(e) => setColorNodesBySource(e.target.checked)}
-              />
-              <span>{t('map.colorNodesBySource', 'Colour nodes by source')}</span>
-            </label>
+              <span className="map-control-group-title">{t('map.colorNodesBy', 'Colour nodes by')}</span>
+              <label
+                className="map-control-subitem"
+                title={t('map.colorNodesOffHelp', 'Draw no ring — every node marker keeps its role colour only.')}
+              >
+                <input
+                  type="radio"
+                  name="colorNodesMode"
+                  checked={!colorNodesBySource && !colorNodesByGateway}
+                  onChange={() => { setColorNodesBySource(false); setColorNodesByGateway(false); }}
+                />
+                <span>{t('map.colorNodesOff', 'Off')}</span>
+              </label>
+              <label
+                className="map-control-subitem"
+                title={t('map.colorNodesBySourceHelp', 'Draw a coloured ring around each node marker in its source’s colour, matching the colours used in Unified Messages and the map legend. The role glyph and age fade stay unchanged.')}
+              >
+                <input
+                  type="radio"
+                  name="colorNodesMode"
+                  checked={colorNodesBySource && !colorNodesByGateway}
+                  onChange={() => setColorNodesBySource(true)}
+                />
+                <span>{t('map.colorNodesBySource', 'Colour nodes by source')}</span>
+              </label>
+              <label
+                className="map-control-subitem"
+                title={t('map.colorNodesByGatewayHelp', 'Draw a coloured ring around each node in the colour of the gateway that last relayed it. Needs an MQTT source with the packet monitor enabled. A node heard by several gateways rings by its most recent one.')}
+              >
+                <input
+                  type="radio"
+                  name="colorNodesMode"
+                  checked={colorNodesByGateway}
+                  onChange={() => setColorNodesByGateway(true)}
+                />
+                <span>{t('map.colorNodesByGateway', 'Colour nodes by gateway')}</span>
+              </label>
+            </div>
           )}
           {/* RF/UDP/MQTT transport toggles have no meaning on an MQTT-only
               source (mqtt_bridge/mqtt_broker) — every node there arrived

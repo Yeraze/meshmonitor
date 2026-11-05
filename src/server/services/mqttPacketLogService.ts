@@ -11,6 +11,7 @@ import type {
   MqttGroupedQuery,
   MqttGateway,
   MqttIngestOutcome,
+  MqttNodeGatewayRow,
 } from '../../db/repositories/mqttPacketLog.js';
 import type {
   DbMqttOkToMqttViolation,
@@ -225,6 +226,22 @@ class MqttPacketLogService {
 
   async getGateways(sourceId: string): Promise<MqttGateway[]> {
     return databaseService.mqttPacketLog.getGateways(sourceId);
+  }
+
+  /**
+   * Per-`(source, node, gateway)` membership for the "colour nodes by gateway"
+   * view (#6175). Gated by the packet-log opt-in: when capture is off there is
+   * no data to read, so return [] rather than hit the table. Read-only — no
+   * mesh traffic.
+   */
+  async getNodeGatewayMembership(q: {
+    sourceIds: string[];
+    since: number;
+    limit?: number;
+  }): Promise<MqttNodeGatewayRow[]> {
+    if (q.sourceIds.length === 0) return [];
+    if (!(await this.isEnabled())) return [];
+    return databaseService.mqttPacketLog.getNodeGatewayMembership(q);
   }
 
   async clearPackets(sourceId?: string): Promise<number> {
