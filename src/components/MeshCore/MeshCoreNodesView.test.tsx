@@ -113,6 +113,44 @@ describe('MeshCoreNodesView — sort controls', () => {
     // After selecting name, direction is still 'desc' from default — Z..A.
     expect(listedNames()).toEqual(['Charlie', 'Bravo', 'alpha']);
   });
+
+  it('sorts by public key (lowercase hex) when "Public key" is selected (#6185)', () => {
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
+    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
+    // Direction defaults to desc — toggle to asc for natural hex order.
+    fireEvent.click(screen.getByTitle('Descending'));
+    // PK_A(aaa…)=Charlie < PK_B(bbb…)=alpha < PK_C(ccc…)=Bravo
+    expect(listedNames()).toEqual(['Charlie', 'alpha', 'Bravo']);
+  });
+
+  it('compares public keys case-insensitively (#6185)', () => {
+    // 'B' (ASCII 66) sorts BEFORE 'a' (ASCII 97) by raw byte order, but AFTER
+    // it once both are lowercased — so a lowercase compare puts NodeA first.
+    const mixed: MeshCoreNode[] = [
+      { publicKey: 'B'.repeat(64), name: 'NodeB', advType: 1, lastHeard: NOW - 1 * HOUR_MS },
+      { publicKey: 'a'.repeat(64), name: 'NodeA', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={mixed} contacts={contacts} />);
+    const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
+    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
+    fireEvent.click(screen.getByTitle('Descending'));
+    expect(listedNames()).toEqual(['NodeA', 'NodeB']);
+  });
+
+  it('pins favorites to the top under public-key sort (#6185)', () => {
+    const withFavorite: MeshCoreNode[] = [
+      { publicKey: PK_A, name: 'Charlie', advType: 1, lastHeard: NOW - 3 * HOUR_MS },
+      { publicKey: PK_B, name: 'alpha', advType: 1, lastHeard: NOW - 1 * HOUR_MS },
+      { publicKey: PK_C, name: 'Bravo', advType: 1, lastHeard: NOW - 2 * HOUR_MS, isFavorite: true },
+    ];
+    render(<MeshCoreNodesView nodes={withFavorite} contacts={contacts} />);
+    const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
+    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
+    fireEvent.click(screen.getByTitle('Descending'));
+    // Favorite PK_C (Bravo) pins to the top; the rest follow in hex order.
+    expect(listedNames()).toEqual(['Bravo', 'Charlie', 'alpha']);
+  });
 });
 
 describe('MeshCoreNodesView — role icon (#3647)', () => {

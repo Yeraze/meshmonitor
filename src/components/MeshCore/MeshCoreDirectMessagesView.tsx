@@ -92,7 +92,7 @@ function isRealNodeKey(key: string): boolean {
   return /^[0-9a-fA-F]{64}$/.test(key);
 }
 
-type DmSortField = 'name' | 'lastMessage';
+type DmSortField = 'name' | 'lastMessage' | 'publicKey';
 type DmSortDirection = 'asc' | 'desc';
 // Node-type (advType) filter for the contact list (issue #3890). 'all' = no
 // filter; otherwise a MeshCore advert type: 1=Companion, 2=Repeater, 4=Sensor.
@@ -386,6 +386,10 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       if (sortField === 'name') {
         return peerNameFor(a).localeCompare(peerNameFor(b), undefined, { sensitivity: 'base' }) * dir;
       }
+      if (sortField === 'publicKey') {
+        // Compare lowercase hex so mixed-case keys sort the same (issue #6185).
+        return a.toLowerCase().localeCompare(b.toLowerCase()) * dir;
+      }
       const at = lastMessageAt.get(a) ?? 0;
       const bt = lastMessageAt.get(b) ?? 0;
       return (at - bt) * dir;
@@ -585,6 +589,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 >
                   <option value="lastMessage">{t('meshcore.sort_last_message', 'Last message')}</option>
                   <option value="name">{t('meshcore.sort_name', 'Name')}</option>
+                  <option value="publicKey">{t('meshcore.sort_public_key', 'Public key')}</option>
                 </select>
                 <button
                   type="button"
