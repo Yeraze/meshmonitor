@@ -1488,6 +1488,8 @@ export class VirtualNodeServer extends EventEmitter {
           rxSnr: m.rxSnr ?? null,
           rxRssi: m.rxRssi ?? null,
           hopLimit: m.hopLimit ?? null,
+          hopStart: m.hopStart ?? null, // so the app can show the hop count
+          viaMqtt: m.viaMqtt ?? null,
           replyId: m.replyId ?? null,
           emoji: m.emoji ?? null,
           pkiEncrypted,
