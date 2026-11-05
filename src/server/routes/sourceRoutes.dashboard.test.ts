@@ -44,8 +44,16 @@ vi.mock('../meshtasticManager.js', () => ({
   MeshtasticManager: vi.fn().mockImplementation(() => ({ start: vi.fn(), stop: vi.fn() })),
 }));
 
+// #6175: the dashboard bundle now fetches gateway membership for MQTT sources.
+// Mock the service so the route test controls that optional, additive dataset.
+vi.mock('../services/mqttPacketLogService.js', () => ({
+  default: { getNodeGatewayMembership: vi.fn(async () => []) },
+}));
+
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import mqttPacketLogService from '../services/mqttPacketLogService.js';
 const mockRegistry = sourceManagerRegistry as any;
+const mockMqtt = mqttPacketLogService as any;
 
 const mockDb = databaseService as any;
 const MOCK_SOURCE = { id: 'src-mqtt', name: 'Test MQTT', type: 'mqtt_broker', enabled: true };
@@ -84,6 +92,9 @@ describe('GET /:id/dashboard — bundled source datasets', () => {
     mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
     mockDb.settings.getSetting.mockResolvedValue(null);
     mockDb.settings.getSettingForSource.mockResolvedValue(null);
+    // #6175: default — no gateway membership. clearAllMocks above wiped the
+    // module-mock implementation, so re-establish it each test.
+    mockMqtt.getNodeGatewayMembership.mockResolvedValue([]);
   });
 
   it('404s for an unknown source', async () => {
@@ -119,6 +130,25 @@ describe('GET /:id/dashboard — bundled source datasets', () => {
     expect(Array.isArray(res.body.nodes)).toBe(true);
     expect(Array.isArray(res.body.channels)).toBe(true);
     expect(Array.isArray(res.body.neighborInfo)).toBe(true);
+  });
+
+  it('includes gateway membership for an MQTT source when the service returns it (#6175)', async () => {
+    mockMqtt.getNodeGatewayMembership.mockResolvedValue([
+      { sourceId: 'src-mqtt', fromNode: 1, fromNodeId: '!00000001', gatewayId: '!gw000001', gatewayNodeNum: 1, receptionCount: 3, lastHeard: 1000 },
+    ]);
+    const res = await request(createApp(adminUser)).get('/src-mqtt/dashboard');
+    expect(res.status).toBe(200);
+    expect(res.body.gatewayMembership).toHaveLength(1);
+    expect(res.body.gatewayMembership[0].gatewayId).toBe('!gw000001');
+  });
+
+  it('still returns 200 with empty gateways when the gateway-membership fetch throws (#6175 degradation)', async () => {
+    mockMqtt.getNodeGatewayMembership.mockRejectedValue(new Error('packet log unavailable'));
+    const res = await request(createApp(adminUser)).get('/src-mqtt/dashboard');
+    // The optional dataset failing must NOT sink the bundle.
+    expect(res.status).toBe(200);
+    expect(res.body.nodes).toHaveLength(1);
+    expect(res.body.gatewayMembership).toEqual([]);
   });
 
   it('scopes the local-node injection lookup to the source (no cross-source leak)', async () => {

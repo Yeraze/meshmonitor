@@ -122,6 +122,24 @@ export interface MqttDirectReceptionRow {
 export const MQTT_DIRECT_RECEPTION_MAX_ROWS = 20_000;
 
 /**
+ * One `(source, node, gateway)` membership row — which gateway(s) relayed an
+ * originating node's packets, over any hop count (#6175, "colour nodes by
+ * gateway"). Unlike {@link MqttDirectReceptionRow} this carries NO direct/hop
+ * predicate: the gateway that uplinked a node identifies the bridge it arrived
+ * through regardless of how many hops the packet took to reach that gateway.
+ * Read-only over already-ingested rows — no new mesh traffic.
+ */
+export interface MqttNodeGatewayRow {
+  sourceId: string;
+  fromNode: number;
+  fromNodeId: string | null;
+  gatewayId: string;
+  gatewayNodeNum: number | null;
+  receptionCount: number;
+  lastHeard: number;
+}
+
+/**
  * Repository for the MQTT packet monitor's reception log.
  */
 export class MqttPacketLogRepository extends BaseRepository {
@@ -553,6 +571,79 @@ export class MqttPacketLogRepository extends BaseRepository {
       meanRxSnr: r.meanRxSnr == null ? null : Number(r.meanRxSnr),
       firstSeen: Number(r.firstSeen),
       lastSeen: Number(r.lastSeen),
+    }));
+  }
+
+  /**
+   * Per-`(source, node, gateway)` membership since `since` — which gateway(s)
+   * relayed each originating node's packets (#6175, "colour nodes by
+   * gateway"). Read-only over already-ingested `mqtt_packet_log` rows; sends
+   * nothing to the mesh.
+   *
+   * Modelled on {@link getDirectReceptionsByGateway} but WITHOUT its
+   * direct/hop predicate (`hopLimit = hopStart AND hopStart > 0`): the gateway
+   * that uplinked a node names the bridge the node arrived through whatever the
+   * hop count, and the colour-by-gateway view wants every node a gateway
+   * carried, not just its direct neighbours. The only filters are source
+   * membership, the `since` window, and both ids present.
+   *
+   * Grouped by `(sourceId, fromNode, gatewayId)` — every non-aggregated
+   * selected column is in the GROUP BY or wrapped in an aggregate, so this is
+   * safe under MySQL's `ONLY_FULL_GROUP_BY`. `fromNodeId`/`gatewayNodeNum` are
+   * `MAX()` (functionally dependent on the grouped id, but MySQL can't prove
+   * it). Ordered by `receptionCount` descending so if the row cap bites, the
+   * busiest memberships survive. Same explicit `Number()` coercion as
+   * `getDirectReceptionsByGateway` for PostgreSQL BIGINT-string aggregates.
+   */
+  async getNodeGatewayMembership(q: {
+    sourceIds: string[];
+    since: number;
+    limit?: number;
+  }): Promise<MqttNodeGatewayRow[]> {
+    if (q.sourceIds.length === 0) return [];
+
+    const t = this.tables.mqttPacketLog;
+    const rows = await this.db
+      .select({
+        sourceId: t.sourceId,
+        fromNode: t.fromNode,
+        fromNodeId: sql<string | null>`MAX(${t.fromNodeId})`,
+        gatewayId: t.gatewayId,
+        gatewayNodeNum: sql<number | null>`MAX(${t.gatewayNodeNum})`,
+        receptionCount: sql<number>`COUNT(*)`,
+        lastHeard: sql<number>`MAX(${t.timestamp})`,
+      })
+      .from(t)
+      .where(
+        and(
+          inArray(t.sourceId, q.sourceIds),
+          gte(t.timestamp, q.since),
+          isNotNull(t.gatewayId),
+          isNotNull(t.fromNode),
+        ),
+      )
+      .groupBy(t.sourceId, t.fromNode, t.gatewayId)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(q.limit ?? MQTT_DIRECT_RECEPTION_MAX_ROWS);
+
+    return (
+      rows as Array<{
+        sourceId: string;
+        fromNode: unknown;
+        fromNodeId: string | null;
+        gatewayId: string;
+        gatewayNodeNum: unknown;
+        receptionCount: unknown;
+        lastHeard: unknown;
+      }>
+    ).map((r) => ({
+      sourceId: r.sourceId,
+      fromNode: Number(r.fromNode),
+      fromNodeId: r.fromNodeId ?? null,
+      gatewayId: r.gatewayId,
+      gatewayNodeNum: r.gatewayNodeNum == null ? null : Number(r.gatewayNodeNum),
+      receptionCount: Number(r.receptionCount),
+      lastHeard: Number(r.lastHeard),
     }));
   }
 

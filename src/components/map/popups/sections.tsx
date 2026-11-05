@@ -23,7 +23,7 @@ import { formatLocationSource } from '../../../utils/nodeHelpers';
 import type { TimeFormat, DateFormat } from '../../../contexts/SettingsContext';
 import { useNodeListStyle } from '../../../contexts/SettingsContext';
 import { nodeColorStyle } from '../../../utils/nodeColor';
-import type { NodeCardModel, NodeSourceRef } from './nodeCardModel';
+import type { NodeCardModel, NodeSourceRef, NodeGatewayRef } from './nodeCardModel';
 import { UiIcon, batteryIconName, type UiIconName } from '../../icons';
 import { formatAircraftSummary } from '../../../utils/aircraftClassification';
 import { SignFlipNotice } from '../../SignFlipNotice';
@@ -356,12 +356,14 @@ export const LastHeardFooter: React.FC<LastHeardFooterProps> = ({
 
 export interface SourcesListProps {
   sources?: NodeSourceRef[];
+  /** Gateways that relayed this node, nested under their owning MQTT source (#6175). */
+  gateways?: NodeGatewayRef[];
   nodeId?: string;
   onSourceSelect?: (source: NodeSourceRef, nodeId: string | undefined) => void;
 }
 
 /** "Seen by N sources" clickable rows, Dashboard/MapAnalysis (unified) only. */
-export const SourcesList: React.FC<SourcesListProps> = ({ sources, nodeId, onSourceSelect }) => {
+export const SourcesList: React.FC<SourcesListProps> = ({ sources, gateways, nodeId, onSourceSelect }) => {
   const { t } = useTranslation();
   if (!sources || sources.length === 0) return null;
 
@@ -370,25 +372,52 @@ export const SourcesList: React.FC<SourcesListProps> = ({ sources, nodeId, onSou
     defaultValue: `Seen by ${sources.length} source${sources.length !== 1 ? 's' : ''}`,
   });
 
+  // #6175: group gateway chips by their owning source so each MQTT source row
+  // shows which gateway(s) relayed the node — the direct fix for "Seen by shows
+  // only the broker". Newest gateway first (the merge already sorted them).
+  const gatewaysBySource = new Map<string, NodeGatewayRef[]>();
+  for (const g of gateways ?? []) {
+    const bucket = gatewaysBySource.get(g.sourceId);
+    if (bucket) bucket.push(g);
+    else gatewaysBySource.set(g.sourceId, [g]);
+  }
+
   return (
     <div className="node-popup-sources">
       <div className="node-popup-sources-title">{label}</div>
       {sources.map((s) => {
         const clickable = !!onSourceSelect;
+        const sourceGateways = gatewaysBySource.get(s.sourceId) ?? [];
         return (
-          <button
-            key={s.sourceId}
-            type="button"
-            className="node-popup-source-row node-popup-source-row-button"
-            disabled={!clickable}
-            onClick={clickable ? () => onSourceSelect!(s, nodeId) : undefined}
-            title={clickable ? `Open Node Details for ${s.sourceName}` : undefined}
-          >
-            <span className={`node-popup-protocol-badge protocol-${s.protocol.toLowerCase()}`}>
-              {s.protocol}
-            </span>
-            <span className="node-popup-source-name">{s.sourceName}</span>
-          </button>
+          <div key={s.sourceId} className="node-popup-source-group">
+            <button
+              type="button"
+              className="node-popup-source-row node-popup-source-row-button"
+              disabled={!clickable}
+              onClick={clickable ? () => onSourceSelect!(s, nodeId) : undefined}
+              title={clickable ? `Open Node Details for ${s.sourceName}` : undefined}
+            >
+              <span className={`node-popup-protocol-badge protocol-${s.protocol.toLowerCase()}`}>
+                {s.protocol}
+              </span>
+              <span className="node-popup-source-name">{s.sourceName}</span>
+            </button>
+            {sourceGateways.length > 0 && (
+              <div className="node-popup-gateways">
+                <span className="node-popup-gateways-label">
+                  {t('node_popup.gateways_via', {
+                    count: sourceGateways.length,
+                    defaultValue: `via ${sourceGateways.length} gateway${sourceGateways.length !== 1 ? 's' : ''}`,
+                  })}
+                </span>
+                {sourceGateways.map((g) => (
+                  <span key={`${g.sourceId}:${g.gatewayId}`} className="node-popup-gateway-chip" title={g.gatewayId}>
+                    {g.gatewayId}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         );
       })}
     </div>

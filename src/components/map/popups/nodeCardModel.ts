@@ -27,6 +27,19 @@ export interface NodeSourceRef {
   protocol: 'Meshtastic' | 'MeshCore';
 }
 
+/**
+ * One gateway that relayed this node, attached by mergeUnifiedSourceData
+ * (#6175). `sourceId` ties it to its owning MQTT source so the popup can nest
+ * gateway chips under that source's "Seen by" row.
+ */
+export interface NodeGatewayRef {
+  sourceId: string;
+  gatewayId: string;
+  gatewayNodeNum: number | null;
+  receptionCount: number;
+  lastHeard: number;
+}
+
 export interface NodeCardMeshCoreDetails {
   publicKey: string;
   rssi?: number;
@@ -71,6 +84,10 @@ export interface NodeCardModel {
    *  epoch-ms `firstHeard` is divided down like `lastHeard`). Null = unknown. */
   firstHeard?: number | null;
   sources?: NodeSourceRef[];
+  /** Gateways that relayed this node on MQTT sources (#6175), attached on
+   *  Unified rows. Drives the "Seen by" gateway chips and the colour-by-gateway
+   *  map ring. Absent when no MQTT source saw the node / capture is disabled. */
+  gateways?: NodeGatewayRef[];
   /** The row's own source, on per-source payloads (a Dashboard source view).
    *  Unified rows carry `sources` instead. Used by the #5374 flight-match line. */
   sourceId?: string;
@@ -173,6 +190,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
   const positionTimestamp = typeof node.positionTimestamp === 'number' ? node.positionTimestamp : null;
 
   const sources = Array.isArray(node.sources) ? (node.sources as NodeSourceRef[]) : undefined;
+  const gateways = Array.isArray(node.gateways) ? (node.gateways as NodeGatewayRef[]) : undefined;
   const sourceId = typeof node.sourceId === 'string' && node.sourceId ? node.sourceId : undefined;
 
   // Likely-aircraft classification (#5364/#5365 Phase 1) — flat top-level
@@ -211,6 +229,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     lastHeard,
     firstHeard,
     sources,
+    gateways,
     sourceId,
     isFavorite: node.isFavorite === true,
     likelyAircraft,

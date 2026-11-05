@@ -327,6 +327,40 @@ describe('SourcesList', () => {
     render(<SourcesList sources={sources} />);
     expect(screen.getByText('Tower Alpha').closest('button')).toBeDisabled();
   });
+
+  // #6175: gateway chips nested under their owning MQTT source.
+  it('renders gateway chips nested under the matching source', () => {
+    render(
+      <SourcesList
+        sources={sources}
+        gateways={[
+          { sourceId: 'a', gatewayId: '!gw000001', gatewayNodeNum: 1, receptionCount: 3, lastHeard: 200 },
+          { sourceId: 'a', gatewayId: '!gw000002', gatewayNodeNum: 2, receptionCount: 1, lastHeard: 100 },
+        ]}
+      />,
+    );
+    expect(screen.getByText('via 2 gateways')).toBeInTheDocument();
+    expect(screen.getByText('!gw000001')).toBeInTheDocument();
+    expect(screen.getByText('!gw000002')).toBeInTheDocument();
+  });
+
+  it('shows gateway chips only under the source that owns them', () => {
+    const { container } = render(
+      <SourcesList
+        sources={sources}
+        gateways={[{ sourceId: 'b', gatewayId: '!gwcore01', gatewayNodeNum: 9, receptionCount: 1, lastHeard: 50 }]}
+      />,
+    );
+    // One "via N gateway" label total — source 'a' has no gateways.
+    expect(container.querySelectorAll('.node-popup-gateways')).toHaveLength(1);
+    expect(screen.getByText('via 1 gateway')).toBeInTheDocument();
+    expect(screen.getByText('!gwcore01')).toBeInTheDocument();
+  });
+
+  it('renders no gateway chips when none are supplied', () => {
+    const { container } = render(<SourcesList sources={sources} />);
+    expect(container.querySelectorAll('.node-popup-gateways')).toHaveLength(0);
+  });
 });
 
 describe('MeshCoreDetails', () => {
