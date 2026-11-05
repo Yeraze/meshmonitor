@@ -5684,6 +5684,7 @@
   "meshcore.key": "Key",
   "meshcore.rssi": "RSSI",
   "meshcore.snr": "SNR",
+  "meshcore.sort_public_key": "Public key",
   "meshcore.battery": "Battery",
   "meshcore.last_heard": "Last",
   "meshcore.no_nodes": "No nodes discovered yet",

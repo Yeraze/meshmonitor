@@ -80,7 +80,7 @@ interface MergedRow {
   isLocal: boolean;
 }
 
-type SortField = 'name' | 'lastHeard';
+type SortField = 'name' | 'lastHeard' | 'publicKey';
 type SortDirection = 'asc' | 'desc';
 
 function mergeNodesAndContacts(
@@ -148,6 +148,10 @@ function sortRows(rows: MergedRow[], field: SortField, direction: SortDirection)
   const comparator = (a: MergedRow, b: MergedRow): number => {
     if (field === 'name') {
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) * dir;
+    }
+    if (field === 'publicKey') {
+      // Compare lowercase hex so mixed-case keys sort the same (issue #6185).
+      return (a.publicKey ?? '').toLowerCase().localeCompare((b.publicKey ?? '').toLowerCase()) * dir;
     }
     const at = a.lastHeard ?? 0;
     const bt = b.lastHeard ?? 0;
@@ -531,6 +535,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             >
               <option value="lastHeard">{t('meshcore.sort_last_heard', 'Last heard')}</option>
               <option value="name">{t('meshcore.sort_name', 'Name')}</option>
+              <option value="publicKey">{t('meshcore.sort_public_key', 'Public key')}</option>
             </select>
             <button
               type="button"
