@@ -301,6 +301,94 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     expect(names).toEqual(['alpha', 'Bravo', 'Charlie']);
   });
 
+  it('sorts DM peers by public key (lowercase hex) when "Public key" is selected (#6185)', () => {
+    const contactsList: MeshCoreContact[] = [
+      { publicKey: REAL_PK, advName: 'Charlie', advType: 1, lastSeen: 1000 },
+      { publicKey: REAL_PK_2, advName: 'alpha', advType: 1, lastSeen: 3000 },
+      { publicKey: 'c'.repeat(64), advName: 'Bravo', advType: 1, lastSeen: 2000 },
+    ];
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={contactsList}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
+    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
+    // Direction starts 'desc' — flip to ascending for natural hex order.
+    fireEvent.click(screen.getByTitle('Descending'));
+
+    const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
+      .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
+    // aaa…(Charlie) < bbb…(alpha) < ccc…(Bravo)
+    expect(names).toEqual(['Charlie', 'alpha', 'Bravo']);
+  });
+
+  it('compares DM peer public keys case-insensitively (#6185)', () => {
+    // 'B'.repeat(64) (ASCII 66) sorts BEFORE 'a'.repeat(64) (ASCII 97) by raw
+    // byte order but AFTER it once both are lowercased, so a lowercase compare
+    // puts the 'a' peer first. Both are valid 64-char hex keys.
+    const contactsList: MeshCoreContact[] = [
+      { publicKey: 'B'.repeat(64), advName: 'PeerB', advType: 1, lastSeen: 1000 },
+      { publicKey: 'a'.repeat(64), advName: 'PeerA', advType: 1, lastSeen: 2000 },
+    ];
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={contactsList}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
+    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
+    fireEvent.click(screen.getByTitle('Descending'));
+
+    const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
+      .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
+    expect(names).toEqual(['PeerA', 'PeerB']);
+  });
+
+  it('keeps favorited peers pinned when the user switches to public-key sort (#6185)', () => {
+    const contactsList: MeshCoreContact[] = [
+      { publicKey: REAL_PK, advName: 'Charlie', advType: 1, lastSeen: 1000 },
+      { publicKey: REAL_PK_2, advName: 'alpha', advType: 1, lastSeen: 2000 },
+      { publicKey: 'c'.repeat(64), advName: 'Bravo', advType: 1, lastSeen: 3000 },
+    ];
+    // 'Bravo' (ccc…) is favorited — it would sort LAST under public-key/asc, so
+    // the favorite pin must override that and float it to the top.
+    const nodes: MeshCoreNode[] = [
+      { publicKey: REAL_PK, name: 'Charlie', advType: 1, isFavorite: false },
+      { publicKey: REAL_PK_2, name: 'alpha', advType: 1, isFavorite: false },
+      { publicKey: 'c'.repeat(64), name: 'Bravo', advType: 1, isFavorite: true },
+    ];
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={contactsList}
+        nodes={nodes}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
+    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
+    fireEvent.click(screen.getByTitle('Descending'));
+
+    const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
+      .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
+    // Bravo pinned first despite sorting last by key; the rest follow in hex order.
+    expect(names).toEqual(['Bravo', 'Charlie', 'alpha']);
+  });
+
   // Issue #3620: favorited MeshCore nodes pin to the top of the DM contact
   // list, consistent with the Meshtastic DM list and the MeshCore node list.
   // The favorite flag lives server-side on the node list (issue #3588), not on
