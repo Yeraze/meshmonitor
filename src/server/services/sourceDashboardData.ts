@@ -538,15 +538,25 @@ export async function buildSourceDashboard(
   // source never learns which gateways it saw. The service itself returns []
   // when packet-log capture is off, so a disabled install degrades to no
   // gateways and the map behaves exactly as before.
+  //
+  // This is an ADDITIVE, optional dataset: a failure fetching it must never
+  // sink the whole bundle. Any throw (service/method unavailable, read error)
+  // degrades to an empty membership and the other datasets still return 200 —
+  // the same graceful posture as capture being disabled.
   if (canReadNodes && isMqttSourceType(source.type)) {
     const hours = opts?.maxNodeAgeHours && opts.maxNodeAgeHours > 0
       ? opts.maxNodeAgeHours
       : DEFAULT_GATEWAY_MEMBERSHIP_HOURS;
     const since = Date.now() - hours * 60 * 60 * 1000;
-    payload.gatewayMembership = await mqttPacketLogService.getNodeGatewayMembership({
-      sourceIds: [source.id],
-      since,
-    });
+    try {
+      payload.gatewayMembership = await mqttPacketLogService.getNodeGatewayMembership({
+        sourceIds: [source.id],
+        since,
+      });
+    } catch (error) {
+      logger.warn(`Gateway membership read failed for source ${source.id}; returning empty (#6175):`, error);
+      payload.gatewayMembership = [];
+    }
   }
 
   return payload;
