@@ -85,6 +85,11 @@
     "githubPath": "maxhayim/meshmonitor-skyandsea-alert/sky_and_sea_alert.py"
   },
   {
+    "filename": "orbit_and_launch_alert.py",
+    "name": "Orbit and Launch Alert",
+    "githubPath": "maxhayim/meshmonitor-orbitandlaunch-alert/orbit_and_launch_alert.py"
+  },
+  {
     "filename": "remote-admin.py",
     "name": "Remote Admin (Python)",
     "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/remote-admin.py"
