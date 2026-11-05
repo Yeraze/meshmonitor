@@ -92,3 +92,110 @@ export function requiredRepeaterHeard(
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Required Repeater LIST gate (#6193)
+//
+// #6178 gated on ONE repeater. #6193 generalises to a LIST with an ANY / ALL
+// mode: ANY hides the resend once at least one listed repeater is heard; ALL
+// keeps it until every listed repeater is heard. Both modes reuse the single
+// `requiredRepeaterHeard` unique-prefix matcher above, so the per-repeater
+// decision — and therefore the badge ✓/✗ and the gate — can never drift.
+//
+// The old single key stays supported for read back-compat: no migration (the
+// settings store is a KV store). The one reader below is the single source of
+// truth both the UI resend path and the server authority call.
+// ---------------------------------------------------------------------------
+
+export type RequiredRepeaterMode = 'any' | 'all';
+
+/** The three per-source settings the reader folds into a `{ keys, mode }`. */
+export interface RequiredRepeaterSettingsLike {
+  /** #6193 list: JSON array of full public-key hex strings (string or array). */
+  meshcoreRequiredRepeaters?: unknown;
+  /** #6178 legacy single full public-key hex string. */
+  meshcoreRequiredRepeater?: unknown;
+  /** #6193 mode; anything but `'all'` reads as `'any'` (the default). */
+  meshcoreRequiredRepeaterMode?: unknown;
+}
+
+export interface RequiredRepeaterConfig {
+  keys: string[];
+  mode: RequiredRepeaterMode;
+}
+
+/** Normalise a stored list value (JSON string or array) to deduped hex keys. */
+function parseKeyList(raw: unknown): string[] {
+  let arr: unknown = raw;
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (!s) return [];
+    try {
+      arr = JSON.parse(s);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(arr)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of arr) {
+    if (typeof v !== 'string') continue;
+    const k = v.trim();
+    if (!k) continue;
+    const dedupe = k.toLowerCase();
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    out.push(k);
+  }
+  return out;
+}
+
+/**
+ * Resolve the per-source Required Repeater configuration (#6193), preferring
+ * the new list and falling back to the legacy single key so #6178 setups keep
+ * working with no migration. Default mode is `'any'`.
+ *
+ * - `meshcoreRequiredRepeaters` present and non-empty → that list.
+ * - else legacy `meshcoreRequiredRepeater` non-empty → `[that]`.
+ * - else `[]` (no gate; #6184 "heard by any repeater" fallback applies).
+ */
+export function readRequiredRepeaters(
+  settings: RequiredRepeaterSettingsLike | null | undefined,
+): RequiredRepeaterConfig {
+  const mode: RequiredRepeaterMode =
+    String(settings?.meshcoreRequiredRepeaterMode ?? '').toLowerCase() === 'all' ? 'all' : 'any';
+  const fromList = parseKeyList(settings?.meshcoreRequiredRepeaters);
+  if (fromList.length > 0) return { keys: fromList, mode };
+  const legacy = settings?.meshcoreRequiredRepeater;
+  if (typeof legacy === 'string' && legacy.trim()) return { keys: [legacy.trim()], mode };
+  return { keys: [], mode };
+}
+
+/**
+ * True when the Required Repeater gate is SATISFIED (the send should stop being
+ * resendable), built from the single-key matcher:
+ *
+ * - empty `requiredKeys` → the #6184 fallback: satisfied once ANY repeater is
+ *   heard (`heardBy` non-empty).
+ * - mode `'any'` → `.some()` of the keys heard.
+ * - mode `'all'` → `.every()` of the keys heard.
+ *
+ * Preserves the documented false-positive / false-negative asymmetry: an
+ * ambiguous or unknown prefix counts as "not heard", so ALL stays unsatisfied
+ * (keep the button) rather than hiding it early.
+ */
+export function requiredRepeatersHeard(
+  heardBy: ReadonlyArray<HeardByEntryLike> | undefined | null,
+  requiredKeys: ReadonlyArray<string> | undefined | null,
+  mode: RequiredRepeaterMode,
+  repeaters: ReadonlyArray<RepeaterContactLike>,
+): boolean {
+  if (!requiredKeys || requiredKeys.length === 0) {
+    return !!heardBy && heardBy.length > 0;
+  }
+  if (mode === 'all') {
+    return requiredKeys.every((k) => requiredRepeaterHeard(heardBy, k, repeaters));
+  }
+  return requiredKeys.some((k) => requiredRepeaterHeard(heardBy, k, repeaters));
+}

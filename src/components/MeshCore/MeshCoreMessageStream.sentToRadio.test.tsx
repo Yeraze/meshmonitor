@@ -47,28 +47,28 @@ function renderStream(messages: MeshCoreMessage[]) {
 const sentMark = () => screen.queryByRole('button', { name: 'Sent to radio' });
 const heardBadge = () => screen.queryByTitle('Repeaters that relayed this message');
 
-describe('MeshCoreMessageStream delivery marks (#5682)', () => {
-  it('marks our unrelayed channel send "Sent to radio" and says what that means', () => {
+describe('MeshCoreMessageStream delivery marks (#5682, #6193)', () => {
+  it('shows the heard-by antenna (count 0) on our unrelayed channel send, not "Sent to radio"', () => {
     renderStream([channelSend()]);
-    const mark = sentMark();
-    expect(mark).not.toBeNull();
-    // The limits of the claim are in the tooltip, in plain words.
-    expect(mark!.getAttribute('title')).toMatch(/accepted this message for sending/);
-    expect(mark!.getAttribute('title')).toMatch(/do not report when they transmit/);
-    expect(mark!.getAttribute('title')).toMatch(/cannot tell whether it went out or whether anyone heard it/);
-    // Not drawn as a relay, and never as "0 hops".
-    expect(heardBadge()).toBeNull();
+    // #6193: the "Sent to radio" text is dropped for channel sends.
+    expect(sentMark()).toBeNull();
+    // The antenna is there from the start, with a zero count.
+    const badge = heardBadge();
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain('0');
+    // Never "0 hops".
     expect(screen.queryByText(/hops?\b/)).toBeNull();
   });
 
-  it('shows the same mark for a row loaded from history (no live-only fields)', () => {
+  it('shows the antenna on a channel row loaded from history (no live-only fields)', () => {
     renderStream([channelSend({ id: 'old', timestamp: T0 - 7 * 24 * 3600_000, receivedAt: T0 - 7 * 24 * 3600_000 })]);
-    expect(sentMark()).not.toBeNull();
+    expect(sentMark()).toBeNull();
+    expect(heardBadge()).not.toBeNull();
   });
 
-  it('a relay replaces the mark with the heard-by badge', () => {
+  it('a relay raises the antenna count', () => {
     const { rerender } = renderStream([channelSend()]);
-    expect(sentMark()).not.toBeNull();
+    expect(heardBadge()!.textContent).toContain('0');
 
     rerender(
       <MeshCoreMessageStream
@@ -83,9 +83,10 @@ describe('MeshCoreMessageStream delivery marks (#5682)', () => {
     expect(badge!.textContent).toContain('1');
   });
 
-  it('shows no mark on a received channel message, even one with the same text', () => {
+  it('shows no antenna and no mark on a received channel message, even one with the same text', () => {
     renderStream([{ id: 'rx', fromPublicKey: 'channel-1', fromName: 'Other', text: 'anyone out there?', timestamp: T0 }]);
     expect(sentMark()).toBeNull();
+    expect(heardBadge()).toBeNull();
   });
 
   describe('our own DMs and room posts', () => {
@@ -172,10 +173,12 @@ describe('MeshCoreMessageStream delivery marks (#5682)', () => {
     expect(sentMark()).toBeNull();
   });
 
-  it('opens Delivery Details for that message', () => {
+  it('each of our channel sends carries its own heard-by antenna (#6193)', () => {
     renderStream([channelSend({ id: 'a' }), channelSend({ id: 'b', text: 'second' })]);
-    const row = document.querySelector('[data-message-id="b"]') as HTMLElement;
-    fireEvent.click(within(row).getByRole('button', { name: 'Sent to radio' }));
-    expect(screen.getByTestId('details-modal').textContent).toBe('b');
+    for (const id of ['a', 'b']) {
+      const row = within(document.querySelector(`[data-message-id="${id}"]`) as HTMLElement);
+      expect(row.queryByRole('button', { name: 'Sent to radio' })).toBeNull();
+      expect(row.getByTestId('mc-heard-by-badge')).toBeTruthy();
+    }
   });
 });

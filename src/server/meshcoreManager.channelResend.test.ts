@@ -27,8 +27,11 @@ const SECRET_B64 = Buffer.from(SECRET).toString('base64');
 
 let sourceCounter = 0;
 let retryEnabled = false;
-// #6178: per-source Required Repeater setting the mocked settings store returns.
+// #6178: per-source Required Repeater (legacy single key) the mock returns.
 let requiredRepeaterSetting: string | null = null;
+// #6193: per-source Required Repeaters list (JSON string) + ANY/ALL mode.
+let requiredRepeatersListSetting: string | null = null;
+let requiredRepeaterModeSetting: string | null = null;
 
 function makeManager(sourceId: string): { manager: MeshCoreManager; calls: BridgeCall[] } {
   const m = new MeshCoreManager(sourceId);
@@ -93,14 +96,20 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
     sourceId = `resend-src-${++sourceCounter}`;
     retryEnabled = false;
     requiredRepeaterSetting = null;
+    requiredRepeatersListSetting = null;
+    requiredRepeaterModeSetting = null;
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(T0);
     vi.spyOn(databaseService, 'channels', 'get').mockReturnValue({
       getChannelById: vi.fn(async (idx: number) => (idx === CHANNEL ? { id: CHANNEL, psk: SECRET_B64 } : null)),
     } as any);
     vi.spyOn(databaseService, 'settings', 'get').mockReturnValue({
-      getSettingForSource: vi.fn(async (_src: string, key: string) =>
-        key === 'meshcoreRequiredRepeater' ? requiredRepeaterSetting : null),
+      getSettingForSource: vi.fn(async (_src: string, key: string) => {
+        if (key === 'meshcoreRequiredRepeater') return requiredRepeaterSetting;
+        if (key === 'meshcoreRequiredRepeaters') return requiredRepeatersListSetting;
+        if (key === 'meshcoreRequiredRepeaterMode') return requiredRepeaterModeSetting;
+        return null;
+      }),
       setSourceSetting: vi.fn(async () => {}),
       getSettingAsBoolean: vi.fn(async (_key: string, def: boolean) => (retryEnabled ? true : def)),
     } as any);
@@ -323,6 +332,76 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
       requiredRepeaterSetting = REQ;
       const id = await sendOne(manager);
       const before = sends(calls).length;
+      await databaseService.meshcore.recordHeardRepeater({
+        sourceId, messageId: id, repeaterHash: 'bb', repeaterName: null, snr: 4, heardAt: T0 + 1000,
+      });
+      vi.setSystemTime(T0 + 31_000);
+      await manager.resendChannelMessage(id);
+      expect(sends(calls).length).toBe(before + 1);
+    });
+
+    // #6193 — list + ANY/ALL mode, read through readRequiredRepeaters.
+    it('ANY mode (list): refuses once ONE listed repeater is uniquely heard', async () => {
+      const { manager } = makeManager(sourceId);
+      addRelay(manager, REQ);
+      addRelay(manager, OTHER);
+      requiredRepeatersListSetting = JSON.stringify([REQ, OTHER]);
+      requiredRepeaterModeSetting = 'any';
+      const id = await sendOne(manager);
+      await databaseService.meshcore.recordHeardRepeater({
+        sourceId, messageId: id, repeaterHash: 'cc', repeaterName: null, snr: 4, heardAt: T0 + 1000,
+      });
+      vi.setSystemTime(T0 + 31_000);
+      await expectRefusal(manager.resendChannelMessage(id), 'ALREADY_HEARD');
+    });
+
+    it('ALL mode (list): resends until EVERY listed repeater is heard', async () => {
+      const { manager, calls } = makeManager(sourceId);
+      addRelay(manager, REQ);
+      addRelay(manager, OTHER);
+      requiredRepeatersListSetting = JSON.stringify([REQ, OTHER]);
+      requiredRepeaterModeSetting = 'all';
+      const id = await sendOne(manager);
+      const before = sends(calls).length;
+      // Only REQ ('bb') heard so far → ALL not satisfied → resend allowed.
+      await databaseService.meshcore.recordHeardRepeater({
+        sourceId, messageId: id, repeaterHash: 'bb', repeaterName: null, snr: 4, heardAt: T0 + 1000,
+      });
+      vi.setSystemTime(T0 + 31_000);
+      await manager.resendChannelMessage(id);
+      expect(sends(calls).length).toBe(before + 1);
+
+      // Now OTHER ('cc') is also heard → ALL satisfied → refuse.
+      await databaseService.meshcore.recordHeardRepeater({
+        sourceId, messageId: id, repeaterHash: 'cc', repeaterName: null, snr: 4, heardAt: T0 + 2000,
+      });
+      vi.setSystemTime(T0 + 62_000);
+      await expectRefusal(manager.resendChannelMessage(id), 'ALREADY_HEARD');
+    });
+
+    it('back-compat: the legacy single key still gates when no list is set', async () => {
+      const { manager } = makeManager(sourceId);
+      addRelay(manager, REQ);
+      addRelay(manager, OTHER);
+      requiredRepeaterSetting = REQ; // legacy key only, no list
+      const id = await sendOne(manager);
+      await databaseService.meshcore.recordHeardRepeater({
+        sourceId, messageId: id, repeaterHash: 'bb', repeaterName: null, snr: 4, heardAt: T0 + 1000,
+      });
+      vi.setSystemTime(T0 + 31_000);
+      await expectRefusal(manager.resendChannelMessage(id), 'ALREADY_HEARD');
+    });
+
+    it('the list wins over the legacy key when both are set', async () => {
+      const { manager, calls } = makeManager(sourceId);
+      addRelay(manager, REQ);
+      addRelay(manager, OTHER);
+      // Legacy says REQ, but the list says OTHER — the list must win.
+      requiredRepeaterSetting = REQ;
+      requiredRepeatersListSetting = JSON.stringify([OTHER]);
+      const id = await sendOne(manager);
+      const before = sends(calls).length;
+      // Hearing REQ ('bb') must NOT satisfy a list of [OTHER].
       await databaseService.meshcore.recordHeardRepeater({
         sourceId, messageId: id, repeaterHash: 'bb', repeaterName: null, snr: 4, heardAt: T0 + 1000,
       });

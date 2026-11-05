@@ -25,13 +25,14 @@ import { isReactionEmoji } from '../../utils/meshcoreReactions';
 import { foldReactionEmoji } from '../../utils/meshcoreReactionTarget';
 import styles from './MeshCoreMessageStream.module.css';
 import protocolStripe from '../messages/ProtocolStripe.module.css';
-import { getMeshCoreChannelSendState, getMeshCoreDirectSendState } from '../../utils/deliveryDiagnostics/status';
+import { getMeshCoreDirectSendState } from '../../utils/deliveryDiagnostics/status';
 import { directSendLabel } from './meshcoreSendLabel';
 import { parseSpip } from '../../utils/spip';
 import { SpipImage } from '../Spip/SpipImage';
 import { meshcoreDisplayTimeMs, meshcoreMessageClockOffsetMs } from '../../utils/meshcoreMessageTime';
 import { MeshCoreClockOffset } from './MeshCoreClockOffset';
-import { sortHeardBy, requiredRepeaterHeard, RELAY_ADV_TYPES } from '../../utils/meshcoreHeardBy';
+import { requiredRepeatersHeard, RELAY_ADV_TYPES, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
+import { HeardByBubble } from './HeardByBubble';
 import { isNearBottom, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX } from '../../utils/scrollNearBottom';
 
 interface MeshCoreMessageStreamProps {
@@ -107,11 +108,13 @@ interface MeshCoreMessageStreamProps {
    *  loaded (#5759). Lets a view that pages its own history show the chip
    *  without a reload. */
   reactionResolutions?: Record<string, string>;
-  /** Per-source Required Repeater (#6178): full public key (hex) of the one
-   *  repeater whose relay ends a channel send's resend window. When set, the ↻
-   *  button stays until THAT repeater is heard; unset = default "heard by any".
-   *  The matcher reads candidate relays from `contacts`. */
-  requiredRepeaterPublicKey?: string | null;
+  /** Per-source Required Repeaters (#6178 → #6193): full public-key hex strings
+   *  of the repeaters whose relay ends a channel send's resend window. In `'any'`
+   *  mode the ↻ button goes once one of them is heard; in `'all'` once every one
+   *  is. Empty = default "heard by any". The matcher reads candidate relays from
+   *  `contacts`. */
+  requiredRepeaterKeys?: string[];
+  requiredRepeaterMode?: RequiredRepeaterMode;
 }
 
 /** Scroll-to-top distance (px) that triggers a load-older request. */
@@ -180,14 +183,13 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   unreadAnchorMs,
   backlogLoading = false,
   reactionResolutions,
-  requiredRepeaterPublicKey,
+  requiredRepeaterKeys,
+  requiredRepeaterMode = 'any',
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
-  // Message ids whose "heard repeaters" list (#3700) is expanded.
-  const [expandedHeardBy, setExpandedHeardBy] = useState<Set<string>>(new Set());
   const [expandedIgnoredRuns, setExpandedIgnoredRuns] = useState<Set<string>>(new Set());
   const toggleIgnoredRun = useCallback((key: string) => {
     setExpandedIgnoredRuns(prev => {
@@ -227,37 +229,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }
   }, [resendConfirm, onResendMessage]);
 
-  // When the heard-by (antenna) badge expands a repeater list, scroll the row
-  // into view so the newly-revealed list is on screen (#6124). We only scroll
-  // on expand, never on collapse, and the scroll runs from a post-commit effect
-  // because the list is not in the DOM until after `expandedHeardBy` commits.
-  const pendingHeardByScrollRef = useRef<string | null>(null);
-  const toggleHeardBy = useCallback((id: string) => {
-    const willExpand = !expandedHeardBy.has(id);
-    setExpandedHeardBy(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-    if (willExpand) pendingHeardByScrollRef.current = id;
-  }, [expandedHeardBy]);
-
-  useEffect(() => {
-    const id = pendingHeardByScrollRef.current;
-    if (!id) return;
-    pendingHeardByScrollRef.current = null;
-    const container = listRef.current;
-    if (!container) return;
-    const escaped = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
-      ? CSS.escape(id)
-      : id;
-    const row = container.querySelector<HTMLElement>(`[data-message-id="${escaped}"]`);
-    // `nearest` leaves the view untouched if the bubble is already fully
-    // visible, so an expand that needs no scroll does not jump the user.
-    if (row && typeof row.scrollIntoView === 'function') {
-      row.scrollIntoView({ block: 'nearest' });
-    }
-  }, [expandedHeardBy]);
+  // The heard-by (antenna) badge, its expand state, and the #6124 scroll-on-
+  // expand now live inside the shared <HeardByBubble> component.
 
   // MeshCore inbound messages carry `pubkey_prefix` (typically 6-byte / 12-char
   // hex) in `fromPublicKey`, while contacts are keyed by full pubkey. Match by
@@ -303,32 +276,43 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // keyed by the run's first message id; `expandedIgnoredRuns` holds the runs
   // shown open.
   const ignoredRuns = useMemo(() => findIgnoredRuns(messages), [messages]);
-  // #6178: the source's known relays (repeater / room-server), the candidate
-  // set the Required Repeater matcher resolves path-hash prefixes against.
+  // #6178 → #6193: the source's known relays (repeater / room-server), the
+  // candidate set the Required Repeater matcher resolves path-hash prefixes
+  // against. Carries the display name too, for the heard-by bubble's rows.
   const repeaters = useMemo(
     () => (contacts ?? [])
       .filter(c => c.publicKey && (c.advType == null || RELAY_ADV_TYPES.has(c.advType)))
-      .map(c => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
+      .map(c => ({ publicKey: c.publicKey, advType: c.advType ?? null, name: c.advName || c.name || null })),
     [contacts],
   );
-  // Opts bag passed to `resendAvailability`; when no Required Repeater is set
-  // this is undefined, so the default "heard by any" path runs unchanged.
+  // The required keys, normalised to a stable array for the memo deps.
+  const requiredKeys = useMemo(
+    () => requiredRepeaterKeys ?? [],
+    [requiredRepeaterKeys],
+  );
+  // Opts bag passed to `resendAvailability`; with no Required Repeaters set this
+  // is undefined, so the default "heard by any" path runs unchanged.
   const resendOpts = useMemo<ResendAvailabilityOpts | undefined>(
-    () => (requiredRepeaterPublicKey ? { requiredRepeaterPublicKey, repeaters } : undefined),
-    [requiredRepeaterPublicKey, repeaters],
+    () => (requiredKeys.length > 0
+      ? { requiredRepeaterKeys: requiredKeys, requiredRepeaterMode, repeaters }
+      : undefined),
+    [requiredKeys, requiredRepeaterMode, repeaters],
   );
   const needsResendClock = useMemo(
     () => resendEnabled && messages.some(m => resendAvailability(m, selfPublicKey, Date.now(), resendOpts).kind !== 'never'),
     [resendEnabled, messages, selfPublicKey, resendOpts],
   );
-  // Display name of the configured Required Repeater (#6178), for the
-  // required-aware tooltips. Falls back to a short pubkey when it has no name.
+  // Display label for the required-aware resend tooltip (#6193). One required
+  // repeater → its name; several → a count. Falls back to a short pubkey.
   const requiredRepeaterName = useMemo(() => {
-    if (!requiredRepeaterPublicKey) return null;
-    const want = requiredRepeaterPublicKey.toLowerCase();
-    const hit = (contacts ?? []).find(c => c.publicKey && c.publicKey.toLowerCase() === want);
-    return hit?.advName || hit?.name || `${requiredRepeaterPublicKey.slice(0, 12)}…`;
-  }, [requiredRepeaterPublicKey, contacts]);
+    if (requiredKeys.length === 0) return null;
+    if (requiredKeys.length === 1) {
+      const want = requiredKeys[0].toLowerCase();
+      const hit = (contacts ?? []).find(c => c.publicKey && c.publicKey.toLowerCase() === want);
+      return hit?.advName || hit?.name || `${requiredKeys[0].slice(0, 12)}…`;
+    }
+    return t('meshcore.required_repeater.count', { count: requiredKeys.length, defaultValue: '{{count}} required repeaters' });
+  }, [requiredKeys, contacts, t]);
   useEffect(() => {
     if (!needsResendClock) return;
     setNow(Date.now());
@@ -865,14 +849,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                         </button>
                       );
                     }
-                    const tooltip = direct
-                      ? directSendLabel(t, direct, m.roundTripMs)
-                      : getMeshCoreChannelSendState(m, selfPublicKey) === 'sent_to_radio'
-                        ? t(
-                          'meshcore.sent_to_radio.tooltip',
-                          'Your radio accepted this message for sending. MeshCore radios do not report when they transmit, and no repeater has been heard relaying it yet, so MeshMonitor cannot tell whether it went out or whether anyone heard it.',
-                        )
-                        : null;
+                    // #6193: channel sends no longer show "Sent to radio" — the
+                    // always-on heard-by antenna (rendered in the body) stands in
+                    // from send time. Only DM / room posts keep this mark.
+                    const tooltip = direct ? directSendLabel(t, direct, m.roundTripMs) : null;
                     if (!tooltip) return null;
                     return (
                       <button
@@ -888,32 +868,16 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     );
                   })()}
                   {(() => {
-                    // #6178: when a Required Repeater is set and this send was
-                    // heard by others but NOT (yet) by that repeater, the badge
-                    // and resend tooltips explain why the button is still here.
+                    // #6178 → #6193: when Required Repeaters are set and this send
+                    // was heard by others but the ANY/ALL gate is NOT yet satisfied,
+                    // the resend tooltip explains why the button is still here. The
+                    // heard-by antenna itself now lives in the message body.
                     const requiredNotHeard =
-                      !!requiredRepeaterPublicKey &&
+                      requiredKeys.length > 0 &&
                       !!m.heardBy && m.heardBy.length > 0 &&
-                      !requiredRepeaterHeard(m.heardBy, requiredRepeaterPublicKey, repeaters);
+                      !requiredRepeatersHeard(m.heardBy, requiredKeys, requiredRepeaterMode, repeaters);
                     return (
                       <>
-                  {outgoing && m.heardBy && m.heardBy.length > 0 && (
-                    <button
-                      type="button"
-                      className="mc-heard-by-badge"
-                      title={requiredNotHeard
-                        ? t('meshcore.heard_by_required_tooltip', {
-                            count: m.heardBy.length,
-                            name: requiredRepeaterName,
-                            defaultValue: 'Heard by {{count}} repeater(s), but the required repeater ({{name}}) has not relayed this yet',
-                          })
-                        : t('meshcore.heard_by_tooltip', 'Repeaters that relayed this message')}
-                      aria-expanded={expandedHeardBy.has(m.id)}
-                      onClick={() => toggleHeardBy(m.id)}
-                    >
-                      <UiIcon name="radioSignal" size={13} /> {m.heardBy.length}
-                    </button>
-                  )}
                   {resendEnabled && resendAvailability(m, selfPublicKey, now, resendOpts).kind === 'ready' && (
                     <button
                       type="button"
@@ -1037,22 +1001,21 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     : `#${(m.scopeCode ?? 0).toString(16).padStart(4, '0')}`}
                 </div>
               )}
-              {outgoing && m.heardBy && m.heardBy.length > 0 && expandedHeardBy.has(m.id) && (
-                <ul className="mc-heard-by-list">
-                  {sortHeardBy(m.heardBy).map(h => (
-                    <li key={h.hash} className="mc-heard-by-item">
-                      <span className="mc-heard-by-name">{h.name || h.hash}</span>
-                      {typeof h.hops === 'number' && (
-                        <span className="mc-heard-by-hops">
-                          {' '}{t('meshcore.heard_by_hops', { count: h.hops, defaultValue: '{{count}} hops' })}
-                        </span>
-                      )}
-                      {typeof h.snr === 'number' && (
-                        <span className="mc-heard-by-snr"> ({h.snr} dB)</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+              {/* #6193: our own channel send always carries the heard-by antenna
+                  from send time (count 0 until a repeater relays it), replacing
+                  the old "Sent to radio" status. The shared bubble pins required
+                  repeaters with ✓/✗ and counts only the green ✓ rows. A channel
+                  send is identified by its channel destination (our own key is
+                  the sender, so `isChannel` — keyed on the sender — is false). */}
+              {outgoing && (m.toPublicKey?.startsWith('channel-') ?? false) && (
+                <div className="mc-heard-by-row">
+                  <HeardByBubble
+                    heardBy={m.heardBy}
+                    requiredKeys={requiredKeys}
+                    repeaters={repeaters}
+                    mode={requiredRepeaterMode}
+                  />
+                </div>
               )}
               {m.text && <LinkPreview text={m.text} />}
               {chipsByTarget.has(m.id) && <MeshCoreReactionChips
