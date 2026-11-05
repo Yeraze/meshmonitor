@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { sortHeardBy, requiredRepeaterHeard, RELAY_ADV_TYPES } from './meshcoreHeardBy.js';
+import {
+  sortHeardBy,
+  requiredRepeaterHeard,
+  requiredRepeatersHeard,
+  readRequiredRepeaters,
+  RELAY_ADV_TYPES,
+} from './meshcoreHeardBy.js';
 
 describe('sortHeardBy (#6000)', () => {
   it('sorts by hops ascending, then SNR descending', () => {
@@ -115,5 +121,93 @@ describe('requiredRepeaterHeard (#6178)', () => {
     expect(RELAY_ADV_TYPES.has(2)).toBe(true);
     expect(RELAY_ADV_TYPES.has(3)).toBe(true);
     expect(RELAY_ADV_TYPES.has(1)).toBe(false);
+  });
+});
+
+// #6193 — Required Repeaters LIST reader + ANY/ALL gate.
+const K1 = 'aabbccddeeff00112233445566778899';
+const K2 = '1122334455667788990011223344abcd';
+const K3 = 'ffeeddccbbaa99887766554433221100';
+
+describe('readRequiredRepeaters (#6193 back-compat reader)', () => {
+  it('reads the new list (JSON string) and defaults mode to any', () => {
+    const r = readRequiredRepeaters({ meshcoreRequiredRepeaters: JSON.stringify([K1, K2]) });
+    expect(r.keys).toEqual([K1, K2]);
+    expect(r.mode).toBe('any');
+  });
+
+  it('accepts an already-parsed array for the list', () => {
+    const r = readRequiredRepeaters({ meshcoreRequiredRepeaters: [K1] });
+    expect(r.keys).toEqual([K1]);
+  });
+
+  it('reads mode "all"; anything else is "any"', () => {
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeaters: [K1], meshcoreRequiredRepeaterMode: 'all' }).mode).toBe('all');
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeaters: [K1], meshcoreRequiredRepeaterMode: 'ALL' }).mode).toBe('all');
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeaters: [K1], meshcoreRequiredRepeaterMode: 'nonsense' }).mode).toBe('any');
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeaters: [K1] }).mode).toBe('any');
+  });
+
+  it('falls back to the legacy single key when the list is absent or empty', () => {
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeater: K1 }).keys).toEqual([K1]);
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeaters: '[]', meshcoreRequiredRepeater: K1 }).keys).toEqual([K1]);
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeaters: '', meshcoreRequiredRepeater: `  ${K2}  ` }).keys).toEqual([K2]);
+  });
+
+  it('prefers the new list over the legacy key when both are set', () => {
+    const r = readRequiredRepeaters({ meshcoreRequiredRepeaters: [K1], meshcoreRequiredRepeater: K3 });
+    expect(r.keys).toEqual([K1]);
+  });
+
+  it('returns an empty list when nothing is configured', () => {
+    expect(readRequiredRepeaters({}).keys).toEqual([]);
+    expect(readRequiredRepeaters(null).keys).toEqual([]);
+    expect(readRequiredRepeaters(undefined).keys).toEqual([]);
+  });
+
+  it('drops blanks, non-strings, and case-insensitive duplicates', () => {
+    const r = readRequiredRepeaters({ meshcoreRequiredRepeaters: [K1, '', K1.toUpperCase(), 42 as unknown as string, K2] });
+    expect(r.keys).toEqual([K1, K2]);
+  });
+
+  it('ignores a malformed JSON string for the list (falls back / empty)', () => {
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeaters: '{not json' }).keys).toEqual([]);
+    expect(readRequiredRepeaters({ meshcoreRequiredRepeaters: '{not json', meshcoreRequiredRepeater: K1 }).keys).toEqual([K1]);
+  });
+});
+
+describe('requiredRepeatersHeard (#6193 ANY/ALL gate)', () => {
+  const relays = [
+    { publicKey: K1, advType: 2 },
+    { publicKey: K2, advType: 2 },
+    { publicKey: K3, advType: 2 },
+  ];
+
+  it('empty list -> #6184 fallback: satisfied once any repeater is heard', () => {
+    expect(requiredRepeatersHeard([{ hash: 'aa' }], [], 'any', relays)).toBe(true);
+    expect(requiredRepeatersHeard([], [], 'any', relays)).toBe(false);
+    expect(requiredRepeatersHeard(undefined, [], 'all', relays)).toBe(false);
+  });
+
+  it('ANY: satisfied once one of several listed repeaters is heard', () => {
+    // 'aabb' uniquely resolves to K1 only.
+    expect(requiredRepeatersHeard([{ hash: 'aabb' }], [K1, K2], 'any', relays)).toBe(true);
+    // 'ffee' resolves to K3, which is not in the required list -> not satisfied.
+    expect(requiredRepeatersHeard([{ hash: 'ffee' }], [K1, K2], 'any', relays)).toBe(false);
+  });
+
+  it('ALL: not satisfied until every listed repeater is heard', () => {
+    expect(requiredRepeatersHeard([{ hash: 'aabb' }], [K1, K2], 'all', relays)).toBe(false);
+    expect(requiredRepeatersHeard([{ hash: 'aabb' }, { hash: '1122' }], [K1, K2], 'all', relays)).toBe(true);
+  });
+
+  it('ambiguous prefix still does not count (ALL stays unsatisfied)', () => {
+    const colliding = [
+      { publicKey: 'aabb00000000000000000000000000ff', advType: 2 }, // shares 'aabb' with K1
+      ...relays,
+    ];
+    expect(requiredRepeatersHeard([{ hash: 'aabb' }, { hash: '1122' }], [K1, K2], 'all', colliding)).toBe(false);
+    // The single-key matcher is the same building block.
+    expect(requiredRepeaterHeard([{ hash: 'aabb' }], K1, colliding)).toBe(false);
   });
 });

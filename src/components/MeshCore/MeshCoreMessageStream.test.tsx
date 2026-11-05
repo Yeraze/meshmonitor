@@ -786,10 +786,14 @@ describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('does not disturb the heard-by toggle', () => {
+  it('does not disturb the heard-by toggle (#6193: antenna on channel sends)', () => {
+    // The heard-by antenna now lives on channel sends (toPublicKey channel-*).
     const { container } = renderWithQuery(
       <MeshCoreMessageStream
         messages={[outgoingMessage({
+          toPublicKey: 'channel-1',
+          deliveryStatus: undefined,
+          roundTripMs: undefined,
           heardBy: [{ hash: 'ab12', name: 'Repeater1', snr: 5 }],
         })]}
         selfPublicKey={SELF_KEY}
@@ -797,23 +801,24 @@ describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
       />,
     );
 
-    // Heard-by list is collapsed until the badge is toggled.
+    // Heard-by list is collapsed until the antenna badge is toggled.
     expect(container.querySelector('.mc-heard-by-list')).toBeNull();
     fireEvent.click(container.querySelector('.mc-heard-by-badge')!);
     expect(container.querySelector('.mc-heard-by-list')).not.toBeNull();
     expect(screen.getByText('Repeater1')).toBeTruthy();
 
-    // Opening the delivery details modal afterward doesn't collapse it or
-    // interfere with its own state.
-    fireEvent.click(container.querySelector('.mc-delivery-status')!);
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(container.querySelector('.mc-heard-by-list')).not.toBeNull();
+    // Toggling again collapses it — independent, self-contained state.
+    fireEvent.click(container.querySelector('.mc-heard-by-badge')!);
+    expect(container.querySelector('.mc-heard-by-list')).toBeNull();
   });
 
   it('shows each repeater\'s hop count, sorted by hops then SNR, old rows last (#6000)', () => {
     const { container } = renderWithQuery(
       <MeshCoreMessageStream
         messages={[outgoingMessage({
+          toPublicKey: 'channel-1',
+          deliveryStatus: undefined,
+          roundTripMs: undefined,
           heardBy: [
             { hash: 'old1', name: 'OldRow', snr: 9, hops: null },
             { hash: 'bb', name: 'Far', snr: 8, hops: 2 },

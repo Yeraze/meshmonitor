@@ -5,16 +5,23 @@
  * hides the button when the server would refuse anyway.
  */
 import type { MeshCoreMessage } from './hooks/useMeshCore';
-import { requiredRepeaterHeard, type RepeaterContactLike } from '../../utils/meshcoreHeardBy';
+import {
+  requiredRepeatersHeard,
+  type RepeaterContactLike,
+  type RequiredRepeaterMode,
+} from '../../utils/meshcoreHeardBy';
 
 /**
- * Optional per-source Required Repeater gate (#6178). When
- * `requiredRepeaterPublicKey` is set, a message counts as "heard" only once that
- * one repeater is heard relaying it; otherwise the default "heard by any
- * repeater" rule applies. `repeaters` is the source's known relay contacts.
+ * Optional per-source Required Repeaters gate (#6178 → #6193). When
+ * `requiredRepeaterKeys` is non-empty, a message counts as "heard" (so the
+ * resend button goes away) only once the gate is satisfied: in `'any'` mode as
+ * soon as one listed repeater is heard, in `'all'` mode once every listed one
+ * is. With an empty list the default "heard by any repeater" rule applies.
+ * `repeaters` is the source's known relay contacts.
  */
 export interface ResendAvailabilityOpts {
-  requiredRepeaterPublicKey?: string | null;
+  requiredRepeaterKeys?: string[];
+  requiredRepeaterMode?: RequiredRepeaterMode;
   repeaters?: ReadonlyArray<RepeaterContactLike>;
 }
 
@@ -48,13 +55,18 @@ export function resendAvailability(
   opts?: ResendAvailabilityOpts,
 ): ResendAvailability {
   if (!isOwnChannelSend(m, selfPublicKey)) return { kind: 'never' };
-  // #6178: with a Required Repeater set, the send stops being resendable only
-  // once THAT repeater is heard relaying it (conservative unique-prefix match);
-  // otherwise the default "heard by any repeater" rule applies, byte-for-byte.
-  const required = opts?.requiredRepeaterPublicKey;
-  if (required) {
-    if (requiredRepeaterHeard(m.heardBy, required, opts?.repeaters ?? [])) return { kind: 'never' };
-  } else if (m.heardBy && m.heardBy.length > 0) {
+  // #6178 → #6193: with a Required Repeaters list set, the send stops being
+  // resendable only once the ANY/ALL gate is satisfied (conservative
+  // unique-prefix match per key); an empty list keeps the default "heard by any
+  // repeater" rule, byte-for-byte.
+  if (
+    requiredRepeatersHeard(
+      m.heardBy,
+      opts?.requiredRepeaterKeys ?? [],
+      opts?.requiredRepeaterMode ?? 'any',
+      opts?.repeaters ?? [],
+    )
+  ) {
     return { kind: 'never' };
   }
   if ((m.resendCount ?? 0) >= RESEND_MAX) return { kind: 'never' };

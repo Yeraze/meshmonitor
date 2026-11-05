@@ -183,13 +183,14 @@ describe('MeshCoreMessageStream — Required Repeater gate (#6178)', () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  const renderRequired = (messages: MeshCoreMessage[]) =>
+  const renderRequired = (messages: MeshCoreMessage[], mode: 'any' | 'all' = 'any', keys: string[] = [REQ]) =>
     render(
       <MeshCoreMessageStream
         messages={messages}
         selfPublicKey={SELF}
         contacts={contacts}
-        requiredRepeaterPublicKey={REQ}
+        requiredRepeaterKeys={keys}
+        requiredRepeaterMode={mode}
         onSend={async () => true}
         onResendMessage={vi.fn(async () => null)}
       />,
@@ -213,6 +214,30 @@ describe('MeshCoreMessageStream — Required Repeater gate (#6178)', () => {
     const btn = screen.queryByRole('button', { name: 'Resend' });
     expect(btn).not.toBeNull();
     expect(btn!.getAttribute('title')).not.toContain('Backbone');
+  });
+
+  // #6193 — list + ANY/ALL mode.
+  it('ANY mode: one of several listed repeaters heard hides Resend', () => {
+    renderRequired([sent({ heardBy: [{ hash: 'cc', name: 'Nearby', snr: 3 }] })], 'any', [REQ, OTHER]);
+    expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull();
+  });
+
+  it('ALL mode: keeps Resend until EVERY listed repeater is heard', () => {
+    const { rerender } = renderRequired([sent({ heardBy: [{ hash: 'bb', name: 'Backbone', snr: 3 }] })], 'all', [REQ, OTHER]);
+    // Only REQ heard so far → ALL not satisfied → button stays.
+    expect(screen.queryByRole('button', { name: 'Resend' })).not.toBeNull();
+    rerender(
+      <MeshCoreMessageStream
+        messages={[sent({ heardBy: [{ hash: 'bb', name: 'Backbone', snr: 3 }, { hash: 'cc', name: 'Nearby', snr: 3 }] })]}
+        selfPublicKey={SELF}
+        contacts={contacts}
+        requiredRepeaterKeys={[REQ, OTHER]}
+        requiredRepeaterMode="all"
+        onSend={async () => true}
+        onResendMessage={vi.fn(async () => null)}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull();
   });
 });
 
