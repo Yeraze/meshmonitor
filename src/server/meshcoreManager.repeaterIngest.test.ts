@@ -126,6 +126,51 @@ describe('repeater RAW ingest (#5553, #5551)', () => {
       expect(all.find((n) => n.publicKey === key)?.repeaterNeighborAt).toBeGreaterThan(0);
     });
 
+    // #6220: the RAW frame carries the relay path; it used to be dropped, so
+    // every advert-ingested node had path_len NULL and showed as 0 hops.
+    describe('heard hop count (#6220)', () => {
+      const pathLenOf = async (key: string) =>
+        (await databaseService.meshcore.getNodeByPublicKeyAndSource(key, REP))?.pathLen ?? null;
+
+      it('stores the relay count of a flood advert, and 0 for one heard direct', async () => {
+        const far = '61'.repeat(32);
+        const near = '62'.repeat(32);
+        const { m, feed } = repeater();
+        feed(buildAdvertFrame({ publicKey: far, advType: 2, name: 'Far', path: [0xa1, 0xb2, 0xc3] }));
+        feed(buildAdvertFrame({ publicKey: near, advType: 2, name: 'Near' }));
+        await vi.waitFor(async () => {
+          expect(await pathLenOf(far)).toBe(3);
+          expect(await pathLenOf(near)).toBe(0);
+        });
+        const all = await m.getAllNodes();
+        expect(all.find((n) => n.publicKey === far)?.pathLen).toBe(3);
+      });
+
+      it('keeps the shortest copy of one flood advert, whatever order the copies arrive in', async () => {
+        const key = '63'.repeat(32);
+        const copy = (path: number[]) => buildAdvertFrame({ publicKey: key, advType: 2, name: 'Hill', path });
+        const { feed } = repeater();
+        feed(copy([0x01, 0x02, 0x03]));
+        await vi.waitFor(async () => expect(await pathLenOf(key)).toBe(3));
+        feed(copy([0x04, 0x05, 0x06, 0x07, 0x08])); // longer route, later: ignored
+        feed(copy([0x09])); // shorter route: wins
+        feed(copy([0x0a, 0x0b])); // longer than the best so far: ignored
+        await vi.waitFor(async () => expect(await pathLenOf(key)).toBe(1));
+        // Let any stray write land, then confirm the shortest still stands.
+        await new Promise((r) => setTimeout(r, 50));
+        expect(await pathLenOf(key)).toBe(1);
+      });
+
+      it('a NEW advert from the node replaces the count, longer or not', async () => {
+        const key = '64'.repeat(32);
+        const { feed } = repeater();
+        feed(buildAdvertFrame({ publicKey: key, advType: 2, timestamp: 1_700_000_000, path: [0x01] }));
+        await vi.waitFor(async () => expect(await pathLenOf(key)).toBe(1));
+        feed(buildAdvertFrame({ publicKey: key, advType: 2, timestamp: 1_700_003_600, path: [0x01, 0x02, 0x03, 0x04] }));
+        await vi.waitFor(async () => expect(await pathLenOf(key)).toBe(4));
+      });
+    });
+
     // #5632: a Repeater keeps no in-memory contact map, and the client
     // replaces its contact record with each pushed event. The push used to
     // carry the bare advert, so an advert without coordinates took the node
