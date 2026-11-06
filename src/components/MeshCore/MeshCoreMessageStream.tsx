@@ -4,7 +4,7 @@ import { useMentionAutocomplete } from '../../hooks/useMentionAutocomplete';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
-import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/datetime';
+import { getMessageDateSeparator, shouldShowDateSeparator, formatRelativeTime } from '../../utils/datetime';
 import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
@@ -822,7 +822,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   </span>
                 )}
                 <span className="mc-message-meta">
-                  <span className="mc-message-time">
+                  <span
+                    className="mc-message-time"
+                    title={formatRelativeTime(meshcoreDisplayTimeMs(m), undefined, undefined, true)}
+                  >
                   {formatTime(meshcoreDisplayTimeMs(m))}
                   <MeshCoreClockOffset offsetMs={meshcoreMessageClockOffsetMs(m)} />
                   {/* Our own send's delivery mark (#5682). One selector per
