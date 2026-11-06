@@ -1057,6 +1057,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           aria-controls={mentions.isOpen ? 'meshcore-mention-list' : undefined}
           aria-activedescendant={mentions.activeDescendantId('meshcore-mention-list')}
           aria-autocomplete="list"
+          autoCapitalize="sentences"
           onKeyDown={handleKeyDown}
           placeholder={t('meshcore.type_message', 'Type a message…')}
           disabled={disabled || sending}
