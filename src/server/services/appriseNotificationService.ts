@@ -114,6 +114,11 @@ export function appriseNotifyEndpoint(baseUrl: string): string {
   return `${baseUrl.slice(0, end)}/notify`;
 }
 
+// Each send builds a fresh Apprise instance and then reaches the target: about
+// 4 s on a Raspberry Pi, more on the first send. With 10 s the first Room post
+// was logged as failed while Apprise was still sending it.
+const APPRISE_NOTIFY_TIMEOUT_MS = 30000;
+
 class AppriseNotificationService {
   private initialized = false;
   private initPromise: Promise<void> | null = null;
@@ -306,7 +311,7 @@ class AppriseNotificationService {
           body: payload.body,
           type: payload.type || 'info'
         }),
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(APPRISE_NOTIFY_TIMEOUT_MS)
       });
 
       if (!response.ok) {
@@ -366,7 +371,7 @@ class AppriseNotificationService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reqBody),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(APPRISE_NOTIFY_TIMEOUT_MS),
       });
       if (!response.ok) {
         const detail = await response.text().catch(() => '');
