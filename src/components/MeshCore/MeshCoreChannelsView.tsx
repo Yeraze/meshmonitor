@@ -28,6 +28,7 @@ import { loadChannelLastRead, markChannelRead as persistChannelRead } from './me
 import { slotMoveMap, subscribeChannelsReordered } from './meshcoreChannelReorderEvents';
 import { subscribeFiltersChanged } from './meshcoreFilterEvents';
 import { compareMeshCoreMessages } from './messageOrder';
+import { mergeMeshCoreHeardBy } from '../../utils/meshcoreHeardBy';
 import { UiIcon } from '../icons';
 import { MeshCoreChannelReorderList } from './MeshCoreChannelReorderList';
 import {
@@ -647,7 +648,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       for (const m of history) byId.set(m.id, m);
     }
     for (const m of messages) {
-      if (activeFilter(m)) byId.set(m.id, m);
+      if (activeFilter(m)) {
+        const heardBy = mergeMeshCoreHeardBy(byId.get(m.id)?.heardBy, m.heardBy);
+        byId.set(m.id, heardBy?.length ? { ...m, heardBy } : m);
+      }
     }
     // NOT a raw `timestamp` sort: received messages carry the remote's
     // whole-second `sender_timestamp` while our own sends are ms-precision
