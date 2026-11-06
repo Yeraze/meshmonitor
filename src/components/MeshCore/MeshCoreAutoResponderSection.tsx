@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,10 +16,16 @@ import { TRIGGER_FILTER_THRESHOLD, matchesSearch, newTriggerId } from '../shared
 import { MeshCoreResponderTriggerEditor } from './MeshCoreResponderTriggerEditor';
 import { validateMeshCoreResponderPattern, matchMeshCoreResponderPattern, meshCoreTriggerSyntax } from './meshcoreResponderMatch';
 import { substituteResponderParams } from '../../utils/responderTrigger';
+import ScriptManagement from '../auto-responder/ScriptManagement';
+import AutoResponderDialog from '../auto-responder/AutoResponderDialog';
+import { getFileIcon } from '../auto-responder/utils';
+// The shared script library (/api/scripts) is global, so the Script
+// Management panel here manages the SAME scripts as the Meshtastic responder
+// (#6223). Reuse that panel's canonical metadata type (required `language`).
+import type { ScriptMetadata } from '../auto-responder/types';
 import type {
   MeshCoreAutoResponderTrigger,
   MeshCoreChannelRow,
-  MeshCoreScriptMetadata as ScriptMetadata,
 } from './meshcoreResponderTypes';
 import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
 import styles from './MeshCoreAutoResponderSection.module.css';
@@ -32,6 +38,12 @@ interface MeshCoreAutoResponderSectionProps {
    *  section has no immediate-TX control, so no input gates on it. */
   receiveOnly?: boolean;
 }
+
+/** Infer a display language from a script's extension (mirrors the Meshtastic panel). */
+const inferScriptLanguage = (filename: string): string => {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  return ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
+};
 
 const newTrigger = (): MeshCoreAutoResponderTrigger => ({
   id: newTriggerId(),
@@ -65,6 +77,15 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
   const [initialTriggers, setInitialTriggers] = useState<MeshCoreAutoResponderTrigger[]>([]);
   const [channels, setChannels] = useState<MeshCoreChannelRow[]>([]);
   const [scripts, setScripts] = useState<ScriptMetadata[]>([]);
+  // Script Management panel state (#6223), mirroring the Meshtastic responder.
+  const [selectedScripts, setSelectedScripts] = useState<Set<string>>(new Set());
+  const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [scriptToDelete, setScriptToDelete] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -117,23 +138,31 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     return () => { cancelled = true; };
   }, [baseUrl, sourceId, csrfFetch]);
 
-  // Load available scripts (responseType='script' picker).
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await csrfFetch(`${baseUrl}/api/scripts`);
-        if (!res.ok) return;
-        const raw = await res.json();
-        if (cancelled) return;
-        const list: ScriptMetadata[] = Array.isArray(raw?.scripts)
-          ? raw.scripts.filter((s: any) => typeof s?.path === 'string')
-          : [];
-        setScripts(list);
-      } catch { /* ignore */ }
-    })();
-    return () => { cancelled = true; };
+  // Load available scripts. Feeds both the responseType='script' picker and
+  // the Script Management panel; re-run after an import/delete to refresh both.
+  const loadScripts = useCallback(async () => {
+    try {
+      const res = await csrfFetch(`${baseUrl}/api/scripts`);
+      if (!res.ok) return;
+      const raw = await res.json();
+      const rawScripts: any[] = Array.isArray(raw?.scripts) ? raw.scripts : [];
+      const list: ScriptMetadata[] = rawScripts
+        .filter((s) => typeof s?.path === 'string')
+        .map((s) => {
+          const filename: string = s.filename ?? String(s.path).split('/').pop() ?? String(s.path);
+          return {
+            path: String(s.path),
+            filename,
+            name: s.name,
+            emoji: s.emoji,
+            language: s.language || inferScriptLanguage(filename),
+          };
+        });
+      setScripts(list);
+    } catch { /* ignore */ }
   }, [baseUrl, csrfFetch]);
+
+  useEffect(() => { void loadScripts(); }, [loadScripts]);
 
   // Detect changes
   useEffect(() => {
@@ -259,6 +288,133 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     setTypeFilter('all');
     setExpandedId(tr.id);
   };
+
+  // Script Management handlers (#6223). The /api/scripts library is global, so
+  // these manage the SAME scripts as the Meshtastic responder panel. After any
+  // import/delete, loadScripts() refreshes both the picker and the panel list.
+  const handleImportScript = async (file: File) => {
+    setIsImporting(true);
+    try {
+      const fileContent = await file.arrayBuffer();
+      const response = await csrfFetch(`${baseUrl}/api/scripts/import`, {
+        method: 'POST',
+        headers: {
+          'x-filename': file.name,
+          'Content-Type': 'application/octet-stream',
+        },
+        body: fileContent,
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || t('auto_responder.script_import_failed'));
+      }
+      showToast(t('auto_responder.script_imported'), 'success');
+      await loadScripts();
+      setShowImportModal(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      showToast(message || t('auto_responder.script_import_failed'), 'error');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleExportScripts = async () => {
+    const scriptsToExport = selectedScripts.size > 0
+      ? Array.from(selectedScripts)
+      : scripts.map(s => s.path);
+
+    if (scriptsToExport.length === 0) {
+      showToast(t('auto_responder.no_scripts_to_export'), 'warning');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/scripts/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scripts: scriptsToExport }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || t('auto_responder.script_export_failed'));
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'scripts-export.zip';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast(t('auto_responder.scripts_exported', { count: scriptsToExport.length }), 'success');
+      setShowExportModal(false);
+      setSelectedScripts(new Set());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      showToast(message || t('auto_responder.script_export_failed'), 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleDeleteScript = async (filename: string) => {
+    setIsDeleting(filename);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/scripts/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || t('auto_responder.script_delete_failed'));
+      }
+      showToast(t('auto_responder.script_deleted'), 'success');
+      await loadScripts();
+      setSelectedScripts(prev => {
+        const next = new Set(prev);
+        next.delete(filename);
+        return next;
+      });
+      setShowDeleteModal(false);
+      setScriptToDelete(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      showToast(message || t('auto_responder.script_delete_failed'), 'error');
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  // Shared by the ×, Cancel and Escape, so every way out resets the picker.
+  const closeImportModal = () => {
+    setShowImportModal(false);
+    const input = document.getElementById('meshcore-script-import-input') as HTMLInputElement | null;
+    const filenameDisplay = document.getElementById('meshcore-script-import-filename');
+    if (input) input.value = '';
+    if (filenameDisplay) {
+      filenameDisplay.textContent = t('auto_responder.no_file_selected');
+      filenameDisplay.style.color = 'var(--color-text-subtle)';
+    }
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setScriptToDelete(null);
+  };
+
+  const toggleScriptSelection = (script: string) => {
+    setSelectedScripts(prev => {
+      const next = new Set(prev);
+      if (next.has(script)) next.delete(script);
+      else next.add(script);
+      return next;
+    });
+  };
+
+  const selectAllScripts = () => setSelectedScripts(new Set(scripts.map(s => s.path)));
+  const deselectAllScripts = () => setSelectedScripts(new Set());
 
   const channelMap = useMemo(() => {
     const m = new Map<number, string>();
@@ -435,6 +591,252 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
               'Type sample messages, one per line. Every enabled trigger whose pattern matches, in its own syntax, replies. Captured {name} values are filled in here; tokens such as {VERSION} are filled in when the reply is sent. Nothing is sent from here, and channel filters are not applied.',
             )}
           />
+        )}
+
+        {/* Script Management (#6223): manages the shared, global /api/scripts
+            library — the same scripts the Meshtastic responder panel manages. */}
+        <ScriptManagement
+          availableScripts={scripts}
+          selectedScripts={selectedScripts}
+          isImporting={isImporting}
+          isExporting={isExporting}
+          isDeleting={isDeleting}
+          onImportClick={() => setShowImportModal(true)}
+          onExportClick={() => {
+            if (selectedScripts.size === 0 && scripts.length === 0) {
+              showToast(t('auto_responder.no_scripts_to_export'), 'warning');
+              return;
+            }
+            setShowExportModal(true);
+          }}
+          onDeleteClick={(filename) => {
+            setScriptToDelete(filename);
+            setShowDeleteModal(true);
+          }}
+          onToggleSelection={toggleScriptSelection}
+          onSelectAll={selectAllScripts}
+          onDeselectAll={deselectAllScripts}
+        />
+
+        {/* Import Modal */}
+        {showImportModal && (
+          <AutoResponderDialog onClose={closeImportModal} labelledBy="meshcore-script-import-title">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 id="meshcore-script-import-title" style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.import_script')}</h3>
+              <button
+                onClick={closeImportModal}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  color: 'var(--color-text-subtle)',
+                  cursor: 'pointer',
+                  padding: '0',
+                  lineHeight: '1',
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              {t('auto_responder.import_script_description')}
+            </p>
+            <input
+              type="file"
+              accept=".js,.mjs,.py,.sh"
+              id="meshcore-script-import-input"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                const filenameDisplay = document.getElementById('meshcore-script-import-filename');
+                if (file) {
+                  if (filenameDisplay) {
+                    filenameDisplay.textContent = t('auto_responder.selected_file', { name: file.name });
+                    filenameDisplay.style.color = 'var(--color-success)';
+                  }
+                  void handleImportScript(file);
+                } else if (filenameDisplay) {
+                  filenameDisplay.textContent = t('auto_responder.no_file_selected');
+                  filenameDisplay.style.color = 'var(--color-text-subtle)';
+                }
+              }}
+              style={{ display: 'none' }}
+            />
+            <label
+              htmlFor="meshcore-script-import-input"
+              style={{
+                display: 'block',
+                padding: '0.75rem 1rem',
+                background: 'var(--color-accent)',
+                color: 'var(--color-bg)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                textAlign: 'center',
+                fontSize: '0.9rem',
+                marginBottom: '1rem',
+              }}
+            >
+              <UiIcon name="file" size={14} /> {t('auto_responder.choose_file')}
+            </label>
+            <div id="meshcore-script-import-filename" style={{
+              color: 'var(--color-text-subtle)',
+              fontSize: '0.85rem',
+              fontStyle: 'italic',
+              marginBottom: '1rem',
+              minHeight: '1.2rem',
+            }}>
+              {t('auto_responder.no_file_selected')}
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={closeImportModal}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border-subtle)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </AutoResponderDialog>
+        )}
+
+        {/* Export Modal */}
+        {showExportModal && (
+          <AutoResponderDialog onClose={() => setShowExportModal(false)} labelledBy="meshcore-script-export-title">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 id="meshcore-script-export-title" style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.export_scripts')}</h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  color: 'var(--color-text-subtle)',
+                  cursor: 'pointer',
+                  padding: '0',
+                  lineHeight: '1',
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              {selectedScripts.size > 0
+                ? t('auto_responder.export_selected_confirm', { count: selectedScripts.size })
+                : t('auto_responder.export_all_confirm', { count: scripts.length })}
+            </p>
+            {selectedScripts.size > 0 && (
+              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--color-surface)', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: '0.5rem', fontWeight: 'bold' }}>{t('auto_responder.selected_scripts')}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  {Array.from(selectedScripts).map((script) => {
+                    const filename = script.replace('/data/scripts/', '');
+                    return (
+                      <div key={script} style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--color-text)' }}>
+                        <UiIcon name={getFileIcon(filename)} size={14} /> {filename}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border-subtle)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleExportScripts}
+                disabled={isExporting}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: isExporting ? 'var(--color-surface-active)' : 'var(--color-success)',
+                  color: isExporting ? 'var(--color-text-subtle)' : 'var(--color-bg)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: isExporting ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                {isExporting ? t('auto_responder.exporting') : <><UiIcon name="download" size={14} /> {t('auto_responder.download_zip')}</>}
+              </button>
+            </div>
+          </AutoResponderDialog>
+        )}
+
+        {/* Delete Modal */}
+        {showDeleteModal && scriptToDelete && (
+          <AutoResponderDialog onClose={closeDeleteModal} labelledBy="meshcore-script-delete-title">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 id="meshcore-script-delete-title" style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.delete_script')}</h3>
+              <button
+                onClick={closeDeleteModal}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  color: 'var(--color-text-subtle)',
+                  cursor: 'pointer',
+                  padding: '0',
+                  lineHeight: '1',
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              <Trans
+                i18nKey="auto_responder.delete_script_confirm"
+                values={{ name: scriptToDelete }}
+                components={{ strong: <strong style={{ color: 'var(--color-text)' }} /> }}
+              />
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={closeDeleteModal}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'var(--color-surface-hover)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border-subtle)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={() => handleDeleteScript(scriptToDelete)}
+                disabled={isDeleting === scriptToDelete}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: isDeleting === scriptToDelete ? 'var(--color-surface-active)' : 'var(--color-error)',
+                  color: isDeleting === scriptToDelete ? 'var(--color-text-subtle)' : 'var(--color-bg)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: isDeleting === scriptToDelete ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                {isDeleting === scriptToDelete ? t('auto_responder.deleting') : t('common.delete')}
+              </button>
+            </div>
+          </AutoResponderDialog>
         )}
       </ConfigSection>
     </NumberInputScope>
