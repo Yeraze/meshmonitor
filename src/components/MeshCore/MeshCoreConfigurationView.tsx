@@ -23,6 +23,7 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import SectionNav from '../SectionNav';
 import { meshcoreConfigurationNavItems } from '../search/configSections';
 import navStyles from './MeshCoreSectionNav.module.css';
+import sectionNavLayout from '../SectionNav.module.css';
 import { LocationPinPicker } from '../map/LocationPinPicker';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
@@ -274,6 +275,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         {t('nav.device_configuration', 'Device Configuration')}
       </h2>
 
+      {/* Picker + form share one flex row on a landscape phone (#6211): the
+          picker becomes a left rail so the form keeps the full usable height. */}
+      <div className={sectionNavLayout.shell}>
       {/* No sections, no nav: a chip must always have a section to jump to. */}
       {navItems.length > 0 && (
         <SectionNav
@@ -285,6 +289,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           items={navItems}
         />
       )}
+      <div className={sectionNavLayout.body}>
 
       {!connected && (
         <div className="meshcore-empty-state" style={{ marginBottom: '1rem' }}>
@@ -754,6 +759,8 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
       {showDangerZone && (
         <MeshCoreDeviceManagement actions={actions} deviceName={local?.name} />
       )}
+      </div>
+      </div>
     </div>
   );
 };

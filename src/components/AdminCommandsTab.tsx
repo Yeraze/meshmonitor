@@ -18,6 +18,7 @@ import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import SectionNav from './SectionNav';
+import sectionNavLayout from './SectionNav.module.css';
 import { adminCommandsNavItems } from './search/configSections';
 import { encodePositionFlags, decodePositionFlagNames } from '../utils/positionFlags';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
@@ -2075,6 +2076,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   return (
     <div className="tab-content">
+      {/* Picker + console share one flex row on a landscape phone (#6211): the
+          picker becomes a left rail so the content keeps the full usable height. */}
+      <div className={sectionNavLayout.shell}>
       <SectionNav
         searchable
         searchPlaceholder={t('config_search.filter_admin', 'Search admin sections...')}
@@ -2082,6 +2086,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
         items={adminCommandsNavItems(t)}
       />
+      <div className={sectionNavLayout.body}>
 
       {remoteAdminBlocked && (
         <div
@@ -3913,6 +3918,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           isLoadingChannels={isLoadingChannels || isLoadingAllConfigs}
         />
       )}
+      </div>
+      </div>
     </div>
   );
 };

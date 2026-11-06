@@ -45,7 +45,9 @@ import {
 const appCss = readFileSync(resolve('src/App.css'), 'utf-8');
 const resolveApp = createResolver(appCss);
 
-const moduleCss = readFileSync(resolve('src/components/ConfigurationTab.module.css'), 'utf-8');
+// The landscape picker rail moved from ConfigurationTab.module.css into the
+// shared SectionNav.module.css (#6211).
+const moduleCss = readFileSync(resolve('src/components/SectionNav.module.css'), 'utf-8');
 const resolveModule = createResolver(moduleCss);
 
 /**
@@ -154,9 +156,9 @@ describe('the config rail is untouched (#5069/#5073)', () => {
     // lives in landscape, where `.tab-content` never carried the rule. Pinned
     // here so scoping the portrait rule cannot be blamed for, or accidentally
     // reach, the rail.
-    expect(resolveModule('.configShell', 'display', LANDSCAPE_PHONE)).toBe('flex');
-    expect(resolveModule('.configNav.configNav', 'width', LANDSCAPE_PHONE)).toBe('160px');
-    expect(resolveModule('.configShell', 'display', PORTRAIT_PHONE)).toBeNull();
-    expect(resolveModule('.configNav.configNav', 'width', PORTRAIT_PHONE)).toBeNull();
+    expect(resolveModule('.shell', 'display', LANDSCAPE_PHONE)).toBe('flex');
+    expect(resolveModule('.body', 'flex', LANDSCAPE_PHONE)).toBe('1 1 auto');
+    expect(resolveModule('.shell', 'display', PORTRAIT_PHONE)).toBeNull();
+    expect(resolveModule('.body', 'flex', PORTRAIT_PHONE)).toBeNull();
   });
 });
