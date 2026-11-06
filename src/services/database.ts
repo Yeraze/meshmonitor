@@ -67,6 +67,7 @@ import {
   SourcePkiKeysRepository,
   MeshCoreObserverKeysRepository,
   MeshCoreObserverCredentialsRepository,
+  MeshCoreSourcePkiKeysRepository,
   MessageEventsRepository,
   MeshtasticHeardRepeatersRepository,
   PkiExchangeStateRepository,
@@ -647,6 +648,7 @@ class DatabaseService {
   public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
   public meshcoreObserverKeysRepo: MeshCoreObserverKeysRepository | null = null;
   public meshcoreObserverCredentialsRepo: MeshCoreObserverCredentialsRepository | null = null;
+  public meshcoreSourcePkiKeysRepo: MeshCoreSourcePkiKeysRepository | null = null;
   public messageEventsRepo: MessageEventsRepository | null = null;
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
   public pkiExchangeStateRepo: PkiExchangeStateRepository | null = null;
@@ -735,6 +737,11 @@ class DatabaseService {
   get meshcoreObserverKeys(): MeshCoreObserverKeysRepository {
     if (!this.meshcoreObserverKeysRepo) throw new Error('Database not initialized');
     return this.meshcoreObserverKeysRepo;
+  }
+
+  get meshcoreSourcePkiKeys(): MeshCoreSourcePkiKeysRepository {
+    if (!this.meshcoreSourcePkiKeysRepo) throw new Error('Database not initialized');
+    return this.meshcoreSourcePkiKeysRepo;
   }
 
   get messageEvents(): MessageEventsRepository {
@@ -1276,6 +1283,7 @@ class DatabaseService {
       this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreObserverKeysRepo = new MeshCoreObserverKeysRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreObserverCredentialsRepo = new MeshCoreObserverCredentialsRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreSourcePkiKeysRepo = new MeshCoreSourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
       this.messageEventsRepo = new MessageEventsRepository(drizzleDb, this.drizzleDbType);
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
       this.pkiExchangeStateRepo = new PkiExchangeStateRepository(drizzleDb, this.drizzleDbType);

@@ -151,6 +151,8 @@ import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops, hopByteForKey } from '../utils/meshcorePath.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, channelEchoKey, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
+import { getMeshCoreSourcePkiKeyStore } from './services/meshcoreSourcePkiKeyStore.js';
+import { deriveMeshCoreDmSecret, tryDecodeDmTextPayload } from './utils/meshcoreDmCrypto.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
 import {
@@ -1647,6 +1649,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   // Shared state
   private localNode: MeshCoreNode | null = null;
+
+  /**
+   * #6195 device-key capture state. `pkiExportAttempted` guards us to one
+   * export attempt per connection (reset on disconnect). `selfPkiPrivateKeyHex`
+   * caches our own device private key for the current connection so the DM-echo
+   * hot path can derive per-peer secrets without a DB read — set after a
+   * successful capture / load, cleared on disconnect. Both are Companion-only.
+   */
+  private pkiExportAttempted = false;
+  private selfPkiPrivateKeyHex: string | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
   /** Set once refreshContacts() has read the radio's table this connection (#5502). */
   private deviceContactsKnown = false;
@@ -1730,7 +1742,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * additive to and independent of the DM ACK/retry machine
    * ({@link pendingDmRetries}).
    */
-  private pendingDmSends: Map<string, { toPublicKey: string; sentAt: number; senderTimestamp: number }> = new Map();
+  private pendingDmSends: Map<string, { toPublicKey: string; sentAt: number; senderTimestamp: number; text?: string }> = new Map();
 
   /**
    * De-dup guard so a single received copy of an echoed DM packet is attributed
@@ -2149,6 +2161,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       logger.info(`[MeshCore] Connected to ${this.localNode?.name || 'unknown device'}`);
 
+      // #6195: capture this Companion's own device private key (encrypted at
+      // rest) so the server can decrypt our echoed DMs for #6194 heard-by
+      // disambiguation. Fire-and-forget: a failure must never break connect.
+      void this.maybeExportAndStorePkiKey().catch((err) =>
+        logger.debug(`[MeshCore:${this.sourceId}] device-key capture failed: ${(err as Error).message}`));
+
       // Opt-in probe (heartbeatIntervalSeconds > 0). Companion probes the
       // native backend; Repeater probes the serial CLI with `clock` (#5563).
       if (this.nativeBackend || this.deviceType === MeshCoreDeviceType.REPEATER) {
@@ -2488,6 +2506,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.connectionState = 'disconnected';
     this.deviceType = MeshCoreDeviceType.UNKNOWN;
     this.localNode = null;
+    // #6195: forget the per-connection device-key capture state so the next
+    // connect re-attempts once and the DM hot path never uses a stale key.
+    this.pkiExportAttempted = false;
+    this.selfPkiPrivateKeyHex = null;
     this.contacts.clear();
     this.deviceContactsKnown = false;
     this.pendingNewNodeNotifications.clear();
@@ -3297,10 +3319,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * correlation (#6194). The DM analogue of {@link registerPendingChannelSend}.
    * Prunes entries older than HEARD_WINDOW_MS so the map never grows unbounded.
    */
-  private registerPendingDmSend(messageId: string, toPublicKey: string, senderTimestamp: number): void {
+  private registerPendingDmSend(messageId: string, toPublicKey: string, senderTimestamp: number, text?: string): void {
     const now = Date.now();
     this.prunePendingDmSends(now);
-    this.pendingDmSends.set(messageId, { toPublicKey, sentAt: now, senderTimestamp });
+    this.pendingDmSends.set(messageId, { toPublicKey, sentAt: now, senderTimestamp, text });
   }
 
   /** Drop pending DM sends (and stale DM attribution guards) older than the
@@ -3479,12 +3501,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (!data || data.payload_type !== MeshCoreManager.PAYLOAD_TYPE_TXT_MSG) return;
       if (this.pendingDmSends.size === 0) return;
 
+      // #6195: build the per-peer DM decrypter ONLY when our own device key is
+      // cached for this connection. With no stored key this stays undefined and
+      // findDmEchoMatch behaves exactly like the #6194 heuristic.
+      const selfPrivHex = this.selfPkiPrivateKeyHex;
+      const decryptDm = selfPrivHex
+        ? (enc: string, peerPub: string) => {
+            const secret = deriveMeshCoreDmSecret(selfPrivHex, peerPub);
+            return secret ? tryDecodeDmTextPayload(enc, secret) : null;
+          }
+        : undefined;
+
       const match = MeshCoreManager.findDmEchoMatch(
         data,
         this.pendingDmSends,
         now,
         MeshCoreManager.HEARD_WINDOW_MS,
-        { selfPublicKey: this.localNode?.publicKey ?? null },
+        { selfPublicKey: this.localNode?.publicKey ?? null, decryptDm },
       );
       if (!match) return;
 
@@ -3691,10 +3724,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   static findDmEchoMatch(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6194 raw bridge OTA event, same shape as findEchoMatch
     data: any,
-    pendingDmSends: Map<string, { toPublicKey: string; sentAt: number; senderTimestamp: number }>,
+    pendingDmSends: Map<string, { toPublicKey: string; sentAt: number; senderTimestamp: number; text?: string }>,
     now: number,
     windowMs: number,
-    opts: { selfPublicKey: string | null },
+    opts: {
+      selfPublicKey: string | null;
+      /**
+       * #6195: decrypt an echoed DM's encrypted payload against a peer's public
+       * key, returning the recovered `{ timestamp, text }` or null. Supplied
+       * ONLY when the source's own device key is stored (Companion + capture
+       * succeeded). When present it breaks a 1-byte-prefix tie by confirming
+       * which pending send the echo actually was; when absent behaviour is
+       * IDENTICAL to the #6194 heuristic (skip on any ambiguity).
+       */
+      decryptDm?: (encryptedHex: string, peerPublicKey: string) => { timestamp: number; text: string } | null;
+    },
   ): { messageId: string; pathHops: string[]; lastHop: string; echoKey: string } | null {
     if (!data || data.payload_type !== MeshCoreManager.PAYLOAD_TYPE_TXT_MSG) return null;
 
@@ -3739,16 +3783,37 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       .filter(([, e]) => now - e.sentAt <= windowMs)
       .filter(([, e]) => MeshCoreManager.firstKeyByte(e.toPublicKey) === destHash);
 
-    // Skip on ambiguity (see the method doc): only a unique match is safe.
-    if (candidates.length !== 1) return null;
-
-    const [messageId] = candidates[0];
-    return {
+    const build = (messageId: string) => ({
       messageId,
       pathHops,
       lastHop: fullPath[fullPath.length - 1],
       echoKey: channelEchoKey(encryptedHex, fullPath),
-    };
+    });
+
+    // Exactly one candidate: the #6194 heuristic match — unchanged.
+    if (candidates.length === 1) return build(candidates[0][0]);
+
+    // #6195: more than one pending send collides on the 1-byte dest prefix.
+    // When we hold the device key, decrypt the echo against each candidate's
+    // recipient and keep the one(s) whose recovered text/timestamp match what
+    // we sent. The per-peer MAC verify inside decryptDm is itself the
+    // disambiguator — a wrong peer's secret fails to decode at all.
+    if (candidates.length > 1 && opts.decryptDm) {
+      const confirmed = candidates.filter(([, e]) => {
+        const dec = opts.decryptDm!(encryptedHex, e.toPublicKey);
+        if (!dec) return false;
+        if (typeof e.text === 'string' && dec.text === e.text) return true;
+        if (e.senderTimestamp > 0 && dec.timestamp === e.senderTimestamp) return true;
+        return false;
+      });
+      // Only a unique confirmed match is safe; anything else stays ambiguous.
+      if (confirmed.length === 1) return build(confirmed[0][0]);
+      return null;
+    }
+
+    // No decrypt available (no stored key) or zero candidates: skip on ambiguity
+    // exactly as #6194 does — a wrong attribution is worse than none.
+    return null;
   }
 
   /**
@@ -6269,7 +6334,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // excluded — it shows no heard-by bubble. Registered under
           // `existingMessageId ?? msgId` so a resend's echo credits the original
           // row (like the channel path).
-          this.registerPendingDmSend(existingMessageId ?? msgId, toPublicKey, senderTimestamp);
+          this.registerPendingDmSend(existingMessageId ?? msgId, toPublicKey, senderTimestamp, text);
         }
 
         return {
@@ -9172,6 +9237,102 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.error('[MeshCore] rebootDevice threw:', error);
       return false;
     }
+  }
+
+  /**
+   * #6195: capture this Companion's OWN Ed25519 identity private key on connect
+   * and store it encrypted at rest, so the server can derive the per-peer DM
+   * shared secret and decrypt our echoed DMs for exact #6194 heard-by matching.
+   *
+   * Companion-only, automatic, safe:
+   *  - skipped on Repeater / Room Server (no private key to export there);
+   *  - at most ONE export attempt per connection (`pkiExportAttempted`);
+   *  - skipped entirely when SESSION_SECRET is auto-generated (`canStore`);
+   *  - a firmware that lacks ENABLE_PRIVATE_KEY_EXPORT returns null → we persist
+   *    a negative marker keyed to the device identity so we don't re-export on
+   *    every reconnect;
+   *  - if the device reports a DIFFERENT public key than the stored one we set
+   *    `keyMismatch` and DO NOT overwrite the captured key.
+   *
+   * On success (or on finding a matching stored key) the private key is cached
+   * in `selfPkiPrivateKeyHex` so the DM hot path stays DB-free.
+   */
+  private async maybeExportAndStorePkiKey(): Promise<void> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return;
+    if (this.pkiExportAttempted) return;
+    this.pkiExportAttempted = true;
+
+    const store = getMeshCoreSourcePkiKeyStore();
+    if (!store.capability.canStore) {
+      logger.debug(
+        `[MeshCore:${this.sourceId}] device-key capture disabled: ${store.capability.reason ?? 'SESSION_SECRET auto-generated'}`,
+      );
+      return;
+    }
+
+    const currentPubKey = this.localNode?.publicKey ?? null;
+    const UNSUPPORTED_KEY = 'meshcorePkiExportUnsupported';
+
+    // Fast path: a valid stored key for THIS device identity — load it into the
+    // hot-path cache and skip the export round-trip.
+    if (currentPubKey) {
+      const existing = await store.load(this.sourceId);
+      if (
+        existing.kind === 'ok' &&
+        existing.publicKeyHex &&
+        existing.publicKeyHex.toLowerCase() === currentPubKey.toLowerCase()
+      ) {
+        this.selfPkiPrivateKeyHex = existing.privateKeyHex;
+        if (existing.keyMismatch) {
+          await databaseService.meshcoreSourcePkiKeys.setKeyMismatch(this.sourceId, false);
+        }
+        return;
+      }
+    }
+
+    // Negative marker: firmware without the export command returned null before
+    // for this identity — don't retry every reconnect. Keyed to the publicKey
+    // so a later identity change re-attempts.
+    if (currentPubKey) {
+      const marked = await databaseService.settings.getSettingForSource(this.sourceId, UNSUPPORTED_KEY);
+      if (marked && marked.toLowerCase() === currentPubKey.toLowerCase()) {
+        logger.debug(`[MeshCore:${this.sourceId}] device-key export marked unsupported for this identity; skipping`);
+        return;
+      }
+    }
+
+    const hex = await this.exportPrivateKey();
+    if (!hex) {
+      if (currentPubKey) {
+        await databaseService.settings
+          .setSourceSetting(this.sourceId, UNSUPPORTED_KEY, currentPubKey)
+          .catch(() => undefined);
+      }
+      logger.debug(`[MeshCore:${this.sourceId}] device-key export returned no key (firmware unsupported?)`);
+      return;
+    }
+
+    if (!currentPubKey) {
+      logger.debug(`[MeshCore:${this.sourceId}] device-key capture: local public key unknown; deferring store`);
+      return;
+    }
+
+    // Key-mismatch guard: never silently overwrite a captured key with a
+    // different device's identity.
+    const existingRow = await databaseService.meshcoreSourcePkiKeys.getBySourceId(this.sourceId);
+    if (existingRow && existingRow.publicKey && existingRow.publicKey.toLowerCase() !== currentPubKey.toLowerCase()) {
+      await databaseService.meshcoreSourcePkiKeys.setKeyMismatch(this.sourceId, true);
+      logger.warn(
+        `[MeshCore:${this.sourceId}] device public key changed since last capture — refusing to overwrite the stored key (keyMismatch set)`,
+      );
+      return;
+    }
+
+    await store.store(this.sourceId, hex, currentPubKey);
+    // A fresh store clears keyMismatch; also clear any stale unsupported marker.
+    await databaseService.settings.setSourceSetting(this.sourceId, UNSUPPORTED_KEY, '').catch(() => undefined);
+    this.selfPkiPrivateKeyHex = hex;
+    logger.info(`[MeshCore:${this.sourceId}] captured device identity key (encrypted at rest) for DM echo matching`);
   }
 
   /**
