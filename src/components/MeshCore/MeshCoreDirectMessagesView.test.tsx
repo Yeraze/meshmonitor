@@ -864,3 +864,52 @@ describe('MeshCoreDirectMessagesView — server-backed DM history (#6186)', () =
     expect(screen.queryByText('noise 0')).toBeNull();
   });
 });
+
+// #6212 follow-up: the DM view folds the server-backed history into the live
+// window exactly like the channel view. Relay evidence (heardBy, #6194) is
+// monotonic, so a confirmation on one copy must survive even when the other
+// copy — the one that wins the dedupe — carries none. Mirrors the channel
+// test "keeps the history confirmation when the live copy has no heardBy".
+describe('MeshCoreDirectMessagesView — DM relay confirmation survives the history/live merge (#6212)', () => {
+  it('keeps the history copy\'s heardBy when the live copy has none', async () => {
+    const SELF = 'self'.padEnd(64, '0');
+    // A DM WE sent, old enough to clear the resend cooldown.
+    const base = {
+      id: 'dm-relay-send', fromPublicKey: SELF, toPublicKey: REAL_PK,
+      text: 'relay dm', timestamp: Date.now() - 60_000,
+      senderTimestamp: Math.floor(Date.now() / 1000) - 60, messageType: 'text',
+    } as unknown as MeshCoreMessage;
+    // Server backlog (#6186) carries the relay confirmation…
+    const historyCopy = {
+      ...base, heardBy: [{ hash: 'ab', name: 'R1', snr: 3, hops: 0 }],
+    } as unknown as MeshCoreMessage;
+    // …but the live window holds the SAME id WITHOUT heardBy. The live copy
+    // wins the dedupe, so a plain copy-wins fold would erase the confirmation.
+    const liveCopy = { ...base } as unknown as MeshCoreMessage;
+    const fetchDmMessages = vi.fn().mockResolvedValue({ messages: [historyCopy], hasMore: false });
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[liveCopy]}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions({ fetchDmMessages, resendMessage: vi.fn() } as Partial<MeshCoreActions>)}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Remote Bob'));
+    await waitFor(() => {
+      expect(fetchDmMessages).toHaveBeenCalledWith(REAL_PK, expect.objectContaining({ offset: 0 }));
+    });
+    await waitFor(() => expect(screen.getByText('relay dm')).toBeTruthy());
+
+    // The merged copy keeps the relay: the heard-by antenna counts the one
+    // repeater (not 0), and — heard by a repeater — the resend button stays
+    // hidden. Without the merge the badge would read 0 and resend would return.
+    const badge = await screen.findByTestId('mc-heard-by-badge');
+    expect(badge.textContent).toContain('1');
+    expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull();
+  });
+});
