@@ -1717,6 +1717,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private channelEchoAttributionQueue: Promise<void> = Promise.resolve();
 
   /**
+   * Pending outgoing DIRECT MESSAGE sends awaiting self-echo correlation
+   * (#6194). Keyed by message id. The DM analogue of {@link pendingChannelSends}:
+   * when a nearby repeater re-floods one of OUR DMs, our device hears it back as
+   * an inbound TXT_MSG (0x02) OTA packet whose relay-hash chain names the
+   * repeaters that carried it. Unlike a channel echo we CANNOT decrypt the body
+   * (DMs are PKI-encrypted and we hold no shared key), so the match is made on
+   * the packet's 1-byte src/dest hash prefixes plus the time window — see
+   * {@link correlateDmEcho}. Each entry remembers the recipient's full public key
+   * (to compare its first byte against the echo's `destHash`) and the send time.
+   * Pruned lazily on each inbound packet and on each new send. This is purely
+   * additive to and independent of the DM ACK/retry machine
+   * ({@link pendingDmRetries}).
+   */
+  private pendingDmSends: Map<string, { toPublicKey: string; sentAt: number; senderTimestamp: number }> = new Map();
+
+  /**
+   * De-dup guard so a single received copy of an echoed DM packet is attributed
+   * at most ONCE (#6194), mirroring {@link attributedChannelEchoes}. Keyed by the
+   * ENCRYPTED payload hex (we can't decrypt a DM, but repeaters forward the
+   * ciphertext byte-for-byte so it is invariant across re-floods) PLUS that
+   * copy's relay chain, so copies that reached us over different repeaters each
+   * add their repeaters. Mapped to the time it was attributed and pruned by the
+   * heard window.
+   */
+  private attributedDmEchoes: Map<string, number> = new Map();
+
+  /**
    * In-flight DM sends awaiting a `SendConfirmed` ack, keyed by the *current*
    * attempt's firmware `expectedAckCrc` (#3977). If the ack doesn't arrive
    * within `estTimeout` (+margin), the send is retried following the official
@@ -1813,6 +1840,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * packets of this type are self-echo candidates for outgoing channel sends.
    */
   private static readonly PAYLOAD_TYPE_GRP_TXT = 0x05;
+
+  /**
+   * MeshCore TXT_MSG (direct message) payload type (0x02). Inbound OTA packets
+   * of this type are self-echo candidates for outgoing DM sends (#6194).
+   */
+  private static readonly PAYLOAD_TYPE_TXT_MSG = 0x02;
 
   /**
    * How long after an outgoing channel send we will attribute an inbound
@@ -3132,6 +3165,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // raw OTA data FIRST, independent of the opt-in packet monitor, so it
       // works regardless of the monitor setting.
       void this.correlateChannelEcho(data);
+      // DM "heard repeaters" correlation (#6194): the direct-message analogue,
+      // matching a re-flooded copy of one of our DMs on its 1-byte src/dest
+      // hash prefixes (we can't decrypt the body). Receive-only: sends nothing.
+      void this.correlateDmEcho(data);
       // Re-emit the raw OTA packet as a plain EventEmitter event so the MeshCore
       // Virtual Node can bridge it to connected apps as a LogRxData(0x88) push
       // (#3963). Deliberately NOT gated on the packet-monitor setting: a feed
@@ -3256,6 +3293,44 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Register an outgoing DIRECT MESSAGE send as a candidate for self-echo
+   * correlation (#6194). The DM analogue of {@link registerPendingChannelSend}.
+   * Prunes entries older than HEARD_WINDOW_MS so the map never grows unbounded.
+   */
+  private registerPendingDmSend(messageId: string, toPublicKey: string, senderTimestamp: number): void {
+    const now = Date.now();
+    this.prunePendingDmSends(now);
+    this.pendingDmSends.set(messageId, { toPublicKey, sentAt: now, senderTimestamp });
+  }
+
+  /** Drop pending DM sends (and stale DM attribution guards) older than the
+   *  heard window. */
+  private prunePendingDmSends(now: number): void {
+    for (const [id, entry] of this.pendingDmSends) {
+      if (now - entry.sentAt > MeshCoreManager.HEARD_WINDOW_MS) {
+        this.pendingDmSends.delete(id);
+      }
+    }
+    for (const [key, heardAt] of this.attributedDmEchoes) {
+      if (now - heardAt > MeshCoreManager.HEARD_WINDOW_MS) {
+        this.attributedDmEchoes.delete(key);
+      }
+    }
+  }
+
+  /**
+   * The first byte of a MeshCore public key as a 2-char lowercase hex string,
+   * or null for a non-hex key (e.g. a `channel-N` pseudo-key or a missing one).
+   * This is the 1-byte hash a DM packet carries as its `destHash` / `srcHash`
+   * prefix (#6194).
+   */
+  private static firstKeyByte(key: string | null | undefined): string | null {
+    if (!key || key.length < 2) return null;
+    const b = key.slice(0, 2).toLowerCase();
+    return /^[0-9a-f]{2}$/.test(b) ? b : null;
+  }
+
+  /**
    * Load the 16-byte AES-128 secret for a MeshCore channel slot from the
    * channels repository (base64 `psk`). Returns null when the channel is
    * unknown, has no PSK, or the PSK is not a valid 16-byte key. Never throws —
@@ -3367,6 +3442,68 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       await run;
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] correlateChannelEcho failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Best-effort DM "heard repeaters" correlation (#6194) — the direct-message
+   * analogue of {@link correlateChannelEcho}.
+   *
+   * When a nearby repeater re-floods one of OUR direct messages, our device
+   * hears it as an inbound TXT_MSG (0x02) OTA packet whose relay-hash chain
+   * (`path_hops`) names the repeaters that carried it. A DM body is PKI-encrypted
+   * and we hold no shared key, so unlike the channel path we can NOT decrypt and
+   * exact-match the plaintext. Instead we match on the packet's plaintext 1-byte
+   * `src_hash` / `dest_hash` prefixes: our own re-flooded DM carries
+   * `src_hash == first byte of OUR public key` and
+   * `dest_hash == first byte of the RECIPIENT's public key`. Because those are
+   * only 1 byte, two of our pending DMs to recipients that share a first byte are
+   * indistinguishable — so {@link findDmEchoMatch} attributes ONLY when exactly
+   * one pending send matches and skips on any ambiguity (a wrong attribution is
+   * worse than none). Each received copy is attributed at most once, keyed by the
+   * encrypted payload + relay path. Reuses {@link attributeChannelEcho} (kind-
+   * agnostic) and the same serialisation queue as the channel path.
+   *
+   * This sends NO packets: it only observes re-flooded copies we already receive,
+   * so it has zero mesh/airtime impact. Failures are swallowed — correlation must
+   * never break the packet pipeline.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6194 raw bridge OTA event, same shape as correlateChannelEcho
+  private async correlateDmEcho(data: any): Promise<void> {
+    try {
+      const now = Date.now();
+      this.prunePendingDmSends(now);
+
+      // Hot-path early-outs: only TXT_MSG frames with at least one pending DM
+      // send can ever match.
+      if (!data || data.payload_type !== MeshCoreManager.PAYLOAD_TYPE_TXT_MSG) return;
+      if (this.pendingDmSends.size === 0) return;
+
+      const match = MeshCoreManager.findDmEchoMatch(
+        data,
+        this.pendingDmSends,
+        now,
+        MeshCoreManager.HEARD_WINDOW_MS,
+        { selfPublicKey: this.localNode?.publicKey ?? null },
+      );
+      if (!match) return;
+
+      // Attribute each received copy (payload + relay path) at most once. Set
+      // synchronously, before any await, so a duplicate copy arriving mid-write
+      // is still dropped.
+      if (this.attributedDmEchoes.has(match.echoKey)) return;
+      this.attributedDmEchoes.set(match.echoKey, now);
+
+      const snr = typeof data.snr === 'number' ? data.snr : null;
+      // Reuse the channel attribution queue: a DM echo and a channel echo never
+      // share a messageId, and sharing the queue keeps all `recordHeardRepeater`
+      // read-then-insert writes serialised on the one (sourceId, messageId,
+      // repeaterHash) index without a second racing queue.
+      const run = this.channelEchoAttributionQueue.then(() => this.attributeChannelEcho(match, snr, now));
+      this.channelEchoAttributionQueue = run.catch(() => undefined);
+      await run;
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] correlateDmEcho failed: ${(err as Error).message}`);
     }
   }
 
@@ -3525,6 +3662,93 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       };
     }
     return null;
+  }
+
+  /**
+   * Decide whether an inbound OTA packet is a self-echo of a pending DM send
+   * (#6194). Pure (no I/O) so it can be unit-tested directly. Returns the matched
+   * message id, the de-duplicated relay-hash chain, the last hop of the raw chain
+   * (`lastHop`, the repeater we heard directly), and the identity of this
+   * received copy (`echoKey` = encrypted payload + full relay path), or null.
+   *
+   * A match requires ALL of:
+   *  - `payload_type === TXT_MSG` (0x02);
+   *  - a non-empty `path_hops` relay chain (a direct/zero-hop packet names no
+   *    repeaters, so there is nothing to credit);
+   *  - a known local public key whose first byte equals the echo's `src_hash`
+   *    (proves WE sent it);
+   *  - a decodable `raw_hex` that yields the plaintext `dest_hash` / `src_hash`
+   *    prefixes and the encrypted body; and
+   *  - EXACTLY ONE pending DM send, within the window, whose recipient public
+   *    key's first byte equals the echo's `dest_hash`.
+   *
+   * CRITICAL — skip on ambiguity: the hashes are only 1 byte, so two pending DMs
+   * addressed to recipients that share a first byte collide. We CANNOT decrypt
+   * the body to disambiguate (no shared key), so when more than one pending send
+   * matches we attribute to NONE of them: a wrong attribution (crediting the
+   * heard-by of message A to message B) is worse than simply not showing it.
+   */
+  static findDmEchoMatch(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6194 raw bridge OTA event, same shape as findEchoMatch
+    data: any,
+    pendingDmSends: Map<string, { toPublicKey: string; sentAt: number; senderTimestamp: number }>,
+    now: number,
+    windowMs: number,
+    opts: { selfPublicKey: string | null },
+  ): { messageId: string; pathHops: string[]; lastHop: string; echoKey: string } | null {
+    if (!data || data.payload_type !== MeshCoreManager.PAYLOAD_TYPE_TXT_MSG) return null;
+
+    const rawHops: unknown = data.path_hops;
+    if (!Array.isArray(rawHops) || rawHops.length === 0) return null;
+    // De-dup while preserving order; normalise to lowercase hex. `fullPath` keeps
+    // every hop in order: it names this physical copy in `echoKey`, and its last
+    // entry is the repeater we heard directly.
+    const seen = new Set<string>();
+    const pathHops: string[] = [];
+    const fullPath: string[] = [];
+    for (const h of rawHops) {
+      if (typeof h !== 'string' || h.length === 0) continue;
+      const hash = h.toLowerCase();
+      fullPath.push(hash);
+      if (seen.has(hash)) continue;
+      seen.add(hash);
+      pathHops.push(hash);
+    }
+    if (pathHops.length === 0) return null;
+
+    // Without our own public key we can't confirm self-origin — bail.
+    const selfPrefix = MeshCoreManager.firstKeyByte(opts.selfPublicKey);
+    if (!selfPrefix) return null;
+
+    // Recover the TXT_MSG plaintext prefix (`[dest_hash:1][src_hash:1][cipher]`)
+    // from the raw OTA frame; `path_hops` above already gives the relay chain.
+    const decoded = decodeMeshCorePacket(typeof data.raw_hex === 'string' ? data.raw_hex : null);
+    const msg = decoded?.payload?.message;
+    if (!msg) return null;
+    const destHash = typeof msg.destHash === 'string' ? msg.destHash.toLowerCase() : null;
+    const srcHash = typeof msg.srcHash === 'string' ? msg.srcHash.toLowerCase() : null;
+    const encryptedHex = typeof msg.encryptedHex === 'string' ? msg.encryptedHex.toLowerCase() : null;
+    if (!destHash || !srcHash || !encryptedHex) return null;
+
+    // Our own re-flooded DM has src_hash == first byte of OUR public key. Reject
+    // anything else outright (it was not sent by us).
+    if (srcHash !== selfPrefix) return null;
+
+    // In-window pending DM sends whose recipient's first byte matches dest_hash.
+    const candidates = Array.from(pendingDmSends.entries())
+      .filter(([, e]) => now - e.sentAt <= windowMs)
+      .filter(([, e]) => MeshCoreManager.firstKeyByte(e.toPublicKey) === destHash);
+
+    // Skip on ambiguity (see the method doc): only a unique match is safe.
+    if (candidates.length !== 1) return null;
+
+    const [messageId] = candidates[0];
+    return {
+      messageId,
+      pathHops,
+      lastHop: fullPath[fullPath.length - 1],
+      echoKey: channelEchoKey(encryptedHex, fullPath),
+    };
   }
 
   /**
@@ -6023,12 +6247,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           }
         }
 
-        // Register this channel send for self-echo correlation (#3700): a
-        // nearby repeater that re-floods our packet will be heard back as an
-        // inbound GRP_TXT OTA packet within HEARD_WINDOW_MS, naming the
-        // relaying repeaters in its path. DMs are excluded — they already get
-        // a real ACK (send-confirmed).
+        // Register this send for self-echo correlation: a nearby repeater that
+        // re-floods our packet is heard back as an inbound OTA packet within
+        // HEARD_WINDOW_MS, naming the relaying repeaters in its path.
         if (isChannelSend) {
+          // Channel send (#3700): matched by decrypting the GRP_TXT echo.
           this.registerPendingChannelSend(existingMessageId ?? msgId, channelIdx!, text);
 
           // Arm the automated channel-send auto-retry (#3979 Part 2) when the
@@ -6039,6 +6262,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           if (autoRetryOnMiss && !isAutoRetry && !reaction) {
             await this.maybeArmChannelRetry(msgId, text, channelIdx!, scopeOverride, senderTimestamp);
           }
+        } else if (toPublicKey && !reaction) {
+          // DM send (#6194): the heard-by signal is additive to and independent
+          // of the DM ACK machine. We can't decrypt the echo, so correlateDmEcho
+          // matches on the 1-byte src/dest hash prefixes + window. A reaction is
+          // excluded — it shows no heard-by bubble. Registered under
+          // `existingMessageId ?? msgId` so a resend's echo credits the original
+          // row (like the channel path).
+          this.registerPendingDmSend(existingMessageId ?? msgId, toPublicKey, senderTimestamp);
         }
 
         return {
@@ -6684,9 +6915,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (row.fromPublicKey !== 'local' && row.fromPublicKey !== selfKey) {
         throw new MeshCoreResendError('NOT_OWN_MESSAGE', 'Only messages this source sent can be resent');
       }
+      // #6194: resend now covers DMs too, at parity with channel sends. A DM is
+      // any non-channel send to a real recipient that is not a room post.
       const channelMatch = /^channel-(\d+)$/.exec(row.toPublicKey ?? '');
-      if (!channelMatch) {
-        throw new MeshCoreResendError('NOT_CHANNEL_MESSAGE', 'Only channel messages can be resent');
+      const isDm = !channelMatch && !!row.toPublicKey && row.messageType !== 'room_post';
+      if (!channelMatch && !isDm) {
+        throw new MeshCoreResendError('NOT_RESENDABLE', 'Only channel or direct messages can be resent');
+      }
+      // A DM the recipient's radio acknowledged (ACK / SendConfirmed) is
+      // delivered — never offer to resend it (#6194). Channel sends have no ack,
+      // so this only applies to DMs. Delivery is persisted as a `delivered`
+      // message-event (not a row column), the same source the backlog reads, so
+      // it survives a restart. The heard-by gate below still applies.
+      if (isDm) {
+        const delivered = await databaseService.messageEvents.getEventsForMessages(
+          this.sourceId, [messageId], 'delivered',
+        );
+        if (delivered.length > 0) {
+          throw new MeshCoreResendError('ALREADY_DELIVERED', 'This message was already delivered');
+        }
       }
       if (row.senderTimestamp == null) {
         throw new MeshCoreResendError(
@@ -6749,11 +6996,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         );
       }
 
-      const channelIdx = Number(channelMatch[1]);
+      // Channel resend goes out on the channel slot; a DM resend (#6194) goes
+      // out to the recipient's public key via the same DM send path. Both reuse
+      // the original wire timestamp so repeaters that saw the original drop the
+      // copy, and both pass isAutoRetry=true (no new row/event/bus re-entry) and
+      // `messageId` so the echo credits the original row.
       const result = await this.performScopedSend(
         row.text,
-        undefined,
-        channelIdx,
+        channelMatch ? undefined : (row.toPublicKey ?? undefined),
+        channelMatch ? Number(channelMatch[1]) : undefined,
         // Re-use the region the original went out under; null = resolve the
         // channel/default scope as a normal send would.
         row.scopeName ?? undefined,
@@ -6798,7 +7049,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         this.sourceId,
       );
       logger.info(
-        `[MeshCore:${this.sourceId}] User resend ${resendCount}/${MeshCoreManager.RESEND_MAX} of channel message ${messageId}`,
+        `[MeshCore:${this.sourceId}] User resend ${resendCount}/${MeshCoreManager.RESEND_MAX} of ${isDm ? 'direct' : 'channel'} message ${messageId}`,
       );
       return { id: messageId, resendCount, lastResendAt: resentAt };
     });

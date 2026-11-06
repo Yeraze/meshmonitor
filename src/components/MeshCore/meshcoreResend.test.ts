@@ -71,4 +71,49 @@ describe('resendAvailability', () => {
       expect(resendAvailability(full, SELF, NOW, { requiredRepeaterKeys: [REQ, OTHER], requiredRepeaterMode: 'all', repeaters }).kind).toBe('never');
     });
   });
+
+  describe('#6194 direct messages (parity with channel)', () => {
+    const PEER = 'b'.repeat(64);
+    const dm = (extra: Partial<MeshCoreMessage> = {}): MeshCoreMessage => ({
+      id: 'dm1', fromPublicKey: SELF, toPublicKey: PEER, text: 'hi',
+      timestamp: NOW - 120_000, senderTimestamp: 1, ...extra,
+    });
+
+    it('offers resend on our own DM that no repeater relayed and no ACK came', () => {
+      expect(resendAvailability(dm(), SELF, NOW).kind).toBe('ready');
+    });
+
+    it('offers resend on a DM whose ACK timed out (not_confirmed)', () => {
+      expect(resendAvailability(dm({ deliveryStatus: 'failed' }), SELF, NOW).kind).toBe('ready');
+    });
+
+    it('NEVER offers resend on a DM the recipient acknowledged (delivered)', () => {
+      expect(resendAvailability(dm({ deliveryStatus: 'delivered' }), SELF, NOW).kind).toBe('never');
+    });
+
+    it('hides resend once any repeater relayed the DM (default, no required list)', () => {
+      expect(resendAvailability(dm({ heardBy: [{ hash: 'aa' }] }), SELF, NOW).kind).toBe('never');
+    });
+
+    it('never offers resend on a room post', () => {
+      expect(resendAvailability(dm({ messageType: 'room_post' }), SELF, NOW).kind).toBe('never');
+    });
+
+    it('never offers resend on a received DM', () => {
+      expect(resendAvailability(dm({ fromPublicKey: PEER }), SELF, NOW).kind).toBe('never');
+    });
+
+    it('applies the Required Repeaters gate to DMs too', () => {
+      const REQ = 'bb'.repeat(16);
+      const repeaters = [{ publicKey: REQ, advType: 2 }];
+      // Heard by a non-required repeater → keep the button.
+      expect(
+        resendAvailability(dm({ heardBy: [{ hash: 'cc' }] }), SELF, NOW, { requiredRepeaterKeys: [REQ], repeaters }).kind,
+      ).toBe('ready');
+      // The required repeater uniquely heard → hide it.
+      expect(
+        resendAvailability(dm({ heardBy: [{ hash: 'bb' }] }), SELF, NOW, { requiredRepeaterKeys: [REQ], repeaters }).kind,
+      ).toBe('never');
+    });
+  });
 });

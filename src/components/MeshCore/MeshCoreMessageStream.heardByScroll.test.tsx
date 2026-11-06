@@ -81,4 +81,31 @@ describe('MeshCoreMessageStream heard-by scroll into view (#6124)', () => {
     fireEvent.click(heardBadge()); // collapse
     expect(scrollSpy).toHaveBeenCalledTimes(1); // unchanged
   });
+
+  it('renders the heard-by bubble on our own outgoing DM too (#6194)', () => {
+    render(
+      <MeshCoreMessageStream
+        messages={[channelSend({ id: 'dm-1', toPublicKey: 'b'.repeat(64), heardBy: [{ hash: '7f', name: 'Hilltop', snr: 4 }] })]}
+        selfPublicKey={SELF}
+        onSend={async () => true}
+      />,
+    );
+    // One badge present; expanding it scrolls the DM row into view.
+    expect(heardBadge()).not.toBeNull();
+    fireEvent.click(heardBadge());
+    const row = document.querySelector('[data-message-id="dm-1"]');
+    expect(row).not.toBeNull();
+    expect(scrollSpy.mock.instances[0]).toBe(row);
+  });
+
+  it('does NOT render the heard-by bubble on a room post (#6194)', () => {
+    render(
+      <MeshCoreMessageStream
+        messages={[channelSend({ id: 'room-1', toPublicKey: 'b'.repeat(64), messageType: 'room_post', heardBy: [{ hash: '7f' }] })]}
+        selfPublicKey={SELF}
+        onSend={async () => true}
+      />,
+    );
+    expect(screen.queryByTitle('Repeaters that relayed this message')).toBeNull();
+  });
 });

@@ -146,9 +146,14 @@ describe('MeshCoreMessageStream delivery marks (#5682, #6193)', () => {
       expect(bad.getAttribute('title')).not.toMatch(/retries/);
     });
 
-    it('none of them is drawn as a relay or as hops', () => {
+    it('DMs carry the heard-by antenna (#6194); room posts do not', () => {
       renderStream([dm({ id: 'a' }), post({ id: 'b' }), dm({ id: 'c', deliveryStatus: 'delivered' })]);
-      expect(heardBadge()).toBeNull();
+      // Our own DMs now get the same antenna/count bubble as channel sends.
+      expect(row('a').getByTestId('mc-heard-by-badge')).toBeTruthy();
+      expect(row('c').getByTestId('mc-heard-by-badge')).toBeTruthy();
+      // Room posts stay excluded — the companion does not re-flood them back for us to hear.
+      expect(row('b').queryByTestId('mc-heard-by-badge')).toBeNull();
+      // A count-0 antenna prints no "hops" text until it is expanded.
       expect(screen.queryByText(/hops?\b/)).toBeNull();
     });
 
