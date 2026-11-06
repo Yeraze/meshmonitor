@@ -15,6 +15,7 @@ import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import { logger } from '../../../utils/logger.js';
+import { truncateUtf8Bytes, utf8ByteLength } from '../../utils/splitUtf8Message.js';
 import { waypointService } from '../waypointService.js';
 import { isForwardingEnabled, setForwardingEnabled } from '../forwardingStateService.js';
 import type { ISourceManager } from '../../sourceManagerRegistry.js';
@@ -107,6 +108,21 @@ function mgr(sourceId: string | null): MeshSendManager {
  * Meshtastic (`sendTextMessage`) or MeshCore (`sendMessage`). MeshCore has no
  * reply/emoji concept, so those are dropped for that protocol.
  */
+/**
+ * A Meshtastic text payload holds about 200 bytes. Every other automation
+ * sender (auto-ack, auto-responder, timers, forwarding) cuts to 200 before
+ * sending; the engine passed the interpolated body through whole, so a long
+ * `{{ trigger.text }}` (a relayed LXMF reply, a script result) went to the
+ * radio and never delivered (#6202).
+ */
+const MESHTASTIC_TEXT_MAX_BYTES = 200;
+function truncateForMeshtastic(text: string): string {
+  const bytes = utf8ByteLength(text);
+  if (bytes <= MESHTASTIC_TEXT_MAX_BYTES) return text;
+  logger.warn(`[Automation] Meshtastic text is ${bytes} bytes; cut to ${MESHTASTIC_TEXT_MAX_BYTES}`);
+  return truncateUtf8Bytes(text, MESHTASTIC_TEXT_MAX_BYTES - 3) + '...';
+}
+
 async function sendTextVia(
   sourceId: string | null,
   text: string,
@@ -144,6 +160,7 @@ async function sendTextVia(
   if (raw && typeof raw.sendTextMessage === 'function') {
     // Meshtastic has no scope/region concept — scopeOverride is dropped.
     const dest = typeof destination === 'number' ? destination : undefined;
+    const body = truncateForMeshtastic(text);
     // #4340 Phase 3. Opt-in ONLY: absent maxAttempts, a channel send, or a
     // MeshCore source all take the unchanged direct path below.
     //   * Channel sends are excluded because the queue hardcodes maxAttempts=1
@@ -164,7 +181,7 @@ async function sendTextVia(
     // maxAttempts is deliberately ignored rather than turned into blind resends.
     if (maxAttempts != null && dest != null && hopLimitOverride !== 0 && typeof q?.enqueue === 'function') {
       const id = q.enqueue(
-        text, dest, replyId,
+        body, dest, replyId,
         () => logger.debug(`[Automation] queued DM to !${dest.toString(16).padStart(8, '0')} delivered`),
         (reason: string) => logger.warn(`[Automation] queued DM to !${dest.toString(16).padStart(8, '0')} failed: ${reason}`),
         undefined,             // channel: undefined ⇒ this is a DM
@@ -175,7 +192,7 @@ async function sendTextVia(
       );
       return { queued: true, messageId: id, maxAttempts };
     }
-    return raw.sendTextMessage(text, channel, dest, replyId, emoji, undefined, undefined, sendOptions);
+    return raw.sendTextMessage(body, channel, dest, replyId, emoji, undefined, undefined, sendOptions);
   }
   if (raw && typeof raw.sendMessage === 'function') {
     // MeshCore: `destination`, when a string, is the contact's public key (#4018)

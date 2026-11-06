@@ -607,3 +607,91 @@ describe('createMeshActionDeps sendMessage — Reticulum (#6143)', () => {
       .rejects.toThrow(/not connected/);
   });
 });
+
+// A Meshtastic text payload holds about 200 bytes (#6202). The engine must cut
+// the body like every other automation sender does, and leave MeshCore alone.
+describe('createMeshActionDeps sendMessage — Meshtastic 200-byte cut (#6202)', () => {
+  beforeEach(() => { getManager.mockReset(); });
+
+  const bytes = (s: string) => Buffer.byteLength(s, 'utf8');
+
+  it('cuts a long body to 200 bytes ending in ... on the direct Meshtastic path', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'x'.repeat(1257), channel: 0 });
+
+    const sent = sendTextMessage.mock.calls[0][0] as string;
+    expect(bytes(sent)).toBe(200);
+    expect(sent.endsWith('...')).toBe(true);
+  });
+
+  it('cuts on a character boundary, never inside a multi-byte character', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: '\u{1F600}'.repeat(100), channel: 0 }); // 400 bytes of 4-byte emoji
+
+    const sent = sendTextMessage.mock.calls[0][0] as string;
+    expect(bytes(sent)).toBeLessThanOrEqual(200);
+    expect(sent.endsWith('...')).toBe(true);
+    expect(Array.from(sent.slice(0, -3)).every((ch) => ch === '\u{1F600}')).toBe(true);
+  });
+
+  it('cuts the queued DM path too', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    const enqueue = vi.fn().mockReturnValue('q1');
+    getManager.mockReturnValue({ sendTextMessage, messageQueue: { enqueue } });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'y'.repeat(500), channel: 0, destination: 123, maxAttempts: 3 });
+
+    expect(bytes(enqueue.mock.calls[0][0] as string)).toBe(200);
+    expect(sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('cuts the queued DM path on a character boundary too', async () => {
+    const enqueue = vi.fn().mockReturnValue('q1');
+    getManager.mockReturnValue({ sendTextMessage: vi.fn(), messageQueue: { enqueue } });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: '\u{1F600}'.repeat(100), channel: 0, destination: 123, maxAttempts: 3 });
+
+    const sent = enqueue.mock.calls[0][0] as string;
+    expect(bytes(sent)).toBeLessThanOrEqual(200);
+    expect(sent.endsWith('...')).toBe(true);
+    expect(Array.from(sent.slice(0, -3)).every((ch) => ch === '\u{1F600}')).toBe(true);
+  });
+
+  it('leaves a queued DM body that fits untouched', async () => {
+    const enqueue = vi.fn().mockReturnValue('q1');
+    getManager.mockReturnValue({ sendTextMessage: vi.fn(), messageQueue: { enqueue } });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'z'.repeat(200), channel: 0, destination: 123, maxAttempts: 3 });
+
+    expect(enqueue.mock.calls[0][0]).toBe('z'.repeat(200));
+  });
+
+  it('leaves a body that fits untouched', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'z'.repeat(200), channel: 0 });
+
+    expect(sendTextMessage.mock.calls[0][0]).toBe('z'.repeat(200));
+  });
+
+  it('does not cut a MeshCore send', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+    getManager.mockReturnValue({ sendMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mc', text: 'w'.repeat(500), channel: 0 });
+
+    expect(sendMessage.mock.calls[0][0]).toBe('w'.repeat(500));
+  });
+});
