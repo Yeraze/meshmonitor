@@ -30,6 +30,9 @@ import { UiIcon } from '../icons';
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 import { compareMeshCoreMessages } from './messageOrder';
+import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import { parseJsonResponse } from '../../utils/parseJsonResponse';
+import { readRequiredRepeaters, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -139,6 +142,12 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const [typeFilter, setTypeFilter] = useState<DmTypeFilter>('all');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileShowContent, setMobileShowContent] = useState(false);
+  const csrfFetch = useCsrfFetch();
+  // #6194: per-source Required Repeaters list + ANY/ALL mode (shared with the
+  // channel view). Gates the DM resend ↻ button and pins the required rows in
+  // the heard-by bubble, at parity with channel sends.
+  const [requiredRepeaterKeys, setRequiredRepeaterKeys] = useState<string[]>([]);
+  const [requiredRepeaterMode, setRequiredRepeaterMode] = useState<RequiredRepeaterMode>('any');
 
   // #6186: the selected peer's DM history, read from the server so it survives
   // channel traffic evicting it from the shared `messages` window. Mirrors the
@@ -154,6 +163,28 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const dmHistoryRef = useRef<MeshCoreMessage[]>([]);
   const activePeerRef = useRef<string | null>(null);
   useEffect(() => { dmHistoryRef.current = dmHistory; }, [dmHistory]);
+
+  // #6194: read this source's Required Repeaters list + mode (same reader/route
+  // as the channel view). Re-read on source change; switching to Settings and
+  // back remounts this view, so a change made there is picked up on return.
+  useEffect(() => {
+    if (!sourceId) { setRequiredRepeaterKeys([]); setRequiredRepeaterMode('any'); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await csrfFetch(`${baseUrl ?? ''}/api/settings?sourceId=${encodeURIComponent(sourceId)}`);
+        if (!res.ok) return;
+        const settings = await parseJsonResponse(res);
+        if (cancelled || !settings) return;
+        const { keys, mode } = readRequiredRepeaters(settings);
+        setRequiredRepeaterKeys(keys);
+        setRequiredRepeaterMode(mode);
+      } catch {
+        // Keep the default (none); the resend button behaves as before.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [baseUrl, sourceId, csrfFetch]);
 
   // Refresh the server-sourced DM thread list on source/connect change. New DMs
   // also arrive live in `messages`, so this mainly catches old threads that are
@@ -526,6 +557,16 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     ))) return;
     await actions.clearConversation(selected);
   };
+  // Resend (#6194): the stream confirms first. Patch `dmHistory` too — most of
+  // this view renders from the server-sourced backlog, which the hook's live
+  // `messages` update doesn't always reach (same reason as the channel view).
+  const handleResendMessage = useCallback(async (m: MeshCoreMessage) => {
+    const state = await actions.resendMessage(m.id);
+    if (state) {
+      setDmHistory(prev => prev.map(x => (x.id === m.id ? { ...x, ...state } : x)));
+    }
+    return state;
+  }, [actions]);
 
   const selectedContactName = selected
     ? (contactsByKey.get(selected)?.advName || contactsByKey.get(selected)?.name || `${selected.substring(0, 8)}…`)
@@ -731,6 +772,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
                   onSend={text => actions.sendMessage(text, selected)}
                   onDeleteMessage={canSend ? handleDeleteMessage : undefined}
+                  onResendMessage={canSend ? handleResendMessage : undefined}
+                  requiredRepeaterKeys={requiredRepeaterKeys}
+                  requiredRepeaterMode={requiredRepeaterMode}
                   onReact={canReact ? (m, e) => actions.sendReaction(m, e) : undefined}
                   reactionEmojis={tapbackEmojis}
                   conversationKey={`dm-${selected}`}

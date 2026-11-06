@@ -1007,7 +1007,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   repeaters with ✓/✗ and counts only the green ✓ rows. A channel
                   send is identified by its channel destination (our own key is
                   the sender, so `isChannel` — keyed on the sender — is false). */}
-              {outgoing && (m.toPublicKey?.startsWith('channel-') ?? false) && (
+              {/* #6194: a DM is identified by a real recipient key (not a
+                  channel pseudo-key); it keeps its own ACK status mark above —
+                  both show. Room posts and reactions are excluded. */}
+              {outgoing && !m.reactionEmoji && !!m.toPublicKey && m.messageType !== 'room_post' && (
                 <div className="mc-heard-by-row">
                   <HeardByBubble
                     heardBy={m.heardBy}

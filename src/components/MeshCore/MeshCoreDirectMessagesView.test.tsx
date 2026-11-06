@@ -164,12 +164,17 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
       expect(screen.getByText('Telemetry Retrieval')).toBeTruthy();
     });
 
-    // Panel made its GET against the per-node telemetry-config endpoint.
+    // Panel made its GET against the per-node telemetry-config endpoint. The
+    // view also fetches /api/settings for the Required Repeaters list (#6194),
+    // so locate the telemetry-config call among all calls rather than assuming
+    // it is the first.
     expect(csrfFetchMock).toHaveBeenCalled();
-    const calledUrl = csrfFetchMock.mock.calls[0][0] as string;
+    const calledUrl = csrfFetchMock.mock.calls
+      .map((c) => c[0] as string)
+      .find((u) => u.includes('/telemetry-config'));
+    expect(calledUrl).toBeTruthy();
     expect(calledUrl).toContain('/api/sources/src-a/meshcore/nodes/');
     expect(calledUrl).toContain(REAL_PK);
-    expect(calledUrl).toContain('/telemetry-config');
   });
 
   it('does NOT render the telemetry-retrieval panel when sourceId is not provided (singleton mode)', () => {
@@ -209,7 +214,13 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     fireEvent.click(screen.getByText('Prefix Pete'));
 
     expect(screen.queryByText('Telemetry Retrieval')).toBeNull();
-    expect(csrfFetchMock).not.toHaveBeenCalled();
+    // The per-node telemetry-config endpoint must not be hit for a prefix-only
+    // key. (The view may still fetch /api/settings for Required Repeaters,
+    // which is unrelated — #6194.)
+    const telemetryCalls = csrfFetchMock.mock.calls
+      .map((c) => c[0] as string)
+      .filter((u) => u.includes('/telemetry-config'));
+    expect(telemetryCalls).toHaveLength(0);
   });
 
   it('mounts the TelemetryGraphs component with the selected pubkey when sourceId is set', async () => {
