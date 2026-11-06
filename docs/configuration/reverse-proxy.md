@@ -28,6 +28,8 @@ COOKIE_SECURE=true                                  # Enable secure cookies for 
 ALLOWED_ORIGINS=https://meshmonitor.example.com    # Allow CORS from your domain
 ```
 
+On a bare-metal install, `BIND_ADDRESS=127.0.0.1` makes MeshMonitor listen on loopback only, so the proxy is the only way in. Leave it unset in Docker: the container's port mapping needs the default (all interfaces).
+
 **Without `NODE_ENV=production`, you will get:**
 - Map tiles won't load (gray/blank tiles) for satellite, dark mode, light mode, and topographic maps
 - Browser console shows CSP errors about refused connections to tile servers
