@@ -201,6 +201,23 @@ describe('ingestAdvertFrame', () => {
     expect(node.lastAdvertHadPosition).toBe(false);
   });
 
+  describe('heardHops → pathLen (#6220)', () => {
+    it('writes a heard hop count, 0 included', async () => {
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, heardHops: 3 });
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, heardHops: 0 });
+      expect(upsertNode.mock.calls[0][0].pathLen).toBe(3);
+      expect(upsertNode.mock.calls[1][0].pathLen).toBe(0);
+    });
+
+    it('never sends pathLen when unknown, since null would clear the stored route', async () => {
+      for (const heardHops of [undefined, null, -1, 1.5]) {
+        upsertNode.mockClear();
+        await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, heardHops });
+        expect(upsertNode.mock.calls[0][0]).not.toHaveProperty('pathLen');
+      }
+    });
+  });
+
   it('skips a named key and ignores non-advert frames', async () => {
     expect(await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, skipPublicKey: NODE_KEY.toUpperCase() })).toBeNull();
     expect(await ingestAdvertFrame(buildGrpTxtFrame(1, 'A: b', SECRET_A), 's', { lastHeardMs: 1 })).toBeNull();

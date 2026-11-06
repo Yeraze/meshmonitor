@@ -155,6 +155,7 @@ Stock repeater firmware gives you:
 A firmware build with packet logging on (`-D MESH_PACKET_LOGGING=1`) prints every frame the repeater hears, and MeshMonitor reads those lines. That adds:
 
 - **Nodes from adverts.** Every advert the repeater hears becomes a node on this source, with its name, type and position. These nodes raise no new-node notification and fire no automation trigger.
+- **Hop counts.** Each of those nodes records how many hops its advert took to reach the repeater (0 = heard direct). One advert usually arrives several times by different routes; the shortest one counts, and the node's next advert replaces it. A node whose advert has not been heard since the upgrade shows its hops as unknown.
 - **Packet Monitor.** Each received frame is logged once you turn capture on. See [Packet Monitor](#packet-monitor).
 - **Channel Messages.** The repeater holds no channel keys, so MeshMonitor decrypts channel text (`GRP_TXT`) with a key from any of your other MeshCore sources, or from a MeshCore entry in the [Channel Database](/features/channel-database#meshcore-channels). These channels are read-only on the repeater source. A user sees a message only if they can read a channel that holds its key.
 - **Trace SNR.** Per-hop readings from traces the repeater overhears. See [Trace SNR History](#trace-snr-history).

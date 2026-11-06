@@ -60,8 +60,12 @@ export function buildAdvertFrame(opts: {
   lat?: number;
   lon?: number;
   name?: string;
+  /** Relay hashes the flood copy carries (1-byte hashes); default none. */
+  path?: number[];
 }): string {
-  const bytes: number[] = [(4 << 2) | 1, 0x00]; // ADVERT(4), FLOOD(1), path_len 0
+  const path = opts.path ?? [];
+  // ADVERT(4), FLOOD(1), path_len = hop count (hash-size index 0 = 1 byte).
+  const bytes: number[] = [(4 << 2) | 1, path.length, ...path];
   for (let i = 0; i < 64; i += 2) bytes.push(parseInt(opts.publicKey.slice(i, i + 2), 16));
   const ts = opts.timestamp ?? 1_700_000_000;
   bytes.push(ts & 0xff, (ts >> 8) & 0xff, (ts >> 16) & 0xff, (ts >>> 24) & 0xff);
