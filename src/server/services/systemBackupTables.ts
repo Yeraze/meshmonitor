@@ -199,6 +199,12 @@ export const BACKUP_EXCLUDED_TABLES: Readonly<Record<string, string>> = {
   // Bookkeeping for device-config backup FILES on this install's disk. Those
   // files are not in a system backup, so the rows would point at nothing.
   backup_history: 'index of device-config backup files on this install, which are not in the backup',
+  // #6195: auto-captured MeshCore Companion device IDENTITY private keys. Unlike
+  // the other SESSION_SECRET-sealed stores, these grant full control of a
+  // physical device's identity, and we never asked the operator to store them
+  // (capture is automatic) — so they are kept OUT of backups entirely rather
+  // than riding along as a sealed-but-present second-stage exploit target.
+  meshcore_source_pki_keys: 'auto-captured MeshCore device identity private keys; a stolen backup must not carry device identities (#6195)',
 };
 
 /**

@@ -76,6 +76,7 @@ import { DangerZone, DangerZoneActions, DangerZoneButton } from './shared/config
 import { buildAdminCommandsPath } from '../utils/adminDeepLink';
 import { ROLE_MAP, REGION_MAP, resolveModemPresetValue, UNKNOWN_MODEM_PRESET } from './configuration/constants';
 import SectionNav from './SectionNav';
+import sectionNavLayout from './SectionNav.module.css';
 import { configurationNavItems } from './search/configSections';
 import styles from './ConfigurationTab.module.css';
 import { rebootExpectation, type ConfigSaveSection } from '../utils/configRebootRules';
@@ -2181,10 +2182,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
     <div className="tab-content">
       {/* Picker + form share one flex row on a landscape phone (#5069): the
           picker becomes a left rail so the form keeps the full usable height. */}
-      <div className={styles.configShell}>
+      <div className={sectionNavLayout.shell}>
       {!isLoading && (
       <SectionNav
-        className={styles.configNav}
         searchable
         searchPlaceholder={t('config_search.filter_configuration', 'Search configuration...')}
         searchLabel={t('config_search.filter_configuration', 'Search configuration...')}
@@ -2194,7 +2194,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       )}
 
       {/* Two-column layout: main content on left, GPIO summary on right */}
-      <div className={styles.configBody} style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+      <div className={sectionNavLayout.body} style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
         {/* Main content column */}
         <div style={{ flex: 1, minWidth: 0 }}>
 

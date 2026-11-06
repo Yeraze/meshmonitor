@@ -1,9 +1,8 @@
 /**
- * Regression tests for the Device-tab config category picker in landscape
- * (#5069).
+ * Regression tests for the SectionNav category picker in landscape.
  *
- * Reported on v4.16.0-rc3: the picker is a sticky wrapping button grid, and the
- * only small-screen treatment for `.section-nav` lives in `App.css` behind
+ * Originally #5069: the Device-tab picker is a sticky wrapping button grid, and
+ * the only small-screen treatment for `.section-nav` lives in `App.css` behind
  * `@media (max-width: 768px)`. A phone in landscape is *wider* than 768px
  * (iPhone 13 -> 844, Pixel 7 -> 915), so that block switched itself off and the
  * desktop wrapping grid stood: 208px of picker inside 302px of usable height,
@@ -11,11 +10,13 @@
  *
  * Same defect class as #5051 / #5053 / #5054 / #5060.
  *
- * The fix turns the picker into a left rail on a landscape phone, so it costs
- * zero pixels on the scarce (vertical) axis. These tests run the real
- * declarations through the shared cascade resolver, because "the rule is in the
- * file" and "the rule wins" are different claims and every bug in this family
- * was the second one failing.
+ * #6211 generalised the fix: the rail moved out of ConfigurationTab.module.css
+ * and into the shared `SectionNav.module.css`, so every picker surface
+ * (Automation, Settings, Notifications, Admin Commands, the MeshCore views)
+ * gets it by wrapping its nav + content in `.shell` / `.body`. These tests run
+ * the real declarations through the shared cascade resolver, because "the rule
+ * is in the file" and "the rule wins" are different claims and every bug in
+ * this family was the second one failing.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -31,17 +32,25 @@ import {
   DESKTOP,
 } from './cssCascadeResolver';
 
-const moduleCss = readFileSync(resolve('src/components/ConfigurationTab.module.css'), 'utf-8');
+// The rail now lives with the component.
+const moduleCss = readFileSync(resolve('src/components/SectionNav.module.css'), 'utf-8');
 const resolveModule = createResolver(moduleCss);
-
-const activeCss = readFileSync(resolve('src/components/SectionNav.module.css'), 'utf-8');
-const resolveActive = createResolver(activeCss);
 
 // The shell sheets the rail has to agree with about where the fixed header ends.
 const appCss = readFileSync(resolve('src/App.css'), 'utf-8');
 const resolveApp = createResolver(appCss);
 const nodesCss = readFileSync(resolve('src/styles/nodes.css'), 'utf-8');
 const resolveNodes = createResolver(nodesCss);
+
+/**
+ * The resolver escapes only `.[]\`, so it cannot parse the `:global(...)`
+ * selector the rail uses for the nav column. Pull that rule's body out by hand
+ * instead; its gating lives with `.shell` (same media block), asserted below.
+ */
+const navRuleBody =
+  moduleCss
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .match(/\.shell\s+:global\(\.section-nav\)\s*\{([^}]*)\}/)?.[1] ?? '';
 
 /** Names the custom property a declaration offsets the fixed header by. */
 function headerVarUsedBy(declaration: string | null): string | null {
@@ -54,57 +63,55 @@ const LANDSCAPE_VIEWPORTS: Array<[string, Viewport]> = [
   ['landscape small phone', LANDSCAPE_SMALL_PHONE],
 ];
 
-describe('config picker becomes a left rail in landscape (#5069)', () => {
+describe('the picker becomes a left rail in landscape (#5069/#6211)', () => {
   it.each(LANDSCAPE_VIEWPORTS)('puts picker and form side by side on a %s', (_name, vp) => {
     // The whole fix in one assertion: the picker stops being a block above the
     // form and becomes a column beside it.
-    expect(resolveModule('.configShell', 'display', vp)).toBe('flex');
+    expect(resolveModule('.shell', 'display', vp)).toBe('flex');
     // A stretched flex item cannot stick — without this the rail is pinned to
     // the top of a full-height box and never follows the scroll.
-    expect(resolveModule('.configShell', 'align-items', vp)).toBe('flex-start');
+    expect(resolveModule('.shell', 'align-items', vp)).toBe('flex-start');
   });
 
-  it.each(LANDSCAPE_VIEWPORTS)('gives the rail a fixed narrow width on a %s', (_name, vp) => {
+  it('gives the rail a fixed narrow width', () => {
     // 160px of the abundant axis. At 844px wide that leaves ~660px for the
     // form — more than the desktop content column ever uses.
-    expect(resolveModule('.configNav.configNav', 'width', vp)).toBe('160px');
-    expect(resolveModule('.configNav.configNav', 'flex', vp)).toBe('0 0 160px');
-    expect(resolveModule('.configNav.configNav', 'flex-direction', vp)).toBe('column');
+    expect(navRuleBody).toMatch(/\bwidth:\s*160px/);
+    expect(navRuleBody).toMatch(/\bflex:\s*0 0 160px/);
+    expect(navRuleBody).toMatch(/\bflex-direction:\s*column/);
   });
 
-  it.each(LANDSCAPE_VIEWPORTS)('lets the rail scroll itself on a %s', (_name, vp) => {
+  it('lets the rail scroll itself', () => {
     // With 28 categories the rail overflows. It must scroll independently —
     // a rail that grows the page is just the old grid rotated.
-    expect(resolveModule('.configNav.configNav', 'overflow-y', vp)).toBe('auto');
-    expect(resolveModule('.configNav.configNav', 'overflow-x', vp)).toBe('hidden');
+    expect(navRuleBody).toMatch(/\boverflow-y:\s*auto/);
+    expect(navRuleBody).toMatch(/\boverflow-x:\s*hidden/);
     // Derived from the shell's own variables, never a magic pixel count, so it
     // stays correct if the header or bottom bar is re-measured (#5070/#5053).
-    expect(resolveModule('.configNav.configNav', 'max-height', vp)).toBe(
-      'calc(100dvh - var(--app-header-height) - var(--app-nav-bar-height) - 0.5rem)'
+    expect(navRuleBody).toContain(
+      'max-height: calc(100dvh - var(--app-header-height) - var(--app-nav-bar-height) - 0.5rem)'
     );
   });
 
   it.each(LANDSCAPE_VIEWPORTS)('lets the form take the remaining width on a %s', (_name, vp) => {
-    expect(resolveModule('.configBody', 'flex', vp)).toBe('1 1 auto');
+    expect(resolveModule('.body', 'flex', vp)).toBe('1 1 auto');
     // Without min-width:0 a wide child (the channel table) would refuse to
     // shrink and push the rail off screen.
-    expect(resolveModule('.configBody', 'min-width', vp)).toBe('0');
+    expect(resolveModule('.body', 'min-width', vp)).toBe('0');
   });
 
   it('leaves portrait alone', () => {
     // 160px out of a 390px-wide phone is not spare width. Portrait keeps the
     // App.css chip row, so every rail declaration must resolve to nothing.
-    expect(resolveModule('.configShell', 'display', PORTRAIT_PHONE)).toBeNull();
-    expect(resolveModule('.configNav.configNav', 'width', PORTRAIT_PHONE)).toBeNull();
-    expect(resolveModule('.configBody', 'flex', PORTRAIT_PHONE)).toBeNull();
+    expect(resolveModule('.shell', 'display', PORTRAIT_PHONE)).toBeNull();
+    expect(resolveModule('.body', 'flex', PORTRAIT_PHONE)).toBeNull();
   });
 
   it('leaves desktop alone', () => {
     // Desktop is tall enough that the wrapping grid costs nothing worth
     // reclaiming, and the two-column GPIO layout already owns the width.
-    expect(resolveModule('.configShell', 'display', DESKTOP)).toBeNull();
-    expect(resolveModule('.configNav.configNav', 'width', DESKTOP)).toBeNull();
-    expect(resolveModule('.configBody', 'flex', DESKTOP)).toBeNull();
+    expect(resolveModule('.shell', 'display', DESKTOP)).toBeNull();
+    expect(resolveModule('.body', 'flex', DESKTOP)).toBeNull();
   });
 
   it('is gated on the landscape arm only, never on max-width alone', () => {
@@ -125,17 +132,13 @@ describe('config picker becomes a left rail in landscape (#5069)', () => {
     // An iPhone SE rotated (667x375) is narrow AND short, so App.css's
     // `.section-nav { flex-wrap: nowrap; overflow-x: auto }` also applies.
     // Source order across two sheets is not something this component controls,
-    // so the rail wins on specificity instead: `.configNav.configNav` is 0,2,0
-    // against `.section-nav`'s 0,1,0. If someone un-doubles the class, the
-    // small landscape phone silently reverts to a chip row.
+    // so the rail wins on specificity instead: `.shell :global(.section-nav)`
+    // is 0,2,0 against `.section-nav`'s 0,1,0. If someone drops the `.shell`
+    // scope, the small landscape phone silently reverts to a chip row.
     expect(mediaMatches('(max-width: 768px)', LANDSCAPE_SMALL_PHONE)).toBe(true);
-    expect(moduleCss).toContain('.configNav.configNav');
-    expect(resolveModule('.configNav.configNav', 'flex-wrap', LANDSCAPE_SMALL_PHONE)).toBe(
-      'nowrap'
-    );
-    expect(resolveModule('.configNav.configNav', 'flex-direction', LANDSCAPE_SMALL_PHONE)).toBe(
-      'column'
-    );
+    expect(moduleCss).toContain('.shell :global(.section-nav)');
+    expect(navRuleBody).toMatch(/\bflex-wrap:\s*nowrap/);
+    expect(navRuleBody).toMatch(/\bflex-direction:\s*column/);
   });
 });
 
@@ -144,31 +147,20 @@ describe('config picker becomes a left rail in landscape (#5069)', () => {
  * header" question — the same one `.app-main`, `.nodes-split-view` and the
  * banner stack ask, and the one #5070 exists to answer once.
  *
- * #5069 shipped these two declarations against `--header-height`, the DESIGN
- * height of the header's control strip. In landscape that constant is 40px
- * while the bar actually renders 57-60px, because AppHeader.css's compaction
- * block is gated on `max-width: 768px` and a rotated phone is wider than that.
- * Measured on the real page at 852x393: the rail stuck at 44px against a header
- * bottom of 57px, burying its first 13px and the top of the first chip.
- *
- * These assert the RELATIONSHIP rather than a pixel: whatever variable the rest
- * of the shell offsets the header by, the rail uses the same one. A literal
- * `60px` would be wrong the moment the header's contents change — and they do,
- * measurably: the bar is 57px with a user menu and 60px with a Login button.
+ * #6211 deliberately does NOT re-answer it in the rail: the rail reshapes the
+ * nav but leaves `top` to the base `.section-nav` rule in App.css, which
+ * already parks below the fixed header via `--app-header-height`. (The MeshCore
+ * pane views keep their own pane-relative `top` from MeshCoreSectionNav.) So
+ * the #5070 guarantee is pinned at its real source — the base rule — and the
+ * rail is pinned to not override it.
  */
 describe('the sticky rail parks below the whole header, not the constant (#5070)', () => {
-  it.each(LANDSCAPE_VIEWPORTS)('offsets `top` by the real header height on a %s', (_name, vp) => {
-    expect(headerVarUsedBy(resolveModule('.configNav.configNav', 'top', vp))).toBe(
-      '--app-header-height'
-    );
+  it('does not set its own `top` — it inherits the base rule', () => {
+    expect(navRuleBody).not.toMatch(/\btop:/);
   });
 
-  it.each(LANDSCAPE_VIEWPORTS)('subtracts the real header height too on a %s', (_name, vp) => {
-    // Same question asked downward: under-counting the bar runs the rail's own
-    // scroll area past the bottom of the screen.
-    expect(headerVarUsedBy(resolveModule('.configNav.configNav', 'max-height', vp))).toBe(
-      '--app-header-height'
-    );
+  it.each(LANDSCAPE_VIEWPORTS)('the base nav parks below the real header on a %s', (_name, vp) => {
+    expect(headerVarUsedBy(resolveApp('.section-nav', 'top', vp))).toBe('--app-header-height');
   });
 
   it.each(LANDSCAPE_VIEWPORTS)('agrees with the rest of the shell on a %s', (_name, vp) => {
@@ -178,16 +170,24 @@ describe('the sticky rail parks below the whole header, not the constant (#5070)
     const shellVar = headerVarUsedBy(resolveApp('.app-main', 'padding-top', vp));
     expect(shellVar).toBe('--app-header-height');
     expect(headerVarUsedBy(resolveNodes('.nodes-split-view', 'top', vp))).toBe(shellVar);
-    expect(headerVarUsedBy(resolveModule('.configNav.configNav', 'top', vp))).toBe(shellVar);
+    expect(headerVarUsedBy(resolveApp('.section-nav', 'top', vp))).toBe(shellVar);
+  });
+
+  it('offsets the rail height by the real header height too', () => {
+    // Same question asked downward: under-counting the bar runs the rail's own
+    // scroll area past the bottom of the screen.
+    expect(headerVarUsedBy(navRuleBody.match(/max-height:\s*([^;]+)/)?.[1] ?? null)).toBe(
+      '--app-header-height'
+    );
   });
 
   it('does not disturb portrait or desktop, where the rail does not exist', () => {
-    // #5069 verified both; this pins that #5070 changed neither. The rail
-    // declarations resolve to nothing outside landscape, so the App.css chip
-    // row keeps owning the surface — and it offsets by the same variable.
+    // The rail declarations resolve to nothing outside landscape, so the
+    // App.css chip row keeps owning the surface — and it offsets by the same
+    // variable.
     for (const vp of [PORTRAIT_PHONE, DESKTOP]) {
-      expect(resolveModule('.configNav.configNav', 'top', vp)).toBeNull();
-      expect(resolveModule('.configNav.configNav', 'max-height', vp)).toBeNull();
+      expect(resolveModule('.shell', 'display', vp)).toBeNull();
+      expect(resolveModule('.body', 'flex', vp)).toBeNull();
       expect(headerVarUsedBy(resolveApp('.section-nav', 'top', vp))).toBe('--app-header-height');
     }
   });
@@ -198,12 +198,12 @@ describe('selected category stays visible (#5069)', () => {
     // Unconditional on purpose: a scrolling picker needs the highlight, and a
     // static one is no worse for having it.
     for (const vp of [PORTRAIT_PHONE, LANDSCAPE_PHONE, DESKTOP]) {
-      expect(resolveActive('.active.active', 'background', vp)).toBe('var(--color-accent)');
-      expect(resolveActive('.active.active', 'color', vp)).toBe('var(--color-accent-text)');
+      expect(resolveModule('.active.active', 'background', vp)).toBe('var(--color-accent)');
+      expect(resolveModule('.active.active', 'color', vp)).toBe('var(--color-accent-text)');
     }
   });
 
   it('doubles the class so it beats .section-nav-item in App.css', () => {
-    expect(activeCss).toContain('.active.active');
+    expect(moduleCss).toContain('.active.active');
   });
 });

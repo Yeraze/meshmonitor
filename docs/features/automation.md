@@ -1629,7 +1629,7 @@ Forwarding to a channel broadcasts to everyone on that channel, and every hop re
 
 ### Limitations
 
-- **Same source only.** A rule forwards within the source that received the message. It cannot forward from one source to another (for example, from a MeshCore source to a Meshtastic source). Use the [Automation Engine](/features/automation-engine) for cross-source work.
+- **Same source only.** A rule forwards within the source that received the message. It cannot forward from one source to another (for example, from a MeshCore source to a Meshtastic source, or to an LXMF destination on a Reticulum source). Use the [Automation Engine](/features/automation-engine) for cross-source work; see the [Meshtastic ↔ MeshCore bridge](/features/automation-engine#recipe-mt-mc-bridge) and [Meshtastic ↔ Reticulum DM relay](/features/automation-engine#recipe-mt-ret-relay) recipes.
 - **MeshCore channel messages carry no sender key.** On MeshCore, a rule with **Only from sender** set can match DMs, but never channel messages.
 - **MeshCore channel targets** do not use the automatic re-send that other MeshCore automations can use for missed channel sends.
 

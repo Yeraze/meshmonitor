@@ -8,8 +8,13 @@ export type MeshCoreResendErrorCode =
   | 'MESSAGE_NOT_FOUND'
   | 'NOT_OWN_MESSAGE'
   | 'NOT_CHANNEL_MESSAGE'
+  // #6194: a send that is neither a channel message nor a resendable DM
+  // (e.g. a room post or a legacy row with no recipient).
+  | 'NOT_RESENDABLE'
   | 'RESEND_UNAVAILABLE'
   | 'ALREADY_HEARD'
+  // #6194: a DM the recipient's radio already acknowledged (delivered).
+  | 'ALREADY_DELIVERED'
   | 'RESEND_TOO_OLD'
   | 'RESEND_LIMIT'
   | 'RESEND_COOLDOWN'
@@ -22,8 +27,10 @@ export const MESHCORE_RESEND_ERROR_STATUS: Record<MeshCoreResendErrorCode, numbe
   MESSAGE_NOT_FOUND: 404,
   NOT_OWN_MESSAGE: 400,
   NOT_CHANNEL_MESSAGE: 400,
+  NOT_RESENDABLE: 400,
   RESEND_UNAVAILABLE: 409,
   ALREADY_HEARD: 409,
+  ALREADY_DELIVERED: 409,
   RESEND_TOO_OLD: 409,
   RESEND_LIMIT: 429,
   RESEND_COOLDOWN: 429,

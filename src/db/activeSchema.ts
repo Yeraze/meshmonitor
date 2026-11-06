@@ -241,6 +241,9 @@ import {
   meshcoreObserverKeysSqlite, meshcoreObserverKeysPostgres, meshcoreObserverKeysMysql,
 } from './schema/meshcoreObserverKeys.js';
 import {
+  meshcoreSourcePkiKeysSqlite, meshcoreSourcePkiKeysPostgres, meshcoreSourcePkiKeysMysql,
+} from './schema/meshcoreSourcePkiKeys.js';
+import {
   meshcoreObserverCredentialsSqlite, meshcoreObserverCredentialsPostgres, meshcoreObserverCredentialsMysql,
 } from './schema/meshcoreObserverCredentials.js';
 import {
@@ -458,6 +461,10 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4457 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   meshcoreObserverKeys: any;
 
+  // Per-source MeshCore Companion device identity private keys (issue #6195)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6195 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  meshcoreSourcePkiKeys: any;
+
   // Per-source MeshCore Analyzer Observer static MQTT credentials (issue #4595)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4595 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   meshcoreObserverCredentials: any;
@@ -579,6 +586,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
     sourcePkiKeys: sourcePkiKeysSqlite,
     meshcoreObserverKeys: meshcoreObserverKeysSqlite,
+    meshcoreSourcePkiKeys: meshcoreSourcePkiKeysSqlite,
     meshcoreObserverCredentials: meshcoreObserverCredentialsSqlite,
     deadDropMessages: deadDropMessagesSqlite,
     atakContacts: atakContactsSqlite,
@@ -673,6 +681,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
     sourcePkiKeys: sourcePkiKeysPostgres,
     meshcoreObserverKeys: meshcoreObserverKeysPostgres,
+    meshcoreSourcePkiKeys: meshcoreSourcePkiKeysPostgres,
     meshcoreObserverCredentials: meshcoreObserverCredentialsPostgres,
     deadDropMessages: deadDropMessagesPostgres,
     atakContacts: atakContactsPostgres,
@@ -767,6 +776,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
     sourcePkiKeys: sourcePkiKeysMysql,
     meshcoreObserverKeys: meshcoreObserverKeysMysql,
+    meshcoreSourcePkiKeys: meshcoreSourcePkiKeysMysql,
     meshcoreObserverCredentials: meshcoreObserverCredentialsMysql,
     deadDropMessages: deadDropMessagesMysql,
     atakContacts: atakContactsMysql,

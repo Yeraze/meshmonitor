@@ -4,7 +4,7 @@ import { useMentionAutocomplete } from '../../hooks/useMentionAutocomplete';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
-import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/datetime';
+import { getMessageDateSeparator, shouldShowDateSeparator, formatRelativeTime } from '../../utils/datetime';
 import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
@@ -822,7 +822,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   </span>
                 )}
                 <span className="mc-message-meta">
-                  <span className="mc-message-time">
+                  <span
+                    className="mc-message-time"
+                    title={formatRelativeTime(meshcoreDisplayTimeMs(m), undefined, undefined, true)}
+                  >
                   {formatTime(meshcoreDisplayTimeMs(m))}
                   <MeshCoreClockOffset offsetMs={meshcoreMessageClockOffsetMs(m)} />
                   {/* Our own send's delivery mark (#5682). One selector per
@@ -1007,7 +1010,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   repeaters with ✓/✗ and counts only the green ✓ rows. A channel
                   send is identified by its channel destination (our own key is
                   the sender, so `isChannel` — keyed on the sender — is false). */}
-              {outgoing && (m.toPublicKey?.startsWith('channel-') ?? false) && (
+              {/* #6194: a DM is identified by a real recipient key (not a
+                  channel pseudo-key); it keeps its own ACK status mark above —
+                  both show. Room posts and reactions are excluded. */}
+              {outgoing && !m.reactionEmoji && !!m.toPublicKey && m.messageType !== 'room_post' && (
                 <div className="mc-heard-by-row">
                   <HeardByBubble
                     heardBy={m.heardBy}

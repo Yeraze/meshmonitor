@@ -166,6 +166,10 @@ export const TABLE_ORDER = [
   // brokers that don't verify the signed token. Same one-row-per-source shape
   // as meshcore_observer_keys above.
   'meshcore_observer_credentials',
+  // 6195: per-source encrypted Ed25519 device identity private key for MeshCore
+  // Companion sources, used for server-side DM decryption (#6194 echo match).
+  // Same one-row-per-source shape as meshcore_observer_keys above.
+  'meshcore_source_pki_keys',
   // per-source async message store (Dead Drop / Mailbox)
   'dead_drop_messages',
   // 3653: global Automation Engine tables. No sourceId / no FK to users; the

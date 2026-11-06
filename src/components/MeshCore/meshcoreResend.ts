@@ -1,10 +1,11 @@
 /**
  * When the MeshCore message stream offers "Resend" on one of our channel
- * messages (#5512). Mirrors the server's checks in
- * MeshCoreManager.resendChannelMessage, which stays the authority: the UI only
- * hides the button when the server would refuse anyway.
+ * messages — and, since #6194, our direct messages too. Mirrors the server's
+ * checks in MeshCoreManager.resendChannelMessage, which stays the authority: the
+ * UI only hides the button when the server would refuse anyway.
  */
 import type { MeshCoreMessage } from './hooks/useMeshCore';
+import { getMeshCoreDirectSendState } from '../../utils/deliveryDiagnostics/status';
 import {
   requiredRepeatersHeard,
   type RepeaterContactLike,
@@ -33,19 +34,30 @@ export const RESEND_COOLDOWN_MS = 30_000;
 export const RESEND_MAX_AGE_MS = 60 * 60 * 1000;
 
 export type ResendAvailability =
-  /** Never resendable (received, DM, heard, capped, too old, no stored timestamp). */
+  /** Never resendable (received, heard, delivered, capped, too old, no timestamp). */
   | { kind: 'never' }
   /** Resendable later: auto-retry pending or cooldown running. */
   | { kind: 'wait' }
   /** Resendable now. */
   | { kind: 'ready' };
 
-/** Our own channel send that carries a stored wire timestamp. */
-function isOwnChannelSend(m: MeshCoreMessage, selfPublicKey: string | undefined): boolean {
-  if (m.reactionEmoji) return false;
-  if (!selfPublicKey || m.fromPublicKey !== selfPublicKey) return false;
-  if (!m.toPublicKey || !m.toPublicKey.startsWith('channel-')) return false;
-  return typeof m.senderTimestamp === 'number';
+/**
+ * Our own send that carries a stored wire timestamp and is resendable in kind:
+ * a channel send (#5512) or a direct message (#6194). Room posts and reactions
+ * are never resendable. Returns the kind, or null when not ours/not resendable.
+ */
+function ownResendableKind(
+  m: MeshCoreMessage,
+  selfPublicKey: string | undefined,
+): 'channel' | 'dm' | null {
+  if (m.reactionEmoji) return null;
+  if (!selfPublicKey || m.fromPublicKey !== selfPublicKey) return null;
+  if (typeof m.senderTimestamp !== 'number') return null;
+  if (!m.toPublicKey) return null;
+  if (m.toPublicKey.startsWith('channel-')) return 'channel';
+  // A DM to a real recipient; a room post is excluded (#6194).
+  if (m.messageType === 'room_post') return null;
+  return 'dm';
 }
 
 export function resendAvailability(
@@ -54,7 +66,15 @@ export function resendAvailability(
   now: number,
   opts?: ResendAvailabilityOpts,
 ): ResendAvailability {
-  if (!isOwnChannelSend(m, selfPublicKey)) return { kind: 'never' };
+  const sendKind = ownResendableKind(m, selfPublicKey);
+  if (!sendKind) return { kind: 'never' };
+  // #6194: a DM the recipient's radio acknowledged (ACK / SendConfirmed) is
+  // delivered — never offer resend, regardless of the heard-by gate. Channel
+  // sends have no ack, so this only suppresses DMs.
+  if (sendKind === 'dm') {
+    const direct = getMeshCoreDirectSendState(m, selfPublicKey);
+    if (direct?.state === 'delivered') return { kind: 'never' };
+  }
   // #6178 → #6193: with a Required Repeaters list set, the send stops being
   // resendable only once the ANY/ALL gate is satisfied (conservative
   // unique-prefix match per key); an empty list keeps the default "heard by any
