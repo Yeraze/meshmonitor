@@ -31,9 +31,9 @@ import { MESHCORE_SECRET_BYTES } from '../../utils/meshcoreHelpers.js';
 /** Bytes of channel_hash prefixing a GRP_TXT payload (PATH_HASH_SIZE = 1). */
 const CHANNEL_HASH_SIZE = 1;
 /** Bytes of MAC (CIPHER_MAC_SIZE = 2). */
-const CIPHER_MAC_SIZE = 2;
+export const CIPHER_MAC_SIZE = 2;
 /** AES block size — the firmware zero-pads ciphertext to a multiple of this. */
-const AES_BLOCK_SIZE = 16;
+export const AES_BLOCK_SIZE = 16;
 /** Plaintext header: timestamp(4 LE) + flags(1). */
 const GROUP_TEXT_HEADER_SIZE = 5;
 /**
@@ -100,10 +100,13 @@ export function deriveMeshCoreChannelHash(secret: Uint8Array): number {
 }
 
 /**
- * Split a channel secret into the AES key (first 16 bytes) and the HMAC key
- * (the secret zero-padded to 32 bytes). Returns null for a too-short secret.
+ * Split a MeshCore symmetric secret into the AES key (first 16 bytes) and the
+ * HMAC key (the secret zero-padded to 32 bytes). Returns null for a too-short
+ * secret. Shared by the group-echo path and the DM-echo path (#6195): the
+ * `encryptThenMAC` scheme is identical, only the secret's origin differs (a
+ * channel PSK vs an X25519 DM shared secret).
  */
-function secretToKeys(secret: Uint8Array): { aesKey: Buffer; hmacKey: Buffer } | null {
+export function secretToKeys(secret: Uint8Array): { aesKey: Buffer; hmacKey: Buffer } | null {
   if (secret.length < MESHCORE_SECRET_BYTES) return null;
   const aesKey = Buffer.from(secret.subarray(0, MESHCORE_SECRET_BYTES));
   const hmacKey = Buffer.alloc(SECRET_BUFFER_SIZE);

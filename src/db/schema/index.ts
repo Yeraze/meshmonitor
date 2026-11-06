@@ -117,6 +117,9 @@ export * from './sourcePkiKeys.js';
 export * from './meshcoreObserverKeys.js';
 export * from './meshcoreObserverCredentials.js';
 
+// Per-source MeshCore Companion device identity private keys (issue #6195)
+export * from './meshcoreSourcePkiKeys.js';
+
 // Dead Drop / Mailbox — async per-source message store
 export * from './deadDrop.js';
 
