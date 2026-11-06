@@ -20,6 +20,7 @@ import { UiIcon } from '../icons';
 import SectionNav from '../SectionNav';
 import { meshcoreAutomationNavItems } from '../search/configSections';
 import navStyles from './MeshCoreSectionNav.module.css';
+import sectionNavLayout from '../SectionNav.module.css';
 
 interface MeshCoreAutomationsViewProps {
   baseUrl: string;
@@ -167,6 +168,9 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         {t('meshcore.automation.title', 'Automations')}
       </h1>
 
+      {/* Picker + content share one flex row on a landscape phone (#6211): the
+          picker becomes a left rail so the content keeps the full usable height. */}
+      <div className={sectionNavLayout.shell}>
       <SectionNav
         className={navStyles.nav}
         searchable
@@ -175,6 +179,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
         items={meshcoreAutomationNavItems(t, { includeAutoPing: isCompanionSource })}
       />
+      <div className={sectionNavLayout.body}>
 
       {/* Single source-of-truth token reference for the whole page. */}
       <AutomationTokenReference
@@ -384,6 +389,8 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       {/* Timer Triggers Section */}
       <div id="meshcore-automation-timer-triggers">
         <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      </div>
+      </div>
       </div>
     </div>
     </NumberInputScope>

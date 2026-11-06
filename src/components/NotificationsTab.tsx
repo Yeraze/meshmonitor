@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
 import SectionNav from './SectionNav';
+import sectionNavLayout from './SectionNav.module.css';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
@@ -678,6 +679,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     <div className={`tab-content ${styles.root}`}>
       <h2>{t('notifications.title')}</h2>
 
+      {/* Picker + settings share one flex row on a landscape phone (#6211): the
+          picker becomes a left rail so the form keeps the full usable height. */}
+      <div className={sectionNavLayout.shell}>
       <SectionNav
         searchable
         searchPlaceholder={t('config_search.filter_notifications', 'Search notification settings...')}
@@ -685,6 +689,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
         items={notificationsNavItems(t)}
       />
+      <div className={sectionNavLayout.body}>
 
       {usingDefaults && currentSourceId && (
         <p
@@ -1811,6 +1816,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
       </div>
       )}
+      </div>
+      </div>
     </div>
     </NumberInputScope>
   );
