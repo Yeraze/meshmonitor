@@ -1082,6 +1082,71 @@ test channel first, and watch the destination mesh for a few minutes before trus
 (a busier channel, a second channel pair) only deliberately, one step at a time — not by pointing an
 existing bridge pair at a wider channel filter and hoping.
 
+## Recipe — Meshtastic ↔ Reticulum DM relay {#recipe-mt-ret-relay}
+
+MeshMonitor can relay **direct messages** between one Meshtastic node and one LXMF destination on a
+Reticulum source — for example a handheld on your mesh talking to an LXMF bot that only exists on
+Reticulum. Like the [Meshtastic ↔ MeshCore bridge](#recipe-mt-mc-bridge) it is a matched pair of
+Automation Engine rules, not a native bridge, and it needs the Reticulum send support from #6143
+(v4.17.2 or later). The [Forwarding](/features/automation#forwarding) section cannot do this: it
+forwards within one source only.
+
+**Text only.** LXMF titles, fields and attachments are not relayed, and nothing is relayed to or
+from a channel: LXMF has no channels, and a Meshtastic channel post was never meant for one
+destination.
+
+### Manual construction
+
+**Automation A — "MT → RET Relay"**
+
+**WHEN** *A message is received*
+- **Rate limit:** `5` actions / `60` seconds. Set via the automation's JSON today (see
+  [Rate limit](#rate-limit-flood-ceiling)).
+- Leave **From** empty on the trigger and filter the sender with a condition instead — on a
+  Reticulum source the trigger's **From** field never matches, so keep both rules the same shape.
+
+**RULE** (all conditions must match)
+1. **Source is one of…:** the Meshtastic source.
+2. **Number comparison:** `isDM == 1` — direct messages to your node only.
+3. **Text comparison:** **Sender node id** `equals` the handheld's node id, e.g. `!a5d0d27c`. `equals` is an
+   exact match, so type node ids and LXMF hashes in lowercase, as MeshMonitor stores them.
+4. **Text comparison:** Message text **doesn't contain** `[fwd]`.
+
+**THEN**
+- `Send a message` → **Send via sources:** the Reticulum source. **DM to node #:** the LXMF
+  destination hash (32 hex characters). Body:
+
+  ```
+  [fwd] {{ trigger.fromName }}: {{ trigger.text }}
+  ```
+
+**Automation B — "RET → MT Relay"** is the mirror image: **Source is one of…** the Reticulum source,
+**Sender node id** `equals` the LXMF hash, the same `[fwd]` guard, and `Send a message` via the
+Meshtastic source with **DM to node #** set to the handheld's node **number** (decimal, so
+`!a5d0d27c` is `2781926012`). Skip the `isDM` condition on this side — every LXMF message is a DM.
+Body:
+
+  ```
+  [fwd] {{ trigger.fromName }}: {{ trigger.text }}
+  ```
+
+### Before you enable it
+
+- **The two sides must know each other.** The LXMF destination only receives from MeshMonitor's own
+  LXMF identity, and most LXMF clients and bots ignore a sender they have never seen announce. Use
+  **Announce now** on the Reticulum source first, and make sure the destination has announced so
+  MeshMonitor has a path to it.
+- **Keep replies short.** A Meshtastic text message holds about 200 bytes. The Automation Engine
+  sends the body as it is, so a long LXMF reply is not cut down for the radio; the `[fwd] name: `
+  prefix counts too. A bot on the Reticulum side should keep its answers to one packet.
+- **Loop guard.** The `[fwd]` condition on both rules stops a relayed message from being relayed
+  again, the same way the `MT@` / `MC@` tags do in the MeshCore bridge, and MeshMonitor never fires
+  a message trigger for its own sends. The rate limit is the last line of defence. See
+  [flood safety](#flood-safety).
+- **Install disabled, test with one message each way,** then watch the destination for a few
+  minutes before trusting it. **Run now** cannot exercise these rules: its synthetic event has no
+  source, so **Source is one of…** fails. A real message is the only test.
+
 ## Converting Auto-Acknowledge to an automation
 
 The legacy [Auto Acknowledge](/features/automation#auto-acknowledge) feature predates the engine and
