@@ -37,6 +37,9 @@ import styles from './MeshCoreChannelReorderList.module.css';
 export interface ReorderChannel<K extends OrderKey = number> {
   id: K;
   label: string;
+  /** Optional leading kind marker rendered before the label (#6228). MeshCore
+   *  channels pass a `MeshCoreChannelMarker`; rooms leave it out. */
+  marker?: React.ReactNode;
 }
 
 interface MeshCoreChannelReorderListProps<K extends OrderKey> {
@@ -86,7 +89,7 @@ const SortableRow: React.FC<SortableRowProps> = ({ channel, index, count, onMove
       >
         <UiIcon name="dragHandle" size={18} />
       </span>
-      <span className={styles.name}>{channel.label}</span>
+      <span className={styles.name}>{channel.marker}{channel.label}</span>
       <button
         type="button"
         className={styles.move}
