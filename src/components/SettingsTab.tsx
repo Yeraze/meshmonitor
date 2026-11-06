@@ -51,6 +51,7 @@ import { getEffectiveTileset, type Theme, type AppearanceMode, type NodeHopsCalc
 import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
+import sectionNavLayout from './SectionNav.module.css';
 import { GlobalSettingsLink } from './nav/GlobalSettingsLink';
 import {
   GLOBAL_SETTINGS_SECTIONS,
@@ -2011,6 +2012,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <UiIcon name="heart" /> {t('settings.support')}</a>
       </div>
       {mode === 'source' && <GlobalSettingsLink variant="banner" />}
+      {/* Picker + form share one flex row on a landscape phone (#6211): the
+          picker becomes a left rail so the form keeps the full usable height. */}
+      <div className={sectionNavLayout.shell}>
       <SectionNav
         searchable
         searchPlaceholder={t('config_search.filter_settings', 'Search settings...')}
@@ -2027,7 +2031,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           canReadConfiguration,
         })}
       />
-      <div className="settings-content settings-multi-column">
+      <div className={`settings-content settings-multi-column ${sectionNavLayout.body}`}>
         {/* MQTT bridge setup (#5683 follow-up): MeshMonitor's own connection and
             filter settings for the bridge. First, because on a bridge it is the
             setup the rest depends on. It loads and saves through
@@ -4041,6 +4045,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           )}
         </div>}
+      </div>
       </div>
     </div>
     </NumberInputScope>

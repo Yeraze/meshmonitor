@@ -7,6 +7,7 @@ import { useAutomation } from '../contexts/AutomationContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { DeviceInfo, Channel } from '../types/device';
 import SectionNav from './SectionNav';
+import sectionNavLayout from './SectionNav.module.css';
 import { automationNavItems } from './search/configSections';
 import { AutomationTokenReference } from './AutomationTokenReference';
 import { buildMeshtasticTokenGroups } from './meshtasticAutomationTokens';
@@ -127,7 +128,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
 
   return (
     <SaveBarGroup id="automation">
-      <div className="settings-tab">
+      <div className={`settings-tab ${sectionNavLayout.shell}`}>
         <SectionNav
           searchable
           searchPlaceholder={t('config_search.filter_automation', 'Search automations...')}
@@ -135,7 +136,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
           noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
           items={automationNavItems(t)}
         />
-        <div className="settings-content">
+        <div className={`settings-content ${sectionNavLayout.body}`}>
           <AutomationTokenReference
             title={t('automation.tokens.title', 'Available message tokens')}
             intro={t(
