@@ -32,7 +32,7 @@ import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 import { compareMeshCoreMessages } from './messageOrder';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { parseJsonResponse } from '../../utils/parseJsonResponse';
-import { readRequiredRepeaters, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
+import { readRequiredRepeaters, mergeMeshCoreHeardBy, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -480,12 +480,21 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     // Merge the server backlog (full history, #6186) with any live DMs from the
     // shared window (socket pushes land there). Dedupe by id, live copy wins so
     // delivery-status updates show, then sort receipt-time (#5973).
+    // Relay evidence (heardBy, #6194) is monotonic: merge it across whichever
+    // copy wins the dedupe so a confirmation on one copy is never lost when the
+    // other lacks it — mirrors MeshCoreChannelsView's fold (#6212).
     const byId = new Map<string, MeshCoreMessage>();
     if (dmHistoryReady) {
-      for (const m of dmHistory) byId.set(m.id, m);
+      for (const m of dmHistory) {
+        const heardBy = mergeMeshCoreHeardBy(byId.get(m.id)?.heardBy, m.heardBy);
+        byId.set(m.id, heardBy?.length ? { ...m, heardBy } : m);
+      }
     }
     for (const m of messages) {
-      if (matchesPeer(m)) byId.set(m.id, m);
+      if (matchesPeer(m)) {
+        const heardBy = mergeMeshCoreHeardBy(byId.get(m.id)?.heardBy, m.heardBy);
+        byId.set(m.id, heardBy?.length ? { ...m, heardBy } : m);
+      }
     }
     return Array.from(byId.values()).sort(compareMeshCoreMessages);
   }, [messages, selected, selfKey, dmHistory, dmHistoryReady]);
