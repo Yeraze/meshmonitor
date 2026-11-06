@@ -27,6 +27,13 @@
  *    records repeaters and emits `meshcore:channel-heard`.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ed25519 } from '@noble/curves/ed25519';
+import { sha512 } from '@noble/hashes/sha2';
+import {
+  deriveMeshCoreDmSecret,
+  tryDecodeDmTextPayload,
+  encodeDmTextPayload,
+} from './utils/meshcoreDmCrypto.js';
 
 const recordHeardRepeater = vi.fn();
 const getHeardRepeatersForMessage = vi.fn();
@@ -202,6 +209,139 @@ describe('MeshCoreManager.findDmEchoMatch (pure, 1-byte prefix + window)', () =>
     const a2 = MeshCoreManager.findDmEchoMatch(viaA, p, now, WINDOW, opts);
     expect(a!.echoKey).not.toBe(b!.echoKey);
     expect(a2!.echoKey).toBe(a!.echoKey);
+  });
+});
+
+// ── #6195: device-key-backed disambiguation of colliding DM echoes ──────────
+
+const L = ed25519.CURVE.n;
+function numLE(b: Uint8Array): bigint {
+  let r = 0n;
+  for (let i = b.length - 1; i >= 0; i--) r = (r << 8n) | BigInt(b[i]);
+  return r;
+}
+/** orlp-style keypair from a deterministic seed byte. */
+function orlpKeypair(seedByte: number): { privHex: string; pubHex: string } {
+  const h = Buffer.from(sha512(Buffer.from([seedByte, seedByte ^ 0x5a, seedByte ^ 0xa5])));
+  h[0] &= 248;
+  h[31] &= 127;
+  h[31] |= 64;
+  const scalar = h.subarray(0, 32);
+  const priv64 = Buffer.concat([scalar, h.subarray(32, 64)]);
+  const pub = ed25519.Point.BASE.multiply(numLE(scalar) % L).toBytes();
+  return { privHex: priv64.toString('hex'), pubHex: Buffer.from(pub).toString('hex') };
+}
+/** Find two keypairs whose public keys share a first byte (collide on destHash). */
+function collidingPeers(): { peer1: ReturnType<typeof orlpKeypair>; peer2: ReturnType<typeof orlpKeypair> } {
+  const byPrefix = new Map<string, ReturnType<typeof orlpKeypair>>();
+  for (let i = 0; i < 5000; i++) {
+    const kp = orlpKeypair(i % 256);
+    // vary the seed fully across i so prefixes differ
+    const kp2 = orlpKeypair((i * 131 + 17) & 0xff);
+    for (const k of [kp, kp2]) {
+      const prefix = k.pubHex.slice(0, 2);
+      const prev = byPrefix.get(prefix);
+      if (prev && prev.pubHex !== k.pubHex) return { peer1: prev, peer2: k };
+      byPrefix.set(prefix, k);
+    }
+  }
+  throw new Error('no colliding peers found (unexpected)');
+}
+
+describe('MeshCoreManager.findDmEchoMatch — #6195 device-key disambiguation', () => {
+  const WINDOW = 30_000;
+  const now = 1_000_000;
+
+  function dmEchoWithCipher(destHash: string, srcHash: string, cipherHex: string): Record<string, unknown> {
+    return {
+      payload_type: TXT_MSG,
+      path_hops: ['a3', '7f'],
+      raw_hex: buildDmOtaFrame(destHash, srcHash, cipherHex, ['a3', '7f']),
+    };
+  }
+
+  it('breaks a 1-byte-prefix tie by decrypting the echo to the true recipient', () => {
+    const self = orlpKeypair(200);
+    const { peer1, peer2 } = collidingPeers();
+    const destHash = peer1.pubHex.slice(0, 2);
+    const srcHash = self.pubHex.slice(0, 2);
+
+    // The echo was a DM WE sent to peer1: ciphertext = encryptThenMAC under the
+    // ECDH(self, peer1) secret.
+    const shared1 = deriveMeshCoreDmSecret(self.privHex, peer1.pubHex)!;
+    const cipherHex = encodeDmTextPayload(shared1, 'ping peer1', 1700);
+
+    const pendingMap = new Map([
+      ['dm-1', { toPublicKey: peer1.pubHex, sentAt: now - 1000, senderTimestamp: 1700, text: 'ping peer1' }],
+      ['dm-2', { toPublicKey: peer2.pubHex, sentAt: now - 2000, senderTimestamp: 1701, text: 'ping peer2' }],
+    ]);
+    const decryptDm = (enc: string, peerPub: string) => {
+      const s = deriveMeshCoreDmSecret(self.privHex, peerPub);
+      return s ? tryDecodeDmTextPayload(enc, s) : null;
+    };
+
+    const match = MeshCoreManager.findDmEchoMatch(
+      dmEchoWithCipher(destHash, srcHash, cipherHex),
+      pendingMap,
+      now,
+      WINDOW,
+      { selfPublicKey: self.pubHex, decryptDm },
+    );
+    expect(match).not.toBeNull();
+    expect(match!.messageId).toBe('dm-1');
+  });
+
+  it('REGRESSION: the identical collision with NO decryptDm still bails (null), unchanged from #6194', () => {
+    const self = orlpKeypair(200);
+    const { peer1, peer2 } = collidingPeers();
+    const destHash = peer1.pubHex.slice(0, 2);
+    const srcHash = self.pubHex.slice(0, 2);
+    const shared1 = deriveMeshCoreDmSecret(self.privHex, peer1.pubHex)!;
+    const cipherHex = encodeDmTextPayload(shared1, 'ping peer1', 1700);
+
+    const pendingMap = new Map([
+      ['dm-1', { toPublicKey: peer1.pubHex, sentAt: now - 1000, senderTimestamp: 1700, text: 'ping peer1' }],
+      ['dm-2', { toPublicKey: peer2.pubHex, sentAt: now - 2000, senderTimestamp: 1701, text: 'ping peer2' }],
+    ]);
+
+    // No decryptDm → identical behaviour to the #6194 heuristic: skip on ambiguity.
+    const match = MeshCoreManager.findDmEchoMatch(
+      dmEchoWithCipher(destHash, srcHash, cipherHex),
+      pendingMap,
+      now,
+      WINDOW,
+      { selfPublicKey: self.pubHex },
+    );
+    expect(match).toBeNull();
+  });
+
+  it('a single candidate is returned even with decryptDm present (heuristic path unchanged)', () => {
+    const self = orlpKeypair(200);
+    const peer = orlpKeypair(5);
+    const destHash = peer.pubHex.slice(0, 2);
+    const srcHash = self.pubHex.slice(0, 2);
+    const shared = deriveMeshCoreDmSecret(self.privHex, peer.pubHex)!;
+    const cipherHex = encodeDmTextPayload(shared, 'solo', 900);
+
+    const pendingMap = new Map([
+      ['dm-solo', { toPublicKey: peer.pubHex, sentAt: now - 500, senderTimestamp: 900, text: 'solo' }],
+    ]);
+    const decryptDm = vi.fn((enc: string, peerPub: string) => {
+      const s = deriveMeshCoreDmSecret(self.privHex, peerPub);
+      return s ? tryDecodeDmTextPayload(enc, s) : null;
+    });
+
+    const match = MeshCoreManager.findDmEchoMatch(
+      dmEchoWithCipher(destHash, srcHash, cipherHex),
+      pendingMap,
+      now,
+      WINDOW,
+      { selfPublicKey: self.pubHex, decryptDm },
+    );
+    expect(match).not.toBeNull();
+    expect(match!.messageId).toBe('dm-solo');
+    // The single-candidate fast path does not need to decrypt at all.
+    expect(decryptDm).not.toHaveBeenCalled();
   });
 });
 

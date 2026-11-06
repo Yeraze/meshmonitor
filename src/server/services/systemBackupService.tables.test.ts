@@ -158,11 +158,16 @@ describe('SQLite database built by replaying every migration', () => {
 });
 
 describe('the exclusion list is pinned (changing it needs a security review)', () => {
-  it('excludes exactly sessions, push_subscriptions and backup_history', () => {
-    expect(Object.keys(BACKUP_EXCLUDED_TABLES).sort()).toEqual(['backup_history', 'push_subscriptions', 'sessions']);
+  it('excludes exactly sessions, push_subscriptions, backup_history and meshcore_source_pki_keys', () => {
+    expect(Object.keys(BACKUP_EXCLUDED_TABLES).sort()).toEqual([
+      'backup_history',
+      'meshcore_source_pki_keys',
+      'push_subscriptions',
+      'sessions',
+    ]);
   });
 
-  for (const table of ['push_subscriptions', 'sessions', 'backup_history']) {
+  for (const table of ['push_subscriptions', 'sessions', 'backup_history', 'meshcore_source_pki_keys']) {
     it(`MUST NOT back up "${table}" (see MM-SEC-1 footnote 1 / ARCHITECTURE_LESSONS.md)`, () => {
       expect(BACKUP_TABLES).not.toContain(table);
       expect(BACKUP_EXCLUDED_TABLES[table].length).toBeGreaterThan(20);

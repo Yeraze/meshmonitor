@@ -241,6 +241,7 @@ import { migration as automationFireStateMigration, runMigration219Postgres, run
 import { migration as meshcoreTelemetryRetryStateMigration, runMigration220Postgres, runMigration220Mysql } from '../server/migrations/220_add_meshcore_telemetry_retry_state.js';
 import { migration as colorNodesBySourcePrefMigration, runMigration221Postgres, runMigration221Mysql } from '../server/migrations/221_user_map_preferences_color_nodes_by_source.js';
 import { migration as reticulumInterfaceLiveStatsMigration, runMigration222Postgres, runMigration222Mysql } from '../server/migrations/222_add_reticulum_interface_live_stats.js';
+import { migration as meshcoreSourcePkiKeysMigration, runMigration223Postgres, runMigration223Mysql } from '../server/migrations/223_add_meshcore_source_pki_keys.js';
 
 // ============================================================================
 // Registry
@@ -3586,4 +3587,19 @@ registry.register({
   sqlite: (db) => reticulumInterfaceLiveStatsMigration.up(db),
   postgres: (client) => runMigration222Postgres(client),
   mysql: (pool) => runMigration222Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 223: per-source encrypted Ed25519 identity private key for MeshCore
+// Companion sources (#6195). One row per source, auto-captured on connect; used
+// server-side to decrypt our own echoed DMs for exact #6194 heard-by matching.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 223,
+  name: 'add_meshcore_source_pki_keys',
+  settingsKey: 'migration_223_add_meshcore_source_pki_keys',
+  sqlite: (db) => meshcoreSourcePkiKeysMigration.up(db),
+  postgres: (client) => runMigration223Postgres(client),
+  mysql: (pool) => runMigration223Mysql(pool),
 });
