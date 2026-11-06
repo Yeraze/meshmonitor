@@ -199,3 +199,43 @@ export function requiredRepeatersHeard(
   }
   return requiredKeys.some((k) => requiredRepeaterHeard(heardBy, k, repeaters));
 }
+
+// ---------------------------------------------------------------------------
+// Relay observations accumulate (#6193 follow-up)
+//
+// A `meshcore:channel-heard` push lists the repeaters that have relayed a
+// message so far. An HTTP fetch or snapshot load can be captured BEFORE that
+// push arrives, so replacing the row with the fetched copy would erase the
+// confirmation and make the resend (↻) button reappear. Relay evidence is
+// monotonic: merge by path hash, keep a name once learned, keep the strongest
+// SNR and the fewest hops seen.
+// ---------------------------------------------------------------------------
+
+export interface HeardByObservation {
+  hash: string;
+  name?: string | null;
+  snr?: number | null;
+  hops?: number | null;
+}
+
+export function mergeMeshCoreHeardBy<T extends HeardByObservation>(
+  previous: ReadonlyArray<T> | undefined | null,
+  incoming: ReadonlyArray<T> | undefined | null,
+): T[] | undefined {
+  if (!previous?.length) return incoming ? [...incoming] : undefined;
+  if (!incoming?.length) return [...previous];
+  const byHash = new Map(previous.map((relay) => [relay.hash, relay]));
+  for (const relay of incoming) {
+    const old = byHash.get(relay.hash);
+    byHash.set(relay.hash, {
+      ...old,
+      ...relay,
+      name: relay.name ?? old?.name,
+      snr: old?.snr != null && relay.snr != null
+        ? Math.max(old.snr, relay.snr) : relay.snr ?? old?.snr,
+      hops: old?.hops != null && relay.hops != null
+        ? Math.min(old.hops, relay.hops) : relay.hops ?? old?.hops,
+    });
+  }
+  return [...byHash.values()];
+}

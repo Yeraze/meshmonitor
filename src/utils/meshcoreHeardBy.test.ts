@@ -5,6 +5,7 @@ import {
   requiredRepeatersHeard,
   readRequiredRepeaters,
   RELAY_ADV_TYPES,
+  mergeMeshCoreHeardBy,
 } from './meshcoreHeardBy.js';
 
 describe('sortHeardBy (#6000)', () => {
@@ -209,5 +210,40 @@ describe('requiredRepeatersHeard (#6193 ANY/ALL gate)', () => {
     expect(requiredRepeatersHeard([{ hash: 'aabb' }, { hash: '1122' }], [K1, K2], 'all', colliding)).toBe(false);
     // The single-key matcher is the same building block.
     expect(requiredRepeaterHeard([{ hash: 'aabb' }], K1, colliding)).toBe(false);
+  });
+});
+
+describe('mergeMeshCoreHeardBy', () => {
+  it('keeps relay evidence when a stale update has none', () => {
+    const previous = [{ hash: 'ab', name: 'R1', snr: 3, hops: 1 }];
+    expect(mergeMeshCoreHeardBy(previous, undefined)).toEqual(previous);
+    expect(mergeMeshCoreHeardBy(previous, [])).toEqual(previous);
+  });
+
+  it('accumulates new relays and keeps the best SNR / fewest hops', () => {
+    const merged = mergeMeshCoreHeardBy(
+      [{ hash: 'ab', name: 'R1', snr: 3, hops: 2 }],
+      [
+        { hash: 'ab', snr: 5, hops: 1 },
+        { hash: 'cd', name: 'R2', snr: -1, hops: 0 },
+      ],
+    );
+    expect(merged).toEqual([
+      { hash: 'ab', name: 'R1', snr: 5, hops: 1 },
+      { hash: 'cd', name: 'R2', snr: -1, hops: 0 },
+    ]);
+  });
+
+  it('does not invent data when an update has no name/SNR/hops', () => {
+    const merged = mergeMeshCoreHeardBy(
+      [{ hash: 'ab', name: 'R1', snr: 4, hops: 2 }],
+      [{ hash: 'ab' }],
+    );
+    expect(merged).toEqual([{ hash: 'ab', name: 'R1', snr: 4, hops: 2 }]);
+  });
+
+  it('returns undefined when there is nothing to keep', () => {
+    expect(mergeMeshCoreHeardBy(undefined, undefined)).toBeUndefined();
+    expect(mergeMeshCoreHeardBy([], undefined)).toBeUndefined();
   });
 });

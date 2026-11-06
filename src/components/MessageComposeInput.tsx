@@ -100,6 +100,7 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
           placeholder={placeholder}
           className="message-input"
           rows={1}
+          autoCapitalize="sentences"
           disabled={disabled}
           title={title}
           onKeyDown={e => {

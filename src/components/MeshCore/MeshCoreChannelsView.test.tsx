@@ -1644,3 +1644,28 @@ describe('MeshCoreChannelsView — no auto-select + landing pane + click-to-dese
     }
   });
 });
+
+describe('channel relay confirmation in history', () => {
+  it('keeps the history confirmation when the live copy has no heardBy', async () => {
+    const status = makeStatus();
+    const message: MeshCoreMessage = {
+      id: 'relayed-send', fromPublicKey: status.localNode!.publicKey,
+      toPublicKey: 'channel-0', text: 'relay test', timestamp: Date.now() - 60_000,
+      senderTimestamp: Math.floor(Date.now() / 1000) - 60,
+    };
+    csrfFetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/messages/channel/')) {
+        return jsonResponse({ success: true, data: [{ ...message, heardBy: [{ hash: 'ab', name: 'R1', snr: 3 }] }] });
+      }
+      if (url.includes('/messages/counts')) return jsonResponse({ success: true, data: {} });
+      return jsonResponse([{ id: 0, name: 'Public' }]);
+    });
+    render(<MeshCoreChannelsView messages={[message]} contacts={[]} status={status}
+      actions={makeActions({ resendMessage: vi.fn() })} baseUrl="" sourceId="src-relay-test" />);
+    await waitFor(() => expect(screen.getByText('Public')).toBeTruthy());
+    fireEvent.click(screen.getByText('Public'));
+    await waitFor(() => expect(screen.getByText('relay test')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByTitle('Repeaters that relayed this message')).not.toBeNull());
+    expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull();
+  });
+});
