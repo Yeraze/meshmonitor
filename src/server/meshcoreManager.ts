@@ -135,7 +135,7 @@ import type { DbMeshCorePacket, DbMeshCoreNode, MeshCoreKeyAccessFilter } from '
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
-import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
+import { MESHCORE_PAYLOAD_ADVERT, computeMeshCoreHopsAway } from '../utils/coverage.js';
 import {
   ingestAdvertFrame,
   decryptGroupTextFrame,
@@ -698,6 +698,9 @@ export interface MeshCoreNode {
   /** #5553: when the LOCAL repeater's `neighbors` table last listed this node
    *  (ms). Unset = known from a RAW advert only, not a zero-hop neighbour. */
   repeaterNeighborAt?: number;
+  /** #6220: hop count from `meshcore_nodes.path_len` (0 = direct). Unset =
+   *  unknown, e.g. a companion contact on OUT_PATH_UNKNOWN. */
+  pathLen?: number;
   rssi?: number;
   snr?: number;
   batteryMv?: number;
@@ -1539,6 +1542,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private lastRepeaterNeighborsPollAt: number | null = null;
   /** True once a `MESH_PACKET_LOGGING` RAW line has been seen on this connection. */
   private repeaterPacketStreamSeen = false;
+  /** #6220: fewest hops seen per advert packet hash. See `shortestAdvertHops`. */
+  private readonly advertHopsByHash = new Map<string, { hops: number; at: number }>();
+  /** Flood copies of one advert arrive within seconds; this only bounds memory. */
+  private static readonly ADVERT_HOPS_WINDOW_MS = 5 * 60_000;
+  private static readonly ADVERT_HOPS_MAX_ENTRIES = 1024;
   /** Pairs `RAW:` log lines with the `RX` line that follows (MESH_PACKET_LOGGING builds). */
   private readonly repeaterPacketPairer = new RepeaterPacketLinePairer((p) => {
     void this.handleRepeaterRawPacket(p);
@@ -4782,7 +4790,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // #5553 / #5551: adverts and channel text become Nodes and Messages
     // whenever the repeater streams RAW — NOT gated on the packet-log opt-in,
     // which only governs the Packet Monitor rows below.
-    void this.ingestRepeaterFrame(p, frame.payloadType, frame.hopCount, frame.hops);
+    void this.ingestRepeaterFrame(p, frame.payloadType, frame.hopCount, frame.hops, frame.routeType);
     const enumName = (lookup: () => string): string | null => {
       try {
         const name = lookup();
@@ -4843,10 +4851,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     payloadType: number,
     hopCount: number | null | undefined,
     hops: string[] | null | undefined,
+    routeType?: number | null,
   ): Promise<void> {
     try {
       if (payloadType === MESHCORE_PAYLOAD_ADVERT) {
-        await this.ingestRepeaterAdvert(p.rawHex);
+        await this.ingestRepeaterAdvert(p.rawHex, computeMeshCoreHopsAway(routeType, hopCount));
       } else if (payloadType === MESHCORE_PAYLOAD_GRP_TXT) {
         await this.ingestRepeaterGroupText(p, hopCount, hops);
       }
@@ -4872,16 +4881,55 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * SNR/RSSI are not written either: on a repeater source those mean the
    * neighbour-table link, and an advert's RX signal is the LAST hop's, not the
    * sender's.
+   *
+   * The relay count IS ours to record (#6220): `heardHops` is how many hops
+   * the copy we heard took to reach this repeater, stored as `pathLen` — the
+   * same number a companion's firmware learns as `out_path_len` from a flood
+   * advert. See {@link shortestAdvertHops} for repeat copies.
    */
-  private async ingestRepeaterAdvert(rawHex: string): Promise<void> {
+  private async ingestRepeaterAdvert(rawHex: string, heardHops: number | null = null): Promise<void> {
     const now = Date.now();
     const advert = await ingestAdvertFrame(rawHex, this.sourceId, {
       // We heard it just now; the sender's clock may be wrong or unset.
       lastHeardMs: now,
       skipPublicKey: this.repeaterPublicKey,
+      heardHops: this.shortestAdvertHops(rawHex, heardHops, now),
     });
     if (!advert?.publicKey) return;
     await this.emitStoredContact(advert.publicKey);
+  }
+
+  /**
+   * #6220: a logging repeater hears one flood advert several times, once per
+   * route it took, and the later copies are usually the LONGER routes. Every
+   * copy has the same packet hash (the hash leaves the path out), so keep the
+   * fewest hops seen per hash and return a value only for the first copy or a
+   * shorter one; undefined leaves the stored `pathLen` alone. A new advert is
+   * a new hash, so it always writes. In-memory and bounded: losing it on a
+   * restart costs at most one longer-route write.
+   */
+  private shortestAdvertHops(rawHex: string, heardHops: number | null, now: number): number | undefined {
+    if (heardHops === null) return undefined;
+    const hash = meshCorePacketHashOrUndefined(rawHex);
+    if (!hash) return heardHops;
+    const seen = this.advertHopsByHash.get(hash);
+    if (seen && now - seen.at < MeshCoreManager.ADVERT_HOPS_WINDOW_MS) {
+      if (seen.hops <= heardHops) return undefined;
+      seen.hops = heardHops;
+      return heardHops;
+    }
+    this.advertHopsByHash.delete(hash);
+    this.advertHopsByHash.set(hash, { hops: heardHops, at: now });
+    // Insertion order is arrival order: drop expired entries from the front,
+    // then the oldest beyond the cap.
+    for (const [key, entry] of this.advertHopsByHash) {
+      if (
+        now - entry.at < MeshCoreManager.ADVERT_HOPS_WINDOW_MS
+        && this.advertHopsByHash.size <= MeshCoreManager.ADVERT_HOPS_MAX_ENTRIES
+      ) break;
+      this.advertHopsByHash.delete(key);
+    }
+    return heardHops;
   }
 
   /**
@@ -11338,6 +11386,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           radioCr: n.radioCr ?? undefined,
           isFavorite: n.isFavorite ?? false,
           repeaterNeighborAt: n.repeaterNeighborAt ?? undefined,
+          pathLen: n.pathLen ?? undefined,
         });
       }
     } catch (err) {
@@ -11360,6 +11409,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         snr: contact.snr ?? base?.snr,
         latitude: contact.latitude ?? base?.latitude,
         longitude: contact.longitude ?? base?.longitude,
+        // The live contact's route is fresher than the row; its null is the
+        // firmware's OUT_PATH_UNKNOWN, so it clears rather than falls back.
+        pathLen: contact.pathLen === undefined ? base?.pathLen : contact.pathLen ?? undefined,
       });
     }
 

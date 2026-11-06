@@ -422,6 +422,14 @@ export async function ingestAdvertFrame(
      * the marker untouched.
      */
     recordSignature?: boolean;
+    /**
+     * #6220: relays this advert passed through before WE heard it (0 = heard
+     * direct), written to `pathLen`. Only a caller that is itself the receiver
+     * may pass it (the repeater RAW stream); an MQTT observer's hop count is
+     * relative to that observer. Undefined/null keeps the stored value —
+     * `pathLen` treats an incoming null as "clear", so null is never sent.
+     */
+    heardHops?: number | null;
   },
 ): Promise<DecodedAdvert | null> {
   const packet = decodeMeshCorePacket(rawHex);
@@ -448,6 +456,9 @@ export async function ingestAdvertFrame(
       // #5909: undefined (non-MQTT callers) keeps the stored value.
       advertSignatureVerified,
       lastHeard: opts.lastHeardMs === 'advert' ? advertLastHeardMs(advert.timestamp) : opts.lastHeardMs,
+      ...(typeof opts.heardHops === 'number' && Number.isInteger(opts.heardHops) && opts.heardHops >= 0
+        ? { pathLen: opts.heardHops }
+        : {}),
     },
     sourceId,
   );

@@ -186,6 +186,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
       // #5842: an enabled location override wins over the advert position.
       const mcOverrides = canViewOnMap ? await loadMeshCorePositionOverrides(mgr.sourceId) : new Map();
       const mcRows = applyMeshCorePositionOverrides(await mgr.getAllNodes(), mcOverrides, access.canViewPrivate(mgr.sourceId));
+      const mcLocalKey = mgr.getLocalNode?.()?.publicKey;
       for (const n of mcRows) {
         const hasPosition = canViewOnMap
           && n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0);
@@ -216,7 +217,10 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
               }
             : {}),
           lastHeard,
-          hopsAway: 0,
+          // #6220: the stored hop count, not a blanket 0 — every MeshCore
+          // node read as a direct neighbour. Unknown stays undefined, which
+          // the dashboard map draws as "unknown". The local radio is 0.
+          hopsAway: n.publicKey === mcLocalKey ? 0 : n.pathLen,
           role: 0,
           // #5578: latest-advert position flag for the map's hide toggle.
           // Position data too, so it follows the same `viewOnMap` gate. An

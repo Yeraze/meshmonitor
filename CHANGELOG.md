@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **MeshCore Repeater sources record hop counts.** A node learned from an advert on a packet-logging repeater now stores how many hops that advert took (the shortest copy heard), and the dashboard map shows it. Before, every MeshCore node showed as 0 hops. A node shows unknown until its next advert. (#6220)
+
 ### Changed
 - **Unified Messages remembers the channel you last picked**, per browser, including All Channels. If that channel is gone from the list, or you never picked one, the page opens on Primary / LongFast or the first channel as before. (#5792)
 
