@@ -250,7 +250,11 @@ jobs:
           if-no-files-found: warn
 
   build-macos-x64:
-    runs-on: macos-14
+    # macos-latest (arm64) cross-compiles the x86_64 bundle; the explicit
+    # `macos-14` label was retired by GitHub ("configuration
+    # macos-14-arm64-us-default is not supported"), which cancelled this job
+    # instantly. The sibling build-macos job already uses macos-latest. (#6229)
+    runs-on: macos-latest
     timeout-minutes: 60
 
     steps:
