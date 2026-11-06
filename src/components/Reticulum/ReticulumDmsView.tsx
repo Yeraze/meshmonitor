@@ -394,6 +394,7 @@ export const ReticulumDmsView: React.FC<ReticulumDmsViewProps> = ({
                 onKeyDown={handleComposeKeyDown}
                 placeholder={t('reticulum.dms.compose_placeholder', 'Type a message…')}
                 aria-label={t('reticulum.dms.compose_placeholder', 'Type a message…')}
+                autoCapitalize="sentences"
                 rows={2}
               />
               <button
