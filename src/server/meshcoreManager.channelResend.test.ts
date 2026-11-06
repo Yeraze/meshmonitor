@@ -464,14 +464,59 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
     await expectRefusal(manager.resendChannelMessage('rx-1'), 'NOT_OWN_MESSAGE');
   });
 
-  it('refuses a DM', async () => {
-    const { manager } = makeManager(sourceId);
+  it('resends a DM to the recipient with the ORIGINAL timestamp (#6194)', async () => {
+    const { manager, calls } = makeManager(sourceId);
+    const peer = 'b'.repeat(64);
     await databaseService.meshcore.insertMessage({
-      id: 'dm-1', fromPublicKey: SELF_KEY, toPublicKey: 'b'.repeat(64), text: 'hi', timestamp: T0, createdAt: T0,
+      id: 'dm-1', fromPublicKey: SELF_KEY, toPublicKey: peer, text: 'hi', timestamp: T0, createdAt: T0,
       senderTimestamp: Math.floor(T0 / 1000),
     }, sourceId);
     vi.setSystemTime(T0 + 31_000);
-    await expectRefusal(manager.resendChannelMessage('dm-1'), 'NOT_CHANNEL_MESSAGE');
+    const result = await manager.resendChannelMessage('dm-1');
+    expect(result).toEqual({ id: 'dm-1', resendCount: 1, lastResendAt: T0 + 31_000 });
+    const sent = sends(calls).at(-1)!;
+    expect(sent.params.to).toBe(peer);
+    expect(sent.params.channel_idx).toBeUndefined();
+    expect(sent.params.sender_timestamp).toBe(Math.floor(T0 / 1000));
+    // Registered for DM self-echo correlation under the original id (#6194).
+    expect([...(manager as any).pendingDmSends.keys()]).toEqual(['dm-1']);
+  });
+
+  it('never resends a DM the recipient already acknowledged (#6194)', async () => {
+    const { manager } = makeManager(sourceId);
+    await databaseService.meshcore.insertMessage({
+      id: 'dm-ack', fromPublicKey: SELF_KEY, toPublicKey: 'b'.repeat(64), text: 'hi', timestamp: T0, createdAt: T0,
+      senderTimestamp: Math.floor(T0 / 1000),
+    }, sourceId);
+    // Delivery is persisted as a `delivered` message-event (not a row column).
+    await databaseService.messageEvents.recordEvent({
+      sourceId, messageId: 'dm-ack', eventType: 'delivered', provenance: 'observed', timestamp: T0 + 1000,
+    });
+    vi.setSystemTime(T0 + 31_000);
+    await expectRefusal(manager.resendChannelMessage('dm-ack'), 'ALREADY_DELIVERED');
+  });
+
+  it('refuses a DM a repeater already relayed (#6194)', async () => {
+    const { manager } = makeManager(sourceId);
+    await databaseService.meshcore.insertMessage({
+      id: 'dm-heard', fromPublicKey: SELF_KEY, toPublicKey: 'b'.repeat(64), text: 'hi', timestamp: T0, createdAt: T0,
+      senderTimestamp: Math.floor(T0 / 1000),
+    }, sourceId);
+    await databaseService.meshcore.recordHeardRepeater({
+      sourceId, messageId: 'dm-heard', repeaterHash: 'ab', repeaterName: null, snr: 4, heardAt: T0 + 1000,
+    });
+    vi.setSystemTime(T0 + 31_000);
+    await expectRefusal(manager.resendChannelMessage('dm-heard'), 'ALREADY_HEARD');
+  });
+
+  it('refuses a room post (#6194)', async () => {
+    const { manager } = makeManager(sourceId);
+    await databaseService.meshcore.insertMessage({
+      id: 'room-1', fromPublicKey: SELF_KEY, toPublicKey: 'b'.repeat(64), text: 'hi', timestamp: T0, createdAt: T0,
+      senderTimestamp: Math.floor(T0 / 1000), messageType: 'room_post',
+    }, sourceId);
+    vi.setSystemTime(T0 + 31_000);
+    await expectRefusal(manager.resendChannelMessage('room-1'), 'NOT_RESENDABLE');
   });
 
   it('refuses an unknown id, and another source\'s message', async () => {

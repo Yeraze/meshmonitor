@@ -115,11 +115,25 @@ describe('MeshCoreMessageStream — resend (#5512)', () => {
     expect(resendButton()).toBeNull();
   });
 
-  it('never offers it on received messages or DMs', () => {
+  it('never offers it on a received message', () => {
     renderStream([
       sent({ id: 'rx', fromPublicKey: 'channel-1', fromName: 'Bob' }),
-      sent({ id: 'dm', toPublicKey: 'b'.repeat(64) }),
     ]);
+    expect(resendButton()).toBeNull();
+  });
+
+  it('offers it on our own unheard, unacked DM (#6194)', () => {
+    renderStream([sent({ id: 'dm', toPublicKey: 'b'.repeat(64) })]);
+    expect(resendButton()).not.toBeNull();
+  });
+
+  it('never offers it on a DM the recipient acknowledged (delivered, #6194)', () => {
+    renderStream([sent({ id: 'dm', toPublicKey: 'b'.repeat(64), deliveryStatus: 'delivered' })]);
+    expect(resendButton()).toBeNull();
+  });
+
+  it('never offers it on a room post (#6194)', () => {
+    renderStream([sent({ id: 'room', toPublicKey: 'b'.repeat(64), messageType: 'room_post' })]);
     expect(resendButton()).toBeNull();
   });
 
