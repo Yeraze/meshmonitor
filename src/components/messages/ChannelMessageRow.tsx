@@ -13,7 +13,7 @@ import type { TimeFormat, DateFormat } from '../../contexts/SettingsContext';
 import type { MeshProtocol } from '../../utils/meshProtocol';
 import type { MentionRenderOptions } from '../../utils/linkRenderer';
 import { renderMessageWithLinks } from '../../utils/linkRenderer';
-import { formatMessageTime } from '../../utils/datetime';
+import { formatMessageTime, formatRelativeTime } from '../../utils/datetime';
 import HopCountDisplay from '../HopCountDisplay';
 import LinkPreview from '../LinkPreview';
 import { MessageStatusIndicator } from '../MessageStatusIndicator';
@@ -141,7 +141,10 @@ function ChannelMessageRowImpl({
                 {renderMessageWithLinks(msg.text, mentionOptions)}
               </div>
               <div className="message-meta">
-                <span className="message-time">
+                <span
+                  className="message-time"
+                  title={formatRelativeTime(currentDate.getTime(), timeFormat, dateFormat, true)}
+                >
                   {formatMessageTime(currentDate, timeFormat, dateFormat)}
                   <HopCountDisplay
                     hopStart={msg.hopStart}
