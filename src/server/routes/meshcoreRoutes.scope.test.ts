@@ -639,6 +639,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'GET /automation/auto-favorite': 'read',
     'POST /automation/auto-favorite': 'write',
     'POST /automation/auto-favorite/run': 'write',
+    'GET /automation/auto-welcome': 'read',
+    'POST /automation/auto-welcome': 'write',
     'GET /automation/pathfinding/filter': 'read',
     'POST /automation/pathfinding/filter': 'write',
     'GET /automation/autoack': 'read',

@@ -373,6 +373,7 @@ export function meshcoreAutomationNavItems(t: Translate, opts: { includeAutoPing
     { id: 'meshcore-automation-time-sync', label: t('meshcore.automation.time_sync.title', 'Time Sync'), keywords: ['clock', 'time', 'rtc', 'repeater', 'schedule', 'sync'] },
     { id: 'meshcore-automation-remote-telemetry', label: t('meshcore.automation.remote_telemetry.title', 'Remote Telemetry'), keywords: ['telemetry', 'poll', 'battery', 'sensor', 'metrics', 'schedule'] },
     { id: 'meshcore-automation-auto-favorite', label: t('meshcore.automation.auto_favorite.title', 'Auto Favorite'), keywords: ['favorite', 'favourite', 'star', 'pin', 'active', 'contact', 'sweep'] },
+    { id: 'meshcore-automation-auto-welcome', label: t('meshcore.automation.auto_welcome.title', 'Auto Welcome'), keywords: ['welcome', 'greet', 'greeting', 'new node', 'hello', 'intro'] },
   ];
   return items;
 }
