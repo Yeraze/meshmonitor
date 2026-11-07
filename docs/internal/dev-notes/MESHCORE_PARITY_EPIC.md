@@ -22,6 +22,13 @@ Audit summary: https://github.com/Yeraze/meshmonitor/issues/6226#issuecomment-67
   v1 rate limits) plus existing MeshCore send caps.
 - **Firmware verification:** confirm CLI verbs / companion commands against
   supported firmware before building #6255 and #6257 controls.
+- **One implementation for all sources (maintainer, 2026-11-07):** every
+  parity feature uses a single configurable component/hook/service shared by
+  the Meshtastic tab and the MeshCore view (props/config for protocol
+  differences), not a MeshCore copy. Each phase spec must name the shared
+  piece first; a MeshCore-only component needs a stated reason (no protocol
+  equivalent). Precedents: `NodeDimmingSettings`, `SignFlipCorrectionSettings`,
+  `NotificationsTab`.
 - **Dev deploys:** check SQLite integrity and apply the RF lockdown
   (autoConnect off on radios, MQTT broker/bridge rows `enabled=0`) first, or
   use a throwaway volume for screenshots.
