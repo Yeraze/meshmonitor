@@ -168,6 +168,48 @@ describe('MeshCoreChannelsView — channel list rendering', () => {
       expect(screen.getByText('Channel 5')).toBeTruthy();
     });
   });
+
+  it('marks public, hashtag, and private channels with distinct markers (#6228)', async () => {
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([
+        { id: 0, name: 'Public' },
+        { id: 1, name: '#general' },
+        { id: 2, name: 'Operators' },
+      ]));
+    });
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Operators')).toBeTruthy();
+    });
+
+    const nameOf = (text: string) =>
+      screen.getByText(text).closest('.mc-channel-row-name') as HTMLElement;
+
+    // Public (slot 0): globe marker, never a padlock.
+    expect(nameOf('Public').querySelector('[data-ui-icon="globe"]')).toBeTruthy();
+    expect(nameOf('Public').querySelector('[data-ui-icon="encrypted"]')).toBeNull();
+
+    // Private (plain name in slot 1+): padlock marker, never a globe.
+    expect(nameOf('Operators').querySelector('[data-ui-icon="encrypted"]')).toBeTruthy();
+    expect(nameOf('Operators').querySelector('[data-ui-icon="globe"]')).toBeNull();
+
+    // Hashtag: no icon marker — the leading '#' in the name is its marker.
+    expect(nameOf('#general').querySelector('[data-ui-icon]')).toBeNull();
+  });
 });
 
 describe('MeshCoreChannelsView — per-channel message filter', () => {
