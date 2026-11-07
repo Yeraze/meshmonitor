@@ -31,6 +31,8 @@ vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQue
 vi.mock('./MeshCoreIgnoredNodesSection', () => ({ MeshCoreIgnoredNodesSection: () => null }));
 vi.mock('./MeshCoreMessageFiltersSection', () => ({ MeshCoreMessageFiltersSection: () => null }));
 vi.mock('./MeshCoreNodeDisplaySection', () => ({ MeshCoreNodeDisplaySection: () => null }));
+vi.mock('./MeshCoreTelemetrySettingsSection', () => ({ MeshCoreTelemetrySettingsSection: () => <div data-testid="telemetry-settings-section" /> }));
+vi.mock('./MeshCoreTelemetryDataSection', () => ({ MeshCoreTelemetryDataSection: () => <div data-testid="telemetry-data-section" /> }));
 // Fetches on mount; its own tests cover it. Here only its placement matters.
 const contactSyncProps = vi.fn();
 vi.mock('./MeshCoreContactSyncSection', () => ({
@@ -86,6 +88,14 @@ const MOVED_BUTTONS = [
 beforeEach(() => {
   vi.clearAllMocks();
   grants = () => true;
+});
+
+describe('MeshCoreSettingsView: telemetry sections (#6258)', () => {
+  it('mounts the telemetry settings and telemetry data sections', () => {
+    renderView();
+    expect(screen.getByTestId('telemetry-settings-section')).toBeTruthy();
+    expect(screen.getByTestId('telemetry-data-section')).toBeTruthy();
+  });
 });
 
 describe('MeshCoreSettingsView: controls that moved to Device Configuration', () => {

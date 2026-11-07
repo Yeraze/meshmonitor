@@ -1,0 +1,11 @@
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.description {
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}

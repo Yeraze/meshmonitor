@@ -425,6 +425,13 @@ Both transmit on the mesh, so they share the per-source **60-second mesh-TX gate
 
 The composite primary key on `meshcore_nodes` is `(sourceId, publicKey)`, so the same device advertising under two different sources is tracked independently.
 
+### Telemetry settings and cleanup
+
+The MeshCore **Settings** tab has two telemetry controls, both scoped to the source you are viewing.
+
+- **Telemetry** section: **Telemetry Visualization (Hours)** (1-168) sets the graph window, and **Favorite Telemetry Storage Length (Days)** (7-90) sets how long favorited telemetry is kept. They save per source, so they never change another source. A source with no saved value follows the global default set on the Meshtastic side. Saving needs `settings:write` on the source.
+- **Telemetry data** section (admins only): **Purge telemetry (this source)** deletes the stored telemetry of this source and leaves every other source alone. **Clean outliers...** opens the outlier dialog for this source to preview and remove bad readings for one metric.
+
 ## Regions / Scopes
 
 Some MeshCore meshes restrict which flood traffic their repeaters forward. A repeater running `region denyf *` **drops any un-scoped flood packet** — so a message MeshMonitor sends without a scope simply never propagates past those repeaters. The Germany mesh is the most common example.
