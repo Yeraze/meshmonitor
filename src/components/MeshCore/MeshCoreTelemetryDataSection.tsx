@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSource } from '../../contexts/SourceContext';
 import { useToast } from '../ToastContainer';
 import apiService from '../../services/api';
+import { logger } from '../../utils/logger';
 import { UiIcon } from '../icons';
 import TelemetryOutlierDialog from '../TelemetryOutlierDialog/TelemetryOutlierDialog';
 import { getTelemetryLabel } from '../TelemetryChart';
@@ -36,7 +37,7 @@ export const MeshCoreTelemetryDataSection: React.FC<MeshCoreTelemetryDataSection
       await apiService.purgeTelemetry(0, sourceId);
       showToast(t('meshcore.settings.purge_telemetry_done', 'Telemetry for this source purged'), 'success');
     } catch (err) {
-      console.error('Error purging MeshCore telemetry:', err);
+      logger.error('Error purging MeshCore telemetry:', err);
       showToast(t('toast.telemetry_purge_failed', 'Error purging telemetry. Please try again.'), 'error');
     } finally {
       setPurging(false);

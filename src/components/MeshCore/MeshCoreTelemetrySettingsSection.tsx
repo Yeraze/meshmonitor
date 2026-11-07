@@ -6,6 +6,7 @@ import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { logger } from '../../utils/logger';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -96,7 +97,7 @@ export const MeshCoreTelemetrySettingsSection: React.FC<MeshCoreTelemetrySetting
       setInitial(draft);
       showToast(t('settings.node_display.settings_saved', 'Settings saved'), 'success');
     } catch (err) {
-      console.error('Failed to save MeshCore telemetry settings:', err);
+      logger.error('Failed to save MeshCore telemetry settings:', err);
       showToast(t('settings.node_display.settings_save_failed', 'Failed to save settings'), 'error');
     } finally {
       setIsSaving(false);
