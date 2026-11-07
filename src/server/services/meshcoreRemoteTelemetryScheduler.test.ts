@@ -15,6 +15,7 @@
  *      and explodes multi-component values into one row per axis.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { dataEventEmitter } from './dataEventEmitter.js';
 import {
   MeshCoreRemoteTelemetryScheduler,
   isNodeEligible,
@@ -370,6 +371,32 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     });
     await scheduler.tickOneManager(manager);
     expect(callOrder).toEqual(['mark', 'request']);
+  });
+
+  it('emits stored readings to the automation engine (#6237)', async () => {
+    const manager = makeFakeManager({
+      recordsToReturn: [{ channel: 1, type: 116, value: 4.1 }],
+    });
+    const emitSpy = vi.spyOn(dataEventEmitter, 'emitTelemetry').mockImplementation(() => {});
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode: vi.fn().mockResolvedValue(undefined),
+          markHeard: vi.fn().mockResolvedValue(undefined),
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
+      },
+      now: () => 10_000_000,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(emitSpy).toHaveBeenCalled();
+    expect(emitSpy.mock.calls[0][2]).toBe(manager.sourceId);
+    emitSpy.mockRestore();
   });
 
   it('does NOT write telemetry rows when the RF response is empty', async () => {
