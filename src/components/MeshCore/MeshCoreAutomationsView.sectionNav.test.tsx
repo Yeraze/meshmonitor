@@ -84,6 +84,7 @@ describe('MeshCore Automations section nav', () => {
       'meshcore-automation-time-sync',
       'meshcore-automation-remote-telemetry',
       'meshcore-automation-auto-favorite',
+      'meshcore-automation-auto-welcome',
     ]);
   });
 

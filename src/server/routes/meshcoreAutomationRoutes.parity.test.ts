@@ -211,4 +211,63 @@ describe('meshcoreAutomationRoutes — automation parity (#6224)', () => {
     const res = await agent.post(`${base(harness.sourceB)}/auto-favorite`).send({ enabled: true });
     expect(res.status).toBe(403);
   });
+
+  // ---- Auto Welcome ----
+
+  it('reads auto-welcome defaults', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get(`${base(harness.sourceA)}/auto-welcome`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.settings).toEqual({
+      enabled: false,
+      message: 'Welcome {NAME} to the mesh!',
+      target: 'dm',
+      waitForName: true,
+      maxHops: 3,
+      delaySeconds: 30,
+      maxPerHour: 6,
+    });
+  });
+
+  it('saves auto-welcome per source', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post(`${base(harness.sourceA)}/auto-welcome`).send({
+      enabled: true, message: 'Hi {NAME}', target: '2', waitForName: false, maxHops: 1, delaySeconds: 0, maxPerHour: 12,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data.settings).toEqual({
+      enabled: true, message: 'Hi {NAME}', target: '2', waitForName: false, maxHops: 1, delaySeconds: 0, maxPerHour: 12,
+    });
+    expect(await databaseService.settings.getSettingForSource(harness.sourceA, 'meshcoreAutoWelcomeEnabled')).toBe('true');
+    expect(await databaseService.settings.getSettingForSource(harness.sourceB, 'meshcoreAutoWelcomeEnabled')).not.toBe('true');
+  });
+
+  it('normalises a dm target', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post(`${base(harness.sourceA)}/auto-welcome`).send({ target: 'dm' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.settings.target).toBe('dm');
+  });
+
+  it.each([
+    ['blank message', { message: '  ' }, 'INVALID_MESSAGE'],
+    ['over-long message', { message: 'x'.repeat(201) }, 'INVALID_MESSAGE'],
+    ['bad target', { target: 'everyone' }, 'INVALID_TARGET'],
+    ['channel out of range', { target: '99' }, 'INVALID_TARGET'],
+    ['maxHops too high', { maxHops: 8 }, 'INVALID_MAX_HOPS'],
+    ['maxPerHour 0', { maxPerHour: 0 }, 'INVALID_MAX_PER_HOUR'],
+    ['maxPerHour over 60', { maxPerHour: 61 }, 'INVALID_MAX_PER_HOUR'],
+    ['delay over 600', { delaySeconds: 601 }, 'INVALID_DELAY'],
+  ])('rejects %s', async (_l, body, code) => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post(`${base(harness.sourceA)}/auto-welcome`).send(body);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(code);
+  });
+
+  it('refuses an auto-welcome save without a grant for the source', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post(`${base(harness.sourceB)}/auto-welcome`).send({ enabled: true });
+    expect(res.status).toBe(403);
+  });
 });
