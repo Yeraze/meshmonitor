@@ -2,9 +2,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, resolveAppriseTargetAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
-import { fallbackManager } from '../meshtasticManager.js';
-import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { resolveLocalNodeNameForSource } from '../utils/localNodeNameForSource.js';
 import { notificationDedup, type NotificationDedupSpec } from './notificationDedup.js';
 import { assertSafeUrl } from '../utils/ssrfGuard.js';
 
@@ -431,10 +429,8 @@ class AppriseNotificationService {
       return { sent: 0, failed: 0, filtered: 0 };
     }
 
-    // Get local node name for prefix
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
-    const localNodeInfo = mgr.getLocalNodeInfo();
-    const localNodeName = localNodeInfo?.longName || null;
+    // Prefix names the node of the source this message arrived on (#6251).
+    const localNodeName = await resolveLocalNodeNameForSource(filterContext.sourceId);
 
     // Per-user filtering and sending to user-specific URLs
     for (const userId of users) {
@@ -579,25 +575,9 @@ class AppriseNotificationService {
     const users = targetUserId !== undefined ? [targetUserId] : await getUsersWithServiceEnabledAsync('apprise');
     logger.debug(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
-    // Get local node name for prefix
-    // First try the live connection, then fall back to database (for startup before connection)
-    let localNodeName: string | null = null;
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
-    const localNodeInfo = mgr.getLocalNodeInfo();
-    if (localNodeInfo?.longName) {
-      localNodeName = localNodeInfo.longName;
-    } else {
-      // Fall back to database - get localNodeNum from settings and look up the node
-      const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(mgr.sourceId);
-      if (localNodeNumStr) {
-        const localNodeNum = parseInt(localNodeNumStr, 10);
-        const localNode = await databaseService.nodesRepo?.getNode(localNodeNum, mgr.sourceId);
-        if (localNode?.longName) {
-          localNodeName = localNode.longName;
-          logger.debug(`📢 Using node name from database for Apprise prefix: ${localNodeName}`);
-        }
-      }
-    }
+    // Prefix names the node of the source the notification is about, not
+    // the primary Meshtastic source (#6251).
+    const localNodeName = await resolveLocalNodeNameForSource(effectiveSourceId);
 
     for (const userId of users) {
       // Phase C: per-source permission check

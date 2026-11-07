@@ -32,6 +32,9 @@ vi.mock('../meshtasticManager.js', () => ({
   fallbackManager: { getLocalNodeInfo: vi.fn(() => ({ longName: 'LocalNode' })), sourceId: 'src-a' },
 }));
 vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
+vi.mock('../utils/localNodeNameForSource.js', () => ({
+  resolveLocalNodeNameForSource: vi.fn(async () => 'LocalNode'),
+}));
 vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => undefined }));
 vi.mock('node-notifier', () => ({ default: { notify: h.notify } }));
 

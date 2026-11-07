@@ -52,6 +52,9 @@ vi.mock('../meshtasticManager.js', () => ({
 }));
 
 vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
+vi.mock('../utils/localNodeNameForSource.js', () => ({
+  resolveLocalNodeNameForSource: vi.fn(async () => 'LocalNode'),
+}));
 vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => undefined }));
 // SSRF guard on the Apprise egress (SSRF-03, #6078) resolves the host via DNS.
 // Stub the resolver to a public IP so these functional tests (which mock fetch)

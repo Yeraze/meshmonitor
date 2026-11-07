@@ -5,9 +5,7 @@ import databaseService from '../../services/database.js';
 import type { DbPushSubscription } from '../../db/types.js';
 import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
-import { fallbackManager } from '../meshtasticManager.js';
-import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { resolveLocalNodeNameForSource } from '../utils/localNodeNameForSource.js';
 import { notificationDedup, dedupTag, joinSourceNames, type DedupClaim, type NotificationDedupSpec } from './notificationDedup.js';
 
 // Re-export DbPushSubscription for backward compatibility
@@ -507,10 +505,8 @@ class PushNotificationService {
 
     logger.debug(`📢 Broadcasting push notification for source ${filterContext.sourceId} to ${subscriptions.length} subscriptions with filtering`);
 
-    // Get local node name for prefix
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
-    const localNodeInfo = mgr.getLocalNodeInfo();
-    const localNodeName = localNodeInfo?.longName || null;
+    // Prefix names the node of the source this message arrived on (#6251).
+    const localNodeName = await resolveLocalNodeNameForSource(filterContext.sourceId);
 
     for (const subscription of subscriptions) {
       // Get user preferences
@@ -672,25 +668,9 @@ class PushNotificationService {
 
     logger.debug(`📢 Broadcasting ${preferenceKey} notification to ${subscriptions.length} subscriptions${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
-    // Get local node name for prefix
-    // First try the live connection, then fall back to database (for startup before connection)
-    let localNodeName: string | null = null;
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
-    const localNodeInfo = mgr.getLocalNodeInfo();
-    if (localNodeInfo?.longName) {
-      localNodeName = localNodeInfo.longName;
-    } else {
-      // Fall back to database - get localNodeNum from settings and look up the node
-      const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(mgr.sourceId);
-      if (localNodeNumStr) {
-        const localNodeNum = parseInt(localNodeNumStr, 10);
-        const localNode = await databaseService.nodesRepo?.getNode(localNodeNum, mgr.sourceId);
-        if (localNode?.longName) {
-          localNodeName = localNode.longName;
-          logger.debug(`📢 Using node name from database for prefix: ${localNodeName}`);
-        }
-      }
-    }
+    // Prefix names the node of the source the notification is about, not
+    // the primary Meshtastic source (#6251).
+    const localNodeName = await resolveLocalNodeNameForSource(effectiveSourceId);
 
     for (const subscription of subscriptions) {
       const userId = subscription.userId;
