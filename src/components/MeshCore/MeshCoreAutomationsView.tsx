@@ -18,6 +18,7 @@ import { MeshCoreAutoDeleteByDistanceSection } from './MeshCoreAutoDeleteByDista
 import { MeshCoreTimeSyncSection } from './MeshCoreTimeSyncSection';
 import { MeshCoreRemoteTelemetrySection } from './MeshCoreRemoteTelemetrySection';
 import { MeshCoreAutoFavoriteSection } from './MeshCoreAutoFavoriteSection';
+import { MeshCoreAutoWelcomeSection } from './MeshCoreAutoWelcomeSection';
 import { AutomationTokenReference } from '../AutomationTokenReference';
 import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
 import { UiIcon } from '../icons';
@@ -414,6 +415,11 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       {/* Auto Favorite (#6224): sweep favourites active contacts, un-favourites stale ones. */}
       <div id="meshcore-automation-auto-favorite">
         <MeshCoreAutoFavoriteSection baseUrl={baseUrl} sourceId={sourceId} />
+      </div>
+
+      {/* Auto Welcome (#6224): greet each newly discovered node once. */}
+      <div id="meshcore-automation-auto-welcome">
+        <MeshCoreAutoWelcomeSection baseUrl={baseUrl} sourceId={sourceId} />
       </div>
       </div>
       </div>
