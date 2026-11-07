@@ -116,7 +116,6 @@ describe('meshcoreAutomationRoutes — automation parity (#6224)', () => {
   it('lists time-sync-enabled nodes', async () => {
     vi.spyOn(databaseService.meshcore, 'getTimeSyncEnabledNodes').mockResolvedValue([
       { publicKey: 'ab'.repeat(32), name: 'Repeater One', timeSyncIntervalMinutes: 720, lastTimeSyncAt: 1000 },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6224 partial DbMeshCoreNode stub is enough for the mapper
     ] as any);
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.get(`${base(harness.sourceA)}/time-sync`);
@@ -131,7 +130,6 @@ describe('meshcoreAutomationRoutes — automation parity (#6224)', () => {
   it('lists remote-telemetry-enabled nodes', async () => {
     vi.spyOn(databaseService.meshcore, 'getTelemetryEnabledNodes').mockResolvedValue([
       { publicKey: 'cd'.repeat(32), name: null, telemetryIntervalMinutes: 60, lastTelemetryRequestAt: 2000, lastTelemetrySuccessAt: 2500 },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6224 partial DbMeshCoreNode stub is enough for the mapper
     ] as any);
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.get(`${base(harness.sourceA)}/remote-telemetry`);

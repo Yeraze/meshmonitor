@@ -242,16 +242,16 @@ export const MeshCoreAutoDeleteByDistanceSection: React.FC<Props> = ({ baseUrl, 
               {t('meshcore.automation.delete_distance.home_description', 'Leave blank to use this source’s own node position.')}
             </span>
           </label>
-          {/* eslint-disable-next-line meshmonitor-ui/no-raw-number-input -- #6224 optional nullable home coordinate; NumberInput has no empty state */}
+          {/* A text input (not NumberInput) because the home coordinate is
+              optional — an empty value means "use the source's own position"
+              (#6224), which NumberInput cannot represent. */}
           <input
             id="mcDeleteDistanceLat"
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="setting-input"
             value={settings.lat ?? ''}
-            step="any"
-            min={-90}
-            max={90}
-            onChange={(e) => update('lat', e.target.value === '' ? null : Number(e.target.value))}
+            onChange={(e) => update('lat', e.target.value.trim() === '' ? null : Number(e.target.value))}
             disabled={disabled}
           />
         </div>
@@ -260,16 +260,13 @@ export const MeshCoreAutoDeleteByDistanceSection: React.FC<Props> = ({ baseUrl, 
           <label htmlFor="mcDeleteDistanceLon">
             {t('meshcore.automation.delete_distance.home_lon', 'Home longitude')}
           </label>
-          {/* eslint-disable-next-line meshmonitor-ui/no-raw-number-input -- #6224 optional nullable home coordinate; NumberInput has no empty state */}
           <input
             id="mcDeleteDistanceLon"
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="setting-input"
             value={settings.lon ?? ''}
-            step="any"
-            min={-180}
-            max={180}
-            onChange={(e) => update('lon', e.target.value === '' ? null : Number(e.target.value))}
+            onChange={(e) => update('lon', e.target.value.trim() === '' ? null : Number(e.target.value))}
             disabled={disabled}
           />
         </div>
