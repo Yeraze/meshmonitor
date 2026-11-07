@@ -196,6 +196,7 @@ MESHTASTIC_TCP_PORT=4403
 # Application settings
 NODE_ENV=production
 PORT=3001
+# BIND_ADDRESS=127.0.0.1  # unset = all interfaces (keep unset in Docker)
 
 # IMPORTANT: Data directory (Docker default is /data)
 # For bare metal, point this to your data directory. The database, backups,

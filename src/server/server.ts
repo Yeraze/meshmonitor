@@ -1414,8 +1414,9 @@ void (async () => {
   // Eagerly populate embed origins cache so first CORS check works
   refreshEmbedOriginsCache();
 
-  server = app.listen(PORT, () => {
-    logger.debug(`MeshMonitor server running on port ${PORT}`);
+  // host undefined -> net.Server binds every interface, as before
+  server = app.listen({ port: PORT, host: env.bindAddress }, () => {
+    logger.debug(`MeshMonitor server running on ${env.bindAddress ?? '*'}:${PORT}`);
     logger.debug(`Environment: ${env.nodeEnv}`);
 
     // Initialize WebSocket server for real-time updates
