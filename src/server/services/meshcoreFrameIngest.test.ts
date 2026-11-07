@@ -29,6 +29,7 @@ import {
   findChannelKeysByHash,
   decryptGroupTextFrame,
   frameChannelMessageId,
+  frameRoomPostId,
   ingestAdvertFrame,
   openGroupFrame,
 } from './meshcoreFrameIngest.js';
@@ -152,6 +153,30 @@ describe('frameChannelMessageId', () => {
     expect(a).toMatch(/^rpt_s1_[0-9a-f]{24}$/);
     expect(frameChannelMessageId('rpt', 's2', 'ab', 10, 'hi')).not.toBe(a);
     expect(frameChannelMessageId('rpt', 's1', 'ab', 11, 'hi')).not.toBe(a);
+  });
+});
+
+describe('frameRoomPostId', () => {
+  it('is stable per (source, room, author, time, text) so a re-pushed post dedupes', () => {
+    const a = frameRoomPostId('s1', 'roomkey', 'aabbccdd', 100, 'hello room');
+    // Same post pushed again on the next login → same id → insertIgnore drops it.
+    expect(a).toBe(frameRoomPostId('s1', 'roomkey', 'aabbccdd', 100, 'hello room'));
+    expect(a).toMatch(/^room_s1_[0-9a-f]{24}$/);
+  });
+
+  it('separates posts that differ in any keyed field', () => {
+    const a = frameRoomPostId('s1', 'roomkey', 'aabbccdd', 100, 'hello room');
+    expect(frameRoomPostId('s2', 'roomkey', 'aabbccdd', 100, 'hello room')).not.toBe(a); // other source
+    expect(frameRoomPostId('s1', 'other', 'aabbccdd', 100, 'hello room')).not.toBe(a);   // other room
+    expect(frameRoomPostId('s1', 'roomkey', 'ee\u0000ff', 100, 'hello room')).not.toBe(a); // other author
+    expect(frameRoomPostId('s1', 'roomkey', 'aabbccdd', 101, 'hello room')).not.toBe(a);  // other second
+    expect(frameRoomPostId('s1', 'roomkey', 'aabbccdd', 100, 'hello world')).not.toBe(a); // other text
+  });
+
+  it('still yields a stable id when the author is unknown (empty prefix, #5774)', () => {
+    const a = frameRoomPostId('s1', 'roomkey', '', 100, 'anon post');
+    expect(a).toBe(frameRoomPostId('s1', 'roomkey', '', 100, 'anon post'));
+    expect(a).toMatch(/^room_s1_[0-9a-f]{24}$/);
   });
 });
 

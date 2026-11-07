@@ -31,6 +31,9 @@ vi.mock('../../services/database.js', () => ({
     messages: {
       insertMessage: vi.fn(),
     },
+    traceroutes: {
+      getTraceroutesByNodes: vi.fn(),
+    },
   },
 }));
 
@@ -62,6 +65,8 @@ beforeEach(() => {
     { id: 2, psk: 'c29tZXByaXZhdGVrZXk=', name: 'Private' },
   ]);
   mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
+  // No direct-traceroute evidence by default; the #6151 branch opts in per test.
+  (databaseService.traceroutes.getTraceroutesByNodes as any).mockResolvedValue([]);
 });
 
 describe('POST /traceroute', () => {
@@ -247,6 +252,33 @@ describe('POST /neighborinfo/request', () => {
     const res = await request(app).post('/neighborinfo/request').send({ destination: '!0000aaaa' });
     expect(res.status).toBe(200);
     expect(mockManager.sendNeighborInfoRequest).toHaveBeenCalledWith(0x0000aaaa, 1);
+  });
+
+  it('sends when hopsAway is stale but a recent traceroute shows a direct path (#6151)', async () => {
+    (parseDestinationNum as any).mockResolvedValue(0x00005f3c);
+    mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
+    // hopsAway reads 3 (last reception was relayed) — the old check denied this.
+    (databaseService.nodes.getNode as any).mockResolvedValue({ channel: 1, hopsAway: 3 });
+    // ...but a fresh traceroute is a direct 2-node link.
+    (databaseService.traceroutes.getTraceroutesByNodes as any).mockResolvedValue([
+      { route: '[]', routeBack: '[]' },
+    ]);
+    mockManager.sendNeighborInfoRequest.mockResolvedValue({ packetId: 3, requestId: 4 });
+    const res = await request(app).post('/neighborinfo/request').send({ destination: '!00005f3c' });
+    expect(res.status).toBe(200);
+    expect(mockManager.sendNeighborInfoRequest).toHaveBeenCalledWith(0x00005f3c, 1);
+  });
+
+  it('still rejects a multi-hop node whose latest traceroute is not direct (#6151)', async () => {
+    (parseDestinationNum as any).mockResolvedValue(0x00005f99);
+    mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
+    (databaseService.nodes.getNode as any).mockResolvedValue({ channel: 0, hopsAway: 3 });
+    (databaseService.traceroutes.getTraceroutesByNodes as any).mockResolvedValue([
+      { route: '[111, 222]', routeBack: '[]' },
+    ]);
+    const res = await request(app).post('/neighborinfo/request').send({ destination: '!00005f99' });
+    expect(res.status).toBe(403);
+    expect(res.body.eligible).toBe(false);
   });
 
   it('rate-limits repeat requests to the same destination', async () => {

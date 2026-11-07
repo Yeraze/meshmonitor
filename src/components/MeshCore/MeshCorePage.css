@@ -823,11 +823,6 @@
 .mc-heard-by-hops {
   color: var(--color-text-subtle);
 }
-/* #6193: wrapper for the always-on heard-by antenna in the message body. */
-.mc-heard-by-row {
-  margin-top: 0.15rem;
-}
-
 .meshcore-send-bar {
   display: flex;
   gap: 0.5rem;

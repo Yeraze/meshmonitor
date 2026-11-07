@@ -7,6 +7,7 @@ import { PortNum, TransportMechanism } from '../constants/meshtastic.js';
 import { fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
+import { tracerouteShowsDirectPath } from '../utils/neighborInfoEligibility.js';
 import type { ResourceType } from '../../types/permission.js';
 
 // Every route here transmits through ONE source's radio: the `sourceId` in the
@@ -237,7 +238,19 @@ router.post('/neighborinfo/request', meshRequestGate('traceroute'), async (req: 
     // undefined and cross-source-match a wrong row.
     const node = await databaseService.nodes.getNode(destinationNum, neighborManager.sourceId);
     const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
-    const isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
+    let isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
+
+    // #6151: `hopsAway` reflects the last ordinary reception, which can be a
+    // relayed copy even when the node is in direct range — so a node the user
+    // just traced as a direct 2-node link got denied. A completed traceroute
+    // with no intermediate hops is fresher, stronger proof the node is 0-hop
+    // right now; honor it. Still direct-only, so no added flood risk.
+    if (!isLocalNode && !isDirectNode && localNodeNum != null) {
+      const traces = await databaseService.traceroutes.getTraceroutesByNodes(
+        Number(localNodeNum), Number(destinationNum), 5, neighborManager.sourceId,
+      );
+      if (tracerouteShowsDirectPath(traces)) isDirectNode = true;
+    }
 
     if (!isLocalNode && !isDirectNode) {
       return fail(
