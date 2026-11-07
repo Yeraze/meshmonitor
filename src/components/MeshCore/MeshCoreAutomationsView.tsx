@@ -15,6 +15,7 @@ import { MeshCoreForwardingSection } from './MeshCoreForwardingSection';
 import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
 import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSection';
 import { MeshCoreAutoDeleteByDistanceSection } from './MeshCoreAutoDeleteByDistanceSection';
+import { MeshCoreTimeSyncSection } from './MeshCoreTimeSyncSection';
 import { AutomationTokenReference } from '../AutomationTokenReference';
 import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
 import { UiIcon } from '../icons';
@@ -396,6 +397,11 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
           so it is available even for receive-only sources. */}
       <div id="meshcore-automation-auto-delete-distance">
         <MeshCoreAutoDeleteByDistanceSection baseUrl={baseUrl} sourceId={sourceId} />
+      </div>
+
+      {/* Time Sync overview (#6224): central view/manage of per-node time sync. */}
+      <div id="meshcore-automation-time-sync">
+        <MeshCoreTimeSyncSection baseUrl={baseUrl} sourceId={sourceId} />
       </div>
       </div>
       </div>

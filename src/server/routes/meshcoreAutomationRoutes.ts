@@ -365,6 +365,39 @@ router.post(
   },
 );
 
+// ============ Time Sync overview (#6224) ============
+//
+// Central read of the per-node time-sync config (#4916) for the Automation
+// tab. MeshCore time-sync is per-node (timeSyncEnabled / interval live on each
+// meshcore_node), unlike Meshtastic's single source-level toggle, so this is a
+// management OVERVIEW of the nodes that have it enabled; per-node changes go to
+// the existing /nodes/:publicKey/time-sync-config route. Read-only here — it
+// starts no sync and puts nothing on the air.
+
+router.get(
+  '/automation/time-sync',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      managerFor(req, res); // 404 unless a connected MeshCore source
+      const nodes = await databaseService.meshcore.getTimeSyncEnabledNodes(sourceId);
+      ok(res, {
+        nodes: nodes.map((n) => ({
+          publicKey: n.publicKey,
+          name: n.name ?? null,
+          intervalMinutes: n.timeSyncIntervalMinutes ?? null,
+          lastSyncAt: n.lastTimeSyncAt ?? null,
+        })),
+      });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore time-sync overview:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read time-sync overview');
+    }
+  },
+);
+
 // ============ Auto-Pathfinding Target Filter (#4024) ============
 //
 // Filter config for Auto-Pathfinding contact selection: AND pre-filters
