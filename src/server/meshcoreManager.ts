@@ -2855,9 +2855,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         snr: data.snr,
         sourceId: this.sourceId,
         messageType: 'room_post',
-        // Carry the post's whole-second timestamp so a re-pushed post keys the
-        // same id on replay.
-        senderTimestamp: roomPostSec || undefined,
+        // A room post carries no wire second on the message: it is never parsed
+        // or hashed as a reaction (#5761 invariant). The dedup id above already
+        // folds in `roomPostSec`, so it needs no field here.
       };
       if (verdict.action === 'allow') {
         // Gate the emit on a real insert (#6246): a repeated post returns false
