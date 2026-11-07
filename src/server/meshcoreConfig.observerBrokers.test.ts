@@ -228,6 +228,22 @@ describe('normalizeObserverBrokers', () => {
     ]);
   });
 
+  it('carries rejectUnauthorized: false through, and omits it otherwise (#6250)', () => {
+    const brokers = normalizeObserverBrokers({
+      enabled: true,
+      iataCode: 'MCO',
+      brokers: [
+        { url: 'mqtts://self-signed.test:8883', authMode: 'password', rejectUnauthorized: false },
+        { url: 'mqtts://verified.test:8883', authMode: 'password', rejectUnauthorized: true },
+        { url: 'mqtts://default.test:8883', authMode: 'password' },
+      ],
+    });
+    expect(brokers).toHaveLength(3);
+    expect(brokers[0].rejectUnauthorized).toBe(false);
+    expect('rejectUnauthorized' in brokers[1]).toBe(false);
+    expect('rejectUnauthorized' in brokers[2]).toBe(false);
+  });
+
   it('returns [] for a null/undefined observer block', () => {
     expect(normalizeObserverBrokers(undefined)).toEqual([]);
     expect(normalizeObserverBrokers(null)).toEqual([]);

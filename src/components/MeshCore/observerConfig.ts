@@ -41,6 +41,11 @@ export interface ObserverBrokerForm {
   authMode: ObserverAuthMode;
   tokenAudience: string;
   label: string;
+  /**
+   * Verify the broker's TLS certificate (#6250). Default true. Off lets a
+   * self-signed TLS broker connect, at the cost of man-in-the-middle safety.
+   */
+  verifyTls: boolean;
 }
 
 /**
@@ -62,6 +67,11 @@ export interface ObserverBrokerWire {
   tokenAudience?: string;
   /** Omitted entirely when blank. */
   label?: string;
+  /**
+   * Present (and false) only when the operator turned TLS certificate checks
+   * off for this broker (#6250). Omitted means "verify", the default.
+   */
+  rejectUnauthorized?: false;
 }
 
 /**
@@ -235,12 +245,13 @@ export function observerBrokerFormFromPreset(preset: ObserverBrokerPreset): Obse
     authMode: 'token',
     tokenAudience: preset.tokenAudience,
     label: preset.label,
+    verifyTls: true,
   };
 }
 
 /** Blank token-mode row with a generated `id`. */
 export function emptyObserverBrokerForm(): ObserverBrokerForm {
-  return { id: newRowId(), url: '', authMode: 'token', tokenAudience: '', label: '' };
+  return { id: newRowId(), url: '', authMode: 'token', tokenAudience: '', label: '', verifyTls: true };
 }
 
 /**
@@ -286,6 +297,7 @@ export function observerFormFromConfig(config: unknown): ObserverForm {
         // NEVER inherit the block-level tokenAudience here — see rule 2 above.
         tokenAudience: typeof entry.tokenAudience === 'string' ? entry.tokenAudience : '',
         label: typeof entry.label === 'string' ? entry.label : '',
+        verifyTls: entry.rejectUnauthorized !== false,
       };
     });
   } else if (typeof c.brokerUrl === 'string' && c.brokerUrl.trim() !== '') {
@@ -298,6 +310,7 @@ export function observerFormFromConfig(config: unknown): ObserverForm {
         authMode: blockAuthMode,
         tokenAudience: typeof c.tokenAudience === 'string' ? c.tokenAudience : '',
         label: '',
+        verifyTls: true,
       },
     ];
   } else {
@@ -321,6 +334,7 @@ function toWire(row: ObserverBrokerForm): ObserverBrokerWire {
     // stale value — the existing #4595 rule, now per row.
     ...(row.authMode === 'token' ? { tokenAudience: row.tokenAudience.trim() } : {}),
     ...(row.label.trim() ? { label: row.label.trim() } : {}),
+    ...(row.verifyTls === false ? { rejectUnauthorized: false as const } : {}),
   };
 }
 

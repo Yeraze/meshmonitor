@@ -247,4 +247,36 @@ describe('Analyzer Observer broker list in MeshCore Configuration (#5831)', () =
     expect(screen.getByRole('checkbox', { name: 'meshcore.form.observer_enable' })).toBeDisabled();
     expect(screen.getByPlaceholderText('MCO')).toBeDisabled();
   });
+
+  it('unchecking Verify TLS warns and saves rejectUnauthorized: false for that broker (#6250)', async () => {
+    renderSection();
+    const toggle = screen.getByRole('checkbox', { name: 'meshcore.observer.verify_tls' });
+    expect(toggle).toBeChecked();
+    expect(screen.queryByTestId('observer-broker-tls-warning-1')).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(screen.getByTestId('observer-broker-tls-warning-1')).toBeInTheDocument();
+
+    fireEvent.click(saveButton()!);
+    await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
+    const [, body] = putMock.mock.calls[0];
+    expect(body.config.observer.brokers[0]).toEqual({
+      url: 'wss://mqtt.meshmapper.net:443',
+      authMode: 'token',
+      tokenAudience: 'mqtt.meshmapper.net',
+      label: 'MeshMapper',
+      rejectUnauthorized: false,
+    });
+  });
+
+  it('seeds the toggle off from a stored rejectUnauthorized: false (#6250)', () => {
+    setSource({
+      ...baseConfig,
+      observer: { ...storedObserver, brokers: [{ ...storedObserver.brokers[0], rejectUnauthorized: false }] },
+    });
+    renderSection();
+    expect(screen.getByRole('checkbox', { name: 'meshcore.observer.verify_tls' })).not.toBeChecked();
+    expect(screen.getByTestId('observer-broker-tls-warning-1')).toBeInTheDocument();
+    expect(saveButton()).toBeNull();
+  });
 });

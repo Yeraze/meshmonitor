@@ -141,6 +141,33 @@ export const MeshCoreObserverBrokerEditor: React.FC<MeshCoreObserverBrokerEditor
                       )}
                 </p>
               </div>
+              <div className={styles.field}>
+                <label className={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={row.verifyTls}
+                    disabled={!canEdit}
+                    aria-label={t('meshcore.observer.verify_tls', 'Verify TLS certificate', { index })}
+                    onChange={(e) => onUpdateBroker(row.id, { verifyTls: e.target.checked })}
+                  />
+                  <span>{t('meshcore.observer.verify_tls', 'Verify TLS certificate')}</span>
+                </label>
+                <p className={styles.help}>
+                  {t(
+                    'meshcore.observer.verify_tls_help',
+                    'Applies to wss:// and mqtts:// brokers. Turn off only for a broker with a self-signed certificate.',
+                  )}
+                </p>
+                {!row.verifyTls && (
+                  <p className={styles.warning} role="alert" data-testid={`observer-broker-tls-warning-${index}`}>
+                    <UiIcon name="alert" size={14} />
+                    {t(
+                      'meshcore.observer.verify_tls_off_warning',
+                      'Certificate checks are off. Anyone between this server and the broker could read or alter what the observer sends.',
+                    )}
+                  </p>
+                )}
+              </div>
             </div>
           );
         })}
