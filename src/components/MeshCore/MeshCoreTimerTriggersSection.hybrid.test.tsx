@@ -160,7 +160,7 @@ describe('MeshCoreTimerTriggersSection hybrid workflow (#5812)', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({
       name: 'Morning', enabled: true, scheduleType: 'cron', cronExpression: '0 7 * * *',
-      responseType: 'text', advertMode: 'zero_hop', destination: 'channel', channelIndex: 0,
+      responseType: 'text', advertMode: 'zero_hop', destination: 'channel', channelIndexes: [0],
     });
   });
 

@@ -91,10 +91,21 @@ export async function migrateAutomationChannels(
       const triggers: TimerTrigger[] = JSON.parse(raw);
       let changed = false;
       for (const t of triggers) {
-        const newCh = remapChannel(t.channel, map);
-        if (newCh !== t.channel) {
-          t.channel = newCh;
-          changed = true;
+        // Multi-channel (#6230): remap the new channels array and the legacy
+        // single channel, mirroring the auto-responder migration above.
+        if (t.channels) {
+          const newChannels = t.channels.map(ch => remapChannel(ch, map));
+          if (JSON.stringify(newChannels) !== JSON.stringify(t.channels)) {
+            t.channels = newChannels;
+            changed = true;
+          }
+        }
+        if (t.channel !== undefined) {
+          const newCh = remapChannel(t.channel, map);
+          if (newCh !== t.channel) {
+            t.channel = newCh;
+            changed = true;
+          }
         }
       }
       if (changed) {
