@@ -21,6 +21,7 @@ import { parseJsonResponse } from '../../utils/parseJsonResponse';
 import { readRequiredRepeaters, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
 import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcoreHelpers';
+import { MeshCoreChannelMarker } from './MeshCoreChannelMarker';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOptionalChannelMuteSettings, useSettingsOptional } from '../../contexts/SettingsContext';
@@ -906,7 +907,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         <div className="meshcore-list-pane-body">
           {reordering ? (
             <MeshCoreChannelReorderList
-              channels={baseOrderedChannels.map(c => ({ id: c.id, label: channelLabel(c) }))}
+              channels={baseOrderedChannels.map(c => ({ id: c.id, label: channelLabel(c), marker: <MeshCoreChannelMarker id={c.id} name={c.name} /> }))}
               onSave={handleSaveCustomOrder}
               onCancel={() => setReorderingFor(null)}
             />
@@ -938,6 +939,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                   />
                 )}
                 <div className="mc-channel-row-name">
+                  <MeshCoreChannelMarker id={c.id} name={c.name} />
                   {channelLabel(c)}
                   {c.virtual && (
                     <sup className={styles.virtualTag} title={t('meshcore.channels.virtual_title', 'Decrypted with a Channel Database key; not set on this radio (receive-only)')}>
@@ -989,6 +991,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               <UiIcon name="back" size={16} /> {t('common.back', 'Back')}
             </button>
             <span className="meshcore-mobile-back-title">
+              <MeshCoreChannelMarker id={active.id} name={active.name} />
               {formatMeshCoreChannelName(
                 active.name,
                 t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: active.id }),
