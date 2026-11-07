@@ -151,7 +151,8 @@ describe('TimerTriggersSection hybrid workflow (#5812)', () => {
     await user.selectOptions(within(card).getByLabelText('automation.timer_triggers.script'), '/data/scripts/report.py');
     expect(within(card).getByLabelText('automation.timer_triggers.name')).toHaveValue('Daily Report');
     await user.type(within(card).getByLabelText('automation.timer_triggers.script_args'), '  --fast ');
-    await user.selectOptions(within(card).getByLabelText('automation.timer_triggers.channel'), 'none');
+    // Multi-channel (#6230): the script-only "None (no mesh output)" checkbox.
+    await user.click(within(card).getByLabelText('automation.timer_triggers.channel_none'));
 
     await user.click(within(card).getByRole('button', { name: /common\.done/ }));
     expect(card).not.toHaveAttribute('data-expanded');
@@ -166,7 +167,7 @@ describe('TimerTriggersSection hybrid workflow (#5812)', () => {
       responseType: 'script',
       scriptPath: '/data/scripts/report.py',
       scriptArgs: '--fast',
-      channel: 'none',
+      channels: ['none'],
       enabled: true,
     });
     expect(onTriggersChange).toHaveBeenCalledWith(saved);
@@ -187,10 +188,13 @@ describe('TimerTriggersSection hybrid workflow (#5812)', () => {
     expect(within(card).getByText('automation.timer_triggers.message_required')).toBeInTheDocument();
 
     await user.type(within(card).getByLabelText('automation.timer_triggers.message'), ' {{NODECOUNT} online ');
-    await user.selectOptions(within(card).getByLabelText('automation.timer_triggers.channel'), '1');
+    // Multi-channel (#6230): uncheck Primary (seeded), check Ops → channels [1].
+    const channelBoxes = within(within(card).getByRole('group')).getAllByRole('checkbox');
+    await user.click(channelBoxes[0]); // uncheck Primary (0)
+    await user.click(channelBoxes[1]); // check Ops (1)
     await save();
     const saved = JSON.parse(lastBody().timerTriggers);
-    expect(saved[0]).toMatchObject({ name: 'Status', responseType: 'text', response: '{NODECOUNT} online', channel: 1 });
+    expect(saved[0]).toMatchObject({ name: 'Status', responseType: 'text', response: '{NODECOUNT} online', channels: [1] });
     expect(saved[0]).not.toHaveProperty('scriptPath');
     expect(saved[0]).not.toHaveProperty('scriptArgs');
   });

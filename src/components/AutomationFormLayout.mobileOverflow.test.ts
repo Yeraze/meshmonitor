@@ -49,9 +49,11 @@ describe('automation forms wrap instead of overflowing on a phone', () => {
     '%s channel row wraps',
     (file) => {
       const tsx = read(file);
-      // The Channel: label sits directly inside the wrapping row.
+      // The Channel(s) label sits directly inside the wrapping row. The timer
+      // editor is multi-channel (#6230) so its key is `channels_label`; the
+      // geofence editor is still single-channel (`channel`). Either wraps.
       expect(tsx).toMatch(
-        /className=\{layout\.wrapRow\}[^\n]*\n\s*<label[^\n]*\n\s*\{t\('automation\.(timer|geofence)_triggers\.channel',/,
+        /className=\{layout\.wrapRow\}[^\n]*\n\s*<label[^\n]*\n\s*\{t\('automation\.(timer|geofence)_triggers\.channels?(_label)?',/,
       );
     },
   );

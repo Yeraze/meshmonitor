@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitTriggerPatterns, normalizeTriggerPatterns, normalizeTriggerChannels } from './autoResponderUtils';
+import { splitTriggerPatterns, normalizeTriggerPatterns, normalizeTriggerChannels, normalizeTimerChannels } from './autoResponderUtils';
 
 describe('autoResponderUtils', () => {
   describe('splitTriggerPatterns', () => {
@@ -217,6 +217,38 @@ describe('autoResponderUtils', () => {
       const trigger = { channels: ['none'] as Array<number | 'dm' | 'none'> };
       expect(wouldTriggerMatch(trigger, true, 0)).toBe(false);
       expect(wouldTriggerMatch(trigger, false, 0)).toBe(false);
+    });
+  });
+
+  // #6230: timers have no 'dm' option; the reader coerces a legacy single
+  // `channel` into a one-item array so saved timers keep working.
+  describe('normalizeTimerChannels (#6230)', () => {
+    it('reads the new channels array', () => {
+      expect(normalizeTimerChannels({ channels: [0, 2] })).toEqual([0, 2]);
+    });
+
+    it('keeps a none-only selection (scripts, no mesh output)', () => {
+      expect(normalizeTimerChannels({ channels: ['none'] })).toEqual(['none']);
+    });
+
+    it('migrates an old single-channel timer into a one-item array', () => {
+      expect(normalizeTimerChannels({ channel: 3 })).toEqual([3]);
+    });
+
+    it('migrates an old none channel', () => {
+      expect(normalizeTimerChannels({ channel: 'none' })).toEqual(['none']);
+    });
+
+    it('prefers the channels array over the legacy channel field', () => {
+      expect(normalizeTimerChannels({ channels: [1], channel: 5 })).toEqual([1]);
+    });
+
+    it('falls back to the legacy channel when the array is empty', () => {
+      expect(normalizeTimerChannels({ channels: [], channel: 4 })).toEqual([4]);
+    });
+
+    it('defaults to channel 0 when nothing is set', () => {
+      expect(normalizeTimerChannels({})).toEqual([0]);
     });
   });
 });

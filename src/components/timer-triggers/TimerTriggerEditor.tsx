@@ -19,6 +19,7 @@ import { UiIcon } from '../icons';
 import {
   DEFAULT_TIMER_CRON,
   TIMER_MESSAGE_LIMIT,
+  editableTimerChannels,
   isValidTimerCron,
   timerResponseType,
   type TimerTriggerErrors,
@@ -53,7 +54,13 @@ const TimerTriggerEditor: React.FC<TimerTriggerEditorProps> = ({
   const { t } = useTranslation();
   const type = timerResponseType(tr);
   const message = tr.response ?? '';
-  const channel = tr.channel ?? 0;
+  // Multi-channel selection (#6230). 'none' (scripts only) is exclusive.
+  const selectedChannels = editableTimerChannels(tr);
+  const hasNone = selectedChannels.includes('none');
+
+  const setChannels = (next: Array<number | 'none'>) => {
+    onChange({ channels: next, channel: undefined });
+  };
   // Live cron check, as the old forms had; a blank one waits for Done.
   const cronError = errors.cronExpression
     ?? (tr.cronExpression.trim() && !isValidTimerCron(tr.cronExpression)
@@ -143,7 +150,10 @@ const TimerTriggerEditor: React.FC<TimerTriggerEditorProps> = ({
               value="text"
               checked={type === 'text'}
               // "None" is a script-only channel; a text timer needs a real one.
-              onChange={() => onChange(channel === 'none' ? { responseType: 'text', channel: 0 } : { responseType: 'text' })}
+              onChange={() => {
+                const real = selectedChannels.filter((c): c is number => c !== 'none');
+                onChange({ responseType: 'text', channels: real.length > 0 ? real : [0], channel: undefined });
+              }}
             />
             {t('automation.timer_triggers.type_text', 'Text Message')}
           </label>
@@ -240,35 +250,56 @@ const TimerTriggerEditor: React.FC<TimerTriggerEditorProps> = ({
         </div>
       )}
 
-      <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <label style={{ minWidth: '120px', fontSize: '0.9rem' }} htmlFor={`timer-channel-${tr.id}`}>
-          {t('automation.timer_triggers.channel', 'Channel:')}
+      <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+        <label style={{ minWidth: '120px', fontSize: '0.9rem', paddingTop: '0.4rem' }}>
+          {t('automation.timer_triggers.channels_label', 'Channels:')}
         </label>
-        <select
-          id={`timer-channel-${tr.id}`}
-          value={channel}
-          onChange={(e) => {
-            const val = e.target.value;
-            onChange({ channel: val === 'none' ? 'none' : Number(val) });
-          }}
-          className={`setting-input ${layout.labeledField}`}
-          style={{ flex: 1 }}
-        >
-          {type === 'script' && (
-            <option value="none">{t('automation.timer_triggers.channel_none', 'None (no mesh output)')}</option>
-          )}
-          {channels.map((ch) => (
-            <option key={ch.id} value={ch.id}>
-              Channel {ch.id}: {ch.name}
-            </option>
-          ))}
-        </select>
-        <div className={styles.hint}>
-          {type === 'script' && channel === 'none' ? (
-            t('automation.timer_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
-          ) : (
-            <><UiIcon name="forward" size={12} /> {t('automation.timer_triggers.channel_help_generic', 'Output will be sent to this channel')}</>
-          )}
+        <div className={layout.labeledField} style={{ flex: 1 }}>
+          <div className={styles.channels} role="group" aria-label={t('automation.timer_triggers.channels_label', 'Channels:')}>
+            <div className="channel-checkbox-list">
+              {type === 'script' && (
+                <div className="channel-checkbox-row">
+                  <input
+                    type="checkbox"
+                    id={`timer-channel-none-${tr.id}`}
+                    checked={hasNone}
+                    // 'none' is exclusive; unchecking it falls back to channel 0.
+                    onChange={(e) => setChannels(e.target.checked ? ['none'] : [0])}
+                  />
+                  <label htmlFor={`timer-channel-none-${tr.id}`} className={styles.hint}>
+                    {t('automation.timer_triggers.channel_none', 'None (no mesh output)')}
+                  </label>
+                </div>
+              )}
+              {channels.map((ch) => (
+                <div key={ch.id} className="channel-checkbox-row">
+                  <input
+                    type="checkbox"
+                    id={`timer-channel-${ch.id}-${tr.id}`}
+                    checked={selectedChannels.includes(ch.id)}
+                    disabled={hasNone}
+                    onChange={(e) => setChannels(e.target.checked
+                      ? [...selectedChannels.filter((c) => c !== 'none'), ch.id]
+                      : selectedChannels.filter((c) => c !== ch.id))}
+                  />
+                  <label
+                    htmlFor={`timer-channel-${ch.id}-${tr.id}`}
+                    className={ch.id === 0 ? 'primary-channel' : undefined}
+                  >
+                    {t('auto_responder.channel_option', { id: ch.id, name: ch.name })}
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+          {errors.channels && <div className={styles.error} role="alert">{errors.channels}</div>}
+          <div className={styles.hint}>
+            {type === 'script' && hasNone ? (
+              t('automation.timer_triggers.channel_none_help', 'Script handles its own output (e.g., external integrations)')
+            ) : (
+              <><UiIcon name="forward" size={12} /> {t('automation.timer_triggers.channels_help_generic', 'Output is sent to each selected channel, spaced by the normal send gap')}</>
+            )}
+          </div>
         </div>
       </div>
     </div>

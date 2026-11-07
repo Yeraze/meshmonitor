@@ -22,6 +22,7 @@ import {
   type MeshCoreTimerTrigger,
   hasMeshCoreTimerErrors,
   isValidMeshCoreTimerCron,
+  meshCoreTimerChannelIndexes,
   newMeshCoreTimerTrigger,
   validateMeshCoreTimer,
 } from './meshcoreTimerModel';
@@ -343,8 +344,11 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
           title: t('meshcore.automation.timers.destination', 'Destination'),
         });
       } else {
-        const idx = tr.channelIndex ?? 0;
-        chips.push({ label: channelMap.get(idx) ?? `Channel ${idx}`, tone: 'info', title: t('meshcore.automation.timers.destination', 'Destination') });
+        const idxs = meshCoreTimerChannelIndexes(tr);
+        const label = idxs.length > 0
+          ? idxs.map((idx) => channelMap.get(idx) ?? `Channel ${idx}`).join(', ')
+          : t('meshcore.automation.timers.no_channels_selected', '(no channels selected)');
+        chips.push({ label, tone: 'info', title: t('meshcore.automation.timers.destination', 'Destination') });
       }
       if (tr.scopeMode && tr.scopeMode !== 'inherit') {
         chips.push({ label: tr.scopeMode === 'named' ? `#${tr.scopeName ?? ''}` : tr.scopeMode, tone: 'caution' });
