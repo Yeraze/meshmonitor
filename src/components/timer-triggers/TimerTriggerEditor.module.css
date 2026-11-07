@@ -17,6 +17,13 @@
   gap: 0.25rem;
 }
 
+/* Multi-channel selection (#6230). */
+.channels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .mono {
   font-family: monospace;
 }

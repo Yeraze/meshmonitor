@@ -100,7 +100,7 @@ import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { AUTO_ACK_MAX_PENDING, autoAckChannelWaitMs, resolveAutoAckMaxResponses } from './autoAckResponseCap.js';
 import { countDistinctResponders } from '../utils/messageReplies.js';
 import { clampHopLimitOverride, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
-import { normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
+import { normalizeTriggerChannels, normalizeTimerChannels } from '../utils/autoResponderUtils.js';
 import { matchResponderTrigger } from './utils/autoResponderMatcher.js';
 import { resolveResponderSyntax, type ResponderSyntax } from '../utils/responderTrigger.js';
 import { runForwarding, parseStoredForwardingRules } from './utils/forwardingEngine.js';
@@ -4396,7 +4396,8 @@ class MeshtasticManager implements ISourceManager {
       scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
       scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
       response?: string; // Text message with expansion tokens (when responseType is 'text')
-      channel?: number; // Channel index (0-7) to send output to
+      channels?: Array<number | 'none'>; // Channel indexes to send output to, or ['none'] for no mesh output (#6230)
+      channel?: number | 'none'; // Legacy single channel (#6230 back-compat)
       enabled: boolean;
       lastRun?: number;
       lastResult?: 'success' | 'error';
@@ -4444,10 +4445,15 @@ class MeshtasticManager implements ISourceManager {
           return;
         }
         const responseType = trigger.responseType || 'script'; // Default to script for backward compatibility
+        // Multi-channel (#6230): read the channels array, coercing an old
+        // single-channel timer into a one-item array. Each chosen channel gets
+        // one send; the message queue's SEND_INTERVAL_MS spaces them on air, so
+        // a multi-channel timer never bursts — no new cadence or cap is added.
+        const timerChannels = normalizeTimerChannels(trigger);
         if (responseType === 'text' && trigger.response?.trim()) {
-          await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, trigger.channel ?? 0);
+          await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, timerChannels);
         } else if (trigger.scriptPath) {
-          await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, trigger.channel ?? 0, trigger.scriptArgs);
+          await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, timerChannels, trigger.scriptArgs);
         } else {
           logger.error(`⏱️ Timer "${trigger.name}" has no valid response configured`);
           await this.updateTimerTriggerResult(trigger.id, 'error', 'No response configured');
@@ -4988,8 +4994,12 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Execute a timer trigger script and send output to specified channel
    */
-  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channel: number | 'none', scriptArgs?: string): Promise<void> {
+  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channels: Array<number | 'none'>, scriptArgs?: string): Promise<void> {
     const startTime = Date.now();
+    // Multi-channel (#6230): the script runs ONCE; its responses go to every
+    // selected channel. 'none' (or an empty selection) means the script owns
+    // its output and nothing is sent to the mesh.
+    const targetChannels = channels.filter((c): c is number => c !== 'none');
 
     // Validate script path
     if (!scriptPath.startsWith('/data/scripts/') || scriptPath.includes('..')) {
@@ -5125,29 +5135,34 @@ class MeshtasticManager implements ISourceManager {
           return;
         }
 
-        // Skip sending if channel is 'none' (script handles its own output)
-        if (channel !== 'none') {
-          // Send each response to the specified channel
-          logger.debug(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
+        // Skip sending when no real channel is selected (script owns its output).
+        if (targetChannels.length > 0) {
+          // Enqueue every response to every selected channel. The message
+          // queue spaces all items by SEND_INTERVAL_MS, so even a multi-channel,
+          // multi-response script never bursts on air — the existing per-source
+          // TX gap is reused, no new cadence (#6230).
+          logger.debug(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to ${targetChannels.length} channel(s)`);
 
-          scriptResponses.forEach((resp, index) => {
-            const truncated = this.truncateMessageForMeshtastic(resp, 200);
+          for (const channel of targetChannels) {
+            scriptResponses.forEach((resp, index) => {
+              const truncated = this.truncateMessageForMeshtastic(resp, 200);
 
-            this.enqueueAutomation(
-              truncated,
-              0, // destination: 0 for channel broadcast
-              undefined, // no reply-to packet ID for timer messages
-              () => {
-                logger.debug(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
-              },
-              (reason: string) => {
-                logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
-              },
-              channel // channel number
-            );
-          });
+              this.enqueueAutomation(
+                truncated,
+                0, // destination: 0 for channel broadcast
+                undefined, // no reply-to packet ID for timer messages
+                () => {
+                  logger.debug(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
+                },
+                (reason: string) => {
+                  logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
+                },
+                channel // channel number
+              );
+            });
+          }
         } else {
-          logger.debug(`⏱️ Timer "${triggerName}" script executed (channel=none, no mesh output)`);
+          logger.debug(`⏱️ Timer "${triggerName}" script executed (no mesh output)`);
         }
       }
 
@@ -5167,28 +5182,35 @@ class MeshtasticManager implements ISourceManager {
    * Execute a timer trigger text message and send to specified channel
    * Uses the same token expansion as auto-announce
    */
-  private async executeTimerTextMessage(triggerId: string, triggerName: string, message: string, channel: number): Promise<void> {
+  private async executeTimerTextMessage(triggerId: string, triggerName: string, message: string, channels: Array<number | 'none'>): Promise<void> {
     try {
       logger.debug(`⏱️ Executing timer text message: "${triggerName}"`);
 
-      // Replace tokens using the same method as auto-announce
+      // Replace tokens once; the same rendered body goes to every channel (#6230).
       const expandedMessage = await this.replaceAnnouncementTokens(message);
       const truncated = this.truncateMessageForMeshtastic(expandedMessage, 200);
 
-      logger.debug(`⏱️ Timer "${triggerName}" sending to channel ${channel}: ${truncated.substring(0, 50)}${truncated.length > 50 ? '...' : ''}`);
+      // 'none' is a script-only choice; a text timer has none, but filter defensively.
+      const targetChannels = channels.filter((c): c is number => c !== 'none');
 
-      this.enqueueAutomation(
-        truncated,
-        0, // destination: 0 for channel broadcast
-        undefined, // no reply-to packet ID for timer messages
-        () => {
-          logger.debug(`✅ Timer "${triggerName}" message delivered to channel ${channel}`);
-        },
-        (reason: string) => {
-          logger.warn(`❌ Timer "${triggerName}" message failed to channel ${channel}: ${reason}`);
-        },
-        channel // channel number
-      );
+      // One enqueue per channel. The message queue sends one item every
+      // SEND_INTERVAL_MS, so multi-channel timers are spaced on air by the
+      // existing per-source TX gap and never burst (#6230).
+      for (const channel of targetChannels) {
+        logger.debug(`⏱️ Timer "${triggerName}" queuing to channel ${channel}: ${truncated.substring(0, 50)}${truncated.length > 50 ? '...' : ''}`);
+        this.enqueueAutomation(
+          truncated,
+          0, // destination: 0 for channel broadcast
+          undefined, // no reply-to packet ID for timer messages
+          () => {
+            logger.debug(`✅ Timer "${triggerName}" message delivered to channel ${channel}`);
+          },
+          (reason: string) => {
+            logger.warn(`❌ Timer "${triggerName}" message failed to channel ${channel}: ${reason}`);
+          },
+          channel // channel number
+        );
+      }
 
       await this.updateTimerTriggerResult(triggerId, 'success');
 

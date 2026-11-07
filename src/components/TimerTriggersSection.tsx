@@ -22,6 +22,7 @@ import {
   finalizeTimerTrigger,
   newTimerTrigger,
   timerResponseType,
+  editableTimerChannels,
 } from './timer-triggers/timerTriggerModel';
 import apiService from '../services/api';
 import styles from './TimerTriggersSection.module.css';
@@ -249,10 +250,17 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   });
 
   const channelLabel = (tr: TimerTrigger): string => {
-    if (tr.channel === 'none') return t('automation.timer_triggers.chip_no_output', 'No mesh output');
-    const id = tr.channel ?? 0;
-    const name = channels.find((c) => c.id === id)?.name;
-    return name ? `Ch ${id}: ${name}` : `Channel ${id}`;
+    const sel = editableTimerChannels(tr);
+    if (sel.length === 1 && sel[0] === 'none') {
+      return t('automation.timer_triggers.chip_no_output', 'No mesh output');
+    }
+    return sel
+      .filter((c): c is number => c !== 'none')
+      .map((id) => {
+        const name = channels.find((c) => c.id === id)?.name;
+        return name ? `Ch ${id}: ${name}` : `Channel ${id}`;
+      })
+      .join(', ') || t('automation.timer_triggers.chip_no_output', 'No mesh output');
   };
 
   const summaryOf = (tr: TimerTrigger): React.ReactNode => {
