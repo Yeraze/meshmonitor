@@ -39,7 +39,7 @@ To enable solar monitoring, navigate to **Settings** and configure the following
 
 ### Validation
 
-After configuring your settings, click **Save Settings**. MeshMonitor will begin fetching solar estimates on the next hourly cycle. You can verify the configuration is working by:
+Solar Monitoring lives in **Global Settings** (one forecast per install). After configuring your settings, click **Save Settings**. MeshMonitor will begin fetching solar estimates on the next hourly cycle. You can verify the configuration is working by:
 
 1. Navigating to the **Telemetry Dashboard** or **Node Details** page
 2. Looking for the translucent yellow overlay on telemetry graphs
@@ -246,7 +246,7 @@ Use solar forecasts to:
 - Telemetry time range doesn't overlap with forecast data
 
 **Solutions**:
-1. Verify solar settings are saved in Settings tab
+1. Verify solar settings are saved in Global Settings
 2. Manually trigger a fetch: `POST /api/solar/trigger`
 3. Check browser console for API errors
 4. Verify telemetry date range includes future timestamps

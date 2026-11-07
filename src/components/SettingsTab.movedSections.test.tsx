@@ -552,3 +552,55 @@ describe('SettingsTab: the moved sections do not join the SettingsDraft', () => 
     }
   });
 });
+
+describe('SettingsTab: Solar Monitoring and Restart moved to Global Settings (#6258)', () => {
+  it('source mode shows pointers, no solar editor and no restart button', async () => {
+    renderSettings('source');
+    await settled();
+    expect(screen.getByTestId('solar-moved')).toBeInTheDocument();
+    expect(screen.getByTestId('restart-moved')).toBeInTheDocument();
+    expect(document.getElementById('solarLatitude')).toBeNull();
+    expect(screen.queryByText('settings.shutdown_button')).toBeNull();
+    expect(screen.queryByText('settings.restart_button')).toBeNull();
+  });
+
+  it('source mode hides the restart pointer from a non-admin', async () => {
+    view.isAdmin = false;
+    renderSettings('source');
+    await settled();
+    expect(screen.getByTestId('solar-moved')).toBeInTheDocument();
+    expect(screen.queryByTestId('restart-moved')).toBeNull();
+  });
+
+  it('global mode renders the solar editor and the system section for an admin', async () => {
+    view.sourceId = null;
+    view.sourceType = null;
+    renderSettings('global');
+    await settled();
+    expect(document.getElementById('settings-solar')).not.toBeNull();
+    expect(screen.queryByTestId('solar-moved')).toBeNull();
+    await waitFor(() => expect(document.getElementById('settings-system')).not.toBeNull());
+  });
+
+  it('global mode omits the system section for a non-admin', async () => {
+    view.isAdmin = false;
+    view.sourceId = null;
+    view.sourceType = null;
+    renderSettings('global');
+    await settled();
+    expect(document.getElementById('settings-system')).toBeNull();
+  });
+
+  it('source mode Purge Telemetry sends the page\'s sourceId (#6258 D7)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderSettings('source');
+    await settled();
+    screen.getByText('settings.purge_telemetry_button').click();
+    await waitFor(() => {
+      const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls
+        .find(([url]) => String(url).includes('/api/purge/telemetry'));
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String((call![1] as RequestInit).body))).toMatchObject({ sourceId: 'src-a' });
+    });
+  });
+});

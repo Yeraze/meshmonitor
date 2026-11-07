@@ -88,6 +88,11 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   // Reticulum destination retention (#5683 follow-up): one cap for every
   // Reticulum source, so it left the per-source Settings page.
   'settings-reticulum',
+  // Solar Monitoring (#6258 D5): solarMonitoringService reads bare getSetting,
+  // so the forecast is one per install.
+  'settings-solar',
+  // Restart / shutdown (#6258 D6): acts on the whole process, admin-only.
+  'settings-system',
 ]);
 
 /** Settings sections that belong to a source's own Settings tab. */
@@ -104,7 +109,7 @@ export const SOURCE_SETTINGS_SECTIONS = new Set([
   // Reliable PKI per-source override (#5691): MeshMonitor behaviour for this
   // source's sends. The install-wide default lives in Global → Security.
   'settings-reliable-pki',
-  'settings-notifications', 'settings-packet-monitor', 'settings-solar',
+  'settings-notifications', 'settings-packet-monitor',
   'settings-reset-ui',
   // Coverage Report reception recording (#5277 P2 WP3 MQTT gateways, P3 WP4
   // MeshCore observers) — shown only on MQTT-shaped sources (see the
@@ -211,12 +216,13 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-coverage-mqtt', label: t('settings.coverage_mqtt_section', 'Coverage recording'), keywords: ['coverage', 'gateway', 'mqtt', 'survey', 'range test', 'observer', 'meshcore'] },
     { id: 'settings-management', label: t('settings.settings_management'), keywords: ['export', 'import', 'reset'] },
     { id: 'settings-danger', label: t('settings.danger_zone'), keywords: ['delete', 'purge', 'wipe', 'reset'] },
+    { id: 'settings-system', label: t('settings.system_section', 'Restart / Shutdown'), keywords: ['restart', 'shutdown', 'reboot', 'container', 'docker', 'power'] },
   ];
 
   const adminOnly = new Set([
     'settings-default-source',
     'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-ducting', 'settings-adsb', 'settings-meshwars',
-    'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics',
+    'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics', 'settings-system',
   ]);
   const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt']);
 

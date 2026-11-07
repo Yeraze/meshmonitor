@@ -33,6 +33,7 @@ import MqttBridgeConfigurationView from './MQTT/MqttBridgeConfigurationView';
 import ReticulumRetentionSection from './settings/ReticulumRetentionSection';
 import DefaultMeshtasticSourceSection from './settings/DefaultMeshtasticSourceSection';
 import { MovedSettingNote } from './common/MovedSettingNote';
+import SystemRestartSection from './settings/SystemRestartSection';
 import SignFlipCorrectionSettings from './settings/SignFlipCorrectionSettings';
 import { parseSignFlipSettings, clampSignFlipRangeKm, SIGN_FLIP_DEFAULT_RANGE_KM } from '../utils/signFlipPosition';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
@@ -53,6 +54,7 @@ import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
 import sectionNavLayout from './SectionNav.module.css';
 import { GlobalSettingsLink } from './nav/GlobalSettingsLink';
+import { GLOBAL_SETTINGS_PATH } from './nav/sourceNavEntries';
 import {
   GLOBAL_SETTINGS_SECTIONS,
   SOURCE_SETTINGS_SECTIONS,
@@ -701,8 +703,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // 5.3 spec).
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDocker, setIsDocker] = useState<boolean | null>(null);
-  const [isRestarting, setIsRestarting] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
   const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
   const [isTestingApprise, setIsTestingApprise] = useState<boolean>(false);
@@ -711,18 +711,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [elevationTesting, setElevationTesting] = useState(false);
   const { showToast } = useToast();
 
-  // Fetch system status to determine if running in Docker
-  useEffect(() => {
-    const fetchSystemStatus = async () => {
-      try {
-        const data = await apiService.get<{ isDocker?: boolean }>('/api/system/status');
-        setIsDocker(!!data.isDocker);
-      } catch (error) {
-        logger.error('Failed to fetch system status:', error);
-      }
-    };
-    void fetchSystemStatus();
-  }, [baseUrl]);
 
   // Fetch database type from health endpoint (public, no auth required)
   useEffect(() => {
@@ -1815,7 +1803,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     if (!confirmed) return;
 
     try {
-      await apiService.purgeNodes(0);
+      await apiService.purgeNodes(0, purgeSourceId ?? undefined);
       showToast(t('toast.nodes_purged'), 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
@@ -1838,7 +1826,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     if (!confirmed) return;
 
     try {
-      await apiService.purgeTelemetry(0);
+      await apiService.purgeTelemetry(0, purgeSourceId ?? undefined);
       showToast(t('toast.telemetry_purged'), 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
@@ -1889,35 +1877,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     } catch (error) {
       logger.error('Error purging traceroutes:', error);
       showToast(t('toast.traceroutes_purge_failed'), 'error');
-    }
-  };
-
-  const handleRestartContainer = async () => {
-    const action = isDocker ? t('settings.restart_action') : t('settings.shutdown_action');
-    const confirmed = window.confirm(
-      t('settings.confirm_restart_title', { action }) + '\n\n' +
-      (isDocker
-        ? t('settings.confirm_restart_docker')
-        : t('settings.confirm_restart_manual'))
-    );
-
-    if (!confirmed) return;
-
-    setIsRestarting(true);
-    try {
-      const result = await apiService.restartContainer();
-      showToast(result.message, 'success');
-
-      if (isDocker) {
-        // Wait a few seconds, then reload the page
-        setTimeout(() => {
-          window.location.reload();
-        }, 5000);
-      }
-    } catch (error) {
-      logger.error(`Error ${action}ing:`, error);
-      showToast(t('settings.restart_failed', { action }), 'error');
-      setIsRestarting(false);
     }
   };
 
@@ -3183,6 +3142,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>}
 
+        {mode === 'source' && (
+          <div id="settings-solar" className="settings-section">
+            <MovedSettingNote
+              testId="solar-moved"
+              text={t('moved.solar', 'Solar Monitoring moved to Global Settings.')}
+              linkLabel={t('moved.open_global_settings', 'Open Global Settings')}
+              to={`${GLOBAL_SETTINGS_PATH}#settings-solar`}
+            />
+          </div>
+        )}
+
         {show('settings-solar') && <div id="settings-solar" className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
@@ -4022,29 +3992,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </button>
           </div>
 
-          {isDocker !== null && (
-            <div className="danger-action">
-              <div className="danger-action-info">
-                <h4>{isDocker ? t('settings.restart_container_title') : t('settings.shutdown_title')}</h4>
-                <p>
-                  {isDocker
-                    ? t('settings.restart_container_description')
-                    : t('settings.shutdown_description')}
-                </p>
-              </div>
-              <button
-                className="danger-button"
-                onClick={handleRestartContainer}
-                disabled={isRestarting || !isAdmin}
-                title={isAdmin ? undefined : t('settings.restart_admin_only', 'Only an administrator can restart or shut down MeshMonitor. It affects every source.')}
-              >
-                {isRestarting
-                  ? (isDocker ? t('settings.restarting') : t('settings.shutting_down'))
-                  : <><UiIcon name={isDocker ? 'refresh' : 'power'} /> {isDocker ? t('settings.restart_button') : t('settings.shutdown_button')}</>}
-              </button>
-            </div>
+          {mode === 'source' && isAdmin && (
+            <MovedSettingNote
+              testId="restart-moved"
+              text={t('moved.restart', 'Restart and shutdown moved to Global Settings.')}
+              linkLabel={t('moved.open_global_settings', 'Open Global Settings')}
+              to={`${GLOBAL_SETTINGS_PATH}#settings-system`}
+            />
           )}
         </div>}
+
+        {show('settings-system') && isAdmin && <SystemRestartSection />}
       </div>
       </div>
     </div>

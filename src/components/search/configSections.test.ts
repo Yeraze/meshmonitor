@@ -65,6 +65,17 @@ describe('configSections', () => {
     expect(source).not.toContain('settings-sorting');
   });
 
+  it('files Solar Monitoring and Restart under Global Settings only (#6258)', () => {
+    const global = settingsNavItems(t, { ...baseOptions, mode: 'global' }).map((i) => i.id);
+    const source = settingsNavItems(t, { ...baseOptions, mode: 'source' }).map((i) => i.id);
+    expect(global).toContain('settings-solar');
+    expect(global).toContain('settings-system');
+    expect(source).not.toContain('settings-solar');
+    expect(source).not.toContain('settings-system');
+    const nonAdmin = settingsNavItems(t, { ...baseOptions, mode: 'global', isAdmin: false }).map((i) => i.id);
+    expect(nonAdmin).not.toContain('settings-system');
+  });
+
   describe('visibility gates mirror the tab', () => {
     it('hides admin-only sections from a non-admin', () => {
       const ids = settingsNavItems(t, { ...baseOptions, isAdmin: false }).map((i) => i.id);
