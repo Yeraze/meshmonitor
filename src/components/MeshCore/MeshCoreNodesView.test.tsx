@@ -619,3 +619,97 @@ describe('MeshCoreNodesView — Nodes tab quick age filter (#5387)', () => {
     expect(listedNames()).toEqual(['Recent']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Hide incomplete + marker dimming (#6258)
+// ---------------------------------------------------------------------------
+
+describe('MeshCoreNodesView — hide incomplete nodes and dimming (#6258)', () => {
+  const PK_N = 'd'.repeat(64); // no name
+  const PK_U = 'e'.repeat(64); // unknown type
+  const PK_F = 'f'.repeat(64); // favourite, no name, unknown type
+  const PK_L = '1'.repeat(64); // local, no name
+  const PK_OK = '2'.repeat(64); // complete
+
+  const rawNodes: MeshCoreNode[] = [
+    { publicKey: PK_N, name: '', advType: 1, lastHeard: NOW - HOUR_MS },
+    { publicKey: PK_U, name: 'NoType', advType: 0, lastHeard: NOW - HOUR_MS },
+    { publicKey: PK_F, name: '  ', advType: 0, lastHeard: NOW - HOUR_MS, isFavorite: true },
+    { publicKey: PK_OK, name: 'Complete', advType: 1, lastHeard: NOW - HOUR_MS },
+  ];
+  const rawContacts = [
+    { publicKey: PK_L, advName: '', name: '', advType: 0, isLocal: true, latitude: 1, longitude: 2, lastSeen: NOW - HOUR_MS },
+    { publicKey: PK_OK, advName: 'Complete', advType: 1, latitude: 3, longitude: 4, lastSeen: NOW - HOUR_MS },
+    { publicKey: PK_N, advName: '', advType: 1, latitude: 5, longitude: 6, lastSeen: NOW - HOUR_MS },
+  ] as unknown as MeshCoreContact[];
+
+  function mapContactKeys(): string[] {
+    const last = meshCoreMapProps.mock.calls.at(-1)![0] as { contacts: MeshCoreContact[] };
+    return last.contacts.map(c => c.publicKey).sort();
+  }
+
+  it('keeps every row when hide-incomplete is off', () => {
+    mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 24, maxInfraNodeAgeHours: 720, hideIncompleteNodes: false });
+    render(<MeshCoreNodesView nodes={rawNodes} contacts={rawContacts} />);
+    expect(document.querySelectorAll('.mc-node-row').length).toBe(5);
+  });
+
+  it('drops name-less and unknown-type rows, but keeps favourites and the local node, from list and map', () => {
+    mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 24, maxInfraNodeAgeHours: 720, hideIncompleteNodes: true });
+    render(<MeshCoreNodesView nodes={rawNodes} contacts={rawContacts} />);
+    // Complete, favourite, local remain; PK_N and PK_U are dropped.
+    expect(document.querySelectorAll('.mc-node-row').length).toBe(3);
+    const keys = mapContactKeys();
+    expect(keys).toContain(PK_OK);
+    expect(keys).toContain(PK_L);
+    expect(keys).not.toContain(PK_N);
+  });
+
+  function opacityMap(): ReadonlyMap<string, number> {
+    const last = meshCoreMapProps.mock.calls.at(-1)![0] as { markerOpacityByKey: ReadonlyMap<string, number> };
+    return last.markerOpacityByKey;
+  }
+
+  const dimNodes: MeshCoreNode[] = [
+    { publicKey: PK_A, name: 'Comp', advType: 1, lastHeard: NOW - 12 * HOUR_MS },
+    { publicKey: PK_B, name: 'Rpt', advType: 2, lastHeard: NOW - 12 * HOUR_MS },
+    { publicKey: PK_C, name: 'Fresh', advType: 1, lastHeard: NOW - 0.2 * HOUR_MS },
+  ];
+
+  it('dims markers using the companion window vs the infrastructure window', () => {
+    mockUseNodeDisplaySettings.mockReturnValue({
+      maxNodeAgeHours: 24, maxInfraNodeAgeHours: 120,
+      nodeDimmingEnabled: true, nodeDimmingStartHours: 1, nodeDimmingMinOpacity: 0.2,
+    });
+    render(<MeshCoreNodesView nodes={dimNodes} contacts={[]} />);
+    const m = opacityMap();
+    // companion: (12-1)/(24-1) -> 1 - 0.478*0.8 ~= 0.617
+    expect(m.get(PK_A)).toBeCloseTo(1 - (11 / 23) * 0.8, 3);
+    // infra: (12-1)/(120-1) -> much less dimmed
+    expect(m.get(PK_B)).toBeCloseTo(1 - (11 / 119) * 0.8, 3);
+    expect(m.get(PK_B)!).toBeGreaterThan(m.get(PK_A)!);
+    expect(m.has(PK_C)).toBe(false);
+  });
+
+  it('does not dim when disabled or when the window is 0, and never dims list rows', () => {
+    mockUseNodeDisplaySettings.mockReturnValue({
+      maxNodeAgeHours: 0, maxInfraNodeAgeHours: 0,
+      nodeDimmingEnabled: true, nodeDimmingStartHours: 1, nodeDimmingMinOpacity: 0.2,
+    });
+    render(<MeshCoreNodesView nodes={dimNodes} contacts={[]} />);
+    expect(opacityMap().size).toBe(0);
+    for (const row of Array.from(document.querySelectorAll<HTMLElement>('.mc-node-row'))) {
+      expect(row.style.opacity).toBe('');
+    }
+  });
+
+  it('never dims the local node', () => {
+    mockUseNodeDisplaySettings.mockReturnValue({
+      maxNodeAgeHours: 24, maxInfraNodeAgeHours: 120,
+      nodeDimmingEnabled: true, nodeDimmingStartHours: 1, nodeDimmingMinOpacity: 0.2,
+    });
+    const local = [{ publicKey: PK_L, advName: 'Me', advType: 1, isLocal: true, latitude: 1, longitude: 2, lastSeen: NOW - 20 * HOUR_MS }] as unknown as MeshCoreContact[];
+    render(<MeshCoreNodesView nodes={[]} contacts={local} />);
+    expect(opacityMap().has(PK_L)).toBe(false);
+  });
+});
