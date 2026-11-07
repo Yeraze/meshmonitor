@@ -3,16 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
-import { useSettings } from '../../contexts/SettingsContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
-import { kmToMiles } from '../../utils/distance';
-
-/** Miles → km (utils/distance only exports km→miles). */
-const milesToKm = (mi: number) => mi * 1.609344;
 
 /**
  * MeshCore Auto Delete by Distance (#6224). Parity with the Meshtastic
@@ -50,9 +45,7 @@ export const MeshCoreAutoDeleteByDistanceSection: React.FC<Props> = ({ baseUrl, 
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
-  const { distanceUnit } = useSettings();
   const canWrite = hasPermission('automation', 'write');
-  const isMiles = distanceUnit === 'mi';
 
   const [settings, setSettings] = useState<DistanceDeleteSettings>(DEFAULTS);
   const [initial, setInitial] = useState<DistanceDeleteSettings>(DEFAULTS);
@@ -161,9 +154,7 @@ export const MeshCoreAutoDeleteByDistanceSection: React.FC<Props> = ({ baseUrl, 
   };
 
   const disabled = !settings.enabled || !canWrite;
-  // Threshold stored in km; display/edit in the user's unit.
-  const displayThreshold = isMiles ? Math.round(kmToMiles(settings.thresholdKm) * 10) / 10 : settings.thresholdKm;
-  const unitLabel = isMiles ? t('common.miles', 'miles') : t('common.kilometers', 'km');
+  const unitLabel = t('common.kilometers', 'km');
 
   return (
     <NumberInputScope scope={numberScope}>
@@ -208,9 +199,9 @@ export const MeshCoreAutoDeleteByDistanceSection: React.FC<Props> = ({ baseUrl, 
           <NumberInput
             id="mcDeleteDistanceThreshold"
             min={1}
-            max={isMiles ? 30000 : 50000}
-            value={displayThreshold}
-            onChange={(v) => update('thresholdKm', isMiles ? Math.round(milesToKm(v) * 10) / 10 : v)}
+            max={50000}
+            value={settings.thresholdKm}
+            onChange={(v) => update('thresholdKm', v)}
             disabled={disabled}
             className="setting-input"
           />

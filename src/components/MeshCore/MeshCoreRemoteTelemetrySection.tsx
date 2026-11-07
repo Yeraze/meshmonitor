@@ -91,7 +91,7 @@ export const MeshCoreRemoteTelemetrySection: React.FC<Props> = ({ baseUrl, sourc
   return (
     <NumberInputScope scope={numberScope}>
       <section>
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <h2 className="automation-section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <UiIcon name="activity" size={18} />
           {t('meshcore.automation.remote_telemetry.title', 'Remote Telemetry')}
         </h2>

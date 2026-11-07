@@ -114,7 +114,7 @@ export const MeshCoreTimeSyncSection: React.FC<Props> = ({ baseUrl, sourceId }) 
   return (
     <NumberInputScope scope={numberScope}>
       <section>
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <h2 className="automation-section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <UiIcon name="time" size={18} />
           {t('meshcore.automation.time_sync.title', 'Time Sync')}
         </h2>
