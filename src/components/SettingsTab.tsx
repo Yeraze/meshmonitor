@@ -35,6 +35,7 @@ import DefaultMeshtasticSourceSection from './settings/DefaultMeshtasticSourceSe
 import { MovedSettingNote } from './common/MovedSettingNote';
 import SystemRestartSection from './settings/SystemRestartSection';
 import SignFlipCorrectionSettings from './settings/SignFlipCorrectionSettings';
+import NodeDimmingSettings from './settings/NodeDimmingSettings';
 import { parseSignFlipSettings, clampSignFlipRangeKm, SIGN_FLIP_DEFAULT_RANGE_KM } from '../utils/signFlipPosition';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
@@ -2786,54 +2787,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span className="setting-description">{t('settings.hide_incomplete_description')}</span>
             </label>
           </div>
-          <div className="setting-item" style={{ marginTop: '1rem' }}>
-            <label>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={draft.nodeDimmingEnabled}
-                  onChange={(e) => updateField('nodeDimmingEnabled', e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                {t('settings.node_dimming_enabled')}
-              </span>
-              <span className="setting-description">{t('settings.node_dimming_description')}</span>
-            </label>
-          </div>
-          {draft.nodeDimmingEnabled && (
-            <>
-              <div className="setting-item">
-                <label htmlFor="nodeDimmingStartHours">
-                  {t('settings.node_dimming_start_hours')}
-                  <span className="setting-description">{t('settings.node_dimming_start_hours_description')}</span>
-                </label>
-                <NumberInput
-                  id="nodeDimmingStartHours"
-                  min={0.5}
-                  max={24}
-                  step={0.5}
-                  value={draft.nodeDimmingStartHours}
-                  onChange={(n) => updateField('nodeDimmingStartHours', n)}
-                  className="setting-input"
-                />
-              </div>
-              <div className="setting-item">
-                <label htmlFor="nodeDimmingMinOpacity">
-                  {t('settings.node_dimming_min_opacity')}
-                  <span className="setting-description">{t('settings.node_dimming_min_opacity_description')}</span>
-                </label>
-                <NumberInput
-                  id="nodeDimmingMinOpacity"
-                  min={0.1}
-                  max={0.9}
-                  step={0.1}
-                  value={draft.nodeDimmingMinOpacity}
-                  onChange={(n) => updateField('nodeDimmingMinOpacity', n)}
-                  className="setting-input"
-                />
-              </div>
-            </>
-          )}
+          <NodeDimmingSettings
+            enabled={draft.nodeDimmingEnabled}
+            startHours={draft.nodeDimmingStartHours}
+            minOpacity={draft.nodeDimmingMinOpacity}
+            onEnabledChange={(v) => updateField('nodeDimmingEnabled', v)}
+            onStartHoursChange={(n) => updateField('nodeDimmingStartHours', n)}
+            onMinOpacityChange={(n) => updateField('nodeDimmingMinOpacity', n)}
+          />
 
           {/* Likely-aircraft detection (#5364/#5365 Phase 1 WP5, spec §5.10).
               Meshtastic-only (D2/D18) — do NOT add to
