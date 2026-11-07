@@ -902,6 +902,23 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     );
                   })()}
                   </span>
+                  {/* #6193/#6194: our own channel send and DM carry the heard-by
+                      antenna (count 0 until a repeater relays it). #6239: it
+                      lives on the header row — with "You", the timestamp and the
+                      delete icon — not on its own line below the body, which
+                      wasted a full line per sent message. The expanded repeater
+                      list still opens below. A channel send is identified by its
+                      channel destination (our key is the sender, so `isChannel`
+                      is false); a DM by a real recipient key. Room posts and
+                      reactions are excluded. */}
+                  {outgoing && !m.reactionEmoji && !!m.toPublicKey && m.messageType !== 'room_post' && (
+                    <HeardByBubble
+                      heardBy={m.heardBy}
+                      requiredKeys={requiredKeys}
+                      repeaters={repeaters}
+                      mode={requiredRepeaterMode}
+                    />
+                  )}
                   {reactEnabled && isReactableRow(m, selfPublicKey) && (
                     <button
                       type="button"
@@ -1004,25 +1021,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     : `#${(m.scopeCode ?? 0).toString(16).padStart(4, '0')}`}
                 </div>
               )}
-              {/* #6193: our own channel send always carries the heard-by antenna
-                  from send time (count 0 until a repeater relays it), replacing
-                  the old "Sent to radio" status. The shared bubble pins required
-                  repeaters with ✓/✗ and counts only the green ✓ rows. A channel
-                  send is identified by its channel destination (our own key is
-                  the sender, so `isChannel` — keyed on the sender — is false). */}
-              {/* #6194: a DM is identified by a real recipient key (not a
-                  channel pseudo-key); it keeps its own ACK status mark above —
-                  both show. Room posts and reactions are excluded. */}
-              {outgoing && !m.reactionEmoji && !!m.toPublicKey && m.messageType !== 'room_post' && (
-                <div className="mc-heard-by-row">
-                  <HeardByBubble
-                    heardBy={m.heardBy}
-                    requiredKeys={requiredKeys}
-                    repeaters={repeaters}
-                    mode={requiredRepeaterMode}
-                  />
-                </div>
-              )}
+              {/* #6239: the heard-by antenna now renders on the header row
+                  above (was a full line here). */}
               {m.text && <LinkPreview text={m.text} />}
               {chipsByTarget.has(m.id) && <MeshCoreReactionChips
                 chips={chipsByTarget.get(m.id) ?? []}
