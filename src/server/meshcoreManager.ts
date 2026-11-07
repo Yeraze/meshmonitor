@@ -130,6 +130,7 @@ import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
 import { meshcoreMessageFilter, type MeshCoreClassifyResult } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
+import { MeshCoreAutoFavoriteScheduler, runAutoFavoriteSweep as runAutoFavoriteSweepService } from './services/meshcoreAutoFavorite.js';
 import { HeartbeatScheduler } from './services/heartbeatScheduler.js';
 import type { DbMeshCorePacket, DbMeshCoreNode, MeshCoreKeyAccessFilter } from '../db/repositories/meshcore.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
@@ -1938,6 +1939,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
 
+  private readonly autoFavoriteScheduler: MeshCoreAutoFavoriteScheduler;
+
   constructor(sourceId: string, sourceName?: string) {
     super();
     if (!sourceId) {
@@ -1946,6 +1949,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.sourceId = sourceId;
     this.sourceName = sourceName ?? sourceId;
     this.distanceDeleteScheduler = new DistanceDeleteScheduler(sourceId);
+    this.autoFavoriteScheduler = new MeshCoreAutoFavoriteScheduler(sourceId, () => runAutoFavoriteSweepService(this));
     this.autoPing = this.createAutoPingController();
     logger.info(`[MeshCore:${sourceId}] Manager initialized`);
   }
@@ -2166,6 +2170,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // own nodes/settings; only runs while connected.
       this.distanceDeleteScheduler.start().catch((err) =>
         logger.error(`[MeshCore:${this.sourceId}] Failed to start distance-delete scheduler:`, err));
+      // Per-source auto-favorite sweep (#6224) — favourites active contacts,
+      // drops the stale ones it owns; only runs while connected.
+      this.autoFavoriteScheduler.start().catch((err) =>
+        logger.error(`[MeshCore:${this.sourceId}] Failed to start auto-favorite scheduler:`, err));
       dataEventEmitter.emitMeshCoreStatusUpdated({ connected: true, node: this.localNode }, this.sourceId);
       if (this.localNode) {
         dataEventEmitter.emitMeshCoreLocalNodeUpdated(this.localNode, this.sourceId);
@@ -2440,6 +2448,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     // Stop the per-source auto-delete-by-distance scheduler (#3901).
     this.distanceDeleteScheduler.stop();
+    // Stop the per-source auto-favorite sweep (#6224).
+    this.autoFavoriteScheduler.stop();
 
     // Cancel any pending path-refresh — refreshContacts() against a torn-
     // down connection would just log an error.
@@ -13222,6 +13232,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /** Whether the auto-delete-by-distance periodic timer is armed on this source. */
   isDistanceDeleteRunning(): boolean {
     return this.distanceDeleteScheduler.running;
+  }
+
+  /** Re-arm the per-source auto-favorite sweep from freshly-saved settings (#6224). */
+  async restartAutoFavoriteScheduler(): Promise<void> {
+    await this.autoFavoriteScheduler.start();
+  }
+
+  /** Whether the auto-favorite periodic sweep is armed on this source. */
+  isAutoFavoriteRunning(): boolean {
+    return this.autoFavoriteScheduler.running;
+  }
+
+  /** Run one auto-favorite sweep now (manual "run now" / the scheduler). (#6224) */
+  async runAutoFavoriteSweep(): Promise<{ favorited: number; unfavorited: number }> {
+    return runAutoFavoriteSweepService(this);
   }
 
   // ============ Message Forwarding (#5446) ============

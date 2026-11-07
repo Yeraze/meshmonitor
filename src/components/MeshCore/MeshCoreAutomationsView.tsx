@@ -17,6 +17,7 @@ import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSec
 import { MeshCoreAutoDeleteByDistanceSection } from './MeshCoreAutoDeleteByDistanceSection';
 import { MeshCoreTimeSyncSection } from './MeshCoreTimeSyncSection';
 import { MeshCoreRemoteTelemetrySection } from './MeshCoreRemoteTelemetrySection';
+import { MeshCoreAutoFavoriteSection } from './MeshCoreAutoFavoriteSection';
 import { AutomationTokenReference } from '../AutomationTokenReference';
 import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
 import { UiIcon } from '../icons';
@@ -408,6 +409,11 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       {/* Remote Telemetry overview (#6224): central view/manage of per-node polling. */}
       <div id="meshcore-automation-remote-telemetry">
         <MeshCoreRemoteTelemetrySection baseUrl={baseUrl} sourceId={sourceId} />
+      </div>
+
+      {/* Auto Favorite (#6224): sweep favourites active contacts, un-favourites stale ones. */}
+      <div id="meshcore-automation-auto-favorite">
+        <MeshCoreAutoFavoriteSection baseUrl={baseUrl} sourceId={sourceId} />
       </div>
       </div>
       </div>
