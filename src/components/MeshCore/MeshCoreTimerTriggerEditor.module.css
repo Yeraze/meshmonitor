@@ -49,3 +49,40 @@
   flex: 1 1 12rem;
   min-width: 0;
 }
+
+/* Multi-channel selection (#6230), mirrors the Auto-Responder editor. */
+.channels {
+  margin: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--color-surface-active);
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0 0.5rem;
+  font-size: 0.8rem;
+}
+
+.muted {
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.channelList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.check input {
+  width: auto;
+  margin: 0;
+}
