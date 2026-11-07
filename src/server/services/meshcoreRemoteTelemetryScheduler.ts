@@ -21,6 +21,7 @@
  * `MESHCORE_REMOTE_TELEMETRY_TICK_MS`.
  */
 import { logger } from '../../utils/logger.js';
+import { dataEventEmitter } from './dataEventEmitter.js';
 import type { DbTelemetry } from '../../services/database.js';
 import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type {
@@ -759,6 +760,14 @@ export class MeshCoreRemoteTelemetryScheduler {
 
     try {
       await this.database.telemetry.insertTelemetryBatch(rows, manager.sourceId);
+      // Feed trigger.telemetry (#6237). Without this MeshCore readings were
+      // stored but never reached the automation engine. The emitted copy uses
+      // the canonical metric name so the "Voltage" filter matches.
+      for (const row of rows) {
+        const telemetryType =
+          row.telemetryType === `${MC_TELEMETRY_PREFIX}status_battery_volts` ? 'voltage' : row.telemetryType;
+        dataEventEmitter.emitTelemetry(Number(row.nodeNum), { ...row, telemetryType }, manager.sourceId, {});
+      }
       logger.debug(
         `[MeshCoreRemoteTelem:${manager.sourceId}] Wrote ${rows.length} telemetry rows for ${keyShort}… (${sources.join(', ')})`,
       );
