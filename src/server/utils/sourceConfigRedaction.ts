@@ -425,6 +425,7 @@ const OBSERVER_BROKER: Spec<MeshCoreObserverBrokerConfig> = {
   authMode: withheld,
   tokenAudience: withheld,
   label: granted(),
+  rejectUnauthorized: granted(),
 };
 
 const OBSERVER: Spec<MeshCoreObserverConfig> = {

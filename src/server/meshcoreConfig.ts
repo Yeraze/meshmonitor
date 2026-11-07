@@ -132,6 +132,12 @@ export interface MeshCoreObserverBrokerConfig {
   tokenAudience?: string;
   /** Free-text display label, e.g. "MeshMapper". UI only, never on the wire. */
   label?: string;
+  /**
+   * Verify the broker's TLS certificate (#6250). Absent or true = verify
+   * (the default). false lets a self-signed TLS broker connect; it removes
+   * man-in-the-middle protection, so the UI warns next to the toggle.
+   */
+  rejectUnauthorized?: boolean;
 }
 
 /**
@@ -147,6 +153,8 @@ export interface NormalizedObserverBroker {
   /** Present iff authMode === 'token' (normalization drops token brokers without one). */
   tokenAudience?: string;
   label?: string;
+  /** Present (and false) only when TLS certificate checks are off (#6250). */
+  rejectUnauthorized?: false;
   /**
    * True iff this entry corresponds to the block-level legacy `brokerUrl`.
    * The publisher uses it, and only it, to fall back to the pre-#5014
@@ -278,6 +286,7 @@ export function normalizeObserverBrokers(
       authMode,
       ...(tokenAudience ? { tokenAudience } : {}),
       ...(raw.label ? { label: raw.label } : {}),
+      ...(raw.rejectUnauthorized === false ? { rejectUnauthorized: false as const } : {}),
       legacy,
     });
     order.push(key);

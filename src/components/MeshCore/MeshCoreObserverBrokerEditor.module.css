@@ -58,3 +58,22 @@
 .removeButton:hover {
   background: var(--color-surface-hover);
 }
+
+/* Verify-TLS toggle (#6250). Qualified with .field so it beats the global
+ * `.meshcore-form-view label { display: block }` rule. */
+.field .checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-warning);
+}

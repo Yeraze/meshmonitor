@@ -474,6 +474,8 @@ class ObserverBrokerConnection {
       password: credentials.password,
       clientIdPrefix: 'meshmonitor-observer',
       keepalive: 60,
+      // Per-broker opt-out for self-signed TLS brokers (#6250). Default verify.
+      rejectUnauthorized: this.broker.rejectUnauthorized !== false,
       will: {
         topic: topics.status,
         payload: Buffer.from(JSON.stringify(lwt)),

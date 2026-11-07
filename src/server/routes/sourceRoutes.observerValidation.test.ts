@@ -521,6 +521,25 @@ describe('validateObserverConfig', () => {
       });
     });
 
+    it('accepts a boolean rejectUnauthorized on an entry (#6250)', () => {
+      const brokers = [
+        { ...TWO_BROKERS.brokers[0], rejectUnauthorized: false },
+        { ...TWO_BROKERS.brokers[1], rejectUnauthorized: true },
+      ];
+      expect(validateObserverConfig('meshcore', { observer: { ...TWO_BROKERS, brokers } })).toBeNull();
+    });
+
+    it('rejects a non-boolean rejectUnauthorized on an entry (#6250)', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...TWO_BROKERS, brokers: [{ ...TWO_BROKERS.brokers[0], rejectUnauthorized: 'false' }] },
+      });
+      expect(err).toEqual({
+        status: 400,
+        error: 'observer.brokers[0].rejectUnauthorized must be a boolean',
+        code: 'INVALID_PARAMETER',
+      });
+    });
+
     it('rejects a token-mode entry with no audience', () => {
       const err = validateObserverConfig('meshcore', {
         observer: { enabled: true, iataCode: 'MCO', brokers: [{ url: 'mqtt://broker.test:1883' }] },

@@ -350,6 +350,15 @@ export function validateObserverConfig(
         };
       }
 
+      const rejectUnauthorized = entry.rejectUnauthorized;
+      if (rejectUnauthorized !== undefined && typeof rejectUnauthorized !== 'boolean') {
+        return {
+          status: 400,
+          error: `observer.brokers[${i}].rejectUnauthorized must be a boolean`,
+          code: 'INVALID_PARAMETER',
+        };
+      }
+
       // validateBrokerUrlValue above already proved entry.url normalizes, so
       // this cannot throw in practice; the catch is defence-in-depth only.
       let key: string;
