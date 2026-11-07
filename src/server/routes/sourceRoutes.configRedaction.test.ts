@@ -116,6 +116,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
           authMode: 'password',
           tokenAudience: `${PRIV}-broker-audience`,
           label: `${EP}-broker-label`,
+          rejectUnauthorized: false,
           password: `${KEY}-broker-password`,
         },
       ],
@@ -488,7 +489,9 @@ describe('source config redaction', () => {
           brokerCount: 1,
           brokerUrl: `mqtts://***@${EP}-obs-legacy.example:8883/path`,
           iataCode: `${EP}-iata`,
-          brokers: [{ url: `wss://***@${EP}-obs-broker.example:8883/path`, label: `${EP}-broker-label` }],
+          brokers: [
+            { url: `wss://***@${EP}-obs-broker.example:8883/path`, label: `${EP}-broker-label`, rejectUnauthorized: false },
+          ],
         },
       });
       expect(rows.meshcore_mqtt.config).toEqual({

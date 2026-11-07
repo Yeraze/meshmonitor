@@ -29,6 +29,7 @@ function brokerRow(overrides: Partial<ObserverBrokerForm> = {}): ObserverBrokerF
     authMode: 'token',
     tokenAudience: 'meshcore-mqtt',
     label: '',
+    verifyTls: true,
     ...overrides,
   };
 }
@@ -386,7 +387,7 @@ describe('observerFormFromConfig', () => {
     expect(withoutIds(result)).toEqual({
       enabled: true,
       iataCode: 'MCO',
-      brokers: [{ url: 'wss://legacy.example:443', authMode: 'token', tokenAudience: 'legacy-aud', label: '' }],
+      brokers: [{ url: 'wss://legacy.example:443', authMode: 'token', tokenAudience: 'legacy-aud', label: '', verifyTls: true }],
     });
   });
 
@@ -396,7 +397,7 @@ describe('observerFormFromConfig', () => {
     expect(withoutIds(result)).toEqual({
       enabled: true,
       iataCode: '',
-      brokers: [{ url: 'wss://legacy.example:443', authMode: 'password', tokenAudience: '', label: '' }],
+      brokers: [{ url: 'wss://legacy.example:443', authMode: 'password', tokenAudience: '', label: '', verifyTls: true }],
     });
   });
 
@@ -458,8 +459,8 @@ describe('observerFormFromConfig', () => {
       enabled: true,
       iataCode: 'MCO',
       brokers: [
-        { url: 'wss://a.example:443', authMode: 'token', tokenAudience: 'aud-a', label: 'A' },
-        { url: 'wss://b.example:443', authMode: 'password', tokenAudience: '', label: '' },
+        { url: 'wss://a.example:443', authMode: 'token', tokenAudience: 'aud-a', label: 'A', verifyTls: true },
+        { url: 'wss://b.example:443', authMode: 'password', tokenAudience: '', label: '', verifyTls: true },
       ],
     });
   });
@@ -673,5 +674,38 @@ describe('observerErrorMessageKey', () => {
 
   it.each([undefined, null, 'INVALID_PARAMETER', 'NOPE'])('returns null for %j', (code) => {
     expect(observerErrorMessageKey(code)).toBeNull();
+  });
+});
+
+describe('verifyTls (#6250)', () => {
+  it('defaults to verify on new and preset rows', () => {
+    expect(emptyObserverBrokerForm().verifyTls).toBe(true);
+    expect(observerBrokerFormFromPreset(OBSERVER_BROKER_PRESETS[0]).verifyTls).toBe(true);
+  });
+
+  it('loads rejectUnauthorized: false as verifyTls off, anything else as on', () => {
+    const f = observerFormFromConfig({
+      enabled: true,
+      iataCode: 'MCO',
+      brokers: [
+        { url: 'mqtts://a.test:8883', authMode: 'password', rejectUnauthorized: false },
+        { url: 'mqtts://b.test:8883', authMode: 'password', rejectUnauthorized: true },
+        { url: 'mqtts://c.test:8883', authMode: 'password' },
+      ],
+    });
+    expect(f.brokers.map((b) => b.verifyTls)).toEqual([false, true, true]);
+  });
+
+  it('writes rejectUnauthorized: false only for a row with checks off', () => {
+    const result = buildObserverConfig(
+      form({
+        brokers: [
+          brokerRow({ id: 'a', url: 'mqtts://a.test:8883', verifyTls: false }),
+          brokerRow({ id: 'b', url: 'mqtts://b.test:8883' }),
+        ],
+      }),
+    );
+    expect(result.config?.brokers[0].rejectUnauthorized).toBe(false);
+    expect('rejectUnauthorized' in result.config!.brokers[1]).toBe(false);
   });
 });

@@ -733,4 +733,28 @@ describe('MeshCoreObserverPublisher — multi-broker (#5014 Phase 1 WP3)', () =>
     expect(clientA!.publish).toHaveBeenCalledTimes(1);
     expect(clientB!.publish).toHaveBeenCalledTimes(1);
   });
+
+  it('passes each broker\'s TLS-verify choice to its own socket (#6250)', async () => {
+    const insecure = broker({ url: 'wss://self-signed.test:443', tokenAudience: 'aud-a', rejectUnauthorized: false });
+    const secure = broker({ url: 'wss://verified.test:443', tokenAudience: 'aud-b' });
+    const mintToken = makeMintTokenByAudience({
+      'aud-a': makeToken({ publicKey: pubkeyFor('AA') }),
+      'aud-b': makeToken({ publicKey: pubkeyFor('BB') }),
+    });
+    const publisher = new MeshCoreObserverPublisher({
+      sourceId: SOURCE_ID,
+      config: makeConfig([insecure, secure]),
+      device: makeDevice(),
+      mintToken,
+    });
+
+    await startAndConnectAll(publisher, 2);
+    const byHost = new Map<string, unknown>();
+    for (let i = 0; i < 2; i++) {
+      byHost.set(String(mockConnect.mock.calls[i]![0]), connectOptionsAt(i).rejectUnauthorized);
+    }
+    expect(byHost.get('wss://self-signed.test:443')).toBe(false);
+    expect(byHost.get('wss://verified.test:443')).toBe(true);
+    await publisher.stop();
+  });
 });
