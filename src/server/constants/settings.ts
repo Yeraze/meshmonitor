@@ -427,6 +427,10 @@ export const VALID_SETTINGS_KEYS = [
   // MeshCore discovery responder (be discoverable; see issue #1027)
   'meshcoreRespondToDiscovery',
   // MeshCore auto-acknowledge
+  'meshcoreAutoFavoriteEnabled',
+  'meshcoreAutoFavoriteIntervalHours',
+  'meshcoreAutoFavoriteStaleHours',
+  'meshcoreAutoFavoriteNodes',
   'meshcoreAutoAckEnabled',
   'meshcoreAutoAckRegex',
   'meshcoreAutoAckMessage',
@@ -721,6 +725,10 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // MeshCore discovery responder (be discoverable; see issue #1027)
   'meshcoreRespondToDiscovery',
   // MeshCore auto-acknowledge
+  'meshcoreAutoFavoriteEnabled',
+  'meshcoreAutoFavoriteIntervalHours',
+  'meshcoreAutoFavoriteStaleHours',
+  'meshcoreAutoFavoriteNodes',
   'meshcoreAutoAckEnabled',
   'meshcoreAutoAckRegex',
   'meshcoreAutoAckMessage',
