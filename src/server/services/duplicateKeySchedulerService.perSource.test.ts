@@ -138,6 +138,20 @@ describe('duplicateKeySchedulerService per-source', () => {
     expect(getPacketCountsMock).toHaveBeenCalledWith('src-B');
   });
 
+  it('skips MeshCore device and MeshCore MQTT ingest sources in scans and status (#6252)', async () => {
+    getAllManagersMock.mockReturnValue([
+      { sourceId: 'src-A', sourceType: 'meshtastic_tcp' },
+      { sourceId: 'mc-dev', sourceType: 'meshcore' },
+      { sourceId: 'mc-mqtt', sourceType: 'meshcore_mqtt' },
+    ]);
+    await duplicateKeySchedulerService.runScanAllSources();
+
+    expect(getNodesWithPublicKeysMock).toHaveBeenCalledTimes(1);
+    expect(getNodesWithPublicKeysMock).toHaveBeenCalledWith('src-A');
+    const status = duplicateKeySchedulerService.getStatus() as { sources: Record<string, unknown> };
+    expect(Object.keys(status.sources)).toEqual(['src-A']);
+  });
+
   it('does NOT flag a node as duplicate when its "duplicate" is on a different source', async () => {
     // Both sources independently have a single node with the same key —
     // no duplicate within either source.

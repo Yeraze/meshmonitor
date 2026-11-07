@@ -54,6 +54,9 @@ vi.mock('../meshtasticManager.js', () => ({
 }));
 
 vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
+vi.mock('../utils/localNodeNameForSource.js', () => ({
+  resolveLocalNodeNameForSource: vi.fn(async () => 'LocalNode'),
+}));
 vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => undefined }));
 
 vi.mock('../utils/notificationFiltering.js', () => ({

@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { detectDuplicateKeys, checkLowEntropyKey, isBenign28UpgradeRenumber } from '../../services/lowEntropyKeyService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import type { DbNode } from '../../db/types.js';
 
 /** Threshold for excessive packets per hour (spam detection) */
@@ -75,9 +76,10 @@ class DuplicateKeySchedulerService {
    * a collision in source A does not block a scan of source B.
    */
   async runScanAllSources(): Promise<void> {
-    // Exclude MeshCore sources — they have no Meshtastic node table / public-key
-    // security model, so scanning them would be empty and wasteful.
-    const managers = sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore');
+    // Exclude MeshCore sources, device and MQTT ingest alike (#6252) — they
+    // have no Meshtastic node table / public-key security model, so scanning
+    // them would be empty and wasteful.
+    const managers = sourceManagerRegistry.getAllManagers().filter(m => !isAnyMeshCoreSourceType(m.sourceType));
     if (managers.length === 0) {
       logger.debug('🔐 No source managers registered — skipping scheduled security scan');
       return;
@@ -403,7 +405,7 @@ class DuplicateKeySchedulerService {
     const allKeys = new Set<string>([
       ...this.isScanning.keys(),
       ...this.lastScanTime.keys(),
-      ...sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore').map(m => m.sourceId),
+      ...sourceManagerRegistry.getAllManagers().filter(m => !isAnyMeshCoreSourceType(m.sourceType)).map(m => m.sourceId),
     ]);
     for (const sid of allKeys) {
       sources[sid] = {
