@@ -7459,7 +7459,13 @@ class MeshtasticManager implements ISourceManager {
       await databaseService.upsertNodeAsync(nodeData, this.sourceId);
 
       // Capture server-vs-node clock offset for time-offset telemetry
-      if (meshPacket.rxTime && Number(meshPacket.rxTime) > 1600000000) {
+      // Skip firmware 2.8 NodeDB replays: their rx_time is the sender's last_heard,
+      // not a reception time, so they would be sampled as clock skew (#6242).
+      if (
+        meshPacket.rxTime &&
+        Number(meshPacket.rxTime) > 1600000000 &&
+        !isFirmwareReplayPacket(fromNum, meshPacket.id, Number(meshPacket.rxTime))
+      ) {
         const offset = Date.now() / 1000 - Number(meshPacket.rxTime);
         if (Math.abs(offset) < 86400) {
           this.timeOffsetSamples.push(offset);
