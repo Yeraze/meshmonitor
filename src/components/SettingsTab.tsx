@@ -1789,10 +1789,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   };
   const handlePurgeNodes = async () => {
     const confirmed = window.confirm(
-      t('settings.confirm_purge_nodes_title') + '\n\n' +
+      t(purgeSourceId ? 'settings.confirm_purge_nodes_title_source' : 'settings.confirm_purge_nodes_title') + '\n\n' +
       t('settings.confirm_purge_nodes_impact') + '\n' +
-      '• ' + t('settings.confirm_purge_nodes_item1') + '\n' +
-      '• ' + t('settings.confirm_purge_nodes_item2') + '\n' +
+      '• ' + t(purgeSourceId ? 'settings.confirm_purge_nodes_item1_source' : 'settings.confirm_purge_nodes_item1') + '\n' +
+      '• ' + t(purgeSourceId ? 'settings.confirm_purge_nodes_item2_source' : 'settings.confirm_purge_nodes_item2') + '\n' +
       '• ' + t('settings.confirm_purge_nodes_item3') + '\n' +
       // #4629: the purge now also clears the Auto-Traceroute / Auto-Time-Sync
       // node allowlists. That is a curated selection the user built by hand, so
@@ -1815,9 +1815,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
   const handlePurgeTelemetry = async () => {
     const confirmed = window.confirm(
-      t('settings.confirm_purge_telemetry_title') + '\n\n' +
+      t(purgeSourceId ? 'settings.confirm_purge_telemetry_title_source' : 'settings.confirm_purge_telemetry_title') + '\n\n' +
       t('settings.confirm_purge_nodes_impact') + '\n' +
-      '• ' + t('settings.confirm_purge_telemetry_item1') + '\n' +
+      '• ' + t(purgeSourceId ? 'settings.confirm_purge_telemetry_item1_source' : 'settings.confirm_purge_telemetry_item1') + '\n' +
       '• ' + t('settings.confirm_purge_telemetry_item2') + '\n' +
       '• ' + t('settings.confirm_purge_telemetry_item3') + '\n' +
       '• ' + t('settings.confirm_purge_telemetry_item4') + '\n\n' +

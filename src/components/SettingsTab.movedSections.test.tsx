@@ -592,14 +592,33 @@ describe('SettingsTab: Solar Monitoring and Restart moved to Global Settings (#6
   });
 
   it('source mode Purge Telemetry sends the page\'s sourceId (#6258 D7)', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderSettings('source');
     await settled();
     screen.getByText('settings.purge_telemetry_button').click();
+    // Source-scoped wording: names this source only, not "all telemetry".
+    expect(String(confirmSpy.mock.calls.at(-1)?.[0])).toContain('settings.confirm_purge_telemetry_title_source');
+    expect(String(confirmSpy.mock.calls.at(-1)?.[0])).not.toContain('settings.confirm_purge_telemetry_title\n');
     await waitFor(() => {
       const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls
         .find(([url]) => String(url).includes('/api/purge/telemetry'));
       expect(call).toBeTruthy();
+      expect(JSON.parse(String((call![1] as RequestInit).body))).toMatchObject({ sourceId: 'src-a' });
+    });
+  });
+
+  it('source mode Erase Nodes confirm and request are scoped to the source (#6258 D7)', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderSettings('source');
+    await settled();
+    screen.getByText('settings.erase_nodes_button').click();
+    const text = String(confirmSpy.mock.calls.at(-1)?.[0]);
+    expect(text).toContain('settings.confirm_purge_nodes_title_source');
+    expect(text).toContain('settings.confirm_purge_nodes_item1_source');
+    expect(text).toContain('settings.confirm_purge_nodes_item2_source');
+    await waitFor(() => {
+      const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls
+        .find(([url]) => String(url).includes('/api/purge/nodes'));
       expect(JSON.parse(String((call![1] as RequestInit).body))).toMatchObject({ sourceId: 'src-a' });
     });
   });
