@@ -131,6 +131,7 @@ import { notificationService } from './services/notificationService.js';
 import { meshcoreMessageFilter, type MeshCoreClassifyResult } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MeshCoreAutoFavoriteScheduler, runAutoFavoriteSweep as runAutoFavoriteSweepService } from './services/meshcoreAutoFavorite.js';
+import { resolveAutoWelcome, recordWelcomeSend, readAutoWelcomeSettings, type AutoWelcomeContact } from './services/meshcoreAutoWelcome.js';
 import { HeartbeatScheduler } from './services/heartbeatScheduler.js';
 import type { DbMeshCorePacket, DbMeshCoreNode, MeshCoreKeyAccessFilter } from '../db/repositories/meshcore.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
@@ -1478,6 +1479,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // this session. Guards against re-notifying when a brand-new contact
   // re-advertises before the in-memory contact store reflects it.
   private notifiedNewNodes: Set<string> = new Set();
+  // Public keys with an Auto Welcome (#6224) in flight — a lock so two discovery
+  // events for the same node can't both schedule a greeting. Held across the
+  // pre-send delay; released when the deferred send fires or is skipped.
+  private welcomingNodes: Set<string> = new Set();
   // Public keys first seen WITHOUT a display name, whose "new node"
   // notification is waiting for the name to arrive (#5340). In the default
   // auto-add-contacts mode the firmware reports a newly heard node with a
@@ -3933,6 +3938,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       this.pendingNewNodeNotifications.delete(publicKey);
       this.notifiedNewNodes.add(publicKey);
+
+      // Auto Welcome (#6224): this is the one genuinely-new-and-named event, so
+      // greet the node here. Fire-and-forget — a welcome failure must not break
+      // the discovery-notification pipeline.
+      void this.checkAutoWelcome(contact);
 
       const deviceTypeLabel = contact.advType != null
         ? MESHCORE_DEVICE_TYPE_LABELS[contact.advType] ?? undefined
@@ -13247,6 +13257,74 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /** Run one auto-favorite sweep now (manual "run now" / the scheduler). (#6224) */
   async runAutoFavoriteSweep(): Promise<{ favorited: number; unfavorited: number }> {
     return runAutoFavoriteSweepService(this);
+  }
+
+  /**
+   * Auto Welcome (#6224): greet a genuinely-new, named contact once. Called
+   * fire-and-forget from the new-node-discovered hook. Takes a per-key lock so
+   * two discovery events can't both schedule a greeting, resolves the decision
+   * (enabled / once / name / hop gate / hourly cap), then sends after the
+   * configured pre-send delay so the just-adverted node is receive-ready.
+   * Sends ONCE, no retry — a DM to a pathless node floods, so a retry would too.
+   */
+  private async checkAutoWelcome(contact: MeshCoreContact): Promise<void> {
+    const key = contact.publicKey?.toLowerCase();
+    if (!key || this.welcomingNodes.has(key)) return;
+    this.welcomingNodes.add(key);
+
+    let scheduled = false;
+    try {
+      const wc: AutoWelcomeContact = {
+        publicKey: contact.publicKey,
+        advName: contact.advName,
+        name: contact.name,
+        pathLen: contact.pathLen,
+      };
+      const decision = await resolveAutoWelcome(this.sourceId, wc);
+      if (decision.action === 'skip') {
+        if (decision.reason !== 'disabled' && decision.reason !== 'already_welcomed') {
+          logger.debug(`[MeshCoreAutoWelcome:${this.sourceId}] skip ${key.substring(0, 12)}… (${decision.reason})`);
+        }
+        return;
+      }
+
+      const { delaySeconds } = await readAutoWelcomeSettings(this.sourceId);
+      scheduled = true; // the timer now owns the lock; release it when it fires
+      const fire = () => { void this.fireAutoWelcome(wc, decision); };
+      if (delaySeconds > 0) {
+        const timer = setTimeout(fire, delaySeconds * 1000);
+        if (typeof timer.unref === 'function') timer.unref();
+      } else {
+        fire();
+      }
+    } catch (err) {
+      logger.warn(`[MeshCoreAutoWelcome:${this.sourceId}] check failed: ${(err as Error).message}`);
+    } finally {
+      if (!scheduled) this.welcomingNodes.delete(key);
+    }
+  }
+
+  /** Send the resolved welcome and record it; always releases the per-key lock. */
+  private async fireAutoWelcome(
+    contact: AutoWelcomeContact,
+    decision: { action: 'send'; text: string; target: 'dm' | 'channel'; channelIdx?: number },
+  ): Promise<void> {
+    const key = contact.publicKey.toLowerCase();
+    try {
+      const sent = decision.target === 'dm'
+        ? await this.sendMessage(decision.text, contact.publicKey)
+        : await this.sendMessage(decision.text, undefined, decision.channelIdx);
+      if (sent) {
+        await recordWelcomeSend(this.sourceId, contact.publicKey, Date.now());
+        logger.info(`[MeshCoreAutoWelcome:${this.sourceId}] welcomed ${key.substring(0, 12)}… via ${decision.target}`);
+      } else {
+        logger.warn(`[MeshCoreAutoWelcome:${this.sourceId}] welcome send returned false for ${key.substring(0, 12)}…`);
+      }
+    } catch (err) {
+      logger.warn(`[MeshCoreAutoWelcome:${this.sourceId}] send failed: ${(err as Error).message}`);
+    } finally {
+      this.welcomingNodes.delete(key);
+    }
   }
 
   // ============ Message Forwarding (#5446) ============

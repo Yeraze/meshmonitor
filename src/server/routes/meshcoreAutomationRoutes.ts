@@ -29,6 +29,13 @@ import {
   AUTO_FAVORITE_DEFAULT_INTERVAL_HOURS,
   AUTO_FAVORITE_DEFAULT_STALE_HOURS,
 } from '../services/meshcoreAutoFavorite.js';
+import {
+  readAutoWelcomeSettings,
+  AUTO_WELCOME_MAX_HOPS_CEIL,
+  AUTO_WELCOME_MAX_DELAY_SECONDS,
+  AUTO_WELCOME_MIN_PER_HOUR,
+  AUTO_WELCOME_MAX_PER_HOUR,
+} from '../services/meshcoreAutoWelcome.js';
 import { MESHCORE_ADVERT_MODES, isMeshCoreAdvertMode, resolveMeshCoreAdvertMode } from '../../types/meshcoreAdvert.js';
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
 import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
@@ -564,6 +571,116 @@ router.post(
     } catch (error) {
       logger.error('[API] Error running meshcore auto-favorite sweep:', error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to run auto-favorite sweep');
+    }
+  },
+);
+
+// ============ Auto Welcome (#6224) ============
+//
+// Greet a genuinely-new, named MeshCore contact once. Event-driven (fires from
+// the new-node-discovered hook in meshcoreManager), so there is no scheduler to
+// re-arm and no /run — saving just writes the per-source settings. It
+// TRANSMITS: a DM to a brand-new node usually floods, so the limits here
+// (hourly cap, hop gate, welcome-once) are load-bearing, not cosmetic.
+
+/** Welcome message length ceiling (keeps a greeting inside one LoRa packet). */
+const AUTO_WELCOME_MESSAGE_MAX = 200;
+
+function parseAutoWelcomeUpdate(body: unknown): ParsedResult {
+  if (!body || typeof body !== 'object') {
+    return { ok: false, code: 'INVALID_BODY', message: 'Request body must be an object' };
+  }
+  const b = body as Record<string, unknown>;
+  const updates: Array<[string, string]> = [];
+
+  if ('enabled' in b) {
+    if (typeof b.enabled !== 'boolean') return { ok: false, code: 'INVALID_ENABLED', message: 'enabled must be a boolean' };
+    updates.push(['meshcoreAutoWelcomeEnabled', b.enabled ? 'true' : 'false']);
+  }
+  if ('message' in b) {
+    if (typeof b.message !== 'string' || b.message.trim() === '') {
+      return { ok: false, code: 'INVALID_MESSAGE', message: 'message must be a non-empty string' };
+    }
+    if (b.message.length > AUTO_WELCOME_MESSAGE_MAX) {
+      return { ok: false, code: 'INVALID_MESSAGE', message: `message must be ${AUTO_WELCOME_MESSAGE_MAX} characters or fewer` };
+    }
+    updates.push(['meshcoreAutoWelcomeMessage', b.message]);
+  }
+  if ('target' in b) {
+    // 'dm' or a non-negative channel index as a string.
+    const target = b.target;
+    if (target === 'dm') {
+      updates.push(['meshcoreAutoWelcomeTarget', 'dm']);
+    } else {
+      const n = Number(target);
+      if (typeof target !== 'string' && typeof target !== 'number') return { ok: false, code: 'INVALID_TARGET', message: "target must be 'dm' or a channel index" };
+      if (!Number.isInteger(n) || n < 0 || n > 63) return { ok: false, code: 'INVALID_TARGET', message: "target must be 'dm' or a channel index 0-63" };
+      updates.push(['meshcoreAutoWelcomeTarget', String(n)]);
+    }
+  }
+  if ('waitForName' in b) {
+    if (typeof b.waitForName !== 'boolean') return { ok: false, code: 'INVALID_WAIT_FOR_NAME', message: 'waitForName must be a boolean' };
+    updates.push(['meshcoreAutoWelcomeWaitForName', b.waitForName ? 'true' : 'false']);
+  }
+  if ('maxHops' in b) {
+    const n = Number(b.maxHops);
+    if (!Number.isInteger(n) || n < 0 || n > AUTO_WELCOME_MAX_HOPS_CEIL) {
+      return { ok: false, code: 'INVALID_MAX_HOPS', message: `maxHops must be 0–${AUTO_WELCOME_MAX_HOPS_CEIL}` };
+    }
+    updates.push(['meshcoreAutoWelcomeMaxHops', String(n)]);
+  }
+  if ('delaySeconds' in b) {
+    const n = Number(b.delaySeconds);
+    if (!Number.isFinite(n) || n < 0 || n > AUTO_WELCOME_MAX_DELAY_SECONDS) {
+      return { ok: false, code: 'INVALID_DELAY', message: `delaySeconds must be 0–${AUTO_WELCOME_MAX_DELAY_SECONDS}` };
+    }
+    updates.push(['meshcoreAutoWelcomeDelaySeconds', String(Math.round(n))]);
+  }
+  if ('maxPerHour' in b) {
+    const n = Number(b.maxPerHour);
+    if (!Number.isInteger(n) || n < AUTO_WELCOME_MIN_PER_HOUR || n > AUTO_WELCOME_MAX_PER_HOUR) {
+      return { ok: false, code: 'INVALID_MAX_PER_HOUR', message: `maxPerHour must be ${AUTO_WELCOME_MIN_PER_HOUR}–${AUTO_WELCOME_MAX_PER_HOUR}` };
+    }
+    updates.push(['meshcoreAutoWelcomeMaxPerHour', String(n)]);
+  }
+  return { ok: true, updates };
+}
+
+router.get(
+  '/automation/auto-welcome',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      managerFor(req, res); // 404 unless a connected MeshCore source
+      const settings = await readAutoWelcomeSettings(sourceId);
+      ok(res, { settings });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore auto-welcome settings:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read auto-welcome settings');
+    }
+  },
+);
+
+router.post(
+  '/automation/auto-welcome',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      managerFor(req, res); // 404 unless a connected MeshCore source
+      const parsed = parseAutoWelcomeUpdate(req.body);
+      if (!parsed.ok) return fail(res, 400, parsed.code, parsed.message);
+      for (const [key, value] of parsed.updates) {
+        await databaseService.settings.setSourceSetting(sourceId, key, value);
+      }
+      const settings = await readAutoWelcomeSettings(sourceId);
+      ok(res, { settings });
+    } catch (error) {
+      logger.error('[API] Error saving meshcore auto-welcome settings:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to save auto-welcome settings');
     }
   },
 );
