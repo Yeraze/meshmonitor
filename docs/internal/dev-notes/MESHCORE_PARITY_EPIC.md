@@ -30,7 +30,7 @@ Audit summary: https://github.com/Yeraze/meshmonitor/issues/6226#issuecomment-67
 
 Each phase's scope is the checklist in its issue.
 
-- [ ] **P1 #6258 Settings:** telemetry retention editors, purge telemetry and
+- [x] **P1 #6258 Settings:** telemetry retention editors, purge telemetry and
   clean outliers, node dimming and hide-incomplete, global restart/shutdown
   and Solar Monitoring reachable without a Meshtastic source.
 - [ ] **P2 #6261 Messaging:** Room unread, DM/Room mute, mark-all-read,
@@ -63,3 +63,5 @@ Maintainer answers, 2026-11-07:
 - Age window 0 (show all) = no dimming (Meshtastic parity).
 - MeshCore telemetry editors write per-source overrides; Meshtastic keeps the global default.
 - `meshcore_packet_log_*` per source is out of scope (Meshtastic's packet log is global too).
+
+Shipped: 3 work packages (global moves + purge scoping; dimming + hide-incomplete; MeshCore telemetry settings + danger actions). Deviations: confirm copy for Meshtastic source-page purges now names the source (review finding). Noted, not fixed: on MeshCore Settings the label and its help text render on one line (pre-existing `.setting-description` inline style on that page; every existing field does it).
