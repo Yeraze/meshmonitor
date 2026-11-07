@@ -369,6 +369,9 @@ export function meshcoreAutomationNavItems(t: Translate, opts: { includeAutoPing
       : []),
     { id: 'meshcore-automation-forwarding', label: t('forwarding.title', 'Forwarding'), keywords: ['forward', 'relay', 'bridge', 'copy'] },
     { id: 'meshcore-automation-timer-triggers', label: t('meshcore.automation.timers.title', 'Timer Triggers'), keywords: ['schedule', 'cron', 'timed events'] },
+    { id: 'meshcore-automation-auto-delete-distance', label: t('meshcore.automation.delete_distance.title', 'Auto Delete by Distance'), keywords: ['purge', 'distance', 'prune', 'cleanup', 'remove', 'far'] },
+    { id: 'meshcore-automation-time-sync', label: t('meshcore.automation.time_sync.title', 'Time Sync'), keywords: ['clock', 'time', 'rtc', 'repeater', 'schedule', 'sync'] },
+    { id: 'meshcore-automation-remote-telemetry', label: t('meshcore.automation.remote_telemetry.title', 'Remote Telemetry'), keywords: ['telemetry', 'poll', 'battery', 'sensor', 'metrics', 'schedule'] },
   ];
   return items;
 }

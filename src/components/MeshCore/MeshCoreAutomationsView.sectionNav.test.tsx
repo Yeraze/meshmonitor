@@ -80,6 +80,9 @@ describe('MeshCore Automations section nav', () => {
       'meshcore-automation-auto-responder',
       'meshcore-automation-forwarding',
       'meshcore-automation-timer-triggers',
+      'meshcore-automation-auto-delete-distance',
+      'meshcore-automation-time-sync',
+      'meshcore-automation-remote-telemetry',
     ]);
   });
 
