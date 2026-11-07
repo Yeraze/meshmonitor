@@ -20,6 +20,7 @@ import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { parseAutoPingSettingsUpdate, readAutoPingSettings } from '../utils/autoPingSettings.js';
+import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import { MESHCORE_ADVERT_MODES, isMeshCoreAdvertMode, resolveMeshCoreAdvertMode } from '../../types/meshcoreAdvert.js';
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
 import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
@@ -193,6 +194,239 @@ router.post(
     } catch (error) {
       logger.error('[API] Error stopping meshcore auto-ping session:', error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to stop auto-ping session');
+    }
+  },
+);
+
+// ============ Auto Delete by Distance (#6224) ============
+//
+// MeshCore parity with the Meshtastic auto-delete-by-distance automation. The
+// per-source `DistanceDeleteScheduler` + shared `autoDeleteByDistanceService`
+// already run for MeshCore sources (issue #3901); this only surfaces the same
+// per-source settings in the MeshCore Automation tab. Saving re-arms the
+// scheduler (mgr.restartDistanceDeleteScheduler) so a new interval / home /
+// threshold takes effect immediately. The settings are LOCAL only — purging a
+// node never transmits, so there is no mesh airtime here.
+
+/** Ceiling on the distance threshold the UI can store, in km. */
+const DISTANCE_DELETE_MAX_KM = 50_000;
+/** Interval bounds (hours), matching the Meshtastic UI's 6–48 range. */
+const DISTANCE_DELETE_MIN_HOURS = 6;
+const DISTANCE_DELETE_MAX_HOURS = 48;
+
+interface DistanceDeleteSettings {
+  enabled: boolean;
+  intervalHours: number;
+  thresholdKm: number;
+  lat: number | null;
+  lon: number | null;
+  action: 'delete' | 'ignore';
+}
+
+async function readDistanceDeleteSettings(sourceId: string): Promise<DistanceDeleteSettings> {
+  const get = (key: string) => databaseService.settings.getSettingForSource(sourceId, key);
+  const [enabled, intervalHours, thresholdKm, lat, lon, action] = await Promise.all([
+    get('autoDeleteByDistanceEnabled'),
+    get('autoDeleteByDistanceIntervalHours'),
+    get('autoDeleteByDistanceThresholdKm'),
+    get('autoDeleteByDistanceLat'),
+    get('autoDeleteByDistanceLon'),
+    get('autoDeleteByDistanceAction'),
+  ]);
+  const num = (v: string | null, fallback: number) => {
+    const n = v == null || v === '' ? NaN : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const coord = (v: string | null): number | null => {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    enabled: enabled === 'true',
+    intervalHours: num(intervalHours, 24),
+    thresholdKm: num(thresholdKm, 100),
+    lat: coord(lat),
+    lon: coord(lon),
+    action: action === 'ignore' ? 'ignore' : 'delete',
+  };
+}
+
+type ParsedResult =
+  | { ok: true; updates: Array<[string, string]> }
+  | { ok: false; code: string; message: string };
+
+function parseDistanceDeleteUpdate(body: unknown): ParsedResult {
+  if (!body || typeof body !== 'object') {
+    return { ok: false, code: 'INVALID_BODY', message: 'Request body must be an object' };
+  }
+  const b = body as Record<string, unknown>;
+  const updates: Array<[string, string]> = [];
+
+  if ('enabled' in b) {
+    if (typeof b.enabled !== 'boolean') return { ok: false, code: 'INVALID_ENABLED', message: 'enabled must be a boolean' };
+    updates.push(['autoDeleteByDistanceEnabled', b.enabled ? 'true' : 'false']);
+  }
+  if ('intervalHours' in b) {
+    const n = Number(b.intervalHours);
+    if (!Number.isFinite(n) || n < DISTANCE_DELETE_MIN_HOURS || n > DISTANCE_DELETE_MAX_HOURS) {
+      return { ok: false, code: 'INVALID_INTERVAL', message: `intervalHours must be ${DISTANCE_DELETE_MIN_HOURS}–${DISTANCE_DELETE_MAX_HOURS}` };
+    }
+    updates.push(['autoDeleteByDistanceIntervalHours', String(Math.round(n))]);
+  }
+  if ('thresholdKm' in b) {
+    const n = Number(b.thresholdKm);
+    if (!Number.isFinite(n) || n <= 0 || n > DISTANCE_DELETE_MAX_KM) {
+      return { ok: false, code: 'INVALID_THRESHOLD', message: `thresholdKm must be between 0 and ${DISTANCE_DELETE_MAX_KM}` };
+    }
+    updates.push(['autoDeleteByDistanceThresholdKm', String(n)]);
+  }
+  if ('lat' in b) {
+    if (b.lat === null || b.lat === '') {
+      updates.push(['autoDeleteByDistanceLat', '']);
+    } else {
+      const n = Number(b.lat);
+      if (!Number.isFinite(n) || n < -90 || n > 90) return { ok: false, code: 'INVALID_LAT', message: 'lat must be -90..90 or null' };
+      updates.push(['autoDeleteByDistanceLat', String(n)]);
+    }
+  }
+  if ('lon' in b) {
+    if (b.lon === null || b.lon === '') {
+      updates.push(['autoDeleteByDistanceLon', '']);
+    } else {
+      const n = Number(b.lon);
+      if (!Number.isFinite(n) || n < -180 || n > 180) return { ok: false, code: 'INVALID_LON', message: 'lon must be -180..180 or null' };
+      updates.push(['autoDeleteByDistanceLon', String(n)]);
+    }
+  }
+  if ('action' in b) {
+    if (b.action !== 'delete' && b.action !== 'ignore') return { ok: false, code: 'INVALID_ACTION', message: "action must be 'delete' or 'ignore'" };
+    updates.push(['autoDeleteByDistanceAction', b.action]);
+  }
+  return { ok: true, updates };
+}
+
+router.get(
+  '/automation/auto-delete-distance',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const mgr = managerFor(req, res);
+      const settings = await readDistanceDeleteSettings(sourceId);
+      ok(res, { settings, running: mgr.isDistanceDeleteRunning() });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore auto-delete-by-distance settings:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read auto-delete-by-distance settings');
+    }
+  },
+);
+
+router.post(
+  '/automation/auto-delete-distance',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const parsed = parseDistanceDeleteUpdate(req.body);
+      if (!parsed.ok) return fail(res, 400, parsed.code, parsed.message);
+      for (const [key, value] of parsed.updates) {
+        await databaseService.settings.setSourceSetting(sourceId, key, value);
+      }
+      // Re-arm the per-source scheduler so a new interval/home/threshold applies
+      // now rather than after a restart (#3900 cache + #6224).
+      await managerFor(req, res).restartDistanceDeleteScheduler();
+      const settings = await readDistanceDeleteSettings(sourceId);
+      ok(res, { settings });
+    } catch (error) {
+      logger.error('[API] Error saving meshcore auto-delete-by-distance settings:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to save auto-delete-by-distance settings');
+    }
+  },
+);
+
+router.post(
+  '/automation/auto-delete-distance/run',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      // Scope the run to this source; purges only its own out-of-range nodes.
+      managerFor(req, res); // 404s if the source is not a connected MeshCore manager
+      const { deletedCount } = await autoDeleteByDistanceService.runNow(sourceId);
+      ok(res, { deletedCount });
+    } catch (error) {
+      logger.error('[API] Error running meshcore auto-delete-by-distance:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to run auto-delete-by-distance');
+    }
+  },
+);
+
+// ============ Time Sync overview (#6224) ============
+//
+// Central read of the per-node time-sync config (#4916) for the Automation
+// tab. MeshCore time-sync is per-node (timeSyncEnabled / interval live on each
+// meshcore_node), unlike Meshtastic's single source-level toggle, so this is a
+// management OVERVIEW of the nodes that have it enabled; per-node changes go to
+// the existing /nodes/:publicKey/time-sync-config route. Read-only here — it
+// starts no sync and puts nothing on the air.
+
+router.get(
+  '/automation/time-sync',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      managerFor(req, res); // 404 unless a connected MeshCore source
+      const nodes = await databaseService.meshcore.getTimeSyncEnabledNodes(sourceId);
+      ok(res, {
+        nodes: nodes.map((n) => ({
+          publicKey: n.publicKey,
+          name: n.name ?? null,
+          intervalMinutes: n.timeSyncIntervalMinutes ?? null,
+          lastSyncAt: n.lastTimeSyncAt ?? null,
+        })),
+      });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore time-sync overview:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read time-sync overview');
+    }
+  },
+);
+
+// ============ Remote Telemetry overview (#6224) ============
+//
+// Central read of the per-node remote-telemetry config for the Automation tab.
+// Like time-sync it is per-node (telemetryEnabled / interval on each
+// meshcore_node); per-node edits go to /nodes/:publicKey/telemetry-config. The
+// scheduler already runs and already transmits on its own cadence — this is a
+// read-only overview and starts no poll.
+
+router.get(
+  '/automation/remote-telemetry',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      managerFor(req, res); // 404 unless a connected MeshCore source
+      const nodes = await databaseService.meshcore.getTelemetryEnabledNodes(sourceId);
+      ok(res, {
+        nodes: nodes.map((n) => ({
+          publicKey: n.publicKey,
+          name: n.name ?? null,
+          intervalMinutes: n.telemetryIntervalMinutes ?? null,
+          lastRequestAt: n.lastTelemetryRequestAt ?? null,
+          lastSuccessAt: n.lastTelemetrySuccessAt ?? null,
+        })),
+      });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore remote-telemetry overview:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read remote-telemetry overview');
     }
   },
 );
