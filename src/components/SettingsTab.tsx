@@ -36,6 +36,9 @@ import { MovedSettingNote } from './common/MovedSettingNote';
 import SystemRestartSection from './settings/SystemRestartSection';
 import SignFlipCorrectionSettings from './settings/SignFlipCorrectionSettings';
 import NodeDimmingSettings from './settings/NodeDimmingSettings';
+import HideIncompleteNodesSetting from './settings/HideIncompleteNodesSetting';
+import TelemetryRetentionSettings from './settings/TelemetryRetentionSettings';
+import TelemetryDataActions from './settings/TelemetryDataActions';
 import { parseSignFlipSettings, clampSignFlipRangeKm, SIGN_FLIP_DEFAULT_RANGE_KM } from '../utils/signFlipPosition';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
@@ -78,8 +81,6 @@ import { ADSB_FEEDS, ADSB_FEED_IDS, DEFAULT_ADSB_FEED, isAdsbFeed } from '../uti
 import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS, isCoverageMqttSourceType } from '../utils/coverage';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
-import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
-import { getTelemetryLabel } from './TelemetryChart';
 import {
   SETTINGS_TAB_PER_SOURCE_KEYS,
   NODE_DISPLAY_NUMERIC_DEFAULTS,
@@ -514,8 +515,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // section/nav item to MQTT-shaped sources — see isCoverageMqttSourceType
   // below.
   const { sourceId: purgeSourceId, sourceType } = useSource();
-  // #5333: outlier purge dialog (Danger Zone → Clean telemetry outliers).
-  const [outlierDialogOpen, setOutlierDialogOpen] = useState(false);
 
   // Single draft reducer replacing the 49 `local*` mirrors (Task 5.3). Lazy-initialized once from
   // the current context/props values; category-C fields (no context/prop home) start at their
@@ -1813,29 +1812,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     }
   };
 
-  const handlePurgeTelemetry = async () => {
-    const confirmed = window.confirm(
-      t(purgeSourceId ? 'settings.confirm_purge_telemetry_title_source' : 'settings.confirm_purge_telemetry_title') + '\n\n' +
-      t('settings.confirm_purge_nodes_impact') + '\n' +
-      '• ' + t(purgeSourceId ? 'settings.confirm_purge_telemetry_item1_source' : 'settings.confirm_purge_telemetry_item1') + '\n' +
-      '• ' + t('settings.confirm_purge_telemetry_item2') + '\n' +
-      '• ' + t('settings.confirm_purge_telemetry_item3') + '\n' +
-      '• ' + t('settings.confirm_purge_telemetry_item4') + '\n\n' +
-      t('settings.confirm_cannot_undo')
-    );
-
-    if (!confirmed) return;
-
-    try {
-      await apiService.purgeTelemetry(0, purgeSourceId ?? undefined);
-      showToast(t('toast.telemetry_purged'), 'success');
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (error) {
-      logger.error('Error purging telemetry:', error);
-      showToast(t('toast.telemetry_purge_failed'), 'error');
-    }
-  };
-
   const handlePurgeMessages = async () => {
     const confirmed = window.confirm(
       t('settings.confirm_purge_messages_title') + '\n\n' +
@@ -2773,20 +2749,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <option value="messages">{t('settings.node_hops_messages')}</option>
             </select>
           </div>
-          <div className="setting-item" style={{ marginTop: '1rem' }}>
-            <label>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={draft.hideIncompleteNodes}
-                  onChange={(e) => updateField('hideIncompleteNodes', e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                {t('settings.hide_incomplete_nodes')}
-              </span>
-              <span className="setting-description">{t('settings.hide_incomplete_description')}</span>
-            </label>
-          </div>
+          <HideIncompleteNodesSetting
+            checked={draft.hideIncompleteNodes}
+            onChange={(v) => updateField('hideIncompleteNodes', v)}
+          />
           <NodeDimmingSettings
             enabled={draft.nodeDimmingEnabled}
             startHours={draft.nodeDimmingStartHours}
@@ -2974,36 +2940,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         {show('settings-telemetry') && <div id="settings-telemetry" className="settings-section">
           <h3>{t('settings.telemetry')}</h3>
-          <div className="setting-item">
-            <label htmlFor="telemetryVisualizationHours">
-              {t('settings.telemetry_hours_label')}
-              <span className="setting-description">{t('settings.telemetry_hours_description')}</span>
-            </label>
-            <NumberInput
-              id="telemetryVisualizationHours"
-              min={1}
-              max={168}
-              integer
-              value={draft.telemetryVisualizationHours}
-              onChange={(n) => updateField('telemetryVisualizationHours', n)}
-              className="setting-input"
-            />
-          </div>
-          <div className="setting-item">
-            <label htmlFor="favoriteTelemetryStorageDays">
-              {t('settings.fav_telemetry_label')}
-              <span className="setting-description">{t('settings.fav_telemetry_description')}</span>
-            </label>
-            <NumberInput
-              id="favoriteTelemetryStorageDays"
-              min={7}
-              max={90}
-              integer
-              value={draft.favoriteTelemetryStorageDays}
-              onChange={(n) => updateField('favoriteTelemetryStorageDays', n)}
-              className="setting-input"
-            />
-          </div>
+          <TelemetryRetentionSettings
+            visualizationHours={draft.telemetryVisualizationHours}
+            favoriteStorageDays={draft.favoriteTelemetryStorageDays}
+            onVisualizationHoursChange={(n) => updateField('telemetryVisualizationHours', n)}
+            onFavoriteStorageDaysChange={(n) => updateField('favoriteTelemetryStorageDays', n)}
+          />
         </div>}
 
         {show('settings-security') && <div id="settings-security" className="settings-section">
@@ -3890,42 +3832,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </button>
           </div>
 
-          <div className="danger-action">
-            <div className="danger-action-info">
-              <h4>{t('settings.purge_telemetry_title')}</h4>
-              <p>{t('settings.purge_telemetry_description')}</p>
-            </div>
-            <button
-              className="danger-button"
-              onClick={handlePurgeTelemetry}
-            >
-              {t('settings.purge_telemetry_button')}
-            </button>
-          </div>
-
-          {isAdmin && (
-            <div className="danger-action">
-              <div className="danger-action-info">
-                <h4>{t('settings.clean_outliers_title')}</h4>
-                <p>{t('settings.clean_outliers_description')}</p>
-              </div>
-              <button
-                className="danger-button"
-                onClick={() => setOutlierDialogOpen(true)}
-              >
-                {t('settings.clean_outliers_button')}
-              </button>
-            </div>
-          )}
-          {isAdmin && (
-            <TelemetryOutlierDialog
-              isOpen={outlierDialogOpen}
-              onClose={() => setOutlierDialogOpen(false)}
-              sourceId={purgeSourceId}
-              sources={availableSources.map(src => ({ id: src.id, name: src.name }))}
-              getTypeLabel={getTelemetryLabel}
-            />
-          )}
+          <TelemetryDataActions
+            sourceId={purgeSourceId}
+            sources={availableSources.map(src => ({ id: src.id, name: src.name }))}
+          />
 
           <div className="danger-action">
             <div className="danger-action-info">

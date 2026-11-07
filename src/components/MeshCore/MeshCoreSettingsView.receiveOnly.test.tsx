@@ -37,7 +37,7 @@ vi.mock('@tanstack/react-query', () => ({
 // Ignore / Block sections (#5408) own TanStack queries; covered by their own tests.
 vi.mock('./MeshCoreIgnoredNodesSection', () => ({ MeshCoreIgnoredNodesSection: () => null }));
 vi.mock('./MeshCoreTelemetrySettingsSection', () => ({ MeshCoreTelemetrySettingsSection: () => null }));
-vi.mock('./MeshCoreTelemetryDataSection', () => ({ MeshCoreTelemetryDataSection: () => null }));
+vi.mock('../settings/TelemetryDataActions', () => ({ default: () => <div data-testid="telemetry-data-section" /> }));
 vi.mock('./MeshCoreMessageFiltersSection', () => ({ MeshCoreMessageFiltersSection: () => null }));
 // Radio contact list (#5502) fetches on mount; covered by its own tests.
 vi.mock('./MeshCoreContactSyncSection', () => ({ MeshCoreContactSyncSection: () => null }));

@@ -12,6 +12,7 @@ import { useNodeDisplaySettings, useSignFlipFormSettings, nodeDisplaySettingsQue
 import { useSettingsOptional } from '../../contexts/SettingsContext';
 import SignFlipCorrectionSettings from '../settings/SignFlipCorrectionSettings';
 import NodeDimmingSettings from '../settings/NodeDimmingSettings';
+import HideIncompleteNodesSetting from '../settings/HideIncompleteNodesSetting';
 import { clampSignFlipRangeKm } from '../../utils/signFlipPosition';
 import { writeNodeDisplayLocal } from '../../utils/nodeDisplayStorage';
 import {
@@ -364,26 +365,15 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
         />
       </div>
 
-      <div className="setting-item" style={{ marginTop: '1rem' }}>
-        <label>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={draft.hideIncompleteNodes}
-              disabled={!canWrite}
-              onChange={(e) => setDraft((prev) => ({ ...prev, hideIncompleteNodes: e.target.checked }))}
-              style={{ cursor: 'pointer' }}
-            />
-            {t('settings.hide_incomplete_nodes')}
-          </span>
-          <span className="setting-description">
-            {t(
-              'meshcore.settings.node_display.hide_incomplete_description',
-              'Hide nodes that have no advertised name or an unknown device type from the Nodes list and map. Favorites and your own node always show.',
-            )}
-          </span>
-        </label>
-      </div>
+      <HideIncompleteNodesSetting
+        checked={draft.hideIncompleteNodes}
+        disabled={!canWrite}
+        onChange={(v) => setDraft((prev) => ({ ...prev, hideIncompleteNodes: v }))}
+        description={t(
+          'meshcore.settings.node_display.hide_incomplete_description',
+          'Hide nodes that have no advertised name or an unknown device type from the Nodes list and map. Favorites and your own node always show.',
+        )}
+      />
 
       <NodeDimmingSettings
         enabled={draft.nodeDimmingEnabled}

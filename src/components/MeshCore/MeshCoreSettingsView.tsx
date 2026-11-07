@@ -4,11 +4,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ConnectionStatus, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSource } from '../../contexts/SourceContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { UiIcon } from '../icons';
 import { MeshCoreNodeDisplaySection } from './MeshCoreNodeDisplaySection';
 import { MeshCoreTelemetrySettingsSection } from './MeshCoreTelemetrySettingsSection';
-import { MeshCoreTelemetryDataSection } from './MeshCoreTelemetryDataSection';
+import TelemetryDataActions from '../settings/TelemetryDataActions';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
 import { MovedSettingNote } from '../common/MovedSettingNote';
@@ -76,7 +77,9 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, authStatus } = useAuth();
+  const { sourceName } = useSource();
+  const isAdmin = authStatus?.user?.isAdmin ?? false;
   const csrfFetch = useCsrfFetch();
   const queryClient = useQueryClient();
   const [savingReceiveOnly, setSavingReceiveOnly] = useState(false);
@@ -486,7 +489,15 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       )}
 
       {/* Admin-only purge / outlier cleanup, scoped to this source (#6258). */}
-      <MeshCoreTelemetryDataSection sourceId={sourceId} />
+      {isAdmin && (
+        <div className="form-section danger-zone">
+          <h3>{t('meshcore.settings.telemetry_data', 'Telemetry data')}</h3>
+          <TelemetryDataActions
+            sourceId={sourceId}
+            sources={[{ id: sourceId, name: sourceName ?? sourceId }]}
+          />
+        </div>
+      )}
 
       {canPurgeMessages && (
         <div className="form-section">

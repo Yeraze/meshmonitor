@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { logger } from '../../utils/logger';
-import { NumberInput } from '../common/NumberInput';
+import TelemetryRetentionSettings from '../settings/TelemetryRetentionSettings';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 
@@ -127,46 +127,13 @@ export const MeshCoreTelemetrySettingsSection: React.FC<MeshCoreTelemetrySetting
       <div className="form-section">
         <h3>{t('settings.telemetry', 'Telemetry')}</h3>
 
-        <div className="setting-item">
-          <label htmlFor="telemetryVisualizationHours">
-            {t('settings.telemetry_hours_label', 'Telemetry Visualization (Hours)')}
-            <span className="setting-description">
-              {t('settings.telemetry_hours_description', 'How many hours of telemetry data to display in graphs (1-168)')}
-            </span>
-          </label>
-          <NumberInput
-            id="telemetryVisualizationHours"
-            min={1}
-            max={168}
-            integer
-            value={draft.telemetryVisualizationHours}
-            onChange={(n) => update('telemetryVisualizationHours', n)}
-            disabled={!canWrite}
-            className="setting-input"
-          />
-        </div>
-
-        <div className="setting-item">
-          <label htmlFor="favoriteTelemetryStorageDays">
-            {t('settings.fav_telemetry_label', 'Favorite Telemetry Storage Length (Days)')}
-            <span className="setting-description">
-              {t(
-                'settings.fav_telemetry_description',
-                'How many days to retain favorited telemetry data (7-90 days). Favorited telemetry is exempt from regular purge.',
-              )}
-            </span>
-          </label>
-          <NumberInput
-            id="favoriteTelemetryStorageDays"
-            min={7}
-            max={90}
-            integer
-            value={draft.favoriteTelemetryStorageDays}
-            onChange={(n) => update('favoriteTelemetryStorageDays', n)}
-            disabled={!canWrite}
-            className="setting-input"
-          />
-        </div>
+        <TelemetryRetentionSettings
+          visualizationHours={draft.telemetryVisualizationHours}
+          favoriteStorageDays={draft.favoriteTelemetryStorageDays}
+          disabled={!canWrite}
+          onVisualizationHoursChange={(n) => update('telemetryVisualizationHours', n)}
+          onFavoriteStorageDaysChange={(n) => update('favoriteTelemetryStorageDays', n)}
+        />
       </div>
     </NumberInputScope>
   );
