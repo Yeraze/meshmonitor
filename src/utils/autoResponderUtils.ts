@@ -109,3 +109,26 @@ export function normalizeTriggerChannels(trigger: { channels?: Array<number | 'd
   }
   return ['dm'];
 }
+
+/**
+ * Back-compat reader for a Timer Trigger's target channels (#6230).
+ *
+ * New timers store `channels` (an array); old ones stored a single `channel`.
+ * A reader coerces the old scalar into a one-item array so saved timers keep
+ * working without a destructive migration. A timer has no `'dm'` option —
+ * only channel numbers or `'none'` (scripts with no mesh output).
+ *
+ * @param trigger - a timer with the new `channels` array and/or legacy `channel`
+ * @returns the channels to send to; `[0]` when neither field is set
+ */
+export function normalizeTimerChannels(
+  trigger: { channels?: Array<number | 'none'>; channel?: number | 'none' },
+): Array<number | 'none'> {
+  if (Array.isArray(trigger.channels) && trigger.channels.length > 0) {
+    return trigger.channels;
+  }
+  if (trigger.channel !== undefined) {
+    return [trigger.channel];
+  }
+  return [0];
+}

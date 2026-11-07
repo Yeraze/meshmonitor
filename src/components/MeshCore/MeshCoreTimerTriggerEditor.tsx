@@ -19,6 +19,7 @@ import {
 import type { MeshCoreChannelRow, MeshCoreScriptMetadata } from './meshcoreResponderTypes';
 import {
   DEFAULT_MESHCORE_TIMER_CRON,
+  meshCoreTimerChannelIndexes,
   type MeshCoreContactRow,
   type MeshCoreTimerErrors,
   type MeshCoreTimerTrigger,
@@ -48,6 +49,17 @@ export const MeshCoreTimerTriggerEditor: React.FC<MeshCoreTimerTriggerEditorProp
 }) => {
   const { t } = useTranslation();
   const sends = tr.responseType === 'text' || tr.responseType === 'script';
+  // Multi-channel selection (#6230). Reads the new array, coercing an old
+  // single-channel timer into a one-item array.
+  const selectedChannels = meshCoreTimerChannelIndexes(tr);
+  const toggleChannel = (id: number, on: boolean) => {
+    onChange({
+      channelIndexes: on
+        ? [...selectedChannels, id]
+        : selectedChannels.filter((c) => c !== id),
+      channelIndex: undefined,
+    });
+  };
 
   return (
     <div className={styles.editor}>
@@ -189,19 +201,28 @@ export const MeshCoreTimerTriggerEditor: React.FC<MeshCoreTimerTriggerEditorProp
             </select>
           </label>
           {(tr.destination || 'channel') === 'channel' ? (
-            <label className={`${styles.field} ${styles.grow}`}>
-              {t('meshcore.automation.timers.channel', 'Channel')}
-              <select
-                value={tr.channelIndex ?? 0}
-                onChange={(e) => onChange({ channelIndex: parseInt(e.target.value, 10) })}
-                className="meshcore-select"
-              >
-                {channels.length === 0 && <option value={0}>{t('meshcore.automation.timers.no_channels', '(no channels loaded)')}</option>}
+            <fieldset className={`${styles.channels} ${styles.grow}`}>
+              <legend className={styles.legend}>
+                {t('meshcore.automation.timers.channels', 'Channels')}
+              </legend>
+              {channels.length === 0 && (
+                <span className={styles.muted}>
+                  {t('meshcore.automation.timers.no_channels', '(no channels loaded)')}
+                </span>
+              )}
+              <div className={styles.channelList}>
                 {channels.map(c => (
-                  <option key={c.id} value={c.id}>{c.name || `Channel ${c.id}`}</option>
+                  <label key={c.id} className={styles.check}>
+                    <input
+                      type="checkbox"
+                      checked={selectedChannels.includes(c.id)}
+                      onChange={(e) => toggleChannel(c.id, e.target.checked)}
+                    />
+                    {c.name || `Channel ${c.id}`}
+                  </label>
                 ))}
-              </select>
-            </label>
+              </div>
+            </fieldset>
           ) : (
             <label className={`${styles.field} ${styles.grow}`}>
               {t('meshcore.automation.timers.contact', 'Contact')}

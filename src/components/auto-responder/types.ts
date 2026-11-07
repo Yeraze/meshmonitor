@@ -43,7 +43,9 @@ export interface TimerTrigger {
   scriptPath?: string; // Path to script in /data/scripts/ (when responseType is 'script')
   response?: string; // Text message with expansion tokens (when responseType is 'text')
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
-  channel: number | 'none'; // Channel index (0-7) to send output to, or 'none' for scripts with no mesh output
+  channels?: Array<number | 'none'>; // Channel indexes (0-7) to send output to, or ['none'] for scripts with no mesh output (#6230)
+  /** @deprecated Use channels instead. Kept so old single-channel timers keep working (#6230). */
+  channel?: number | 'none'; // Legacy single channel index (0-7), or 'none' for scripts with no mesh output
   enabled: boolean; // Whether this timer is active
   lastRun?: number; // Unix timestamp of last execution
   lastResult?: 'success' | 'error'; // Result of last execution

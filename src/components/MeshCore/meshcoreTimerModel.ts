@@ -32,6 +32,9 @@ export interface MeshCoreTimerTrigger {
   scriptPath?: string;
   scriptArgs?: string;
   destination?: 'channel' | 'dm';
+  /** Channel indexes to send to when `destination === 'channel'` (#6230). */
+  channelIndexes?: number[];
+  /** @deprecated Use channelIndexes. Kept so old single-channel timers keep working (#6230). */
   channelIndex?: number;
   contactPublicKey?: string;
   /** MeshCore scope/region for the sent message (#3833). */
@@ -49,6 +52,25 @@ export interface MeshCoreContactRow {
 
 export const DEFAULT_MESHCORE_TIMER_CRON = '0 */6 * * *';
 
+/**
+ * Back-compat reader for a MeshCore timer's target channels (#6230).
+ *
+ * New timers store `channelIndexes`; old ones a single `channelIndex`. A reader
+ * coerces the old scalar into a one-item array so saved timers keep working
+ * without a destructive migration.
+ */
+export function meshCoreTimerChannelIndexes(
+  tr: Pick<MeshCoreTimerTrigger, 'channelIndexes' | 'channelIndex'>,
+): number[] {
+  if (Array.isArray(tr.channelIndexes) && tr.channelIndexes.length > 0) {
+    return tr.channelIndexes;
+  }
+  if (typeof tr.channelIndex === 'number') {
+    return [tr.channelIndex];
+  }
+  return [];
+}
+
 export const newMeshCoreTimerTrigger = (): MeshCoreTimerTrigger => ({
   id: newTriggerId(),
   name: '',
@@ -60,7 +82,7 @@ export const newMeshCoreTimerTrigger = (): MeshCoreTimerTrigger => ({
   response: '',
   advertMode: DEFAULT_MESHCORE_ADVERT_MODE,
   destination: 'channel',
-  channelIndex: 0,
+  channelIndexes: [0],
   scopeMode: 'inherit',
   scopeName: '',
 });

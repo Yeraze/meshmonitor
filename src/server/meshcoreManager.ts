@@ -611,8 +611,11 @@ export interface MeshCoreTimerTrigger extends MeshCoreAutomationScopeConfig {
   scriptPath?: string;
   /** Whitespace-separated argv passed to the script. Token-expanded. */
   scriptArgs?: string;
-  /** Where to send a `text` / `script` response. `channel` requires `channelIndex`; `dm` requires `contactPublicKey`. */
+  /** Where to send a `text` / `script` response. `channel` requires at least one channel; `dm` requires `contactPublicKey`. */
   destination?: 'channel' | 'dm';
+  /** Channel indexes to send to when `destination === 'channel'` (#6230). */
+  channelIndexes?: number[];
+  /** @deprecated Use channelIndexes. Kept so old single-channel timers keep working (#6230). */
   channelIndex?: number;
   contactPublicKey?: string;
   // Last-run telemetry. Written by `runTimerTrigger` so the UI can show
@@ -12746,15 +12749,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Scope/region for the timer message (#3833). No trigger message, so
     // 'trigger' mode degrades to inherit (channel/source default).
     const scopeOverride = MeshCoreManager.resolveAutomationScopeOverride(trigger);
+    // Multi-channel (#6230): read the channels array, coercing an old
+    // single-channel timer into a one-item array.
+    const channelIndexes = this.timerChannelIndexes(trigger);
     const dispatch = async (text: string): Promise<boolean> => {
       if (trigger.destination === 'dm' && trigger.contactPublicKey) {
         return this.sendMessage(text, trigger.contactPublicKey, undefined, scopeOverride);
       }
-      if (typeof trigger.channelIndex === 'number') {
+      if (channelIndexes.length === 0) return false;
+      // One send per channel, awaited in sequence so the per-source serialized
+      // send path spaces them on air exactly as runAutoAnnounceCycle does — the
+      // existing TX gap is reused, no new cadence or cap (#6230). All must
+      // succeed for the run to count as ok.
+      let allOk = true;
+      for (const idx of channelIndexes) {
         // Automated sender → opt into channel-send auto-retry (#3979).
-        return this.sendMessage(text, undefined, trigger.channelIndex, scopeOverride, true);
+        const ok = await this.sendMessage(text, undefined, idx, scopeOverride, true);
+        if (!ok) allOk = false;
       }
-      return false;
+      return allOk;
     };
 
     let ok = true;
@@ -12772,7 +12785,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         if (!trigger.scriptPath) {
           ok = false;
           reason = 'script trigger missing scriptPath';
-        } else if (trigger.destination !== 'dm' && typeof trigger.channelIndex !== 'number') {
+        } else if (trigger.destination !== 'dm' && channelIndexes.length === 0) {
           ok = false;
           reason = 'no destination configured';
         } else {
@@ -12786,7 +12799,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         if (trigger.destination === 'dm' && trigger.contactPublicKey) {
           ok = await dispatch(body);
           if (!ok) reason = 'DM send failed';
-        } else if (typeof trigger.channelIndex === 'number') {
+        } else if (channelIndexes.length > 0) {
           ok = await dispatch(body);
           if (!ok) reason = 'channel send failed';
         } else {
@@ -12887,9 +12900,30 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
                           : this.deviceType === MeshCoreDeviceType.ROOM_SERVER ? 'room_server'
                           : 'unknown',
     };
-    if (typeof trigger.channelIndex === 'number') env.CHANNEL = String(trigger.channelIndex);
+    // #6230: expose the first selected channel as CHANNEL (back-compat) and
+    // the full list as CHANNELS (comma-separated) so scripts can see all of them.
+    const idxs = this.timerChannelIndexes(trigger);
+    if (idxs.length > 0) {
+      env.CHANNEL = String(idxs[0]);
+      env.CHANNELS = idxs.join(',');
+    }
     if (this.localNode?.name) env.NODE_LONG_NAME = this.localNode.name;
     return env;
+  }
+
+  /**
+   * Back-compat reader for a MeshCore timer's target channels (#6230). New
+   * timers store `channelIndexes`; an old single-channel timer's `channelIndex`
+   * is coerced into a one-item array so saved timers keep working.
+   */
+  private timerChannelIndexes(trigger: MeshCoreTimerTrigger): number[] {
+    if (Array.isArray(trigger.channelIndexes) && trigger.channelIndexes.length > 0) {
+      return trigger.channelIndexes;
+    }
+    if (typeof trigger.channelIndex === 'number') {
+      return [trigger.channelIndex];
+    }
+    return [];
   }
 
   /** Whitespace-tokenize an argv string. Quoted segments stay intact. */
