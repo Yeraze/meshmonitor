@@ -14,6 +14,7 @@ import { MeshCoreAutoPingSection } from './MeshCoreAutoPingSection';
 import { MeshCoreForwardingSection } from './MeshCoreForwardingSection';
 import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
 import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSection';
+import { MeshCoreAutoDeleteByDistanceSection } from './MeshCoreAutoDeleteByDistanceSection';
 import { AutomationTokenReference } from '../AutomationTokenReference';
 import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
 import { UiIcon } from '../icons';
@@ -389,6 +390,12 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       {/* Timer Triggers Section */}
       <div id="meshcore-automation-timer-triggers">
         <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      </div>
+
+      {/* Auto Delete by Distance Section (#6224): local purge, never transmits,
+          so it is available even for receive-only sources. */}
+      <div id="meshcore-automation-auto-delete-distance">
+        <MeshCoreAutoDeleteByDistanceSection baseUrl={baseUrl} sourceId={sourceId} />
       </div>
       </div>
       </div>

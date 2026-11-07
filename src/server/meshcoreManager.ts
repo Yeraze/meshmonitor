@@ -13174,6 +13174,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return this.autoPing.stopSession(requesterPublicKey, 'force_stopped');
   }
 
+  /**
+   * Re-arm the per-source auto-delete-by-distance scheduler from freshly-saved
+   * settings (#6224). `start()` is idempotent (it stops first) and a no-op when
+   * the source has the feature disabled, so the settings route calls this after
+   * every save to pick up a new interval / home / threshold immediately — the
+   * same contract the Meshtastic and MQTT sources already use on save.
+   */
+  async restartDistanceDeleteScheduler(): Promise<void> {
+    await this.distanceDeleteScheduler.start();
+  }
+
+  /** Whether the auto-delete-by-distance periodic timer is armed on this source. */
+  isDistanceDeleteRunning(): boolean {
+    return this.distanceDeleteScheduler.running;
+  }
+
   // ============ Message Forwarding (#5446) ============
   //
   // Copies a matching incoming message to a channel or a contact on this
