@@ -363,6 +363,36 @@ export function frameChannelMessageId(
 }
 
 /**
+ * Content-derived id for a room-server post (#6246).
+ *
+ * A room server re-pushes a post on every login (an OpenHop timestamp-float bug
+ * resends the newest post forever, but any room server can resend after a lost
+ * ACK and retry). The device path gave each delivery a random id, so every sync
+ * added another copy of the same post. Keying the id on
+ * (room, author, post timestamp, text) lets `insertIgnore` collapse the repeat
+ * to one row.
+ *
+ * `authorPrefix` is the author's pubkey prefix, or '' when no raw frame was
+ * available to read it (#5774); an empty author still yields a stable id, so a
+ * post with an unknown author keyed on (room, timestamp, text) still dedupes.
+ * Includes `sourceId` so the same post heard on two sources keeps a row each.
+ * A clock-less room (timestamp 0) collapses two byte-identical posts — inherent.
+ */
+export function frameRoomPostId(
+  sourceId: string,
+  roomKey: string,
+  authorPrefix: string,
+  timestampSec: number,
+  text: string,
+): string {
+  const digest = createHash('sha256')
+    .update(`${roomKey}\u0000${authorPrefix}\u0000${timestampSec}\u0000${text}`)
+    .digest('hex')
+    .slice(0, 24);
+  return `room_${sourceId}_${digest}`;
+}
+
+/**
  * Create or update a node on `sourceId` from an ADVERT frame.
  *
  * Signatures are decoded but not enforced — the same trade-off the MQTT path

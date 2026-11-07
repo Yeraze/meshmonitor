@@ -64,7 +64,11 @@ describe('MeshCoreManager room server support', () => {
   // ---- room_message event handling ----
 
   describe('room_message bridge event', () => {
-    it('creates a message with messageType=room_post', () => {
+    // The emit is gated on the DB insert result now (#6246), so it fires on a
+    // microtask after handleBridgeEvent returns — flush before asserting.
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it('creates a message with messageType=room_post', async () => {
       const roomPubkey = 'bb'.repeat(32);
       const authorPubkey = 'cc'.repeat(32);
       const { manager, emittedMessages } = makeManager({
@@ -84,6 +88,7 @@ describe('MeshCoreManager room server support', () => {
           sender_timestamp: 1700000000,
         },
       });
+      await flush();
 
       expect(emittedMessages).toHaveLength(1);
       const msg = emittedMessages[0];
@@ -98,7 +103,7 @@ describe('MeshCoreManager room server support', () => {
       expect(msg.timestamp).toBe(1700000000000);
     });
 
-    it('resolves room full pubkey from prefix', () => {
+    it('resolves room full pubkey from prefix', async () => {
       const roomPubkey = 'dd'.repeat(32);
       const { manager, emittedMessages } = makeManager({
         contacts: [
@@ -115,11 +120,12 @@ describe('MeshCoreManager room server support', () => {
           sender_timestamp: 1700000001,
         },
       });
+      await flush();
 
       expect(emittedMessages[0].toPublicKey).toBe(roomPubkey);
     });
 
-    it('falls back to prefix when room contact not found', () => {
+    it('falls back to prefix when room contact not found', async () => {
       const { manager, emittedMessages } = makeManager();
 
       (manager as any).handleBridgeEvent({
@@ -131,9 +137,45 @@ describe('MeshCoreManager room server support', () => {
           sender_timestamp: 1700000002,
         },
       });
+      await flush();
 
       expect(emittedMessages[0].toPublicKey).toBe('aabbccddee00');
       expect(emittedMessages[0].fromName).toBeUndefined();
+    });
+
+    it('dedupes a re-pushed post: one row and one emit on replay (#6246)', async () => {
+      const roomPubkey = 'bb'.repeat(32);
+      const { manager, emittedMessages } = makeManager({
+        contacts: [{ publicKey: roomPubkey, advType: 3, advName: 'TestRoom' }],
+      });
+
+      // The row writes on the first delivery and `insertIgnore` drops the
+      // second, so insertMessage reports true then false.
+      const insertSpy = vi.spyOn(databaseService.meshcore, 'insertMessage')
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false);
+
+      const event = {
+        event_type: 'room_message',
+        data: {
+          room_pubkey_prefix: roomPubkey.substring(0, 12),
+          author_pubkey_prefix: 'abcd1234',
+          text: 'same post',
+          sender_timestamp: 1700000003,
+        },
+      };
+
+      (manager as any).handleBridgeEvent(event);
+      await flush();
+      (manager as any).handleBridgeEvent(event); // room server re-pushes on next login
+      await flush();
+
+      // Both deliveries attempt a write, but they carry the SAME content id...
+      expect(insertSpy).toHaveBeenCalledTimes(2);
+      expect(insertSpy.mock.calls[0][0].id).toBe(insertSpy.mock.calls[1][0].id);
+      // ...so only the first — the one that actually inserted — reaches the UI
+      // and fires automations/notifications.
+      expect(emittedMessages).toHaveLength(1);
     });
   });
 

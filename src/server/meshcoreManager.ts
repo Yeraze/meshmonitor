@@ -144,6 +144,7 @@ import {
   channelKeyFingerprint,
   keyedChannelIndex,
   frameChannelMessageId,
+  frameRoomPostId,
   noteVirtualChannelDecrypt,
   anySecretMatchesChannelHash,
   type DecryptedGroupText,
@@ -2831,8 +2832,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         kind: 'room',
       });
 
+      // The raw whole-second post timestamp keys the dedup id below. Fall back
+      // to 0 when absent so the id stays deterministic (#6246).
+      const roomPostSec = typeof data.sender_timestamp === 'number' ? Math.floor(data.sender_timestamp) : 0;
       const message: MeshCoreMessage = {
-        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        // #6246: a CONTENT-derived id (room + author + post second + text), not a
+        // random one, so a room server re-pushing the same post on each login
+        // collapses to one row via `insertIgnore` instead of adding a copy per
+        // sync. Mirrors the channel/MQTT ingest id.
+        id: frameRoomPostId(this.sourceId, roomFullKey, authorPrefixHex, roomPostSec, data.text),
         fromPublicKey: authorFullKey,
         fromName: authorName,
         toPublicKey: roomFullKey,
@@ -2847,14 +2855,28 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         snr: data.snr,
         sourceId: this.sourceId,
         messageType: 'room_post',
+        // Carry the post's whole-second timestamp so a re-pushed post keys the
+        // same id on replay.
+        senderTimestamp: roomPostSec || undefined,
       };
       if (verdict.action === 'allow') {
-        void this.addMessage(message);
-        this.emit('message', message);
-        dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+        // Gate the emit on a real insert (#6246): a repeated post returns false
+        // from insertMessage, so it fires no `message` event, no automations,
+        // and no mention notifications a second time. The channel path (#5040
+        // Phase 4) already does this. `handleBridgeEvent` stays synchronous, so
+        // the gate rides a `.then` rather than an await.
+        void this.addMessage(message).then(stored => {
+          if (stored) {
+            this.emit('message', message);
+            dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+          } else {
+            logger.debug(`[MeshCore:${this.sourceId}] Duplicate room post from ${authorPrefixHex} in room ${roomPubkeyPrefix} — dropped`);
+          }
+        });
       } else if (verdict.action === 'ignore') {
-        void this.addMessage(message);
-        this.emitIgnoredMessage(message);
+        void this.addMessage(message).then(stored => {
+          if (stored) this.emitIgnoredMessage(message);
+        });
       } else {
         logger.debug(`[MeshCore:${this.sourceId}] Blocked room post from ${authorPrefixHex} (${verdict.entryKind})`);
       }
