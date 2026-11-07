@@ -242,6 +242,7 @@ export const MeshCoreAutoDeleteByDistanceSection: React.FC<Props> = ({ baseUrl, 
               {t('meshcore.automation.delete_distance.home_description', 'Leave blank to use this source’s own node position.')}
             </span>
           </label>
+          {/* eslint-disable-next-line meshmonitor-ui/no-raw-number-input -- #6224 optional nullable home coordinate; NumberInput has no empty state */}
           <input
             id="mcDeleteDistanceLat"
             type="number"
@@ -259,6 +260,7 @@ export const MeshCoreAutoDeleteByDistanceSection: React.FC<Props> = ({ baseUrl, 
           <label htmlFor="mcDeleteDistanceLon">
             {t('meshcore.automation.delete_distance.home_lon', 'Home longitude')}
           </label>
+          {/* eslint-disable-next-line meshmonitor-ui/no-raw-number-input -- #6224 optional nullable home coordinate; NumberInput has no empty state */}
           <input
             id="mcDeleteDistanceLon"
             type="number"
