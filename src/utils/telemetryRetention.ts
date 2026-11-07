@@ -1,13 +1,15 @@
 /**
  * Telemetry retention helpers (issue #5080).
  *
- * `telemetryFavorites` and `favoriteTelemetryStorageDays` are BOTH per-source
- * settings. The Dashboard and the Settings "Telemetry" section always render
- * inside a `<SourceProvider>`, so every save they make carries `?sourceId=<id>`
- * and lands under the `source:<id>:` key prefix. The hourly retention purge used
- * to read only the un-namespaced global keys, found nothing, and therefore
- * deleted every favorited chart's history past the 7-day non-favorite window —
- * silently destroying the history the setting exists to preserve.
+ * `telemetryFavorites` and `favoriteTelemetryStorageDays` can both be saved per
+ * source. The Dashboard saves favorites with `?sourceId=<id>`, and the MeshCore
+ * Settings telemetry section saves the storage days the same way, so they land
+ * under the `source:<id>:` key prefix. The Meshtastic Settings section still
+ * saves the storage days as the global default, which a source without its own
+ * override falls back to. The hourly retention purge used to read only the
+ * un-namespaced global keys, found nothing, and therefore deleted every
+ * favorited chart's history past the 7-day non-favorite window, silently
+ * destroying the history the setting exists to preserve.
  *
  * This module turns one `getAllSettings()` snapshot (which contains BOTH
  * namespaces) into the per-entry retention list the purge needs. Kept
