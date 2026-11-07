@@ -398,6 +398,39 @@ router.get(
   },
 );
 
+// ============ Remote Telemetry overview (#6224) ============
+//
+// Central read of the per-node remote-telemetry config for the Automation tab.
+// Like time-sync it is per-node (telemetryEnabled / interval on each
+// meshcore_node); per-node edits go to /nodes/:publicKey/telemetry-config. The
+// scheduler already runs and already transmits on its own cadence — this is a
+// read-only overview and starts no poll.
+
+router.get(
+  '/automation/remote-telemetry',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      managerFor(req, res); // 404 unless a connected MeshCore source
+      const nodes = await databaseService.meshcore.getTelemetryEnabledNodes(sourceId);
+      ok(res, {
+        nodes: nodes.map((n) => ({
+          publicKey: n.publicKey,
+          name: n.name ?? null,
+          intervalMinutes: n.telemetryIntervalMinutes ?? null,
+          lastRequestAt: n.lastTelemetryRequestAt ?? null,
+          lastSuccessAt: n.lastTelemetrySuccessAt ?? null,
+        })),
+      });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore remote-telemetry overview:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read remote-telemetry overview');
+    }
+  },
+);
+
 // ============ Auto-Pathfinding Target Filter (#4024) ============
 //
 // Filter config for Auto-Pathfinding contact selection: AND pre-filters

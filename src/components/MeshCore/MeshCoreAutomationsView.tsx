@@ -16,6 +16,7 @@ import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
 import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSection';
 import { MeshCoreAutoDeleteByDistanceSection } from './MeshCoreAutoDeleteByDistanceSection';
 import { MeshCoreTimeSyncSection } from './MeshCoreTimeSyncSection';
+import { MeshCoreRemoteTelemetrySection } from './MeshCoreRemoteTelemetrySection';
 import { AutomationTokenReference } from '../AutomationTokenReference';
 import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
 import { UiIcon } from '../icons';
@@ -402,6 +403,11 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       {/* Time Sync overview (#6224): central view/manage of per-node time sync. */}
       <div id="meshcore-automation-time-sync">
         <MeshCoreTimeSyncSection baseUrl={baseUrl} sourceId={sourceId} />
+      </div>
+
+      {/* Remote Telemetry overview (#6224): central view/manage of per-node polling. */}
+      <div id="meshcore-automation-remote-telemetry">
+        <MeshCoreRemoteTelemetrySection baseUrl={baseUrl} sourceId={sourceId} />
       </div>
       </div>
       </div>
