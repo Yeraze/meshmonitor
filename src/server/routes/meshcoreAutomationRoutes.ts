@@ -21,6 +21,14 @@ import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { parseAutoPingSettingsUpdate, readAutoPingSettings } from '../utils/autoPingSettings.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
+import {
+  AUTO_FAVORITE_MIN_INTERVAL_HOURS,
+  AUTO_FAVORITE_MAX_INTERVAL_HOURS,
+  AUTO_FAVORITE_MIN_STALE_HOURS,
+  AUTO_FAVORITE_MAX_STALE_HOURS,
+  AUTO_FAVORITE_DEFAULT_INTERVAL_HOURS,
+  AUTO_FAVORITE_DEFAULT_STALE_HOURS,
+} from '../services/meshcoreAutoFavorite.js';
 import { MESHCORE_ADVERT_MODES, isMeshCoreAdvertMode, resolveMeshCoreAdvertMode } from '../../types/meshcoreAdvert.js';
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
 import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
@@ -427,6 +435,135 @@ router.get(
     } catch (error) {
       logger.error('[API] Error reading meshcore remote-telemetry overview:', error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to read remote-telemetry overview');
+    }
+  },
+);
+
+// ============ Auto Favorite (#6224) ============
+//
+// MeshCore parity with the Meshtastic auto-favorite. A periodic per-source sweep
+// (MeshCoreAutoFavoriteScheduler) favourites every contact heard within a stale
+// window and un-favourites the ones it previously favourited once they go stale.
+// It only ever un-favourites nodes it owns (tracked in meshcoreAutoFavoriteNodes),
+// so a hand-picked favourite is never touched. Favourite writes go to the
+// companion over its own link, not the LoRa mesh — no airtime cost — but the
+// cadence still defaults slow (6h). Saving re-arms the scheduler so a new
+// interval/stale window applies now rather than after a restart.
+
+interface AutoFavoriteSettings {
+  enabled: boolean;
+  intervalHours: number;
+  staleHours: number;
+  trackedCount: number;
+}
+
+async function readAutoFavoriteSettings(sourceId: string): Promise<AutoFavoriteSettings> {
+  const get = (key: string) => databaseService.settings.getSettingForSource(sourceId, key);
+  const [enabled, intervalHours, staleHours, nodes] = await Promise.all([
+    get('meshcoreAutoFavoriteEnabled'),
+    get('meshcoreAutoFavoriteIntervalHours'),
+    get('meshcoreAutoFavoriteStaleHours'),
+    get('meshcoreAutoFavoriteNodes'),
+  ]);
+  const num = (v: string | null, fallback: number) => {
+    const n = v == null || v === '' ? NaN : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  let trackedCount = 0;
+  try {
+    const parsed = JSON.parse(nodes || '[]');
+    if (Array.isArray(parsed)) trackedCount = parsed.length;
+  } catch {
+    trackedCount = 0;
+  }
+  return {
+    enabled: enabled === 'true',
+    intervalHours: num(intervalHours, AUTO_FAVORITE_DEFAULT_INTERVAL_HOURS),
+    staleHours: num(staleHours, AUTO_FAVORITE_DEFAULT_STALE_HOURS),
+    trackedCount,
+  };
+}
+
+function parseAutoFavoriteUpdate(body: unknown): ParsedResult {
+  if (!body || typeof body !== 'object') {
+    return { ok: false, code: 'INVALID_BODY', message: 'Request body must be an object' };
+  }
+  const b = body as Record<string, unknown>;
+  const updates: Array<[string, string]> = [];
+
+  if ('enabled' in b) {
+    if (typeof b.enabled !== 'boolean') return { ok: false, code: 'INVALID_ENABLED', message: 'enabled must be a boolean' };
+    updates.push(['meshcoreAutoFavoriteEnabled', b.enabled ? 'true' : 'false']);
+  }
+  if ('intervalHours' in b) {
+    const n = Number(b.intervalHours);
+    if (!Number.isFinite(n) || n < AUTO_FAVORITE_MIN_INTERVAL_HOURS || n > AUTO_FAVORITE_MAX_INTERVAL_HOURS) {
+      return { ok: false, code: 'INVALID_INTERVAL', message: `intervalHours must be ${AUTO_FAVORITE_MIN_INTERVAL_HOURS}–${AUTO_FAVORITE_MAX_INTERVAL_HOURS}` };
+    }
+    updates.push(['meshcoreAutoFavoriteIntervalHours', String(Math.round(n))]);
+  }
+  if ('staleHours' in b) {
+    const n = Number(b.staleHours);
+    if (!Number.isFinite(n) || n < AUTO_FAVORITE_MIN_STALE_HOURS || n > AUTO_FAVORITE_MAX_STALE_HOURS) {
+      return { ok: false, code: 'INVALID_STALE', message: `staleHours must be ${AUTO_FAVORITE_MIN_STALE_HOURS}–${AUTO_FAVORITE_MAX_STALE_HOURS}` };
+    }
+    updates.push(['meshcoreAutoFavoriteStaleHours', String(Math.round(n))]);
+  }
+  return { ok: true, updates };
+}
+
+router.get(
+  '/automation/auto-favorite',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const mgr = managerFor(req, res);
+      const settings = await readAutoFavoriteSettings(sourceId);
+      ok(res, { settings, running: mgr.isAutoFavoriteRunning() });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore auto-favorite settings:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read auto-favorite settings');
+    }
+  },
+);
+
+router.post(
+  '/automation/auto-favorite',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const parsed = parseAutoFavoriteUpdate(req.body);
+      if (!parsed.ok) return fail(res, 400, parsed.code, parsed.message);
+      for (const [key, value] of parsed.updates) {
+        await databaseService.settings.setSourceSetting(sourceId, key, value);
+      }
+      // Re-arm the per-source scheduler so a new interval/stale window applies now.
+      await managerFor(req, res).restartAutoFavoriteScheduler();
+      const settings = await readAutoFavoriteSettings(sourceId);
+      ok(res, { settings });
+    } catch (error) {
+      logger.error('[API] Error saving meshcore auto-favorite settings:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to save auto-favorite settings');
+    }
+  },
+);
+
+router.post(
+  '/automation/auto-favorite/run',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mgr = managerFor(req, res); // 404s unless a connected MeshCore source
+      const { favorited, unfavorited } = await mgr.runAutoFavoriteSweep();
+      ok(res, { favorited, unfavorited });
+    } catch (error) {
+      logger.error('[API] Error running meshcore auto-favorite sweep:', error);
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to run auto-favorite sweep');
     }
   },
 );

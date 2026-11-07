@@ -107,7 +107,7 @@ export async function runAutoFavoriteSweep(
 
   const enabled = (await get('meshcoreAutoFavoriteEnabled')) === 'true';
   const staleHours = clampStaleHours(await get('meshcoreAutoFavoriteStaleHours'));
-  let tracked: string[] = [];
+  let tracked: string[];
   try {
     tracked = JSON.parse((await get('meshcoreAutoFavoriteNodes')) || '[]');
     if (!Array.isArray(tracked)) tracked = [];
