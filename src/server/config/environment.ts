@@ -225,6 +225,7 @@ export interface EnvironmentConfig {
   // Server
   port: number;
   portProvided: boolean;
+  bindAddress: string | undefined;
   baseUrl: string;
   baseUrlProvided: boolean;
   allowedOrigins: string[];
@@ -386,6 +387,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
   // Server
   const port = parseInt32('PORT', process.env.PORT, 3001);
+  // BIND_ADDRESS: unset = every interface (unchanged default; Docker port mapping
+  // needs it). 127.0.0.1 keeps a bare-metal install behind its proxy only. Not
+  // named HOST: zsh and some containers export HOST as the hostname.
+  const bindAddress = process.env.BIND_ADDRESS?.trim() || undefined;
 
   // BASE_URL validation and normalization
   const baseUrlRaw = process.env.BASE_URL;
@@ -830,6 +835,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.info('📋 Environment configuration:');
   logger.info(`   NODE_ENV: ${nodeEnv.value} (${src(nodeEnv.wasProvided)})`);
   logger.info(`   PORT: ${port.value} (${src(port.wasProvided)})`);
+  logger.info(`   BIND_ADDRESS: ${bindAddress ?? 'all interfaces'} (${src(bindAddress !== undefined)})`);
   logger.info(`   BASE_URL: ${baseUrl || '/'} (${src(baseUrlProvided)})`);
   logger.info(`   LOG_LEVEL: ${logLevel.value} (${src(logLevel.wasProvided)})`);
   logger.info(`   TZ: ${timezone.value} (${src(timezone.wasProvided)})`);
@@ -942,6 +948,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     // Server
     port: port.value,
     portProvided: port.wasProvided,
+    bindAddress,
     baseUrl,
     baseUrlProvided,
     allowedOrigins: allowedOrigins.value,
