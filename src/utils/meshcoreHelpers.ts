@@ -10,6 +10,9 @@ export interface MeshCoreContact {
   lastSeen?: number;
   rssi?: number;
   snr?: number;
+  /** Battery millivolts. Not on the wire contact record; views copy it in
+   *  from the node row so the map popup can show it (#6259). */
+  batteryMv?: number;
   advType?: number;
   latitude?: number;
   longitude?: number;

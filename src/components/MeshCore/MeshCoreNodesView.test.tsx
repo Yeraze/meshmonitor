@@ -86,6 +86,8 @@ function listedNames(): string[] {
 // are all within 3 hours, so they survive it. The per-source age filter
 // suite overrides this per-test where it needs a different cutoff.
 beforeEach(() => {
+  // The toolbar sort and filters persist (#6259); keep tests independent.
+  localStorage.clear();
   mockUseNodeDisplaySettings.mockReset().mockReturnValue({ maxNodeAgeHours: 24, maxInfraNodeAgeHours: 720 });
   meshCoreMapProps.mockClear();
 });
@@ -100,16 +102,16 @@ describe('MeshCoreNodesView — sort controls', () => {
   it('sorts alphabetically (case-insensitive) when "Name" is selected', () => {
     render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
-    fireEvent.change(dropdown, { target: { value: 'name' } });
+    fireEvent.change(dropdown, { target: { value: 'longName' } });
     // Direction defaults to desc — toggle to asc for natural alphabetical.
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.click(screen.getByTitle('nodes.descending'));
     expect(listedNames()).toEqual(['alpha', 'Bravo', 'Charlie']);
   });
 
   it('reverses order when the direction button is clicked', () => {
     render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
-    fireEvent.change(dropdown, { target: { value: 'name' } });
+    fireEvent.change(dropdown, { target: { value: 'longName' } });
     // After selecting name, direction is still 'desc' from default — Z..A.
     expect(listedNames()).toEqual(['Charlie', 'Bravo', 'alpha']);
   });
@@ -117,9 +119,9 @@ describe('MeshCoreNodesView — sort controls', () => {
   it('sorts by public key (lowercase hex) when "Public key" is selected (#6185)', () => {
     render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
-    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
+    fireEvent.change(dropdown, { target: { value: 'id' } });
     // Direction defaults to desc — toggle to asc for natural hex order.
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.click(screen.getByTitle('nodes.descending'));
     // PK_A(aaa…)=Charlie < PK_B(bbb…)=alpha < PK_C(ccc…)=Bravo
     expect(listedNames()).toEqual(['Charlie', 'alpha', 'Bravo']);
   });
@@ -133,8 +135,8 @@ describe('MeshCoreNodesView — sort controls', () => {
     ];
     render(<MeshCoreNodesView nodes={mixed} contacts={contacts} />);
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
-    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.change(dropdown, { target: { value: 'id' } });
+    fireEvent.click(screen.getByTitle('nodes.descending'));
     expect(listedNames()).toEqual(['NodeA', 'NodeB']);
   });
 
@@ -146,8 +148,8 @@ describe('MeshCoreNodesView — sort controls', () => {
     ];
     render(<MeshCoreNodesView nodes={withFavorite} contacts={contacts} />);
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
-    fireEvent.change(dropdown, { target: { value: 'publicKey' } });
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.change(dropdown, { target: { value: 'id' } });
+    fireEvent.click(screen.getByTitle('nodes.descending'));
     // Favorite PK_C (Bravo) pins to the top; the rest follow in hex order.
     expect(listedNames()).toEqual(['Bravo', 'Charlie', 'alpha']);
   });

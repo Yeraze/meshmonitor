@@ -5,6 +5,29 @@ import { useNodeQuickAgeFilter } from '../../hooks/useNodeQuickAgeFilter';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import { AdvancedNodeFilterPopup, type NodeFilterFeature } from '../AdvancedNodeFilterPopup/AdvancedNodeFilterPopup';
+import { NodeSortControls } from '../nodes/NodeSortControls';
+import { NodeStatChips } from '../nodes/NodeStatChips';
+import { ExportMenuButton } from '../nodes/ExportMenuButton';
+import { RoleDistributionSummary } from '../nodes/RoleDistributionSummary';
+import { RoleGroupHeader } from '../nodes/RoleGroupHeader';
+import { usePersistedListSort } from '../../hooks/usePersistedListSort';
+import { usePersistedNodeFilters } from '../../hooks/usePersistedNodeFilters';
+import { useNodeRoleGrouping } from '../../hooks/useNodeRoleGrouping';
+import { passesNodeFilters, DEFAULT_NODE_FILTERS } from '../../utils/nodeAdvancedFilter';
+import { sortByKey, orderFavoritesFirst } from '../../utils/nodeSort';
+import { exportNodeList } from '../../utils/nodeExport';
+import { readGroupNodesByRole, writeGroupNodesByRole, type GroupedNodeListItem } from '../../utils/nodeGrouping';
+import {
+  mergeNodesAndContacts,
+  meshcoreNodeSortKey,
+  toMeshCoreFilterSubject,
+  MESHCORE_NODE_SORT_FIELDS,
+  MESHCORE_NODE_EXPORT_COLUMNS,
+  MESHCORE_ROLE_FILTER_OPTIONS,
+  type MeshCoreNodeRow,
+} from '../../utils/meshcoreNodeRows';
+import type { SortField } from '../../types/ui';
 import { MeshCoreMap } from './MeshCoreMap';
 import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel, isMeshCoreInfrastructureAdvType } from './meshcoreRole';
 import { useToast } from '../ToastContainer';
@@ -19,6 +42,23 @@ import { UiIcon } from '../icons';
 import styles from './MeshCoreNodesView.module.css';
 
 type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
+
+/** Shared filter popup sections MeshCore supports (the rest are Meshtastic-only). */
+const MESHCORE_FILTER_FEATURES: Partial<Record<NodeFilterFeature, boolean>> = {
+  security: false, telemetry: false, environment: false, pki: false, remoteAdmin: false,
+  mqtt: false, favoriteLocked: false, hiddenFromMap: false, powerSource: false, channels: false,
+  position: true, unknown: true, ignored: true, favorites: true, hops: true, roles: true,
+};
+
+const SORT_OPTION_KEYS: Record<string, [string, string]> = {
+  lastHeard: ['nodes.sort_updated', 'Sort: Updated'],
+  longName: ['nodes.sort_name', 'Sort: Name'],
+  id: ['nodes.sort_id', 'Sort: ID'],
+  snr: ['nodes.sort_signal', 'Sort: Signal'],
+  battery: ['nodes.sort_charge', 'Sort: Charge'],
+  uptime: ['nodes.sort_uptime', 'Sort: Uptime'],
+  hops: ['nodes.sort_hops', 'Sort: Hops'],
+};
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -64,114 +104,9 @@ interface MeshCoreNodesViewProps {
    * and opens the node's popup once. Changing the value repeats that.
    */
   focusPublicKey?: string | null;
-}
-
-interface MergedRow {
-  publicKey: string;
-  name: string;
-  /** True when a real advertised name exists (before the 'Unknown' display
-   *  fallback). Drives "hide incomplete nodes" (#6258). */
-  hasName: boolean;
-  advType?: number;
-  rssi?: number;
-  snr?: number;
-  lastHeard?: number;
-  hasPosition: boolean;
-  isFavorite: boolean;
-  /** #5553: listed in the local repeater's `neighbors` table (zero-hop). */
-  isRepeaterNeighbor: boolean;
-  /** Propagated from the contact's `isLocal` flag (#4438) — `MeshCoreNode`
-   *  entries never carry it, only the synthetic local contact row does. */
-  isLocal: boolean;
-}
-
-type SortField = 'name' | 'lastHeard' | 'publicKey';
-type SortDirection = 'asc' | 'desc';
-
-function mergeNodesAndContacts(
-  nodes: MeshCoreNode[],
-  contacts: MeshCoreContact[],
-): MergedRow[] {
-  const byKey = new Map<string, MergedRow>();
-  for (const n of nodes) {
-    if (!n.publicKey) continue;
-    byKey.set(n.publicKey, {
-      publicKey: n.publicKey,
-      name: n.name || 'Unknown',
-      hasName: typeof n.name === 'string' && n.name.trim() !== '',
-      advType: n.advType,
-      rssi: n.rssi,
-      snr: n.snr,
-      lastHeard: n.lastHeard,
-      hasPosition: false,
-      isFavorite: n.isFavorite ?? false,
-      isRepeaterNeighbor: typeof n.repeaterNeighborAt === 'number' && n.repeaterNeighborAt > 0,
-      // `MeshCoreNode` never carries `isLocal` — only the synthetic local
-      // contact row does (#4438). Filled in below when a matching contact
-      // merges in.
-      isLocal: false,
-    });
-  }
-  for (const c of contacts) {
-    if (!c.publicKey) continue;
-    const existing = byKey.get(c.publicKey);
-    const hasPos = typeof c.latitude === 'number' && typeof c.longitude === 'number';
-    if (existing) {
-      existing.name = existing.name === 'Unknown'
-        ? (c.advName || c.name || existing.name)
-        : existing.name;
-      existing.hasName = existing.hasName
-        || (typeof (c.advName || c.name) === 'string' && (c.advName || c.name || '').trim() !== '');
-      existing.rssi = existing.rssi ?? c.rssi;
-      existing.snr = existing.snr ?? c.snr;
-      // `0` means "unknown" here too (matches meshcoreLastHeardMs's own
-      // treatment of `0` as absent) — a DB row with `lastHeard: 0` must still
-      // fall through to the contact's lastSeen/lastAdvert, or a node with a
-      // valid recent contact timestamp gets wrongly excluded by the age
-      // filter (#4433 review).
-      existing.lastHeard = (existing.lastHeard || null) ?? meshcoreLastHeardMs(c) ?? undefined;
-      existing.hasPosition = existing.hasPosition || hasPos;
-      existing.advType = existing.advType ?? c.advType;
-      existing.isLocal = existing.isLocal || c.isLocal === true;
-    } else {
-      byKey.set(c.publicKey, {
-        publicKey: c.publicKey,
-        name: c.advName || c.name || 'Unknown',
-        hasName: (c.advName || c.name || '').trim() !== '',
-        advType: c.advType,
-        rssi: c.rssi,
-        snr: c.snr,
-        lastHeard: meshcoreLastHeardMs(c) ?? undefined,
-        hasPosition: hasPos,
-        isFavorite: false,
-        isRepeaterNeighbor: false,
-        isLocal: c.isLocal === true,
-      });
-    }
-  }
-  return Array.from(byKey.values());
-}
-
-function sortRows(rows: MergedRow[], field: SortField, direction: SortDirection): MergedRow[] {
-  const dir = direction === 'asc' ? 1 : -1;
-  const comparator = (a: MergedRow, b: MergedRow): number => {
-    if (field === 'name') {
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) * dir;
-    }
-    if (field === 'publicKey') {
-      // Compare lowercase hex so mixed-case keys sort the same (issue #6185).
-      return (a.publicKey ?? '').toLowerCase().localeCompare((b.publicKey ?? '').toLowerCase()) * dir;
-    }
-    const at = a.lastHeard ?? 0;
-    const bt = b.lastHeard ?? 0;
-    return (at - bt) * dir;
-  };
-  // Pin favorites to the top, mirroring the Meshtastic node list
-  // (useProcessedNodes): sort favorites and non-favorites independently by the
-  // chosen field/direction, then concatenate favorites first.
-  const favorites = rows.filter(r => r.isFavorite).sort(comparator);
-  const nonFavorites = rows.filter(r => !r.isFavorite).sort(comparator);
-  return [...favorites, ...nonFavorites];
+  /** Lowercase public keys on the ignore list. `nodes`/`contacts` arrive
+   *  unfiltered; ignored rows are hidden unless "show ignored" is on (#6259). */
+  ignoredKeys?: ReadonlySet<string>;
 }
 
 export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
@@ -186,6 +121,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   receiveOnly = false,
   isRepeaterSource = false,
   focusPublicKey = null,
+  ignoredKeys,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -227,8 +163,24 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const clearPendingPopup = useCallback(() => setPendingPopupKey(null), []);
   const [discoverMenuOpen, setDiscoverMenuOpen] = useState(false);
   const [discovering, setDiscovering] = useState<DiscoverMode | null>(null);
-  const [sortField, setSortField] = useState<SortField>('lastHeard');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const {
+    field: sortField,
+    direction: sortDirection,
+    setField: setSortField,
+    toggleDirection: toggleSortDirection,
+  } = usePersistedListSort<SortField>('meshcoreNodesSort', MESHCORE_NODE_SORT_FIELDS, {
+    field: 'lastHeard',
+    direction: 'desc',
+  });
+  const [nodeFilters, setNodeFilters] = usePersistedNodeFilters('meshcoreNodeFilters');
+  const [filterPopupOpen, setFilterPopupOpen] = useState(false);
+  const [groupByRole, setGroupByRole] = useState<boolean>(() => readGroupNodesByRole());
+  const toggleGroupByRole = useCallback(() => {
+    setGroupByRole((v) => {
+      writeGroupNodesByRole(!v);
+      return !v;
+    });
+  }, []);
   // On a phone the map shows first, with the list a tap away (#5968), as on
   // Meshtastic, whose node list starts collapsed there.
   const [mobileShowContent, setMobileShowContent] = useState(() => isMobileViewport());
@@ -353,14 +305,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     }
   }, [onDiscoverNodes, discovering, receiveOnly, showToast, t]);
 
-  const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
+  const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts, ignoredKeys), [nodes, contacts, ignoredKeys]);
 
   /** Favorites and the operator's own node are never hidden by the age cutoff
    *  (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec §2 D6). Uses
    *  the `isLocal` flag (#4438), not a name/advName substring match — the
    *  `(local)` suffix stays as display text, but is no longer the predicate,
    *  so a stranger who names their device `Foo (local)` is not exempted. */
-  const isAgeExempt = useCallback((r: MergedRow): boolean =>
+  const isAgeExempt = useCallback((r: MeshCoreNodeRow): boolean =>
     r.isFavorite || r.isLocal, []);
 
   const aged = useMemo(() => {
@@ -420,22 +372,54 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     return map;
   }, [aged, nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, maxNodeAgeHours, maxInfraNodeAgeHours]);
 
-  const sorted = useMemo(
-    () => sortRows(aged, sortField, sortDirection),
-    [aged, sortField, sortDirection],
+  // Advanced filter (shared predicate). The list and the map both use this set.
+  const filtered = useMemo(
+    () => aged.filter((r) => passesNodeFilters(toMeshCoreFilterSubject(r), nodeFilters)),
+    [aged, nodeFilters],
   );
-  const rows = useMemo(() => {
-    if (!searchQuery.trim()) return sorted;
+  const searched = useMemo(() => {
+    if (!searchQuery.trim()) return filtered;
     const q = searchQuery.toLowerCase();
-    return sorted.filter(r =>
+    return filtered.filter(r =>
       r.name.toLowerCase().includes(q) || r.publicKey.toLowerCase().includes(q));
-  }, [sorted, searchQuery]);
+  }, [filtered, searchQuery]);
 
-  /** The map gets the same age-filtered set as the list (#4412 Phase 4 §3.4d)
+  // Favorites pin to the top, each part sorted by the chosen field.
+  const orderRows = useCallback(
+    (xs: MeshCoreNodeRow[]) =>
+      orderFavoritesFirst(xs, (part) => sortByKey(part, (r) => meshcoreNodeSortKey(r, sortField), sortDirection)),
+    [sortField, sortDirection],
+  );
+  const flatOrdered = useMemo(() => orderRows(searched), [orderRows, searched]);
+  const { items, distribution, toggleCollapsed } = useNodeRoleGrouping(
+    searched, orderRows, groupByRole, flatOrdered,
+  );
+  const rows = flatOrdered;
+
+  const filtersActive = useMemo(
+    () => JSON.stringify(nodeFilters) !== JSON.stringify(DEFAULT_NODE_FILTERS),
+    [nodeFilters],
+  );
+  const roleOptions = useMemo(
+    () => MESHCORE_ROLE_FILTER_OPTIONS.map((o) => ({ value: o.value, label: t(meshcoreRoleLabelKey(o.value), o.label) })),
+    [t],
+  );
+  const sortOptions = useMemo(
+    () => MESHCORE_NODE_SORT_FIELDS.map((f) => ({ value: f, label: t(SORT_OPTION_KEYS[f][0], SORT_OPTION_KEYS[f][1]) })),
+    [t],
+  );
+  const handleExport = useCallback((format: 'csv' | 'html') => {
+    exportNodeList(format, MESHCORE_NODE_EXPORT_COLUMNS, rows, {
+      filenamePrefix: 'meshcore-nodes',
+      title: t('meshcore.nav.nodes', 'Nodes'),
+    });
+  }, [rows, t]);
+
+  /** The map gets the same filtered set as the list (#4412 Phase 4 §3.4d)
    *  — a local contact with no matching `MeshCoreNode` row is also kept, so
    *  the map's centering / polar-grid origin never loses the local node.
    *  Uses `isLocal` (#4438), not the `(local)` naming convention. */
-  const visibleKeys = useMemo(() => new Set(aged.map(r => r.publicKey)), [aged]);
+  const visibleKeys = useMemo(() => new Set(filtered.map(r => r.publicKey)), [filtered]);
   // #5390: First Heard lives on the durable node rows, not the live contact
   // records — copy it across so the map popup can show it.
   const firstHeardByKey = useMemo(() => {
@@ -457,10 +441,20 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     }
     return map;
   }, [nodes]);
+  // Battery lives on the node rows; copy it across for the map popup (#6259).
+  const batteryByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.publicKey && typeof n.batteryMv === 'number') map.set(n.publicKey, n.batteryMv);
+    }
+    return map;
+  }, [nodes]);
   const visibleContacts = useMemo(
     () => contacts
       .filter(c => visibleKeys.has(c.publicKey) || c.isLocal === true)
-      .map(c => {
+      .map(raw => {
+        const batteryMv = batteryByKey.get(raw.publicKey);
+        const c = batteryMv !== undefined && raw.batteryMv === undefined ? { ...raw, batteryMv } : raw;
         const firstHeard = firstHeardByKey.get(c.publicKey);
         const advertPosition = advertPositionByKey.get(c.publicKey);
         const withFirstHeard = firstHeard !== undefined && c.firstHeard === undefined ? { ...c, firstHeard } : c;
@@ -472,7 +466,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             }
           : withFirstHeard;
       }),
-    [contacts, visibleKeys, firstHeardByKey, advertPositionByKey],
+    [contacts, visibleKeys, batteryByKey, firstHeardByKey, advertPositionByKey],
   );
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
@@ -573,31 +567,37 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           {!isListCollapsed && (
           <div className={`${styles.row} ${styles.toolbar}`}>
           <NodeQuickAgeFilter settingsHours={maxNodeAgeHours} variant="meshcore" />
-          <div className="sort-controls meshcore-sort-controls">
-            <select
-              aria-label={t('meshcore.sort_by', 'Sort by')}
-              title={t('meshcore.sort_by', 'Sort by')}
-              value={sortField}
-              onChange={(e) => setSortField(e.target.value as SortField)}
-              className="sort-dropdown"
-            >
-              <option value="lastHeard">{t('meshcore.sort_last_heard', 'Last heard')}</option>
-              <option value="name">{t('meshcore.sort_name', 'Name')}</option>
-              <option value="publicKey">{t('meshcore.sort_public_key', 'Public key')}</option>
-            </select>
+          <NodeSortControls
+            className="meshcore-sort-controls"
+            ariaLabel={t('meshcore.sort_by', 'Sort by')}
+            value={sortField}
+            direction={sortDirection}
+            options={sortOptions}
+            onChange={setSortField}
+            onToggleDirection={toggleSortDirection}
+          />
+          <div className={styles.tools}>
             <button
               type="button"
-              className="sort-direction-btn"
-              onClick={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
-              title={sortDirection === 'asc'
-                ? t('meshcore.ascending', 'Ascending')
-                : t('meshcore.descending', 'Descending')}
-              aria-label={sortDirection === 'asc'
-                ? t('meshcore.ascending', 'Ascending')
-                : t('meshcore.descending', 'Descending')}
+              className={`sort-direction-btn${filtersActive ? ` ${styles.active}` : ''}`}
+              onClick={() => setFilterPopupOpen(true)}
+              aria-pressed={filtersActive}
+              title={t('nodes.filter_title', 'Filter nodes')}
+              aria-label={t('common.filter', 'Filter')}
             >
-              <UiIcon name={sortDirection === 'asc' ? 'sortAscending' : 'sortDescending'} />
+              <UiIcon name="filter" />
             </button>
+            <button
+              type="button"
+              className={`sort-direction-btn${groupByRole ? ` ${styles.active}` : ''}`}
+              onClick={toggleGroupByRole}
+              aria-pressed={groupByRole}
+              title={t('nodes.group_by_role_title', 'Group nodes by role')}
+              aria-label={t('nodes.group_by_role', 'Group by Role')}
+            >
+              <UiIcon name="list" />
+            </button>
+            <ExportMenuButton disabled={rows.length === 0} onExport={handleExport} />
           </div>
           </div>
           )}
@@ -623,14 +623,17 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             </button>
           )}
         </div>
+        {groupByRole && distribution && <RoleDistributionSummary distribution={distribution} />}
         <MeshCoreVirtualList
-          items={rows}
-          getKey={row => row.publicKey}
+          items={items}
+          getKey={item => (item.type === 'header' ? `group:${item.category}` : item.node.publicKey)}
           estimateSize={76}
           empty={(
             <div className="meshcore-empty-state">
               {searchQuery
                 ? t('meshcore.no_search_results', 'No nodes match your search')
+                : filtersActive && aged.length > 0
+                  ? t('meshcore.nodes.no_filter_results', 'No nodes match the current filters')
                 : isRepeaterSource
                   ? t(
                     'meshcore.no_nodes_repeater',
@@ -639,7 +642,18 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                   : t('meshcore.no_nodes', 'No nodes seen yet')}
             </div>
           )}
-          renderRow={row => {
+          renderRow={(item: GroupedNodeListItem<MeshCoreNodeRow>) => {
+            if (item.type === 'header') {
+              return (
+                <RoleGroupHeader
+                  category={item.category}
+                  count={item.count}
+                  collapsed={item.collapsed}
+                  onToggle={toggleCollapsed}
+                />
+              );
+            }
+            const row = item.node;
             const roleIcon = meshcoreRoleIconName(row.advType);
             return (
             // Wrapper div (not a button) so the details quick-access can be a
@@ -668,8 +682,12 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                   <span className="mc-node-row-display-name">{row.name}</span>
                 </div>
                 <div className="mc-node-row-meta">
-                  {typeof row.rssi === 'number' && <span>RSSI {row.rssi}</span>}
-                  {typeof row.snr === 'number' && <span>SNR {row.snr}</span>}
+                  <NodeStatChips
+                    rssi={row.rssi}
+                    snr={row.snr}
+                    voltage={typeof row.batteryMv === 'number' && row.batteryMv > 0 ? row.batteryMv / 1000 : null}
+                    hops={row.pathLen}
+                  />
                   {row.lastHeard && (
                     <span>{formatTimeOrDate(new Date(row.lastHeard), timeFormat, dateFormat)}</span>
                   )}
@@ -745,6 +763,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           onPendingPopupHandled={clearPendingPopup}
         />
       </div>
+      <AdvancedNodeFilterPopup
+        isOpen={filterPopupOpen}
+        nodeFilters={nodeFilters}
+        onNodeFiltersChange={setNodeFilters}
+        onClose={() => setFilterPopupOpen(false)}
+        features={MESHCORE_FILTER_FEATURES}
+        roleOptions={roleOptions}
+      />
       {importDialogOpen && (
         <div
           role="dialog"
