@@ -13,10 +13,10 @@
  * - Stale-while-revalidate pattern
  */
 
-import { useCallback, useRef, useMemo, useState, useEffect } from 'react';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
 import { PacketLog, PacketFilters } from '../types/packet';
 import { getPackets } from '../services/packetApi';
+import { usePagedPackets } from './usePagedPackets';
 
 // Constants
 const PACKET_FETCH_LIMIT = 100;
@@ -113,71 +113,30 @@ interface UsePacketsResult {
  * ```
  */
 export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum, sourceId }: UsePacketsOptions): UsePacketsResult {
-  const queryClient = useQueryClient();
-
-  // Rate limit state (not handled by React Query)
-  const [rateLimitError, setRateLimitError] = useState(false);
-  const rateLimitResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Scroll tracking refs
-  const lastLoadedRawLengthRef = useRef<number>(0);
-
   // Merge sourceId into filters for API calls
   const effectiveFilters = useMemo(() => {
     if (sourceId) return { ...filters, sourceId };
     return filters;
   }, [filters, sourceId]);
 
-  // Query key for this filter + source combination
   const queryKey = useMemo(() => getPacketsQueryKey(filters, sourceId), [filters, sourceId]);
 
-  // Use infinite query for paginated data with polling
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, refetch } = useInfiniteQuery({
+  const fetchPage = useCallback(
+    (pageParam: number | string | null, pageSize: number) =>
+      getPackets(Number(pageParam ?? 0), pageSize, effectiveFilters),
+    [effectiveFilters],
+  );
+
+  const paged = usePagedPackets<PacketLog>({
     queryKey,
-    queryFn: async ({ pageParam = 0 }) => {
-      const response = await getPackets(pageParam, PACKET_FETCH_LIMIT, effectiveFilters);
-      return response;
-    },
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      // Calculate total loaded packets across all pages
-      const totalLoaded = allPages.reduce((sum, page) => sum + page.packets.length, 0);
-
-      // If last page has fewer packets than limit, there are no more
-      if (lastPage.packets.length < PACKET_FETCH_LIMIT) {
-        return undefined;
-      }
-
-      // Return the offset for the next page
-      return totalLoaded;
-    },
-    enabled: canView,
-    refetchInterval: POLL_INTERVAL_MS,
-    refetchIntervalInBackground: false,
-    staleTime: POLL_INTERVAL_MS - 1000, // Consider stale just before next poll
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-    refetchOnWindowFocus: false,
+    canView,
+    pageSize: PACKET_FETCH_LIMIT,
+    paging: 'offset',
+    fetchPage,
+    pollIntervalMs: POLL_INTERVAL_MS,
   });
 
-  // Flatten all pages into raw packets array, deduplicating by ID.
-  // Polling refetch can shift offsets causing the same packet to appear
-  // in adjacent pages when new packets arrive between fetches.
-  const rawPackets = useMemo(() => {
-    if (!data?.pages) return [];
-    const all = data.pages.flatMap(page => page.packets);
-    const seen = new Set<number>();
-    return all.filter(p => {
-      if (seen.has(p.id)) return false;
-      seen.add(p.id);
-      return true;
-    });
-  }, [data?.pages]);
-
-  // Get total from the most recent page response
-  const total = useMemo(() => {
-    if (!data?.pages || data.pages.length === 0) return 0;
-    return data.pages[data.pages.length - 1].total;
-  }, [data?.pages]);
+  const rawPackets = paged.packets;
 
   // Apply client-side "Hide Own Packets" filter
   const packets = useMemo(() => {
@@ -191,73 +150,16 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum, sourc
   // so a filter that lives in a collapsed drawer cannot hide rows unseen (#5579).
   const hiddenCount = rawPackets.length - packets.length;
 
-  // Reset scroll tracking when filters change (query is reset)
-  useEffect(() => {
-    lastLoadedRawLengthRef.current = 0;
-  }, [queryKey]);
-
-  // Track current rawPackets length via ref so loadMore doesn't need it as a dependency.
-  // This prevents the IntersectionObserver from re-firing on every data change.
-  const rawPacketsLengthRef = useRef(0);
-  rawPacketsLengthRef.current = rawPackets.length;
-
-  // Load more packets (infinite scroll)
-  const loadMore = useCallback(async () => {
-    if (isFetchingNextPage || !hasNextPage || rateLimitError || !canView) return;
-
-    // Guard: don't re-fetch if we already loaded from this position
-    if (rawPacketsLengthRef.current > 0 && rawPacketsLengthRef.current === lastLoadedRawLengthRef.current) return;
-
-    // Record current length before fetching to prevent duplicate loads
-    lastLoadedRawLengthRef.current = rawPacketsLengthRef.current;
-
-    try {
-      await fetchNextPage();
-    } catch (error) {
-      console.error('Failed to load more packets:', error);
-
-      // Check for rate limit error
-      if (error instanceof Error && error.message.includes('Too many requests')) {
-        setRateLimitError(true);
-
-        if (rateLimitResetTimerRef.current) {
-          clearTimeout(rateLimitResetTimerRef.current);
-        }
-
-        // Reset after 15 minutes
-        rateLimitResetTimerRef.current = setTimeout(() => {
-          setRateLimitError(false);
-        }, 15 * 60 * 1000);
-      }
-    }
-  }, [isFetchingNextPage, hasNextPage, rateLimitError, canView, fetchNextPage]);
-
-  // Refresh packets (invalidate cache and refetch)
-  const refresh = useCallback(async () => {
-    // Invalidate and refetch
-    await queryClient.invalidateQueries({ queryKey });
-    await refetch();
-  }, [queryClient, queryKey, refetch]);
-
-  // Cleanup rate limit timer on unmount
-  useEffect(() => {
-    return () => {
-      if (rateLimitResetTimerRef.current) {
-        clearTimeout(rateLimitResetTimerRef.current);
-      }
-    };
-  }, []);
-
   return {
     packets,
     rawPackets,
     hiddenCount,
-    total,
-    loading: isLoading,
-    loadingMore: isFetchingNextPage,
-    hasMore: hasNextPage ?? true,
-    rateLimitError,
-    loadMore,
-    refresh,
+    total: paged.total,
+    loading: paged.loading,
+    loadingMore: paged.loadingMore,
+    hasMore: paged.hasMore,
+    rateLimitError: paged.rateLimitError,
+    loadMore: paged.loadMore,
+    refresh: paged.refresh,
   };
 }

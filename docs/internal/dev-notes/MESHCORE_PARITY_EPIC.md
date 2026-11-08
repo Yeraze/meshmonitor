@@ -44,7 +44,7 @@ Each phase's scope is the checklist in its issue.
   translation, composer emoji picker.
 - [x] **P3 #6259 Nodes and DM lists:** sort, columns, filters, group by role,
   export, DM list filters and richer rows.
-- [ ] **P4 #6262 Packet Monitor + contact graphs:** paging, search and filters,
+- [x] **P4 #6262 Packet Monitor + contact graphs:** paging, search and filters,
   distribution charts, Unified filters, Smart Hops / Link Quality / Signal Trend.
 - [ ] **P5 #6260 Map parity:** shared MeshCoreMap layers, trace on map, Map
   Analysis positions/traces/solar, estimated positions. May split.
@@ -89,3 +89,15 @@ DM preview only for live-window threads (no server change). Orchestrator (one-im
 rule): one shared Group-by-role preference; favorites filter added to both protocols.
 #6185 (public-key sort) already implemented — this phase closes it.
 Shipped: 4 work packages. Shared now: `nodeSort.sortByKey`/`orderFavoritesFirst`, `nodeExport` generic columns + `exportNodeList`, `nodeAdvancedFilter.passesNodeFilters` + configurable `AdvancedNodeFilterPopup`, `usePersistedListSort`, `usePersistedNodeFilters`, `useNodeRoleGrouping`, `components/nodes/{NodeSortControls,ExportMenuButton,NodeStatChips,RoleDistributionSummary,RoleGroupHeader}`, `BatteryItem`, `dmListFilter`, `DmFilterSelect`, `formatMessagePreview`. MeshCore adapter: `utils/meshcoreNodeRows.ts`. Deviations: UIContext owns the persisted Meshtastic sort (one source of truth); MeshCore DM sort labels keep `meshcore.sort_*` wording.
+
+### P4 #6262 (spec: `MESHCORE_PARITY_P4_SPEC.md`)
+Maintainer answers, 2026-11-08: Signal Trend for MeshCore uses our DM reception (snr/rssi of DMs from
+the contact) plus polled noise floor; free-text search excludes channel plaintext (per-viewer
+decryption stays gated). Orchestrator: no backfill of the new derived columns (retention ≤30 d);
+meshcore_mqtt distribution counts receptions. Contact graphs are a read-side adapter (no new
+telemetry writers). Migration 224 adds derived packet-log columns + indexes.
+Shipped: migration 224 + derived sender fields; cursor paging, search, payload/route filters and a
+distribution endpoint for the MeshCore packet log; shared `usePagedPackets` / `useInfiniteVirtualRows`
+hooks drive both protocols' monitors; unified monitor merges distribution protocol-tagged; MeshCore
+contact panel gets "Link history" via the shared Meshtastic graph components. Browser-checked on a
+throwaway volume (popout monitor renders, routes return paged envelopes, no console errors).

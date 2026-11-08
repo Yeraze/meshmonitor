@@ -130,6 +130,9 @@ const PG_CREATE = `
     "payloadSize" INTEGER,
     "rawHex" TEXT,
     "observerId" TEXT,
+    "srcHash" TEXT,
+    "senderPubKey" TEXT,
+    "advertName" TEXT,
     "createdAt" BIGINT NOT NULL
   );
 `;
@@ -151,6 +154,9 @@ const MYSQL_CREATE = `
     payloadSize INT,
     rawHex TEXT,
     observerId VARCHAR(64),
+    srcHash VARCHAR(8),
+    senderPubKey VARCHAR(64),
+    advertName VARCHAR(128),
     createdAt BIGINT NOT NULL
   );
 `;

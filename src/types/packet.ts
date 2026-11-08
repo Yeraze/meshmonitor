@@ -102,11 +102,17 @@ export interface UnifiedPacketFilters {
   sourceId?: string;
   /** Only rows another readable source sent / likely relayed (#5559). */
   crossSource?: CrossSourcePacketFilter;
+  /** MeshCore payload type (excludes Meshtastic rows). Mutually exclusive with portnum. */
+  payload_type?: number;
+  /** MeshCore route type (excludes Meshtastic rows). Mutually exclusive with portnum. */
+  route_type?: number;
 }
 
 export interface UnifiedSourceRef {
   id: string;
   name: string;
+  /** Source type (e.g. 'meshtastic_tcp', 'meshcore'); drives MeshCore-only filters. */
+  type?: string;
 }
 
 export interface UnifiedPacketsResponse {
@@ -145,12 +151,27 @@ export interface PacketCountByDevice {
   from_node_id: string | null;
   from_node_longName: string | null;
   count: number;
+  /** Set by the unified distribution; absent means Meshtastic. */
+  protocol?: 'meshtastic' | 'meshcore';
+  /** MeshCore sender public key (protocol === 'meshcore'). */
+  publicKey?: string | null;
 }
 
 export interface PacketCountByType {
   portnum: number;
   portnum_name: string;
   count: number;
+  /** Set by the unified distribution; absent means Meshtastic. For meshcore, `portnum` is the payload type. */
+  protocol?: 'meshtastic' | 'meshcore';
+}
+
+/** MeshCore per-source packet distribution (`/meshcore/packets/stats/distribution`). */
+export interface MeshCorePacketDistribution {
+  byPayloadType: { payloadType: number; payloadTypeName: string | null; count: number }[];
+  byRouteType: { routeType: number | null; routeTypeName: string | null; count: number }[];
+  topSenders: { senderPubKey: string; advertName: string | null; count: number }[];
+  total: number;
+  enabled: boolean;
 }
 
 export interface RelayNodeOption {

@@ -45,6 +45,12 @@ export const meshcorePacketLogSqlite = sqliteTable('meshcore_packet_log', {
    * per observer, deduped at query time.
    */
   observerId: text('observerId'),
+  /** First-byte sender hash (lowercase hex), derived at insert (#6262). */
+  srcHash: text('srcHash'),
+  /** Full sender public key when the packet carries it (ADVERT). */
+  senderPubKey: text('senderPubKey'),
+  /** Advert name (ADVERT only). */
+  advertName: text('advertName'),
   createdAt: integer('createdAt').notNull(),
 });
 
@@ -67,6 +73,9 @@ export const meshcorePacketLogPostgres = pgTable('meshcore_packet_log', {
   payloadSize: pgInteger('payloadSize'),
   rawHex: pgText('rawHex'),
   observerId: pgText('observerId'),
+  srcHash: pgText('srcHash'),
+  senderPubKey: pgText('senderPubKey'),
+  advertName: pgText('advertName'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
@@ -89,5 +98,8 @@ export const meshcorePacketLogMysql = mysqlTable('meshcore_packet_log', {
   payloadSize: myInt('payloadSize'),
   rawHex: myText('rawHex'),
   observerId: myVarchar('observerId', { length: 64 }),
+  srcHash: myVarchar('srcHash', { length: 8 }),
+  senderPubKey: myVarchar('senderPubKey', { length: 64 }),
+  advertName: myVarchar('advertName', { length: 128 }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });

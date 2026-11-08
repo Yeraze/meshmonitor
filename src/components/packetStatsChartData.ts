@@ -17,3 +17,20 @@ export interface ChartDataEntry {
   color: string;
   [key: string]: string | number;  // Index signature for Recharts compatibility
 }
+
+/**
+ * Map server distribution rows to chart entries (#6262). Colours cycle through
+ * `DISTRIBUTION_COLORS` unless `color` supplies one.
+ */
+export function toChartEntries<T>(
+  rows: readonly T[],
+  name: (row: T) => string,
+  value: (row: T) => number,
+  color?: (row: T, index: number) => string | undefined,
+): ChartDataEntry[] {
+  return rows.map((row, i) => ({
+    name: name(row),
+    value: value(row),
+    color: color?.(row, i) ?? DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length],
+  }));
+}

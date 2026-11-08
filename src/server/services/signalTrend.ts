@@ -226,3 +226,51 @@ export function computeSignalTrend(
 
   return { trend, basis, rssi, snr, noiseFloor, noiseFloorRising };
 }
+
+/**
+ * Raw signal samples for the signal-trend endpoint (#6262, decision Q1).
+ *
+ * Meshtastic ids read the stored `rssi` / `snr_local` / `noiseFloor` telemetry.
+ * MeshCore public keys use our own reception of that contact: DM `rssi`/`snr`
+ * from `meshcore_messages` (Meshtastic semantics, how well we hear them), plus
+ * the polled `mc_status_noise_floor` telemetry for noise where available.
+ */
+export const MC_NOISE_FLOOR_TELEMETRY_TYPE = 'mc_status_noise_floor';
+
+export async function signalTrendSamplesFor(
+  nodeId: string,
+  sourceId: string,
+  since: number
+): Promise<SignalSample[]> {
+  // Lazy import keeps the pure computation above free of DB coupling.
+  const { default: databaseService } = await import('../../services/database.js');
+  if (!/^[0-9a-f]{64}$/i.test(nodeId)) {
+    return databaseService.telemetry.getSignalTrendSamples(
+      nodeId,
+      SIGNAL_TREND_TELEMETRY_TYPES,
+      since,
+      sourceId,
+      SIGNAL_TREND_MAX_SAMPLES
+    );
+  }
+  const key = nodeId.toLowerCase();
+  const [msgs, noise] = await Promise.all([
+    databaseService.meshcore.getContactSignalSamples(sourceId, key, since, SIGNAL_TREND_MAX_SAMPLES),
+    databaseService.telemetry.getSignalTrendSamples(
+      key,
+      [MC_NOISE_FLOOR_TELEMETRY_TYPE],
+      since,
+      sourceId,
+      SIGNAL_TREND_MAX_SAMPLES
+    ),
+  ]);
+  const out: SignalSample[] = [];
+  for (const m of msgs) {
+    if (m.rssi !== null) out.push({ telemetryType: RSSI_TELEMETRY_TYPE, timestamp: m.timestamp, value: m.rssi });
+    if (m.snr !== null) out.push({ telemetryType: SNR_TELEMETRY_TYPE, timestamp: m.timestamp, value: m.snr });
+  }
+  for (const n of noise) {
+    out.push({ telemetryType: NOISE_FLOOR_TELEMETRY_TYPE, timestamp: n.timestamp, value: n.value });
+  }
+  return out;
+}

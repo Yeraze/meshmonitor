@@ -7,6 +7,7 @@
 import { eq, ne, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, ALL_SOURCES, type SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
+import { likeContains } from './likeSearch.js';
 import { shouldDiscardPosition } from '../../utils/nullIsland.js';
 import { sanitizeMeshCoreName } from '../../utils/meshcoreName.js';
 import { getDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
@@ -301,6 +302,12 @@ export interface DbMeshCorePacket {
    * A `meshcore_mqtt` source writes one row per observer that heard the frame.
    */
   observerId?: string | null;
+  /** First-byte sender hash, derived at insert (#6262). Null for GRP_*, ACK, etc. */
+  srcHash?: string | null;
+  /** Full sender key when the packet carries it (ADVERT / ANON_REQ). */
+  senderPubKey?: string | null;
+  /** Advert name (ADVERT only). */
+  advertName?: string | null;
   createdAt: number;
 }
 
@@ -422,6 +429,25 @@ export interface MeshCorePacketQuery {
    */
   untilTs?: number;
   untilId?: number;
+  /**
+   * Free-text search (#6262): advert name, payload type name, raw hex (hex
+   * terms of 2+ chars) and sender key prefix. Channel plaintext is NOT searched.
+   */
+  search?: string;
+  /** Sender hash (lowercase hex): `srcHash = h OR senderPubKey LIKE 'h%'`. */
+  srcHash?: string;
+  /** Sender public key, prefix match. */
+  senderPubKey?: string;
+  /** Relay hash appearing anywhere in the path chain. */
+  pathHash?: string;
+}
+
+/** Distribution of the packet log under the same filters as the list (#6262). */
+export interface MeshCorePacketDistribution {
+  byPayloadType: { payloadType: number; payloadTypeName: string | null; count: number }[];
+  byRouteType: { routeType: number | null; routeTypeName: string | null; count: number }[];
+  topSenders: { senderPubKey: string; advertName: string | null; count: number }[];
+  total: number;
 }
 
 /**
@@ -3033,6 +3059,38 @@ export class MeshCoreRepository extends BaseRepository {
       );
       if (keyset) conditions.push(keyset);
     }
+    const t = meshcorePacketLog;
+    const isHex = (v: string) => /^[0-9a-f]+$/i.test(v);
+    if (query.srcHash) {
+      const h = query.srcHash.toLowerCase();
+      const c = or(eq(t.srcHash, h), likeContains([sql`${t.senderPubKey}`], h, this.isPostgres(), 'prefix'));
+      if (c) conditions.push(c);
+    }
+    if (query.senderPubKey) {
+      conditions.push(likeContains([sql`${t.senderPubKey}`], query.senderPubKey.toLowerCase(), this.isPostgres(), 'prefix'));
+    }
+    if (query.pathHash) {
+      const h = query.pathHash.toLowerCase();
+      const pg = this.isPostgres();
+      conditions.push(
+        or(
+          eq(t.pathHops, h),
+          likeContains([sql`${t.pathHops}`], `${h},`, pg, 'prefix'),
+          likeContains([sql`${t.pathHops}`], `,${h}`, pg, 'suffix'),
+          likeContains([sql`${t.pathHops}`], `,${h},`, pg),
+        ) as SQL,
+      );
+    }
+    if (query.search) {
+      const q = query.search;
+      const pg = this.isPostgres();
+      const parts: SQL[] = [likeContains([sql`${t.advertName}`, sql`${t.payloadTypeName}`], q, pg)];
+      if (isHex(q)) {
+        if (q.length >= 2) parts.push(likeContains([sql`${t.rawHex}`], q, pg));
+        parts.push(likeContains([sql`${t.senderPubKey}`], q.toLowerCase(), pg, 'prefix'));
+      }
+      conditions.push(or(...parts) as SQL);
+    }
     return conditions;
   }
 
@@ -3161,6 +3219,69 @@ export class MeshCoreRepository extends BaseRepository {
       .from(meshcorePacketLog)
       .where(whereClause);
     return Number(result[0]?.count ?? 0);
+  }
+
+  /**
+   * Packet-type, route-type and top-sender distribution under the same filters
+   * as the list (#6262). Counts receptions (rows), like the flat list.
+   * The caller's `untilTs/untilId/offset/limit` are ignored.
+   */
+  async getPacketDistribution(query: MeshCorePacketQuery = {}, topLimit = 10): Promise<MeshCorePacketDistribution> {
+    const t = this.tables.meshcorePacketLog;
+    const conditions = this.buildPacketConditions({ ...query, untilTs: undefined, untilId: undefined });
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const [typeRows, routeRows, senderRows] = await Promise.all([
+      this.db
+        .select({
+          payloadType: t.payloadType,
+          payloadTypeName: sql<string | null>`MAX(${t.payloadTypeName})`,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(t)
+        .where(where)
+        .groupBy(t.payloadType)
+        .orderBy(sql`COUNT(*) DESC`),
+      this.db
+        .select({
+          routeType: t.routeType,
+          routeTypeName: sql<string | null>`MAX(${t.routeTypeName})`,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(t)
+        .where(where)
+        .groupBy(t.routeType)
+        .orderBy(sql`COUNT(*) DESC`),
+      this.db
+        .select({
+          senderPubKey: t.senderPubKey,
+          advertName: sql<string | null>`MAX(${t.advertName})`,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(t)
+        .where(and(...conditions, eq(t.payloadType, 4), isNotNull(t.senderPubKey)))
+        .groupBy(t.senderPubKey)
+        .orderBy(sql`COUNT(*) DESC`)
+        .limit(topLimit),
+    ]);
+    const byPayloadType = typeRows.map((r: { payloadType: unknown; payloadTypeName: string | null; count: unknown }) => ({
+      payloadType: Number(r.payloadType),
+      payloadTypeName: r.payloadTypeName ?? null,
+      count: Number(r.count),
+    }));
+    return {
+      byPayloadType,
+      byRouteType: routeRows.map((r: { routeType: unknown; routeTypeName: string | null; count: unknown }) => ({
+        routeType: r.routeType == null ? null : Number(r.routeType),
+        routeTypeName: r.routeTypeName ?? null,
+        count: Number(r.count),
+      })),
+      topSenders: senderRows.map((r: { senderPubKey: unknown; advertName: string | null; count: unknown }) => ({
+        senderPubKey: String(r.senderPubKey),
+        advertName: r.advertName ?? null,
+        count: Number(r.count),
+      })),
+      total: byPayloadType.reduce((n: number, r: { count: number }) => n + r.count, 0),
+    };
   }
 
   /**
@@ -3368,5 +3489,79 @@ export class MeshCoreRepository extends BaseRepository {
       ? await this.db.delete(meshcorePositionHistory).where(eq(meshcorePositionHistory.sourceId, sourceId))
       : await this.db.delete(meshcorePositionHistory);
     return this.getAffectedRows(result);
+  }
+
+  // ============ Contact graph samples (#6262 WP2) ============
+  // Read-side adapter for the shared Smart Hops / Link Quality / Signal Trend
+  // endpoints. Direct messages we received from one contact, per source.
+
+  /**
+   * Hop-count samples (ms timestamps, ascending) for messages received from a
+   * contact. `sourceId` is required: a read without it would pool sources.
+   */
+  async getContactHopSamples(
+    sourceId: string,
+    publicKey: string,
+    since: number,
+    limit: number = 50000
+  ): Promise<Array<{ timestamp: number; value: number }>> {
+    if (!sourceId) throw new Error('getContactHopSamples requires a sourceId');
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({ timestamp: meshcoreMessages.timestamp, hopCount: meshcoreMessages.hopCount })
+      .from(meshcoreMessages)
+      .where(
+        and(
+          eq(meshcoreMessages.sourceId, sourceId),
+          eq(meshcoreMessages.fromPublicKey, publicKey),
+          isNotNull(meshcoreMessages.hopCount),
+          isNull(meshcoreMessages.reactionEmoji),
+          gte(meshcoreMessages.timestamp, since)
+        )
+      )
+      .orderBy(meshcoreMessages.timestamp)
+      .limit(limit);
+    return rows.map((r: { timestamp: number | bigint; hopCount: number | null }) => ({
+      timestamp: Number(r.timestamp),
+      value: Number(r.hopCount),
+    }));
+  }
+
+  /**
+   * Signal samples (Q1: how well we hear this contact) from direct messages we
+   * received from it: `snr` and `rssi`, ms timestamps. Most recent first,
+   * capped. `sourceId` is required.
+   */
+  async getContactSignalSamples(
+    sourceId: string,
+    publicKey: string,
+    since: number,
+    limit: number = 20000
+  ): Promise<Array<{ timestamp: number; snr: number | null; rssi: number | null }>> {
+    if (!sourceId) throw new Error('getContactSignalSamples requires a sourceId');
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({
+        timestamp: meshcoreMessages.timestamp,
+        snr: meshcoreMessages.snr,
+        rssi: meshcoreMessages.rssi,
+      })
+      .from(meshcoreMessages)
+      .where(
+        and(
+          eq(meshcoreMessages.sourceId, sourceId),
+          eq(meshcoreMessages.fromPublicKey, publicKey),
+          isNull(meshcoreMessages.reactionEmoji),
+          gte(meshcoreMessages.timestamp, since),
+          or(isNotNull(meshcoreMessages.snr), isNotNull(meshcoreMessages.rssi))
+        )
+      )
+      .orderBy(desc(meshcoreMessages.timestamp))
+      .limit(limit);
+    return rows.map((r: { timestamp: number | bigint; snr: number | null; rssi: number | null }) => ({
+      timestamp: Number(r.timestamp),
+      snr: r.snr === null || r.snr === undefined ? null : Number(r.snr),
+      rssi: r.rssi === null || r.rssi === undefined ? null : Number(r.rssi),
+    }));
   }
 }

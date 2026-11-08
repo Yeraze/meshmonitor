@@ -372,32 +372,9 @@ export interface ProcessingContext {
 // Re-export for consumers who import from meshtasticManager
 export { CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
 
-/**
- * Link Quality scoring constants.
- * Link Quality is a 0-10 score tracking the reliability of message routing to a node.
- */
-export const LINK_QUALITY = {
-  /** Maximum quality score */
-  MAX: 10,
-  /** Minimum quality score (0 = dead link) */
-  MIN: 0,
-  /** Base value for initial calculation (LQ = BASE - hops) */
-  INITIAL_BASE: 8,
-  /** Default quality when hop count is unknown */
-  DEFAULT_QUALITY: 5,
-  /** Default hop count when unknown */
-  DEFAULT_HOPS: 3,
-  /** Bonus for stable/improved message delivery */
-  STABLE_MESSAGE_BONUS: 1,
-  /** Penalty for degraded routing (hops increased by 2+) */
-  DEGRADED_PATH_PENALTY: -1,
-  /** Penalty for failed traceroute */
-  TRACEROUTE_FAIL_PENALTY: -2,
-  /** Penalty for PKI/encryption error */
-  PKI_ERROR_PENALTY: -5,
-  /** Traceroute timeout in milliseconds (5 minutes) */
-  TRACEROUTE_TIMEOUT_MS: 5 * 60 * 1000,
-} as const;
+// LINK_QUALITY lives in utils/linkQuality.ts (shared with the MeshCore read-side replay).
+import { LINK_QUALITY, initialLinkQuality } from './utils/linkQuality.js';
+export { LINK_QUALITY };
 
 export interface DeviceInfo {
   nodeNum: number;
@@ -16872,7 +16849,7 @@ class MeshtasticManager implements ISourceManager {
 
     if (!lqData) {
       // Initialize: LQ = INITIAL_BASE - hops (so 1-hop = 7, 7-hop = 1)
-      const initialQuality = Math.max(1, Math.min(LINK_QUALITY.INITIAL_BASE - 1, LINK_QUALITY.INITIAL_BASE - currentHops));
+      const initialQuality = initialLinkQuality(currentHops);
       lqData = { quality: initialQuality, lastHops: currentHops };
       this.nodeLinkQuality.set(nodeNum, lqData);
 
