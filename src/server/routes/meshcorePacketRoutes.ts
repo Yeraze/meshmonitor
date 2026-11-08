@@ -14,6 +14,7 @@ import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
 import { auditMeshcoreEvent } from './meshcoreRouteShared.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { listMeshCorePacketsForViewer, isMeshCoreIngestSource, MESHCORE_PACKET_MAX_LIMIT } from '../services/meshcorePacketList.js';
 import { decodeGroupPacketForViewer, type PacketDecodeViewer } from '../utils/meshcorePacketPlaintext.js';
 
 const router = Router({ mergeParams: true });
@@ -25,25 +26,6 @@ const router = Router({ mergeParams: true });
  * Filters: payload_type, route_type, since (ms). Returns the same envelope
  * shape as the Meshtastic packet monitor so the frontend can share logic.
  */
-/**
- * True when `sourceId` names a `meshcore_mqtt` ingest source.
- *
- * Swallows lookup failures and answers `false`, because every caller uses this
- * only to pick which retention cap to *report*. A source-table hiccup should
- * cost a slightly wrong number in the settings box, not a 500 on the packet
- * list itself.
- */
-async function isMeshCoreIngestSource(sourceId: string): Promise<boolean> {
-  try {
-    const src = await databaseService.sources?.getSource?.(sourceId);
-    return src?.type === 'meshcore_mqtt';
-  } catch (err) {
-    logger.debug(`isMeshCoreIngestSource lookup failed for ${sourceId}:`, err);
-    return false;
-  }
-}
-
-const MESHCORE_PACKET_MAX_LIMIT = 1000;
 const MESHCORE_SEARCH_MAX_LEN = 100;
 
 type ParsedPacketFilters =
@@ -127,53 +109,21 @@ router.get(
     try {
       const sourceId = (req.params as { id?: string }).id!;
       const offset = Math.max(parseInt(req.query.offset as string, 10) || 0, 0);
-      // Honor the user-configured retention cap (meshcore_packet_log_max_count)
-      // as the default effective limit, the same way the export endpoint does
-      // (issue #3690). An explicit client-supplied `limit` still wins so a
-      // caller can request fewer rows; both are clamped by the hard ceiling.
-      const maxCount = await meshcorePacketLogService.getMaxCount();
-      const requestedLimit = parseInt(req.query.limit as string, 10);
-      const effectiveLimit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : maxCount;
-      const limit = Math.min(Math.max(effectiveLimit, 1), MESHCORE_PACKET_MAX_LIMIT);
       const parsed = parseMeshCorePacketFilters(req.query);
       if (!parsed.ok) return fail(res, 400, parsed.code, parsed.message);
       const cursor = parseCursor(req.query.cursor);
       if (cursor === undefined) return fail(res, 400, 'INVALID_CURSOR', 'cursor must be <timestamp>_<id>');
 
-      const filterQuery = { sourceId, ...parsed.filters };
-      const query = {
-        ...filterQuery,
-        offset: cursor ? 0 : offset,
-        limit,
-        ...(cursor ?? {}),
-      };
+      const { packets, total, limit, hasMore, nextCursor, enabled, maxCount, maxAgeHours, isIngestSource } =
+        await listMeshCorePacketsForViewer({
+          sourceId,
+          filters: parsed.filters,
+          offset,
+          requestedLimit: parseInt(req.query.limit as string, 10),
+          cursor,
+        });
 
-      // The cap that applies to THIS source: retention is per-source-kind
-      // (#5040 Phase 2), so a region feed reports its own, far larger cap.
-      //
-      // Non-fatal by design. This only decides which cap NUMBER to display, so
-      // a source row that cannot be read must degrade to the device default,
-      // never fail the packet list — the packets are the point of the endpoint.
-      const isIngestSource = await isMeshCoreIngestSource(sourceId);
-      const [packets, total, enabled, maxAgeHours] = await Promise.all([
-        meshcorePacketLogService.getPackets(query),
-        meshcorePacketLogService.getPacketCount(filterQuery),
-        meshcorePacketLogService.isEnabled(),
-        meshcorePacketLogService.getMaxAgeHours(),
-      ]);
-      // A short page is the last one. A full page may or may not be: offset
-      // paging compares against the total; cursor paging counts what remains
-      // below the cursor (the total ignores the cursor).
-      let hasMore = false;
-      if (packets.length >= limit) {
-        hasMore = cursor
-          ? Number(await meshcorePacketLogService.getPacketCount({ ...filterQuery, ...cursor })) > limit
-          : offset + packets.length < Number(total);
-      }
-      const last = packets[packets.length - 1];
-      const nextCursor = hasMore && last ? `${last.timestamp}_${last.id}` : null;
-
-      res.json({ packets, total, offset, limit, hasMore, nextCursor, enabled, maxCount: isIngestSource ? await meshcorePacketLogService.getIngestMaxCount() : maxCount, maxAgeHours, isIngestSource });
+      res.json({ packets, total, offset, limit, hasMore, nextCursor, enabled, maxCount, maxAgeHours, isIngestSource });
     } catch (error) {
       logger.error('[API] Error fetching MeshCore packets:', error);
       fail(res, 500, 'PACKETS_FETCH_FAILED', 'Failed to fetch packets');

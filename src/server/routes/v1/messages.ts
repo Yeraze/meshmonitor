@@ -18,6 +18,15 @@ import { MAX_MESSAGE_BYTES, PortNum } from '../../constants/meshtastic.js';
 import { loadV1Access, requireScopedSourceId } from './sourceParam.js';
 import type { NodeViewAccess } from '../../utils/nodeEnhancer.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
+import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
+import { resolveReadableMeshcoreScope } from '../../utils/messageSourceAccess.js';
+import { meshcoreMessageToV1, parseMeshcoreNodeId, withMeshtasticProtocol } from '../../utils/protocolRows.js';
+import { meshcoreChannelIdx } from '../../utils/meshcoreChannelIdx.js';
+import { fail } from '../../utils/apiResponse.js';
+import type { User } from '../../../types/auth.js';
+
+const isMeshCoreSource = (req: Request): boolean =>
+  isAnyMeshCoreSourceType((req as Request & { source?: { type?: string } }).source?.type);
 
 /** Maximum number of message parts allowed when splitting long messages */
 const MAX_MESSAGE_PARTS = 3;
@@ -66,6 +75,40 @@ router.get('/', async (req: Request, res: Response) => {
     const sinceTimestamp = since ? parseInt(since as string) : undefined;
     const channelNum = channel ? parseInt(channel as string) : undefined;
 
+    if (isMeshCoreSource(req)) {
+      // Rows come from `meshcore_messages` (works while disconnected), narrowed
+      // by the same scope + key-access gate as search. `since` and the order use
+      // arrival time (`createdAt`); the row's `timestamp` is the sender clock.
+      const scope = await resolveReadableMeshcoreScope((req as Request & { user?: User }).user, sourceIdStr);
+      const hasChannel = (n: number) => scope.channels === 'all' || scope.channels.includes(n);
+      if (channelNum !== undefined && !(channelNum === -1 ? scope.includeDms : hasChannel(channelNum))) {
+        return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions', {
+          required: { resource: channelNum === -1 ? 'messages' : `channel_${channelNum}`, action: 'read' },
+        });
+      }
+      let fromPk: string | undefined;
+      let toPk: string | undefined;
+      if (fromNodeId) {
+        fromPk = parseMeshcoreNodeId(fromNodeId as string) ?? undefined;
+        if (!fromPk) return fail(res, 400, 'INVALID_NODE_ID', 'fromNodeId must be mc:<publicKey> or a 64-hex key');
+      }
+      if (toNodeId) {
+        toPk = parseMeshcoreNodeId(toNodeId as string) ?? undefined;
+        if (!toPk) return fail(res, 400, 'INVALID_NODE_ID', 'toNodeId must be mc:<publicKey> or a 64-hex key');
+      }
+      let rows = await databaseService.meshcore.listMessages({
+        scopes: [{ sourceId: sourceIdStr, ...scope }],
+        since: sinceTimestamp,
+        limit: maxLimit,
+        channelIdx: channelNum !== undefined && channelNum >= 0 ? channelNum : undefined,
+        fromPublicKey: fromPk,
+        toPublicKey: toPk,
+      });
+      if (channelNum === -1) rows = rows.filter((m) => meshcoreChannelIdx(m) === null);
+      const data = rows.map((m) => meshcoreMessageToV1(m, sourceIdStr));
+      return res.json({ success: true, count: data.length, data });
+    }
+
     // Get accessible channels for this user (scoped to source if provided)
     const accessibleChannels = getAccessibleChannels(access, sourceIdStr);
 
@@ -111,7 +154,7 @@ router.get('/', async (req: Request, res: Response) => {
     res.json({
       success: true,
       count: messages.length,
-      data: messages
+      data: messages.map(withMeshtasticProtocol)
     });
   } catch (error) {
     logger.error('Error getting messages:', error);
@@ -163,7 +206,7 @@ router.get('/search', async (req: Request, res: Response) => {
       success: true,
       count: results.length,
       total,
-      data: results
+      data: results.map((r) => ({ ...r, protocol: r.source === 'meshcore' ? 'meshcore' as const : 'meshtastic' as const }))
     });
   } catch (error) {
     logger.error('Error searching messages:', error);
@@ -186,6 +229,14 @@ router.get('/:messageId', async (req: Request, res: Response) => {
     const msgLookupSourceId = requireScopedSourceId(req, res);
     if (!msgLookupSourceId) return;
     const access = await loadV1Access(req);
+    if (isMeshCoreSource(req)) {
+      const scope = await resolveReadableMeshcoreScope((req as Request & { user?: User }).user, msgLookupSourceId);
+      const row = await databaseService.meshcore.getReadableMessageById(messageId, [{ sourceId: msgLookupSourceId, ...scope }]);
+      if (!row) {
+        return res.status(404).json({ success: false, error: 'Not Found', message: `Message ${messageId} not found` });
+      }
+      return res.json({ success: true, data: meshcoreMessageToV1(row, msgLookupSourceId) });
+    }
     const allMessages = await databaseService.messages.getMessages(10000, 0, msgLookupSourceId);
     const message = allMessages.find(m => m.id === messageId);
 
@@ -215,7 +266,7 @@ router.get('/:messageId', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: message
+      data: withMeshtasticProtocol(message)
     });
   } catch (error) {
     logger.error('Error getting message:', error);

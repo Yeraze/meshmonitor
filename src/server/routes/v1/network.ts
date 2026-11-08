@@ -9,6 +9,15 @@ import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { getEffectiveDbNodePosition, scopeNodeRowsForViewer, type NodeViewAccess } from '../../utils/nodeEnhancer.js';
 import { canViewRowChannel, loadV1Access, requireScopedSourceId } from './sourceParam.js';
+import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
+import { loadMeshCoreNodesForViewer } from '../../services/meshcoreNodeView.js';
+import { meshcoreNodeToV1, meshcoreNodeKey, withMeshtasticProtocol } from '../../utils/protocolRows.js';
+import { nodeNumFromPubkey } from '../../../utils/meshcoreNodeNum.js';
+import { loadMeshCoreTracesV1 } from './traceroutes.js';
+
+type SourcedRequest = Request & { source?: { type?: string } };
+const isMeshCoreReq = (req: Request): boolean => isAnyMeshCoreSourceType((req as SourcedRequest).source?.type);
+const DAY_MS = 86_400_000;
 
 const router = express.Router({ mergeParams: true });
 
@@ -34,6 +43,17 @@ router.get('/', async (req: Request, res: Response) => {
     const sourceId = requireScopedSourceId(req, res);
     if (!sourceId) return;
     const access = await loadV1Access(req);
+    if (isMeshCoreReq(req)) {
+      const [total, active, traces] = await Promise.all([
+        databaseService.meshcore.countNodesBySource(sourceId),
+        databaseService.meshcore.countActiveNodesBySource(sourceId, Date.now() - 7 * DAY_MS),
+        access.permissions.can('traceroute', 'read', sourceId) ? loadMeshCoreTracesV1(sourceId, 100) : Promise.resolve([]),
+      ]);
+      return res.json({
+        success: true,
+        data: { protocol: 'meshcore', totalNodes: total, activeNodes: active, tracerouteCount: traces.length, lastUpdated: Date.now() },
+      });
+    }
     const [allNodes, activeNodes, traceroutes] = await Promise.all([
       databaseService.nodes.getAllNodes(sourceId),
       databaseService.nodes.getActiveNodes(7, sourceId),
@@ -41,6 +61,7 @@ router.get('/', async (req: Request, res: Response) => {
     ]);
 
     const stats = {
+      protocol: 'meshtastic' as const,
       // Totals for the source, open to `nodes:read` on it (as the per-source
       // gauges of /api/v1/metrics are).
       totalNodes: allNodes.length,
@@ -78,11 +99,48 @@ router.get('/direct-neighbors', async (req: Request, res: Response) => {
     const sourceId = requireScopedSourceId(req, res);
     if (!sourceId) return;
     const hoursBack = parseInt(req.query.hours as string) || 24;
+
+    if (isMeshCoreReq(req)) {
+      const heard = await databaseService.meshcore.getDirectHeardStats(sourceId, Date.now() - hoursBack * 3_600_000);
+      // A row with no full key only carries a sender hash: it names a node
+      // only when exactly one of this source's nodes starts with it.
+      const nodes = await databaseService.meshcore.getNodesBySource(sourceId);
+      const keys = nodes.map((n) => n.publicKey.toLowerCase());
+      const merged: Record<string, {
+        protocol: 'meshcore'; nodeKey: string; publicKey: string; nodeNum: number;
+        avgRssi: number | null; bestSnr: number | null; packetCount: number; lastHeard: number;
+      }> = {};
+      for (const h of heard) {
+        let pk = h.senderPubKey ? h.senderPubKey.toLowerCase() : null;
+        if (!pk && h.srcHash) {
+          const matches = keys.filter((k) => k.startsWith(h.srcHash!.toLowerCase()));
+          if (matches.length === 1) pk = matches[0];
+        }
+        const nodeKey = meshcoreNodeKey(pk);
+        if (!pk || !nodeKey || pk.length !== 64) continue;
+        const cur = merged[nodeKey];
+        if (cur) {
+          cur.packetCount += h.count;
+          cur.lastHeard = Math.max(cur.lastHeard, h.lastHeard);
+          if (h.bestRssi !== null) cur.avgRssi = cur.avgRssi === null ? h.bestRssi : Math.max(cur.avgRssi, h.bestRssi);
+          if (h.bestSnr !== null) cur.bestSnr = cur.bestSnr === null ? h.bestSnr : Math.max(cur.bestSnr, h.bestSnr);
+        } else {
+          merged[nodeKey] = {
+            protocol: 'meshcore', nodeKey, publicKey: pk, nodeNum: nodeNumFromPubkey(pk),
+            // MeshCore keeps the strongest reading, not an average (see getDirectHeardStats).
+            avgRssi: h.bestRssi, bestSnr: h.bestSnr, packetCount: h.count, lastHeard: h.lastHeard,
+          };
+        }
+      }
+      return res.json({ success: true, data: merged, count: Object.keys(merged).length });
+    }
+
     const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack, sourceId);
+    const tagged = Object.fromEntries(Object.entries(stats).map(([k, v]) => [k, withMeshtasticProtocol(v)]));
 
     res.json({
       success: true,
-      data: stats,
+      data: tagged,
       count: Object.keys(stats).length
     });
   } catch (error) {
@@ -104,6 +162,33 @@ router.get('/topology', async (req: Request, res: Response) => {
     const sourceId = requireScopedSourceId(req, res);
     if (!sourceId) return;
     const access = await loadV1Access(req);
+    if (isMeshCoreReq(req)) {
+      const [rows, traces] = await Promise.all([
+        loadMeshCoreNodesForViewer(sourceId, access, { positions: true }),
+        access.permissions.can('traceroute', 'read', sourceId) ? loadMeshCoreTracesV1(sourceId, 500) : Promise.resolve([]),
+      ]);
+      return res.json({
+        success: true,
+        data: {
+          nodes: rows.map((r) => {
+            const n = meshcoreNodeToV1(r, sourceId);
+            return {
+              protocol: n.protocol, nodeId: n.nodeId, nodeKey: n.nodeKey, publicKey: n.publicKey, nodeNum: n.nodeNum,
+              longName: n.longName, shortName: n.shortName, role: null, advType: n.advType, hopsAway: n.hopsAway,
+              latitude: n.latitude, longitude: n.longitude, lastHeard: n.lastHeard, firstHeard: n.firstHeard,
+            };
+          }),
+          edges: traces.map((t) => ({
+            protocol: t.protocol,
+            from: t.fromNodeId,
+            to: t.toNodeId,
+            route: t.route ? JSON.parse(t.route) : [],
+            snr: t.snrTowards ? JSON.parse(t.snrTowards) : [],
+            hops: t.hops,
+          })),
+        },
+      });
+    }
     const [allNodes, traceroutes] = await Promise.all([
       databaseService.nodes.getAllNodes(sourceId),
       visibleTraceroutes(access, sourceId, 500),
@@ -122,6 +207,7 @@ router.get('/topology', async (req: Request, res: Response) => {
         // (issue #2847).
         const eff = getEffectiveDbNodePosition(n);
         return {
+          protocol: 'meshtastic' as const,
           nodeId: n.nodeId,
           nodeNum: n.nodeNum,
           longName: n.longName,
@@ -137,6 +223,7 @@ router.get('/topology', async (req: Request, res: Response) => {
         };
       }),
       edges: traceroutes.map(t => ({
+        protocol: 'meshtastic' as const,
         from: t.fromNodeId,
         to: t.toNodeId,
         route: t.route ? JSON.parse(t.route) : [],

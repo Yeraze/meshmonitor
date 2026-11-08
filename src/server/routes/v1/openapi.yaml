@@ -29,6 +29,22 @@ info:
 
     `GET /api/v1/sources` lists the sources the token can read.
 
+    ## MeshCore sources (read)
+    The read endpoints (`nodes`, `channels`, `packets`, `traceroutes`, `network`,
+    `messages`) also serve MeshCore sources. Every row gains an additive
+    `protocol` field (`meshtastic` or `meshcore`); Meshtastic responses change
+    in no other way. MeshCore identity is `nodeId = mc:<publicKey>`; `publicKey`
+    and a synthetic `nodeNum` ride along. Positions follow `nodes:viewOnMap`;
+    a private position override needs `nodes_private:read`. MeshCore channel
+    slots above 7 are readable with `messages:read`. `GET /packets` on a
+    MeshCore source takes `payload_type`, `route_type`, `since`, `limit`,
+    `offset`; Meshtastic-only filters (`portnum`, `from_node`, `to_node`,
+    `channel`, `encrypted`) answer 400 `UNSUPPORTED_FILTER`. MeshCore message
+    `timestamp` is the sender clock; `since` filters and ordering use arrival
+    time (`createdAt`). A MeshCore traceroute has no return leg (`routeBack` and
+    `snrBack` are null); `route` holds synthetic node numbers (4294967295 when a
+    hop did not resolve) and `hops[]` lists each hop's `publicKey`, `hash`, `snr`.
+
     `/api/v1/solar` and `/api/v1/channel-database` remain deployment-global
     (no source scope).
 
@@ -175,6 +191,10 @@ components:
     Node:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         nodeId:
           type: string
           description: Unique node identifier (hex format)
@@ -341,6 +361,10 @@ components:
     Channel:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: integer
           description: Channel index (0-7)
@@ -500,6 +524,10 @@ components:
     Message:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: string
           description: Unique message identifier
@@ -742,6 +770,10 @@ components:
     Traceroute:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: integer
           example: 789
@@ -808,6 +840,10 @@ components:
     NetworkStats:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         totalNodes:
           type: integer
           description: Total number of nodes in the network
@@ -840,6 +876,10 @@ components:
     TopologyNode:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         nodeId:
           type: string
           example: "!a1b2c3d4"
@@ -926,6 +966,10 @@ components:
     Packet:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source. MeshCore rows use snake_case fields (`payload_type`, `route_type`, `path_hops`, `node_key`) and may carry `plaintext` for a group packet the token user may read.
         id:
           type: integer
           description: Unique packet log ID

@@ -2285,6 +2285,25 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * One message by id, only when it falls inside the caller's `scopes` (the
+   * same scope + key-access gate as `listMessages`). Null when it does not
+   * exist, belongs to another source, or the viewer may not read it: the three
+   * cases are indistinguishable by design.
+   */
+  async getReadableMessageById(id: string, scopes: MeshCoreMessageScope[]): Promise<DbMeshCoreMessage | null> {
+    const { meshcoreMessages } = this.tables;
+    const scopeWhere = this.meshcoreScopesCondition(scopes);
+    if (!scopeWhere) return null;
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(scopeWhere, eq(meshcoreMessages.id, id), isNull(meshcoreMessages.reactionEmoji)))
+      .limit(1);
+    if (rows.length === 0) return null;
+    return this.normalizeBigInts(rows)[0] as unknown as DbMeshCoreMessage;
+  }
+
+  /**
    * Search stored MeshCore messages (#5517). Replaces the old in-memory scan of
    * connected managers' rings, which missed disconnected sources and anything
    * older than the last 1000 messages. Same paging contract as the Meshtastic
@@ -3231,6 +3250,19 @@ export class MeshCoreRepository extends BaseRepository {
       .limit(query.limit ?? 100)
       .offset(query.offset ?? 0);
     return this.normalizeBigInts(result) as unknown as DbMeshCorePacket[];
+  }
+
+  /** One packet-log row by id, scoped to a source (null when it belongs to another source). */
+  async getPacketByIdForSource(sourceId: string, id: number): Promise<DbMeshCorePacket | null> {
+    if (!sourceId) throw new Error('MeshCoreRepository.getPacketByIdForSource requires a sourceId');
+    const { meshcorePacketLog } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(meshcorePacketLog)
+      .where(and(eq(meshcorePacketLog.id, id), eq(meshcorePacketLog.sourceId, sourceId)))
+      .limit(1);
+    if (rows.length === 0) return null;
+    return this.normalizeBigInts(rows)[0] as unknown as DbMeshCorePacket;
   }
 
   /**
