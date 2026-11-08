@@ -671,6 +671,13 @@ components:
           type: integer
           description: Request ID of the message being replied to (optional)
           example: 123456789
+        scope:
+          type: string
+          maxLength: 63
+          description: |
+            MeshCore only. One-off region (flood scope) for this channel send. An empty
+            string sends unscoped. Not allowed with `toNodeId`.
+          example: "usa"
 
     SendMessageResponse:
       type: object
@@ -1714,6 +1721,21 @@ paths:
         - Returns HTTP 202 (Accepted) when messages are queued for delivery
         - The response includes `messageCount` and `queueIds` for tracking split messages
         - Only the first message part will have the `replyId` set (if provided)
+
+        **MeshCore sources:**
+        - `channel` is a slot from 0 to 255 (needs write on that slot, or `messages:write`).
+        - `toNodeId` is `mc:<publicKey>` or the 64-character hex public key (needs `messages:write`).
+        - `scope` (optional, up to 63 characters) sets a one-off region for a channel send.
+        - Limits: 150 bytes for a DM, 130 for a channel message, 120 with a `scope`. A longer
+          text is rejected with HTTP 413; MeshCore messages are never split or queued.
+        - `409 TX_DISABLED` when the source is receive-only; `503` when it is not connected.
+        - The response carries `protocol: meshcore`, `requestId: null` and `messageId` set to the
+          stored row id (or null). The send is never retried automatically.
+
+        **Airtime warning:** every send takes channel time from everyone on the mesh. A
+        MeshCore channel message is a flood that repeaters re-send; a Meshtastic message is
+        re-broadcast on each hop. Sends share the rate limit of the web UI (`RATE_LIMIT_MESSAGES`
+        per minute per IP). Do not script bulk sends.
       requestBody:
         required: true
         content:
@@ -1867,6 +1889,91 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /actions/request-telemetry:
+    post:
+      tags:
+        - Actions
+      summary: Request telemetry from a node (Meshtastic and MeshCore)
+      description: |
+        Ask a remote node for telemetry. Served under
+        `/api/v1/sources/{sourceId}/actions/request-telemetry`. Needs `messages:write` on the source.
+
+        **Meshtastic:** `destination` is a node id (`!a1b2c3d4`), `0x` hex or a decimal node number.
+        `type` is `device` (default), `environment`, `airQuality` or `power`. The request goes out
+        as one packet; the reply arrives later through `/telemetry`.
+
+        **MeshCore:** `destination` is `mc:<publicKey>` or a 64-character hex key. `type` is
+        required: `status` or `lpp`. The call waits for the reply and returns how many rows it
+        stored. One MeshCore request per source per 60 seconds: inside that window the answer is
+        `429` with a `Retry-After` header (seconds). The call shares its IP rate limit with the web UI.
+
+        **Airtime:** one request (about 40 bytes) and one reply (about 60 bytes) per call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - destination
+              properties:
+                destination:
+                  type: string
+                  example: "mc:ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12"
+                type:
+                  type: string
+                  enum: [device, environment, airQuality, power, status, lpp]
+      responses:
+        '200':
+          description: Request sent. MeshCore adds `written` and `sources`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      destination:
+                        type: string
+                      type:
+                        type: string
+                      message:
+                        type: string
+                      protocol:
+                        type: string
+                        enum: [meshtastic, meshcore]
+        '400':
+          description: Bad destination or type, or the source has no radio to use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Transmit is disabled on the source (`TX_DISABLED`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: MeshCore 60 s per-source gate or IP rate limit; see `Retry-After`
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Source not connected
           content:
             application/json:
               schema:

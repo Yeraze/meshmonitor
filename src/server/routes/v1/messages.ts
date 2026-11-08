@@ -20,9 +20,11 @@ import type { NodeViewAccess } from '../../utils/nodeEnhancer.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
 import { resolveReadableMeshcoreScope } from '../../utils/messageSourceAccess.js';
-import { meshcoreMessageToV1, parseMeshcoreNodeId, withMeshtasticProtocol } from '../../utils/protocolRows.js';
+import { meshcoreMessageToV1, meshcoreNodeKey, parseMeshcoreNodeId, withMeshtasticProtocol } from '../../utils/protocolRows.js';
 import { fail } from '../../utils/apiResponse.js';
 import type { User } from '../../../types/auth.js';
+import { resolveTransmitTarget } from '../../utils/transmitTarget.js';
+import { VALIDATION, canAccessMeshcoreChannel } from '../meshcoreRouteShared.js';
 
 const isMeshCoreSource = (req: Request): boolean =>
   isAnyMeshCoreSourceType((req as Request & { source?: { type?: string } }).source?.type);
@@ -278,6 +280,115 @@ router.get('/:messageId', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /messages on a MeshCore source (#6263). Body: `text`, plus `channel`
+ * (slot 0-255) XOR `toNodeId` (`mc:<publicKey>` or 64-char hex), and an
+ * optional `scope` (region, up to 63 chars). Same byte limits as the UI send.
+ * A MeshCore message is never split or queued: too long answers 413.
+ *
+ * Mesh impact: a send is one flood (channel) or one directed packet (DM). It
+ * sets `autoRetryOnMiss=false`, so the manager never resends it on its own, and
+ * shares the UI's `messageLimiter` bucket.
+ */
+async function sendMeshCoreMessage(req: Request, res: Response, sourceId: string): Promise<Response | void> {
+  const { text, channel, toNodeId, scope } = req.body ?? {};
+  if (!text || typeof text !== 'string' || text.trim().length === 0) {
+    return fail(res, 400, 'INVALID_INPUT', 'Message text is required');
+  }
+  if (channel !== undefined && toNodeId !== undefined) {
+    return fail(res, 400, 'INVALID_INPUT', 'Provide either channel OR toNodeId, not both');
+  }
+  if (channel === undefined && toNodeId === undefined) {
+    return fail(res, 400, 'INVALID_INPUT', 'Either channel or toNodeId is required');
+  }
+
+  let channelIdx: number | undefined;
+  let toPublicKey: string | undefined;
+  if (toNodeId !== undefined) {
+    const pk = typeof toNodeId === 'string' ? parseMeshcoreNodeId(toNodeId) : null;
+    if (!pk) {
+      return fail(res, 400, 'INVALID_INPUT', 'toNodeId must be mc:<publicKey> or a 64-character hex public key');
+    }
+    toPublicKey = pk;
+  } else {
+    const n = typeof channel === 'number' ? channel : typeof channel === 'string' && /^\d+$/.test(channel) ? Number(channel) : NaN;
+    if (!Number.isInteger(n) || n < 0 || n > 255) {
+      return fail(res, 400, 'INVALID_INPUT', 'channel must be an integer between 0 and 255');
+    }
+    channelIdx = n;
+  }
+
+  let scopeOverride: string | undefined;
+  if (scope !== undefined && scope !== null) {
+    if (typeof scope !== 'string') return fail(res, 400, 'INVALID_INPUT', 'scope must be a string');
+    if (scope.length > 63) return fail(res, 400, 'INVALID_INPUT', 'scope must be 63 characters or fewer');
+    if (toPublicKey) return fail(res, 400, 'INVALID_INPUT', 'scope applies to channel messages only');
+    scopeOverride = scope;
+  }
+
+  const trimmedText = text.trim();
+  const maxBytes = toPublicKey
+    ? VALIDATION.MAX_MESSAGE_BYTES_DM
+    : scopeOverride && scopeOverride.trim().length > 0
+      ? VALIDATION.MAX_MESSAGE_BYTES_CHANNEL_SCOPED
+      : VALIDATION.MAX_MESSAGE_BYTES_CHANNEL;
+  const byteLen = Buffer.byteLength(trimmedText, 'utf8');
+  if (byteLen > maxBytes) {
+    return fail(res, 413, 'PAYLOAD_TOO_LARGE',
+      `Message exceeds the MeshCore maximum of ${maxBytes} bytes (${byteLen} bytes encoded); MeshCore messages are not split`);
+  }
+
+  // Permissions: a DM needs messages:write; a channel needs write on that slot
+  // (per-channel grant or the legacy messages grant), both on THIS source.
+  const user = (req as Request & { user?: User }).user;
+  if (!user) return fail(res, 401, 'UNAUTHORIZED', 'Authentication required');
+  if (!user.isAdmin) {
+    const allowed = toPublicKey
+      ? await hasPermission(user, 'messages', 'write', sourceId)
+      : await canAccessMeshcoreChannel(user.id, channelIdx as number, 'write', sourceId);
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: toPublicKey ? 'messages' : `channel_${channelIdx}`, action: 'write' },
+      });
+    }
+  }
+
+  try {
+    const target = await resolveTransmitTarget(sourceId);
+    if (target.kind === 'refused') return fail(res, target.status, target.code, target.message);
+    if (target.kind !== 'meshcore') return fail(res, 400, 'SOURCE_NOT_MESHCORE', 'Source is not a MeshCore source');
+    const manager = target.manager;
+    if (manager.isReceiveOnly()) return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    if (!manager.isConnected()) return fail(res, 503, 'SOURCE_NOT_CONNECTED', 'MeshCore source is not connected');
+
+    const result = await manager.sendMessageWithResult(trimmedText, toPublicKey, channelIdx, scopeOverride, false);
+    if (!result.ok) return fail(res, 400, 'SEND_FAILED', 'Failed to send message');
+
+    logger.debug(`📤 v1 API: Sent MeshCore message (user: ${user.username}, source: ${sourceId})`);
+    return res.status(201).json({
+      success: true,
+      data: {
+        messageId: result.message?.id ?? null,
+        requestId: null,
+        deliveryState: 'pending',
+        messageCount: 1,
+        text: trimmedText,
+        channel: toPublicKey ? -1 : channelIdx,
+        toNodeId: toPublicKey ? meshcoreNodeKey(toPublicKey) : 'broadcast',
+        protocol: 'meshcore',
+      },
+    });
+  } catch (error) {
+    if (isTxDisabledError(error)) return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    logger.error('Error sending MeshCore message via v1 API:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to send message');
+  }
+}
+
+/**
  * POST /api/v1/messages
  * Send a new message to a channel or directly to a node
  *
@@ -307,6 +418,9 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
     // Scope priority: path (:sourceId) → query → body.sourceId.
     const msgSourceId = requireScopedSourceId(req, res);
     if (!msgSourceId) return;
+    if (isMeshCoreSource(req)) {
+      return await sendMeshCoreMessage(req, res, msgSourceId);
+    }
     const activeManager = resolveSourceManager(msgSourceId);
 
     // Validate text is provided
