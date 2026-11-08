@@ -405,7 +405,7 @@ echo -e "${BLUE}=== Security ===${NC}"
 check_json "GET /api/security/issues" "GET" "/api/security/issues?sourceId=$SOURCE_ID" "'total' in data and 'nodes' in data"
 check_json "GET /api/security/scanner/status" "GET" "/api/security/scanner/status" "'running' in data"
 check_json "GET /api/security/key-mismatches" "GET" "/api/security/key-mismatches?sourceId=$SOURCE_ID" "'events' in data"
-check_json "GET /api/security/dead-nodes" "GET" "/api/security/dead-nodes" "'nodes' in data and 'count' in data"
+check_json "GET /api/security/dead-nodes" "GET" "/api/security/dead-nodes?sourceId=$SOURCE_ID" "'nodes' in data and 'count' in data"
 check "GET /api/security/export" "$(api GET /api/security/export?sourceId=$SOURCE_ID)" 200
 
 # ─── User Management ──────────────────────────────────────
