@@ -44,7 +44,7 @@ Each phase's scope is the checklist in its issue.
   translation, composer emoji picker.
 - [x] **P3 #6259 Nodes and DM lists:** sort, columns, filters, group by role,
   export, DM list filters and richer rows.
-- [ ] **P4 #6262 Packet Monitor + contact graphs:** paging, search and filters,
+- [x] **P4 #6262 Packet Monitor + contact graphs:** paging, search and filters,
   distribution charts, Unified filters, Smart Hops / Link Quality / Signal Trend.
 - [ ] **P5 #6260 Map parity:** shared MeshCoreMap layers, trace on map, Map
   Analysis positions/traces/solar, estimated positions. May split.
@@ -96,3 +96,8 @@ the contact) plus polled noise floor; free-text search excludes channel plaintex
 decryption stays gated). Orchestrator: no backfill of the new derived columns (retention ≤30 d);
 meshcore_mqtt distribution counts receptions. Contact graphs are a read-side adapter (no new
 telemetry writers). Migration 224 adds derived packet-log columns + indexes.
+Shipped: migration 224 + derived sender fields; cursor paging, search, payload/route filters and a
+distribution endpoint for the MeshCore packet log; shared `usePagedPackets` / `useInfiniteVirtualRows`
+hooks drive both protocols' monitors; unified monitor merges distribution protocol-tagged; MeshCore
+contact panel gets "Link history" via the shared Meshtastic graph components. Browser-checked on a
+throwaway volume (popout monitor renders, routes return paged envelopes, no console errors).
