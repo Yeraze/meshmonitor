@@ -122,3 +122,10 @@ rows `nodeId mc:<pk>` + additive `protocol` on every row; v1 MeshCore trace fire
 for both protocols gated on `messages:write`; Mesh Issues A4 + A3-resets + C2 (flood advert < 6 h / zero-hop < 60 min) on
 MeshCore, four protocol-neutral rules → follow-up; separate payload-type Prometheus metric; per-node MeshCore metrics on
 `nodes:read`; embeds reuse existing toggles.
+Shipped (WP1–WP8): v1 reads for MeshCore (`nodes`, `channels`, `packets`, `traceroutes`, `network`, `messages`)
+with an additive `protocol` field and `mc:<pk>` node ids; v1 TX on MeshCore (`POST /messages` under Meshtastic's
+limits, fire-and-forget `actions/traceroute`, new `actions/request-telemetry` for both protocols with the 60 s
+gate as 429 + Retry-After); per-source metrics collectors, MeshCore gauges, `meshmonitor_packets_by_payload_type_last_hour`
+and per-node `mc:` series on `nodes:read`; Dashboard widgets and Live Mesh Activity on MeshCore; Mesh Issues A4/A3/C2
+on MeshCore; embed neighbour links and trace segments under the existing toggles (both ends must be visible, so a
+private-override node is never a line end); user docs in `REST_API.md`, `embed-maps.md`, `packet-monitor.md`, `meshcore.md`.
