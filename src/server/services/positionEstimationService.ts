@@ -45,13 +45,20 @@ export interface PositionObservation {
   kind: 'traceroute' | 'neighbor';
 }
 
+/**
+ * The part of an observation the solver reads. Meshtastic uses the full
+ * `PositionObservation`; MeshCore (computed on read, per source) supplies its
+ * own richer shape. One solver serves both.
+ */
+export type SolverObservation = Pick<PositionObservation, 'anchorLat' | 'anchorLon' | 'snrDb' | 'timestamp'>;
+
 /** An observation plus the weight it received in the solve (#4609). */
-export interface WeightedObservation {
-  observation: PositionObservation;
+export interface WeightedObservation<O extends SolverObservation = PositionObservation> {
+  observation: O;
   weight: number;
 }
 
-export interface SolvedPosition {
+export interface SolvedPosition<O extends SolverObservation = PositionObservation> {
   latitude: number;
   longitude: number;
   uncertaintyKm: number;
@@ -74,7 +81,7 @@ export interface SolvedPosition {
    * Positive-weight observations with the weight each received, strongest
    * first. These are the anchors that actually moved the centroid.
    */
-  usedObservations: WeightedObservation[];
+  usedObservations: WeightedObservation<O>[];
 }
 
 export interface RecomputeResult {
@@ -143,7 +150,7 @@ function nodeNumToId(nodeNum: number): string {
  * strength, so a stronger link pulls the estimate toward that anchor. Absent
  * SNR defaults to weight 1 (still time-decayed).
  */
-export function observationWeight(obs: PositionObservation, now: number): number {
+export function observationWeight(obs: SolverObservation, now: number): number {
   const ageMs = Math.max(0, now - obs.timestamp);
   const timeDecay = Math.exp(-DECAY_CONSTANT * ageMs);
   const snrWeight = obs.snrDb !== undefined && Number.isFinite(obs.snrDb)
@@ -184,10 +191,10 @@ export function observationWeight(obs: PositionObservation, now: number): number
  *
  * @returns null if there are no usable (positive-weight) observations.
  */
-export function solveNodePosition(observations: PositionObservation[], now: number): SolvedPosition | null {
+export function solveNodePosition<O extends SolverObservation>(observations: O[], now: number): SolvedPosition<O> | null {
   if (observations.length === 0) return null;
 
-  const used: Array<{ obs: PositionObservation; w: number }> = [];
+  const used: Array<{ obs: O; w: number }> = [];
   let wSum = 0;
   let wLat = 0;
   let wLon = 0;
@@ -266,7 +273,7 @@ export function solveNodePosition(observations: PositionObservation[], now: numb
       : confidence >= 1 ? 'convergence'
         : 'blended';
 
-  const usedObservations: WeightedObservation[] = used
+  const usedObservations: WeightedObservation<O>[] = used
     .map(({ obs, w }) => ({ observation: obs, weight: w }))
     .sort((a, b) => b.weight - a.weight);
 

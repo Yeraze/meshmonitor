@@ -125,6 +125,7 @@ vi.mock('../../services/api', () => ({
 }));
 vi.mock('../../hooks/useCsrfFetch', () => ({ useCsrfFetch: () => vi.fn().mockResolvedValue({ ok: true }) }));
 
+vi.mock('./hooks/useMeshCoreEstimatedPositions', () => ({ useMeshCoreEstimatedPositions: () => [] }));
 import { MeshCoreMap } from './MeshCoreMap';
 
 const contacts = [

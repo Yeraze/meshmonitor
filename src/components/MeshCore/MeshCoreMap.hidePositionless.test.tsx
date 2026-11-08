@@ -9,6 +9,7 @@
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+vi.mock('./hooks/useMeshCoreEstimatedPositions', () => ({ useMeshCoreEstimatedPositions: () => [] }));
 import { MeshCoreMap } from './MeshCoreMap';
 import { HIDE_POSITIONLESS_ADVERT_STORAGE_KEY } from '../../utils/meshcoreAdvertPosition';
 

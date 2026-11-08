@@ -755,6 +755,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
         <MeshCoreMap
           contacts={visibleContacts}
           markerOpacityByKey={opacityByKey}
+          nodeAgeHours={companionAgeHours}
           selectedPublicKey={selected}
           onNavigateToDm={onNavigateToDm}
           isLoading={mapIsLoading}

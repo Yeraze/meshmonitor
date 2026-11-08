@@ -9,6 +9,7 @@
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+vi.mock('./hooks/useMeshCoreEstimatedPositions', () => ({ useMeshCoreEstimatedPositions: () => [] }));
 import { MeshCoreMap } from './MeshCoreMap';
 
 // WP3 (#6260): the map now pulls in the 3D toggle, local-marker authoring and

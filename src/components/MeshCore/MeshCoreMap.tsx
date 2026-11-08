@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { LeafletEvent, Marker as LeafletMarker } from 'leaflet';
 import { Popup, Tooltip, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -32,6 +33,8 @@ import { Map3DView } from '../map/Map3DView';
 import type { Node3DFeature } from '../map/Base3DMap';
 import { AssetPlaybackBar } from '../map/AssetPlaybackBar';
 import { MeshCoreMapControls } from './MeshCoreMapControls';
+import { EstimatedPositionRadiiLayer, type EstimatedPositionRadius } from '../map/layers/EstimatedPositionRadiiLayer';
+import { useMeshCoreEstimatedPositions } from './hooks/useMeshCoreEstimatedPositions';
 import { useLocalMarkerAuthoring } from '../../hooks/useLocalMarkerAuthoring';
 import { useMap3DToggle } from '../../hooks/useMap3DToggle';
 import { indexAtOrBefore, shouldShowAssetPlayback } from '../../utils/trackPlayback';
@@ -63,9 +66,10 @@ const DEFAULT_CENTER: [number, number] = [0, 0];
 const DEFAULT_ZOOM = 2;
 /** Selected-contact zoom before the cluster-gate raise. */
 const SELECTED_CONTACT_ZOOM = 12;
-/** Cross-source link window: the server default (24 h). MeshCore contacts are
- *  age-filtered upstream, so this map has no window of its own. */
-const CROSS_SOURCE_LOOKBACK_HOURS = 24;
+/** Cross-source link window when the caller passes none (the server default). */
+const DEFAULT_NODE_AGE_HOURS = 24;
+/** Radius when an estimate carries none (matches the Meshtastic map). */
+const ESTIMATE_FALLBACK_RADIUS_M = 500;
 
 /** One stored position fix; timestamps feed the playback bar. */
 interface HistoryFix {
@@ -143,6 +147,11 @@ interface MeshCoreMapProps {
    * never `iconSig`, so a dimming change does not rebuild icons (#3685).
    */
   markerOpacityByKey?: ReadonlyMap<string, number>;
+  /**
+   * The source's node-age window in hours: the look-back for cross-source
+   * links and the 3D view. 0 or less (no age limit) and omitted both use 24.
+   */
+  nodeAgeHours?: number;
 }
 
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
@@ -155,6 +164,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   pendingPopupPublicKey = null,
   onPendingPopupHandled,
   markerOpacityByKey,
+  nodeAgeHours,
 }) => {
   const {
     mapTileset,
@@ -165,6 +175,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   } = useSettings();
   const baseMapSettings = useBaseMapSettings();
   const { timeFormat, dateFormat } = useDisplaySettings();
+  const { t } = useTranslation();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
   const { hasPermission } = useAuth();
@@ -284,6 +295,18 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   const showCrossSourceLinks = mapContext?.showCrossSourceLinks ?? localShowCrossSourceLinks;
   const setShowCrossSourceLinks = mapContext?.setShowCrossSourceLinks ?? setLocalShowCrossSourceLinks;
 
+  const lookbackHours = nodeAgeHours != null && nodeAgeHours > 0 ? nodeAgeHours : DEFAULT_NODE_AGE_HOURS;
+
+  // Estimated positions (#6260 WP5): the shared MapContext toggles, with a
+  // local fallback for a bare render with no provider.
+  const [localShowEstimated, setLocalShowEstimated] = useState(true);
+  const [localShowAccuracy, setLocalShowAccuracy] = useState(false);
+  const showEstimatedPositions = mapContext?.showEstimatedPositions ?? localShowEstimated;
+  const setShowEstimatedPositions = mapContext?.setShowEstimatedPositions ?? setLocalShowEstimated;
+  const showAccuracyRegions = mapContext?.showAccuracyRegions ?? localShowAccuracy;
+  const setShowAccuracyRegions = mapContext?.setShowAccuracyRegions ?? setLocalShowAccuracy;
+  const estimates = useMeshCoreEstimatedPositions(sourceId, showEstimatedPositions);
+
   // Local marker authoring: same per-source grant as waypoints.
   const canWriteLocalMarkers = Boolean(sourceId) && hasPermission('waypoints', 'write');
   const markerAuthoring = useLocalMarkerAuthoring(sourceId, canWriteLocalMarkers);
@@ -370,11 +393,26 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
     }).catch(err => console.error('Failed to get base URL:', err));
   };
 
-  // Seam for estimated positions (#6260 WP5): merge estimated contacts into
-  // `contacts` here, ahead of this filter, so markers, lines, 3D and the node
-  // type filter all see them.
+  // Estimated positions (#6260 WP5): a contact with no position of its own
+  // gains the server's estimate. It joins ahead of the position filter, so
+  // markers, lines, 3D and the node type filter all see it. A contact that
+  // already has a position is never replaced.
+  const contactsWithEstimates = useMemo(() => {
+    if (!showEstimatedPositions || estimates.length === 0) return contacts;
+    const byKey = new Map(estimates.map(e => [e.publicKey.toLowerCase(), e] as const));
+    return contacts.map(c => {
+      const hasPosition = typeof c.latitude === 'number' && isFinite(c.latitude)
+        && typeof c.longitude === 'number' && isFinite(c.longitude)
+        && !shouldDiscardPosition(c.latitude, c.longitude, undefined, getDiscardInvalidPositions());
+      const est = hasPosition ? undefined : byKey.get(c.publicKey.toLowerCase());
+      return est
+        ? { ...c, latitude: est.latitude, longitude: est.longitude, positionIsEstimated: true, estimatedUncertaintyKm: est.uncertaintyKm }
+        : c;
+    });
+  }, [contacts, estimates, showEstimatedPositions]);
+
   const positioned = useMemo(
-    () => contacts.filter(c =>
+    () => contactsWithEstimates.filter(c =>
       typeof c.latitude === 'number' && isFinite(c.latitude)
       && typeof c.longitude === 'number' && isFinite(c.longitude)
       // Skip bogus positions: "Null Island" (0,0) GPS defaults (issue #3763)
@@ -383,7 +421,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       // filters these too, but live in-memory contacts reaching the map via
       // getAllNodes() can still carry them.
       && !shouldDiscardPosition(c.latitude, c.longitude, undefined, getDiscardInvalidPositions())),
-    [contacts],
+    [contactsWithEstimates],
   );
 
   // Markers visible after the node-type filter. Paths/neighbor lines keep using
@@ -396,6 +434,24 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       nodePassesTypeFilter({ advType: c.advType }, nodeTypeFilter)
       && (c.isLocal === true || !isHiddenByPositionlessAdvert(c, hidePositionlessAdverts))),
     [positioned, nodeTypeFilter, hidePositionlessAdverts],
+  );
+
+  // Uncertainty circles for the estimated contacts this map draws, behind
+  // both toggles so a circle never shows without its marker.
+  const estimatedRadii: EstimatedPositionRadius[] = useMemo(
+    () => (showEstimatedPositions && showAccuracyRegions
+      ? visibleContacts
+          .filter(c => c.positionIsEstimated === true)
+          .map(c => ({
+            key: `estimated-${c.publicKey}`,
+            center: [c.latitude as number, c.longitude as number] as [number, number],
+            radiusMeters: c.estimatedUncertaintyKm != null && c.estimatedUncertaintyKm > 0
+              ? c.estimatedUncertaintyKm * 1000
+              : ESTIMATE_FALLBACK_RADIUS_M,
+            color: MESHCORE_COLOR,
+          }))
+      : []),
+    [showEstimatedPositions, showAccuracyRegions, visibleContacts],
   );
 
   // #4835: flights resolve against the contacts this map draws a marker for.
@@ -730,7 +786,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
           showNeighbors={showNeighbors && Boolean(sourceId)}
           showTraceroutes={false}
           showCrossSourceLinks={showCrossSourceLinks && Boolean(sourceId)}
-          lookbackHours={CROSS_SOURCE_LOOKBACK_HOURS}
+          lookbackHours={lookbackHours}
           visibleMeshCoreKeys={visible3DMeshCoreKeys}
           renderPopup={(key) => {
             const c = contactByKey.get(key);
@@ -775,6 +831,8 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
           <NodeMarkersLayer markers={markers} />
         )}
 
+        <EstimatedPositionRadiiLayer radii={estimatedRadii} />
+
         {historySegments.map(s => (
           <Polyline
             key={s.key}
@@ -806,7 +864,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
           <CrossSourceLinksLayer
             enabled
             sourceIds={[sourceId]}
-            lookbackHours={CROSS_SOURCE_LOOKBACK_HOURS}
+            lookbackHours={lookbackHours}
           />
         )}
 
@@ -846,6 +904,27 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       <LocalMarkerAuthoringUi authoring={markerAuthoring} />
 
       <MeshCoreMapControls
+        extraFeatureControls={(
+          <>
+            <label className="map-control-item">
+              <input
+                type="checkbox"
+                checked={showEstimatedPositions}
+                onChange={(e) => setShowEstimatedPositions(e.target.checked)}
+              />
+              <span>{t('map.showEstimatedPositions')}</span>
+            </label>
+            <label className="map-control-item" title={effective3D ? 'Not available in 3D' : undefined}>
+              <input
+                type="checkbox"
+                checked={showAccuracyRegions}
+                disabled={effective3D}
+                onChange={(e) => setShowAccuracyRegions(e.target.checked)}
+              />
+              <span>{t('map.showAccuracyRegions')}</span>
+            </label>
+          </>
+        )}
         sourceId={sourceId}
         effective3D={effective3D}
         canUse3D={canUse3D}

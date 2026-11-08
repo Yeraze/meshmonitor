@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/nodes.css';
-import { Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
+import { Popup, Tooltip, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
@@ -106,6 +106,7 @@ import { PacketFlightsLayer } from './map/layers/PacketFlightsLayer';
 import type { FlightNodeEntry, PacketFlightStats } from '../utils/packetFlightEdges';
 import subToggleStyles from './map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
+import { EstimatedPositionRadiiLayer, type EstimatedPositionRadius } from './map/layers/EstimatedPositionRadiiLayer';
 import { NodeCard } from './map/popups/NodeCard';
 import { IdentityItems, SignalItems, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from './map/popups/sections';
 import { toNodeCardModel, type NodeCardModel } from './map/popups/nodeCardModel';
@@ -2091,6 +2092,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         })
     : [];
 
+  // Estimated-position uncertainty circles — adapter over the shared
+  // `EstimatedPositionRadiiLayer` (#6260 WP5).
+  const estimatedRadii: EstimatedPositionRadius[] = showEstimatedPositions && showAccuracyRegions
+    ? nodesWithPosition
+        .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
+        .map(node => {
+          // Real multilateration uncertainty radius (issue #3271); 500m base
+          // for legacy/missing data.
+          const uncertaintyKm = node.user?.id ? estimatedUncertainty[node.user.id] : undefined;
+          const radiusMeters = uncertaintyKm != null && uncertaintyKm > 0 ? uncertaintyKm * 1000 : 500;
+          const isLocalNode = node.user?.id === currentNodeId;
+          const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+          return {
+            key: `estimated-${node.nodeNum}`,
+            center: [node.position!.latitude, node.position!.longitude] as [number, number],
+            radiusMeters,
+            color: getHopColor(hops, overlayColors.hopColors),
+          };
+        })
+    : [];
+
   // Neighbor-info links (#4047 Phase 7 WP11) — adapter over the shared
   // `NeighborLinksLayer` (WP2). Zoom-adaptive gate hoisted to the top of the
   // expression (was a per-item early return in the pre-migration inline map)
@@ -3286,45 +3308,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
               )}
 
-              {/* Draw uncertainty circles for estimated positions. The "Show
-                  Accuracy" map toggle now governs the radius (issue #3271
+              {/* Uncertainty circles for estimated positions. The "Show
+                  Accuracy" map toggle governs the radius (issue #3271
                   follow-up) — turning it off declutters the circles while the
                   estimated-node markers stay under "Show Estimated Positions".
-                  Both are required so a circle never renders without its marker.
-                  Single-consumer (#4047 Phase 7 spec §5.2) — no other map draws
-                  estimated-position uncertainty radii, so this stays inline
-                  rather than becoming a speculative one-consumer abstraction. */}
-              {showEstimatedPositions && showAccuracyRegions && nodesWithPosition
-                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
-                .map(node => {
-                  // Use the real multilateration uncertainty radius (issue #3271) when
-                  // available; fall back to a 500m base for legacy/missing data.
-                  const uncertaintyKm = node.user?.id ? estimatedUncertainty[node.user.id] : undefined;
-                  const radiusMeters = uncertaintyKm != null && uncertaintyKm > 0
-                    ? uncertaintyKm * 1000
-                    : 500;
-
-                  // Get hop color for the circle (same as marker)
-                  const isLocalNode = node.user?.id === currentNodeId;
-                  const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                  const color = getHopColor(hops, overlayColors.hopColors);
-
-                  return (
-                    <Circle
-                      key={`estimated-${node.nodeNum}`}
-                      center={[node.position!.latitude, node.position!.longitude]}
-                      radius={radiusMeters}
-                      pathOptions={{
-                        color: color,
-                        fillColor: color,
-                        fillOpacity: 0.1,
-                        opacity: 0.4,
-                        weight: 2,
-                        dashArray: '5, 5'
-                      }}
-                    />
-                  );
-                })}
+                  Both are required so a circle never renders without its
+                  marker. Shared with the MeshCore map (#6260 WP5). */}
+              <EstimatedPositionRadiiLayer radii={estimatedRadii} />
 
               {/* Position accuracy regions — shared layer (#4047 Phase 7 WP11),
                   hop-colored `pathOptions` computed in the `accuracyRegions`
