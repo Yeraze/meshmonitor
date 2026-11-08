@@ -135,13 +135,29 @@ export function escapeCsv(value: string): string {
   return value;
 }
 
+/** A generic export column: header label plus a stringifying accessor. */
+export interface ExportColumn<T> {
+  key: string;
+  label: string;
+  value: (item: T) => string;
+}
+
+/** Render items as RFC 4180 CSV (CRLF line endings, no BOM). */
+export function rowsToCsv<T>(cols: readonly ExportColumn<T>[], items: readonly T[]): string {
+  const header = cols.map((c) => escapeCsv(c.label)).join(',');
+  const body = items.map((item) => cols.map((c) => escapeCsv(c.value(item))).join(','));
+  return [header, ...body].join('\r\n');
+}
+
+const MESHTASTIC_COLUMNS: ExportColumn<NodeExportRow>[] = NODE_EXPORT_COLUMNS.map((c) => ({
+  key: c.key,
+  label: c.label,
+  value: (row: NodeExportRow) => row[c.key],
+}));
+
 /** Render export rows as RFC 4180 CSV (CRLF line endings, no BOM). */
 export function nodesToCsv(rows: NodeExportRow[]): string {
-  const header = NODE_EXPORT_COLUMNS.map((c) => escapeCsv(c.label)).join(',');
-  const body = rows.map((row) =>
-    NODE_EXPORT_COLUMNS.map((c) => escapeCsv(row[c.key])).join(','),
-  );
-  return [header, ...body].join('\r\n');
+  return rowsToCsv(MESHTASTIC_COLUMNS, rows);
 }
 
 /** Escape text for safe interpolation into HTML. */
@@ -159,8 +175,12 @@ export interface NodesToHtmlOptions {
   generatedAt?: string;
 }
 
-/** Render export rows as a standalone, styled, printable HTML document. */
-export function nodesToHtml(rows: NodeExportRow[], opts: NodesToHtmlOptions = {}): string {
+/** Render items as a standalone, styled, printable HTML document. */
+export function rowsToHtml<T>(
+  cols: readonly ExportColumn<T>[],
+  rows: readonly T[],
+  opts: NodesToHtmlOptions = {},
+): string {
   const title = opts.title || 'MeshMonitor Node List';
   const subtitle = [
     `${rows.length} node${rows.length === 1 ? '' : 's'}`,
@@ -169,11 +189,11 @@ export function nodesToHtml(rows: NodeExportRow[], opts: NodesToHtmlOptions = {}
     .filter(Boolean)
     .join(' • ');
 
-  const thead = NODE_EXPORT_COLUMNS.map((c) => `<th>${escapeHtml(c.label)}</th>`).join('');
+  const thead = cols.map((c) => `<th>${escapeHtml(c.label)}</th>`).join('');
   const tbody = rows
     .map(
       (row) =>
-        `<tr>${NODE_EXPORT_COLUMNS.map((c) => `<td>${escapeHtml(row[c.key])}</td>`).join('')}</tr>`,
+        `<tr>${cols.map((c) => `<td>${escapeHtml(c.value(row))}</td>`).join('')}</tr>`,
     )
     .join('\n');
 
@@ -207,6 +227,11 @@ ${tbody}
 </html>`;
 }
 
+/** Render export rows as a standalone, styled, printable HTML document. */
+export function nodesToHtml(rows: NodeExportRow[], opts: NodesToHtmlOptions = {}): string {
+  return rowsToHtml(MESHTASTIC_COLUMNS, rows, opts);
+}
+
 /**
  * Trigger a browser download of text content. Isolated DOM side-effect so the
  * rest of this module stays pure and unit-testable.
@@ -221,4 +246,27 @@ export function downloadTextFile(filename: string, content: string, mimeType: st
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Build and download a CSV/HTML export of a node list. Shared by the
+ * Meshtastic and MeshCore node lists. CSV gets a UTF-8 BOM for Excel.
+ */
+export function exportNodeList<T>(
+  format: 'csv' | 'html',
+  cols: readonly ExportColumn<T>[],
+  items: readonly T[],
+  opts: { filenamePrefix: string; title?: string },
+): void {
+  const now = new Date();
+  const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  if (format === 'csv') {
+    downloadTextFile(`${opts.filenamePrefix}-${stamp}.csv`, '\uFEFF' + rowsToCsv(cols, items), 'text/csv;charset=utf-8');
+  } else {
+    downloadTextFile(
+      `${opts.filenamePrefix}-${stamp}.html`,
+      rowsToHtml(cols, items, { title: opts.title, generatedAt: now.toLocaleString() }),
+      'text/html;charset=utf-8',
+    );
+  }
 }

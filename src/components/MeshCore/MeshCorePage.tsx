@@ -12,7 +12,7 @@
  *
  * Talks to /api/sources/:id/meshcore/* via useMeshCore.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTxStatus } from '../../hooks/useTxStatus';
 import { useMeshCore, ConnectionStatus } from './hooks/useMeshCore';
@@ -132,14 +132,6 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   // only display is suppressed. One place, so all three views agree.
   const ignoredNodesQuery = useMeshCoreIgnoredNodes(sourceId, { enabled: enabled ?? true });
   const hiddenKeys = useHiddenMeshCoreKeys(ignoredNodesQuery.data);
-  const visibleNodes = useMemo(
-    () => (hiddenKeys.size === 0 ? nodes : nodes.filter((n) => !hiddenKeys.has(n.publicKey.toLowerCase()))),
-    [nodes, hiddenKeys],
-  );
-  const visibleContacts = useMemo(
-    () => (hiddenKeys.size === 0 ? contacts : contacts.filter((c) => !hiddenKeys.has(c.publicKey.toLowerCase()))),
-    [contacts, hiddenKeys],
-  );
   const { mutateAsync: setIgnoredNodeAsync } = useSetMeshCoreIgnoredNode(sourceId);
   const { mutateAsync: removeIgnoredNodeAsync } = useRemoveMeshCoreIgnoredNode(sourceId);
   const handleSetIgnoredNode = useCallback(
@@ -226,8 +218,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
       >
         {view === 'nodes' && (
           <MeshCoreNodesView
-            nodes={visibleNodes}
-            contacts={visibleContacts}
+            nodes={nodes}
+            contacts={contacts}
+            ignoredKeys={hiddenKeys}
             onImportContact={actions.importContact}
             onNavigateToDm={navigateToDm}
             onToggleFavorite={actions.setNodeFavorite}

@@ -134,6 +134,7 @@ const realContact: MeshCoreContact = {
 const messages: MeshCoreMessage[] = [];
 
 beforeEach(() => {
+  try { localStorage.removeItem('meshcoreDmSort'); } catch { /* ignore */ }
   csrfFetchMock.mockReset();
   csrfFetchMock.mockResolvedValue(
     new Response(
@@ -307,7 +308,7 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     fireEvent.change(dropdown, { target: { value: 'name' } });
     // Direction starts 'desc' — click the direction button (titled
     // "Descending" in that state) to flip to ascending.
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.click(screen.getByTitle('nodes.descending'));
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
       .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
@@ -333,7 +334,7 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
     fireEvent.change(dropdown, { target: { value: 'publicKey' } });
     // Direction starts 'desc' — flip to ascending for natural hex order.
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.click(screen.getByTitle('nodes.descending'));
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
       .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
@@ -361,7 +362,7 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
 
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
     fireEvent.change(dropdown, { target: { value: 'publicKey' } });
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.click(screen.getByTitle('nodes.descending'));
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
       .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
@@ -394,7 +395,7 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
 
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
     fireEvent.change(dropdown, { target: { value: 'publicKey' } });
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.click(screen.getByTitle('nodes.descending'));
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
       .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
@@ -466,7 +467,7 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
     fireEvent.change(dropdown, { target: { value: 'name' } });
     // Flip from the default 'desc' to ascending.
-    fireEvent.click(screen.getByTitle('Descending'));
+    fireEvent.click(screen.getByTitle('nodes.descending'));
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
       .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
@@ -905,7 +906,7 @@ describe('MeshCoreDirectMessagesView — DM relay confirmation survives the hist
     await waitFor(() => {
       expect(fetchDmMessages).toHaveBeenCalledWith(REAL_PK, expect.objectContaining({ offset: 0 }));
     });
-    await waitFor(() => expect(screen.getByText('relay dm')).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText('relay dm').length).toBeGreaterThan(0));
 
     // The merged copy keeps the relay: the heard-by antenna counts the one
     // repeater (not 0), and — heard by a repeater — the resend button stays
@@ -913,5 +914,60 @@ describe('MeshCoreDirectMessagesView — DM relay confirmation survives the hist
     const badge = await screen.findByTestId('mc-heard-by-badge');
     expect(badge.textContent).toContain('1');
     expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull();
+  });
+});
+
+
+// #6259 WP-D: shared DM filter, last-message preview, stat chips.
+describe('MeshCoreDirectMessagesView — DM list parity (#6259)', () => {
+  const SELF = 'f'.repeat(64);
+  const A = 'a'.repeat(64);
+  const B = 'b'.repeat(64);
+  const contacts: MeshCoreContact[] = [
+    { publicKey: A, advName: 'Alpha', advType: 1, lastSeen: 1, snr: 6.5, pathLen: 2, latitude: 1, longitude: 2 } as MeshCoreContact,
+    { publicKey: B, advName: 'Bravo', advType: 1, lastSeen: 1 } as MeshCoreContact,
+  ];
+  const nodes = [{ publicKey: B, isFavorite: true }] as unknown as MeshCoreNode[];
+  const dm = (id: string, from: string, to: string, text: string, ts: number) =>
+    ({ id, fromPublicKey: from, toPublicKey: to, text, timestamp: ts, messageType: 'text' }) as unknown as MeshCoreMessage;
+  const status = () => ({ ...makeStatus(), localNode: { publicKey: SELF } }) as ConnectionStatus;
+  const names = (): string[] =>
+    Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-display-name')).map((el) => el.textContent || '');
+  const renderView = (messages: MeshCoreMessage[]) =>
+    render(
+      <MeshCoreDirectMessagesView messages={messages} contacts={contacts} nodes={nodes} status={status()} actions={makeActions()} />,
+    );
+
+  it('shows the last message preview and stat chips on rows', () => {
+    renderView([dm('1', A, SELF, 'hello there', Date.now() - 1000)]);
+    expect(screen.getAllByText('hello there').length).toBeGreaterThan(0);
+    expect(document.body.textContent).toContain('6.5dB');
+    expect(document.body.textContent).toContain('2 nodes.hop');
+  });
+
+  it('shows the no-messages placeholder for a peer with no message', () => {
+    renderView([dm('1', A, SELF, 'hi', Date.now())]);
+    expect(screen.getAllByText('messages.no_messages_preview').length).toBe(1);
+  });
+
+  it('filters by favorites, with-position and recent', () => {
+    renderView([
+      dm('1', A, SELF, 'new', Date.now() - 1000),
+      dm('2', B, SELF, 'old', Date.now() - 3 * 24 * 3600 * 1000),
+    ]);
+    const filter = screen.getByTitle('messages.filter_conversations_title') as HTMLSelectElement;
+    expect(Array.from(filter.options).map((o) => o.value)).toEqual(['all', 'unread', 'recent', 'favorites', 'withPosition']);
+    fireEvent.change(filter, { target: { value: 'favorites' } });
+    expect(names()).toEqual(['Bravo']);
+    fireEvent.change(filter, { target: { value: 'withPosition' } });
+    expect(names()).toEqual(['Alpha']);
+    fireEvent.change(filter, { target: { value: 'recent' } });
+    expect(names()).toEqual(['Alpha']);
+  });
+
+  it('persists the sort choice under meshcoreDmSort', () => {
+    renderView([]);
+    fireEvent.change(screen.getByTitle('Sort by'), { target: { value: 'name' } });
+    expect(JSON.parse(localStorage.getItem('meshcoreDmSort') || '{}').field).toBe('name');
   });
 });

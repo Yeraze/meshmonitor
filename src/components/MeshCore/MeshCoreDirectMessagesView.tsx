@@ -9,7 +9,7 @@ import {
 } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMeshCoreMessageContentMatchKeys } from '../../utils/messageContentFilter';
-import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
+import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel, isMeshCoreInfrastructureAdvType } from './meshcoreRole';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
@@ -31,6 +31,13 @@ import {
   isChannelPseudoKey,
 } from './meshcoreUnreadStore';
 import { UiIcon } from '../icons';
+import { DmFilterSelect } from '../messages/DmFilterSelect';
+import { NodeSortControls } from '../nodes/NodeSortControls';
+import { NodeStatChips } from '../nodes/NodeStatChips';
+import { usePersistedListSort } from '../../hooks/usePersistedListSort';
+import { passesDmFilter } from '../../utils/dmListFilter';
+import { formatMessagePreview } from '../../utils/messagePreview';
+import type { DmFilter } from '../../types/ui';
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 import { compareMeshCoreMessages } from './messageOrder';
@@ -100,7 +107,10 @@ function isRealNodeKey(key: string): boolean {
 }
 
 type DmSortField = 'name' | 'lastMessage' | 'publicKey';
-type DmSortDirection = 'asc' | 'desc';
+const DM_SORT_FIELDS: readonly DmSortField[] = ['lastMessage', 'name', 'publicKey'];
+// Conversation filters offered here: no 'hops' (the sort control covers it) and
+// no 'noInfra' (the node-type filter covers it).
+const DM_FILTER_OPTIONS: readonly DmFilter[] = ['all', 'unread', 'recent', 'favorites', 'withPosition'];
 // Node-type (advType) filter for the contact list (issue #3890). 'all' = no
 // filter; otherwise a MeshCore advert type: 1=Companion, 2=Repeater, 4=Sensor.
 // Room Server (3) is intentionally omitted — those peers are already excluded
@@ -143,8 +153,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const canWriteConfig = hasPermission('configuration', 'write');
   const [selected, setSelected] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<DmSortField>('lastMessage');
-  const [sortDirection, setSortDirection] = useState<DmSortDirection>('desc');
+  const {
+    field: sortField,
+    direction: sortDirection,
+    setField: setSortField,
+    toggleDirection: toggleSortDirection,
+  } = usePersistedListSort<DmSortField>('meshcoreDmSort', DM_SORT_FIELDS, { field: 'lastMessage', direction: 'desc' });
+  const [dmFilter, setDmFilter] = useState<DmFilter>('all');
   const [typeFilter, setTypeFilter] = useState<DmTypeFilter>('all');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileShowContent, setMobileShowContent] = useState(false);
@@ -313,6 +328,15 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     return map;
   }, [nodes]);
 
+  const dmSortOptions = useMemo(
+    () => [
+      { value: 'lastMessage' as const, label: t('meshcore.sort_last_message', 'Last message') },
+      { value: 'name' as const, label: t('meshcore.sort_name', 'Name') },
+      { value: 'publicKey' as const, label: t('meshcore.sort_public_key', 'Public key') },
+    ],
+    [t],
+  );
+
   const favoriteByKey = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const n of nodes) {
@@ -349,16 +373,23 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   // Channel messages carry synthetic `channel-${idx}` keys (see the shared
   // `isChannelPseudoKey` in meshcoreUnreadStore) — they are NOT real DM peers
   // and are filtered out everywhere this view looks at to/fromPublicKey.
-  const dmPeers = useMemo(() => {
+  const dmPeerData = useMemo(() => {
     const peers = new Set<string>();
     const lastMessageAt = new Map<string, number>();
+    // Preview text of the newest live-window message per peer. Server-only peers
+    // (#6186) contribute a time but no text, so they show no preview (#6259).
+    const lastText = new Map<string, string>();
     // A reaction keeps its peer in the list but is not a message (#5759): it
     // does not move the peer's "last message" time.
     let countsAsMessage = true;
-    const noteMessage = (key: string, ts: number | undefined) => {
+    const noteMessage = (key: string, ts: number | undefined, text?: string) => {
       if (!countsAsMessage || typeof ts !== 'number') return;
       const prev = lastMessageAt.get(key) ?? 0;
-      if (ts > prev) lastMessageAt.set(key, ts);
+      if (ts > prev) {
+        lastMessageAt.set(key, ts);
+        if (text !== undefined) lastText.set(key, text);
+        else lastText.delete(key);
+      }
     };
     for (const m of messages) {
       if (!m.toPublicKey) continue;
@@ -368,18 +399,18 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       if (selfKey && keysMatch(m.fromPublicKey, selfKey)) {
         const peer = canonicalize(m.toPublicKey);
         peers.add(peer);
-        noteMessage(peer, meshcoreReceiptTimeMs(m));
+        noteMessage(peer, meshcoreReceiptTimeMs(m), m.text);
       } else if (selfKey && keysMatch(m.toPublicKey, selfKey)) {
         const peer = canonicalize(m.fromPublicKey);
         peers.add(peer);
-        noteMessage(peer, meshcoreReceiptTimeMs(m));
+        noteMessage(peer, meshcoreReceiptTimeMs(m), m.text);
       } else {
         const a = canonicalize(m.fromPublicKey);
         const b = canonicalize(m.toPublicKey);
         peers.add(a);
         peers.add(b);
-        noteMessage(a, meshcoreReceiptTimeMs(m));
-        noteMessage(b, meshcoreReceiptTimeMs(m));
+        noteMessage(a, meshcoreReceiptTimeMs(m), m.text);
+        noteMessage(b, meshcoreReceiptTimeMs(m), m.text);
       }
     }
     // #6186: threads whose entire history has aged out of the live window still
@@ -409,12 +440,16 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         if (ignoredModeByKey.has(key.toLowerCase()) && key !== selected) peers.delete(key);
       }
     }
+    return { peers: Array.from(peers), lastMessageAt, lastText };
+  }, [messages, contacts, selfKey, canonicalize, ignoredModeByKey, selected, serverPeers]);
+
+  const dmPeers = useMemo(() => {
     const peerNameFor = (key: string): string => {
       const c = contactsByKey.get(key);
       return c?.advName || c?.name || key;
     };
     const dir = sortDirection === 'asc' ? 1 : -1;
-    return Array.from(peers).sort((a, b) => {
+    return [...dmPeerData.peers].sort((a, b) => {
       // Favorites pin to the top regardless of sort field/direction, matching
       // the Meshtastic DM list and the MeshCore node list (issue #3620).
       const aFav = favoriteByKey.get(a) ?? false;
@@ -427,11 +462,11 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         // Compare lowercase hex so mixed-case keys sort the same (issue #6185).
         return a.toLowerCase().localeCompare(b.toLowerCase()) * dir;
       }
-      const at = lastMessageAt.get(a) ?? 0;
-      const bt = lastMessageAt.get(b) ?? 0;
+      const at = dmPeerData.lastMessageAt.get(a) ?? 0;
+      const bt = dmPeerData.lastMessageAt.get(b) ?? 0;
       return (at - bt) * dir;
     });
-  }, [messages, contacts, selfKey, canonicalize, contactsByKey, favoriteByKey, sortField, sortDirection, ignoredModeByKey, selected, serverPeers]);
+  }, [dmPeerData, contactsByKey, favoriteByKey, sortField, sortDirection]);
 
   // Issue #3922 (MeshCore): let the conversation filter match on message
   // *content*, not just the contact's name / public key. Precompute the set of
@@ -447,6 +482,24 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     [messages, searchQuery, canonicalize],
   );
 
+  // Unread-marker re-read trigger (localStorage isn't reactive) (#3891).
+  const [unreadTick, setUnreadTick] = useState(0);
+  useEffect(() => subscribeUnreadChanged(() => setUnreadTick((n) => n + 1)), []);
+
+  // Peers with unread incoming DMs — drives the per-row red-dot in the contact
+  // list. The currently-open peer is never flagged.
+  const unreadPeers = useMemo(() => {
+    void unreadTick;
+    if (!sourceId) return new Set<string>();
+    return computeUnreadDmPeers({
+      messages,
+      contacts,
+      selfKey,
+      dmLastRead: loadDmLastRead(sourceId),
+      activePeerKey: selected,
+    });
+  }, [sourceId, messages, contacts, selfKey, selected, unreadTick]);
+
   const filteredPeers = useMemo(() => {
     let peers = dmPeers;
     // Node-type filter (#3890). A peer that only exists via a message thread
@@ -454,6 +507,25 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     // filter — expected, since the filter targets known node roles.
     if (typeFilter !== 'all') {
       peers = peers.filter(key => contactsByKey.get(key)?.advType === typeFilter);
+    }
+    if (dmFilter !== 'all') {
+      const nowMs = Date.now();
+      peers = peers.filter(key => {
+        // The open conversation never drops out from under the user.
+        if (key === selected) return true;
+        const c = contactsByKey.get(key);
+        return passesDmFilter(
+          {
+            unread: unreadPeers.has(key),
+            lastMessageTime: dmPeerData.lastMessageAt.get(key) ?? 0,
+            isFavorite: favoriteByKey.get(key) ?? false,
+            hasPosition: typeof c?.latitude === 'number' && typeof c?.longitude === 'number',
+            isInfrastructure: isMeshCoreInfrastructureAdvType(c?.advType),
+          },
+          dmFilter,
+          nowMs
+        );
+      });
     }
     if (!searchQuery.trim()) return peers;
     const q = searchQuery.toLowerCase();
@@ -467,7 +539,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         messageContentMatchKeys.has(key)
       );
     });
-  }, [dmPeers, searchQuery, contactsByKey, typeFilter, messageContentMatchKeys]);
+  }, [dmPeers, searchQuery, contactsByKey, typeFilter, messageContentMatchKeys, dmFilter, selected, unreadPeers, dmPeerData, favoriteByKey]);
 
   // The server backlog is "ready" only once it matches the selected peer, so a
   // previous peer's history is never drawn while this one loads (#6186).
@@ -505,10 +577,6 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     return Array.from(byId.values()).sort(compareMeshCoreMessages);
   }, [messages, selected, selfKey, dmHistory, dmHistoryReady]);
 
-  // Unread-marker re-read trigger (localStorage isn't reactive) (#3891).
-  const [unreadTick, setUnreadTick] = useState(0);
-  useEffect(() => subscribeUnreadChanged(() => setUnreadTick((n) => n + 1)), []);
-
   // Unread-divider anchor (#4607): the peer's last-read marker frozen at the
   // moment the conversation was opened. The mark-read effect below fires within
   // a tick of selection, so a live read would always report "nothing unread".
@@ -537,20 +605,6 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     const latest = filtered.reduce((mx, m) => Math.max(mx, meshcoreReceiptTimeMs(m)), 0);
     markDmRead(sourceId, peer, latest || Date.now());
   }, [sourceId, selected, contacts, filtered]);
-
-  // Peers with unread incoming DMs — drives the per-row red-dot in the contact
-  // list. The currently-open peer is never flagged.
-  const unreadPeers = useMemo(() => {
-    void unreadTick;
-    if (!sourceId) return new Set<string>();
-    return computeUnreadDmPeers({
-      messages,
-      contacts,
-      selfKey,
-      dmLastRead: loadDmLastRead(sourceId),
-      activePeerKey: selected,
-    });
-  }, [sourceId, messages, contacts, selfKey, selected, unreadTick]);
 
   // Mark-all-read (#6261): every peer with an incoming DM past its marker,
   // muted peers included (muting hides the dot, not the backlog).
@@ -658,30 +712,16 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     </option>
                   ))}
                 </select>
-                <select
-                  aria-label={t('meshcore.sort_by', 'Sort by')}
-                  title={t('meshcore.sort_by', 'Sort by')}
+                <DmFilterSelect value={dmFilter} onChange={setDmFilter} options={DM_FILTER_OPTIONS} />
+                <NodeSortControls<DmSortField>
+                  bare
                   value={sortField}
-                  onChange={(e) => setSortField(e.target.value as DmSortField)}
-                  className="sort-dropdown"
-                >
-                  <option value="lastMessage">{t('meshcore.sort_last_message', 'Last message')}</option>
-                  <option value="name">{t('meshcore.sort_name', 'Name')}</option>
-                  <option value="publicKey">{t('meshcore.sort_public_key', 'Public key')}</option>
-                </select>
-                <button
-                  type="button"
-                  className="sort-direction-btn"
-                  onClick={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
-                  title={sortDirection === 'asc'
-                    ? t('meshcore.ascending', 'Ascending')
-                    : t('meshcore.descending', 'Descending')}
-                  aria-label={sortDirection === 'asc'
-                    ? t('meshcore.ascending', 'Ascending')
-                    : t('meshcore.descending', 'Descending')}
-                >
-                  <UiIcon name={sortDirection === 'asc' ? 'sortAscending' : 'sortDescending'} />
-                </button>
+                  direction={sortDirection}
+                  options={dmSortOptions}
+                  onChange={setSortField}
+                  onToggleDirection={toggleSortDirection}
+                  ariaLabel={t('meshcore.sort_by', 'Sort by')}
+                />
               </div>
             </>
           )}
@@ -710,11 +750,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
           <MeshCoreVirtualList
             items={filteredPeers}
             getKey={key => key}
-            estimateSize={56}
+            estimateSize={72}
             empty={(
               <div className="meshcore-empty-state">
                 {searchQuery
                   ? t('meshcore.no_search_results', 'No contacts match your search')
+                  : dmFilter !== 'all'
+                    ? t('meshcore.no_filter_results', 'No conversations match this filter')
                   : typeFilter !== 'all'
                     ? t('meshcore.no_type_results', 'No contacts of this type')
                     : t('meshcore.no_contacts', 'No contacts yet')}
@@ -727,6 +769,10 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               const roleIcon = meshcoreRoleIconName(c?.advType);
               const isMuted = mute?.isDMMuted(key) ?? false;
               const hasUnread = unreadPeers.has(key) && !isMuted;
+              const lastText = dmPeerData.lastText.get(key);
+              const previewText = lastText !== undefined ? formatMessagePreview(lastText) : undefined;
+              // Older server-only threads have a time but no text; show nothing.
+              const hasKnownMessage = dmPeerData.lastMessageAt.has(key);
               return (
                 <button
                   key={key}
@@ -758,6 +804,12 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     {isMuted && <MutedIndicator />}
                   </div>
                   <div className="mc-node-row-key">{key.substring(0, 20)}…</div>
+                  <div className="last-message-preview">
+                    {previewText ?? (hasKnownMessage ? '' : t('messages.no_messages_preview'))}
+                  </div>
+                  <div className="node-stats">
+                    <NodeStatChips snr={c?.snr} hops={c?.pathLen} />
+                  </div>
                 </button>
               );
             }}

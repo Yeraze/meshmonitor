@@ -1,12 +1,16 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { TabType, SortField, SortDirection, VALID_TABS, type NodePopupState } from '../types/ui';
+import { TabType, SortField, SortDirection, VALID_TABS, type NodePopupState, type DmFilter } from '../types/ui';
 import {
   readLocalShowMqttMessages,
   writeLocalShowMqttMessages,
   fetchServerShowMqttMessages,
   saveServerShowMqttMessages,
 } from './showMqttMessagesPreference';
+import { usePersistedListSort } from '../hooks/usePersistedListSort';
+import { readGroupNodesByRole, writeGroupNodesByRole } from '../utils/nodeGrouping';
+
+const MESHTASTIC_SORT_FIELDS: readonly SortField[] = ['longName', 'shortName', 'id', 'lastHeard', 'snr', 'battery', 'hwModel', 'hops', 'uptime'];
 
 interface UIContextType {
   activeTab: TabType;
@@ -27,8 +31,8 @@ interface UIContextType {
   setSecurityFilter: React.Dispatch<React.SetStateAction<'all' | 'flaggedOnly' | 'hideFlagged'>>;
   channelFilter: number | 'all';
   setChannelFilter: React.Dispatch<React.SetStateAction<number | 'all'>>;
-  dmFilter: 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra';
-  setDmFilter: React.Dispatch<React.SetStateAction<'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra'>>;
+  dmFilter: DmFilter;
+  setDmFilter: React.Dispatch<React.SetStateAction<DmFilter>>;
   sortField: SortField;
   setSortField: React.Dispatch<React.SetStateAction<SortField>>;
   sortDirection: SortDirection;
@@ -107,15 +111,29 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [messagesNodeFilter, setMessagesNodeFilter] = useState<string>('');
   const [securityFilter, setSecurityFilter] = useState<'all' | 'flaggedOnly' | 'hideFlagged'>('all');
   const [channelFilter, setChannelFilter] = useState<number | 'all'>('all');
-  const [dmFilter, setDmFilter] = useState<'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra'>('all');
-  const [sortField, setSortField] = useState<SortField>(() => {
-    const saved = localStorage.getItem('preferredSortField');
-    return (saved as SortField) || 'longName';
+  const [dmFilter, setDmFilter] = useState<DmFilter>('all');
+  // Toolbar sort is saved (meshtasticNodesSort); until the user picks one the
+  // Settings preferred sort is the default.
+  const persistedSort = usePersistedListSort<SortField>('meshtasticNodesSort', MESHTASTIC_SORT_FIELDS, {
+    field: ((): SortField => {
+      const saved = localStorage.getItem('preferredSortField');
+      return (saved as SortField) || 'longName';
+    })(),
+    direction: ((): SortDirection => {
+      const saved = localStorage.getItem('preferredSortDirection');
+      return (saved === 'desc' ? 'desc' : 'asc') as SortDirection;
+    })(),
   });
-  const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
-    const saved = localStorage.getItem('preferredSortDirection');
-    return (saved === 'desc' ? 'desc' : 'asc') as SortDirection;
-  });
+  const sortField = persistedSort.field;
+  const sortDirection = persistedSort.direction;
+  const { setField: persistSortField, toggleDirection: persistToggleDirection } = persistedSort;
+  const setSortField = useCallback((value: React.SetStateAction<SortField>) => {
+    persistSortField(typeof value === 'function' ? (value as (prev: SortField) => SortField)(sortField) : value);
+  }, [persistSortField, sortField]);
+  const setSortDirection = useCallback((value: React.SetStateAction<SortDirection>) => {
+    const next = typeof value === 'function' ? (value as (prev: SortDirection) => SortDirection)(sortDirection) : value;
+    if (next !== sortDirection) persistToggleDirection();
+  }, [persistToggleDirection, sortDirection]);
   const [showStatusModal, setShowStatusModal] = useState<boolean>(false);
   const [systemStatus, setSystemStatus] = useState<any>(null);
   const [nodePopup, setNodePopup] = useState<NodePopupState | null>(null);
@@ -127,13 +145,11 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   // Group-by-role toggle for the Nodes panel list, off by default so the flat
   // list is unchanged for everyone who hasn't opted in. Persisted like
   // sortField/sortDirection above so the choice survives a reload.
-  const [groupNodesByRole, setGroupNodesByRoleState] = useState<boolean>(() => {
-    return localStorage.getItem('groupNodesByRole') === 'true';
-  });
+  const [groupNodesByRole, setGroupNodesByRoleState] = useState<boolean>(() => readGroupNodesByRole());
   const setGroupNodesByRole = React.useCallback((value: React.SetStateAction<boolean>) => {
     setGroupNodesByRoleState(prevValue => {
       const newValue = typeof value === 'function' ? (value as (prev: boolean) => boolean)(prevValue) : value;
-      localStorage.setItem('groupNodesByRole', newValue.toString());
+      writeGroupNodesByRole(newValue);
       return newValue;
     });
   }, []);

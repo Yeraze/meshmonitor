@@ -80,3 +80,23 @@ export function buildGroupedNodeItems<T extends CategorizableNode>(
   }
   return items;
 }
+
+const GROUP_BY_ROLE_KEY = 'groupNodesByRole';
+
+/** Read the shared "Group by role" preference (both protocols). */
+export function readGroupNodesByRole(): boolean {
+  try {
+    return localStorage.getItem(GROUP_BY_ROLE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/** Persist the shared "Group by role" preference. */
+export function writeGroupNodesByRole(value: boolean): void {
+  try {
+    localStorage.setItem(GROUP_BY_ROLE_KEY, value.toString());
+  } catch {
+    // storage unavailable: preference stays in memory only
+  }
+}

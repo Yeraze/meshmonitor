@@ -5,10 +5,9 @@ import { Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
-import { TabType } from '../types/ui';
+import { TabType, SortField } from '../types/ui';
 import { nodePassesTransportFilter, transportCutoffSec, isMqttOnlySourceType } from '../utils/nodeTransport';
-import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps, NODE_TYPE_CATEGORY_META, NodeTypeCategory } from '../utils/nodeTypeCategory';
-import { buildGroupedNodeItems, countNodesByCategory, GroupedNodeListItem, RoleGroupCount } from '../utils/nodeGrouping';
+import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
 import MapAgeFilterControl from './map/MapAgeFilterControl';
@@ -35,7 +34,14 @@ import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/d
 import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops, getMapHoverTooltipMeta } from '../utils/nodeHops';
 import { sortNodesByField } from '../utils/nodeSort';
-import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '../utils/nodeExport';
+import { buildNodeExportRows, NODE_EXPORT_COLUMNS, exportNodeList, type ExportColumn, type NodeExportRow } from '../utils/nodeExport';
+import { orderFavoritesFirst } from '../utils/nodeSort';
+import { useNodeRoleGrouping } from '../hooks/useNodeRoleGrouping';
+import { NodeSortControls } from './nodes/NodeSortControls';
+import { ExportMenuButton } from './nodes/ExportMenuButton';
+import { NodeStatChips } from './nodes/NodeStatChips';
+import { RoleDistributionSummary } from './nodes/RoleDistributionSummary';
+import { RoleGroupHeader } from './nodes/RoleGroupHeader';
 import { useMapContext } from '../contexts/MapContext';
 import { useMapViewStore, useMapViewSelector } from '../contexts/mapViewStore';
 import { useTelemetryNodes, useDeviceConfig, useNodes, useChannels, setNodeFieldInCache } from '../hooks/useServerData';
@@ -91,7 +97,6 @@ import { useNodeIdentityChanges } from '../hooks/useNodeIdentityChanges';
 import { NodeDetailsButton } from './NodeDetailsButton';
 import nodeRowStyles from './NodeRowActions.module.css';
 import nodeStatusStyles from './NodeStatusLine.module.css';
-import roleGroupingStyles from './NodeRoleGrouping.module.css';
 import listHeaderStyles from './NodesListHeader.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { CrossSourceLinksLayer } from './map/layers/CrossSourceLinksLayer';
@@ -110,7 +115,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
-import { UiIcon, batteryIconName } from './icons';
+import { UiIcon } from './icons';
 import { useToast } from './ToastContainer';
 import { logger } from '../utils/logger';
 import { calculateNodeOpacity } from '../utils/nodeDimming';
@@ -170,6 +175,24 @@ const isToday = (date: Date): boolean => {
     date.getFullYear() === today.getFullYear();
 };
 
+const MESHTASTIC_SORT_OPTIONS: { value: SortField; labelKey: string }[] = [
+  { value: 'longName', labelKey: 'nodes.sort_name' },
+  { value: 'shortName', labelKey: 'nodes.sort_short_name' },
+  { value: 'id', labelKey: 'nodes.sort_id' },
+  { value: 'lastHeard', labelKey: 'nodes.sort_updated' },
+  { value: 'uptime', labelKey: 'nodes.sort_uptime' },
+  { value: 'snr', labelKey: 'nodes.sort_signal' },
+  { value: 'battery', labelKey: 'nodes.sort_charge' },
+  { value: 'hwModel', labelKey: 'nodes.sort_hardware' },
+  { value: 'hops', labelKey: 'nodes.sort_hops' },
+];
+
+const MESHTASTIC_EXPORT_COLUMNS: ExportColumn<NodeExportRow>[] = NODE_EXPORT_COLUMNS.map((c) => ({
+  key: c.key,
+  label: c.label,
+  value: (row: NodeExportRow) => row[c.key],
+}));
+
 // Memoized distance display component to avoid recalculating on every render
 const DistanceDisplay = React.memo<{
   homeNode: DeviceInfo | undefined;
@@ -189,100 +212,6 @@ const DistanceDisplay = React.memo<{
     <span className="stat" title={t('nodes.distance')}>
       <UiIcon name="ruler" size={14} /> {distance}
     </span>
-  );
-});
-
-// Number of role categories the distribution summary gives a distinct
-// `--chart-N` colour (the app's categorical scale only defines 8 slots, and
-// per the dataviz convention categorical hues are assigned in fixed order and
-// never cycled — a 9th+ category folds into a single muted "Other" segment
-// rather than reusing an earlier colour).
-const ROLE_SUMMARY_MAX_COLORED_CATEGORIES = 8;
-
-/**
- * Compact role-distribution summary shown above the node list when the
- * "Group by role" toggle is on (grouping requirement #3). A single-row
- * stacked bar (inline SVG, coloured with the app's `--chart-N` categorical
- * custom properties so it tracks every Catppuccin variant) plus a legend of
- * role name + count chips — the chips are the accessible source of truth
- * (identity is never colour-alone), so the SVG itself is decorative.
- */
-const RoleDistributionSummary = React.memo<{
-  distribution: RoleGroupCount[];
-  // Overloads, not `options?`: i18next 26.5's TFunction rejects undefined options.
-  t: {
-    (key: string, defaultValue: string): string;
-    (key: string, defaultValue: string, options: Record<string, unknown>): string;
-  };
-}>(({ distribution, t }) => {
-  const total = distribution.reduce((sum, r) => sum + r.count, 0);
-  if (total === 0) return null;
-
-  const colored = distribution.slice(0, ROLE_SUMMARY_MAX_COLORED_CATEGORIES);
-  const overflow = distribution.slice(ROLE_SUMMARY_MAX_COLORED_CATEGORIES);
-  const otherCount = overflow.reduce((sum, r) => sum + r.count, 0);
-
-  const chips = colored.map((r, i) => {
-    const meta = NODE_TYPE_CATEGORY_META[r.category];
-    return {
-      key: r.category as string,
-      label: t(meta.labelKey, meta.label),
-      count: r.count,
-      color: `var(--chart-${i + 1})`,
-    };
-  });
-  if (otherCount > 0) {
-    chips.push({
-      key: 'other',
-      label: t('nodes.other_roles', 'Other'),
-      count: otherCount,
-      color: 'var(--color-text-disabled)',
-    });
-  }
-
-  // Lay segments out in a fixed 1000-unit viewBox with a small fixed gap
-  // between them (renders as ~2px at typical sidebar widths), stretched to
-  // fill the wrapper's actual width/height — the wrapper clips to a pill
-  // shape via border-radius + overflow:hidden, so segments themselves stay
-  // plain rectangles rather than fighting non-uniform SVG scaling with rx.
-  const VIEWBOX_WIDTH = 1000;
-  const GAP_UNITS = chips.length > 1 ? 6 : 0;
-  const usableWidth = VIEWBOX_WIDTH - GAP_UNITS * (chips.length - 1);
-  let cursor = 0;
-  const segments = chips.map((chip) => {
-    const width = Math.max((chip.count / total) * usableWidth, 0);
-    const x = cursor;
-    cursor += width + GAP_UNITS;
-    return { ...chip, x, width };
-  });
-
-  return (
-    <div className={roleGroupingStyles.summary}>
-      <div className={roleGroupingStyles.summaryTitle}>{t('nodes.role_distribution', 'Role distribution')}</div>
-      <div className={roleGroupingStyles.summaryBarWrap}>
-        <svg
-          viewBox={`0 0 ${VIEWBOX_WIDTH} 14`}
-          preserveAspectRatio="none"
-          className={roleGroupingStyles.summaryBar}
-          aria-hidden="true"
-        >
-          {segments.map((seg) => (
-            <rect key={seg.key} x={seg.x} y={0} width={seg.width} height={14} fill={seg.color}>
-              <title>{`${seg.label}: ${seg.count}`}</title>
-            </rect>
-          ))}
-        </svg>
-      </div>
-      <div className={roleGroupingStyles.summaryLegend}>
-        {chips.map((chip) => (
-          <span className={roleGroupingStyles.summaryChip} key={chip.key}>
-            <span className={roleGroupingStyles.summarySwatch} style={{ background: chip.color }} />
-            {chip.label}
-            <span className={roleGroupingStyles.summaryChipCount}>{chip.count}</span>
-          </span>
-        ))}
-      </div>
-    </div>
   );
 });
 
@@ -1676,10 +1605,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // Favorites-first ordering, applied within whatever set it's handed — the
   // whole filtered list (flat/ungrouped) or one role group's nodes (grouped).
-  const orderNodes = useCallback((nodesToOrder: DeviceInfo[]) => [
-    ...sortNodes(nodesToOrder.filter(node => node.isFavorite)),
-    ...sortNodes(nodesToOrder.filter(node => !node.isFavorite)),
-  ], [sortNodes]);
+  const orderNodes = useCallback((nodesToOrder: DeviceInfo[]) =>
+    orderFavoritesFirst(nodesToOrder, sortNodes),
+  [sortNodes]);
 
   // The displayed node set for the flat (ungrouped) list and for CSV/HTML
   // export, which always exports the flat order regardless of the grouping
@@ -1694,32 +1622,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // message a node this source has never heard.
   const [showImportContactModal, setShowImportContactModal] = useState(false);
 
-  const [collapsedRoleGroups, setCollapsedRoleGroups] = useState<Set<NodeTypeCategory>>(() => new Set());
-  const toggleRoleGroupCollapsed = useCallback((category: NodeTypeCategory) => {
-    setCollapsedRoleGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category); else next.add(category);
-      return next;
-    });
-  }, []);
-
-  const roleDistribution = useMemo(
-    () => (groupNodesByRole ? countNodesByCategory(filteredNodes) : null),
-    [groupNodesByRole, filteredNodes]
-  );
-
-  // The single flat array the virtualizer renders: either plain node rows
-  // (grouping off) or group headers interleaved with their rows (grouping
-  // on). A collapsed group's rows are left out of this array entirely — not
-  // merely hidden — so the virtualizer never mounts or measures them; this is
-  // what keeps grouping from undoing the perf win of virtualizing the node
-  // list with @tanstack/react-virtual.
-  const nodeListItems = useMemo<GroupedNodeListItem<DeviceInfo>[]>(() => {
-    if (groupNodesByRole) {
-      return buildGroupedNodeItems(filteredNodes, orderNodes, collapsedRoleGroups);
-    }
-    return displayedNodes.map(node => ({ type: 'node' as const, node }));
-  }, [groupNodesByRole, filteredNodes, orderNodes, collapsedRoleGroups, displayedNodes]);
+  const {
+    items: nodeListItems,
+    distribution: roleDistribution,
+    toggleCollapsed: toggleRoleGroupCollapsed,
+  } = useNodeRoleGrouping(filteredNodes, orderNodes, groupNodesByRole, displayedNodes);
 
   // Virtualize the node list: with thousands of nodes, rendering a full DOM
   // subtree per row was measured at 179k-217k elements and made scrolling
@@ -1741,33 +1648,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     },
   });
 
-  // Export format dropdown (Issue #3499) — a single icon button in the controls
-  // row reveals this menu, keeping the header compact for a rarely-used action.
-  const [showExportMenu, setShowExportMenu] = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close the export menu on outside click or Escape.
-  useEffect(() => {
-    if (!showExportMenu) return;
-    const onPointerDown = (e: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
-        setShowExportMenu(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowExportMenu(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [showExportMenu]);
-
   // Export the currently-displayed nodes as CSV or HTML (Issue #3499).
   const handleExportNodes = useCallback((format: 'csv' | 'html') => {
-    setShowExportMenu(false);
     if (displayedNodes.length === 0) return;
     const rows = buildNodeExportRows(displayedNodes, {
       nodeHopsCalculation,
@@ -1776,14 +1658,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       currentNodeId,
       formatLastHeard: (s) => formatDateTime(new Date(s * 1000), timeFormat, dateFormat),
     });
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    if (format === 'csv') {
-      // Prepend a UTF-8 BOM so Excel detects the encoding correctly.
-      downloadTextFile(`meshmonitor-nodes-${stamp}.csv`, '\uFEFF' + nodesToCsv(rows), 'text/csv;charset=utf-8');
-    } else {
-      const html = nodesToHtml(rows, { generatedAt: new Date().toLocaleString() });
-      downloadTextFile(`meshmonitor-nodes-${stamp}.html`, html, 'text/html;charset=utf-8');
-    }
+    exportNodeList(format, MESHTASTIC_EXPORT_COLUMNS, rows, { filenamePrefix: 'meshmonitor-nodes' });
   }, [displayedNodes, nodeHopsCalculation, traceroutes, currentNodeNum, currentNodeId, timeFormat, dateFormat]);
 
   // Calculate nodes with position - uses effective position (respects position overrides, Issue #1526)
@@ -2560,85 +2435,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <UiIcon name="plus" />
                 </button>
               )}
-              <select
+              <NodeSortControls
                 value={sortField}
-                onChange={(e) => setSortField(e.target.value as any)}
-                className="sort-dropdown"
-                title={t('nodes.sort_by')}
-              >
-                <option value="longName">{t('nodes.sort_name')}</option>
-                <option value="shortName">{t('nodes.sort_short_name')}</option>
-                <option value="id">{t('nodes.sort_id')}</option>
-                <option value="lastHeard">{t('nodes.sort_updated')}</option>
-                <option value="uptime">{t('nodes.sort_uptime')}</option>
-                <option value="snr">{t('nodes.sort_signal')}</option>
-                <option value="battery">{t('nodes.sort_charge')}</option>
-                <option value="hwModel">{t('nodes.sort_hardware')}</option>
-                <option value="hops">{t('nodes.sort_hops')}</option>
-              </select>
-              <button
-                className="sort-direction-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.nativeEvent.stopImmediatePropagation();
-                  handleToggleSortDirection();
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  e.nativeEvent.stopImmediatePropagation();
-                }}
-                title={sortDirection === 'asc' ? t('nodes.ascending') : t('nodes.descending')}
-              >
-                <UiIcon name={sortDirection === 'asc' ? 'sortAscending' : 'sortDescending'} />
-              </button>
-              <div className="export-dropdown" ref={exportMenuRef}>
-                <button
-                  className="sort-direction-btn export-trigger-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.nativeEvent.stopImmediatePropagation();
-                    setShowExportMenu((v) => !v);
-                  }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    e.nativeEvent.stopImmediatePropagation();
-                  }}
-                  disabled={displayedNodes.length === 0}
-                  title={t('nodes.export', 'Export node list')}
-                  aria-haspopup="menu"
-                  aria-expanded={showExportMenu}
-                >
-                  <UiIcon name="download" />
-                </button>
-                {showExportMenu && (
-                  <div className="export-menu" role="menu">
-                    <button
-                      className="export-menu-item"
-                      role="menuitem"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                        handleExportNodes('csv');
-                      }}
-                      title={t('nodes.export_csv', 'Export node list as CSV')}
-                    >
-                      CSV
-                    </button>
-                    <button
-                      className="export-menu-item"
-                      role="menuitem"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.nativeEvent.stopImmediatePropagation();
-                        handleExportNodes('html');
-                      }}
-                      title={t('nodes.export_html', 'Export node list as HTML')}
-                    >
-                      HTML
-                    </button>
-                  </div>
-                )}
-              </div>
+                direction={sortDirection}
+                options={MESHTASTIC_SORT_OPTIONS.map(o => ({ value: o.value, label: t(o.labelKey) }))}
+                onChange={setSortField}
+                onToggleDirection={handleToggleSortDirection}
+                bare
+              />
+              <ExportMenuButton disabled={displayedNodes.length === 0} onExport={handleExportNodes} />
             </div>
           </div>
           )}
@@ -2646,7 +2451,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         {!isNodeListCollapsed && (
         <>
         {groupNodesByRole && roleDistribution && roleDistribution.length > 0 && (
-          <RoleDistributionSummary distribution={roleDistribution} t={t} />
+          <RoleDistributionSummary distribution={roleDistribution} />
         )}
         {showImportContactModal && currentSourceId && (
           <ImportContactUrlModal
@@ -2682,15 +2487,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 if (!item) return null;
 
                 if (item.type === 'header') {
-                  const meta = NODE_TYPE_CATEGORY_META[item.category];
-                  const roleLabel = t(meta.labelKey, meta.label);
-                  const collapsed = item.collapsed;
                   return (
-                    <div
+                    <RoleGroupHeader
                       key={`group:${item.category}`}
                       data-index={virtualRow.index}
                       ref={nodesRowVirtualizer.measureElement}
-                      className={roleGroupingStyles.groupHeader}
+                      category={item.category}
+                      count={item.count}
+                      collapsed={item.collapsed}
+                      onToggle={toggleRoleGroupCollapsed}
                       style={{
                         position: 'absolute',
                         top: 0,
@@ -2698,27 +2503,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         width: '100%',
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={!collapsed}
-                      onClick={() => toggleRoleGroupCollapsed(item.category)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          toggleRoleGroupCollapsed(item.category);
-                        }
-                      }}
-                      title={collapsed
-                        ? t('nodes.expand_role_group', 'Expand {{role}} group', { role: roleLabel })
-                        : t('nodes.collapse_role_group', 'Collapse {{role}} group', { role: roleLabel })}
-                    >
-                      {/* Collapsed = right-pointing chevron ("expand this"),
-                          expanded = down chevron ("collapse this") — the more
-                          common disclosure-triangle convention. */}
-                      <UiIcon name={collapsed ? 'chevronRight' : 'chevronDown'} size={14} />
-                      <span className={roleGroupingStyles.groupName}>{roleLabel}</span>
-                      <span className={roleGroupingStyles.groupCount}>{item.count}</span>
-                    </div>
+                    />
                   );
                 }
 
@@ -2934,41 +2719,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
                   <div className="node-details">
                     <div className="node-stats">
-                      {node.hopsAway === 0 && node.snr != null && (
-                        <span className="stat" title={t('nodes.snr')}>
-                          <UiIcon name="wifi" size={14} /> {node.snr.toFixed(1)}dB
-                        </span>
-                      )}
-                      {node.hopsAway === 0 && node.rssi != null && (
-                        <span className="stat" title={t('nodes.rssi')}>
-                          <UiIcon name="radioSignal" size={14} /> {node.rssi}dBm
-                        </span>
-                      )}
-                      {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
-                        <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? t('nodes.plugged_in') : t('nodes.battery_level')}>
-                          <UiIcon name={batteryIconName(node.deviceMetrics.batteryLevel)} size={14} /> {node.deviceMetrics.batteryLevel === 101 ? t('nodes.plugged_in') : `${node.deviceMetrics.batteryLevel}%`}
-                        </span>
-                      )}
-                      {node.deviceMetrics?.voltage !== undefined && node.deviceMetrics.voltage !== null && (
-                        <span className="stat" title={t('nodes.voltage')}>
-                          <UiIcon name="zap" size={14} /> {node.deviceMetrics.voltage.toFixed(2)}V
-                        </span>
-                      )}
-                      {(node.hopsAway != null || node.lastMessageHops != null) && (() => {
-                        const effectiveHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                        return effectiveHops < 999 ? (
-                          <span className="stat" title={t('nodes.hops_away')}>
-                            <UiIcon name="link" size={14} /> {effectiveHops} {t('nodes.hop', { count: effectiveHops })}
-                            {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
-                          </span>
-                        ) : null;
-                      })()}
-                      <DistanceDisplay
-                        homeNode={homeNode}
-                        targetNode={node}
-                        distanceUnit={distanceUnit}
-                        t={t}
-                      />
+                      <NodeStatChips
+                        snr={node.hopsAway === 0 ? node.snr : undefined}
+                        rssi={node.hopsAway === 0 ? node.rssi : undefined}
+                        batteryLevel={node.deviceMetrics?.batteryLevel}
+                        voltage={node.deviceMetrics?.voltage}
+                        hops={(node.hopsAway != null || node.lastMessageHops != null)
+                          ? getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum)
+                          : undefined}
+                        hopsSuffix={node.channel != null && node.channel !== 0 ? ` (ch:${node.channel})` : undefined}
+                      >
+                        <DistanceDisplay
+                          homeNode={homeNode}
+                          targetNode={node}
+                          distanceUnit={distanceUnit}
+                          t={t}
+                        />
+                      </NodeStatChips>
                     </div>
 
                     <div className="node-time">
