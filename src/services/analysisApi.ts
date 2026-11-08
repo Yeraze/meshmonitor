@@ -55,8 +55,35 @@ async function authedGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   return api.get<T>(path);
 }
 
-export async function fetchPositionsPage(args: FetchArgs): Promise<Paginated<any>> {
-  return authedGet<Paginated<any>>(
+/**
+ * One `/api/analysis/positions` row. MeshCore rows reuse a synthetic `nodeNum`
+ * (from the public key): identity, emphasis and joins use `nodeKey`, never it.
+ * `nodeKey` is optional only so an older server (no MeshCore rows) still works.
+ */
+export interface PositionRow {
+  nodeNum: number;
+  sourceId: string;
+  latitude: number;
+  longitude: number;
+  altitude?: number | null;
+  timestamp: number;
+  /** `mt:<nodeNum>` or `mc:<publicKey>`. */
+  nodeKey?: string;
+  /** MeshCore rows only: the full public key. */
+  publicKey?: string;
+}
+
+/** One `/api/analysis/hop-counts` entry (same `nodeKey` rule as {@link PositionRow}). */
+export interface HopEntry {
+  sourceId: string;
+  nodeNum: number;
+  hops: number;
+  nodeKey?: string;
+  publicKey?: string;
+}
+
+export async function fetchPositionsPage(args: FetchArgs): Promise<Paginated<PositionRow>> {
+  return authedGet<Paginated<PositionRow>>(
     `/api/analysis/positions?${buildQuery(args)}`,
     args.signal,
   );
@@ -94,6 +121,54 @@ export async function fetchMeshCoreNeighbors(
   );
   const items = results.flatMap((r) => (r.success ? r.data.items : []));
   return { items };
+}
+
+/** One end of a MeshCore hop link (`/hop-snr`). Only resolved ends carry a key. */
+export interface MeshCoreHopLinkEnd {
+  publicKey: string | null;
+  hash: string | null;
+  candidates: number;
+}
+
+/** One directional MeshCore link: `receiver` heard `sender`. SNR in dB. */
+export interface MeshCoreHopLink {
+  sender: MeshCoreHopLinkEnd;
+  receiver: MeshCoreHopLinkEnd;
+  count: number;
+  lastSnr: number;
+  avgSnr: number;
+  minSnr: number;
+  maxSnr: number;
+  lastTimestamp: number;
+  initiatedCount: number;
+  points: Array<[number, number]>;
+}
+
+/** A hop link tagged with the source it was observed on. */
+export interface SourcedMeshCoreHopLink extends MeshCoreHopLink {
+  sourceId: string;
+}
+
+/**
+ * Per-hop trace links for the given device MeshCore sources. A source that
+ * errors yields no links rather than failing the others (mirrors
+ * {@link fetchMeshCoreNeighbors}).
+ */
+export async function fetchMeshCoreTraceLinks(
+  args: { sources: string[]; hours: number; points?: number; signal?: AbortSignal },
+): Promise<{ links: SourcedMeshCoreHopLink[] }> {
+  const q = `hours=${Math.max(1, Math.ceil(args.hours))}&points=${args.points ?? 1}`;
+  const results = await Promise.all(
+    args.sources.map((sourceId) =>
+      authedGet<{ success: boolean; data: { links: MeshCoreHopLink[] } }>(
+        `/api/sources/${sourceId}/meshcore/hop-snr?${q}`,
+        args.signal,
+      )
+        .then((r) => (r.success ? r.data.links : []).map((l) => ({ ...l, sourceId })))
+        .catch(() => [] as SourcedMeshCoreHopLink[]),
+    ),
+  );
+  return { links: results.flat() };
 }
 
 export async function fetchCoverageGrid(
@@ -245,10 +320,10 @@ export async function deleteCoverageSurvey(id: string): Promise<void> {
 export async function fetchHopCounts(args: {
   sources: string[];
   signal?: AbortSignal;
-}): Promise<{ entries: any[] }> {
+}): Promise<{ entries: HopEntry[] }> {
   const p = new URLSearchParams();
   if (args.sources.length) p.set('sources', args.sources.join(','));
-  return authedGet<{ entries: any[] }>(
+  return authedGet<{ entries: HopEntry[] }>(
     `/api/analysis/hop-counts?${p.toString()}`,
     args.signal,
   );

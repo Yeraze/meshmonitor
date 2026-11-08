@@ -27,6 +27,7 @@ vi.mock('../../contexts/SettingsContext', () => ({
   }),
 }));
 vi.mock('../../hooks/useMapAnalysisData', () => ({
+  useMeshCoreTraceLinks: () => ({ data: undefined }),
   useTraceroutes: () => ({
     items: [],
     isLoading: false,
