@@ -41,6 +41,8 @@ interface Ctx {
   repo: TranslationsRepository;
   addMessage(id: string, sourceId: string): Promise<void>;
   removeMessage(id: string): Promise<void>;
+  addMeshcoreMessage(id: string, sourceId: string): Promise<void>;
+  removeMeshcoreMessage(id: string): Promise<void>;
   /** Corrupt a counter directly, to test reconciliation. */
   setRefCount(cacheKey: string, n: number): Promise<void>;
 }
@@ -220,6 +222,25 @@ function runSharedTests(getCtx: () => Ctx) {
     expect(await repo.getCacheEntry('once')).toBeNull();
   });
 
+  it('the orphan sweep keeps a link to a meshcore_messages row and removes it once that row is gone', async () => {
+    const { repo, addMeshcoreMessage, removeMeshcoreMessage } = getCtx();
+    await repo.insertCacheEntry(entry('mc'), NOW);
+    await addMeshcoreMessage('mc-1', 'src-mc');
+    await repo.linkMessage('src-mc', 'mc-1', 'en', 'mc', NOW);
+    // Same id on another source must not keep this link alive.
+    await addMeshcoreMessage('mc-1', 'other-src');
+
+    expect(await repo.removeOrphanedLinks(ALL_SOURCES)).toBe(0);
+    expect(await repo.removeOrphanedLinks('src-mc')).toBe(0);
+    expect(await repo.getStoredTranslations('src-mc', ['mc-1'], 'en')).toHaveLength(1);
+    expect((await repo.getCacheEntry('mc'))?.messageRefCount).toBe(1);
+
+    await removeMeshcoreMessage('mc-1');
+    expect(await repo.removeOrphanedLinks('src-mc')).toBe(1);
+    expect(await repo.getStoredTranslations('src-mc', ['mc-1'], 'en')).toHaveLength(0);
+    expect((await repo.getCacheEntry('mc'))?.messageRefCount).toBe(0);
+  });
+
   it('reconcile pins an entry whose links reached the threshold outside linkMessage', async () => {
     const { repo, addMessage, setRefCount } = getCtx();
     await repo.insertCacheEntry(entry('late'), NOW);
@@ -244,11 +265,14 @@ describe('TranslationsRepository — SQLite', () => {
     migration188.up(sqlite);
     migration188.up(sqlite);
     sqlite.exec('CREATE TABLE messages (id TEXT PRIMARY KEY, sourceId TEXT)');
+    sqlite.exec('CREATE TABLE meshcore_messages (id TEXT, sourceId TEXT, PRIMARY KEY (id, sourceId))');
     const repo = new TranslationsRepository(drizzleSqlite(sqlite, { schema }), 'sqlite');
     ctx = {
       repo,
       addMessage: async (id, sourceId) => { sqlite.prepare('INSERT INTO messages (id, sourceId) VALUES (?, ?)').run(id, sourceId); },
       removeMessage: async (id) => { sqlite.prepare('DELETE FROM messages WHERE id = ?').run(id); },
+      addMeshcoreMessage: async (id, sourceId) => { sqlite.prepare('INSERT INTO meshcore_messages (id, sourceId) VALUES (?, ?)').run(id, sourceId); },
+      removeMeshcoreMessage: async (id) => { sqlite.prepare('DELETE FROM meshcore_messages WHERE id = ? AND sourceId = ?').run(id, 'src-mc'); },
       setRefCount: async (k, n) => { sqlite.prepare('UPDATE translation_cache SET messageRefCount = ? WHERE cacheKey = ?').run(n, k); },
     };
   });
@@ -286,11 +310,14 @@ describe.skipIf(!postgresAvailable)('TranslationsRepository — PostgreSQL (cont
       client.release();
     }
     await pool.query('CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, "sourceId" TEXT)');
+    await pool.query('CREATE TABLE IF NOT EXISTS meshcore_messages (id TEXT, "sourceId" TEXT, PRIMARY KEY (id, "sourceId"))');
     const repo = new TranslationsRepository(drizzlePostgres(pool, { schema }), 'postgres');
     ctx = {
       repo,
       addMessage: async (id, sourceId) => { await pool.query('INSERT INTO messages (id, "sourceId") VALUES ($1, $2)', [id, sourceId]); },
       removeMessage: async (id) => { await pool.query('DELETE FROM messages WHERE id = $1', [id]); },
+      addMeshcoreMessage: async (id, sourceId) => { await pool.query('INSERT INTO meshcore_messages (id, "sourceId") VALUES ($1, $2)', [id, sourceId]); },
+      removeMeshcoreMessage: async (id) => { await pool.query('DELETE FROM meshcore_messages WHERE id = $1 AND "sourceId" = $2', [id, 'src-mc']); },
       setRefCount: async (k, n) => { await pool.query('UPDATE translation_cache SET "messageRefCount" = $1 WHERE "cacheKey" = $2', [n, k]); },
     };
   });
@@ -300,7 +327,7 @@ describe.skipIf(!postgresAvailable)('TranslationsRepository — PostgreSQL (cont
   });
 
   beforeEach(async () => {
-    await pool.query('TRUNCATE TABLE translation_cache, message_translations, messages');
+    await pool.query('TRUNCATE TABLE translation_cache, message_translations, messages, meshcore_messages');
   });
 
   runSharedTests(() => ctx);
@@ -318,11 +345,14 @@ describe.skipIf(!mysqlAvailable)('TranslationsRepository — MySQL (container)',
     await runMigration188Mysql(pool);
     await runMigration188Mysql(pool);
     await pool.query('CREATE TABLE IF NOT EXISTS messages (id VARCHAR(64) PRIMARY KEY, sourceId VARCHAR(36))');
+    await pool.query('CREATE TABLE IF NOT EXISTS meshcore_messages (id VARCHAR(64), sourceId VARCHAR(36), PRIMARY KEY (id, sourceId))');
     const repo = new TranslationsRepository(drizzleMysql(pool, { schema, mode: 'default' }), 'mysql');
     ctx = {
       repo,
       addMessage: async (id, sourceId) => { await pool.query('INSERT INTO messages (id, sourceId) VALUES (?, ?)', [id, sourceId]); },
       removeMessage: async (id) => { await pool.query('DELETE FROM messages WHERE id = ?', [id]); },
+      addMeshcoreMessage: async (id, sourceId) => { await pool.query('INSERT INTO meshcore_messages (id, sourceId) VALUES (?, ?)', [id, sourceId]); },
+      removeMeshcoreMessage: async (id) => { await pool.query('DELETE FROM meshcore_messages WHERE id = ? AND sourceId = ?', [id, 'src-mc']); },
       setRefCount: async (k, n) => { await pool.query('UPDATE translation_cache SET messageRefCount = ? WHERE cacheKey = ?', [n, k]); },
     };
   });
@@ -335,6 +365,7 @@ describe.skipIf(!mysqlAvailable)('TranslationsRepository — MySQL (container)',
     await pool.query('TRUNCATE TABLE translation_cache');
     await pool.query('TRUNCATE TABLE message_translations');
     await pool.query('TRUNCATE TABLE messages');
+    await pool.query('TRUNCATE TABLE meshcore_messages');
   });
 
   runSharedTests(() => ctx);

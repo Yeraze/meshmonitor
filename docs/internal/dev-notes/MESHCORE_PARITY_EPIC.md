@@ -40,7 +40,7 @@ Each phase's scope is the checklist in its issue.
 - [x] **P1 #6258 Settings:** telemetry retention editors, purge telemetry and
   clean outliers, node dimming and hide-incomplete, global restart/shutdown
   and Solar Monitoring reachable without a Meshtastic source.
-- [ ] **P2 #6261 Messaging:** Room unread, DM/Room mute, mark-all-read,
+- [x] **P2 #6261 Messaging:** Room unread, DM/Room mute, mark-all-read,
   translation, composer emoji picker.
 - [ ] **P3 #6259 Nodes and DM lists:** sort, columns, filters, group by role,
   export, DM list filters and richer rows.
@@ -72,3 +72,12 @@ Maintainer answers, 2026-11-07:
 - `meshcore_packet_log_*` per source is out of scope (Meshtastic's packet log is global too).
 
 Shipped: 3 work packages (global moves + purge scoping; dimming + hide-incomplete; MeshCore telemetry settings + danger actions). Deviations: confirm copy for Meshtastic source-page purges now names the source (review finding). Noted, not fixed: on MeshCore Settings the label and its help text render on one line (pre-existing `.setting-description` inline style on that page; every existing field does it).
+
+### P2 #6261 (spec: `MESHCORE_PARITY_P2_SPEC.md`)
+Orchestrator decisions (recommended options, aligned with the one-implementation rule):
+room unread uses receipt time; room mute lives in `mutedDMs`; MeshCore channels/DMs/rooms
+get list-header mark-all; MeshCore composer stays single-line; MeshCore adopts the shared
+composer look. Read models stay separate (Meshtastic per-message rows vs MeshCore
+watermarks; the schema forbids merging) — the controls and mute state are shared.
+Found: translation orphan sweep would delete every MeshCore link — fixed first in WP3.
+Shipped: 4 work packages. Shared now: `MuteMenu`/`MutedIndicator` (replaced 3 copies), `MarkAllReadButton` (Meshtastic sidebar, ChannelsTab, DashboardSidebar, MeshCore channels/DMs/rooms), `MessageComposeInput` (MeshCore uses it via `draftStore`/`maxBytes`/`blockSendOverLimit`/`allowNewlines` props), translation pipeline (server dispatch in `translatableMessages.ts`). Deviations: MessagesTab DM mute menu now shows the full option list when muted (shared order). Browser check limited to offline views (MeshCore channel/DM/room views need a live manager); composer, counter and mute bell verified rendered.

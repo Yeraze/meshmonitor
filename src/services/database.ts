@@ -4864,6 +4864,19 @@ class DatabaseService {
     return this.conversationReadStateRepo.setLastReadAsync(userId, sourceId, kind, conversationKey, lastReadAt);
   }
 
+  /**
+   * Batch form of {@link setConversationReadStateAsync} for mark-all-read
+   * (#6261). Returns the effective watermarks grouped by kind.
+   */
+  async setConversationReadStateManyAsync(
+    userId: number | null,
+    sourceId: string,
+    entries: Array<{ kind: ConversationKind; conversationKey: string; lastReadAt: number }>
+  ): Promise<ConversationReadStateMap> {
+    if (!this.conversationReadStateRepo) return emptyReadStateMap();
+    return this.conversationReadStateRepo.setManyLastReadAsync(userId, sourceId, entries);
+  }
+
   cleanupOldReadMessages(days: number): number {
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
     // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch

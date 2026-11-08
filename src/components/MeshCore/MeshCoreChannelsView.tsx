@@ -25,12 +25,14 @@ import { MeshCoreChannelMarker } from './MeshCoreChannelMarker';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOptionalChannelMuteSettings, useSettingsOptional } from '../../contexts/SettingsContext';
-import { loadChannelLastRead, markChannelRead as persistChannelRead } from './meshcoreUnreadStore';
+import { loadChannelLastRead, markChannelRead as persistChannelRead, markManyRead } from './meshcoreUnreadStore';
 import { slotMoveMap, subscribeChannelsReordered } from './meshcoreChannelReorderEvents';
 import { subscribeFiltersChanged } from './meshcoreFilterEvents';
 import { compareMeshCoreMessages } from './messageOrder';
 import { mergeMeshCoreHeardBy } from '../../utils/meshcoreHeardBy';
 import { UiIcon } from '../icons';
+import { MuteMenu, MutedIndicator } from '../notifications/MuteMenu';
+import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import { MeshCoreChannelReorderList } from './MeshCoreChannelReorderList';
 import {
   type ChannelSortMode,
@@ -144,8 +146,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const tapbackEmojis = useSettingsOptional()?.tapbackEmojis;
   const isChannelMutedFn = muteSettings?.isChannelMuted;
   const canMute = !!muteSettings && authStatus?.authenticated === true;
-  const [showMuteMenu, setShowMuteMenu] = useState(false);
-  // #6178 → #6193: per-source Required Repeaters list + ANY/ALL mode. Gates the
+    // #6178 → #6193: per-source Required Repeaters list + ANY/ALL mode. Gates the
   // resend ↻ button so it stays until the gate is satisfied.
   const [requiredRepeaterKeys, setRequiredRepeaterKeys] = useState<string[]>([]);
   const [requiredRepeaterMode, setRequiredRepeaterMode] = useState<RequiredRepeaterMode>('any');
@@ -734,6 +735,23 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     return latest > (lastRead[idx] ?? 0);
   }, [isChannelMuted, active, mobileShowContent, effectiveLatest, lastRead]);
 
+  // Mark-all-read (#6261): every channel whose newest message is past its
+  // marker, muted ones included (muting hides the dot, not the backlog).
+  const unreadChannelEntries = useMemo(() => {
+    const out: Array<{ kind: 'meshcore_channel'; key: string; ts: number }> = [];
+    for (const [idxStr, latest] of Object.entries(effectiveLatest)) {
+      const idx = Number(idxStr);
+      if (latest && latest > (lastRead[idx] ?? 0)) out.push({ kind: 'meshcore_channel', key: String(idx), ts: latest });
+    }
+    return out;
+  }, [effectiveLatest, lastRead]);
+
+  const handleMarkAllChannelsRead = useCallback(() => {
+    if (!sourceId) return;
+    markManyRead(sourceId, unreadChannelEntries);
+    setLastRead(loadChannelLastRead(sourceId));
+  }, [sourceId, unreadChannelEntries]);
+
   const channelLabel = useCallback(
     (c: { id: number; name: string }) => formatMeshCoreChannelName(
       c.name,
@@ -865,6 +883,14 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 {unreadChannelCount}
               </span>
             )}
+            {unreadChannelEntries.length > 0 && (
+              <MarkAllReadButton
+                onMarkAll={handleMarkAllChannelsRead}
+                label={t('channels.mark_all_read_button', 'Mark all as Read')}
+                title={t('meshcore.channels.mark_all_read_title', 'Mark every channel as read')}
+                unreadCount={unreadChannelEntries.length}
+              />
+            )}
             <button
               type="button"
               className={`mc-channel-sort-toggle ${sortUnreadFirst ? 'active' : ''}`}
@@ -946,15 +972,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                       {t('meshcore.channels.virtual_tag', '(Virtual)')}
                     </sup>
                   )}
-                  {isChannelMuted(c.id) && (
-                    <span
-                      className={styles.mutedIcon}
-                      title={t('notifications.muted', 'Notifications muted')}
-                      aria-label={t('notifications.muted', 'Notifications muted')}
-                    >
-                      <UiIcon name="muted" size={13} />
-                    </span>
-                  )}
+                  {isChannelMuted(c.id) && <MutedIndicator />}
                 </div>
                 <div className="mc-channel-row-meta">
                   {count} {t('meshcore.messages', 'messages')}
@@ -1069,64 +1087,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           </div>
         )}
         {canMute && muteSettings && (
-          <div className={styles.muteWrap}>
-            <button
-              type="button"
-              className={`${styles.muteButton} ${isChannelMuted(active.id) ? styles.active : ''}`}
-              onClick={() => setShowMuteMenu(v => !v)}
-              aria-haspopup="menu"
-              aria-expanded={showMuteMenu}
-              title={isChannelMuted(active.id)
-                ? t('notifications.mute_channel_active', 'Muted — click to change')
-                : t('notifications.mute_channel', 'Mute notifications')}
-              aria-label={isChannelMuted(active.id)
-                ? t('notifications.mute_channel_active', 'Muted — click to change')
-                : t('notifications.mute_channel', 'Mute notifications')}
-            >
-              <UiIcon name={isChannelMuted(active.id) ? 'muted' : 'notifications'} size={15} />
-            </button>
-            {showMuteMenu && (
-              <>
-                <div className={styles.muteBackdrop} onClick={() => setShowMuteMenu(false)} />
-                <div className={styles.muteMenu} role="menu">
-                  {isChannelMuted(active.id) && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className={styles.muteMenuItem}
-                      onClick={() => { setShowMuteMenu(false); void muteSettings.unmuteChannel(active.id); }}
-                    >
-                      <UiIcon name="unmute" size={14} /> {t('notifications.unmute', 'Unmute')}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={styles.muteMenuItem}
-                    onClick={() => { setShowMuteMenu(false); void muteSettings.muteChannel(active.id, null); }}
-                  >
-                    <UiIcon name="muted" size={14} /> {t('notifications.mute_indefinite', 'Mute indefinitely')}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={styles.muteMenuItem}
-                    onClick={() => { setShowMuteMenu(false); void muteSettings.muteChannel(active.id, Date.now() + 60 * 60 * 1000); }}
-                  >
-                    <UiIcon name="time" size={14} /> {t('notifications.mute_1h', 'Mute for 1 hour')}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={styles.muteMenuItem}
-                    onClick={() => { setShowMuteMenu(false); void muteSettings.muteChannel(active.id, Date.now() + 7 * 24 * 60 * 60 * 1000); }}
-                  >
-                    <UiIcon name="calendar" size={14} /> {t('notifications.mute_1w', 'Mute for 1 week')}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          <MuteMenu
+            muted={isChannelMuted(active.id)}
+            onMute={(until) => muteSettings.muteChannel(active.id, until)}
+            onUnmute={() => muteSettings.unmuteChannel(active.id)}
+          />
         )}
         {canSend && filtered.length > 0 && (
           <div className="meshcore-conversation-toolbar">

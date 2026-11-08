@@ -47,6 +47,9 @@ export function useReadStateSync({ sourceId }: { sourceId: string }): void {
           lastReadAt,
         });
       },
+      async saveMany(id, entries) {
+        await apiService.post('/api/read-state/batch', { sourceId: id, entries });
+      },
     });
 
     void hydrateReadState(sourceId);

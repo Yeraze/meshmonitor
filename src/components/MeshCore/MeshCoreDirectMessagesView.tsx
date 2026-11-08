@@ -17,9 +17,13 @@ import { MeshCoreNodeNeighboursConfig } from './MeshCoreNodeNeighboursConfig';
 import { MeshCoreNodeTimeSyncConfig } from './MeshCoreNodeTimeSyncConfig';
 import TelemetryGraphs from '../TelemetryGraphs';
 import { useAuth } from '../../contexts/AuthContext';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, useOptionalMuteSettings } from '../../contexts/SettingsContext';
+import { MuteMenu, MutedIndicator } from '../notifications/MuteMenu';
+import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import {
   markDmRead,
+  markManyRead,
+  latestIncomingDmByPeer,
   loadDmLastRead,
   subscribeUnreadChanged,
   computeUnreadDmPeers,
@@ -125,7 +129,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   onShowOnMap,
 }) => {
   const { t } = useTranslation();
-  const { hasPermission } = useAuth();
+  const { hasPermission, authStatus } = useAuth();
+  const mute = useOptionalMuteSettings();
+  const canMute = !!mute && authStatus?.authenticated === true;
   // Honor the user's Temperature Unit + telemetry time-range settings on the
   // per-node telemetry graph, consistent with the Meshtastic DM view and the
   // MeshCore Telemetry dashboard (#3659).
@@ -546,6 +552,19 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     });
   }, [sourceId, messages, contacts, selfKey, selected, unreadTick]);
 
+  // Mark-all-read (#6261): every peer with an incoming DM past its marker,
+  // muted peers included (muting hides the dot, not the backlog).
+  const unreadDmEntries = useMemo(() => {
+    void unreadTick;
+    if (!sourceId) return [];
+    const lastRead = loadDmLastRead(sourceId);
+    const out: Array<{ kind: 'meshcore_dm'; key: string; ts: number }> = [];
+    for (const [peer, ts] of latestIncomingDmByPeer({ messages, contacts, selfKey })) {
+      if (ts > (lastRead[peer] ?? 0)) out.push({ kind: 'meshcore_dm', key: peer, ts });
+    }
+    return out;
+  }, [sourceId, messages, contacts, selfKey, unreadTick]);
+
   const handleSelectContact = (key: string) => {
     setSelected(key);
     if (isMobileViewport()) setMobileShowContent(true);
@@ -588,6 +607,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   // than send messages that can never arrive (issue #3755).
   const isSelectedRepeater = selected ? contactsByKey.get(selected)?.advType === 2 : false;
 
+  const muteKey = selected ? canonicalizePeerKey(selected, contacts) : '';
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
 
   return (
@@ -612,6 +632,14 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
             <>
               <span>{t('meshcore.nav.dms', 'Node Details')}</span>
               <span className="pane-count">{dmPeers.length}</span>
+              {unreadDmEntries.length > 0 && (
+                <MarkAllReadButton
+                  onMarkAll={() => { if (sourceId) markManyRead(sourceId, unreadDmEntries); }}
+                  label={t('messages.mark_all_read_button', 'Mark All Read')}
+                  title={t('messages.mark_all_read_title', 'Mark all direct messages as read')}
+                  unreadCount={unreadDmEntries.length}
+                />
+              )}
               <div className="sort-controls meshcore-sort-controls">
                 <select
                   aria-label={t('meshcore.filter_by_type', 'Filter by node type')}
@@ -697,7 +725,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
               const isFavorite = favoriteByKey.get(key) ?? false;
               const roleIcon = meshcoreRoleIconName(c?.advType);
-              const hasUnread = unreadPeers.has(key);
+              const isMuted = mute?.isDMMuted(key) ?? false;
+              const hasUnread = unreadPeers.has(key) && !isMuted;
               return (
                 <button
                   key={key}
@@ -726,6 +755,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                       <span className="mc-dm-row-favorite" aria-label={t('meshcore.favorite.is_favorite', 'Favorite')} title={t('meshcore.favorite.is_favorite', 'Favorite')}><UiIcon name="favorite" size={15} /></span>
                     )}
                     <span className="mc-node-row-display-name">{name}</span>
+                    {isMuted && <MutedIndicator />}
                   </div>
                   <div className="mc-node-row-key">{key.substring(0, 20)}…</div>
                 </button>
@@ -758,8 +788,16 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               </div>
             ) : (
               <>
-                {canSend && filtered.length > 0 && (
+                {((canSend && filtered.length > 0) || canMute) && (
                   <div className="meshcore-conversation-toolbar">
+                    {canMute && mute && (
+                      <MuteMenu
+                        muted={mute.isDMMuted(muteKey)}
+                        onMute={(until) => mute.muteDM(muteKey, until)}
+                        onUnmute={() => mute.unmuteDM(muteKey)}
+                      />
+                    )}
+                    {canSend && filtered.length > 0 && (
                     <button
                       type="button"
                       className="meshcore-clear-conversation-btn"
@@ -768,6 +806,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     >
                       <UiIcon name="delete" size={16} /> {t('meshcore.clear_conversation', 'Clear conversation')}
                     </button>
+                    )}
                   </div>
                 )}
                 <MeshCoreMessageStream

@@ -25,7 +25,7 @@ describe('MeshCoreMessageStream disabledReason', () => {
       <MeshCoreMessageStream messages={[]} disabled disabledReason={REASON} onSend={async () => true} />,
     );
     const bar = container.querySelector('.meshcore-send-bar');
-    const input = container.querySelector('input');
+    const input = container.querySelector('textarea');
     const button = container.querySelector('.meshcore-send-bar button');
 
     expect(bar).toHaveAttribute('title', REASON);
@@ -40,7 +40,7 @@ describe('MeshCoreMessageStream disabledReason', () => {
       <MeshCoreMessageStream messages={[]} disabled onSend={async () => true} />,
     );
     const bar = container.querySelector('.meshcore-send-bar');
-    const input = container.querySelector('input');
+    const input = container.querySelector('textarea');
     const button = container.querySelector('.meshcore-send-bar button');
 
     expect(bar).not.toHaveAttribute('title');
@@ -53,7 +53,7 @@ describe('MeshCoreMessageStream disabledReason', () => {
       <MeshCoreMessageStream messages={[]} disabledReason={REASON} onSend={async () => true} />,
     );
     const bar = container.querySelector('.meshcore-send-bar');
-    const input = container.querySelector('input');
+    const input = container.querySelector('textarea');
 
     expect(bar).not.toHaveAttribute('title');
     expect(input).not.toHaveAttribute('title');

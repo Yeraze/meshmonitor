@@ -1,0 +1,21 @@
+/* Default look for the shared mark-all-read button (#6261). Callers that pass
+   their own className (Meshtastic surfaces) skip this. */
+.markAllRead {
+  padding: 0.15rem 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.markAllRead:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.markAllRead:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

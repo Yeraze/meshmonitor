@@ -23,8 +23,7 @@ import {
 } from '../../types/translationProviders.js';
 import { isValidLangCode, normalizeTargetLang } from '../services/translation/cacheKey.js';
 import databaseService from '../../services/database.js';
-import type { DbMessage } from '../../db/types.js';
-import { resolveMessageReadAccess, type MessageReadAccess } from '../utils/messageReadAccess.js';
+import { resolveTranslatableMessageScope } from '../services/translation/translatableMessages.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { requireAuth, requirePermission, requireAdmin } from '../auth/authMiddleware.js';
 import { translateLimiter } from '../middleware/rateLimiters.js';
@@ -34,30 +33,12 @@ const router = express.Router();
 
 /** Max message ids per `GET /stored` call. */
 export const MAX_STORED_TRANSLATION_IDS = 200;
-/** Matches `messages.id` (MySQL VARCHAR(64)). */
+/** Matches `messages.id` / `meshcore_messages.id` (MySQL VARCHAR(64)). */
 const MAX_MESSAGE_ID_LEN = 64;
 const MAX_SOURCE_ID_LEN = 64;
 
 function isNonEmptyString(value: unknown, maxLen: number): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= maxLen;
-}
-
-/**
- * Load the messages with `ids` on `sourceId` that the caller may read, using the
- * SAME predicate as the message-list endpoints (`GET /api/messages`, via
- * `resolveMessageReadAccess`): DMs need `messages:read`, virtual channels
- * their per-entry `canRead`, physical channels `channel_0:read` +
- * `channel_N:read`, all scoped to `sourceId`. Missing and hidden ids are
- * indistinguishable to the caller.
- */
-async function loadReadableMessages(
-  access: MessageReadAccess,
-  sourceId: string,
-  ids: string[],
-): Promise<DbMessage[]> {
-  if (!access.canReadAny || ids.length === 0) return [];
-  const rows = await databaseService.messages.getMessagesByIdsInSource(sourceId, ids);
-  return rows.filter((msg) => access.canReadChannel(Number(msg.channel)));
 }
 
 /**
@@ -93,8 +74,10 @@ router.post(
           return fail(res, 400, 'INVALID_INPUT', 'sourceLang is not a valid language code');
         }
 
-        const access = await resolveMessageReadAccess(req.user, sourceId);
-        const [message] = await loadReadableMessages(access, sourceId, [messageId]);
+        // Same visibility as the message-list endpoints of the source's
+        // protocol (Meshtastic `/api/messages`, MeshCore `/messages*`).
+        const scope = await resolveTranslatableMessageScope(req.user, sourceId);
+        const [message] = await scope.loadReadable([messageId]);
         if (!message) {
           return fail(res, 404, 'NOT_FOUND', 'Message not found');
         }
@@ -164,8 +147,8 @@ router.get('/stored', async (req, res) => {
       return fail(res, 403, 'TRANSLATION_DISABLED', 'Translation is not enabled');
     }
 
-    const access = await resolveMessageReadAccess(req.user, sourceId);
-    if (!access.canReadAny) {
+    const scope = await resolveTranslatableMessageScope(req.user, sourceId);
+    if (!scope.canReadAny) {
       return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
     }
 
@@ -178,7 +161,7 @@ router.get('/stored', async (req, res) => {
     // Visibility is checked only for ids that actually have a translation,
     // and against the live message row, so a link whose message was deleted
     // is never served.
-    const readable = await loadReadableMessages(access, sourceId, stored.map((s) => s.messageId));
+    const readable = await scope.loadReadable(stored.map((s) => s.messageId));
     const readableIds = new Set(readable.map((m) => m.id));
     for (const row of stored) {
       if (!readableIds.has(row.messageId)) continue;

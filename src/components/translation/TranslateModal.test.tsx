@@ -167,4 +167,17 @@ describe('TranslateModal', () => {
       expect(screen.getByText(/Message not translated/i)).toBeDefined();
     });
   });
+
+  it('uses maxBytes for the counter and the over-limit warning', () => {
+    render(
+      <TranslateModal
+        isOpen={true}
+        onClose={onClose}
+        initialText="Hello world"
+        onApply={onApply}
+        maxBytes={150}
+      />
+    );
+    expect(screen.getByText(/11 chars • 11 \/ 150 bytes/i)).toBeDefined();
+  });
 });

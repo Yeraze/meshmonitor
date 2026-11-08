@@ -83,4 +83,70 @@ describe('MessageComposeInput', () => {
     expect(send.disabled).toBe(true);
     expect(container.querySelector('.input-with-counter')?.textContent).toContain('3');
   });
+
+  describe('configurable props (#6261)', () => {
+    const mount = (props: Partial<React.ComponentProps<typeof MessageComposeInput>> = {}, onSend = vi.fn()) => {
+      const store = createComposeDraftStore();
+      const Host = () => {
+        const ref = useRef<HTMLTextAreaElement>(null);
+        return (
+          <MessageComposeInput
+            listId="l"
+            textareaRef={ref}
+            mentionCandidates={[]}
+            homoglyphEnabled={false}
+            placeholder="p"
+            disabled={false}
+            onSend={onSend}
+            sendAriaLabel="Send"
+            draftStore={store}
+            {...props}
+          />
+        );
+      };
+      const utils = render(<Host />);
+      return {
+        ...utils,
+        store,
+        onSend,
+        box: utils.container.querySelector('textarea') as HTMLTextAreaElement,
+        send: utils.getByLabelText('Send') as HTMLButtonElement,
+      };
+    };
+
+    it('binds to an explicit draftStore instead of the context store', () => {
+      const { box, store } = mount();
+      fireEvent.change(box, { target: { value: 'own' } });
+      expect(store.get()).toBe('own');
+    });
+
+    it('uses maxBytes for the counter and blocks over-limit sends when asked', () => {
+      const { box, send, onSend, container } = mount({ maxBytes: 5, blockSendOverLimit: true });
+      fireEvent.change(box, { target: { value: 'abcdef' } });
+      expect(container.querySelector('.input-with-counter')?.textContent).toContain('6/5');
+      expect(send.disabled).toBe(true);
+      fireEvent.keyDown(box, { key: 'Enter' });
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it('does not block over the limit by default', () => {
+      const { box, send } = mount({ maxBytes: 5 });
+      fireEvent.change(box, { target: { value: 'abcdef' } });
+      expect(send.disabled).toBe(false);
+    });
+
+    it('sending disables the box and send and sets aria-busy', () => {
+      const { box, send } = mount({ sending: true });
+      fireEvent.change(box, { target: { value: 'x' } });
+      expect(box.disabled).toBe(true);
+      expect(send.disabled).toBe(true);
+      expect(send.getAttribute('aria-busy')).toBe('true');
+    });
+
+    it('allowNewlines=false turns pasted newlines into spaces', () => {
+      const { box, store } = mount({ allowNewlines: false });
+      fireEvent.change(box, { target: { value: 'a\nb' } });
+      expect(store.get()).toBe('a b');
+    });
+  });
 });

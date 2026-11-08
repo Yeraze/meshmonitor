@@ -19,7 +19,8 @@ vi.mock('react-i18next', async () => {
   return createReactI18nextMock(t);
 });
 
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock('../../contexts/AuthContext', async () => ({
+  AuthContext: (await import('react')).createContext(null),
   useAuth: () => ({ hasPermission: () => true }),
 }));
 
@@ -28,6 +29,7 @@ vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY', temperatureUnit: 'F', telemetryVisualizationHours: 48 }),
   // LinkPreview (mounted inside rendered message bubbles) reads this.
   useSettingsOptional: () => ({ linkPreviewsEnabled: false }),
+  useOptionalMuteSettings: () => null,
 }));
 
 const csrfFetchMock = vi.fn();

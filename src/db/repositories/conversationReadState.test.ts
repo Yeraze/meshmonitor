@@ -63,7 +63,7 @@ function runReadStateTests(getBackend: () => TestBackend) {
 
     const state = await repo.getForSourceAsync(1, 'src-a');
     // Every kind must be present so callers can index without guarding.
-    expect(state).toEqual({ meshcore_channel: {}, meshcore_dm: {} });
+    expect(state).toEqual({ meshcore_channel: {}, meshcore_dm: {}, meshcore_room: {} });
   });
 
   it('round-trips a channel watermark', async () => {
@@ -157,7 +157,48 @@ function runReadStateTests(getBackend: () => TestBackend) {
     expect(await repo.setLastReadAsync(1, 'src-a', 'meshcore_channel', '', 1000)).toBe(0);
     expect(await repo.setLastReadAsync(1, 'src-a', 'meshcore_channel', '0', Number.NaN)).toBe(0);
 
-    expect(await repo.getForSourceAsync(1, 'src-a')).toEqual({ meshcore_channel: {}, meshcore_dm: {} });
+    expect(await repo.getForSourceAsync(1, 'src-a')).toEqual({ meshcore_channel: {}, meshcore_dm: {}, meshcore_room: {} });
+  });
+
+  it('round-trips a room watermark, apart from channel and DM keys', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    await repo.setLastReadAsync(1, 'src-a', 'meshcore_room', 'ab'.repeat(32), 5000);
+    await repo.setLastReadAsync(1, 'src-a', 'meshcore_dm', 'ab'.repeat(32), 1000);
+    const state = await repo.getForSourceAsync(1, 'src-a');
+    expect(state.meshcore_room['ab'.repeat(32)]).toBe(5000);
+    expect(state.meshcore_dm['ab'.repeat(32)]).toBe(1000);
+    expect(state.meshcore_channel).toEqual({});
+  });
+
+  it('setManyLastReadAsync writes every entry, never rewinds, and returns effective values', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    await repo.setLastReadAsync(1, 'src-a', 'meshcore_dm', 'peerA', 9000);
+    const out = await repo.setManyLastReadAsync(1, 'src-a', [
+      { kind: 'meshcore_channel', conversationKey: '0', lastReadAt: 1000 },
+      { kind: 'meshcore_dm', conversationKey: 'peerA', lastReadAt: 100 },
+      { kind: 'meshcore_room', conversationKey: 'roomR', lastReadAt: 2000 },
+    ]);
+    expect(out).toEqual({
+      meshcore_channel: { '0': 1000 },
+      meshcore_dm: { peerA: 9000 },
+      meshcore_room: { roomR: 2000 },
+    });
+    const state = await repo.getForSourceAsync(1, 'src-a');
+    expect(state.meshcore_dm.peerA).toBe(9000);
+    expect(state.meshcore_room.roomR).toBe(2000);
+  });
+
+  it('setManyLastReadAsync with no entries or no source is a no-op', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    expect(await repo.setManyLastReadAsync(1, 'src-a', [])).toEqual(emptyReadStateMap());
+    expect(await repo.setManyLastReadAsync(1, '', [{ kind: 'meshcore_dm', conversationKey: 'p', lastReadAt: 5 }])).toEqual(emptyReadStateMap());
+    expect(await repo.getForSourceAsync(1, 'src-a')).toEqual(emptyReadStateMap());
   });
 
   it('deletes every watermark for a source without touching the others', async () => {
@@ -170,14 +211,14 @@ function runReadStateTests(getBackend: () => TestBackend) {
 
     await repo.deleteForSourceAsync('src-a');
 
-    expect(await repo.getForSourceAsync(1, 'src-a')).toEqual({ meshcore_channel: {}, meshcore_dm: {} });
+    expect(await repo.getForSourceAsync(1, 'src-a')).toEqual({ meshcore_channel: {}, meshcore_dm: {}, meshcore_room: {} });
     expect((await repo.getForSourceAsync(1, 'src-b')).meshcore_channel['0']).toBe(3000);
   });
 }
 
 describe('conversationReadState helpers', () => {
   it('emptyReadStateMap lists every tracked kind', () => {
-    expect(Object.keys(emptyReadStateMap()).sort()).toEqual(['meshcore_channel', 'meshcore_dm']);
+    expect(Object.keys(emptyReadStateMap()).sort()).toEqual(['meshcore_channel', 'meshcore_dm', 'meshcore_room']);
   });
 
   it('isConversationKind rejects anything not in the enum', () => {

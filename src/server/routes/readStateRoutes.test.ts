@@ -38,7 +38,7 @@ describe('readStateRoutes (#4607)', () => {
       const res = await agent.get(`/?sourceId=${harness.sourceA}`);
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data).toEqual({ meshcore_channel: {}, meshcore_dm: {} });
+      expect(res.body.data).toEqual({ meshcore_channel: {}, meshcore_dm: {}, meshcore_room: {} });
     });
 
     it('403s on a source the user has no messages:read grant for', async () => {
@@ -145,6 +145,82 @@ describe('readStateRoutes (#4607)', () => {
       const b = await agent.get(`/?sourceId=${harness.sourceB}`);
       expect(a.body.data.meshcore_channel['0']).toBe(1000);
       expect(b.body.data.meshcore_channel['0']).toBe(8000);
+    });
+  });
+
+  describe('POST /batch (#6261)', () => {
+    const entry = (over: Record<string, unknown> = {}) => ({
+      kind: 'meshcore_room', conversationKey: 'roomA', lastReadAt: 5000, ...over,
+    });
+
+    it('writes every entry and returns the effective state', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/batch').send({
+        sourceId: harness.sourceA,
+        entries: [entry(), entry({ kind: 'meshcore_dm', conversationKey: 'peerA', lastReadAt: 100 }), entry({ kind: 'meshcore_channel', conversationKey: '2' })],
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data.state).toEqual({
+        meshcore_channel: { '2': 5000 },
+        meshcore_dm: { peerA: 100 },
+        meshcore_room: { roomA: 5000 },
+      });
+      const read = await agent.get(`/?sourceId=${harness.sourceA}`);
+      expect(read.body.data.meshcore_room.roomA).toBe(5000);
+    });
+
+    it('never rewinds a marker', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      await agent.post('/batch').send({ sourceId: harness.sourceA, entries: [entry({ lastReadAt: 9000 })] });
+      const res = await agent.post('/batch').send({ sourceId: harness.sourceA, entries: [entry({ lastReadAt: 10 })] });
+      expect(res.body.data.state.meshcore_room.roomA).toBe(9000);
+    });
+
+    it('403s on a source without a grant', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/batch').send({ sourceId: harness.sourceB, entries: [entry()] });
+      expect(res.status).toBe(403);
+    });
+
+    it('400s on a missing sourceId', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/batch').send({ entries: [entry()] });
+      expect(res.status).toBe(400);
+    });
+
+    it('400s on bad kind, missing key, bad timestamp, and empty entries', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const post = (entries: unknown) => agent.post('/batch').send({ sourceId: harness.sourceA, entries });
+      expect((await post([entry({ kind: 'meshtastic_channel' })])).body.code).toBe('INVALID_CONVERSATION_KIND');
+      expect((await post([entry({ conversationKey: '' })])).body.code).toBe('CONVERSATION_KEY_REQUIRED');
+      expect((await post([entry({ lastReadAt: 'soon' })])).body.code).toBe('INVALID_LAST_READ_AT');
+      // Prototype names and odd characters are refused (CodeQL property injection).
+      expect((await post([entry({ conversationKey: '__proto__' })])).body.code).toBe('INVALID_CONVERSATION_KEY');
+      expect((await post([entry({ conversationKey: 'constructor' })])).body.code).toBe('INVALID_CONVERSATION_KEY');
+      expect((await post([entry({ conversationKey: 'a b' })])).body.code).toBe('INVALID_CONVERSATION_KEY');
+      expect((await post([])).status).toBe(400);
+      expect((await post('nope')).status).toBe(400);
+    });
+
+    it('400s TOO_MANY_ENTRIES above 500', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const entries = Array.from({ length: 501 }, (_, i) => entry({ conversationKey: `r${i}` }));
+      const res = await agent.post('/batch').send({ sourceId: harness.sourceA, entries });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('TOO_MANY_ENTRIES');
+    });
+
+    it('a batch on source A is not visible on source B', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      await agent.post('/batch').send({ sourceId: harness.sourceA, entries: [entry()] });
+      const b = await agent.get(`/?sourceId=${harness.sourceB}`);
+      expect(b.body.data.meshcore_room).toEqual({});
+    });
+
+    it('lets an anonymous user with messages:read write', async () => {
+      await harness.grant(harness.anonymous.id, 'messages', 'read', harness.sourceA);
+      const res = await (await harness.loginAs(null)).post('/batch').send({ sourceId: harness.sourceA, entries: [entry()] });
+      expect(res.status).toBe(200);
     });
   });
 });

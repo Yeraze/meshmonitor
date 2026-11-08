@@ -14,7 +14,8 @@ vi.mock('react-i18next', async () => {
 });
 
 let authenticated = true;
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock('../../contexts/AuthContext', async () => ({
+  AuthContext: (await import('react')).createContext(null),
   useAuth: () => ({ hasPermission: () => true, authStatus: { authenticated } }),
 }));
 
@@ -184,6 +185,21 @@ describe('MeshCoreChannelsView — channel mute (#5487)', () => {
     fireEvent.click(screen.getByLabelText('Muted — click to change'));
     fireEvent.click(screen.getByText(/Unmute/));
     expect(unmuteChannel).toHaveBeenCalledWith(0);
+  });
+
+  it('mark-all-read clears every unread channel, muted included (#6261)', async () => {
+    muted = new Set([2]);
+    const { container } = renderView();
+    await waitFor(() => expect(rowFor('Town').classList.contains('unread')).toBe(true));
+    fireEvent.click(screen.getByText('Mark all as Read'));
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-lastread-src-a') ?? '{}');
+      expect(stored['0']).toBe(100);
+      expect(stored['1']).toBe(5000);
+      expect(stored['2']).toBe(9999);
+    });
+    expect(container.querySelectorAll('.mc-channel-unread-dot')).toHaveLength(0);
+    expect(screen.queryByText('Mark all as Read')).toBeNull();
   });
 
   it('opening a muted channel still clears its last-read marker', async () => {

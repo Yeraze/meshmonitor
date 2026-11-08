@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, ne, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { BaseRepository, DrizzleDatabase, ALL_SOURCES, type SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { shouldDiscardPosition } from '../../utils/nullIsland.js';
 import { sanitizeMeshCoreName } from '../../utils/meshcoreName.js';
@@ -14,6 +14,7 @@ import { isFutureDriftedMeshCoreTimeMs } from '../../utils/meshcoreTimestamp.js'
 import { resolveFirstHeard } from '../../utils/firstHeard.js';
 import { NodeNameHistoryRepository, isMeshCoreRename } from './nodeNameHistory.js';
 import { logger } from '../../utils/logger.js';
+import { TranslationsRepository } from './translations.js';
 
 /**
  * meshcore_nodes columns where an incoming `null` in upsertNode means "clear
@@ -447,8 +448,32 @@ export interface RoomSyncConfigRow {
 }
 
 export class MeshCoreRepository extends BaseRepository {
+  private translationsRepo: TranslationsRepository | null = null;
+
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
+  }
+
+  private getTranslationsRepo(): TranslationsRepository {
+    if (!this.translationsRepo) this.translationsRepo = new TranslationsRepository(this.db, this.dbType);
+    return this.translationsRepo;
+  }
+
+  /**
+   * Drop `message_translations` links whose message was just deleted (#6261)
+   * and recount the cache's `messageRefCount`. Called at the end of every
+   * `meshcore_messages` delete path. Best-effort, like
+   * `MessagesRepository.sweepTranslationLinks`: a failure is logged, never
+   * thrown; the hourly translation-cache prune sweeps the same orphans, and
+   * the stored-translation read path only serves links whose message still
+   * exists and is visible.
+   */
+  private async sweepTranslationLinks(scope: SourceScope | undefined): Promise<void> {
+    try {
+      await this.getTranslationsRepo().removeOrphanedLinks(scope || ALL_SOURCES);
+    } catch (err) {
+      logger.warn('Failed to sweep message translation links after MeshCore message delete:', err);
+    }
   }
 
   // ============ Node Operations ============
@@ -1936,11 +1961,12 @@ export class MeshCoreRepository extends BaseRepository {
    * (#6186), grouped by the stored recipient key. The caller maps each stored
    * key to its room prefix-aware (rooms can be keyed by prefix or full key),
    * just like {@link roomWhereClause}. Lets the room list show accurate counts
-   * and ordering without the shared 100-message window.
+   * and ordering without the shared 100-message window. `latestReceivedAt` is
+   * MeshMonitor receipt time (`createdAt`, ms), the room unread clock (#6261).
    */
   async getRoomStats(
     sourceId: string,
-  ): Promise<Array<{ roomPublicKey: string; count: number; latest: number }>> {
+  ): Promise<Array<{ roomPublicKey: string; count: number; latest: number; latestReceivedAt: number }>> {
     if (!sourceId) {
       throw new Error('MeshCoreRepository.getRoomStats requires a sourceId');
     }
@@ -1950,6 +1976,7 @@ export class MeshCoreRepository extends BaseRepository {
         roomPublicKey: meshcoreMessages.toPublicKey,
         count: sql<number>`COUNT(*)`,
         latest: sql<number>`MAX(${meshcoreMessages.timestamp})`,
+        latestReceivedAt: sql<number>`MAX(${meshcoreMessages.createdAt})`,
       })
       .from(meshcoreMessages)
       .where(and(
@@ -1959,10 +1986,11 @@ export class MeshCoreRepository extends BaseRepository {
         isNull(meshcoreMessages.reactionEmoji),
       ))
       .groupBy(meshcoreMessages.toPublicKey);
-    return rows.map((r: { roomPublicKey: string | null; count: number | null; latest: number | null }) => ({
+    return rows.map((r: { roomPublicKey: string | null; count: number | null; latest: number | null; latestReceivedAt: number | null }) => ({
       roomPublicKey: r.roomPublicKey as string,
       count: Number(r.count ?? 0),
       latest: Number(r.latest ?? 0),
+      latestReceivedAt: Number(r.latestReceivedAt ?? 0),
     }));
   }
 
@@ -2355,6 +2383,32 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Fetch messages by id, scoped to ONE source (#6261). Ids that don't exist
+   * on that source are absent from the result. The caller applies channel /
+   * DM visibility. Chunked so it never exceeds a backend's bind ceiling.
+   */
+  async getMessagesByIdsInSource(sourceId: string, ids: string[]): Promise<DbMeshCoreMessage[]> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getMessagesByIdsInSource requires a sourceId');
+    }
+    if (ids.length === 0) return [];
+    const { meshcoreMessages } = this.tables;
+    const out: DbMeshCoreMessage[] = [];
+    const CHUNK = 200;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const rows = await this.db
+        .select()
+        .from(meshcoreMessages)
+        .where(and(
+          eq(meshcoreMessages.sourceId, sourceId),
+          inArray(meshcoreMessages.id, ids.slice(i, i + CHUNK)),
+        ));
+      out.push(...(this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[]));
+    }
+    return out;
+  }
+
+  /**
    * Delete messages older than a timestamp
    */
   async deleteMessagesOlderThan(timestamp: number): Promise<number> {
@@ -2369,6 +2423,7 @@ export class MeshCoreRepository extends BaseRepository {
     await this.db
       .delete(meshcoreMessages)
       .where(lt(meshcoreMessages.timestamp, timestamp));
+    await this.sweepTranslationLinks(ALL_SOURCES);
     return toDelete.length;
   }
 
@@ -2379,6 +2434,7 @@ export class MeshCoreRepository extends BaseRepository {
     const count = await this.getMessageCount();
     const { meshcoreMessages } = this.tables;
     await this.db.delete(meshcoreMessages);
+    await this.sweepTranslationLinks(ALL_SOURCES);
     return count;
   }
 
@@ -2565,6 +2621,7 @@ export class MeshCoreRepository extends BaseRepository {
       await this.db.delete(meshcoreMessages).where(condition);
       for (const r of present) deletedIds.push(r.id as string);
     }
+    if (deletedIds.length > 0) await this.sweepTranslationLinks(sourceId);
     return deletedIds;
   }
 
@@ -2586,6 +2643,7 @@ export class MeshCoreRepository extends BaseRepository {
       .limit(1);
     if (existing.length === 0) return false;
     await this.db.delete(meshcoreMessages).where(condition);
+    await this.sweepTranslationLinks(sourceId);
     return true;
   }
 
@@ -2616,6 +2674,7 @@ export class MeshCoreRepository extends BaseRepository {
       await this.db.delete(meshcoreMessages).where(condition);
       deleted += present.length;
     }
+    if (deleted > 0) await this.sweepTranslationLinks(sourceId);
     return deleted;
   }
 
@@ -2662,6 +2721,7 @@ export class MeshCoreRepository extends BaseRepository {
       .where(condition);
     if (toDelete.length === 0) return 0;
     await this.db.delete(meshcoreMessages).where(condition);
+    await this.sweepTranslationLinks(sourceId);
     return toDelete.length;
   }
 
@@ -2683,6 +2743,7 @@ export class MeshCoreRepository extends BaseRepository {
       .where(condition);
     if (toDelete.length === 0) return 0;
     await this.db.delete(meshcoreMessages).where(condition);
+    await this.sweepTranslationLinks(sourceId);
     return toDelete.length;
   }
 
