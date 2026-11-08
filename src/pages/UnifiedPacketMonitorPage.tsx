@@ -33,6 +33,7 @@ import {
   formatPacketTimestamp,
 } from '../utils/packetFormat';
 import { getSourceColor } from '../utils/sourceColors';
+import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
 import '../components/PacketMonitorPanel.css';
 import './UnifiedPacketMonitorPage.css';
 import { UiIcon } from '../components/icons';
@@ -41,7 +42,6 @@ import CrossSourcePacketTag from '../components/CrossSource/CrossSourcePacketTag
 const ROW_HEIGHT = 36;
 
 /** Source types that are MeshCore (companion device, repeater, ingest, MQTT). */
-const isMeshCoreSourceType = (type: string | undefined): boolean => !!type && type.startsWith('meshcore');
 
 // Safe JSON parse helper (mirrors PacketMonitorPanel).
 function safeJsonParse<T>(value: string | null, fallback: T): T {
@@ -192,7 +192,7 @@ export default function UnifiedPacketMonitorPage() {
   const virtualItems = rowVirtualizer.getVirtualItems();
 
   // MeshCore Payload/Route filters apply only when a readable source is MeshCore.
-  const hasMeshCoreSource = useMemo(() => sources.some((s) => isMeshCoreSourceType(s.type)), [sources]);
+  const hasMeshCoreSource = useMemo(() => sources.some((s) => isAnyMeshCoreSourceType(s.type)), [sources]);
   const meshcoreFilterActive = filters.payload_type !== undefined || filters.route_type !== undefined;
   const meshtasticFilterActive = filters.portnum !== undefined;
 

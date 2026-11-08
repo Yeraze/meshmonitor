@@ -37,7 +37,8 @@ async function isMeshCoreIngestSource(sourceId: string): Promise<boolean> {
   try {
     const src = await databaseService.sources?.getSource?.(sourceId);
     return src?.type === 'meshcore_mqtt';
-  } catch {
+  } catch (err) {
+    logger.debug(`isMeshCoreIngestSource lookup failed for ${sourceId}:`, err);
     return false;
   }
 }
@@ -107,10 +108,13 @@ export function parseMeshCorePacketFilters(q: Request['query']): ParsedPacketFil
   };
 }
 
-/** Parse `cursor=<ts>_<id>`; null when absent, undefined when malformed. */
-function parseCursor(v: unknown): { untilTs: number; untilId: number } | null | undefined {
+/**
+ * Parse `cursor=<ts>_<id>`; null when absent, undefined when malformed.
+ * Digit caps keep both parts inside Number.MAX_SAFE_INTEGER (ms epoch, row id).
+ */
+export function parseCursor(v: unknown): { untilTs: number; untilId: number } | null | undefined {
   if (v === undefined || v === '') return null;
-  const m = /^(\d{1,16})_(\d{1,16})$/.exec(String(v));
+  const m = /^(\d{1,13})_(\d{1,10})$/.exec(String(v));
   if (!m) return undefined;
   return { untilTs: Number(m[1]), untilId: Number(m[2]) };
 }
@@ -172,7 +176,7 @@ router.get(
       res.json({ packets, total, offset, limit, hasMore, nextCursor, enabled, maxCount: isIngestSource ? await meshcorePacketLogService.getIngestMaxCount() : maxCount, maxAgeHours, isIngestSource });
     } catch (error) {
       logger.error('[API] Error fetching MeshCore packets:', error);
-      res.status(500).json({ success: false, error: 'Failed to fetch packets' });
+      fail(res, 500, 'PACKETS_FETCH_FAILED', 'Failed to fetch packets');
     }
   },
 );
@@ -224,7 +228,7 @@ router.get(
       res.json({ packets, total, offset, limit, enabled, maxCount: isIngestSource ? await meshcorePacketLogService.getIngestMaxCount() : maxCount, maxAgeHours, isIngestSource });
     } catch (error) {
       logger.error('[API] Error fetching grouped MeshCore packets:', error);
-      res.status(500).json({ success: false, error: 'Failed to fetch grouped packets' });
+      fail(res, 500, 'GROUPED_PACKETS_FAILED', 'Failed to fetch grouped packets');
     }
   },
 );
@@ -245,13 +249,13 @@ router.get(
       const sourceId = (req.params as { id?: string }).id!;
       const rawHex = typeof req.query.raw_hex === 'string' ? req.query.raw_hex.trim() : '';
       if (!rawHex) {
-        return res.status(400).json({ success: false, error: 'raw_hex is required' });
+        return fail(res, 400, 'INVALID_REQUEST', 'raw_hex is required');
       }
       const receptions = await meshcorePacketLogService.getPacketReceptions(sourceId, rawHex);
       res.json({ receptions, total: receptions.length });
     } catch (error) {
       logger.error('[API] Error fetching MeshCore packet receptions:', error);
-      res.status(500).json({ success: false, error: 'Failed to fetch receptions' });
+      fail(res, 500, 'RECEPTIONS_FAILED', 'Failed to fetch receptions');
     }
   },
 );
@@ -285,7 +289,7 @@ router.get(
       res.json({ total, enabled, maxCount, maxAgeHours, isIngestSource: isIngest });
     } catch (error) {
       logger.error('[API] Error fetching MeshCore packet stats:', error);
-      res.status(500).json({ success: false, error: 'Failed to fetch packet stats' });
+      fail(res, 500, 'PACKET_STATS_FAILED', 'Failed to fetch packet stats');
     }
   },
 );
@@ -375,7 +379,7 @@ router.get(
       logger.debug(`[API] Exported ${packets.length} MeshCore packets to ${filename}`);
     } catch (error) {
       logger.error('[API] Error exporting MeshCore packets:', error);
-      res.status(500).json({ success: false, error: 'Failed to export packets' });
+      fail(res, 500, 'EXPORT_FAILED', 'Failed to export packets');
     }
   },
 );
@@ -449,7 +453,7 @@ router.delete(
       res.json({ success: true, deleted });
     } catch (error) {
       logger.error('[API] Error clearing MeshCore packets:', error);
-      res.status(500).json({ success: false, error: 'Failed to clear packets' });
+      fail(res, 500, 'CLEAR_FAILED', 'Failed to clear packets');
     }
   },
 );

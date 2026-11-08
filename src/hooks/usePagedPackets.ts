@@ -164,7 +164,8 @@ export function usePagedPackets<T extends { id?: number | string }>({
     total,
     loading: isLoading,
     loadingMore: isFetchingNextPage,
-    hasMore: hasNextPage ?? true,
+    // false until the first page lands, so the sentinel row can't fire a fetch early.
+    hasMore: hasNextPage ?? false,
     rateLimitError,
     error: error instanceof Error ? error : null,
     loadMore,

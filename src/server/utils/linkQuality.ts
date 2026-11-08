@@ -78,6 +78,8 @@ export function replayLinkQuality(
     const init = state === null ? initialLinkQuality(s.value) : null;
     state = nextLinkQuality(state, s.value);
     if (s.timestamp < emitFrom) continue;
+    // First in-window sample: emit the seed score as its own point so the chart
+    // starts where the link started, before the sample's own step is applied.
     if (init !== null && init !== state.quality) out.push({ timestamp: s.timestamp, quality: init });
     if (out.length === 0 || state.quality !== prev) out.push({ timestamp: s.timestamp, quality: state.quality });
   }
