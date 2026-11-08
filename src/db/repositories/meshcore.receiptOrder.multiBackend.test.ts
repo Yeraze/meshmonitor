@@ -82,7 +82,7 @@ function runSharedTests(getCtx: () => Ctx) {
 
     // Room posts keep SENDER-time order (uniform createdAt would mis-sort).
     expect((await meshcore.getRoomMessages(ROOM, 100, SRC)).map(r => r.id)).toEqual(['rp2', 'rp1']);
-    expect(await meshcore.getRoomStats(SRC)).toEqual([{ roomPublicKey: ROOM, count: 2, latest: 600 }]);
+    expect(await meshcore.getRoomStats(SRC)).toEqual([{ roomPublicKey: ROOM, count: 2, latest: 600, latestReceivedAt: 60 }]);
   });
 
   it('pages a channel newest-first by receipt time', async () => {

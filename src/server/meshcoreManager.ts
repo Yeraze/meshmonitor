@@ -11788,7 +11788,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * the room list no longer derives them from the 100-message window. Keyed by
    * the stored recipient key; the client maps each to its room prefix-aware.
    */
-  async getRoomStats(): Promise<Array<{ roomPublicKey: string; count: number; latest: number }>> {
+  async getRoomStats(): Promise<Array<{ roomPublicKey: string; count: number; latest: number; latestReceivedAt: number }>> {
     return databaseService.meshcore.getRoomStats(this.sourceId);
   }
 
