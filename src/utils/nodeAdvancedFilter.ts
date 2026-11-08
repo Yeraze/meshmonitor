@@ -4,7 +4,7 @@
  * `useSourceView.passesAdvancedFilters` exactly.
  */
 import type { DeviceInfo } from '../types/device.js';
-import type { NodeFilters } from '../types/ui.js';
+import type { NodeFilters, SecurityFilter } from '../types/ui.js';
 import { isAgedOutAircraft } from '../components/map/agedOutAircraft.js';
 
 export const DEFAULT_NODE_FILTERS: NodeFilters = {
@@ -56,12 +56,33 @@ export interface NodeFilterSubject {
   hiddenFromMap?: boolean;
   role: number;
   channel: number;
+  /** Shared Security filter (P7a #6254). Unset = not flagged. */
+  securityFlagged?: boolean;
+}
+
+/** Meshtastic key-security flags, as set on a node by the key scanner. */
+export interface KeySecurityFlags {
+  keyIsLowEntropy?: boolean | null;
+  duplicateKeyDetected?: boolean | null;
+  keySecurityIssueDetails?: string | null;
+}
+
+/** True when a Meshtastic node carries any key-security flag. */
+export function isSecurityFlagged(n: KeySecurityFlags): boolean {
+  return !!(n.keyIsLowEntropy || n.duplicateKeyDetected || n.keySecurityIssueDetails);
+}
+
+/** Apply the Security filter to a flagged state ('all' passes everything). */
+export function passesSecurityFilter(flagged: boolean, filter: SecurityFilter | undefined): boolean {
+  if (filter === 'flaggedOnly') return flagged;
+  if (filter === 'hideFlagged') return !flagged;
+  return true;
 }
 
 export function passesNodeFilters(
   s: NodeFilterSubject,
   f: NodeFilters,
-  opts: { allowAgedOut?: boolean } = {},
+  opts: { allowAgedOut?: boolean; securityFilter?: SecurityFilter } = {},
 ): boolean {
   const isShowMode = f.filterMode === 'show';
   // Show mode drops non-matches; hide mode drops matches.
@@ -99,6 +120,8 @@ export function passesNodeFilters(
 
   if (f.deviceRoles.length > 0 && fails(f.deviceRoles.includes(s.role))) return false;
   if (f.channels.length > 0 && fails(f.channels.includes(s.channel))) return false;
+
+  if (!passesSecurityFilter(!!s.securityFlagged, opts.securityFilter)) return false;
 
   return true;
 }

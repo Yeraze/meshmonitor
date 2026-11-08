@@ -131,6 +131,8 @@ export interface MeshCoreNode {
   positionSource?: string | null;
   /** #5578: did the latest advert heard carry a position? null/unset = unknown. */
   lastAdvertHadPosition?: boolean | null;
+  /** P7a #6254: latest checked advert signature (true / false); null or unset = not checked. */
+  advertSignatureVerified?: boolean | null;
   advLocPolicy?: number;
   /** Favorite flag (issue #3588). Pins the node to the top of the list; for a
    *  connected Companion source it also syncs the firmware favourite bit so the

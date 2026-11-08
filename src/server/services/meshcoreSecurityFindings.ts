@@ -12,19 +12,11 @@
  *  - name reuse: one display name on several keys. Display only, no alert.
  */
 import { hopByteForKey } from '../../utils/meshcorePath.js';
+import { findNameReuse, nameReuseSuspectKeys, type SecurityNode, type NameReuseGroup } from '../../utils/meshcoreNameReuse.js';
 import databaseService from '../../services/database.js';
 
-/** The node fields the findings need. A `DbMeshCoreNode` satisfies this. */
-export interface SecurityNode {
-  publicKey: string;
-  name?: string | null;
-  advType?: number | null;
-  /** Epoch ms. */
-  lastHeard?: number | null;
-  /** Epoch ms. */
-  firstHeard?: number | null;
-  advertSignatureVerified?: boolean | number | null;
-}
+export type { SecurityNode, NameReuseGroup };
+export { findNameReuse, nameReuseSuspectKeys };
 
 export type PathHashWidth = 1 | 2 | 3;
 
@@ -33,15 +25,6 @@ export interface PathHashCollisionGroup<N extends SecurityNode = SecurityNode> {
   hash: string;
   /** Two or more nodes, sorted by key. */
   nodes: N[];
-}
-
-export interface NameReuseGroup<N extends SecurityNode = SecurityNode> {
-  /** The original's trimmed display name. */
-  name: string;
-  /** The key heard first (earliest `firstHeard`; null last; ties by key). */
-  original: N;
-  /** Every other key using the name, ordered the same way. */
-  suspects: N[];
 }
 
 const ROUTING_ADV_TYPES = new Set([2, 3]); // Repeater, Room Server
@@ -92,47 +75,6 @@ export function collisionCountsByWidth(
 /** Nodes whose latest checked advert failed verification. Null (unchecked) never counts. */
 export function listSignatureFailures<N extends SecurityNode>(nodes: readonly N[]): N[] {
   return nodes.filter((n) => n.advertSignatureVerified === false || n.advertSignatureVerified === 0);
-}
-
-function normalizeName(name: string | null | undefined): string {
-  return (name ?? '').trim().toLowerCase();
-}
-
-function heardFirstOrder(a: SecurityNode, b: SecurityNode): number {
-  const fa = typeof a.firstHeard === 'number' ? a.firstHeard : Number.POSITIVE_INFINITY;
-  const fb = typeof b.firstHeard === 'number' ? b.firstHeard : Number.POSITIVE_INFINITY;
-  if (fa !== fb) return fa < fb ? -1 : 1;
-  return a.publicKey.toLowerCase().localeCompare(b.publicKey.toLowerCase());
-}
-
-/**
- * Names used by more than one key. Trimmed and case-insensitive; empty names
- * are ignored. The key heard first is the original, the rest are suspects.
- */
-export function findNameReuse<N extends SecurityNode>(nodes: readonly N[]): NameReuseGroup<N>[] {
-  const byName = new Map<string, Map<string, N>>();
-  for (const n of nodes) {
-    const norm = normalizeName(n.name);
-    if (!norm || !n.publicKey) continue;
-    let group = byName.get(norm);
-    if (!group) byName.set(norm, (group = new Map()));
-    group.set(n.publicKey.toLowerCase(), n);
-  }
-  const out: NameReuseGroup<N>[] = [];
-  for (const group of byName.values()) {
-    if (group.size < 2) continue;
-    const sorted = [...group.values()].sort(heardFirstOrder);
-    const [original, ...suspects] = sorted;
-    out.push({ name: (original.name ?? '').trim(), original, suspects });
-  }
-  return out.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-}
-
-/** Lowercase keys of every suspect, for the shared "flagged" filter. */
-export function nameReuseSuspectKeys(groups: readonly NameReuseGroup[]): Set<string> {
-  const keys = new Set<string>();
-  for (const g of groups) for (const s of g.suspects) keys.add(s.publicKey.toLowerCase());
-  return keys;
 }
 
 /** Load one source's nodes for the findings. */
