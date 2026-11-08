@@ -217,8 +217,11 @@ export interface TracerouteRenderSegment {
   from: [number, number];              // lat,lng — already snapshot-resolved
   to: [number, number];
   /** Hop node numbers this segment connects, in traversal order (from -> to). */
-  fromNodeNum: number;
-  toNodeNum: number;
+  fromNodeNum?: number;
+  toNodeNum?: number;
+  /** MeshCore hop ends, as lowercase public keys (no node number exists). */
+  fromKey?: string;
+  toKey?: string;
   leg: 'forward' | 'return' | 'neutral';
   direction?: 'inbound' | 'outbound' | 'neutral'; // MapAnalysis relative-to-selection
   avgSnr: number | null;               // /4-scaled dB; null = no data

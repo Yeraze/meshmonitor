@@ -16,15 +16,14 @@
  * the hash, the nearest is shown as a guess with "?" and the full list sits in
  * an expandable list; a guess never carries a position onto the flow map.
  */
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import L from 'leaflet';
-import { CircleMarker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import type { MeshCoreMessage } from './hooks/useMeshCore';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { parsePathHops } from '../../utils/meshcorePath';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
-import { BaseMap } from '../map/BaseMap';
+import { RouteFlowMap, type RouteFlowPoint } from '../map/RouteFlowMap';
+import { darkOverlayColors } from '../../config/overlayColors';
 import { useResolvedRouteHops, contactPosition } from './useResolvedRouteHops';
 import { RouteHopRows } from './MeshCoreRouteHops';
 import './MeshCorePacketMonitor.css';
@@ -51,30 +50,6 @@ const Row: React.FC<{ label: string; children: React.ReactNode; mono?: boolean; 
   </div>
 );
 
-/** A labeled point on the flow map. */
-interface FlowPoint {
-  label: string;
-  lat: number;
-  lon: number;
-  /** 'endpoint' = sender / local node, 'hop' = relay. */
-  kind: 'endpoint' | 'hop';
-}
-
-/** Fit the map view to the flow line once per point set. */
-const FitFlowBounds: React.FC<{ points: FlowPoint[] }> = ({ points }) => {
-  const map = useMap();
-  useEffect(() => {
-    const latLngs = points.map((p) => [p.lat, p.lon] as [number, number]);
-    if (latLngs.length === 1) {
-      map.setView(latLngs[0], 13);
-      return;
-    }
-    const bounds = L.latLngBounds(latLngs);
-    if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-  }, [map, points]);
-  return null;
-};
-
 const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contacts, sourceId, onClose }) => {
   const { t } = useTranslation();
   const { contentRef, onKeyDown } = useDialogA11y(onClose);
@@ -88,27 +63,28 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
   // 'channel-*' keys and never match) and the local node (matched via
   // `isLocal`, #4438) are prepended/appended opportunistically when
   // positioned.
-  const flowPoints = useMemo((): FlowPoint[] | null => {
+  const flowPoints = useMemo((): RouteFlowPoint[] | null => {
     if (rows.length === 0) return null;
-    const hopPoints: FlowPoint[] = [];
+    const hopPoints: RouteFlowPoint[] = [];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (!r.position || !r.name) return null;
       const viaLabel = r.via ? ` (${r.via.sourceName})` : '';
-      hopPoints.push({ label: `#${i + 1} ${r.name}${viaLabel}`, lat: r.position.lat, lon: r.position.lon, kind: 'hop' });
+      hopPoints.push({ key: `hop-${i}`, label: `#${i + 1} ${r.name}${viaLabel}`, lat: r.position.lat, lon: r.position.lon, kind: 'hop' });
     }
-    const points: FlowPoint[] = [];
+    const points: RouteFlowPoint[] = [];
     // Guard the prefix match: startsWith('') is true for EVERY key, so an
     // empty fromPublicKey must not adopt an arbitrary contact as the sender.
     // uniquePrefixMatch also refuses an ambiguous prefix (#5349).
     const senderContact = uniquePrefixMatch(contacts, message.fromPublicKey);
     const senderPos = contactPosition(senderContact);
-    if (senderPos) points.push({ label: fromLabel, lat: senderPos.lat, lon: senderPos.lon, kind: 'endpoint' });
+    if (senderPos) points.push({ key: 'sender', label: fromLabel, lat: senderPos.lat, lon: senderPos.lon, kind: 'endpoint' });
     points.push(...hopPoints);
     const localContact = contacts.find((c) => c.isLocal === true);
     const localPos = contactPosition(localContact);
     if (localPos) {
       points.push({
+        key: 'local',
         label: t('meshcore.route_detail_you', 'You'),
         lat: localPos.lat,
         lon: localPos.lon,
@@ -162,39 +138,7 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
           {flowPoints && flowPoints.length > 0 && (
             <section className="mcpm-dl-section">
               <h5>{t('meshcore.route_detail_flow', 'Packet flow')}</h5>
-              <div className="mc-route-flow-map">
-                <BaseMap
-                  center={[flowPoints[0].lat, flowPoints[0].lon]}
-                  zoom={11}
-                  zoomControl={false}
-                  attributionControl={false}
-                  scrollWheelZoom={false}
-                >
-                  <FitFlowBounds points={flowPoints} />
-                  {flowPoints.length > 1 && (
-                    <Polyline
-                      positions={flowPoints.map((p) => [p.lat, p.lon] as [number, number])}
-                      pathOptions={{ color: '#89b4fa', weight: 3, opacity: 0.85, dashArray: '6 6' }}
-                    />
-                  )}
-                  {flowPoints.map((p, i) => (
-                    <CircleMarker
-                      key={`${p.label}-${i}`}
-                      center={[p.lat, p.lon]}
-                      radius={p.kind === 'hop' ? 7 : 5}
-                      pathOptions={{
-                        color: p.kind === 'hop' ? '#89b4fa' : '#7f849c',
-                        fillColor: p.kind === 'hop' ? '#89b4fa' : '#7f849c',
-                        fillOpacity: 0.85,
-                      }}
-                    >
-                      <Tooltip permanent direction="top" offset={[0, -8]} className="mc-route-flow-label">
-                        {p.label}
-                      </Tooltip>
-                    </CircleMarker>
-                  ))}
-                </BaseMap>
-              </div>
+              <RouteFlowMap points={flowPoints} snrColors={darkOverlayColors.snrColors} />
             </section>
           )}
         </div>

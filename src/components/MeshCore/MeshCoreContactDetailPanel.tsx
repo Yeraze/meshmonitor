@@ -29,6 +29,7 @@ import { isHiddenByPositionlessAdvert, readHidePositionlessAdverts } from '../..
 import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
 import { SignFlipNotice } from '../SignFlipNotice';
 import { MeshCoreNeighboursFetchProgress } from './MeshCoreNeighboursFetchProgress';
+import { MeshCoreTracePathMap } from './MeshCoreTracePathMap';
 import { MeshCoreTraceSnrCard } from './MeshCoreTraceSnrCard';
 import { MeshCoreTraceSnrCharts } from './MeshCoreTraceSnrCharts';
 import { useMeshCoreNeighboursFetch } from './hooks/useMeshCoreNeighboursFetch';
@@ -1240,6 +1241,15 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               </div>
             </div>
           )}
+
+          {/* Trace Path map (#6260): live result, else the newest stored trace */}
+          <MeshCoreTracePathMap
+            sourceId={sourceId}
+            contact={contact}
+            contacts={repeaters ?? []}
+            traceResult={traceResult}
+            outPath={outPath}
+          />
 
           {/* Paged neighbour fetch progress (#5413) */}
           {(liveFetch || neighboursFetch.startError) && (
