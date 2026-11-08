@@ -86,10 +86,12 @@ function mapMeshCorePacketToTagged(
     id: p.id,
     packet_id: null,
     timestamp: p.timestamp,
-    // OTA logs have no sender identity; 0 + null name → frontend shows N/A.
+    // No numeric sender id (frontend Meshtastic links stay off). Show the
+    // derived sender (#6262): advert name, else a key prefix, else the src hash.
     from_node: 0,
     from_node_id: null,
-    from_node_longName: null,
+    from_node_longName:
+      p.advertName ?? (p.senderPubKey ? p.senderPubKey.slice(0, 8) : p.srcHash ? `#${p.srcHash}` : null),
     to_node: null,
     to_node_id: null,
     to_node_longName: null,
@@ -1043,6 +1045,13 @@ function matchesCrossSourceFilter(row: CrossSourceRowFields, filter: CrossSource
   return row.originSourceId !== null || row.likelyRelaySourceId !== null;
 }
 
+/** Parse an optional non-negative integer query param; undefined when absent or invalid. */
+function parseOptionalInt(v: unknown): number | undefined {
+  if (typeof v !== 'string' || v === '') return undefined;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 /**
  * GET /api/unified/packets
  *
@@ -1103,6 +1112,9 @@ router.get('/packets', async (req: Request, res: Response) => {
     const from_node = req.query.from_node ? parseInt(req.query.from_node as string, 10) : undefined;
     const encrypted =
       req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
+    // MeshCore-namespace filters (#6262): payload_type / route_type.
+    const payload_type = parseOptionalInt(req.query.payload_type);
+    const route_type = parseOptionalInt(req.query.route_type);
     const sourceFilter = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
     const crossSourceRaw = typeof req.query.crossSource === 'string' ? req.query.crossSource : '';
     if (crossSourceRaw !== '' && !isCrossSourceFilter(crossSourceRaw)) {
@@ -1152,6 +1164,9 @@ router.get('/packets', async (req: Request, res: Response) => {
       from_node === undefined &&
       transport_mechanism === undefined &&
       encrypted !== true;
+    // Mirror rule: MeshCore payload/route filters cannot match a Meshtastic
+    // row, so when one is active Meshtastic sources are excluded.
+    const meshtasticEligible = payload_type === undefined && route_type === undefined;
 
     const perSource = await Promise.allSettled(
       fetchSources.map(async (source): Promise<SourceResult> => {
@@ -1162,6 +1177,8 @@ router.get('/packets', async (req: Request, res: Response) => {
             limit: fetchLimit,
             untilTs,
             untilId,
+            payloadType: payload_type,
+            routeType: route_type,
           });
           // No channel/message content to redact — viewing is already authorized
           // by the source-level packetmonitor:read check above.
@@ -1175,6 +1192,7 @@ router.get('/packets', async (req: Request, res: Response) => {
           return { rows: tagged, saturated: raw.length >= fetchLimit, oldest: oldestOf(raw) };
         }
 
+        if (!meshtasticEligible) return { rows: [], saturated: false, oldest: null };
         const raw = await packetLogService.getPacketsAsync({
           sourceId: source.id,
           limit: fetchLimit,
@@ -1271,7 +1289,7 @@ router.get('/packets', async (req: Request, res: Response) => {
       packets: sliced,
       hasMore,
       nextCursor,
-      sources: readableSources.map((s) => ({ id: s.id, name: s.name })),
+      sources: readableSources.map((s) => ({ id: s.id, name: s.name, type: s.type })),
     });
   } catch (error) {
     logger.error('Error fetching unified packets:', error);
@@ -1311,29 +1329,66 @@ router.get('/packets/distribution', async (req: Request, res: Response) => {
 
     const perSource = await Promise.all(
       readableSources.map(async (source) => {
-        // MeshCore OTA rows have no per-node/per-PortNum breakdown that aligns
-        // with the Meshtastic namespace, so they only contribute a source total.
         if (isAnyMeshCoreSourceType(source.type)) {
-          const count = await meshcorePacketLogService.getPacketCount({ sourceId: source.id, since });
-          return { source, byDevice: [], byType: [], meshcoreCount: count };
+          const dist = await meshcorePacketLogService.getDistribution({ sourceId: source.id, since });
+          return { source, protocol: 'meshcore' as const, mc: dist, byDevice: [] as any[], byType: [] as any[] };
         }
         const [byDevice, byType] = await Promise.all([
           packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, sourceId: source.id }),
           packetLogService.getPacketCountsByPortnumAsync({ since, sourceId: source.id }),
         ]);
-        return { source, byDevice, byType, meshcoreCount: 0 };
+        return { source, protocol: 'meshtastic' as const, mc: null, byDevice: byDevice as any[], byType: byType as any[] };
       })
     );
 
-    // Merge byDevice (sum per nodeNum), byType (sum per portnum), and tally per source.
-    const deviceMap = new Map<number, { from_node: number; from_node_id: string | null; from_node_longName: string | null; count: number }>();
-    const typeMap = new Map<number, { portnum: number; portnum_name: string; count: number }>();
+    // Merge byDevice and byType across protocols. Keys are protocol-tagged
+    // (`mt:<n>` / `mc:<n>`) so a MeshCore payload type never collides with a
+    // Meshtastic PortNum.
+    type DeviceEntry = {
+      from_node: number; from_node_id: string | null; from_node_longName: string | null;
+      count: number; protocol: 'meshtastic' | 'meshcore'; publicKey?: string;
+    };
+    type TypeEntry = { portnum: number; portnum_name: string; count: number; protocol: 'meshtastic' | 'meshcore' };
+    const deviceMap = new Map<string, DeviceEntry>();
+    const typeMap = new Map<string, TypeEntry>();
     const bySource: Array<{ sourceId: string; sourceName: string; count: number }> = [];
 
-    for (const { source, byDevice, byType, meshcoreCount } of perSource) {
-      let sourceTotal = meshcoreCount;
-      for (const d of byDevice as any[]) {
-        const key = Number(d.from_node);
+    for (const { source, mc, byDevice, byType } of perSource) {
+      let sourceTotal = 0;
+      if (mc) {
+        for (const t of mc.byPayloadType) {
+          const key = `mc:${t.payloadType}`;
+          const existing = typeMap.get(key);
+          if (existing) existing.count += t.count;
+          else typeMap.set(key, {
+            portnum: t.payloadType,
+            portnum_name: `MeshCore ${t.payloadTypeName ?? `Type ${t.payloadType}`}`,
+            count: t.count,
+            protocol: 'meshcore',
+          });
+          sourceTotal += t.count;
+        }
+        for (const d of mc.topSenders) {
+          const key = `mc:${d.senderPubKey}`;
+          const existing = deviceMap.get(key);
+          if (existing) {
+            existing.count += d.count;
+            if (!existing.from_node_longName && d.advertName) existing.from_node_longName = d.advertName;
+          } else {
+            deviceMap.set(key, {
+              from_node: 0,
+              from_node_id: null,
+              from_node_longName: d.advertName ?? null,
+              publicKey: d.senderPubKey,
+              count: d.count,
+              protocol: 'meshcore',
+            });
+          }
+        }
+      }
+      for (const d of byDevice) {
+        const num = Number(d.from_node);
+        const key = `mt:${num}`;
         const existing = deviceMap.get(key);
         if (existing) {
           existing.count += d.count;
@@ -1341,18 +1396,20 @@ router.get('/packets/distribution', async (req: Request, res: Response) => {
           if (!existing.from_node_id && d.from_node_id) existing.from_node_id = d.from_node_id;
         } else {
           deviceMap.set(key, {
-            from_node: key,
+            from_node: num,
             from_node_id: d.from_node_id ?? null,
             from_node_longName: d.from_node_longName ?? null,
             count: d.count,
+            protocol: 'meshtastic',
           });
         }
       }
-      for (const t of byType as any[]) {
-        const key = Number(t.portnum);
+      for (const t of byType) {
+        const num = Number(t.portnum);
+        const key = `mt:${num}`;
         const existing = typeMap.get(key);
         if (existing) existing.count += t.count;
-        else typeMap.set(key, { portnum: key, portnum_name: t.portnum_name, count: t.count });
+        else typeMap.set(key, { portnum: num, portnum_name: t.portnum_name, count: t.count, protocol: 'meshtastic' });
         sourceTotal += t.count;
       }
       bySource.push({ sourceId: source.id, sourceName: source.name, count: sourceTotal });

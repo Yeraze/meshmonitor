@@ -42,6 +42,7 @@ vi.mock('../services/meshcorePacketLogService.js', () => ({
   default: {
     getPackets: vi.fn().mockResolvedValue([]),
     getPacketCount: vi.fn().mockResolvedValue(0),
+    getDistribution: vi.fn().mockResolvedValue({ byPayloadType: [], byRouteType: [], topSenders: [], total: 0 }),
     isEnabled: vi.fn().mockResolvedValue(true),
   },
 }));
@@ -128,7 +129,7 @@ describe('GET /api/unified/packets', () => {
     expect(res.status).toBe(200);
     expect(res.body.packets.every((p: any) => p.sourceId === 'src-a')).toBe(true);
     // Source list (filter dropdown) only includes readable sources.
-    expect(res.body.sources).toEqual([{ id: 'src-a', name: 'Source A' }]);
+    expect(res.body.sources).toEqual([expect.objectContaining({ id: 'src-a', name: 'Source A' })]);
     // src-b must never be queried for packets.
     const queried = mockPackets.getPacketsAsync.mock.calls.map((c: any[]) => c[0].sourceId);
     expect(queried).not.toContain('src-b');
@@ -216,7 +217,7 @@ describe('GET /api/unified/packets', () => {
       channel: null,
     });
     // The dropdown lists the MeshCore source too.
-    expect(res.body.sources).toContainEqual({ id: 'src-mc', name: 'MeshCore' });
+    expect(res.body.sources).toContainEqual(expect.objectContaining({ id: 'src-mc', name: 'MeshCore' }));
   });
 
   it('forwards the keyset cursor to the MeshCore query', async () => {
@@ -263,7 +264,7 @@ describe('GET /api/unified/packets/distribution', () => {
     const res = await request(createApp(adminUser)).get('/packets/distribution');
     expect(res.status).toBe(200);
     // byDevice: node 100 summed across sources = 8.
-    expect(res.body.byDevice).toEqual([{ from_node: 100, from_node_id: '!64', from_node_longName: 'Alpha', count: 8 }]);
+    expect(res.body.byDevice).toEqual([expect.objectContaining({ from_node: 100, from_node_id: '!64', from_node_longName: 'Alpha', count: 8 })]);
     // byType: portnum 1 = 4+2 = 6, portnum 3 = 6.
     const byType = Object.fromEntries(res.body.byType.map((t: any) => [t.portnum, t.count]));
     expect(byType).toEqual({ 1: 6, 3: 6 });
@@ -287,23 +288,29 @@ describe('GET /api/unified/packets/distribution', () => {
     expect(mockPackets.getPacketCountsByPortnumAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('counts MeshCore sources in bySource without polluting byDevice/byType', async () => {
+  it('merges MeshCore distribution protocol-tagged, with no portnum/device collision (#6262)', async () => {
     mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_MC]);
     mockDb.checkPermissionAsync.mockResolvedValue(true);
     mockPackets.getPacketCountsByNodeAsync.mockResolvedValue([]);
     mockPackets.getPacketCountsByPortnumAsync.mockResolvedValue([
       { portnum: 3, portnum_name: 'POSITION_APP', count: 4 },
     ]);
-    mockMeshcore.getPacketCount.mockResolvedValue(9);
+    mockMeshcore.getDistribution.mockResolvedValue({
+      byPayloadType: [{ payloadType: 3, payloadTypeName: 'TXT_MSG', count: 6 }, { payloadType: 4, payloadTypeName: 'ADVERT', count: 3 }],
+      byRouteType: [],
+      topSenders: [{ senderPubKey: 'ab'.repeat(32), advertName: 'Hilltop', count: 3 }],
+      total: 9,
+    });
 
     const res = await request(createApp(adminUser)).get('/packets/distribution');
     expect(res.status).toBe(200);
-    // MeshCore contributes a source total but no device/type rows.
-    expect(mockMeshcore.getPacketCount).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceId: 'src-mc' })
-    );
+    expect(mockMeshcore.getDistribution).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'src-mc' }));
     expect(res.body.bySource).toContainEqual({ sourceId: 'src-mc', sourceName: 'MeshCore', count: 9 });
-    expect(res.body.byType).toEqual([{ portnum: 3, portnum_name: 'POSITION_APP', count: 4 }]);
+    // Same numeric type 3 on both protocols stays two separate entries.
+    const t3 = res.body.byType.filter((t: any) => t.portnum === 3);
+    expect(t3).toHaveLength(2);
+    expect(t3.map((t: any) => t.protocol ?? 'meshtastic').sort()).toEqual(['meshcore', 'meshtastic']);
+    expect(res.body.byDevice).toContainEqual(expect.objectContaining({ from_node_longName: 'Hilltop', protocol: 'meshcore', count: 3 }));
     expect(res.body.total).toBe(13); // 4 (Meshtastic) + 9 (MeshCore)
   });
 });

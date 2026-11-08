@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Filter, Trash2, ExternalLink, Download, Pause, Play, Circle, Square } from 'lucide-react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { PacketLog, PacketFilters } from '../types/packet';
 import { clearPackets, exportPackets, getRelayNodes, getPacketStats } from '../services/packetApi';
 import { RelayNodeOption } from '../types/packet';
@@ -12,6 +11,11 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useSource } from '../contexts/SourceContext';
 import { useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { usePackets } from '../hooks/usePackets';
+import { useInfiniteVirtualRows } from '../hooks/useInfiniteVirtualRows';
+import PacketSearchInput from './packets/PacketSearchInput';
+import TimeWindowSelect from './packets/TimeWindowSelect';
+import { windowToSince, type TimeWindowKey } from './packets/timeWindow';
+import { openPacketMonitorPopout } from '../utils/packetMonitorPopout';
 import { formatDateTime } from '../utils/datetime';
 import {
   getTransportMechanismName,
@@ -75,27 +79,21 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   const [filters, setFilters] = useState<PacketFilters>(() =>
     safeJsonParse<PacketFilters>(localStorage.getItem('packetMonitor.filters'), {})
   );
+  // Time window (#6262). Kept as a key, not a stored `since`, so a reload does
+  // not resurrect a stale absolute timestamp.
+  const [timeWindow, setTimeWindow] = useState<TimeWindowKey>(() => {
+    const saved = safeJsonParse<string>(localStorage.getItem('packetMonitor.timeWindow'), 'all');
+    return (['1h', '6h', '24h', '7d'] as const).includes(saved as '1h') ? (saved as TimeWindowKey) : 'all';
+  });
+  useEffect(() => {
+    localStorage.setItem('packetMonitor.timeWindow', JSON.stringify(timeWindow));
+  }, [timeWindow]);
   const [showFilters, setShowFilters] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.showFilters'), false)
   );
   const [hideOwnPackets, setHideOwnPackets] = useState(() =>
     safeJsonParse(localStorage.getItem('packetMonitor.hideOwnPackets'), true)
   );
-
-  // Free-text search across decoded content (#4958). `searchInput` tracks the
-  // field live; a debounced effect commits it to `filters.search` so we don't
-  // refetch on every keystroke. Because the list is virtualized, this
-  // server-side filter is what replaces the broken browser Ctrl+F workflow.
-  const [searchInput, setSearchInput] = useState<string>(() =>
-    safeJsonParse<PacketFilters>(localStorage.getItem('packetMonitor.filters'), {}).search ?? ''
-  );
-  useEffect(() => {
-    const next = searchInput.trim() || undefined;
-    const id = setTimeout(() => {
-      setFilters(f => (f.search === next ? f : { ...f, search: next }));
-    }, 300);
-    return () => clearTimeout(id);
-  }, [searchInput]);
 
   // Relay node filter options (distinct values from packet_log)
   const [relayNodeOptions, setRelayNodeOptions] = useState<RelayNodeOption[]>([]);
@@ -193,6 +191,12 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return parseInt(nodeId.substring(1), 16);
   }, [deviceInfo?.localNodeInfo?.nodeId]);
 
+  const queryFilters = useMemo<PacketFilters>(
+    () => ({ ...filters, since: windowToSince(timeWindow) }),
+    // `since` is fixed when the window changes: re-deriving it per render would refetch forever.
+    [filters, timeWindow],
+  );
+
   // Use the packets hook for all data fetching
   const {
     packets,
@@ -206,40 +210,21 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     refresh: fetchPackets,
   } = usePackets({
     canView,
-    filters,
+    filters: queryFilters,
     hideOwnPackets,
     ownNodeNum,
     sourceId,
   });
 
-  // Virtual scrolling setup with infinite loading
-  const rowVirtualizer = useVirtualizer({
-    count: hasMore ? packets.length + 1 : packets.length, // Add 1 for loading indicator
+  // Virtual scrolling with infinite loading (shared hook, #6262)
+  const rowVirtualizer = useInfiniteVirtualRows({
+    count: packets.length,
+    hasMore,
+    loadingMore,
+    loadMore,
+    estimateSize: 36,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 36, // Estimated row height in pixels
-    overscan: 10, // Number of items to render outside of visible area
   });
-
-  // Infinite scroll: load more when user scrolls near the end of loaded data.
-  // Uses the virtualizer's visible items rather than IntersectionObserver,
-  // because the virtualizer only renders visible rows — the loading row at
-  // index 100+ may never be in the DOM if the user hasn't scrolled there.
-  const virtualItems = rowVirtualizer.getVirtualItems();
-  const lastVirtualItemIndex = virtualItems[virtualItems.length - 1]?.index;
-
-  useEffect(() => {
-    if (lastVirtualItemIndex === undefined) return;
-
-    // When the last visible virtual item is within 10 items of the end, load more
-    if (
-      lastVirtualItemIndex >= packets.length - 10 &&
-      hasMore &&
-      !loadingMore &&
-      packets.length > 0
-    ) {
-      void loadMore();
-    }
-  }, [lastVirtualItemIndex, packets.length, hasMore, loadingMore, loadMore]);
 
   // Persist filter settings to localStorage
   useEffect(() => {
@@ -442,7 +427,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     try {
       // Use backend export endpoint with current filters
       // Note: hideOwnPackets is a client-side filter and not passed to backend
-      void exportPackets(sourceId ? { ...filters, sourceId } : filters);
+      void exportPackets(sourceId ? { ...queryFilters, sourceId } : queryFilters);
     } catch (error) {
       console.error('Failed to export packets:', error);
       alert(t('packet_monitor.export_failed'));
@@ -450,19 +435,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   };
 
   // Pop-out to new window
-  const handlePopout = () => {
-    try {
-      // Get base URL from <base> tag
-      const baseElement = document.querySelector('base');
-      const baseHref = baseElement?.getAttribute('href') || '/';
-      const basename = baseHref === '/' ? '' : baseHref.replace(/\/$/, '');
-
-      const popoutUrl = `${basename}/packet-monitor`;
-      window.open(popoutUrl, '_blank', 'width=1200,height=800');
-    } catch (error) {
-      console.error('Failed to open pop-out window:', error);
-    }
-  };
+  const handlePopout = () => openPacketMonitorPopout();
 
   if (!canView) {
     return (
@@ -542,14 +515,15 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
         {showFilters && (
           <div className="packet-filters">
-            <input
-              type="search"
-              className="packet-search-input"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
+            <PacketSearchInput
+              value={filters.search}
+              onCommit={next => setFilters(f => (f.search === next ? f : { ...f, search: next }))}
               placeholder={t('packet_monitor.filter.search_placeholder', 'Search content / JSON…')}
               title={t('packet_monitor.filter.search_tooltip', 'Filters packets whose decoded content or metadata JSON contains this text (case-insensitive). Use this instead of the browser find, which cannot see off-screen rows.')}
-              aria-label={t('packet_monitor.filter.search_placeholder', 'Search content / JSON…')}
+            />
+            <TimeWindowSelect
+              value={timeWindow}
+              onChange={setTimeWindow}
             />
             <select
               value={filters.portnum ?? ''}
@@ -642,7 +616,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               <span>{t('packet_monitor.filter.hide_own')}</span>
             </label>
 
-            <button onClick={() => { setFilters({}); setSearchInput(''); }} className="clear-filters-btn">
+            <button onClick={() => { setFilters({}); setTimeWindow('all'); }} className="clear-filters-btn">
               {t('packet_monitor.filter.clear')}
             </button>
           </div>

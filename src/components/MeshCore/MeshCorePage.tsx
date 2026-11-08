@@ -284,6 +284,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             sourceId={sourceId}
             isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
             contacts={contacts}
+            onNodeClick={navigateToDm}
           />
         )}
         {view === 'info' && (

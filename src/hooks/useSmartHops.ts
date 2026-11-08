@@ -42,6 +42,8 @@ interface UseSmartHopsOptions {
   baseUrl?: string;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
+  /** Explicit source id; wins over the context-resolved one (MeshCore contact panels). */
+  sourceId?: string | null;
 }
 
 /**
@@ -69,8 +71,10 @@ export function useSmartHops({
   hours = 24,
   baseUrl = '',
   enabled = true,
+  sourceId: sourceIdOverride,
 }: UseSmartHopsOptions) {
-  const sourceId = useResolvedSourceId();
+  const resolvedSourceId = useResolvedSourceId();
+  const sourceId = sourceIdOverride ?? resolvedSourceId;
   return useQuery({
     queryKey: ['smartHops', nodeId, hours, sourceId],
     queryFn: async (): Promise<SmartHopsData[]> => {

@@ -660,6 +660,7 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'GET /packets/grouped': 'read',
     'GET /packets/receptions': 'read',
     'GET /packets/stats': 'read',
+    'GET /packets/stats/distribution': 'read',
     'GET /packets/export': 'read',
     // POST for the body size; it decodes the caller's own bytes and changes nothing.
     'POST /packets/decode': 'read',

@@ -1,6 +1,7 @@
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import type { DbMeshCorePacket, MeshCorePacketQuery, MeshCoreGroupedPacket } from '../../db/repositories/meshcore.js';
+import { deriveMeshCorePacketFields } from '../../utils/meshcorePacketDerived.js';
+import type { DbMeshCorePacket, MeshCorePacketQuery, MeshCoreGroupedPacket, MeshCorePacketDistribution } from '../../db/repositories/meshcore.js';
 
 /**
  * Service for the MeshCore Packet Monitor — the OTA-packet analogue of
@@ -82,7 +83,7 @@ class MeshCorePacketLogService {
    */
   async logPacket(packet: DbMeshCorePacket): Promise<void> {
     try {
-      await databaseService.meshcore.insertPacket(packet);
+      await databaseService.meshcore.insertPacket({ ...packet, ...deriveMeshCorePacketFields(packet.rawHex) });
     } catch (error) {
       logger.error('❌ Failed to log MeshCore packet:', error);
     }
@@ -109,6 +110,11 @@ class MeshCorePacketLogService {
   /** The per-observer receptions behind one grouped row. */
   async getPacketReceptions(sourceId: string, rawHex: string): Promise<DbMeshCorePacket[]> {
     return databaseService.meshcore.getPacketReceptions(sourceId, rawHex);
+  }
+
+  /** Distribution under the list filters: payload type, route type, top advert senders. */
+  async getDistribution(query: MeshCorePacketQuery): Promise<MeshCorePacketDistribution> {
+    return databaseService.meshcore.getPacketDistribution(query);
   }
 
   async getPacketCount(query: MeshCorePacketQuery): Promise<number> {

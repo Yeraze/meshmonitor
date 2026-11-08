@@ -85,3 +85,28 @@
 .showOnMapButton {
   margin-top: 0.35rem;
 }
+
+/* Collapsible "Link history" section (#6262). */
+.linkHistory {
+  margin-top: 0.75rem;
+}
+
+.linkHistoryToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.linkHistoryToggle:hover {
+  background: var(--color-surface-active);
+}
+
+.linkHistoryBody {
+  margin-top: 0.5rem;
+}

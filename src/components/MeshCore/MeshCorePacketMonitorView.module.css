@@ -15,3 +15,139 @@
   font-size: 0.9em;
   color: var(--color-text-subtle);
 }
+
+/* ---- Virtualized list (#6262) ---- */
+.list {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  min-height: 0;
+}
+
+.listInner {
+  position: relative;
+  width: 100%;
+  min-width: 52rem;
+}
+
+.cols {
+  --mcpm-cols: 7rem 7rem minmax(8rem, 1.2fr) 5rem 3rem 4rem 4rem 3.5rem minmax(6rem, 1fr);
+  display: grid;
+  grid-template-columns: var(--mcpm-cols);
+  align-items: center;
+  column-gap: 0.75rem;
+  padding: 0 0.75rem;
+  font-size: 13px;
+}
+
+.colsGrouped {
+  --mcpm-cols: 7rem 7rem minmax(8rem, 1.2fr) 5rem 3rem 4rem 4rem 3.5rem 5rem minmax(6rem, 1fr);
+}
+
+.headRow {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 2.25rem;
+  background: var(--color-bg-raised);
+  color: var(--color-text-subtle);
+  font-weight: 600;
+  border-bottom: 1px solid var(--color-surface-active);
+  white-space: nowrap;
+}
+
+.row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 36px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-surface);
+  box-sizing: border-box;
+}
+
+.row:hover {
+  background: var(--color-bg-raised);
+}
+
+.cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fromButton {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fromButton:hover {
+  text-decoration: underline;
+}
+
+.fromMuted {
+  color: var(--color-text-subtle);
+}
+
+.loaderRow {
+  justify-content: center;
+  color: var(--color-text-subtle);
+}
+
+/* ---- Filter bar + stats ---- */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-surface-active);
+  background: var(--color-bg-raised);
+}
+
+.filterBar select,
+.filterBar input {
+  background: var(--color-bg-sunken);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-active);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.searchInput {
+  min-width: 12rem;
+}
+
+.hashInput {
+  width: 6rem;
+}
+
+.senderSelect {
+  min-width: 12rem;
+}
+
+.statsStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-surface-active);
+  background: var(--color-bg);
+  overflow-x: auto;
+}
+
+.statsEmpty {
+  color: var(--color-text-subtle);
+  font-size: 13px;
+}

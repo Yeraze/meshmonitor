@@ -6,6 +6,7 @@
  */
 import { eq, asc, desc, and, or, inArray, sql, isNull, gte, gt, lt, isNotNull, max, min, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
+import { likeContains } from './likeSearch.js';
 import { DatabaseType, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { getPortNumName, PortNum } from '../../server/constants/meshtastic.js';
@@ -141,27 +142,10 @@ export class PacketLogRepository extends BaseRepository {
       conditions.push(sql`pl.relay_node = ${relay_node}`);
     }
     conditions.push(...this.transportConditions(sql`pl.transport_mechanism`, { transport_mechanism, transportClass }));
-    // Free-text search across the decoded content (#4958): the human-readable
-    // preview and the serialized-JSON metadata (both plain TEXT in every
-    // backend). Postgres LIKE is case-sensitive, so branch to ILIKE there;
-    // SQLite/MySQL LIKE are case-insensitive by default.
-    //
-    // The user's `%`/`_` must match literally, so they are escaped and an
-    // explicit ESCAPE char is declared (SQLite has no default escape char).
-    // The escape char is `~`, NOT `\`: a backslash escape clause (`ESCAPE '\'`)
-    // is fine for SQLite/Postgres but breaks MySQL, where `\` escapes the
-    // closing quote inside the string literal. `~` is a plain literal in all
-    // three backends.
+    // Free-text search across the decoded content (#4958): preview + serialized
+    // metadata. Escaping / ILIKE handling lives in likeSearch.ts.
     if (search !== undefined && search !== '') {
-      const escaped = search.replace(/[~%_]/g, (c: string) => `~${c}`);
-      const like = `%${escaped}%`;
-      // Branch the whole condition per backend rather than interpolating the
-      // operator keyword, so the generated SQL is unambiguous to read.
-      if (this.isPostgres()) {
-        conditions.push(sql`(pl.payload_preview ILIKE ${like} ESCAPE '~' OR pl.metadata ILIKE ${like} ESCAPE '~')`);
-      } else {
-        conditions.push(sql`(pl.payload_preview LIKE ${like} ESCAPE '~' OR pl.metadata LIKE ${like} ESCAPE '~')`);
-      }
+      conditions.push(likeContains([sql`pl.payload_preview`, sql`pl.metadata`], search, this.isPostgres()));
     }
 
     return { conditions };

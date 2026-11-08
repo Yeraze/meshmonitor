@@ -8,6 +8,7 @@ import { eq, lt, lte, gt, gte, and, asc, desc, inArray, notInArray, isNull, or, 
 import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope, SourceSetScope } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 import { logger } from '../../utils/logger.js';
+import { computeRollingHopStats } from '../../server/utils/hopStats.js';
 
 // A node that reboots without GPS/NTP can broadcast telemetry with a hardware
 // clock that is months or years off. A clock set into the FUTURE is the case
@@ -1450,44 +1451,12 @@ export class TelemetryRepository extends BaseRepository {
       sourceId
     );
 
-    if (telemetry.length === 0) {
-      return [];
-    }
-
-    // Sort by timestamp ascending
-    telemetry.sort((a, b) => a.timestamp - b.timestamp);
-
-    // Generate output points at regular intervals from sinceTimestamp to now
-    const intervalMs = intervalMinutes * 60 * 1000;
-    const now = Date.now();
-    const results: Array<{ timestamp: number; minHops: number; maxHops: number; avgHops: number }> = [];
-
-    // Start from the first interval boundary after sinceTimestamp
-    let currentTime = Math.ceil(sinceTimestamp / intervalMs) * intervalMs;
-
-    while (currentTime <= now) {
-      // Calculate rolling 24-hour window: [currentTime - 24h, currentTime]
-      const windowStart = currentTime - twentyFourHours;
-      const windowEnd = currentTime;
-
-      // Get all data points within this 24-hour window
-      const windowData = telemetry.filter(
-        (t) => t.timestamp >= windowStart && t.timestamp <= windowEnd
-      );
-
-      if (windowData.length > 0) {
-        const values = windowData.map((t) => t.value);
-        const minHops = Math.min(...values);
-        const maxHops = Math.max(...values);
-        const avgHops = Math.round((values.reduce((sum, v) => sum + v, 0) / values.length) * 100) / 100;
-
-        results.push({ timestamp: currentTime, minHops, maxHops, avgHops });
-      }
-
-      currentTime += intervalMs;
-    }
-
-    return results;
+    return computeRollingHopStats(
+      telemetry.map((t) => ({ timestamp: t.timestamp, value: t.value })),
+      sinceTimestamp,
+      intervalMinutes,
+      Date.now()
+    );
   }
 
   /**

@@ -24,6 +24,10 @@ interface SmartHopsGraphsProps {
   nodeId: string;
   telemetryHours?: number;
   baseUrl?: string;
+  /** Explicit source id (wins over the context-resolved one). */
+  sourceId?: string | null;
+  /** Show the favorite toggle (default true; MeshCore contact panels pass false). */
+  allowFavorite?: boolean;
 }
 
 // Hop metrics configuration
@@ -71,7 +75,7 @@ function processHopsData(data: SmartHopsData[] | undefined): Array<Record<string
 }
 
 const SmartHopsGraphs: React.FC<SmartHopsGraphsProps> = React.memo(
-  ({ nodeId, telemetryHours = 24, baseUrl = '' }) => {
+  ({ nodeId, telemetryHours = 24, baseUrl = '', sourceId, allowFavorite = true }) => {
     const { t } = useTranslation();
     const { showToast } = useToast();
 
@@ -80,10 +84,11 @@ const SmartHopsGraphs: React.FC<SmartHopsGraphsProps> = React.memo(
       nodeId,
       hours: telemetryHours,
       baseUrl,
+      sourceId,
     });
 
     // Favorites management
-    const { data: favorites = new Set<string>() } = useFavorites({ nodeId, baseUrl });
+    const { data: favorites = new Set<string>() } = useFavorites({ nodeId, baseUrl, enabled: allowFavorite });
 
     const toggleFavoriteMutation = useToggleFavorite({
       baseUrl,
@@ -183,13 +188,15 @@ const SmartHopsGraphs: React.FC<SmartHopsGraphsProps> = React.memo(
             <div className="graph-header">
               <h4 className="graph-title">{t('info.smart_hops_title')}</h4>
               <div className="graph-actions">
-                <button
-                  className={`favorite-btn ${isFavorited ? 'favorited' : ''}`}
-                  onClick={createToggleFavorite(SMART_HOPS_TYPE)}
-                  aria-label={isFavorited ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
-                >
-                  <UiIcon name={isFavorited ? 'favorite' : 'favoriteOff'} size={15} />
-                </button>
+                {allowFavorite && (
+                  <button
+                    className={`favorite-btn ${isFavorited ? 'favorited' : ''}`}
+                    onClick={createToggleFavorite(SMART_HOPS_TYPE)}
+                    aria-label={isFavorited ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
+                  >
+                    <UiIcon name={isFavorited ? 'favorite' : 'favoriteOff'} size={15} />
+                  </button>
+                )}
               </div>
             </div>
             <ResponsiveContainer width="100%" height={200}>

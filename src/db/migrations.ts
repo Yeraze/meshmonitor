@@ -242,6 +242,7 @@ import { migration as meshcoreTelemetryRetryStateMigration, runMigration220Postg
 import { migration as colorNodesBySourcePrefMigration, runMigration221Postgres, runMigration221Mysql } from '../server/migrations/221_user_map_preferences_color_nodes_by_source.js';
 import { migration as reticulumInterfaceLiveStatsMigration, runMigration222Postgres, runMigration222Mysql } from '../server/migrations/222_add_reticulum_interface_live_stats.js';
 import { migration as meshcoreSourcePkiKeysMigration, runMigration223Postgres, runMigration223Mysql } from '../server/migrations/223_add_meshcore_source_pki_keys.js';
+import { migration as meshcorePacketLogDerivedMigration, runMigration224Postgres, runMigration224Mysql } from '../server/migrations/224_meshcore_packet_log_derived_fields.js';
 
 // ============================================================================
 // Registry
@@ -3602,4 +3603,18 @@ registry.register({
   sqlite: (db) => meshcoreSourcePkiKeysMigration.up(db),
   postgres: (client) => runMigration223Postgres(client),
   mysql: (pool) => runMigration223Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 224: derived sender fields (srcHash, senderPubKey, advertName) on
+// meshcore_packet_log plus sender/contact indexes (#6262 P4).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 224,
+  name: 'meshcore_packet_log_derived_fields',
+  settingsKey: 'migration_224_meshcore_packet_log_derived_fields',
+  sqlite: (db) => meshcorePacketLogDerivedMigration.up(db),
+  postgres: (client) => runMigration224Postgres(client),
+  mysql: (pool) => runMigration224Mysql(pool),
 });

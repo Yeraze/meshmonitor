@@ -333,7 +333,7 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
       )}
 
       {tab === 'packets' && (
-        <MeshCorePacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
+        <MeshCorePacketMonitorView baseUrl={baseUrl} sourceId={sourceId} onNodeClick={() => setTab('nodes')} />
       )}
     </div>
   );
