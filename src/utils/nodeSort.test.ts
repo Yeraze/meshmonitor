@@ -106,4 +106,10 @@ describe('sortByKey / orderFavoritesFirst', () => {
     const out = orderFavoritesFirst(xs, (g) => sortByKey(g, (x) => x.id, 'asc'));
     expect(out.map((x) => x.id)).toEqual([1, 3, 0, 2]);
   });
+
+  it('sorts items with a missing key last in either direction (stable)', () => {
+    const items = [{ n: 'a', k: 2 }, { n: 'x' }, { n: 'b', k: 1 }, { n: 'y' }] as Array<{ n: string; k?: number }>;
+    expect(sortByKey(items, (i) => i.k, 'asc').map((i) => i.n)).toEqual(['b', 'a', 'x', 'y']);
+    expect(sortByKey(items, (i) => i.k, 'desc').map((i) => i.n)).toEqual(['a', 'b', 'x', 'y']);
+  });
 });

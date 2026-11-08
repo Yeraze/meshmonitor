@@ -60,10 +60,17 @@ export function sortByKey<T>(
 ): T[] {
   if (items.length < 2) return [...items];
   const first = keyOf(items[0]);
+  // An unknown field yields no key for any item: keep input order (as before).
   if (first === undefined) return [...items];
-  const keyed = items.map((item, i) => ({ item, key: i === 0 ? first : (keyOf(item) as SortKey) }));
+  const keyed = items.map((item, i) => ({ item, key: i === 0 ? first : keyOf(item) }));
   const sign = direction === 'asc' ? 1 : -1;
-  keyed.sort((x, y) => sign * compareKeys(x.key, y.key));
+  // A missing key always sorts last, whatever the direction (stable among themselves).
+  keyed.sort((x, y) => {
+    if (x.key === undefined || y.key === undefined) {
+      return x.key === undefined ? (y.key === undefined ? 0 : 1) : -1;
+    }
+    return sign * compareKeys(x.key, y.key);
+  });
   return keyed.map((k) => k.item);
 }
 

@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { SortDirection } from '../types/ui.js';
+import { logger } from '../utils/logger.js';
 
 interface Stored<F extends string> {
   field: F;
@@ -33,8 +34,8 @@ export function usePersistedListSort<F extends string>(
           };
         }
       }
-    } catch {
-      // fall through to defaults
+    } catch (error) {
+      logger.warn(`Ignoring unreadable saved sort "${storageKey}":`, error);
     }
     return { field: defaults.field, direction: defaults.direction };
   });
