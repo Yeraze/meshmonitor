@@ -17,6 +17,7 @@ import { weightByOccurrence, getSegmentSnrOpacity } from '../../../utils/mapHelp
 import type { TracerouteRenderSegment } from '../../../utils/tracerouteSegments';
 import { TraceroutePathsLayer as SharedTraceroutePathsLayer } from '../../map/layers/TraceroutePathsLayer';
 import { useSettings } from '../../../contexts/SettingsContext';
+import { useMeshCoreTraceSegments } from '../../../hooks/useMeshCoreTraceSegments';
 
 // Direction colours (issue #3399): outbound = the selected node transmitting,
 // inbound = the selected node receiving. Analysis-specific-by-design (not
@@ -120,8 +121,14 @@ export default function TraceroutePathsLayer() {
     [ts.enabled, ts.windowStartMs, ts.windowEndMs],
   );
 
+  // A MeshCore selection is identified by its `mc:` key; its nodeNum is
+  // synthetic and must not scope the Meshtastic analysis.
+  const selectedMcKey =
+    selected?.type === 'node' && selected.nodeKey?.startsWith('mc:') ? selected.nodeKey : null;
   const selectedNodeNum =
-    selected?.type === 'node' && selected.nodeNum !== undefined ? selected.nodeNum : null;
+    selectedMcKey === null && selected?.type === 'node' && selected.nodeNum !== undefined
+      ? selected.nodeNum
+      : null;
   const selectedSourceId =
     selected?.type === 'node' ? selected.sourceId ?? null : null;
 
@@ -139,7 +146,9 @@ export default function TraceroutePathsLayer() {
   );
 
   const { segments } = useTracerouteAnalysis({
-    traceroutes: items as TracerouteAnalysisInput[],
+    // A focused MeshCore node has no Meshtastic hops: show only its links.
+    traceroutes:
+      selectedMcKey !== null && options.scopeToSelectedNode ? [] : (items as TracerouteAnalysisInput[]),
     positionByKey,
     selectedNodeNum,
     selectedSourceId,
@@ -151,13 +160,26 @@ export default function TraceroutePathsLayer() {
 
   // Arrows are only drawn in the directional (node-selected) view to keep the
   // global view light.
-  const showArrows = selectedNodeNum !== null;
+  const showArrows = selectedNodeNum !== null || selectedMcKey !== null;
   // colorMode is dynamic: focused segments carry inbound/outbound direction
   // (colored by directionColors); unfocused segments are all 'neutral' and
   // colored by SNR instead (see useTracerouteAnalysis's `focus` gating).
   const colorMode = showArrows ? 'direction' : 'snr';
 
-  const renderSegments = useMemo(() => segments.map(toRenderSegment), [segments]);
+  // MeshCore hop links share the same options, filters and renderer.
+  const meshcoreSegments = useMeshCoreTraceSegments({
+    enabled: layer.enabled,
+    sourceIds,
+    lookbackHours: layer.lookbackHours ?? 24,
+    nodes,
+    selectedKey: selectedMcKey,
+    options: { ...options, timeWindow },
+  });
+
+  const renderSegments = useMemo(
+    () => [...segments.map(toRenderSegment), ...meshcoreSegments],
+    [segments, meshcoreSegments],
+  );
 
   return (
     <SharedTraceroutePathsLayer
@@ -181,6 +203,7 @@ export default function TraceroutePathsLayer() {
           type: 'segment',
           fromNodeNum: seg.fromNodeNum,
           toNodeNum: seg.toNodeNum,
+          ...(seg.fromKey ? { fromKey: seg.fromKey, toKey: seg.toKey } : {}),
           direction: seg.direction,
           occurrences: seg.occurrences,
           avgSnr: seg.avgSnr,

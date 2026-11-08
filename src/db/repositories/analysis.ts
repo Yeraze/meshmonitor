@@ -20,7 +20,8 @@
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
-import { and, desc, gte, inArray, isNotNull, lt, max, or, eq } from 'drizzle-orm';
+import { and, desc, gte, inArray, isNotNull, lt, max, or, eq, isNull } from 'drizzle-orm';
+import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { buildActiveSchema } from '../activeSchema.js';
 import { orientTracerouteRows } from './tracerouteRowOrientation.js';
@@ -36,6 +37,16 @@ import {
   traceroutesPostgres,
   traceroutesMysql,
 } from '../schema/traceroutes.js';
+import {
+  meshcoreNodesSqlite,
+  meshcoreNodesPostgres,
+  meshcoreNodesMysql,
+} from '../schema/meshcoreNodes.js';
+import {
+  meshcorePositionHistorySqlite,
+  meshcorePositionHistoryPostgres,
+  meshcorePositionHistoryMysql,
+} from '../schema/meshcorePositionHistory.js';
 import {
   neighborInfoSqlite,
   neighborInfoPostgres,
@@ -56,6 +67,14 @@ export interface PositionRow {
   longitude: number;
   altitude: number | null;
   timestamp: number;
+  /**
+   * Full 64-char hex public key; present only on MeshCore rows. For those,
+   * `nodeNum` is the synthetic `nodeNumFromPubkey()` value: identity,
+   * emphasis and joins must use `nodeKey`, never the synthetic number.
+   */
+  publicKey?: string;
+  /** Canonical cross-source node key: `mc:<publicKey>` or `mt:<nodeNum>`. */
+  nodeKey: string;
   // snr/rssi removed in v1 — telemetry table has no such columns.
   // They will be filled in by a later task that joins against packet_log.
 }
@@ -72,6 +91,13 @@ export interface GetPositionsArgs {
   sinceMs: number;
   pageSize: number;
   cursor?: string | null;
+  /**
+   * The MeshCore sources among `sourceIds`, when the caller knows them. An
+   * empty list ends the stream after the Meshtastic phase, so a
+   * Meshtastic-only request skips the MeshCore round-trip. Omitted = unknown,
+   * and the MeshCore phase always runs.
+   */
+  meshcoreSourceIds?: string[];
 }
 
 /** Args for {@link AnalysisRepository.getPositionsForNodes} (#5364/#5365 Phase 3). */
@@ -168,12 +194,18 @@ export interface GetCoverageGridArgs {
   sinceMs: number;
   zoom: number;
   postFilter?: (pos: PositionRow) => boolean;
+  /** See {@link GetPositionsArgs.meshcoreSourceIds}. */
+  meshcoreSourceIds?: string[];
 }
 
 export interface HopEntry {
   sourceId: string;
   nodeNum: number;
   hops: number;
+  /** MeshCore entries only: the node's full public key (`nodeNum` is synthetic). */
+  publicKey?: string;
+  /** `mc:<publicKey>` or `mt:<nodeNum>`. */
+  nodeKey: string;
   /** Only present when `GetHopCountsArgs.includeTransport` is set (#5101). */
   transport?: NodeTransportClass;
 }
@@ -190,6 +222,13 @@ export interface GetHopCountsArgs {
    * hops from, so it contributes no entries (#5289).
    */
   localNodeNums: ReadonlyMap<string, number>;
+  /**
+   * MeshCore sources to read hop counts for. MeshCore has no traceroute
+   * history, so the count is the contact's stored `path_len` (hops of its
+   * current route; 0 = direct). A NULL `path_len` (flood / unknown route) and
+   * the local node are skipped.
+   */
+  meshcoreSourceIds?: string[];
   /**
    * Also classify each entry's transport via `reachTransportClass` (#5101).
    * Default off, so the Map Analysis `/hop-counts` payload and its select
@@ -257,6 +296,31 @@ function pickTelemetryTable(dbType: AnalysisDbType) {
       return telemetryMysql;
   }
 }
+
+function pickMeshCoreNodesTable(dbType: AnalysisDbType) {
+  switch (dbType) {
+    case 'sqlite':
+      return meshcoreNodesSqlite;
+    case 'postgres':
+      return meshcoreNodesPostgres;
+    case 'mysql':
+      return meshcoreNodesMysql;
+  }
+}
+
+function pickMeshCoreHistoryTable(dbType: AnalysisDbType) {
+  switch (dbType) {
+    case 'sqlite':
+      return meshcorePositionHistorySqlite;
+    case 'postgres':
+      return meshcorePositionHistoryPostgres;
+    case 'mysql':
+      return meshcorePositionHistoryMysql;
+  }
+}
+
+/** Cursor prefix marking the MeshCore phase of {@link AnalysisRepository.getPositions}. */
+const MC_CURSOR_PREFIX = 'mc:';
 
 function pickTraceroutesTable(dbType: AnalysisDbType) {
   switch (dbType) {
@@ -326,6 +390,152 @@ export class AnalysisRepository {
       return { items: [], pageSize, hasMore: false, nextCursor: null };
     }
 
+    const rawCursor = args.cursor ?? null;
+    if (rawCursor !== null && rawCursor.startsWith(MC_CURSOR_PREFIX)) {
+      return this.getMeshCorePositionsPage(args, pageSize, rawCursor.slice(MC_CURSOR_PREFIX.length));
+    }
+
+    // Meshtastic phase (an unprefixed or absent cursor is always this phase,
+    // so cursors minted before the MeshCore phase existed keep working).
+    const page = await this.getMeshtasticPositionsPage(args, pageSize);
+    if (page.hasMore) return page;
+    // No MeshCore source in the request: the stream ends here.
+    if (args.meshcoreSourceIds && args.meshcoreSourceIds.length === 0) {
+      return { items: page.items, pageSize, hasMore: false, nextCursor: null };
+    }
+    // Meshtastic is exhausted (including the early "no lat/lon rows" returns):
+    // hand over to MeshCore rather than ending the stream.
+    return { items: page.items, pageSize, hasMore: true, nextCursor: MC_CURSOR_PREFIX };
+  }
+
+  /**
+   * MeshCore phase of {@link getPositions}: `meshcore_position_history` fixes
+   * newest-first by `(timestamp DESC, id DESC)`. The first page (empty cursor
+   * payload) also carries one current fix per positioned node from
+   * `meshcore_nodes` (`timestamp = lastHeard`, when `lastHeard >= sinceMs`) so
+   * a stationary node, which never writes history, still shows. The current
+   * fixes ride on top of the page and do not advance the cursor. A fix whose
+   * timestamp also exists in history appears twice; consumers dedupe by cell
+   * (coverage) or draw coincident trail points.
+   */
+  private async getMeshCorePositionsPage(
+    args: GetPositionsArgs,
+    pageSize: number,
+    cursorPayload: string,
+  ): Promise<PaginatedPositions> {
+    const history = pickMeshCoreHistoryTable(this.dbType);
+    const nodes = pickMeshCoreNodesTable(this.dbType);
+    const cursor = decodeIdCursor(cursorPayload || null);
+    const firstPage = cursorPayload === '';
+    // A non-empty payload that does not decode is a corrupt cursor: end.
+    if (!firstPage && !cursor) {
+      return { items: [], pageSize, hasMore: false, nextCursor: null };
+    }
+
+    const conditions = [
+      inArray(history.sourceId, args.sourceIds),
+      gte(history.timestamp, args.sinceMs),
+    ];
+    if (cursor) {
+      const clause = or(
+        lt(history.timestamp, cursor.ts),
+        and(eq(history.timestamp, cursor.ts), lt(history.id, cursor.id)),
+      );
+      if (clause) conditions.push(clause);
+    }
+
+    /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
+    const db = this.db as any;
+    const histRows: any[] = await db
+      .select({
+        id: history.id,
+        sourceId: history.sourceId,
+        publicKey: history.publicKey,
+        latitude: history.latitude,
+        longitude: history.longitude,
+        altitude: history.altitude,
+        timestamp: history.timestamp,
+      })
+      .from(history)
+      .where(and(...conditions))
+      .orderBy(desc(history.timestamp), desc(history.id))
+      .limit(pageSize + 1);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const hasMore = histRows.length > pageSize;
+    const page = histRows.slice(0, pageSize);
+    const items: PositionRow[] = [];
+    for (const r of page) {
+      const lat = Number(r.latitude);
+      const lon = Number(r.longitude);
+      if (isBogusPosition(lat, lon)) continue;
+      items.push(this.meshCoreRow(r.sourceId, r.publicKey, lat, lon, r.altitude, Number(r.timestamp)));
+    }
+    const lastRow = page[page.length - 1];
+    const nextCursor =
+      hasMore && lastRow
+        ? MC_CURSOR_PREFIX + encodeIdCursor({ ts: Number(lastRow.timestamp), id: Number(lastRow.id) })
+        : null;
+
+    if (firstPage) {
+      /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
+      const current: any[] = await db
+        .select({
+          sourceId: nodes.sourceId,
+          publicKey: nodes.publicKey,
+          latitude: nodes.latitude,
+          longitude: nodes.longitude,
+          lastHeard: nodes.lastHeard,
+        })
+        .from(nodes)
+        .where(
+          and(
+            inArray(nodes.sourceId, args.sourceIds),
+            isNotNull(nodes.latitude),
+            isNotNull(nodes.longitude),
+            isNotNull(nodes.lastHeard),
+            gte(nodes.lastHeard, args.sinceMs),
+          ),
+        );
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+      for (const r of current) {
+        const lat = Number(r.latitude);
+        const lon = Number(r.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || isBogusPosition(lat, lon)) continue;
+        items.push(this.meshCoreRow(r.sourceId, r.publicKey, lat, lon, null, Number(r.lastHeard)));
+      }
+      items.sort((a, b) => b.timestamp - a.timestamp);
+    }
+
+    return { items, pageSize, hasMore, nextCursor };
+  }
+
+  private meshCoreRow(
+    sourceId: string,
+    publicKey: string,
+    latitude: number,
+    longitude: number,
+    altitude: number | null,
+    timestamp: number,
+  ): PositionRow {
+    const pk = publicKey.toLowerCase();
+    return {
+      nodeNum: nodeNumFromPubkey(pk),
+      sourceId,
+      latitude,
+      longitude,
+      altitude: altitude === null || altitude === undefined ? null : Number(altitude),
+      timestamp,
+      publicKey: pk,
+      nodeKey: `mc:${pk}`,
+    };
+  }
+
+  /** Meshtastic phase of {@link getPositions}: pivots lat/lon/alt telemetry. */
+  private async getMeshtasticPositionsPage(
+    args: GetPositionsArgs,
+    pageSize: number,
+  ): Promise<PaginatedPositions> {
     const telemetry = pickTelemetryTable(this.dbType);
     const cursor = decodeCursor(args.cursor ?? null);
 
@@ -432,6 +642,7 @@ export class AnalysisRepository {
         longitude: lon,
         altitude: alt === undefined ? null : alt,
         timestamp: lat.timestamp,
+        nodeKey: `mt:${lat.nodeNum}`,
       });
       if (pivots.length > pageSize) break;
     }
@@ -531,6 +742,7 @@ export class AnalysisRepository {
           longitude: lon,
           altitude: alt === undefined ? null : alt,
           timestamp: lat.timestamp,
+          nodeKey: `mt:${lat.nodeNum}`,
         });
       }
     }
@@ -692,7 +904,7 @@ export class AnalysisRepository {
     const pageSize = 2000;
     let cursor: string | null = null;
     const cellMap = new Map<string, GridCell>();
-    // De-dup key per (sourceId, nodeNum, cell) — second+ fixes from the same
+    // De-dup key per (sourceId, nodeKey, cell) — second+ fixes from the same
     // node into the same cell don't increment the count.
     const seen = new Set<string>();
 
@@ -702,12 +914,13 @@ export class AnalysisRepository {
         sinceMs: args.sinceMs,
         pageSize,
         cursor,
+        meshcoreSourceIds: args.meshcoreSourceIds,
       });
       for (const p of page.items) {
         if (args.postFilter && !args.postFilter(p)) continue;
         const latBin = Math.floor(p.latitude / binSize);
         const lonBin = Math.floor(p.longitude / binSize);
-        const dedupeKey = `${p.sourceId}:${p.nodeNum}:${latBin}:${lonBin}`;
+        const dedupeKey = `${p.sourceId}:${p.nodeKey}:${latBin}:${lonBin}`;
         if (seen.has(dedupeKey)) continue;
         seen.add(dedupeKey);
         const cellKey = `${latBin}:${lonBin}`;
@@ -815,7 +1028,7 @@ export class AnalysisRepository {
             continue;
           }
 
-          const entry: HopEntry & { timestamp: number } = { sourceId, nodeNum, hops, timestamp };
+          const entry: HopEntry & { timestamp: number } = { sourceId, nodeNum, hops, timestamp, nodeKey: `mt:${nodeNum}` };
           if (includeTransport) {
             // The endpoints are never filtered by `buildLegHopLinks`, so
             // rebuilding them from `side` is exact — no new tie logic.
@@ -832,12 +1045,58 @@ export class AnalysisRepository {
       }
     }
     return {
-      entries: Array.from(seen.values(), ({ sourceId, nodeNum, hops, transport }) => {
-        const entry: HopEntry = { sourceId, nodeNum, hops };
-        if (includeTransport) entry.transport = transport;
-        return entry;
-      }),
+      entries: [
+        ...Array.from(seen.values(), ({ sourceId, nodeNum, hops, transport, nodeKey }) => {
+          const entry: HopEntry = { sourceId, nodeNum, hops, nodeKey };
+          if (includeTransport) entry.transport = transport;
+          return entry;
+        }),
+        ...(await this.getMeshCoreHopEntries(args.meshcoreSourceIds ?? [])),
+      ],
     };
+  }
+
+  /**
+   * Hop entries for MeshCore sources from `meshcore_nodes.path_len`.
+   *
+   * At ingest `path_len` holds the decoded hop count (low 6 bits of the
+   * packed byte) and the firmware's OUT_PATH_UNKNOWN (0xFF) sentinel is stored
+   * as NULL, so unknown = NULL. Negative values and anything above the 6-bit
+   * range (a raw 0xFF that slipped through) are treated as unknown too.
+   */
+  private async getMeshCoreHopEntries(sourceIds: string[]): Promise<HopEntry[]> {
+    if (sourceIds.length === 0) return [];
+    const nodes = pickMeshCoreNodesTable(this.dbType);
+    /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
+    const rows: any[] = await (this.db as any)
+      .select({
+        sourceId: nodes.sourceId,
+        publicKey: nodes.publicKey,
+        pathLen: nodes.pathLen,
+      })
+      .from(nodes)
+      .where(
+        and(
+          inArray(nodes.sourceId, sourceIds),
+          isNotNull(nodes.pathLen),
+          or(eq(nodes.isLocalNode, false), isNull(nodes.isLocalNode)),
+        ),
+      );
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    const out: HopEntry[] = [];
+    for (const r of rows) {
+      const hops = Number(r.pathLen);
+      if (!Number.isInteger(hops) || hops < 0 || hops > 63) continue;
+      const pk = String(r.publicKey).toLowerCase();
+      out.push({
+        sourceId: r.sourceId,
+        nodeNum: nodeNumFromPubkey(pk),
+        hops,
+        publicKey: pk,
+        nodeKey: `mc:${pk}`,
+      });
+    }
+    return out;
   }
 
   /**

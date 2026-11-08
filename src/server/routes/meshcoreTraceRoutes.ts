@@ -65,6 +65,46 @@ router.get(
   },
 );
 
+// GET /api/sources/:id/meshcore/hop-snr/latest-trace?publicKey=<64 hex>
+// The newest trace MeshMonitor sent that involves this contact, as ordered
+// hops, so the contact panel can draw it after a reload. `trace` is null when
+// there is none inside the window. Reads only; sends nothing over the radio.
+router.get(
+  '/hop-snr/latest-trace',
+  optionalAuth(),
+  requirePermission('traceroute', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = String((req.params as { id?: string }).id ?? '');
+      const rawKey = req.query.publicKey;
+      if (typeof rawKey !== 'string' || !PUBLIC_KEY_RE.test(rawKey)) {
+        return fail(res, 400, 'INVALID_PUBLIC_KEY', 'publicKey must be 64 hex characters');
+      }
+      const sinceMs = Date.now() - DEFAULT_HOURS * 60 * 60_000;
+      const rows = await databaseService.meshcoreHopSnr.getLatestInitiatedTraceFor(sourceId, rawKey.toLowerCase(), sinceMs);
+      if (rows.length === 0) return ok(res, { trace: null });
+      return ok(res, {
+        trace: {
+          traceTag: rows[0].traceTag,
+          timestamp: rows[0].timestamp,
+          hashBytes: rows[0].hashBytes,
+          hops: rows.map((r) => ({
+            hopIndex: r.hopIndex,
+            senderPublicKey: r.senderPublicKey,
+            senderHash: r.senderHash,
+            receiverPublicKey: r.receiverPublicKey,
+            receiverHash: r.receiverHash,
+            snr: r.snrQuarterDb / 4,
+          })),
+        },
+      });
+    } catch (error) {
+      logger.error('Error reading latest MeshCore trace:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to read the latest trace');
+    }
+  },
+);
+
 // DELETE /api/sources/:id/meshcore/hop-snr?from=<end>&to=<end>
 // Clears one directional link (#5970): every stored sample where `to` heard
 // `from`, on this source only and at any age. That is the set one graph of

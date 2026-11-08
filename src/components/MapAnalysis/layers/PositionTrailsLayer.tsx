@@ -17,6 +17,7 @@ import { usePositions } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { isNodeEmphasized, selectionOpacity } from '../../../utils/nodeIdentity';
 import { colorForKey } from '../../../utils/trailColor';
+import type { PositionRow } from '../../../services/analysisApi';
 
 const TRAIL_WEIGHT = 4;
 const OUTLINE_WEIGHT = 7;
@@ -24,12 +25,11 @@ const OUTLINE_COLOR = 'rgba(0,0,0,0.4)';
 const DOT_RADIUS = 4;
 const DOT_FILL_OPACITY = 0.9;
 
-interface PositionRecord {
-  nodeNum: number;
-  sourceId: string;
-  latitude: number;
-  longitude: number;
-  timestamp: number;
+type PositionRecord = PositionRow;
+
+/** Canonical identity of a position row; MeshCore's synthetic nodeNum is never used. */
+function rowNodeKey(p: PositionRecord): string {
+  return p.nodeKey ?? `mt:${Number(p.nodeNum)}`;
 }
 
 export default function PositionTrailsLayer() {
@@ -54,39 +54,52 @@ export default function PositionTrailsLayer() {
     (t >= tsCfg.windowStartMs && t <= tsCfg.windowEndMs);
 
   const trails = useMemo(() => {
-    const grouped = new Map<string, Array<{ ts: number; pos: [number, number] }>>();
+    const grouped = new Map<
+      string,
+      { sourceId: string; nodeKey: string; nodeNum: number; pts: Array<{ ts: number; pos: [number, number] }> }
+    >();
     const filtered = (items as PositionRecord[]).filter((p) => inWindow(p.timestamp));
     for (const p of filtered) {
-      const key = `${p.sourceId}:${Number(p.nodeNum)}`;
-      const arr = grouped.get(key) ?? [];
-      arr.push({ ts: p.timestamp, pos: [p.latitude, p.longitude] });
-      grouped.set(key, arr);
+      const nodeKey = rowNodeKey(p);
+      const key = `${p.sourceId}|${nodeKey}`;
+      let g = grouped.get(key);
+      if (!g) {
+        g = { sourceId: p.sourceId, nodeKey, nodeNum: Number(p.nodeNum), pts: [] };
+        grouped.set(key, g);
+      }
+      g.pts.push({ ts: p.timestamp, pos: [p.latitude, p.longitude] });
     }
     const out: Array<{
       key: string;
       positions: [number, number][];
       color: string;
       sourceId: string;
+      nodeKey: string;
       nodeNum: number;
       pointCount: number;
       startMs: number;
       endMs: number;
     }> = [];
-    for (const [key, arr] of grouped) {
-      if (arr.length < 2) continue;
+    for (const [key, g] of grouped) {
+      const arr = g.pts;
       arr.sort((a, b) => a.ts - b.ts);
-      const colonIdx = key.indexOf(':');
-      const sourceId = colonIdx >= 0 ? key.slice(0, colonIdx) : '';
-      const nodeNum = colonIdx >= 0 ? Number(key.slice(colonIdx + 1)) : 0;
+      // A current-fix union can repeat a history row: drop consecutive points
+      // with identical timestamp and coordinates.
+      const uniq = arr.filter((pt, i) => {
+        const prev = arr[i - 1];
+        return !(prev && prev.ts === pt.ts && prev.pos[0] === pt.pos[0] && prev.pos[1] === pt.pos[1]);
+      });
+      if (uniq.length < 2) continue;
       out.push({
         key,
-        positions: arr.map((x) => x.pos),
+        positions: uniq.map((x) => x.pos),
         color: colorForKey(key),
-        sourceId,
-        nodeNum,
-        pointCount: arr.length,
-        startMs: arr[0].ts,
-        endMs: arr[arr.length - 1].ts,
+        sourceId: g.sourceId,
+        nodeKey: g.nodeKey,
+        nodeNum: g.nodeNum,
+        pointCount: uniq.length,
+        startMs: uniq[0].ts,
+        endMs: uniq[uniq.length - 1].ts,
       });
     }
     return out;
@@ -107,7 +120,7 @@ export default function PositionTrailsLayer() {
     let minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity;
     let found = false;
     for (const t of trails) {
-      if (!isNodeEmphasized(`mt:${t.nodeNum}`, config.selectedNodeIds)) continue;
+      if (!isNodeEmphasized(t.nodeKey, config.selectedNodeIds)) continue;
       for (const [lat, lng] of t.positions) {
         if (lat < minLat) minLat = lat;
         if (lat > maxLat) maxLat = lat;
@@ -128,7 +141,7 @@ export default function PositionTrailsLayer() {
       {trails.map((t) => {
         const opacity = selectionOpacity(
           0.7,
-          isNodeEmphasized(`mt:${t.nodeNum}`, config.selectedNodeIds),
+          isNodeEmphasized(t.nodeKey, config.selectedNodeIds),
         );
         return (
           <span key={t.key}>
@@ -158,6 +171,7 @@ export default function PositionTrailsLayer() {
                     type: 'trail',
                     sourceId: t.sourceId,
                     nodeNum: t.nodeNum,
+                    nodeKey: t.nodeKey,
                     pointCount: t.pointCount,
                     startMs: t.startMs,
                     endMs: t.endMs,

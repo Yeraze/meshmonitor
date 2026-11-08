@@ -139,6 +139,44 @@ function runRepoSuite(getRepo: () => MeshCoreHopSnrRepository, clear: () => Prom
     expect(await links()).toEqual(['a>c', 'b>a', 'ff>a']);
   });
 
+  it('getLatestInitiatedTraceFor returns the newest sent trace of the contact in hop order, per source (WP4 #6260)', async () => {
+    const t = (tag: number, hopIndex: number, over: Partial<MeshCoreHopSnrRow> = {}) =>
+      row({ traceTag: tag, hopIndex, initiated: true, ...over });
+    await repo.insertHops(SRC_A, [
+      // older sent trace
+      t(1, 0, { timestamp: 1000 }),
+      // newest sent trace: two hops, inserted out of order
+      t(2, 1, { timestamp: 9000, senderPublicKey: K2, receiverPublicKey: K1 }),
+      t(2, 0, { timestamp: 9000, senderPublicKey: K1, receiverPublicKey: K2 }),
+      // newer but overheard (not initiated): ignored
+      row({ traceTag: 3, hopIndex: 0, initiated: false, timestamp: 9500 }),
+      // a different trace that does not involve K1/K2 as ends
+      t(4, 0, { timestamp: 9800, senderPublicKey: 'c'.repeat(64), receiverPublicKey: 'd'.repeat(64) }),
+    ]);
+    await repo.insertHops(SRC_B, [row({ sourceId: SRC_B, traceTag: 5, initiated: true, timestamp: 9900 })]);
+    const got = await repo.getLatestInitiatedTraceFor(SRC_A, K1, 0);
+    expect(got.map((r) => [r.traceTag, r.hopIndex])).toEqual([[2, 0], [2, 1]]);
+    expect(got[0].traceTag).toBe(2);
+    expect(await repo.getLatestInitiatedTraceFor(SRC_A, K1, 9001)).toEqual([]);
+    expect(await repo.getLatestInitiatedTraceFor(SRC_A, 'e'.repeat(64), 0)).toEqual([]);
+    expect((await repo.getLatestInitiatedTraceFor(SRC_B, K1, 0)).map((r) => r.traceTag)).toEqual([5]);
+  });
+
+  it('getResolvedLinks returns only fully keyed rows, newest first, limited, per source (WP4 #6260)', async () => {
+    await repo.insertHops(SRC_A, [
+      row({ timestamp: 1000 }),
+      row({ timestamp: 3000, hopIndex: 1 }),
+      row({ timestamp: 4000, receiverPublicKey: null }),
+      row({ timestamp: 5000, senderPublicKey: null }),
+      row({ timestamp: 6000, hopIndex: 2, initiated: true }),
+    ]);
+    await repo.insertHops(SRC_B, [row({ sourceId: SRC_B, timestamp: 7000 })]);
+    expect((await repo.getResolvedLinks(SRC_A, 0)).map((r) => r.timestamp)).toEqual([6000, 3000, 1000]);
+    expect((await repo.getResolvedLinks(SRC_A, 2000)).map((r) => r.timestamp)).toEqual([6000, 3000]);
+    expect(await repo.getResolvedLinks(SRC_A, 0, 1)).toHaveLength(1);
+    expect(await repo.getResolvedLinks(SRC_B, 0)).toHaveLength(1);
+  });
+
   it('retention and source deletion touch only that source', async () => {
     await repo.insertHops(SRC_A, [row({ timestamp: 1000 }), row({ timestamp: 9000 })]);
     await repo.insertHops(SRC_B, [row({ sourceId: SRC_B, timestamp: 1000 })]);

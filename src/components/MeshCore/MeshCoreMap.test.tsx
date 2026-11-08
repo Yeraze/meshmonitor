@@ -11,7 +11,26 @@
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+vi.mock('./hooks/useMeshCoreEstimatedPositions', () => ({ useMeshCoreEstimatedPositions: () => [] }));
 import { MeshCoreMap } from './MeshCoreMap';
+
+// WP3 (#6260): the map now pulls in the 3D toggle, local-marker authoring and
+// permission hooks. Stub them so these suites stay about their own feature.
+vi.mock('../../init', () => ({ appBasename: '' }));
+vi.mock('../map/MapInstanceBridge', () => ({ MapInstanceBridge: () => null }));
+vi.mock('../map/LocalMarkerPlacementBridge', () => ({ default: () => null }));
+vi.mock('../map/layers/MapMarkersLayer', () => ({ LocalMarkers: () => null }));
+vi.mock('../map/layers/CrossSourceLinksLayer', () => ({ CrossSourceLinksLayer: () => null }));
+vi.mock('../../hooks/useTerrainCapabilities', () => ({
+  useTerrainCapabilities: () => ({ enabled: false, terrainTiles: false, isLoading: false }),
+}));
+vi.mock('../../hooks/useMapMarkers', () => ({
+  useMapMarkers: () => ({ markers: [], isLoading: false, create: vi.fn(), update: vi.fn(), remove: vi.fn() }),
+}));
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ hasPermission: () => false }),
+}));
+
 
 // #4835: the live packet traffic layer pulls in the socket context; off by default here.
 // #5972: the ducting hooks need a QueryClient; with the admin switch off the

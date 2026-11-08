@@ -480,6 +480,7 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
 
       const renderSegments = decomposeTraceroute(tr, { resolvePosition });
       for (const seg of renderSegments) {
+        if (seg.fromNodeNum === undefined || seg.toNodeNum === undefined) continue;
         const fromInfo = nodePositions.get(seg.fromNodeNum);
         const toInfo = nodePositions.get(seg.toNodeNum);
         // Both endpoints resolved (decomposeTraceroute already guarantees

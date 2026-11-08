@@ -4,7 +4,7 @@
  *
  * Rows are directional: `receiver` heard `sender` at `snrQuarterDb / 4` dB.
  */
-import { and, desc, eq, gte, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -141,6 +141,67 @@ export class MeshCoreHopSnrRepository extends BaseRepository {
     const t = this.tables.meshcoreHopSnr;
     const rows = await this.db.select().from(t)
       .where(and(this.withSourceScope(t, sourceId), gte(t.timestamp, sinceMs)))
+      .orderBy(desc(t.timestamp), desc(t.id))
+      .limit(Math.max(1, Math.min(limit, HOP_SNR_HISTORY_MAX_LIMIT)));
+    return rows.map((r: Record<string, unknown>) => this.toRow(r));
+  }
+
+  /**
+   * The hop rows of the newest trace this instance SENT (`initiated`) that
+   * involves the contact `publicKey` as sender or receiver, at or after
+   * `sinceMs`, in hop order. Empty when there is none. One trace is one
+   * `(traceTag, authCode)` pair, so rows of an older trace never mix in.
+   */
+  async getLatestInitiatedTraceFor(sourceId: string, publicKey: string, sinceMs: number): Promise<MeshCoreHopSnrRow[]> {
+    this.requireSource(sourceId, 'getLatestInitiatedTraceFor');
+    const t = this.tables.meshcoreHopSnr;
+    const newest = await this.db.select().from(t)
+      .where(and(
+        this.withSourceScope(t, sourceId),
+        eq(t.initiated, true),
+        or(eq(t.senderPublicKey, publicKey), eq(t.receiverPublicKey, publicKey)),
+        gte(t.timestamp, sinceMs),
+      ))
+      .orderBy(desc(t.timestamp), desc(t.id))
+      .limit(1);
+    if (newest.length === 0) return [];
+    const head = this.toRow(newest[0] as Record<string, unknown>);
+    const rows = await this.db.select().from(t)
+      .where(and(
+        this.withSourceScope(t, sourceId),
+        eq(t.initiated, true),
+        eq(t.traceTag, head.traceTag),
+        eq(t.authCode, head.authCode),
+        gte(t.timestamp, sinceMs),
+      ))
+      .orderBy(asc(t.hopIndex), desc(t.id));
+    // A re-used tag can leave duplicate hop indexes; keep the newest per index.
+    const seen = new Set<number>();
+    const out: MeshCoreHopSnrRow[] = [];
+    for (const r of rows) {
+      const row = this.toRow(r as Record<string, unknown>);
+      if (seen.has(row.hopIndex)) continue;
+      seen.add(row.hopIndex);
+      out.push(row);
+    }
+    return out;
+  }
+
+  /**
+   * Hop rows whose both ends resolved to a contact key (sent or overheard),
+   * newest first, at or after `sinceMs`. For consumers that need
+   * key-to-key links, such as position estimation.
+   */
+  async getResolvedLinks(sourceId: string, sinceMs: number, limit = HOP_SNR_HISTORY_LIMIT): Promise<MeshCoreHopSnrRow[]> {
+    this.requireSource(sourceId, 'getResolvedLinks');
+    const t = this.tables.meshcoreHopSnr;
+    const rows = await this.db.select().from(t)
+      .where(and(
+        this.withSourceScope(t, sourceId),
+        isNotNull(t.senderPublicKey),
+        isNotNull(t.receiverPublicKey),
+        gte(t.timestamp, sinceMs),
+      ))
       .orderBy(desc(t.timestamp), desc(t.id))
       .limit(Math.max(1, Math.min(limit, HOP_SNR_HISTORY_MAX_LIMIT)));
     return rows.map((r: Record<string, unknown>) => this.toRow(r));

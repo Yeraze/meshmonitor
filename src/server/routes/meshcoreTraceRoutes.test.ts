@@ -74,6 +74,47 @@ describe('MeshCore hop SNR route (#5722)', () => {
     expect((await admin.get(url(harness.sourceA, '?hours=1'))).status).toBe(200);
   });
 
+  describe('GET /hop-snr/latest-trace (WP4 #6260)', () => {
+    const latest = (sourceId: string, q = '') => `/api/sources/${sourceId}/meshcore/hop-snr/latest-trace${q}`;
+
+    it('needs traceroute:read on THIS source and a valid key', async () => {
+      await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceB);
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.get(latest(harness.sourceA, `?publicKey=${K1}`))).status).toBe(403);
+      await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceA);
+      expect((await agent.get(latest(harness.sourceA, `?publicKey=${K1}`))).status).toBe(200);
+      for (const q of ['', '?publicKey=zz', `?publicKey=${'a'.repeat(63)}`]) {
+        const res = await agent.get(latest(harness.sourceA, q));
+        expect(res.status, q).toBe(400);
+        expect(res.body).toMatchObject({ success: false, code: 'INVALID_PUBLIC_KEY' });
+      }
+    });
+
+    it('returns null when no trace we sent involves the contact', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      const res = await admin.get(latest(harness.sourceA, `?publicKey=${K1}`));
+      expect(res.body).toEqual({ success: true, data: { trace: null } });
+    });
+
+    it('returns the newest sent trace as ordered hops with dB SNR, scoped to the source', async () => {
+      const ts = Date.now() - 1000;
+      await harness.db.meshcoreHopSnr.insertHops(harness.sourceA, [
+        row(harness.sourceA, { traceTag: 7, hopIndex: 1, initiated: true, timestamp: ts, senderPublicKey: K2, senderHash: 'bb', receiverPublicKey: K3, receiverHash: 'cc', snrQuarterDb: -8 }),
+        row(harness.sourceA, { traceTag: 7, hopIndex: 0, initiated: true, timestamp: ts, snrQuarterDb: 22 }),
+      ]);
+      await harness.db.meshcoreHopSnr.insertHops(harness.sourceB, [
+        row(harness.sourceB, { traceTag: 8, initiated: true, timestamp: ts + 500 }),
+      ]);
+      const admin = await harness.loginAs(harness.admin);
+      const res = await admin.get(latest(harness.sourceA, `?publicKey=${K2.toUpperCase()}`));
+      expect(res.status).toBe(200);
+      const { trace } = res.body.data;
+      expect(trace).toMatchObject({ traceTag: 7, timestamp: ts, hashBytes: 1 });
+      expect(trace.hops.map((h: { hopIndex: number; snr: number }) => [h.hopIndex, h.snr])).toEqual([[0, 5.5], [1, -2]]);
+      expect(trace.hops[0]).toMatchObject({ senderPublicKey: K1, receiverPublicKey: K2, receiverHash: 'bb' });
+    });
+  });
+
   it('caps points per link at 120 by default and honours ?points (#5765)', async () => {
     const now = Date.now();
     await harness.db.meshcoreHopSnr.insertHops(harness.sourceA, Array.from({ length: 150 }, (_, i) =>

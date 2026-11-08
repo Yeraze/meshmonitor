@@ -6469,6 +6469,7 @@
   "meshcore.settings.node_display.hide_incomplete_description": "Hide nodes that have no advertised name or an unknown device type from the Nodes list and map. Favorites and your own node always show.",
   "meshcore.settings.node_dimming_description": "Fade map markers as nodes go quiet. Nodes fade from full opacity at the start time down to the minimum opacity at the end of their age window (the infrastructure window for Repeaters and Room Servers). The Nodes list is not dimmed, and nothing dims when the window is 0 (show all).",
   "meshcore.contact_details.title": "Contact Details",
+  "meshcore.contact_details.trace_path_map": "Trace Path map",
   "meshcore.contact_details.trace_path_timeout": "No reply within {{seconds}} s.",
   "meshcore.contact_details.trace_path_timeout_no_time": "No reply. The trace timed out.",
   "meshcore.contact_details.discover_path_button": "Discover Path",

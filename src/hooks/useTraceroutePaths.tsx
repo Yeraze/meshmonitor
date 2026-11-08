@@ -501,6 +501,9 @@ export function useTraceroutePaths({
     // Popup content (recharts SegmentSnrChart moves in verbatim) — a single
     // render-prop reading hop identity straight off the segment.
     const renderBasePopup = (seg: TracerouteRenderSegment): React.ReactNode => {
+      // Meshtastic adapters always set the node numbers; MeshCore segments
+      // (key-based) never reach this popup.
+      if (seg.fromNodeNum === undefined || seg.toNodeNum === undefined) return null;
       const nodeNum1 = seg.fromNodeNum;
       const nodeNum2 = seg.toNodeNum;
       const segmentKey = nodePairKey(nodeNum1, nodeNum2);
@@ -800,8 +803,8 @@ export function useTraceroutePaths({
         // fromNodeNum/toNodeNum (segments are in traversal order).
         const nums: number[] = [];
         legSegments.forEach((s, i) => {
-          if (i === 0) nums.push(s.fromNodeNum);
-          nums.push(s.toNodeNum);
+          if (i === 0 && s.fromNodeNum !== undefined) nums.push(s.fromNodeNum);
+          if (s.toNodeNum !== undefined) nums.push(s.toNodeNum);
         });
         return nums.map(nameForNode).join(' → ');
       };

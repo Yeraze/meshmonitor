@@ -10,7 +10,7 @@ import { getNodeTypeCategory, categoryGlyphFamily } from '../../utils/nodeTypeCa
 import { getHopColor } from '../../utils/mapIcons';
 import { markerAgeOpacity, MIN_MARKER_OPACITY } from '../../utils/markerAgeOpacity';
 import { isNodeEmphasized, selectionOpacity } from '../../utils/nodeIdentity';
-import { useHopCounts } from '../../hooks/useMapAnalysisData';
+import { useHopByKey, lookupHops } from '../../hooks/useHopByKey';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
@@ -115,18 +115,10 @@ export default function MapAnalysisCanvas() {
   // fetch only runs when hop-shading is on (#4808 follow-up).
   const { data: hopSources = [] } = useDashboardSources();
   const hopSourceIds = (hopSources as Array<{ id: string }>).map((s) => s.id);
-  const hopCounts = useHopCounts({
+  const { hopByKey } = useHopByKey({
     enabled: config.layers.hopShading.enabled,
     sources: config.sources.length === 0 ? hopSourceIds : config.sources,
   });
-  const hopByKey = useMemo(() => {
-    const m = new Map<string, number>();
-    const entries =
-      (hopCounts.data as { entries?: Array<{ sourceId: string; nodeNum: number; hops: number }> } | undefined)
-        ?.entries ?? [];
-    for (const e of entries) m.set(`${e.sourceId}:${Number(e.nodeNum)}`, e.hops);
-    return m;
-  }, [hopCounts.data]);
   const measurePoints: MeasurePoint[] = useMemo(
     () => analysisNodes.map((a) => ({
       id: a.key,
@@ -204,7 +196,7 @@ export default function MapAnalysisCanvas() {
   const node3DFeatures: Node3DFeature[] = useMemo(
     () => analysisNodes.map((a) => {
       const sourceId = a.node.sourceId ?? '';
-      const hopVal = hopByKey.get(`${sourceId}:${Number(a.node.nodeNum)}`);
+      const hopVal = lookupHops(hopByKey, sourceId, a.node);
       const hops = config.layers.hopShading.enabled && hopVal !== undefined ? hopVal : 999;
       // A missing lastHeard sits at the floor when fading, matching the 2D
       // layer's raw-slider-window behavior.
@@ -237,7 +229,7 @@ export default function MapAnalysisCanvas() {
     (key: string) => {
       const match = analysisNodes.find((a) => a.key === key);
       if (!match) return;
-      setSelected({ type: 'node', nodeNum: Number(match.node.nodeNum), sourceId: match.node.sourceId });
+      setSelected({ type: 'node', nodeNum: Number(match.node.nodeNum), sourceId: match.node.sourceId, nodeKey: match.key });
     },
     [analysisNodes, setSelected],
   );
