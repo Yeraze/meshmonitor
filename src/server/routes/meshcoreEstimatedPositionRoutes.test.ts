@@ -42,7 +42,10 @@ describe('GET /meshcore/estimated-positions', () => {
     const res = await admin.get(url(harness.sourceA));
     expect(res.status).toBe(200);
     expect(res.body.data.items).toHaveLength(1);
-    expect(res.body.data.items[0]).toMatchObject({ publicKey: T, latitude: 10, longitude: 20, radiusMethod: 'single_anchor' });
+    // The weighted solve can land a ULP off the anchor (9.999999999999998), so compare positions with a tolerance.
+    expect(res.body.data.items[0]).toMatchObject({ publicKey: T, radiusMethod: 'single_anchor' });
+    expect(res.body.data.items[0].latitude).toBeCloseTo(10, 9);
+    expect(res.body.data.items[0].longitude).toBeCloseTo(20, 9);
   });
 
   it('is empty without nodes:viewOnMap and needs nodes:read on this source', async () => {
