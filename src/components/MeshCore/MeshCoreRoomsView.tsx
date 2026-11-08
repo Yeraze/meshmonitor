@@ -674,7 +674,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
             const hasSaved = storedCreds.has(pubkey);
             const distanceKm = roomDistances[pubkey];
             const roomMuted = mute?.isDMMuted(pubkey) ?? false;
-            const roomUnread = unreadRooms.has(pubkey) && !roomMuted;
+            // computeUnreadRooms already drops muted rooms (isMuted).
+            const roomUnread = unreadRooms.has(pubkey);
             return (
               <button
                 key={pubkey}

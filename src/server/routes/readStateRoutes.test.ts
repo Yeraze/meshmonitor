@@ -194,6 +194,10 @@ describe('readStateRoutes (#4607)', () => {
       expect((await post([entry({ kind: 'meshtastic_channel' })])).body.code).toBe('INVALID_CONVERSATION_KIND');
       expect((await post([entry({ conversationKey: '' })])).body.code).toBe('CONVERSATION_KEY_REQUIRED');
       expect((await post([entry({ lastReadAt: 'soon' })])).body.code).toBe('INVALID_LAST_READ_AT');
+      // Prototype names and odd characters are refused (CodeQL property injection).
+      expect((await post([entry({ conversationKey: '__proto__' })])).body.code).toBe('INVALID_CONVERSATION_KEY');
+      expect((await post([entry({ conversationKey: 'constructor' })])).body.code).toBe('INVALID_CONVERSATION_KEY');
+      expect((await post([entry({ conversationKey: 'a b' })])).body.code).toBe('INVALID_CONVERSATION_KEY');
       expect((await post([])).status).toBe(400);
       expect((await post('nope')).status).toBe(400);
     });

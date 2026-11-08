@@ -19,7 +19,7 @@
 import express from 'express';
 import databaseService from '../../services/database.js';
 import type { ConversationKind } from '../../db/schema/conversationReadState.js';
-import { isConversationKind } from '../../db/repositories/conversationReadState.js';
+import { isConversationKind, isSafeConversationKey } from '../../db/repositories/conversationReadState.js';
 import { optionalAuth, hasPermission, requirePermission } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
@@ -82,6 +82,9 @@ router.post('/', optionalAuth(), async (req, res) => {
   if (typeof conversationKey !== 'string' || conversationKey.length === 0) {
     return fail(res, 400, 'CONVERSATION_KEY_REQUIRED', 'conversationKey is required');
   }
+  if (!isSafeConversationKey(conversationKey)) {
+    return fail(res, 400, 'INVALID_CONVERSATION_KEY', 'conversationKey has an invalid format');
+  }
   if (typeof lastReadAt !== 'number' || !Number.isFinite(lastReadAt) || lastReadAt < 0) {
     return fail(res, 400, 'INVALID_LAST_READ_AT', 'lastReadAt must be a non-negative number');
   }
@@ -140,6 +143,9 @@ router.post(
       }
       if (typeof conversationKey !== 'string' || conversationKey.length === 0) {
         return fail(res, 400, 'CONVERSATION_KEY_REQUIRED', 'conversationKey is required');
+      }
+      if (!isSafeConversationKey(conversationKey)) {
+        return fail(res, 400, 'INVALID_CONVERSATION_KEY', 'conversationKey has an invalid format');
       }
       if (typeof lastReadAt !== 'number' || !Number.isFinite(lastReadAt) || lastReadAt < 0) {
         return fail(res, 400, 'INVALID_LAST_READ_AT', 'lastReadAt must be a non-negative number');
