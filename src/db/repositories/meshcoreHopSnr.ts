@@ -166,23 +166,63 @@ export class MeshCoreHopSnrRepository extends BaseRepository {
       .limit(1);
     if (newest.length === 0) return [];
     const head = this.toRow(newest[0] as Record<string, unknown>);
+    return this.loadInitiatedTrace(sourceId, head.traceTag, head.authCode, sinceMs);
+  }
+
+  /**
+   * Initiated traces of the source at or after `sinceMs`, newest trace first,
+   * at most `limitTraces`; each trace's rows are in hop order. Grouping
+   * (`(traceTag, authCode)`, newest row per hop index) is the same as
+   * `getLatestInitiatedTraceFor`.
+   */
+  async getInitiatedTraces(sourceId: string, sinceMs: number, limitTraces: number): Promise<MeshCoreHopSnrRow[][]> {
+    this.requireSource(sourceId, 'getInitiatedTraces');
+    if (limitTraces <= 0) return [];
+    const t = this.tables.meshcoreHopSnr;
+    const rows = await this.db.select().from(t)
+      .where(and(this.withSourceScope(t, sourceId), eq(t.initiated, true), gte(t.timestamp, sinceMs)))
+      .orderBy(desc(t.timestamp), desc(t.id))
+      .limit(HOP_SNR_HISTORY_MAX_LIMIT);
+    const order: string[] = [];
+    const groups = new Map<string, MeshCoreHopSnrRow[]>();
+    for (const raw of rows) {
+      const row = this.toRow(raw as Record<string, unknown>);
+      const key = `${row.traceTag}:${row.authCode}`;
+      let g = groups.get(key);
+      if (!g) {
+        if (order.length >= limitTraces) continue;
+        g = [];
+        groups.set(key, g);
+        order.push(key);
+      }
+      g.push(row);
+    }
+    return order.map((k) => this.dedupeHopIndexes(groups.get(k)!));
+  }
+
+  private async loadInitiatedTrace(sourceId: string, traceTag: number, authCode: number, sinceMs: number): Promise<MeshCoreHopSnrRow[]> {
+    const t = this.tables.meshcoreHopSnr;
     const rows = await this.db.select().from(t)
       .where(and(
         this.withSourceScope(t, sourceId),
         eq(t.initiated, true),
-        eq(t.traceTag, head.traceTag),
-        eq(t.authCode, head.authCode),
+        eq(t.traceTag, traceTag),
+        eq(t.authCode, authCode),
         gte(t.timestamp, sinceMs),
       ))
       .orderBy(asc(t.hopIndex), desc(t.id));
-    // A re-used tag can leave duplicate hop indexes; keep the newest per index.
+    return this.dedupeHopIndexes(rows.map((r: Record<string, unknown>) => this.toRow(r)));
+  }
+
+  /** A re-used tag can leave duplicate hop indexes; keep the first (newest id) per index, in hop order. */
+  private dedupeHopIndexes(rows: MeshCoreHopSnrRow[]): MeshCoreHopSnrRow[] {
+    const sorted = [...rows].sort((a, b) => a.hopIndex - b.hopIndex || (b.id ?? 0) - (a.id ?? 0));
     const seen = new Set<number>();
     const out: MeshCoreHopSnrRow[] = [];
-    for (const r of rows) {
-      const row = this.toRow(r as Record<string, unknown>);
-      if (seen.has(row.hopIndex)) continue;
-      seen.add(row.hopIndex);
-      out.push(row);
+    for (const r of sorted) {
+      if (seen.has(r.hopIndex)) continue;
+      seen.add(r.hopIndex);
+      out.push(r);
     }
     return out;
   }
