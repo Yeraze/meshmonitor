@@ -7,20 +7,30 @@
  * raw hex dump. Capture is opt-in via the `meshcore_packet_log_enabled`
  * setting; this view exposes the toggle and retention controls inline.
  *
- * Data flow: initial page is fetched from
- * `GET /api/sources/:id/meshcore/packets`; new packets arrive live over the
- * shared Socket.io connection as `meshcore:ota-packet` events (the room is
- * already joined by the parent MeshCorePage's useMeshCore hook).
+ * Data flow: pages come from `GET /api/sources/:id/meshcore/packets` (keyset
+ * cursor) or `/packets/grouped` via `useMeshCorePackets`, rendered through the
+ * shared virtualized list; new packets arrive live over the shared Socket.io
+ * connection as `meshcore:ota-packet` events (#6262).
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Filter, Trash2, Pause, Play, RefreshCw, Download, Circle, Square } from 'lucide-react';
+import { Filter, Trash2, Pause, Play, RefreshCw, Download, Circle, Square, BarChart3, ExternalLink } from 'lucide-react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { useAuth } from '../../contexts/AuthContext';
-import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import { useMeshCorePackets, meshCoreFilterParams, type MeshCorePacketFilters, type MeshCorePacketRow } from '../../hooks/useMeshCorePackets';
+import { useInfiniteVirtualRows } from '../../hooks/useInfiniteVirtualRows';
+import { deriveMeshCorePacketFields } from '../../utils/meshcorePacketDerived';
+import { hopByteForKey, resolveHop, type RepeaterOption } from '../../utils/meshcorePath';
+import { openPacketMonitorPopout } from '../../utils/packetMonitorPopout';
+import PacketSearchInput from '../packets/PacketSearchInput';
+import TimeWindowSelect from '../packets/TimeWindowSelect';
+import { windowToSince, type TimeWindowKey } from '../packets/timeWindow';
+import SearchableSelect, { type SearchableSelectOption } from '../common/SearchableSelect';
+import { toChartEntries } from '../packetStatsChartData';
 import {
   MESHCORE_PAYLOAD_TYPES as PAYLOAD_TYPES,
   MESHCORE_ROUTE_TYPES as ROUTE_TYPES,
@@ -30,6 +40,8 @@ import './MeshCorePacketMonitor.css';
 import styles from './MeshCorePacketMonitorView.module.css';
 import { NumberInput } from '../common/NumberInput';
 
+const PacketStatsChart = React.lazy(() => import('../PacketStatsChart'));
+
 interface MeshCorePacketMonitorViewProps {
   baseUrl: string;
   sourceId: string;
@@ -38,9 +50,23 @@ interface MeshCorePacketMonitorViewProps {
   isRepeaterSource?: boolean;
   /** This source's contacts, used to name the Packet Decode relay chain (#6190). */
   contacts?: MeshCoreContact[];
+  /** Rendered in a pop-out window: fills the viewport, no pop-out button. */
+  standalone?: boolean;
+  /** Called with a contact's public key when a From cell resolves to exactly one contact. */
+  onNodeClick?: (publicKey: string) => void;
 }
 
-type Packet = MeshCoreOtaPacketEvent;
+type Packet = MeshCorePacketRow;
+
+const HEX_HASH = /^[0-9a-f]{2,6}$/i;
+const validHash = (v: string): boolean => HEX_HASH.test(v) && v.length % 2 === 0;
+
+interface Distribution {
+  byPayloadType: { payloadType: number; payloadTypeName: string | null; count: number }[];
+  byRouteType: { routeType: number | null; routeTypeName: string | null; count: number }[];
+  topSenders: { senderPubKey: string; advertName: string | null; count: number }[];
+  total: number;
+}
 
 /**
  * One collapsed row: a distinct frame with its per-observer receptions folded
@@ -55,8 +81,6 @@ interface GroupedPacket extends Packet {
   firstHeard: number;
   lastHeard: number;
 }
-
-const MAX_BUFFER = 2000;
 
 /**
  * Render an observer count for display.
@@ -88,7 +112,7 @@ function formatTime(ts: number): string {
   return d.toLocaleTimeString([], { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
-export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps> = ({ baseUrl, sourceId, isRepeaterSource = false, contacts }) => {
+export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps> = ({ baseUrl, sourceId, isRepeaterSource = false, contacts, standalone = false, onNodeClick }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { state: wsState } = useWebSocketContext();
@@ -106,109 +130,134 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
   const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
   const canClear = hasPermission('packetmonitor', 'write');
 
-  const [packets, setPackets] = useState<Packet[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
-  const [enabled, setEnabled] = useState(false);
-  const [maxCount, setMaxCount] = useState(1000);
-  const [maxAgeHours, setMaxAgeHours] = useState(24);
   const [savingSettings, setSavingSettings] = useState(false);
 
   // Collapsed view (#5040 Phase 2b). Meaningful for any MeshCore source: a
   // device-backed one records a single reception per frame, so grouping is a
   // no-op there rather than something to hide behind a source-type check.
   const [grouped, setGrouped] = useState(false);
-  const [groupedPackets, setGroupedPackets] = useState<GroupedPacket[]>([]);
-  const [isIngestSource, setIsIngestSource] = useState(false);
 
   const [payloadFilter, setPayloadFilter] = useState<number | ''>('');
   const [routeFilter, setRouteFilter] = useState<number | ''>('');
+  const [search, setSearch] = useState<string | undefined>(undefined);
+  const [timeWindow, setTimeWindow] = useState<TimeWindowKey>('all');
+  const [senderFilter, setSenderFilter] = useState('');
+  const [srcHashInput, setSrcHashInput] = useState('');
+  const [pathHashInput, setPathHashInput] = useState('');
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
 
-  const pausedRef = useRef(paused);
-  pausedRef.current = paused;
-  const groupedRef = useRef(grouped);
-  groupedRef.current = grouped;
-  const reloadRef = useRef<(() => void) | null>(null);
+  // `since` is fixed when the window changes. Re-deriving it each render would
+  // change the query key every millisecond.
+  const since = useMemo(() => windowToSince(timeWindow), [timeWindow]);
+  const srcHash = validHash(srcHashInput) ? srcHashInput.toLowerCase() : undefined;
+  const pathHash = validHash(pathHashInput) ? pathHashInput.toLowerCase() : undefined;
+  const filters = useMemo<MeshCorePacketFilters>(() => ({
+    payloadType: payloadFilter === '' ? undefined : payloadFilter,
+    routeType: routeFilter === '' ? undefined : routeFilter,
+    since,
+    search,
+    srcHash,
+    sender: senderFilter || undefined,
+    pathHash,
+  }), [payloadFilter, routeFilter, since, search, srcHash, senderFilter, pathHash]);
+  const hasActiveFilters = Object.values(filters).some(v => v !== undefined);
 
   const mcPrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Don't send an explicit limit: let the server apply the configured
-      // meshcore_packet_log_max_count as the effective page size (issue #3690).
-      const params = new URLSearchParams();
-      if (payloadFilter !== '') params.set('payload_type', String(payloadFilter));
-      if (routeFilter !== '') params.set('route_type', String(routeFilter));
-      const path = grouped ? 'packets/grouped' : 'packets';
-      const res = await csrfFetch(`${mcPrefix}/${path}?${params.toString()}`);
+  const {
+    packets: visiblePackets,
+    total,
+    loading,
+    loadingMore,
+    hasMore,
+    error: loadError,
+    loadMore,
+    refresh,
+    meta,
+    setMeta,
+  } = useMeshCorePackets({ baseUrl, sourceId, filters, grouped, paused, socket });
+  const { enabled, maxAgeHours, isIngestSource } = meta;
+  const maxCount = meta.maxCount;
+  const setEnabled = useCallback((v: boolean) => setMeta(m => ({ ...m, enabled: v })), [setMeta]);
+  const setMaxCount = (v: number) => setMeta(m => ({ ...m, maxCount: v }));
+  const setMaxAgeHours = (v: number) => setMeta(m => ({ ...m, maxAgeHours: v }));
+
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useInfiniteVirtualRows({
+    count: visiblePackets.length,
+    hasMore,
+    loadingMore,
+    loadMore,
+    estimateSize: 36,
+    getScrollElement: () => parentRef.current,
+  });
+
+  // Hash -> contact. Any contact can be a sender, so this is not limited to repeaters.
+  const contactOptions = useMemo<RepeaterOption[]>(
+    () => (contacts ?? []).map(c => ({
+      publicKey: c.publicKey,
+      name: c.advName || c.name || `${c.publicKey.slice(0, 8)}…`,
+      hopByte: hopByteForKey(c.publicKey, 1),
+    })),
+    [contacts],
+  );
+  const contactByKey = useMemo(() => {
+    const m = new Map<string, RepeaterOption>();
+    for (const o of contactOptions) m.set(o.publicKey.toLowerCase(), o);
+    return m;
+  }, [contactOptions]);
+
+  const senderOptions = useMemo<SearchableSelectOption[]>(
+    () => contactOptions
+      .map(o => ({ value: o.publicKey, label: o.name, keywords: o.publicKey }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [contactOptions],
+  );
+
+  const distParams = meshCoreFilterParams(filters).toString();
+  const { data: distribution } = useQuery<Distribution>({
+    queryKey: ['meshcore-packet-distribution', sourceId, distParams],
+    enabled: showStats,
+    queryFn: async () => {
+      const res = await csrfFetch(`${mcPrefix}/packets/stats/distribution?${distParams}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (grouped) {
-        setGroupedPackets(Array.isArray(data.packets) ? data.packets : []);
-      } else {
-        setPackets(Array.isArray(data.packets) ? data.packets : []);
-      }
-      if (typeof data.enabled === 'boolean') setEnabled(data.enabled);
-      if (typeof data.maxCount === 'number') setMaxCount(data.maxCount);
-      if (typeof data.maxAgeHours === 'number') setMaxAgeHours(data.maxAgeHours);
-      if (typeof data.isIngestSource === 'boolean') setIsIngestSource(data.isIngestSource);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load packets');
-    } finally {
-      setLoading(false);
-    }
-  }, [csrfFetch, mcPrefix, payloadFilter, routeFilter, grouped]);
+      return res.json();
+    },
+    staleTime: 10_000,
+  });
 
-  // Initial load + reload on filter change.
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const errorText = error ?? loadError?.message ?? null;
 
-  // Live updates: prepend incoming OTA packets matching the active filters.
-  useEffect(() => {
-    if (!socket) return;
-    const onOtaPacket = (evt: MeshCoreOtaPacketEvent) => {
-      if (evt.sourceId && evt.sourceId !== sourceId) return;
-      if (pausedRef.current) return;
-      // Grouping is a server-side aggregation: a new reception should increment
-      // an existing group, not prepend a row. Prepending would show the same
-      // frame twice and contradict the counts, so reload instead.
-      if (groupedRef.current) {
-        void reloadRef.current?.();
-        return;
-      }
-      setPackets(prev => {
-        const next = [evt, ...prev];
-        return next.length > MAX_BUFFER ? next.slice(0, MAX_BUFFER) : next;
-      });
+  const clearFilters = useCallback(() => {
+    setPayloadFilter('');
+    setRouteFilter('');
+    setSearch(undefined);
+    setTimeWindow('all');
+    setSenderFilter('');
+    setSrcHashInput('');
+    setPathHashInput('');
+  }, []);
+
+  /** The From cell: the advert name, else the best contact match for the source hash. */
+  const resolveFrom = useCallback((p: Packet): { label: string | null; publicKey: string | null } => {
+    const derived = p.srcHash !== undefined || p.senderPubKey !== undefined || p.advertName !== undefined
+      ? { srcHash: p.srcHash ?? null, senderPubKey: p.senderPubKey ?? null, advertName: p.advertName ?? null }
+      : deriveMeshCorePacketFields(p.rawHex);
+    const exact = derived.senderPubKey ? contactByKey.get(derived.senderPubKey.toLowerCase()) : undefined;
+    if (exact) return { label: derived.advertName || exact.name, publicKey: exact.publicKey };
+    if (derived.advertName) return { label: derived.advertName, publicKey: null };
+    if (!derived.srcHash) return { label: null, publicKey: null };
+    const r = resolveHop(derived.srcHash as RepeaterOption['hopByte'], contactOptions);
+    return {
+      label: r.matches.length > 0 ? r.label : `0x${derived.srcHash}`,
+      publicKey: r.matches.length === 1 ? r.matches[0].publicKey : null,
     };
-    socket.on('meshcore:ota-packet', onOtaPacket);
-    return () => {
-      socket.off('meshcore:ota-packet', onOtaPacket);
-    };
-  }, [socket, sourceId]);
-
-  const visiblePackets = useMemo(() => {
-    // Grouped rows arrive already filtered and aggregated by the server; the
-    // client-side filter exists only to keep live-prepended rows honest in flat
-    // mode, and re-applying it to groups would be a no-op at best.
-    if (grouped) return groupedPackets as Packet[];
-    return packets.filter(p => {
-      if (payloadFilter !== '' && p.payloadType !== payloadFilter) return false;
-      if (routeFilter !== '' && p.routeType !== routeFilter) return false;
-      return true;
-    });
-  }, [grouped, groupedPackets, packets, payloadFilter, routeFilter]);
-
-  // Let the live-packet handler trigger a reload without re-subscribing the
-  // socket on every `load` identity change.
-  reloadRef.current = load;
+  }, [contactByKey, contactOptions]);
 
   const saveSettings = useCallback(async (patch: Record<string, string>): Promise<boolean> => {
     setSavingSettings(true);
@@ -235,7 +284,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     if (await saveSettings({ meshcore_packet_log_enabled: next ? '1' : '0' })) {
       setEnabled(next);
     }
-  }, [enabled, saveSettings]);
+  }, [enabled, saveSettings, setEnabled]);
 
   const handleClear = useCallback(async () => {
     if (!window.confirm(t('meshcore.packets.clearConfirm', 'Clear the captured MeshCore packet log for this source?'))) {
@@ -244,20 +293,17 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     try {
       const res = await csrfFetch(`${mcPrefix}/packets`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setPackets([]);
+      void refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to clear packets');
     }
-  }, [csrfFetch, mcPrefix, t]);
+  }, [csrfFetch, mcPrefix, t, refresh]);
 
   // Download the captured packet log as JSONL (honors the active filters),
   // mirroring the Meshtastic packet-monitor export.
   const handleExport = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (payloadFilter !== '') params.set('payload_type', String(payloadFilter));
-      if (routeFilter !== '') params.set('route_type', String(routeFilter));
-      const res = await csrfFetch(`${mcPrefix}/packets/export?${params.toString()}`);
+      const res = await csrfFetch(`${mcPrefix}/packets/export?${meshCoreFilterParams(filters).toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       // Prefer the server-provided filename (timestamped, filter-aware).
@@ -278,13 +324,13 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to export packets');
     }
-  }, [csrfFetch, mcPrefix, payloadFilter, routeFilter]);
+  }, [csrfFetch, mcPrefix, filters]);
 
   return (
-    <div className="meshcore-packet-monitor">
+    <div className="meshcore-packet-monitor" data-standalone={standalone ? 'true' : undefined}>
       <div className="mcpm-header">
         <h3>{t('meshcore.packets.title', 'Packet Monitor')}</h3>
-        <span className="mcpm-count">{visiblePackets.length}</span>
+        <span className="mcpm-count" title={t('meshcore.packets.countTitle', 'Packets matching the filters')}>{total}</span>
         <div className="mcpm-header-controls">
           {canWriteSettings && (
             <button
@@ -323,12 +369,30 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
           >
             <Filter size={14} />
           </button>
-          <button className="mcpm-btn" onClick={() => void load()} title={t('common.refresh', 'Refresh')}>
+          <button
+            className={`mcpm-btn ${showStats ? 'active' : ''}`}
+            onClick={() => setShowStats(v => !v)}
+            title={t('meshcore.packets.stats', 'Distribution charts')}
+            aria-label={t('meshcore.packets.stats', 'Distribution charts')}
+          >
+            <BarChart3 size={14} />
+          </button>
+          <button className="mcpm-btn" onClick={() => void refresh()} title={t('common.refresh', 'Refresh')}>
             <RefreshCw size={14} />
           </button>
           <button className="mcpm-btn" onClick={() => void handleExport()} title={t('common.export', 'Export')}>
             <Download size={14} />
           </button>
+          {!standalone && (
+            <button
+              className="mcpm-btn"
+              onClick={() => openPacketMonitorPopout(sourceId)}
+              title={t('packet_monitor.popout', 'Pop out')}
+              aria-label={t('packet_monitor.popout', 'Pop out')}
+            >
+              <ExternalLink size={14} />
+            </button>
+          )}
           {canClear && (
             <button className="mcpm-btn mcpm-btn-danger" onClick={() => void handleClear()} title={t('common.clear', 'Clear')}>
               <Trash2 size={14} />
@@ -351,25 +415,71 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
       )}
 
       {showFilters && (
+        <div className={styles.filterBar}>
+          <PacketSearchInput
+            className={styles.searchInput}
+            value={search}
+            onCommit={setSearch}
+            maxLength={100}
+            placeholder={t('meshcore.packets.searchPlaceholder', 'Search name, type, hex, key…')}
+            title={t('meshcore.packets.searchTitle', 'Matches advert name, payload type, raw hex and sender key. Channel text is encrypted and is not searched.')}
+          />
+          <TimeWindowSelect value={timeWindow} onChange={setTimeWindow} />
+          <select
+            value={payloadFilter}
+            aria-label={t('meshcore.packets.payloadType', 'Payload')}
+            onChange={e => setPayloadFilter(e.target.value === '' ? '' : Number(e.target.value))}
+          >
+            <option value="">{t('meshcore.packets.payloadType', 'Payload')}: {t('common.all', 'All')}</option>
+            {PAYLOAD_TYPES.map(pt => (
+              <option key={pt.value} value={pt.value}>{pt.label}</option>
+            ))}
+          </select>
+          <select
+            value={routeFilter}
+            aria-label={t('meshcore.packets.routeType', 'Route')}
+            onChange={e => setRouteFilter(e.target.value === '' ? '' : Number(e.target.value))}
+          >
+            <option value="">{t('meshcore.packets.routeType', 'Route')}: {t('common.all', 'All')}</option>
+            {ROUTE_TYPES.map(rt => (
+              <option key={rt.value} value={rt.value}>{rt.label}</option>
+            ))}
+          </select>
+          <div className={styles.senderSelect}>
+            <SearchableSelect
+              value={senderFilter}
+              onChange={setSenderFilter}
+              options={senderOptions}
+              emptyLabel={t('meshcore.packets.anySender', 'Any sender')}
+              placeholder={t('meshcore.packets.sender', 'Sender')}
+            />
+          </div>
+          <input
+            className={styles.hashInput}
+            value={srcHashInput}
+            maxLength={6}
+            onChange={e => setSrcHashInput(e.target.value.trim())}
+            placeholder={t('meshcore.packets.srcHash', 'Src hash')}
+            aria-label={t('meshcore.packets.srcHash', 'Src hash')}
+            title={t('meshcore.packets.srcHashHelp', 'Sender hash, 2 to 6 hex digits')}
+          />
+          <input
+            className={styles.hashInput}
+            value={pathHashInput}
+            maxLength={6}
+            onChange={e => setPathHashInput(e.target.value.trim())}
+            placeholder={t('meshcore.packets.pathHash', 'Path hash')}
+            aria-label={t('meshcore.packets.pathHash', 'Path hash')}
+            title={t('meshcore.packets.pathHashHelp', 'Relay hash anywhere in the path, 2 to 6 hex digits')}
+          />
+          <button className="mcpm-btn" onClick={clearFilters} disabled={!hasActiveFilters && srcHashInput === '' && pathHashInput === ''}>
+            {t('meshcore.packets.clearFilters', 'Clear filters')}
+          </button>
+        </div>
+      )}
+
+      {showFilters && canWriteSettings && (
         <div className="mcpm-filters">
-          <label>
-            {t('meshcore.packets.payloadType', 'Payload')}
-            <select value={payloadFilter} onChange={e => setPayloadFilter(e.target.value === '' ? '' : Number(e.target.value))}>
-              <option value="">{t('common.all', 'All')}</option>
-              {PAYLOAD_TYPES.map(pt => (
-                <option key={pt.value} value={pt.value}>{pt.label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t('meshcore.packets.routeType', 'Route')}
-            <select value={routeFilter} onChange={e => setRouteFilter(e.target.value === '' ? '' : Number(e.target.value))}>
-              <option value="">{t('common.all', 'All')}</option>
-              {ROUTE_TYPES.map(rt => (
-                <option key={rt.value} value={rt.value}>{rt.label}</option>
-              ))}
-            </select>
-          </label>
           {canWriteSettings && (
             <>
               <label className="mcpm-toggle">
@@ -428,7 +538,46 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         </div>
       )}
 
-      {error && <div className="mcpm-error">{error}</div>}
+      {errorText && <div className="mcpm-error">{errorText}</div>}
+
+      {showStats && (
+        <div className={styles.statsStrip}>
+          {distribution && distribution.total > 0 ? (
+            <React.Suspense fallback={<span className={styles.statsEmpty}>{t('common.loading', 'Loading…')}</span>}>
+              <PacketStatsChart
+                bare
+                stacked
+                chartId="mc-by-payload"
+                title={t('meshcore.packets.byPayload', 'By payload')}
+                data={toChartEntries(distribution.byPayloadType, r => r.payloadTypeName ?? `0x${r.payloadType.toString(16)}`, r => r.count)}
+                total={distribution.total}
+              />
+              <PacketStatsChart
+                bare
+                stacked
+                chartId="mc-by-route"
+                title={t('meshcore.packets.byRoute', 'By route')}
+                data={toChartEntries(distribution.byRouteType, r => r.routeTypeName ?? '—', r => r.count)}
+                total={distribution.total}
+              />
+              <PacketStatsChart
+                bare
+                stacked
+                chartId="mc-by-sender"
+                title={t('meshcore.packets.bySender', 'Top senders')}
+                data={toChartEntries(
+                  distribution.topSenders,
+                  r => r.advertName || contactByKey.get(r.senderPubKey.toLowerCase())?.name || r.senderPubKey.slice(0, 8),
+                  r => r.count,
+                )}
+                total={distribution.total}
+              />
+            </React.Suspense>
+          ) : (
+            <span className={styles.statsEmpty}>{t('meshcore.packets.statsEmpty', 'No packets in this window.')}</span>
+          )}
+        </div>
+      )}
 
       <div className="mcpm-table-container">
         {loading ? (
@@ -450,55 +599,82 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
             )}
           </div>
         ) : (
-          <table className="mcpm-table">
-            <thead>
-              <tr>
-                <th>{t('meshcore.packets.time', 'Time')}</th>
-                <th>{t('meshcore.packets.payloadType', 'Payload')}</th>
-                <th>{t('meshcore.packets.routeType', 'Route')}</th>
-                <th>{t('meshcore.packets.hops', 'Hops')}</th>
-                <th>{t('meshcore.packets.snr', 'SNR')}</th>
-                <th>{t('meshcore.packets.rssi', 'RSSI')}</th>
-                <th>{t('meshcore.packets.size', 'Size')}</th>
-                {grouped && (
-                  <th title={t('meshcore.packets.observersHelp', 'Distinct observers that heard this frame. "Local" means your own radio heard it.')}>
-                    {t('meshcore.packets.observers', 'Observers')}
-                  </th>
-                )}
-                <th>{t('meshcore.packets.path', 'Path')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visiblePackets.map((p, idx) => {
-                const key = p.id ?? `${p.timestamp}-${idx}`;
+          <div ref={parentRef} className={styles.list} role="table" data-testid="mcpm-list">
+            <div className={`${styles.cols} ${styles.headRow} ${grouped ? styles.colsGrouped : ''}`} role="row">
+              <div role="columnheader">{t('meshcore.packets.time', 'Time')}</div>
+              <div role="columnheader">{t('meshcore.packets.payloadType', 'Payload')}</div>
+              <div role="columnheader">{t('meshcore.packets.from', 'From')}</div>
+              <div role="columnheader">{t('meshcore.packets.routeType', 'Route')}</div>
+              <div role="columnheader">{t('meshcore.packets.hops', 'Hops')}</div>
+              <div role="columnheader">{t('meshcore.packets.snr', 'SNR')}</div>
+              <div role="columnheader">{t('meshcore.packets.rssi', 'RSSI')}</div>
+              <div role="columnheader">{t('meshcore.packets.size', 'Size')}</div>
+              {grouped && (
+                <div role="columnheader" title={t('meshcore.packets.observersHelp', 'Distinct observers that heard this frame. "Local" means your own radio heard it.')}>
+                  {t('meshcore.packets.observers', 'Observers')}
+                </div>
+              )}
+              <div role="columnheader">{t('meshcore.packets.path', 'Path')}</div>
+            </div>
+            <div className={styles.listInner} style={{ height: rowVirtualizer.getTotalSize() }}>
+              {rowVirtualizer.getVirtualItems().map(vr => {
+                const rowStyle = { transform: `translateY(${vr.start}px)` };
+                const p = visiblePackets[vr.index];
+                if (!p) {
+                  return (
+                    <div key={`loader-${vr.index}`} className={`${styles.row} ${styles.cols} ${styles.loaderRow}`} style={rowStyle}>
+                      {t('common.loading', 'Loading…')}
+                    </div>
+                  );
+                }
+                const from = resolveFrom(p);
                 return (
-                  <tr
-                    key={key}
-                    className="mcpm-row"
+                  <div
+                    key={p.id ?? `${p.timestamp}-${vr.index}`}
+                    className={`${styles.row} ${styles.cols} ${grouped ? styles.colsGrouped : ''}`}
+                    style={rowStyle}
+                    role="row"
+                    data-testid="mcpm-row"
                     onClick={() => setSelectedPacket(p)}
                     title={t('meshcore.packets.clickToDecode', 'Click to decode this packet')}
                   >
-                    <td className="mcpm-mono">{formatTime(p.timestamp)}</td>
-                    <td><span className="mcpm-badge">{payloadLabel(p)}</span></td>
-                    <td className="mcpm-route">{routeLabel(p)}</td>
-                    <td className="mcpm-mono">{typeof p.hopCount === 'number' ? p.hopCount : '—'}</td>
-                    <td className="mcpm-mono">{typeof p.snr === 'number' ? p.snr.toFixed(2) : '—'}</td>
-                    <td className="mcpm-mono">{typeof p.rssi === 'number' ? p.rssi : '—'}</td>
-                    <td className="mcpm-mono">{typeof p.payloadSize === 'number' ? p.payloadSize : '—'}</td>
+                    <div className={`${styles.cell} mcpm-mono`}>{formatTime(p.timestamp)}</div>
+                    <div className={styles.cell}><span className="mcpm-badge">{payloadLabel(p)}</span></div>
+                    <div className={styles.cell}>
+                      {from.label === null ? (
+                        <span className={styles.fromMuted}>—</span>
+                      ) : from.publicKey && onNodeClick ? (
+                        <button
+                          type="button"
+                          className={styles.fromButton}
+                          onClick={e => { e.stopPropagation(); onNodeClick(from.publicKey!); }}
+                          title={t('meshcore.packets.openContact', 'Open this contact')}
+                        >
+                          {from.label}
+                        </button>
+                      ) : (
+                        <span>{from.label}</span>
+                      )}
+                    </div>
+                    <div className={`${styles.cell} mcpm-route`}>{routeLabel(p)}</div>
+                    <div className={`${styles.cell} mcpm-mono`}>{typeof p.hopCount === 'number' ? p.hopCount : '—'}</div>
+                    <div className={`${styles.cell} mcpm-mono`}>{typeof p.snr === 'number' ? p.snr.toFixed(2) : '—'}</div>
+                    <div className={`${styles.cell} mcpm-mono`}>{typeof p.rssi === 'number' ? p.rssi : '—'}</div>
+                    <div className={`${styles.cell} mcpm-mono`}>{typeof p.payloadSize === 'number' ? p.payloadSize : '—'}</div>
                     {grouped && (
-                      <td className="mcpm-mono">
+                      <div className={`${styles.cell} mcpm-mono`}>
                         {observerLabel(
                           Number((p as GroupedPacket).observerCount ?? 0),
                           t('meshcore.packets.observersLocal', 'Local'),
                         )}
-                      </td>
+                      </div>
                     )}
-                    <td className="mcpm-mono mcpm-path">{p.pathHops || (p.pathLenRaw === 255 ? 'direct' : '—')}</td>
-                  </tr>
+                    <div className={`${styles.cell} mcpm-mono mcpm-path`}>{p.pathHops || (p.pathLenRaw === 255 ? 'direct' : '—')}</div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </div>
         )}
       </div>
 
