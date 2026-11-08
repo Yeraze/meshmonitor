@@ -10,7 +10,21 @@ import databaseService from '../../services/database.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshtasticManager } from '../sourceManagerTypes.js';
 import type { MeshtasticManager } from '../meshtasticManager.js';
-import { fail } from '../utils/apiResponse.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
+import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
+import { resolveSecurityDeadNodeDays } from '../constants/settings.js';
+import { meshcoreOwnIdentityTracker } from '../services/meshcoreOwnIdentityTracker.js';
+import {
+  collisionCountsByWidth,
+  findNameReuse,
+  findPathHashCollisions,
+  listSignatureFailures,
+  loadMeshcoreSecurityNodes,
+  type PathHashWidth,
+} from '../services/meshcoreSecurityFindings.js';
+import type { RemoveContactsBulkResult } from '../meshcoreManager.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
 import { duplicateKeySchedulerService } from '../services/duplicateKeySchedulerService.js';
 import { securityDigestService } from '../services/securityDigestService.js';
@@ -368,140 +382,376 @@ router.get('/key-mismatches', requireSourceId('query'), async (req: Request, res
   }
 });
 
-/**
- * GET /api/security/dead-nodes
- * Returns nodes not heard from in 7+ days
- */
-router.get('/dead-nodes', async (req: Request, res: Response) => {
-  try {
-    let deadNodesSourceId = req.query.sourceId as string | undefined;
-    // Fall back to first registered manager for legacy single-source callers
-    if (!deadNodesSourceId) {
-      // Exclude MeshCore sources — dead-node detection is Meshtastic-only
-      // (MeshCore nodes are not tracked in the shared `nodes` table).
-      const managers = sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore');
-      if (managers.length === 0) {
-        return res.status(400).json({ error: 'No source managers available' });
-      }
-      deadNodesSourceId = managers[0].sourceId;
-    }
-    const deadNodesManagerBase = sourceManagerRegistry.getManager(deadNodesSourceId);
-    if (!deadNodesManagerBase) {
-      return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${deadNodesSourceId}`);
-    }
-    if (!isMeshtasticManager(deadNodesManagerBase)) {
-      return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Dead-node detection is Meshtastic-only');
-    }
-    const deadNodesManager: MeshtasticManager = deadNodesManagerBase;
-    const DEAD_NODE_DAYS = 7;
-    const cutoffSeconds = Math.floor(Date.now() / 1000) - (DEAD_NODE_DAYS * 24 * 60 * 60);
+const MAX_BULK_DELETE_KEYS = 1000;
+/** Same budget as the contacts bulk remove (#5777): one serial write per contact. */
+const BULK_DELETE_TIMEOUT_MS = 300_000;
+const HEX64_RE = /^[0-9a-f]{64}$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** The slice of a MeshCore / MQTT-ingest manager the security routes read. */
+interface MeshCoreSecurityManager {
+  sourceId: string;
+  sourceType: string;
+  getLocalNode?: () => { publicKey?: string | null } | null;
+  getContacts?: () => Array<{ publicKey: string; onDevice?: boolean; deviceFavorite?: boolean; isFavorite?: boolean }>;
+  removeContactsBulk?: (keys: readonly string[]) => Promise<RemoveContactsBulkResult>;
+  forgetLocalContact?: (publicKey: string) => Promise<boolean>;
+}
+
+/** Lowercase hex keys that mark the source's own identity (live radio + tracker baseline). */
+async function localMeshcoreKeys(manager: MeshCoreSecurityManager): Promise<Set<string>> {
+  const keys = new Set<string>();
+  const live = manager.getLocalNode?.()?.publicKey;
+  if (live) keys.add(live.toLowerCase());
+  const tracked = await meshcoreOwnIdentityTracker.getCurrentKey(manager.sourceId);
+  if (tracked) keys.add(tracked);
+  return keys;
+}
+
+/**
+ * GET /api/security/dead-nodes?sourceId=
+ * Nodes not heard within the source's `securityDeadNodeDays` threshold
+ * (defaults: Meshtastic 7, MeshCore 14). Never-heard nodes are included.
+ */
+router.get('/dead-nodes', requireSourceId('query'), async (req: Request, res: Response) => {
+  try {
+    const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
+    const manager = sourceManagerRegistry.getManager(sourceId);
+    if (!manager) {
+      return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+    }
+    const isMeshCore = isAnyMeshCoreSourceType(manager.sourceType);
+    if (!isMeshCore && !isMeshtasticManager(manager)) {
+      return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Dead-node detection is not available for this source type');
+    }
+    const thresholdDays = resolveSecurityDeadNodeDays(
+      await databaseService.settings.getSettingForSource(sourceId, 'securityDeadNodeDays'),
+      isMeshCore,
+    );
+
+    if (isMeshCore) {
+      const mc = manager as unknown as MeshCoreSecurityManager;
+      const cutoffMs = Date.now() - thresholdDays * DAY_MS;
+      const [rows, ignored, local] = await Promise.all([
+        databaseService.meshcore.getDeadNodes(sourceId, cutoffMs, { includeNeverHeard: true }),
+        databaseService.meshcoreFilters.listIgnoredNodes(sourceId),
+        localMeshcoreKeys(mc),
+      ]);
+      const ignoredKeys = new Set(ignored.map(i => i.publicKey.toLowerCase()));
+      const contacts = new Map((mc.getContacts?.() ?? []).map(c => [c.publicKey.toLowerCase(), c]));
+      const nodes = rows
+        .filter(n => {
+          const pk = n.publicKey.toLowerCase();
+          if (local.has(pk) || ignoredKeys.has(pk)) return false;
+          // Favourite in MeshMonitor or on the radio (decision 4).
+          if (n.isFavorite === true) return false;
+          const c = contacts.get(pk);
+          return !(c?.deviceFavorite === true || c?.isFavorite === true);
+        })
+        .map(n => {
+          const pk = n.publicKey.toLowerCase();
+          return {
+            nodeKey: `mc:${pk}`,
+            protocol: 'meshcore' as const,
+            publicKey: pk,
+            nodeNum: nodeNumFromPubkey(pk),
+            nodeId: pk,
+            longName: n.name ?? null,
+            shortName: n.name ?? null,
+            hwModel: null,
+            role: n.advType ?? null,
+            // MeshCore stores ms; the DeadNode contract is always seconds.
+            lastHeard: n.lastHeard ? Math.floor(Number(n.lastHeard) / 1000) : null,
+            inDeviceDb: contacts.get(pk)?.onDevice === true,
+            isFavorite: false,
+          };
+        });
+      return res.json({ nodes, count: nodes.length, thresholdDays });
+    }
+
+    const mtManager = manager as MeshtasticManager;
+    const cutoffSeconds = Math.floor(Date.now() / 1000) - thresholdDays * 24 * 60 * 60;
     // Scope to the requested source — otherwise the list leaks dead nodes from
     // every source into one source's view (issue: 2000+ dead nodes).
-    const allNodes = await databaseService.nodes.getAllNodes(deadNodesSourceId);
-    const localNodeNum = parseInt(await databaseService.settings.getLocalNodeNumForSource(deadNodesManager.sourceId) || '0');
+    const allNodes = await databaseService.nodes.getAllNodes(sourceId);
+    const localNodeNum = parseInt(await databaseService.settings.getLocalNodeNumForSource(mtManager.sourceId) || '0');
 
     const deadNodes = allNodes
       .filter(node => {
-        // Exclude local node
         if (Number(node.nodeNum) === localNodeNum) return false;
-        // Exclude broadcast address
         if (Number(node.nodeNum) === 0xFFFFFFFF) return false;
-        // Exclude ignored nodes
         if (node.isIgnored) return false;
-        // Include if never heard or last heard before cutoff
         if (!node.lastHeard) return true;
         return Number(node.lastHeard) < cutoffSeconds;
       })
       .map(node => ({
+        nodeKey: `mt:${Number(node.nodeNum)}`,
+        protocol: 'meshtastic' as const,
         nodeNum: Number(node.nodeNum),
         nodeId: node.nodeId,
         longName: node.longName,
         shortName: node.shortName,
         hwModel: node.hwModel,
         lastHeard: node.lastHeard ? Number(node.lastHeard) : null,
-        inDeviceDb: deadNodesManager.isNodeInDeviceDb(Number(node.nodeNum)),
+        inDeviceDb: mtManager.isNodeInDeviceDb(Number(node.nodeNum)),
       }))
       .sort((a, b) => (a.lastHeard ?? 0) - (b.lastHeard ?? 0)); // Oldest first
 
-    res.json({ nodes: deadNodes, count: deadNodes.length, thresholdDays: DEAD_NODE_DAYS });
+    res.json({ nodes: deadNodes, count: deadNodes.length, thresholdDays });
   } catch (error) {
     logger.error('Error fetching dead nodes:', error);
     res.status(500).json({ error: 'Failed to fetch dead nodes' });
   }
 });
 
+type BulkDeleteResult = {
+  nodeKey: string;
+  nodeNum?: number;
+  deleted: boolean;
+  removedFromDevice: boolean;
+  error?: string;
+};
+
 /**
- * POST /api/security/dead-nodes/bulk-delete
- * Delete multiple nodes from local DB and optionally from device NodeDB
+ * POST /api/security/dead-nodes/bulk-delete  { sourceId, nodeKeys?, nodeNums? }
+ * Needs `security:write` AND `nodes:write` on the source (both protocols).
+ * Meshtastic: local DB + device NodeDB. MeshCore Companion: radio + DB;
+ * Repeater / disconnected / meshcore_mqtt: DB only. Sends nothing over RF.
  */
-router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), async (req: Request, res: Response) => {
-  try {
-    const { nodeNums, sourceId: bulkDeleteSourceId } = req.body;
-    const user = (req as any).user;
-    if (!bulkDeleteSourceId || typeof bulkDeleteSourceId !== 'string') {
-      return res.status(400).json({ error: 'sourceId is required' });
-    }
-    const bulkDeleteManagerBase = sourceManagerRegistry.getManager(bulkDeleteSourceId);
-    if (!bulkDeleteManagerBase) {
-      return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${bulkDeleteSourceId}`);
-    }
-    if (!isMeshtasticManager(bulkDeleteManagerBase)) {
-      return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Dead-node detection is Meshtastic-only');
-    }
-    const bulkDeleteManager: MeshtasticManager = bulkDeleteManagerBase;
+router.post(
+  '/dead-nodes/bulk-delete',
+  extendRequestTimeout(BULK_DELETE_TIMEOUT_MS),
+  requirePermission('security', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req: Request, res: Response) => {
+    try {
+      const { nodeKeys, nodeNums, sourceId } = req.body ?? {};
+      const user = (req as any).user;
+      if (typeof sourceId !== 'string' || !sourceId) {
+        return fail(res, 400, 'MISSING_SOURCE_ID', 'sourceId is required');
+      }
+      const manager = sourceManagerRegistry.getManager(sourceId);
+      if (!manager) {
+        return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+      }
+      const isMeshCore = isAnyMeshCoreSourceType(manager.sourceType);
+      if (!isMeshCore && !isMeshtasticManager(manager)) {
+        return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Dead-node cleanup is not available for this source type');
+      }
 
-    if (!Array.isArray(nodeNums) || nodeNums.length === 0) {
-      return res.status(400).json({ error: 'nodeNums must be a non-empty array' });
-    }
+      const rawKeys: unknown[] = [
+        ...(Array.isArray(nodeKeys) ? nodeKeys : []),
+        ...(Array.isArray(nodeNums) ? nodeNums.map(n => (isMeshCore ? n : `mt:${n}`)) : []),
+      ];
+      if ((nodeKeys !== undefined && !Array.isArray(nodeKeys)) || (nodeNums !== undefined && !Array.isArray(nodeNums)) || rawKeys.length === 0) {
+        return fail(res, 400, 'INVALID_NODE_KEYS', 'nodeKeys (or nodeNums) must be a non-empty array');
+      }
+      if (rawKeys.length > MAX_BULK_DELETE_KEYS) {
+        return fail(res, 400, 'TOO_MANY_KEYS', `At most ${MAX_BULK_DELETE_KEYS} nodes per request`);
+      }
 
-    const results: { nodeNum: number; deleted: boolean; removedFromDevice: boolean; error?: string }[] = [];
+      const results: BulkDeleteResult[] = [];
 
-    for (const nodeNum of nodeNums) {
-      try {
-        const num = Number(nodeNum);
-        let removedFromDevice = false;
+      if (isMeshCore) {
+        const mc = manager as unknown as MeshCoreSecurityManager;
+        const keys: string[] = [];
+        for (const raw of rawKeys) {
+          const pk = typeof raw === 'string' && raw.startsWith('mc:') ? raw.slice(3).toLowerCase() : null;
+          if (!pk || !HEX64_RE.test(pk)) {
+            return fail(res, 400, 'INVALID_NODE_KEY', 'Each node key must be mc:<64-hex public key>');
+          }
+          if (!keys.includes(pk)) keys.push(pk);
+        }
 
-        // Remove from device NodeDB if present
-        if (bulkDeleteManager.isNodeInDeviceDb(num)) {
-          try {
-            await bulkDeleteManager.sendRemoveNode(num);
-            removedFromDevice = true;
-          } catch (deviceErr) {
-            logger.warn(`⚠️ Failed to remove node ${num} from device:`, deviceErr);
+        // Never delete the radio's own identity or a favourite, even if asked.
+        const local = await localMeshcoreKeys(mc);
+        const contacts = new Map((mc.getContacts?.() ?? []).map(c => [c.publicKey.toLowerCase(), c]));
+        const nodeRows = await databaseService.meshcore.getNodesBySource(sourceId);
+        const dbFavorites = new Set(nodeRows.filter(n => n.isFavorite === true).map(n => n.publicKey.toLowerCase()));
+        const allowed: string[] = [];
+        for (const pk of keys) {
+          const c = contacts.get(pk);
+          const protectedKey = local.has(pk) || dbFavorites.has(pk) || c?.deviceFavorite === true || c?.isFavorite === true;
+          if (protectedKey) {
+            results.push({ nodeKey: `mc:${pk}`, deleted: false, removedFromDevice: false, error: 'PROTECTED' });
+          } else {
+            allowed.push(pk);
           }
         }
 
-        // Delete from local database
-        await databaseService.deleteNodeAsync(num, bulkDeleteSourceId);
-        results.push({ nodeNum: num, deleted: true, removedFromDevice });
-
-        logger.info(`🗑️ Dead node cleanup: deleted node ${num}${removedFromDevice ? ' (+ device)' : ''}`);
-      } catch (err) {
-        logger.error(`Error deleting node ${nodeNum}:`, err);
-        results.push({ nodeNum: Number(nodeNum), deleted: false, removedFromDevice: false, error: String(err) });
+        let bulk: RemoveContactsBulkResult = { status: 'unavailable' };
+        if (allowed.length > 0 && mc.removeContactsBulk) {
+          bulk = await mc.removeContactsBulk(allowed);
+        }
+        if (bulk.status === 'busy') {
+          return fail(res, 409, 'BULK_REMOVE_BUSY', 'A bulk contact removal is already running for this source');
+        }
+        if (bulk.status === 'done') {
+          for (const pk of bulk.removedFromDevice) results.push({ nodeKey: `mc:${pk}`, deleted: true, removedFromDevice: true });
+          for (const pk of bulk.removedLocalOnly) results.push({ nodeKey: `mc:${pk}`, deleted: true, removedFromDevice: false });
+          for (const pk of bulk.failed) {
+            results.push({ nodeKey: `mc:${pk}`, deleted: false, removedFromDevice: false, error: 'DELETE_FAILED' });
+          }
+        } else {
+          // Repeater / disconnected / meshcore_mqtt: forget the rows locally.
+          for (const pk of allowed) {
+            try {
+              const removed = (await mc.forgetLocalContact?.(pk)) === true;
+              results.push({ nodeKey: `mc:${pk}`, deleted: removed, removedFromDevice: false, ...(removed ? {} : { error: 'DELETE_FAILED' }) });
+            } catch (err) {
+              results.push({ nodeKey: `mc:${pk}`, deleted: false, removedFromDevice: false, error: String(err) });
+            }
+          }
+        }
+      } else {
+        const mtManager = manager as MeshtasticManager;
+        const nums: number[] = [];
+        for (const raw of rawKeys) {
+          const m = typeof raw === 'string' ? /^mt:(\d{1,10})$/.exec(raw) : null;
+          const n = m ? Number(m[1]) : NaN;
+          if (!m || !Number.isInteger(n) || n < 0 || n > 0xffffffff) {
+            return fail(res, 400, 'INVALID_NODE_KEY', 'Each node key must be mt:<node number>');
+          }
+          if (!nums.includes(n)) nums.push(n);
+        }
+        for (const num of nums) {
+          try {
+            let removedFromDevice = false;
+            if (mtManager.isNodeInDeviceDb(num)) {
+              try {
+                await mtManager.sendRemoveNode(num);
+                removedFromDevice = true;
+              } catch (deviceErr) {
+                logger.warn(`⚠️ Failed to remove node ${num} from device:`, deviceErr);
+              }
+            }
+            await databaseService.deleteNodeAsync(num, sourceId);
+            results.push({ nodeKey: `mt:${num}`, nodeNum: num, deleted: true, removedFromDevice });
+            logger.info(`🗑️ Dead node cleanup: deleted node ${num}${removedFromDevice ? ' (+ device)' : ''}`);
+          } catch (err) {
+            logger.error(`Error deleting node ${num}:`, err);
+            results.push({ nodeKey: `mt:${num}`, nodeNum: num, deleted: false, removedFromDevice: false, error: String(err) });
+          }
+        }
       }
+
+      const deletedCount = results.filter(r => r.deleted).length;
+      if (user?.id) {
+        await databaseService.auditLogAsync(
+          user.id,
+          'dead_nodes_cleanup',
+          'nodes',
+          `Bulk deleted ${deletedCount} dead node(s) on source ${sourceId}: ${results.filter(r => r.deleted).map(r => r.nodeKey).join(', ')}`,
+          req.ip || ''
+        );
+      }
+
+      res.json({ success: true, deletedCount, results });
+    } catch (error) {
+      logger.error('Error bulk deleting dead nodes:', error);
+      res.status(500).json({ error: 'Failed to bulk delete nodes' });
+    }
+  }
+);
+
+/**
+ * GET /api/security/meshcore/findings?sourceId=
+ * MeshCore security findings: path-hash collisions, advert-signature failures,
+ * name reuse and own-key change. Read-only DB work; sends nothing.
+ */
+router.get('/meshcore/findings', requireSourceId('query'), async (req: Request, res: Response) => {
+  try {
+    const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
+    const manager = sourceManagerRegistry.getManager(sourceId);
+    if (!manager) {
+      return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+    }
+    if (!isAnyMeshCoreSourceType(manager.sourceType)) {
+      return fail(res, 400, 'INVALID_SOURCE_TYPE', 'MeshCore findings are only available for MeshCore sources');
     }
 
-    const deletedCount = results.filter(r => r.deleted).length;
+    const [nodes, widthRaw, deadDaysRaw, change, currentKey, pki] = await Promise.all([
+      loadMeshcoreSecurityNodes(sourceId),
+      databaseService.settings.getSettingForSource(sourceId, 'meshcoreDefaultPathHashSize'),
+      databaseService.settings.getSettingForSource(sourceId, 'securityDeadNodeDays'),
+      meshcoreOwnIdentityTracker.getChange(sourceId),
+      meshcoreOwnIdentityTracker.getCurrentKey(sourceId),
+      databaseService.meshcoreSourcePkiKeys.getBySourceId(sourceId),
+    ]);
+    const widthN = Number(widthRaw);
+    const width: PathHashWidth = widthN === 2 || widthN === 3 ? widthN : 1;
+    const heardSinceMs = Date.now() - resolveSecurityDeadNodeDays(deadDaysRaw, true) * DAY_MS;
+    const opts = { heardSinceMs };
 
-    // Audit log
-    if (user?.id) {
-      await databaseService.auditLogAsync(
-        user.id,
-        'dead_nodes_cleanup',
-        'nodes',
-        `Bulk deleted ${deletedCount} dead node(s): ${nodeNums.join(', ')}`,
-        req.ip || ''
-      );
-    }
+    const slim = (n: (typeof nodes)[number]) => ({
+      publicKey: n.publicKey.toLowerCase(),
+      nodeKey: `mc:${n.publicKey.toLowerCase()}`,
+      name: n.name ?? null,
+      advType: n.advType ?? null,
+      lastHeard: n.lastHeard ?? null,
+      firstHeard: n.firstHeard ?? null,
+      advertSignatureVerified: n.advertSignatureVerified ?? null,
+    });
 
-    res.json({ success: true, deletedCount, results });
+    return ok(res, {
+      pathHashCollisions: {
+        width,
+        countsByWidth: collisionCountsByWidth(nodes, opts),
+        groups: findPathHashCollisions(nodes, width, opts).map(g => ({ hash: g.hash, nodes: g.nodes.map(slim) })),
+      },
+      signatureFailures: listSignatureFailures(nodes).map(slim),
+      nameReuse: findNameReuse(nodes).map(g => ({
+        name: g.name,
+        original: slim(g.original),
+        suspects: g.suspects.map(slim),
+      })),
+      ownKey: {
+        currentKey: change?.currentKey ?? currentKey ?? null,
+        previousKey: change?.previousKey ?? null,
+        detectedAt: change?.detectedAt ?? null,
+        pkiKeyMismatch: Number(pki?.keyMismatch ?? 0) > 0,
+      },
+    });
   } catch (error) {
-    logger.error('Error bulk deleting dead nodes:', error);
-    res.status(500).json({ error: 'Failed to bulk delete nodes' });
+    logger.error('Error fetching MeshCore security findings:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch MeshCore security findings');
   }
 });
+
+/**
+ * POST /api/security/own-key/acknowledge  { sourceId }
+ * Clear the own-key-change record; the current key stays as the new baseline.
+ */
+router.post(
+  '/own-key/acknowledge',
+  requirePermission('security', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
+      const manager = sourceManagerRegistry.getManager(sourceId);
+      if (!manager) {
+        return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+      }
+      if (!isAnyMeshCoreSourceType(manager.sourceType)) {
+        return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Own-key tracking is only available for MeshCore sources');
+      }
+      const cleared = await meshcoreOwnIdentityTracker.acknowledge(sourceId);
+      if (req.user?.id) {
+        void databaseService.auditLogAsync(
+          req.user.id,
+          'own_key_change_acknowledged',
+          'security',
+          `Acknowledged own-key change on source ${sourceId}`,
+          req.ip || null
+        );
+      }
+      return ok(res, { acknowledged: cleared });
+    } catch (error) {
+      logger.error('Error acknowledging own-key change:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to acknowledge own-key change');
+    }
+  }
+);
 
 /**
  * POST /api/security/digest/send
