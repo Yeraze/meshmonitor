@@ -1568,7 +1568,7 @@ class ApiService {
     return response.json();
   }
 
-  async purgeNodes(olderThanHours: number) {
+  async purgeNodes(olderThanHours: number, sourceId?: string) {
     // Validate hours parameter
     const validatedHours = validateHours(olderThanHours);
 
@@ -1577,7 +1577,7 @@ class ApiService {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ olderThanHours: validatedHours }),
+      body: JSON.stringify(sourceId ? { olderThanHours: validatedHours, sourceId } : { olderThanHours: validatedHours }),
     });
 
     if (!response.ok) {
@@ -1588,7 +1588,7 @@ class ApiService {
     return response.json();
   }
 
-  async purgeTelemetry(olderThanHours: number) {
+  async purgeTelemetry(olderThanHours: number, sourceId?: string) {
     // Validate hours parameter
     const validatedHours = validateHours(olderThanHours);
 
@@ -1597,7 +1597,8 @@ class ApiService {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ olderThanHours: validatedHours }),
+      // sourceId scopes the purge to one source; omitted = every source.
+      body: JSON.stringify(sourceId ? { olderThanHours: validatedHours, sourceId } : { olderThanHours: validatedHours }),
     });
 
     if (!response.ok) {

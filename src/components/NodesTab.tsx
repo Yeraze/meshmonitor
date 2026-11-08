@@ -113,6 +113,7 @@ import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 import { UiIcon, batteryIconName } from './icons';
 import { useToast } from './ToastContainer';
 import { logger } from '../utils/logger';
+import { calculateNodeOpacity } from '../utils/nodeDimming';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -167,34 +168,6 @@ const isToday = (date: Date): boolean => {
   return date.getDate() === today.getDate() &&
     date.getMonth() === today.getMonth() &&
     date.getFullYear() === today.getFullYear();
-};
-
-// Helper function to calculate node opacity based on last heard time
-const calculateNodeOpacity = (
-  lastHeard: number | undefined,
-  enabled: boolean,
-  startHours: number,
-  minOpacity: number,
-  maxNodeAgeHours: number
-): number => {
-  if (!enabled || !lastHeard) return 1;
-
-  const now = Date.now();
-  const lastHeardMs = lastHeard * 1000;
-  const ageHours = (now - lastHeardMs) / (1000 * 60 * 60);
-
-  // No dimming if node was heard within the start threshold
-  if (ageHours <= startHours) return 1;
-
-  // Calculate opacity linearly from 1 at startHours to minOpacity at maxNodeAgeHours
-  const dimmingRange = maxNodeAgeHours - startHours;
-  if (dimmingRange <= 0) return 1;
-
-  const ageInDimmingRange = ageHours - startHours;
-  const dimmingProgress = Math.min(1, ageInDimmingRange / dimmingRange);
-
-  // Linear interpolation from 1 to minOpacity
-  return 1 - (dimmingProgress * (1 - minOpacity));
 };
 
 // Memoized distance display component to avoid recalculating on every render

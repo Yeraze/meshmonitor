@@ -39,10 +39,6 @@ const MESHCORE_KEYS = [
 const MESHTASTIC_ONLY_IDS = [
   'localStatsIntervalMinutes',
   'nodeHopsCalculation',
-  'hideIncompleteNodes',
-  'nodeDimmingEnabled',
-  'nodeDimmingStartHours',
-  'nodeDimmingMinOpacity',
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -153,7 +149,7 @@ describe('MeshCoreNodeDisplaySection', () => {
     }
   });
 
-  it('(2) renders none of the six Meshtastic-only keys — replaces the deleted SettingsTab hide-branch test', async () => {
+  it('(2) renders none of the two Meshtastic-only keys — replaces the deleted SettingsTab hide-branch test', async () => {
     renderSection(makeQueryClient());
     await waitForHydration();
     for (const id of MESHTASTIC_ONLY_IDS) {
@@ -207,7 +203,7 @@ describe('MeshCoreNodeDisplaySection', () => {
     await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(false));
   });
 
-  it('(6) onSave() POSTs to /api/settings?sourceId=<id> with exactly the five keys plus the four sign-flip keys (#5363), as strings', async () => {
+  it('(6) onSave() POSTs to /api/settings?sourceId=<id> with exactly the five keys plus the four dimming/hide-incomplete keys (#6258) and the four sign-flip keys (#5363), as strings', async () => {
     renderSection(makeQueryClient());
     await waitForHydration();
 
@@ -219,11 +215,15 @@ describe('MeshCoreNodeDisplaySection', () => {
     expect(opts.method).toBe('POST');
     const body = JSON.parse(opts.body);
     expect(Object.keys(body).sort()).toEqual([
+      'hideIncompleteNodes',
       'inactiveNodeCheckIntervalMinutes',
       'inactiveNodeCooldownHours',
       'inactiveNodeThresholdHours',
       'maxInfraNodeAgeHours',
       'maxNodeAgeHours',
+      'nodeDimmingEnabled',
+      'nodeDimmingMinOpacity',
+      'nodeDimmingStartHours',
       'signFlipCorrectionEnabled',
       'signFlipCorrectionRangeKm',
       'signFlipReferenceLatitude',
@@ -232,6 +232,34 @@ describe('MeshCoreNodeDisplaySection', () => {
     for (const v of Object.values(body)) {
       expect(typeof v).toBe('string');
     }
+  });
+
+  it('(6d) hydrates, edits and saves hide-incomplete + dimming per source (#6258)', async () => {
+    vi.mocked(apiService.get).mockResolvedValue({
+      ...SERVED_VALUES,
+      hideIncompleteNodes: '1',
+      nodeDimmingEnabled: '1',
+      nodeDimmingStartHours: '2',
+      nodeDimmingMinOpacity: '0.4',
+    });
+    renderSection(makeQueryClient());
+    await waitForHydration();
+    await waitFor(() =>
+      expect((document.getElementById('nodeDimmingStartHours') as HTMLInputElement | null)?.value).toBe('2'));
+    expect((document.getElementById('nodeDimmingMinOpacity') as HTMLInputElement).value).toBe('0.4');
+
+    fireEvent.change(document.getElementById('nodeDimmingStartHours') as HTMLInputElement, { target: { value: '3' } });
+    await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(true));
+    await saveBarCapture.current!.onSave();
+
+    await waitFor(() => expect(csrfFetchMock).toHaveBeenCalled());
+    const body = JSON.parse(csrfFetchMock.mock.calls[0][1].body);
+    expect(body).toMatchObject({
+      hideIncompleteNodes: '1',
+      nodeDimmingEnabled: '1',
+      nodeDimmingStartHours: '3',
+      nodeDimmingMinOpacity: '0.4',
+    });
   });
 
   it('(6c) hydrates the sign-flip settings (#5363) and saves an edit per source', async () => {
@@ -305,20 +333,24 @@ describe('MeshCoreNodeDisplaySection', () => {
     );
   });
 
-  it('(8) writes the four namespaced localStorage mirrors after a successful save', async () => {
+  it('(8) writes the eight namespaced localStorage mirrors (#6258 adds hide-incomplete + dimming) after a successful save', async () => {
     renderSection(makeQueryClient());
     await waitForHydration();
 
     await saveBarCapture.current!.onSave();
 
-    await waitFor(() => expect(writeNodeDisplayLocalMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(writeNodeDisplayLocalMock).toHaveBeenCalledTimes(8));
     const writtenKeys = writeNodeDisplayLocalMock.mock.calls.map((c: unknown[]) => c[1]).sort();
     expect(writtenKeys).toEqual([
       'inactiveNodeCheckIntervalMinutes',
       'inactiveNodeCooldownHours',
       'inactiveNodeThresholdHours',
       'maxNodeAgeHours',
-    ]);
+      'hideIncompleteNodes',
+      'nodeDimmingEnabled',
+      'nodeDimmingMinOpacity',
+      'nodeDimmingStartHours',
+    ].sort());
     for (const call of writeNodeDisplayLocalMock.mock.calls) {
       expect(call[0]).toBe(SOURCE_ID);
       expect(typeof call[2]).toBe('string');

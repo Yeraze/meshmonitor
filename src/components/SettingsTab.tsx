@@ -33,7 +33,12 @@ import MqttBridgeConfigurationView from './MQTT/MqttBridgeConfigurationView';
 import ReticulumRetentionSection from './settings/ReticulumRetentionSection';
 import DefaultMeshtasticSourceSection from './settings/DefaultMeshtasticSourceSection';
 import { MovedSettingNote } from './common/MovedSettingNote';
+import SystemRestartSection from './settings/SystemRestartSection';
 import SignFlipCorrectionSettings from './settings/SignFlipCorrectionSettings';
+import NodeDimmingSettings from './settings/NodeDimmingSettings';
+import HideIncompleteNodesSetting from './settings/HideIncompleteNodesSetting';
+import TelemetryRetentionSettings from './settings/TelemetryRetentionSettings';
+import TelemetryDataActions from './settings/TelemetryDataActions';
 import { parseSignFlipSettings, clampSignFlipRangeKm, SIGN_FLIP_DEFAULT_RANGE_KM } from '../utils/signFlipPosition';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
@@ -53,6 +58,7 @@ import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
 import sectionNavLayout from './SectionNav.module.css';
 import { GlobalSettingsLink } from './nav/GlobalSettingsLink';
+import { GLOBAL_SETTINGS_PATH } from './nav/sourceNavEntries';
 import {
   GLOBAL_SETTINGS_SECTIONS,
   SOURCE_SETTINGS_SECTIONS,
@@ -75,8 +81,6 @@ import { ADSB_FEEDS, ADSB_FEED_IDS, DEFAULT_ADSB_FEED, isAdsbFeed } from '../uti
 import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS, isCoverageMqttSourceType } from '../utils/coverage';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
-import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
-import { getTelemetryLabel } from './TelemetryChart';
 import {
   SETTINGS_TAB_PER_SOURCE_KEYS,
   NODE_DISPLAY_NUMERIC_DEFAULTS,
@@ -511,8 +515,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // section/nav item to MQTT-shaped sources — see isCoverageMqttSourceType
   // below.
   const { sourceId: purgeSourceId, sourceType } = useSource();
-  // #5333: outlier purge dialog (Danger Zone → Clean telemetry outliers).
-  const [outlierDialogOpen, setOutlierDialogOpen] = useState(false);
 
   // Single draft reducer replacing the 49 `local*` mirrors (Task 5.3). Lazy-initialized once from
   // the current context/props values; category-C fields (no context/prop home) start at their
@@ -701,8 +703,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // 5.3 spec).
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDocker, setIsDocker] = useState<boolean | null>(null);
-  const [isRestarting, setIsRestarting] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
   const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
   const [isTestingApprise, setIsTestingApprise] = useState<boolean>(false);
@@ -711,18 +711,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [elevationTesting, setElevationTesting] = useState(false);
   const { showToast } = useToast();
 
-  // Fetch system status to determine if running in Docker
-  useEffect(() => {
-    const fetchSystemStatus = async () => {
-      try {
-        const data = await apiService.get<{ isDocker?: boolean }>('/api/system/status');
-        setIsDocker(!!data.isDocker);
-      } catch (error) {
-        logger.error('Failed to fetch system status:', error);
-      }
-    };
-    void fetchSystemStatus();
-  }, [baseUrl]);
 
   // Fetch database type from health endpoint (public, no auth required)
   useEffect(() => {
@@ -1800,10 +1788,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   };
   const handlePurgeNodes = async () => {
     const confirmed = window.confirm(
-      t('settings.confirm_purge_nodes_title') + '\n\n' +
+      t(purgeSourceId ? 'settings.confirm_purge_nodes_title_source' : 'settings.confirm_purge_nodes_title') + '\n\n' +
       t('settings.confirm_purge_nodes_impact') + '\n' +
-      '• ' + t('settings.confirm_purge_nodes_item1') + '\n' +
-      '• ' + t('settings.confirm_purge_nodes_item2') + '\n' +
+      '• ' + t(purgeSourceId ? 'settings.confirm_purge_nodes_item1_source' : 'settings.confirm_purge_nodes_item1') + '\n' +
+      '• ' + t(purgeSourceId ? 'settings.confirm_purge_nodes_item2_source' : 'settings.confirm_purge_nodes_item2') + '\n' +
       '• ' + t('settings.confirm_purge_nodes_item3') + '\n' +
       // #4629: the purge now also clears the Auto-Traceroute / Auto-Time-Sync
       // node allowlists. That is a curated selection the user built by hand, so
@@ -1815,35 +1803,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     if (!confirmed) return;
 
     try {
-      await apiService.purgeNodes(0);
+      await apiService.purgeNodes(0, purgeSourceId ?? undefined);
       showToast(t('toast.nodes_purged'), 'success');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       logger.error('Error purging nodes:', error);
       showToast(t('toast.node_purge_failed'), 'error');
-    }
-  };
-
-  const handlePurgeTelemetry = async () => {
-    const confirmed = window.confirm(
-      t('settings.confirm_purge_telemetry_title') + '\n\n' +
-      t('settings.confirm_purge_nodes_impact') + '\n' +
-      '• ' + t('settings.confirm_purge_telemetry_item1') + '\n' +
-      '• ' + t('settings.confirm_purge_telemetry_item2') + '\n' +
-      '• ' + t('settings.confirm_purge_telemetry_item3') + '\n' +
-      '• ' + t('settings.confirm_purge_telemetry_item4') + '\n\n' +
-      t('settings.confirm_cannot_undo')
-    );
-
-    if (!confirmed) return;
-
-    try {
-      await apiService.purgeTelemetry(0);
-      showToast(t('toast.telemetry_purged'), 'success');
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (error) {
-      logger.error('Error purging telemetry:', error);
-      showToast(t('toast.telemetry_purge_failed'), 'error');
     }
   };
 
@@ -1889,35 +1854,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     } catch (error) {
       logger.error('Error purging traceroutes:', error);
       showToast(t('toast.traceroutes_purge_failed'), 'error');
-    }
-  };
-
-  const handleRestartContainer = async () => {
-    const action = isDocker ? t('settings.restart_action') : t('settings.shutdown_action');
-    const confirmed = window.confirm(
-      t('settings.confirm_restart_title', { action }) + '\n\n' +
-      (isDocker
-        ? t('settings.confirm_restart_docker')
-        : t('settings.confirm_restart_manual'))
-    );
-
-    if (!confirmed) return;
-
-    setIsRestarting(true);
-    try {
-      const result = await apiService.restartContainer();
-      showToast(result.message, 'success');
-
-      if (isDocker) {
-        // Wait a few seconds, then reload the page
-        setTimeout(() => {
-          window.location.reload();
-        }, 5000);
-      }
-    } catch (error) {
-      logger.error(`Error ${action}ing:`, error);
-      showToast(t('settings.restart_failed', { action }), 'error');
-      setIsRestarting(false);
     }
   };
 
@@ -2813,68 +2749,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <option value="messages">{t('settings.node_hops_messages')}</option>
             </select>
           </div>
-          <div className="setting-item" style={{ marginTop: '1rem' }}>
-            <label>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={draft.hideIncompleteNodes}
-                  onChange={(e) => updateField('hideIncompleteNodes', e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                {t('settings.hide_incomplete_nodes')}
-              </span>
-              <span className="setting-description">{t('settings.hide_incomplete_description')}</span>
-            </label>
-          </div>
-          <div className="setting-item" style={{ marginTop: '1rem' }}>
-            <label>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={draft.nodeDimmingEnabled}
-                  onChange={(e) => updateField('nodeDimmingEnabled', e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                {t('settings.node_dimming_enabled')}
-              </span>
-              <span className="setting-description">{t('settings.node_dimming_description')}</span>
-            </label>
-          </div>
-          {draft.nodeDimmingEnabled && (
-            <>
-              <div className="setting-item">
-                <label htmlFor="nodeDimmingStartHours">
-                  {t('settings.node_dimming_start_hours')}
-                  <span className="setting-description">{t('settings.node_dimming_start_hours_description')}</span>
-                </label>
-                <NumberInput
-                  id="nodeDimmingStartHours"
-                  min={0.5}
-                  max={24}
-                  step={0.5}
-                  value={draft.nodeDimmingStartHours}
-                  onChange={(n) => updateField('nodeDimmingStartHours', n)}
-                  className="setting-input"
-                />
-              </div>
-              <div className="setting-item">
-                <label htmlFor="nodeDimmingMinOpacity">
-                  {t('settings.node_dimming_min_opacity')}
-                  <span className="setting-description">{t('settings.node_dimming_min_opacity_description')}</span>
-                </label>
-                <NumberInput
-                  id="nodeDimmingMinOpacity"
-                  min={0.1}
-                  max={0.9}
-                  step={0.1}
-                  value={draft.nodeDimmingMinOpacity}
-                  onChange={(n) => updateField('nodeDimmingMinOpacity', n)}
-                  className="setting-input"
-                />
-              </div>
-            </>
-          )}
+          <HideIncompleteNodesSetting
+            checked={draft.hideIncompleteNodes}
+            onChange={(v) => updateField('hideIncompleteNodes', v)}
+          />
+          <NodeDimmingSettings
+            enabled={draft.nodeDimmingEnabled}
+            startHours={draft.nodeDimmingStartHours}
+            minOpacity={draft.nodeDimmingMinOpacity}
+            onEnabledChange={(v) => updateField('nodeDimmingEnabled', v)}
+            onStartHoursChange={(n) => updateField('nodeDimmingStartHours', n)}
+            onMinOpacityChange={(n) => updateField('nodeDimmingMinOpacity', n)}
+          />
 
           {/* Likely-aircraft detection (#5364/#5365 Phase 1 WP5, spec §5.10).
               Meshtastic-only (D2/D18) — do NOT add to
@@ -3054,36 +2940,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         {show('settings-telemetry') && <div id="settings-telemetry" className="settings-section">
           <h3>{t('settings.telemetry')}</h3>
-          <div className="setting-item">
-            <label htmlFor="telemetryVisualizationHours">
-              {t('settings.telemetry_hours_label')}
-              <span className="setting-description">{t('settings.telemetry_hours_description')}</span>
-            </label>
-            <NumberInput
-              id="telemetryVisualizationHours"
-              min={1}
-              max={168}
-              integer
-              value={draft.telemetryVisualizationHours}
-              onChange={(n) => updateField('telemetryVisualizationHours', n)}
-              className="setting-input"
-            />
-          </div>
-          <div className="setting-item">
-            <label htmlFor="favoriteTelemetryStorageDays">
-              {t('settings.fav_telemetry_label')}
-              <span className="setting-description">{t('settings.fav_telemetry_description')}</span>
-            </label>
-            <NumberInput
-              id="favoriteTelemetryStorageDays"
-              min={7}
-              max={90}
-              integer
-              value={draft.favoriteTelemetryStorageDays}
-              onChange={(n) => updateField('favoriteTelemetryStorageDays', n)}
-              className="setting-input"
-            />
-          </div>
+          <TelemetryRetentionSettings
+            visualizationHours={draft.telemetryVisualizationHours}
+            favoriteStorageDays={draft.favoriteTelemetryStorageDays}
+            onVisualizationHoursChange={(n) => updateField('telemetryVisualizationHours', n)}
+            onFavoriteStorageDaysChange={(n) => updateField('favoriteTelemetryStorageDays', n)}
+          />
         </div>}
 
         {show('settings-security') && <div id="settings-security" className="settings-section">
@@ -3182,6 +3044,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             />
           </div>
         </div>}
+
+        {mode === 'source' && (
+          <div id="settings-solar" className="settings-section">
+            <MovedSettingNote
+              testId="solar-moved"
+              text={t('moved.solar', 'Solar Monitoring moved to Global Settings.')}
+              linkLabel={t('moved.open_global_settings', 'Open Global Settings')}
+              to={`${GLOBAL_SETTINGS_PATH}#settings-solar`}
+            />
+          </div>
+        )}
 
         {show('settings-solar') && <div id="settings-solar" className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -3949,7 +3822,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="danger-action">
             <div className="danger-action-info">
               <h4>{t('settings.erase_nodes_title')}</h4>
-              <p>{t('settings.erase_nodes_description')}</p>
+              <p>{t(purgeSourceId ? 'settings.erase_nodes_description_source' : 'settings.erase_nodes_description')}</p>
             </div>
             <button
               className="danger-button"
@@ -3959,42 +3832,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </button>
           </div>
 
-          <div className="danger-action">
-            <div className="danger-action-info">
-              <h4>{t('settings.purge_telemetry_title')}</h4>
-              <p>{t('settings.purge_telemetry_description')}</p>
-            </div>
-            <button
-              className="danger-button"
-              onClick={handlePurgeTelemetry}
-            >
-              {t('settings.purge_telemetry_button')}
-            </button>
-          </div>
-
-          {isAdmin && (
-            <div className="danger-action">
-              <div className="danger-action-info">
-                <h4>{t('settings.clean_outliers_title')}</h4>
-                <p>{t('settings.clean_outliers_description')}</p>
-              </div>
-              <button
-                className="danger-button"
-                onClick={() => setOutlierDialogOpen(true)}
-              >
-                {t('settings.clean_outliers_button')}
-              </button>
-            </div>
-          )}
-          {isAdmin && (
-            <TelemetryOutlierDialog
-              isOpen={outlierDialogOpen}
-              onClose={() => setOutlierDialogOpen(false)}
-              sourceId={purgeSourceId}
-              sources={availableSources.map(src => ({ id: src.id, name: src.name }))}
-              getTypeLabel={getTelemetryLabel}
-            />
-          )}
+          <TelemetryDataActions
+            sourceId={purgeSourceId}
+            sources={availableSources.map(src => ({ id: src.id, name: src.name }))}
+          />
 
           <div className="danger-action">
             <div className="danger-action-info">
@@ -4022,29 +3863,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </button>
           </div>
 
-          {isDocker !== null && (
-            <div className="danger-action">
-              <div className="danger-action-info">
-                <h4>{isDocker ? t('settings.restart_container_title') : t('settings.shutdown_title')}</h4>
-                <p>
-                  {isDocker
-                    ? t('settings.restart_container_description')
-                    : t('settings.shutdown_description')}
-                </p>
-              </div>
-              <button
-                className="danger-button"
-                onClick={handleRestartContainer}
-                disabled={isRestarting || !isAdmin}
-                title={isAdmin ? undefined : t('settings.restart_admin_only', 'Only an administrator can restart or shut down MeshMonitor. It affects every source.')}
-              >
-                {isRestarting
-                  ? (isDocker ? t('settings.restarting') : t('settings.shutting_down'))
-                  : <><UiIcon name={isDocker ? 'refresh' : 'power'} /> {isDocker ? t('settings.restart_button') : t('settings.shutdown_button')}</>}
-              </button>
-            </div>
+          {mode === 'source' && isAdmin && (
+            <MovedSettingNote
+              testId="restart-moved"
+              text={t('moved.restart', 'Restart and shutdown moved to Global Settings.')}
+              linkLabel={t('moved.open_global_settings', 'Open Global Settings')}
+              to={`${GLOBAL_SETTINGS_PATH}#settings-system`}
+            />
           )}
         </div>}
+
+        {show('settings-system') && isAdmin && <SystemRestartSection />}
       </div>
       </div>
     </div>

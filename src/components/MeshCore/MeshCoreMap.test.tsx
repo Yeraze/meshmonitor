@@ -28,8 +28,14 @@ vi.mock('../map/BaseMap', () => ({
   BaseMap: ({ children }: { children: ReactNode }) => <div data-testid="base-map">{children}</div>,
 }));
 
+const { markerCapture } = vi.hoisted(() => ({
+  markerCapture: { current: [] as Array<{ key: string; iconSig: string; opacity?: number }> },
+}));
 vi.mock('../map/layers/NodeMarkersLayer', () => ({
-  NodeMarkersLayer: () => <div data-testid="node-markers-layer" />,
+  NodeMarkersLayer: (props: { markers: Array<{ key: string; iconSig: string; opacity?: number }> }) => {
+    markerCapture.current = props.markers;
+    return <div data-testid="node-markers-layer" />;
+  },
 }));
 
 vi.mock('../map/layers/NeighborLinksLayer', () => ({
@@ -139,5 +145,50 @@ describe('MeshCoreMap loading overlay', () => {
   it('omits the loading overlay by default (isLoading not passed)', () => {
     render(<MeshCoreMap contacts={[]} selectedPublicKey={null} />);
     expect(screen.queryByTestId('map-loading-overlay')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Marker dimming (#6258)
+// ---------------------------------------------------------------------------
+
+describe('MeshCoreMap marker opacity', () => {
+  const contacts = [
+    { publicKey: 'aa', advName: 'Alpha', advType: 1, latitude: 1, longitude: 2 },
+    { publicKey: 'bb', advName: 'Bravo', advType: 2, latitude: 3, longitude: 4 },
+  ] as never;
+
+  beforeEach(() => {
+    localStorage.clear();
+    markerCapture.current = [];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  it('takes marker opacity from markerOpacityByKey and defaults to 1', () => {
+    render(
+      <MeshCoreMap
+        contacts={contacts}
+        selectedPublicKey={null}
+        markerOpacityByKey={new Map([['aa', 0.4]])}
+      />,
+    );
+    const byKey = new Map(markerCapture.current.map(m => [m.key, m]));
+    expect(byKey.get('aa')?.opacity).toBe(0.4);
+    expect(byKey.get('bb')?.opacity).toBe(1);
+  });
+
+  it('never folds opacity into iconSig', () => {
+    const { rerender } = render(
+      <MeshCoreMap contacts={contacts} selectedPublicKey={null} />,
+    );
+    const before = markerCapture.current.map(m => m.iconSig);
+    rerender(
+      <MeshCoreMap
+        contacts={contacts}
+        selectedPublicKey={null}
+        markerOpacityByKey={new Map([['aa', 0.3], ['bb', 0.5]])}
+      />,
+    );
+    expect(markerCapture.current.map(m => m.iconSig)).toEqual(before);
   });
 });

@@ -4,9 +4,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ConnectionStatus, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSource } from '../../contexts/SourceContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { UiIcon } from '../icons';
 import { MeshCoreNodeDisplaySection } from './MeshCoreNodeDisplaySection';
+import { MeshCoreTelemetrySettingsSection } from './MeshCoreTelemetrySettingsSection';
+import TelemetryDataActions from '../settings/TelemetryDataActions';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
 import { MovedSettingNote } from '../common/MovedSettingNote';
@@ -22,7 +25,8 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
  * MeshCoreSettingsView — what MeshMonitor stores and does for this MeshCore
  * source: connect / disconnect, software receive-only, whether MeshMonitor
  * answers discovery requests, node display, ignore and filter lists, the
- * saved-regions catalogue, and purging stored messages.
+ * saved-regions catalogue, telemetry retention and purge, and purging stored
+ * messages.
  *
  * What is written to or done on the radio lives on Device Configuration
  * (#5683 follow-up): default path hash size, default region / scope, radio
@@ -73,7 +77,9 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, authStatus } = useAuth();
+  const { sourceName } = useSource();
+  const isAdmin = authStatus?.user?.isAdmin ?? false;
   const csrfFetch = useCsrfFetch();
   const queryClient = useQueryClient();
   const [savingReceiveOnly, setSavingReceiveOnly] = useState(false);
@@ -345,6 +351,9 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
 
       <MeshCoreNodeDisplaySection baseUrl={baseUrl} sourceId={sourceId} />
 
+      {/* Telemetry visualization window and favorite retention, saved per source (#6258). */}
+      <MeshCoreTelemetrySettingsSection baseUrl={baseUrl} sourceId={sourceId} />
+
       {/* Ignore / Block (#5408) */}
       <MeshCoreIgnoredNodesSection sourceId={sourceId} />
       <MeshCoreMessageFiltersSection sourceId={sourceId} />
@@ -476,6 +485,17 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Admin-only purge / outlier cleanup, scoped to this source (#6258). */}
+      {isAdmin && (
+        <div className="form-section danger-zone">
+          <h3>{t('meshcore.settings.telemetry_data', 'Telemetry data')}</h3>
+          <TelemetryDataActions
+            sourceId={sourceId}
+            sources={[{ id: sourceId, name: sourceName ?? sourceId }]}
+          />
         </div>
       )}
 

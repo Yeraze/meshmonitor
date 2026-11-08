@@ -121,6 +121,12 @@ interface MeshCoreMapProps {
   /** Called once the pending popup has opened, or once it is clear the map
    *  will not draw that node. The owner should clear the pending key. */
   onPendingPopupHandled?: () => void;
+  /**
+   * #6258: per-node marker opacity (age dimming), keyed by public key. Missing
+   * keys render at full opacity. Routed through `NodeMarkerDescriptor.opacity`,
+   * never `iconSig`, so a dimming change does not rebuild icons (#3685).
+   */
+  markerOpacityByKey?: ReadonlyMap<string, number>;
 }
 
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
@@ -132,6 +138,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   resizeTrigger,
   pendingPopupPublicKey = null,
   onPendingPopupHandled,
+  markerOpacityByKey,
 }) => {
   const { t } = useTranslation();
   const { mapTileset, setMapTileset } = useSettings();
@@ -414,6 +421,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
         key: c.publicKey,
         position: [c.latitude!, c.longitude!] as [number, number],
         iconSig: `${name}|${category}`,
+        opacity: markerOpacityByKey?.get(c.publicKey) ?? 1,
         buildIcon: () =>
           createNodeIcon({
             variant: 'meshcore',
@@ -448,7 +456,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
         ),
       };
     }),
-    [visibleContacts, onNavigateToDm, timeFormat, dateFormat, openPendingPopup],
+    [visibleContacts, onNavigateToDm, timeFormat, dateFormat, openPendingPopup, markerOpacityByKey],
   );
 
   const localPos = useMemo((): [number, number] | null => {

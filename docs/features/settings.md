@@ -3,9 +3,9 @@
 ::: tip Reorganized in 4.0
 MeshMonitor 4.0 split the old "Settings" tab:
 
-- **[Global Settings](/features/global-settings)**: language, units, appearance, map, security defaults, backup, maintenance. One per deployment.
+- **[Global Settings](/features/global-settings)**: language, units, appearance, map, security defaults, backup, maintenance, Solar Monitoring, and Restart / Shutdown. One per deployment.
 - **Device Configuration**: what is written to, or done on, the radio (per source, satellite icon).
-- **Settings** (per source, gear icon): what MeshMonitor stores and does for one source: node display, telemetry, notifications, packet monitor, solar, and the danger zone.
+- **Settings** (per source, gear icon): what MeshMonitor stores and does for one source: node display, telemetry, notifications, packet monitor, and the danger zone. Purge telemetry and Erase nodes there act on that source only.
 
 A source's connection details and Virtual Node are edited with **Edit Source** on the dashboard. Its automations are on its **Automation** tab. See [Multi-Source](/features/multi-source).
 
@@ -468,6 +468,8 @@ direct messages, not that its contact record is invalid. Contact sharing is
 separate from channel sharing, which uses Meshtastic's `/e/#` URL format.
 
 ## Solar Monitoring
+
+**Where**: Global Settings, under Solar Monitoring. One forecast serves the whole install, so a source's Settings page shows a pointer to it.
 
 **Description**: Configure solar production monitoring to visualize expected solar power generation on telemetry graphs.
 
@@ -997,7 +999,9 @@ These actions are **irreversible** and can result in data loss. Use with extreme
 
 **Description**: Restarts the MeshMonitor container (Docker) or shuts down the application (bare metal).
 
-**Who can use it**: Administrators only. The button is disabled for other users. (Changed in 4.17: it used to be open to anyone with `settings:write` on a source.)
+**Where**: Global Settings, under Restart / Shutdown (administrators only). It acts on the whole process, so a source's Danger Zone shows a pointer to it.
+
+**Who can use it**: Administrators only. Other users do not see the section.
 
 **Effect**:
 - **Docker**: The container restarts automatically and will be unavailable for approximately 10-30 seconds

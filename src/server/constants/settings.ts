@@ -996,6 +996,13 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'adsb_api_token',                         // ", secret via the _token pattern
   'adsb_opensky_client_id',                 // " (#5877), secret via SECRET_SETTINGS_KEYS
   'adsb_opensky_client_secret',             // " (#5877), secret via the _secret pattern
+  // Solar Monitoring (#6258 D5): one install-wide forecast, read via bare
+  // getSetting by solarMonitoringService; edited in Global Settings only.
+  'solarMonitoringEnabled',
+  'solarMonitoringLatitude',
+  'solarMonitoringLongitude',
+  'solarMonitoringAzimuth',
+  'solarMonitoringDeclination',
   // Global singletons driven only by the global POST branch:
   'cotFeedEnabled',                         // settingsRoutes.ts:900-911 — "global singleton"
   'cotFeedPort',                            // "
