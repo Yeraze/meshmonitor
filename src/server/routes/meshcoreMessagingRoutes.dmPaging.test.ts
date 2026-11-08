@@ -164,7 +164,7 @@ describe('MeshCore DM/room history paging (#6186)', () => {
       expect(res.body.hasMore).toBe(true);
 
       const stats = await agent.get(`/${A}/meshcore/messages/room-stats`);
-      expect(stats.body.data).toEqual([{ roomPublicKey: ROOM, count: 3, latest: 340 }]);
+      expect(stats.body.data).toEqual([{ roomPublicKey: ROOM, count: 3, latest: 340, latestReceivedAt: 9_000 }]);
     });
   });
 

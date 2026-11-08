@@ -28,6 +28,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
 import { DRAG_HANDLE_TOUCH_STYLE } from '../dragHandleStyle';
 import SidebarFooter from '../SidebarFooter';
+import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import styles from './DashboardSidebar.module.css';
 import MqttProxyWarning from './MqttProxyWarning';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory';
@@ -513,24 +514,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
     [unreadBySource],
   );
 
-  /**
-   * Confirm only above a threshold. A stray tap that clears three badges costs
-   * nothing; one that silently clears a 200-message backlog is unrecoverable —
-   * read state has no undo. Below the threshold a prompt is just friction on
-   * the action people press most.
-   */
-  const MARK_ALL_CONFIRM_THRESHOLD = 50;
-  const handleMarkAllDmsRead = () => {
-    if (!onMarkAllDmsRead) return;
-    if (totalUnreadDms >= MARK_ALL_CONFIRM_THRESHOLD) {
-      const ok = window.confirm(
-        t('source.mark_all_dms_read_confirm', { count: totalUnreadDms }),
-      );
-      if (!ok) return;
-    }
-    onMarkAllDmsRead();
-  };
-
   // On mobile, wrap source selection so the drawer auto-closes after tap.
   const handleSelectSource = (id: string) => {
     onSelectSource(id);
@@ -706,15 +689,16 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             the common case — which is also what keeps both controls fitting on
             a narrow screen. */}
         {isAuthenticated && onMarkAllDmsRead && totalUnreadDms > 0 && (
-          <button
+          <MarkAllReadButton
             className="dashboard-add-source-btn"
             style={{ marginLeft: 6, padding: '2px 8px', fontSize: 11 }}
-            onClick={handleMarkAllDmsRead}
+            onMarkAll={() => onMarkAllDmsRead()}
             disabled={markAllDmsReadPending}
             title={t('source.mark_all_dms_read_help')}
-          >
-            {t('source.mark_all_dms_read')}
-          </button>
+            label={t('source.mark_all_dms_read')}
+            unreadCount={totalUnreadDms}
+            confirmMessage={t('source.mark_all_dms_read_confirm', { count: totalUnreadDms })}
+          />
         )}
       </div>
 

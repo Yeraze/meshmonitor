@@ -25,7 +25,18 @@ import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
 import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
 import loginProgressStyles from './MeshCoreLoginProgress.module.css';
 import { compareMeshCoreMessages } from './messageOrder';
-import { useSettingsOptional } from '../../contexts/SettingsContext';
+import { useSettingsOptional, useOptionalMuteSettings } from '../../contexts/SettingsContext';
+import { MuteMenu, MutedIndicator } from '../notifications/MuteMenu';
+import { MarkAllReadButton } from '../messages/MarkAllReadButton';
+import {
+  markRoomRead,
+  markManyRead,
+  loadRoomLastRead,
+  subscribeUnreadChanged,
+  computeUnreadRooms,
+  latestRoomReceiptByRoom,
+} from './meshcoreUnreadStore';
+import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 import { calculateDistance, formatDistance } from '../../utils/distance';
 import { advertHasPosition } from '../../utils/meshcoreAdvertPosition';
 import { MeshCoreChannelReorderList } from './MeshCoreChannelReorderList';
@@ -94,7 +105,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   receiveOnly = false,
 }) => {
   const { t } = useTranslation();
-  const { hasPermission } = useAuth();
+  const { hasPermission, authStatus } = useAuth();
+  const mute = useOptionalMuteSettings();
+  const canMute = !!mute && authStatus?.authenticated === true;
   const distanceUnit = useSettingsOptional()?.distanceUnit ?? 'km';
   const canSend = hasPermission('messages', 'write');
   const canConfig = hasPermission('configuration', 'write');
@@ -506,8 +519,12 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
 
   const handleSend = useCallback(async (text: string): Promise<boolean> => {
     if (!selectedRoom) return false;
-    return actions.sendRoomPost(selectedRoom, text);
-  }, [selectedRoom, actions]);
+    const ok = await actions.sendRoomPost(selectedRoom, text);
+    // The server's room `latestReceivedAt` counts our own posts, so without this
+    // the room would read unread right after we post (#6261).
+    if (ok && sourceId) markRoomRead(sourceId, selectedRoom, Date.now());
+    return ok;
+  }, [selectedRoom, actions, sourceId]);
 
   const handleSaveSyncConfig = useCallback(async () => {
     if (!selectedRoom) return;
@@ -517,6 +534,59 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
+
+  // Room unread (#6261). Clock = MeshMonitor receipt time.
+  const [unreadTick, setUnreadTick] = useState(0);
+  useEffect(() => subscribeUnreadChanged(() => setUnreadTick((n) => n + 1)), []);
+
+  const isRoomMuted = mute?.isDMMuted;
+  const roomLatest = useMemo(
+    () => latestRoomReceiptByRoom({ messages, roomStats: serverRoomStats, rooms: roomServers, selfKey }),
+    [messages, serverRoomStats, roomServers, selfKey],
+  );
+  const unreadRooms = useMemo(() => {
+    void unreadTick;
+    if (!sourceId) return new Set<string>();
+    return computeUnreadRooms({
+      messages,
+      roomStats: serverRoomStats,
+      rooms: roomServers,
+      selfKey,
+      roomLastRead: loadRoomLastRead(sourceId),
+      activeRoomKey: selectedRoom,
+      isMuted: isRoomMuted,
+    });
+  }, [sourceId, messages, serverRoomStats, roomServers, selfKey, selectedRoom, isRoomMuted, unreadTick]);
+
+  // Mark-all-read: every room with a post past its marker, muted ones included.
+  const unreadRoomEntries = useMemo(() => {
+    void unreadTick;
+    if (!sourceId) return [];
+    const lastRead = loadRoomLastRead(sourceId);
+    const out: Array<{ kind: 'meshcore_room'; key: string; ts: number }> = [];
+    for (const [room, ts] of roomLatest) {
+      if (ts > (lastRead[room] ?? 0)) out.push({ kind: 'meshcore_room', key: room, ts });
+    }
+    return out;
+  }, [sourceId, roomLatest, unreadTick]);
+
+  // Unread-divider anchor: the room's marker frozen when it was opened. Pinned
+  // per room/source only, so incoming posts do not erase the line.
+  const [entryRoomLastRead, setEntryRoomLastRead] = useState<number | null>(null);
+  useEffect(() => {
+    if (!sourceId || !selectedRoom) {
+      setEntryRoomLastRead(null);
+      return;
+    }
+    setEntryRoomLastRead(loadRoomLastRead(sourceId)[selectedRoom] ?? 0);
+  }, [sourceId, selectedRoom]);
+
+  // Mark the open room read on entry and whenever its newest receipt grows.
+  useEffect(() => {
+    if (!sourceId || !selectedRoom) return;
+    const latest = filtered.reduce((mx, m) => Math.max(mx, meshcoreReceiptTimeMs(m)), roomLatest.get(selectedRoom) ?? 0);
+    markRoomRead(sourceId, selectedRoom, latest || Date.now());
+  }, [sourceId, selectedRoom, filtered, roomLatest]);
 
   const showLoginOverlay = selectedRoom && !isLoggedIn(selectedRoom) && !loginLoading;
 
@@ -545,6 +615,14 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
       <div className="meshcore-list-pane">
         <div className="meshcore-list-pane-header">
           <span>{t('meshcore.nav.rooms', 'Rooms')}</span>
+          {unreadRoomEntries.length > 0 && (
+            <MarkAllReadButton
+              onMarkAll={() => markManyRead(sourceId, unreadRoomEntries)}
+              label={t('channels.mark_all_read_button', 'Mark all as Read')}
+              title={t('meshcore.rooms.mark_all_read', 'Mark every room as read')}
+              unreadCount={unreadRoomEntries.length}
+            />
+          )}
           <span className="pane-count">{roomServers.length}</span>
         </div>
         {roomServers.length > 0 && (
@@ -595,6 +673,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
             const loggedIn = isLoggedIn(pubkey);
             const hasSaved = storedCreds.has(pubkey);
             const distanceKm = roomDistances[pubkey];
+            const roomMuted = mute?.isDMMuted(pubkey) ?? false;
+            // computeUnreadRooms already drops muted rooms (isMuted).
+            const roomUnread = unreadRooms.has(pubkey);
             return (
               <button
                 key={pubkey}
@@ -602,11 +683,19 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                 onClick={() => handleSelectRoom(pubkey)}
               >
                 <div className="mc-channel-row-name">
+                  {roomUnread && (
+                    <span
+                      className="meshcore-dm-unread-dot"
+                      aria-label={t('meshcore.rooms.unread', 'Unread posts')}
+                      title={t('meshcore.rooms.unread', 'Unread posts')}
+                    />
+                  )}
                   <span className={`mc-room-row-status ${loggedIn ? 'logged-in' : hasSaved ? 'has-saved' : 'not-logged-in'}`}>
                     <UiIcon name={loggedIn ? 'statusOn' : hasSaved ? 'statusPartial' : 'statusOff'} size={12} />
                   </span>
                   {' '}
                   {name}
+                  {roomMuted && <MutedIndicator />}
                 </div>
                 <div className="mc-channel-row-meta">
                   {count} {t('meshcore.messages', 'messages')}
@@ -724,6 +813,13 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               <span className="meshcore-room-stats-name">
                 {activeRoom?.advName || activeRoom?.name || selectedRoom.substring(0, 16) + '…'}
               </span>
+              {canMute && mute && (
+                <MuteMenu
+                  muted={mute.isDMMuted(selectedRoom)}
+                  onMute={(until) => mute.muteDM(selectedRoom, until)}
+                  onUnmute={() => mute.unmuteDM(selectedRoom)}
+                />
+              )}
               <span className="meshcore-room-stats-info">
                 {filtered.length} {t('meshcore.rooms.posts', 'posts')}
                 {newestPostTs && (
@@ -784,6 +880,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               onSend={handleSend}
               onNodeNameClick={onNodeNameClick}
               conversationKey={`room-${selectedRoom}`}
+              unreadAnchorMs={entryRoomLastRead}
               onLoadOlder={loadOlderRoomHistory}
               hasMoreOlder={roomHistoryReady && roomHasMore}
               loadingOlder={roomLoadingOlder}

@@ -12,6 +12,8 @@ import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
+import { MuteMenu } from './notifications/MuteMenu';
+import { MarkAllReadButton } from './messages/MarkAllReadButton';
 import { TimeFormat, DateFormat, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import {
   formatDateTime,
@@ -1325,13 +1327,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           {!isMessagesNodeListCollapsed && (
             <div className="sidebar-header-content">
               <h3>{t('messages.nodes_header')}</h3>
-              <button
+              <MarkAllReadButton
                 className="mark-all-read-btn"
-                onClick={() => markMessagesAsRead(undefined, undefined, undefined, true)}
+                onMarkAll={() => markMessagesAsRead(undefined, undefined, undefined, true)}
                 title={t('messages.mark_all_read_title')}
-              >
-                {t('messages.mark_all_read_button')}
-              </button>
+                label={t('messages.mark_all_read_button')}
+              />
             </div>
           )}
           {!isMessagesNodeListCollapsed && (
@@ -1629,47 +1630,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       <div className="actions-menu-overlay" onClick={() => setShowActionsMenu(false)} />
                       <div className="actions-menu-dropdown">
                         {/* Notification Mute Actions */}
-                        {isDMMuted(selectedDMNode) ? (
-                          <button
-                            className="actions-menu-item"
-                            onClick={async () => {
-                              await unmuteDM(selectedDMNode);
-                              setShowActionsMenu(false);
-                            }}
-                          >
-                            <UiIcon name="unmute" /> {t('notifications.unmute', 'Unmute notifications')}
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              className="actions-menu-item"
-                              onClick={async () => {
-                                await muteDM(selectedDMNode, null);
-                                setShowActionsMenu(false);
-                              }}
-                            >
-                              <UiIcon name="muted" /> {t('notifications.mute_indefinite', 'Mute notifications indefinitely')}
-                            </button>
-                            <button
-                              className="actions-menu-item"
-                              onClick={async () => {
-                                await muteDM(selectedDMNode, Date.now() + 60 * 60 * 1000);
-                                setShowActionsMenu(false);
-                              }}
-                            >
-                              <UiIcon name="time" /> {t('notifications.mute_1h', 'Mute for 1 hour')}
-                            </button>
-                            <button
-                              className="actions-menu-item"
-                              onClick={async () => {
-                                await muteDM(selectedDMNode, Date.now() + 7 * 24 * 60 * 60 * 1000);
-                                setShowActionsMenu(false);
-                              }}
-                            >
-                              <UiIcon name="calendar" /> {t('notifications.mute_1w', 'Mute for 1 week')}
-                            </button>
-                          </>
-                        )}
+                        <MuteMenu
+                          variant="items"
+                          muted={isDMMuted(selectedDMNode)}
+                          onMute={(until) => muteDM(selectedDMNode, until)}
+                          onUnmute={() => unmuteDM(selectedDMNode)}
+                          itemClassName="actions-menu-item"
+                          onDone={() => setShowActionsMenu(false)}
+                        />
                         <div className="actions-menu-divider" />
                         {/* Traceroute Actions — the active Traceroute and
                             request flows transmit to the mesh, so they're

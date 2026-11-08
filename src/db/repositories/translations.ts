@@ -1,7 +1,7 @@
 /**
  * Repository for the translation cache (#5520): the GLOBAL `translation_cache`
  * table (hashed text → translation) and the PER-SOURCE `message_translations`
- * links from a Meshtastic message to a cache entry.
+ * links from a Meshtastic or MeshCore message to a cache entry.
  *
  * Invariants (see docs/internal/dev-notes/TRANSLATION_CACHE_SPEC.md):
  *  - Callers pass a precomputed `cacheKey` (`computeTranslationCacheKey`); the
@@ -293,10 +293,16 @@ export class TranslationsRepository extends BaseRepository {
     const scopeClause = scope === ALL_SOURCES
       ? sql``
       : sql`${c('sourceId')} = ${scope} AND `;
+    // A link is an orphan only when its message is in NEITHER table: links
+    // point at Meshtastic `messages` rows and MeshCore `meshcore_messages` rows.
     return sql`DELETE FROM message_translations WHERE ${scopeClause}NOT EXISTS (
       SELECT 1 FROM messages m
       WHERE m.id = message_translations.${c('messageId')}
         AND m.${c('sourceId')} = message_translations.${c('sourceId')}
+    ) AND NOT EXISTS (
+      SELECT 1 FROM meshcore_messages mc
+      WHERE mc.id = message_translations.${c('messageId')}
+        AND mc.${c('sourceId')} = message_translations.${c('sourceId')}
     )`;
   }
 

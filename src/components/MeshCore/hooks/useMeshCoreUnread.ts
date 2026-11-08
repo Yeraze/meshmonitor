@@ -12,6 +12,9 @@
  * immediacy. DMs: computed entirely from the in-memory message pool (received
  * messages per peer) vs the DM last-read markers — the same pool the DM view
  * itself groups by peer, so the sidebar dot and the view stay consistent.
+ * Rooms (#6261): server `latestReceivedAt` (`/messages/room-stats`, polled) merged
+ * with live pool `room_post` receipt times vs the room last-read markers.
+ * Muted DM peers and muted rooms light no dot.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useCsrfFetch } from '../../../hooks/useCsrfFetch';
@@ -20,8 +23,11 @@ import type { MeshCoreContact } from '../../../utils/meshcoreHelpers';
 import {
   loadChannelLastRead,
   loadDmLastRead,
+  loadRoomLastRead,
   subscribeUnreadChanged,
   computeUnreadDmPeers,
+  computeUnreadRooms,
+  latestRoomReceiptByRoom,
   isChannelPseudoKey,
 } from '../meshcoreUnreadStore';
 import { meshcoreReceiptTimeMs } from '../../../utils/meshcoreMessageTime';
@@ -35,12 +41,22 @@ interface UseMeshCoreUnreadParams {
   enabled: boolean;
   /** Muted channel indices never light the Channels dot (#5487). */
   isChannelMuted?: (channelIdx: number) => boolean;
+  /** Muted DM peers / rooms (canonical pubkey) never light a dot (#6261). */
+  isDMMuted?: (key: string) => boolean;
 }
 
 export interface MeshCoreUnread {
   channels: boolean;
   dms: boolean;
+  /** A room has unread posts (#6261). */
+  rooms: boolean;
+  /** Room public keys with unread posts. */
+  unreadRooms: ReadonlySet<string>;
+  /** Newest receipt time (ms) per room public key. */
+  roomLatest: ReadonlyMap<string, number>;
 }
+
+interface RoomStat { roomPublicKey: string; count?: number; latest?: number; latestReceivedAt?: number }
 
 const CHANNEL_POLL_MS = 15000;
 
@@ -52,10 +68,12 @@ export function useMeshCoreUnread({
   selfKey,
   enabled,
   isChannelMuted,
+  isDMMuted,
 }: UseMeshCoreUnreadParams): MeshCoreUnread {
   const csrfFetch = useCsrfFetch();
   const [channelIndices, setChannelIndices] = useState<number[]>([]);
   const [channelLatest, setChannelLatest] = useState<Record<number, number>>({});
+  const [roomStats, setRoomStats] = useState<RoomStat[]>([]);
   // Bumped whenever a last-read marker changes so the memoized unread booleans
   // re-read localStorage (which isn't reactive on its own).
   const [readTick, setReadTick] = useState(0);
@@ -112,6 +130,34 @@ export function useMeshCoreUnread({
     return () => { cancelled = true; clearInterval(id); };
   }, [enabled, sourceId, baseUrl, csrfFetch, channelIndices]);
 
+  // Poll per-room latest receipt times (#6261). Same cadence and gate as the
+  // channel poll. Rooms are contacts with advType 3 (the Rooms view predicate).
+  const roomServers = useMemo(() => contacts.filter((c) => c.advType === 3), [contacts]);
+  const hasRooms = roomServers.length > 0;
+  useEffect(() => {
+    if (!enabled || !sourceId || !hasRooms) {
+      setRoomStats([]);
+      return;
+    }
+    let cancelled = false;
+    const fetchStats = async () => {
+      try {
+        const res = await csrfFetch(
+          `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/messages/room-stats`,
+        );
+        if (!res.ok) return;
+        const body = await res.json();
+        if (cancelled) return;
+        if (body?.success && Array.isArray(body.data)) setRoomStats(body.data as RoomStat[]);
+      } catch {
+        /* ignore */
+      }
+    };
+    void fetchStats();
+    const id = setInterval(fetchStats, CHANNEL_POLL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [enabled, sourceId, baseUrl, csrfFetch, hasRooms]);
+
   // Merge live pool channel messages (explicit `channel-<idx>` keys) into the
   // polled timestamps so a just-arrived channel message flips the dot without
   // waiting for the next poll.
@@ -145,8 +191,28 @@ export function useMeshCoreUnread({
     void readTick; // cache-bust: re-read localStorage markers when a marker changes
     if (!sourceId) return false;
     const dmLastRead = loadDmLastRead(sourceId);
-    return computeUnreadDmPeers({ messages, contacts, selfKey, dmLastRead }).size > 0;
-  }, [sourceId, messages, contacts, selfKey, readTick]);
+    const unread = computeUnreadDmPeers({ messages, contacts, selfKey, dmLastRead });
+    for (const peer of unread) if (!isDMMuted?.(peer)) return true;
+    return false;
+  }, [sourceId, messages, contacts, selfKey, readTick, isDMMuted]);
 
-  return { channels, dms };
+  const unreadRooms = useMemo(() => {
+    void readTick; // cache-bust: re-read localStorage markers when a marker changes
+    if (!sourceId) return new Set<string>();
+    return computeUnreadRooms({
+      messages,
+      roomStats,
+      rooms: roomServers,
+      selfKey,
+      roomLastRead: loadRoomLastRead(sourceId),
+      isMuted: isDMMuted,
+    });
+  }, [sourceId, messages, roomStats, roomServers, selfKey, readTick, isDMMuted]);
+
+  const roomLatest = useMemo(
+    () => latestRoomReceiptByRoom({ messages, roomStats, rooms: roomServers, selfKey }),
+    [messages, roomStats, roomServers, selfKey],
+  );
+
+  return { channels, dms, rooms: unreadRooms.size > 0, unreadRooms, roomLatest };
 }

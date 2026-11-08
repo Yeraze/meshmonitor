@@ -46,7 +46,7 @@ vi.mock('../../contexts/AuthContext', () => ({
     hasPermission: (resource: string, action: string) => action === 'read' && grants.includes(resource),
   }),
 }));
-vi.mock('../../contexts/SettingsContext', () => ({ useOptionalChannelMuteSettings: () => null }));
+vi.mock('../../contexts/SettingsContext', () => ({ useOptionalChannelMuteSettings: () => null, useOptionalMuteSettings: () => null }));
 
 // The nav is replaced by one button per tab, so a hidden tab can still be
 // asked for: the page itself must refuse it.

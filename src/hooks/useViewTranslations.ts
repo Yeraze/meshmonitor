@@ -18,7 +18,7 @@ import { useMessageTranslation } from './useMessageTranslation';
 const SUPPORTED_CODES = STANDARD_LANGUAGES.map((l) => l.code);
 
 export function useViewTranslations(sourceId: string | null | undefined, messageIds: string[]) {
-  const translationSettings = useTranslationSettings();
+  const translationSettings = useTranslationSettings(sourceId);
   const viewerLang = useMemo(
     () => resolveViewerTargetLanguage(translationSettings.defaultLanguage, SUPPORTED_CODES),
     [translationSettings.defaultLanguage]

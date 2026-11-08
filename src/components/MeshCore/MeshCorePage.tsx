@@ -42,7 +42,7 @@ import { MeshCoreAutomationsView } from './MeshCoreAutomationsView';
 import NotificationsTab from '../NotificationsTab';
 import { useAuth } from '../../contexts/AuthContext';
 import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
-import { useOptionalChannelMuteSettings } from '../../contexts/SettingsContext';
+import { useOptionalMuteSettings } from '../../contexts/SettingsContext';
 import { SaveBar } from '../SaveBar';
 import { SourceNavLayout } from '../nav/SourceNavLayout';
 import './MeshCoreTab.css';
@@ -152,8 +152,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     [removeIgnoredNodeAsync],
   );
 
-  // Muted channels never light the sidebar Channels dot (#5487).
-  const channelMute = useOptionalChannelMuteSettings();
+  // Muted channels never light the sidebar Channels dot (#5487); muted DM peers and
+  // rooms light no dot either (#6261).
+  const channelMute = useOptionalMuteSettings();
   const unread = useMeshCoreUnread({
     baseUrl,
     sourceId,
@@ -162,6 +163,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     selfKey: status?.localNode?.publicKey,
     enabled: enabled ?? true,
     isChannelMuted: channelMute?.isChannelMuted,
+    isDMMuted: channelMute?.isDMMuted,
   });
 
   const navigateToDm = useCallback((publicKey: string) => {
@@ -218,7 +220,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             pinned={navPinned}
             onTogglePin={handleToggleNavPin}
             showInfo
-            unread={{ channels: unread.channels, dms: unread.dms }}
+            unread={{ channels: unread.channels, dms: unread.dms, rooms: unread.rooms }}
           />
         )}
       >

@@ -18,8 +18,9 @@
  */
 import express from 'express';
 import databaseService from '../../services/database.js';
-import { isConversationKind } from '../../db/repositories/conversationReadState.js';
-import { optionalAuth, hasPermission } from '../auth/authMiddleware.js';
+import type { ConversationKind } from '../../db/schema/conversationReadState.js';
+import { isConversationKind, isSafeConversationKey } from '../../db/repositories/conversationReadState.js';
+import { optionalAuth, hasPermission, requirePermission } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 
@@ -81,6 +82,9 @@ router.post('/', optionalAuth(), async (req, res) => {
   if (typeof conversationKey !== 'string' || conversationKey.length === 0) {
     return fail(res, 400, 'CONVERSATION_KEY_REQUIRED', 'conversationKey is required');
   }
+  if (!isSafeConversationKey(conversationKey)) {
+    return fail(res, 400, 'INVALID_CONVERSATION_KEY', 'conversationKey has an invalid format');
+  }
   if (typeof lastReadAt !== 'number' || !Number.isFinite(lastReadAt) || lastReadAt < 0) {
     return fail(res, 400, 'INVALID_LAST_READ_AT', 'lastReadAt must be a non-negative number');
   }
@@ -102,5 +106,65 @@ router.post('/', optionalAuth(), async (req, res) => {
     return fail(res, 500, 'READ_STATE_WRITE_FAILED', 'Failed to write conversation read state');
   }
 });
+
+/** Most entries one batch write accepts (#6261). */
+export const MAX_BATCH_READ_STATE = 500;
+
+/**
+ * POST /api/read-state/batch
+ * Body: `{ sourceId, entries: [{ kind, conversationKey, lastReadAt }] }`
+ *
+ * Mark-all-read writes one watermark per conversation; one request per entry
+ * would trip `apiLimiter`. Same monotonic rules as the single write.
+ * Responds with `{ state }`, the effective watermarks grouped by kind.
+ */
+router.post(
+  '/batch',
+  optionalAuth(),
+  requirePermission('messages', 'read', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req, res) => {
+    const sourceId = readSourceId(req.body?.sourceId);
+    if (!sourceId) return fail(res, 400, 'SOURCE_ID_REQUIRED', 'sourceId is required');
+
+    const raw = req.body?.entries;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return fail(res, 400, 'ENTRIES_REQUIRED', 'entries must be a non-empty array');
+    }
+    if (raw.length > MAX_BATCH_READ_STATE) {
+      return fail(res, 400, 'TOO_MANY_ENTRIES', `At most ${MAX_BATCH_READ_STATE} entries per request`);
+    }
+    const entries: Array<{ kind: ConversationKind; conversationKey: string; lastReadAt: number }> = [];
+    for (const e of raw as Array<Record<string, unknown> | null>) {
+      const kind = e?.kind;
+      const conversationKey = e?.conversationKey;
+      const lastReadAt = e?.lastReadAt;
+      if (!isConversationKind(kind)) {
+        return fail(res, 400, 'INVALID_CONVERSATION_KIND', 'Unknown conversation kind');
+      }
+      if (typeof conversationKey !== 'string' || conversationKey.length === 0) {
+        return fail(res, 400, 'CONVERSATION_KEY_REQUIRED', 'conversationKey is required');
+      }
+      if (!isSafeConversationKey(conversationKey)) {
+        return fail(res, 400, 'INVALID_CONVERSATION_KEY', 'conversationKey has an invalid format');
+      }
+      if (typeof lastReadAt !== 'number' || !Number.isFinite(lastReadAt) || lastReadAt < 0) {
+        return fail(res, 400, 'INVALID_LAST_READ_AT', 'lastReadAt must be a non-negative number');
+      }
+      entries.push({ kind, conversationKey, lastReadAt });
+    }
+
+    try {
+      const state = await databaseService.setConversationReadStateManyAsync(
+        req.user?.id ?? null,
+        sourceId,
+        entries
+      );
+      return ok(res, { state });
+    } catch (error) {
+      logger.error('Error writing conversation read state batch:', error);
+      return fail(res, 500, 'READ_STATE_WRITE_FAILED', 'Failed to write conversation read state');
+    }
+  }
+);
 
 export default router;

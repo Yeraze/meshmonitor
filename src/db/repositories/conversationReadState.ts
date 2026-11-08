@@ -32,6 +32,19 @@ export function emptyReadStateMap(): ConversationReadStateMap {
 }
 
 /** True when `kind` is a conversation family this table tracks. */
+/**
+ * Conversation keys are channel indexes or (prefixes of) public keys, so a
+ * short token of letters, digits and `:_.-` covers every real key. Prototype
+ * names are refused outright: keys become property names in the state map
+ * returned to the client (CodeQL remote property injection, #6261).
+ */
+const CONVERSATION_KEY_RE = /^[A-Za-z0-9:_.-]{1,128}$/;
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function isSafeConversationKey(key: unknown): key is string {
+  return typeof key === 'string' && CONVERSATION_KEY_RE.test(key) && !FORBIDDEN_KEYS.has(key);
+}
+
 export function isConversationKind(kind: unknown): kind is ConversationKind {
   return typeof kind === 'string' && (CONVERSATION_KINDS as readonly string[]).includes(kind);
 }
@@ -165,6 +178,28 @@ export class ConversationReadStateRepository extends BaseRepository {
       logger.error('Error writing conversation read state:', error);
       return 0;
     }
+  }
+
+  /**
+   * Move many watermarks forward in one call (#6261 mark-all-read). Each entry
+   * goes through {@link setLastReadAsync}, so the monotonic/race semantics are
+   * unchanged. Returns the post-write state of the touched conversations,
+   * grouped by kind (every kind present).
+   */
+  async setManyLastReadAsync(
+    userId: number | null,
+    sourceId: string,
+    entries: Array<{ kind: ConversationKind; conversationKey: string; lastReadAt: number }>
+  ): Promise<ConversationReadStateMap> {
+    const out = emptyReadStateMap();
+    if (!sourceId) return out;
+    for (const e of entries) {
+      const effective = await this.setLastReadAsync(userId, sourceId, e.kind, e.conversationKey, e.lastReadAt);
+      if (effective > 0 && isSafeConversationKey(e.conversationKey)) {
+        out[e.kind][e.conversationKey] = effective;
+      }
+    }
+    return out;
   }
 
   /** Drop every watermark for a source (used when a source is deleted). */

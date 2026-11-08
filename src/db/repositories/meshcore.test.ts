@@ -1271,7 +1271,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
       await insert('leak', { to: roomFull, ts: 400, messageType: 'room_post' }, 'src-b');
 
       const stats = await repo.getRoomStats('src-a');
-      expect(stats).toEqual([{ roomPublicKey: roomFull, count: 2, latest: 360 }]);
+      expect(stats).toEqual([{ roomPublicKey: roomFull, count: 2, latest: 360, latestReceivedAt: 360 }]);
     });
   });
 });

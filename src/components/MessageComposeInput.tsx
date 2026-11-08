@@ -1,5 +1,5 @@
-import React, { ReactNode, RefObject, useMemo } from 'react';
-import { useComposeDraft } from '../contexts/composeDraftStore';
+import React, { ReactNode, RefObject, useMemo, useSyncExternalStore } from 'react';
+import { useComposeDraftStore, type ComposeDraftStore } from '../contexts/composeDraftStore';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
 import MentionAutocomplete from './mentions/MentionAutocomplete';
@@ -27,6 +27,18 @@ interface MessageComposeInputProps {
   /** Buttons rendered between the emoji button and the send button. */
   actions?: ReactNode;
   sendAriaLabel?: string;
+  /** Draft store to bind to. Default: the compose-draft context store. */
+  draftStore?: ComposeDraftStore;
+  /** Byte budget shown by the counter. Default 200 (one Meshtastic packet). */
+  maxBytes?: number;
+  /** Block sending (button and Enter) while the draft is over `maxBytes`. */
+  blockSendOverLimit?: boolean;
+  /** Text a picked mention inserts. Default: the hook's `@!id` token. */
+  buildMentionInsertion?: (candidate: MentionCandidate) => string;
+  /** A send is in flight: disables the textarea and send, sets aria-busy. */
+  sending?: boolean;
+  /** Default true. False: Shift+Enter adds no newline; pasted newlines become spaces. */
+  allowNewlines?: boolean;
 }
 
 /**
@@ -48,8 +60,17 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
   onSend,
   actions,
   sendAriaLabel,
+  draftStore,
+  maxBytes,
+  blockSendOverLimit = false,
+  buildMentionInsertion,
+  sending = false,
+  allowNewlines = true,
 }) => {
-  const [draft, setDraft] = useComposeDraft();
+  const contextStore = useComposeDraftStore();
+  const store = draftStore ?? contextStore;
+  const draft = useSyncExternalStore(store.subscribe, store.get, store.get);
+  const setDraft = store.set;
 
   useAutoResizeTextarea(textareaRef, draft);
 
@@ -59,13 +80,20 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
     onChange: setDraft,
     textareaRef,
     candidates: mentionCandidates,
+    buildInsertion: buildMentionInsertion,
   });
 
   // Memoize byte count to avoid redundant homoglyph optimization on each render
-  const byteCountDisplay = useMemo(() => {
+  const byteLen = useMemo(() => {
     const message = homoglyphEnabled ? applyHomoglyphOptimization(draft) : draft;
-    return formatByteCount(getUtf8ByteLength(message));
+    return getUtf8ByteLength(message);
   }, [draft, homoglyphEnabled]);
+  const byteCountDisplay = useMemo(
+    () => (maxBytes === undefined ? formatByteCount(byteLen) : formatByteCount(byteLen, maxBytes)),
+    [byteLen, maxBytes]
+  );
+  const overLimit = blockSendOverLimit && maxBytes !== undefined && byteLen > maxBytes;
+  const inputDisabled = disabled || sending;
 
   const title = disabled ? disabledTitle : undefined;
 
@@ -83,8 +111,9 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
           ref={inputRef ?? textareaRef}
           value={draft}
           onChange={e => {
-            setDraft(e.target.value);
-            mentions.handleChange(e.target.value, e.target.selectionStart);
+            const value = allowNewlines ? e.target.value : e.target.value.replace(/\r?\n/g, ' ');
+            setDraft(value);
+            mentions.handleChange(value, e.target.selectionStart);
           }}
           onSelect={e => mentions.syncFromCaret(
             e.currentTarget.value,
@@ -101,14 +130,20 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
           className="message-input"
           rows={1}
           autoCapitalize="sentences"
-          disabled={disabled}
+          disabled={inputDisabled}
+          aria-busy={sending || undefined}
           title={title}
           onKeyDown={e => {
             // An open suggestion list claims Enter/Tab/arrows first, or
             // picking a node would send instead.
             if (mentions.handleKeyDown(e)) return;
+            if (!allowNewlines && e.key === 'Enter' && e.shiftKey) {
+              e.preventDefault();
+              return;
+            }
             if (
-              disabled ||
+              inputDisabled ||
+              overLimit ||
               !(
                 e.key === 'Enter' &&
                 !e.shiftKey &&
@@ -136,7 +171,8 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
       {actions}
       <button
         onClick={onSend}
-        disabled={!draft.trim() || disabled}
+        disabled={!draft.trim() || inputDisabled || overLimit}
+        aria-busy={sending || undefined}
         className="send-btn"
         title={title}
         aria-label={sendAriaLabel}

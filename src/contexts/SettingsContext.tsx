@@ -2575,6 +2575,25 @@ export const useOptionalChannelMuteSettings = () => {
   };
 };
 
+/**
+ * Channel + DM mute state for a view that may render outside a SettingsProvider.
+ * Null there. MeshCore DMs and rooms key by canonical public key in `mutedDMs`
+ * (#6261); channels keep using the numeric-index API.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #6261 same shape as useOptionalChannelMuteSettings above
+export const useOptionalMuteSettings = () => {
+  const context = useContext(SettingsContext);
+  if (context === undefined) return null;
+  return {
+    isChannelMuted: context.isChannelMuted,
+    muteChannel: context.muteChannel,
+    unmuteChannel: context.unmuteChannel,
+    isDMMuted: context.isDMMuted,
+    muteDM: context.muteDM,
+    unmuteDM: context.unmuteDM,
+  };
+};
+
 export const useNotificationMuteSettings = () => {
   const s = useSettings();
   return {
