@@ -115,3 +115,10 @@ Map Analysis traceroute layer (2D+3D). Browser check on a seeded throwaway volum
 return correct data; Map Analysis draws MeshCore nodes + heatmap. The MeshCore Nodes map draws the
 live device contact list, so its markers need a connected companion (pre-existing behaviour).
 Follow-up: #6276 (Traceroute Explorer).
+
+### P6 #6263 (spec: `MESHCORE_PARITY_P6_SPEC.md`)
+Maintainer answers, 2026-11-08: v1 TX limits = Meshtastic's (no new caps; docs warn on POST /messages airtime); v1 MeshCore
+rows `nodeId mc:<pk>` + additive `protocol` on every row; v1 MeshCore trace fire-and-forget; new `request-telemetry` action
+for both protocols gated on `messages:write`; Mesh Issues A4 + A3-resets + C2 (flood advert < 6 h / zero-hop < 60 min) on
+MeshCore, four protocol-neutral rules → follow-up; separate payload-type Prometheus metric; per-node MeshCore metrics on
+`nodes:read`; embeds reuse existing toggles.
