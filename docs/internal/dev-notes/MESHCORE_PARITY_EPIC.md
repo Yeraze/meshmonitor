@@ -129,3 +129,10 @@ gate as 429 + Retry-After); per-source metrics collectors, MeshCore gauges, `mes
 and per-node `mc:` series on `nodes:read`; Dashboard widgets and Live Mesh Activity on MeshCore; Mesh Issues A4/A3/C2
 on MeshCore; embed neighbour links and trace segments under the existing toggles (both ends must be visible, so a
 private-override node is never a line end); user docs in `REST_API.md`, `embed-maps.md`, `packet-monitor.md`, `meshcore.md`.
+
+### P7 #6254 (spec: `MESHCORE_PARITY_P7_SPEC.md`)
+Maintainer answers, 2026-11-08: split into P7a (dead contacts + bulk delete, collisions, advert signatures, name under
+new key, own-key change alert; no migration, no RF) and P7b (rates, clock-offset flag, MeshCore in scanner / digest /
+export / DM). Per-source `securityDeadNodeDays` (Meshtastic 7, MeshCore 14). Bulk delete needs security:write AND
+per-source nodes:write; Companion deletes radio + DB. Own-key alert once per change via `notifyOnServerEvents`. Name
+reuse display-only. Repeater adverts always signature-checked; unchecked = null.
