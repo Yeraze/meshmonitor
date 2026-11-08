@@ -26,9 +26,18 @@ import {
   nodeSubjectKey,
   areaSubjectKey,
   type MeshIssueFinding,
+  type MeshIssueProtocol,
 } from './types.js';
-import { runRulesIsolated } from './ruleRunner.js';
-import type { PooledNode, NodeTelemetrySeries } from './nodeSnapshot.js';
+import { runRulesIsolated, type RuleEntry } from './ruleRunner.js';
+import {
+  isInfraNode,
+  isMeshCoreNode,
+  nodesForProtocols,
+  persistedNodeNum,
+  subjectKeyFor,
+  type PooledNode,
+  type NodeTelemetrySeries,
+} from './nodeSnapshot.js';
 import {
   AIR_UTIL_TX_MIN_SAMPLES,
   UTILIZATION_WINDOW_HOURS,
@@ -42,7 +51,6 @@ import {
   UNMESSAGABLE_MIN_FIRMWARE,
   A5_CADENCE_MIN_SAMPLES,
   A5_TELEMETRY_MEDIAN_MS,
-  INFRA_ROLES,
   DEPRECATED_ROLES,
   DEDICATED_ROUTER_ROLES,
   type ResolvedMeshIssueThresholds,
@@ -72,6 +80,18 @@ export interface RuleContext {
 function roleName(role: number | null): string {
   if (role == null) return 'Unknown';
   return ROLE_NAMES[role] ?? `Role ${role}`;
+}
+
+/** Evidence identity fields for a MeshCore finding (#6263 S5). */
+function meshcoreEvidence(node: PooledNode): Record<string, unknown> {
+  return { publicKey: node.nodeKey, nodeName: node.longName, sourceIds: node.sourceIds };
+}
+
+const MESHCORE_ROLE_NAMES: Record<number, string> = { 2: 'Repeater', 3: 'Room Server' };
+
+function infraRoleName(node: PooledNode): string {
+  if (isMeshCoreNode(node)) return node.advType != null ? (MESHCORE_ROLE_NAMES[node.advType] ?? `Type ${node.advType}`) : 'Unknown';
+  return roleName(node.role);
 }
 
 function sortedUnique(values: string[]): string[] {
@@ -290,8 +310,11 @@ export function evaluateA3(ctx: RuleContext): MeshIssueFinding[] {
   const windowStart = ctx.nowMs - POWER_WINDOW_HOURS * 3600_000;
 
   for (const node of ctx.nodes.values()) {
-    if (node.role == null || !INFRA_ROLES.has(node.role)) continue;
-    if (isPowered(node.batteryLevel)) continue; // "battery ≠ 101" clause
+    if (!isInfraNode(node)) continue;
+    const meshcore = isMeshCoreNode(node);
+    // "battery ≠ 101" clause. MeshCore has no battery percentage or powered
+    // signal, so that gate and the battery clause below are Meshtastic-only.
+    if (!meshcore && isPowered(node.batteryLevel)) continue;
 
     const series = ctx.telemetry.get(node.nodeNum);
     const uptimeSamples = series
@@ -310,6 +333,7 @@ export function evaluateA3(ctx: RuleContext): MeshIssueFinding[] {
 
     const resetsClauseMet = uptimeResets >= UPTIME_RESET_MIN_COUNT;
     const batteryClauseMet =
+      !meshcore &&
       batterySampleCount >= BATTERY_MIN_SAMPLES && minBatteryLevel != null && minBatteryLevel < BATTERY_LOW_PCT;
 
     if (!resetsClauseMet && !batteryClauseMet) continue;
@@ -322,14 +346,15 @@ export function evaluateA3(ctx: RuleContext): MeshIssueFinding[] {
 
     findings.push({
       issueType: MESH_ISSUE_TYPES.A3_INFRA_POWER,
-      subjectKey: nodeSubjectKey(node.nodeNum),
-      nodeNum: node.nodeNum,
+      subjectKey: subjectKeyFor(node),
+      nodeNum: persistedNodeNum(node),
       // Severity per the guard: resets clause = warning; battery-only clean-uptime = info.
       severity: resetsClauseMet ? 'warning' : 'info',
       confidence: resetsClauseMet ? 'medium' : 'low',
       evidence: {
+        ...(meshcore ? meshcoreEvidence(node) : {}),
         role: node.role,
-        roleName: roleName(node.role),
+        roleName: infraRoleName(node),
         uptimeResets,
         uptimeSampleCount: uptimeSamples.length,
         minBatteryLevel,
@@ -355,7 +380,7 @@ export function evaluateA4(ctx: RuleContext): MeshIssueFinding[] {
   const findings: MeshIssueFinding[] = [];
 
   for (const node of ctx.nodes.values()) {
-    if (node.role == null || !INFRA_ROLES.has(node.role)) continue;
+    if (!isInfraNode(node)) continue;
     // Precision guard: a truncated position can fabricate a 500m span — see
     // MOBILE_MIN_PRECISION_BITS's JSDoc for the arithmetic.
     if (node.positionPrecisionBits != null && node.positionPrecisionBits < MOBILE_MIN_PRECISION_BITS) continue;
@@ -366,13 +391,14 @@ export function evaluateA4(ctx: RuleContext): MeshIssueFinding[] {
 
     findings.push({
       issueType: MESH_ISSUE_TYPES.A4_MOBILE_INFRA,
-      subjectKey: nodeSubjectKey(node.nodeNum),
-      nodeNum: node.nodeNum,
+      subjectKey: subjectKeyFor(node),
+      nodeNum: persistedNodeNum(node),
       severity: 'warning',
       confidence: 'medium',
       evidence: {
+        ...(isMeshCoreNode(node) ? meshcoreEvidence(node) : {}),
         role: node.role,
-        roleName: roleName(node.role),
+        roleName: infraRoleName(node),
         spanMeters,
         // Sample count for the span measurement is computed by the service
         // (positionSpanKm's caller), not available at this pure rule layer —
@@ -467,16 +493,27 @@ export function evaluateA5(ctx: RuleContext): MeshIssueFinding[] {
 // Combined evaluation
 // ---------------------------------------------------------------------------
 
-const ALL_RULES: Array<[string, (ctx: RuleContext) => MeshIssueFinding[]]> = [
-  ['A1', evaluateA1],
-  ['A2a', evaluateA2a],
-  ['A2b', evaluateA2b],
-  ['A3', evaluateA3],
-  ['A4', evaluateA4],
-  ['A5', evaluateA5],
+const MESHTASTIC_ONLY: readonly MeshIssueProtocol[] = ['meshtastic'];
+const BOTH_PROTOCOLS: readonly MeshIssueProtocol[] = ['meshtastic', 'meshcore'];
+
+/**
+ * Each rule declares the protocols it understands (#6263 S5). A3 (uptime-reset
+ * clause only on MeshCore) and A4 read `isInfraNode`; A1, A2a/b and A5 read
+ * Meshtastic roles, telemetry or firmware and never see a MeshCore node.
+ */
+const ALL_RULES: ReadonlyArray<RuleEntry<RuleContext>> = [
+  ['A1', evaluateA1, MESHTASTIC_ONLY],
+  ['A2a', evaluateA2a, MESHTASTIC_ONLY],
+  ['A2b', evaluateA2b, MESHTASTIC_ONLY],
+  ['A3', evaluateA3, BOTH_PROTOCOLS],
+  ['A4', evaluateA4, BOTH_PROTOCOLS],
+  ['A5', evaluateA5, MESHTASTIC_ONLY],
 ];
 
 /** A1..A5 in order. Never throws — a rule that cannot evaluate returns []. */
 export function evaluateAllTierA(ctx: RuleContext): MeshIssueFinding[] {
-  return runRulesIsolated('Tier A', ALL_RULES, ctx);
+  return runRulesIsolated('Tier A', ALL_RULES, ctx, (c, protocols) => {
+    const nodes = nodesForProtocols(c.nodes, protocols);
+    return nodes === c.nodes ? c : { ...c, nodes };
+  });
 }

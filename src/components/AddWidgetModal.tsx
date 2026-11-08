@@ -58,9 +58,11 @@ interface AddWidgetModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddWidget: (type: WidgetType) => void;
+  /** Widget types to offer; omitted = all. */
+  supported?: ReadonlySet<WidgetType>;
 }
 
-const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddWidget }) => {
+const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddWidget, supported }) => {
   const { t } = useTranslation();
   const [showTelemetryHelp, setShowTelemetryHelp] = useState(false);
 
@@ -112,7 +114,7 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddW
           </div>
         ) : (
           <div className="add-widget-modal-content">
-            {WIDGET_OPTIONS.map(option => (
+            {WIDGET_OPTIONS.filter(option => !supported || supported.has(option.type)).map(option => (
               <div key={option.type} className="add-widget-option" onClick={() => handleAddWidget(option.type)}>
                 <div className="add-widget-option-icon"><UiIcon name={option.icon} /></div>
                 <div className="add-widget-option-info">

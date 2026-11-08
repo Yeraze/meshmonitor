@@ -172,4 +172,18 @@ describe('LiveMeshActivityWidget', () => {
     rows = screen.getAllByTestId('live-activity-row');
     expect(within(rows[0]).getByText('OLD')).toBeTruthy();
   });
+
+  it('keys MeshCore rows on nodeKey and explains unresolved packets', async () => {
+    const key = `mc:${'ab'.repeat(32)}`;
+    getNodeActivity.mockResolvedValue({
+      enabled: true, windowStart: NOW - 600_000, coverageStart: null, truncated: false, unresolvedPackets: 4,
+      nodes: [node({ nodeNum: 123, nodeId: null, nodeKey: key, publicKey: 'ab'.repeat(32), shortName: 'Hill', longName: 'Hill Repeater', lastSnr: null, avgSnr: null, lastHops: null, minHops: null })],
+    });
+    const { onOpenNodeDetails } = renderWidget();
+    const row = await screen.findByTestId('live-activity-row');
+    expect(within(row).getByText(key)).toBeTruthy();
+    expect(screen.getByTestId('live-activity-unresolved')).toBeTruthy();
+    fireEvent.click(row);
+    expect(onOpenNodeDetails).toHaveBeenCalledWith(key);
+  });
 });

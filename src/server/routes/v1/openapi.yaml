@@ -29,6 +29,22 @@ info:
 
     `GET /api/v1/sources` lists the sources the token can read.
 
+    ## MeshCore sources (read)
+    The read endpoints (`nodes`, `channels`, `packets`, `traceroutes`, `network`,
+    `messages`) also serve MeshCore sources. Every row gains an additive
+    `protocol` field (`meshtastic` or `meshcore`); Meshtastic responses change
+    in no other way. MeshCore identity is `nodeId = mc:<publicKey>`; `publicKey`
+    and a synthetic `nodeNum` ride along. Positions follow `nodes:viewOnMap`;
+    a private position override needs `nodes_private:read`. MeshCore channel
+    slots above 7 are readable with `messages:read`. `GET /packets` on a
+    MeshCore source takes `payload_type`, `route_type`, `since`, `limit`,
+    `offset`; Meshtastic-only filters (`portnum`, `from_node`, `to_node`,
+    `channel`, `encrypted`) answer 400 `UNSUPPORTED_FILTER`. MeshCore message
+    `timestamp` is the sender clock; `since` filters and ordering use arrival
+    time (`createdAt`). A MeshCore traceroute has no return leg (`routeBack` and
+    `snrBack` are null); `route` holds synthetic node numbers (4294967295 when a
+    hop did not resolve) and `hops[]` lists each hop's `publicKey`, `hash`, `snr`.
+
     `/api/v1/solar` and `/api/v1/channel-database` remain deployment-global
     (no source scope).
 
@@ -175,6 +191,10 @@ components:
     Node:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         nodeId:
           type: string
           description: Unique node identifier (hex format)
@@ -341,6 +361,10 @@ components:
     Channel:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: integer
           description: Channel index (0-7)
@@ -500,6 +524,10 @@ components:
     Message:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: string
           description: Unique message identifier
@@ -643,6 +671,13 @@ components:
           type: integer
           description: Request ID of the message being replied to (optional)
           example: 123456789
+        scope:
+          type: string
+          maxLength: 63
+          description: |
+            MeshCore only. One-off region (flood scope) for this channel send. An empty
+            string sends unscoped. Not allowed with `toNodeId`.
+          example: "usa"
 
     SendMessageResponse:
       type: object
@@ -742,6 +777,10 @@ components:
     Traceroute:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: integer
           example: 789
@@ -808,6 +847,10 @@ components:
     NetworkStats:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         totalNodes:
           type: integer
           description: Total number of nodes in the network
@@ -840,6 +883,10 @@ components:
     TopologyNode:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         nodeId:
           type: string
           example: "!a1b2c3d4"
@@ -926,6 +973,10 @@ components:
     Packet:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source. MeshCore rows use snake_case fields (`payload_type`, `route_type`, `path_hops`, `node_key`) and may carry `plaintext` for a group packet the token user may read.
         id:
           type: integer
           description: Unique packet log ID
@@ -1670,6 +1721,21 @@ paths:
         - Returns HTTP 202 (Accepted) when messages are queued for delivery
         - The response includes `messageCount` and `queueIds` for tracking split messages
         - Only the first message part will have the `replyId` set (if provided)
+
+        **MeshCore sources:**
+        - `channel` is a slot from 0 to 255 (needs write on that slot, or `messages:write`).
+        - `toNodeId` is `mc:<publicKey>` or the 64-character hex public key (needs `messages:write`).
+        - `scope` (optional, up to 63 characters) sets a one-off region for a channel send.
+        - Limits: 150 bytes for a DM, 130 for a channel message, 120 with a `scope`. A longer
+          text is rejected with HTTP 413; MeshCore messages are never split or queued.
+        - `409 TX_DISABLED` when the source is receive-only; `503` when it is not connected.
+        - The response carries `protocol: meshcore`, `requestId: null` and `messageId` set to the
+          stored row id (or null). The send is never retried automatically.
+
+        **Airtime warning:** every send takes channel time from everyone on the mesh. A
+        MeshCore channel message is a flood that repeaters re-send; a Meshtastic message is
+        re-broadcast on each hop. Sends share the rate limit of the web UI (`RATE_LIMIT_MESSAGES`
+        per minute per IP). Do not script bulk sends.
       requestBody:
         required: true
         content:
@@ -1823,6 +1889,91 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /actions/request-telemetry:
+    post:
+      tags:
+        - Actions
+      summary: Request telemetry from a node (Meshtastic and MeshCore)
+      description: |
+        Ask a remote node for telemetry. Served under
+        `/api/v1/sources/{sourceId}/actions/request-telemetry`. Needs `messages:write` on the source.
+
+        **Meshtastic:** `destination` is a node id (`!a1b2c3d4`), `0x` hex or a decimal node number.
+        `type` is `device` (default), `environment`, `airQuality` or `power`. The request goes out
+        as one packet; the reply arrives later through `/telemetry`.
+
+        **MeshCore:** `destination` is `mc:<publicKey>` or a 64-character hex key. `type` is
+        required: `status` or `lpp`. The call waits for the reply and returns how many rows it
+        stored. One MeshCore request per source per 60 seconds: inside that window the answer is
+        `429` with a `Retry-After` header (seconds). The call shares its IP rate limit with the web UI.
+
+        **Airtime:** one request (about 40 bytes) and one reply (about 60 bytes) per call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - destination
+              properties:
+                destination:
+                  type: string
+                  example: "mc:ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12"
+                type:
+                  type: string
+                  enum: [device, environment, airQuality, power, status, lpp]
+      responses:
+        '200':
+          description: Request sent. MeshCore adds `written` and `sources`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      destination:
+                        type: string
+                      type:
+                        type: string
+                      message:
+                        type: string
+                      protocol:
+                        type: string
+                        enum: [meshtastic, meshcore]
+        '400':
+          description: Bad destination or type, or the source has no radio to use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Transmit is disabled on the source (`TX_DISABLED`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: MeshCore 60 s per-source gate or IP rate limit; see `Retry-After`
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Source not connected
           content:
             application/json:
               schema:

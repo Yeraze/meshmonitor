@@ -15,6 +15,9 @@ import {
   type NodeInfoField,
 } from '../../services/nodeInfoCopyService.js';
 import { loadV1Access, requireScopedSourceId } from './sourceParam.js';
+import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
+import { loadMeshCoreNodesForViewer } from '../../services/meshcoreNodeView.js';
+import { meshcoreNodeToV1, parseMeshcoreNodeId, withMeshtasticProtocol } from '../../utils/protocolRows.js';
 import { handleEnrichmentAnalysis, handleEnrichmentApply } from '../shared/enrichmentHandlers.js';
 
 // mergeParams so this router picks up :sourceId when mounted under
@@ -59,6 +62,17 @@ router.get('/', async (req: Request, res: Response) => {
     const active = req.query.active === 'true';
     const sinceDays = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 7;
 
+    if (isAnyMeshCoreSourceType((req as Request & { source?: { type?: string } }).source?.type)) {
+      // MeshCore rows come from the database (works while disconnected); the
+      // viewOnMap mask, private override and sign-flip rules live in the loader.
+      const rows = await loadMeshCoreNodesForViewer(sourceId, access, {
+        positions: true,
+        ...(active ? { heardSinceMs: Date.now() - sinceDays * 86_400_000 } : {}),
+      });
+      const data = rows.map((r) => meshcoreNodeToV1(r, sourceId));
+      return res.json({ success: true, count: data.length, data });
+    }
+
     const nodes = active
       ? (await databaseService.nodes.getActiveNodes(sinceDays, sourceId)) as unknown as DbNode[]
       : (await databaseService.nodes.getAllNodes(sourceId)) as unknown as DbNode[];
@@ -73,7 +87,7 @@ router.get('/', async (req: Request, res: Response) => {
     res.json({
       success: true,
       count: enrichedNodes.length,
-      data: enrichedNodes
+      data: enrichedNodes.map(withMeshtasticProtocol)
     });
   } catch (error) {
     logger.error('Error getting nodes:', error);
@@ -124,6 +138,21 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     const access = await loadV1Access(req);
 
     const { nodeId } = req.params;
+
+    if (isAnyMeshCoreSourceType((req as Request & { source?: { type?: string } }).source?.type)) {
+      const pk = parseMeshcoreNodeId(nodeId);
+      const rows = pk ? await loadMeshCoreNodesForViewer(sourceId, access, { positions: true }) : [];
+      const row = pk ? rows.find((r) => r.publicKey.toLowerCase() === pk) : undefined;
+      if (!row) {
+        return res.status(404).json({
+          success: false,
+          error: 'Not Found',
+          message: `Node ${nodeId} not found in source ${sourceId}`
+        });
+      }
+      return res.json({ success: true, data: meshcoreNodeToV1(row, sourceId) });
+    }
+
     // Scope the lookup to the requested source so the same nodeNum seen on
     // two sources resolves independently (migration 029 made nodes PK
     // composite (nodeNum, sourceId)).
@@ -156,7 +185,7 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: enrichedNode
+      data: withMeshtasticProtocol(enrichedNode)
     });
   } catch (error) {
     logger.error('Error getting node:', error);

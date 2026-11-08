@@ -34,8 +34,6 @@ import {
   MESHCORE_MAX_MESSAGE_BYTES_DM,
 } from '../constants/meshcoreMessageLimits.js';
 import { CONTACT_NOT_ON_DEVICE_MESSAGE } from '../meshcoreDeviceContactErrors.js';
-import { hasPermission } from '../auth/authMiddleware.js';
-import type { User } from '../../types/auth.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -285,24 +283,9 @@ export async function resolveCliTimeoutMs(timeoutMs?: number): Promise<number | 
 // Moved to a leaf module so the WebSocket gate can strip positions without
 // importing the route layer.
 export { stripPositions } from '../utils/meshcorePositions.js';
-import { stripPositions } from '../utils/meshcorePositions.js';
 
-/**
- * Strip `latitude`/`longitude` from contact/node rows when the caller lacks
- * `nodes:viewOnMap` on this source (#4559). `nodes:read` makes the contact
- * list available; publishing positions additionally requires `viewOnMap` —
- * mirrors the gate `buildSourceNodes()` applies to the same data for the
- * Dashboard/Unified/Map Analysis maps. Admins and any caller with the grant
- * pass through unchanged.
- */
-export async function maskContactPositionsForViewOnMap<T extends { latitude?: number; longitude?: number }>(
-  items: T[],
-  user: User | null | undefined,
-  sourceId: string,
-): Promise<T[]> {
-  const canViewOnMap = user ? await hasPermission(user, 'nodes', 'viewOnMap', sourceId) : false;
-  return canViewOnMap ? items : stripPositions(items);
-}
+// Moved to a leaf util (WP1 of #6263) so the v1 API and metrics share it.
+export { maskContactPositionsForViewOnMap } from '../utils/meshcoreViewOnMapMask.js';
 
 export function isValidPublicKey(key: string | undefined): boolean {
   if (!key || typeof key !== 'string') return false;

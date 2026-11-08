@@ -28,6 +28,9 @@ vi.mock('../../sourceManagerRegistry.js', () => ({
 vi.mock('../../middleware/rateLimiters.js', () => ({
   messageLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
   translateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  // actions.ts (loaded via the v1 barrel) builds its limiter from these at import.
+  meshcoreDeviceLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  protocolLimiter: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 import v1Router from './index.js';

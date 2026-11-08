@@ -123,6 +123,10 @@ components:
     Node:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         nodeId:
           type: string
           description: Unique node identifier (hex format)
@@ -210,6 +214,10 @@ components:
     Channel:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: integer
           description: Channel index (0-7)
@@ -364,6 +372,10 @@ components:
     Message:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: string
           description: Unique message identifier
@@ -568,6 +580,10 @@ components:
     Traceroute:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         id:
           type: integer
           example: 789
@@ -634,6 +650,10 @@ components:
     NetworkStats:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         totalNodes:
           type: integer
           description: Total number of nodes in the network
@@ -666,6 +686,10 @@ components:
     TopologyNode:
       type: object
       properties:
+        protocol:
+          type: string
+          enum: [meshtastic, meshcore]
+          description: Protocol of the source this row came from. MeshCore rows use `nodeId` `mc:<publicKey>` and also carry `publicKey`, `nodeKey` and a synthetic `nodeNum` (never join on `nodeNum`).
         nodeId:
           type: string
           example: "!a1b2c3d4"

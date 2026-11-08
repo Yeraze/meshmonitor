@@ -547,6 +547,44 @@ export class MeshCoreRepository extends BaseRepository {
     return this.toNodeRows(result);
   }
 
+  /** Rows in `meshcore_nodes` for one source. */
+  async countNodesBySource(sourceId: string): Promise<number> {
+    if (!sourceId) return 0;
+    const { meshcoreNodes } = this.tables;
+    const r = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(meshcoreNodes)
+      .where(eq(meshcoreNodes.sourceId, sourceId));
+    return Number(r[0]?.count ?? 0);
+  }
+
+  /** Nodes of one source heard at or after `sinceMs` (`lastHeard` is ms). */
+  async countActiveNodesBySource(sourceId: string, sinceMs: number): Promise<number> {
+    if (!sourceId) return 0;
+    const { meshcoreNodes } = this.tables;
+    const r = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.sourceId, sourceId), gte(meshcoreNodes.lastHeard, sinceMs)));
+    return Number(r[0]?.count ?? 0);
+  }
+
+  /**
+   * Nodes of one source heard at or after `sinceMs`, most recent first, at
+   * most `limit`. Same row shape as `getNodesBySource`.
+   */
+  async getNodesHeardSince(sourceId: string, sinceMs: number, limit: number): Promise<DbMeshCoreNode[]> {
+    if (!sourceId || limit <= 0) return [];
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.sourceId, sourceId), gte(meshcoreNodes.lastHeard, sinceMs)))
+      .orderBy(desc(meshcoreNodes.lastHeard), desc(meshcoreNodes.publicKey))
+      .limit(limit);
+    return this.toNodeRows(result);
+  }
+
   /**
    * Each listed source's own local node public key (lowercased), read from
    * the persisted `isLocalNode` row (#3884), so it works while a source is
@@ -2233,6 +2271,39 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * OR of every scope's readable-traffic fragment (scope + key-access gate),
+   * or `null` when no scope can match anything (callers return zero rows).
+   * Shared by `searchMessages` and `listMessages` so both apply the identical
+   * visibility rules.
+   */
+  private meshcoreScopesCondition(scopes: MeshCoreMessageScope[]): SQL | null {
+    const parts = scopes
+      .map((sc) => this.meshcoreScopeCondition(sc))
+      .filter((c): c is SQL => c !== null);
+    if (parts.length === 0) return null;
+    return parts.length === 1 ? parts[0] : (or(...parts) as SQL);
+  }
+
+  /**
+   * One message by id, only when it falls inside the caller's `scopes` (the
+   * same scope + key-access gate as `listMessages`). Null when it does not
+   * exist, belongs to another source, or the viewer may not read it: the three
+   * cases are indistinguishable by design.
+   */
+  async getReadableMessageById(id: string, scopes: MeshCoreMessageScope[]): Promise<DbMeshCoreMessage | null> {
+    const { meshcoreMessages } = this.tables;
+    const scopeWhere = this.meshcoreScopesCondition(scopes);
+    if (!scopeWhere) return null;
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(scopeWhere, eq(meshcoreMessages.id, id), isNull(meshcoreMessages.reactionEmoji)))
+      .limit(1);
+    if (rows.length === 0) return null;
+    return this.normalizeBigInts(rows)[0] as unknown as DbMeshCoreMessage;
+  }
+
+  /**
    * Search stored MeshCore messages (#5517). Replaces the old in-memory scan of
    * connected managers' rings, which missed disconnected sources and anything
    * older than the last 1000 messages. Same paging contract as the Meshtastic
@@ -2249,13 +2320,11 @@ export class MeshCoreRepository extends BaseRepository {
     offset?: number;
   }): Promise<{ messages: DbMeshCoreMessage[]; total: number }> {
     const { meshcoreMessages } = this.tables;
-    const scopeParts = options.scopes
-      .map((s) => this.meshcoreScopeCondition(s))
-      .filter((c): c is SQL => c !== null);
-    if (scopeParts.length === 0) return { messages: [], total: 0 };
+    const scopeWhere = this.meshcoreScopesCondition(options.scopes);
+    if (!scopeWhere) return { messages: [], total: 0 };
 
     const conditions: SQL[] = [
-      scopeParts.length === 1 ? scopeParts[0] : (or(...scopeParts) as SQL),
+      scopeWhere,
       this.textContains(meshcoreMessages.text, options.query, options.caseSensitive ?? false),
       isNull(meshcoreMessages.reactionEmoji),
     ];
@@ -2280,6 +2349,69 @@ export class MeshCoreRepository extends BaseRepository {
       .limit(limit)
       .offset(options.offset ?? 0);
     return { messages: this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[], total };
+  }
+
+  /**
+   * Newest-first page of stored MeshCore messages inside the caller's
+   * `scopes` (same scope + key-access gate as `searchMessages`), for the v1
+   * API and metrics. `since` (ms) and the order both use server arrival time
+   * (`createdAt`, #5973). Reactions are not messages and are excluded.
+   * `channelIdx` narrows to one channel; `fromPublicKey` / `toPublicKey` match
+   * exactly. An empty or unmatchable `scopes` returns nothing.
+   */
+  async listMessages(options: {
+    scopes: MeshCoreMessageScope[];
+    since?: number;
+    limit?: number;
+    offset?: number;
+    channelIdx?: number;
+    fromPublicKey?: string;
+    toPublicKey?: string;
+    /** Only direct messages and room posts (no channel traffic): the v1 `channel=-1` view. */
+    directOnly?: boolean;
+  }): Promise<DbMeshCoreMessage[]> {
+    const { meshcoreMessages } = this.tables;
+    const scopeWhere = this.meshcoreScopesCondition(options.scopes);
+    if (!scopeWhere) return [];
+    const limit = options.limit ?? 50;
+    if (limit <= 0) return [];
+    const conditions: SQL[] = [scopeWhere, isNull(meshcoreMessages.reactionEmoji)];
+    if (options.since !== undefined) conditions.push(gte(meshcoreMessages.createdAt, options.since));
+    if (options.channelIdx !== undefined) {
+      const c = this.channelWhereClause(options.channelIdx);
+      if (!c) return [];
+      conditions.push(c);
+    }
+    if (options.directOnly) conditions.push(this.directMessageClause());
+    if (options.fromPublicKey) conditions.push(eq(meshcoreMessages.fromPublicKey, options.fromPublicKey));
+    if (options.toPublicKey) conditions.push(eq(meshcoreMessages.toPublicKey, options.toPublicKey));
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(...conditions))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
+      .limit(limit)
+      .offset(options.offset ?? 0);
+    return this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
+   * Count of one source's messages received at or after `sinceMs` (server
+   * arrival time). Reactions excluded. Unscoped by viewer access: callers
+   * gate on `messages:read` for the source.
+   */
+  async countMessagesSince(sourceId: string, sinceMs: number): Promise<number> {
+    if (!sourceId) return 0;
+    const { meshcoreMessages } = this.tables;
+    const r = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(meshcoreMessages)
+      .where(and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        gte(meshcoreMessages.createdAt, sinceMs),
+        isNull(meshcoreMessages.reactionEmoji),
+      ));
+    return Number(r[0]?.count ?? 0);
   }
 
   /**
@@ -3123,6 +3255,19 @@ export class MeshCoreRepository extends BaseRepository {
     return this.normalizeBigInts(result) as unknown as DbMeshCorePacket[];
   }
 
+  /** One packet-log row by id, scoped to a source (null when it belongs to another source). */
+  async getPacketByIdForSource(sourceId: string, id: number): Promise<DbMeshCorePacket | null> {
+    if (!sourceId) throw new Error('MeshCoreRepository.getPacketByIdForSource requires a sourceId');
+    const { meshcorePacketLog } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(meshcorePacketLog)
+      .where(and(eq(meshcorePacketLog.id, id), eq(meshcorePacketLog.sourceId, sourceId)))
+      .limit(1);
+    if (rows.length === 0) return null;
+    return this.normalizeBigInts(rows)[0] as unknown as DbMeshCorePacket;
+  }
+
   /**
    * Query deduplicated packets — one row per distinct frame within a source,
    * collapsing the per-observer receptions a `meshcore_mqtt` source writes
@@ -3282,6 +3427,156 @@ export class MeshCoreRepository extends BaseRepository {
       })),
       total: byPayloadType.reduce((n: number, r: { count: number }) => n + r.count, 0),
     };
+  }
+
+  /**
+   * Reception counts per payload type for one source since `sinceMs`
+   * (rows, so a `meshcore_mqtt` frame heard by N observers counts N).
+   * Ordered by count desc, then payload type.
+   */
+  async getPacketCountsByPayloadTypeSince(
+    sourceId: string,
+    sinceMs: number,
+  ): Promise<Array<{ payloadType: number; payloadTypeName: string | null; count: number }>> {
+    if (!sourceId) return [];
+    const t = this.tables.meshcorePacketLog;
+    const rows = await this.db
+      .select({
+        payloadType: t.payloadType,
+        payloadTypeName: sql<string | null>`MAX(${t.payloadTypeName})`,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(t)
+      .where(and(eq(t.sourceId, sourceId), gte(t.timestamp, sinceMs)))
+      .groupBy(t.payloadType)
+      .orderBy(sql`COUNT(*) DESC`, t.payloadType);
+    return rows.map((r: { payloadType: unknown; payloadTypeName: string | null; count: unknown }) => ({
+      payloadType: Number(r.payloadType),
+      payloadTypeName: r.payloadTypeName ?? null,
+      count: Number(r.count),
+    }));
+  }
+
+  /**
+   * Per-sender packet activity for one source since `since` (ms), grouped on
+   * the full sender key when the packet carries one, else on the one-byte
+   * `srcHash`. Packets with neither are returned in `unattributed`.
+   */
+  async getNodeActivity(options: { sourceId: string; since: number }): Promise<{
+    senders: Array<{ senderPubKey: string | null; srcHash: string | null; count: number; lastHeard: number }>;
+    unattributed: number;
+  }> {
+    if (!options.sourceId) return { senders: [], unattributed: 0 };
+    const t = this.tables.meshcorePacketLog;
+    const base = and(eq(t.sourceId, options.sourceId), gte(t.timestamp, options.since));
+    const rows = await this.db
+      .select({
+        senderPubKey: t.senderPubKey,
+        srcHash: t.srcHash,
+        count: sql<number>`COUNT(*)`,
+        lastHeard: sql<number>`MAX(${t.timestamp})`,
+      })
+      .from(t)
+      .where(and(base, or(isNotNull(t.senderPubKey), isNotNull(t.srcHash))))
+      .groupBy(t.senderPubKey, t.srcHash)
+      .orderBy(sql`COUNT(*) DESC`);
+    // One sender may appear under both a full key and a bare hash row set;
+    // group on key when present, else hash.
+    const merged = new Map<string, { senderPubKey: string | null; srcHash: string | null; count: number; lastHeard: number }>();
+    for (const r of rows as Array<{ senderPubKey: string | null; srcHash: string | null; count: unknown; lastHeard: unknown }>) {
+      const key = r.senderPubKey ? `k:${r.senderPubKey.toLowerCase()}` : `h:${r.srcHash}`;
+      const cur = merged.get(key);
+      if (cur) {
+        cur.count += Number(r.count);
+        cur.lastHeard = Math.max(cur.lastHeard, Number(r.lastHeard));
+      } else {
+        merged.set(key, {
+          senderPubKey: r.senderPubKey ? r.senderPubKey.toLowerCase() : null,
+          srcHash: r.senderPubKey ? null : (r.srcHash ?? null),
+          count: Number(r.count),
+          lastHeard: Number(r.lastHeard),
+        });
+      }
+    }
+    const un = await this.db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(t)
+      .where(and(base, isNull(t.senderPubKey), isNull(t.srcHash)));
+    return {
+      senders: [...merged.values()].sort((a, b) => b.count - a.count),
+      unattributed: Number(un[0]?.count ?? 0),
+    };
+  }
+
+  /** Oldest packet-log timestamp (ms) for one source, or null when empty. */
+  async getOldestTimestamp(sourceId: string): Promise<number | null> {
+    if (!sourceId) return null;
+    const t = this.tables.meshcorePacketLog;
+    const r = await this.db
+      .select({ ts: sql<number | null>`MIN(${t.timestamp})` })
+      .from(t)
+      .where(eq(t.sourceId, sourceId));
+    const v = r[0]?.ts;
+    return v === null || v === undefined ? null : Number(v);
+  }
+
+  /**
+   * Nodes this source's radio heard DIRECTLY (zero relay hops) since
+   * `sinceMs`, from `hopCount = 0` rows with a known sender. Grouped on the
+   * full sender key when present, else `srcHash`; strongest-recent signal is
+   * the best (max) SNR/RSSI seen. Ordered by last heard desc.
+   */
+  async getDirectHeardStats(sourceId: string, sinceMs: number): Promise<Array<{
+    senderPubKey: string | null;
+    srcHash: string | null;
+    count: number;
+    lastHeard: number;
+    bestSnr: number | null;
+    bestRssi: number | null;
+  }>> {
+    if (!sourceId) return [];
+    const t = this.tables.meshcorePacketLog;
+    const rows = await this.db
+      .select({
+        senderPubKey: t.senderPubKey,
+        srcHash: t.srcHash,
+        count: sql<number>`COUNT(*)`,
+        lastHeard: sql<number>`MAX(${t.timestamp})`,
+        bestSnr: sql<number | null>`MAX(${t.snr})`,
+        bestRssi: sql<number | null>`MAX(${t.rssi})`,
+      })
+      .from(t)
+      .where(and(
+        eq(t.sourceId, sourceId),
+        gte(t.timestamp, sinceMs),
+        eq(t.hopCount, 0),
+        or(isNotNull(t.senderPubKey), isNotNull(t.srcHash)),
+      ))
+      .groupBy(t.senderPubKey, t.srcHash);
+    const merged = new Map<string, { senderPubKey: string | null; srcHash: string | null; count: number; lastHeard: number; bestSnr: number | null; bestRssi: number | null }>();
+    const maxN = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.max(a, b));
+    for (const r of rows as Array<{ senderPubKey: string | null; srcHash: string | null; count: unknown; lastHeard: unknown; bestSnr: unknown; bestRssi: unknown }>) {
+      const key = r.senderPubKey ? `k:${r.senderPubKey.toLowerCase()}` : `h:${r.srcHash}`;
+      const snr = r.bestSnr === null || r.bestSnr === undefined ? null : Number(r.bestSnr);
+      const rssi = r.bestRssi === null || r.bestRssi === undefined ? null : Number(r.bestRssi);
+      const cur = merged.get(key);
+      if (cur) {
+        cur.count += Number(r.count);
+        cur.lastHeard = Math.max(cur.lastHeard, Number(r.lastHeard));
+        cur.bestSnr = maxN(cur.bestSnr, snr);
+        cur.bestRssi = maxN(cur.bestRssi, rssi);
+      } else {
+        merged.set(key, {
+          senderPubKey: r.senderPubKey ? r.senderPubKey.toLowerCase() : null,
+          srcHash: r.senderPubKey ? null : (r.srcHash ?? null),
+          count: Number(r.count),
+          lastHeard: Number(r.lastHeard),
+          bestSnr: snr,
+          bestRssi: rssi,
+        });
+      }
+    }
+    return [...merged.values()].sort((a, b) => b.lastHeard - a.lastHeard || b.count - a.count);
   }
 
   /**

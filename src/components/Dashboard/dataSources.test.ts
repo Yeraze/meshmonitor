@@ -14,6 +14,7 @@ vi.mock('../../utils/deviceRole', () => ({
 }));
 
 import api from '../../services/api';
+import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum';
 import { meshcoreDashboardSource, meshtasticDashboardSource, reticulumDashboardSource } from './dataSources';
 
 const mockedApiGet = api.get as unknown as ReturnType<typeof vi.fn>;
@@ -30,9 +31,12 @@ describe('meshcoreDashboardSource', () => {
           publicKey: 'abcd1234',
           name: 'Repeater A',
           advType: 2,
-          lastHeard: 1_700_000_000,
+          lastHeard: 1_700_000_000_000, // ms, as the server stores it
           rssi: -90,
           snr: 5.5,
+          pathLen: 3,
+          batteryMv: 4100,
+          uptimeSecs: 86_400,
           latitude: 30.1,
           longitude: -90.1,
         },
@@ -51,13 +55,15 @@ describe('meshcoreDashboardSource', () => {
     expect(nodes).toHaveLength(2);
 
     expect(nodes[0]).toMatchObject({
-      nodeNum: 0,
+      nodeNum: nodeNumFromPubkey('abcd1234'),
+      hopsAway: 3,
+      deviceMetrics: { voltage: 4.1, uptimeSeconds: 86_400 },
       user: {
         id: 'abcd1234',
         longName: 'Repeater A',
         role: 2,
       },
-      lastHeard: 1_700_000_000,
+      lastHeard: 1_700_000_000, // seconds: the widgets' unit
       rssi: -90,
       snr: 5.5,
       position: { latitude: 30.1, longitude: -90.1 },
@@ -109,8 +115,27 @@ describe('meshcoreDashboardSource', () => {
     expect(meshcoreDashboardSource.getRoleName({ nodeNum: 0, user: { id: 'a' } })).toBeNull();
   });
 
-  it('hides custom widgets (no nodeStatus/traceroute for MeshCore yet)', () => {
-    expect(meshcoreDashboardSource.showCustomWidgets).toBe(false);
+  it('supports all six custom widgets and skips the Meshtastic voltage fallback', () => {
+    expect([...meshcoreDashboardSource.widgets.supported].sort()).toEqual([
+      'distanceDistribution', 'hopDistanceHeatmap', 'hopDistribution', 'liveMeshActivity', 'nodeStatus', 'traceroute',
+    ]);
+    expect(meshcoreDashboardSource.widgets.voltageFallback).toBe(false);
+  });
+
+  it('leaves hopsAway and deviceMetrics unset for flood routes and silent nodes', async () => {
+    mockedApiGet.mockResolvedValueOnce({
+      data: [
+        { publicKey: 'aa'.repeat(32), name: 'Flood', advType: 1, pathLen: -1 },
+        { publicKey: 'bb'.repeat(32), name: 'Unknown', advType: 1, pathLen: 255 },
+        { publicKey: 'cc'.repeat(32), name: 'Direct', advType: 1, pathLen: 0 },
+      ],
+    });
+    const nodes = await meshcoreDashboardSource.fetchNodes('src-1');
+    expect(nodes[0].hopsAway).toBeUndefined();
+    expect(nodes[1].hopsAway).toBeUndefined();
+    expect(nodes[2].hopsAway).toBe(0);
+    expect((nodes[0] as { deviceMetrics?: unknown }).deviceMetrics).toBeUndefined();
+    expect(nodes[0].lastHeard).toBeUndefined();
   });
 
   it('marks ch1..ch4 LPP env sensors as solar-default-on', () => {
@@ -266,7 +291,7 @@ describe('reticulumDashboardSource', () => {
   });
 
   it('hides custom widgets and the role filter (R1/R3 descope)', () => {
-    expect(reticulumDashboardSource.showCustomWidgets).toBe(false);
+    expect(reticulumDashboardSource.widgets.supported.size).toBe(0);
     expect(reticulumDashboardSource.showRoleFilter).toBe(false);
   });
 
@@ -290,7 +315,8 @@ describe('meshtasticDashboardSource (regression — default unchanged)', () => {
   });
 
   it('shows custom widgets (Meshtastic preserves the prior behaviour)', () => {
-    expect(meshtasticDashboardSource.showCustomWidgets).toBe(true);
+    expect(meshtasticDashboardSource.widgets.supported.size).toBe(6);
+    expect(meshtasticDashboardSource.widgets.voltageFallback).toBe(true);
   });
 
   it('keys nodes by user.id', () => {

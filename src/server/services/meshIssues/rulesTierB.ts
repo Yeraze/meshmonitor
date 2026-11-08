@@ -41,7 +41,7 @@ import {
   type MeshIssueConfidence,
 } from './types.js';
 import { runRulesIsolated } from './ruleRunner.js';
-import type { PooledNode } from './nodeSnapshot.js';
+import { nodesForProtocols, type PooledNode } from './nodeSnapshot.js';
 import type { TracerouteSample } from './tracerouteCorpus.js';
 import type { RfGraph } from './rfGraph.js';
 import {
@@ -1036,7 +1036,11 @@ const ALL_RULES_WITHOUT_B7: Array<[string, (state: TierBRunState) => MeshIssueFi
  *  a rule that cannot evaluate returns []. Builds the shared
  *  cluster/participation indices exactly once (see the module header) and
  *  threads them into the rules that need them. */
-export function evaluateAllTierB(ctx: TierBRuleContext): MeshIssueFinding[] {
+export function evaluateAllTierB(rawCtx: TierBRuleContext): MeshIssueFinding[] {
+  // Every Tier B rule reads the Meshtastic RF graph and roles: declared
+  // Meshtastic-only (#6263 S5), so a pooled MeshCore node never reaches them.
+  const meshtasticNodes = nodesForProtocols(rawCtx.nodes, ['meshtastic']);
+  const ctx = meshtasticNodes === rawCtx.nodes ? rawCtx : { ...rawCtx, nodes: meshtasticNodes };
   const state: TierBRunState = {
     ctx,
     clusters: findRouterClustersCore(ctx),

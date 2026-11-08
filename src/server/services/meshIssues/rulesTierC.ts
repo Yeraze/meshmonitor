@@ -28,10 +28,24 @@ import {
   type MeshIssueFinding,
   type MeshIssueSeverity,
   type MeshIssueConfidence,
+  type MeshIssueProtocol,
 } from './types.js';
-import { runRulesIsolated } from './ruleRunner.js';
+import { runRulesIsolated, type RuleEntry } from './ruleRunner.js';
 import type { RuleSkip } from './rulesTierB.js';
-import type { PooledNode } from './nodeSnapshot.js';
+import {
+  isMeshCoreNode,
+  nodesForProtocols,
+  persistedNodeNum,
+  subjectKeyFor,
+  type PooledNode,
+} from './nodeSnapshot.js';
+import {
+  MESHCORE_ADV_TYPE_REPEATER,
+  MESHCORE_ADVERT_FLOOD_MEDIAN_SECONDS,
+  MESHCORE_ADVERT_ZEROHOP_MEDIAN_SECONDS,
+  MESHCORE_ADVERT_MIN_SAMPLES,
+  type MeshCoreAdvertCadence,
+} from './meshcoreSnapshot.js';
 import {
   OVER_BROADCAST_MIN_SAMPLES,
   OVER_BROADCAST_EXEMPT_ROLES,
@@ -84,6 +98,17 @@ export interface TierCRuleContext {
    * over-broadcasting. Optional: absent means no local nodes are known.
    */
   localNodeSources?: Map<number, Set<string>>;
+  /**
+   * MeshCore repeater advert cadence keyed by the pooled run-local handle
+   * (#6263 S5). Absent when no MeshCore node is in play.
+   */
+  meshcoreAdvertCadence?: Map<number, MeshCoreAdvertCadence>;
+  /**
+   * Is the MeshCore packet log on? `undefined` means no MeshCore node is in
+   * play (no skip noise); `false` makes `tierCSkips` report the advert check
+   * as skipped rather than silently clean.
+   */
+  meshcoreAdvertLogEnabled?: boolean;
 }
 
 function roleName(role: number | null): string {
@@ -378,21 +403,90 @@ export function evaluateC2(ctx: TierCRuleContext): MeshIssueFinding[] {
   return findings;
 }
 
+/**
+ * C2 for MeshCore repeaters (#6263 S5, decision 6): flag a repeater whose
+ * median flood-advert interval is under 6 h or whose median zero-hop advert
+ * interval is under 60 min. Same issue type as the Meshtastic C2; the
+ * evidence `stream` is `advert_flood` or `advert_zero_hop`.
+ */
+export function evaluateC2Advert(ctx: TierCRuleContext): MeshIssueFinding[] {
+  const findings: MeshIssueFinding[] = [];
+  const cadences = ctx.meshcoreAdvertCadence;
+  if (!cadences) return findings;
+
+  for (const node of ctx.nodes.values()) {
+    if (!isMeshCoreNode(node) || node.advType !== MESHCORE_ADV_TYPE_REPEATER) continue;
+    const c = cadences.get(node.nodeNum);
+    if (!c) continue;
+
+    const qualifies = (s: CadenceStats | null, limitSeconds: number): s is CadenceStats =>
+      s != null &&
+      s.sampleCount >= MESHCORE_ADVERT_MIN_SAMPLES &&
+      s.medianIntervalSeconds != null &&
+      s.medianIntervalSeconds < limitSeconds;
+
+    const floodHit = qualifies(c.flood, MESHCORE_ADVERT_FLOOD_MEDIAN_SECONDS);
+    const zeroHit = qualifies(c.zeroHop, MESHCORE_ADVERT_ZEROHOP_MEDIAN_SECONDS);
+    if (!floodHit && !zeroHit) continue;
+
+    // One finding per node: report the stream furthest under its limit.
+    const floodRatio = floodHit ? c.flood!.medianIntervalSeconds! / MESHCORE_ADVERT_FLOOD_MEDIAN_SECONDS : Infinity;
+    const zeroRatio = zeroHit ? c.zeroHop!.medianIntervalSeconds! / MESHCORE_ADVERT_ZEROHOP_MEDIAN_SECONDS : Infinity;
+    const useFlood = floodRatio <= zeroRatio;
+    const chosen = (useFlood ? c.flood : c.zeroHop)!;
+    const limit = useFlood ? MESHCORE_ADVERT_FLOOD_MEDIAN_SECONDS : MESHCORE_ADVERT_ZEROHOP_MEDIAN_SECONDS;
+    const sources = chosen.sourceIds.length > 0 ? chosen.sourceIds : node.sourceIds;
+
+    findings.push({
+      issueType: MESH_ISSUE_TYPES.C2_OVER_BROADCASTING,
+      subjectKey: subjectKeyFor(node),
+      nodeNum: persistedNodeNum(node),
+      severity: chosen.medianIntervalSeconds! < limit * OVER_BROADCAST_WARNING_SEVERITY_FACTOR ? 'warning' : 'info',
+      confidence: 'medium',
+      evidence: {
+        publicKey: node.nodeKey,
+        nodeName: node.longName,
+        sourceIds: sources,
+        stream: useFlood ? 'advert_flood' : 'advert_zero_hop',
+        medianIntervalSeconds: chosen.medianIntervalSeconds,
+        meanIntervalSeconds: chosen.meanIntervalSeconds,
+        sampleCount: chosen.sampleCount,
+        windowHours: ctx.windowHours,
+        thresholdUsed: limit,
+        roleName: 'Repeater',
+        otherStreamMedianSeconds: (useFlood ? c.zeroHop : c.flood)?.medianIntervalSeconds ?? null,
+        sources,
+      },
+      sourceIds: sources,
+      recommendation:
+        'This repeater sends adverts more often than the mesh needs. Flood adverts should be hours apart and zero-hop adverts at least an hour apart. Raise the advert interval in its settings.',
+    });
+  }
+  return findings;
+}
+
 // ---------------------------------------------------------------------------
 // Combined evaluation
 // ---------------------------------------------------------------------------
 
-const ALL_RULES: Array<[string, (ctx: TierCRuleContext) => MeshIssueFinding[]]> = [
-  ['C1_excessive_packets', evaluateC1ExcessivePackets],
-  ['C1_key_security', evaluateC1KeySecurity],
-  ['C1_time_offset', evaluateC1TimeOffset],
-  ['C2_over_broadcasting', evaluateC2],
+const MESHTASTIC_ONLY: readonly MeshIssueProtocol[] = ['meshtastic'];
+const MESHCORE_ONLY: readonly MeshIssueProtocol[] = ['meshcore'];
+
+const ALL_RULES: ReadonlyArray<RuleEntry<TierCRuleContext>> = [
+  ['C1_excessive_packets', evaluateC1ExcessivePackets, MESHTASTIC_ONLY],
+  ['C1_key_security', evaluateC1KeySecurity, MESHTASTIC_ONLY],
+  ['C1_time_offset', evaluateC1TimeOffset, MESHTASTIC_ONLY],
+  ['C2_over_broadcasting', evaluateC2, MESHTASTIC_ONLY],
+  ['C2_advert_cadence', evaluateC2Advert, MESHCORE_ONLY],
 ];
 
 /** C1's three flags and C2, in order. Never throws — a rule that cannot
- *  evaluate returns []. */
+ *  evaluate returns []. Each rule sees only its declared protocols. */
 export function evaluateAllTierC(ctx: TierCRuleContext): MeshIssueFinding[] {
-  return runRulesIsolated('Tier C', ALL_RULES, ctx);
+  return runRulesIsolated('Tier C', ALL_RULES, ctx, (c, protocols) => {
+    const nodes = nodesForProtocols(c.nodes, protocols);
+    return nodes === c.nodes ? c : { ...c, nodes };
+  });
 }
 
 /**
@@ -404,6 +498,9 @@ export function tierCSkips(ctx: TierCRuleContext): RuleSkip[] {
   const skips: RuleSkip[] = [];
   if (ctx.cadence.size === 0) {
     skips.push({ rule: 'C2', reason: 'no position or telemetry cadence data' });
+  }
+  if (ctx.meshcoreAdvertLogEnabled === false) {
+    skips.push({ rule: 'C2', reason: 'MeshCore advert cadence needs the MeshCore packet log (off)' });
   }
   return skips;
 }

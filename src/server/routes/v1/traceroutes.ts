@@ -10,6 +10,26 @@ import { logger } from '../../../utils/logger.js';
 import type { NodeViewAccess } from '../../utils/nodeEnhancer.js';
 import { fail } from '../../utils/apiResponse.js';
 import { canViewRowChannel, loadV1Access, requireScopedSourceId } from './sourceParam.js';
+import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
+import { meshcoreTraceToV1, withMeshtasticProtocol } from '../../utils/protocolRows.js';
+
+/**
+ * The MeshCore traces this source initiated (newest first), as v1 rows.
+ * Read from the database, so it works while the source is disconnected.
+ * `traceroute:read` on the source is checked by the caller's `attachSource`.
+ */
+export async function loadMeshCoreTracesV1(sourceId: string, limit: number) {
+  const groups = await databaseService.meshcoreHopSnr.getInitiatedTraces(sourceId, 0, limit);
+  const local = (await databaseService.meshcore.getLocalNodePublicKeysBySource([sourceId])).get(sourceId) ?? null;
+  const rows: NonNullable<ReturnType<typeof meshcoreTraceToV1>>[] = [];
+  for (const group of groups) {
+    const row = meshcoreTraceToV1(group, { localPublicKey: local });
+    if (row) rows.push(row);
+  }
+  return rows;
+}
+
+type SourcedRequest = Request & { source?: { type?: string } };
 
 /** A traceroute heard on a channel the token user cannot view on this source
  *  is left out. */
@@ -39,6 +59,13 @@ router.get('/', async (req: Request, res: Response) => {
     const access = await loadV1Access(req);
     const maxLimit = parseInt(limit as string) || 100;
 
+    if (isAnyMeshCoreSourceType((req as SourcedRequest).source?.type)) {
+      let rows = await loadMeshCoreTracesV1(sourceId, maxLimit);
+      if (fromNodeId) rows = rows.filter((t) => t.fromNodeId === fromNodeId);
+      if (toNodeId) rows = rows.filter((t) => t.toNodeId === toNodeId);
+      return res.json({ success: true, count: rows.length, data: rows });
+    }
+
     let traceroutes = await databaseService.getAllTraceroutesAsync(maxLimit, sourceId);
 
     // Apply filters
@@ -58,7 +85,7 @@ router.get('/', async (req: Request, res: Response) => {
     res.json({
       success: true,
       count: traceroutes.length,
-      data: traceroutes
+      data: traceroutes.map(withMeshtasticProtocol)
     });
   } catch (error) {
     logger.error('Error getting traceroutes:', error);
@@ -80,6 +107,18 @@ router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
     const sourceId = requireScopedSourceId(req, res);
     if (!sourceId) return;
     const access = await loadV1Access(req);
+    if (isAnyMeshCoreSourceType((req as SourcedRequest).source?.type)) {
+      const rows = await loadMeshCoreTracesV1(sourceId, 100);
+      const hit = rows.find((t) => t.fromNodeId === fromNodeId && t.toNodeId === toNodeId);
+      if (!hit) {
+        return res.status(404).json({
+          success: false,
+          error: 'Not Found',
+          message: `No traceroute found from ${fromNodeId} to ${toNodeId}`
+        });
+      }
+      return res.json({ success: true, data: hit });
+    }
     const allTraceroutes = await databaseService.getAllTraceroutesAsync(100, sourceId);
     const traceroute = allTraceroutes.find(t => t.fromNodeId === fromNodeId && t.toNodeId === toNodeId);
 
@@ -99,7 +138,7 @@ router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: visible[0]
+      data: withMeshtasticProtocol(visible[0])
     });
   } catch (error) {
     logger.error('Error getting traceroute:', error);

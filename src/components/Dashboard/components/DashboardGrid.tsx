@@ -31,6 +31,10 @@ import {
 } from '../types';
 
 interface DashboardGridProps {
+  /** Source protocol; picks the trace source for the Traceroute widget. */
+  sourceKind?: 'meshtastic' | 'meshcore' | 'reticulum';
+  /** NodeStatus may read the Meshtastic-only voltage telemetry fallback. */
+  voltageFallback?: boolean;
   // Widgets
   customWidgets: CustomWidget[];
   onRemoveWidget: (widgetId: string) => void;
@@ -72,6 +76,8 @@ interface DashboardGridProps {
 }
 
 const DashboardGrid: React.FC<DashboardGridProps> = ({
+  sourceKind = 'meshtastic',
+  voltageFallback = true,
   customWidgets,
   onRemoveWidget,
   onAddNodeToWidget,
@@ -143,6 +149,7 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     onAddNode={nodeId => onAddNodeToWidget(widget.id, nodeId)}
                     onRemoveNode={nodeId => onRemoveNodeFromWidget(widget.id, nodeId)}
                     onOpenNodeDetails={onOpenNodeDetails}
+                    voltageFallback={voltageFallback}
                     canEdit={canEdit}
                   />
                 );
@@ -156,6 +163,7 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     nodes={nodes}
                     onRemove={() => onRemoveWidget(widget.id)}
                     onSelectNode={nodeId => onSelectTracerouteNode(widget.id, nodeId)}
+                    sourceKind={sourceKind}
                     canEdit={canEdit}
                   />
                 );

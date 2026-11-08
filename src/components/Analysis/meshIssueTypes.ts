@@ -212,6 +212,10 @@ export interface MeshIssueNodeSummary {
   nodeNum: number | null;
   /** `longName ?? shortName ?? !hex`; `null` for the Mesh-wide group. */
   nodeName: string | null;
+  /** Set only for a MeshCore node group (`mc:<publicKey>`; `nodeNum` is null there). */
+  subjectKey?: string;
+  /** MeshCore groups only: viewer-permitted sources behind the group. */
+  sourceIds?: string[];
   total: number;
   bySeverity: { critical: number; warning: number; info: number };
   worstSeverity: MeshIssueSeverity;
@@ -234,7 +238,9 @@ export interface MeshIssuesSummary {
 export type MeshIssueBulkScope =
   | { scope: 'issueType'; issueType: string }
   /** `nodeNum: null` == the Mesh-wide group. */
-  | { scope: 'node'; nodeNum: number | null };
+  | { scope: 'node'; nodeNum: number | null }
+  /** One MeshCore node group (`mc:<publicKey>`). */
+  | { scope: 'subject'; subjectKey: string };
 
 /** Response of the bulk dismiss/restore endpoints. Deliberately carries no
  *  `skipped` count — see spec §4.4 / §12.2 (a skipped count would disclose

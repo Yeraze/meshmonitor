@@ -15,6 +15,9 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
 import { isMqttSourceType } from '../../db/repositories/sources.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
+import { MESHCORE_PAYLOAD_ADVERT } from '../../utils/coverage.js';
+import meshcorePacketLogService from './meshcorePacketLogService.js';
 import type { DbNode, DbTelemetry } from '../../db/types.js';
 import type { TracerouteRow, NeighborRow } from '../../db/repositories/analysis.js';
 import packetLogService from './packetLogService.js';
@@ -29,6 +32,15 @@ import {
   type NodeTelemetrySeries,
 } from './meshIssues/nodeSnapshot.js';
 import { evaluateAllTierA, type RuleContext } from './meshIssues/rules.js';
+import {
+  buildMeshCoreSnapshot,
+  buildMeshCoreUptimeSeries,
+  buildMeshCoreAdvertCadence,
+  MESHCORE_UPTIME_TELEMETRY_TYPE,
+  type MeshCoreAdvertCadence,
+  type MeshCoreAdvertPacketInput,
+  type MeshCoreNodeInput,
+} from './meshIssues/meshcoreSnapshot.js';
 import {
   evaluateAllTierB,
   tierBSkips,
@@ -86,6 +98,18 @@ const TRACEROUTE_PAGE_SIZE = 2000;
 const POSITION_SPAN_CHUNK_SIZE = 25;
 /** Same sample cap `nodeMobilityService` uses, so the two classifications can never disagree about the underlying data. */
 const POSITION_SPAN_SAMPLE_LIMIT = 500;
+/** MeshCore advert log reads: rows per page and max pages per source (bounds memory). */
+const MESHCORE_ADVERT_PAGE_SIZE = 5000;
+const MESHCORE_ADVERT_MAX_PAGES = 10;
+
+/** MeshCore inputs pooled for one run (#6263 S5). */
+interface MeshCoreRunInputs {
+  nodes: Map<number, PooledNode>;
+  uptimeTelemetry: Map<number, NodeTelemetrySeries>;
+  positionSpanMeters: Map<number, number>;
+  advertCadence: Map<number, MeshCoreAdvertCadence>;
+  advertLogEnabled: boolean;
+}
 
 export interface MeshIssuesRunOptions {
   /** Hours of history to pull for telemetry + traceroutes. Clamped by the scheduler. */
@@ -235,17 +259,25 @@ class MeshIssuesAnalysisService {
     // `ctx.thresholds.*`, never `databaseService`.
     const thresholds = await this.resolveCurrentThresholds();
 
-    // 1. Sources — Meshtastic TCP + MQTT only. MeshCore/Reticulum are
-    // excluded: neither writes nodes/telemetry (MeshCore lives in
-    // meshcore_nodes and is evaluated separately in a later phase).
+    // 1. Sources — Meshtastic TCP + MQTT feed the full rule set. MeshCore
+    // sources (#6263 S5) are pooled separately from `meshcore_nodes` and feed
+    // only A3 (uptime resets), A4 and C2's advert cadence. Reticulum is out.
     const allSources = await databaseService.sources.getAllSources();
     const sourceIds = allSources
       .filter((s) => s.enabled !== false)
       .filter((s) => s.type === 'meshtastic_tcp' || isMqttSourceType(s.type))
       .map((s) => s.id);
 
-    if (sourceIds.length === 0) {
+    const meshcoreSourceIds = allSources
+      .filter((s) => s.enabled !== false)
+      .filter((s) => isAnyMeshCoreSourceType(s.type))
+      .map((s) => s.id);
+
+    if (sourceIds.length === 0 && meshcoreSourceIds.length === 0) {
       return zeroResult(Date.now() - start);
+    }
+    if (sourceIds.length === 0) {
+      return this.runMeshcoreOnly(meshcoreSourceIds, opts, thresholds, nowMs, sinceMs, start);
     }
     const sourceIdSet = new Set(sourceIds);
     // MQTT-type sources among the resolved set — feeds gateway-receptions
@@ -472,6 +504,14 @@ class MeshIssuesAnalysisService {
       packetLogEnabled,
     );
 
+    // 5h. MeshCore (#6263 S5) — merged into the pooled maps only now, after
+    // every Meshtastic-keyed lookup above has been built. Rules narrow by
+    // declared protocol, so Meshtastic-only rules never see these nodes.
+    const mc = await this.loadMeshcoreInputs(meshcoreSourceIds, sinceMs);
+    for (const [k, n] of mc.nodes) nodes.set(k, n);
+    for (const [k, v] of mc.uptimeTelemetry) telemetry.set(k, v);
+    for (const [k, v] of mc.positionSpanMeters) positionSpanMeters.set(k, v);
+
     // 6. Evaluate Tier A — never throws; a rule that can't evaluate contributes
     // no findings. Gated by thresholds.tierAEnabled: a disabled tier
     // contributes no findings THIS RUN, but does not delete any existing row
@@ -500,6 +540,9 @@ class MeshIssuesAnalysisService {
       nowMs,
       windowHours: opts.lookbackHours,
       localNodeSources,
+      ...(mc.nodes.size > 0
+        ? { meshcoreAdvertCadence: mc.advertCadence, meshcoreAdvertLogEnabled: mc.advertLogEnabled }
+        : {}),
     };
     if (thresholds.tierCEnabled) findings.push(...evaluateAllTierC(tierCCtx));
 
@@ -559,6 +602,203 @@ class MeshIssuesAnalysisService {
       corpusStats,
       coverage,
     };
+  }
+
+  /**
+   * MeshCore-only run: no Meshtastic source is enabled, so the Meshtastic
+   * pipeline (traceroute corpus, RF graph, cadence queries) is skipped and
+   * only A3/A4/C2-advert evaluate. Persistence and mute handling match the
+   * full path (#6263 S5).
+   */
+  private async runMeshcoreOnly(
+    meshcoreSourceIds: string[],
+    opts: MeshIssuesRunOptions,
+    thresholds: ResolvedMeshIssueThresholds,
+    nowMs: number,
+    sinceMs: number,
+    start: number,
+  ): Promise<MeshIssuesRunResult> {
+    const mc = await this.loadMeshcoreInputs(meshcoreSourceIds, sinceMs);
+    // No MeshCore nodes either: nothing to analyze, same zeroed result as
+    // the no-sources case.
+    if (mc.nodes.size === 0) return zeroResult(Date.now() - start);
+    const nodes = new Map(mc.nodes);
+    const ctx: RuleContext = {
+      nodes,
+      telemetry: mc.uptimeTelemetry,
+      positionSpanMeters: mc.positionSpanMeters,
+      nowMs,
+      thresholds,
+      routerBroadcastTelemetryCadence: new Map(),
+    };
+    const findings: MeshIssueFinding[] = thresholds.tierAEnabled ? evaluateAllTierA(ctx) : [];
+    const tierCCtx: TierCRuleContext = {
+      nodes,
+      cadence: new Map(),
+      thresholds,
+      nowMs,
+      windowHours: opts.lookbackHours,
+      meshcoreAdvertCadence: mc.advertCadence,
+      meshcoreAdvertLogEnabled: mc.advertLogEnabled,
+    };
+    if (thresholds.tierCEnabled) findings.push(...evaluateAllTierC(tierCCtx));
+
+    const disabled = new Set(thresholds.disabledRules);
+    const kept = disabled.size === 0 ? findings : findings.filter((f) => !disabled.has(f.issueType));
+    const mutedSkips: RuleSkip[] = thresholds.disabledRules.map((issueType) => ({
+      rule: ruleShortId(issueType),
+      reason: 'muted in settings',
+    }));
+    const persistResult = await this.persistFindings(kept, nowMs, thresholds.autoCloseCleanRuns);
+
+    const durationMs = Date.now() - start;
+    return {
+      durationMs,
+      sourceCount: meshcoreSourceIds.length,
+      nodeCount: nodes.size,
+      findingCount: kept.length,
+      ...persistResult,
+      corpusStats: zeroCorpusStats(),
+      coverage: { ...zeroCoverage(), skippedRules: [...tierCSkips(tierCCtx), ...mutedSkips] },
+    };
+  }
+
+  /**
+   * Pool MeshCore nodes across every enabled MeshCore source and gather the
+   * inputs A3 (uptime resets), A4 (position span) and C2 (advert cadence)
+   * need (#6263 S5). Returns empty maps when there is no MeshCore source;
+   * a failed read degrades that input rather than aborting the run.
+   */
+  private async loadMeshcoreInputs(meshcoreSourceIds: string[], sinceMs: number): Promise<MeshCoreRunInputs> {
+    const empty: MeshCoreRunInputs = {
+      nodes: new Map(),
+      uptimeTelemetry: new Map(),
+      positionSpanMeters: new Map(),
+      advertCadence: new Map(),
+      advertLogEnabled: false,
+    };
+    if (meshcoreSourceIds.length === 0) return empty;
+    const sourceSet = new Set(meshcoreSourceIds);
+
+    let rows: MeshCoreNodeInput[];
+    try {
+      // intentional cross-source: MeshCore nodes pool by public key, like Meshtastic by nodeNum.
+      rows = (await databaseService.meshcore.getAllNodes())
+        .filter((n) => n.sourceId != null && sourceSet.has(n.sourceId))
+        .map((n) => ({
+          publicKey: n.publicKey,
+          sourceId: n.sourceId as string,
+          name: n.name ?? null,
+          advType: n.advType ?? null,
+          latitude: n.latitude ?? null,
+          longitude: n.longitude ?? null,
+          positionOverrideEnabled: n.positionOverrideEnabled ?? null,
+          latitudeOverride: n.latitudeOverride ?? null,
+          longitudeOverride: n.longitudeOverride ?? null,
+          lastHeard: n.lastHeard ?? null,
+          updatedAt: n.updatedAt ?? null,
+        }));
+    } catch (err) {
+      logger.warn(`[meshIssues] meshcore node read failed, MeshCore skipped this run: ${(err as Error)?.message ?? err}`);
+      return empty;
+    }
+    const snapshot = buildMeshCoreSnapshot(rows);
+    if (snapshot.nodes.size === 0) return empty;
+
+    const out: MeshCoreRunInputs = { ...empty, nodes: snapshot.nodes };
+
+    // A3 — uptime series from MeshCore status telemetry.
+    try {
+      const telRows = (await databaseService.telemetry.getTelemetryByTypesSince(
+        [MESHCORE_UPTIME_TELEMETRY_TYPE],
+        sinceMs,
+        meshcoreSourceIds,
+      )) as unknown as TelemetryRow[];
+      out.uptimeTelemetry = buildMeshCoreUptimeSeries(
+        telRows.map((r) => ({ nodeId: r.nodeId, timestamp: r.timestamp, value: r.value, sourceId: r.sourceId })),
+        snapshot.handleByKey,
+      );
+    } catch (err) {
+      logger.warn(`[meshIssues] meshcore uptime query failed, A3 degraded: ${(err as Error)?.message ?? err}`);
+    }
+
+    // A4 — position span from meshcore_position_history, infra nodes only.
+    out.positionSpanMeters = await this.buildMeshCorePositionSpans(snapshot.nodes);
+
+    // C2 — advert cadence from the MeshCore packet log (repeaters only).
+    try {
+      out.advertLogEnabled = await meshcorePacketLogService.isEnabled();
+    } catch (err) {
+      logger.warn(`[meshIssues] meshcorePacketLogService.isEnabled() failed, degrading: ${(err as Error)?.message ?? err}`);
+    }
+    if (out.advertLogEnabled) {
+      const repeaters = new Set<number>();
+      for (const [h, n] of snapshot.nodes) if (n.advType === 2) repeaters.add(h);
+      if (repeaters.size > 0) {
+        try {
+          const packets = await this.loadMeshcoreAdverts(meshcoreSourceIds, sinceMs);
+          out.advertCadence = buildMeshCoreAdvertCadence(packets, snapshot.handleByKey, repeaters);
+        } catch (err) {
+          logger.warn(`[meshIssues] meshcore advert read failed, C2 advert cadence degraded: ${(err as Error)?.message ?? err}`);
+          out.advertLogEnabled = false;
+        }
+      }
+    }
+    return out;
+  }
+
+  private async buildMeshCorePositionSpans(nodes: Map<number, PooledNode>): Promise<Map<number, number>> {
+    const infra = [...nodes.values()].filter((n) => n.infra && n.nodeKey);
+    const result = new Map<number, number>();
+    for (let i = 0; i < infra.length; i += POSITION_SPAN_CHUNK_SIZE) {
+      const chunk = infra.slice(i, i + POSITION_SPAN_CHUNK_SIZE);
+      const spans = await Promise.all(
+        chunk.map(async (node) => {
+          const lats: number[] = [];
+          const lons: number[] = [];
+          try {
+            for (const sid of node.sourceIds) {
+              const pts = await databaseService.meshcore.getPositionHistory(sid, node.nodeKey as string);
+              for (const p of pts.slice(-POSITION_SPAN_SAMPLE_LIMIT)) {
+                lats.push(p.latitude);
+                lons.push(p.longitude);
+              }
+            }
+          } catch (err) {
+            logger.warn(`[meshIssues] meshcore position history failed for ${node.nodeKey}: ${(err as Error)?.message ?? err}`);
+          }
+          return { nodeNum: node.nodeNum, spanKm: positionSpanKm(lats, lons) };
+        }),
+      );
+      for (const { nodeNum, spanKm } of spans) if (spanKm != null) result.set(nodeNum, spanKm * 1000);
+    }
+    return result;
+  }
+
+  private async loadMeshcoreAdverts(sourceIds: string[], sinceMs: number): Promise<MeshCoreAdvertPacketInput[]> {
+    const out: MeshCoreAdvertPacketInput[] = [];
+    for (const sourceId of sourceIds) {
+      for (let page = 0; page < MESHCORE_ADVERT_MAX_PAGES; page++) {
+        const rows = await databaseService.meshcore.getPackets({
+          sourceId,
+          payloadType: MESHCORE_PAYLOAD_ADVERT,
+          since: sinceMs,
+          limit: MESHCORE_ADVERT_PAGE_SIZE,
+          offset: page * MESHCORE_ADVERT_PAGE_SIZE,
+        });
+        for (const r of rows) {
+          out.push({
+            sourceId: r.sourceId,
+            timestamp: Number(r.timestamp),
+            routeType: r.routeType ?? null,
+            hopCount: r.hopCount ?? null,
+            senderPubKey: r.senderPubKey ?? null,
+          });
+        }
+        if (rows.length < MESHCORE_ADVERT_PAGE_SIZE) break;
+      }
+    }
+    return out;
   }
 
   /**

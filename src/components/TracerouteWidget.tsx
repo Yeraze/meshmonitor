@@ -9,39 +9,13 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
 import { useSettings } from '../contexts/SettingsContext';
-import { getTilesetById, getRasterTileset } from '../config/tilesets';
-import { withCartoKey } from '../config/cartoKey';
-import { useTraceroutes } from '../hooks/useTraceroutes';
-import { isUnknownSnr, tracerouteSegmentWeight } from '../utils/mapHelpers';
-import { TraceroutePathsLayer } from './map/layers/TraceroutePathsLayer';
-import { createTracerouteEndpointIcon } from './map/markerIcons';
-import {
-  parseSnapshotRoutePositions,
-  resolveSegmentPosition,
-  buildLiveNodePositionMap,
-  hasReturnPath,
-  decomposeTraceroute,
-  type TracerouteRenderSegment,
-} from '../utils/tracerouteSegments';
-import 'leaflet/dist/leaflet.css';
-
-// Component to fit map bounds
-const FitBounds: React.FC<{ bounds: [[number, number], [number, number]] }> = ({ bounds }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (bounds) {
-      map.fitBounds(bounds, { padding: [20, 20] });
-    }
-  }, [map, bounds]);
-
-  return null;
-};
-
-// TracerouteData interface removed - now using PollTraceroute from useTraceroutes hook
-
+import { useSource } from '../contexts/SourceContext';
+import { darkOverlayColors } from '../config/overlayColors';
+import { useWidgetTrace, type WidgetTraceHop } from '../hooks/useWidgetTrace';
+import { isUnknownSnr } from '../utils/mapHelpers';
+import type { TracerouteRenderSegment } from '../utils/tracerouteSegments';
+import { RouteFlowMap, type RouteFlowPoint } from './map/RouteFlowMap';
 import type { MapNodeInfo } from '../types/device';
 import { UiIcon } from './icons';
 
@@ -51,9 +25,6 @@ import { UiIcon } from './icons';
  */
 type NodeInfo = MapNodeInfo;
 
-/** Stable empty snapshot map — default for `getNodePosition`'s live-only callers (e.g. the text route view). */
-const EMPTY_SNAPSHOT: Map<number, [number, number]> = new Map();
-
 interface TracerouteWidgetProps {
   id: string;
   targetNodeId: string | null;
@@ -61,6 +32,8 @@ interface TracerouteWidgetProps {
   nodes: Map<string, NodeInfo>;
   onRemove: () => void;
   onSelectNode: (nodeId: string) => void;
+  /** Source protocol; decides where the trace comes from. Default meshtastic. */
+  sourceKind?: 'meshtastic' | 'meshcore' | 'reticulum';
   canEdit?: boolean;
 }
 
@@ -71,20 +44,19 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
   nodes,
   onRemove,
   onSelectNode,
+  sourceKind = 'meshtastic',
   canEdit = true,
 }) => {
   const { t } = useTranslation();
-  const { mapTileset, customTilesets, overlayColors, cartoApiKey } = useSettings();
+  const settings = useSettings();
+  const { sourceId } = useSource();
+  const snrColors = settings.overlayColors?.snrColors ?? darkOverlayColors.snrColors;
+  const legForward = settings.overlayColors?.tracerouteForward ?? darkOverlayColors.tracerouteForward;
+  const legReturn = settings.overlayColors?.tracerouteReturn ?? darkOverlayColors.tracerouteReturn;
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showMap, setShowMap] = useState(false); // Map hidden by default
-  const [highlightedPath, setHighlightedPath] = useState<'forward' | 'back' | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
-
-  // Get tileset configuration
-  // The mini-map is a plain raster TileLayer, so a vector selection draws its
-  // raster twin (or osm) instead of feeding a style/.pbf URL to Leaflet (#5448).
-  const tileset = getRasterTileset(getTilesetById(mapTileset, customTilesets)).tileset;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
@@ -108,20 +80,8 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     }
   }, [showSearch]);
 
-  // Get traceroutes from centralized hook (synced via poll mechanism for consistency)
-  const { traceroutes: tracerouteData, isLoading } = useTraceroutes();
-
-  // Find traceroute to/from selected node
-  // Data is already sorted by timestamp DESC from the poll endpoint
-  const traceroute = useMemo(() => {
-    if (!targetNodeId || !tracerouteData || tracerouteData.length === 0) return null;
-
-    // Find the first (most recent) traceroute involving the target node
-    // Since data is pre-sorted by timestamp DESC, the first match is the most recent
-    return tracerouteData.find(
-      tr => tr.toNodeId === targetNodeId || tr.fromNodeId === targetNodeId
-    ) || null;
-  }, [targetNodeId, tracerouteData]);
+  // One normalised trace for either protocol (#6263 S6).
+  const { trace, isLoading } = useWidgetTrace(sourceKind, { sourceId, targetNodeId, currentNodeId, nodes });
 
   // Filter available nodes for search
   const availableNodes = useMemo(() => {
@@ -151,198 +111,58 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     [onSelectNode]
   );
 
-  const getNodeName = useCallback(
-    (nodeNum: number): string => {
-      // BROADCAST_ADDR (0xffffffff) is a firmware placeholder for a relay-role
-      // hop that refused to self-identify — render as "Unknown".
-      if (nodeNum === 4294967295) return 'Unknown';
-      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      const node = nodes.get(nodeId);
-      return node?.user?.longName || node?.user?.shortName || nodeId;
-    },
-    [nodes]
-  );
-
   const formatTimestamp = (timestamp: number): string => {
     const ms = timestamp < 946684800000 ? timestamp * 1000 : timestamp;
     const date = new Date(ms);
     return date.toLocaleString();
   };
 
-  // Filter function to remove invalid/reserved node numbers from route arrays.
-  // BROADCAST_ADDR (0xffffffff) is kept — it's the firmware placeholder for a
-  // relay-role hop that refused to self-identify and is rendered as "Unknown".
-  const isValidRouteNode = (nodeNum: number): boolean => {
-    if (nodeNum <= 3) return false;  // Reserved
-    if (nodeNum === 255) return false;  // 0xff reserved
-    if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
-    return true;
-  };
-
-  const parseRoute = (routeJson: string, snrJson?: string): { nodeNum: number; snr?: number }[] => {
-    try {
-      const route = JSON.parse(routeJson);
-      const snrs = snrJson ? JSON.parse(snrJson) : [];
-      // Filter out invalid node numbers and keep corresponding SNRs in sync
-      const result: { nodeNum: number; snr?: number }[] = [];
-      route.forEach((nodeNum: number, idx: number) => {
-        if (isValidRouteNode(nodeNum)) {
-          result.push({
-            nodeNum,
-            snr: snrs[idx] !== undefined ? snrs[idx] / 4 : undefined,
-          });
-        }
-      });
-      return result;
-    } catch {
-      return [];
-    }
-  };
-
-  // Live node positions, keyed by nodeNum, normalized to [lat, lng] via the
-  // shared `buildLiveNodePositionMap` — the widget's own live-node shape
-  // carries position as EITHER `latitudeI/longitudeI` (integer) OR
-  // `latitude/longitude` (float); the integer form is preferred when present.
-  const liveNodePositions = useMemo(
-    () =>
-      buildLiveNodePositionMap(nodes.values(), (node) => {
-        if (typeof node.nodeNum !== 'number' || !node.position) return null;
-        if (node.position.latitudeI && node.position.longitudeI) {
-          return { nodeNum: node.nodeNum, lat: node.position.latitudeI / 1e7, lng: node.position.longitudeI / 1e7 };
-        }
-        return { nodeNum: node.nodeNum, lat: node.position.latitude, lng: node.position.longitude };
-      }),
-    [nodes],
-  );
-
-  // Get node position by nodeNum, optionally preferring a snapshot map
-  // (#1862 — resolveSegmentPosition prefers `snapshot` over `liveNodePositions`).
-  const getNodePosition = useCallback(
-    (nodeNum: number, snapshotPositions?: Map<number, [number, number]>): [number, number] | null =>
-      resolveSegmentPosition(nodeNum, snapshotPositions ?? EMPTY_SNAPSHOT, liveNodePositions),
-    [liveNodePositions]
-  );
-
-  // Build map data for visualization
+  // Map data for the shared RouteFlowMap: forward path, plus the return leg
+  // when the trace has one. Only hops with a position are drawn.
   const mapData = useMemo(() => {
-    if (!traceroute) return null;
-
-    // Parse snapshot positions (#1862) via the shared util — prefers historical
-    // positions over current. Uses a `typeof`-based presence check (fixes a
-    // truthy-check bug that silently dropped snapshots at exactly lat/lng 0).
-    const snapshotPositions = parseSnapshotRoutePositions(traceroute.routePositions);
-
-    // Parse routes (filters reserved/invalid node numbers; keeps BROADCAST_ADDR
-    // as a renderable "Unknown" hop for the text route view below).
-    const forwardHops =
-      traceroute.route && traceroute.route !== 'null' && traceroute.route !== ''
-        ? parseRoute(traceroute.route, traceroute.snrTowards)
-        : [];
-    const backHops =
-      traceroute.routeBack && traceroute.routeBack !== 'null' && traceroute.routeBack !== ''
-        ? parseRoute(traceroute.routeBack, traceroute.snrBack)
-        : [];
-
-    // #2051 — delegate the empty-routeBack guard to the shared util instead
-    // of a local re-implementation.
-    const hasReturn = hasReturnPath(backHops.map(h => h.nodeNum), traceroute.snrBack);
-
-    // Build complete forward path: from -> hops -> to
-    const forwardPath = [traceroute.fromNodeNum, ...forwardHops.map(h => h.nodeNum), traceroute.toNodeNum];
-
-    // Build complete back path only if we have actual return data
-    const backPath = hasReturn
-      ? [traceroute.toNodeNum, ...backHops.map(h => h.nodeNum), traceroute.fromNodeNum]
-      : [];
-
-    // Collect unique nodes with positions (prefer snapshot positions) — feeds
-    // the from/to/intermediate-hop MARKERS below (marker icon styling is
-    // Phase 4 scope; untouched here beyond the snapshot-resolution fix above).
-    const uniqueNodes = new Map<number, { nodeNum: number; position: [number, number]; name: string }>();
-    [...forwardPath, ...backPath].forEach(nodeNum => {
-      if (!uniqueNodes.has(nodeNum)) {
-        const pos = getNodePosition(nodeNum, snapshotPositions);
-        if (pos) {
-          uniqueNodes.set(nodeNum, {
-            nodeNum,
-            position: pos,
-            name: getNodeName(nodeNum),
-          });
-        }
+    if (!trace) return null;
+    const unique = new Map<string, WidgetTraceHop>();
+    const legs: Array<{ hops: WidgetTraceHop[]; leg: 'forward' | 'return' }> = [{ hops: trace.forward, leg: 'forward' }];
+    if (trace.back) legs.push({ hops: trace.back, leg: 'return' });
+    for (const { hops } of legs) {
+      for (const h of hops) {
+        if (h.lat !== null && h.lon !== null && !unique.has(h.key)) unique.set(h.key, h);
       }
-    });
+    }
+    if (unique.size < 2) return null;
+    const lastIdx = trace.forward.length - 1;
+    const endpointKeys = new Set([trace.forward[0]?.key, trace.forward[lastIdx]?.key]);
+    const points: RouteFlowPoint[] = Array.from(unique.values()).map((h) => ({
+      key: h.key,
+      label: h.label,
+      lat: h.lat as number,
+      lon: h.lon as number,
+      kind: endpointKeys.has(h.key) ? 'endpoint' : 'hop',
+    }));
+    const segments: TracerouteRenderSegment[] = [];
+    for (const { hops, leg } of legs) {
+      const placed = hops.filter((h) => h.lat !== null && h.lon !== null);
+      for (let i = 1; i < placed.length; i++) {
+        const a = placed[i - 1];
+        const b = placed[i];
+        segments.push({
+          key: `${leg}-${i}`,
+          from: [a.lat as number, a.lon as number],
+          to: [b.lat as number, b.lon as number],
+          fromKey: a.key,
+          toKey: b.key,
+          leg,
+          avgSnr: b.snr !== null && !isUnknownSnr(b.snr) ? b.snr : null,
+          isMqtt: b.snr !== null && isUnknownSnr(b.snr),
+        });
+      }
+    }
+    const placedCount = new Set([...trace.forward, ...(trace.back ?? [])].map((h) => h.key)).size;
+    return { points, segments, someUnplaced: unique.size < placedCount };
+  }, [trace]);
 
-    // Path-entry position counts (including duplicate hops), used only for
-    // the "missing position" warning-icon heuristic below — NOT for drawing
-    // (drawing now goes through `segments`/`decomposeTraceroute`).
-    const forwardPositions: [number, number][] = forwardPath
-      .map(nodeNum => uniqueNodes.get(nodeNum)?.position)
-      .filter((p): p is [number, number] => p !== undefined);
-    const backPositions: [number, number][] = backPath
-      .map(nodeNum => uniqueNodes.get(nodeNum)?.position)
-      .filter((p): p is [number, number] => p !== undefined);
-
-    // Calculate bounds if we have positions
-    if (uniqueNodes.size < 2) return null;
-
-    const allPositions = Array.from(uniqueNodes.values()).map(n => n.position);
-    const lats = allPositions.map(p => p[0]);
-    const lngs = allPositions.map(p => p[1]);
-
-    const bounds: [[number, number], [number, number]] = [
-      [Math.min(...lats) - 0.01, Math.min(...lngs) - 0.01],
-      [Math.max(...lats) + 0.01, Math.max(...lngs) + 0.01],
-    ];
-
-    // Forward + return render segments via the shared decomposition util —
-    // replaces the widget's own curved-path/dash/color construction.
-    // Internally /4-scales SNR, applies the #2931 sentinel, and re-derives
-    // the same #2051 return-leg gate as `hasReturn` above.
-    const segments: TracerouteRenderSegment[] = decomposeTraceroute(
-      {
-        fromNodeNum: traceroute.fromNodeNum,
-        toNodeNum: traceroute.toNodeNum,
-        route: traceroute.route,
-        routeBack: traceroute.routeBack,
-        snrTowards: traceroute.snrTowards,
-        snrBack: traceroute.snrBack,
-        timestamp: traceroute.timestamp,
-        createdAt: traceroute.createdAt,
-      },
-      { resolvePosition: (n) => resolveSegmentPosition(n, snapshotPositions, liveNodePositions) },
-    );
-
-    return {
-      nodes: Array.from(uniqueNodes.values()),
-      forwardPositions,
-      backPositions,
-      segments,
-      bounds,
-      fromNodeNum: traceroute.fromNodeNum,
-      toNodeNum: traceroute.toNodeNum,
-    };
-  }, [traceroute, getNodePosition, getNodeName, liveNodePositions]);
-
-
-
-  // Endpoint/hop marker icon — from/to colors are a deliberate endpoint-
-  // identity encoding (green = source, blue = destination, gray = hop),
-  // intentionally distinct from the theme leg colors above (which encode
-  // travel direction, not endpoint role). See createTracerouteEndpointIcon's
-  // doc block in map/markerIcons.ts (#4047 Phase 4, D3 Option A).
-  const getNodeMarkerIcon = useCallback((isFrom: boolean, isTo: boolean) => {
-    const role: 'from' | 'to' | 'hop' = isFrom ? 'from' : isTo ? 'to' : 'hop';
-    return createTracerouteEndpointIcon(role);
-  }, []);
-
-  const renderRoute = (
-    label: string,
-    fromNum: number,
-    toNum: number,
-    routeJson: string | null,
-    snrJson?: string
-  ): React.ReactNode => {
-    if (!routeJson || routeJson === 'null' || routeJson === '') {
+  const renderRoute = (label: string, hops: WidgetTraceHop[] | null): React.ReactNode => {
+    if (!hops) {
       return (
         <div className="traceroute-path-section">
           <div className="traceroute-path-label">{label}</div>
@@ -350,35 +170,27 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
         </div>
       );
     }
-
-    const hops = parseRoute(routeJson, snrJson);
-    const fullPath = [
-      { nodeNum: fromNum, snr: undefined },
-      ...hops,
-      { nodeNum: toNum, snr: hops.length > 0 ? hops[hops.length - 1]?.snr : undefined },
-    ];
-
     return (
       <div className="traceroute-path-section">
         <div className="traceroute-path-label">{label}</div>
         <div className="traceroute-path">
-          {fullPath.map((hop, idx) => {
-            const hasPosition = getNodePosition(hop.nodeNum) !== null;
+          {hops.map((hop, idx) => {
+            const hasPosition = hop.lat !== null;
             return (
-              <React.Fragment key={`${hop.nodeNum}-${idx}`}>
+              <React.Fragment key={`${hop.key}-${idx}`}>
                 <span
                   className={`traceroute-hop ${!hasPosition ? 'no-position' : ''}`}
                   title={!hasPosition ? 'No position data' : undefined}
                 >
-                  {getNodeName(hop.nodeNum)}
+                  {hop.label}
                   {!hasPosition && (
                     <span className="traceroute-no-pos-icon" title="No position data">
                       <UiIcon name="location" size={13} />
                     </span>
                   )}
-                  {hop.snr !== undefined && <span className="traceroute-snr" title={isUnknownSnr(hop.snr) ? 'Unknown SNR (MQTT-bridged hop, decrypt failure, or old firmware)' : undefined}>{isUnknownSnr(hop.snr) ? '?' : `${hop.snr.toFixed(1)} dB`}</span>}
+                  {hop.snr !== null && <span className="traceroute-snr" title={isUnknownSnr(hop.snr) ? 'Unknown SNR (MQTT-bridged hop, decrypt failure, or old firmware)' : undefined}>{isUnknownSnr(hop.snr) ? '?' : `${hop.snr.toFixed(1)} dB`}</span>}
                 </span>
-                {idx < fullPath.length - 1 && <span className="traceroute-arrow"><UiIcon name="forward" size={14} /></span>}
+                {idx < hops.length - 1 && <span className="traceroute-arrow"><UiIcon name="forward" size={14} /></span>}
               </React.Fragment>
             );
           })}
@@ -448,16 +260,16 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
           </div>
         ) : isLoading ? (
           <div className="traceroute-loading">{t('dashboard.widget.traceroute.loading')}</div>
-        ) : !traceroute ? (
+        ) : !trace ? (
           <div className="traceroute-no-data">{t('dashboard.widget.traceroute.no_data')}</div>
         ) : (
           <div className="traceroute-details">
             <div className="traceroute-header-row">
               <div className="traceroute-timestamp">
                 {t('dashboard.widget.traceroute.last_traceroute')}:{' '}
-                {formatTimestamp(traceroute.timestamp || traceroute.createdAt || 0)}
+                {formatTimestamp(trace.timestamp)}
               </div>
-              {mapData && mapData.nodes.length >= 2 && (
+              {mapData && (
                 <button
                   className="traceroute-map-toggle-inline"
                   onClick={() => setShowMap(!showMap)}
@@ -466,7 +278,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                   }
                 >
                   {showMap ? t('dashboard.widget.traceroute.hide_map') : t('dashboard.widget.traceroute.show_map')}
-                  {mapData.nodes.length < (mapData.forwardPositions.length + mapData.backPositions.length) / 2 && (
+                  {mapData.someUnplaced && (
                     <span
                       className="traceroute-map-warning"
                       title={t('dashboard.widget.traceroute.no_position_warning')}
@@ -478,82 +290,29 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
               )}
             </div>
 
-            {/* Mini Map */}
-            {mapData && mapData.nodes.length >= 2 && showMap && (
+            {/* Mini Map: the shared RouteFlowMap, same for both protocols */}
+            {mapData && showMap && (
               <div className="traceroute-map-section">
                 <div className="traceroute-map-container">
-                  <MapContainer
-                    center={[mapData.bounds[0][0], mapData.bounds[0][1]]}
-                    zoom={10}
-                    style={{ height: '200px', width: '100%', borderRadius: '8px' }}
-                    scrollWheelZoom={false}
-                    dragging={true}
-                    zoomControl={true}
-                    attributionControl={false}
-                  >
-                    <FitBounds bounds={mapData.bounds} />
-                    <TileLayer
-                      url={withCartoKey(tileset.url, cartoApiKey)}
-                      attribution={tileset.attribution}
-                      maxZoom={tileset.maxZoom}
-                    />
-
-                    {/* Forward + return legs — shared render layer. Leg
-                        colors read the theme tracerouteForward/
-                        tracerouteReturn tokens (legend swatches below use the
-                        same tokens, so they stay truthful). Hover-highlight
-                        (dim 0.9/0.2, arrows limited to the highlighted leg)
-                        is preserved via the `highlight` prop. */}
-                    <TraceroutePathsLayer
-                      segments={mapData.segments}
-                      snrColors={overlayColors.snrColors}
-                      colorMode="fixed-leg"
-                      legColors={{ forward: overlayColors.tracerouteForward, return: overlayColors.tracerouteReturn }}
-                      curvature={0.2}
-                      weight={tracerouteSegmentWeight}
-                      opacity={0.9}
-                      dashMode="mqtt-unknown"
-                      showArrows
-                      highlight={{
-                        group: highlightedPath === 'back' ? 'return' : highlightedPath,
-                        dimmedOpacity: 0.2,
-                      }}
-                    />
-
-                    {/* Node markers */}
-                    {mapData.nodes.map(node => (
-                      <Marker
-                        key={node.nodeNum}
-                        position={node.position}
-                        icon={getNodeMarkerIcon(
-                          node.nodeNum === mapData.fromNodeNum,
-                          node.nodeNum === mapData.toNodeNum
-                        )}
-                      >
-                        <Tooltip permanent={false} direction="top" offset={[0, -5]}>
-                          {node.name}
-                        </Tooltip>
-                      </Marker>
-                    ))}
-                  </MapContainer>
-                  <div className="traceroute-map-legend">
-                    <span
-                      className={`legend-item ${highlightedPath === 'forward' ? 'highlighted' : ''}`}
-                      onMouseEnter={() => setHighlightedPath('forward')}
-                      onMouseLeave={() => setHighlightedPath(null)}
-                    >
-                      <span className="legend-color" style={{ background: overlayColors.tracerouteForward }}></span>{' '}
-                      {t('dashboard.widget.traceroute.forward_path')}
-                    </span>
-                    <span
-                      className={`legend-item ${highlightedPath === 'back' ? 'highlighted' : ''}`}
-                      onMouseEnter={() => setHighlightedPath('back')}
-                      onMouseLeave={() => setHighlightedPath(null)}
-                    >
-                      <span className="legend-color" style={{ background: overlayColors.tracerouteReturn }}></span>{' '}
-                      {t('dashboard.widget.traceroute.return_path')}
-                    </span>
-                  </div>
+                  <RouteFlowMap
+                    points={mapData.points}
+                    segments={mapData.segments}
+                    snrColors={snrColors}
+                    colorMode={trace?.back ? 'leg' : 'snr'}
+                    legColors={{ forward: legForward, return: legReturn }}
+                  />
+                  {trace?.back && (
+                    <div className="traceroute-map-legend">
+                      <span className="legend-item">
+                        <span className="legend-color" style={{ background: legForward }}></span>{' '}
+                        {t('dashboard.widget.traceroute.forward_path')}
+                      </span>
+                      <span className="legend-item">
+                        <span className="legend-color" style={{ background: legReturn }}></span>{' '}
+                        {t('dashboard.widget.traceroute.return_path')}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -561,21 +320,9 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
             {/* Show text routes only when map is hidden */}
             {!showMap && (
               <>
-                {renderRoute(
-                  `${t('dashboard.widget.traceroute.forward_path')}:`,
-                  traceroute.fromNodeNum,
-                  traceroute.toNodeNum,
-                  traceroute.route,
-                  traceroute.snrTowards
-                )}
+                {renderRoute(`${t('dashboard.widget.traceroute.forward_path')}:`, trace.forward)}
 
-                {renderRoute(
-                  `${t('dashboard.widget.traceroute.return_path')}:`,
-                  traceroute.toNodeNum,
-                  traceroute.fromNodeNum,
-                  traceroute.routeBack,
-                  traceroute.snrBack
-                )}
+                {renderRoute(`${t('dashboard.widget.traceroute.return_path')}:`, trace.back)}
               </>
             )}
           </div>
