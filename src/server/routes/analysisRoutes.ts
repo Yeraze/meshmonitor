@@ -35,7 +35,19 @@ import {
 } from '../services/solarAnalysis.js';
 import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
-import { buildPositionFilter } from '../utils/positionVisibility.js';
+import {
+  buildPositionFilter,
+  buildMeshCorePositionFilter,
+  loadMeshCoreNodesBySource,
+} from '../utils/positionVisibility.js';
+import { loadSourcePermissions } from '../utils/sourcePermissions.js';
+import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
+import {
+  MESHCORE_SOLAR_TYPES,
+  meshCoreSolarRows,
+  meshCoreNameLookups,
+  type MeshCoreTelemetryInput,
+} from '../services/solarTelemetryAdapter.js';
 import { resolveLocalNodeNums } from '../utils/localNodeNums.js';
 import {
   classifySourceBrokerAddress,
@@ -279,6 +291,41 @@ function gatewayBrokerClass(
   return combineBrokerClasses(sourceIds.map((id) => map.get(id) ?? 'unknown'));
 }
 
+/** Source types whose rows live in the `meshcore_*` tables. */
+const MESHCORE_SOURCE_TYPES = new Set(['meshcore', 'meshcore_mqtt']);
+
+/** The subset of `sourceIds` that are MeshCore sources. */
+async function meshCoreSourceIdsAmong(sourceIds: string[]): Promise<string[]> {
+  if (sourceIds.length === 0) return [];
+  const wanted = new Set(sourceIds);
+  const all = await databaseService.sources.getAllSources();
+  return all.filter((s) => wanted.has(s.id) && MESHCORE_SOURCE_TYPES.has(String(s.type))).map((s) => s.id);
+}
+
+/**
+ * One visibility predicate for Map Analysis position rows: a MeshCore row
+ * (carries `publicKey`) goes through `buildMeshCorePositionFilter`, any other
+ * through `buildPositionFilter`. Both share one `loadSourcePermissions` read.
+ */
+async function buildCombinedPositionFilter(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches buildPositionFilter's req.user signature
+  user: any,
+  sourceIds: string[],
+): Promise<(row: { sourceId: string; nodeNum: number; publicKey?: string }) => boolean> {
+  const mcIds = await meshCoreSourceIdsAmong(sourceIds);
+  const mcSet = new Set(mcIds);
+  const mtIds = sourceIds.filter((id) => !mcSet.has(id));
+  const grants = await loadSourcePermissions(user ?? null);
+  const [mtFilter, mcFilter] = await Promise.all([
+    buildPositionFilter(user, mtIds, undefined, grants),
+    buildMeshCorePositionFilter(user, mcIds, undefined, grants),
+  ]);
+  return (row) =>
+    row.publicKey
+      ? mcFilter({ sourceId: row.sourceId, publicKey: row.publicKey })
+      : mtFilter({ sourceId: row.sourceId, nodeNum: row.nodeNum });
+}
+
 router.get('/positions', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -297,7 +344,7 @@ router.get('/positions', async (req: Request, res: Response) => {
 
     // Enforce per-channel viewOnMap and positionOverrideIsPrivate gates,
     // matching the checks the main map and v1/position-history already apply.
-    const posFilter = await buildPositionFilter(user, sourceIds);
+    const posFilter = await buildCombinedPositionFilter(user, sourceIds);
     result.items = result.items.filter(posFilter);
 
     res.json(result);
@@ -376,7 +423,7 @@ router.get('/coverage-grid', async (req: Request, res: Response) => {
     // Enforce the same per-channel viewOnMap / positionOverrideIsPrivate gates
     // that /positions applies — pre-built as a synchronous predicate so it can
     // be applied inside getCoverageGrid's internal pagination loop.
-    const posFilter = await buildPositionFilter(user, sourceIds);
+    const posFilter = await buildCombinedPositionFilter(user, sourceIds);
     const result = await databaseService.analysis.getCoverageGrid({
       sourceIds,
       sinceMs,
@@ -414,6 +461,27 @@ async function visibleSolarOverrides(
   }
   const all = await databaseService.solarNodeOverrides.getMapAsync();
   return new Map([...all].filter(([nodeNum]) => visible.has(nodeNum)));
+}
+
+/**
+ * MeshCore telemetry rows, node names and visible-node list for the solar
+ * handlers (#6260). Only permitted MeshCore sources are read, so no other
+ * source's names or rows reach the caller.
+ */
+async function loadMeshCoreSolarInputs(sourceIds: string[], sinceMs: number) {
+  const mcIds = await meshCoreSourceIdsAmong(sourceIds);
+  if (mcIds.length === 0) {
+    return { rows: [], nodes: [] as Array<{ sourceId: string; publicKey: string; name: string | null }> };
+  }
+  const [telemetry, nodesBySource] = await Promise.all([
+    databaseService.telemetry.getTelemetryByTypesSince([...MESHCORE_SOLAR_TYPES], sinceMs, mcIds),
+    loadMeshCoreNodesBySource(mcIds),
+  ]);
+  const rows = meshCoreSolarRows(telemetry as unknown as MeshCoreTelemetryInput[]);
+  const nodes = [...nodesBySource].flatMap(([sourceId, list]) =>
+    list.map((n) => ({ sourceId, publicKey: n.publicKey, name: n.name ?? null })),
+  );
+  return { rows, nodes };
 }
 
 /**
@@ -472,7 +540,13 @@ router.get('/solar-nodes', async (req: Request, res: Response) => {
       shortName: n.shortName,
     }));
 
-    const overrides = await visibleSolarOverrides(allNodes, sourceIds);
+    const mc = await loadMeshCoreSolarInputs(sourceIds, sinceMs);
+    rows.push(...mc.rows);
+    nodeLookup.push(...meshCoreNameLookups(mc.nodes, nodeLookup));
+    const overrides = await visibleSolarOverrides(
+      [...allNodes, ...mc.nodes.map((n) => ({ nodeNum: nodeNumFromPubkey(n.publicKey), sourceId: n.sourceId }))],
+      sourceIds,
+    );
     const result = identifySolarNodes(rows, nodeLookup, lookbackDays, overrides);
     const nodeNames = buildNodeNameMap(nodeLookup);
     result.manual_overrides = [...overrides].map(([nodeNum, isSolar]) => ({
@@ -557,7 +631,14 @@ router.get('/solar-forecast', async (req: Request, res: Response) => {
       shortName: n.shortName,
     }));
 
-    const analysis = identifySolarNodes(rows, nodeLookup, lookbackDays, await visibleSolarOverrides(allNodes, sourceIds));
+    const mc = await loadMeshCoreSolarInputs(sourceIds, sinceMs);
+    rows.push(...mc.rows);
+    nodeLookup.push(...meshCoreNameLookups(mc.nodes, nodeLookup));
+    const overrides = await visibleSolarOverrides(
+      [...allNodes, ...mc.nodes.map((n) => ({ nodeNum: nodeNumFromPubkey(n.publicKey), sourceId: n.sourceId }))],
+      sourceIds,
+    );
+    const analysis = identifySolarNodes(rows, nodeLookup, lookbackDays, overrides);
 
     // Need both historical (lookback window) and forecast (today + future) Wh
     const startSec = Math.floor(sinceMs / 1000);
@@ -623,7 +704,8 @@ router.get('/hop-counts', async (req: Request, res: Response) => {
       ? permitted.filter((id) => requested.includes(id))
       : permitted;
     const localNodeNums = await resolveLocalNodeNums(sourceIds);
-    const result = await databaseService.analysis.getHopCounts({ sourceIds, localNodeNums });
+    const meshcoreSourceIds = await meshCoreSourceIdsAmong(sourceIds);
+    const result = await databaseService.analysis.getHopCounts({ sourceIds, localNodeNums, meshcoreSourceIds });
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/hop-counts:', error);
