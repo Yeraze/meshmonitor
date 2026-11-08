@@ -48,7 +48,7 @@ Each phase's scope is the checklist in its issue.
   distribution charts, Unified filters, Smart Hops / Link Quality / Signal Trend.
 - [x] **P5 #6260 Map parity:** shared MeshCoreMap layers, trace on map, Map
   Analysis positions/traces/solar, estimated positions. May split.
-- [ ] **P6 #6263 Dashboard / API / reports:** dashboard widgets, Mesh Issues,
+- [x] **P6 #6263 Dashboard / API / reports:** dashboard widgets, Mesh Issues,
   Prometheus, v1 API read + TX, embed maps.
 - [ ] **P7 #6254 Security view:** dead contacts, hash collisions, advert
   signatures, own-key change, rates/clock/digest. May split.
