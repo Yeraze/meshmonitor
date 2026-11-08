@@ -284,3 +284,11 @@ describe('useRecentTraceroute', () => {
     expect(result.current).toBeNull();
   });
 });
+
+describe('toNodeCardModel — meshcore voltage', () => {
+  it('derives voltage from batteryMv', () => {
+    expect(toNodeCardModel({ publicKey: 'ab', batteryMv: 4120 }, 'meshcore').voltage).toBeCloseTo(4.12);
+    expect(toNodeCardModel({ publicKey: 'ab' }, 'meshcore').voltage).toBeNull();
+    expect(toNodeCardModel({ publicKey: 'ab', batteryMv: 0 }, 'meshcore').voltage).toBeNull();
+  });
+});

@@ -89,3 +89,21 @@ describe('sortNodesByField', () => {
     expect(sortNodesByField(nodes.slice(0, 1), 'snr', 'asc', hopsOf)).toEqual(nodes.slice(0, 1));
   });
 });
+
+import { sortByKey, orderFavoritesFirst } from './nodeSort';
+
+describe('sortByKey / orderFavoritesFirst', () => {
+  const items = [{ n: 'b', k: 2 }, { n: 'a', k: 1 }, { n: 'c', k: 2 }];
+  it('sorts stably in both directions', () => {
+    expect(sortByKey(items, (i) => i.k, 'asc').map((i) => i.n)).toEqual(['a', 'b', 'c']);
+    expect(sortByKey(items, (i) => i.k, 'desc').map((i) => i.n)).toEqual(['b', 'c', 'a']);
+  });
+  it('keeps input order when the first key is undefined', () => {
+    expect(sortByKey(items, () => undefined, 'asc')).toEqual(items);
+  });
+  it('puts favorites first and sorts each partition', () => {
+    const xs = [{ id: 2 }, { id: 1, isFavorite: true }, { id: 0 }, { id: 3, isFavorite: true }];
+    const out = orderFavoritesFirst(xs, (g) => sortByKey(g, (x) => x.id, 'asc'));
+    expect(out.map((x) => x.id)).toEqual([1, 3, 0, 2]);
+  });
+});

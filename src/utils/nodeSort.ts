@@ -1,7 +1,7 @@
 import type { DeviceInfo } from '../types/device.js';
 import type { SortField, SortDirection } from '../types/ui.js';
 
-type SortKey = string | number;
+export type SortKey = string | number;
 
 /**
  * The value a node sorts by for `field`. `hopsOf` is called only for the
@@ -49,9 +49,40 @@ function compareKeys(a: SortKey, b: SortKey): number {
 }
 
 /**
- * Sort nodes by `field`, returning a new array. Each node's key is computed
- * once (decorate-sort-undecorate) rather than twice per comparison, which
- * matters for the 'hops' key and for long lists. Stable: equal keys keep
+ * Generic stable sort by a computed key, returning a new array. Each key is
+ * computed once (decorate-sort-undecorate). If the first item's key is
+ * undefined the input order is returned unchanged.
+ */
+export function sortByKey<T>(
+  items: readonly T[],
+  keyOf: (item: T) => SortKey | undefined,
+  direction: SortDirection
+): T[] {
+  if (items.length < 2) return [...items];
+  const first = keyOf(items[0]);
+  if (first === undefined) return [...items];
+  const keyed = items.map((item, i) => ({ item, key: i === 0 ? first : (keyOf(item) as SortKey) }));
+  const sign = direction === 'asc' ? 1 : -1;
+  keyed.sort((x, y) => sign * compareKeys(x.key, y.key));
+  return keyed.map((k) => k.item);
+}
+
+/**
+ * Favorites first, each partition ordered by `sort`. Shared by the Meshtastic
+ * and MeshCore node lists.
+ */
+export function orderFavoritesFirst<T extends { isFavorite?: boolean }>(
+  items: readonly T[],
+  sort: (xs: T[]) => T[]
+): T[] {
+  const favs: T[] = [];
+  const rest: T[] = [];
+  for (const item of items) (item.isFavorite ? favs : rest).push(item);
+  return [...sort(favs), ...sort(rest)];
+}
+
+/**
+ * Sort nodes by `field`, returning a new array. Stable: equal keys keep
  * their input order. An unknown field returns the input order unchanged.
  */
 export function sortNodesByField(
@@ -60,11 +91,5 @@ export function sortNodesByField(
   direction: SortDirection,
   hopsOf: (node: DeviceInfo) => number
 ): DeviceInfo[] {
-  if (nodes.length < 2) return [...nodes];
-  const first = nodeSortKey(nodes[0], field, hopsOf);
-  if (first === undefined) return [...nodes];
-  const keyed = nodes.map((node, i) => ({ node, key: i === 0 ? first : (nodeSortKey(node, field, hopsOf) as SortKey) }));
-  const sign = direction === 'asc' ? 1 : -1;
-  keyed.sort((x, y) => sign * compareKeys(x.key, y.key));
-  return keyed.map((k) => k.node);
+  return sortByKey(nodes, (node) => nodeSortKey(node, field, hopsOf), direction);
 }

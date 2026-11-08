@@ -64,6 +64,8 @@ export interface NodeCardModel {
   hops?: number | null;
   snr?: number | null;
   battery?: number | null;
+  /** Battery volts (MeshCore: batteryMv / 1000). Unset for Meshtastic. */
+  voltage?: number | null;
   altitude?: number | null;
   /** Meshtastic position precision (0-32 bits). Rendered as a human accuracy
    *  estimate ("~91 m") via `formatPrecisionAccuracy`; 0/null hidden. (#4176) */
@@ -253,6 +255,7 @@ function toMeshCoreModel(raw: unknown): NodeCardModel {
   const outPath = typeof c.outPath === 'string' ? c.outPath : undefined;
   const lastSeen = typeof c.lastSeen === 'number' ? c.lastSeen : undefined;
   const firstHeardMs = typeof c.firstHeard === 'number' ? c.firstHeard : undefined;
+  const voltage = typeof c.batteryMv === 'number' && c.batteryMv > 0 ? c.batteryMv / 1000 : null;
   // #5363: set by the server's sign-flip correction on MeshCore rows too.
   const signFlipReported =
     c.positionSignFlipCorrected === true
@@ -266,6 +269,7 @@ function toMeshCoreModel(raw: unknown): NodeCardModel {
     nodeId: publicKey || undefined,
     lastHeard: lastSeen !== undefined ? Math.floor(lastSeen / 1000) : null,
     firstHeard: firstHeardMs !== undefined ? Math.floor(firstHeardMs / 1000) : null,
+    voltage,
     meshcore: { publicKey, rssi, snr, pathLen, outPath, lastSeen },
     // Aircraft classification is Meshtastic-only (D2, #5364/#5365) — a
     // MeshCore contact is never flagged.
