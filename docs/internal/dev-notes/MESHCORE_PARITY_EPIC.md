@@ -101,3 +101,9 @@ distribution endpoint for the MeshCore packet log; shared `usePagedPackets` / `u
 hooks drive both protocols' monitors; unified monitor merges distribution protocol-tagged; MeshCore
 contact panel gets "Link history" via the shared Meshtastic graph components. Browser-checked on a
 throwaway volume (popout monitor renders, routes return paged envelopes, no console errors).
+
+### P5 #6260 (spec: `MESHCORE_PARITY_P5_SPEC.md`)
+Maintainer answers, 2026-11-08: estimated positions computed on read (no table/scheduler); hop shading
+from `path_len`; Traceroute Explorer split to a follow-up issue; stationary nodes get one current fix
+in heatmap/coverage; playback for any selected contact with ≥2 fixes; solar overrides keyed on the
+synthetic nodeNum; local markers reuse `waypoints`. Read-only phase, no migration.
