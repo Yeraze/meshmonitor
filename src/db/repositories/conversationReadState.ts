@@ -167,6 +167,26 @@ export class ConversationReadStateRepository extends BaseRepository {
     }
   }
 
+  /**
+   * Move many watermarks forward in one call (#6261 mark-all-read). Each entry
+   * goes through {@link setLastReadAsync}, so the monotonic/race semantics are
+   * unchanged. Returns the post-write state of the touched conversations,
+   * grouped by kind (every kind present).
+   */
+  async setManyLastReadAsync(
+    userId: number | null,
+    sourceId: string,
+    entries: Array<{ kind: ConversationKind; conversationKey: string; lastReadAt: number }>
+  ): Promise<ConversationReadStateMap> {
+    const out = emptyReadStateMap();
+    if (!sourceId) return out;
+    for (const e of entries) {
+      const effective = await this.setLastReadAsync(userId, sourceId, e.kind, e.conversationKey, e.lastReadAt);
+      if (effective > 0) out[e.kind][e.conversationKey] = effective;
+    }
+    return out;
+  }
+
   /** Drop every watermark for a source (used when a source is deleted). */
   async deleteForSourceAsync(sourceId: string): Promise<number> {
     if (!sourceId) return 0;

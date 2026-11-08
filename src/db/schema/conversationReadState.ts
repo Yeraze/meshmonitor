@@ -45,7 +45,7 @@ import {
 } from 'drizzle-orm/mysql-core';
 
 /** Conversation families tracked by the watermark table. */
-export const CONVERSATION_KINDS = ['meshcore_channel', 'meshcore_dm'] as const;
+export const CONVERSATION_KINDS = ['meshcore_channel', 'meshcore_dm', 'meshcore_room'] as const;
 export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
 
 /** Sentinel `userId` for the anonymous / unauthenticated operator. */
