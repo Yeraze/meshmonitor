@@ -413,7 +413,7 @@ async function localMeshcoreKeys(manager: MeshCoreSecurityManager): Promise<Set<
  * Nodes not heard within the source's `securityDeadNodeDays` threshold
  * (defaults: Meshtastic 7, MeshCore 14). Never-heard nodes are included.
  */
-router.get('/dead-nodes', requireSourceId('query'), async (req: Request, res: Response) => {
+router.get('/dead-nodes', requireSourceId('query'), requirePermission('nodes', 'read', { sourceIdFrom: 'query', requireSourceId: true }), async (req: Request, res: Response) => {
   try {
     const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
     const manager = sourceManagerRegistry.getManager(sourceId);
@@ -659,7 +659,7 @@ router.post(
  * MeshCore security findings: path-hash collisions, advert-signature failures,
  * name reuse and own-key change. Read-only DB work; sends nothing.
  */
-router.get('/meshcore/findings', requireSourceId('query'), async (req: Request, res: Response) => {
+router.get('/meshcore/findings', requireSourceId('query'), requirePermission('nodes', 'read', { sourceIdFrom: 'query', requireSourceId: true }), async (req: Request, res: Response) => {
   try {
     const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
     const manager = sourceManagerRegistry.getManager(sourceId);

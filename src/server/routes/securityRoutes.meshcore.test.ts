@@ -123,6 +123,39 @@ describe('securityRoutes — MeshCore (P7a)', () => {
     });
   });
 
+  describe('read routes need nodes:read on the requested source', () => {
+    const paths = () => [
+      ['dead-nodes MeshCore', `/api/security/dead-nodes?sourceId=${src}`, src],
+      ['dead-nodes Meshtastic', `/api/security/dead-nodes?sourceId=${harness.sourceB}`, harness.sourceB],
+      ['findings', `/api/security/meshcore/findings?sourceId=${src}`, src],
+    ] as const;
+
+    it.each([0, 1, 2])('security:read without nodes:read is 403 (case %i)', async (i) => {
+      await harness.grant(harness.limited.id, 'security', 'read');
+      const [, url] = paths()[i];
+      const res = await (await harness.loginAs(harness.limited)).get(url);
+      expect(res.status).toBe(403);
+    });
+
+    it.each([0, 1, 2])('nodes:read on a different source is 403 (case %i)', async (i) => {
+      await harness.grant(harness.limited.id, 'security', 'read');
+      const [, url, sid] = paths()[i];
+      await harness.grant(harness.limited.id, 'nodes', 'read', sid === src ? harness.sourceB : src);
+      const res = await (await harness.loginAs(harness.limited)).get(url);
+      expect(res.status).toBe(403);
+    });
+
+    it.each([0, 1, 2])('both grants on the source pass (case %i)', async (i) => {
+      await harness.grant(harness.limited.id, 'security', 'read');
+      const [, url, sid] = paths()[i];
+      await harness.grant(harness.limited.id, 'nodes', 'read', sid);
+      vi.spyOn(databaseService.nodes, 'getAllNodes').mockResolvedValue([] as any);
+      const res = await (await harness.loginAs(harness.limited)).get(url);
+      expect(res.status).toBe(200);
+      vi.restoreAllMocks();
+    });
+  });
+
   describe('POST /dead-nodes/bulk-delete', () => {
     const post = async (user: any, body: unknown) => (await harness.loginAs(user)).post('/api/security/dead-nodes/bulk-delete').send(body as object);
 
