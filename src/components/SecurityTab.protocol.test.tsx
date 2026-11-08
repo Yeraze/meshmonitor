@@ -119,8 +119,13 @@ describe('SecurityTab protocol adapters', () => {
     route({ dead: [mcDead] });
     render(<SecurityTab sourceType="meshcore" sourceId="src-1" />);
     const input = await screen.findByLabelText('Dead after (days)');
+    // Wait until the input is editable and Save is enabled (permissions and the
+    // threshold load async; clicking a disabled Save was flaky under CI load).
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
     fireEvent.change(input, { target: { value: '30' } });
-    fireEvent.click(screen.getByText('Save'));
+    const save = screen.getByText('Save').closest('button') as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
     await waitFor(() => expect(h.post).toHaveBeenCalledWith('/api/settings?sourceId=src-1', { securityDeadNodeDays: '30' }));
   });
 
