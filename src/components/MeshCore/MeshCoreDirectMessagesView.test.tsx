@@ -29,6 +29,7 @@ vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY', temperatureUnit: 'F', telemetryVisualizationHours: 48 }),
   // LinkPreview (mounted inside rendered message bubbles) reads this.
   useSettingsOptional: () => ({ linkPreviewsEnabled: false }),
+  useOptionalMuteSettings: () => null,
 }));
 
 const csrfFetchMock = vi.fn();

@@ -187,6 +187,21 @@ describe('MeshCoreChannelsView — channel mute (#5487)', () => {
     expect(unmuteChannel).toHaveBeenCalledWith(0);
   });
 
+  it('mark-all-read clears every unread channel, muted included (#6261)', async () => {
+    muted = new Set([2]);
+    const { container } = renderView();
+    await waitFor(() => expect(rowFor('Town').classList.contains('unread')).toBe(true));
+    fireEvent.click(screen.getByText('Mark all as Read'));
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-lastread-src-a') ?? '{}');
+      expect(stored['0']).toBe(100);
+      expect(stored['1']).toBe(5000);
+      expect(stored['2']).toBe(9999);
+    });
+    expect(container.querySelectorAll('.mc-channel-unread-dot')).toHaveLength(0);
+    expect(screen.queryByText('Mark all as Read')).toBeNull();
+  });
+
   it('opening a muted channel still clears its last-read marker', async () => {
     muted = new Set([2]);
     renderView();
