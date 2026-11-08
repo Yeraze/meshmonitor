@@ -6,11 +6,11 @@ import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import {
   computeSignalTrend,
-  SIGNAL_TREND_TELEMETRY_TYPES,
   SIGNAL_TREND_LOOKBACK_MS,
-  SIGNAL_TREND_MAX_SAMPLES,
+  signalTrendSamplesFor,
 } from '../services/signalTrend.js';
 import { logger } from '../../utils/logger.js';
+import { getSmartHopsSeries, getLinkQualitySeries } from '../services/contactLinkStats.js';
 import type { DbNode } from '../../db/types.js';
 import { isValidNodeNum } from '../constants/meshtastic.js';
 import {
@@ -287,7 +287,7 @@ router.get('/telemetry/:nodeId/smarthops', optionalAuth(), requireSourceId('quer
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
     // Get smart hops statistics (sourceId required + validated by requireSourceId)
-    const stats = await databaseService.getSmartHopsStatsAsync(nodeId, cutoffTime, intervalParam, req.query.sourceId as string);
+    const stats = await getSmartHopsSeries(nodeId, req.query.sourceId as string, cutoffTime, intervalParam);
 
     res.json({ success: true, data: stats });
   } catch (error) {
@@ -321,7 +321,7 @@ router.get('/telemetry/:nodeId/linkquality', optionalAuth(), requireSourceId('qu
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
     // Get link quality history (sourceId required + validated by requireSourceId)
-    const history = await databaseService.getLinkQualityHistoryAsync(nodeId, cutoffTime, req.query.sourceId as string);
+    const history = await getLinkQualitySeries(nodeId, req.query.sourceId as string, cutoffTime);
 
     res.json({ success: true, data: history });
   } catch (error) {
@@ -353,13 +353,7 @@ router.get('/telemetry/:nodeId/signal-trend', optionalAuth(), requireSourceId('q
 
     const sourceId = req.query.sourceId as string;
     const now = Date.now();
-    const samples = await databaseService.telemetry.getSignalTrendSamples(
-      nodeId,
-      SIGNAL_TREND_TELEMETRY_TYPES,
-      now - SIGNAL_TREND_LOOKBACK_MS,
-      sourceId,
-      SIGNAL_TREND_MAX_SAMPLES
-    );
+    const samples = await signalTrendSamplesFor(nodeId, sourceId, now - SIGNAL_TREND_LOOKBACK_MS);
 
     const result = computeSignalTrend(samples, now);
     return ok(res, result);

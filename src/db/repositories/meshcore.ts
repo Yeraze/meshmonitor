@@ -3490,4 +3490,78 @@ export class MeshCoreRepository extends BaseRepository {
       : await this.db.delete(meshcorePositionHistory);
     return this.getAffectedRows(result);
   }
+
+  // ============ Contact graph samples (#6262 WP2) ============
+  // Read-side adapter for the shared Smart Hops / Link Quality / Signal Trend
+  // endpoints. Direct messages we received from one contact, per source.
+
+  /**
+   * Hop-count samples (ms timestamps, ascending) for messages received from a
+   * contact. `sourceId` is required: a read without it would pool sources.
+   */
+  async getContactHopSamples(
+    sourceId: string,
+    publicKey: string,
+    since: number,
+    limit: number = 50000
+  ): Promise<Array<{ timestamp: number; value: number }>> {
+    if (!sourceId) throw new Error('getContactHopSamples requires a sourceId');
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({ timestamp: meshcoreMessages.timestamp, hopCount: meshcoreMessages.hopCount })
+      .from(meshcoreMessages)
+      .where(
+        and(
+          eq(meshcoreMessages.sourceId, sourceId),
+          eq(meshcoreMessages.fromPublicKey, publicKey),
+          isNotNull(meshcoreMessages.hopCount),
+          isNull(meshcoreMessages.reactionEmoji),
+          gte(meshcoreMessages.timestamp, since)
+        )
+      )
+      .orderBy(meshcoreMessages.timestamp)
+      .limit(limit);
+    return rows.map((r: { timestamp: number | bigint; hopCount: number | null }) => ({
+      timestamp: Number(r.timestamp),
+      value: Number(r.hopCount),
+    }));
+  }
+
+  /**
+   * Signal samples (Q1: how well we hear this contact) from direct messages we
+   * received from it: `snr` and `rssi`, ms timestamps. Most recent first,
+   * capped. `sourceId` is required.
+   */
+  async getContactSignalSamples(
+    sourceId: string,
+    publicKey: string,
+    since: number,
+    limit: number = 20000
+  ): Promise<Array<{ timestamp: number; snr: number | null; rssi: number | null }>> {
+    if (!sourceId) throw new Error('getContactSignalSamples requires a sourceId');
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({
+        timestamp: meshcoreMessages.timestamp,
+        snr: meshcoreMessages.snr,
+        rssi: meshcoreMessages.rssi,
+      })
+      .from(meshcoreMessages)
+      .where(
+        and(
+          eq(meshcoreMessages.sourceId, sourceId),
+          eq(meshcoreMessages.fromPublicKey, publicKey),
+          isNull(meshcoreMessages.reactionEmoji),
+          gte(meshcoreMessages.timestamp, since),
+          or(isNotNull(meshcoreMessages.snr), isNotNull(meshcoreMessages.rssi))
+        )
+      )
+      .orderBy(desc(meshcoreMessages.timestamp))
+      .limit(limit);
+    return rows.map((r: { timestamp: number | bigint; snr: number | null; rssi: number | null }) => ({
+      timestamp: Number(r.timestamp),
+      snr: r.snr === null || r.snr === undefined ? null : Number(r.snr),
+      rssi: r.rssi === null || r.rssi === undefined ? null : Number(r.rssi),
+    }));
+  }
 }
