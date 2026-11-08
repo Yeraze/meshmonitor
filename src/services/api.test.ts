@@ -686,6 +686,16 @@ describe('ApiService BASE_URL Support', () => {
       }));
     });
 
+    it('purgeTelemetry includes sourceId in the body only when given', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      await apiService.purgeTelemetry(0, 'src-1');
+      expect(JSON.parse(mockFetch.mock.calls.at(-1)![1].body)).toEqual({ olderThanHours: 0, sourceId: 'src-1' });
+
+      await apiService.purgeTelemetry(0);
+      expect(JSON.parse(mockFetch.mock.calls.at(-1)![1].body)).toEqual({ olderThanHours: 0 });
+    });
+
     it('purgeMessages should POST to purge messages endpoint', async () => {
       mockFetch.mockResolvedValue(createMockResponse({ success: true }));
 

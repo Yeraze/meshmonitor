@@ -11,6 +11,8 @@ import { useToast } from '../ToastContainer';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { useNodeDisplaySettings } from '../../hooks/useNodeDisplaySettings';
+import { calculateNodeOpacity } from '../../utils/nodeDimming';
+import { isMeshCoreRowComplete } from '../../utils/meshcoreNodeCompleteness';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge, meshcoreLastHeardMs } from '../../utils/meshcoreAge';
 import { formatTimeOrDate } from '../../utils/datetime';
 import { UiIcon } from '../icons';
@@ -67,6 +69,9 @@ interface MeshCoreNodesViewProps {
 interface MergedRow {
   publicKey: string;
   name: string;
+  /** True when a real advertised name exists (before the 'Unknown' display
+   *  fallback). Drives "hide incomplete nodes" (#6258). */
+  hasName: boolean;
   advType?: number;
   rssi?: number;
   snr?: number;
@@ -93,6 +98,7 @@ function mergeNodesAndContacts(
     byKey.set(n.publicKey, {
       publicKey: n.publicKey,
       name: n.name || 'Unknown',
+      hasName: typeof n.name === 'string' && n.name.trim() !== '',
       advType: n.advType,
       rssi: n.rssi,
       snr: n.snr,
@@ -114,6 +120,8 @@ function mergeNodesAndContacts(
       existing.name = existing.name === 'Unknown'
         ? (c.advName || c.name || existing.name)
         : existing.name;
+      existing.hasName = existing.hasName
+        || (typeof (c.advName || c.name) === 'string' && (c.advName || c.name || '').trim() !== '');
       existing.rssi = existing.rssi ?? c.rssi;
       existing.snr = existing.snr ?? c.snr;
       // `0` means "unknown" here too (matches meshcoreLastHeardMs's own
@@ -129,6 +137,7 @@ function mergeNodesAndContacts(
       byKey.set(c.publicKey, {
         publicKey: c.publicKey,
         name: c.advName || c.name || 'Unknown',
+        hasName: (c.advName || c.name || '').trim() !== '',
         advType: c.advType,
         rssi: c.rssi,
         snr: c.snr,
@@ -182,7 +191,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const { showToast } = useToast();
   const { timeFormat, dateFormat } = useSettings();
   const { sourceId } = useSource();
-  const { maxNodeAgeHours, maxInfraNodeAgeHours } = useNodeDisplaySettings(sourceId);
+  const {
+    maxNodeAgeHours,
+    maxInfraNodeAgeHours,
+    hideIncompleteNodes,
+    nodeDimmingEnabled,
+    nodeDimmingStartHours,
+    nodeDimmingMinOpacity,
+  } = useNodeDisplaySettings(sourceId);
   // Nodes tab quick age filter (#5387): a view-only override. When picked it
   // replaces BOTH the companion and the infrastructure window, since the
   // viewer asked for "nodes heard in the last N"; null = the two settings.
@@ -365,12 +381,44 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     const companionNever = companionAgeHours <= 0;
     return merged.filter(r => {
       if (isAgeExempt(r)) return true;
+      // #6258: no advertised name or unknown type. Favorites/local are exempt above.
+      if (hideIncompleteNodes
+        && !isMeshCoreRowComplete({ rawName: r.hasName ? r.name : null, advType: r.advType })) {
+        return false;
+      }
       if (isMeshCoreInfrastructureAdvType(r.advType)) {
         return infraNever || isWithinMeshcoreAge(r, infraCutoffMs);
       }
       return companionNever || isWithinMeshcoreAge(r, cutoffMs);
     });
-  }, [merged, companionAgeHours, infraAgeHours, isAgeExempt]);
+  }, [merged, companionAgeHours, infraAgeHours, isAgeExempt, hideIncompleteNodes]);
+
+  // #6258: map-marker dimming only (the list is never dimmed). The window end is
+  // the row's configured window from settings (not the quick filter); window 0
+  // (show all) yields no dimming. The local node is never dimmed.
+  const opacityByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!nodeDimmingEnabled) return map;
+    const nowMs = Date.now();
+    for (const r of aged) {
+      if (r.isLocal) continue;
+      const windowHours = isMeshCoreInfrastructureAdvType(r.advType)
+        ? maxInfraNodeAgeHours
+        : maxNodeAgeHours;
+      if (windowHours <= 0) continue;
+      const heardMs = meshcoreLastHeardMs(r);
+      const opacity = calculateNodeOpacity(
+        heardMs == null ? undefined : heardMs / 1000,
+        true,
+        nodeDimmingStartHours,
+        nodeDimmingMinOpacity,
+        windowHours,
+        nowMs,
+      );
+      if (opacity < 1) map.set(r.publicKey, opacity);
+    }
+    return map;
+  }, [aged, nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, maxNodeAgeHours, maxInfraNodeAgeHours]);
 
   const sorted = useMemo(
     () => sortRows(aged, sortField, sortDirection),
@@ -688,6 +736,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
         )}
         <MeshCoreMap
           contacts={visibleContacts}
+          markerOpacityByKey={opacityByKey}
           selectedPublicKey={selected}
           onNavigateToDm={onNavigateToDm}
           isLoading={mapIsLoading}

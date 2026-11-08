@@ -257,3 +257,15 @@ export function parseTxTargetMaxAgeHoursWhenUnlimited(raw: string | null | undef
 export function resolveTxTargetMaxAgeHours(maxNodeAgeHours: number, fallbackHours: number): number {
   return Number.isFinite(maxNodeAgeHours) && maxNodeAgeHours > 0 ? maxNodeAgeHours : fallbackHours;
 }
+
+/** Input ranges for the node-dimming controls (shared by SettingsTab and the MeshCore section). */
+export const NODE_DIMMING_RANGES = {
+  nodeDimmingStartHours: { min: 0.5, max: 24, step: 0.5 },
+  nodeDimmingMinOpacity: { min: 0.1, max: 0.9, step: 0.1 },
+} as const;
+
+/** Input ranges for the telemetry retention controls (shared by SettingsTab and the MeshCore section). */
+export const TELEMETRY_RETENTION_RANGES = {
+  telemetryVisualizationHours: { min: 1, max: 168 },
+  favoriteTelemetryStorageDays: { min: 7, max: 90 },
+} as const;

@@ -1,0 +1,14 @@
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkbox {
+  cursor: pointer;
+}
+
+.item {
+  margin-top: 1rem;
+}

@@ -11,6 +11,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { useNodeDisplaySettings, useSignFlipFormSettings, nodeDisplaySettingsQueryKey } from '../../hooks/useNodeDisplaySettings';
 import { useSettingsOptional } from '../../contexts/SettingsContext';
 import SignFlipCorrectionSettings from '../settings/SignFlipCorrectionSettings';
+import NodeDimmingSettings from '../settings/NodeDimmingSettings';
+import HideIncompleteNodesSetting from '../settings/HideIncompleteNodesSetting';
 import { clampSignFlipRangeKm } from '../../utils/signFlipPosition';
 import { writeNodeDisplayLocal } from '../../utils/nodeDisplayStorage';
 import {
@@ -27,11 +29,11 @@ interface MeshCoreNodeDisplaySectionProps {
 }
 
 /**
- * The four Node Display keys that have a MeshCore consumer (#4412 Phase 4
- * spec §2 D3). The other six (localStatsIntervalMinutes,
- * nodeHopsCalculation, hideIncompleteNodes, nodeDimmingEnabled,
- * nodeDimmingStartHours, nodeDimmingMinOpacity) have only Meshtastic-view
- * consumers and are deliberately omitted here.
+ * The four Node Display keys with a MeshCore consumer (#4412 Phase 4 spec §2
+ * D3). Hide-incomplete and the three dimming keys also have MeshCore consumers
+ * since #6258 (MeshCoreNodesView / MeshCoreMap); they ride in the draft as
+ * their own fields. Only `localStatsIntervalMinutes` and `nodeHopsCalculation`
+ * remain Meshtastic-only and are deliberately omitted here.
  *
  * `satisfies` binds this list to the epic's key union, so deleting a key
  * from nodeDisplayDefaults.ts breaks the build here instead of drifting
@@ -53,6 +55,13 @@ const MESHCORE_NODE_DISPLAY_KEYS = [
 type MeshCoreNodeDisplayDraft =
   Record<typeof MESHCORE_NODE_DISPLAY_KEYS[number], number>
   & { maxInfraNodeAgeHours: number }
+  // Hide-incomplete + map-marker dimming (#6258), also per source.
+  & {
+    hideIncompleteNodes: boolean;
+    nodeDimmingEnabled: boolean;
+    nodeDimmingStartHours: number;
+    nodeDimmingMinOpacity: number;
+  }
   // Sign-flip correction (#5363), also per source.
   & {
     signFlipCorrectionEnabled: boolean;
@@ -62,7 +71,17 @@ type MeshCoreNodeDisplayDraft =
   };
 
 type MeshCoreNodeDisplayNumericKey =
-  typeof MESHCORE_NODE_DISPLAY_KEYS[number] | 'maxInfraNodeAgeHours';
+  typeof MESHCORE_NODE_DISPLAY_KEYS[number]
+  | 'maxInfraNodeAgeHours'
+  | 'nodeDimmingStartHours'
+  | 'nodeDimmingMinOpacity';
+
+const DISPLAY_EXTRA_DRAFT_KEYS = [
+  'hideIncompleteNodes',
+  'nodeDimmingEnabled',
+  'nodeDimmingStartHours',
+  'nodeDimmingMinOpacity',
+] as const;
 
 const SIGN_FLIP_DRAFT_KEYS = [
   'signFlipCorrectionEnabled',
@@ -106,6 +125,10 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
     inactiveNodeThresholdHours: settings.inactiveNodeThresholdHours,
     inactiveNodeCheckIntervalMinutes: settings.inactiveNodeCheckIntervalMinutes,
     inactiveNodeCooldownHours: settings.inactiveNodeCooldownHours,
+    hideIncompleteNodes: settings.hideIncompleteNodes,
+    nodeDimmingEnabled: settings.nodeDimmingEnabled,
+    nodeDimmingStartHours: settings.nodeDimmingStartHours,
+    nodeDimmingMinOpacity: settings.nodeDimmingMinOpacity,
     signFlipCorrectionEnabled: signFlip.enabled,
     signFlipCorrectionRangeKm: signFlip.rangeKm,
     signFlipReferenceLatitude: signFlip.referenceLatitude,
@@ -116,6 +139,10 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
     settings.inactiveNodeThresholdHours,
     settings.inactiveNodeCheckIntervalMinutes,
     settings.inactiveNodeCooldownHours,
+    settings.hideIncompleteNodes,
+    settings.nodeDimmingEnabled,
+    settings.nodeDimmingStartHours,
+    settings.nodeDimmingMinOpacity,
     signFlip.enabled,
     signFlip.rangeKm,
     signFlip.referenceLatitude,
@@ -139,6 +166,7 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
     setHasChanges(
       MESHCORE_NODE_DISPLAY_KEYS.some((k) => draft[k] !== initial[k])
       || draft.maxInfraNodeAgeHours !== initial.maxInfraNodeAgeHours
+      || DISPLAY_EXTRA_DRAFT_KEYS.some((k) => draft[k] !== initial[k])
       || SIGN_FLIP_DRAFT_KEYS.some((k) => draft[k] !== initial[k]),
     );
   }, [draft, initial]);
@@ -160,6 +188,11 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
           ...Object.fromEntries(MESHCORE_NODE_DISPLAY_KEYS.map((k) => [k, String(draft[k])])),
           // #4899: standalone key, POSTed alongside the four frozen ones.
           maxInfraNodeAgeHours: String(draft.maxInfraNodeAgeHours),
+          // #6258: hide-incomplete + dimming, per source ('1'/'0' like SettingsTab).
+          hideIncompleteNodes: draft.hideIncompleteNodes ? '1' : '0',
+          nodeDimmingEnabled: draft.nodeDimmingEnabled ? '1' : '0',
+          nodeDimmingStartHours: String(draft.nodeDimmingStartHours),
+          nodeDimmingMinOpacity: String(draft.nodeDimmingMinOpacity),
           // #5363: sign-flip correction, per source like the rest.
           signFlipCorrectionEnabled: draft.signFlipCorrectionEnabled ? 'true' : 'false',
           signFlipCorrectionRangeKm: String(clampSignFlipRangeKm(draft.signFlipCorrectionRangeKm)),
@@ -177,6 +210,10 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
       for (const k of MESHCORE_NODE_DISPLAY_KEYS) {
         writeNodeDisplayLocal(sourceId, k, String(draft[k]));
       }
+      writeNodeDisplayLocal(sourceId, 'hideIncompleteNodes', draft.hideIncompleteNodes ? '1' : '0');
+      writeNodeDisplayLocal(sourceId, 'nodeDimmingEnabled', draft.nodeDimmingEnabled ? '1' : '0');
+      writeNodeDisplayLocal(sourceId, 'nodeDimmingStartHours', String(draft.nodeDimmingStartHours));
+      writeNodeDisplayLocal(sourceId, 'nodeDimmingMinOpacity', String(draft.nodeDimmingMinOpacity));
       // Mandatory: without this the Nodes list and map keep filtering on the
       // stale cutoff until the next full page reload (#4412 Phase 4 spec R3).
       await queryClient.invalidateQueries({ queryKey: nodeDisplaySettingsQueryKey(sourceId) });
@@ -327,6 +364,30 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
           className="setting-input"
         />
       </div>
+
+      <HideIncompleteNodesSetting
+        checked={draft.hideIncompleteNodes}
+        disabled={!canWrite}
+        onChange={(v) => setDraft((prev) => ({ ...prev, hideIncompleteNodes: v }))}
+        description={t(
+          'meshcore.settings.node_display.hide_incomplete_description',
+          'Hide nodes that have no advertised name or an unknown device type from the Nodes list and map. Favorites and your own node always show.',
+        )}
+      />
+
+      <NodeDimmingSettings
+        enabled={draft.nodeDimmingEnabled}
+        startHours={draft.nodeDimmingStartHours}
+        minOpacity={draft.nodeDimmingMinOpacity}
+        disabled={!canWrite}
+        description={t(
+          'meshcore.settings.node_dimming_description',
+          'Fade map markers as nodes go quiet. Nodes fade from full opacity at the start time down to the minimum opacity at the end of their age window (the infrastructure window for Repeaters and Room Servers). The Nodes list is not dimmed, and nothing dims when the window is 0 (show all).',
+        )}
+        onEnabledChange={(v) => setDraft((prev) => ({ ...prev, nodeDimmingEnabled: v }))}
+        onStartHoursChange={(n) => update('nodeDimmingStartHours', n)}
+        onMinOpacityChange={(n) => update('nodeDimmingMinOpacity', n)}
+      />
 
       {/* Sign-flipped position correction (#5363). Display only, plus the
           geo/distance gates that follow it. */}

@@ -24,13 +24,15 @@ vi.mock('react-i18next', async () => {
 let grants: (resource: string, action: string) => boolean = () => true;
 vi.mock('../ToastContainer', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ hasPermission: (resource: string, action: string) => grants(resource, action) }),
+  useAuth: () => ({ authStatus: { user: { isAdmin: true } }, hasPermission: (resource: string, action: string) => grants(resource, action) }),
 }));
 vi.mock('../../hooks/useCsrfFetch', () => ({ useCsrfFetch: () => vi.fn() }));
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 vi.mock('./MeshCoreIgnoredNodesSection', () => ({ MeshCoreIgnoredNodesSection: () => null }));
 vi.mock('./MeshCoreMessageFiltersSection', () => ({ MeshCoreMessageFiltersSection: () => null }));
 vi.mock('./MeshCoreNodeDisplaySection', () => ({ MeshCoreNodeDisplaySection: () => null }));
+vi.mock('./MeshCoreTelemetrySettingsSection', () => ({ MeshCoreTelemetrySettingsSection: () => <div data-testid="telemetry-settings-section" /> }));
+vi.mock('../settings/TelemetryDataActions', () => ({ default: () => <div data-testid="telemetry-data-section" /> }));
 // Fetches on mount; its own tests cover it. Here only its placement matters.
 const contactSyncProps = vi.fn();
 vi.mock('./MeshCoreContactSyncSection', () => ({
@@ -86,6 +88,14 @@ const MOVED_BUTTONS = [
 beforeEach(() => {
   vi.clearAllMocks();
   grants = () => true;
+});
+
+describe('MeshCoreSettingsView: telemetry sections (#6258)', () => {
+  it('mounts the telemetry settings and telemetry data sections', () => {
+    renderView();
+    expect(screen.getByTestId('telemetry-settings-section')).toBeTruthy();
+    expect(screen.getByTestId('telemetry-data-section')).toBeTruthy();
+  });
 });
 
 describe('MeshCoreSettingsView: controls that moved to Device Configuration', () => {
