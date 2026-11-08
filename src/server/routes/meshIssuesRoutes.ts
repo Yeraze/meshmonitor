@@ -345,7 +345,17 @@ const ALL_ISSUE_TYPES: readonly string[] = Object.values(MESH_ISSUE_TYPES);
 const VALID_SEVERITIES: readonly MeshIssueSeverity[] = ['critical', 'warning', 'info'];
 const VALID_TIERS: readonly string[] = ['A', 'B', 'C'];
 
+/** MeshCore findings are keyed `mc:<publicKey>` and carry `nodeNum: null` (#6263 S5). */
+function isMeshcoreSubjectKey(subjectKey: string): boolean {
+  return subjectKey.startsWith('mc:');
+}
+
+/** Valid `subjectKey` filter/scope value: a MeshCore subject key. */
+const MESHCORE_SUBJECT_KEY_RE = /^mc:[0-9a-f]{64}$/;
+
 interface IssueFilterSpec {
+  /** Exact MeshCore subject (By Node group). Null = no constraint. */
+  subjectKey: string | null;
   severities: MeshIssueSeverity[] | null;
   tiers: string[] | null; // 'A' | 'B' | 'C'
   issueTypes: string[] | null;
@@ -386,6 +396,11 @@ function parseIssueFilters(query: Request['query'], permitted: string[]): IssueF
     }
   }
 
+  const subjectKey =
+    typeof query.subjectKey === 'string' && MESHCORE_SUBJECT_KEY_RE.test(query.subjectKey.toLowerCase())
+      ? query.subjectKey.toLowerCase()
+      : null;
+
   const requestedSources = parseSourcesParam(query.sources);
   let sourceIds: string[] | null = null;
   if (requestedSources) {
@@ -400,6 +415,7 @@ function parseIssueFilters(query: Request['query'], permitted: string[]): IssueF
     tiers,
     issueTypes,
     nodeNum,
+    subjectKey,
     sourceIds,
     q,
     includeClosed: query.includeClosed === 'true',
@@ -416,8 +432,10 @@ function matchesFilters(issue: MeshIssueWire, f: IssueFilterSpec): boolean {
   if (f.severities && !f.severities.includes(issue.severity)) return false;
   if (f.tiers && !f.tiers.includes(issue.issueType.charAt(0))) return false;
   if (f.issueTypes && !f.issueTypes.includes(issue.issueType)) return false;
+  if (f.subjectKey && issue.subjectKey !== f.subjectKey) return false;
   if (f.nodeNum === 'none') {
-    if (issue.nodeNum !== null) return false;
+    // The Mesh-wide group excludes per-node MeshCore findings (nodeNum is null on those too).
+    if (issue.nodeNum !== null || isMeshcoreSubjectKey(issue.subjectKey)) return false;
   } else if (typeof f.nodeNum === 'number') {
     if (issue.nodeNum !== f.nodeNum) return false;
   }
@@ -448,6 +466,13 @@ export interface MeshIssueNodeSummary {
   nodeNum: number | null;
   /** `longName ?? shortName ?? !hex`; `null` for the Mesh-wide group. */
   nodeName: string | null;
+  /**
+   * Set only for a MeshCore node group (`mc:<publicKey>`, `nodeNum` null);
+   * absent on Meshtastic and Mesh-wide groups so their output is unchanged.
+   */
+  subjectKey?: string;
+  /** MeshCore groups only: the viewer-permitted sources behind the group. */
+  sourceIds?: string[];
   total: number;
   bySeverity: { critical: number; warning: number; info: number };
   worstSeverity: MeshIssueSeverity;
@@ -486,12 +511,13 @@ export function buildSummary(issues: MeshIssueWire[], sourceNames: Record<string
     { bySeverity: { critical: number; warning: number; info: number }; dismissed: number; latestDetected: number }
   >();
   const byNodeAgg = new Map<
-    number | null,
+    number | string | null,
     {
       nodeName: string | null;
       bySeverity: { critical: number; warning: number; info: number };
       typeWorst: Map<string, MeshIssueSeverity>;
       latestDetected: number;
+      sourceIds: Set<string>;
     }
   >();
 
@@ -505,16 +531,25 @@ export function buildSummary(issues: MeshIssueWire[], sourceNames: Record<string
     if (issue.dismissed) t.dismissed++;
     if (issue.lastDetected > t.latestDetected) t.latestDetected = issue.lastDetected;
 
-    let n = byNodeAgg.get(issue.nodeNum);
+    // MeshCore findings have no nodeNum; group them per node by subjectKey
+    // instead of lumping them into Mesh-wide (#6263 S5).
+    const mc = issue.nodeNum === null && isMeshcoreSubjectKey(issue.subjectKey);
+    const groupKey: number | string | null = mc ? issue.subjectKey : issue.nodeNum;
+    let n = byNodeAgg.get(groupKey);
     if (!n) {
+      const evName = mc && typeof issue.evidence.nodeName === 'string' && issue.evidence.nodeName
+        ? issue.evidence.nodeName
+        : null;
       n = {
-        nodeName: issue.nodeNum === null ? null : issue.nodeName,
+        nodeName: mc ? evName : issue.nodeNum === null ? null : issue.nodeName,
         bySeverity: { critical: 0, warning: 0, info: 0 },
         typeWorst: new Map(),
         latestDetected: 0,
+        sourceIds: new Set(),
       };
-      byNodeAgg.set(issue.nodeNum, n);
+      byNodeAgg.set(groupKey, n);
     }
+    if (mc) for (const sid of issue.sourceIds) n.sourceIds.add(sid);
     n.bySeverity[issue.severity]++;
     const existingWorst = n.typeWorst.get(issue.issueType);
     if (!existingWorst || SEVERITY_RANK[issue.severity] < SEVERITY_RANK[existingWorst]) {
@@ -542,7 +577,8 @@ export function buildSummary(issues: MeshIssueWire[], sourceNames: Record<string
     return a.issueType.localeCompare(b.issueType);
   });
 
-  const byNode: MeshIssueNodeSummary[] = Array.from(byNodeAgg.entries()).map(([nodeNum, v]) => {
+  const byNode: MeshIssueNodeSummary[] = Array.from(byNodeAgg.entries()).map(([groupKey, v]) => {
+    const nodeNum = typeof groupKey === 'number' ? groupKey : null;
     const total = v.bySeverity.critical + v.bySeverity.warning + v.bySeverity.info;
     const issueTypes = Array.from(v.typeWorst.entries())
       .sort(([aType, aSev], [bType, bSev]) => {
@@ -554,6 +590,7 @@ export function buildSummary(issues: MeshIssueWire[], sourceNames: Record<string
     return {
       nodeNum,
       nodeName: v.nodeName,
+      ...(typeof groupKey === 'string' ? { subjectKey: groupKey, sourceIds: [...v.sourceIds].sort() } : {}),
       total,
       bySeverity: v.bySeverity,
       worstSeverity: worstSeverityOf(v.bySeverity),
@@ -561,16 +598,20 @@ export function buildSummary(issues: MeshIssueWire[], sourceNames: Record<string
       latestDetected: v.latestDetected,
     };
   });
+  const meshWide = (n: MeshIssueNodeSummary) => n.nodeNum === null && n.subjectKey === undefined;
   byNode.sort((a, b) => {
-    if (a.nodeNum === null && b.nodeNum !== null) return -1;
-    if (a.nodeNum !== null && b.nodeNum === null) return 1;
+    if (meshWide(a) && !meshWide(b)) return -1;
+    if (!meshWide(a) && meshWide(b)) return 1;
     const rankDelta = SEVERITY_RANK[a.worstSeverity] - SEVERITY_RANK[b.worstSeverity];
     if (rankDelta !== 0) return rankDelta;
     const totalDelta = b.total - a.total;
     if (totalDelta !== 0) return totalDelta;
     const latestDelta = b.latestDetected - a.latestDetected;
     if (latestDelta !== 0) return latestDelta;
-    return (a.nodeNum ?? 0) - (b.nodeNum ?? 0);
+    if (a.nodeNum !== null && b.nodeNum !== null) return a.nodeNum - b.nodeNum;
+    if (a.nodeNum !== null) return -1; // numbered nodes before MeshCore groups on a full tie
+    if (b.nodeNum !== null) return 1;
+    return (a.subjectKey ?? '').localeCompare(b.subjectKey ?? '');
   });
 
   const counts = computeCounts(issues);
@@ -581,7 +622,8 @@ export function buildSummary(issues: MeshIssueWire[], sourceNames: Record<string
 
 export type MeshIssueBulkScope =
   | { scope: 'issueType'; issueType: string }
-  | { scope: 'node'; nodeNum: number | null };
+  | { scope: 'node'; nodeNum: number | null }
+  | { scope: 'subject'; subjectKey: string };
 
 function parseBulkScope(
   body: unknown,
@@ -599,6 +641,13 @@ function parseBulkScope(
     if (b.nodeNum === null) return { ok: true, scope: { scope: 'node', nodeNum: null } };
     if (typeof b.nodeNum === 'number' && Number.isInteger(b.nodeNum)) {
       return { ok: true, scope: { scope: 'node', nodeNum: b.nodeNum } };
+    }
+    return { ok: false, code: 'INVALID_BULK_SCOPE' };
+  }
+
+  if (b.scope === 'subject') {
+    if (typeof b.subjectKey === 'string' && MESHCORE_SUBJECT_KEY_RE.test(b.subjectKey.toLowerCase())) {
+      return { ok: true, scope: { scope: 'subject', subjectKey: b.subjectKey.toLowerCase() } };
     }
     return { ok: false, code: 'INVALID_BULK_SCOPE' };
   }
@@ -654,6 +703,9 @@ async function handleBulkDismissOrRestore(
   for (const row of rows) {
     if (scope.scope === 'issueType' && row.issueType !== scope.issueType) continue;
     if (scope.scope === 'node' && row.nodeNum !== scope.nodeNum) continue;
+    // The Mesh-wide group (nodeNum null) must not sweep up per-node MeshCore findings.
+    if (scope.scope === 'node' && scope.nodeNum === null && isMeshcoreSubjectKey(row.subjectKey)) continue;
+    if (scope.scope === 'subject' && row.subjectKey !== scope.subjectKey) continue;
     if (row.dismissed === dismissed) continue; // already at target state — idempotent no-op
     const wire = toWireIssue(row, permitted, nodeNames);
     if (!wire) continue; // not visible to this caller (empty sourceIds intersection)
@@ -663,7 +715,13 @@ async function handleBulkDismissOrRestore(
   const affected = await databaseService.setMeshIssueDismissedForIdsAsync(ids, dismissed, req.user!.id, Date.now());
 
   const scopeLabel =
-    scope.scope === 'issueType' ? scope.issueType : scope.nodeNum === null ? 'Mesh-wide' : `node ${scope.nodeNum}`;
+    scope.scope === 'issueType'
+      ? scope.issueType
+      : scope.scope === 'subject'
+        ? scope.subjectKey
+        : scope.nodeNum === null
+          ? 'Mesh-wide'
+          : `node ${scope.nodeNum}`;
   await databaseService.auditLogAsync(
     req.user!.id,
     auditAction,
@@ -767,6 +825,7 @@ router.get('/summary', async (req: Request, res: Response) => {
     const filters = parseIssueFilters(req.query, permitted);
     filters.issueTypes = null;
     filters.nodeNum = null;
+    filters.subjectKey = null;
 
     const [rows, nodeNames] = await Promise.all([
       databaseService.getMeshIssuesAsync({

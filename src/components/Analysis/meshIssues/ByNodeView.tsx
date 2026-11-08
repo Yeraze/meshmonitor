@@ -52,7 +52,7 @@ const ByNodeView: React.FC<ByNodeViewProps> = ({
   const { t } = useTranslation();
   const rankedNodes = useMemo(() => rankNodeSummaries(summary.byNode), [summary.byNode]);
 
-  const toggleNode = (key: number | 'mesh-wide') => {
+  const toggleNode = (key: number | string) => {
     setViewState((vs) => ({
       ...vs,
       expandedNodes: vs.expandedNodes.includes(key)
@@ -72,7 +72,7 @@ const ByNodeView: React.FC<ByNodeViewProps> = ({
   return (
     <div className="reports-node-list">
       {rankedNodes.map((nodeSummary) => {
-        const key = nodeSummary.nodeNum ?? 'mesh-wide';
+        const key = nodeSummary.nodeNum ?? nodeSummary.subjectKey ?? 'mesh-wide';
         return (
           <NodeGroupSection
             key={key}

@@ -173,10 +173,13 @@ export function worstSeverityOf(issues: MeshIssueRow[]): MeshIssueSeverity {
  * can never drift apart.
  */
 export function rankNodeSummaries(nodes: MeshIssueNodeSummary[]): MeshIssueNodeSummary[] {
+  // A MeshCore group has `nodeNum: null` too but a `subjectKey`; only the
+  // group with neither is the Mesh-wide pseudo-group (#6263 S5).
+  const meshWide = (n: MeshIssueNodeSummary) => n.nodeNum === null && n.subjectKey === undefined;
   return [...nodes].sort((a, b) => {
-    if (a.nodeNum === null && b.nodeNum === null) return 0;
-    if (a.nodeNum === null) return -1;
-    if (b.nodeNum === null) return 1;
+    if (meshWide(a) && meshWide(b)) return 0;
+    if (meshWide(a)) return -1;
+    if (meshWide(b)) return 1;
 
     const aWorst = SEVERITY_RANK[a.worstSeverity];
     const bWorst = SEVERITY_RANK[b.worstSeverity];
@@ -186,7 +189,10 @@ export function rankNodeSummaries(nodes: MeshIssueNodeSummary[]): MeshIssueNodeS
 
     if (a.latestDetected !== b.latestDetected) return b.latestDetected - a.latestDetected;
 
-    return a.nodeNum - b.nodeNum;
+    if (a.nodeNum !== null && b.nodeNum !== null) return a.nodeNum - b.nodeNum;
+    if (a.nodeNum !== null) return -1;
+    if (b.nodeNum !== null) return 1;
+    return (a.subjectKey ?? '').localeCompare(b.subjectKey ?? '');
   });
 }
 

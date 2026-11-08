@@ -33,8 +33,9 @@ import styles from './meshIssues.module.css';
 /** Storage key read by `NodesTab` on mount to auto-select the node. */
 export const PENDING_SELECTED_NODE_STORAGE_KEY = 'meshmonitor.pendingSelectedNodeId';
 
-/** Storage key a MeshCore source page reads to open a contact (public key). */
-export const PENDING_SELECTED_MESHCORE_CONTACT_STORAGE_KEY = 'meshmonitor.pendingSelectedMeshcoreContact';
+import { PENDING_SELECTED_MESHCORE_CONTACT_STORAGE_KEY } from '../../../utils/meshcoreContactFocus';
+
+export { PENDING_SELECTED_MESHCORE_CONTACT_STORAGE_KEY };
 
 interface NodeSourceEntry {
   sourceId: string;

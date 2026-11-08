@@ -30,6 +30,7 @@ import { MeshCoreSubToolbar } from './MeshCoreSubToolbar';
 import { resolveMeshCoreView, useMeshCoreViewAccess, type MeshCoreView } from './meshCoreViewAccess';
 import { readSidebarPinned, useSidebarPin } from '../nav/useSidebarPin';
 import { MeshCoreNodesView } from './MeshCoreNodesView';
+import { takePendingMeshCoreContact } from '../../utils/meshcoreContactFocus';
 import { MeshCoreChannelsView } from './MeshCoreChannelsView';
 import { MeshCoreDirectMessagesView } from './MeshCoreDirectMessagesView';
 import { MeshCoreInfoView } from './MeshCoreInfoView';
@@ -176,6 +177,14 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     if (view !== 'dms') setPendingDmContact(null);
     if (view !== 'nodes') setPendingMapNode(null);
   }, [view]);
+
+  // Deep link from outside the page (Mesh Issues, #6263): select the contact
+  // through the same hand-off Show on Map uses. Declared after the view
+  // effect above so its pending key is not cleared on the first commit.
+  useEffect(() => {
+    const key = takePendingMeshCoreContact();
+    if (key) showNodeOnMap(key);
+  }, [sourceId, showNodeOnMap]);
 
   return (
     <div className="meshcore-page">
