@@ -1287,7 +1287,7 @@ router.get('/packets', async (req: Request, res: Response) => {
       packets: sliced,
       hasMore,
       nextCursor,
-      sources: readableSources.map((s) => ({ id: s.id, name: s.name })),
+      sources: readableSources.map((s) => ({ id: s.id, name: s.name, type: s.type })),
     });
   } catch (error) {
     logger.error('Error fetching unified packets:', error);

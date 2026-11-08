@@ -18,9 +18,10 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { Filter, BarChart3, Pause, Play, Circle, Square } from 'lucide-react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAuth } from '../contexts/AuthContext';
 import { useUnifiedPackets } from '../hooks/useUnifiedPackets';
+import { useInfiniteVirtualRows } from '../hooks/useInfiniteVirtualRows';
+import { MESHCORE_PAYLOAD_TYPES, MESHCORE_ROUTE_TYPES } from '../utils/meshcorePacketDecode';
 import { getUnifiedPacketDistribution, getPacketStats } from '../services/packetApi';
 import apiService from '../services/api';
 import { PacketLog, UnifiedPacketFilters, UnifiedPacketDistribution, CrossSourcePacketFilter } from '../types/packet';
@@ -38,6 +39,9 @@ import { UiIcon } from '../components/icons';
 import CrossSourcePacketTag from '../components/CrossSource/CrossSourcePacketTag';
 
 const ROW_HEIGHT = 36;
+
+/** Source types that are MeshCore (companion device, repeater, ingest, MQTT). */
+const isMeshCoreSourceType = (type: string | undefined): boolean => !!type && type.startsWith('meshcore');
 
 // Safe JSON parse helper (mirrors PacketMonitorPanel).
 function safeJsonParse<T>(value: string | null, fallback: T): T {
@@ -157,37 +161,40 @@ export default function UnifiedPacketMonitorPage() {
   );
   const byDeviceData: ChartDataEntry[] = useMemo(
     () => (distribution?.byDevice ?? []).map((d, i) => ({
-      name: d.from_node_longName || d.from_node_id || `!${d.from_node.toString(16).padStart(8, '0')}`,
+      name: d.protocol === 'meshcore'
+        ? d.from_node_longName || (d.publicKey ? d.publicKey.slice(0, 12) : t('common.na'))
+        : d.from_node_longName || d.from_node_id || `!${d.from_node.toString(16).padStart(8, '0')}`,
       value: d.count,
       color: DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length],
     })),
-    [distribution]
+    [distribution, t]
   );
   const byTypeData: ChartDataEntry[] = useMemo(
-    () => (distribution?.byType ?? []).map((tt) => ({
+    () => (distribution?.byType ?? []).map((tt, i) => ({
       name: tt.portnum_name || String(tt.portnum),
       value: tt.count,
-      color: getPortnumColor(tt.portnum),
+      // A MeshCore payload type shares numbers with PortNums: never colour it by portnum.
+      color: tt.protocol === 'meshcore' ? DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length] : getPortnumColor(tt.portnum),
     })),
     [distribution]
   );
   const distTotal = distribution?.total ?? 0;
 
   // ── Virtual scrolling + infinite load ────────────────────────────────────
-  const rowVirtualizer = useVirtualizer({
-    count: hasMore ? packets.length + 1 : packets.length,
+  const rowVirtualizer = useInfiniteVirtualRows({
+    count: packets.length,
+    hasMore,
+    loadingMore,
+    loadMore,
+    estimateSize: ROW_HEIGHT,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 10,
   });
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const lastVirtualItemIndex = virtualItems[virtualItems.length - 1]?.index;
-  useEffect(() => {
-    if (lastVirtualItemIndex === undefined) return;
-    if (lastVirtualItemIndex >= packets.length - 10 && hasMore && !loadingMore && packets.length > 0) {
-      void loadMore();
-    }
-  }, [lastVirtualItemIndex, packets.length, hasMore, loadingMore, loadMore]);
+
+  // MeshCore Payload/Route filters apply only when a readable source is MeshCore.
+  const hasMeshCoreSource = useMemo(() => sources.some((s) => isMeshCoreSourceType(s.type)), [sources]);
+  const meshcoreFilterActive = filters.payload_type !== undefined || filters.route_type !== undefined;
+  const meshtasticFilterActive = filters.portnum !== undefined;
 
   const calculateHops = (p: PacketLog): number | null =>
     p.hop_start !== undefined && p.hop_limit !== undefined ? p.hop_start - p.hop_limit : null;
@@ -280,6 +287,7 @@ export default function UnifiedPacketMonitorPage() {
           <select
             value={filters.portnum ?? ''}
             onChange={(e) => updateFilter('portnum', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+            aria-label={t('unified.packets.filter_portnum', 'Meshtastic type')}
           >
             <option value="">{t('packet_monitor.filter.all_types')}</option>
             <option value="1">TEXT_MESSAGE</option>
@@ -291,6 +299,38 @@ export default function UnifiedPacketMonitorPage() {
             <option value="70">TRACEROUTE</option>
             <option value="71">NEIGHBORINFO</option>
           </select>
+
+          {hasMeshCoreSource && (
+            <>
+              <select
+                value={filters.payload_type ?? ''}
+                onChange={(e) => updateFilter('payload_type', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                aria-label={t('unified.packets.filter_payload_type', 'MeshCore payload type')}
+                title={t('unified.packets.meshcore_filter_hint', 'MeshCore filters hide Meshtastic packets, and Meshtastic type filters hide MeshCore packets.')}
+              >
+                <option value="">{t('unified.packets.all_payload_types', 'All MeshCore payloads')}</option>
+                {MESHCORE_PAYLOAD_TYPES.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              <select
+                value={filters.route_type ?? ''}
+                onChange={(e) => updateFilter('route_type', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                aria-label={t('unified.packets.filter_route_type', 'MeshCore route type')}
+                title={t('unified.packets.meshcore_filter_hint', 'MeshCore filters hide Meshtastic packets, and Meshtastic type filters hide MeshCore packets.')}
+              >
+                <option value="">{t('unified.packets.all_route_types', 'All MeshCore routes')}</option>
+                {MESHCORE_ROUTE_TYPES.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+              {meshcoreFilterActive && meshtasticFilterActive && (
+                <span className="unified-packets-filter-hint" role="status">
+                  {t('unified.packets.meshcore_filter_conflict', 'A MeshCore filter and a Meshtastic type filter together match nothing.')}
+                </span>
+              )}
+            </>
+          )}
 
           <select
             value={filters.encrypted !== undefined ? (filters.encrypted ? 'true' : 'false') : ''}

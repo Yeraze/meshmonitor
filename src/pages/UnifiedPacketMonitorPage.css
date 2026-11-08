@@ -109,3 +109,9 @@
   text-overflow: ellipsis;
   vertical-align: middle;
 }
+
+.unified-packets-filter-hint {
+  font-size: 0.8rem;
+  color: var(--color-warning);
+  align-self: center;
+}
