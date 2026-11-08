@@ -34,6 +34,9 @@ import { MeshCoreTraceSnrCharts } from './MeshCoreTraceSnrCharts';
 import { useMeshCoreNeighboursFetch } from './hooks/useMeshCoreNeighboursFetch';
 import type { MeshCoreNeighboursFetchActions } from './hooks/meshcoreNeighboursFetchApi';
 import NodeNameHistory from '../NodeNameHistory';
+import SignalTrendBadge from '../SignalTrendBadge';
+import SmartHopsGraphs from '../SmartHopsGraphs';
+import LinkQualityGraph from '../LinkQualityGraph';
 
 /** Stand-in so the fetch hook can run unconditionally when no actions are wired. */
 const NO_NEIGHBOURS_FETCH_ACTIONS: MeshCoreNeighboursFetchActions = {
@@ -235,7 +238,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [remoteCliBusy, setRemoteCliBusy] = useState(false);
   const [remoteCliError, setRemoteCliError] = useState<string | null>(null);
   useEffect(() => { setRemoteCliError(null); }, [publicKey]);
-  const { timeFormat, dateFormat } = useSettings();
+  const { timeFormat, dateFormat, telemetryVisualizationHours } = useSettings();
+  // Link history (#6262): lazy so the charts and their queries mount only when opened.
+  const [linkHistoryOpen, setLinkHistoryOpen] = useState(false);
   const { sourceId } = useSource();
   // Tracks the currently-selected contact synchronously (unlike the
   // `publicKey` prop, which an in-flight async closure captured at call
@@ -1633,6 +1638,40 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       {/* #5765: the same data as full-size charts, one per link direction. */}
       <MeshCoreTraceSnrCharts sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey}
         reloadKey={traceSnrReloadKey} />
+
+      {/* Link history (#6262): the shared Meshtastic graph components, fed by the
+          MeshCore read-side adapter in the same telemetry endpoints. */}
+      {sourceId && (
+        <div className={styles.linkHistory}>
+          <button
+            type="button"
+            className={styles.linkHistoryToggle}
+            aria-expanded={linkHistoryOpen}
+            onClick={() => setLinkHistoryOpen((o) => !o)}
+          >
+            <UiIcon name={linkHistoryOpen ? 'chevronUp' : 'chevronDown'} size={14} />
+            {' '}
+            {t('meshcore.contact.link_history', 'Link history')}
+          </button>
+          {linkHistoryOpen && (
+            <div className={styles.linkHistoryBody}>
+              <SignalTrendBadge nodeId={publicKey} sourceId={sourceId} />
+              <SmartHopsGraphs
+                nodeId={publicKey}
+                sourceId={sourceId}
+                allowFavorite={false}
+                telemetryHours={telemetryVisualizationHours ?? 24}
+              />
+              <LinkQualityGraph
+                nodeId={publicKey}
+                sourceId={sourceId}
+                allowFavorite={false}
+                telemetryHours={telemetryVisualizationHours ?? 24}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {onSetRemoteCli && canWriteConfig && isCompanion && advType === 1 && (() => {
         const allowed = ((contact?.flags ?? 0) & CONTACT_FLAG_REMOTE_CLI) !== 0;

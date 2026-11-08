@@ -38,6 +38,8 @@ interface UseLinkQualityOptions {
   baseUrl?: string;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
+  /** Explicit source id; wins over the context-resolved one (MeshCore contact panels). */
+  sourceId?: string | null;
 }
 
 /**
@@ -65,8 +67,10 @@ export function useLinkQuality({
   hours = 24,
   baseUrl = '',
   enabled = true,
+  sourceId: sourceIdOverride,
 }: UseLinkQualityOptions) {
-  const sourceId = useResolvedSourceId();
+  const resolvedSourceId = useResolvedSourceId();
+  const sourceId = sourceIdOverride ?? resolvedSourceId;
   return useQuery({
     queryKey: ['linkQuality', nodeId, hours, sourceId],
     queryFn: async (): Promise<LinkQualityData[]> => {
