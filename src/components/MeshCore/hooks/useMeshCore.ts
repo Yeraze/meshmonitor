@@ -450,7 +450,7 @@ export interface MeshCoreActions {
    *  `offset` pages older. */
   fetchRoomMessages: (publicKey: string, opts?: { limit?: number; offset?: number }) => Promise<{ messages: MeshCoreMessage[]; hasMore: boolean }>;
   /** Per-room post count + latest-post time (#6186), from a server query. */
-  fetchRoomStats: () => Promise<Array<{ roomPublicKey: string; count: number; latest: number }>>;
+  fetchRoomStats: () => Promise<Array<{ roomPublicKey: string; count: number; latest: number; latestReceivedAt: number }>>;
   setDeviceName: (name: string) => Promise<boolean>;
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
   setTxPower: (power: number) => Promise<boolean>;
@@ -2321,13 +2321,13 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     return { messages: [], hasMore: false };
   }, [enabled, mcPrefix, csrfFetch]);
 
-  const fetchRoomStats = useCallback(async (): Promise<Array<{ roomPublicKey: string; count: number; latest: number }>> => {
+  const fetchRoomStats = useCallback(async (): Promise<Array<{ roomPublicKey: string; count: number; latest: number; latestReceivedAt: number }>> => {
     if (!enabled) return [];
     try {
       const response = await csrfFetch(`${mcPrefix}/messages/room-stats`);
       const data = await parseJsonResponse(response);
       if (data.success && Array.isArray(data.data)) {
-        return data.data as Array<{ roomPublicKey: string; count: number; latest: number }>;
+        return data.data as Array<{ roomPublicKey: string; count: number; latest: number; latestReceivedAt: number }>;
       }
     } catch { /* fall through to empty */ }
     return [];
