@@ -10,6 +10,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MeshCoreMap } from './MeshCoreMap';
 
+// WP3 (#6260): the map now pulls in the 3D toggle, local-marker authoring and
+// permission hooks. Stub them so these suites stay about their own feature.
+vi.mock('../../init', () => ({ appBasename: '' }));
+vi.mock('../map/MapInstanceBridge', () => ({ MapInstanceBridge: () => null }));
+vi.mock('../map/LocalMarkerPlacementBridge', () => ({ default: () => null }));
+vi.mock('../map/layers/MapMarkersLayer', () => ({ LocalMarkers: () => null }));
+vi.mock('../map/layers/CrossSourceLinksLayer', () => ({ CrossSourceLinksLayer: () => null }));
+vi.mock('../../hooks/useTerrainCapabilities', () => ({
+  useTerrainCapabilities: () => ({ enabled: false, terrainTiles: false, isLoading: false }),
+}));
+vi.mock('../../hooks/useMapMarkers', () => ({
+  useMapMarkers: () => ({ markers: [], isLoading: false, create: vi.fn(), update: vi.fn(), remove: vi.fn() }),
+}));
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ hasPermission: () => false }),
+}));
+
+
 vi.mock('../map/BaseMap', () => ({
   BaseMap: ({ children }: { children: ReactNode }) => <div data-testid="base-map">{children}</div>,
 }));

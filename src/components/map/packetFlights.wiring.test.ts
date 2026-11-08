@@ -12,6 +12,9 @@ import path from 'path';
 const MAPS = ['src/components/NodesTab.tsx', 'src/components/Dashboard/DashboardMap.tsx', 'src/components/MeshCore/MeshCoreMap.tsx'];
 const CONTEXT_MAPS = ['src/components/NodesTab.tsx', 'src/components/Dashboard/DashboardMap.tsx'];
 const read = (rel: string) => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
+/** MeshCore's sidebar body lives in MeshCoreMapControls (#6260). */
+const panelSrc = (rel: string) =>
+  read(rel === 'src/components/MeshCore/MeshCoreMap.tsx' ? 'src/components/MeshCore/MeshCoreMapControls.tsx' : rel);
 
 describe('live packet traffic wiring (#4835)', () => {
   it.each(CONTEXT_MAPS)('%s reads the toggle and the rate from MapContext', (rel) => {
@@ -23,10 +26,10 @@ describe('live packet traffic wiring (#4835)', () => {
   });
 
   it.each(MAPS)('%s renders the shared control in its Map Features panel', (rel) => {
-    const src = read(rel);
-    expect(src).toMatch(/<PacketFlightsControl\s[^>]*onCheckedChange=\{setShowPacketFlights\}/);
-    expect(src).toMatch(/<PacketFlightsControl\s[^>]*onRateChange=\{setPacketFlightRate\}/);
-    expect(src).toMatch(/<PacketFlightsControl\s[^>]*stats=\{packetFlightsStats\}/);
+    const src = panelSrc(rel);
+    expect(src).toMatch(/<PacketFlightsControl\s[^>]*onCheckedChange=\{(p\.)?setShowPacketFlights\}/);
+    expect(src).toMatch(/<PacketFlightsControl\s[^>]*onRateChange=\{(p\.)?setPacketFlightRate\}/);
+    expect(src).toMatch(/<PacketFlightsControl\s[^>]*stats=\{(p\.)?packetFlightsStats\}/);
   });
 
   it.each(MAPS)('%s mounts the layer only while the toggle is on', (rel) => {

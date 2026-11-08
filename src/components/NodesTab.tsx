@@ -55,10 +55,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSource } from '../contexts/SourceContext';
 import DashboardWaypoints from './Dashboard/DashboardWaypoints';
 import { LocalMarkers } from './map/layers/MapMarkersLayer';
-import LocalMarkerEditorModal from './map/LocalMarkerEditorModal';
+import LocalMarkerAuthoringUi from './map/LocalMarkerAuthoringUi';
+import { MapInstanceBridge } from './map/MapInstanceBridge';
 import LocalMarkerPlacementBridge from './map/LocalMarkerPlacementBridge';
-import { useMapMarkers } from '../hooks/useMapMarkers';
-import type { MapMarker, MapMarkerInput } from '../types/mapMarker';
+import { useLocalMarkerAuthoring } from '../hooks/useLocalMarkerAuthoring';
+import { useMap3DToggle } from '../hooks/useMap3DToggle';
 import DashboardAtakContacts from './Dashboard/DashboardAtakContacts';
 import WaypointEditorModal from './WaypointEditorModal';
 import { useWaypoints } from '../hooks/useWaypoints';
@@ -85,9 +86,6 @@ import { Map3DView } from './map/Map3DView';
 import DashboardNodePopup from './Dashboard/DashboardNodePopup';
 import type { Node3DFeature } from './map/Base3DMap';
 import { TilesetSelector } from './TilesetSelector';
-import { resolve3DBasemap, buildTerrainTileUrl } from '../config/basemap3d';
-import { useTerrainCapabilities } from '../hooks/useTerrainCapabilities';
-import { appBasename } from '../init';
 import { MapLoadingOverlay } from './map/MapLoadingOverlay';
 import { MapModeIndicator } from './map/MapModeIndicator';
 import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
@@ -285,20 +283,6 @@ export function isTracerouteRunDisabled(
 ): boolean {
   return connectionStatus !== 'connected' || tracerouteLoading === nodeUserId || txDisabled;
 }
-
-/**
- * Hands the Leaflet map instance out of BaseMap (#5354 Phase 3). The asset
- * playback bar is a sibling of the map (so it can sit over it as a DOM
- * overlay) but moves its marker imperatively on the map.
- */
-const MapInstanceBridge: React.FC<{ onMap: (map: L.Map | null) => void }> = ({ onMap }) => {
-  const map = useMap();
-  useEffect(() => {
-    onMap(map);
-    return () => onMap(null);
-  }, [map, onMap]);
-  return null;
-};
 
 /**
  * Controller that applies the configured default map center once server settings load.
@@ -834,41 +818,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // ----- Local map markers (#5686): planning notes, never transmitted -----
   // Same per-source grant as waypoints: read to see, write to edit.
-  const markerApi = useMapMarkers(currentSourceId, false);
-  const [placingMarker, setPlacingMarker] = useState(false);
-  const [markerEditorOpen, setMarkerEditorOpen] = useState(false);
-  const [markerEditorInitial, setMarkerEditorInitial] = useState<MapMarker | null>(null);
-  const [markerDefaultCoords, setMarkerDefaultCoords] = useState<{ lat: number; lon: number } | null>(null);
-  const pickMarkerSpot = useCallback((lat: number, lon: number) => {
-    setPlacingMarker(false);
-    setMarkerEditorInitial(null);
-    setMarkerDefaultCoords({ lat, lon });
-    setMarkerEditorOpen(true);
-  }, []);
-  const markerActions = useMemo(() => ({
-    canEdit: canWriteWaypoints,
-    onEdit: (m: MapMarker) => {
-      setMarkerEditorInitial(m);
-      setMarkerDefaultCoords(null);
-      setMarkerEditorOpen(true);
-    },
-    onDelete: (m: MapMarker) => {
-      if (!window.confirm(t('localMarkers.confirmDelete', 'Delete local marker "{{label}}"?', { label: m.label }))) return;
-      markerApi.remove(m.id).catch((err: unknown) => {
-        window.alert(err instanceof Error ? err.message : 'Failed to delete marker');
-      });
-    },
-  }), [canWriteWaypoints, markerApi, t]);
-  const handleSaveMarker = useCallback(async (input: MapMarkerInput) => {
-    if (markerEditorInitial) await markerApi.update({ id: markerEditorInitial.id, input });
-    else await markerApi.create(input);
-  }, [markerEditorInitial, markerApi]);
-  useEffect(() => {
-    if (!placingMarker) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPlacingMarker(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [placingMarker]);
+  const markerAuthoring = useLocalMarkerAuthoring(currentSourceId, canWriteWaypoints);
+  const { placing: placingMarker, setPlacing: setPlacingMarker } = markerAuthoring;
 
   // Parse current node ID to get node number for effective hops calculation
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
@@ -1208,14 +1159,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // #4704: 2D/3D toggle. `viewMode` is ephemeral (not persisted); the toggle is
   // only offered when the server can serve DEM terrain tiles, and any
   // capability loss forces 2D on the spot (mirrors `useEffectiveViewMode`).
-  const terrainCaps = useTerrainCapabilities();
-  const canUse3D = !terrainCaps.isLoading && terrainCaps.enabled && terrainCaps.terrainTiles;
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
-  const basemap3D = useMemo(
-    () => resolve3DBasemap(mapTileset, customTilesets, cartoApiKey),
-    [mapTileset, customTilesets, cartoApiKey],
-  );
-  const terrainTileUrl = useMemo(() => buildTerrainTileUrl(appBasename), []);
+  const { canUse3D, viewMode, setViewMode, effective3D, basemap3D, terrainTileUrl } =
+    useMap3DToggle(mapTileset, customTilesets, cartoApiKey);
 
   const sidebarRef = useRef<HTMLDivElement>(null);
 
@@ -2300,7 +2245,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const mapDefaults = getMapCenter();
 
   // #4704: whether the 3D surface is actually on screen right now.
-  const effective3D = viewMode === '3d' && canUse3D;
   const unavailableIn3DTitle = effective3D ? 'Not available in 3D' : undefined;
 
   // Flight trails (#5364/#5365 Phase 3): one per aircraft this map draws a
@@ -3312,8 +3256,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 onPick={(lat, lon) => startCreateAtCoords(lat, lon)}
               />
               {showWaypoints && <DashboardWaypoints sourceId={currentSourceId ?? null} actions={waypointActions} />}
-              <LocalMarkerPlacementBridge placing={placingMarker} onPick={pickMarkerSpot} />
-              {showLocalMarkers && <LocalMarkers sourceId={currentSourceId ?? null} actions={markerActions} />}
+              <LocalMarkerPlacementBridge placing={placingMarker} onPick={markerAuthoring.pickSpot} />
+              {showLocalMarkers && <LocalMarkers sourceId={currentSourceId ?? null} actions={markerAuthoring.actions} />}
               {showAtakContacts && <DashboardAtakContacts sourceId={currentSourceId ?? null} />}
               <DefaultCenterController
                 lat={defaultMapCenterLat}
@@ -3517,22 +3461,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         </div>
       )}
 
-      {placingMarker && (
-        <div className="waypoint-placement-hint" role="status">
-          <span>{t('localMarkers.placeHint', 'Click the map to place the local marker')}</span>
-          <button type="button" onClick={() => setPlacingMarker(false)}>
-            {t('common.cancel', 'Cancel')}
-          </button>
-        </div>
-      )}
-
-      <LocalMarkerEditorModal
-        isOpen={markerEditorOpen}
-        initial={markerEditorInitial}
-        defaultCoords={markerDefaultCoords}
-        onClose={() => setMarkerEditorOpen(false)}
-        onSave={handleSaveMarker}
-      />
+      <LocalMarkerAuthoringUi authoring={markerAuthoring} />
 
       <WaypointEditorModal
         isOpen={waypointEditorOpen}
