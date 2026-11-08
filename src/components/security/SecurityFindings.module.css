@@ -108,7 +108,7 @@
   background: none;
   cursor: pointer;
   text-align: left;
-  color: var(--color-link, var(--color-text));
+  color: var(--color-accent);
 }
 
 .nodeButton:hover {
