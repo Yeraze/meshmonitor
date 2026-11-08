@@ -91,6 +91,13 @@ export interface GetPositionsArgs {
   sinceMs: number;
   pageSize: number;
   cursor?: string | null;
+  /**
+   * The MeshCore sources among `sourceIds`, when the caller knows them. An
+   * empty list ends the stream after the Meshtastic phase, so a
+   * Meshtastic-only request skips the MeshCore round-trip. Omitted = unknown,
+   * and the MeshCore phase always runs.
+   */
+  meshcoreSourceIds?: string[];
 }
 
 /** Args for {@link AnalysisRepository.getPositionsForNodes} (#5364/#5365 Phase 3). */
@@ -187,6 +194,8 @@ export interface GetCoverageGridArgs {
   sinceMs: number;
   zoom: number;
   postFilter?: (pos: PositionRow) => boolean;
+  /** See {@link GetPositionsArgs.meshcoreSourceIds}. */
+  meshcoreSourceIds?: string[];
 }
 
 export interface HopEntry {
@@ -390,6 +399,10 @@ export class AnalysisRepository {
     // so cursors minted before the MeshCore phase existed keep working).
     const page = await this.getMeshtasticPositionsPage(args, pageSize);
     if (page.hasMore) return page;
+    // No MeshCore source in the request: the stream ends here.
+    if (args.meshcoreSourceIds && args.meshcoreSourceIds.length === 0) {
+      return { items: page.items, pageSize, hasMore: false, nextCursor: null };
+    }
     // Meshtastic is exhausted (including the early "no lat/lon rows" returns):
     // hand over to MeshCore rather than ending the stream.
     return { items: page.items, pageSize, hasMore: true, nextCursor: MC_CURSOR_PREFIX };
@@ -901,6 +914,7 @@ export class AnalysisRepository {
         sinceMs: args.sinceMs,
         pageSize,
         cursor,
+        meshcoreSourceIds: args.meshcoreSourceIds,
       });
       for (const p of page.items) {
         if (args.postFilter && !args.postFilter(p)) continue;

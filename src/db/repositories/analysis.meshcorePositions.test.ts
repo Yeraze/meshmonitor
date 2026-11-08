@@ -123,6 +123,16 @@ function sharedTests(getFx: () => Fixture) {
     expect(items.map((i) => i.nodeKey)).toEqual([`mc:${PK_A}`]);
   });
 
+  it('ends after the Meshtastic phase when the request names no MeshCore source', async () => {
+    const fx = getFx();
+    await insertFix(fx, 1, NOW - 1000, 30, -90);
+
+    const page = await fx.repo.getPositions({ sourceIds: ['mt-1'], sinceMs: SINCE, pageSize: 10, meshcoreSourceIds: [] });
+    expect(page.items.map((i) => i.latitude)).toEqual([30]);
+    expect(page.hasMore).toBe(false);
+    expect(page.nextCursor).toBeNull();
+  });
+
   it('keeps an unprefixed (pre-MeshCore) cursor in the Meshtastic phase', async () => {
     const fx = getFx();
     await insertFix(fx, 1, NOW - 1000, 30, -90);

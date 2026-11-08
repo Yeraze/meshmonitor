@@ -340,6 +340,7 @@ router.get('/positions', async (req: Request, res: Response) => {
       sinceMs: parseSinceMs(req.query.since),
       pageSize: clampPageSize(req.query.pageSize),
       cursor: typeof req.query.cursor === 'string' ? req.query.cursor : null,
+      meshcoreSourceIds: await meshCoreSourceIdsAmong(sourceIds),
     });
 
     // Enforce per-channel viewOnMap and positionOverrideIsPrivate gates,
@@ -429,6 +430,7 @@ router.get('/coverage-grid', async (req: Request, res: Response) => {
       sinceMs,
       zoom,
       postFilter: posFilter,
+      meshcoreSourceIds: await meshCoreSourceIdsAmong(sourceIds),
     });
 
     if (isAdmin) {
