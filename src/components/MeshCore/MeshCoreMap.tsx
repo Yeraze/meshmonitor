@@ -47,6 +47,7 @@ import { NodeCard } from '../map/popups/NodeCard';
 import { toNodeCardModel } from '../map/popups/nodeCardModel';
 import { MeshCoreDetails, LastHeardFooter, NodeActions, type NodeActionSpec } from '../map/popups/sections';
 import { NumberInput } from '../common/NumberInput';
+import { hopCountLabel } from '../../utils/hopLabel';
 
 const MESHCORE_COLOR = '#cba6f7';
 const NEIGHBOR_COLOR = '#06b6d4';
@@ -65,12 +66,6 @@ function hopCountColor(hops: number | null | undefined): string {
   if (hops === 0) return PATH_COLORS.direct;
   if (hops <= 2) return PATH_COLORS.short;
   return PATH_COLORS.long;
-}
-
-function hopCountLabel(hops: number | null | undefined): string {
-  if (hops === null || hops === undefined) return 'Unknown';
-  if (hops === 0) return 'Direct';
-  return `${hops} hop${hops > 1 ? 's' : ''}`;
 }
 
 interface NeighborEdge {

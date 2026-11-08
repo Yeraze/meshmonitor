@@ -29,6 +29,7 @@ import { formatAircraftSummary } from '../../../utils/aircraftClassification';
 import { SignFlipNotice } from '../../SignFlipNotice';
 import FlightMatchLine from '../../FlightMatchLine';
 import { useSource } from '../../../contexts/SourceContext';
+import { hopCountLabel } from '../../../utils/hopLabel';
 
 /* ------------------------------------------------------------------ */
 /* Header                                                              */
@@ -142,6 +143,34 @@ export interface SignalItemsProps {
   distanceUnit?: 'km' | 'mi' | 'nm';
 }
 
+/** Battery percentage and/or voltage grid items. Voltage is set only for
+ *  MeshCore (batteryMv/1000); Meshtastic models leave it unset. */
+export const BatteryItem: React.FC<{ model: NodeCardModel; showPluggedIn?: boolean }> = ({
+  model,
+  showPluggedIn = false,
+}) => {
+  const { t } = useTranslation();
+  const isPluggedIn = showPluggedIn && model.battery === 101;
+  return (
+    <>
+      {model.battery != null && (
+        <div className="node-popup-item">
+          <span className="node-popup-icon"><UiIcon name={isPluggedIn ? 'batteryCharging' : batteryIconName(Math.min(model.battery, 100))} /></span>
+          <span className="node-popup-value">
+            {isPluggedIn ? t('node_popup.power_plugged', 'Plugged In') : `${model.battery}%`}
+          </span>
+        </div>
+      )}
+      {model.voltage != null && (
+        <div className="node-popup-item">
+          <span className="node-popup-icon"><UiIcon name="zap" /></span>
+          <span className="node-popup-value">{model.voltage.toFixed(2)}V</span>
+        </div>
+      )}
+    </>
+  );
+};
+
 /** Hops / SNR / battery / altitude grid items. */
 export const SignalItems: React.FC<SignalItemsProps> = ({
   model,
@@ -155,7 +184,6 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
   const hops = model.hops;
   const hasAltitude = showAltitude && model.altitude != null;
   const showHopsRow = showHops && hops != null && hops < 999;
-  const isPluggedIn = showPluggedIn && model.battery === 101;
   // Position accuracy + location source (#4176). Hidden when unset/disabled.
   const precisionBits = model.positionPrecisionBits;
   const showPrecision = precisionBits != null && precisionBits > 0;
@@ -184,14 +212,7 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
           </span>
         </div>
       )}
-      {model.battery != null && (
-        <div className="node-popup-item">
-          <span className="node-popup-icon"><UiIcon name={isPluggedIn ? 'batteryCharging' : batteryIconName(Math.min(model.battery, 100))} /></span>
-          <span className="node-popup-value">
-            {isPluggedIn ? t('node_popup.power_plugged', 'Plugged In') : `${model.battery}%`}
-          </span>
-        </div>
-      )}
+      <BatteryItem model={model} showPluggedIn={showPluggedIn} />
       {showAltitude && model.altitude != null && (
         <div className="node-popup-item">
           <span className="node-popup-icon"><UiIcon name="altitude" /></span>
@@ -432,12 +453,6 @@ export interface MeshCoreDetailsProps {
   model: NodeCardModel;
 }
 
-function hopCountLabel(hops: number | null | undefined): string {
-  if (hops === null || hops === undefined) return 'Unknown';
-  if (hops === 0) return 'Direct';
-  return `${hops} hop${hops > 1 ? 's' : ''}`;
-}
-
 /** Hardware literal + Key/RSSI/SNR/Path/Route grid items, MeshCore only. */
 export const MeshCoreDetails: React.FC<MeshCoreDetailsProps> = ({ model }) => {
   const { t } = useTranslation();
@@ -474,6 +489,7 @@ export const MeshCoreDetails: React.FC<MeshCoreDetailsProps> = ({ model }) => {
           <span className="node-popup-value">{hopCountLabel(mc.pathLen)}</span>
         </div>
       )}
+      <BatteryItem model={model} />
       {model.signFlipReported && (
         <SignFlipNotice
           variant="popup"

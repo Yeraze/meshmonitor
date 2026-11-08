@@ -47,8 +47,8 @@ vi.mock('./MeshCoreSubToolbar', () => ({
 }));
 vi.mock('./MeshCoreStatusBar', () => ({ MeshCoreStatusBar: () => null }));
 vi.mock('./MeshCoreNodesView', () => ({
-  MeshCoreNodesView: (props: { nodes: Array<{ publicKey: string }>; contacts: Array<{ publicKey: string }> }) => (
-    <div data-testid="nodes">{props.nodes.map((n) => n.publicKey).join(',')}|{props.contacts.map((c) => c.publicKey).join(',')}</div>
+  MeshCoreNodesView: (props: { nodes: Array<{ publicKey: string }>; contacts: Array<{ publicKey: string }>; ignoredKeys?: ReadonlySet<string> }) => (
+    <div data-testid="nodes">{props.nodes.map((n) => n.publicKey).join(',')}|{props.contacts.map((c) => c.publicKey).join(',')}|{[...(props.ignoredKeys ?? [])].join(',')}</div>
   ),
 }));
 vi.mock('./MeshCoreDirectMessagesView', () => ({
@@ -68,9 +68,11 @@ vi.mock('./MeshCoreAutomationsView', () => ({ MeshCoreAutomationsView: () => nul
 import { MeshCorePage } from './MeshCorePage';
 
 describe('MeshCorePage — Ignore / Block (#5408)', () => {
-  it('hides listed nodes from the node list and map, case-insensitively', () => {
+  it('passes unfiltered lists plus the lowercase ignored keys to the node view', () => {
     render(<MeshCorePage baseUrl="" sourceId="src-1" />);
-    expect(screen.getByTestId('nodes').textContent).toBe(`${VISIBLE}|${VISIBLE}`);
+    const ign = IGNORED.toLowerCase();
+    // The view hides ignored rows (unless "show ignored" is on), so the page no longer pre-filters.
+    expect(screen.getByTestId('nodes').textContent).toBe(`${ign},${VISIBLE}|${ign},${VISIBLE}|${ign}`);
   });
 
   it('passes the entries and handlers to Node Details', () => {

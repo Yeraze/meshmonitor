@@ -148,3 +148,21 @@ describe('nodeExport', () => {
     });
   });
 });
+
+import { rowsToCsv, rowsToHtml, type ExportColumn } from './nodeExport';
+
+describe('rowsToCsv / rowsToHtml (custom columns)', () => {
+  const cols: ExportColumn<{ a: string; b: number }>[] = [
+    { key: 'a', label: 'A, col', value: (r) => r.a },
+    { key: 'b', label: 'B', value: (r) => String(r.b) },
+  ];
+  const rows = [{ a: 'x"y', b: 1 }, { a: '<t>', b: 2 }];
+  it('escapes CSV', () => {
+    expect(rowsToCsv(cols, rows)).toBe('"A, col",B\r\n"x""y",1\r\n<t>,2');
+  });
+  it('escapes HTML', () => {
+    const html = rowsToHtml(cols, rows, { title: 'T' });
+    expect(html).toContain('<td>&lt;t&gt;</td>');
+    expect(html).toContain('2 nodes');
+  });
+});

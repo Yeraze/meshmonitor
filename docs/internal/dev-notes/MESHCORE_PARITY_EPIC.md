@@ -42,7 +42,7 @@ Each phase's scope is the checklist in its issue.
   and Solar Monitoring reachable without a Meshtastic source.
 - [x] **P2 #6261 Messaging:** Room unread, DM/Room mute, mark-all-read,
   translation, composer emoji picker.
-- [ ] **P3 #6259 Nodes and DM lists:** sort, columns, filters, group by role,
+- [x] **P3 #6259 Nodes and DM lists:** sort, columns, filters, group by role,
   export, DM list filters and richer rows.
 - [ ] **P4 #6262 Packet Monitor + contact graphs:** paging, search and filters,
   distribution charts, Unified filters, Smart Hops / Link Quality / Signal Trend.
@@ -81,3 +81,11 @@ composer look. Read models stay separate (Meshtastic per-message rows vs MeshCor
 watermarks; the schema forbids merging) — the controls and mute state are shared.
 Found: translation orphan sweep would delete every MeshCore link — fixed first in WP3.
 Shipped: 4 work packages. Shared now: `MuteMenu`/`MutedIndicator` (replaced 3 copies), `MarkAllReadButton` (Meshtastic sidebar, ChannelsTab, DashboardSidebar, MeshCore channels/DMs/rooms), `MessageComposeInput` (MeshCore uses it via `draftStore`/`maxBytes`/`blockSendOverLimit`/`allowNewlines` props), translation pipeline (server dispatch in `translatableMessages.ts`). Deviations: MessagesTab DM mute menu now shows the full option list when muted (shared order). Browser check limited to offline views (MeshCore channel/DM/room views need a live manager); composer, counter and mute bell verified rendered.
+
+### P3 #6259 (spec: `MESHCORE_PARITY_P3_SPEC.md`)
+Maintainer answers, 2026-11-07: toolbar sort is persisted for BOTH protocols (Settings
+preferred sort is the default until a toolbar pick); MeshCore battery shows voltage only;
+DM preview only for live-window threads (no server change). Orchestrator (one-implementation
+rule): one shared Group-by-role preference; favorites filter added to both protocols.
+#6185 (public-key sort) already implemented — this phase closes it.
+Shipped: 4 work packages. Shared now: `nodeSort.sortByKey`/`orderFavoritesFirst`, `nodeExport` generic columns + `exportNodeList`, `nodeAdvancedFilter.passesNodeFilters` + configurable `AdvancedNodeFilterPopup`, `usePersistedListSort`, `usePersistedNodeFilters`, `useNodeRoleGrouping`, `components/nodes/{NodeSortControls,ExportMenuButton,NodeStatChips,RoleDistributionSummary,RoleGroupHeader}`, `BatteryItem`, `dmListFilter`, `DmFilterSelect`, `formatMessagePreview`. MeshCore adapter: `utils/meshcoreNodeRows.ts`. Deviations: UIContext owns the persisted Meshtastic sort (one source of truth); MeshCore DM sort labels keep `meshcore.sort_*` wording.

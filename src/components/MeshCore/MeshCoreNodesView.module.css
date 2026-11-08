@@ -46,6 +46,30 @@
    right edge so they line up under Discover. */
 .toolbar {
   justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+/* Filter, group-by-role and export buttons; wrap under the sort on a
+   narrow pane. */
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.toolbar.toolbar .tools :global(.sort-direction-btn),
+.toolbar.toolbar .tools :global(.export-dropdown) button {
+  height: var(--mc-header-ctrl-h);
+  min-width: var(--mc-header-ctrl-h);
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Pressed state for the filter and group toggles. */
+.toolbar .active.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 /* The shared quick-age filter is styled to sit inline beside a count (leading

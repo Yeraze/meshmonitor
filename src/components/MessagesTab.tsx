@@ -14,6 +14,10 @@ import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
 import { MuteMenu } from './notifications/MuteMenu';
 import { MarkAllReadButton } from './messages/MarkAllReadButton';
+import { DmFilterSelect } from './messages/DmFilterSelect';
+import { NodeStatChips } from './nodes/NodeStatChips';
+import { passesDmFilter } from '../utils/dmListFilter';
+import { formatMessagePreview } from '../utils/messagePreview';
 import { TimeFormat, DateFormat, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import {
   formatDateTime,
@@ -1094,7 +1098,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           : null;
 
       const lastMessageText = lastMessage
-        ? (lastMessage.text || '').substring(0, 50) + (lastMessage.text && lastMessage.text.length > 50 ? '...' : '')
+        ? formatMessagePreview(lastMessage.text)
         : '';
 
       return {
@@ -1137,24 +1141,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       if (stickyNodes.has(node.nodeNum)) return true;
 
       // Apply filter conditions
-      switch (dmFilter) {
-        case 'unread':
-          return node.unreadCount > 0;
-        case 'recent': {
-          const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-          return node.lastMessageTime > oneDayAgo;
-        }
-        case 'favorites':
-          return node.isFavorite === true;
-        case 'withPosition':
-          return hasValidPosition(node);
-        case 'noInfra':
-          return !isInfrastructureNode(node);
-        case 'hops':
-        case 'all':
-        default:
-          return true;
-      }
+      return passesDmFilter(
+        {
+          unread: node.unreadCount > 0,
+          lastMessageTime: node.lastMessageTime,
+          isFavorite: node.isFavorite === true,
+          hasPosition: hasValidPosition(node),
+          isInfrastructure: isInfrastructureNode(node),
+        },
+        dmFilter
+      );
     })
     .sort((a, b) => {
       // Sticky nodes always come first. Sticky is a deliberate user pin, so it
@@ -1358,20 +1354,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 )}
               </div>
               <div className="sort-controls">
-                <select
-                  value={dmFilter}
-                  onChange={e => setDmFilter(e.target.value as 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra')}
-                  className="sort-dropdown"
-                  title={t('messages.filter_conversations_title')}
-                >
-                  <option value="all">{t('messages.all_conversations')}</option>
-                  <option value="unread">{t('messages.unread_only')}</option>
-                  <option value="recent">{t('messages.recent_24h')}</option>
-                  <option value="hops">{t('messages.by_hops')}</option>
-                  <option value="favorites">{t('messages.favorites_only')}</option>
-                  <option value="withPosition">{t('messages.with_position')}</option>
-                  <option value="noInfra">{t('messages.exclude_infrastructure')}</option>
-                </select>
+                <DmFilterSelect value={dmFilter} onChange={setDmFilter} />
               </div>
             </div>
           )}
@@ -1527,24 +1510,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       </div>
 
                       <div className="node-stats">
-                        {node.hopsAway === 0 && node.snr != null && (
-                          <span className="stat" title={t('nodes.snr')}>
-                            <UiIcon name="wifi" size={14} /> {node.snr.toFixed(1)}dB
-                          </span>
-                        )}
-                        {node.hopsAway === 0 && node.rssi != null && (
-                          <span className="stat" title={t('nodes.rssi')}>
-                            <UiIcon name="radioSignal" size={14} /> {node.rssi}dBm
-                          </span>
-                        )}
-                        {(node.hopsAway != null || node.lastMessageHops != null) && (() => {
-                          const effectiveHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                          return effectiveHops < 999 ? (
-                            <span className="stat" title={t('nodes.hops_away')}>
-                              <UiIcon name="link" size={14} /> {effectiveHops} {t('nodes.hop', { count: effectiveHops })}
-                            </span>
-                          ) : null;
-                        })()}
+                        <NodeStatChips
+                          snr={node.hopsAway === 0 ? node.snr : null}
+                          rssi={node.hopsAway === 0 ? node.rssi : null}
+                          hops={
+                            node.hopsAway != null || node.lastMessageHops != null
+                              ? getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum)
+                              : null
+                          }
+                        />
                         <DistanceDisplay
                           homeNode={homeNode}
                           targetNode={node}

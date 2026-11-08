@@ -1544,6 +1544,7 @@
   "traceroute_history.forward": "Forward",
   "traceroute_history.return": "Return",
   "node_filter.title": "Filter Nodes",
+  "node_filter.favorites": "Favorites",
   "node_filter.security_status": "Security Status",
   "node_filter.all_nodes": "All Nodes",
   "node_filter.flagged_only": "Flagged Only",
@@ -5698,6 +5699,7 @@
   "meshcore.rssi": "RSSI",
   "meshcore.snr": "SNR",
   "meshcore.sort_public_key": "Public key",
+  "meshcore.nodes.no_filter_results": "No nodes match the current filters",
   "meshcore.battery": "Battery",
   "meshcore.last_heard": "Last",
   "meshcore.no_nodes": "No nodes discovered yet",
@@ -7953,5 +7955,6 @@
   "meshcore.observer.verify_tls_help": "Applies to wss:// and mqtts:// brokers. Turn off only for a broker with a self-signed certificate.",
   "meshcore.observer.verify_tls_off_warning": "Certificate checks are off. Anyone between this server and the broker could read or alter what the observer sends.",
   "settings.purge_telemetry_description_source": "Removes all historical telemetry data for this source only (battery, voltage, temperature, etc.). Other sources are not touched. Current node states will be preserved.",
-  "settings.erase_nodes_description_source": "Removes this source's nodes and traceroute history. Other sources are not touched. A node refresh will be triggered to repopulate the list."
+  "settings.erase_nodes_description_source": "Removes this source's nodes and traceroute history. Other sources are not touched. A node refresh will be triggered to repopulate the list.",
+  "meshcore.no_filter_results": "No conversations match this filter"
 }
