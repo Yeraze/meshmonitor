@@ -51,6 +51,8 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
   const settings = useSettings();
   const { sourceId } = useSource();
   const snrColors = settings.overlayColors?.snrColors ?? darkOverlayColors.snrColors;
+  const legForward = settings.overlayColors?.tracerouteForward ?? darkOverlayColors.tracerouteForward;
+  const legReturn = settings.overlayColors?.tracerouteReturn ?? darkOverlayColors.tracerouteReturn;
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showMap, setShowMap] = useState(false); // Map hidden by default
@@ -292,7 +294,25 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
             {mapData && showMap && (
               <div className="traceroute-map-section">
                 <div className="traceroute-map-container">
-                  <RouteFlowMap points={mapData.points} segments={mapData.segments} snrColors={snrColors} />
+                  <RouteFlowMap
+                    points={mapData.points}
+                    segments={mapData.segments}
+                    snrColors={snrColors}
+                    colorMode={trace?.back ? 'leg' : 'snr'}
+                    legColors={{ forward: legForward, return: legReturn }}
+                  />
+                  {trace?.back && (
+                    <div className="traceroute-map-legend">
+                      <span className="legend-item">
+                        <span className="legend-color" style={{ background: legForward }}></span>{' '}
+                        {t('dashboard.widget.traceroute.forward_path')}
+                      </span>
+                      <span className="legend-item">
+                        <span className="legend-color" style={{ background: legReturn }}></span>{' '}
+                        {t('dashboard.widget.traceroute.return_path')}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

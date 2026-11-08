@@ -31,6 +31,14 @@ export interface RouteFlowMapProps {
   /** When set, draws these (SNR-colored) segments instead of the fixed dashed line. */
   segments?: TracerouteRenderSegment[];
   snrColors: SnrColorScale;
+  /**
+   * 'snr' (default) colours each segment by its SNR. 'leg' colours by direction
+   * instead: segments with `leg: 'return'` use `legColors.return`, the rest
+   * `legColors.forward`.
+   */
+  colorMode?: 'snr' | 'leg';
+  /** Required for `colorMode: 'leg'`. */
+  legColors?: { forward: string; return: string };
 }
 
 // Leaflet path options take literal color strings, not CSS variables.
@@ -52,7 +60,7 @@ const FitFlowBounds: React.FC<{ points: RouteFlowPoint[] }> = ({ points }) => {
   return null;
 };
 
-export const RouteFlowMap: React.FC<RouteFlowMapProps> = ({ points, segments, snrColors }) => {
+export const RouteFlowMap: React.FC<RouteFlowMapProps> = ({ points, segments, snrColors, colorMode = 'snr', legColors }) => {
   if (points.length === 0) return null;
   return (
     <div className={`${styles.map} mc-route-flow-map`}>
@@ -68,7 +76,8 @@ export const RouteFlowMap: React.FC<RouteFlowMapProps> = ({ points, segments, sn
           <TraceroutePathsLayer
             segments={segments}
             snrColors={snrColors}
-            colorMode="snr"
+            colorMode={colorMode === 'leg' && legColors ? 'fixed-leg' : 'snr'}
+            legColors={colorMode === 'leg' ? legColors : undefined}
             weight={4}
             opacity={0.9}
             dashMode="never"
