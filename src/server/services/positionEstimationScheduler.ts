@@ -52,6 +52,20 @@ export const DEFAULT_LOOKBACK_HOURS = 168; // 7 days
  * conservative floor until that lands.
  */
 export const DEFAULT_MAX_UNCERTAINTY_KM = 2;
+/**
+ * The configured max-uncertainty setting (km; 0 = no limit). Shared by the
+ * Meshtastic batch job and the MeshCore on-read estimator, so one setting
+ * governs both.
+ */
+export async function readMaxUncertaintyKm(): Promise<number> {
+  const raw = parseFloat(
+    (await databaseService.settings.getSetting('position_estimation_max_uncertainty_km')) || String(DEFAULT_MAX_UNCERTAINTY_KM)
+  );
+  // Treat invalid/negative as the default.
+  if (!Number.isFinite(raw) || raw < 0) return DEFAULT_MAX_UNCERTAINTY_KM;
+  return raw;
+}
+
 const MIN_FREQUENCY_HOURS = 0.5;
 const MIN_LOOKBACK_HOURS = 1;
 const CHECK_INTERVAL_MS = 60_000;
@@ -135,12 +149,7 @@ class PositionEstimationScheduler {
   }
 
   private async getMaxUncertaintyKm(): Promise<number> {
-    const raw = parseFloat(
-      (await databaseService.settings.getSetting('position_estimation_max_uncertainty_km')) || String(DEFAULT_MAX_UNCERTAINTY_KM)
-    );
-    // Treat invalid/negative as "no limit" (0).
-    if (!Number.isFinite(raw) || raw < 0) return DEFAULT_MAX_UNCERTAINTY_KM;
-    return raw;
+    return readMaxUncertaintyKm();
   }
 
   private async getLastRun(): Promise<number | null> {

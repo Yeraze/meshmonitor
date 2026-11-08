@@ -170,7 +170,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'nodes_private', name: 'Private Positions', description: 'View private node position overrides' },
   { id: 'packetmonitor', name: 'Packet Monitor', description: 'View real-time packet logs and statistics' },
   { id: 'sources', name: 'Sources', description: 'Manage data sources (Meshtastic TCP, MQTT, MeshCore)' },
-  { id: 'waypoints', name: 'Waypoints', description: 'View and manage map waypoints (Meshtastic WAYPOINT_APP)' },
+  { id: 'waypoints', name: 'Waypoints', description: 'View and manage map waypoints (Meshtastic WAYPOINT_APP) and local map markers (all source types)' },
   { id: 'channel_database', name: 'Channel Database', description: 'Manage global channel/PSK library used for MQTT decryption' },
   { id: 'remote_admin', name: 'Remote Administration', description: 'Send admin/CLI commands to remote MeshCore nodes (login, reboot, configure) — per-source' },
 ] as const;

@@ -3,7 +3,8 @@ import {
   useDashboardSources,
   useDashboardUnifiedData,
 } from '../../hooks/useDashboardData';
-import { useHopCounts, useTraceroutes } from '../../hooks/useMapAnalysisData';
+import { useTraceroutes } from '../../hooks/useMapAnalysisData';
+import { useHopByKey, hopMapKey } from '../../hooks/useHopByKey';
 import { useLinkQuality } from '../../hooks/useLinkQuality';
 import {
   useTracerouteAnalysis,
@@ -22,10 +23,11 @@ import {
   type EndpointNodeRecord,
 } from './neighborLinkEndpoints';
 import { UiIcon } from '../icons';
+import { unifiedNodeKey, type IdentifiableNode } from '../../utils/nodeIdentity';
 import { useIsMobileLayoutViewport } from '../../hooks/useIsMobileViewport';
 import styles from './AnalysisInspectorPanel.module.css';
 
-interface NodeRecord extends MaybePositionedNode {
+interface NodeRecord extends MaybePositionedNode, IdentifiableNode {
   nodeNum: number;
   nodeId?: string;
   sourceId?: string;
@@ -49,12 +51,6 @@ interface NodeRecord extends MaybePositionedNode {
     uptimeSeconds?: number | null;
   } | null;
   hideFromMap?: boolean | null;
-}
-
-interface HopEntry {
-  sourceId: string;
-  nodeNum: number;
-  hops: number;
 }
 
 /**
@@ -92,19 +88,27 @@ export default function AnalysisInspectorPanel() {
       ? sourceList.map((s) => s.id)
       : config.sources;
   const { nodes } = useDashboardUnifiedData(sourceIds, sourceIds.length > 0);
-  const hop = useHopCounts({ enabled: true, sources: sourceIds });
+  const { hopByKey } = useHopByKey({ enabled: true, sources: sourceIds });
 
-  const findNode = (nodeNum: number, sourceId: string | undefined): NodeRecord | undefined => {
+  // `nodeKey` (when the selection carries one) is the identity: a MeshCore
+  // node's nodeNum is synthetic and must never be matched against.
+  const findNode = (
+    nodeNum: number,
+    sourceId: string | undefined,
+    nodeKey?: string,
+  ): NodeRecord | undefined => {
     return ((nodes ?? []) as NodeRecord[]).find(
       (n) =>
-        Number(n.nodeNum) === nodeNum &&
+        (nodeKey !== undefined
+          ? unifiedNodeKey(n as IdentifiableNode)?.toLowerCase() === nodeKey.toLowerCase()
+          : Number(n.nodeNum) === nodeNum) &&
         (sourceId === undefined || n.sourceId === sourceId),
     );
   };
 
   const selectedNode =
     selected?.type === 'node'
-      ? findNode(selected.nodeNum ?? 0, selected.sourceId)
+      ? findNode(selected.nodeNum ?? 0, selected.sourceId, selected.nodeKey)
       : undefined;
   const selectedNodeId =
     selectedNode?.nodeId ??
@@ -330,12 +334,9 @@ export default function AnalysisInspectorPanel() {
     if (!node) {
       return wrap(<div className="empty">Node not found</div>);
     }
-    const entries = ((hop.data as { entries?: HopEntry[] } | undefined)?.entries ?? []);
-    const hops = entries.find(
-      (e) =>
-        e.sourceId === selected.sourceId &&
-        Number(e.nodeNum) === selected.nodeNum,
-    )?.hops;
+    const hopKey = selected.nodeKey ?? (selected.nodeNum !== undefined ? `mt:${selected.nodeNum}` : undefined);
+    const hops =
+      hopKey !== undefined ? hopByKey.get(hopMapKey(selected.sourceId, hopKey)) : undefined;
     const hex = (selected.nodeNum ?? 0).toString(16);
     const ll = resolveNodeLatLng(node);
     const dm = node.deviceMetrics ?? {};
@@ -442,7 +443,7 @@ export default function AnalysisInspectorPanel() {
   }
 
   if (selected.type === 'trail') {
-    const node = findNode(selected.nodeNum ?? 0, selected.sourceId);
+    const node = findNode(selected.nodeNum ?? 0, selected.sourceId, selected.nodeKey);
     const name = nodeName(node, selected.nodeNum ?? 0);
     const durationMs =
       selected.endMs !== undefined && selected.startMs !== undefined
@@ -482,15 +483,26 @@ export default function AnalysisInspectorPanel() {
   }
 
   // segment
-  const fromNode = findNode(selected.fromNodeNum ?? 0, undefined);
-  const toNode = findNode(selected.toNodeNum ?? 0, undefined);
-  const fromName = nodeName(fromNode, selected.fromNodeNum ?? 0);
-  const toName = nodeName(toNode, selected.toNodeNum ?? 0);
+  // MeshCore ends carry public keys, never node numbers.
+  const fromNode = findNode(
+    selected.fromNodeNum ?? 0,
+    undefined,
+    selected.fromKey ? `mc:${selected.fromKey}` : undefined,
+  );
+  const toNode = findNode(
+    selected.toNodeNum ?? 0,
+    undefined,
+    selected.toKey ? `mc:${selected.toKey}` : undefined,
+  );
+  const endLabel = (key: string | undefined, num: number | undefined): string =>
+    key ? key.slice(0, 12) : `!${(num ?? 0).toString(16)}`;
+  const fromName = fromNode ? nodeName(fromNode, selected.fromNodeNum ?? 0) : endLabel(selected.fromKey, selected.fromNodeNum);
+  const toName = toNode ? nodeName(toNode, selected.toNodeNum ?? 0) : endLabel(selected.toKey, selected.toNodeNum);
   return wrap(
     <>
       <h3>Route Segment</h3>
       <div className="subtitle">
-        !{(selected.fromNodeNum ?? 0).toString(16)} <UiIcon name="forward" size={14} /> !{(selected.toNodeNum ?? 0).toString(16)}
+        {endLabel(selected.fromKey, selected.fromNodeNum)} <UiIcon name="forward" size={14} /> {endLabel(selected.toKey, selected.toNodeNum)}
       </div>
       <hr />
       <dl>

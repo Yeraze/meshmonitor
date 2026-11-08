@@ -7,16 +7,12 @@ import {
 import { usePositions } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
+import { unifiedNodeKey, type IdentifiableNode } from '../../../utils/nodeIdentity';
+import type { PositionRow } from '../../../services/analysisApi';
 
-interface PositionRecord {
-  nodeNum: number;
-  sourceId: string;
-  latitude: number;
-  longitude: number;
-  timestamp: number;
-}
+type PositionRecord = PositionRow;
 
-interface NodeRecord extends MaybePositionedNode {
+interface NodeRecord extends MaybePositionedNode, IdentifiableNode {
   nodeNum: number;
   sourceId?: string;
   snr?: number | null;
@@ -24,6 +20,8 @@ interface NodeRecord extends MaybePositionedNode {
 }
 
 interface SnrDot {
+  /** Canonical identity (`mt:<n>` / `mc:<pk>`); MeshCore's nodeNum is synthetic. */
+  nodeKey: string;
   nodeNum: number;
   latitude: number;
   longitude: number;
@@ -91,26 +89,26 @@ export default function SnrOverlayLayer() {
   );
 
   const snrByNode = useMemo(() => {
-    const m = new Map<number, number | null | undefined>();
+    const m = new Map<string, number | null | undefined>();
     for (const n of (unified.nodes ?? []) as NodeRecord[]) {
-      const num = Number(n.nodeNum);
-      if (!m.has(num)) m.set(num, n.snr ?? undefined);
+      const k = unifiedNodeKey(n);
+      if (k !== null && !m.has(k)) m.set(k, n.snr ?? undefined);
     }
     return m;
   }, [unified.nodes]);
 
-  // nodeNum -> merged node record. The SNR dot ALWAYS renders at the merged
+  // nodeKey -> merged node record. The SNR dot ALWAYS renders at the merged
   // node's position (`resolveNodeLatLng`), the same coordinate NodeMarkersLayer
   // and the trail endpoints use — so the dot can never detach from the marker.
   // (#4166: the old windowed path picked a raw per-fix position by highest
   // packet timestamp with no source priority, which for a node heard over both
   // LoRa and MQTT with diverging positions could land on the other source's
   // fix instead of the merged/marker position.)
-  const nodeByNum = useMemo(() => {
-    const m = new Map<number, NodeRecord>();
+  const nodeByKey = useMemo(() => {
+    const m = new Map<string, NodeRecord>();
     for (const n of (unified.nodes ?? []) as NodeRecord[]) {
-      const num = Number(n.nodeNum);
-      if (!m.has(num)) m.set(num, n);
+      const k = unifiedNodeKey(n);
+      if (k !== null && !m.has(k)) m.set(k, n);
     }
     return m;
   }, [unified.nodes]);
@@ -118,17 +116,17 @@ export default function SnrOverlayLayer() {
   const ts = config.timeSlider;
   const dots: SnrDot[] = useMemo(() => {
     if (isLastMode) {
-      const seen = new Set<number>();
+      const seen = new Set<string>();
       const out: SnrDot[] = [];
       for (const n of (unified.nodes ?? []) as NodeRecord[]) {
-        const num = Number(n.nodeNum);
-        if (seen.has(num)) continue;
+        const k = unifiedNodeKey(n);
+        if (k === null || seen.has(k)) continue;
         // #4163-class: a "Hide from Map" node has no marker, so no SNR dot.
         if (n.hideFromMap) continue;
         const ll = resolveNodeLatLng(n);
         if (!ll) continue;
-        seen.add(num);
-        out.push({ nodeNum: num, latitude: ll[0], longitude: ll[1], timestamp: 0 });
+        seen.add(k);
+        out.push({ nodeKey: k, nodeNum: Number(n.nodeNum), latitude: ll[0], longitude: ll[1], timestamp: 0 });
       }
       return out;
     }
@@ -137,19 +135,19 @@ export default function SnrOverlayLayer() {
     // the dot POSITION comes from the merged node record so it stays pinned to
     // the marker. A node with in-window fixes but no merged record / no
     // resolvable position / hidden has no marker, so it gets no dot either.
-    const latestTs = new Map<number, number>();
+    const latestTs = new Map<string, number>();
     for (const p of positionItems as PositionRecord[]) {
-      const num = Number(p.nodeNum);
-      const prev = latestTs.get(num);
-      if (prev === undefined || p.timestamp > prev) latestTs.set(num, p.timestamp);
+      const k = p.nodeKey ?? `mt:${Number(p.nodeNum)}`;
+      const prev = latestTs.get(k);
+      if (prev === undefined || p.timestamp > prev) latestTs.set(k, p.timestamp);
     }
     const out: SnrDot[] = [];
-    for (const [num, timestamp] of latestTs) {
-      const node = nodeByNum.get(num);
+    for (const [k, timestamp] of latestTs) {
+      const node = nodeByKey.get(k);
       if (!node || node.hideFromMap) continue;
       const ll = resolveNodeLatLng(node);
       if (!ll) continue;
-      out.push({ nodeNum: num, latitude: ll[0], longitude: ll[1], timestamp });
+      out.push({ nodeKey: k, nodeNum: Number(node.nodeNum), latitude: ll[0], longitude: ll[1], timestamp });
     }
     if (
       !ts.enabled ||
@@ -165,7 +163,7 @@ export default function SnrOverlayLayer() {
     isLastMode,
     positionItems,
     unified.nodes,
-    nodeByNum,
+    nodeByKey,
     ts.enabled,
     ts.windowStartMs,
     ts.windowEndMs,
@@ -174,15 +172,15 @@ export default function SnrOverlayLayer() {
   return (
     <>
       {dots.map((d) => {
-        const color = colorForSnr(snrByNode.get(d.nodeNum));
+        const color = colorForSnr(snrByNode.get(d.nodeKey));
         return (
           <CircleMarker
-            key={d.nodeNum}
+            key={d.nodeKey}
             center={[d.latitude, d.longitude]}
             radius={6}
             pathOptions={{ color, fillColor: color, fillOpacity: 0.85, weight: 1 }}
             eventHandlers={{
-              click: () => setSelected({ type: 'node', nodeNum: d.nodeNum }),
+              click: () => setSelected({ type: 'node', nodeNum: d.nodeNum, nodeKey: d.nodeKey }),
             }}
           />
         );

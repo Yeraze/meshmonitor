@@ -20,6 +20,7 @@ import { visibleNodeNumSet, type SearchableNode } from './nodeSearch';
 import { weightByOccurrence, getSegmentSnrOpacity, snrToColor } from '../../utils/mapHelpers';
 import { useSettings } from '../../contexts/SettingsContext';
 import type { Line3DFeature } from '../map/Base3DMap';
+import { useMeshCoreTraceSegments } from '../../hooks/useMeshCoreTraceSegments';
 
 /**
  * 3D traceroute-segment data hook (#3826 Phase 3 WP-2, spec §3.3).
@@ -157,12 +158,18 @@ export function use3DTracerouteLines(params: Use3DTracerouteLinesParams): Tracer
     [ts.enabled, ts.windowStartMs, ts.windowEndMs],
   );
 
+  // MeshCore selections are identified by `mc:` key (synthetic nodeNum).
+  const selectedMcKey =
+    selected?.type === 'node' && selected.nodeKey?.startsWith('mc:') ? selected.nodeKey : null;
   const selectedNodeNum =
-    selected?.type === 'node' && selected.nodeNum !== undefined ? selected.nodeNum : null;
+    selectedMcKey === null && selected?.type === 'node' && selected.nodeNum !== undefined
+      ? selected.nodeNum
+      : null;
   const selectedSourceId = selected?.type === 'node' ? selected.sourceId ?? null : null;
 
   const { segments } = useTracerouteAnalysis({
-    traceroutes: items as TracerouteAnalysisInput[],
+    traceroutes:
+      selectedMcKey !== null && options.scopeToSelectedNode ? [] : (items as TracerouteAnalysisInput[]),
     positionByKey,
     selectedNodeNum,
     selectedSourceId,
@@ -173,7 +180,17 @@ export function use3DTracerouteLines(params: Use3DTracerouteLinesParams): Tracer
 
   // colorMode is dynamic, same as 2D: direction when a node is selected, SNR
   // otherwise (layers/TraceroutePathsLayer.tsx L140-144).
-  const colorMode: 'snr' | 'direction' = selectedNodeNum !== null ? 'direction' : 'snr';
+  const colorMode: 'snr' | 'direction' =
+    selectedNodeNum !== null || selectedMcKey !== null ? 'direction' : 'snr';
+
+  const meshcoreSegments = useMeshCoreTraceSegments({
+    enabled: layer.enabled,
+    sourceIds,
+    lookbackHours: layer.lookbackHours ?? 24,
+    nodes,
+    selectedKey: selectedMcKey,
+    options: { ...options, timeWindow },
+  });
 
   return useMemo(() => {
     if (!layer.enabled) return { lines: [], selectionByKey: new Map<string, SelectedTarget>() };
@@ -215,6 +232,33 @@ export function use3DTracerouteLines(params: Use3DTracerouteLinesParams): Tracer
       });
     }
 
+    for (const seg of meshcoreSegments) {
+      const color = resolveSegmentColor(
+        { direction: seg.direction ?? 'neutral', isMqtt: false, avgSnr: seg.avgSnr } as AnalyzedSegment,
+        colorMode,
+        overlayColors.snrColors,
+        overlayColors.mqttSegment,
+      );
+      const key = `tr:${seg.key}`;
+      lines.push({
+        key,
+        from: seg.from,
+        to: seg.to,
+        color,
+        opacity: getSegmentSnrOpacity(seg.avgSnr === null ? undefined : [{ snr: seg.avgSnr }], false),
+        width: weightByOccurrence(seg.occurrences ?? 1),
+        ...(seg.avgSnr == null ? { dash: MQTT_UNKNOWN_DASH } : {}),
+      });
+      selectionByKey.set(key, {
+        type: 'segment',
+        fromKey: seg.fromKey,
+        toKey: seg.toKey,
+        direction: seg.direction,
+        occurrences: seg.occurrences,
+        avgSnr: seg.avgSnr,
+      });
+    }
+
     return { lines, selectionByKey };
-  }, [segments, colorMode, overlayColors.snrColors, overlayColors.mqttSegment, layer.enabled]);
+  }, [segments, meshcoreSegments, colorMode, overlayColors.snrColors, overlayColors.mqttSegment, layer.enabled]);
 }

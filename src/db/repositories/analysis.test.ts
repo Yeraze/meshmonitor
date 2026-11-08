@@ -55,8 +55,9 @@ describe('AnalysisRepository.getPositions', () => {
       longitude: -90.1,
       altitude: null,
     });
-    expect(result.hasMore).toBe(false);
-    expect(result.nextCursor).toBeNull();
+    // Meshtastic exhausted: the stream hands over to the MeshCore phase.
+    expect(result.hasMore).toBe(true);
+    expect(result.nextCursor).toBe('mc:');
   });
 
   it('honors pageSize and emits a cursor when more rows remain', async () => {
@@ -566,7 +567,7 @@ describe('AnalysisRepository.getHopCounts — local node only (#5289)', () => {
     const repo = new AnalysisRepository(db, 'sqlite');
     const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
-    expect(r.entries).toEqual([{ sourceId: 'src-a', nodeNum: 99, hops: 2 }]);
+    expect(r.entries).toEqual([{ sourceId: 'src-a', nodeNum: 99, hops: 2, nodeKey: 'mt:99' }]);
     close();
   });
 
@@ -580,7 +581,7 @@ describe('AnalysisRepository.getHopCounts — local node only (#5289)', () => {
     const repo = new AnalysisRepository(db, 'sqlite');
     const r = await repo.getHopCounts({ sourceIds: ['src-a'], localNodeNums: LOCALS });
 
-    expect(r.entries).toEqual([{ sourceId: 'src-a', nodeNum: 99, hops: 1 }]);
+    expect(r.entries).toEqual([{ sourceId: 'src-a', nodeNum: 99, hops: 1, nodeKey: 'mt:99' }]);
     close();
   });
 

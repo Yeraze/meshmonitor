@@ -229,8 +229,8 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
             renderPopup={seg => (
               <Tooltip sticky>
                 {t('analysis.traceroute_explorer.segment_tooltip', '{{from}} to {{to}}: {{snr}} dB', {
-                  from: nodeLabel(nodes, seg.fromNodeNum),
-                  to: nodeLabel(nodes, seg.toNodeNum),
+                  from: nodeLabel(nodes, seg.fromNodeNum ?? 0),
+                  to: nodeLabel(nodes, seg.toNodeNum ?? 0),
                   snr: formatSnr(seg.avgSnr),
                 })}
               </Tooltip>

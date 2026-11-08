@@ -1,23 +1,20 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { LeafletEvent, Marker as LeafletMarker } from 'leaflet';
 import { useTranslation } from 'react-i18next';
+import type { LeafletEvent, Marker as LeafletMarker } from 'leaflet';
 import { Popup, Tooltip, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings, useDisplaySettings } from '../../contexts/SettingsContext';
 import { useBaseMapSettings } from '../map/useBaseMapSettings';
 import {
   getNodeTypeCategory,
+  categoryGlyphFamily,
   nodePassesTypeFilter,
-  MESHCORE_CATEGORIES,
-  NODE_TYPE_CATEGORY_META,
   type NodeTypeCategory,
 } from '../../utils/nodeTypeCategory';
 import { createNodeIcon } from '../map/markerIcons';
 import { BaseMap } from '../map/BaseMap';
 import { PacketFlightsLayer } from '../map/layers/PacketFlightsLayer';
-import { PacketFlightsControl } from '../map/PacketFlightsControl';
 import DuctingLayer from '../map/layers/DuctingLayer';
-import { DuctingControl } from '../map/DuctingControl';
 import { useMapContextOptional } from '../../contexts/MapContext';
 import type { FlightNodeEntry, PacketFlightStats } from '../../utils/packetFlightEdges';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
@@ -25,6 +22,24 @@ import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeM
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import PolarGridOverlay from '../PolarGridOverlay';
 import { useSource } from '../../contexts/SourceContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { NodeMarkerCluster } from '../map/layers/NodeMarkerCluster';
+import { CrossSourceLinksLayer } from '../map/layers/CrossSourceLinksLayer';
+import { LocalMarkers } from '../map/layers/MapMarkersLayer';
+import LocalMarkerPlacementBridge from '../map/LocalMarkerPlacementBridge';
+import LocalMarkerAuthoringUi from '../map/LocalMarkerAuthoringUi';
+import { MapInstanceBridge } from '../map/MapInstanceBridge';
+import { Map3DView } from '../map/Map3DView';
+import type { Node3DFeature } from '../map/Base3DMap';
+import { AssetPlaybackBar } from '../map/AssetPlaybackBar';
+import { MeshCoreMapControls } from './MeshCoreMapControls';
+import { EstimatedPositionRadiiLayer, type EstimatedPositionRadius } from '../map/layers/EstimatedPositionRadiiLayer';
+import { useMeshCoreEstimatedPositions } from './hooks/useMeshCoreEstimatedPositions';
+import { useLocalMarkerAuthoring } from '../../hooks/useLocalMarkerAuthoring';
+import { useMap3DToggle } from '../../hooks/useMap3DToggle';
+import { indexAtOrBefore, shouldShowAssetPlayback } from '../../utils/trackPlayback';
+import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../../utils/mapZoomAnimation';
+import type L from 'leaflet';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { shouldDiscardPosition } from '../../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
@@ -33,26 +48,36 @@ import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import GeoJsonOverlay from '../GeoJsonOverlay';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
-import MapLegend from '../MapLegend';
-import { TilesetSelector } from '../TilesetSelector';
 import {
   isHiddenByPositionlessAdvert,
   readHidePositionlessAdverts,
   writeHidePositionlessAdverts,
 } from '../../utils/meshcoreAdvertPosition';
-import { MapSidebar } from '../map/MapSidebar';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
 import { NodeCard } from '../map/popups/NodeCard';
 import { toNodeCardModel } from '../map/popups/nodeCardModel';
 import { MeshCoreDetails, LastHeardFooter, NodeActions, type NodeActionSpec } from '../map/popups/sections';
-import { NumberInput } from '../common/NumberInput';
 import { hopCountLabel } from '../../utils/hopLabel';
 
 const MESHCORE_COLOR = '#cba6f7';
 const NEIGHBOR_COLOR = '#06b6d4';
 const DEFAULT_CENTER: [number, number] = [0, 0];
 const DEFAULT_ZOOM = 2;
+/** Selected-contact zoom before the cluster-gate raise. */
+const SELECTED_CONTACT_ZOOM = 12;
+/** Cross-source link window when the caller passes none (the server default). */
+const DEFAULT_NODE_AGE_HOURS = 24;
+/** Radius when an estimate carries none (matches the Meshtastic map). */
+const ESTIMATE_FALLBACK_RADIUS_M = 500;
+
+/** One stored position fix; timestamps feed the playback bar. */
+interface HistoryFix {
+  latitude: number;
+  longitude: number;
+  /** ms since the epoch. */
+  timestamp: number;
+}
 
 const PATH_COLORS: Record<string, string> = {
   direct: '#a6e3a1',
@@ -122,6 +147,11 @@ interface MeshCoreMapProps {
    * never `iconSig`, so a dimming change does not rebuild icons (#3685).
    */
   markerOpacityByKey?: ReadonlyMap<string, number>;
+  /**
+   * The source's node-age window in hours: the look-back for cross-source
+   * links and the 3D view. 0 or less (no age limit) and omitted both use 24.
+   */
+  nodeAgeHours?: number;
 }
 
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
@@ -134,13 +164,21 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   pendingPopupPublicKey = null,
   onPendingPopupHandled,
   markerOpacityByKey,
+  nodeAgeHours,
 }) => {
-  const { t } = useTranslation();
-  const { mapTileset, setMapTileset } = useSettings();
+  const {
+    mapTileset,
+    setMapTileset,
+    mapZoomGateThreshold,
+    mapClusteringEnabled,
+    distanceUnit,
+  } = useSettings();
   const baseMapSettings = useBaseMapSettings();
   const { timeFormat, dateFormat } = useDisplaySettings();
+  const { t } = useTranslation();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
+  const { hasPermission } = useAuth();
   const [showPaths, setShowPaths] = useState(true);
   const [showNeighbors, setShowNeighbors] = useState(true);
   // #3636: node-to-node LOS distance measurement tool.
@@ -207,7 +245,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
     writeHidePositionlessAdverts(hidePositionlessAdverts);
   }, [hidePositionlessAdverts]);
 
-  const [positionHistory, setPositionHistory] = useState<Map<string, [number, number][]>>(new Map());
+  const [positionHistory, setPositionHistory] = useState<Map<string, HistoryFix[]>>(new Map());
 
   // Live packet traffic (#4835). Same per-browser keys as MapContext uses for
   // the other maps (this map sits outside a MapProvider). Off by default;
@@ -247,6 +285,41 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   const setShowDucting = mapContext?.setShowDucting ?? setLocalShowDucting;
   const ductingHoursAhead = mapContext?.ductingHoursAhead ?? localDuctingHoursAhead;
   const setDuctingHoursAhead = mapContext?.setDuctingHoursAhead ?? setLocalDuctingHoursAhead;
+
+  // Local markers (#5686) and cross-source links (#5561): the shared MapContext
+  // toggles, with a local fallback for a bare render with no provider.
+  const [localShowLocalMarkers, setLocalShowLocalMarkers] = useState(true);
+  const [localShowCrossSourceLinks, setLocalShowCrossSourceLinks] = useState(false);
+  const showLocalMarkers = mapContext?.showLocalMarkers ?? localShowLocalMarkers;
+  const setShowLocalMarkers = mapContext?.setShowLocalMarkers ?? setLocalShowLocalMarkers;
+  const showCrossSourceLinks = mapContext?.showCrossSourceLinks ?? localShowCrossSourceLinks;
+  const setShowCrossSourceLinks = mapContext?.setShowCrossSourceLinks ?? setLocalShowCrossSourceLinks;
+
+  const lookbackHours = nodeAgeHours != null && nodeAgeHours > 0 ? nodeAgeHours : DEFAULT_NODE_AGE_HOURS;
+
+  // Estimated positions (#6260 WP5): the shared MapContext toggles, with a
+  // local fallback for a bare render with no provider.
+  const [localShowEstimated, setLocalShowEstimated] = useState(true);
+  const [localShowAccuracy, setLocalShowAccuracy] = useState(false);
+  const showEstimatedPositions = mapContext?.showEstimatedPositions ?? localShowEstimated;
+  const setShowEstimatedPositions = mapContext?.setShowEstimatedPositions ?? setLocalShowEstimated;
+  const showAccuracyRegions = mapContext?.showAccuracyRegions ?? localShowAccuracy;
+  const setShowAccuracyRegions = mapContext?.setShowAccuracyRegions ?? setLocalShowAccuracy;
+  const estimates = useMeshCoreEstimatedPositions(sourceId, showEstimatedPositions);
+
+  // Local marker authoring: same per-source grant as waypoints.
+  const canWriteLocalMarkers = Boolean(sourceId) && hasPermission('waypoints', 'write');
+  const markerAuthoring = useLocalMarkerAuthoring(sourceId, canWriteLocalMarkers);
+
+  // 2D/3D toggle (#4704), shared with NodesTab and DashboardMap.
+  const { canUse3D, viewMode, setViewMode, effective3D, basemap3D, terrainTileUrl } = useMap3DToggle(
+    baseMapSettings.tilesetId,
+    baseMapSettings.customTilesets,
+    baseMapSettings.cartoApiKey,
+  );
+
+  // Marker clustering (#5284/#5404): the same resolution NodesTab uses.
+  const clusterZoomThreshold = resolveClusterZoomThreshold(mapZoomGateThreshold, mapClusteringEnabled);
 
   // Polar grid overlay (#4047 follow-up) — the same shared range-ring/azimuth-
   // sector grid NodesTab/DashboardMap/Map Analysis draw, centered on the LOCAL
@@ -320,8 +393,26 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
     }).catch(err => console.error('Failed to get base URL:', err));
   };
 
+  // Estimated positions (#6260 WP5): a contact with no position of its own
+  // gains the server's estimate. It joins ahead of the position filter, so
+  // markers, lines, 3D and the node type filter all see it. A contact that
+  // already has a position is never replaced.
+  const contactsWithEstimates = useMemo(() => {
+    if (!showEstimatedPositions || estimates.length === 0) return contacts;
+    const byKey = new Map(estimates.map(e => [e.publicKey.toLowerCase(), e] as const));
+    return contacts.map(c => {
+      const hasPosition = typeof c.latitude === 'number' && isFinite(c.latitude)
+        && typeof c.longitude === 'number' && isFinite(c.longitude)
+        && !shouldDiscardPosition(c.latitude, c.longitude, undefined, getDiscardInvalidPositions());
+      const est = hasPosition ? undefined : byKey.get(c.publicKey.toLowerCase());
+      return est
+        ? { ...c, latitude: est.latitude, longitude: est.longitude, positionIsEstimated: true, estimatedUncertaintyKm: est.uncertaintyKm }
+        : c;
+    });
+  }, [contacts, estimates, showEstimatedPositions]);
+
   const positioned = useMemo(
-    () => contacts.filter(c =>
+    () => contactsWithEstimates.filter(c =>
       typeof c.latitude === 'number' && isFinite(c.latitude)
       && typeof c.longitude === 'number' && isFinite(c.longitude)
       // Skip bogus positions: "Null Island" (0,0) GPS defaults (issue #3763)
@@ -330,7 +421,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       // filters these too, but live in-memory contacts reaching the map via
       // getAllNodes() can still carry them.
       && !shouldDiscardPosition(c.latitude, c.longitude, undefined, getDiscardInvalidPositions())),
-    [contacts],
+    [contactsWithEstimates],
   );
 
   // Markers visible after the node-type filter. Paths/neighbor lines keep using
@@ -343,6 +434,24 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       nodePassesTypeFilter({ advType: c.advType }, nodeTypeFilter)
       && (c.isLocal === true || !isHiddenByPositionlessAdvert(c, hidePositionlessAdverts))),
     [positioned, nodeTypeFilter, hidePositionlessAdverts],
+  );
+
+  // Uncertainty circles for the estimated contacts this map draws, behind
+  // both toggles so a circle never shows without its marker.
+  const estimatedRadii: EstimatedPositionRadius[] = useMemo(
+    () => (showEstimatedPositions && showAccuracyRegions
+      ? visibleContacts
+          .filter(c => c.positionIsEstimated === true)
+          .map(c => ({
+            key: `estimated-${c.publicKey}`,
+            center: [c.latitude as number, c.longitude as number] as [number, number],
+            radiusMeters: c.estimatedUncertaintyKm != null && c.estimatedUncertaintyKm > 0
+              ? c.estimatedUncertaintyKm * 1000
+              : ESTIMATE_FALLBACK_RADIUS_M,
+            color: MESHCORE_COLOR,
+          }))
+      : []),
+    [showEstimatedPositions, showAccuracyRegions, visibleContacts],
   );
 
   // #4835: flights resolve against the contacts this map draws a marker for.
@@ -404,14 +513,32 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
     onPendingPopupHandledRef.current?.();
   }, [pendingPopupPublicKey, isLoading, visibleContacts]);
 
+  // One popup body for the 2D `<Popup>` and the 3D maplibre popup.
+  const renderContactPopup = useCallback((c: MeshCoreContact) => {
+    const model = toNodeCardModel(c, 'meshcore');
+    const actions: NodeActionSpec[] = onNavigateToDm
+      ? [{ kind: 'navigate-to-dm', onClick: () => onNavigateToDm(c.publicKey) }]
+      : [];
+    return (
+      <NodeCard
+        model={model}
+        sections={
+          <>
+            <div className="node-popup-grid">
+              <MeshCoreDetails model={model} />
+            </div>
+            <LastHeardFooter lastHeard={model.lastHeard} firstHeard={model.firstHeard} mode="absolute" timeFormat={timeFormat} dateFormat={dateFormat} />
+          </>
+        }
+        actions={<NodeActions actions={actions} />}
+      />
+    );
+  }, [onNavigateToDm, timeFormat, dateFormat]);
+
   const markers: NodeMarkerDescriptor[] = useMemo(
     () => visibleContacts.map(c => {
       const name = c.advName || c.name || 'MeshCore';
       const category = getNodeTypeCategory({ advType: c.advType });
-      const model = toNodeCardModel(c, 'meshcore');
-      const actions: NodeActionSpec[] = onNavigateToDm
-        ? [{ kind: 'navigate-to-dm', onClick: () => onNavigateToDm(c.publicKey) }]
-        : [];
       return {
         key: c.publicKey,
         position: [c.latitude!, c.longitude!] as [number, number],
@@ -433,25 +560,12 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
               {typeof c.snr === 'number' && <><br />SNR: {c.snr} dB</>}
               {typeof c.pathLen === 'number' && <><br />Path: {hopCountLabel(c.pathLen)}</>}
             </Tooltip>
-            <Popup>
-              <NodeCard
-                model={model}
-                sections={
-                  <>
-                    <div className="node-popup-grid">
-                      <MeshCoreDetails model={model} />
-                    </div>
-                    <LastHeardFooter lastHeard={model.lastHeard} firstHeard={model.firstHeard} mode="absolute" timeFormat={timeFormat} dateFormat={dateFormat} />
-                  </>
-                }
-                actions={<NodeActions actions={actions} />}
-              />
-            </Popup>
+            <Popup>{renderContactPopup(c)}</Popup>
           </>
         ),
       };
     }),
-    [visibleContacts, onNavigateToDm, timeFormat, dateFormat, openPendingPopup, markerOpacityByKey],
+    [visibleContacts, renderContactPopup, openPendingPopup, markerOpacityByKey],
   );
 
   const localPos = useMemo((): [number, number] | null => {
@@ -511,20 +625,23 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
     const keys = historyKeysSig ? historyKeysSig.split('|') : [];
     const since = Date.now() - positionHistoryHours * 60 * 60 * 1000;
     void (async () => {
-      const next = new Map<string, [number, number][]>();
+      const next = new Map<string, HistoryFix[]>();
       await Promise.all(keys.map(async (publicKey) => {
         try {
           const resp = await api.get<{
             success: boolean;
-            data: { latitude: number; longitude: number }[];
+            data: { latitude: number; longitude: number; timestamp: number }[];
           }>(`/api/sources/${sourceId}/meshcore/nodes/${publicKey}/position-history?since=${since}`);
           if (resp.success && Array.isArray(resp.data)) {
             // Drop Null Island fixes first, then keep only trails with enough
             // real points to draw a segment (a 2-point response that's all
             // Null Island would otherwise store a degenerate 1-point trail).
+            // Timestamps stay: the playback bar needs them.
             const pts = resp.data
               .filter(p => !shouldDiscardPosition(p.latitude, p.longitude, undefined, getDiscardInvalidPositions()))
-              .map(p => [p.latitude, p.longitude] as [number, number]);
+              .map(p => ({ latitude: p.latitude, longitude: p.longitude, timestamp: Number(p.timestamp) }))
+              .filter(p => Number.isFinite(p.timestamp))
+              .sort((a, b) => a.timestamp - b.timestamp);
             if (pts.length >= 2) next.set(publicKey, pts);
           }
         } catch {
@@ -545,10 +662,33 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   // `getPositionHistoryColor` helper. Not a candidate for promotion; the
   // three forms would have to fuse genuinely different features to share
   // rendering. Left inline per the Phase-2 divergence verdict (unchanged).
+  // Playback (#5354 Phase 3 shell, shared with NodesTab): shown for the selected
+  // contact while Show Position History is on and it holds 2+ fixes. 2D only.
+  const selectedFixes = useMemo(
+    () => (selectedPublicKey ? positionHistory.get(selectedPublicKey) ?? [] : []),
+    [selectedPublicKey, positionHistory],
+  );
+  const showPlayback = !effective3D && Boolean(selectedPublicKey) && shouldShowAssetPlayback({
+    isAsset: true,
+    assetTrackLoaded: true,
+    showPositionHistory,
+    fixCount: selectedFixes.length,
+  });
+  const [playbackTrailCursor, setPlaybackTrailCursor] = useState<number | null>(null);
+  const [playbackMap, setPlaybackMap] = useState<L.Map | null>(null);
+  // Cut by fix INDEX so the ~5 Hz cursor only rebuilds polylines on a new fix.
+  const trailCutIndex = showPlayback && playbackTrailCursor !== null
+    ? indexAtOrBefore(selectedFixes, playbackTrailCursor)
+    : null;
+
   const historySegments = useMemo(() => {
     if (!showPositionHistory) return [];
     const segs: { key: string; positions: [number, number][]; color: string }[] = [];
-    for (const [publicKey, points] of positionHistory) {
+    for (const [publicKey, allPoints] of positionHistory) {
+      const fixes = publicKey === selectedPublicKey && trailCutIndex !== null
+        ? allPoints.slice(0, trailCutIndex + 1)
+        : allPoints;
+      const points = fixes.map(f => [f.latitude, f.longitude] as [number, number]);
       if (points.length < 2) continue;
       const segCount = points.length - 1;
       for (let i = 0; i < segCount; i++) {
@@ -560,7 +700,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
       }
     }
     return segs;
-  }, [showPositionHistory, positionHistory]);
+  }, [showPositionHistory, positionHistory, selectedPublicKey, trailCutIndex]);
 
   const neighborSegments = useMemo(() => {
     if (!showNeighbors || !neighborEdges?.length) return [];
@@ -597,22 +737,69 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   const { center, zoom } = useMemo(() => {
     if (selectedPublicKey) {
       const sel = positioned.find(c => c.publicKey === selectedPublicKey);
-      if (sel) return { center: [sel.latitude!, sel.longitude!] as [number, number], zoom: 12 };
+      if (sel) return { center: [sel.latitude!, sel.longitude!] as [number, number], zoom: resolveClusteredMapCenterTargetZoom(SELECTED_CONTACT_ZOOM, clusterZoomThreshold) };
     }
     if (positioned.length > 0) {
       const c = positioned[0];
       return { center: [c.latitude!, c.longitude!] as [number, number], zoom: 10 };
     }
     return { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM };
-  }, [positioned, selectedPublicKey]);
+  }, [positioned, selectedPublicKey, clusterZoomThreshold]);
+
+  // 3D surface inputs (#4704): the same visible contacts the 2D markers use.
+  const node3DFeatures: Node3DFeature[] = useMemo(
+    () => visibleContacts.map(c => ({
+      key: c.publicKey,
+      lat: c.latitude as number,
+      lng: c.longitude as number,
+      label: c.advName || c.name || undefined,
+      color: MESHCORE_COLOR,
+      category: categoryGlyphFamily(getNodeTypeCategory({ advType: c.advType })),
+      opacity: markerOpacityByKey?.get(c.publicKey) ?? 1,
+    })),
+    [visibleContacts, markerOpacityByKey],
+  );
+  const visible3DMeshCoreKeys = useMemo(
+    () => new Set(visibleContacts.map(c => c.publicKey)),
+    [visibleContacts],
+  );
+  const contactByKey = useMemo(
+    () => new Map(visibleContacts.map(c => [c.publicKey, c] as const)),
+    [visibleContacts],
+  );
 
   return (
     <div className="meshcore-map-pane" style={{ position: 'relative' }}>
-      {/* Caller-keyed remount (#4047 Phase 7, §3.3): MeshCoreMap force-fits by
+      {effective3D ? (
+        // #4704: 3D terrain surface. Nodes, neighbor lines and cross-source
+        // edges only (no traceroutes: MeshCore has none in `traceroutes`).
+        <Map3DView
+          key={`3d-${center[0]}-${center[1]}-${zoom}`}
+          center={center}
+          zoom={zoom}
+          basemap={basemap3D}
+          terrainTileUrl={terrainTileUrl}
+          nodes={node3DFeatures}
+          // An empty list means "all sources" to the 3D hooks, so a map with no
+          // source gates its edges off instead.
+          sourceIds={sourceId ? [sourceId] : []}
+          showNeighbors={showNeighbors && Boolean(sourceId)}
+          showTraceroutes={false}
+          showCrossSourceLinks={showCrossSourceLinks && Boolean(sourceId)}
+          lookbackHours={lookbackHours}
+          visibleMeshCoreKeys={visible3DMeshCoreKeys}
+          renderPopup={(key) => {
+            const c = contactByKey.get(key);
+            return c ? renderContactPopup(c) : null;
+          }}
+          onUnsupported={() => setViewMode('2d')}
+        />
+      ) : (
+      /* Caller-keyed remount (#4047 Phase 7, §3.3): MeshCoreMap force-fits by
           remounting the whole shell on center/zoom change (e.g. selecting a
           node) rather than an imperative flyTo — same effect as the
           pre-migration `<MapContainer key={...}>`, moved to key the BaseMap
-          element itself. */}
+          element itself. */
       <BaseMap
         key={`${center[0]}-${center[1]}-${zoom}`}
         center={center}
@@ -620,6 +807,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
         {...baseMapSettings}
         resizeTrigger={resizeTrigger}
       >
+        <MapInstanceBridge onMap={setPlaybackMap} />
         {measureActive && (
           <MeasureDistanceController
             active={measureActive}
@@ -631,7 +819,19 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
         {showPolarGrid && localPos && (
           <PolarGridOverlay center={{ lat: localPos[0], lng: localPos[1] }} />
         )}
-        <NodeMarkersLayer markers={markers} />
+        <LocalMarkerPlacementBridge placing={markerAuthoring.placing} onPick={markerAuthoring.pickSpot} />
+        {showLocalMarkers && sourceId && (
+          <LocalMarkers sourceId={sourceId} actions={markerAuthoring.actions} />
+        )}
+        {clusterZoomThreshold != null ? (
+          <NodeMarkerCluster disableClusteringAtZoom={clusterZoomThreshold}>
+            <NodeMarkersLayer markers={markers} />
+          </NodeMarkerCluster>
+        ) : (
+          <NodeMarkersLayer markers={markers} />
+        )}
+
+        <EstimatedPositionRadiiLayer radii={estimatedRadii} />
 
         {historySegments.map(s => (
           <Polyline
@@ -658,6 +858,16 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
 
         <NeighborLinksLayer links={neighborLinks} />
 
+        {/* Cross-source "heard here" edges (#5561): mounted only while on, so
+            it fetches nothing when off. The server applies the two-source rule. */}
+        {showCrossSourceLinks && sourceId && (
+          <CrossSourceLinksLayer
+            enabled
+            sourceIds={[sourceId]}
+            lookbackHours={lookbackHours}
+          />
+        )}
+
         {/* Live packet traffic (#4835): mounted only while on. */}
         {showPacketFlights && sourceId && (
           <PacketFlightsLayer
@@ -675,187 +885,100 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
           <DuctingLayer hoursAhead={ductingHoursAhead} sourceId={sourceId} />
         )}
       </BaseMap>
+      )}
+
+      {showPlayback && selectedPublicKey && (
+        <AssetPlaybackBar
+          fixes={selectedFixes}
+          map={playbackMap}
+          resetKey={selectedPublicKey}
+          timeFormat={timeFormat}
+          dateFormat={dateFormat}
+          distanceUnit={distanceUnit ?? 'km'}
+          onTrailCursorChange={setPlaybackTrailCursor}
+        />
+      )}
 
       {isLoading && <MapLoadingOverlay />}
 
-      <MapSidebar storageKey="mm-meshcore-map-sidebar" title="Map controls">
-      <div className="map-controls dashboard-map-controls">
-        <div className="map-controls-body">
-          <div className="map-controls-title">Features</div>
-          {/* #3636: node-to-node LOS distance measurement toggle. */}
-          <label className="map-control-item" title="Measure straight-line distance between two nodes">
-            <input
-              type="checkbox"
-              checked={measureActive}
-              disabled={measurePoints.length < 2}
-              onChange={(e) => setMeasureActive(e.target.checked)}
-            />
-            <span>Measure Distance</span>
-          </label>
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showPaths}
-              onChange={(e) => setShowPaths(e.target.checked)}
-            />
-            <span>Show Paths</span>
-          </label>
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showNeighbors}
-              onChange={(e) => setShowNeighbors(e.target.checked)}
-            />
-            <span>Show Neighbors</span>
-          </label>
-          {/* #4835: live packet traffic (dots flying to the receiver). */}
-          <PacketFlightsControl
-            checked={showPacketFlights}
-            onCheckedChange={setShowPacketFlights}
-            rate={packetFlightRate}
-            onRateChange={setPacketFlightRate}
-            stats={packetFlightsStats}
-          />
-          {/* #5972: tropospheric ducting overlay. Renders nothing unless an
-              admin turned the overlay on. */}
-          {sourceId && (
-            <DuctingControl
-              checked={showDucting}
-              onCheckedChange={setShowDucting}
-              hoursAhead={ductingHoursAhead}
-              onHoursAheadChange={setDuctingHoursAhead}
-              sourceId={sourceId}
-            />
-          )}
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showPositionHistory}
-              onChange={(e) => setShowPositionHistory(e.target.checked)}
-            />
-            <span>Show Position History</span>
-          </label>
-          {showPositionHistory && (
-            <div className="map-control-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '2px' }}>
-              <span style={{ fontSize: '0.85em' }}>
-                History: {positionHistoryHours < 24
-                  ? `${positionHistoryHours}h`
-                  : `${(positionHistoryHours / 24).toFixed(positionHistoryHours % 24 === 0 ? 0 : 1)}d`}
-              </span>
-              <input
-                type="range"
-                min={1}
-                max={168}
-                step={1}
-                value={positionHistoryHours}
-                onChange={(e) => setPositionHistoryHours(parseInt(e.target.value, 10))}
-                aria-label="Position history length (hours)"
-              />
-              <span style={{ fontSize: '0.85em', marginTop: '4px' }}>Keep history (days)</span>
-              <NumberInput
-                min={1}
-                max={365}
-                step={1}
-                integer
-                value={retentionDays}
-                onChange={setRetentionDays}
-                // Saves on blur; blank or out-of-range text is not saved (#5649).
-                onBlur={(e) => {
-                  if (e.currentTarget.dataset.numberInvalid === 'true') return;
-                  saveRetentionDays(retentionDays);
-                }}
-                aria-label="Position history retention (days)"
-                style={{ width: '4rem' }}
-              />
-            </div>
-          )}
-          <label
-            className="map-control-item"
-            title={t(
-              'map.hidePositionlessAdvertsHelp',
-              'Hide MeshCore nodes whose latest advert carried no position. They are otherwise drawn at their last known position. Nodes with a live telemetry position stay.',
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={hidePositionlessAdverts}
-              onChange={(e) => setHidePositionlessAdverts(e.target.checked)}
-            />
-            <span>{t('map.hidePositionlessAdverts', 'Hide nodes without a current position advert')}</span>
-          </label>
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showPolarGrid}
-              onChange={(e) => setShowPolarGrid(e.target.checked)}
-              disabled={!localPos}
-            />
-            <span title={!localPos ? t('map.polarGridDisabledTooltip', 'Requires own node position') : undefined}>
-              {t('map.showPolarGrid', 'Show Polar Grid')}
-            </span>
-          </label>
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showTileSelector}
-              onChange={(e) => setShowTileSelector(e.target.checked)}
-            />
-            <span>Show Tile Selection</span>
-          </label>
-          <label className="map-control-item">
-            <input
-              type="checkbox"
-              checked={showLegend}
-              onChange={(e) => setShowLegend(e.target.checked)}
-            />
-            <span>Show Legend</span>
-          </label>
-          {/* Per-node-type visibility (issue #3546) — hide infrastructure or
-              end-user nodes to focus the map. Same categories as the legend. */}
-          <div className="map-controls-title" style={{ marginTop: '0.5rem' }}>
-            {t('map.nodeType.legendTitle', 'Node Types')}
-          </div>
-          {MESHCORE_CATEGORIES.map((category) => {
-            const meta = NODE_TYPE_CATEGORY_META[category];
-            return (
-              <label key={category} className="map-control-item">
-                <input
-                  type="checkbox"
-                  checked={nodeTypeFilter[category] !== false}
-                  onChange={(e) => setNodeTypeEnabled(category, e.target.checked)}
-                />
-                <span>{t(meta.labelKey, meta.label)}</span>
-              </label>
-            );
-          })}
-          {/* GeoJSON overlay layers — per-layer on/off, mirroring the other maps. */}
-          {geoJsonLayers.map(layer => (
-            <label key={layer.id} className="map-control-item">
+      <LocalMarkerAuthoringUi authoring={markerAuthoring} />
+
+      <MeshCoreMapControls
+        extraFeatureControls={(
+          <>
+            <label className="map-control-item">
               <input
                 type="checkbox"
-                checked={layer.visible}
-                onChange={(e) => toggleGeoJsonLayer(layer.id, e.target.checked)}
+                checked={showEstimatedPositions}
+                onChange={(e) => setShowEstimatedPositions(e.target.checked)}
               />
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{
-                  display: 'inline-block', width: '8px', height: '8px',
-                  borderRadius: '50%', backgroundColor: layer.style.color,
-                }} />
-                {layer.name}
-              </span>
+              <span>{t('map.showEstimatedPositions')}</span>
             </label>
-          ))}
-        </div>
-      </div>
-      {showTileSelector && (
-        <TilesetSelector
-          selectedTilesetId={mapTileset}
-          onTilesetChange={setMapTileset}
-          embedded
-        />
-      )}
-      {showLegend && <MapLegend showNodeTypes embedded />}
-      </MapSidebar>
+            <label className="map-control-item" title={effective3D ? 'Not available in 3D' : undefined}>
+              <input
+                type="checkbox"
+                checked={showAccuracyRegions}
+                disabled={effective3D}
+                onChange={(e) => setShowAccuracyRegions(e.target.checked)}
+              />
+              <span>{t('map.showAccuracyRegions')}</span>
+            </label>
+          </>
+        )}
+        sourceId={sourceId}
+        effective3D={effective3D}
+        canUse3D={canUse3D}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        measureActive={measureActive}
+        setMeasureActive={setMeasureActive}
+        measurePointCount={measurePoints.length}
+        showPaths={showPaths}
+        setShowPaths={setShowPaths}
+        showNeighbors={showNeighbors}
+        setShowNeighbors={setShowNeighbors}
+        showCrossSourceLinks={showCrossSourceLinks}
+        setShowCrossSourceLinks={setShowCrossSourceLinks}
+        showLocalMarkers={showLocalMarkers}
+        setShowLocalMarkers={setShowLocalMarkers}
+        canWriteLocalMarkers={canWriteLocalMarkers}
+        placingLocalMarker={markerAuthoring.placing}
+        onAddLocalMarker={() => {
+          markerAuthoring.setPlacing(true);
+          if (!showLocalMarkers) setShowLocalMarkers(true);
+        }}
+        showPacketFlights={showPacketFlights}
+        setShowPacketFlights={setShowPacketFlights}
+        packetFlightRate={packetFlightRate}
+        setPacketFlightRate={setPacketFlightRate}
+        packetFlightsStats={packetFlightsStats}
+        showDucting={showDucting}
+        setShowDucting={setShowDucting}
+        ductingHoursAhead={ductingHoursAhead}
+        setDuctingHoursAhead={setDuctingHoursAhead}
+        showPositionHistory={showPositionHistory}
+        setShowPositionHistory={setShowPositionHistory}
+        positionHistoryHours={positionHistoryHours}
+        setPositionHistoryHours={setPositionHistoryHours}
+        retentionDays={retentionDays}
+        setRetentionDays={setRetentionDays}
+        saveRetentionDays={saveRetentionDays}
+        hidePositionlessAdverts={hidePositionlessAdverts}
+        setHidePositionlessAdverts={setHidePositionlessAdverts}
+        showPolarGrid={showPolarGrid}
+        setShowPolarGrid={setShowPolarGrid}
+        hasLocalPosition={localPos !== null}
+        showTileSelector={showTileSelector}
+        setShowTileSelector={setShowTileSelector}
+        showLegend={showLegend}
+        setShowLegend={setShowLegend}
+        mapTileset={mapTileset}
+        setMapTileset={setMapTileset}
+        nodeTypeFilter={nodeTypeFilter}
+        setNodeTypeEnabled={setNodeTypeEnabled}
+        geoJsonLayers={geoJsonLayers}
+        toggleGeoJsonLayer={toggleGeoJsonLayer}
+      />
     </div>
   );
 };

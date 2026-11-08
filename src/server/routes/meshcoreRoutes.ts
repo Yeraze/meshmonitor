@@ -27,6 +27,7 @@ import packetRoutes from './meshcorePacketRoutes.js';
 import ingestReadRoutes from './meshcoreIngestReadRoutes.js';
 import filterRoutes from './meshcoreFilterRoutes.js';
 import traceRoutes from './meshcoreTraceRoutes.js';
+import estimatedPositionRoutes from './meshcoreEstimatedPositionRoutes.js';
 import hopCandidatesRoutes from './meshcoreHopCandidatesRoutes.js';
 import { perSourceCliHistoryRouter } from './meshcoreCliHistoryRoutes.js';
 
@@ -45,6 +46,8 @@ router.use(ingestReadRoutes);
 router.use(filterRoutes);
 // Per-hop trace SNR history (#5722): stored data, read-only.
 router.use(traceRoutes);
+// Estimated positions (#6260): computed on read, never stored.
+router.use(estimatedPositionRoutes);
 // Cross-source hop names (#5909): stored data, read-only, off by default.
 router.use(hopCandidatesRoutes);
 // CLI command history (#5892): stored data, readable while disconnected.

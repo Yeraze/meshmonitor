@@ -33,6 +33,11 @@ export interface MeshCoreContact {
   positionIsOverride?: boolean;
   positionOverrideEnabled?: boolean;
   positionOverrideIsPrivate?: boolean;
+  /** #6260: latitude/longitude are a computed estimate (neighbour and trace
+   *  links), not a fix. Set client-side from the estimated-positions read. */
+  positionIsEstimated?: boolean;
+  /** Radius of the estimate, km. Present with `positionIsEstimated`. */
+  estimatedUncertaintyKm?: number;
   /** Hop count of the cached forwarding route. `null` / undefined = unknown
    *  (next send floods). */
   pathLen?: number | null;

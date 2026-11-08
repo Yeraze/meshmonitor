@@ -77,9 +77,7 @@ import { MapSidebar } from '../map/MapSidebar';
 import { Map3DView } from '../map/Map3DView';
 import type { Node3DFeature } from '../map/Base3DMap';
 import { TilesetSelector } from '../TilesetSelector';
-import { resolve3DBasemap, buildTerrainTileUrl } from '../../config/basemap3d';
-import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
-import { appBasename } from '../../init';
+import { useMap3DToggle } from '../../hooks/useMap3DToggle';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
@@ -307,19 +305,10 @@ export default function DashboardMap({
   // #4704: 2D/3D toggle. `viewMode` is ephemeral (not persisted) — the toggle
   // is only offered when the server can serve DEM terrain tiles, and any
   // capability loss forces 2D on the spot (mirrors `useEffectiveViewMode`).
-  const terrainCaps = useTerrainCapabilities();
-  const canUse3D = !terrainCaps.isLoading && terrainCaps.enabled && terrainCaps.terrainTiles;
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   const { t } = useTranslation();
-  const effective3D = viewMode === '3d' && canUse3D;
+  const { canUse3D, viewMode, setViewMode, effective3D, basemap3D, terrainTileUrl } =
+    useMap3DToggle(tilesetId, customTilesets, cartoApiKey);
   const unavailableIn3DTitle = effective3D ? 'Not available in 3D' : undefined;
-  const basemap3D = useMemo(
-    () => resolve3DBasemap(tilesetId, customTilesets, cartoApiKey),
-    [tilesetId, customTilesets, cartoApiKey],
-  );
-  // `appBasename` is the base-path prefix `ApiService` was seeded with at
-  // startup — module-scope constant, never changes.
-  const terrainTileUrl = useMemo(() => buildTerrainTileUrl(appBasename), []);
 
   const {
     showPaths,

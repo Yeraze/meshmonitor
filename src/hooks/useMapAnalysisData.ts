@@ -5,6 +5,7 @@ import {
   fetchTraceroutesPage,
   fetchNeighbors,
   fetchMeshCoreNeighbors,
+  fetchMeshCoreTraceLinks,
   fetchCoverageGrid,
   fetchHopCounts,
 } from '../services/analysisApi';
@@ -177,6 +178,39 @@ export function useMeshCoreNeighbors(args: PaginatedHookArgs) {
         sinceMs: lookbackToSinceMs(args.lookbackHours),
         signal,
       }),
+  });
+}
+
+/** Device-backed, enabled MeshCore source ids among `sources` (404 guard). */
+function useDeviceMeshCoreSourceIds(sources: string[]): string[] {
+  const { data: allSources } = useDashboardSources();
+  return useMemo(() => {
+    const ids = new Set(
+      (allSources ?? [])
+        .filter((s) => s.enabled !== false && isDeviceMeshCoreSourceType(s.type))
+        .map((s) => s.id),
+    );
+    return sources.filter((id) => ids.has(id));
+  }, [allSources, sources]);
+}
+
+/** Server cap on `?hours=` for `/hop-snr` (90 days). */
+const TRACE_LINKS_MAX_HOURS = 24 * 90;
+
+/**
+ * MeshCore per-hop trace links (`/hop-snr?hours=&points=1`) for the device
+ * MeshCore sources among `sources`. Like {@link useMeshCoreNeighbors}, other
+ * source types are skipped so no 404 fires per Meshtastic/MQTT source.
+ * `lookbackHours <= 0` ("all") asks for the server maximum.
+ */
+export function useMeshCoreTraceLinks(sources: string[], lookbackHours: number, enabled = true) {
+  const meshcoreSources = useDeviceMeshCoreSourceIds(sources);
+  const hours = lookbackHours <= 0 ? TRACE_LINKS_MAX_HOURS : Math.min(lookbackHours, TRACE_LINKS_MAX_HOURS);
+  return useQuery({
+    queryKey: ['analysis', 'meshcoreTraceLinks', meshcoreSources, hours],
+    enabled: enabled && meshcoreSources.length > 0,
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      fetchMeshCoreTraceLinks({ sources: meshcoreSources, hours, points: 1, signal }),
   });
 }
 

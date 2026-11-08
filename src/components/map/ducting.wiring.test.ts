@@ -16,8 +16,11 @@ import path from 'path';
 const MAPS_3D = ['src/components/NodesTab.tsx', 'src/components/Dashboard/DashboardMap.tsx'];
 /** #5972: the MeshCore map (2D only) forecasts its own source's area. */
 const MESHCORE_MAP = 'src/components/MeshCore/MeshCoreMap.tsx';
+const MESHCORE_CONTROLS = 'src/components/MeshCore/MeshCoreMapControls.tsx';
 const MAPS = [...MAPS_3D, MESHCORE_MAP];
 const read = (rel: string) => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
+/** The file holding a map's Map Features panel (MeshCore's sidebar body moved out, #6260). */
+const panelSrc = (rel: string) => read(rel === MESHCORE_MAP ? MESHCORE_CONTROLS : rel);
 
 describe('ducting overlay wiring (#5734)', () => {
   it.each(MAPS)('%s reads the toggle and the step from MapContext', (rel) => {
@@ -28,9 +31,9 @@ describe('ducting overlay wiring (#5734)', () => {
   });
 
   it.each(MAPS)('%s renders the shared control in its Map Features panel', (rel) => {
-    const src = read(rel);
-    expect(src).toMatch(/<DuctingControl\s[^>]*onCheckedChange=\{setShowDucting\}/);
-    expect(src).toMatch(/<DuctingControl\s[^>]*onHoursAheadChange=\{setDuctingHoursAhead\}/);
+    const src = panelSrc(rel);
+    expect(src).toMatch(/<DuctingControl\s[^>]*onCheckedChange=\{(p\.)?setShowDucting\}/);
+    expect(src).toMatch(/<DuctingControl\s[^>]*onHoursAheadChange=\{(p\.)?setDuctingHoursAhead\}/);
   });
 
   it.each(MAPS_3D)('%s disables the control in 3D', (rel) => {
@@ -38,8 +41,8 @@ describe('ducting overlay wiring (#5734)', () => {
   });
 
   it('MeshCoreMap scopes the control and the layer to its own source (#5972)', () => {
+    expect(read(MESHCORE_CONTROLS)).toMatch(/<DuctingControl\s[^>]*sourceId=\{p\.sourceId\}/);
     const src = read(MESHCORE_MAP);
-    expect(src).toMatch(/<DuctingControl\s[^>]*sourceId=\{sourceId\}/);
     expect(src).toMatch(/<DuctingLayer hoursAhead=\{ductingHoursAhead\} sourceId=\{sourceId\}/);
   });
 

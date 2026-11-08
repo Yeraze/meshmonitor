@@ -9,7 +9,12 @@ import type { LatLng } from './followMath';
 export interface SelectedTarget {
   type: 'node' | 'segment' | 'neighbor' | 'trail';
   nodeNum?: number;
+  /** Canonical unified key (`mt:<n>` / `mc:<pk>`); MeshCore nodeNum is synthetic, so identity uses this. */
+  nodeKey?: string;
   sourceId?: string;
+  /** MeshCore segment ends (lowercase public keys); no node number exists. */
+  fromKey?: string;
+  toKey?: string;
   fromNodeNum?: number;
   toNodeNum?: number;
   // neighbor-specific

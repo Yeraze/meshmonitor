@@ -1,0 +1,6 @@
+.map {
+  height: 240px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--color-surface-hover);
+}
