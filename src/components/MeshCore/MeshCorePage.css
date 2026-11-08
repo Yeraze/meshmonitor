@@ -831,49 +831,8 @@
   border-top: 1px solid var(--color-surface-hover);
 }
 
-.meshcore-send-bar input {
-  flex: 1;
-  background: var(--color-surface-hover);
-  border: 1px solid var(--color-surface-active);
-  color: var(--color-text);
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius-md);
-}
-
-.meshcore-send-bar input:focus {
-  outline: none;
-  border-color: var(--color-accent-alt);
-}
-
-.meshcore-send-bar button {
-  background: var(--color-accent-alt);
-  color: var(--color-accent-text);
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.meshcore-send-bar button:hover { background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text)); }
-.meshcore-send-bar button:disabled {
-  background: var(--color-surface-active);
-  color: var(--color-text-faint);
-  cursor: not-allowed;
-}
-
-/* Byte counter below the MeshCore send bar. Reuses the shared .byte-counter
-   color states (warning/over) from the Meshtastic composer, but overrides the
-   absolute overlay layout to sit as a block under the input+button row (the
-   overlay would land on the Send button here). */
-.meshcore-byte-counter.byte-counter {
-  position: static;
-  display: block;
-  text-align: right;
-  padding: 2px 0.5rem 0 0;
-  background: none;
-  opacity: 1;
-}
+/* The input, emoji, translate and send buttons come from the shared composer
+   (.message-input-container / .send-btn in App.css); no per-protocol overrides. */
 
 /* Contact detail pane (below the message stream in the DM view).
    No longer height-capped — the surrounding `.meshcore-main-pane` is the

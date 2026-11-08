@@ -1,11 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, KeyboardEvent } from 'react';
-import MentionAutocomplete from '../mentions/MentionAutocomplete';
-import { useMentionAutocomplete } from '../../hooks/useMentionAutocomplete';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import MessageComposeInput from '../MessageComposeInput';
+import { createComposeDraftStore } from '../../contexts/composeDraftStore';
+import { useViewTranslations } from '../../hooks/useViewTranslations';
+import { TranslatedMessage, type TranslatedMessageState } from '../translation/TranslatedMessage';
+import { TranslateModal } from '../translation/TranslateModal';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMessageDateSeparator, shouldShowDateSeparator, formatRelativeTime } from '../../utils/datetime';
-import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
+import { getUtf8ByteLength } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
 import MessageDetailsModal from '../diagnostics/MessageDetailsModal';
@@ -187,7 +190,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   requiredRepeaterMode = 'any',
 }) => {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState('');
+  // Per stream instance; not cleared when the conversation changes (as before).
+  const [draftStore] = useState(() => createComposeDraftStore());
+  const [translateModalOpen, setTranslateModalOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [expandedIgnoredRuns, setExpandedIgnoredRuns] = useState<Set<string>>(new Set());
@@ -264,6 +269,20 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }),
     [allMessages, reactionResolutions, selfPublicKey, youLabel, nameForKey],
   );
+  // Inline translation (#6261): one stored-translation fetch for the rows in
+  // view; a Translate button on each translatable row.
+  const translatableIds = useMemo(
+    () => messages
+      .filter(m => m.text && !m.reactionEmoji && !m.reactionPending && parseSpip(m.text) == null)
+      .sort((a, b) => meshcoreDisplayTimeMs(a) - meshcoreDisplayTimeMs(b))
+      .map(m => m.id),
+    [messages],
+  );
+  const { translationSettings, translatedMessages, translateMessage, dismissTranslation } =
+    useViewTranslations(sourceId, translatableIds);
+  const canTranslate = translationSettings.canTranslate;
+  const translatableIdSet = useMemo(() => new Set(translatableIds), [translatableIds]);
+
   // Send a reaction (#5762). Skip when we already sent the same emoji here.
   const handleReact = useCallback((m: MeshCoreMessage, emoji: string) => {
     if (!onReact) return;
@@ -597,15 +616,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
-  // Reuse the shared composer byte-count helpers (same as the Meshtastic
-  // channel/DM composers) so counting + warning thresholds + display stay in
-  // one place. Only the per-context limit differs (channel 130 / scoped 120 /
-  // DM 150), passed in via maxBytes.
-  const byteLen = useMemo(() => getUtf8ByteLength(draft), [draft]);
-  const byteCounter = useMemo(() => formatByteCount(byteLen, maxBytes), [byteLen, maxBytes]);
-  const overLimit = byteLen > maxBytes;
-
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const refocusRef = useRef(false);
 
   useEffect(() => {
@@ -616,12 +627,13 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   }, [sending, disabled]);
 
   const handleSend = async () => {
-    if (!draft.trim() || sending || overLimit) return;
+    const draft = draftStore.get();
+    if (!draft.trim() || sending || getUtf8ByteLength(draft) > maxBytes) return;
     setSending(true);
     refocusRef.current = true;
     const ok = await onSend(draft);
     setSending(false);
-    if (ok) setDraft('');
+    if (ok) draftStore.set('');
   };
 
   // #5276: `@` autocomplete over known contacts. MeshCore's mention form is
@@ -643,29 +655,12 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
       .map(({ id, longName, shortName }) => ({ id, longName, shortName })),
     [contacts]
   );
-  const mentions = useMentionAutocomplete({
-    value: draft,
-    onChange: setDraft,
-    textareaRef: inputRef,
-    candidates: mentionCandidates,
-    buildInsertion: candidate => `@[${candidate.longName}] `,
-  });
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    // The open suggestion list claims Enter/Tab/arrows before send does.
-    if (mentions.handleKeyDown(e)) return;
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
-    }
-  };
-
   // Reply to a channel message (#3851): prefill the composer with the MeshCore
   // `@[Sender]:` mention, focus it (caret at end), and let the parent send on
   // the originating message's scope via onReply.
   const handleReply = useCallback((m: MeshCoreMessage) => {
     const name = (m.fromName ?? nameForKey(m.fromPublicKey) ?? '').trim();
-    setDraft(name ? `@[${name}]: ` : '');
+    draftStore.set(name ? `@[${name}]: ` : '');
     onReply?.(m);
     requestAnimationFrame(() => {
       const el = inputRef.current;
@@ -675,7 +670,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         el.setSelectionRange(end, end);
       }
     });
-  }, [nameForKey, onReply]);
+  }, [nameForKey, onReply, draftStore]);
 
   return (
     <div className="meshcore-message-stream">
@@ -942,6 +937,17 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       <UiIcon name="reply" size={15} />
                     </button>
                   )}
+                  {canTranslate && translatableIdSet.has(m.id) && (
+                    <button
+                      type="button"
+                      className="translate-button"
+                      title={t('messages.translate', 'Translate')}
+                      aria-label={t('messages.translate', 'Translate')}
+                      onClick={() => { void translateMessage(m.id, m.text); }}
+                    >
+                      <UiIcon name="translate" size={15} />
+                    </button>
+                  )}
                   {onDeleteMessage && (
                     <button
                       type="button"
@@ -1024,6 +1030,14 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
               {/* #6239: the heard-by antenna now renders on the header row
                   above (was a full line here). */}
               {m.text && <LinkPreview text={m.text} />}
+              {translatedMessages[m.id] && (
+                <TranslatedMessage
+                  state={translatedMessages[m.id] as TranslatedMessageState}
+                  onDismiss={() => dismissTranslation(m.id)}
+                  onRetry={canTranslate ? () => { void translateMessage(m.id, m.text); } : undefined}
+                  onChangeTargetLang={canTranslate ? (newLang) => { void translateMessage(m.id, m.text, newLang); } : undefined}
+                />
+              )}
               {chipsByTarget.has(m.id) && <MeshCoreReactionChips
                 chips={chipsByTarget.get(m.id) ?? []}
                 onAdd={reactEnabled && isReactableRow(m, selfPublicKey) ? (emoji => handleReact(m, emoji)) : undefined}
@@ -1034,47 +1048,50 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         })}
       </div>
       {!hideComposer && (<>
-      <div className="meshcore-send-bar" title={disabled ? disabledReason : undefined} style={{ position: 'relative' }}>
-        <MentionAutocomplete
-          id="meshcore-mention-list"
-          candidates={mentions.suggestions}
-          activeIndex={mentions.activeIndex}
-          onHover={mentions.setActiveIndex}
-          onSelect={mentions.select}
-        />
-        <input
-          ref={inputRef}
-          type="text"
-          value={draft}
-          onChange={e => {
-            setDraft(e.target.value);
-            mentions.handleChange(e.target.value, e.target.selectionStart);
-          }}
-          onSelect={e => mentions.syncFromCaret(e.currentTarget.value, e.currentTarget.selectionStart)}
-          onBlur={mentions.close}
-          role="combobox"
-          aria-expanded={mentions.isOpen}
-          aria-controls={mentions.isOpen ? 'meshcore-mention-list' : undefined}
-          aria-activedescendant={mentions.activeDescendantId('meshcore-mention-list')}
-          aria-autocomplete="list"
-          autoCapitalize="sentences"
-          onKeyDown={handleKeyDown}
+      <div
+        className="meshcore-send-bar message-input-container"
+        title={disabled ? disabledReason : undefined}
+      >
+        <MessageComposeInput
+          listId="meshcore-mention-list"
+          textareaRef={inputRef}
+          draftStore={draftStore}
+          mentionCandidates={mentionCandidates}
+          buildMentionInsertion={c => `@[${c.longName}] `}
+          homoglyphEnabled={false}
+          maxBytes={maxBytes}
+          blockSendOverLimit
+          sending={sending}
+          allowNewlines={false}
           placeholder={t('meshcore.type_message', 'Type a message…')}
-          disabled={disabled || sending}
-          title={disabled ? disabledReason : undefined}
+          disabled={!!disabled}
+          disabledTitle={disabledReason}
+          onSend={() => void handleSend()}
+          sendAriaLabel={t('meshcore.send', 'Send')}
+          actions={canTranslate ? (
+            <button
+              type="button"
+              onClick={() => setTranslateModalOpen(true)}
+              disabled={disabled}
+              className="send-btn channel-action-btn"
+              title={t('messages.translate', 'Translate message')}
+              aria-label={t('messages.translate', 'Translate message')}
+            >
+              <UiIcon name="translate" size={16} />
+            </button>
+          ) : undefined}
         />
-        <button
-          onClick={() => void handleSend()}
-          disabled={disabled || sending || !draft.trim() || overLimit}
-          title={disabled ? disabledReason : undefined}
-        >
-          {sending ? t('meshcore.sending', 'Sending…') : t('meshcore.send', 'Send')}
-        </button>
       </div>
-      {draft.length > 0 && (
-        <div className={`meshcore-byte-counter ${byteCounter.className}`}>
-          {byteCounter.text}
-        </div>
+      {translateModalOpen && (
+        <TranslateModal
+          isOpen={translateModalOpen}
+          onClose={() => setTranslateModalOpen(false)}
+          initialText={draftStore.get()}
+          defaultTargetLanguage={translationSettings.defaultOutgoingLanguage}
+          defaultSourceLanguage={translationSettings.defaultLanguage}
+          maxBytes={maxBytes}
+          onApply={(text) => draftStore.set(text)}
+        />
       )}
       </>)}
       {routeDetail && (

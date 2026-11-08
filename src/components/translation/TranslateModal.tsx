@@ -18,6 +18,8 @@ export interface TranslateModalProps {
   onApply: (translatedText: string) => void;
   defaultTargetLanguage?: string;
   defaultSourceLanguage?: string;
+  /** Byte budget for the translated text (default: one LoRa packet). */
+  maxBytes?: number;
 }
 
 export const LORA_PACKET_MAX_BYTES = 200;
@@ -29,6 +31,7 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
   onApply,
   defaultTargetLanguage = 'ja',
   defaultSourceLanguage = 'auto',
+  maxBytes = LORA_PACKET_MAX_BYTES,
 }) => {
   const { t } = useTranslation();
   const [sourceText, setSourceText] = useState(initialText);
@@ -56,7 +59,7 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
   const translatedBytes = useMemo(() => getUtf8ByteLength(translatedText), [translatedText]);
   const translatedChars = translatedText.length;
 
-  const isTranslatedOverLimit = translatedBytes > LORA_PACKET_MAX_BYTES;
+  const isTranslatedOverLimit = translatedBytes > maxBytes;
 
   if (!isOpen) return null;
 
@@ -108,8 +111,8 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
   };
 
   const getByteCounterClass = (bytes: number) => {
-    if (bytes > LORA_PACKET_MAX_BYTES) return `${styles.byteCounter} ${styles.byteCounterOver}`;
-    if (bytes > LORA_PACKET_MAX_BYTES * 0.9) return `${styles.byteCounter} ${styles.byteCounterWarning}`;
+    if (bytes > maxBytes) return `${styles.byteCounter} ${styles.byteCounterOver}`;
+    if (bytes > maxBytes * 0.9) return `${styles.byteCounter} ${styles.byteCounterWarning}`;
     return styles.byteCounter;
   };
 
@@ -187,7 +190,7 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
             <div className={styles.sectionHeader}>
               <span className={styles.sectionLabel}>{t('messages.original_text', 'Original Text')}</span>
               <span className={getByteCounterClass(sourceBytes)}>
-                {sourceChars} chars • {sourceBytes} / {LORA_PACKET_MAX_BYTES} bytes
+                {sourceChars} chars • {sourceBytes} / {maxBytes} bytes
               </span>
             </div>
             <textarea
@@ -220,7 +223,7 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
               <span className={styles.sectionLabel}>{t('messages.translated_text', 'Translated Text')}</span>
               {translatedText ? (
                 <span className={getByteCounterClass(translatedBytes)}>
-                  {translatedChars} chars • {translatedBytes} / {LORA_PACKET_MAX_BYTES} bytes
+                  {translatedChars} chars • {translatedBytes} / {maxBytes} bytes
                 </span>
               ) : null}
             </div>

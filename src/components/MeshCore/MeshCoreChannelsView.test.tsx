@@ -17,7 +17,8 @@ vi.mock('react-i18next', async () => {
 
 // Mutable so a test can simulate a read-only / anonymous viewer.
 let permissionFn: (resource: string, action: string) => boolean = () => true;
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock('../../contexts/AuthContext', async () => ({
+  AuthContext: (await import('react')).createContext(null),
   useAuth: () => ({ hasPermission: (r: string, a: string) => permissionFn(r, a) }),
 }));
 
@@ -684,7 +685,7 @@ describe('MeshCoreChannelsView — sending', () => {
     const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'channel ops msg' } });
     await act(async () => {
-      fireEvent.click(screen.getByText('Send'));
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     });
 
     expect(actions.sendMessage).toHaveBeenCalledWith('channel ops msg', undefined, 2);
@@ -951,7 +952,7 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
     const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'no scope please' } });
     await act(async () => {
-      fireEvent.click(screen.getByText('Send'));
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     });
 
     // The empty-string scope arg is passed through — the backend treats '' as
@@ -973,7 +974,7 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
     const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'use default' } });
     await act(async () => {
-      fireEvent.click(screen.getByText('Send'));
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     });
 
     // No 4th arg → backend resolves the channel/source default scope.
