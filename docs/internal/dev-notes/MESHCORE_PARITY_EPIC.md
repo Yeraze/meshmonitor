@@ -46,7 +46,7 @@ Each phase's scope is the checklist in its issue.
   export, DM list filters and richer rows.
 - [x] **P4 #6262 Packet Monitor + contact graphs:** paging, search and filters,
   distribution charts, Unified filters, Smart Hops / Link Quality / Signal Trend.
-- [ ] **P5 #6260 Map parity:** shared MeshCoreMap layers, trace on map, Map
+- [x] **P5 #6260 Map parity:** shared MeshCoreMap layers, trace on map, Map
   Analysis positions/traces/solar, estimated positions. May split.
 - [ ] **P6 #6263 Dashboard / API / reports:** dashboard widgets, Mesh Issues,
   Prometheus, v1 API read + TX, embed maps.
@@ -107,3 +107,11 @@ Maintainer answers, 2026-11-08: estimated positions computed on read (no table/s
 from `path_len`; Traceroute Explorer split to a follow-up issue; stationary nodes get one current fix
 in heatmap/coverage; playback for any selected contact with ≥2 fixes; solar overrides keyed on the
 synthetic nodeNum; local markers reuse `waypoints`. Read-only phase, no migration.
+Shipped (WP1–WP5): Map Analysis positions/coverage/hop shading/solar for MeshCore (two-phase cursor,
+`nodeKey` identity); shared MapInstanceBridge / useMap3DToggle / useLocalMarkerAuthoring /
+RouteFlowMap / EstimatedPositionRadiiLayer; MeshCoreMap local markers, cross-source links,
+clustering, 3D, playback, estimated positions; Trace Path map card; MeshCore trace links on the
+Map Analysis traceroute layer (2D+3D). Browser check on a seeded throwaway volume: all new routes
+return correct data; Map Analysis draws MeshCore nodes + heatmap. The MeshCore Nodes map draws the
+live device contact list, so its markers need a connected companion (pre-existing behaviour).
+Follow-up: #6276 (Traceroute Explorer).
