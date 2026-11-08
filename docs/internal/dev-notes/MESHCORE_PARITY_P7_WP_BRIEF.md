@@ -31,3 +31,22 @@ P1–P6 are merged. Useful shared pieces: `utils/nodeIdentity.ts` `unifiedNodeKe
 - Before reporting: `npx tsc --noEmit -p tsconfig.json`, `npx tsc --noEmit -p tsconfig.server.json`,
   `node scripts/lint-ratchet.mjs 2>&1 | grep -v .claude/worktrees | tail` → no FAIL in your files.
 - Report back: commits (sha + subject), files touched, tests added + pass counts, deviations/concerns.
+
+## WP1 foundations (commit 947494e39) — use these
+- `utils/securityCapabilities.ts` `securityCapabilities(sourceType, deviceType?)` → 14 booleans (S1). MeshCore:
+  deadNodes, pathHashCollisions, advertSignatures, nameReuse; `ownKeyChange` only `meshcore`; `deviceDelete` only a
+  `meshcore` Companion.
+- `MeshCoreRepository.getDeadNodes(sourceId, cutoffMs, {includeNeverHeard?})` — no local/ignored/favourite exclusion;
+  THE ROUTE MUST APPLY THEM. `advertSignatureVerified` is clearable via null (tri-state: null unchecked / false / true).
+- `server/services/meshcoreSecurityFindings.ts`: `findPathHashCollisions(nodes, width, {heardSinceMs?})` →
+  `{hash, nodes}[]` (advType 2/3 only); `collisionCountsByWidth(nodes, opts?)` → `Record<1|2|3, number>` (groups);
+  `listSignatureFailures(nodes)`; `findNameReuse(nodes)` → `{name, original, suspects}[]`;
+  `nameReuseSuspectKeys(groups)` → `Set<string>` (lowercase); `loadMeshcoreSecurityNodes(sourceId)`.
+- `meshcoreOwnIdentityTracker` (`server/services/meshcoreOwnIdentityTracker.ts`): `observe`, `getChange(sourceId)` →
+  `{previousKey, currentKey, detectedAt} | null`, `getCurrentKey(sourceId)`, `acknowledge(sourceId)` → boolean.
+- `serverEventNotificationService.notifyOwnKeyChanged(...)` (already hooked by the manager; routes don't call it).
+- `meshcoreManager.removeContactsBulk(keys)` → `{status:'done', removedFromDevice, removedLocalOnly, failed, total}` |
+  `{status:'busy'}` | `{status:'unavailable'}` (not a connected Companion → route does DB-only via
+  `forgetLocalContact`, same for Repeater / disconnected / meshcore_mqtt).
+- Settings: `securityDeadNodeDays` per-source key; `resolveSecurityDeadNodeDays(raw, isMeshCore)` applies defaults
+  (Meshtastic 7, MeshCore 14); `isValidSecurityDeadNodeDays`; settings POST validates 1–365.
