@@ -13,6 +13,9 @@ import {
  */
 export const VALID_SETTINGS_KEYS = [
   'maxNodeAgeHours',
+  // P7a (#6254): Security tab dead-node threshold, per source, whole days.
+  // Unset reads as the protocol default (see securityDeadNodeDays below).
+  'securityDeadNodeDays',
   'maxInfraNodeAgeHours', // #4899 — separate age window for MeshCore repeaters/room servers
   'txTargetMaxAgeHoursWhenUnlimited', // #5376 — TX-target window when maxNodeAgeHours is 0
   'tracerouteIntervalMinutes',
@@ -798,6 +801,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreDefaultScope',
   // MeshCore default path hash size (#4945) — per source (per node)
   'meshcoreDefaultPathHashSize',
+  // P7a (#6254): Security tab dead-node threshold (days) — per source
+  'securityDeadNodeDays',
   // MeshCore strict receive-only mode (#4547) — per source (#4547 §2.1)
   'meshcoreReceiveOnly',
   // MeshCore inbound reactions (#5759) — per source; unset reads as on
@@ -1201,4 +1206,27 @@ export function stripSecretSettings<T extends Record<string, unknown>>(
     out[k] = v;
   }
   return out as Partial<T>;
+}
+
+/** P7a (#6254): allowed range for the per-source `securityDeadNodeDays` setting (whole days). */
+export const SECURITY_DEAD_NODE_DAYS_RANGE = { min: 1, max: 365 } as const;
+
+/** P7a (#6254): protocol defaults for `securityDeadNodeDays`. Applied by the reader, never stored. */
+export const SECURITY_DEAD_NODE_DAYS_DEFAULTS = { meshtastic: 7, meshcore: 14 } as const;
+
+/** True when `raw` is a whole number of days inside {@link SECURITY_DEAD_NODE_DAYS_RANGE}. */
+export function isValidSecurityDeadNodeDays(raw: unknown): boolean {
+  const s = typeof raw === 'number' ? String(raw) : raw;
+  if (typeof s !== 'string' || !/^\d+$/.test(s.trim())) return false;
+  const n = Number(s);
+  return n >= SECURITY_DEAD_NODE_DAYS_RANGE.min && n <= SECURITY_DEAD_NODE_DAYS_RANGE.max;
+}
+
+/**
+ * Resolve the effective dead-node threshold in days from the stored per-source
+ * value (null/unset/invalid falls back to the protocol default).
+ */
+export function resolveSecurityDeadNodeDays(raw: string | null | undefined, isMeshCore: boolean): number {
+  if (raw != null && isValidSecurityDeadNodeDays(raw)) return Number(String(raw).trim());
+  return isMeshCore ? SECURITY_DEAD_NODE_DAYS_DEFAULTS.meshcore : SECURITY_DEAD_NODE_DAYS_DEFAULTS.meshtastic;
 }

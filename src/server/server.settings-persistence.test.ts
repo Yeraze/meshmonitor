@@ -147,6 +147,7 @@ function validTestValue(key: string, suffix = ''): string {
     hopEmojiMqtt: '🌐',
     maxNodeAgeHours: '24',
     maxInfraNodeAgeHours: '168',
+    securityDeadNodeDays: '14',
     txTargetMaxAgeHoursWhenUnlimited: '48',
     inactiveNodeThresholdHours: '24',
     inactiveNodeCheckIntervalMinutes: '60',

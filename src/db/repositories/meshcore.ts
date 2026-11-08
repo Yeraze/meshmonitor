@@ -23,7 +23,7 @@ import { TranslationsRepository } from './translations.js';
  * Every other column preserves its stored value on a null/undefined incoming —
  * see upsertNode's merge guard (#3504).
  */
-const CLEARABLE_VIA_NULL = new Set<string>(['outPath', 'pathLen']);
+const CLEARABLE_VIA_NULL = new Set<string>(['outPath', 'pathLen', 'advertSignatureVerified']);
 
 /**
  * The #5842 location-override columns. Only the dedicated override methods
@@ -1673,6 +1673,31 @@ export class MeshCoreRepository extends BaseRepository {
         isNotNull(meshcoreNodes.lastHeard),
         lt(meshcoreNodes.lastHeard, cutoffMs),
       ));
+    return this.toNodeRows(result);
+  }
+
+  /**
+   * P7a (#6254): contacts not heard since `cutoffMs` (epoch ms), for the
+   * Security tab's dead-contact list. Unlike {@link getInactiveMeshcoreNodes}
+   * (which the inactive-node notifier relies on) this can include never-heard
+   * rows (`lastHeard` null) and takes the cutoff in ms. Local-key, ignored and
+   * favourite exclusions are the caller's job (they need live manager state).
+   * Ordered by lastHeard ascending (where NULLs fall is backend-dependent).
+   */
+  async getDeadNodes(
+    sourceId: string,
+    cutoffMs: number,
+    opts: { includeNeverHeard?: boolean } = {},
+  ): Promise<DbMeshCoreNode[]> {
+    if (!sourceId) return [];
+    const { meshcoreNodes } = this.tables;
+    const stale = lt(meshcoreNodes.lastHeard, cutoffMs);
+    const cond = opts.includeNeverHeard ? or(isNull(meshcoreNodes.lastHeard), stale)! : and(isNotNull(meshcoreNodes.lastHeard), stale)!;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.sourceId, sourceId), cond))
+      .orderBy(meshcoreNodes.lastHeard, meshcoreNodes.publicKey);
     return this.toNodeRows(result);
   }
 

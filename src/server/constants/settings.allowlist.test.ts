@@ -267,3 +267,20 @@ expect(valid.has('statusMessageLastVerified')).toBe(false);
 expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('statusMessageLastVerified')).toBe(true);
 });
 });
+
+describe('securityDeadNodeDays (P7a #6254)', () => {
+  it('is POST-able and per-source', async () => {
+    const { isValidSecurityDeadNodeDays, resolveSecurityDeadNodeDays } = await import('./settings.js');
+    expect((VALID_SETTINGS_KEYS as readonly string[]).includes('securityDeadNodeDays')).toBe(true);
+    expect((PER_SOURCE_SETTINGS_KEYS as readonly string[]).includes('securityDeadNodeDays')).toBe(true);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('securityDeadNodeDays')).toBe(false);
+    expect(['1', '14', '365', 30].every(isValidSecurityDeadNodeDays)).toBe(true);
+    expect(['0', '366', '-1', '1.5', 'abc', '', null, undefined].some(isValidSecurityDeadNodeDays)).toBe(false);
+    // defaults are applied by the reader, never stored
+    expect(resolveSecurityDeadNodeDays(null, false)).toBe(7);
+    expect(resolveSecurityDeadNodeDays(undefined, true)).toBe(14);
+    expect(resolveSecurityDeadNodeDays('bad', true)).toBe(14);
+    expect(resolveSecurityDeadNodeDays('30', true)).toBe(30);
+    expect(resolveSecurityDeadNodeDays('30', false)).toBe(30);
+  });
+});
