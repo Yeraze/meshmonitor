@@ -67,6 +67,13 @@ describe('unified packets: MeshCore filters and distribution (#6262)', () => {
     expect(body.packets.every((p: any) => p.sourceId === MC || p.sourceId === MC2)).toBe(true);
   });
 
+  it('MeshCore rows carry the derived sender name in from_node_longName', async () => {
+    const body = await get('/api/unified/packets?payload_type=4&limit=50');
+    const adverts = body.packets.filter((p: any) => p.sourceId === MC);
+    expect(adverts.length).toBeGreaterThan(0);
+    expect(adverts.every((p: any) => p.from_node_longName === 'Hilltop' && p.from_node === 0 && p.from_node_id === null)).toBe(true);
+  });
+
   it('route_type alone also excludes Meshtastic', async () => {
     const body = await get('/api/unified/packets?route_type=1&limit=50');
     expect(body.packets.some((p: any) => p.sourceId === harness.sourceA)).toBe(false);

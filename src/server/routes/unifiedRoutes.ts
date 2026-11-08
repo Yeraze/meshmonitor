@@ -86,10 +86,12 @@ function mapMeshCorePacketToTagged(
     id: p.id,
     packet_id: null,
     timestamp: p.timestamp,
-    // OTA logs have no sender identity; 0 + null name → frontend shows N/A.
+    // No numeric sender id (frontend Meshtastic links stay off). Show the
+    // derived sender (#6262): advert name, else a key prefix, else the src hash.
     from_node: 0,
     from_node_id: null,
-    from_node_longName: null,
+    from_node_longName:
+      p.advertName ?? (p.senderPubKey ? p.senderPubKey.slice(0, 8) : p.srcHash ? `#${p.srcHash}` : null),
     to_node: null,
     to_node_id: null,
     to_node_longName: null,
