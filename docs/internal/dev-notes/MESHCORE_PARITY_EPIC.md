@@ -89,3 +89,10 @@ DM preview only for live-window threads (no server change). Orchestrator (one-im
 rule): one shared Group-by-role preference; favorites filter added to both protocols.
 #6185 (public-key sort) already implemented — this phase closes it.
 Shipped: 4 work packages. Shared now: `nodeSort.sortByKey`/`orderFavoritesFirst`, `nodeExport` generic columns + `exportNodeList`, `nodeAdvancedFilter.passesNodeFilters` + configurable `AdvancedNodeFilterPopup`, `usePersistedListSort`, `usePersistedNodeFilters`, `useNodeRoleGrouping`, `components/nodes/{NodeSortControls,ExportMenuButton,NodeStatChips,RoleDistributionSummary,RoleGroupHeader}`, `BatteryItem`, `dmListFilter`, `DmFilterSelect`, `formatMessagePreview`. MeshCore adapter: `utils/meshcoreNodeRows.ts`. Deviations: UIContext owns the persisted Meshtastic sort (one source of truth); MeshCore DM sort labels keep `meshcore.sort_*` wording.
+
+### P4 #6262 (spec: `MESHCORE_PARITY_P4_SPEC.md`)
+Maintainer answers, 2026-11-08: Signal Trend for MeshCore uses our DM reception (snr/rssi of DMs from
+the contact) plus polled noise floor; free-text search excludes channel plaintext (per-viewer
+decryption stays gated). Orchestrator: no backfill of the new derived columns (retention ≤30 d);
+meshcore_mqtt distribution counts receptions. Contact graphs are a read-side adapter (no new
+telemetry writers). Migration 224 adds derived packet-log columns + indexes.
