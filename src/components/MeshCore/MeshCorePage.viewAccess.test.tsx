@@ -50,7 +50,7 @@ vi.mock('../../contexts/SettingsContext', () => ({ useOptionalChannelMuteSetting
 
 // The nav is replaced by one button per tab, so a hidden tab can still be
 // asked for: the page itself must refuse it.
-const ALL = ['nodes', 'channels', 'rooms', 'dms', 'telemetry', 'packets', 'info', 'configuration', 'automations', 'notifications', 'settings'];
+const ALL = ['nodes', 'channels', 'rooms', 'dms', 'telemetry', 'packets', 'info', 'configuration', 'automations', 'notifications', 'settings', 'security'];
 vi.mock('./MeshCoreSubToolbar', () => ({
   MeshCoreSubToolbar: (props: { view: string; onSelect: (v: string) => void }) => (
     <div data-testid="nav" data-view={props.view}>
@@ -77,6 +77,7 @@ vi.mock('./MeshCoreInfoView', () => ({ MeshCoreInfoView: () => <div data-testid=
 vi.mock('./MeshCoreConfigurationView', () => ({ MeshCoreConfigurationView: () => <div data-testid="view-configuration" /> }));
 vi.mock('./MeshCoreAutomationsView', () => ({ MeshCoreAutomationsView: () => <div data-testid="view-automations" /> }));
 vi.mock('../NotificationsTab', () => ({ default: () => <div data-testid="view-notifications" /> }));
+vi.mock('../SecurityTab', () => ({ SecurityTab: () => <div data-testid="view-security" /> }));
 vi.mock('./MeshCoreSettingsView', () => ({ MeshCoreSettingsView: () => <div data-testid="view-settings" /> }));
 
 import { MeshCorePage } from './MeshCorePage';
@@ -105,6 +106,7 @@ describe('MeshCorePage — a tab without its grant is not reachable (#5666)', ()
     ['configuration', 'configuration'],
     ['automations', 'automation'],
     ['settings', 'settings'],
+    ['security', 'security'],
   ];
 
   it.each(gated)('asking for %s without its grant shows the Nodes tab', (tab) => {

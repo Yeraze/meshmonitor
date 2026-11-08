@@ -3332,6 +3332,26 @@ function App() {
     }
   }, [setActiveTab, setSelectedDMNode, setSelectedChannel]);
 
+  // Security tab adapters (#6254 S6): the tab speaks `mt:<n>` keys, this shell
+  // speaks `!hex` DM node ids and a tab switch.
+  const securityNodeId = (nodeKey: string): string | null => {
+    if (!nodeKey.startsWith('mt:')) return null;
+    const num = Number(nodeKey.slice(3));
+    return Number.isFinite(num) ? `!${num.toString(16).padStart(8, '0')}` : null;
+  };
+  const openSecurityNode = useCallback((nodeKey: string) => {
+    const nodeId = securityNodeId(nodeKey);
+    if (!nodeId) return;
+    setSelectedDMNode(nodeId);
+    setActiveTab('messages');
+  }, [setSelectedDMNode, setActiveTab]);
+  const openSecurityDmWithDraft = useCallback((nodeKey: string, message: string) => {
+    const nodeId = securityNodeId(nodeKey);
+    if (!nodeId) return;
+    openDmWithDraft(nodeId, message);
+    setActiveTab('messages');
+  }, [openDmWithDraft, setActiveTab]);
+
   // On mobile the search modal opens over the bottom nav. Once the nav is
   // reachable again (#4774), tapping another nav item changes the active tab,
   // and the transient modal should get out of the way rather than linger over
@@ -3601,7 +3621,7 @@ function App() {
           />
           <Route
             path="security"
-            element={<ErrorBoundary fallbackTitle="Security failed to load"><SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} openDmWithDraft={openDmWithDraft} /></ErrorBoundary>}
+            element={<ErrorBoundary fallbackTitle="Security failed to load"><SecurityTab onOpenNode={openSecurityNode} onOpenDmWithDraft={openSecurityDmWithDraft} /></ErrorBoundary>}
           />
           <Route
             path="admin"

@@ -1,11 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { TabType } from '../types/ui';
 import { getHardwareModelName } from '../utils/hardwareModel';
-import { logger } from '../utils/logger';
+import { ApiError } from '../services/api';
+import { securityCapabilities } from '../utils/securityCapabilities';
+import { DeadNodesSection } from './security/DeadNodesSection';
+import { PathHashCollisionsSection } from './security/PathHashCollisionsSection';
+import { AdvertSignatureSection } from './security/AdvertSignatureSection';
+import { NameReuseSection } from './security/NameReuseSection';
+import { OwnKeyChangeCard } from './security/OwnKeyChangeCard';
+import type { DeadNode, DeadNodesResponse, MeshcoreFindings, MeshcoreFindingsResponse } from './security/securityTypes';
 import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import '../styles/SecurityTab.css';
 
@@ -55,40 +62,36 @@ interface DuplicateKeyGroup {
   nodes: SecurityNode[];
 }
 
-interface DeadNode {
-  nodeNum: number;
-  nodeId: string;
-  longName: string | null;
-  shortName: string | null;
-  hwModel: number | null;
-  lastHeard: number | null;
-  inDeviceDb: boolean;
-}
-
-interface DeadNodesResponse {
-  nodes: DeadNode[];
-  count: number;
-  thresholdDays: number;
-}
-
 interface SecurityTabProps {
   onTabChange?: (tab: TabType) => void;
-  onSelectDMNode?: (nodeId: string) => void;
   /**
-   * Select a DM node AND pre-fill the compose draft atomically. Must be used
+   * Open a node by `mt:<n>` / `mc:<pk>` key. The host owns navigation
+   * (Meshtastic selects the DM thread and switches tab; MeshCore opens Node
+   * Details), so the tab only checks the viewer may read messages.
+   */
+  onOpenNode?: (nodeKey: string) => void;
+  /**
+   * Open a node's DM AND pre-fill the compose draft atomically. Must be used
    * (rather than separate select + setNewMessage calls) so the #4183
    * draft-scoping effect doesn't treat the switch as a conversation change
    * and wipe the pre-filled notification text.
    */
-  openDmWithDraft?: (nodeId: string, message: string) => void;
+  onOpenDmWithDraft?: (nodeKey: string, message: string) => void;
+  /** Source to inspect; defaults to the context source, else the primary. */
+  sourceId?: string;
+  /** Source type; anything not MeshCore gets the Meshtastic sections. */
+  sourceType?: string;
 }
 
-export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode, openDmWithDraft }) => {
+export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWithDraft, sourceId: sourceIdProp, sourceType }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   // Resolve a concrete sourceId (context source, else the primary) — the
   // security endpoints are source-scoped and now require one.
-  const sourceId = useResolvedSourceId();
+  const resolvedSourceId = useResolvedSourceId();
+  const sourceId = sourceIdProp ?? resolvedSourceId;
+  const caps = securityCapabilities(sourceType);
+  const isMeshCore = !!sourceType && !caps.lowEntropy;
   const [issues, setIssues] = useState<SecurityIssuesResponse | null>(null);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,8 +101,11 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [mismatchEvents, setMismatchEvents] = useState<any[]>([]);
   const [deadNodes, setDeadNodes] = useState<DeadNode[]>([]);
-  const [selectedDeadNodes, setSelectedDeadNodes] = useState<Set<number>>(new Set());
-  const [isDeletingNodes, setIsDeletingNodes] = useState(false);
+  const [deadThresholdDays, setDeadThresholdDays] = useState(isMeshCore ? 14 : 7);
+  const [deadNodesForbidden, setDeadNodesForbidden] = useState(false);
+  const [findings, setFindings] = useState<MeshcoreFindings | null>(null);
+  const [findingsForbidden, setFindingsForbidden] = useState(false);
+  const [acknowledging, setAcknowledging] = useState(false);
 
   // Security Digest state
   const [digestEnabled, setDigestEnabled] = useState(false);
@@ -113,26 +119,68 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const [digestMessage, setDigestMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const canWrite = hasPermission('security', 'write');
+  const canWriteNodes = hasPermission('nodes', 'write', { sourceId });
+  const canEditSettings = hasPermission('settings', 'write');
+
+  // A 403 on a section's route means no nodes:read on this source. Remember
+  // it per section and stop asking: the 30 s poll must not retry-loop.
+  const deadNodesForbiddenRef = useRef(false);
+  const findingsForbiddenRef = useRef(false);
+
+  const fetchDeadNodes = async (srcParam: string) => {
+    if (deadNodesForbiddenRef.current) return;
+    try {
+      const data = await api.get<DeadNodesResponse>(`/api/security/dead-nodes${srcParam}`);
+      setDeadNodes(data.nodes || []);
+      if (typeof data.thresholdDays === 'number') setDeadThresholdDays(data.thresholdDays);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        deadNodesForbiddenRef.current = true;
+        setDeadNodesForbidden(true);
+        setDeadNodes([]);
+      } else {
+        throw err;
+      }
+    }
+  };
+
+  const fetchFindings = async (srcParam: string) => {
+    if (findingsForbiddenRef.current) return;
+    try {
+      const res = await api.get<MeshcoreFindingsResponse>(`/api/security/meshcore/findings${srcParam}`);
+      setFindings(res.data ?? null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        findingsForbiddenRef.current = true;
+        setFindingsForbidden(true);
+        setFindings(null);
+      } else {
+        throw err;
+      }
+    }
+  };
 
   const fetchSecurityData = async () => {
     // Defer until a sourceId resolves — the security endpoints require one.
     if (!sourceId) return;
     try {
       const srcParam = `?sourceId=${encodeURIComponent(sourceId)}`;
-      const [issuesData, statusData, mismatchData, deadNodesData] = await Promise.all([
-        api.get<SecurityIssuesResponse>(`/api/security/issues${srcParam}`),
-        api.get<ScannerStatus>(`/api/security/scanner/status${srcParam}`),
-        api.get<{ events: any[] }>(`/api/security/key-mismatches${srcParam}`),
-        sourceId
-          ? api.get<DeadNodesResponse>(`/api/security/dead-nodes${srcParam}`)
-          : Promise.resolve({ nodes: [], count: 0, thresholdDays: 7 } as unknown as DeadNodesResponse),
-      ]);
-
-      setIssues(issuesData);
-      setScannerStatus(statusData);
-      setMismatchEvents(mismatchData.events || []);
-      setDeadNodes(deadNodesData.nodes || []);
-      setSelectedDeadNodes(new Set());
+      if (isMeshCore) {
+        await Promise.all([
+          caps.deadNodes ? fetchDeadNodes(srcParam) : Promise.resolve(),
+          fetchFindings(srcParam),
+        ]);
+      } else {
+        const [issuesData, statusData, mismatchData] = await Promise.all([
+          api.get<SecurityIssuesResponse>(`/api/security/issues${srcParam}`),
+          api.get<ScannerStatus>(`/api/security/scanner/status${srcParam}`),
+          api.get<{ events: any[] }>(`/api/security/key-mismatches${srcParam}`),
+          fetchDeadNodes(srcParam),
+        ]);
+        setIssues(issuesData);
+        setScannerStatus(statusData);
+        setMismatchEvents(mismatchData.events || []);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('security.failed_load'));
@@ -142,11 +190,15 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   };
 
   useEffect(() => {
+    deadNodesForbiddenRef.current = false;
+    findingsForbiddenRef.current = false;
+    setDeadNodesForbidden(false);
+    setFindingsForbidden(false);
     void fetchSecurityData();
     // Refresh every 30 seconds
     const interval = setInterval(fetchSecurityData, 30000);
     return () => clearInterval(interval);
-  }, [sourceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sourceId, isMeshCore]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load digest settings
   useEffect(() => {
@@ -163,8 +215,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
         // Settings may not exist yet, use defaults
       }
     };
-    void loadDigestSettings();
-  }, []);
+    if (caps.digest) void loadDigestSettings();
+  }, [caps.digest]);
 
   const saveDigestSettings = useCallback(async () => {
     setDigestSaving(true);
@@ -290,14 +342,16 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       setError(t('security.no_permission_messages'));
       return;
     }
+    onOpenNode?.(`mt:${nodeNum}`);
+  }, [onOpenNode, hasPermission, t]);
 
-    if (onTabChange && onSelectDMNode) {
-      // Convert nodeNum to hex string with leading ! for DM node ID
-      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      onSelectDMNode(nodeId);
-      onTabChange('messages');
+  const handleOpenFindingNode = useCallback((nodeKey: string) => {
+    if (!hasPermission('messages', 'read')) {
+      setError(t('security.no_permission_messages'));
+      return;
     }
-  }, [onTabChange, onSelectDMNode, hasPermission, t]);
+    onOpenNode?.(nodeKey);
+  }, [onOpenNode, hasPermission, t]);
 
   const handleSendNotification = useCallback((node: SecurityNode, duplicateCount?: number) => {
     // Check if user has permission to send messages before navigating
@@ -306,10 +360,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       return;
     }
 
-    if (onTabChange && openDmWithDraft) {
-      // Convert nodeNum to hex string with leading ! for DM node ID
-      const nodeId = `!${node.nodeNum.toString(16).padStart(8, '0')}`;
-
+    if (onOpenDmWithDraft) {
       // Determine the message based on the issue type
       let message = '';
       if (node.keyIsLowEntropy) {
@@ -318,12 +369,11 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
         message = `MeshMonitor Security Notification: Your node has a key shared with ${duplicateCount} other nearby nodes. Read more: https://bit.ly/4okVACV`;
       }
 
-      // Select the node + pre-fill the draft atomically (survives the #4183
-      // draft-scoping clear), then switch to the messages tab.
-      openDmWithDraft(nodeId, message);
-      onTabChange('messages');
+      // The host selects the node + pre-fills the draft atomically (survives
+      // the #4183 draft-scoping clear), then switches to its messages view.
+      onOpenDmWithDraft(`mt:${node.nodeNum}`, message);
     }
-  }, [onTabChange, openDmWithDraft, hasPermission, t]);
+  }, [onOpenDmWithDraft, hasPermission, t]);
 
   const handleExport = useCallback(async (format: 'csv' | 'json') => {
     try {
@@ -346,53 +396,18 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     }
   };
 
-  const formatLastHeard = (lastHeard: number | null): string => {
-    if (!lastHeard) return t('security.dead_nodes_never', 'Never');
-    const now = Math.floor(Date.now() / 1000);
-    const diffSeconds = now - lastHeard;
-    const days = Math.floor(diffSeconds / 86400);
-    if (days > 30) {
-      const months = Math.floor(days / 30);
-      return t('security.dead_nodes_months_ago', '{{count}} month(s) ago', { count: months });
-    }
-    return t('security.dead_nodes_days_ago', '{{count}} day(s) ago', { count: days });
-  };
-
-  const toggleDeadNodeSelection = (nodeNum: number) => {
-    setSelectedDeadNodes(prev => {
-      const next = new Set(prev);
-      if (next.has(nodeNum)) next.delete(nodeNum);
-      else next.add(nodeNum);
-      return next;
-    });
-  };
-
-  const toggleAllDeadNodes = () => {
-    if (selectedDeadNodes.size === deadNodes.length) {
-      setSelectedDeadNodes(new Set());
-    } else {
-      setSelectedDeadNodes(new Set(deadNodes.map(n => n.nodeNum)));
-    }
-  };
-
-  const handleBulkDeleteDeadNodes = async () => {
-    if (selectedDeadNodes.size === 0) return;
-    const confirmed = window.confirm(
-      t('security.dead_nodes_confirm_delete', 'Are you sure you want to delete {{count}} node(s)? This cannot be undone.', { count: selectedDeadNodes.size })
-    );
-    if (!confirmed) return;
-
-    setIsDeletingNodes(true);
+  const acknowledgeOwnKey = useCallback(async () => {
+    if (!sourceId) return;
+    setAcknowledging(true);
     try {
-      await api.post('/api/security/dead-nodes/bulk-delete', { nodeNums: Array.from(selectedDeadNodes), ...(sourceId ? { sourceId } : {}) });
-      setSelectedDeadNodes(new Set());
+      await api.post('/api/security/own-key/acknowledge', { sourceId });
       await fetchSecurityData();
     } catch (err) {
-      logger.error('Error bulk deleting dead nodes:', err);
+      setError(err instanceof Error ? err.message : t('security.failed_load'));
     } finally {
-      setIsDeletingNodes(false);
+      setAcknowledging(false);
     }
-  };
+  }, [sourceId, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
@@ -407,6 +422,60 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       <div className="security-tab">
         <div className="error">{t('security.error_loading', { error })}</div>
         <button onClick={fetchSecurityData}>{t('security.retry')}</button>
+      </div>
+    );
+  }
+
+  const deadNodesSection = caps.deadNodes && sourceId ? (
+    <DeadNodesSection
+      nodes={deadNodes}
+      thresholdDays={deadThresholdDays}
+      sourceId={sourceId}
+      isMeshCore={isMeshCore}
+      forbidden={deadNodesForbidden}
+      canDelete={canWrite && canWriteNodes}
+      canEditThreshold={canEditSettings}
+      onChanged={fetchSecurityData}
+    />
+  ) : null;
+
+  if (isMeshCore) {
+    return (
+      <div className="security-tab">
+        <div className="security-header">
+          <div className="header-content">
+            <div>
+              <h2>{t('security.title')}</h2>
+              <p>{t('security.mc_description', 'Checks on the contacts this source has heard.')}</p>
+            </div>
+          </div>
+        </div>
+        {findingsForbidden ? (
+          <p className="no-issues" data-testid="security-findings-forbidden">
+            {t('security.mc_no_node_access', 'You do not have access to this source\'s nodes.')}
+          </p>
+        ) : findings && (
+          <>
+            {caps.ownKeyChange && (
+              <OwnKeyChangeCard
+                ownKey={findings.ownKey}
+                canAcknowledge={canWrite}
+                acknowledging={acknowledging}
+                onAcknowledge={acknowledgeOwnKey}
+              />
+            )}
+            {caps.pathHashCollisions && (
+              <PathHashCollisionsSection collisions={findings.pathHashCollisions} onOpenNode={onOpenNode ? handleOpenFindingNode : undefined} />
+            )}
+            {caps.advertSignatures && (
+              <AdvertSignatureSection failures={findings.signatureFailures} onOpenNode={onOpenNode ? handleOpenFindingNode : undefined} />
+            )}
+            {caps.nameReuse && (
+              <NameReuseSection groups={findings.nameReuse} onOpenNode={onOpenNode ? handleOpenFindingNode : undefined} />
+            )}
+          </>
+        )}
+        {deadNodesSection}
       </div>
     );
   }
@@ -955,103 +1024,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                 </div>
               </div>
             )}
-            {/* Dead Nodes Section */}
-            <div className="issues-section">
-              <h3>{t('security.dead_nodes_title', 'Dead Nodes')} ({deadNodes.length})</h3>
-              {deadNodes.length === 0 ? (
-                <div className="no-issues">
-                  <p>{t('security.dead_nodes_empty', 'No dead nodes found. All nodes have been heard from within the last 7 days.')}</p>
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
-                    <button
-                      onClick={toggleAllDeadNodes}
-                      style={{
-                        padding: '0.4rem 0.75rem',
-                        fontSize: '0.85rem',
-                        backgroundColor: 'var(--color-surface-hover)',
-                        color: 'var(--color-text)',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {selectedDeadNodes.size === deadNodes.length
-                        ? t('security.dead_nodes_deselect_all', 'Deselect All')
-                        : t('security.dead_nodes_select_all', 'Select All')}
-                    </button>
-                    {selectedDeadNodes.size > 0 && canWrite && (
-                      <button
-                        onClick={handleBulkDeleteDeadNodes}
-                        disabled={isDeletingNodes}
-                        style={{
-                          padding: '0.4rem 0.75rem',
-                          fontSize: '0.85rem',
-                          backgroundColor: 'var(--color-error)',
-                          color: 'var(--color-bg)',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: isDeletingNodes ? 'not-allowed' : 'pointer',
-                          opacity: isDeletingNodes ? 0.6 : 1
-                        }}
-                      >
-                        {isDeletingNodes
-                          ? t('security.dead_nodes_deleting', 'Deleting...')
-                          : t('security.dead_nodes_delete_button', 'Delete {{count}} node(s)', { count: selectedDeadNodes.size })}
-                      </button>
-                    )}
-                  </div>
-                  <div className="security-table-scroll">
-                    <table className="top-broadcasters-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: '30px' }}></th>
-                          <th>{t('security.dead_nodes_name', 'Name')}</th>
-                          <th>{t('security.dead_nodes_id', 'ID')}</th>
-                          <th>{t('security.dead_nodes_hardware', 'Hardware')}</th>
-                          <th>{t('security.dead_nodes_last_heard', 'Last Heard')}</th>
-                          <th>{t('security.dead_nodes_location', 'Location')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {deadNodes.map(node => (
-                          <tr key={node.nodeNum} style={{ opacity: selectedDeadNodes.has(node.nodeNum) ? 1 : 0.8 }}>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={selectedDeadNodes.has(node.nodeNum)}
-                                onChange={() => toggleDeadNodeSelection(node.nodeNum)}
-                              />
-                            </td>
-                            <td>
-                              {node.longName || node.shortName || <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>Unknown</span>}
-                              {node.shortName && node.longName && (
-                                <span style={{ color: 'var(--color-text-subtle)', marginLeft: '0.5rem', fontSize: '0.8rem' }}>({node.shortName})</span>
-                              )}
-                            </td>
-                            <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{node.nodeId}</td>
-                            <td>{node.hwModel != null ? getHardwareModelName(node.hwModel) : '-'}</td>
-                            <td>{formatLastHeard(node.lastHeard)}</td>
-                            <td>
-                              {node.inDeviceDb ? (
-                                <span title={t('security.dead_nodes_in_both', 'In both local and device database')} style={{ color: 'var(--color-warning)' }}>
-                                  <UiIcon name="radioSignal" /> {t('security.dead_nodes_local_and_device', 'Local + Device')}
-                                </span>
-                              ) : (
-                                <span title={t('security.dead_nodes_local_only', 'Only in local database')} style={{ color: 'var(--color-text-subtle)' }}>
-                                  <UiIcon name="database" /> {t('security.dead_nodes_local_only_short', 'Local Only')}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
+            {deadNodesSection}
 
             {/* Key Mismatch Events Section */}
             <div className="issues-section">
