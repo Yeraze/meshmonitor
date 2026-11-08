@@ -48,7 +48,7 @@ export const MESH_ISSUE_RULE_IDS: readonly MeshIssueType[] = Object.values(MESH_
 /** What a rule emits. No persistence fields — the repository owns those. */
 export interface MeshIssueFinding {
   issueType: MeshIssueType;
-  /** `node:${nodeNum}` or `area:${latBin}:${lonBin}` — see schema/meshIssues.ts. */
+  /** `node:${nodeNum}`, `mc:${publicKey}` or `area:${latBin}:${lonBin}` — see schema/meshIssues.ts. */
   subjectKey: string;
   nodeNum: number | null;
   severity: MeshIssueSeverity;
@@ -60,6 +60,13 @@ export interface MeshIssueFinding {
   /** Human-readable action, official-guidance-compliant (never "promote to ROUTER"). */
   recommendation: string;
 }
+
+/** Which protocol family a pooled node (and so a rule) belongs to (#6263 S5). */
+export type MeshIssueProtocol = 'meshtastic' | 'meshcore';
+
+/** `mc:${publicKey}` — canonical subjectKey for a MeshCore-attributed finding
+ *  (#6263). `nodeNum` is null on those rows; the key is lowercased. */
+export const meshcoreSubjectKey = (publicKey: string): string => `mc:${publicKey.toLowerCase()}`;
 
 /** `node:${nodeNum}` — canonical subjectKey for a node-attributed finding. */
 export const nodeSubjectKey = (nodeNum: number): string => `node:${nodeNum}`;

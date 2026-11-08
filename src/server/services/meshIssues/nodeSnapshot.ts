@@ -22,6 +22,8 @@
  * what the WP2 zero-`databaseService`-import gate checks).
  */
 import { getEffectiveDbNodePosition } from '../../utils/nodeEnhancer.js';
+import { INFRA_ROLES } from './thresholds.js';
+import { nodeSubjectKey, meshcoreSubjectKey, type MeshIssueProtocol } from './types.js';
 
 export interface PooledNodeInput {
   nodeNum: number | string;
@@ -82,6 +84,19 @@ export interface PooledNode {
    * asset as mobile; `mobile` itself stays the persisted heuristic value.
    */
   asset?: boolean;
+  /**
+   * Protocol family (#6263 S5). Absent means Meshtastic, so every pre-S5
+   * caller and fixture keeps its meaning. MeshCore nodes are pooled by
+   * lowercased public key in `meshcoreSnapshot.ts`; their `nodeNum` is a
+   * run-local negative handle for the rule maps, never persisted.
+   */
+  protocol?: MeshIssueProtocol;
+  /** MeshCore lowercased 64-hex public key. Set only when `protocol` is 'meshcore'. */
+  nodeKey?: string;
+  /** Explicit infra flag. Absent: derive from `role` (Meshtastic `INFRA_ROLES`). */
+  infra?: boolean;
+  /** MeshCore advert type (1 companion, 2 repeater, 3 room server). */
+  advType?: number | null;
   /** max across rows — the freshness proxy; see module header. */
   lastHeardMs: number | null;
   sourceIds: string[]; // sorted, deduped
@@ -105,6 +120,60 @@ export interface PooledNode {
   keySecurityIssueDetails: string | null;
   isTimeOffsetIssue: boolean;
   timeOffsetSeconds: number | null;
+}
+
+/** True for a MeshCore-pooled node. */
+export function isMeshCoreNode(node: PooledNode): boolean {
+  return node.protocol === 'meshcore';
+}
+
+/** Protocol of a pooled node; absent means Meshtastic. */
+export function protocolOf(node: PooledNode): MeshIssueProtocol {
+  return node.protocol ?? 'meshtastic';
+}
+
+/**
+ * Infrastructure node? `infra` wins when set (MeshCore: advType in {2,3});
+ * otherwise the Meshtastic role set decides.
+ */
+export function isInfraNode(node: PooledNode): boolean {
+  if (node.infra !== undefined) return node.infra;
+  return node.role != null && INFRA_ROLES.has(node.role);
+}
+
+/**
+ * Canonical finding subjectKey for a pooled node: `mc:<pk>` for MeshCore,
+ * `node:<nodeNum>` for Meshtastic.
+ */
+export function subjectKeyFor(node: PooledNode): string {
+  if (isMeshCoreNode(node) && node.nodeKey) return meshcoreSubjectKey(node.nodeKey);
+  return nodeSubjectKey(node.nodeNum);
+}
+
+/** `nodeNum` to persist on a finding: null for MeshCore (no real number). */
+export function persistedNodeNum(node: PooledNode): number | null {
+  return isMeshCoreNode(node) ? null : node.nodeNum;
+}
+
+/**
+ * Cut `nodes` to those whose protocol is in `protocols`. Returns the SAME map
+ * when nothing would be removed, so a Meshtastic-only run is untouched.
+ */
+export function nodesForProtocols(
+  nodes: Map<number, PooledNode>,
+  protocols: readonly MeshIssueProtocol[],
+): Map<number, PooledNode> {
+  let drop = false;
+  for (const n of nodes.values()) {
+    if (!protocols.includes(protocolOf(n))) {
+      drop = true;
+      break;
+    }
+  }
+  if (!drop) return nodes;
+  const out = new Map<number, PooledNode>();
+  for (const [k, n] of nodes) if (protocols.includes(protocolOf(n))) out.set(k, n);
+  return out;
 }
 
 /** `lastHeard` is unix seconds in this schema; below 1e12 it must be *1000. */

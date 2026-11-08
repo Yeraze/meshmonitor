@@ -159,10 +159,28 @@ function redactValue(
       }
     }
 
+    // MeshCore findings (#6263 S5) carry `publicKey` + `sourceIds` + `nodeName`
+    // in evidence. `nodeName` is a contact name taken from whichever source
+    // heard the node last, so when the caller cannot read every contributing
+    // source it is withheld (null) rather than risk naming another source's data.
+    const evSourceIds = obj.sourceIds;
+    const hiddenSource =
+      Array.isArray(evSourceIds) &&
+      evSourceIds.every((s) => typeof s === 'string') &&
+      (evSourceIds as string[]).some((s) => !permitted.includes(s));
+
     const out: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(obj)) {
-      if (key === 'sources' && Array.isArray(v) && v.every((s) => typeof s === 'string')) {
+      if (
+        (key === 'sources' || key === 'sourceIds') &&
+        Array.isArray(v) &&
+        v.every((s) => typeof s === 'string')
+      ) {
         out[key] = (v as string[]).filter((s) => permitted.includes(s));
+        continue;
+      }
+      if (key === 'nodeName' && hiddenSource && typeof v === 'string' && typeof obj.publicKey === 'string') {
+        out[key] = null;
         continue;
       }
 

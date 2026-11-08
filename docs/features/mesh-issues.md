@@ -24,8 +24,10 @@ for the reasoning this feature was built against.
 Analysis is a **global, cross-source batch job**, structurally identical to
 [Position Estimation](./position-estimation): it runs on a schedule (not in
 realtime), pools data from every source you can read, and stores findings in
-one global table. MeshCore sources are excluded — `meshcore_nodes` has no
-`role`/`airUtilTx` equivalent for the rules below to evaluate.
+one global table. MeshCore sources take part in a short list of checks — see
+[MeshCore repeaters](#meshcore-repeaters). The other rules read Meshtastic
+roles, airtime and key flags that MeshCore nodes do not have, so they never
+see a MeshCore node.
 
 Findings are grouped into three tiers, run in order:
 
@@ -172,6 +174,31 @@ Each type section and node row carries a **bulk-actions menu**: dismiss or
 restore everything in that group at once, or mute the rule outright (see
 [Muting a rule](#muting-a-rule)). Bulk actions only ever touch findings your
 account can see.
+
+### MeshCore repeaters
+
+MeshCore contacts are pooled across every enabled `meshcore` and
+`meshcore_mqtt` source by public key. A node counts as infrastructure when its
+advert type is Repeater or Room Server. Three checks run on them, all from
+data MeshMonitor already holds (no packets are sent):
+
+| Rule | Fires when | Notes |
+| --- | --- | --- |
+| **A4** Mobile infrastructure | A repeater or room server's position span (from `meshcore_position_history`) is over the mobile-span threshold | Same threshold and wording as Meshtastic A4 |
+| **A3** Infra power (uptime resets only) | Uptime in the repeater's status telemetry drops two or more times in the window | There is no battery percentage or voltage clause for MeshCore |
+| **C2** Advert cadence | A repeater's median **flood** advert gap is under 6 hours, or its median **zero-hop** advert gap is under 60 minutes (at least 4 adverts) | Needs the MeshCore packet log (`meshcore_packet_log_enabled`); copies of one advert heard by several observers count once |
+
+When the MeshCore packet log is off, the advert check shows in the coverage
+preface as skipped instead of reporting a clean result. Stale, no-position,
+low-battery and bad-position rules are not in this set.
+
+A MeshCore finding is keyed `mc:<public key>` and has no node number. Its
+evidence carries the public key, the contact name and the contributing source
+ids. Clicking the name opens that contact on its source (a picker appears if
+the finding spans several sources). If you cannot read every source that
+contributed, the contact name is hidden in the evidence. In the By Node view,
+MeshCore findings fall under the Mesh-wide group because that view groups by
+node number.
 
 ### Clickable node references
 
