@@ -50,8 +50,9 @@ Each phase's scope is the checklist in its issue.
   Analysis positions/traces/solar, estimated positions. May split.
 - [x] **P6 #6263 Dashboard / API / reports:** dashboard widgets, Mesh Issues,
   Prometheus, v1 API read + TX, embed maps.
-- [ ] **P7 #6254 Security view:** dead contacts, hash collisions, advert
-  signatures, own-key change, rates/clock/digest. May split.
+- [x] **P7 #6254 Security view:** dead contacts, hash collisions, advert
+  signatures, own-key change (P7a shipped). P7b (rates, clock flag, scanner,
+  digest, export, DM) is follow-up in #6281.
 - [ ] **P8 #6257 Companion extras:** BLE PIN, factory reset, multi-ACKs,
   device-config backups, channel QR share.
 - [ ] **P9 #6255 Repeater settings + danger zone.**
@@ -136,3 +137,11 @@ new key, own-key change alert; no migration, no RF) and P7b (rates, clock-offset
 export / DM). Per-source `securityDeadNodeDays` (Meshtastic 7, MeshCore 14). Bulk delete needs security:write AND
 per-source nodes:write; Companion deletes radio + DB. Own-key alert once per change via `notifyOnServerEvents`. Name
 reuse display-only. Repeater adverts always signature-checked; unchecked = null.
+
+Shipped (P7a): the Security tab is protocol-aware. MeshCore sources show dead contacts (per-source `securityDeadNodeDays`,
+default 14 days; Meshtastic 7) with bulk delete (needs security:write and per-source nodes:write; a connected Companion
+deletes from the radio and DB, others from the DB only), path-hash collisions at the source's hash width, advert
+signature status (Verified / Failed / Not checked; only Repeater and MQTT check), name reused under a new key (display
+only), and an own-key change card with one alert per change and an Acknowledge action. Dead-nodes and findings routes now
+need `nodes:read` on the source for both protocols. No migration, no RF. P7b (rates, clock-offset flag, scanner, digest,
+export, DM) follows in #6281. User docs: `docs/features/security.md`, `meshcore.md`.
