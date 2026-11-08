@@ -160,11 +160,11 @@ A MeshCore node's popup shows its role (Companion, Repeater, Room Server or Sens
 
 ### Neighbor Info Lines
 
-When **Show Neighbor Info** is enabled, dashed orange lines connect nodes that report each other as neighbors. Both nodes must pass the profile's channel and MQTT filters to appear. Neighbor lines are Meshtastic-only: an embed draws no MeshCore neighbor links.
+When **Show Neighbor Info** is enabled, dashed orange lines connect nodes that report each other as neighbors. Both nodes must pass the profile's channel and MQTT filters to appear. MeshCore neighbor links follow the same toggle: a dashed line joins two MeshCore nodes when one reports the other as a neighbor (heard in the last 7 days). A line shows once per pair, and only when both nodes are on the embed.
 
 ### Traceroute Paths
 
-When **Show Paths** is enabled, traceroute path segments between nodes are drawn with the canonical SNR color scale — green (excellent), yellow (good), orange (fair), red (poor), and dashed gray for unknown SNR. MeshMonitor decomposes multi-hop traceroutes into individual point-to-point segments and deduplicates them, keeping the most recent instance. Only traceroutes from the last 24 hours are displayed. Traceroute paths are Meshtastic-only: an embed draws no MeshCore paths or trace results.
+When **Show Paths** is enabled, traceroute path segments between nodes are drawn with the canonical SNR color scale — green (excellent), yellow (good), orange (fair), red (poor), and dashed gray for unknown SNR. MeshMonitor decomposes multi-hop traceroutes into individual point-to-point segments and deduplicates them, keeping the most recent instance. Only traceroutes from the last 24 hours are displayed. MeshCore trace paths follow the same toggle. MeshMonitor draws each hop of a MeshCore trace from the last 24 hours as a segment, with the same SNR colors, once both hop ends are nodes the embed shows. Hops that did not resolve to a known node are not drawn.
 
 ### Hop Count Legend
 
@@ -202,7 +202,7 @@ The viewer of an embed is anonymous, so the profile alone decides what is sent:
 - **Private position overrides.** A node whose position override is marked private is left out of the embed: no marker, no neighbor line, no traceroute segment. There is no profile setting that turns this on.
 - **Hidden nodes.** A node with "Hide from Map" set is left out of markers, neighbor lines and traceroute segments.
 - **Other sources.** A profile tied to a source shows that source only.
-- **MeshCore private location overrides.** A MeshCore node whose location override is marked private is left out, the same rule as Meshtastic.
+- **MeshCore private location overrides.** A MeshCore node whose location override is marked private is left out, the same rule as Meshtastic. It is also never the end of a neighbor line or a trace segment.
 - **Other channels.** A node appears only when it was last heard on one of the profile's channels, and its reported position arrived on one of them. A traceroute heard on another channel is not drawn.
 - **Neighbor lines and traceroute paths** are served only when the profile turns them on.
 

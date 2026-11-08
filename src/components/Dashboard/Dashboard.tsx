@@ -247,11 +247,12 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
           favoritesCount={favorites.length}
           daysToView={daysToView}
           onAddWidgetClick={() => setShowAddWidgetModal(true)}
-          showAddWidget={dataSource.showCustomWidgets}
+          showAddWidget={dataSource.widgets.supported.size > 0}
         />
 
-        {dataSource.showCustomWidgets && (
+        {dataSource.widgets.supported.size > 0 && (
           <AddWidgetModal
+            supported={dataSource.widgets.supported}
             isOpen={showAddWidgetModal}
             onClose={() => setShowAddWidgetModal(false)}
             onAddWidget={addWidget}
@@ -306,6 +307,8 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
             favoritesCount={favorites.length}
             filteredCount={filteredAndSortedFavorites.length}
             canEdit={canEdit}
+            sourceKind={dataSource.kind}
+            voltageFallback={dataSource.widgets.voltageFallback}
             solarMonitoringEnabled={solarMonitoringEnabled}
             getSolarVisibility={getSolarVisibility}
             onToggleSolar={handleToggleSolar}

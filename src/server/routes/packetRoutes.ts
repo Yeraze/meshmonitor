@@ -11,6 +11,11 @@ import type { NodeTransportClass } from '../../utils/nodeTransport.js';
 import { requirePermission } from '../auth/authMiddleware.js';
 import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
 import { loadNodeViewAccess } from '../utils/nodeEnhancer.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
+import { meshcoreNodeKey } from '../utils/protocolRows.js';
+import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
+import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import { runTrafficReplay, TrafficReplayUnavailableError } from '../services/trafficManagementReplayService.js';
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
@@ -264,6 +269,95 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
 
 
 /**
+ * Live Mesh Activity for a MeshCore source (#6263 S7). Sender attribution is
+ * the full key when the packet carries one; a bare one-byte `srcHash` is
+ * resolved only when exactly one node on the source has that prefix.
+ * Everything else counts in `unresolvedPackets`. The local node is excluded.
+ */
+async function respondMeshCoreNodeActivity(
+  req: express.Request,
+  res: express.Response,
+  sourceId: string,
+  windowStart: number,
+) {
+  if (!(await meshcorePacketLogService.isEnabled())) {
+    return ok(res, { enabled: false, windowStart, coverageStart: null, truncated: false, nodes: [], unresolvedPackets: 0 });
+  }
+  const manager = sourceManagerRegistry.getManager(sourceId);
+  const localKey = manager && isMeshCoreManager(manager)
+    ? (manager.getLocalNode()?.publicKey ?? '').toLowerCase()
+    : '';
+
+  const repo = databaseService.meshcore;
+  const [activity, coverageStart, dbNodes, access] = await Promise.all([
+    repo.getNodeActivity({ sourceId, since: windowStart }),
+    repo.getOldestTimestamp(sourceId),
+    repo.getNodesBySource(sourceId),
+    loadNodeViewAccess((req as typeof req & { user?: Parameters<typeof loadNodeViewAccess>[0] }).user ?? null),
+  ]);
+  // Names are node data: without nodes:read the rows carry keys only.
+  const canSeeNames = access.isAdmin || access.permissions.can('nodes', 'read', sourceId);
+  const known = dbNodes.map((n) => ({ key: n.publicKey.toLowerCase(), name: n.name ?? null }));
+  const nameOf = new Map(known.map((n) => [n.key, n.name]));
+
+  const byKey = new Map<string, { count: number; lastHeard: number }>();
+  let unresolved = activity.unattributed;
+  for (const sender of activity.senders) {
+    let key = sender.senderPubKey ? sender.senderPubKey.toLowerCase() : null;
+    if (!key && sender.srcHash) {
+      const prefix = sender.srcHash.toLowerCase();
+      const matches = known.filter((n) => n.key.startsWith(prefix));
+      key = matches.length === 1 ? matches[0].key : null;
+    }
+    if (!key) {
+      unresolved += sender.count;
+      continue;
+    }
+    if (key === localKey) continue;
+    const cur = byKey.get(key);
+    if (cur) {
+      cur.count += sender.count;
+      cur.lastHeard = Math.max(cur.lastHeard, sender.lastHeard);
+    } else {
+      byKey.set(key, { count: sender.count, lastHeard: sender.lastHeard });
+    }
+  }
+
+  const nodes = [...byKey.entries()]
+    .map(([key, v]) => {
+      const name = canSeeNames ? (nameOf.get(key) ?? null) : null;
+      return {
+        nodeNum: nodeNumFromPubkey(key),
+        nodeId: null,
+        nodeKey: meshcoreNodeKey(key),
+        publicKey: key,
+        shortName: name ? name.slice(0, 4) : null,
+        longName: name,
+        packets: v.count,
+        extraReceptions: 0,
+        lastSnr: null,
+        avgSnr: null,
+        lastHops: null,
+        minHops: null,
+        lastHeard: v.lastHeard,
+      };
+    })
+    .sort((a, b) => b.lastHeard - a.lastHeard);
+
+  return ok(res, {
+    enabled: true,
+    windowStart,
+    coverageStart,
+    truncated: coverageStart !== null && coverageStart > windowStart,
+    nodes,
+    unresolvedPackets: unresolved,
+  });
+}
+
+/**
+ * GET /api/packets/stats/node-activity
+
+/**
  * GET /api/packets/stats/node-activity (#5557)
  * Per-remote-node activity heard by one source in a rolling window — the
  * Live Mesh Activity dashboard widget. Read-only; no packets are sent.
@@ -303,6 +397,13 @@ router.get('/stats/node-activity', requirePacketPermissions, async (req, res) =>
     const transportClass = rawTransport === 'all' ? undefined : (rawTransport as NodeTransportClass);
 
     const windowStart = Date.now() - windowMinutes * 60_000;
+
+    // A MeshCore source reads its own packet log; the transport filter has no
+    // meaning there (every row is an RF reception), so rf and all agree.
+    const source = await databaseService.sources.getSource(sourceId);
+    if (source && isAnyMeshCoreSourceType(source.type)) {
+      return await respondMeshCoreNodeActivity(req, res, sourceId, windowStart);
+    }
 
     if (!(await packetLogService.isEnabled())) {
       return ok(res, { enabled: false, windowStart, coverageStart: null, truncated: false, nodes: [] });

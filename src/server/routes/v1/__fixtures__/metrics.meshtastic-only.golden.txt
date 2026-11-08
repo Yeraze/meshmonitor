@@ -1,0 +1,84 @@
+# HELP meshmonitor_info MeshMonitor build info (value is always 1)
+# TYPE meshmonitor_info gauge
+meshmonitor_info{version="X"} 1
+
+# HELP meshmonitor_source_info Source metadata (value is always 1); join on the source label for names
+# TYPE meshmonitor_source_info gauge
+meshmonitor_source_info{source="src_tcp",name="Base Station",type="meshtastic_tcp"} 1
+meshmonitor_source_info{source="src_mqtt",name="Region Firehose",type="mqtt_broker"} 1
+
+# HELP meshmonitor_source_connected Whether the link to this source (TCP node, MQTT broker, ...) is up (1) or down (0)
+# TYPE meshmonitor_source_connected gauge
+meshmonitor_source_connected{source="src_tcp"} 1
+meshmonitor_source_connected{source="src_mqtt"} 0
+
+# HELP meshmonitor_nodes_total Total nodes known for this source
+# TYPE meshmonitor_nodes_total gauge
+meshmonitor_nodes_total{source="src_tcp"} 12
+meshmonitor_nodes_total{source="src_mqtt"} 12
+
+# HELP meshmonitor_nodes_active Nodes heard in the last 2 hours (matches the dashboard activity badge)
+# TYPE meshmonitor_nodes_active gauge
+meshmonitor_nodes_active{source="src_tcp"} 7
+meshmonitor_nodes_active{source="src_mqtt"} 7
+
+# HELP meshmonitor_messages_last_hour Messages received in the last hour (requires messages read permission)
+# TYPE meshmonitor_messages_last_hour gauge
+meshmonitor_messages_last_hour{source="src_tcp"} 42
+meshmonitor_messages_last_hour{source="src_mqtt"} 42
+
+# HELP meshmonitor_packets_by_port_last_hour Packets logged in the last hour by protocol; empty unless the packet monitor is enabled (requires packetmonitor read permission)
+# TYPE meshmonitor_packets_by_port_last_hour gauge
+meshmonitor_packets_by_port_last_hour{source="src_tcp",portnum="3",portnum_name="POSITION_APP"} 120
+meshmonitor_packets_by_port_last_hour{source="src_tcp",portnum="67",portnum_name="TELEMETRY_APP"} 55
+meshmonitor_packets_by_port_last_hour{source="src_tcp",portnum="512",portnum_name="PORT_512"} 7
+meshmonitor_packets_by_port_last_hour{source="src_mqtt",portnum="3",portnum_name="POSITION_APP"} 120
+meshmonitor_packets_by_port_last_hour{source="src_mqtt",portnum="67",portnum_name="TELEMETRY_APP"} 55
+meshmonitor_packets_by_port_last_hour{source="src_mqtt",portnum="512",portnum_name="PORT_512"} 7
+
+# HELP meshmonitor_node_channel_utilization_percent Channel utilization observed by this node, percent (airtime saturation; alert on max by source)
+# TYPE meshmonitor_node_channel_utilization_percent gauge
+meshmonitor_node_channel_utilization_percent{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} 12.5
+meshmonitor_node_channel_utilization_percent{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} 12.5
+
+# HELP meshmonitor_node_air_util_tx_percent This node's own transmit airtime duty cycle, percent
+# TYPE meshmonitor_node_air_util_tx_percent gauge
+meshmonitor_node_air_util_tx_percent{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} 3.25
+meshmonitor_node_air_util_tx_percent{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} 3.25
+
+# HELP meshmonitor_node_battery_level Node battery level, 0-100 (values above 100 mean externally powered)
+# TYPE meshmonitor_node_battery_level gauge
+meshmonitor_node_battery_level{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} 85
+meshmonitor_node_battery_level{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} 85
+
+# HELP meshmonitor_node_voltage_volts Node battery voltage in volts
+# TYPE meshmonitor_node_voltage_volts gauge
+meshmonitor_node_voltage_volts{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} 4.05
+meshmonitor_node_voltage_volts{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} 4.05
+
+# HELP meshmonitor_node_snr_db SNR of the last packet received from this node, dB
+# TYPE meshmonitor_node_snr_db gauge
+meshmonitor_node_snr_db{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} 8.5
+meshmonitor_node_snr_db{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} 8.5
+
+# HELP meshmonitor_node_rssi_dbm RSSI of the last packet received from this node, dBm
+# TYPE meshmonitor_node_rssi_dbm gauge
+meshmonitor_node_rssi_dbm{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} -45
+meshmonitor_node_rssi_dbm{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} -45
+
+# HELP meshmonitor_node_last_heard_timestamp_seconds Unix time this node was last heard (use to exclude stale telemetry in queries)
+# TYPE meshmonitor_node_last_heard_timestamp_seconds gauge
+meshmonitor_node_last_heard_timestamp_seconds{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} 1700000500
+meshmonitor_node_last_heard_timestamp_seconds{source="src_tcp",node_id="!11223344",short_name="unknown"} 1700000400
+meshmonitor_node_last_heard_timestamp_seconds{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} 1700000500
+meshmonitor_node_last_heard_timestamp_seconds{source="src_mqtt",node_id="!11223344",short_name="unknown"} 1700000400
+
+# HELP meshmonitor_node_hops_away Hops between this node and the local node
+# TYPE meshmonitor_node_hops_away gauge
+meshmonitor_node_hops_away{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} 0
+meshmonitor_node_hops_away{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} 0
+
+# HELP meshmonitor_node_last_position_timestamp_seconds Unix time this node's most recent position was observed (absent if it has never sent one)
+# TYPE meshmonitor_node_last_position_timestamp_seconds gauge
+meshmonitor_node_last_position_timestamp_seconds{source="src_tcp",node_id="!a1b2c3d4",short_name="BASE"} 1700000449.75
+meshmonitor_node_last_position_timestamp_seconds{source="src_mqtt",node_id="!a1b2c3d4",short_name="BASE"} 1700000449.75

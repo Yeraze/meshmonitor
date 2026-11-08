@@ -30,7 +30,8 @@ export interface MeshIssuesViewState {
   /** issueType -> {key, dir}. Absent means the type's primary column, desc. */
   sortByType: Record<string, MeshIssuesSortState>;
   expandedTypes: string[];
-  expandedNodes: Array<number | 'mesh-wide'>;
+  /** Node numbers, 'mesh-wide', or a MeshCore `mc:<publicKey>` subject key. */
+  expandedNodes: Array<number | string>;
 }
 
 const STORAGE_KEY = 'meshIssues.viewState.v1';
@@ -98,9 +99,12 @@ function sanitizeExpandedTypes(raw: unknown): string[] {
   return sanitizeStringArray(raw).filter((t) => VALID_ISSUE_TYPES.has(t));
 }
 
-function sanitizeExpandedNodes(raw: unknown): Array<number | 'mesh-wide'> {
+function sanitizeExpandedNodes(raw: unknown): Array<number | string> {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((n): n is number | 'mesh-wide' => n === 'mesh-wide' || typeof n === 'number');
+  return raw.filter(
+    (n): n is number | string =>
+      n === 'mesh-wide' || typeof n === 'number' || (typeof n === 'string' && n.startsWith('mc:')),
+  );
 }
 
 /** Pure — exported for direct unit testing without touching `localStorage`. */

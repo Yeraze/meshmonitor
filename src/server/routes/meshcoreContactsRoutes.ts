@@ -9,7 +9,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { MeshCoreDiscoverFilter, type MeshCoreDiscoverMode } from '../meshcoreManager.js';
+import { MeshCoreDiscoverFilter, type MeshCoreDiscoverMode, type MeshCoreManager } from '../meshcoreManager.js';
 import {
   MAX_INTERVAL_MINUTES,
   MIN_INTERVAL_BETWEEN_REQUESTS_MS,
@@ -1165,6 +1165,57 @@ router.get(
   },
 );
 
+export type MeshCoreTelemetryPollOutcome =
+  | { kind: 'not_connected' }
+  | { kind: 'scheduler_unavailable' }
+  | { kind: 'rate_limited'; retryAfterSecs: number }
+  | { kind: 'polled'; written: number; sources: string[] };
+
+/**
+ * One manual remote-telemetry poll for a MeshCore node, outside the scheduler
+ * cadence (#3674). Shared by the UI poll route and the v1
+ * `actions/request-telemetry` handler (#6263), so both hit the same per-source
+ * 60 s mesh-TX gate (the scheduler's own primitive) and stamp `recordMeshTx`
+ * BEFORE the request goes out. Throws what the manager throws (TxDisabledError).
+ */
+export async function pollMeshCoreNodeTelemetry(opts: {
+  manager: MeshCoreManager;
+  sourceId: string;
+  publicKey: string;
+  type: 'status' | 'lpp';
+}): Promise<MeshCoreTelemetryPollOutcome> {
+  const { manager, sourceId, publicKey, type } = opts;
+  if (!manager.isConnected()) return { kind: 'not_connected' };
+
+  const scheduler = getMeshCoreRemoteTelemetryScheduler();
+  if (!scheduler) return { kind: 'scheduler_unavailable' };
+
+  // Per-source 60s mesh-TX gate: a manual poll can't flood the air or collide
+  // with a scheduled request already in flight on this source.
+  const lastTx = manager.getLastMeshTxAt();
+  const sinceLastTx = Date.now() - lastTx;
+  if (lastTx > 0 && sinceLastTx < MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
+    return { kind: 'rate_limited', retryAfterSecs: Math.ceil((MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000) };
+  }
+
+  // Load the persisted node (if any) so the scheduler can classify advType for
+  // guest-login decisions. An unknown node is treated as a companion.
+  const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
+
+  // Stamp before issuing so the gate applies regardless of result and the
+  // scheduler's fair-rotation clock advances too.
+  const now = Date.now();
+  manager.recordMeshTx(now);
+  await databaseService.meshcore.markTelemetryRequested(sourceId, publicKey, now);
+
+  const result = await scheduler.requestTelemetryForNode(
+    manager,
+    { publicKey, advType: node?.advType ?? null },
+    { includeStatus: type === 'status', includeLpp: type === 'lpp' },
+  );
+  return { kind: 'polled', written: result.written, sources: result.sources };
+}
+
 /**
  * POST /api/sources/:id/meshcore/nodes/:publicKey/telemetry/poll
  *
@@ -1200,52 +1251,27 @@ router.post(
         return res.status(400).json({ success: false, error: "type must be 'status' or 'lpp'" });
       }
 
-      const manager = managerFor(req, res);
-      if (!manager.isConnected()) {
+      const outcome = await pollMeshCoreNodeTelemetry({
+        manager: managerFor(req, res), sourceId, publicKey, type,
+      });
+      if (outcome.kind === 'not_connected') {
         return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
       }
-
-      const scheduler = getMeshCoreRemoteTelemetryScheduler();
-      if (!scheduler) {
+      if (outcome.kind === 'scheduler_unavailable') {
         return res.status(503).json({ success: false, error: 'Telemetry scheduler unavailable' });
       }
-
-      // Per-source 60s mesh-TX gate — the same primitive the scheduler
-      // uses, so a manual poll can't flood the air or collide with a
-      // scheduled request already in flight on this source.
-      const lastTx = manager.getLastMeshTxAt();
-      const sinceLastTx = Date.now() - lastTx;
-      if (lastTx > 0 && sinceLastTx < MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
-        const retryAfterSecs = Math.ceil((MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000);
-        res.set('Retry-After', String(retryAfterSecs));
+      if (outcome.kind === 'rate_limited') {
+        res.set('Retry-After', String(outcome.retryAfterSecs));
         return res.status(429).json({
           success: false,
-          error: `Too soon since last mesh transmission; retry in ${retryAfterSecs}s`,
-          retryAfterSecs,
+          error: `Too soon since last mesh transmission; retry in ${outcome.retryAfterSecs}s`,
+          retryAfterSecs: outcome.retryAfterSecs,
         });
       }
 
-      // Load the persisted node (if any) so the scheduler can classify
-      // advType for guest-login decisions. A node not yet in the DB is
-      // fine — requestTelemetryForNode treats an unknown advType as a
-      // companion (LPP-only, no guest login).
-      const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
-
-      // Stamp before issuing so the gate applies regardless of result and
-      // the scheduler's fair-rotation clock advances too.
-      const now = Date.now();
-      manager.recordMeshTx(now);
-      await databaseService.meshcore.markTelemetryRequested(sourceId, publicKey, now);
-
-      const result = await scheduler.requestTelemetryForNode(
-        manager,
-        { publicKey, advType: node?.advType ?? null },
-        { includeStatus: type === 'status', includeLpp: type === 'lpp' },
-      );
-
       res.json({
         success: true,
-        data: { type, written: result.written, sources: result.sources },
+        data: { type, written: outcome.written, sources: outcome.sources },
       });
     } catch (error) {
       if (failIfTxDisabled(res, error)) return;

@@ -9,6 +9,7 @@ import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
 import { tracerouteShowsDirectPath } from '../utils/neighborInfoEligibility.js';
 import type { ResourceType } from '../../types/permission.js';
+import type { MeshtasticManager } from '../meshtasticManager.js';
 
 // Every route here transmits through ONE source's radio: the `sourceId` in the
 // body, or the primary Meshtastic source when it is omitted. The gate resolves
@@ -297,46 +298,70 @@ router.post('/neighborinfo/request', meshRequestGate('traceroute'), async (req: 
   }
 });
 
+export const MESHTASTIC_TELEMETRY_TYPES = ['device', 'environment', 'airQuality', 'power'] as const;
+export type MeshtasticTelemetryType = (typeof MESHTASTIC_TELEMETRY_TYPES)[number];
+
+export type MeshtasticTelemetryRequestResult =
+  | { kind: 'invalid'; message: string }
+  | { kind: 'sent'; destinationNum: number; channel: number; packetId: number; requestId: number; typeLabel: string };
+
+/**
+ * Validate and send one Meshtastic telemetry request. Shared by the UI route
+ * below and the v1 `actions/request-telemetry` handler (#6263), so both take the
+ * same checks and the same channel resolution. Throws what the manager throws
+ * (TxDisabledError, "Not connected"); the caller maps it.
+ */
+export async function requestMeshtasticTelemetry(opts: {
+  manager: MeshtasticManager;
+  sourceId: string;
+  destination: unknown;
+  telemetryType?: unknown;
+}): Promise<MeshtasticTelemetryRequestResult> {
+  const { manager, sourceId, destination, telemetryType } = opts;
+  if (!destination) {
+    return { kind: 'invalid', message: 'Destination node number is required' };
+  }
+  if (telemetryType && !(MESHTASTIC_TELEMETRY_TYPES as readonly unknown[]).includes(telemetryType)) {
+    return { kind: 'invalid', message: `Invalid telemetry type. Must be one of: ${MESHTASTIC_TELEMETRY_TYPES.join(', ')}` };
+  }
+  const destinationNum = await parseDestinationNum(destination, sourceId, databaseService);
+  if (destinationNum === null) {
+    return { kind: 'invalid', message: `Invalid destination: ${destination}` };
+  }
+
+  // Scope the channel lookup to the source the request sends through (issue
+  // #3573), not a body sourceId the frontend often omits and which can
+  // cross-source-match an MQTT row whose `channel` (e.g. 101) is not a valid
+  // Meshtastic channel index.
+  const channel = await resolveDestinationChannel(destinationNum, manager, databaseService);
+
+  const { packetId, requestId } = await manager.sendTelemetryRequest(
+    destinationNum,
+    channel,
+    (telemetryType || undefined) as MeshtasticTelemetryType | undefined,
+  );
+  const typeLabel = (telemetryType as string | undefined) || 'device';
+  logger.debug(`📊 Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
+  return { kind: 'sent', destinationNum, channel, packetId, requestId, typeLabel };
+}
+
 // Telemetry request endpoint (request telemetry from remote node)
 router.post('/telemetry/request', meshRequestGate('messages'), async (req: Request, res: Response) => {
   try {
     const { destination, telemetryType } = req.body;
     const { manager: telManager, sourceId: telSourceId } = getDeviceSourceTarget(req);
-    if (!destination) {
-      return fail(res, 400, 'INVALID_INPUT', 'Destination node number is required');
+    const result = await requestMeshtasticTelemetry({
+      manager: telManager, sourceId: telSourceId, destination, telemetryType,
+    });
+    if (result.kind === 'invalid') {
+      return fail(res, 400, 'INVALID_INPUT', result.message);
     }
-
-    // Validate telemetry type if provided
-    const validTypes = ['device', 'environment', 'airQuality', 'power'];
-    if (telemetryType && !validTypes.includes(telemetryType)) {
-      return fail(res, 400, 'INVALID_INPUT', `Invalid telemetry type. Must be one of: ${validTypes.join(', ')}`);
-    }
-
-    const destinationNum = await parseDestinationNum(destination, telSourceId, databaseService);
-    if (destinationNum === null) {
-      return fail(res, 400, 'INVALID_INPUT', `Invalid destination: ${destination}`);
-    }
-
-    // Resolve the manager first, then scope the channel lookup to the source it
-    // actually sends through (issue #3573) — not the request-body sourceId, which
-    // the frontend often omits and which can cross-source-match an MQTT row whose
-    // `channel` (e.g. 101) is not a valid Meshtastic channel index.
-    const channel = await resolveDestinationChannel(destinationNum, telManager, databaseService);
-
-    const { packetId, requestId } = await telManager.sendTelemetryRequest(
-      destinationNum,
-      channel,
-      telemetryType as 'device' | 'environment' | 'airQuality' | 'power' | undefined
-    );
-
-    const typeLabel = telemetryType || 'device';
-    logger.debug(`📊 Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
 
     res.json({
       success: true,
-      message: `Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}`,
-      packetId,
-      requestId
+      message: `Telemetry request (${result.typeLabel}) sent to ${result.destinationNum.toString(16)} on channel ${result.channel}`,
+      packetId: result.packetId,
+      requestId: result.requestId
     });
   } catch (error) {
     sendFailure(res, error, 'telemetry request');

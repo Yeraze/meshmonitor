@@ -923,6 +923,21 @@ Room servers (advType=3) are BBS-style MeshCore nodes that store posts and push-
 
 MeshCore sources appear as styled cards in the dashboard sidebar — same visual language as Meshtastic sources, with a MeshCore logo and per-source status.
 
+### Dashboard widgets
+
+A MeshCore source's Dashboard offers the same **Add Widget** choices as a Meshtastic source: Node Status, Traceroute, Hop Distribution, Distance Distribution, Hop Distance Heatmap and Live Mesh Activity.
+
+- **Node Status** shows a MeshCore node's battery voltage from its stored battery reading.
+- **Traceroute** draws the latest trace you started to the node on the shared route map. A MeshCore trace has no return leg.
+- **Hop widgets** use each node's path length as its hop count.
+- **Live Mesh Activity** lists the senders the source heard in the window. It reads the MeshCore packet log, so turn on the MeshCore packet monitor for the source. See [Live Mesh Activity](/features/packet-monitor#live-mesh-activity-dashboard-widget).
+
+## API, metrics and embeds
+
+- The v1 API reads MeshCore nodes, messages, channels, packets, traces and network data, and can send messages. See the [API reference](/development/api-reference) (section "MeshCore sources on v1").
+- The Prometheus endpoint exports MeshCore gauges, including a per-payload-type packet count. See the [API reference](/development/api-reference) (section "Get Prometheus Metrics").
+- Embed maps draw MeshCore neighbor links and trace paths. See [Embed Maps](/features/embed-maps#neighbor-info-lines).
+
 The aggregate dashboard map and `/api/nodes` endpoint enumerate every connected MeshCore manager and include contacts that have valid `(latitude, longitude)` (zeros are rejected). Each contact gets a synthetic `nodeId` of `mc:<sourceId>:<pubkeyPrefix>` so cross-source duplicates don't collide on React keys, and `getNodeLatLng` resolves either the flat `{latitude, longitude}` shape or the nested `position` shape.
 
 ## Permissions

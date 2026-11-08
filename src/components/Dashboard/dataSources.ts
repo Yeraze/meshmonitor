@@ -14,7 +14,25 @@
 
 import api from '../../services/api';
 import { getDeviceRoleName } from '../../utils/deviceRole';
+import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum';
+import type { WidgetType } from '../AddWidgetModal';
 import type { NodeInfo } from './types';
+
+/** Every custom widget type, for sources that support the full set. */
+const ALL_WIDGET_TYPES: ReadonlySet<WidgetType> = new Set<WidgetType>([
+  'nodeStatus', 'traceroute', 'hopDistribution', 'distanceDistribution', 'hopDistanceHeatmap', 'liveMeshActivity',
+]);
+
+/** Which custom widgets a source offers, and how NodeStatus finds a missing voltage. */
+export interface DashboardWidgetSupport {
+  /** Widget types the "Add Widget" modal offers; an empty set hides the button. */
+  readonly supported: ReadonlySet<WidgetType>;
+  /**
+   * NodeStatus asks `/api/telemetry/:nodeId` for a voltage the node row lacks.
+   * That route is Meshtastic-only, so other sources turn it off.
+   */
+  readonly voltageFallback: boolean;
+}
 
 /**
  * Shape of the data the per-source Dashboard needs from its source. Each
@@ -40,8 +58,8 @@ export interface DashboardDataSource {
   /** Telemetry types that should show the solar overlay on by default. */
   readonly solarDefaultTypes: ReadonlySet<string>;
 
-  /** Whether the "Add Widget" button is exposed. Custom widgets are Meshtastic-only today. */
-  readonly showCustomWidgets: boolean;
+  /** Custom-widget support (replaces the old `showCustomWidgets` flag, #6263 S6). */
+  readonly widgets: DashboardWidgetSupport;
 
   /** Whether the device-role filter dropdown is shown. */
   readonly showRoleFilter: boolean;
@@ -79,7 +97,7 @@ export const meshtasticDashboardSource: DashboardDataSource = {
     return getDeviceRoleName(role);
   },
   solarDefaultTypes: MESHTASTIC_SOLAR_DEFAULT_ON_TYPES,
-  showCustomWidgets: true,
+  widgets: { supported: ALL_WIDGET_TYPES, voltageFallback: true },
   showRoleFilter: true,
 };
 
@@ -102,6 +120,10 @@ interface RawMeshCoreNode {
   snr?: number;
   latitude?: number;
   longitude?: number;
+  /** Hop count of the stored route; absent or negative = flood / unknown. */
+  pathLen?: number;
+  batteryMv?: number;
+  uptimeSecs?: number;
 }
 
 const MESHCORE_ADV_TYPE_LABELS: Record<number, string> = {
@@ -140,24 +162,33 @@ export const meshcoreDashboardSource: DashboardDataSource = {
       ? response
       : (response?.data ?? []);
     return raw.map((mc): NodeInfo => ({
-      // MeshCore has no integer nodeNum — leave 0; the Dashboard's
-      // chart-rendering path doesn't use nodeNum directly, only for
-      // custom-widget machinery we hide for MeshCore.
-      nodeNum: 0,
+      // Synthetic, display-only number (collides with a Meshtastic nodeNum
+      // about 1 in 2^31). Identity stays `user.id` (the public key).
+      nodeNum: nodeNumFromPubkey(mc.publicKey),
       user: {
         id: mc.publicKey,
         longName: mc.name,
         shortName: mc.name?.slice(0, 4),
         role: mc.advType,
       },
-      lastHeard: mc.lastHeard,
+      // MeshCore stores lastHeard in ms; every widget reads seconds.
+      lastHeard: mc.lastHeard != null ? Math.floor(mc.lastHeard / 1000) : undefined,
+      // Hop count of the stored route; the widgets read it as hopsAway.
+      hopsAway: mc.pathLen != null && mc.pathLen >= 0 && mc.pathLen < 64 ? mc.pathLen : undefined,
+      deviceMetrics:
+        mc.batteryMv != null || mc.uptimeSecs != null
+          ? {
+              voltage: mc.batteryMv != null ? mc.batteryMv / 1000 : undefined,
+              uptimeSeconds: mc.uptimeSecs ?? undefined,
+            }
+          : undefined,
       snr: mc.snr,
       rssi: mc.rssi,
       position:
         mc.latitude != null && mc.longitude != null
           ? { latitude: mc.latitude, longitude: mc.longitude }
           : undefined,
-    }));
+    } as NodeInfo));
   },
   nodeKey: (node) => node.user?.id,
   getDisplayName: (node, fallbackId) =>
@@ -169,9 +200,8 @@ export const meshcoreDashboardSource: DashboardDataSource = {
     return MESHCORE_ADV_TYPE_LABELS[key] ?? null;
   },
   solarDefaultTypes: MESHCORE_SOLAR_DEFAULT_ON_TYPES,
-  // MeshCore has no equivalent for Meshtastic's nodeStatus / traceroute /
-  // hopDistribution / distanceDistribution custom widgets.
-  showCustomWidgets: false,
+  // All six widgets read fields the adapter above supplies (#6263 S6).
+  widgets: { supported: ALL_WIDGET_TYPES, voltageFallback: false },
   showRoleFilter: true,
 };
 
@@ -258,7 +288,7 @@ export const reticulumDashboardSource: DashboardDataSource = {
     const interfaceNodes = interfaces.map((iface): NodeInfo => ({
       // Reticulum interfaces have no integer nodeNum — leave 0, matching the
       // MeshCore adapter's convention; the Dashboard's nodeNum-dependent
-      // custom-widget machinery is hidden via showCustomWidgets below.
+      // custom-widget machinery is hidden via `widgets.supported` below.
       nodeNum: 0,
       user: {
         id: reticulumInterfaceNodeId(iface.interfaceName),
@@ -294,6 +324,6 @@ export const reticulumDashboardSource: DashboardDataSource = {
   // R1 (Phase 1b build spec §0): interface gauges besides bitrate/tx/rx are
   // descoped, and none of the persisted fields warrant a solar overlay.
   solarDefaultTypes: new Set<string>(),
-  showCustomWidgets: false,
+  widgets: { supported: new Set<WidgetType>(), voltageFallback: false },
   showRoleFilter: false,
 };

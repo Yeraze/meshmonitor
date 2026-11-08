@@ -54,8 +54,11 @@ export function typeIssuesKey(issueType: string, filters: MeshIssuesFilters) {
   return [ISSUES_BASE_KEY, { issueType, ...serverFilterParams(filters) }] as const;
 }
 
-export function nodeIssuesKey(nodeNum: number | null, filters: MeshIssuesFilters) {
-  return [ISSUES_BASE_KEY, { nodeNum, ...serverFilterParams(filters) }] as const;
+export function nodeIssuesKey(nodeNum: number | null, filters: MeshIssuesFilters, subjectKey?: string) {
+  return [
+    ISSUES_BASE_KEY,
+    subjectKey ? { nodeNum, subjectKey, ...serverFilterParams(filters) } : { nodeNum, ...serverFilterParams(filters) },
+  ] as const;
 }
 
 async function fetchIssuesRaw(params: URLSearchParams): Promise<MeshIssuesResponse> {
@@ -86,9 +89,11 @@ export async function fetchIssuesForType(
 export async function fetchIssuesForNode(
   nodeNum: number | null,
   filters: MeshIssuesFilters,
+  subjectKey?: string,
 ): Promise<MeshIssuesResponse> {
   const params = new URLSearchParams(serverFilterParams(filters));
-  params.set('nodeNum', nodeNum === null ? 'none' : String(nodeNum));
+  if (subjectKey) params.set('subjectKey', subjectKey);
+  else params.set('nodeNum', nodeNum === null ? 'none' : String(nodeNum));
   params.set('limit', '2000');
   params.set('offset', '0');
   return fetchIssuesRaw(params);

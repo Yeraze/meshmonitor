@@ -38,6 +38,11 @@ import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { logger } from '../../../utils/logger.js';
 import { loadV1Access } from './sourceParam.js';
+import {
+  collectorForSourceType,
+  type MetricGauges,
+  ACTIVE_WINDOW_SECONDS,
+} from './metricsCollectors.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../../../package.json');
@@ -48,23 +53,6 @@ const router = express.Router();
 const WINDOW_DEFAULT = 86400;
 const WINDOW_MIN = 60;
 const WINDOW_MAX = 604800;
-
-/**
- * Window for the "active nodes" gauge (seconds). Matches the dashboard
- * sidebar activity badge (getActiveNodeCount default) so the metric and the
- * UI agree on what "active" means.
- */
-const ACTIVE_WINDOW_SECONDS = 7200;
-
-/**
- * Hard cap on the number of per-node series exported per source per scrape.
- * getActiveNodes returns nodes ordered by lastHeard desc, so the cap keeps the
- * N most-recently-heard nodes — an MQTT-firehose source with thousands of rows
- * inside the window can't explode Prometheus cardinality (~9 series/node). The
- * `meshmonitor_nodes_total` gauge still reports the true count, so truncation
- * stays visible (exported < total).
- */
-const MAX_NODE_SERIES_PER_SOURCE = 1000;
 
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -130,6 +118,18 @@ router.get('/', async (req: Request, res: Response) => {
       registers: [registry],
     });
 
+    // Registered on first use so a scrape with no MeshCore source emits
+    // exactly what it did before this metric existed (an empty gauge still
+    // prints its HELP/TYPE lines).
+    let payloadTypeGauge: Gauge<string> | undefined;
+    const packetsByPayloadType = (): Gauge<string> =>
+      (payloadTypeGauge ??= new Gauge({
+        name: 'meshmonitor_packets_by_payload_type_last_hour',
+        help: 'MeshCore packets logged in the last hour by payload type; empty unless the MeshCore packet monitor is enabled (requires packetmonitor read permission)',
+        labelNames: ['source', 'payload_type', 'payload_type_name'],
+        registers: [registry],
+      }));
+
     const nodeLabels = ['source', 'node_id', 'short_name'] as const;
     const nodeChannelUtil = new Gauge({
       name: 'meshmonitor_node_channel_utilization_percent',
@@ -190,6 +190,12 @@ router.get('/', async (req: Request, res: Response) => {
       registers: [registry],
     });
 
+    const gauges: MetricGauges = {
+      nodesTotal, nodesActive, messagesLastHour, packetsByPort, packetsByPayloadType,
+      nodeChannelUtil, nodeAirUtilTx, nodeBattery, nodeVoltage, nodeSnr, nodeRssi,
+      nodeLastHeard, nodeHopsAway, nodeLastPosition,
+    };
+
     info.labels(String(packageJson.version)).set(1);
 
     // Link state comes from the live source managers; a source with no
@@ -211,84 +217,7 @@ router.get('/', async (req: Request, res: Response) => {
       sourceInfo.labels(source.id, source.name, source.type).set(1);
       sourceConnected.labels(source.id).set(statusBySource.get(source.id)?.connected ? 1 : 0);
 
-      nodesTotal.labels(source.id).set(await databaseService.nodes.getNodeCount(source.id));
-      nodesActive.labels(source.id).set(
-        await databaseService.nodes.getActiveNodeCount(source.id, ACTIVE_WINDOW_SECONDS)
-      );
-
-      const canReadMessages = access.permissions.can('messages', 'read', source.id);
-      if (canReadMessages) {
-        messagesLastHour.labels(source.id).set(
-          await databaseService.messages.getMessageCountSince(source.id, 3600 * 1000)
-        );
-      }
-
-      // Traffic mix. Backed by the packet monitor's log, so it is empty on
-      // installs that have not enabled packet logging — a config state, not
-      // an error, hence no gauge rather than a zero. Mirrors the v1 packets
-      // route's permission resource.
-      const canReadPackets = access.permissions.can('packetmonitor', 'read', source.id);
-      if (canReadPackets) {
-        const portCounts = await databaseService.packetLog.getPacketCountsByPortSince(
-          source.id, 3600 * 1000
-        );
-        for (const row of portCounts) {
-          const portnum = row.portnum == null ? 'unknown' : String(row.portnum);
-          packetsByPort
-            .labels(source.id, portnum, row.portnumName || `PORT_${portnum}`)
-            .set(row.packetCount);
-        }
-      }
-
-      // getActiveNodes takes days; fractional values work (cutoff arithmetic).
-      // Capped to the N most-recently-heard nodes so a firehose source can't
-      // blow up scrape cardinality (see MAX_NODE_SERIES_PER_SOURCE).
-      const activeNodes = await databaseService.nodes.getActiveNodes(
-        windowSeconds / 86400, source.id, MAX_NODE_SERIES_PER_SOURCE
-      );
-
-      for (const node of activeNodes) {
-        if (node.isIgnored) {
-          continue;
-        }
-        // A per-node series names the node. Only nodes the user may see on
-        // this source: `viewOnMap` on the channel it was last heard on, the
-        // rule GET .../nodes applies. Admins see every node.
-        if (!access.canViewNode(source.id, node.channel)) {
-          continue;
-        }
-        const labels = [source.id, node.nodeId, node.shortName || 'unknown'] as const;
-
-        if (node.channelUtilization != null) {
-          nodeChannelUtil.labels(...labels).set(node.channelUtilization);
-        }
-        if (node.airUtilTx != null) {
-          nodeAirUtilTx.labels(...labels).set(node.airUtilTx);
-        }
-        if (node.batteryLevel != null) {
-          nodeBattery.labels(...labels).set(node.batteryLevel);
-        }
-        if (node.voltage != null) {
-          nodeVoltage.labels(...labels).set(node.voltage);
-        }
-        if (node.snr != null) {
-          nodeSnr.labels(...labels).set(node.snr);
-        }
-        if (node.rssi != null) {
-          nodeRssi.labels(...labels).set(node.rssi);
-        }
-        if (node.lastHeard != null) {
-          nodeLastHeard.labels(...labels).set(node.lastHeard);
-        }
-        if (node.hopsAway != null) {
-          nodeHopsAway.labels(...labels).set(node.hopsAway);
-        }
-        // Stored in ms, exported in seconds like last-heard so the two can be
-        // compared directly in a query.
-        if (node.positionTimestamp != null) {
-          nodeLastPosition.labels(...labels).set(node.positionTimestamp / 1000);
-        }
-      }
+      await collectorForSourceType(source.type).collect({ source, access, windowSeconds, gauges });
     }
 
     res.set('Content-Type', registry.contentType);

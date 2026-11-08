@@ -70,18 +70,25 @@ const NodeGroupSection: React.FC<NodeGroupSectionProps> = ({
   bulkPending,
 }) => {
   const { t } = useTranslation();
-  const { nodeNum, nodeName, total, worstSeverity, issueTypes } = nodeSummary;
-  const isMeshWide = nodeNum === null;
+  const { nodeNum, nodeName, total, worstSeverity, issueTypes, subjectKey } = nodeSummary;
+  // MeshCore group: nodeNum is null but subjectKey (`mc:<pk>`) names the node.
+  const mcKey = subjectKey?.startsWith('mc:') ? subjectKey : undefined;
+  const isMeshWide = nodeNum === null && !mcKey;
 
   const query = useQuery<MeshIssuesResponse>({
-    queryKey: nodeIssuesKey(nodeNum, filters),
-    queryFn: () => fetchIssuesForNode(nodeNum, filters),
+    queryKey: nodeIssuesKey(nodeNum, filters, mcKey),
+    queryFn: () => fetchIssuesForNode(nodeNum, filters, mcKey),
     enabled: expanded,
     retry: false,
   });
 
   const label =
-    nodeNum === null ? t('analysis.mesh_issues.by_node.mesh_wide', 'Mesh-wide') : (nodeName ?? hexNodeId(nodeNum));
+    mcKey
+      ? (nodeName ?? `${mcKey.slice(3, 11)}…`)
+      : nodeNum === null
+        ? t('analysis.mesh_issues.by_node.mesh_wide', 'Mesh-wide')
+        : (nodeName ?? hexNodeId(nodeNum));
+  const mcSourceIds = mcKey ? nodeSummary.sourceIds : undefined;
   const dismissedCount = query.data ? query.data.issues.filter((i) => i.dismissed).length : 0;
 
   return (
@@ -104,7 +111,11 @@ const NodeGroupSection: React.FC<NodeGroupSectionProps> = ({
             <span className={styles.name}>{label}</span>
           ) : (
             <span className={styles.name}>
-              <NodeLink nodeNum={nodeNum as number} name={label} />
+              {mcKey ? (
+                <NodeLink publicKey={mcKey.slice(3)} sourceIds={mcSourceIds} name={label} />
+              ) : (
+                <NodeLink nodeNum={nodeNum as number} name={label} />
+              )}
             </span>
           )}
           {isMeshWide && (
@@ -132,8 +143,8 @@ const NodeGroupSection: React.FC<NodeGroupSectionProps> = ({
           subjectLabel={label}
           openCount={total}
           dismissedCount={dismissedCount}
-          onDismissAll={() => onBulkDismiss({ scope: 'node', nodeNum })}
-          onRestoreAll={() => onBulkRestore({ scope: 'node', nodeNum })}
+          onDismissAll={() => onBulkDismiss(mcKey ? { scope: 'subject', subjectKey: mcKey } : { scope: 'node', nodeNum })}
+          onRestoreAll={() => onBulkRestore(mcKey ? { scope: 'subject', subjectKey: mcKey } : { scope: 'node', nodeNum })}
           bulkPending={bulkPending}
         />
       </div>

@@ -8,6 +8,19 @@ import express from 'express';
 import packetLogService from '../../services/packetLogService.js';
 import { logger } from '../../../utils/logger.js';
 import { requireScopedSourceId } from './sourceParam.js';
+import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
+import { listMeshCorePacketsForViewer } from '../../services/meshcorePacketList.js';
+import { parseMeshCorePacketFilters } from '../meshcorePacketRoutes.js';
+import { meshcorePacketToV1, withMeshtasticProtocol } from '../../utils/protocolRows.js';
+import databaseService from '../../../services/database.js';
+import { fail } from '../../utils/apiResponse.js';
+import { plaintextForPacket } from '../../services/meshcorePacketList.js';
+import type { PacketDecodeViewer } from '../../utils/meshcorePacketPlaintext.js';
+
+/** Meshtastic-only list filters: a MeshCore source refuses them rather than ignore them. */
+const MESHTASTIC_ONLY_FILTERS = ['portnum', 'from_node', 'to_node', 'channel', 'encrypted'] as const;
+
+type SourcedRequest = express.Request & { source?: { type?: string }; user?: PacketDecodeViewer };
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
 function normalizeSinceToMs(value: string): number {
@@ -23,6 +36,40 @@ const router = express.Router({ mergeParams: true });
  */
 router.get('/', async (req, res) => {
   try {
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    if (isAnyMeshCoreSourceType((req as SourcedRequest).source?.type)) {
+      const bad = MESHTASTIC_ONLY_FILTERS.find((k) => req.query[k] !== undefined);
+      if (bad) return fail(res, 400, 'UNSUPPORTED_FILTER', `${bad} is not supported on a MeshCore source`);
+      const offsetRaw = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      const limitRaw = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+      if (!(limitRaw >= 1)) return fail(res, 400, 'BAD_REQUEST', 'Limit must be at least 1');
+      if (!(offsetRaw >= 0)) return fail(res, 400, 'BAD_REQUEST', 'Offset must be non-negative');
+      const parsed = parseMeshCorePacketFilters(req.query);
+      if (!parsed.ok) return fail(res, 400, parsed.code, parsed.message);
+      const viewer = (req as SourcedRequest).user ?? null;
+      const page = await listMeshCorePacketsForViewer({
+        sourceId,
+        filters: parsed.filters,
+        offset: offsetRaw,
+        requestedLimit: limitRaw,
+        plaintextFor: { viewer },
+      });
+      const data = page.packets.map((p) =>
+        meshcorePacketToV1(p, { plaintext: p.id !== undefined ? (page.plaintext?.get(p.id) ?? null) : null }),
+      );
+      return res.json({
+        success: true,
+        count: data.length,
+        total: page.total,
+        offset: offsetRaw,
+        limit: page.limit,
+        data,
+      });
+    }
+    // MeshCore-only filters (payload_type, route_type) stay ignored here, so
+    // existing Meshtastic clients see only the additive `protocol` field.
+
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
     let limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
 
@@ -53,8 +100,6 @@ router.get('/', async (req, res) => {
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
 
-    const sourceId = requireScopedSourceId(req, res);
-    if (!sourceId) return;
     const filterOptions = { portnum, from_node, to_node, channel, encrypted, since, sourceId };
 
     const [packets, total] = await Promise.all([
@@ -72,7 +117,7 @@ router.get('/', async (req, res) => {
       total,
       offset,
       limit,
-      data: packets
+      data: packets.map(withMeshtasticProtocol)
     });
   } catch (error) {
     logger.error('❌ Error fetching packet logs:', error);
@@ -106,6 +151,13 @@ router.get('/:id', async (req, res) => {
     const sourceId = requireScopedSourceId(req, res);
     if (!sourceId) return;
 
+    if (isAnyMeshCoreSourceType((req as SourcedRequest).source?.type)) {
+      const row = await databaseService.meshcore.getPacketByIdForSource(sourceId, id);
+      if (!row) return fail(res, 404, 'NOT_FOUND', 'Packet not found');
+      const plaintext = await plaintextForPacket((req as SourcedRequest).user ?? null, sourceId, row);
+      return res.json({ success: true, data: meshcorePacketToV1(row, { plaintext }) });
+    }
+
     const packet = await packetLogService.getPacketByIdAsync(id);
     if (!packet || packet.sourceId !== sourceId) {
       return res.status(404).json({
@@ -117,7 +169,7 @@ router.get('/:id', async (req, res) => {
 
     res.json({
       success: true,
-      data: packet
+      data: withMeshtasticProtocol(packet)
     });
   } catch (error) {
     logger.error('❌ Error fetching packet:', error);

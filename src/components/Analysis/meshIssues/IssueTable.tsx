@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../../icons';
 import { formatSourceIds, hexNodeId, type MeshIssueRow } from '../meshIssueTypes';
 import { asNodeRef } from './evidenceRenderers';
+import NodeLink from './NodeLink';
 import FindingDetail from './FindingDetail';
 import SortableTh from './SortableTh';
 import { compareIssueRows } from './grouping';
@@ -49,6 +50,15 @@ export function renderSubject(row: MeshIssueRow): React.ReactNode {
   const key = row.subjectKey;
   if (key.startsWith('node:')) {
     return row.nodeName ?? (row.nodeNum != null ? hexNodeId(row.nodeNum) : key);
+  }
+  if (key.startsWith('mc:')) {
+    // MeshCore finding (#6263 S5): keyed by public key, `nodeNum` is null.
+    const publicKey = typeof row.evidence.publicKey === 'string' ? row.evidence.publicKey : key.slice(3);
+    const evName = typeof row.evidence.nodeName === 'string' && row.evidence.nodeName ? row.evidence.nodeName : null;
+    const sourceIds = Array.isArray(row.evidence.sourceIds)
+      ? row.evidence.sourceIds.filter((x): x is string => typeof x === 'string')
+      : row.sourceIds;
+    return <NodeLink publicKey={publicKey} sourceIds={sourceIds} name={row.nodeName ?? evName} />;
   }
   if (key.startsWith('area:')) {
     const lat = row.evidence.centerLat;

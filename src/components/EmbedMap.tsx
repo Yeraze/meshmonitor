@@ -74,6 +74,9 @@ function embedNodeKey(node: EmbedNode): string {
 interface EmbedNeighborSegment {
   nodeNum: number;
   neighborNodeNum: number;
+  /** MeshCore edge: `mc:` ids; the numeric fields are 0. */
+  nodeKey?: string;
+  neighborKey?: string;
   snr: number | null;
   nodeLatitude: number;
   nodeLongitude: number;
@@ -94,6 +97,9 @@ interface EmbedTracerouteSegment {
   toName: string;
   snr: number | null;
   timestamp: number;
+  /** MeshCore segment: `mc:` ids of the ends; `fromNum`/`toNum` are 0. */
+  fromKey?: string;
+  toKey?: string;
   // Additive fields (#4047 P6 WP1) — the server now emits these on every
   // response, but they're typed optional here so a stale/cached response
   // from a not-yet-upgraded server (old shape) is tolerated defensively,
@@ -304,7 +310,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     () => tracerouteSegments.map((s) => {
       const leg = s.leg ?? 'forward';
       return {
-        key: `${leg}:${s.fromNum}-${s.toNum}`,
+        key: `${leg}:${s.fromKey ?? s.fromNum}-${s.toKey ?? s.toNum}`,
         from: [s.fromLat, s.fromLng] as [number, number],
         to: [s.toLat, s.toLng] as [number, number],
         fromNodeNum: s.fromNum,
@@ -324,7 +330,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     const map = new Map<string, EmbedTracerouteSegment>();
     for (const s of tracerouteSegments) {
       const leg = s.leg ?? 'forward';
-      map.set(`${leg}:${s.fromNum}-${s.toNum}`, s);
+      map.set(`${leg}:${s.fromKey ?? s.fromNum}-${s.toKey ?? s.toNum}`, s);
     }
     return map;
   }, [tracerouteSegments]);

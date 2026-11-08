@@ -10,6 +10,12 @@
  * match every other v1 resource):
  *   traceroute, request-neighbors      → traceroute:write
  *   request-position, request-nodeinfo → messages:write
+ *   request-telemetry                  → messages:write (both protocols)
+ *
+ * MeshCore sources (#6263): `traceroute` and `request-telemetry` also run on a
+ * device-backed MeshCore source (destination `mc:<publicKey>` or 64-hex). They
+ * share the UI's `meshcoreDeviceLimiter` bucket and its 60 s per-source TX gate.
+ * The other actions answer 400 SOURCE_NOT_MESHTASTIC there.
  */
 
 import express, { Request, Response } from 'express';
@@ -21,8 +27,56 @@ import { PortNum, TransportMechanism } from '../../constants/meshtastic.js';
 import { attachSource, resolvedSourceIdFromPath } from './sourceParam.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { resolveBroadcastChannel, isValidChannelIndex } from '../../utils/resolveDestinationChannel.js';
+import { resolveTransmitTarget } from '../../utils/transmitTarget.js';
+import { parseMeshcoreNodeId } from '../../utils/protocolRows.js';
+import { ok, fail } from '../../utils/apiResponse.js';
+import { protocolLimiter, meshcoreDeviceLimiter } from '../../middleware/rateLimiters.js';
+import { MeshCoreDeviceType } from '../../meshcoreManager.js';
+import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
+import { requestMeshtasticTelemetry } from '../meshRequestRoutes.js';
+import { pollMeshCoreNodeTelemetry } from '../meshcoreContactsRoutes.js';
 
 const router = express.Router({ mergeParams: true });
+
+const isMeshCoreSource = (req: Request): boolean =>
+  isAnyMeshCoreSourceType((req as Request & { source?: { type?: string } }).source?.type);
+
+/** Same limiter instances the UI uses, so v1 and UI share one bucket per IP. */
+const deviceLimit = protocolLimiter({ meshcore: meshcoreDeviceLimiter });
+
+/**
+ * Resolve the MeshCore target of a v1 action: the destination public key and a
+ * manager that may transmit. Sends the refusal itself and returns null when it
+ * cannot. Order: 400 bad destination, 400/404/409 source refusal, 409
+ * TX_DISABLED, 503 not connected.
+ */
+async function resolveMeshCoreAction(req: Request, res: Response, sourceId: string) {
+  const raw = req.body?.destination ?? req.body?.nodeId ?? req.body?.nodeNum;
+  const publicKey = typeof raw === 'string' ? parseMeshcoreNodeId(raw) : null;
+  if (!publicKey) {
+    fail(res, 400, 'INVALID_DESTINATION', 'A MeshCore destination is required (destination or nodeId as mc:<publicKey> or 64-char hex)');
+    return null;
+  }
+  const target = await resolveTransmitTarget(sourceId);
+  if (target.kind === 'refused') {
+    fail(res, target.status, target.code, target.message);
+    return null;
+  }
+  if (target.kind !== 'meshcore') {
+    fail(res, 400, 'SOURCE_NOT_MESHCORE', 'Source is not a MeshCore source');
+    return null;
+  }
+  const manager = target.manager;
+  if (manager.isReceiveOnly()) {
+    fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    return null;
+  }
+  if (!manager.isConnected()) {
+    fail(res, 503, 'SOURCE_NOT_CONNECTED', 'MeshCore source is not connected');
+    return null;
+  }
+  return { publicKey, manager };
+}
 
 /**
  * Resolve a destination node number from the request body.
@@ -79,9 +133,30 @@ function pruneNeighborRateLimit(): void {
 
 // POST /traceroute ─────────────────────────────────────────────────────────────
 
-router.post('/traceroute', attachSource('traceroute', 'write'), async (req: Request, res: Response) => {
+router.post('/traceroute', attachSource('traceroute', 'write'), deviceLimit, async (req: Request, res: Response) => {
   try {
     const sourceId = resolvedSourceIdFromPath(req) as string;
+    if (isMeshCoreSource(req)) {
+      // Fire-and-forget (#6263 decision 4): check what the manager would check,
+      // answer 200, run the trace in the background. The result lands in
+      // /traceroutes via the hop-SNR store. Never auto-returns, never retries.
+      const target = await resolveMeshCoreAction(req, res, sourceId);
+      if (!target) return;
+      const { publicKey, manager } = target;
+      if (manager.getConnectionStatus().deviceType !== MeshCoreDeviceType.COMPANION || !manager.getContact(publicKey)) {
+        return fail(res, 409, 'MESHCORE_TRACE_FAILED',
+          'Trace failed: the source must be a Companion device and the contact must be known');
+      }
+      void manager.traceContactPathDetailed(publicKey, { autoReturn: false }).catch((err: unknown) => {
+        logger.warn(`[v1/actions] MeshCore trace to ${publicKey.slice(0, 16)}… failed:`, err);
+      });
+      return ok(res, {
+        destination: `mc:${publicKey}`,
+        channel: null,
+        message: 'Traceroute request sent',
+        protocol: 'meshcore',
+      });
+    }
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
@@ -242,6 +317,82 @@ router.post('/request-nodeinfo', attachSource('messages', 'write'), async (req: 
     }
     logger.error('[v1/actions] Error requesting nodeinfo:', error);
     res.status(500).json({ success: false, error: 'Failed to request node info' });
+  }
+});
+
+// POST /request-telemetry ──────────────────────────────────────────────────────
+
+/**
+ * Meshtastic: `type` is device | environment | airQuality | power (default
+ * device). MeshCore: `type` is status | lpp (required), gated by the per-source
+ * 60 s TX gate; inside it the answer is 429 with Retry-After.
+ */
+router.post('/request-telemetry', attachSource('messages', 'write'), deviceLimit, async (req: Request, res: Response) => {
+  try {
+    const sourceId = resolvedSourceIdFromPath(req) as string;
+    const type = req.body?.type ?? req.body?.telemetryType;
+
+    if (isMeshCoreSource(req)) {
+      if (type !== 'status' && type !== 'lpp') {
+        return fail(res, 400, 'INVALID_INPUT', "type must be 'status' or 'lpp' on a MeshCore source");
+      }
+      const target = await resolveMeshCoreAction(req, res, sourceId);
+      if (!target) return;
+      const outcome = await pollMeshCoreNodeTelemetry({
+        manager: target.manager, sourceId, publicKey: target.publicKey, type,
+      });
+      if (outcome.kind === 'not_connected') {
+        return fail(res, 503, 'SOURCE_NOT_CONNECTED', 'MeshCore source is not connected');
+      }
+      if (outcome.kind === 'scheduler_unavailable') {
+        return fail(res, 503, 'TELEMETRY_UNAVAILABLE', 'Telemetry scheduler unavailable');
+      }
+      if (outcome.kind === 'rate_limited') {
+        res.set('Retry-After', String(outcome.retryAfterSecs));
+        return fail(res, 429, 'RATE_LIMITED',
+          `Too soon since last mesh transmission; retry in ${outcome.retryAfterSecs}s`,
+          { retryAfter: outcome.retryAfterSecs });
+      }
+      return ok(res, {
+        destination: `mc:${target.publicKey}`,
+        type,
+        written: outcome.written,
+        sources: outcome.sources,
+        message: 'Telemetry request sent',
+        protocol: 'meshcore',
+      });
+    }
+
+    const destinationNum = resolveDestination(req.body);
+    if (destinationNum === null) {
+      return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
+    }
+    if (await refuseNonMeshtasticSource(res, sourceId, 'mesh requests')) return;
+    const result = await requestMeshtasticTelemetry({
+      manager: resolveSourceManager(sourceId),
+      sourceId,
+      destination: destinationNum,
+      telemetryType: type,
+    });
+    if (result.kind === 'invalid') {
+      return fail(res, 400, 'INVALID_INPUT', result.message);
+    }
+    return ok(res, {
+      destination: `!${destinationNum.toString(16).padStart(8, '0')}`,
+      channel: result.channel,
+      type: result.typeLabel,
+      message: 'Telemetry request sent',
+      protocol: 'meshtastic',
+    });
+  } catch (error) {
+    if (isTxDisabledError(error)) {
+      return res.status(409).json({ success: false, error: 'Transmit is disabled on this source', code: 'TX_DISABLED' });
+    }
+    if ((error as { message?: string } | null)?.message?.includes('Not connected')) {
+      return fail(res, 503, 'SOURCE_NOT_CONNECTED', 'Not connected to node');
+    }
+    logger.error('[v1/actions] Error requesting telemetry:', error);
+    res.status(500).json({ success: false, error: 'Failed to request telemetry' });
   }
 });
 

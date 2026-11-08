@@ -6,6 +6,7 @@
  * Logs all rate limit events for visibility
  */
 
+import type { Request, RequestHandler } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
@@ -175,6 +176,22 @@ export const meshcoreDeviceLimiter = rateLimit({
   },
   ...rateLimitConfig,
 });
+
+/**
+ * Protocol-aware limiter for v1 routes that serve more than one protocol
+ * (#6263). Mount it AFTER `attachSource`: it reads `req.source.type` and runs
+ * the limiter registered for that protocol, or passes through when none is.
+ * Pass the SAME limiter instances the UI routes use (`meshcoreDeviceLimiter`),
+ * so the v1 API and the UI draw from one bucket.
+ */
+export const protocolLimiter = (
+  limiters: { meshtastic?: RequestHandler; meshcore?: RequestHandler },
+): RequestHandler => (req, res, next) => {
+  const type = (req as Request & { source?: { type?: string } }).source?.type ?? '';
+  const limiter = type.startsWith('meshcore') ? limiters.meshcore : limiters.meshtastic;
+  if (limiter) return limiter(req, res, next);
+  next();
+};
 
 // Rate limiting for Meshtastic device operations (the remote-admin CLI console,
 // #6154). Each call spawns the `meshtastic` CLI and relays over RF, so it is

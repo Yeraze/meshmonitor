@@ -14,8 +14,8 @@ vi.mock('./BaseMap', () => ({
   BaseMap: ({ children }: { children: React.ReactNode }) => <div data-testid="basemap">{children}</div>,
 }));
 vi.mock('./layers/TraceroutePathsLayer', () => ({
-  TraceroutePathsLayer: (p: { segments: unknown[]; colorMode: string }) => (
-    <div data-testid="paths" data-count={p.segments.length} data-mode={p.colorMode} />
+  TraceroutePathsLayer: (p: { segments: unknown[]; colorMode: string; legColors?: { forward: string; return: string } }) => (
+    <div data-testid="paths" data-count={p.segments.length} data-mode={p.colorMode} data-forward={p.legColors?.forward} data-return={p.legColors?.return} />
   ),
 }));
 vi.mock('react-leaflet', () => ({
@@ -34,6 +34,29 @@ const seg: TracerouteRenderSegment = {
 };
 
 describe('RouteFlowMap', () => {
+  it('colorMode "leg" hands the layer fixed-leg colours', () => {
+    render(
+      <RouteFlowMap
+        points={pts}
+        segments={[seg, { ...seg, key: 'r', leg: 'return' }]}
+        snrColors={darkOverlayColors.snrColors}
+        colorMode="leg"
+        legColors={{ forward: '#111111', return: '#222222' }}
+      />,
+    );
+    const layer = screen.getByTestId('paths');
+    expect(layer.getAttribute('data-mode')).toBe('fixed-leg');
+    expect(layer.getAttribute('data-forward')).toBe('#111111');
+    expect(layer.getAttribute('data-return')).toBe('#222222');
+  });
+
+  it('colorMode defaults to snr and ignores leg colours', () => {
+    render(<RouteFlowMap points={pts} segments={[seg]} snrColors={darkOverlayColors.snrColors} legColors={{ forward: '#1', return: '#2' }} />);
+    const layer = screen.getByTestId('paths');
+    expect(layer.getAttribute('data-mode')).toBe('snr');
+    expect(layer.getAttribute('data-forward')).toBeNull();
+  });
+
   it('draws a fixed dashed line and labeled markers without segments', () => {
     render(<RouteFlowMap points={pts} snrColors={darkOverlayColors.snrColors} />);
     expect(screen.getByTestId('fixed-line')).toBeTruthy();

@@ -331,7 +331,7 @@ maximum packet count in Settings to cover the full window.
 
 It needs `packetmonitor:read` on the source, and non-admin users only count
 packets on channels they can read, the same rule as the packet list.
-Meshtastic sources only for now; MeshCore dashboards do not offer it.
+MeshCore sources offer the widget too. It reads the MeshCore packet log, so turn on the MeshCore packet monitor for the source (**Packet Monitor** tab). Senders show by public key. A packet that carries only a one-byte sender hash, and matches no known node, counts under unresolved packets instead of a row.
 
 ## Cross-source tags (Unified Packet Monitor)
 

@@ -39,7 +39,7 @@ interface LiveMeshActivityWidgetProps {
 }
 
 const nodeIdOf = (n: NodeActivityNode): string =>
-  n.nodeId ?? `!${(n.nodeNum >>> 0).toString(16).padStart(8, '0')}`;
+  n.nodeKey ?? n.nodeId ?? `!${(n.nodeNum >>> 0).toString(16).padStart(8, '0')}`;
 
 /** Sort value; nulls always sink to the bottom regardless of direction. */
 function sortValue(n: NodeActivityNode, key: SortKey): number | null {
@@ -199,6 +199,11 @@ const LiveMeshActivityWidget: React.FC<LiveMeshActivityWidgetProps> = ({
             })}
           </div>
         )}
+        {(data.unresolvedPackets ?? 0) > 0 && (
+          <div className={styles.notice} data-testid="live-activity-unresolved">
+            {t('dashboard.widget.live_mesh_activity.unresolved', { count: data.unresolvedPackets })}
+          </div>
+        )}
         {rows.length === 0 ? (
           <div className={styles.empty}>{t('dashboard.widget.live_mesh_activity.empty')}</div>
         ) : (
@@ -219,7 +224,7 @@ const LiveMeshActivityWidget: React.FC<LiveMeshActivityWidgetProps> = ({
               <tbody>
                 {rows.map(n => (
                   <tr
-                    key={n.nodeNum}
+                    key={nodeIdOf(n)}
                     className={onOpenNodeDetails ? styles.row : undefined}
                     tabIndex={onOpenNodeDetails ? 0 : undefined}
                     onClick={() => openNode(n)}

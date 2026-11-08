@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import express from 'express';
 import request from 'supertest';
 import type { Source } from '../../../db/repositories/sources.js';
@@ -196,6 +197,14 @@ describe('Metrics API Routes', () => {
   });
 
   describe('GET /api/v1/metrics', () => {
+    it('Meshtastic-only scrape output is exactly the pre-collector output', async () => {
+      const app = createApp(adminUser);
+      const response = await request(app).get('/api/v1/metrics').expect(200);
+      expect(response.text.replace(/version="[^"]+"/, 'version="X"')).toBe(
+        readFileSync(new URL('./__fixtures__/metrics.meshtastic-only.golden.txt', import.meta.url), 'utf8')
+      );
+    });
+
     it('returns Prometheus text format with source and node metrics', async () => {
       const app = createApp(adminUser);
       const response = await request(app).get('/api/v1/metrics').expect(200);
