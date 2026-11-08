@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { NodeFilters, SecurityFilter } from '../../types/ui';
+import { DEFAULT_NODE_FILTERS } from '../../utils/nodeAdvancedFilter';
 import type { Channel } from '../../types/device';
 import { ROLE_NAMES } from '../../constants';
 import './AdvancedNodeFilterPopup.css';
@@ -10,31 +11,31 @@ import { NumberInput } from '../common/NumberInput';
 interface AdvancedNodeFilterPopupProps {
   isOpen: boolean;
   nodeFilters: NodeFilters;
-  securityFilter: SecurityFilter;
-  channels: Channel[];
+  securityFilter?: SecurityFilter;
+  channels?: Channel[];
   onNodeFiltersChange: (filters: NodeFilters) => void;
-  onSecurityFilterChange: (filter: SecurityFilter) => void;
+  onSecurityFilterChange?: (filter: SecurityFilter) => void;
   onClose: () => void;
+  /** Omitted feature = shown. Lets MeshCore hide Meshtastic-only filters. */
+  features?: Partial<Record<NodeFilterFeature, boolean>>;
+  /** Role checkboxes; defaults to the Meshtastic roles. */
+  roleOptions?: ReadonlyArray<NodeFilterRoleOption>;
 }
 
-const DEFAULT_FILTERS: NodeFilters = {
-  filterMode: 'show',
-  showMqtt: false,
-  showTelemetry: false,
-  showEnvironment: false,
-  powerSource: 'both',
-  showPosition: false,
-  minHops: 0,
-  maxHops: 10,
-  showPKI: false,
-  showRemoteAdmin: false,
-  showUnknown: false,
-  showIgnored: false,
-  showFavoriteLocked: false,
-  showHiddenFromMap: false,
-  deviceRoles: [],
-  channels: [],
-};
+export type NodeFilterFeature =
+  | 'security' | 'telemetry' | 'environment' | 'position' | 'pki' | 'remoteAdmin' | 'mqtt'
+  | 'unknown' | 'ignored' | 'favorites' | 'favoriteLocked' | 'hiddenFromMap'
+  | 'powerSource' | 'hops' | 'roles' | 'channels';
+
+export interface NodeFilterRoleOption {
+  value: number;
+  label: string;
+}
+
+const DEFAULT_ROLE_OPTIONS: ReadonlyArray<NodeFilterRoleOption> = Array.from({ length: 13 }, (_, i) => ({
+  value: i,
+  label: ROLE_NAMES[i],
+}));
 
 export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = ({
   isOpen,
@@ -44,18 +45,21 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
   onNodeFiltersChange,
   onSecurityFilterChange,
   onClose,
+  features,
+  roleOptions = DEFAULT_ROLE_OPTIONS,
 }) => {
   const { t } = useTranslation();
+  const on = (f: NodeFilterFeature) => features?.[f] !== false;
 
   if (!isOpen) return null;
 
   const handleReset = () => {
-    onNodeFiltersChange(DEFAULT_FILTERS);
-    onSecurityFilterChange('all');
+    onNodeFiltersChange(DEFAULT_NODE_FILTERS);
+    onSecurityFilterChange?.('all');
   };
 
   const handleRoleChange = (roleNum: number, checked: boolean) => {
-    const allRoles = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    const allRoles = roleOptions.map(o => o.value);
 
     if (checked) {
       // If all were selected (empty array), keep it empty (already showing all)
@@ -65,7 +69,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
         // Add this role to the array
         const newRoles = [...nodeFilters.deviceRoles, roleNum];
         // If all are now selected, set to empty array (show all)
-        if (newRoles.length === 13) {
+        if (newRoles.length === roleOptions.length) {
           onNodeFiltersChange({ ...nodeFilters, deviceRoles: [] });
         } else {
           onNodeFiltersChange({ ...nodeFilters, deviceRoles: newRoles });
@@ -143,287 +147,331 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
             </div>
           </div>
 
-          <div className="filter-section">
-            <div className="filter-section-title">
-              <span className="filter-icon-wrapper">
-                <span className="filter-icon"><UiIcon name="alert" /></span>
-              </span>
-              <span>{t('node_filter.security', 'Security')}</span>
+          {on('security') && (
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon"><UiIcon name="alert" /></span>
+                </span>
+                <span>{t('node_filter.security', 'Security')}</span>
+              </div>
+              <div className="filter-radio-group">
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="securityFilter"
+                    value="all"
+                    checked={(securityFilter ?? 'all') === 'all'}
+                    onChange={e => onSecurityFilterChange?.(e.target.value as SecurityFilter)}
+                  />
+                  <span>{t('node_filter.all_nodes', 'All Nodes')}</span>
+                </label>
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="securityFilter"
+                    value="flaggedOnly"
+                    checked={(securityFilter ?? 'all') === 'flaggedOnly'}
+                    onChange={e => onSecurityFilterChange?.(e.target.value as SecurityFilter)}
+                  />
+                  <span><UiIcon name="alert" /> {t('node_filter.flagged_only', 'Flagged Only')}</span>
+                </label>
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="securityFilter"
+                    value="hideFlagged"
+                    checked={(securityFilter ?? 'all') === 'hideFlagged'}
+                    onChange={e => onSecurityFilterChange?.(e.target.value as SecurityFilter)}
+                  />
+                  <span>{t('node_filter.hide_flagged', 'Hide Flagged')}</span>
+                </label>
+              </div>
             </div>
-            <div className="filter-radio-group">
-              <label className="filter-radio">
-                <input
-                  type="radio"
-                  name="securityFilter"
-                  value="all"
-                  checked={securityFilter === 'all'}
-                  onChange={e => onSecurityFilterChange(e.target.value as SecurityFilter)}
-                />
-                <span>{t('node_filter.all_nodes', 'All Nodes')}</span>
-              </label>
-              <label className="filter-radio">
-                <input
-                  type="radio"
-                  name="securityFilter"
-                  value="flaggedOnly"
-                  checked={securityFilter === 'flaggedOnly'}
-                  onChange={e => onSecurityFilterChange(e.target.value as SecurityFilter)}
-                />
-                <span><UiIcon name="alert" /> {t('node_filter.flagged_only', 'Flagged Only')}</span>
-              </label>
-              <label className="filter-radio">
-                <input
-                  type="radio"
-                  name="securityFilter"
-                  value="hideFlagged"
-                  checked={securityFilter === 'hideFlagged'}
-                  onChange={e => onSecurityFilterChange(e.target.value as SecurityFilter)}
-                />
-                <span>{t('node_filter.hide_flagged', 'Hide Flagged')}</span>
-              </label>
-            </div>
-          </div>
+          )}
 
           <div className="filter-section">
             <div className="filter-section-title">{t('node_filter.node_features', 'Node Features')}</div>
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showTelemetry}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showTelemetry: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="telemetry" /></span>
-                <span>{t('node_filter.telemetry', 'Telemetry data')}</span>
-              </span>
-            </label>
+            {on('telemetry') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showTelemetry}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showTelemetry: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="telemetry" /></span>
+                  <span>{t('node_filter.telemetry', 'Telemetry data')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showEnvironment}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showEnvironment: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="weather" /></span>
-                <span>{t('node_filter.environment', 'Environment metrics')}</span>
-              </span>
-            </label>
+            {on('environment') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showEnvironment}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showEnvironment: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="weather" /></span>
+                  <span>{t('node_filter.environment', 'Environment metrics')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showPosition}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showPosition: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="location" /></span>
-                <span>{t('node_filter.position', 'Position data')}</span>
-              </span>
-            </label>
+            {on('position') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showPosition}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showPosition: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="location" /></span>
+                  <span>{t('node_filter.position', 'Position data')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showPKI}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showPKI: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="encryptedKey" /></span>
-                <span>{t('node_filter.pkc', 'Public Key Crypto')}</span>
-              </span>
-            </label>
+            {on('pki') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showPKI}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showPKI: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="encryptedKey" /></span>
+                  <span>{t('node_filter.pkc', 'Public Key Crypto')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showRemoteAdmin}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showRemoteAdmin: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="wrench" /></span>
-                <span>{t('node_filter.remote_admin', 'Remote Admin')}</span>
-              </span>
-            </label>
+            {on('remoteAdmin') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showRemoteAdmin}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showRemoteAdmin: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="wrench" /></span>
+                  <span>{t('node_filter.remote_admin', 'Remote Admin')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showMqtt}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showMqtt: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="network" /></span>
-                <span>{t('node_filter.mqtt', 'MQTT nodes')}</span>
-              </span>
-            </label>
+            {on('mqtt') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showMqtt}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showMqtt: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="network" /></span>
+                  <span>{t('node_filter.mqtt', 'MQTT nodes')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showUnknown}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showUnknown: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="help" /></span>
-                <span>{t('node_filter.unknown', 'Unknown nodes')}</span>
-              </span>
-            </label>
+            {on('unknown') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showUnknown}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showUnknown: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="help" /></span>
+                  <span>{t('node_filter.unknown', 'Unknown nodes')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showIgnored}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showIgnored: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="blocked" /></span>
-                <span>{t('node_filter.ignored', 'Show ignored nodes')}</span>
-              </span>
-            </label>
+            {on('ignored') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showIgnored}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showIgnored: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="blocked" /></span>
+                  <span>{t('node_filter.ignored', 'Show ignored nodes')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showFavoriteLocked}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showFavoriteLocked: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="encrypted" /></span>
-                <span>{t('node_filter.favorite_locked', 'Favorite locked')}</span>
-              </span>
-            </label>
+            {on('favorites') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={!!nodeFilters.showFavorites}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showFavorites: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="favorite" /></span>
+                  <span>{t('node_filter.favorites', 'Favorites')}</span>
+                </span>
+              </label>
+            )}
 
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={nodeFilters.showHiddenFromMap}
-                onChange={e => onNodeFiltersChange({ ...nodeFilters, showHiddenFromMap: e.target.checked })}
-              />
-              <span className="filter-label-with-icon">
-                <span className="filter-icon"><UiIcon name="visibilityOff" /></span>
-                <span>{t('node_filter.hidden_from_map', 'Hidden from map')}</span>
-              </span>
-            </label>
+            {on('favoriteLocked') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showFavoriteLocked}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showFavoriteLocked: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="encrypted" /></span>
+                  <span>{t('node_filter.favorite_locked', 'Favorite locked')}</span>
+                </span>
+              </label>
+            )}
+
+            {on('hiddenFromMap') && (
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={nodeFilters.showHiddenFromMap}
+                  onChange={e => onNodeFiltersChange({ ...nodeFilters, showHiddenFromMap: e.target.checked })}
+                />
+                <span className="filter-label-with-icon">
+                  <span className="filter-icon"><UiIcon name="visibilityOff" /></span>
+                  <span>{t('node_filter.hidden_from_map', 'Hidden from map')}</span>
+                </span>
+              </label>
+            )}
           </div>
 
-          <div className="filter-section">
-            <div className="filter-section-title">
-              <span className="filter-icon-wrapper">
-                <span className="filter-icon"><UiIcon name="battery" /></span>
-              </span>
-              <span>{t('node_filter.power_source', 'Power Source')}</span>
-            </div>
-            <div className="filter-radio-group">
-              <label className="filter-radio">
-                <input
-                  type="radio"
-                  name="powerSource"
-                  value="both"
-                  checked={nodeFilters.powerSource === 'both'}
-                  onChange={e => onNodeFiltersChange({ ...nodeFilters, powerSource: e.target.value as 'both' })}
-                />
-                <span>{t('node_filter.both', 'Both')}</span>
-              </label>
-              <label className="filter-radio">
-                <input
-                  type="radio"
-                  name="powerSource"
-                  value="powered"
-                  checked={nodeFilters.powerSource === 'powered'}
-                  onChange={e => onNodeFiltersChange({ ...nodeFilters, powerSource: e.target.value as 'powered' })}
-                />
-                <span><UiIcon name="batteryCharging" /> {t('node_filter.powered_only', 'Powered only')}</span>
-              </label>
-              <label className="filter-radio">
-                <input
-                  type="radio"
-                  name="powerSource"
-                  value="battery"
-                  checked={nodeFilters.powerSource === 'battery'}
-                  onChange={e => onNodeFiltersChange({ ...nodeFilters, powerSource: e.target.value as 'battery' })}
-                />
-                <span><UiIcon name="battery" /> {t('node_filter.battery_only', 'Battery only')}</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="filter-section">
-            <div className="filter-section-title">
-              <span className="filter-icon-wrapper">
-                <span className="filter-icon"><UiIcon name="link" /></span>
-              </span>
-              <span>{t('node_filter.hops_away', 'Hops Away')}</span>
-            </div>
-            <div className="filter-range-group">
-              <div className="filter-range-input">
-                <label>{t('node_filter.min', 'Min')}:</label>
-                <NumberInput
-                  integer
-                  min={0}
-                  max={10}
-                  value={nodeFilters.minHops}
-                  onChange={v => onNodeFiltersChange({ ...nodeFilters, minHops: v })}
-                />
+          {on('powerSource') && (
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon"><UiIcon name="battery" /></span>
+                </span>
+                <span>{t('node_filter.power_source', 'Power Source')}</span>
               </div>
-              <div className="filter-range-input">
-                <label>{t('node_filter.max', 'Max')}:</label>
-                <NumberInput
-                  integer
-                  min={0}
-                  max={10}
-                  value={nodeFilters.maxHops}
-                  onChange={v => onNodeFiltersChange({ ...nodeFilters, maxHops: v })}
-                />
+              <div className="filter-radio-group">
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="powerSource"
+                    value="both"
+                    checked={nodeFilters.powerSource === 'both'}
+                    onChange={e => onNodeFiltersChange({ ...nodeFilters, powerSource: e.target.value as 'both' })}
+                  />
+                  <span>{t('node_filter.both', 'Both')}</span>
+                </label>
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="powerSource"
+                    value="powered"
+                    checked={nodeFilters.powerSource === 'powered'}
+                    onChange={e => onNodeFiltersChange({ ...nodeFilters, powerSource: e.target.value as 'powered' })}
+                  />
+                  <span><UiIcon name="batteryCharging" /> {t('node_filter.powered_only', 'Powered only')}</span>
+                </label>
+                <label className="filter-radio">
+                  <input
+                    type="radio"
+                    name="powerSource"
+                    value="battery"
+                    checked={nodeFilters.powerSource === 'battery'}
+                    onChange={e => onNodeFiltersChange({ ...nodeFilters, powerSource: e.target.value as 'battery' })}
+                  />
+                  <span><UiIcon name="battery" /> {t('node_filter.battery_only', 'Battery only')}</span>
+                </label>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="filter-section">
-            <div className="filter-section-title">
-              <span className="filter-icon-wrapper">
-                <span className="filter-icon"><UiIcon name="user" /></span>
-              </span>
-              <span>{t('node_filter.device_role', 'Device Role')}</span>
-            </div>
-            <div className="filter-role-group">
-              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(roleNum => (
-                <label key={roleNum} className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={nodeFilters.deviceRoles.length === 0 || nodeFilters.deviceRoles.includes(roleNum)}
-                    onChange={e => handleRoleChange(roleNum, e.target.checked)}
+          {on('hops') && (
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon"><UiIcon name="link" /></span>
+                </span>
+                <span>{t('node_filter.hops_away', 'Hops Away')}</span>
+              </div>
+              <div className="filter-range-group">
+                <div className="filter-range-input">
+                  <label>{t('node_filter.min', 'Min')}:</label>
+                  <NumberInput
+                    integer
+                    min={0}
+                    max={10}
+                    value={nodeFilters.minHops}
+                    onChange={v => onNodeFiltersChange({ ...nodeFilters, minHops: v })}
                   />
-                  <span>{ROLE_NAMES[roleNum]}</span>
-                </label>
-              ))}
+                </div>
+                <div className="filter-range-input">
+                  <label>{t('node_filter.max', 'Max')}:</label>
+                  <NumberInput
+                    integer
+                    min={0}
+                    max={10}
+                    value={nodeFilters.maxHops}
+                    onChange={v => onNodeFiltersChange({ ...nodeFilters, maxHops: v })}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="filter-section">
-            <div className="filter-section-title">
-              <span className="filter-icon-wrapper">
-                <span className="filter-icon"><UiIcon name="radioSignal" /></span>
-              </span>
-              <span>{t('node_filter.channel', 'Channel')}</span>
+          {on('roles') && (
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon"><UiIcon name="user" /></span>
+                </span>
+                <span>{t('node_filter.device_role', 'Device Role')}</span>
+              </div>
+              <div className="filter-role-group">
+                {roleOptions.map(({ value: roleNum, label }) => (
+                  <label key={roleNum} className="filter-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={nodeFilters.deviceRoles.length === 0 || nodeFilters.deviceRoles.includes(roleNum)}
+                      onChange={e => handleRoleChange(roleNum, e.target.checked)}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-            <div className="filter-role-group">
-              {(channels || []).map(ch => (
-                <label key={ch.id} className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={nodeFilters.channels.length === 0 || nodeFilters.channels.includes(ch.id)}
-                    onChange={e => handleChannelChange(ch.id, e.target.checked)}
-                  />
-                  <span>
-                    {t('node_filter.channel_number', 'Channel {{number}}', { number: ch.id })}
-                    {ch.name ? ` (${ch.name})` : ''}
-                  </span>
-                </label>
-              ))}
+          )}
+
+          {on('channels') && (
+            <div className="filter-section">
+              <div className="filter-section-title">
+                <span className="filter-icon-wrapper">
+                  <span className="filter-icon"><UiIcon name="radioSignal" /></span>
+                </span>
+                <span>{t('node_filter.channel', 'Channel')}</span>
+              </div>
+              <div className="filter-role-group">
+                {(channels || []).map(ch => (
+                  <label key={ch.id} className="filter-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={nodeFilters.channels.length === 0 || nodeFilters.channels.includes(ch.id)}
+                      onChange={e => handleChannelChange(ch.id, e.target.checked)}
+                    />
+                    <span>
+                      {t('node_filter.channel_number', 'Channel {{number}}', { number: ch.id })}
+                      {ch.name ? ` (${ch.name})` : ''}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
         <div className="filter-popup-actions">
           <button className="filter-reset-btn" onClick={handleReset}>

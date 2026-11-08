@@ -48,7 +48,7 @@ import { type TemperatureUnit } from './utils/temperature';
 import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
 import { isMqttBridgeMessage } from './utils/messageFilters';
-import { NodeFilters } from './types/ui';
+import { usePersistedNodeFilters } from './hooks/usePersistedNodeFilters';
 import { getHashTabRedirectTarget, getRetiredTabRedirectTarget } from './utils/tabHashRedirect';
 import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
@@ -205,57 +205,7 @@ function App() {
 
   // Node list filter options (shared between Map and Messages pages)
   // Load from localStorage on initial render
-  const [nodeFilters, setNodeFilters] = useState<NodeFilters>(() => {
-    const savedFilters = localStorage.getItem('nodeFilters');
-    if (savedFilters) {
-      try {
-        const parsed = JSON.parse(savedFilters);
-        // Add filterMode if it doesn't exist (backward compatibility)
-        if (!parsed.filterMode) {
-          parsed.filterMode = 'show';
-        }
-        // Add channels if it doesn't exist (backward compatibility)
-        if (!parsed.channels) {
-          parsed.channels = [];
-        }
-        // Add deviceRoles if it doesn't exist (backward compatibility)
-        if (!parsed.deviceRoles) {
-          parsed.deviceRoles = [];
-        }
-        // Add showIgnored if it doesn't exist (backward compatibility)
-        if (parsed.showIgnored === undefined) {
-          parsed.showIgnored = false;
-        }
-        if (parsed.showFavoriteLocked === undefined) {
-          parsed.showFavoriteLocked = false;
-        }
-        if (parsed.showHiddenFromMap === undefined) {
-          parsed.showHiddenFromMap = false;
-        }
-        return parsed;
-      } catch (e) {
-        logger.error('Failed to parse saved node filters:', e);
-      }
-    }
-    return {
-      filterMode: 'show' as 'show' | 'hide',
-      showMqtt: false,
-      showTelemetry: false,
-      showEnvironment: false,
-      powerSource: 'both' as 'powered' | 'battery' | 'both',
-      showPosition: false,
-      minHops: 0,
-      maxHops: 10,
-      showPKI: false,
-      showRemoteAdmin: false,
-      showUnknown: false,
-      showIgnored: false,
-      showFavoriteLocked: false,
-      showHiddenFromMap: false,
-      deviceRoles: [] as number[], // Empty array means show all roles
-      channels: [] as number[],
-    };
-  });
+  const [nodeFilters, setNodeFilters] = usePersistedNodeFilters('nodeFilters');
 
   const hasSelectedInitialChannelRef = useRef<boolean>(false);
   const selectedChannelRef = useRef<number>(-1);
@@ -1454,11 +1404,6 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [selectedNodeId]);
-
-  // Save node filters to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('nodeFilters', JSON.stringify(nodeFilters));
-  }, [nodeFilters]);
 
   // Message scroll-position tracking / infinite-scroll pagination / auto-load
   // / mark-as-read effects (isScrolledNearBottom/isScrolledNearTop through

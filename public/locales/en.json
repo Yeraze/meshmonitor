@@ -1544,6 +1544,7 @@
   "traceroute_history.forward": "Forward",
   "traceroute_history.return": "Return",
   "node_filter.title": "Filter Nodes",
+  "node_filter.favorites": "Favorites",
   "node_filter.security_status": "Security Status",
   "node_filter.all_nodes": "All Nodes",
   "node_filter.flagged_only": "Flagged Only",

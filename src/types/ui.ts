@@ -107,12 +107,17 @@ export interface NodeFilters {
   showRemoteAdmin: boolean;
   showUnknown: boolean;
   showIgnored: boolean;
+  /** #6259: match favourite nodes. Optional so older saved filters still type-check. */
+  showFavorites?: boolean;
   showFavoriteLocked: boolean;
   /** #5952: match nodes marked Hide from Map (they still appear in this list). */
   showHiddenFromMap: boolean;
   deviceRoles: number[];
   channels: number[];
 }
+
+/** DM/conversation list filter (#6259). */
+export type DmFilter = 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra';
 
 /**
  * Security filter options
