@@ -71,6 +71,7 @@ const { default: ingestReadRoutes } = await import('./meshcoreIngestReadRoutes.j
 const { default: filterRoutes } = await import('./meshcoreFilterRoutes.js');
 const { default: traceRoutes } = await import('./meshcoreTraceRoutes.js');
 const { default: hopCandidatesRoutes } = await import('./meshcoreHopCandidatesRoutes.js');
+const { default: estimatedPositionRoutes } = await import('./meshcoreEstimatedPositionRoutes.js');
 const { perSourceCliHistoryRouter } = await import('./meshcoreCliHistoryRoutes.js');
 
 /**
@@ -683,12 +684,18 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
   // #5722: per-hop trace SNR history. Stored data; sends nothing.
   trace: {
     'GET /hop-snr': 'read',
+    // #6260: newest trace we sent involving one contact. Stored data; sends nothing.
+    'GET /hop-snr/latest-trace': 'read',
     // #5970: clears one link's stored history.
     'DELETE /hop-snr': 'write',
   },
   // #5909: cross-source hop names. Stored data; sends nothing; off by default.
   hopCandidates: {
     'GET /hop-candidates': 'read',
+  },
+  // #6260: estimated positions solved on read from stored neighbour/trace data; sends nothing.
+  estimatedPositions: {
+    'GET /estimated-positions': 'read',
   },
   // #5892: stored CLI history. Sends nothing; grants checked per row kind.
   cliHistory: {
@@ -725,6 +732,7 @@ describe('guard: every MeshCore route is classified', () => {
     filter: filterRoutes,
     trace: traceRoutes,
     hopCandidates: hopCandidatesRoutes,
+    estimatedPositions: estimatedPositionRoutes,
     cliHistory: perSourceCliHistoryRouter,
   };
   const key = (r: RegisteredRoute): string => `${r.method.toUpperCase()} ${r.path}`;
