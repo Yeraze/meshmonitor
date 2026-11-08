@@ -72,3 +72,11 @@ Maintainer answers, 2026-11-07:
 - `meshcore_packet_log_*` per source is out of scope (Meshtastic's packet log is global too).
 
 Shipped: 3 work packages (global moves + purge scoping; dimming + hide-incomplete; MeshCore telemetry settings + danger actions). Deviations: confirm copy for Meshtastic source-page purges now names the source (review finding). Noted, not fixed: on MeshCore Settings the label and its help text render on one line (pre-existing `.setting-description` inline style on that page; every existing field does it).
+
+### P2 #6261 (spec: `MESHCORE_PARITY_P2_SPEC.md`)
+Orchestrator decisions (recommended options, aligned with the one-implementation rule):
+room unread uses receipt time; room mute lives in `mutedDMs`; MeshCore channels/DMs/rooms
+get list-header mark-all; MeshCore composer stays single-line; MeshCore adopts the shared
+composer look. Read models stay separate (Meshtastic per-message rows vs MeshCore
+watermarks; the schema forbids merging) — the controls and mute state are shared.
+Found: translation orphan sweep would delete every MeshCore link — fixed first in WP3.
