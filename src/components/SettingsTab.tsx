@@ -3822,7 +3822,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="danger-action">
             <div className="danger-action-info">
               <h4>{t('settings.erase_nodes_title')}</h4>
-              <p>{t('settings.erase_nodes_description')}</p>
+              <p>{t(purgeSourceId ? 'settings.erase_nodes_description_source' : 'settings.erase_nodes_description')}</p>
             </div>
             <button
               className="danger-button"

@@ -7948,5 +7948,7 @@
   "device_notification.unsigned_update_ignored": "{{node}} sent an unsigned name or role change. Your node ignored it because its Protection Level is {{level}}. Remove that node from your node list to accept its unsigned updates.",
   "meshcore.observer.verify_tls": "Verify TLS certificate",
   "meshcore.observer.verify_tls_help": "Applies to wss:// and mqtts:// brokers. Turn off only for a broker with a self-signed certificate.",
-  "meshcore.observer.verify_tls_off_warning": "Certificate checks are off. Anyone between this server and the broker could read or alter what the observer sends."
+  "meshcore.observer.verify_tls_off_warning": "Certificate checks are off. Anyone between this server and the broker could read or alter what the observer sends.",
+  "settings.purge_telemetry_description_source": "Removes all historical telemetry data for this source only (battery, voltage, temperature, etc.). Other sources are not touched. Current node states will be preserved.",
+  "settings.erase_nodes_description_source": "Removes this source's nodes and traceroute history. Other sources are not touched. A node refresh will be triggered to repopulate the list."
 }

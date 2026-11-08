@@ -43,6 +43,7 @@ describe('TelemetryDataActions', () => {
   it('purges one source with the source-scoped confirm copy', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<TelemetryDataActions sourceId="src-1" sources={sources} />);
+    expect(screen.getByText('settings.purge_telemetry_description_source')).toBeTruthy();
     fireEvent.click(screen.getByText('settings.purge_telemetry_button'));
     await waitFor(() => expect(apiService.purgeTelemetry).toHaveBeenCalledWith(0, 'src-1'));
     const text = String(confirmSpy.mock.calls.at(-1)?.[0]);
@@ -54,6 +55,7 @@ describe('TelemetryDataActions', () => {
   it('purges all sources with the global copy when no source is set', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<TelemetryDataActions sourceId={null} sources={sources} />);
+    expect(screen.getByText('settings.purge_telemetry_description')).toBeTruthy();
     fireEvent.click(screen.getByText('settings.purge_telemetry_button'));
     await waitFor(() => expect(apiService.purgeTelemetry).toHaveBeenCalledWith(0, undefined));
     const text = String(confirmSpy.mock.calls.at(-1)?.[0]);

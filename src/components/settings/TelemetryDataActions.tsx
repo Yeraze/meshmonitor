@@ -57,7 +57,7 @@ export const TelemetryDataActions: React.FC<TelemetryDataActionsProps> = ({ sour
       <div className="danger-action">
         <div className="danger-action-info">
           <h4>{t('settings.purge_telemetry_title')}</h4>
-          <p>{t('settings.purge_telemetry_description')}</p>
+          <p>{t(sourceId ? 'settings.purge_telemetry_description_source' : 'settings.purge_telemetry_description')}</p>
         </div>
         <button className="danger-button" onClick={handlePurgeTelemetry}>
           {t('settings.purge_telemetry_button')}
