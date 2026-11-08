@@ -21,7 +21,6 @@ import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
 import { resolveReadableMeshcoreScope } from '../../utils/messageSourceAccess.js';
 import { meshcoreMessageToV1, parseMeshcoreNodeId, withMeshtasticProtocol } from '../../utils/protocolRows.js';
-import { meshcoreChannelIdx } from '../../utils/meshcoreChannelIdx.js';
 import { fail } from '../../utils/apiResponse.js';
 import type { User } from '../../../types/auth.js';
 
@@ -96,15 +95,15 @@ router.get('/', async (req: Request, res: Response) => {
         toPk = parseMeshcoreNodeId(toNodeId as string) ?? undefined;
         if (!toPk) return fail(res, 400, 'INVALID_NODE_ID', 'toNodeId must be mc:<publicKey> or a 64-hex key');
       }
-      let rows = await databaseService.meshcore.listMessages({
+      const rows = await databaseService.meshcore.listMessages({
         scopes: [{ sourceId: sourceIdStr, ...scope }],
         since: sinceTimestamp,
         limit: maxLimit,
         channelIdx: channelNum !== undefined && channelNum >= 0 ? channelNum : undefined,
+        directOnly: channelNum === -1,
         fromPublicKey: fromPk,
         toPublicKey: toPk,
       });
-      if (channelNum === -1) rows = rows.filter((m) => meshcoreChannelIdx(m) === null);
       const data = rows.map((m) => meshcoreMessageToV1(m, sourceIdStr));
       return res.json({ success: true, count: data.length, data });
     }

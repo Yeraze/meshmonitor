@@ -221,6 +221,9 @@ describe('v1 read — MeshCore source', () => {
     const dm = res.body.data.find((m: any) => m.channel === -1);
     expect(dm).toMatchObject({ fromNodeId: `mc:${K2}`, toNodeId: `mc:${K1}` });
     expect((await get('/messages?channel=12').expect(200)).body.count).toBe(1);
+    const dms = await get('/messages?channel=-1&limit=1').expect(200);
+    expect(dms.body.count).toBe(1);
+    expect(dms.body.data[0].channel).toBe(-1);
     expect((await get(`/messages?fromNodeId=mc:${K2}`).expect(200)).body.count).toBe(1);
     expect((await get(`/messages/${MC}_m2`).expect(200)).body.data.text).toBe('secret dm');
     await get(`/messages/${MC}_nope`).expect(404);
@@ -253,6 +256,7 @@ describe('v1 read — Meshtastic rows only gain protocol', () => {
         app.use('/v1/sources/:sourceId/channels', attachSource('messages', 'read'), channelsRouter);
         app.use('/v1/sources/:sourceId/messages', attachSource('messages', 'read'), messagesRouter);
         app.use('/v1/sources/:sourceId/network', attachSource('nodes', 'read'), networkRouter);
+        app.use('/v1/sources/:sourceId/packets', attachSource('packetmonitor', 'read'), packetsRouter);
       },
     });
     await databaseService.messages.insertMessage(
@@ -275,6 +279,9 @@ describe('v1 read — Meshtastic rows only gain protocol', () => {
     const n = await request(h.app).get(`/v1/sources/${h.sourceA}/network`).expect(200);
     expect(n.body.data.protocol).toBe('meshtastic');
     expect(n.body.data.totalNodes).toBeTypeOf('number');
+    // MeshCore-only packet filters stay ignored on a Meshtastic source (no 400).
+    const pk = await request(h.app).get(`/v1/sources/${h.sourceA}/packets?payload_type=4&route_type=1`);
+    expect(pk.status).not.toBe(400);
     const bad = await request(h.app).get(`/v1/sources/${h.sourceA}/nodes?active=true`).expect(200);
     expect(bad.body.success).toBe(true);
   });

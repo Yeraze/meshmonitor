@@ -19,8 +19,6 @@ import type { PacketDecodeViewer } from '../../utils/meshcorePacketPlaintext.js'
 
 /** Meshtastic-only list filters: a MeshCore source refuses them rather than ignore them. */
 const MESHTASTIC_ONLY_FILTERS = ['portnum', 'from_node', 'to_node', 'channel', 'encrypted'] as const;
-/** MeshCore-only list filters: a Meshtastic source refuses them. */
-const MESHCORE_ONLY_FILTERS = ['payload_type', 'route_type'] as const;
 
 type SourcedRequest = express.Request & { source?: { type?: string }; user?: PacketDecodeViewer };
 
@@ -69,8 +67,8 @@ router.get('/', async (req, res) => {
         data,
       });
     }
-    const unsupported = MESHCORE_ONLY_FILTERS.find((k) => req.query[k] !== undefined);
-    if (unsupported) return fail(res, 400, 'UNSUPPORTED_FILTER', `${unsupported} is only supported on a MeshCore source`);
+    // MeshCore-only filters (payload_type, route_type) stay ignored here, so
+    // existing Meshtastic clients see only the additive `protocol` field.
 
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
     let limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;

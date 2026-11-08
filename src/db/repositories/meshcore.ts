@@ -2367,6 +2367,8 @@ export class MeshCoreRepository extends BaseRepository {
     channelIdx?: number;
     fromPublicKey?: string;
     toPublicKey?: string;
+    /** Only direct messages and room posts (no channel traffic): the v1 `channel=-1` view. */
+    directOnly?: boolean;
   }): Promise<DbMeshCoreMessage[]> {
     const { meshcoreMessages } = this.tables;
     const scopeWhere = this.meshcoreScopesCondition(options.scopes);
@@ -2380,6 +2382,7 @@ export class MeshCoreRepository extends BaseRepository {
       if (!c) return [];
       conditions.push(c);
     }
+    if (options.directOnly) conditions.push(this.directMessageClause());
     if (options.fromPublicKey) conditions.push(eq(meshcoreMessages.fromPublicKey, options.fromPublicKey));
     if (options.toPublicKey) conditions.push(eq(meshcoreMessages.toPublicKey, options.toPublicKey));
     const rows = await this.db

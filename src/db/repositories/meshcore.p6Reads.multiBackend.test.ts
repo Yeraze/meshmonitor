@@ -139,6 +139,58 @@ function suite(getCtx: () => Ctx) {
     expect((await repo.listMessages({ scopes, limit: 2, offset: 1 })).map((m) => m.id)).toEqual(['c9', 'k1']);
   });
 
+  it('listMessages directOnly returns DMs and room posts in the query, so pages are never short', async () => {
+    const { repo } = getCtx();
+    await seedMessages();
+    const base = { text: 't', timestamp: NOW };
+    await repo.insertMessage({ id: 'room', fromPublicKey: pk('e'), toPublicKey: pk('9'), messageType: 'room_post', ...base, createdAt: NOW - 5 * MIN }, A);
+    await repo.insertMessage({ id: 'dmB', fromPublicKey: pk('e'), toPublicKey: pk('f'), ...base, createdAt: NOW }, B);
+    const scopes: MeshCoreMessageScope[] = [{ sourceId: A, channels: 'all', includeDms: true }];
+    expect((await repo.listMessages({ scopes, directOnly: true })).map((m) => m.id)).toEqual(['dm', 'room']);
+    // Paging counts only direct rows: a page of 1 at offset 1 is the second DM, not empty.
+    expect((await repo.listMessages({ scopes, directOnly: true, limit: 1, offset: 1 })).map((m) => m.id)).toEqual(['room']);
+    // No DM grant: nothing, even with directOnly.
+    expect(await repo.listMessages({ scopes: [{ sourceId: A, channels: 'all', includeDms: false }], directOnly: true })).toEqual([]);
+  });
+
+  it('getReadableMessageById honours scope, key access and source isolation', async () => {
+    const { repo } = getCtx();
+    await seedMessages();
+    const all: MeshCoreMessageScope[] = [{ sourceId: A, channels: 'all', includeDms: true }];
+    expect((await repo.getReadableMessageById('c1', all))?.id).toBe('c1');
+    expect((await repo.getReadableMessageById('dm', all))?.id).toBe('dm');
+    // Another source's row, a reaction and a missing id all read as null.
+    expect(await repo.getReadableMessageById('other', all)).toBeNull();
+    expect((await repo.getReadableMessageById('other', [{ sourceId: B, channels: 'all', includeDms: true }]))?.id).toBe('other');
+    expect(await repo.getReadableMessageById('react', all)).toBeNull();
+    expect(await repo.getReadableMessageById('nope', all)).toBeNull();
+    // Scope denial: no DMs, wrong channel, empty scopes.
+    expect(await repo.getReadableMessageById('dm', [{ sourceId: A, channels: 'all', includeDms: false }])).toBeNull();
+    expect(await repo.getReadableMessageById('c9', [{ sourceId: A, channels: [1], includeDms: false }])).toBeNull();
+    expect((await repo.getReadableMessageById('c1', [{ sourceId: A, channels: [1], includeDms: false }]))?.id).toBe('c1');
+    expect(await repo.getReadableMessageById('c1', [])).toBeNull();
+    // Key-access denial: k1 needs its fingerprint.
+    expect(await repo.getReadableMessageById('k1', [{ ...all[0], keyAccess: [] }])).toBeNull();
+    expect(await repo.getReadableMessageById('k1', [{ ...all[0], keyAccess: ['0000000000000000'] }])).toBeNull();
+    expect((await repo.getReadableMessageById('k1', [{ ...all[0], keyAccess: ['ff00ff00ff00ff00'] }]))?.id).toBe('k1');
+    expect((await repo.getReadableMessageById('k1', [{ ...all[0], keyAccess: 'all' }]))?.id).toBe('k1');
+  });
+
+  it('getPacketByIdForSource returns the row only inside its own source', async () => {
+    const { repo } = getCtx();
+    await seedPackets();
+    const rowsA = await repo.getPackets({ sourceId: A, limit: 100 });
+    const rowsB = await repo.getPackets({ sourceId: B, limit: 100 });
+    expect(rowsA.length).toBeGreaterThan(1);
+    const got = await repo.getPacketByIdForSource(A, rowsA[0].id!);
+    expect(got?.id).toBe(rowsA[0].id);
+    expect(got?.sourceId).toBe(A);
+    expect(await repo.getPacketByIdForSource(A, rowsB[0].id!)).toBeNull();
+    expect((await repo.getPacketByIdForSource(B, rowsB[0].id!))?.sourceId).toBe(B);
+    expect(await repo.getPacketByIdForSource(A, 987654321)).toBeNull();
+    await expect(repo.getPacketByIdForSource('', 1)).rejects.toThrow();
+  });
+
   async function seedPackets() {
     const { repo } = getCtx();
     const p = (o: Record<string, unknown>) => repo.insertPacket({
