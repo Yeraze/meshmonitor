@@ -6,8 +6,10 @@ currently `NoOpTranslationCache`). Goal: a message translated once is reused,
 including by anonymous viewers, without another provider call. Maintainer
 decisions are recorded on #5520.
 
-Scope: the Meshtastic `messages` table (the views that have translation today:
-`ChannelsTab`, `MessagesTab`). MeshCore messages are out of scope.
+Scope: the Meshtastic `messages` table (`ChannelsTab`, `MessagesTab`) and, since
+#6261, the MeshCore `meshcore_messages` table. The server picks the protocol from
+the source type (`translatableMessages.ts`); the orphan sweep keeps a link while
+its message sits in either table.
 
 ## Two tables (migration 188, all three backends)
 

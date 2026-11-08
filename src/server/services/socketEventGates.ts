@@ -11,6 +11,7 @@
  * `SocketViewer` (grants held in memory); what it needs about the event that
  * is not in the payload comes from `prepare`, run at most once per event.
  */
+import { meshcoreChannelIdx } from '../utils/meshcoreChannelIdx.js';
 import databaseService, { type DbMessage, type DbNode } from '../../services/database.js';
 import type { DataEvent, DataEventType, NodeUpdateData, ConnectionStatusData, TelemetryBatchData, NodeBatchData } from './dataEventEmitter.js';
 import type { SocketViewer } from './socketAccess.js';
@@ -209,17 +210,7 @@ async function loadNodeFacts(nodeNum: number, sourceId: string | undefined): Pro
   return row ? { channel: row.channel, isPrivate: row.positionOverrideIsPrivate } : null;
 }
 
-/**
- * The slot a MeshCore channel message belongs to, from the synthetic
- * `channel-<idx>` key on either end. Null for a DM or a room post.
- */
-export function meshcoreChannelIdx(message: { fromPublicKey?: string | null; toPublicKey?: string | null }): number | null {
-  for (const key of [message.toPublicKey, message.fromPublicKey]) {
-    const match = typeof key === 'string' ? /^channel-(\d+)$/.exec(key) : null;
-    if (match) return Number(match[1]);
-  }
-  return null;
-}
+export { meshcoreChannelIdx };
 
 /** `canAccessMeshcoreChannel`: the channel's own grant, or the legacy `messages` one. */
 function mayReadMeshcoreChannel(viewer: SocketViewer, sourceId: string, idx: number | null | undefined): boolean {
