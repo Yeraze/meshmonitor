@@ -881,6 +881,8 @@ const V1: Record<string, { router: Router; file: string; mount: string | null; r
       'POST /request-position': 'source-route',
       'POST /request-nodeinfo': 'source-route',
       'POST /request-neighbors': 'source-route',
+      // #6263: one telemetry action for both protocols, gated on messages:write.
+      'POST /request-telemetry': 'source-route',
     },
   },
   sources: { router: sourcesRouter, file: './v1/sources.ts', mount: null, routes: { 'GET /': 'listed' } },

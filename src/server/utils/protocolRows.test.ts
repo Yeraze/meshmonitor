@@ -22,6 +22,9 @@ describe('protocolRows', () => {
     expect(parseMeshcoreNodeId(k)).toBe(k);
     expect(parseMeshcoreNodeId('mc:abcd')).toBeNull();
     expect(parseMeshcoreNodeId('!aabbccdd')).toBeNull();
+    // Tampered query params (arrays / objects) never parse as a key.
+    expect(parseMeshcoreNodeId([`mc:${K}`])).toBeNull();
+    expect(parseMeshcoreNodeId({ id: k })).toBeNull();
   });
 
   it('maps a node: ms to seconds, mV to V, pathLen to hopsAway, synthetic nodeNum', () => {

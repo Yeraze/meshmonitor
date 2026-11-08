@@ -41,8 +41,9 @@ export function meshcoreNodeKey(publicKey: string | null | undefined): string | 
 }
 
 /** Accepts `mc:<pk>` or a bare 64-hex key; returns the lowercase key, or null. */
-export function parseMeshcoreNodeId(id: string | null | undefined): string | null {
-  if (!id) return null;
+export function parseMeshcoreNodeId(id: unknown): string | null {
+  // Query/body values can arrive as arrays or objects; only a string can be a key.
+  if (typeof id !== 'string' || !id) return null;
   const bare = id.startsWith('mc:') ? id.slice(3) : id;
   return FULL_KEY_RE.test(bare) ? bare.toLowerCase() : null;
 }

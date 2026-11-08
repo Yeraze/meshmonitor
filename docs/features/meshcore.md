@@ -934,8 +934,8 @@ A MeshCore source's Dashboard offers the same **Add Widget** choices as a Meshta
 
 ## API, metrics and embeds
 
-- The v1 API reads MeshCore nodes, messages, channels, packets, traces and network data, and can send messages. See [MeshCore sources on v1](/api/REST_API#meshcore-sources-on-v1).
-- The Prometheus endpoint exports MeshCore gauges, including a per-payload-type packet count. See [Get Prometheus Metrics](/api/REST_API#get-prometheus-metrics).
+- The v1 API reads MeshCore nodes, messages, channels, packets, traces and network data, and can send messages. See the [API reference](/development/api-reference) (section "MeshCore sources on v1").
+- The Prometheus endpoint exports MeshCore gauges, including a per-payload-type packet count. See the [API reference](/development/api-reference) (section "Get Prometheus Metrics").
 - Embed maps draw MeshCore neighbor links and trace paths. See [Embed Maps](/features/embed-maps#neighbor-info-lines).
 
 The aggregate dashboard map and `/api/nodes` endpoint enumerate every connected MeshCore manager and include contacts that have valid `(latitude, longitude)` (zeros are rejected). Each contact gets a synthetic `nodeId` of `mc:<sourceId>:<pubkeyPrefix>` so cross-source duplicates don't collide on React keys, and `getNodeLatLng` resolves either the flat `{latitude, longitude}` shape or the nested `position` shape.
