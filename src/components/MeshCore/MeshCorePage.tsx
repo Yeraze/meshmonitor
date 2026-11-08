@@ -276,7 +276,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           />
         )}
         {view === 'telemetry' && (
-          <MeshCoreTelemetryView baseUrl={baseUrl} />
+          <MeshCoreTelemetryView baseUrl={baseUrl} currentNodeId={status?.localNode?.publicKey ?? null} />
         )}
         {view === 'packets' && (
           <MeshCorePacketMonitorView

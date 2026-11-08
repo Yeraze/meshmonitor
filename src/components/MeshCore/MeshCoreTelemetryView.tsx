@@ -15,9 +15,11 @@ import { useAuth } from '../../contexts/AuthContext';
 
 interface MeshCoreTelemetryViewProps {
   baseUrl: string;
+  /** This source's own public key; the home node for distance widgets and traces. */
+  currentNodeId?: string | null;
 }
 
-export const MeshCoreTelemetryView: React.FC<MeshCoreTelemetryViewProps> = ({ baseUrl }) => {
+export const MeshCoreTelemetryView: React.FC<MeshCoreTelemetryViewProps> = ({ baseUrl, currentNodeId = null }) => {
   const { temperatureUnit, telemetryVisualizationHours, favoriteTelemetryStorageDays } = useSettings();
   const { hasPermission } = useAuth();
 
@@ -25,6 +27,7 @@ export const MeshCoreTelemetryView: React.FC<MeshCoreTelemetryViewProps> = ({ ba
     <Dashboard
       baseUrl={baseUrl}
       dataSource={meshcoreDashboardSource}
+      currentNodeId={currentNodeId}
       temperatureUnit={temperatureUnit}
       telemetryHours={telemetryVisualizationHours}
       favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}

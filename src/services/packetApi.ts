@@ -223,6 +223,10 @@ export const clearPackets = async (): Promise<{ message: string; deletedCount: n
 export interface NodeActivityNode {
   nodeNum: number;
   nodeId: string | null;
+  /** `mc:<publicKey>` on a MeshCore source; the stable row identity there. */
+  nodeKey?: string | null;
+  /** Lowercase 64-hex key, MeshCore only. */
+  publicKey?: string | null;
   shortName: string | null;
   longName: string | null;
   packets: number;
@@ -244,6 +248,8 @@ export interface NodeActivityResponse {
   /** true when the retained log starts inside the window */
   truncated: boolean;
   nodes: NodeActivityNode[];
+  /** MeshCore: packets whose sender could not be named (missing or ambiguous hash). */
+  unresolvedPackets?: number;
 }
 
 /**

@@ -26,6 +26,8 @@ interface NodeStatusWidgetProps {
   onAddNode: (nodeId: string) => void;
   onRemoveNode: (nodeId: string) => void;
   onOpenNodeDetails?: (nodeId: string) => void;
+  /** Ask the Meshtastic-only telemetry route for a missing voltage. Default true. */
+  voltageFallback?: boolean;
   canEdit?: boolean;
 }
 
@@ -58,6 +60,7 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
   onAddNode,
   onRemoveNode,
   onOpenNodeDetails,
+  voltageFallback = true,
   canEdit = true,
 }) => {
   const { t } = useTranslation();
@@ -89,12 +92,14 @@ const NodeStatusWidget: React.FC<NodeStatusWidgetProps> = ({
 
   // Fetch fallback voltages for nodes missing voltage via React Query (cached, deduplicated)
   const missingVoltageNodeIds = useMemo(() => {
+    // A source without that telemetry route (MeshCore) never asks for it.
+    if (!voltageFallback) return [];
     return nodeIds.filter(nodeId => {
       const node = nodes.get(nodeId) as NodeStatusInfo | undefined;
       const voltage = node?.deviceMetrics?.voltage ?? node?.voltage;
       return voltage === undefined || voltage === null;
     });
-  }, [nodeIds, nodes]);
+  }, [nodeIds, nodes, voltageFallback]);
 
   const fallbackVoltageByNode = useNodeVoltages({ nodeIds: missingVoltageNodeIds, baseUrl });
 
