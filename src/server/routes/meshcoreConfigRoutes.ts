@@ -698,7 +698,7 @@ router.post('/config/multi-acks', meshcoreDeviceLimiter, requireAuth(), requireP
   }
 });
 
-/** Sources with a Repeater settings write in progress (one at a time per source). */
+/** Sources with a Repeater settings write in progress (one at a time per source). Process-local, like the source managers it guards. */
 const repeaterWritesInFlight = new Set<string>();
 
 /** Local serial transport over the manager's CLI (`RepeaterCliTransport`, P9 #6255). */
