@@ -116,6 +116,10 @@ Both are editable in the Packet Monitor's settings. At 50,000 rows expect roughl
 
 Packet capture is opt-in, as it is for every monitor.
 
+## Notifications
+
+The source page has a **Notifications** tab for signed-in users. It alerts on channel messages you pick, inactive nodes, low observer battery, and broker connection loss. Direct messages, traces, mentions and new-node alerts do not apply to a feed with no radio. A region's channels can be busy, so nothing fires until you pick channels. See [MeshCore MQTT Region Feeds](/features/notifications#meshcore-mqtt-region-feeds) for the picker rules and the slot-number caveat.
+
 ## Mesh impact
 
 **None.** This source only ever subscribes; it transmits nothing and costs no airtime. Notifications and automations fire once per distinct message, not once per observer that relayed it.
