@@ -51,6 +51,7 @@ function ruleCtx(nodes: Map<number, PooledNode>, extra: Partial<RuleContext> = {
     nowMs: NOW,
     thresholds: DEFAULT_MESH_ISSUE_THRESHOLDS,
     routerBroadcastTelemetryCadence: new Map(),
+    sourceLastHeardMs: new Map(),
     ...extra,
   };
 }

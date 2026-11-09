@@ -6,6 +6,7 @@
  *
  * Pure: no `databaseService` import, no I/O.
  */
+import { ROLE_NAMES } from '../../../constants/index.js';
 import { isPowered } from '../../utils/poweredState.js';
 import { isInfraNode, isMeshCoreNode, type NodeTelemetrySeries, type PooledNode } from './nodeSnapshot.js';
 import { BATTERY_MIN_SAMPLES, type ResolvedMeshIssueThresholds } from './thresholds.js';
@@ -131,4 +132,20 @@ export function infraBatteryDischarging(
     minBatteryLevel != null &&
     minBatteryLevel < t.lowBatteryPct;
   return { met, sampleCount, minBatteryLevel, samples };
+}
+
+/** Evidence identity fields for a MeshCore finding (#6263 S5). */
+export function meshcoreEvidence(node: PooledNode): Record<string, unknown> {
+  return { publicKey: node.nodeKey, nodeName: node.longName, sourceIds: node.sourceIds };
+}
+
+const MESHCORE_ROLE_NAMES: Record<number, string> = { 2: 'Repeater', 3: 'Room Server' };
+
+/** Human role label for a pooled infra node, either protocol. */
+export function infraRoleName(node: PooledNode): string {
+  if (isMeshCoreNode(node)) {
+    return node.advType != null ? (MESHCORE_ROLE_NAMES[node.advType] ?? `Type ${node.advType}`) : 'Unknown';
+  }
+  if (node.role == null) return 'Unknown';
+  return ROLE_NAMES[node.role] ?? `Role ${node.role}`;
 }

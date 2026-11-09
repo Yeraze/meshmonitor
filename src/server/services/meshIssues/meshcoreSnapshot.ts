@@ -24,6 +24,7 @@ import {
 import {
   buildTelemetrySeries,
   classifyReportedPosition,
+  bogusPositionKind,
   rowHasPositionOverride,
   type NodeTelemetrySeries,
   type PooledNode,
@@ -164,6 +165,8 @@ export function buildMeshCoreSnapshot(rows: MeshCoreNodeInput[]): MeshCoreSnapsh
       isTimeOffsetIssue: false,
       timeOffsetSeconds: null,
       reportedPosition,
+      bogusPositionKind:
+        reportedPosition === 'bogus' && rawRow ? bogusPositionKind(rawRow.latitude, rawRow.longitude) : null,
       hasPositionOverride: groupRows.some(rowHasPositionOverride),
       advertHadPosition: advRow ? !!advRow.lastAdvertHadPosition : null,
       isLocal: groupRows.some((r) => !!r.isLocalNode),

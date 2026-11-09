@@ -152,6 +152,8 @@ export interface PooledNode {
   // Node-health fields (#6279). Optional so pre-existing fixtures keep compiling.
   /** Freshest row's RAW reported pair (override ignored). Absent means 'none'. */
   reportedPosition?: ReportedPosition;
+  /** Why the raw pair is bogus; null otherwise. Set with `reportedPosition`. */
+  bogusPositionKind?: 'null_island' | 'out_of_range' | null;
   /** Any row has an enabled position override with coordinates. */
   hasPositionOverride?: boolean;
   /** MeshCore: freshest non-null `lastAdvertHadPosition`; null for Meshtastic. */
@@ -268,13 +270,20 @@ export function rowHasPositionOverride(row: {
 }
 
 /** Classify the freshest row that carries a raw (non-override) lat/lon pair. */
-function reportedPositionOf(sorted: PooledNodeInput[]): ReportedPosition {
+function reportedPositionOf(sorted: PooledNodeInput[]): {
+  reportedPosition: ReportedPosition;
+  bogusPositionKind: 'null_island' | 'out_of_range' | null;
+} {
   for (const r of sorted) {
     if (r.latitude != null && r.longitude != null) {
-      return classifyReportedPosition(r.latitude, r.longitude, r.positionPrecisionBits);
+      const reportedPosition = classifyReportedPosition(r.latitude, r.longitude, r.positionPrecisionBits);
+      return {
+        reportedPosition,
+        bogusPositionKind: reportedPosition === 'bogus' ? bogusPositionKind(r.latitude, r.longitude) : null,
+      };
     }
   }
-  return 'none';
+  return { reportedPosition: 'none', bogusPositionKind: null };
 }
 
 /** The non-null value with the greatest ABSOLUTE magnitude, or null when
@@ -373,7 +382,7 @@ export function buildPooledNodeSnapshot(rows: PooledNodeInput[]): Map<number, Po
       keySecurityIssueDetails: firstNonNull(sorted, (r) => r.keySecurityIssueDetails),
       isTimeOffsetIssue: groupRows.some((r) => !!r.isTimeOffsetIssue),
       timeOffsetSeconds: maxAbsValue(timeOffsetValues),
-      reportedPosition: reportedPositionOf(sorted),
+      ...reportedPositionOf(sorted),
       hasPositionOverride: groupRows.some(rowHasPositionOverride),
       advertHadPosition: null,
       isLocal: groupRows.some((r) => !!r.isLocal),

@@ -524,6 +524,7 @@ class MeshIssuesAnalysisService {
       nowMs,
       thresholds,
       routerBroadcastTelemetryCadence,
+      sourceLastHeardMs: new Map(), // filled in WP3
     };
     const findings: MeshIssueFinding[] = thresholds.tierAEnabled ? evaluateAllTierA(ctx) : [];
 
@@ -630,6 +631,7 @@ class MeshIssuesAnalysisService {
       nowMs,
       thresholds,
       routerBroadcastTelemetryCadence: new Map(),
+      sourceLastHeardMs: new Map(), // filled in WP3
     };
     const findings: MeshIssueFinding[] = thresholds.tierAEnabled ? evaluateAllTierA(ctx) : [];
     const tierCCtx: TierCRuleContext = {
