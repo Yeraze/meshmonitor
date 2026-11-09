@@ -149,7 +149,9 @@ interface MeshCoreContactDetailPanelProps {
     | 'getRemoteStatus'
     | 'getRemoteAdminSession'
     | 'logoutRemote'
-  >;
+  > & Partial<Pick<MeshCoreActions, 'readRemoteSettings' | 'saveRemoteSettings'>>;
+  /** This source's radio, for the remote settings airtime estimate (#6256). */
+  localRadio?: { sf?: number; bw?: number; cr?: number } | null;
   /** Whether the current user may invoke write actions on this source's
    *  `remote_admin` resource. When false the console is hidden even if
    *  `remoteAdminActions` is supplied. */
@@ -225,6 +227,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   canTraceroute = false,
   isCompanion = true,
   remoteAdminActions,
+  localRadio,
   canRemoteAdmin = false,
   receiveOnly = false,
   firstHeard,
@@ -1762,6 +1765,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           receiveOnly={receiveOnly}
           notOnDevice={contact?.onDevice === false}
           isRepeater={advType === 2}
+          pathHops={pathKnown ? (pathLen as number) : null}
+          radio={localRadio ?? null}
         />
       )}
 

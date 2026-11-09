@@ -35,6 +35,8 @@ import './MeshCoreRemoteConsole.css';
 import styles from './MeshCoreRemoteConsole.module.css';
 import { UiIcon } from '../icons';
 import { PasswordField } from '../shared/config/PasswordField';
+import { MeshCoreRemoteSettingsSection } from './MeshCoreRemoteSettingsSection';
+import type { LoraParams } from '../../utils/loraAirtime';
 
 /**
  * Quick-action catalog for remote Repeater / Room Server contacts.
@@ -83,7 +85,11 @@ interface MeshCoreRemoteConsoleProps {
     | 'getRemoteStatus'
     | 'getRemoteAdminSession'
     | 'logoutRemote'
-  >;
+  > & Partial<Pick<MeshCoreActions, 'readRemoteSettings' | 'saveRemoteSettings'>>;
+  /** Hops to the node, or null when no path is known (#6256: sizes the settings cost line). */
+  pathHops?: number | null;
+  /** This source's radio, for the settings airtime estimate (#6256). */
+  radio?: Partial<LoraParams> | null;
   /** True when this MeshCore source is in strict receive-only mode (#4547
    *  Phase 2). Threaded to MeshCoreRemoteStatsPanel; WP3 wires the actual
    *  gating of the login buttons, the console body, and the ACL form. */
@@ -105,6 +111,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   receiveOnly = false,
   notOnDevice = false,
   isRepeater = false,
+  pathHops = null,
+  radio = null,
 }) => {
   const { t } = useTranslation();
   const { sourceId } = useSource();
@@ -503,6 +511,17 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
           publicKey={publicKey}
           fetchStatus={actions.getRemoteStatus}
           receiveOnly={receiveOnly}
+        />
+      )}
+
+      {loggedIn && actions.readRemoteSettings && actions.saveRemoteSettings && (
+        <MeshCoreRemoteSettingsSection
+          publicKey={publicKey}
+          deviceType={isRepeater ? 'repeater' : 'room'}
+          actions={{ readRemoteSettings: actions.readRemoteSettings, saveRemoteSettings: actions.saveRemoteSettings }}
+          pathHops={pathHops}
+          radio={radio}
+          disabled={blocked}
         />
       )}
 

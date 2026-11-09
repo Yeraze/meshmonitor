@@ -903,7 +903,10 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   getRemoteStatus: actions.getRemoteStatus,
                   getRemoteAdminSession: actions.getRemoteAdminSession,
                   logoutRemote: actions.logoutRemote,
+                  readRemoteSettings: actions.readRemoteSettings,
+                  saveRemoteSettings: actions.saveRemoteSettings,
                 }}
+                localRadio={{ sf: status?.localNode?.radioSf, bw: status?.localNode?.radioBw, cr: status?.localNode?.radioCr }}
                 receiveOnly={receiveOnly}
                 firstHeard={nodeFieldIndex.firstHeard.get(selected)}
                 localNativeCli={localNativeCli}

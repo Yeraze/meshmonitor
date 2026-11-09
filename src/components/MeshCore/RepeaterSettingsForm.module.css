@@ -60,3 +60,18 @@
   margin: 0.5rem 0 0;
   color: var(--color-warning);
 }
+
+.readBar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.hiddenFile {
+  display: none;
+}
