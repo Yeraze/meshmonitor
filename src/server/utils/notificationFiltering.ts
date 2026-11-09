@@ -16,10 +16,27 @@ export interface NotificationFilterContext {
   isTapback?: boolean;
   /** For DMs: the UUID of the remote node. Used for per-DM mute checks. */
   nodeUuid?: string;
+  /**
+   * MeshCore "keyed" channel message (#5551): fingerprint of the channel key a
+   * Repeater source used to decrypt it. A recipient who cannot read a channel
+   * holding that key is filtered. Unset for every unkeyed message.
+   */
+  keyFingerprint?: string | null;
   /** Phase B: source this notification originated from (required). */
   sourceId: string;
   /** Phase B: human-readable source name for body/title prefixing. */
   sourceName: string;
+}
+
+/**
+ * The venue a mute rule is keyed on: a channel index, or for a DM / room the
+ * sender or room key (`mutedDMs.nodeUuid`).
+ */
+export interface NotificationMuteVenue {
+  isDirectMessage: boolean;
+  channelId?: number;
+  /** DM / room mute key. Without it a DM venue cannot be muted. */
+  muteKey?: string;
 }
 
 export interface MutedChannel {
@@ -72,6 +89,94 @@ export interface NotificationPreferences {
  */
 function isMuteActive(muteUntil: number | null): boolean {
   return muteUntil === null || muteUntil > Date.now();
+}
+
+/**
+ * True when `prefs` hold an active mute for the venue. A DM venue without a
+ * `muteKey` is never muted (nothing to match on).
+ */
+export function isVenueMuted(
+  prefs: Pick<NotificationPreferences, 'mutedChannels' | 'mutedDMs'>,
+  venue: NotificationMuteVenue,
+): boolean {
+  if (venue.isDirectMessage) {
+    if (!venue.muteKey) return false;
+    const rule = (prefs.mutedDMs ?? []).find(r => r.nodeUuid === venue.muteKey);
+    return !!rule && isMuteActive(rule.muteUntil);
+  }
+  if (venue.channelId === undefined) return false;
+  const rule = (prefs.mutedChannels ?? []).find(r => r.channelId === venue.channelId);
+  return !!rule && isMuteActive(rule.muteUntil);
+}
+
+/**
+ * True when `userId` may see a keyed message: they can read a channel that
+ * holds the key (admins: always). Anonymous: never. A null/empty fingerprint
+ * always passes. Fails closed on lookup errors.
+ */
+export async function canUserSeeKeyAsync(
+  userId: number | null | undefined,
+  keyFingerprint: string | null | undefined,
+): Promise<boolean> {
+  if (!keyFingerprint) return true;
+  if (!userId) return false;
+  try {
+    // Lazy: this module is shared by every notifier and the key-access module
+    // pulls in the MeshCore frame ingest, which most callers never need.
+    const { resolveMeshcoreKeyAccess, canSeeKeyedMessage } = await import('./meshcoreKeyAccess.js');
+    const user = await databaseService.findUserByIdAsync(userId);
+    if (!user) return false;
+    const access = await resolveMeshcoreKeyAccess({ id: userId, isAdmin: !!user.isAdmin });
+    return canSeeKeyedMessage(access, { keyFingerprint });
+  } catch (error) {
+    logger.error(`Failed key-access check for user ${userId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * The read gate every message notification path shares: `messages:read` on the
+ * source and, for a keyed message, access to the key. Anonymous with a
+ * fingerprint is false. Fails closed.
+ *
+ * `userId` null (anonymous) only passes for an unkeyed message; callers that
+ * let anonymous push subscribers through skip the permission lookup first.
+ */
+export async function messageReadableByUserAsync(
+  userId: number | null | undefined,
+  sourceId: string,
+  keyFingerprint?: string | null,
+): Promise<boolean> {
+  if (!userId) return !keyFingerprint;
+  try {
+    const allowed = await databaseService.checkPermissionAsync(userId, 'messages', 'read', sourceId);
+    if (!allowed) return false;
+  } catch (error) {
+    logger.error(`Failed permission check for user ${userId} on source ${sourceId}:`, error);
+    return false;
+  }
+  return canUserSeeKeyAsync(userId, keyFingerprint);
+}
+
+/**
+ * Event-broadcast gate (`broadcastToPreferenceUsers`): the payload's key
+ * fingerprint and venue mute, if it carries them. A mute wins over a mention.
+ * `prefs` is the recipient's row for the source when the caller has it.
+ * True = drop for this user.
+ */
+export async function payloadBlockedForUserAsync(
+  userId: number,
+  sourceId: string | undefined,
+  payload: { keyFingerprint?: string | null; muteVenue?: NotificationMuteVenue },
+): Promise<boolean> {
+  if (payload.keyFingerprint && !(await canUserSeeKeyAsync(userId, payload.keyFingerprint))) {
+    return true;
+  }
+  if (payload.muteVenue) {
+    const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
+    if (prefs && isVenueMuted(prefs, payload.muteVenue)) return true;
+  }
+  return false;
 }
 
 /**
@@ -355,16 +460,11 @@ export async function shouldFilterNotificationAsync(
     return false; // Allow on validation error (fail-open for UX)
   }
 
-  // Phase B: permission check — user must have messages:read on this source
-  try {
-    const allowed = await databaseService.checkPermissionAsync(userId, 'messages', 'read', filterContext.sourceId);
-    if (!allowed) {
-      logger.debug(`🔒 User ${userId} lacks messages:read on source ${filterContext.sourceId}, filtering`);
-      return true;
-    }
-  } catch (error) {
-    logger.error(`Failed permission check for user ${userId} on source ${filterContext.sourceId}:`, error);
-    return true; // Fail-closed on permission errors to avoid leaking cross-source data
+  // Phase B: permission check — user must have messages:read on this source,
+  // and for a keyed MeshCore message, access to its channel key. Fails closed.
+  if (!(await messageReadableByUserAsync(userId, filterContext.sourceId, filterContext.keyFingerprint))) {
+    logger.debug(`🔒 User ${userId} cannot read this message on source ${filterContext.sourceId}, filtering`);
+    return true;
   }
 
   // Load user preferences for THIS source: its saved row, else the built-in
@@ -386,19 +486,15 @@ export async function shouldFilterNotificationAsync(
     }
   }
 
-  // MUTE CHECK (second priority — per-channel and per-DM mutes)
-  if (filterContext.isDirectMessage && filterContext.nodeUuid) {
-    const dmRule = (prefs.mutedDMs ?? []).find(r => r.nodeUuid === filterContext.nodeUuid);
-    if (dmRule && isMuteActive(dmRule.muteUntil)) {
-      logger.debug(`🔇 DM from ${filterContext.nodeUuid} muted for user ${userId}`);
-      return true; // Filter
-    }
-  } else if (!filterContext.isDirectMessage) {
-    const channelRule = (prefs.mutedChannels ?? []).find(r => r.channelId === filterContext.channelId);
-    if (channelRule && isMuteActive(channelRule.muteUntil)) {
-      logger.debug(`🔇 Channel ${filterContext.channelId} muted for user ${userId}`);
-      return true; // Filter
-    }
+  // MUTE CHECK (second priority — per-channel and per-DM mutes). A DM with no
+  // mute key cannot match a DM rule and is not tested against channel rules.
+  if (isVenueMuted(prefs, {
+    isDirectMessage: filterContext.isDirectMessage,
+    channelId: filterContext.channelId,
+    muteKey: filterContext.nodeUuid,
+  })) {
+    logger.debug(`🔇 ${filterContext.isDirectMessage ? `DM from ${filterContext.nodeUuid}` : `Channel ${filterContext.channelId}`} muted for user ${userId}`);
+    return true; // Filter
   }
 
   // BLACKLIST (third priority)

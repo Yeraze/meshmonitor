@@ -2585,6 +2585,8 @@ export const useOptionalMuteSettings = () => {
   const context = useContext(SettingsContext);
   if (context === undefined) return null;
   return {
+    enableAudioNotifications: context.enableAudioNotifications,
+    setEnableAudioNotifications: context.setEnableAudioNotifications,
     isChannelMuted: context.isChannelMuted,
     muteChannel: context.muteChannel,
     unmuteChannel: context.unmuteChannel,

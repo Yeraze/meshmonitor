@@ -35,9 +35,10 @@ import type {
   MeshCoreLocalNodeUpdateEvent,
 } from '../../../hooks/useWebSocket';
 import { MeshCoreContact, mapContactsToNodes } from '../../../utils/meshcoreHelpers';
-import { remapChannelLastRead } from '../meshcoreUnreadStore';
+import { remapChannelLastRead, canonicalizePeerKey } from '../meshcoreUnreadStore';
 import { remapChannelCustomOrder } from '../meshcoreChannelOrder';
 import { emitChannelsReordered, remapChannelKey, slotMoveMap } from '../meshcoreChannelReorderEvents';
+import { useMessageSound, meshcoreSoundArgs } from '../../../hooks/useMessageSound';
 import { emitFiltersChanged, subscribeFiltersChanged } from '../meshcoreFilterEvents';
 
 /** A Repeater's readable settings (#6255 P9). Secrets are never in here. */
@@ -753,6 +754,10 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const { setMeshCoreNodes } = useMapContext();
   const { state: wsState } = useWebSocketContext();
   const socket = wsState.socket;
+  const { playForMessage } = useMessageSound(sourceId);
+  const playForMessageRef = useRef(playForMessage);
+  playForMessageRef.current = playForMessage;
+  const soundedIdsRef = useRef<Set<string>>(new Set());
 
   const mcPrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`;
   const sourceLifecyclePrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}`;
@@ -999,6 +1004,18 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     };
 
     const onMessage = (msg: MeshCoreMessageEvent) => {
+      // Live message sound (P11 S9): once per message id; own, reaction and
+      // ignored/blocked messages stay silent.
+      if (!soundedIdsRef.current.has(msg.id)) {
+        soundedIdsRef.current.add(msg.id);
+        if (soundedIdsRef.current.size > 500) {
+          soundedIdsRef.current.delete(soundedIdsRef.current.values().next().value as string);
+        }
+        // Mutes are stored under the canonical full key; a DM may arrive with a 12-hex prefix.
+        const args = meshcoreSoundArgs(msg as MeshCoreMessage, localNodeRef.current?.publicKey, (k) =>
+          canonicalizePeerKey(k, Array.from(contactsRef.current.values())));
+        if (args) playForMessageRef.current(args);
+      }
       setMessages(prev => {
         if (prev.some(m => m.id === msg.id)) return prev;
         // The server now stamps the ack state on the row (#5682); the CRC

@@ -60,7 +60,7 @@ export interface FixtureState {
   deniedPairs?: Set<string>;
   subscriptions: Array<{ id: number; userId: number | null; sourceId: string; endpoint: string; p256dhKey: string; authKey: string }>;
   appriseUsers: number[];
-  users: Array<{ id: number; isActive: boolean }>;
+  users: Array<{ id: number; isActive: boolean; isAdmin?: boolean }>;
 }
 
 export function emptyState(): FixtureState {
@@ -95,6 +95,7 @@ export function buildDatabaseMock(state: FixtureState) {
     getSettingAsync: async () => null,
     checkPermissionAsync: async (userId: number, _resource?: string, _action?: string, sourceId?: string) =>
       !state.deniedUsers.has(userId) && !state.deniedPairs?.has(`${userId}|${sourceId ?? ''}`),
+    findUserByIdAsync: async (id: number) => state.users.find((u) => u.id === id) ?? null,
     waitForReady: async () => undefined,
   };
 }

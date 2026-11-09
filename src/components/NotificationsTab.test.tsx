@@ -78,10 +78,10 @@ import NotificationsTab from './NotificationsTab';
 import api from '../services/api';
 import { SourceProvider } from '../contexts/SourceContext';
 
-function renderWithSource(sourceType: string) {
+function renderWithSource(sourceType: string, meshcoreDeviceType?: number) {
   return render(
     <SourceProvider sourceId="src-1" sourceName="Src One" sourceType={sourceType}>
-      <NotificationsTab isAdmin={false} />
+      <NotificationsTab isAdmin={false} meshcoreDeviceType={meshcoreDeviceType} />
     </SourceProvider>
   );
 }
@@ -106,24 +106,45 @@ describe('NotificationsTab — source-type gating', () => {
     expect(document.getElementById('lowBatteryThreshold')).toBeNull();
   });
 
-  it('MeshCore: hides Meshtastic-only notification toggles', async () => {
-    renderWithSource('meshcore');
-
-    // Wait until the low-battery section (always present) has rendered.
+  it('MeshCore Companion: hides MQTT, shows DM/trace/emoji/new-node/keywords with MeshCore labels', async () => {
+    renderWithSource('meshcore', 1);
     await waitFor(() => {
       expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull();
     });
-
-    // These toggles/labels are Meshtastic-only and must not appear for MeshCore.
-    expect(screen.queryByText(/notifications\.traceroutes/)).toBeNull();
     expect(screen.queryByText(/notifications\.mqtt_messages/)).toBeNull();
-    expect(screen.queryByText(/notifications\.emoji_reactions/)).toBeNull();
-    expect(screen.queryByText(/notifications\.direct_messages/)).toBeNull();
-    expect(screen.queryByText(/notifications\.keyword_filtering/)).toBeNull();
-
-    // New-node discovery IS supported on MeshCore (contact adverts), so its
-    // toggle must remain visible.
+    expect(screen.queryByText(/notifications\.direct_messages_meshcore/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.traceroutes_meshcore/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.emoji_reactions/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.new_nodes/)).not.toBeNull();
+    expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).toBeNull();
+  });
+
+  it('MeshCore Repeater: hides DM, traceroute, new-node, mention and explains why', async () => {
+    renderWithSource('meshcore', 2);
+    await waitFor(() => {
+      expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull();
+    });
+    expect(screen.queryByText(/notifications\.direct_messages/)).toBeNull();
+    expect(screen.queryByText(/notifications\.traceroutes/)).toBeNull();
+    expect(screen.queryByText(/notifications\.new_nodes/)).toBeNull();
+    expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).toBeNull();
+    expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.emoji_reactions/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
+  });
+
+  it('MeshCore loads channels from /api/channels/all; Meshtastic from /api/channels', async () => {
+    renderWithSource('meshcore', 1);
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/api/channels/all?sourceId=src-1');
+    });
+    vi.clearAllMocks();
+    renderWithSource('meshtastic_tcp');
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/api/channels?sourceId=src-1');
+    });
   });
 
   it('Meshtastic: shows the % threshold and Meshtastic-only toggles, hides the mV threshold', async () => {
@@ -194,12 +215,12 @@ describe('NotificationsTab — saves send only the fields this tab edits', () =>
     expect(body).not.toHaveProperty('mutedChannels');
   });
 
-  it('MeshCore: the message format section is hidden (message notifications do not fire there)', async () => {
-    renderWithSource('meshcore');
+  it('MeshCore: the message format section is shown (message notifications fire there)', async () => {
+    renderWithSource('meshcore', 1);
     await waitFor(() => {
       expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull();
     });
-    expect(document.getElementById('notif-format-title')).toBeNull();
+    expect(document.getElementById('notif-format-title')).not.toBeNull();
   });
 
   it('Save Apprise config sends only the URL list', async () => {

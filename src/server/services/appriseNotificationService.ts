@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, resolveAppriseTargetAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, messageReadableByUserAsync, payloadBlockedForUserAsync, type NotificationMuteVenue, resolveAppriseTargetAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import { resolveLocalNodeNameForSource } from '../utils/localNodeNameForSource.js';
 import { notificationDedup, type NotificationDedupSpec } from './notificationDedup.js';
@@ -43,6 +43,16 @@ export interface AppriseNotificationPayload {
   message?: MessageTemplateContext;
   /** Cross-source dedup (#5729); see `notificationDedup.ts`. Never sent to Apprise. */
   dedup?: NotificationDedupSpec;
+  /**
+   * MeshCore keyed channel message (#5551): only recipients with access to this
+   * channel key get the event. Server-side input; never sent to Apprise.
+   */
+  keyFingerprint?: string | null;
+  /**
+   * Venue of an event that follows a mute (a mention): a recipient who muted
+   * it is skipped. Server-side input; never sent to Apprise.
+   */
+  muteVenue?: NotificationMuteVenue;
 }
 
 /**
@@ -399,6 +409,10 @@ class AppriseNotificationService {
       viaMqtt?: boolean;
       /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
       isTapback?: boolean;
+      /** MeshCore keyed channel message (#5551): recipient needs access to this key. */
+      keyFingerprint?: string | null;
+      /** DM / room mute key (`mutedDMs.nodeUuid`), so a per-DM mute applies. */
+      nodeUuid?: string;
       sourceId: string;
       sourceName: string;
     }
@@ -523,19 +537,17 @@ class AppriseNotificationService {
       viaMqtt?: boolean;
       /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
       isTapback?: boolean;
+      /** MeshCore keyed channel message (#5551): recipient needs access to this key. */
+      keyFingerprint?: string | null;
+      /** DM / room mute key (`mutedDMs.nodeUuid`), so a per-DM mute applies. */
+      nodeUuid?: string;
       sourceId: string;
       sourceName: string;
     }
   ): Promise<boolean> {
-    // Phase B: permission check
-    try {
-      const allowed = await databaseService.checkPermissionAsync(userId, 'messages', 'read', filterContext.sourceId);
-      if (!allowed) {
-        logger.debug(`🔒 User ${userId} lacks messages:read on source ${filterContext.sourceId}`);
-        return true;
-      }
-    } catch (error) {
-      logger.error(`Permission check failed for user ${userId}:`, error);
+    // Phase B: permission check, plus key access for a keyed MeshCore message.
+    if (!(await messageReadableByUserAsync(userId, filterContext.sourceId, filterContext.keyFingerprint))) {
+      logger.debug(`🔒 User ${userId} cannot read this message on source ${filterContext.sourceId}`);
       return true;
     }
 
@@ -593,6 +605,12 @@ class AppriseNotificationService {
           filtered++;
           continue;
         }
+      }
+
+      // Keyed MeshCore message / muted venue (mentions): a gate on the payload.
+      if ((payload.keyFingerprint || payload.muteVenue) && await payloadBlockedForUserAsync(userId, effectiveSourceId, payload)) {
+        filtered++;
+        continue;
       }
 
       let urls: string[];

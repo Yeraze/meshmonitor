@@ -68,6 +68,8 @@ interface MeshCoreRoomsViewProps {
    *  button + password input + send box disabled, and the auto-login
    *  effect's silent skip). */
   receiveOnly?: boolean;
+  /** Open on this room (notification click-through, #6253). */
+  initialRoom?: string | null;
 }
 
 function buildRoomFilter(roomPubkey: string): (m: MeshCoreMessage) => boolean {
@@ -103,6 +105,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   sourceId,
   onNodeNameClick,
   receiveOnly = false,
+  initialRoom = null,
 }) => {
   const { t } = useTranslation();
   const { hasPermission, authStatus } = useAuth();
@@ -112,7 +115,10 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const canSend = hasPermission('messages', 'write');
   const canConfig = hasPermission('configuration', 'write');
 
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<string | null>(initialRoom ?? null);
+  useEffect(() => {
+    if (initialRoom) setSelectedRoom(initialRoom);
+  }, [initialRoom]);
   const [loggedInRooms, setLoggedInRooms] = useState<Set<string>>(new Set());
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);

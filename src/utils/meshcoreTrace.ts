@@ -199,3 +199,67 @@ export function traceDataEventFromPacket(packet: DecodedTracePacket, rxSnrDb: nu
     initiated: false,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Notification text (P11 S7)
+// ---------------------------------------------------------------------------
+
+/** The slice of a contact the trace text needs. */
+export interface TraceRouteContact {
+  publicKey: string;
+  name?: string | null;
+  advName?: string | null;
+}
+
+function fmtDb(snr: number): string {
+  return `${Number.isInteger(snr) ? snr.toFixed(0) : snr.toFixed(2).replace(/0$/, '')} dB`;
+}
+
+/**
+ * Name a hop hash: the one contact whose key starts with it. An unknown hop,
+ * or a hash that more than one contact shares, stays as the bare hash.
+ */
+function hopLabel(token: string, contacts: readonly TraceRouteContact[]): string {
+  const t = token.toLowerCase();
+  const matches = contacts.filter((c) => c.publicKey.toLowerCase().startsWith(t));
+  if (matches.length !== 1) return t;
+  const name = matches[0].advName || matches[0].name;
+  return name ? `${t} ${name}` : t;
+}
+
+/**
+ * Text for a finished MeshCore trace, for the traceroute notification.
+ * `path` holds one 1- or 2-byte hop hash per entry of `hops`. With
+ * `autoReturn` the path runs out then back (2k-1 hops), so it is split in two.
+ * No hops (a direct trace) reads as just the final SNR.
+ */
+export function formatMeshCoreTraceRoute(
+  hops: readonly { index: number; snr: number }[],
+  path: readonly string[],
+  lastSnr: number,
+  contacts: readonly TraceRouteContact[],
+  opts: { autoReturn?: boolean } = {},
+): string {
+  const parts = hops.map((h, i) => {
+    const token = path[i];
+    const label = token ? hopLabel(token, contacts) : `hop ${i + 1}`;
+    return `${label} (${fmtDb(h.snr)})`;
+  });
+  const tail = `last hop ${fmtDb(lastSnr)}`;
+  if (parts.length === 0) return `Direct, ${tail}`;
+  if (opts.autoReturn && parts.length > 1 && parts.length % 2 === 1) {
+    const k = (parts.length + 1) / 2;
+    return `Out: ${parts.slice(0, k).join(' → ')}; Back: ${parts.slice(k).join(' → ')}; ${tail}`;
+  }
+  return `${parts.join(' → ')}; ${tail}`;
+}
+
+/** Text for a path-discovery result: "Path discovered: out 2 hops [a3,7f], in 1 hop". */
+export function formatMeshCorePathDiscovery(
+  outHops: number,
+  outPath: string,
+  inHops: number,
+): string {
+  const n = (c: number) => `${c} hop${c === 1 ? '' : 's'}`;
+  return `Path discovered: out ${n(outHops)}${outPath ? ` [${outPath}]` : ''}, in ${n(inHops)}`;
+}

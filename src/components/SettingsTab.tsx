@@ -18,7 +18,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import { type NodeListStyle } from '../utils/nodeColor';
 import PacketMonitorSettings from './PacketMonitorSettings';
-import ChannelSoundPicker from './ChannelSoundPicker';
+import AudioNotificationSettings from './AudioNotificationSettings';
 import PkiDmGlobalToggle from './settings/PkiDmGlobalToggle';
 import PrivacyDocumentsSection from './settings/PrivacyDocumentsSection';
 import settingsStyles from './SettingsTab.module.css';
@@ -2979,31 +2979,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         {show('settings-notifications') && <div id="settings-notifications" className="settings-section">
           <h3>{t('settings.notifications_and_security')}</h3>
-          <div className="setting-item">
-            <label>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={enableAudioNotifications}
-                  onChange={(e) => setEnableAudioNotifications(e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                {t('settings.enable_audio_notifications')}
-              </span>
-              <span className="setting-description">{t('settings.enable_audio_notifications_description')}</span>
-            </label>
-          </div>
-          {enableAudioNotifications && (
-            <div className="setting-item">
-              <label>
-                {t('settings.channel_sounds_label', 'Per-channel notification sound')}
-                <span className="setting-description">
-                  {t('settings.channel_sounds_description', 'Choose which sound plays for new messages on each channel, or silence a channel. Preview each sound before selecting.')}
-                </span>
-              </label>
-              <ChannelSoundPicker />
-            </div>
-          )}
+          <AudioNotificationSettings
+            enabled={enableAudioNotifications}
+            onEnabledChange={setEnableAudioNotifications}
+          />
           <div className="setting-item">
             <label>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>

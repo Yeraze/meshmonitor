@@ -3,7 +3,7 @@
  *
  * Component test for the per-channel notification sound picker. Verifies that:
  *   - a dropdown renders per channel
- *   - the DM pseudo-channel row appears for Meshtastic and is hidden for MeshCore
+ *   - the DM pseudo-channel row appears for Meshtastic and MeshCore Companions, hidden for Repeaters
  *   - changing a channel's selection persists it (scoped per source)
  *   - the preview button plays the selected sound
  *   - choosing "Silent" disables the preview button
@@ -23,10 +23,9 @@ const { sourceState } = vi.hoisted(() => ({
   sourceState: { current: { sourceId: null as string | null, sourceType: null as string | null } },
 }));
 
+const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }));
 vi.mock('../services/api', () => ({
-  default: {
-    get: vi.fn(async () => CHANNELS),
-  },
+  default: { get: apiGet },
 }));
 
 vi.mock('../utils/logger', () => ({
@@ -56,6 +55,8 @@ function previewButtonFor(select: HTMLSelectElement): HTMLButtonElement {
 describe('ChannelSoundPicker', () => {
   beforeEach(() => {
     localStorage.clear();
+    apiGet.mockReset();
+    apiGet.mockImplementation(async () => CHANNELS);
     playSoundMock.mockClear();
     sourceState.current = { sourceId: null, sourceType: null };
   });
@@ -74,9 +75,17 @@ describe('ChannelSoundPicker', () => {
     expect(await screen.findByLabelText('settings.channel_sound_dm')).toBeInTheDocument();
   });
 
-  it('hides the DM row for a MeshCore source', async () => {
+  it('shows the DM row for a MeshCore Companion and loads all slots', async () => {
     sourceState.current = { sourceId: 'mc1', sourceType: 'meshcore' };
-    render(<ChannelSoundPicker />);
+    render(<ChannelSoundPicker meshcoreDeviceType={1} />);
+    await screen.findByLabelText('Primary');
+    expect(screen.getByLabelText('settings.channel_sound_dm')).toBeInTheDocument();
+    expect(apiGet).toHaveBeenCalledWith('/api/channels/all?sourceId=mc1');
+  });
+
+  it('hides the DM row for a MeshCore Repeater', async () => {
+    sourceState.current = { sourceId: 'mc1', sourceType: 'meshcore' };
+    render(<ChannelSoundPicker meshcoreDeviceType={2} />);
     await screen.findByLabelText('Primary');
     expect(screen.queryByLabelText('settings.channel_sound_dm')).not.toBeInTheDocument();
   });
