@@ -48,6 +48,11 @@ interface MeshIssuesThresholds {
   /** km, B1/B6 cluster-adjacency distance guard (#4976). Optional for the
    *  same server-drift reason as `autoCloseCleanRuns`; falls back to 30. */
   routerClusterMaxLinkKm?: number;
+  /** Node-health tunables (#6279); optional for the same server-drift reason. */
+  staleHoursMeshtastic?: number;
+  staleHoursMeshcore?: number;
+  lowBatteryPct?: number;
+  lowBatteryMv?: number;
 }
 
 interface MeshIssuesRunResult {
@@ -123,6 +128,10 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   const [overBroadcastSeconds, setOverBroadcastSeconds] = useState(300);
   const [autoCloseRuns, setAutoCloseRuns] = useState(3);
   const [clusterMaxLinkKm, setClusterMaxLinkKm] = useState(30);
+  const [staleHoursMeshtastic, setStaleHoursMeshtastic] = useState(24);
+  const [staleHoursMeshcore, setStaleHoursMeshcore] = useState(96);
+  const [lowBatteryPct, setLowBatteryPct] = useState(20);
+  const [lowBatteryMv, setLowBatteryMv] = useState(3300);
 
   // Local (dirty) mirrors
   const [localEnabled, setLocalEnabled] = useState(true);
@@ -140,6 +149,10 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   const [localOverBroadcastSeconds, setLocalOverBroadcastSeconds] = useState(300);
   const [localAutoCloseRuns, setLocalAutoCloseRuns] = useState(3);
   const [localClusterMaxLinkKm, setLocalClusterMaxLinkKm] = useState(30);
+  const [localStaleHoursMeshtastic, setLocalStaleHoursMeshtastic] = useState(24);
+  const [localStaleHoursMeshcore, setLocalStaleHoursMeshcore] = useState(96);
+  const [localLowBatteryPct, setLocalLowBatteryPct] = useState(20);
+  const [localLowBatteryMv, setLocalLowBatteryMv] = useState(3300);
 
   const [status, setStatus] = useState<MeshIssuesStatus | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -162,6 +175,10 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setOverBroadcastSeconds(data.thresholds.overBroadcastSeconds);
     setAutoCloseRuns(data.thresholds.autoCloseCleanRuns ?? 3);
     setClusterMaxLinkKm(data.thresholds.routerClusterMaxLinkKm ?? 30);
+    setStaleHoursMeshtastic(data.thresholds.staleHoursMeshtastic ?? 24);
+    setStaleHoursMeshcore(data.thresholds.staleHoursMeshcore ?? 96);
+    setLowBatteryPct(data.thresholds.lowBatteryPct ?? 20);
+    setLowBatteryMv(data.thresholds.lowBatteryMv ?? 3300);
 
     setLocalEnabled(data.enabled);
     setLocalFrequencyHours(data.frequencyHours);
@@ -178,6 +195,10 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setLocalOverBroadcastSeconds(data.thresholds.overBroadcastSeconds);
     setLocalAutoCloseRuns(data.thresholds.autoCloseCleanRuns ?? 3);
     setLocalClusterMaxLinkKm(data.thresholds.routerClusterMaxLinkKm ?? 30);
+    setLocalStaleHoursMeshtastic(data.thresholds.staleHoursMeshtastic ?? 24);
+    setLocalStaleHoursMeshcore(data.thresholds.staleHoursMeshcore ?? 96);
+    setLocalLowBatteryPct(data.thresholds.lowBatteryPct ?? 20);
+    setLocalLowBatteryMv(data.thresholds.lowBatteryMv ?? 3300);
   }, []);
 
   const fetchStatus = useCallback(async () => {
@@ -218,7 +239,11 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     localSnrAsymmetryDb !== snrAsymmetryDb ||
     localOverBroadcastSeconds !== overBroadcastSeconds ||
     localAutoCloseRuns !== autoCloseRuns ||
-    localClusterMaxLinkKm !== clusterMaxLinkKm;
+    localClusterMaxLinkKm !== clusterMaxLinkKm ||
+    localStaleHoursMeshtastic !== staleHoursMeshtastic ||
+    localStaleHoursMeshcore !== staleHoursMeshcore ||
+    localLowBatteryPct !== lowBatteryPct ||
+    localLowBatteryMv !== lowBatteryMv;
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -246,6 +271,10 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           mesh_issues_over_broadcast_seconds: String(localOverBroadcastSeconds),
           mesh_issues_auto_close_runs: String(localAutoCloseRuns),
           mesh_issues_router_cluster_max_link_km: String(localClusterMaxLinkKm),
+          mesh_issues_stale_hours_meshtastic: String(localStaleHoursMeshtastic),
+          mesh_issues_stale_hours_meshcore: String(localStaleHoursMeshcore),
+          mesh_issues_low_battery_pct: String(localLowBatteryPct),
+          mesh_issues_low_battery_mv: String(localLowBatteryMv),
         }),
       });
       if (response.ok) {
@@ -278,6 +307,10 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     localOverBroadcastSeconds,
     localAutoCloseRuns,
     localClusterMaxLinkKm,
+    localStaleHoursMeshtastic,
+    localStaleHoursMeshcore,
+    localLowBatteryPct,
+    localLowBatteryMv,
     csrfFetch,
     baseUrl,
     showToast,
@@ -301,6 +334,10 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     setLocalOverBroadcastSeconds(overBroadcastSeconds);
     setLocalAutoCloseRuns(autoCloseRuns);
     setLocalClusterMaxLinkKm(clusterMaxLinkKm);
+    setLocalStaleHoursMeshtastic(staleHoursMeshtastic);
+    setLocalStaleHoursMeshcore(staleHoursMeshcore);
+    setLocalLowBatteryPct(lowBatteryPct);
+    setLocalLowBatteryMv(lowBatteryMv);
   }, [
     enabled,
     frequencyHours,
@@ -317,6 +354,10 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     overBroadcastSeconds,
     autoCloseRuns,
     clusterMaxLinkKm,
+    staleHoursMeshtastic,
+    staleHoursMeshcore,
+    lowBatteryPct,
+    lowBatteryMv,
   ]);
 
   const numberScope = useNumberInputScope();
@@ -719,6 +760,86 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
           <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
             {t('automation.mesh_issues.cluster_max_link_km_help',
               'Positioned routers farther apart than this never count as one Router Cluster or as redundant coverage. Filters MQTT-bridged "hops" that never happened over RF.')}
+          </p>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.mesh_issues.stale_hours_meshtastic', 'Stale after, Meshtastic (hours)')}
+            <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
+          </label>
+          <NumberInput
+            min={2}
+            max={720}
+            step={1}
+            value={localStaleHoursMeshtastic}
+            onChange={setLocalStaleHoursMeshtastic}
+            disabled={!localEnabled}
+            className="setting-input"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
+            {t('automation.mesh_issues.stale_hours_meshtastic_help',
+              "Hours without a sign of life before a Meshtastic infrastructure node is flagged as stale. Nodes unheard for over 30 days count as retired and are not flagged.")}
+          </p>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.mesh_issues.stale_hours_meshcore', 'Stale after, MeshCore (hours)')}
+            <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
+          </label>
+          <NumberInput
+            min={12}
+            max={720}
+            step={1}
+            value={localStaleHoursMeshcore}
+            onChange={setLocalStaleHoursMeshcore}
+            disabled={!localEnabled}
+            className="setting-input"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
+            {t('automation.mesh_issues.stale_hours_meshcore_help',
+              "Same for MeshCore repeaters and room servers. Far repeaters only refresh when they send a flood advert (47 h by default), so keep this above that interval.")}
+          </p>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.mesh_issues.low_battery_pct', 'Low battery, Meshtastic (%)')}
+            <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
+          </label>
+          <NumberInput
+            min={1}
+            max={80}
+            step={1}
+            value={localLowBatteryPct}
+            onChange={setLocalLowBatteryPct}
+            disabled={!localEnabled}
+            className="setting-input"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
+            {t('automation.mesh_issues.low_battery_pct_help',
+              "Battery percent below which an infrastructure node is flagged. Also sets the deep-discharge line for the power rule.")}
+          </p>
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            {t('automation.mesh_issues.low_battery_mv', 'Low battery, MeshCore (mV)')}
+            <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
+          </label>
+          <NumberInput
+            min={2500}
+            max={4100}
+            step={50}
+            value={localLowBatteryMv}
+            onChange={setLocalLowBatteryMv}
+            disabled={!localEnabled}
+            className="setting-input"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--color-text-subtle)', margin: '0.35rem 0 0 0' }}>
+            {t('automation.mesh_issues.low_battery_mv_help',
+              "Battery millivolts below which a MeshCore repeater or room server is flagged. LiFePO4 packs rest near 3.2 to 3.3 V, so a 3300 mV line can fire on a healthy LiFePO4 pack; lower it for those.")}
           </p>
         </div>
 
