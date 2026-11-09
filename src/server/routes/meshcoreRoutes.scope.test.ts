@@ -574,7 +574,11 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'POST /config/sync-time': 'write',
     'POST /config/reboot': 'write',
     'GET /config/private-key': 'write',
-    'POST /config/private-key': 'write',
+    // P9 #6255: restoring a key is admin only on both protocols.
+    'POST /config/private-key': 'site-admin',
+    'GET /config/repeater-settings': 'read',
+    'PATCH /config/repeater-settings': 'write',
+    'POST /config/power-off': 'site-admin',
     'POST /config/name': 'write',
     'POST /config/tx-power': 'write',
     'POST /config/radio': 'write',

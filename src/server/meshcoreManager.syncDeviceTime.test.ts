@@ -56,8 +56,8 @@ describe('MeshCoreManager — syncDeviceTime', () => {
     expect(bridgeCalls[0].cmd).toBe('set_device_time');
   });
 
-  it('reports reason:not-companion without issuing a command', async () => {
-    const { manager, bridgeCalls } = makeManager({ deviceType: MeshCoreDeviceType.REPEATER });
+  it('reports reason:not-companion (Room Server) without issuing a command', async () => {
+    const { manager, bridgeCalls } = makeManager({ deviceType: MeshCoreDeviceType.ROOM_SERVER });
     const result = await manager.syncDeviceTime();
 
     expect(result).toEqual({ ok: false, reason: 'not-companion' });

@@ -892,6 +892,8 @@ describe('MeshCore Routes', () => {
       ['set factory mode'],
       ['poweroff'],
       ['shutdown'],
+      [`set prv.key ${'ab'.repeat(64)}`],
+      ['SET   prv.key abcd'],
     ])('rejects danger command %s without confirm', async (cmd) => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/admin/cli')
@@ -1043,6 +1045,8 @@ describe('MeshCore Routes', () => {
       ['set factory mode'],
       ['poweroff'],
       ['shutdown'],
+      [`set prv.key ${'ab'.repeat(64)}`],
+      ['SET   prv.key abcd'],
     ])('rejects danger command %s without confirm', async (cmd) => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/cli')
@@ -1413,7 +1417,7 @@ describe('MeshCore Routes', () => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/config/sync-time');
       expect(response.status).toBe(409);
-      expect(response.body.error).toMatch(/Companion device/i);
+      expect(response.body.error).toMatch(/Companion/i);
     });
 
     it('returns 502 with the real reason when the device rejects the command (issue #3570)', async () => {
@@ -2945,6 +2949,23 @@ describe('MeshCore Routes', () => {
     const VALID_KEY = 'a'.repeat(128); // 128 hex chars = 64-byte expanded key
 
     describe('POST (import)', () => {
+      // P9 #6255: restoring a key is admin only (both protocols).
+      let adminAgent: ReturnType<typeof request.agent>;
+      beforeEach(async () => {
+        const adminName = `keyadmin${Date.now()}${Math.floor(Math.random() * 1e6)}`;
+        await userModel.create({ username: adminName, password: 'password123', authProvider: 'local', isAdmin: true });
+        adminAgent = request.agent(app);
+        await adminAgent.post('/api/auth/login').send({ username: adminName, password: 'password123' });
+      });
+
+      it('403 for a non-admin with configuration:write', async () => {
+        const response = await authenticatedAgent
+          .post('/api/sources/test-source/meshcore/config/private-key')
+          .send({ privateKey: VALID_KEY, confirm: true });
+        expect(response.status).toBe(403);
+        expect(meshcoreManager.importPrivateKey).not.toHaveBeenCalled();
+      });
+
       it('requires authentication', async () => {
         const response = await request(app)
           .post('/api/sources/test-source/meshcore/config/private-key')
@@ -2953,7 +2974,7 @@ describe('MeshCore Routes', () => {
       });
 
       it('requires confirm:true (destructive identity replace)', async () => {
-        const response = await authenticatedAgent
+        const response = await adminAgent
           .post('/api/sources/test-source/meshcore/config/private-key')
           .send({ privateKey: VALID_KEY });
         expect(response.status).toBe(400);
@@ -2962,7 +2983,7 @@ describe('MeshCore Routes', () => {
       });
 
       it('rejects keys shorter than 128 hex chars', async () => {
-        const response = await authenticatedAgent
+        const response = await adminAgent
           .post('/api/sources/test-source/meshcore/config/private-key')
           .send({ privateKey: 'a'.repeat(64), confirm: true }); // 64 hex = old (wrong) length
         expect(response.status).toBe(400);
@@ -2971,7 +2992,7 @@ describe('MeshCore Routes', () => {
       });
 
       it('rejects keys with invalid hex characters', async () => {
-        const response = await authenticatedAgent
+        const response = await adminAgent
           .post('/api/sources/test-source/meshcore/config/private-key')
           .send({ privateKey: 'g'.repeat(128), confirm: true });
         expect(response.status).toBe(400);
@@ -2981,7 +3002,7 @@ describe('MeshCore Routes', () => {
 
       it('accepts a valid 128-char hex key', async () => {
         meshcoreManager.importPrivateKey.mockResolvedValueOnce(true);
-        const response = await authenticatedAgent
+        const response = await adminAgent
           .post('/api/sources/test-source/meshcore/config/private-key')
           .send({ privateKey: VALID_KEY, confirm: true });
         expect(response.status).toBe(200);
@@ -2991,7 +3012,7 @@ describe('MeshCore Routes', () => {
 
       it('returns 409 when the device rejects the import', async () => {
         meshcoreManager.importPrivateKey.mockResolvedValueOnce(false);
-        const response = await authenticatedAgent
+        const response = await adminAgent
           .post('/api/sources/test-source/meshcore/config/private-key')
           .send({ privateKey: VALID_KEY, confirm: true });
         expect(response.status).toBe(409);

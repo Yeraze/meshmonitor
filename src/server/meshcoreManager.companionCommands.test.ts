@@ -75,7 +75,7 @@ describe('MeshCoreManager Companion commands (P8a #6257)', () => {
     await m.factoryReset();
     expect(calls).toEqual([{ cmd: 'factory_reset', params: {} }]);
     expect(del).toHaveBeenCalledWith('src-p8');
-    expect(expect_).toHaveBeenCalledWith('src-p8');
+    expect(expect_).toHaveBeenCalledWith('src-p8', { reason: 'factory_reset' });
   });
 
   it('a failed reset leaves the key row and tracker alone', async () => {
@@ -89,11 +89,13 @@ describe('MeshCoreManager Companion commands (P8a #6257)', () => {
   it('the next identity change after a reset writes the audit row and no alert', async () => {
     const audit = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined as any);
     vi.spyOn(meshcoreOwnIdentityTracker, 'observe').mockResolvedValue('expected');
+    vi.spyOn(meshcoreOwnIdentityTracker, 'takeExpectedReason').mockReturnValue('factory_reset');
     const getChange = vi.spyOn(meshcoreOwnIdentityTracker, 'getChange');
     const { m } = make();
     await (m as any).observeOwnIdentity('cd'.repeat(32));
     expect(audit).toHaveBeenCalledTimes(1);
-    expect(audit.mock.calls[0][1]).toBe('meshcore_factory_reset_identity_changed');
+    expect(audit.mock.calls[0][1]).toBe('meshcore_identity_changed_expected');
+    expect(JSON.parse(audit.mock.calls[0][3] as string).reason).toBe('factory_reset');
     expect(getChange).not.toHaveBeenCalled();
   });
 });

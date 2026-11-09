@@ -13,7 +13,7 @@ import { advertHasPosition } from '../utils/meshcoreAdvertPosition.js';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import { redactCliCommand, extractCliSecret, isSecretReadCommand } from './utils/meshcoreCliRedact.js';
-import { isRepeaterReplyTerminator } from '../utils/meshcoreRepeaterSettings.js';
+import { isRepeaterReplyTerminator, parseCliReply, getRepeaterGates, type RepeaterGates } from '../utils/meshcoreRepeaterSettings.js';
 import { meshcoreTraceIngestService, type TraceIngestOptions } from './services/meshcoreTraceIngestService.js';
 import { decodeTracePacket, traceDataEventFromPacket, type TraceDataEvent } from '../utils/meshcoreTrace.js';
 import {
@@ -82,6 +82,7 @@ import { remapMeshCoreChannelReferences, type ChannelRemapSummary } from './serv
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { MeshCoreReactionError } from './errors/meshcoreReactionError.js';
 import { MeshCoreDeviceCommandError } from './errors/meshcoreDeviceCommandError.js';
+import { derivePublicKeyFromPrivateHex } from './utils/meshcoreKeyDerive.js';
 import {
   isReactionsOutboundEnabled,
   planOutboundReaction,
@@ -508,7 +509,7 @@ export type ZeroHopPingResult =
  */
 export type SyncDeviceTimeResult =
   | { ok: true }
-  | { ok: false; reason: 'not-companion' | 'disconnected' | 'command-failed'; error?: string };
+  | { ok: false; reason: 'not-companion' | 'disconnected' | 'command-failed' | 'clock-ahead'; error?: string };
 
 // Connection types
 export enum ConnectionType {
@@ -8673,13 +8674,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     try {
       const status = await meshcoreOwnIdentityTracker.observe(this.sourceId, publicKey);
       if (status === 'expected') {
-        // P8a #6257: a factory reset announced this. No alert; leave an audit row.
+        // P8a #6257 / P9 #6255: a factory reset or key restore announced this. No alert; leave an audit row.
         const key = (publicKey ?? '').trim().toLowerCase();
         await databaseService.auditLogAsync(
           null,
-          'meshcore_factory_reset_identity_changed',
+          'meshcore_identity_changed_expected',
           'configuration',
-          JSON.stringify({ sourceId: this.sourceId, currentKey: key.slice(0, 8) }),
+          JSON.stringify({
+            sourceId: this.sourceId,
+            currentKey: key.slice(0, 8),
+            reason: meshcoreOwnIdentityTracker.takeExpectedReason(this.sourceId),
+          }),
           null,
         );
         return;
@@ -9111,6 +9116,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * device" even when the device had rejected the command (issue #3570).
    */
   async syncDeviceTime(): Promise<SyncDeviceTimeResult> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      // P9 #6255: Repeater `time <epoch>`; the firmware only moves the clock forward.
+      if (!this.connected) return { ok: false, reason: 'disconnected' };
+      try {
+        const reply = parseCliReply(await this.sendRepeaterCommand(`time ${Math.floor(Date.now() / 1000)}`));
+        if (reply.kind === 'ok') return { ok: true };
+        if (/clock cannot go backwards/i.test(reply.text)) {
+          return {
+            ok: false,
+            reason: 'clock-ahead',
+            error: 'The repeater clock is ahead of the server clock and the firmware cannot move it backwards.',
+          };
+        }
+        return { ok: false, reason: 'command-failed', error: reply.text || 'No reply from the repeater' };
+      } catch (error) {
+        return { ok: false, reason: 'command-failed', error: error instanceof Error ? error.message : String(error) };
+      }
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Sync-device-time requires Companion firmware');
       return { ok: false, reason: 'not-companion' };
@@ -9457,6 +9480,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * destructive operation — the device will disconnect and restart.
    */
   async rebootDevice(): Promise<boolean> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      if (!this.connected) return false;
+      return this.sendRepeaterNoReply('reboot');
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Reboot requires Companion firmware');
       return false;
@@ -9578,6 +9605,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * the caller is responsible for gating access.
    */
   async exportPrivateKey(): Promise<string | null> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      if (!this.connected) return null;
+      this.requireRepeaterGate('keyExport', 'Private key export', '1.8.0');
+      try {
+        const reply = parseCliReply(await this.sendRepeaterCommand('get prv.key', 5000, { secret: true }));
+        const hex = reply.kind === 'value' ? (reply.value ?? '').trim() : '';
+        return /^[0-9a-fA-F]{128}$/.test(hex) ? hex.toLowerCase() : null;
+      } catch (error) {
+        logger.error(`[MeshCore:${this.sourceId}] repeater exportPrivateKey threw: ${(error as Error).message}`);
+        return null;
+      }
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Export private key requires Companion firmware');
       return null;
@@ -9605,6 +9644,30 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * it. Companion only. DESTRUCTIVE + SECURITY-SENSITIVE.
    */
   async importPrivateKey(hexKey: string): Promise<boolean> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      if (!this.connected) return false;
+      if (!/^[0-9a-fA-F]{128}$/.test(hexKey)) return false;
+      this.requireRepeaterGate('keyImport', 'Private key restore', '1.9.0');
+      try {
+        const reply = parseCliReply(await this.sendRepeaterCommand(`set prv.key ${hexKey}`, 5000, { secret: true }));
+        if (reply.kind !== 'ok') {
+          logger.warn(`[MeshCore:${this.sourceId}] repeater set prv.key rejected (${reply.kind})`);
+          return false;
+        }
+        // fw 1.12+ reports the new public key; earlier firmware does not, so the
+        // announcement then accepts the next new key (the restore is the cause).
+        const m = /New pubkey:\s*([0-9a-fA-F]{64})/.exec(reply.text);
+        meshcoreOwnIdentityTracker.expectChange(this.sourceId, {
+          expectedKey: m?.[1] ?? derivePublicKeyFromPrivateHex(hexKey) ?? undefined,
+          reason: 'key_restore',
+        });
+        await this.sendRepeaterNoReply('reboot');
+        return true;
+      } catch (error) {
+        logger.error(`[MeshCore:${this.sourceId}] repeater importPrivateKey threw: ${(error as Error).message}`);
+        return false;
+      }
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Import private key requires Companion firmware');
       return false;
@@ -9620,6 +9683,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         logger.warn(`[MeshCore] import_private_key failed: ${response.error}`);
         return false;
       }
+      // P9 #6255: tell the identity tracker the new key is the restored one.
+      meshcoreOwnIdentityTracker.expectChange(this.sourceId, {
+        expectedKey: derivePublicKeyFromPrivateHex(hexKey) ?? undefined,
+        reason: 'key_restore',
+      });
       logger.debug(`[MeshCore:${this.sourceId}] Private key imported — device identity changed`);
       return true;
     } catch (error) {
@@ -10901,6 +10969,66 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return `Unknown command: ${command}\nType "help" for the list of available commands.`;
   }
 
+  /** Gates for the connected Repeater's firmware (`localNode.ver`; unknown = all open). */
+  getRepeaterGates(): RepeaterGates {
+    return getRepeaterGates(this.localNode?.ver);
+  }
+
+  private requireRepeaterGate(gate: 'powerOff' | 'keyExport' | 'keyImport', what: string, min: string): void {
+    if (!this.getRepeaterGates()[gate]) {
+      throw new MeshCoreDeviceCommandError(
+        'FIRMWARE_UNSUPPORTED',
+        `${what} needs repeater firmware ${min} or newer (this repeater reports ${this.localNode?.ver ?? 'unknown'})`,
+      );
+    }
+  }
+
+  /**
+   * Send a Repeater CLI verb that never answers (`reboot`, `poweroff`). A short
+   * timeout or a link that drops mid-command reads as "sent".
+   */
+  private async sendRepeaterNoReply(verb: 'reboot' | 'poweroff'): Promise<boolean> {
+    try {
+      await this.sendRepeaterCommand(verb, 1500);
+      logger.debug(`[MeshCore:${this.sourceId}] Repeater ${verb} sent`);
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (/serial port not open|closed|disconnect|teardown/i.test(msg)) return true;
+      logger.error(`[MeshCore:${this.sourceId}] repeater ${verb} threw: ${msg}`);
+      return false;
+    }
+  }
+
+  /**
+   * Power the radio off (P9 #6255). Repeater fw >= 1.15 (`poweroff`); Companion
+   * protocol >= 14 (`run_cli poweroff`). The radio stays off until power-cycled.
+   * Throws {@link MeshCoreDeviceCommandError}.
+   */
+  async powerOff(): Promise<void> {
+    if (!this.connected || (this.deviceType !== MeshCoreDeviceType.REPEATER && this.deviceType !== MeshCoreDeviceType.COMPANION)) {
+      throw new MeshCoreDeviceCommandError('SOURCE_NOT_CONNECTED', 'Power-off needs a connected Repeater or Companion radio');
+    }
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      this.requireRepeaterGate('powerOff', 'Power-off', '1.15.0');
+      if (!(await this.sendRepeaterNoReply('poweroff'))) {
+        throw new MeshCoreDeviceCommandError('COMMAND_FAILED', 'The repeater did not accept the power-off command');
+      }
+      return;
+    }
+    if (!(await this.companionHasNativeCli())) {
+      throw new MeshCoreDeviceCommandError(
+        'FIRMWARE_UNSUPPORTED',
+        'Power-off needs Companion protocol 14 (firmware 1.18.0) or newer',
+      );
+    }
+    try {
+      await this.runNativeCompanionCli('poweroff', 'poweroff', 3000);
+    } catch (error) {
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', error instanceof Error ? error.message : 'The radio did not accept the power-off command');
+    }
+  }
+
   /**
    * Set device name
    */
@@ -10909,7 +11037,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       try {
-        await this.sendRepeaterCommand(`set name ${safeName}`);
+        const reply = parseCliReply(await this.sendRepeaterCommand(`set name ${safeName}`));
+        if (reply.kind === 'error' || reply.kind === 'unknown') {
+          logger.warn(`[MeshCore:${this.sourceId}] set name rejected: ${reply.text}`);
+          return false;
+        }
         if (this.localNode) {
           this.localNode.name = safeName;
         }
@@ -10940,7 +11072,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       try {
-        await this.sendRepeaterCommand(`set radio ${freq},${bw},${sf},${cr}`);
+        const reply = parseCliReply(await this.sendRepeaterCommand(`set radio ${freq},${bw},${sf},${cr}`));
+        if (reply.kind === 'error' || reply.kind === 'unknown') {
+          logger.warn(`[MeshCore:${this.sourceId}] set radio rejected: ${reply.text}`);
+          return false;
+        }
         return true;
       } catch (error) {
         logger.error('[MeshCore] Failed to set radio:', error);
@@ -10980,7 +11116,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       try {
-        await this.sendRepeaterCommand(`set tx ${power}`);
+        const reply = parseCliReply(await this.sendRepeaterCommand(`set tx ${power}`));
+        if (reply.kind === 'error' || reply.kind === 'unknown') {
+          logger.warn(`[MeshCore:${this.sourceId}] set tx rejected: ${reply.text}`);
+          return false;
+        }
         return true;
       } catch (error) {
         logger.error('[MeshCore] Failed to set TX power:', error);
@@ -11019,8 +11159,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
-      logger.warn('[MeshCore] set_coords not supported on repeater');
-      return false;
+      // P9 #6255: `set lat` / `set lon`, then read both back.
+      if (!this.connected) return false;
+      try {
+        for (const [verb, v] of [['lat', lat], ['lon', lon]] as const) {
+          const reply = parseCliReply(await this.sendRepeaterCommand(`set ${verb} ${v}`));
+          if (reply.kind !== 'ok') {
+            logger.warn(`[MeshCore:${this.sourceId}] repeater set ${verb} failed (${reply.kind}): ${reply.text}`);
+            return false;
+          }
+        }
+        for (const [verb, v] of [['lat', lat], ['lon', lon]] as const) {
+          const back = parseCliReply(await this.sendRepeaterCommand(`get ${verb}`));
+          const got = back.kind === 'value' ? Number(back.value) : NaN;
+          if (!Number.isFinite(got) || Math.abs(got - v) > 1e-4) {
+            logger.warn(`[MeshCore:${this.sourceId}] repeater ${verb} readback mismatch`);
+            return false;
+          }
+        }
+        if (this.localNode) {
+          this.localNode.latitude = lat;
+          this.localNode.longitude = lon;
+        }
+        return true;
+      } catch (error) {
+        logger.error('[MeshCore] Failed to set repeater coords:', error);
+        return false;
+      }
     }
 
     try {
@@ -11235,7 +11400,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!response.success) {
       throw new MeshCoreDeviceCommandError('COMMAND_FAILED', response.error || 'The radio did not accept the reset');
     }
-    meshcoreOwnIdentityTracker.expectChange(this.sourceId);
+    meshcoreOwnIdentityTracker.expectChange(this.sourceId, { reason: 'factory_reset' });
     try {
       await databaseService.meshcoreSourcePkiKeys.deleteBySourceId(this.sourceId);
     } catch (err) {
