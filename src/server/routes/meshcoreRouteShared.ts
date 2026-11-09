@@ -248,8 +248,9 @@ export const VALIDATION = {
  * The trailing `(?!\.)` excludes danger words used as the prefix of a
  * dotted config key (e.g. `get reboot.interval`, `set clkreboot.retries 3`)
  * — those are read/write config-path operations, not the standalone verb.
+ * `set prv.key <hex>` replaces the radio's identity (#6255); `get prv.key` is a read.
  */
-export const DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory|poweroff|shutdown)\b(?!\.)/i;
+export const DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory|poweroff|shutdown)\b(?!\.)|\bset\s+prv\.key\b/i;
 
 /**
  * Resolve the effective CLI reply-timeout (ms) for a MeshCore console command

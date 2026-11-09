@@ -326,6 +326,10 @@ export interface MeshCoreConfigurationNavOptions {
   showConsole?: boolean;
   showObserver?: boolean;
   showDangerZone?: boolean;
+  /** Repeater settings form (#6255): a connected Repeater whose settings were read. */
+  showRepeaterSettings?: boolean;
+  /** Repeater clock row (#6255): a connected Repeater. */
+  showRepeaterClock?: boolean;
 }
 
 /**
@@ -344,6 +348,9 @@ export function meshcoreConfigurationNavItems(t: Translate, options: MeshCoreCon
   const items: Array<NavItem & { show?: boolean }> = [
     { id: 'meshcore-config-name', label: t('meshcore.config.device_name', 'Device name'), keywords: ['identity', 'rename', 'advert'] },
     { id: 'meshcore-config-location', label: t('meshcore.config.location', 'Location'), keywords: ['gps', 'position', 'coordinates', 'advert'] },
+    { id: 'meshcore-config-repeater-adverts', label: t('meshcore.repeater.adverts_title', 'Adverts & forwarding'), keywords: ['advert', 'flood', 'repeat', 'airtime factor', 'delay', 'hops'], show: options.showRepeaterSettings === true },
+    { id: 'meshcore-config-repeater-access', label: t('meshcore.repeater.access_title', 'Access'), keywords: ['password', 'guest', 'admin', 'login', 'read only'], show: options.showRepeaterSettings === true },
+    { id: 'meshcore-config-repeater-clock', label: t('meshcore.repeater.clock_title', 'Clock'), keywords: ['time', 'sync', 'rtc'], show: options.showRepeaterClock === true },
     { id: 'meshcore-config-radio', label: t('meshcore.config.radio_params', 'Radio parameters'), keywords: ['lora', 'preset', 'frequency', 'bandwidth', 'spreading factor', 'coding rate', 'region'] },
     { id: 'meshcore-config-tx-power', label: t('meshcore.config.tx_power', 'TX Power'), keywords: ['transmit', 'dbm', 'output'] },
     { id: 'meshcore-config-telemetry', label: t('meshcore.config.telemetry', 'Telemetry'), keywords: ['battery', 'sensors', 'environment'] },

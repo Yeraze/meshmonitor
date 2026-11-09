@@ -696,3 +696,14 @@ every CLI command a **person** issued, in the per-source
 - **Persist transcript / history across remounts** — sessionStorage keyed on `targetId`. Useful if users frequently switch contacts mid-session.
 - **Per-command audit log entries** — `requirePermission` already audits the route call, but the command text isn't in the audit row. One-line addition in each CLI handler.
 - **Command autocomplete on Tab** — would benefit both consoles; lives in `CliConsoleBody`.
+
+## Repeater settings transport (P9, #6255)
+- `server/services/meshcoreRepeaterSettingsService.ts` defines `RepeaterCliTransport { run(cmd, {secret, timeoutMs}); mode }`.
+  P9 ships the local serial transport (`manager.runRepeaterCli`); P10 adds a remote transport and mounts the same
+  `RepeaterSettingsForm`. The schema in `utils/meshcoreRepeaterSettings.ts` is the single source for verbs, ranges, units,
+  version gates and secret flags; `parseCliReply` accepts replies with or without the local `  -> ` prefix.
+- Reply terminators now also end on `??:`, `unknown config`, `ERR`/`(ERR:`, `password now:` and a bare `-> ok|error`.
+- Secret commands (`password`, `set/get guest.password`, `get/set prv.key`) are detected by the manager; their RX echo and
+  reply lines log as `[redacted]`.
+- The danger guard (`meshcoreRouteShared.ts` + `CliConsoleBody.tsx`) now includes `set prv.key`.
+

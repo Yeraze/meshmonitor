@@ -3,6 +3,7 @@ import { MeshCoreOwnIdentityTracker, EXPECTED_CHANGE_TTL_MS, type OwnIdentitySet
 
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
+const C = 'c'.repeat(64);
 
 function makeStore() {
   const data = new Map<string, string>();
@@ -98,5 +99,34 @@ describe('MeshCoreOwnIdentityTracker', () => {
     now += EXPECTED_CHANGE_TTL_MS + 1;
     expect(await t.observe('s1', B)).toBe('changed');
   });
-});
 
+  it('expectChange with a pinned key: that key is expected, reason is kept (P9 #6255)', async () => {
+    const { store } = makeStore();
+    const t = new MeshCoreOwnIdentityTracker(() => store, () => 1000);
+    await t.observe('s1', A);
+    t.expectChange('s1', { expectedKey: B, reason: 'key_restore' });
+    expect(await t.observe('s1', B)).toBe('expected');
+    expect(t.takeExpectedReason('s1')).toBe('key_restore');
+    expect(await t.getChange('s1')).toBeNull();
+  });
+
+  it('a pinned key does not excuse a different key: it alerts and consumes the announcement', async () => {
+    const { store } = makeStore();
+    const t = new MeshCoreOwnIdentityTracker(() => store, () => 1000);
+    await t.observe('s1', A);
+    t.expectChange('s1', { expectedKey: B, reason: 'key_restore' });
+    expect(await t.observe('s1', C)).toBe('changed');
+    expect((await t.getChange('s1'))?.currentKey).toBe(C);
+    // consumed: the pinned key now alerts too
+    expect(await t.observe('s1', B)).toBe('changed');
+  });
+
+  it('plain expectChange defaults to the factory_reset reason', async () => {
+    const { store } = makeStore();
+    const t = new MeshCoreOwnIdentityTracker(() => store, () => 1000);
+    await t.observe('s1', A);
+    t.expectChange('s1');
+    expect(await t.observe('s1', B)).toBe('expected');
+    expect(t.takeExpectedReason('s1')).toBe('factory_reset');
+  });
+});

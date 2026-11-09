@@ -32,6 +32,20 @@ export type OwnIdentityStatus = 'baseline' | 'same' | 'changed' | 'expected';
 /** An announced identity change is honoured for this long. */
 export const EXPECTED_CHANGE_TTL_MS = 30 * 60 * 1000;
 
+/** An announced identity change (P9 #6255 adds the pinned key and the reason). */
+export interface ExpectChangeOptions {
+  /** When given, ONLY this key is expected; any other new key still alerts. */
+  expectedKey?: string;
+  /** Why the identity changes: `factory_reset`, `key_restore`, ... Goes in the audit row. */
+  reason: string;
+}
+
+interface ExpectedChange {
+  expiry: number;
+  expectedKey?: string;
+  reason: string;
+}
+
 export interface OwnIdentityChange {
   previousKey: string;
   currentKey: string;
@@ -68,7 +82,9 @@ export class MeshCoreOwnIdentityTracker {
   /** Per-source chain so two overlapping connects cannot both report the same change. */
   private readonly chains = new Map<string, Promise<unknown>>();
   /** sourceId -> expiry (epoch ms) of an announced identity change. In memory: a reset reboots the radio, not this server. */
-  private readonly expected = new Map<string, number>();
+  private readonly expected = new Map<string, ExpectedChange>();
+  /** sourceId -> reason of the last `expected` verdict, read once by `takeExpectedReason`. */
+  private readonly expectedReasons = new Map<string, string>();
 
   constructor(
     private readonly store: () => OwnIdentitySettingsStore = () => databaseService.settings,
@@ -99,13 +115,14 @@ export class MeshCoreOwnIdentityTracker {
         return 'baseline';
       }
       if (stored === pk) return 'same';
-      const expiry = this.expected.get(sourceId);
-      if (expiry !== undefined) {
+      const exp = this.expected.get(sourceId);
+      if (exp !== undefined) {
         this.expected.delete(sourceId);
-        if (expiry > this.now()) {
+        if (exp.expiry > this.now() && (exp.expectedKey === undefined || exp.expectedKey === pk)) {
           await store.setSourceSetting(sourceId, OWN_IDENTITY_KEY_SETTING, pk);
+          this.expectedReasons.set(sourceId, exp.reason);
           logger.info(
-            `[MeshCore:${sourceId}] own public key changed after factory reset ${stored.slice(0, 8)} -> ${pk.slice(0, 8)} (expected)`,
+            `[MeshCore:${sourceId}] own public key changed (${exp.reason}) ${stored.slice(0, 8)} -> ${pk.slice(0, 8)} (expected)`,
           );
           return 'expected';
         }
@@ -123,13 +140,27 @@ export class MeshCoreOwnIdentityTracker {
   }
 
   /**
-   * Announce that the source's identity is about to change (factory reset,
-   * P8a #6257). The next differing key `observe` sees is accepted silently
-   * (`'expected'`), once, within {@link EXPECTED_CHANGE_TTL_MS}.
+   * Announce that the source's identity is about to change (factory reset
+   * P8a #6257, key restore P9 #6255). The next differing key `observe` sees is
+   * accepted silently (`'expected'`), once, within {@link EXPECTED_CHANGE_TTL_MS}.
+   * With `expectedKey`, only that key is accepted: a different new key alerts
+   * as usual (and consumes the announcement).
    */
-  expectChange(sourceId: string): void {
+  expectChange(sourceId: string, opts: ExpectChangeOptions = { reason: 'factory_reset' }): void {
     if (!sourceId) return;
-    this.expected.set(sourceId, this.now() + EXPECTED_CHANGE_TTL_MS);
+    const key = opts.expectedKey?.trim().toLowerCase();
+    this.expected.set(sourceId, {
+      expiry: this.now() + EXPECTED_CHANGE_TTL_MS,
+      expectedKey: key && KEY_RE.test(key) ? key : undefined,
+      reason: opts.reason,
+    });
+  }
+
+  /** The reason behind the last `'expected'` verdict for the source (read once). */
+  takeExpectedReason(sourceId: string): string {
+    const r = this.expectedReasons.get(sourceId) ?? 'factory_reset';
+    this.expectedReasons.delete(sourceId);
+    return r;
   }
 
   /** The unacknowledged change record, or null. */
