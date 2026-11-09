@@ -162,6 +162,30 @@ A firmware build with packet logging on (`-D MESH_PACKET_LOGGING=1`) prints ever
 
 On stock firmware the Nodes and Packet Monitor tabs say what is missing and why. Direct messages never appear on a repeater source: they are encrypted to their recipient. The [Analyzer Observer](#analyzer-observer) still needs a Companion.
 
+### Repeater settings
+
+When a Repeater source is connected, **Configuration** reads its settings through the console and lets you change them. Each save sends only the fields you changed, then reads them back. A field the repeater refused shows its own error.
+
+| Setting | Range | Airtime effect |
+|---|---|---|
+| Location | lat −90…90, lon −180…180 | none; rides in the next advert |
+| Zero-hop advert interval | Off, or 60–240 minutes | 1 transmission per interval; repeaters don't forward it |
+| Flood advert interval | Off, or 6–168 hours (48 before firmware 1.12) | repeated by every repeater that hears it, up to 8 hops |
+| Flood max | 0–64 hops | lower forwards fewer floods; 0 forwards none |
+| Repeat | on / off | off stops all forwarding; nodes that rely on this repeater lose coverage |
+| Airtime factor (af) | 0–9 | caps transmit duty at 1/(1+af); below 1 means more than 50% duty |
+| RX delay, TX delay, direct TX delay | 0–20, 0–2, 0–2 | timing only; same packet count |
+| Admin / guest password | 1–15 bytes / 0–15 bytes | none |
+| Allow read-only | on / off | none |
+
+The warning beside each interval shows the cost with this repeater's own radio settings. One advert is about 125 bytes, roughly 0.5–1.2 s on air depending on the preset. With flood adverts off, nodes beyond direct range only learn about the repeater when they hear it directly.
+
+Passwords are write-only. MeshMonitor never reads the admin password and never shows the guest password; leave a field blank to keep it. After you change the admin password, saved remote-admin logins for this repeater stop working. The **Clock** section syncs the repeater's clock to the server; the firmware cannot move its clock backwards.
+
+The danger zone on a Repeater offers reboot, **power off** (firmware 1.15 or later; the board stays off until someone power-cycles it), and private-key backup and restore (export from firmware 1.8, restore from 1.9). Power off and restore are for admins only and ask you to type the device name. A restore writes the key, then reboots; peers see a new node, and MeshMonitor records the expected key change in the audit log instead of raising a key-change alert. Companions get the same power off (firmware 14 or later) and the same admin-only restore.
+
+All of these are console commands to the radio on its USB link; none of them transmit. Repeater passwords and keys never appear in MeshMonitor's logs.
+
 ## The MeshCore Page
 
 Each MeshCore source has its own multi-pane page accessible by clicking the source in the dashboard sidebar. The sidebar lists **Map**, **Channels**, **Rooms**, **Node Details**, **Telemetry**, **Packet Monitor**, **Node Info**, **Device Configuration**, **Automations**, **Notifications** and **Settings**. A tab shows only when you hold the read permission its data needs on that source. The main views:
