@@ -21,7 +21,9 @@ import {
   formatSet,
   parseCliReply,
   repeaterValuesEqual,
+  settingsFor,
   validateRepeaterPatch,
+  type RepeaterDeviceType,
   type RepeaterGates,
   type RepeaterSettingDef,
   type RepeaterSettingKey,
@@ -44,6 +46,8 @@ export interface RepeaterSettingsRead {
   guestPasswordSet: boolean;
   /** Per-key read failures (unsupported, no reply, unparseable). */
   errors: Partial<Record<RepeaterSettingKey, string>>;
+  /** Remote only: the key whose read failed and stopped the run (the rest are in `errors` as not read). */
+  stoppedAt?: RepeaterSettingKey;
 }
 
 export interface RepeaterKeyResult {
@@ -53,7 +57,21 @@ export interface RepeaterKeyResult {
   /** True when this key was sent (it differed from `current`, or is a secret). */
   changed: boolean;
   error?: string;
-  code?: 'VALIDATION' | 'REJECTED' | 'NO_REPLY' | 'TRANSPORT' | 'READBACK_MISMATCH';
+  code?: 'VALIDATION' | 'REJECTED' | 'NO_REPLY' | 'TRANSPORT' | 'READBACK_MISMATCH' | 'NOT_SENT';
+  /** False when the key was accepted but no readback ran (a remote run that stopped early). */
+  verified?: boolean;
+}
+
+export interface ReadRepeaterOptions {
+  /** Read exactly these keys (default: the P9 local set, or every key offered remotely). */
+  keys?: readonly RepeaterSettingKey[];
+  deviceType?: RepeaterDeviceType;
+}
+
+export interface WriteRepeaterOptions {
+  /** 'all' re-reads every default key (local); 'sent' re-reads only what was sent (remote). Default by transport mode. */
+  readback?: 'all' | 'sent';
+  deviceType?: RepeaterDeviceType;
 }
 
 export interface RepeaterWriteResult {
@@ -64,13 +82,14 @@ export interface RepeaterWriteResult {
   validationErrors: RepeaterValidationError[];
   /** One entry per key in the patch. */
   results: Partial<Record<RepeaterSettingKey, RepeaterKeyResult>>;
-  /** The full re-read after the writes (the previous state when nothing was sent). */
+  /** The re-read after the writes (all keys, or only the sent ones with `readback: 'sent'`). */
   read: RepeaterSettingsRead;
   /** Keys NOT in the patch whose value moved (e.g. the firmware zeroes advert.interval on first save). */
   drifted: RepeaterSettingKey[];
 }
 
-const READABLE = REPEATER_SETTINGS.filter((d) => d.getVerb !== null);
+/** Default read set: the P9 local keys (name / tx / radio belong to other local sections). */
+const LOCAL_DEFAULT = REPEATER_SETTINGS.filter((d) => d.getVerb !== null && d.localDefault !== false);
 
 function parseValue(def: RepeaterSettingDef, raw: string): RepeaterSettingValue | null {
   const v = raw.trim();
@@ -94,11 +113,17 @@ interface InternalRead extends RepeaterSettingsRead {
   guestPlain: string | null;
 }
 
-async function readAll(t: RepeaterCliTransport): Promise<InternalRead> {
+async function readKeys(t: RepeaterCliTransport, defs: readonly RepeaterSettingDef[]): Promise<InternalRead> {
   const values: RepeaterSettingsValues = {};
   const errors: RepeaterSettingsRead['errors'] = {};
   let guestPlain: string | null = null;
-  for (const def of READABLE) {
+  let stoppedAt: RepeaterSettingKey | undefined;
+  for (const def of defs) {
+    if (def.getVerb === null) continue;
+    if (stoppedAt) {
+      errors[def.key] = 'not read';
+      continue;
+    }
     const cmd = formatGet(def.key);
     if (!cmd) continue;
     let reply;
@@ -106,6 +131,7 @@ async function readAll(t: RepeaterCliTransport): Promise<InternalRead> {
       reply = parseCliReply(await t.run(cmd, { secret: def.secret === true }));
     } catch (e) {
       errors[def.key] = e instanceof Error ? e.message : 'transport error';
+      if (t.mode === 'remote') stoppedAt = def.key;
       continue;
     }
     if (reply.kind !== 'value') {
@@ -115,6 +141,7 @@ async function readAll(t: RepeaterCliTransport): Promise<InternalRead> {
           : reply.kind === 'unknown'
             ? 'not supported by this firmware'
             : reply.text;
+      if (reply.kind === 'empty' && t.mode === 'remote') stoppedAt = def.key;
       continue;
     }
     if (def.key === 'guestPassword') {
@@ -125,19 +152,38 @@ async function readAll(t: RepeaterCliTransport): Promise<InternalRead> {
     if (parsed === null) errors[def.key] = 'unparseable reply';
     else values[def.key] = parsed;
   }
-  return { values, errors, guestPasswordSet: (guestPlain ?? '').length > 0, guestPlain };
+  const out: InternalRead = { values, errors, guestPasswordSet: (guestPlain ?? '').length > 0, guestPlain };
+  if (stoppedAt) out.stoppedAt = stoppedAt;
+  return out;
+}
+
+function defsFor(t: RepeaterCliTransport, opts?: ReadRepeaterOptions): RepeaterSettingDef[] {
+  if (opts?.keys) {
+    const want = new Set<RepeaterSettingKey>(opts.keys);
+    return REPEATER_SETTINGS.filter((d) => want.has(d.key));
+  }
+  return t.mode === 'remote'
+    ? settingsFor({ mode: 'remote', deviceType: opts?.deviceType })
+    : [...LOCAL_DEFAULT];
 }
 
 function publicRead(r: InternalRead): RepeaterSettingsRead {
-  return { values: r.values, errors: r.errors, guestPasswordSet: r.guestPasswordSet };
+  const out: RepeaterSettingsRead = { values: r.values, errors: r.errors, guestPasswordSet: r.guestPasswordSet };
+  if (r.stoppedAt) out.stoppedAt = r.stoppedAt;
+  return out;
 }
 
-/** Read every readable setting. `gates` is accepted for symmetry with the write path and P10. */
+/**
+ * Read settings. Default: the P9 local set (local) or every key the device type
+ * offers remotely. `keys` limits it (P10 reads per group). A remote run stops at
+ * the first transport error or empty reply; `gates` is accepted for symmetry.
+ */
 export async function readRepeaterSettings(
   t: RepeaterCliTransport,
   _gates?: RepeaterGates,
+  opts?: ReadRepeaterOptions,
 ): Promise<RepeaterSettingsRead> {
-  return publicRead(await readAll(t));
+  return publicRead(await readKeys(t, defsFor(t, opts)));
 }
 
 /** A reply text safe to surface: never longer than one line, secrets already masked by parseCliReply. */
@@ -151,8 +197,11 @@ export async function writeRepeaterSettings(
   gates: RepeaterGates,
   current: RepeaterSettingsValues,
   patch: Record<string, unknown>,
+  opts?: WriteRepeaterOptions,
 ): Promise<RepeaterWriteResult> {
-  const validation = validateRepeaterPatch(patch, gates);
+  const remote = t.mode === 'remote';
+  const readback = opts?.readback ?? (remote ? 'sent' : 'all');
+  const validation = validateRepeaterPatch(patch, gates, { mode: t.mode, deviceType: opts?.deviceType });
   if (!validation.ok) {
     const results: RepeaterWriteResult['results'] = {};
     for (const e of validation.errors) {
@@ -170,11 +219,20 @@ export async function writeRepeaterSettings(
 
   const results: RepeaterWriteResult['results'] = {};
   const sent: RepeaterSettingKey[] = [];
-  // Guest password compare uses a pre-read so an unchanged value is not re-sent.
-  const before = 'guestPassword' in validation.values ? await readAll(t) : null;
+  // Local: the guest password compare uses a pre-read so an unchanged value is not re-sent.
+  // Remote: no pre-read (each read is a round trip over the air); a supplied guest password is always sent.
+  const before =
+    !remote && 'guestPassword' in validation.values
+      ? await readKeys(t, LOCAL_DEFAULT)
+      : null;
+  let stopped = false;
 
   for (const def of REPEATER_SETTINGS) {
     if (!(def.key in validation.values)) continue;
+    if (stopped) {
+      results[def.key] = { ok: false, changed: false, code: 'NOT_SENT', error: 'not sent: an earlier command got no answer' };
+      continue;
+    }
     const value = validation.values[def.key] as RepeaterSettingValue;
     let isChange: boolean;
     if (def.key === 'guestPassword') {
@@ -198,6 +256,7 @@ export async function writeRepeaterSettings(
         code: 'TRANSPORT',
         error: e instanceof Error ? e.message : 'transport error',
       };
+      if (remote) stopped = true;
       continue;
     }
     if (reply.kind === 'ok') {
@@ -205,6 +264,7 @@ export async function writeRepeaterSettings(
       results[def.key] = { ok: true, changed: true };
     } else if (reply.kind === 'empty') {
       results[def.key] = { ok: false, changed: true, code: 'NO_REPLY', error: 'no reply from the device' };
+      if (remote) stopped = true;
     } else {
       results[def.key] = {
         ok: false,
@@ -215,12 +275,28 @@ export async function writeRepeaterSettings(
     }
   }
 
-  const after = await readAll(t);
+  // Readback. 'all' re-reads the default set. 'sent' re-reads the accepted keys, plus advert.interval when it
+  // was cached at 1-59 (the firmware zeroes it on the first save of any setting). A run that stopped on a
+  // dead link reads nothing more: those keys stay unverified.
+  let readDefs: RepeaterSettingDef[];
+  if (readback === 'all') readDefs = [...LOCAL_DEFAULT];
+  else {
+    const want = new Set<RepeaterSettingKey>(sent);
+    const cached = current.advertInterval;
+    if (sent.length > 0 && typeof cached === 'number' && cached >= 1 && cached <= 59) want.add('advertInterval');
+    readDefs = REPEATER_SETTINGS.filter((d) => want.has(d.key) && d.getVerb !== null);
+  }
+  if (stopped) readDefs = [];
+  const after = await readKeys(t, readDefs);
+  if (stopped) {
+    for (const key of sent) results[key] = { ...results[key]!, verified: false };
+  }
   for (const key of sent) {
     const res = results[key]!;
     const def = REPEATER_SETTINGS.find((d) => d.key === key)!;
     const expected = validation.values[key] as RepeaterSettingValue;
     if (key === 'adminPassword') continue; // no read; the reply was the proof
+    if (stopped) continue;
     if (key === 'guestPassword') {
       if (after.guestPlain !== expected) {
         results[key] = { ok: false, changed: true, code: 'READBACK_MISMATCH', error: 'the device did not keep the new value' };

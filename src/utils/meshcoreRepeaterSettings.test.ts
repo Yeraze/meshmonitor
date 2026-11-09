@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   REPEATER_SETTINGS,
+  parseRadioValue,
+  settingsFor,
   formatSet,
   getRepeaterGates,
   isRepeaterReplyTerminator,
@@ -31,7 +33,7 @@ describe('parseCliReply fixtures', () => {
 
 describe('reply terminators', () => {
   it('ends on every fixture reply', () => {
-    for (const fx of REPEATER_REPLY_FIXTURES.filter((x) => x.name !== 'get empty guest password')) {
+    for (const fx of REPEATER_REPLY_FIXTURES.filter((x) => x.name !== 'get empty guest password' && x.kind !== 'empty')) {
       expect(isRepeaterReplyTerminator(fx.local), fx.local).toBe(true);
     }
   });
@@ -133,5 +135,64 @@ describe('estimateLoraAirtimeMs', () => {
   });
   it('rejects nonsense', () => {
     expect(estimateLoraAirtimeMs(10, { sf: 3, bw: 125, cr: 5 })).toBeNaN();
+  });
+});
+
+describe('P10 schema: settingsFor / remote capability', () => {
+  const keys = (o: Parameters<typeof settingsFor>[0]) => settingsFor(o).map((d) => d.key);
+  const FORWARDING = ['repeat', 'floodMax', 'rxDelay', 'txDelay', 'directTxDelay'];
+
+  it('derives localOnly from remote: none', () => {
+    for (const d of REPEATER_SETTINGS) expect(d.localOnly).toBe(d.remote === 'none');
+  });
+  it('remote repeater: no admin password, radio listed but read-only', () => {
+    const k = keys({ mode: 'remote', deviceType: 'repeater' });
+    expect(k).not.toContain('adminPassword');
+    expect(k).toContain('radio');
+    expect(k).toContain('guestPassword');
+    for (const f of FORWARDING) expect(k).toContain(f);
+  });
+  it('local repeater offers the admin password', () => {
+    expect(keys({ mode: 'local', deviceType: 'repeater' })).toContain('adminPassword');
+  });
+  it('room hides forwarding keys in both modes', () => {
+    for (const mode of ['local', 'remote'] as const) {
+      const k = keys({ mode, deviceType: 'room' });
+      for (const f of FORWARDING) expect(k).not.toContain(f);
+      expect(k).toContain('advertInterval');
+      expect(k).toContain('name');
+    }
+  });
+  it('groups: identity 5, adverts 8, access 2 (remote repeater)', () => {
+    const n = (g: 'identity' | 'adverts' | 'access') =>
+      keys({ mode: 'remote', deviceType: 'repeater', groups: [g] }).length;
+    expect([n('identity'), n('adverts'), n('access')]).toEqual([5, 8, 2]);
+  });
+  it('parseRadioValue', () => {
+    expect(parseRadioValue('869.618,62.5,8,8')).toEqual({ freq: 869.618, bw: 62.5, sf: 8, cr: 8 });
+    expect(parseRadioValue('869.618,62.5,8')).toBeNull();
+    expect(parseRadioValue('a,b,c,d')).toBeNull();
+    expect(parseRadioValue(null)).toBeNull();
+  });
+  it('formats and validates the new keys', () => {
+    expect(formatSet('txPower', 14)).toBe('set tx 14');
+    expect(formatSet('name', 'Hill 1')).toBe('set name Hill 1');
+    expect(validateRepeaterValue('name', 'x'.repeat(32)).ok).toBe(false);
+    expect(validateRepeaterValue('name', '').ok).toBe(false);
+    expect(validateRepeaterValue('name', 'a\nb').ok).toBe(false);
+    expect(validateRepeaterValue('txPower', 31).ok).toBe(false);
+    expect(validateRepeaterValue('radio', '869.618,62.5,8,8').ok).toBe(true);
+    expect(validateRepeaterValue('radio', '869.618,62.5,99,8').ok).toBe(false);
+  });
+  it('a write context rejects keys that are not writable, with the field', () => {
+    const remote = { mode: 'remote', deviceType: 'repeater' } as const;
+    const r = validateRepeaterPatch({ adminPassword: 'x', radio: '869.618,62.5,8,8', name: 'ok' }, undefined, remote);
+    expect(r.errors.map((e) => e.field).sort()).toEqual(['adminPassword', 'radio']);
+    expect(r.values).toEqual({ name: 'ok' });
+    const room = validateRepeaterPatch({ repeat: true }, undefined, { mode: 'remote', deviceType: 'room' });
+    expect(room.errors[0]).toMatchObject({ field: 'repeat', code: 'VALIDATION' });
+  });
+  it('without a context the P9 behaviour is unchanged (admin password allowed)', () => {
+    expect(validateRepeaterPatch({ adminPassword: 'x' }).ok).toBe(true);
   });
 });
