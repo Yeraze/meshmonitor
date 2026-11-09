@@ -26,6 +26,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { isOwnMeshCoreName, isOwnPublicKey } from '../utils/ownNodes.js';
 import { meshcoreChannelIndexOf } from '../utils/meshcoreMessageMerge.js';
+import { resolveMeshCoreChannelName } from '../utils/meshcoreKeyedChannels.js';
 import type { MeshCoreMessage } from '../meshcoreManager.js';
 
 export type MeshCoreNotifyOutcome =
@@ -93,6 +94,7 @@ export async function sendMeshCoreMessageNotification(
         messageId: msg.id,
         isDirectMessage: false,
         channelId: channelIdx,
+        channelName: await resolveMeshCoreChannelName(channelIdx, sourceId),
         senderName: senderName || 'Unknown',
         senderShortName: senderName || 'Unknown',
         text,

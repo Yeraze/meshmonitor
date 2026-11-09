@@ -29,6 +29,9 @@ const h = vi.hoisted(() => ({
   webPushSend: vi.fn(async (..._args: unknown[]) => ({})),
   keys: new Map<number, string[] | 'all'>(),
   settings: new Map<string, string>(),
+  getChannelDbById: vi.fn(async (..._a: unknown[]) => null),
+  summaries: [] as Array<{ channelKey: string; keyFingerprint: string; keySourceId: string | null; keyChannelIdx: number | null }>,
+  virtual: [] as Array<{ name: string; psk: string }>,
 }));
 
 vi.mock('../../services/database.js', async () => {
@@ -44,8 +47,12 @@ vi.mock('../../services/database.js', async () => {
         setSourceSetting: async (s: string, k: string, v: string) => { h.settings.set(`${s}:${k}`, v); },
       },
       sources: { getSource: async (id: string) => SOURCES[id] ?? null },
-      channels: { getChannelById: async (idx: number) => (idx === 0 ? { id: 0, name: 'Public' } : null) },
-      channelDatabase: { getByIdAsync: async () => null },
+      channels: {
+        getChannelById: async (idx: number) => (idx === 0 ? { id: 0, name: 'Public' } : null),
+        getAllChannels: async () => [],
+      },
+      meshcore: { getKeyedChannelSummaries: async () => h.summaries },
+      channelDatabase: { getByIdAsync: h.getChannelDbById, getAllAsync: async () => h.virtual },
     },
   };
 });
@@ -95,6 +102,7 @@ import { pushNotificationService } from './pushNotificationService.js';
 import { appriseNotificationService } from './appriseNotificationService.js';
 import { notificationDedup } from './notificationDedup.js';
 import { sendMeshCoreMessageNotification } from './meshcoreMessageNotifier.js';
+import { channelKeyFingerprint } from './meshcoreFrameIngest.js';
 import { meshcoreMentionNotificationService } from './meshcoreMentionNotificationService.js';
 import { meshcoreNotificationKey } from './meshcoreNotificationKey.js';
 import type { MeshCoreMessage } from '../meshcoreManager.js';
@@ -167,6 +175,9 @@ describe('MeshCore message notifications', () => {
     notificationDedup.clear();
     h.settings.clear();
     h.keys.clear();
+    h.summaries = [];
+    h.virtual = [];
+    h.getChannelDbById.mockClear();
     h.state.prefs.clear();
     h.state.deniedUsers.clear();
     h.state.deniedPairs = new Set();
@@ -365,6 +376,52 @@ describe('MeshCore message notifications', () => {
       expect(alertsTo(1)).toHaveLength(1);
       expect(pushesTo(1)).toHaveLength(2);
       expect(pushesTo(1)[1].title).toContain('Companion, Repeater');
+    });
+
+    it('an MQTT slot message is named "Channel N" and marked viaMqtt (#6307)', async () => {
+      addUser(1, { 'mc-mqtt': { enabledChannels: [3] } });
+      expect(await send(chan({ fromPublicKey: 'channel-3', text: 'region chat' }), 'mc-mqtt')).toBe('sent');
+      const p = alertsTo(1);
+      expect(p).toHaveLength(1);
+      expect(p[0].title).toBe('Channel 3 · Analyzer');
+      expect(p[0].data).toMatchObject({ channelId: 3, sourceId: 'mc-mqtt' });
+    });
+
+    it('a virtual-key MQTT message uses the virtual name and the key gate (#6307)', async () => {
+      const secret = '11'.repeat(16);
+      const fp = channelKeyFingerprint(secret);
+      const idx = 1234;
+      h.virtual = [{ name: 'Secret Club', psk: secret }];
+      h.summaries = [{ channelKey: `channel-${idx}`, keyFingerprint: fp, keySourceId: null, keyChannelIdx: null }];
+      addUser(1, { 'mc-mqtt': { enabledChannels: [idx] } });
+      addUser(2, { 'mc-mqtt': { enabledChannels: [idx] } });
+      h.keys.set(1, [fp]);
+      await send(chan({ fromPublicKey: `channel-${idx}`, keyFingerprint: fp }), 'mc-mqtt');
+      expect(alertsTo(1)).toHaveLength(1);
+      expect(alertsTo(1)[0].title).toBe('Secret Club · Analyzer');
+      expect(alertsTo(2)).toHaveLength(0);
+      expect(h.getChannelDbById).not.toHaveBeenCalled();
+    });
+
+    it('a Repeater keyed message is named from its key, not the channel_database offset (#6307)', async () => {
+      const secret = '22'.repeat(16);
+      const fp = channelKeyFingerprint(secret);
+      const idx = 1100; // idx - 100 would hit channel_database id 1000 on the old path
+      h.virtual = [{ name: 'Hill Net', psk: secret }];
+      h.summaries = [{ channelKey: `channel-${idx}`, keyFingerprint: fp, keySourceId: null, keyChannelIdx: null }];
+      addUser(1, { 'mc-b': { enabledChannels: [idx] } });
+      h.keys.set(1, [fp]);
+      await send(chan({ fromPublicKey: `channel-${idx}`, keyFingerprint: fp }), 'mc-b');
+      expect(alertsTo(1)[0].title).toBe('Hill Net · Repeater');
+      expect(h.getChannelDbById).not.toHaveBeenCalled();
+    });
+
+    it('an unnamed keyed channel falls back to "Channel N" without a channel_database lookup (#6307)', async () => {
+      addUser(1, { 'mc-b': { enabledChannels: [1500] } });
+      h.keys.set(1, 'all');
+      await send(chan({ fromPublicKey: 'channel-1500', keyFingerprint: FP }), 'mc-b');
+      expect(alertsTo(1)[0].title).toBe('Channel 1500 · Repeater');
+      expect(h.getChannelDbById).not.toHaveBeenCalled();
     });
 
     it('a meshcore_mqtt source marks viaMqtt, which a user can turn off', async () => {
