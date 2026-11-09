@@ -4,7 +4,6 @@
  */
 
 import databaseService from '../../services/database.js';
-import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { normalizeTakConfig, takRoleName, takTeamName } from '../../utils/takConfig.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
@@ -207,8 +206,16 @@ class DeviceBackupService {
       const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       const deviceConfig = meshtasticManager.getActualDeviceConfig();
       const moduleConfig = meshtasticManager.getActualModuleConfig();
-      // intentional cross-source: device backup exports all channels across all sources
-      const channels = await databaseService.channels.getAllChannels(ALL_SOURCES);
+      // A device backup holds THIS radio's channels only. Reading every source
+      // leaked other sources' channel secrets (MeshCore included) into the
+      // file, and a restore then wrote them to this radio (#6257 finding 1).
+      const backupSourceId: string | undefined = meshtasticManager?.sourceId;
+      const channels = backupSourceId
+        ? await databaseService.channels.getAllChannels(backupSourceId)
+        : [];
+      if (!backupSourceId) {
+        logger.warn('📦 Device backup: manager has no sourceId; exporting no channels');
+      }
 
       // Build backup object in the same structure as Meshtastic CLI
       // Field order matters for official format compatibility
