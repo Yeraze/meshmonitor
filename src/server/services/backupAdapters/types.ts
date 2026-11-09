@@ -19,6 +19,10 @@ export interface BackupSummary {
   createdAt?: string;
   /** Radio parameters, as display strings keyed by label. */
   radio?: Record<string, string | number>;
+  /** The connected radio's current parameters, when known (for a current -> backup comparison). */
+  currentRadio?: Record<string, string | number>;
+  /** True when `currentRadio` and `radio` differ: restoring changes the radio at once. */
+  radioDiffers?: boolean;
   /** Channel slots the restore will overwrite. Names only, never PSKs. */
   channels: Array<{ idx: number; name: string }>;
   /** Sections the file holds, for the dialog. */

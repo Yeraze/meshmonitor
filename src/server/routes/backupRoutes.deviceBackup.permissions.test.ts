@@ -297,4 +297,52 @@ describe('device backup routes — per-source scoping', () => {
     expect(create.status).toBeGreaterThanOrEqual(400);
     expect(mocks.generateBackup).not.toHaveBeenCalled();
   });
+
+  describe('MeshCore Companion source', () => {
+    const MC = 'rt-source-meshcore-backup';
+
+    beforeEach(async () => {
+      await databaseService.sources.createSource({ id: MC, name: 'mc', type: 'meshcore', config: {}, enabled: true });
+      await seed(MC, 'mc-abc-1.yaml', MC_YAML, 'meshcore');
+    });
+
+    afterEach(async () => {
+      for (const r of await databaseService.backupHistory.getBackupHistoryList(MC)) {
+        await databaseService.backupHistory.deleteBackupHistoryById(r.id!);
+      }
+      await databaseService.sources.deleteSource(MC).catch(() => {});
+    });
+
+    it('lists its own files (protocol meshcore) with no connected manager, and never a Meshtastic source\'s', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      const res = await admin.get('/backup/list').query({ sourceId: MC });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([expect.objectContaining({ filename: 'mc-abc-1.yaml', protocol: 'meshcore', legacy: false })]);
+      expect((await admin.get('/backup/download/mt-a-1.yaml').query({ sourceId: MC })).status).toBe(404);
+    });
+
+    it('restore and create on a disconnected MeshCore source are 409 SOURCE_NOT_CONNECTED', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      const restore = await admin.post('/backup/restore/mc-abc-1.yaml').send({ sourceId: MC });
+      expect(restore.status).toBe(409);
+      expect(restore.body.code).toBe('SOURCE_NOT_CONNECTED');
+      const create = await admin.get('/device/backup').query({ sourceId: MC, save: 'true' });
+      expect(create.status).toBe(409);
+      expect(create.body.code).toBe('SOURCE_NOT_CONNECTED');
+    });
+
+    it('a user with write on the Meshtastic source only is refused on the MeshCore source (403)', async () => {
+      await grantConfig(harness, harness.limited.id, harness.sourceA, { read: true, write: true });
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.get('/backup/list').query({ sourceId: MC })).status).toBe(403);
+      expect((await agent.get('/backup/download/mc-abc-1.yaml').query({ sourceId: MC })).status).toBe(403);
+      expect((await agent.post('/backup/restore/mc-abc-1.yaml').send({ sourceId: MC })).status).toBe(403);
+    });
+
+    it('a MeshCore file cannot be restored onto a Meshtastic source (404 for the file, 409 as legacy)', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      // Owned by the MeshCore source, so the Meshtastic source cannot even see it.
+      expect((await admin.post('/backup/restore/mc-abc-1.yaml').send({ sourceId: harness.sourceA })).status).toBe(404);
+    });
+  });
 });
