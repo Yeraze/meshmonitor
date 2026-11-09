@@ -4,12 +4,28 @@ import apiService from '../../services/api';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import { REGION_OPTIONS } from './constants';
 import { MODEM_PRESET_NAMES } from '../../utils/loraFrequency';
+import { maskMeshcoreSecret } from '../../utils/meshcoreChannelUrl';
 
 interface ImportConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImportSuccess: () => void;
   nodeNum?: number; // Optional node number for remote nodes
+  /**
+   * `'meshcore'` (#6257): one channel per URL, shown as a name / masked secret /
+   * scope / target-slot preview. It skips the Meshtastic poll and reboot wait.
+   * Default `'meshtastic'` keeps the existing flow.
+   */
+  protocol?: 'meshtastic' | 'meshcore';
+  /** Override the resolved source (the MeshCore config view names its own). */
+  sourceId?: string;
+}
+
+/** MeshCore decode result: one channel plus, for a write holder, the target slot. */
+interface MeshcoreDecoded {
+  protocol: 'meshcore';
+  channels: Array<{ name: string; secretHex: string; regionScope: string | null; derived?: boolean }>;
+  target?: { kind: 'new'; slot: number } | { kind: 'existing'; slot: number } | { kind: 'full'; maxChannels: number };
 }
 
 interface DecodedChannel {
@@ -39,11 +55,16 @@ const regionNames: { [key: number]: string } = Object.fromEntries(
   REGION_OPTIONS.map((o) => [o.value, o.label.split(' - ')[0]])
 );
 
-export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, onClose, onImportSuccess, nodeNum }) => {
+export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({
+  isOpen, onClose, onImportSuccess, nodeNum, protocol = 'meshtastic', sourceId: sourceIdProp,
+}) => {
   const { t } = useTranslation();
-  const sourceId = useResolvedSourceId();
+  const resolvedSourceId = useResolvedSourceId();
+  const sourceId = sourceIdProp ?? resolvedSourceId;
+  const isMeshCore = protocol === 'meshcore';
   const [url, setUrl] = useState('');
   const [decoded, setDecoded] = useState<DecodedConfig | null>(null);
+  const [mcDecoded, setMcDecoded] = useState<MeshcoreDecoded | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
   const [includeLoraConfig, setIncludeLoraConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +81,13 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
     setLoading(true);
     setError(null);
     try {
-      const result = await apiService.decodeChannelUrl(url);
+      const result = await apiService.decodeChannelUrl(url, isMeshCore ? sourceId : undefined);
+      if (isMeshCore) {
+        if (result?.protocol !== 'meshcore') throw new Error(t('import_config.error_decode_failed'));
+        setMcDecoded(result as MeshcoreDecoded);
+        return;
+      }
+      if (result?.protocol === 'meshcore') throw new Error(t('import_config.error_decode_failed'));
       setDecoded(result);
 
       // Select all channels by default
@@ -72,8 +99,28 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
     } catch (err: any) {
       setError(err.message || t('import_config.error_decode_failed'));
       setDecoded(null);
+      setMcDecoded(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleImportMeshcore = async () => {
+    if (!mcDecoded || !url) return;
+    setImporting(true);
+    setError(null);
+    try {
+      setImportStatus(t('import_config.meshcore_status_sending'));
+      const result = await apiService.importConfig(url, undefined, sourceId);
+      setImportStatus(t('import_config.meshcore_status_complete', { slot: result.slot ?? '' }));
+      // No reboot and no Meshtastic poll: the server re-synced the slots.
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setImporting(false);
+      onImportSuccess();
+      handleClose();
+    } catch (err: unknown) {
+      setError((err instanceof Error && err.message) || t('import_config.error_import_failed'));
+      setImporting(false);
     }
   };
 
@@ -190,6 +237,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
 
     setUrl('');
     setDecoded(null);
+    setMcDecoded(null);
     setSelectedChannels(new Set());
     setIncludeLoraConfig(false);
     setError(null);
@@ -239,17 +287,17 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
           overflowY: 'auto'
         }}
       >
-        <h2>{t('import_config.title')}</h2>
+        <h2>{isMeshCore ? t('import_config.meshcore_title') : t('import_config.title')}</h2>
 
         <div style={{ marginBottom: '1rem' }}>
           <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-            {t('import_config.url_label')}
+            {isMeshCore ? t('import_config.meshcore_url_label') : t('import_config.url_label')}
           </label>
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={t('import_config.url_placeholder')}
+            placeholder={isMeshCore ? t('import_config.meshcore_url_placeholder') : t('import_config.url_placeholder')}
             style={{ width: '100%', padding: '0.5rem' }}
             disabled={loading}
           />
@@ -289,6 +337,61 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
             {error}
           </div>
         )}
+
+        {isMeshCore && mcDecoded && (() => {
+          const ch = mcDecoded.channels[0];
+          const target = mcDecoded.target;
+          const blocked = target?.kind === 'full' || target?.kind === 'existing';
+          return (
+            <div style={{ marginTop: '1rem' }} data-testid="meshcore-import-preview">
+              <h3>{t('import_config.config_preview')}</h3>
+              <div style={{ padding: '0.75rem', background: 'var(--color-surface)', borderRadius: '4px', border: '2px solid var(--color-accent)' }}>
+                <div><strong>{t('import_config.meshcore_name')}:</strong> {ch.name}</div>
+                <div>
+                  <strong>{t('import_config.meshcore_secret')}:</strong>{' '}
+                  <code data-testid="meshcore-import-secret">{maskMeshcoreSecret(ch.secretHex)}</code>
+                </div>
+                <div>
+                  <strong>{t('import_config.meshcore_scope')}:</strong>{' '}
+                  {ch.regionScope ?? t('import_config.meshcore_scope_none')}
+                </div>
+                {ch.derived && (
+                  <div style={{ fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
+                    {t('import_config.meshcore_secret_derived')}
+                  </div>
+                )}
+                <div style={{ marginTop: '0.5rem' }} data-testid="meshcore-import-target">
+                  {target?.kind === 'new' && t('import_config.meshcore_target_new', { slot: target.slot })}
+                  {target?.kind === 'existing' && t('import_config.meshcore_target_existing', { slot: target.slot })}
+                  {target?.kind === 'full' && t('import_config.meshcore_target_full', { last: target.maxChannels - 1 })}
+                  {!target && t('import_config.meshcore_target_unknown')}
+                </div>
+              </div>
+
+              {importing && (
+                <div style={{ marginTop: '1rem', textAlign: 'center', color: 'var(--color-text)' }}>{importStatus}</div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--color-surface)' }}>
+                <button
+                  onClick={handleClose}
+                  disabled={importing}
+                  style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text)', border: '1px solid var(--color-surface-active)', borderRadius: '4px', padding: '0.5rem 1rem', cursor: importing ? 'not-allowed' : 'pointer', fontSize: '0.875rem', fontWeight: '500', opacity: importing ? 0.5 : 1 }}
+                >
+                  {t('import_config.cancel')}
+                </button>
+                <button
+                  onClick={handleImportMeshcore}
+                  disabled={importing || blocked}
+                  data-testid="meshcore-import-confirm"
+                  style={{ background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: '4px', padding: '0.5rem 1rem', cursor: importing || blocked ? 'not-allowed' : 'pointer', fontSize: '0.875rem', fontWeight: '500', opacity: importing || blocked ? 0.5 : 1 }}
+                >
+                  {importing ? t('import_config.importing') : t('import_config.meshcore_import_button')}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {decoded && (
           <div style={{ marginTop: '1rem', maxHeight: '400px', overflowY: 'auto' }}>

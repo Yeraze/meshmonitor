@@ -43,6 +43,15 @@ const csrfFetchMock = vi.fn((url: string, ...rest: any[]) => {
       }),
     );
   }
+  if (typeof url === 'string' && url.includes('/meshcore/status')) {
+    // Slot capacity probe (#6257): its own effect, so it must not eat a queued channel response.
+    return Promise.resolve(
+      new Response(JSON.stringify({ success: true, data: { localNode: { maxChannels: 8 } } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+  }
   channelCalls.push([url, ...rest]);
   const next = responseQueue.shift();
   return Promise.resolve(next ?? new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }));
@@ -54,6 +63,12 @@ const csrfFetchMock = vi.fn((url: string, ...rest: any[]) => {
 vi.mock('../../hooks/useCsrfFetch', () => ({
   useCsrfFetch: () => csrfFetchMock,
 }));
+
+// The share/import modals call ApiService directly (#6257).
+const apiMock = vi.hoisted(() => ({ encodeChannelUrl: vi.fn(), decodeChannelUrl: vi.fn(), importConfig: vi.fn() }));
+vi.mock('../../services/api', () => ({ default: apiMock }));
+vi.mock('../common/QrCodeCanvas', () => ({ QrCodeCanvas: () => null }));
+vi.mock('../../hooks/useResolvedSourceId', () => ({ useResolvedSourceId: () => 'src-resolved' }));
 
 import { MeshCoreChannelsConfigSection } from './MeshCoreChannelsConfigSection';
 
@@ -552,5 +567,47 @@ describe('MeshCoreChannelsConfigSection — one editing model (#5829)', () => {
     fireEvent.click(button('Edit'));
     expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() => expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('#general'));
+  });
+});
+
+// #6257 P8a: share / import and the maxChannels-bounded free slot.
+describe('MeshCoreChannelsConfigSection — share, import and slot capacity', () => {
+  const PSK = 'AAECAwQFBgcICQoLDA0ODw==';
+
+  it('Share opens the MeshCore share modal preselected on that channel', async () => {
+    csrfFetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        { id: 0, name: 'Public', psk: PSK },
+        { id: 1, name: 'Town', psk: PSK },
+        { id: 2, name: 'Keyless', psk: null },
+      ]),
+    );
+    render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
+    await waitFor(() => screen.getByText('Town'));
+    // Slot 0 (Public) and a channel without a secret have no Share button.
+    expect(screen.getAllByTestId('mc-channel-share')).toHaveLength(1);
+
+    apiMock.encodeChannelUrl.mockResolvedValue('meshcore://channel/add?name=Town&secret=x');
+    fireEvent.click(screen.getByTestId('mc-channel-share'));
+    expect(screen.getByText('export_config.meshcore_title')).toBeTruthy();
+    await waitFor(() => expect((screen.getAllByRole('radio')[1] as HTMLInputElement).checked).toBe(true));
+    await waitFor(() => expect(apiMock.encodeChannelUrl).toHaveBeenCalledWith([1], false, undefined, 'src-a'));
+  });
+
+  it('Import from URL opens the MeshCore import modal', async () => {
+    csrfFetchMock.mockResolvedValueOnce(jsonResponse([{ id: 0, name: 'Public', psk: PSK }]));
+    render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByTestId('mc-channel-import'));
+    expect(screen.getByText('import_config.meshcore_title')).toBeTruthy();
+  });
+
+  it('disables Add channel when slots 1..maxChannels-1 are all used (no 255 fallback)', async () => {
+    const rows = [{ id: 0, name: 'Public', psk: PSK }];
+    for (let i = 1; i <= 7; i++) rows.push({ id: i, name: `Ch${i}`, psk: PSK });
+    csrfFetchMock.mockResolvedValueOnce(jsonResponse(rows));
+    render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
+    await waitFor(() => screen.getByText('Ch7'));
+    expect((addButton() as HTMLButtonElement).disabled).toBe(true);
   });
 });

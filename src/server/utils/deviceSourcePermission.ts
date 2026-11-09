@@ -39,6 +39,15 @@ import type { ResourceType, PermissionAction } from '../../types/permission.js';
 import { fail } from './apiResponse.js';
 import { resolveSourceManager } from './resolveSourceManager.js';
 import { refuseNonMeshtasticSource } from './requireMeshtasticDeviceSource.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import type { MeshCoreManager } from '../meshcoreManager.js';
+import databaseService from '../../services/database.js';
+
+/** Which device protocols a gate lets through (#6257 S3).
+ *  `meshtastic` (default): Meshtastic TCP only, the behaviour of every older route.
+ *  `config-capable`: Meshtastic TCP, or a connected MeshCore Companion. */
+export type DeviceSourceAccept = 'meshtastic' | 'config-capable';
 
 export interface DeviceSourceTarget {
   /** The source the permission was checked against and the handler acts on. */
@@ -47,7 +56,18 @@ export interface DeviceSourceTarget {
   manager: MeshtasticManager;
   /** False when the request named no source and the primary was used. */
   named: boolean;
+  protocol: 'meshtastic';
 }
+
+/** Target of a `config-capable` gate that resolved to a MeshCore Companion. */
+export interface MeshCoreDeviceSourceTarget {
+  sourceId: string;
+  manager: MeshCoreManager;
+  named: true;
+  protocol: 'meshcore';
+}
+
+export type ConfigCapableTarget = DeviceSourceTarget | MeshCoreDeviceSourceTarget;
 
 /** What a `requireDeviceSourcePermission()` middleware enforces. Read by the
  *  route guard tests. */
@@ -55,6 +75,8 @@ export interface DeviceSourceGate {
   resource: ResourceType;
   action: PermissionAction;
   from: 'query' | 'body';
+  /** Present only for a non-default gate (`config-capable`). */
+  accept?: DeviceSourceAccept;
 }
 
 const TARGET = Symbol.for('meshmonitor.deviceSourceTarget');
@@ -66,7 +88,7 @@ export function getDeviceSourceGate(handler: unknown): DeviceSourceGate | undefi
   return (handler as { [DEVICE_SOURCE_GATE]?: DeviceSourceGate } | null | undefined)?.[DEVICE_SOURCE_GATE];
 }
 
-type TargetCarrier = { [TARGET]?: DeviceSourceTarget };
+type TargetCarrier = { [TARGET]?: ConfigCapableTarget };
 
 const isBlank = (value: unknown): boolean => value === undefined || value === null || value === '';
 
@@ -76,6 +98,19 @@ const isBlank = (value: unknown): boolean => value === undefined || value === nu
  * without a resolved target has no source its permission check covered.
  */
 export function getDeviceSourceTarget(req: Request): DeviceSourceTarget {
+  const target = getConfigCapableTarget(req);
+  if (target.protocol !== 'meshtastic') {
+    // Only a `config-capable` gate can resolve to MeshCore; its handler must
+    // call getConfigCapableTarget() and branch. Failing loud beats handing a
+    // MeshCore manager to Meshtastic-only code.
+    throw new Error('getDeviceSourceTarget: target is a MeshCore source; use getConfigCapableTarget()');
+  }
+  return target;
+}
+
+/** Like {@link getDeviceSourceTarget}, for routes behind an
+ *  `accept: 'config-capable'` gate: the target may be Meshtastic or MeshCore. */
+export function getConfigCapableTarget(req: Request): ConfigCapableTarget {
   const target = (req as unknown as TargetCarrier)[TARGET];
   if (!target) {
     throw new Error('getDeviceSourceTarget: route is not behind requireDeviceSourcePermission()');
@@ -96,7 +131,9 @@ export function requireDeviceSourcePermission(
   action: PermissionAction,
   from: 'query' | 'body',
   what = 'device operations',
+  options: { accept?: DeviceSourceAccept } = {},
 ): RequestHandler {
+  const accept: DeviceSourceAccept = options.accept ?? 'meshtastic';
   const resolveTarget: RequestHandler = (req: Request, res: Response, next: NextFunction): void => {
     const fromQuery = req.query?.sourceId;
     const fromBody = (req.body as { sourceId?: unknown } | undefined)?.sourceId;
@@ -115,23 +152,61 @@ export function requireDeviceSourcePermission(
       return;
     }
 
+    // A config-capable gate lets a named MeshCore source keep its OWN manager
+    // (resolveSourceManager would hand back the primary Meshtastic radio).
+    if (accept === 'config-capable' && named !== undefined) {
+      const own = sourceManagerRegistry.getManager(named);
+      if (own && isMeshCoreManager(own)) {
+        (req as unknown as TargetCarrier)[TARGET] = { sourceId: named, manager: own, named: true, protocol: 'meshcore' };
+        next();
+        return;
+      }
+    }
+
     const manager = resolveSourceManager(named);
     (req as unknown as TargetCarrier)[TARGET] = {
       sourceId: named ?? manager.sourceId,
       manager,
       named: named !== undefined,
+      protocol: 'meshtastic',
     };
     next();
   };
 
   const checkPermission = requirePermission(resource, action, {
-    sourceIdFrom: (req) => getDeviceSourceTarget(req).sourceId,
+    sourceIdFrom: (req) => getConfigCapableTarget(req).sourceId,
     requireSourceId: true,
   });
 
   const bindDevice: RequestHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const target = getDeviceSourceTarget(req);
+    const target = getConfigCapableTarget(req);
+    if (target.protocol === 'meshcore') {
+      // Must be a live Companion: a Repeater (or a disconnected source) has
+      // no channel table to read or write.
+      const status = target.manager.getConnectionStatus();
+      if (!status.connected) {
+        fail(res, 409, 'SOURCE_NOT_CONNECTED', `Source "${target.sourceId}" is not connected; ${what} are not available until it reconnects.`);
+        return;
+      }
+      // Lazy: the manager module is large and only a MeshCore request needs the enum.
+      const { MeshCoreDeviceType } = await import('../meshcoreManager.js');
+      if (status.deviceType !== MeshCoreDeviceType.COMPANION) {
+        fail(res, 400, 'SOURCE_NOT_COMPANION', `Source "${target.sourceId}" is not a MeshCore Companion; ${what} are not available for it.`);
+        return;
+      }
+      next();
+      return;
+    }
     if (target.named) {
+      if (accept === 'config-capable' && !sourceManagerRegistry.getManager(target.sourceId)) {
+        // A MeshCore source with no registered manager: report it as
+        // not connected rather than as the wrong protocol.
+        const row = await databaseService.sources.getSource(target.sourceId).catch(() => null);
+        if (row?.type === 'meshcore') {
+          fail(res, 409, 'SOURCE_NOT_CONNECTED', `Source "${target.sourceId}" is not connected; ${what} are not available until it reconnects.`);
+          return;
+        }
+      }
       if (await refuseNonMeshtasticSource(res, target.sourceId, what)) return;
       if (target.manager.sourceId !== target.sourceId) {
         fail(res, 404, 'SOURCE_NOT_FOUND', `Source "${target.sourceId}" was not found.`);
@@ -154,6 +229,8 @@ export function requireDeviceSourcePermission(
     };
     run(0);
   };
-  (gate as unknown as { [DEVICE_SOURCE_GATE]: DeviceSourceGate })[DEVICE_SOURCE_GATE] = { resource, action, from };
+  (gate as unknown as { [DEVICE_SOURCE_GATE]: DeviceSourceGate })[DEVICE_SOURCE_GATE] = {
+    resource, action, from, ...(accept === 'meshtastic' ? {} : { accept }),
+  };
   return gate;
 }

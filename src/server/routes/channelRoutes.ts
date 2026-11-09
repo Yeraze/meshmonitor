@@ -41,7 +41,17 @@ import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { fail } from '../utils/apiResponse.js';
 import { listKeyedChannelsForViewer } from '../utils/meshcoreKeyedChannels.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
-import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget, getConfigCapableTarget } from '../utils/deviceSourcePermission.js';
+import {
+  isMeshcoreChannelUrl,
+  decodeMeshcoreChannelUrl,
+  encodeMeshcoreChannelUrl,
+  planMeshcoreChannelImport,
+  type MeshcoreChannelShare,
+  type MeshcoreImportPlan,
+  type MeshcoreSlotInfo,
+} from '../../utils/meshcoreChannelUrl.js';
+import type { MeshCoreManager } from '../meshcoreManager.js';
 import { safeJson } from '../utils/redactSecrets.js';
 
 const router: Router = Router();
@@ -1106,13 +1116,76 @@ router.post('/reorder', requireAuth(), requireSourceId('body'), requireMeshtasti
   }
 });
 
-// Decode Meshtastic channel URL for preview
+
+// ---------------------------------------------------------------------------
+// MeshCore channel share / import (#6257 P8a). One URL = one channel.
+// ---------------------------------------------------------------------------
+
+/** Base64 PSK -> 32 lowercase hex chars, or '' when it is not exactly 16 bytes. */
+function pskToSecretHex(psk: string | null | undefined): string {
+  if (!psk) return '';
+  const bytes = Buffer.from(psk, 'base64');
+  return bytes.length === 16 ? bytes.toString('hex') : '';
+}
+
+/** The source's stored slots plus the device's slot capacity. */
+async function loadMeshcoreSlotView(
+  sourceId: string,
+  manager: MeshCoreManager,
+): Promise<{ slots: MeshcoreSlotInfo[]; maxChannels: number | null }> {
+  const rows = await databaseService.channels.getAllChannels(sourceId);
+  const slots = rows.map((r) => ({ id: Number(r.id), name: r.name, secretHex: pskToSecretHex(r.psk) }));
+  const max = manager.getLocalNode()?.maxChannels;
+  return { slots, maxChannels: typeof max === 'number' && max > 0 ? max : null };
+}
+
+/** Serializes imports per source so two requests never pick the same free slot. */
+const meshcoreImportLocks = new Map<string, Promise<unknown>>();
+async function withMeshcoreImportLock<T>(sourceId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = meshcoreImportLocks.get(sourceId) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  meshcoreImportLocks.set(sourceId, run);
+  try {
+    return await run;
+  } finally {
+    if (meshcoreImportLocks.get(sourceId) === run) meshcoreImportLocks.delete(sourceId);
+  }
+}
+
+function describeImportPlan(plan: MeshcoreImportPlan) {
+  return plan.kind === 'full'
+    ? { kind: plan.kind, maxChannels: plan.maxChannels }
+    : { kind: plan.kind, slot: plan.slot };
+}
+
+// Decode Meshtastic or MeshCore channel URL for preview
 router.post('/decode-url', requirePermission('configuration', 'read'), async (req: Request, res: Response) => {
   try {
     const { url } = req.body;
 
     if (!url || typeof url !== 'string') {
       return res.status(400).json({ error: 'URL is required' });
+    }
+
+    if (isMeshcoreChannelUrl(url)) {
+      const result = await decodeMeshcoreChannelUrl(url);
+      if (!result.ok) return fail(res, 400, `MESHCORE_URL_${result.code}`, result.message);
+      const body: Record<string, unknown> = {
+        protocol: 'meshcore',
+        channels: [{ ...result.channel, derived: result.derived }],
+      };
+      // Optional target-slot preview. Slot occupancy is device detail, so it is
+      // only computed for a caller who may write this source's configuration.
+      const previewSourceId = (req.body as { sourceId?: unknown }).sourceId;
+      if (typeof previewSourceId === 'string' && previewSourceId.length > 0) {
+        const mgr = sourceManagerRegistry.getManager(previewSourceId);
+        const allowed = req.user?.isAdmin || (req.user && await hasPermission(req.user, 'configuration', 'write', previewSourceId));
+        if (allowed && mgr && isMeshCoreManager(mgr)) {
+          const view = await loadMeshcoreSlotView(previewSourceId, mgr);
+          body.target = describeImportPlan(planMeshcoreChannelImport(result.channel.secretHex, view.slots, view.maxChannels));
+        }
+      }
+      return res.json(body);
     }
 
     const channelUrlService = (await import('../services/channelUrlService.js')).default;
@@ -1136,14 +1209,36 @@ router.post('/decode-url', requirePermission('configuration', 'read'), async (re
 // so it requires `configuration:write`, not merely `:read`. The channel-listing
 // endpoint masks PSKs for read-only callers; this endpoint must not hand them the
 // raw key by a side door.
-router.post('/encode-url', requireSourceId('body'), requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
+router.post('/encode-url', requireSourceId('body'), requireDeviceSourcePermission('configuration', 'write', 'body', 'channel sharing', { accept: 'config-capable' }), async (req: Request, res: Response) => {
   try {
     const { channelIds, includeLoraConfig } = req.body;
-    const { manager: encodeUrlManager, sourceId: encodeUrlSourceScope } = getDeviceSourceTarget(req);
+    const target = getConfigCapableTarget(req);
 
     if (!Array.isArray(channelIds)) {
       return res.status(400).json({ error: 'channelIds must be an array' });
     }
+
+    if (target.protocol === 'meshcore') {
+      // MeshCore shares ONE channel per URL. The URL reveals the secret, which
+      // is why the gate above is configuration:write on THIS source (decision 6).
+      if (channelIds.length !== 1 || !Number.isInteger(channelIds[0]) || channelIds[0] < 0) {
+        return fail(res, 400, 'MESHCORE_SINGLE_CHANNEL', 'A MeshCore share URL holds exactly one channel; send one channel id.');
+      }
+      const row = await databaseService.channels.getChannelById(channelIds[0], target.sourceId);
+      const secretHex = pskToSecretHex(row?.psk);
+      if (!row || !secretHex) {
+        return fail(res, 404, 'CHANNEL_NOT_FOUND', 'Channel not found, or it has no 16-byte secret to share.');
+      }
+      const encoded = encodeMeshcoreChannelUrl({
+        name: row.name,
+        secretHex,
+        regionScope: (row as { scope?: string | null }).scope ?? null,
+      });
+      if (!encoded.ok) return fail(res, 400, `MESHCORE_URL_${encoded.code}`, encoded.message);
+      return res.json({ url: encoded.url, protocol: 'meshcore' });
+    }
+
+    const { manager: encodeUrlManager, sourceId: encodeUrlSourceScope } = target;
 
     const channelUrlService = (await import('../services/channelUrlService.js')).default;
 
@@ -1216,15 +1311,88 @@ router.post('/encode-url', requireSourceId('body'), requireDeviceSourcePermissio
   }
 });
 
+/** Import one MeshCore channel from a share URL into the lowest free slot. */
+async function importMeshcoreChannel(
+  req: Request,
+  res: Response,
+  sourceId: string,
+  manager: MeshCoreManager,
+  url: string,
+): Promise<Response> {
+  const decoded = await decodeMeshcoreChannelUrl(url);
+  if (!decoded.ok) return fail(res, 400, `MESHCORE_URL_${decoded.code}`, decoded.message);
+  const share: MeshcoreChannelShare = decoded.channel;
+
+  return withMeshcoreImportLock(sourceId, async () => {
+    const view = await loadMeshcoreSlotView(sourceId, manager);
+    const plan = planMeshcoreChannelImport(share.secretHex, view.slots, view.maxChannels);
+
+    if (plan.kind === 'existing') {
+      // Same secret already on the device: nothing to write.
+      return res.json({
+        success: true,
+        protocol: 'meshcore',
+        alreadyPresent: true,
+        slot: plan.slot,
+        imported: { channels: 0, channelDetails: [], loraConfig: false },
+        requiresReboot: false,
+      });
+    }
+    if (plan.kind === 'full') {
+      return fail(res, 409, 'NO_FREE_CHANNEL_SLOT',
+        `No free channel slot: slots 1-${plan.maxChannels - 1} are all in use. Delete a channel first.`);
+    }
+
+    // The same per-slot write gate PUT /channels/:id applies (MM-SEC-4).
+    const slotResource = `channel_${plan.slot}` as import('../../types/permission.js').ResourceType;
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, slotResource, 'write', sourceId))) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: slotResource, action: 'write' },
+      });
+    }
+
+    try {
+      await manager.setChannel(plan.slot, share.name, share.secretHex, share.regionScope);
+    } catch (deviceError) {
+      logger.error(`MeshCore: failed to import channel into slot ${plan.slot}:`, deviceError);
+      return fail(res, 502, 'DEVICE_WRITE_FAILED', 'Failed to write channel to MeshCore device', {
+        message: deviceError instanceof Error ? deviceError.message : String(deviceError),
+      });
+    }
+    return res.json({
+      success: true,
+      protocol: 'meshcore',
+      alreadyPresent: false,
+      slot: plan.slot,
+      imported: { channels: 1, channelDetails: [{ index: plan.slot, name: share.name }], loraConfig: false },
+      requiresReboot: false,
+    });
+  });
+}
+
 // Import configuration from URL
-router.post('/import-config', requireSourceId('body'), requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
+router.post('/import-config', requireSourceId('body'), requireDeviceSourcePermission('configuration', 'write', 'body', 'channel import', { accept: 'config-capable' }), async (req: Request, res: Response) => {
   try {
     const { url: configUrl } = req.body;
-    const { manager: configImportManager, sourceId: configSourceId } = getDeviceSourceTarget(req);
+    const importTarget = getConfigCapableTarget(req);
 
     if (!configUrl || typeof configUrl !== 'string') {
       return res.status(400).json({ error: 'URL is required' });
     }
+
+    const urlIsMeshcore = isMeshcoreChannelUrl(configUrl);
+    if (importTarget.protocol === 'meshcore' || urlIsMeshcore) {
+      if (importTarget.protocol !== 'meshcore') {
+        return fail(res, 400, 'PROTOCOL_MISMATCH', 'This is a MeshCore channel URL; the target source is a Meshtastic device.');
+      }
+      if (!urlIsMeshcore) {
+        return fail(res, 400, 'PROTOCOL_MISMATCH', 'The target source is MeshCore; import needs a meshcore://channel/add URL.');
+      }
+      return await importMeshcoreChannel(req, res, importTarget.sourceId, importTarget.manager, configUrl);
+    }
+    const { manager: configImportManager, sourceId: configSourceId } = importTarget;
 
     logger.info(`📥 Importing configuration from URL: ${configUrl}`);
 

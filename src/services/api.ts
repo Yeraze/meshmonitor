@@ -989,12 +989,16 @@ class ApiService {
     return result.channel;
   }
 
-  async decodeChannelUrl(url: string): Promise<any> {
+  /**
+   * Decode a Meshtastic or MeshCore channel URL for preview. `sourceId` is
+   * optional: for a MeshCore URL it lets the server name the import slot.
+   */
+  async decodeChannelUrl(url: string, sourceId?: string | null): Promise<any> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/channels/decode-url`, {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, ...(sourceId ? { sourceId } : {}) }),
     });
 
     if (!response.ok) {
@@ -1006,7 +1010,7 @@ class ApiService {
   }
 
 
-  async importConfig(url: string, nodeNum?: number, sourceId?: string | null): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean; failedChannels?: number; failedChannelDetails?: Array<{ index: number; name: string }> }; requiresReboot?: boolean }> {
+  async importConfig(url: string, nodeNum?: number, sourceId?: string | null): Promise<{ success: boolean; protocol?: 'meshcore'; slot?: number; alreadyPresent?: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean; failedChannels?: number; failedChannelDetails?: Array<{ index: number; name: string }> }; requiresReboot?: boolean }> {
     await this.ensureBaseUrl();
     // Use admin endpoint if nodeNum is provided (for remote nodes), otherwise use standard endpoint
     const endpoint = nodeNum !== undefined ? '/api/admin/import-config' : '/api/channels/import-config';
