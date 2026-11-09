@@ -11,7 +11,11 @@ import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 import { applySignFlipToTraceroutes, loadSignFlipContexts, rowSourceId } from '../services/signFlipCorrection.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
 import { permittedReadScope } from '../utils/sourcePermissions.js';
-import { mergeExplorerNodes, type ExplorerNodeRow } from '../utils/tracerouteExplorerNodes.js';
+import { mergeExplorerNodes, mergeMeshCoreExplorerNodes, type ExplorerNode, type ExplorerNodeRow, type MeshCoreExplorerNodeRow } from '../utils/tracerouteExplorerNodes.js';
+import { buildMeshCoreTraceRun, type MeshCoreTraceRun } from '../../utils/meshcoreTraceRun.js';
+import { buildMeshCorePositionFilter, loadMeshCoreNodesBySource } from '../utils/positionVisibility.js';
+import { applyMeshCorePositionOverridesForViewer } from '../utils/meshcorePositionOverride.js';
+import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 
 const router = Router();
@@ -254,7 +258,40 @@ router.get(
 // A busy multi-source install stores ~5 rows per traceroute (each MQTT
 // source keeps its own copy), so 24h can pass 5,000 rows on its own.
 export const EXPLORER_SCAN_LIMIT = 20000;
+/** Initiated MeshCore traces read per source (#6276). */
+export const MESHCORE_EXPLORER_TRACE_LIMIT = 5000;
+const MESHCORE_RETENTION_DAYS = 90;
 const EXPLORER_MAX_HOURS = 24 * 365;
+
+/** One MeshCore run in the Explorer wire shape (Meshtastic fields plus identity keys). */
+function meshcoreRunToWire(run: MeshCoreTraceRun, id: number) {
+  return {
+    protocol: 'meshcore' as const,
+    id,
+    sourceId: run.sourceId,
+    timestamp: run.timestamp,
+    fromNodeNum: run.fromNodeNum,
+    toNodeNum: run.toNodeNum,
+    route: run.route as string | null,
+    routeBack: run.routeBack,
+    snrTowards: run.snrTowards as string | null,
+    snrBack: run.snrBack,
+    channel: null as number | null,
+    packetId: null as number | null,
+    transportMechanism: null as number | null,
+    fromKey: run.fromKey,
+    toKey: run.toKey,
+    /** Full outbound leg `[from .. turnaround]` (keys, not synthetic numbers). */
+    routeKeys: run.forwardKeys,
+    /** Full return leg `[turnaround .. from]`, or null when it was not recorded. */
+    routeBackKeys: run.backKeys,
+    turnaroundKey: run.turnaroundKey,
+    reachedTarget: run.reachedTarget,
+    hopMeta: run.hops,
+    traceTag: run.traceTag,
+    hashBytes: run.hashBytes,
+  };
+}
 
 router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {
   try {
@@ -329,10 +366,61 @@ router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {
     const signFlip = await loadSignFlipContexts(sourceIds);
     const nodes = mergeExplorerNodes(safeNodeRows, wanted, signFlip);
 
+    // MeshCore: traces this instance sent, built into the same wire shape.
+    // MeshCore rows never pass through orientTracerouteRows (the builder is
+    // requester-first by construction). `meshcore_mqtt` stores no traces.
+    const sourceTypeById = new Map(allSources.map(s => [s.id, s.type]));
+    const mcSources = sourceIds.filter(id => sourceTypeById.get(id) === 'meshcore');
+    const mcRuns: ReturnType<typeof meshcoreRunToWire>[] = [];
+    let mcNodes: ExplorerNode[] = [];
+    let mcTruncated = false;
+    if (mcSources.length > 0) {
+      const sinceMs = sinceTimestamp ?? 0;
+      const localKeys = await databaseService.meshcore.getLocalNodePublicKeysBySource(mcSources);
+      for (const sid of mcSources) {
+        const { traces, truncated: t } = await databaseService.meshcoreHopSnr
+          .getInitiatedTracesForExplorer(sid, sinceMs, MESHCORE_EXPLORER_TRACE_LIMIT);
+        if (t) mcTruncated = true;
+        for (const group of traces) {
+          const run = buildMeshCoreTraceRun(group, { localPublicKey: localKeys.get(sid) ?? null });
+          if (run) mcRuns.push(meshcoreRunToWire(run, group[0].id ?? 0));
+        }
+      }
+      const wantedKeys = new Set<string>();
+      for (const r of mcRuns) {
+        for (const k of [r.fromKey, r.toKey, r.turnaroundKey, ...r.routeKeys, ...(r.routeBackKeys ?? [])]) {
+          if (k.startsWith('mc:')) wantedKeys.add(k);
+        }
+      }
+      const mcNameSources = mcSources.filter(id => nodeSourceIds.has(id));
+      const mcRows: MeshCoreExplorerNodeRow[] = [];
+      if (mcNameSources.length > 0 && wantedKeys.size > 0) {
+        const mcNodesBySource = await loadMeshCoreNodesBySource(mcNameSources);
+        const grants = await loadSourcePermissions(user);
+        const posFilter = await buildMeshCorePositionFilter(user, mcNameSources, mcNodesBySource, grants);
+        for (const sid of mcNameSources) {
+          const wantedRows = (mcNodesBySource.get(sid) ?? []).filter(n => wantedKeys.has(`mc:${n.publicKey.toLowerCase()}`));
+          const withOverrides = await applyMeshCorePositionOverridesForViewer(wantedRows, user, sid);
+          withOverrides.forEach((row, i) => {
+            const canSee = posFilter({ sourceId: sid, publicKey: wantedRows[i].publicKey });
+            mcRows.push({
+              sourceId: sid,
+              publicKey: row.publicKey,
+              name: row.name ?? null,
+              advType: row.advType ?? null,
+              lastHeard: row.lastHeard ?? null,
+              latitude: canSee ? row.latitude ?? null : null,
+              longitude: canSee ? row.longitude ?? null : null,
+            });
+          });
+        }
+      }
+      mcNodes = mergeMeshCoreExplorerNodes(mcRows, wantedKeys);
+    }
+
     const sourceNames = new Map(allSources.map(s => [s.id, s.name]));
-    return ok(res, {
-      sources: sourceIds.map(id => ({ id, name: sourceNames.get(id) ?? id })),
-      runs: visibleRuns.map(tr => ({
+    const mtRuns = visibleRuns.map(tr => ({
+        protocol: 'meshtastic' as const,
         id: Number(tr.id),
         sourceId: tr.sourceId,
         timestamp: tr.timestamp,
@@ -345,9 +433,16 @@ router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {
         channel: tr.channel ?? null,
         packetId: tr.packetId == null ? null : Number(tr.packetId),
         transportMechanism: tr.transportMechanism ?? null,
-      })),
-      nodes,
-      truncated,
+      }));
+    const runs: Array<(typeof mtRuns)[number] | (typeof mcRuns)[number]> = mcRuns.length > 0
+      ? [...mtRuns, ...mcRuns].sort((a, b) => b.timestamp - a.timestamp || b.id - a.id)
+      : mtRuns;
+    return ok(res, {
+      sources: sourceIds.map(id => ({ id, name: sourceNames.get(id) ?? id })),
+      runs,
+      nodes: mcNodes.length > 0 ? [...nodes, ...mcNodes] : nodes,
+      truncated: truncated || mcTruncated,
+      meshcoreRetentionDays: MESHCORE_RETENTION_DAYS,
       scanLimit: EXPLORER_SCAN_LIMIT,
       retentionPerPair: getEnvironmentConfig().tracerouteHistoryLimit,
     });
