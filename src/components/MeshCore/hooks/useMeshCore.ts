@@ -134,6 +134,8 @@ export interface MeshCoreNode {
   /** P7a #6254: latest checked advert signature (true / false); null or unset = not checked. */
   advertSignatureVerified?: boolean | null;
   advLocPolicy?: number;
+  /** P8a #6257: 0 or 1 (extra ACKs on received DMs). Absent on firmware before v7. */
+  multiAcks?: number;
   /** Favorite flag (issue #3588). Pins the node to the top of the list; for a
    *  connected Companion source it also syncs the firmware favourite bit so the
    *  contact is protected from contact-table eviction (#4838). */
@@ -415,6 +417,14 @@ export interface MeshCoreActions {
   } | null>;
   /** Reboot the locally connected device. Destructive — requires confirm flow. */
   rebootDevice: (opts?: { confirm?: boolean }) => Promise<boolean>;
+  /** Read the BLE pairing PIN (0 = firmware default). Null on failure. P8a #6257. */
+  getBlePin: () => Promise<number | null>;
+  /** Set the BLE PIN (0 or 100000-999999). Applies after the next reboot. */
+  setBlePin: (pin: number) => Promise<boolean>;
+  /** Turn extra ACKs on received DMs on (1) or off (0). */
+  setMultiAcks: (value: 0 | 1) => Promise<boolean>;
+  /** Factory-reset the Companion. Destructive: the device wipes itself and reboots. */
+  factoryReset: (opts?: { confirm?: boolean }) => Promise<boolean>;
   /** Export the device's Ed25519 private key as a hex string for backup. */
   exportPrivateKey: () => Promise<string | null>;
   /** Import an Ed25519 private key onto the device. Destructive — replaces identity. */
@@ -2051,6 +2061,74 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const getBlePin = useCallback(async (): Promise<number | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/ble-pin`);
+      const data = await parseJsonResponse(response);
+      if (!data.success) return null;
+      return typeof data.data?.pin === 'number' ? data.data.pin : null;
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const setBlePin = useCallback(async (pin: number): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/ble-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await parseJsonResponse(response);
+      if (!data.success) {
+        setError(data.error || 'Failed to set BLE PIN');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to set BLE PIN');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const setMultiAcks = useCallback(async (value: 0 | 1): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/multi-acks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      });
+      const data = await parseJsonResponse(response);
+      if (!data.success) {
+        setError(data.error || 'Failed to set multi-ACKs');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to set multi-ACKs');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const factoryReset = useCallback(async (opts?: { confirm?: boolean }): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/factory-reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: opts?.confirm ?? true }),
+      });
+      const data = await parseJsonResponse(response);
+      if (!data.success) {
+        setError(data.error || 'Factory reset failed');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Factory reset failed');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const exportPrivateKey = useCallback(async (): Promise<string | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/private-key`);
@@ -2639,6 +2717,10 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       syncDeviceTime,
       getNeighbours,
       rebootDevice,
+      getBlePin,
+      setBlePin,
+      setMultiAcks,
+      factoryReset,
       exportPrivateKey,
       importPrivateKey,
       sendAdvert,
