@@ -14,14 +14,13 @@
  * - our own messages, ignored senders and DMs never alert.
  */
 import { isReactionText, parseMeshCoreReaction } from '../../utils/meshcoreReactions.js';
-import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { dataEventEmitter, type DataEvent } from './dataEventEmitter.js';
 import { notificationService, type NotificationPayload } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { isOwnPublicKey } from '../utils/ownNodes.js';
 import { meshcoreChannelIndexOf } from '../utils/meshcoreMessageMerge.js';
+import { meshcoreNotificationKey } from './meshcoreNotificationKey.js';
 import { textMentionsMeshCoreName } from '../../utils/meshcoreMentions.js';
 import type { MeshCoreMessage } from '../meshcoreManager.js';
 
@@ -168,6 +167,14 @@ export class MeshCoreMentionNotificationService {
       ...(venue.kind === 'channel'
         ? { data: { type: 'channel' as const, channelId: venue.channelIdx, messageId: msg.id } }
         : {}),
+      // Same key as the message notifier, so a recipient who got this alert
+      // gets no second one for the message. A mute on the venue wins (P11 Q3).
+      dedup: { key: meshcoreNotificationKey(msg, { roomKey: msg.toPublicKey ?? undefined }) },
+      ...(msg.keyFingerprint ? { keyFingerprint: msg.keyFingerprint } : {}),
+      muteVenue:
+        venue.kind === 'channel'
+          ? { isDirectMessage: false, channelId: venue.channelIdx }
+          : { isDirectMessage: true, muteKey: (msg.toPublicKey ?? '').toLowerCase() || undefined },
     });
     return 'sent';
   }
@@ -194,17 +201,3 @@ export class MeshCoreMentionNotificationService {
 }
 
 export const meshcoreMentionNotificationService = new MeshCoreMentionNotificationService();
-
-let subscribed = false;
-
-/** Subscribe to received MeshCore messages. Sends nothing until a user opts in. */
-export function startMeshCoreMentionNotifications(): void {
-  if (subscribed) return;
-  subscribed = true;
-  dataEventEmitter.on('data', (event: DataEvent) => {
-    if (event.type !== 'meshcore:message' || !event.sourceId) return;
-    meshcoreMentionNotificationService
-      .handleMessage(event.data as MeshCoreMessage, event.sourceId)
-      .catch((e) => logger.error(`[MeshCoreMention] handler error: ${e?.message}`));
-  });
-}
