@@ -15,7 +15,7 @@ import { logger } from '../utils/logger.js';
 import { redactCliCommand, extractCliSecret, isSecretReadCommand } from './utils/meshcoreCliRedact.js';
 import { isRepeaterReplyTerminator, parseCliReply, getRepeaterGates, type RepeaterGates } from '../utils/meshcoreRepeaterSettings.js';
 import { meshcoreTraceIngestService, type TraceIngestOptions } from './services/meshcoreTraceIngestService.js';
-import { decodeTracePacket, traceDataEventFromPacket, type TraceDataEvent } from '../utils/meshcoreTrace.js';
+import { decodeTracePacket, traceDataEventFromPacket, formatMeshCoreTraceRoute, formatMeshCorePathDiscovery, type TraceDataEvent } from '../utils/meshcoreTrace.js';
 import {
   clampIntervalSetting,
   MESHCORE_AUTO_ANNOUNCE_HOURS,
@@ -2203,6 +2203,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // configured for this source.
       this.shouldReconnect = false;
       this.emit('connected', this.localNode);
+      // P11 S6: the service skips this source's first connect and only speaks
+      // after a drop. Fire-and-forget: must never break connect.
+      this.notifyServerConnection(true);
       // Per-source auto-delete-by-distance (#3901) — scoped to this source's
       // own nodes/settings; only runs while connected.
       this.distanceDeleteScheduler.start().catch((err) =>
@@ -2467,8 +2470,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * Disconnect from the device
    */
-  async disconnect(): Promise<void> {
+  async disconnect(opts: { userInitiated?: boolean } = {}): Promise<void> {
     logger.info('[MeshCore] Disconnecting...');
+    // P11 S6: only an operator's Disconnect click notifies. Shutdown, source
+    // edits and connect-failure cleanup stay silent. Read before teardown.
+    const wasConnected = this.connected;
 
     // Mark this as an intentional teardown so the native backend's own
     // 'disconnected' event (fired when we close the connection below) isn't
@@ -2585,6 +2591,39 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.emit('disconnected');
     dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
     logger.info('[MeshCore] Disconnected');
+    if (opts.userInitiated && wasConnected) this.notifyServerConnection(false);
+  }
+
+  /**
+   * P11 S6: tell `serverEventNotificationService` the link came up or went
+   * down. The service keeps per-source state (first connect and repeated
+   * drops are skipped). Fire-and-forget: a failure is logged, never thrown.
+   */
+  private notifyServerConnection(connected: boolean): void {
+    try {
+      const p = connected
+        ? serverEventNotificationService.notifyNodeConnected(this.sourceId, this.sourceName)
+        : serverEventNotificationService.notifyNodeDisconnected(this.sourceId, this.sourceName);
+      Promise.resolve(p).catch((err) =>
+        logger.debug(`[MeshCore:${this.sourceId}] connection notification failed: ${(err as Error).message}`));
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] connection notification failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * P11 S7: fire-and-forget traceroute notification for a MeshCore trace or
+   * path-discovery result. `from` is the local radio, `to` the contact.
+   */
+  private notifyTraceResult(contact: MeshCoreContact | undefined, publicKey: string, routeText: string): void {
+    try {
+      const from = this.localNode?.name || this.sourceName;
+      const to = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
+      Promise.resolve(notificationService.notifyTraceroute(from, to, routeText, this.sourceId, this.sourceName))
+        .catch((err) => logger.debug(`[MeshCore:${this.sourceId}] trace notification failed: ${(err as Error).message}`));
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] trace notification failed: ${(err as Error).message}`);
+    }
   }
 
   // ============ Native Backend (meshcore.js) ============
@@ -3172,6 +3211,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         `[MeshCore] Path discovery response for ${contact.publicKey.substring(0, 16)}…: ` +
         `out=${outHops} hops [${outPathFormatted}], in=${inHops} hops [${formatPathHex(inPathHex, data.in_hash_size ?? 1)}]`,
       );
+      this.notifyTraceResult(contact, contact.publicKey, formatMeshCorePathDiscovery(outHops, outPathFormatted, inHops));
     } else if (event_type === 'node_discovered') {
       // 0x8E NODE_DISCOVER_RESP from an active discovery burst (CMD 55).
       // The native backend already registered the node on the device; here
@@ -8039,6 +8079,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }));
       const lastSnr: number = d.lastSnr ?? 0;
       logger.debug(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}… via ${tracedHops.join(',')}: ${hops.length} hops, lastSnr=${lastSnr}`);
+      this.notifyTraceResult(
+        contact,
+        publicKey,
+        formatMeshCoreTraceRoute(hops, tracedHops, lastSnr, [...this.contacts.values()], { autoReturn: opts.autoReturn === true }),
+      );
       return { ok: true, hops, lastSnr, path: tracedHops };
     } catch (error) {
       logger.error('[MeshCore] traceContactPathDetailed threw:', error);
@@ -12549,6 +12594,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private beginReconnect(): void {
     if (this.connectionState === 'reconnecting' || this.connectionState === 'failed') return;
     this.connectionState = 'reconnecting';
+    this.notifyServerConnection(false);
     this.stopHeartbeat();
     // A recovered Repeater serial link must not fire the on-start announce (#5563).
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
@@ -12595,6 +12641,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // teardown below short-circuits on the `!== 'connected'` guard above.
     this.connected = false;
     this.connectionState = 'disconnected';
+    this.notifyServerConnection(false);
     this.stopHeartbeat();
     this.autoPing.clearAll();
     await this.stopObserver();
