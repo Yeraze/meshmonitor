@@ -5,7 +5,9 @@
  * Notifications tab. Meshtastic keeps every control it had. A MeshCore
  * Companion gets DMs (which include room posts), channels, emoji, mentions,
  * trace/path alerts and new-node alerts. A MeshCore Repeater only sees channel
- * traffic, so DM, trace, new-node and mention controls are hidden.
+ * traffic, so DM, trace and mention controls are hidden. Its new-node alert is
+ * on but gated by a learning window and an hourly cap (#6306), which the
+ * `newNodeNote` explains.
  */
 import api from '../services/api.js';
 import type { Channel } from '../types/device.js';
@@ -23,6 +25,8 @@ export interface NotificationCapabilities {
   mqtt: boolean;
   traceroute: boolean;
   newNode: 'on' | 'unsupported';
+  /** Extra text under the new-node toggle. */
+  newNodeNote: 'repeater_learning' | null;
   waypoint: boolean;
   mention: boolean;
   batteryUnit: 'percent' | 'voltage';
@@ -43,6 +47,7 @@ export function notificationCapabilities(
       mqtt: true,
       traceroute: true,
       newNode: 'on',
+      newNodeNote: null,
       waypoint: true,
       mention: false,
       batteryUnit: 'percent',
@@ -57,7 +62,8 @@ export function notificationCapabilities(
     emoji: true,
     mqtt: false,
     traceroute: !repeater,
-    newNode: repeater ? 'unsupported' : 'on',
+    newNode: 'on',
+    newNodeNote: repeater ? 'repeater_learning' : null,
     waypoint: false,
     mention: !repeater,
     batteryUnit: 'voltage',

@@ -23,12 +23,13 @@
  */
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { NEW_NODE_CAP_PER_HOUR, NEW_NODE_LEARN_HOURS } from '../../utils/newNodeAlertLimits.js';
 import { HourlyLogLimiter } from '../utils/hourlyLogLimiter.js';
 
 /** Learning window: 4 default 12 h flood-advert cycles. Maintainer decision (#6306). */
-export const LEARN_MS = 48 * 60 * 60_000;
+export const LEARN_MS = NEW_NODE_LEARN_HOURS * 60 * 60_000;
 /** Most alerts per source per fixed hour. Maintainer decision (#6306). */
-export const CAP_PER_HOUR = 10;
+export const CAP_PER_HOUR = NEW_NODE_CAP_PER_HOUR;
 /** Length of the fixed (non-sliding) cap window. */
 export const CAP_WINDOW_MS = 60 * 60_000;
 
