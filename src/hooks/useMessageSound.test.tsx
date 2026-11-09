@@ -74,3 +74,16 @@ describe('meshcoreSoundArgs', () => {
     expect(meshcoreSoundArgs({ fromPublicKey: 'channel-1', reactionEmoji: '👍' }, 'me')).toBeNull();
   });
 });
+
+describe('meshcoreSoundArgs canonical mute keys', () => {
+  it('resolves a DM prefix to the canonical key used by the mute store', () => {
+    const full = 'ab'.repeat(32);
+    const args = meshcoreSoundArgs(
+      { id: 'm1', fromPublicKey: full.slice(0, 12), toPublicKey: 'self', text: 'hi' } as never,
+      'self-key',
+      (k) => (full.startsWith(k) ? full : k),
+    );
+    expect(args).toEqual({ channelId: -1, isDM: true, muteKey: full });
+  });
+});
+

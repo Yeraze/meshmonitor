@@ -35,7 +35,7 @@ import type {
   MeshCoreLocalNodeUpdateEvent,
 } from '../../../hooks/useWebSocket';
 import { MeshCoreContact, mapContactsToNodes } from '../../../utils/meshcoreHelpers';
-import { remapChannelLastRead } from '../meshcoreUnreadStore';
+import { remapChannelLastRead, canonicalizePeerKey } from '../meshcoreUnreadStore';
 import { remapChannelCustomOrder } from '../meshcoreChannelOrder';
 import { emitChannelsReordered, remapChannelKey, slotMoveMap } from '../meshcoreChannelReorderEvents';
 import { useMessageSound, meshcoreSoundArgs } from '../../../hooks/useMessageSound';
@@ -1011,7 +1011,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         if (soundedIdsRef.current.size > 500) {
           soundedIdsRef.current.delete(soundedIdsRef.current.values().next().value as string);
         }
-        const args = meshcoreSoundArgs(msg as MeshCoreMessage, localNodeRef.current?.publicKey);
+        // Mutes are stored under the canonical full key; a DM may arrive with a 12-hex prefix.
+        const args = meshcoreSoundArgs(msg as MeshCoreMessage, localNodeRef.current?.publicKey, (k) =>
+          canonicalizePeerKey(k, Array.from(contactsRef.current.values())));
         if (args) playForMessageRef.current(args);
       }
       setMessages(prev => {

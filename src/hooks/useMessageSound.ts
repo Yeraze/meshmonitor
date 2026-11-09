@@ -62,6 +62,8 @@ interface MeshCoreSoundMessage {
 export function meshcoreSoundArgs(
   msg: MeshCoreSoundMessage,
   selfPublicKey: string | null | undefined,
+  /** Maps a peer key (possibly a 12-hex prefix) to the canonical key DM/room mutes are stored under. */
+  canonicalize: (key: string) => string = (k) => k,
 ): PlayForMessageArgs | null {
   if (msg.filtered || msg.reactionEmoji) return null;
   const isOwn =
@@ -71,7 +73,7 @@ export function meshcoreSoundArgs(
   const m = /^channel-(\d+)$/.exec(msg.fromPublicKey);
   if (m) return { channelId: Number(m[1]), isDM: false, muteKey: Number(m[1]) };
   if (msg.messageType === 'room_post') {
-    return { channelId: DM_SOUND_CHANNEL_ID, isDM: true, muteKey: msg.toPublicKey ?? msg.fromPublicKey };
+    return { channelId: DM_SOUND_CHANNEL_ID, isDM: true, muteKey: canonicalize(msg.toPublicKey ?? msg.fromPublicKey) };
   }
-  return { channelId: DM_SOUND_CHANNEL_ID, isDM: true, muteKey: msg.fromPublicKey };
+  return { channelId: DM_SOUND_CHANNEL_ID, isDM: true, muteKey: canonicalize(msg.fromPublicKey) };
 }
