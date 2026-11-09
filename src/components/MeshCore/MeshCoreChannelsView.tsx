@@ -140,8 +140,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const { hasPermission, authStatus } = useAuth();
   const canSend = hasPermission('messages', 'write');
   // Channel mute (#5487): a per-user preference on this source's notification
-  // row, keyed by MeshCore channel index. Indicator-only for MeshCore — it
-  // hides the unread dot/badge; MeshCore channel traffic sends no push today.
+  // row, keyed by MeshCore channel index. For MeshCore it hides the
+  // unread dot/badge and also suppresses push for that channel (P11).
   const muteSettings = useOptionalChannelMuteSettings();
   const tapbackEmojis = useSettingsOptional()?.tapbackEmojis;
   const isChannelMutedFn = muteSettings?.isChannelMuted;

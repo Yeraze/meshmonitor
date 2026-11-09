@@ -329,7 +329,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
         )}
         {view === 'notifications' && (
           <div className="meshcore-notifications-view">
-            <NotificationsTab isAdmin={isAdmin} />
+            <NotificationsTab isAdmin={isAdmin} meshcoreDeviceType={status?.deviceType} />
           </div>
         )}
         {view === 'security' && (
