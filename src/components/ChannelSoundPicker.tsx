@@ -5,8 +5,8 @@
  * plays when a new message arrives on that channel (including a "Silent"
  * option), plus a preview button that plays the currently-selected sound. A
  * row for the direct-message pseudo-channel (id -1) is shown first for
- * Meshtastic sources — MeshCore message events don't reach the notification
- * path, so it is hidden there, mirroring NotificationsTab's DM toggle.
+ * Meshtastic sources and MeshCore Companions (room posts use it); a MeshCore
+ * Repeater has no DMs, so it is hidden there.
  *
  * Selections persist to localStorage via the notificationSounds helpers — the
  * same client-local persistence the master audio toggle already uses — and are
@@ -16,11 +16,11 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import api from '../services/api';
 import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
 import { useSource } from '../contexts/SourceContext';
 import { UiIcon } from './icons';
+import { loadNotificationChannels, notificationCapabilities } from '../utils/notificationCapabilities';
 import {
   NOTIFICATION_SOUNDS,
   DEFAULT_SOUND_ID,
@@ -42,10 +42,15 @@ interface PickerRow {
   label: string;
 }
 
-const ChannelSoundPicker: React.FC = () => {
+interface ChannelSoundPickerProps {
+  /** MeshCore device type (1 Companion, 2 Repeater); a Repeater has no DM row. */
+  meshcoreDeviceType?: number | null;
+}
+
+const ChannelSoundPicker: React.FC<ChannelSoundPickerProps> = ({ meshcoreDeviceType }) => {
   const { t } = useTranslation();
   const { sourceId: currentSourceId, sourceType } = useSource();
-  const isMeshCore = sourceType === 'meshcore';
+  const showDmRow = notificationCapabilities(sourceType, meshcoreDeviceType).dm;
 
   const [channels, setChannels] = useState<Channel[]>([]);
   // Map of channelId -> selected sound id. Seeded from localStorage once the
@@ -54,9 +59,9 @@ const ChannelSoundPicker: React.FC = () => {
 
   // The DM pseudo-channel comes first (Meshtastic only), then the real channels.
   const rows: PickerRow[] = [
-    ...(isMeshCore
-      ? []
-      : [{ id: DM_CHANNEL_ID, label: t('settings.channel_sound_dm', 'Direct Messages') }]),
+    ...(showDmRow
+      ? [{ id: DM_CHANNEL_ID, label: t('settings.channel_sound_dm', 'Direct Messages') }]
+      : []),
     ...channels.map(ch => ({
       id: ch.id,
       label: ch.displayName || ch.name || t('notifications.channel_number', { id: ch.id }),
@@ -67,13 +72,11 @@ const ChannelSoundPicker: React.FC = () => {
     let cancelled = false;
     void (async () => {
       try {
-        const qs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
-        const response = await api.get<Channel[]>(`/api/channels${qs}`);
-        const list = Array.isArray(response) ? response : [];
+        const list = await loadNotificationChannels(currentSourceId, sourceType);
         if (cancelled) return;
         setChannels(list);
         const seeded: Record<number, string> = {};
-        if (!isMeshCore) {
+        if (showDmRow) {
           seeded[DM_CHANNEL_ID] = getChannelSoundId(DM_CHANNEL_ID, currentSourceId);
         }
         for (const ch of list) {
@@ -87,7 +90,7 @@ const ChannelSoundPicker: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentSourceId, isMeshCore]);
+  }, [currentSourceId, sourceType, showDmRow]);
 
   const handleChange = (channelId: number, soundId: string) => {
     setChannelSoundId(channelId, soundId, currentSourceId);

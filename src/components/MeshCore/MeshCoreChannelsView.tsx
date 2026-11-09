@@ -65,6 +65,8 @@ interface MeshCoreChannelsViewProps {
    *  disabled + tooltip, and the region-discovery mount effect's silent
    *  skip). */
   receiveOnly?: boolean;
+  /** Open on this channel (notification click-through, #6253). */
+  initialChannelIdx?: number | null;
 }
 
 interface ChannelRow {
@@ -134,14 +136,15 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   sourceId,
   onNodeNameClick,
   receiveOnly = false,
+  initialChannelIdx = null,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { hasPermission, authStatus } = useAuth();
   const canSend = hasPermission('messages', 'write');
   // Channel mute (#5487): a per-user preference on this source's notification
-  // row, keyed by MeshCore channel index. Indicator-only for MeshCore — it
-  // hides the unread dot/badge; MeshCore channel traffic sends no push today.
+  // row, keyed by MeshCore channel index. For MeshCore it hides the
+  // unread dot/badge and also suppresses push for that channel (P11).
   const muteSettings = useOptionalChannelMuteSettings();
   const tapbackEmojis = useSettingsOptional()?.tapbackEmojis;
   const isChannelMutedFn = muteSettings?.isChannelMuted;
@@ -154,7 +157,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   // No channel is selected when the view opens (#6049) — the operator must pick
   // one. `null` means "nothing selected"; the main pane shows the landing area.
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(initialChannelIdx ?? null);
+  useEffect(() => {
+    if (typeof initialChannelIdx === 'number') setSelectedIdx(initialChannelIdx);
+  }, [initialChannelIdx]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   // Bumped when the device's channel slots are reordered (#5379) so the
   // slot-keyed list and counts reload.

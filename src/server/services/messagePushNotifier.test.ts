@@ -33,7 +33,7 @@ vi.mock('../utils/ownNodes.js', () => ({
   getOwnNodeNums: () => [],
 }));
 
-import { sendMessagePushNotification } from './messagePushNotifier.js';
+import { sendMessagePushNotification, dispatchMessageNotification } from './messagePushNotifier.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 
 function msg(over: Record<string, any> = {}) {
@@ -160,5 +160,72 @@ describe('sendMessagePushNotification', () => {
     await expect(
       sendMessagePushNotification({ message: msg(), messageText: 'x', isDirectMessage: false, sourceId: 'bridge-1' }),
     ).resolves.toBeUndefined();
+  });
+
+  it('passes the sender node id as the DM mute key (Meshtastic)', async () => {
+    await sendMessagePushNotification({
+      message: msg({ channel: -1 }),
+      messageText: 'psst',
+      isDirectMessage: true,
+      sourceId: 'bridge-1',
+    });
+    const filterCtx = (broadcast as any).mock.calls[0][1];
+    expect(filterCtx.nodeUuid).toBe('!0a0b0c0d');
+    expect(filterCtx.keyFingerprint).toBeUndefined();
+  });
+});
+
+describe('dispatchMessageNotification', () => {
+  const base = {
+    sourceId: 'mc-1',
+    messageId: 'mc-1_x',
+    isDirectMessage: false,
+    channelId: 2,
+    channelName: 'Ops',
+    senderName: 'Ann',
+    senderShortName: 'Ann',
+    text: 'hi',
+    isTapback: false,
+    viaMqtt: false,
+    dedupKey: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getServiceStatus.mockReturnValue({ webPush: false, apprise: false, desktop: true, anyAvailable: true });
+  });
+
+  it('labels a meshcore_mqtt source MeshCore and uses the given channel name', async () => {
+    const { default: db } = await import('../../services/database.js');
+    (db as any).sources.getSource.mockResolvedValueOnce({ id: 'mc-1', name: 'Hub', type: 'meshcore_mqtt' });
+    await dispatchMessageNotification(base);
+    const [payload] = (broadcast as any).mock.calls[0];
+    expect(payload.message).toMatchObject({ serviceLabel: 'MeshCore', channelName: 'Ops' });
+    expect(payload.title).toBe('Ops · Hub');
+  });
+
+  it('threads muteKey, keyFingerprint and dedup into broadcast', async () => {
+    await dispatchMessageNotification({
+      ...base, isDirectMessage: true, channelId: -1, muteKey: 'abcd', keyFingerprint: 'ff00', dedupKey: 'k1', senderNavId: 'abcd',
+    });
+    const [payload, ctx] = (broadcast as any).mock.calls[0];
+    expect(ctx).toMatchObject({ nodeUuid: 'abcd', keyFingerprint: 'ff00', isDirectMessage: true });
+    expect(payload).toMatchObject({ keyFingerprint: 'ff00', dedup: { key: 'k1' } });
+    expect(payload.data).toMatchObject({ type: 'dm', senderNodeId: 'abcd' });
+  });
+
+  it('lets a template override render a room as a channel-style notification', async () => {
+    await dispatchMessageNotification({
+      ...base, isDirectMessage: true, channelId: -1, template: { isDM: false, channelName: 'Room A' },
+    });
+    const [payload] = (broadcast as any).mock.calls[0];
+    expect(payload.title).toBe('Room A · Public Bridge');
+    expect(payload.body).toBe('Ann: hi');
+  });
+
+  it('bails when no service is available', async () => {
+    getServiceStatus.mockReturnValue({ webPush: false, apprise: false, desktop: false, anyAvailable: false });
+    await dispatchMessageNotification(base);
+    expect(broadcast).not.toHaveBeenCalled();
   });
 });

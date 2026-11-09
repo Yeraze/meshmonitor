@@ -5,6 +5,7 @@ import { appriseNotificationService, AppriseNotificationPayload } from './appris
 import { desktopNotificationService } from './desktopNotificationService.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import type { NotificationDedupSpec } from './notificationDedup.js';
+import type { NotificationMuteVenue } from '../utils/notificationFiltering.js';
 
 export interface NotificationPayload {
   title: string;
@@ -34,6 +35,16 @@ export interface NotificationPayload {
    * source itself (source health), which must reach the user once per source.
    */
   dedup?: NotificationDedupSpec;
+  /**
+   * MeshCore keyed channel message (#5551): only recipients with access to this
+   * channel key get the event. Server-side input; never sent on the wire.
+   */
+  keyFingerprint?: string | null;
+  /**
+   * Venue of an event that follows a mute (a mention): a recipient who muted
+   * it is skipped. Server-side input; never sent on the wire.
+   */
+  muteVenue?: NotificationMuteVenue;
 }
 
 export interface NotificationFilterContext {
@@ -43,6 +54,10 @@ export interface NotificationFilterContext {
   viaMqtt?: boolean;
   /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
   isTapback?: boolean;
+  /** For DMs: the mute key (`mutedDMs.nodeUuid`): Meshtastic node id, MeshCore sender or room key. */
+  nodeUuid?: string;
+  /** MeshCore keyed channel message (#5551): recipient needs access to this key. */
+  keyFingerprint?: string | null;
   /** Phase B: source this notification originated from (required). */
   sourceId: string;
   /** Phase B: human-readable source name. */
@@ -175,15 +190,19 @@ class NotificationService {
   public getServiceStatus(): {
     webPush: boolean;
     apprise: boolean;
+    desktop: boolean;
     anyAvailable: boolean;
   } {
     const webPush = pushNotificationService.isAvailable();
     const apprise = appriseNotificationService.isAvailable();
+    const desktop = desktopNotificationService.isAvailable();
 
     return {
       webPush,
       apprise,
-      anyAvailable: webPush || apprise
+      desktop,
+      // Desktop counts: a desktop-only install must still get messages.
+      anyAvailable: webPush || apprise || desktop
     };
   }
 

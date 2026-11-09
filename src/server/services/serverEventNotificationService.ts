@@ -94,7 +94,7 @@ class ServerEventNotificationService {
 
         const payload = {
           title: `Node Reconnected · ${sourceName}`,
-          body: `Connection to Meshtastic node restored (was offline for ${disconnectDuration})`,
+          body: `Connection to the radio restored (was offline for ${disconnectDuration})`,
           type: 'success' as const,
           sourceId,
           sourceName,
@@ -133,7 +133,7 @@ class ServerEventNotificationService {
     try {
       const payload = {
         title: `Node Disconnected · ${sourceName}`,
-        body: 'Lost connection to Meshtastic node',
+        body: "Lost connection to the source's radio",
         type: 'warning' as const,
         sourceId,
         sourceName,

@@ -744,17 +744,33 @@ None. This feature transmits nothing; it reacts to packets that already arrived.
 
 ### MeshCore Sources
 
-MeshCore sources have their own **Notifications** tab, and the settings are tailored to what MeshCore actually supports. Because MeshCore and Meshtastic expose different capabilities, the notification options shown for a MeshCore source are a subset:
+MeshCore sources have their own **Notifications** tab. Message notifications use the same rules as Meshtastic: the direct-message toggle, per-channel enable and mute, keyword allow/block lists, the emoji-reaction toggle and message templates. What the tab offers depends on the device:
 
-| Notification | MeshCore | Notes |
-|---|---|---|
-| **Low Battery** | ✅ | MeshCore reports battery as a **voltage (mV)**, so the threshold is in millivolts (default 3300 mV) rather than a 0–100 percentage. |
-| **Inactive Node** | ✅ | Alerts when a monitored MeshCore node hasn't been heard within the configured window. |
-| **Newly Found Nodes** | ✅ | Sent the first time a contact advertises (display name + device type: Companion / Repeater / Room Server). |
-| **Mentions** | ✅ | Sent when a channel message or room post names this source's own node as `@[Name]`. Off by default. See below. |
-| **Server Events** | ✅ | Source connect/disconnect/reconnect. |
-| **Web Push / Apprise / Monitored-node picker** | ✅ | Delivery and node selection work the same as Meshtastic. |
-| Direct Messages, Emoji Reactions, MQTT, Traceroutes, Waypoint arrivals, Channel selection, Keyword filtering, percentage battery threshold | ❌ | Hidden for MeshCore — these depend on Meshtastic-only protocol features or data. |
+| Notification | Companion | Repeater | Notes |
+|---|---|---|---|
+| **Direct messages and room posts** | ✅ | — | One toggle covers both. Muting a DM or a room in its view also silences its notifications. |
+| **Channel messages** | ✅ | ✅ | Pick channels in the list; it includes slots above 7 and keyed/virtual channels. A channel muted in the Channels view stays silent. A Repeater notifies only for channels it can decrypt. |
+| **Keywords, emoji reactions, templates** | ✅ | ✅ | Same as Meshtastic. |
+| **Successful traces and path discoveries** | ✅ | — | Uses the Traceroutes toggle. Failed or timed-out traces and pings do not notify. |
+| **Low Battery** | ✅ | ✅ | MeshCore reports battery as a **voltage (mV)**, so the threshold is in millivolts (default 3300 mV) rather than a 0–100 percentage. |
+| **Inactive Node** | ✅ | ✅ | Alerts when a monitored MeshCore node hasn't been heard within the configured window. |
+| **Newly Found Nodes** | ✅ | — | Sent the first time a contact advertises (display name + device type: Companion / Repeater / Room Server). |
+| **Mentions** | ✅ | — | Sent when a channel message or room post names this source's own node as `@[Name]`. Off by default. See below. |
+| **Server Events** | ✅ | ✅ | Lost and restored connection to the source's radio. The first connect after start is silent; the Disconnect button notifies, a source edit or shutdown does not. |
+| **Web Push / Apprise / Desktop / Monitored-node picker** | ✅ | ✅ | Delivery and node selection work the same as Meshtastic. |
+| MQTT, Waypoint arrivals, percentage battery threshold | — | — | No MeshCore equivalent. |
+
+**Volume.** Channel messages stay off until you pick channels. The same message heard on two of your sources notifies once, naming both. A mention and its message notify once. Your own messages never notify.
+
+**Who receives what.** A user needs `messages:read` on the source. A channel message a Repeater decrypted with another source's key only reaches users who can read that key; anonymous push subscribers never get it.
+
+**Clicking a notification** opens that channel, room or direct message on the MeshCore page.
+
+**Sounds.** The MeshCore **Settings** view has the same audio notification settings as Meshtastic: a master toggle and a sound per channel (direct messages and room posts share the DM sound).
+
+::: tip Upgrading
+Earlier versions hid the direct-message toggle for MeshCore but saved it as on. If you subscribed to push on a MeshCore source, you now start receiving its direct messages and room posts. Turn **Direct messages and room posts** off on that source's Notifications tab if you don't want them.
+:::
 
 Preferences are saved per source, so a MeshCore source and a Meshtastic source can have independent thresholds. The monitored-node watch list is the exception: nodes picked on any source's tab are watched together (see [Settings Are Saved Per Source](#settings-are-saved-per-source)).
 
@@ -766,7 +782,8 @@ Turn on **Mentions** on a MeshCore source's **Notifications** tab to be alerted 
 - Channel messages and room posts are checked. Direct messages are not.
 - **At most one alert per sender every 5 minutes**, per source. Other senders still get through. The limit is stored, so a restart does not reset it.
 - Your own messages, and senders you have ignored or blocked, never alert.
-- The alert goes to users who have the option on for that source and can read its messages. Channel selection and keyword filters do not apply to it.
+- The alert goes to users who have the option on for that source and can read its messages. Channel selection and keyword filters do not apply to it, but a muted channel or room stays silent.
+- A mention and the message notification for the same message arrive as one alert.
 - A MeshCore MQTT source has no node of its own, so it has nothing to mention.
 
 ### Client-Side Settings (Web Push Only)

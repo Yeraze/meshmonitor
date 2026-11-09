@@ -144,7 +144,7 @@ router.post('/connect', extendRequestTimeout(CONNECT_TIMEOUT_MS), meshcoreDevice
  */
 router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    await managerFor(req, res).disconnect();
+    await managerFor(req, res).disconnect({ userInitiated: true });
     res.json({ success: true, message: 'Disconnected' });
   } catch (error) {
     logger.error('[API] Error disconnecting:', error);

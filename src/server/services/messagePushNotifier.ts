@@ -59,14 +59,14 @@ export interface MessagePushInput {
   localNodeNum?: number | null;
 }
 
-/** Resolve a display name for the message's channel, including virtual (channel_database) ids. */
 /**
  * Human-readable service label from a Source.type (#4845). Since #5593 it is
  * the `{{ serviceLabel }}` template token rather than part of a fixed title.
  */
-function serviceLabelFromSourceType(type: string | undefined): string {
+export function serviceLabelFromSourceType(type: string | undefined): string {
   switch (type) {
-    case 'meshcore': return 'MeshCore';
+    case 'meshcore':
+    case 'meshcore_mqtt': return 'MeshCore';
     case 'meshtastic_tcp': return 'Meshtastic';
     case 'mqtt_bridge':
     case 'mqtt_broker': return 'MQTT';
@@ -75,7 +75,8 @@ function serviceLabelFromSourceType(type: string | undefined): string {
   }
 }
 
-async function resolveChannelName(channelId: number, sourceId: string): Promise<string> {
+/** Resolve a display name for the message's channel, including virtual (channel_database) ids. */
+export async function resolveChannelName(channelId: number, sourceId: string): Promise<string> {
   try {
     const channel = await databaseService.channels.getChannelById(channelId, sourceId);
     if (channel?.name) return channel.name;
@@ -94,15 +95,140 @@ async function resolveChannelName(channelId: number, sourceId: string): Promise<
 }
 
 /**
- * Send notifications (Web Push + Apprise) for a newly ingested message.
+ * Protocol-neutral input of `dispatchMessageNotification`. Each protocol
+ * adapter (Meshtastic below, MeshCore, Reticulum) resolves its own sender,
+ * self-origin and dedup rules, then hands the result here.
+ */
+export interface MessageNotificationInput {
+  sourceId: string;
+  /** The stored message row id; navigation data only. */
+  messageId: string;
+  isDirectMessage: boolean;
+  /** Channel index for a channel message; -1 (or any value) for a DM. */
+  channelId: number;
+  /** Channel (or room) name for the template; resolved from `channelId` when unset on a channel. */
+  channelName?: string;
+  senderName: string;
+  senderShortName: string;
+  /** Sender id for DM click-through (`navigationData.senderNodeId`). */
+  senderNavId?: string;
+  /** Plain text body used for the notification and for keyword filters. */
+  text: string;
+  isTapback: boolean;
+  viaMqtt: boolean;
+  /** Cross-source dedup key (#5729); null = never deduped. */
+  dedupKey: string | null;
+  /** Per-DM / room mute key (`mutedDMs.nodeUuid`); unset = the venue cannot be muted. */
+  muteKey?: string;
+  /** MeshCore keyed channel message (#5551): recipients need access to this key. */
+  keyFingerprint?: string | null;
+  /** Template overrides, e.g. a room's `isDM: false` with the room as `channelName`. */
+  template?: Partial<MessageTemplateContext>;
+}
+
+/**
+ * Send a message notification (Web Push + Apprise + desktop) with the shared
+ * per-recipient filters and cross-source dedup. Owns the availability bail,
+ * source lookup, template context, navigation data and `broadcast`.
+ * Never throws: notification failures must not break message processing.
+ */
+export async function dispatchMessageNotification(input: MessageNotificationInput): Promise<void> {
+  const { sourceId, isDirectMessage } = input;
+  try {
+    // Skip if no notification services are available
+    if (!notificationService.getServiceStatus().anyAvailable) {
+      return;
+    }
+
+    // Resolve the source (name + service type) so the notification can say
+    // which service, channel, and instance the message came from (#4845).
+    const source = await databaseService.sources.getSource(sourceId);
+    const sourceName = source?.name || sourceId;
+    const serviceLabel = serviceLabelFromSourceType(source?.type);
+
+    // The values a notification can show (#5593). Each delivery wrapper
+    // renders the recipient's own title/body template from these, AFTER its
+    // filter decision. With no saved template the built-in default applies:
+    //   channel  title "{Channel} · {Source}"  body "{Sender}: {text}"
+    //   DM       title "{Sender} · {Source}"   body "{text}"
+    // so the source name appears exactly once (it used to appear in the title
+    // prefix and again in the body).
+    const templateContext: MessageTemplateContext = {
+      sourceName,
+      channelName: isDirectMessage ? '' : (input.channelName ?? await resolveChannelName(input.channelId, sourceId)),
+      senderName: input.senderName,
+      senderShortName: input.senderShortName,
+      text: input.text,
+      serviceLabel,
+      isDM: isDirectMessage,
+      ...input.template,
+    };
+    // Default rendering: the fallback for a delivery path that does not render
+    // per recipient, and what the debug log shows.
+    const { title, body } = renderMessageNotification(templateContext);
+
+    // Build navigation data for push notification click handling.
+    // `sourceId` is required for the cold-launch deep link: the service
+    // worker builds a `/source/<sourceId>/<tab>` route from it, because the
+    // app root renders DashboardPage and never reads navigation data (#4463).
+    const navigationData = isDirectMessage
+      ? {
+          type: 'dm' as const,
+          sourceId,
+          messageId: input.messageId,
+          senderNodeId: input.senderNavId,
+        }
+      : {
+          type: 'channel' as const,
+          sourceId,
+          channelId: input.channelId,
+          messageId: input.messageId,
+        };
+
+    // Send notifications (Web Push + Apprise + desktop) with filtering to all subscribed users
+    const result = await notificationService.broadcast({
+      title,
+      body,
+      data: navigationData,
+      sourceId,
+      sourceName,
+      message: templateContext,
+      ...(input.keyFingerprint ? { keyFingerprint: input.keyFingerprint } : {}),
+      ...(input.dedupKey ? { dedup: { key: input.dedupKey } } : {}),
+    }, {
+      messageText: input.text,
+      channelId: input.channelId,
+      isDirectMessage,
+      viaMqtt: input.viaMqtt,
+      // #5720: the protocol flag is authoritative; the text check in the
+      // filter is only the fallback for paths that lose it.
+      isTapback: input.isTapback,
+      ...(input.muteKey ? { nodeUuid: input.muteKey } : {}),
+      ...(input.keyFingerprint ? { keyFingerprint: input.keyFingerprint } : {}),
+      sourceId,
+      sourceName,
+    });
+
+    logger.debug(
+      `📤 Sent notifications: ${result.total.sent} delivered, ${result.total.failed} failed, ${result.total.filtered} filtered ` +
+      `(Push: ${result.webPush.sent}/${result.webPush.failed}/${result.webPush.filtered}, ` +
+      `Apprise: ${result.apprise.sent}/${result.apprise.failed}/${result.apprise.filtered})`
+    );
+  } catch (error) {
+    logger.error('❌ Error sending message push notification:', error);
+    // Don't throw - push notification failures shouldn't break message processing
+  }
+}
+
+/**
+ * Meshtastic adapter: send notifications for a newly ingested message.
  * Never throws — notification failures must not break message processing.
  */
 export async function sendMessagePushNotification(input: MessagePushInput): Promise<void> {
   const { message, messageText, isDirectMessage, sourceId, localNodeNum } = input;
   try {
     // Skip if no notification services are available
-    const serviceStatus = notificationService.getServiceStatus();
-    if (!serviceStatus.anyAvailable) {
+    if (!notificationService.getServiceStatus().anyAvailable) {
       return;
     }
 
@@ -131,50 +257,6 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
     const fromNode = await databaseService.nodes.getNode(message.fromNodeNum);
     const senderName = fromNode?.longName || fromNode?.shortName || `Node ${message.fromNodeNum}`;
 
-    // Resolve the source (name + service type) so the notification can say
-    // which service, channel, and instance the message came from (#4845).
-    const source = await databaseService.sources.getSource(sourceId);
-    const sourceName = source?.name || sourceId;
-    const serviceLabel = serviceLabelFromSourceType(source?.type);
-
-    // The values a notification can show (#5593). Each delivery wrapper
-    // renders the recipient's own title/body template from these, AFTER its
-    // filter decision. With no saved template the built-in default applies:
-    //   channel  title "{Channel} · {Source}"  body "{Sender}: {text}"
-    //   DM       title "{Sender} · {Source}"   body "{text}"
-    // so the source name appears exactly once (it used to appear in the title
-    // prefix and again in the body).
-    const templateContext: MessageTemplateContext = {
-      sourceName,
-      channelName: isDirectMessage ? '' : await resolveChannelName(message.channel, sourceId),
-      senderName,
-      senderShortName: fromNode?.shortName || senderName,
-      text: messageText,
-      serviceLabel,
-      isDM: isDirectMessage,
-    };
-    // Default rendering: the fallback for a delivery path that does not render
-    // per recipient, and what the debug log shows.
-    const { title, body } = renderMessageNotification(templateContext);
-
-    // Build navigation data for push notification click handling.
-    // `sourceId` is required for the cold-launch deep link: the service
-    // worker builds a `/source/<sourceId>/<tab>` route from it, because the
-    // app root renders DashboardPage and never reads navigation data (#4463).
-    const navigationData = isDirectMessage
-      ? {
-          type: 'dm' as const,
-          sourceId,
-          messageId: message.id,
-          senderNodeId: fromNode?.nodeId || message.fromNodeId || undefined,
-        }
-      : {
-          type: 'channel' as const,
-          sourceId,
-          channelId: message.channel,
-          messageId: message.id,
-        };
-
     // Cross-source dedup (#5729): every source that hears this packet builds
     // the same key, so the dispatcher sends one notification per recipient.
     // A row with no real packet id (the `Date.now()` fallback) yields null and
@@ -185,32 +267,22 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
       message.portnum,
     );
 
-    // Send notifications (Web Push + Apprise) with filtering to all subscribed users
-    const result = await notificationService.broadcast({
-      title,
-      body,
-      data: navigationData,
+    await dispatchMessageNotification({
       sourceId,
-      sourceName,
-      message: templateContext,
-      ...(dedupKey ? { dedup: { key: dedupKey } } : {}),
-    }, {
-      messageText,
-      channelId: message.channel,
+      messageId: message.id,
       isDirectMessage,
-      viaMqtt: message.viaMqtt === true,
-      // #5720: the protocol flag is authoritative; the text check in the
-      // filter is only the fallback for paths that lose it.
+      channelId: message.channel,
+      senderName,
+      senderShortName: fromNode?.shortName || senderName,
+      senderNavId: fromNode?.nodeId || message.fromNodeId || undefined,
+      text: messageText,
       isTapback: Number(message.emoji) === 1,
-      sourceId,
-      sourceName,
+      viaMqtt: message.viaMqtt === true,
+      dedupKey,
+      // The Meshtastic DM mute is keyed on the node id (`user.id`), the same
+      // string the sender's `fromNodeId` holds.
+      muteKey: message.fromNodeId || undefined,
     });
-
-    logger.debug(
-      `📤 Sent notifications: ${result.total.sent} delivered, ${result.total.failed} failed, ${result.total.filtered} filtered ` +
-      `(Push: ${result.webPush.sent}/${result.webPush.failed}/${result.webPush.filtered}, ` +
-      `Apprise: ${result.apprise.sent}/${result.apprise.failed}/${result.apprise.filtered})`
-    );
   } catch (error) {
     logger.error('❌ Error sending message push notification:', error);
     // Don't throw - push notification failures shouldn't break message processing

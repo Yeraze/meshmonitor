@@ -20,6 +20,7 @@ import { UiIcon } from './icons';
 import NotificationFormatSection from './NotificationFormatSection';
 import styles from './NotificationsTab.module.css';
 import { defaultNotificationPreferences } from '../utils/notificationDefaults';
+import { notificationCapabilities, loadNotificationChannels } from '../utils/notificationCapabilities';
 
 type StatusTone = 'info' | 'success' | 'warning' | 'error';
 interface StatusFeedback {
@@ -108,17 +109,17 @@ function editedPreferenceFields(prefs: NotificationPreferences): Partial<Notific
 
 interface NotificationsTabProps {
   isAdmin: boolean;
+  /** MeshCore device type (1 Companion, 2 Repeater); decides which controls show. */
+  meshcoreDeviceType?: number | null;
 }
 
-const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
+const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDeviceType }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { sourceId: currentSourceId, sourceType, sourceName: currentSourceName } = useSource();
-  // MeshCore sources expose a different capability set than Meshtastic: they
-  // report battery as a voltage (mV) rather than a percentage, and they do not
-  // surface channel/DM/emoji/MQTT/traceroute/new-node notifications (those
-  // events never reach the notification service for MeshCore). Gate the
-  // Meshtastic-only controls so a MeshCore source only shows what actually works.
+  // One capability table decides which controls a source shows (P11 S8):
+  // Meshtastic, MeshCore Companion and MeshCore Repeater differ.
+  const caps = notificationCapabilities(sourceType, meshcoreDeviceType);
   const isMeshCore = sourceType === 'meshcore';
   const [vapidStatus, setVapidStatus] = useState<VapidStatus | null>(null);
   // Subscribed on THIS source (a push_subscriptions row exists for it), not
@@ -314,9 +315,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   const loadChannels = async () => {
     try {
-      const channelsQs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
-      const response = await api.get<Channel[]>(`/api/channels${channelsQs}`);
-      const channelList = Array.isArray(response) ? response : [];
+      const channelList = await loadNotificationChannels(currentSourceId, sourceType);
       setChannels(channelList);
 
       if (preferences.enabledChannels.length === 0 && channelList.length > 0) {
@@ -786,7 +785,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* Direct Messages Toggle — Meshtastic only (MeshCore message
                   events don't reach the notification service) */}
-              {!isMeshCore && (
+              {caps.dm && (
               <div className={styles.row} style={{
                 padding: '12px',
                 borderRadius: '6px',
@@ -804,13 +803,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}><UiIcon name="messages" /> {t('notifications.direct_messages')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="messages" /> {t(isMeshCore ? 'notifications.direct_messages_meshcore' : 'notifications.direct_messages')}</span>
                 </label>
               </div>
               )}
 
               {/* Emoji Reactions Toggle — Meshtastic only */}
-              {!isMeshCore && (
+              {caps.emoji && (
               <div className={styles.row} style={{
                 padding: '12px',
                 borderRadius: '6px',
@@ -834,7 +833,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               )}
 
               {/* MQTT Messages Toggle — Meshtastic only */}
-              {!isMeshCore && (
+              {caps.mqtt && (
               <div className={styles.row} style={{
                 padding: '12px',
                 borderRadius: '6px',
@@ -859,6 +858,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* New Node Toggle — supported on both Meshtastic (node DB) and
                   MeshCore (contact-advert discovery). */}
+              {caps.newNode === 'on' ? (
               <div className={styles.row} style={{
                 padding: '12px',
                 borderRadius: '6px',
@@ -879,9 +879,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   <span style={{ fontWeight: '500' }}><UiIcon name="sparkles" /> {t('notifications.new_nodes')}</span>
                 </label>
               </div>
+              ) : (
+              <div className={styles.muted} style={{ fontSize: '12px', marginBottom: '16px' }}>
+                {t('notifications.repeater_unsupported_hint')}
+              </div>
+              )}
 
               {/* Traceroute Success Toggle — Meshtastic only (no MeshCore equivalent) */}
-              {!isMeshCore && (
+              {caps.traceroute && (
               <div className={styles.row} style={{
                 padding: '12px',
                 borderRadius: '6px',
@@ -899,14 +904,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}><UiIcon name="route" /> {t('notifications.traceroutes')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="route" /> {t(isMeshCore ? 'notifications.traceroutes_meshcore' : 'notifications.traceroutes')}</span>
                 </label>
               </div>
               )}
 
               {/* Mentions Toggle: MeshCore only. Fires when a channel message
                   or room post names this source's own node as @[Name]. */}
-              {isMeshCore && (
+              {caps.mention && (
               <div className={styles.row} style={{
                 padding: '12px',
                 borderRadius: '6px',
@@ -935,7 +940,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               {/* Waypoint Arrival Toggle — Meshtastic only (#4750). MeshCore has
                   no waypoint concept, so the whole block is gated like
                   traceroutes above. */}
-              {!isMeshCore && (
+              {caps.waypoint && (
               <div className={styles.row} style={{
                 padding: '12px',
                 borderRadius: '6px',
@@ -1069,7 +1074,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   <span style={{ fontWeight: '500' }}><UiIcon name="battery" /> {t('notifications.notify_on_low_battery')}</span>
                 </label>
 
-                {preferences.notifyOnLowBattery && !isMeshCore && (
+                {preferences.notifyOnLowBattery && caps.batteryUnit === 'percent' && (
                   <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <label htmlFor="lowBatteryThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.low_battery_threshold_label')}
@@ -1094,7 +1099,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   </div>
                 )}
 
-                {preferences.notifyOnLowBattery && isMeshCore && (
+                {preferences.notifyOnLowBattery && caps.batteryUnit === 'voltage' && (
                   <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <label htmlFor="lowBatteryVoltageThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.low_battery_voltage_threshold_label')}
@@ -1122,7 +1127,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
                 {preferences.notifyOnLowBattery && (
                   <p style={{ marginLeft: '28px', marginTop: '6px', marginBottom: 0, fontSize: '0.8em', color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>
-                    {isMeshCore
+                    {caps.batteryUnit === 'voltage'
                       ? t('notifications.low_battery_threshold_hint_voltage', 'MeshCore nodes report battery as a voltage (mV) rather than a percentage.')
                       : t('notifications.low_battery_threshold_hint_percent', 'Meshtastic nodes report battery as a percentage of full charge.')}
                   </p>
@@ -1360,7 +1365,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* Message notification format (#5593) — message notifications
                   don't fire for MeshCore, so there is nothing to format there. */}
-              {!isMeshCore && (
+              {caps.messageFilters && (
                 <NotificationFormatSection
                   titleTemplate={preferences.messageTitleTemplate}
                   bodyTemplate={preferences.messageBodyTemplate}
@@ -1372,7 +1377,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* Channel Selection — Meshtastic only (channel message
                   notifications don't fire for MeshCore) */}
-              {!isMeshCore && (
+              {caps.channels && (
               <div className={styles.channelBox} style={{
                 borderRadius: '6px',
                 padding: '12px'
@@ -1412,7 +1417,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
           {/* Keyword Filtering — Meshtastic only (filters message notifications,
               which don't fire for MeshCore) */}
-          {!isMeshCore && (
+          {caps.messageFilters && (
           <div>
             <div className={styles.panel} style={{
               padding: '20px',
@@ -1485,7 +1490,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         </div>
 
         {/* Filter Priority Info — Meshtastic only (explains message-filter ordering) */}
-        {!isMeshCore && (
+        {caps.messageFilters && (
         <div className={styles.infoBox} style={{
           borderRadius: '8px',
           padding: '16px',

@@ -447,9 +447,9 @@ setTimeout(async () => {
     // same transition event; sends nothing unless a source opts in.
     startAircraftPositionRequests();
 
-    // MeshCore mention alerts: notifies users who opted in when a channel
-    // message or room post names the source's own node. Sends nothing on air.
-    startMeshCoreMentionNotifications();
+    // MeshCore message and mention alerts (one ordered subscriber per source):
+    // mentions first, then the new-message alert. Sends nothing on air.
+    startMeshCoreMessageNotifications();
 
     // Once per process: which MeshCore reaction wire format this build speaks.
     logger.info(`[MeshCore] reaction wire format version ${MC_REACTION_FORMAT_VERSION} (MC1 >= 1.4.1; reads meshcore-open v3/v1)`);
@@ -736,7 +736,7 @@ import passkeyRoutes from './routes/passkeyRoutes.js';
 import automationRoutes from './routes/automationRoutes.js';
 import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
 import { MC_REACTION_FORMAT_VERSION } from '../utils/meshcoreReactions.js';
-import { startMeshCoreMentionNotifications } from './services/meshcoreMentionNotificationService.js';
+import { startMeshCoreMessageNotifications } from './services/meshcoreMessageNotifier.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
 import { startMeshBeaconOfferIngestion } from './services/meshBeaconOfferService.js';
 import { meshwarsForwarder } from './services/meshwarsForwarder.js';
