@@ -8,7 +8,7 @@ checked 2026-11-08. Binding rule: ONE Security tab with protocol adapters — Me
 1. **Split.** P7a (this PR): dead contacts + bulk delete, path-hash collisions, advert signature (tri-state) in contact
    panel / map popup / filter, Repeater signature recording, name-under-new-key, own-key change (Companion + Repeater)
    with alert. No migration. P7b (follow-up issue): per-key rates, persisted clock-offset flag, MeshCore in
-   scanner / digest / export / notification DM, migration 225.
+   scanner / digest / export / notification DM, migration: the next free number (225 went to P16 #6285; take the next one when implementing).
 2. **Dead threshold**: one shared per-source setting `securityDeadNodeDays` for both protocols, editable on the tab.
    Defaults: Meshtastic 7, MeshCore 14. (New setting key → `VALID_SETTINGS_KEYS`.)
 3. **Bulk delete**: requires `security:write` AND `nodes:write` on the source, both protocols (slightly tightens
