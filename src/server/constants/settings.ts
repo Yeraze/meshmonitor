@@ -242,8 +242,14 @@ export const VALID_SETTINGS_KEYS = [
   // Max km between positioned nodes for B1/B6 cluster adjacency (#4976) —
   // default 30, clamp 1-500, resolved via resolveThresholds.
   'mesh_issues_router_cluster_max_link_km',
+  // Node-health tunables (#6279): A6 stale windows (hours, per protocol) and
+  // A8/A3 low-battery lines — each clamped in resolveThresholds.
+  'mesh_issues_stale_hours_meshtastic',
+  'mesh_issues_stale_hours_meshcore',
+  'mesh_issues_low_battery_pct',
+  'mesh_issues_low_battery_mv',
   // Per-rule mute list, CSV of MESH_ISSUE_RULE_IDS (report reorg #4964 WP2,
-  // spec §5.2/§9.5). One key for all 18 rules — see thresholds.ts's
+  // spec §5.2/§9.5). One key for all 22 rules — see thresholds.ts's
   // resolveDisabledRules for the clamp-on-read parse.
   'mesh_issues_disabled_rules',
   'mesh_issues_last_run_summary',
@@ -684,6 +690,10 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // Per-sender last-alert times for MeshCore mention notifications (JSON),
   // written only by meshcoreMentionNotificationService.
   'meshcoreMentionNotifyState',
+  // New-node alert gate state (learning window end, hourly counter), written only
+  // by newNodeAlertGate.
+  'newNodeAlertLearnUntil',
+  'newNodeAlertRate',
   // Sign-flipped position correction (#5363), Settings -> Node Display.
   'signFlipCorrectionEnabled',
   'signFlipCorrectionRangeKm',
@@ -979,6 +989,10 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'mesh_issues_snr_asymmetry_db',           // "
   'mesh_issues_over_broadcast_seconds',     // "
   'mesh_issues_auto_close_runs',            // global batch job (#4964 post-epic follow-up)
+  'mesh_issues_stale_hours_meshtastic',     // global batch job (#6279 node health)
+  'mesh_issues_stale_hours_meshcore',       // "
+  'mesh_issues_low_battery_pct',            // "
+  'mesh_issues_low_battery_mv',             // "
   'mesh_issues_disabled_rules',             // global batch job (#4964 report reorg)
   'mesh_issues_last_run_summary',           // "
   'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
@@ -1107,6 +1121,8 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'statusMessageLastVerified',  // deviceAdminService.ts rememberVerifiedStatusMessage (#5745; last Status Message a read-back confirmed on the node)
   'tracePathScheduleState',  // tracePathScheduleService.ts (#5723; persisted per-path intervals and hourly cap)
   'meshcoreMentionNotifyState',  // meshcoreMentionNotificationService.ts (persisted per-sender mention cooldown, never client-writable)
+  'newNodeAlertLearnUntil',  // newNodeAlertGate.ts (#6306; persisted learning-window end, only a purge re-arms it)
+  'newNodeAlertRate',  // newNodeAlertGate.ts (#6306; persisted hourly alert counter, so a restart or save cannot reopen the hour)
   'remoteLocalStatsRetryState',  // meshtasticManager.ts remote-LocalStats scheduler (#6033; persisted per-node miss counter + cooldown, so a restart/save cannot re-arm or clear it)
   'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)
   // POST /api/sources/:id/forwarding (forwardingRoutes.ts, #5446) — gated on

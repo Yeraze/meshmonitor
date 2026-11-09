@@ -73,6 +73,7 @@ import {
   PkiExchangeStateRepository,
   MapMarkersRepository,
   MeshCoreHopSnrRepository,
+  MeshCoreTraceRunsRepository,
   NodeNameHistoryRepository,
   MeshCoreCliHistoryRepository,
   MqttBrokerPresetsRepository,
@@ -654,6 +655,7 @@ class DatabaseService {
   public pkiExchangeStateRepo: PkiExchangeStateRepository | null = null;
   public mapMarkersRepo: MapMarkersRepository | null = null;
   public meshcoreHopSnrRepo: MeshCoreHopSnrRepository | null = null;
+  public meshcoreTraceRunsRepo: MeshCoreTraceRunsRepository | null = null;
   public nodeNameHistoryRepo: NodeNameHistoryRepository | null = null;
   public meshcoreCliHistoryRepo: MeshCoreCliHistoryRepository | null = null;
   public mqttBrokerPresetsRepo: MqttBrokerPresetsRepository | null = null;
@@ -767,6 +769,11 @@ class DatabaseService {
   }
 
   /** Per-hop SNR from MeshCore traces (#5722). */
+  get meshcoreTraceRuns(): MeshCoreTraceRunsRepository {
+    if (!this.meshcoreTraceRunsRepo) throw new Error('Database not initialized');
+    return this.meshcoreTraceRunsRepo;
+  }
+
   get meshcoreHopSnr(): MeshCoreHopSnrRepository {
     if (!this.meshcoreHopSnrRepo) throw new Error('Database not initialized');
     return this.meshcoreHopSnrRepo;
@@ -1289,6 +1296,7 @@ class DatabaseService {
       this.pkiExchangeStateRepo = new PkiExchangeStateRepository(drizzleDb, this.drizzleDbType);
       this.mapMarkersRepo = new MapMarkersRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreHopSnrRepo = new MeshCoreHopSnrRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreTraceRunsRepo = new MeshCoreTraceRunsRepository(drizzleDb, this.drizzleDbType);
       this.nodeNameHistoryRepo = new NodeNameHistoryRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreCliHistoryRepo = new MeshCoreCliHistoryRepository(drizzleDb, this.drizzleDbType);
       this.mqttBrokerPresetsRepo = new MqttBrokerPresetsRepository(drizzleDb, this.drizzleDbType);
@@ -5662,6 +5670,8 @@ class DatabaseService {
     fileSize?: number | null;
     nodeId?: string | null;
     nodeNum?: number | null;
+    sourceId?: string | null;
+    protocol?: string;
   }): Promise<void> {
     return this.backupHistory.insertBackupHistory({
       ...backup,

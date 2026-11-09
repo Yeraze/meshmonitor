@@ -105,7 +105,7 @@ describe('v1 actions — MeshCore source', () => {
         destination: `mc:${PK}`, channel: null, message: 'Traceroute request sent', protocol: 'meshcore',
       });
       // The response came back while the trace is still pending.
-      expect(stub.traceContactPathDetailed).toHaveBeenCalledWith(PK, { autoReturn: false });
+      expect(stub.traceContactPathDetailed).toHaveBeenCalledWith(PK, { autoReturn: false, origin: 'api' });
       release();
     });
 

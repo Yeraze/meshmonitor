@@ -24,6 +24,10 @@ export const MESH_ISSUE_TYPE_IDS = {
   A3_INFRA_POWER: 'A3_infra_power',
   A4_MOBILE_INFRA: 'A4_mobile_infra',
   A5_COSPLAY_ROUTER: 'A5_cosplay_router',
+  A6_STALE_NODE: 'A6_stale_node',
+  A7_NO_POSITION: 'A7_no_position',
+  A8_LOW_BATTERY: 'A8_low_battery',
+  A9_BAD_POSITION: 'A9_bad_position',
   B1_ROUTER_CLUSTER: 'B1_router_cluster',
   B2_REDUNDANT_ROUTER: 'B2_redundant_router',
   B3_ASYMMETRIC_LINK: 'B3_asymmetric_link',
@@ -54,7 +58,7 @@ export function tierOfRule(issueType: string): 'A' | 'B' | 'C' {
   return letter === 'B' || letter === 'C' ? letter : 'A';
 }
 
-/** All 18 rule ids grouped by tier, each group in `MESH_ISSUE_RULE_IDS`
+/** All 22 rule ids grouped by tier, each group in `MESH_ISSUE_RULE_IDS`
  *  order — the shape `MeshIssuesSection.tsx` renders as three groups. */
 export function ruleIdsByTier(): Record<'A' | 'B' | 'C', MeshIssueRuleId[]> {
   const groups: Record<'A' | 'B' | 'C', MeshIssueRuleId[]> = { A: [], B: [], C: [] };

@@ -42,6 +42,7 @@
 import { EventEmitter } from 'events';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { MqttBrokerClient } from './transports/mqttBrokerClient.js';
+import { attachBrokerLinkNotifier, type BrokerLinkNotifier } from './services/brokerLinkNotifier.js';
 import { redactBrokerUrl } from './utils/brokerUrl.js';
 import {
   decodeObserverPacketMessage,
@@ -210,6 +211,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   private readonly sourceName: string;
   private readonly config: MeshCoreMqttSourceConfig;
   private client: MqttBrokerClient | null = null;
+  /** Debounced broker-link alerts (#6307). Disposed silently on stop / auth stop. */
+  private brokerLink: BrokerLinkNotifier | null = null;
   private started = false;
   /**
    * True once the broker rejected {@link INGEST_MAX_AUTH_FAILURES} logins in a
@@ -308,6 +311,13 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       maxAuthFailures: INGEST_MAX_AUTH_FAILURES,
     });
     this.client = client;
+    // Attach BEFORE the manager's own 'auth-stopped' listener below: the alert
+    // for a stop must fire before onAuthStopped disposes the notifier.
+    this.brokerLink?.dispose();
+    this.brokerLink = attachBrokerLinkNotifier(client, {
+      sourceId: this.sourceId,
+      sourceName: this.sourceName,
+    });
 
     client.on('message', (msg: { topic: string; payload: Buffer }) => {
       this.handleMessage(msg.topic, msg.payload);
@@ -353,6 +363,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       .disconnect()
       .catch((err) => logger.debug(`[MeshCoreMqtt:${this.sourceId}] error closing rejected client:`, err))
       .finally(() => {
+        this.brokerLink?.dispose();
+        this.brokerLink = null;
         client.removeAllListeners();
         client.on('error', () => {});
       });
@@ -378,6 +390,9 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     this.started = false;
     // Stopped by hand is not "stopped by the broker"; start() begins clean.
     this.authStopped = false;
+    // Silent: stopping or restarting by hand is never an outage.
+    this.brokerLink?.dispose();
+    this.brokerLink = null;
     const client = this.client;
     this.client = null;
     if (!client) return;
@@ -560,12 +575,12 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // delayed publish must not make a silent node look freshly heard. The
       // shared helper caps the claim at now, since a forged FUTURE time would
       // park the node at the top of every "last heard" sort indefinitely.
-      const advert = await ingestAdvertFrame(decoded.event.raw_hex, this.sourceId, {
+      const ingested = await ingestAdvertFrame(decoded.event.raw_hex, this.sourceId, {
         lastHeardMs: 'advert',
         // #5909: record signature validity for cross-source hop resolution.
         verifySignature: 'toggle',
       });
-      if (advert) this.stats.advertsIngested++;
+      if (ingested) this.stats.advertsIngested++;
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);
     }

@@ -168,6 +168,8 @@ export interface TraceIngestDeps {
   hasTrace(sourceId: string, tag: number, authCode: number, sinceMs: number): Promise<boolean>;
   insertHops(sourceId: string, rows: MeshCoreHopSnrRow[]): Promise<void>;
   deleteOlderThan(sourceId: string, cutoffMs: number): Promise<void>;
+  /** Retention for the trace attempt log (#6276); optional so older test deps still fit. */
+  deleteRunsOlderThan?(sourceId: string, cutoffMs: number): Promise<void>;
   now(): number;
 }
 
@@ -180,6 +182,7 @@ function defaultDeps(): TraceIngestDeps {
     hasTrace: (sourceId, tag, authCode, sinceMs) => databaseService.meshcoreHopSnr.hasTrace(sourceId, tag, authCode, sinceMs),
     insertHops: (sourceId, rows) => databaseService.meshcoreHopSnr.insertHops(sourceId, rows),
     deleteOlderThan: (sourceId, cutoffMs) => databaseService.meshcoreHopSnr.deleteOlderThan(sourceId, cutoffMs),
+    deleteRunsOlderThan: (sourceId, cutoffMs) => databaseService.meshcoreTraceRuns.deleteOlderThan(sourceId, cutoffMs),
     now: () => Date.now(),
   };
 }
@@ -279,13 +282,18 @@ export class MeshCoreTraceIngestService {
     }
   }
 
-  private async pruneIfDue(sourceId: string, now: number): Promise<void> {
+  async pruneIfDue(sourceId: string, now: number): Promise<void> {
     if ((this.lastPrune.get(sourceId) ?? 0) > now - PRUNE_EVERY_MS) return;
     this.lastPrune.set(sourceId, now);
     try {
       await this.deps.deleteOlderThan(sourceId, now - HOP_SNR_RETENTION_MS);
     } catch (error) {
       logger.debug(`[MeshCore:${sourceId}] hop SNR prune failed:`, error);
+    }
+    try {
+      await this.deps.deleteRunsOlderThan?.(sourceId, now - HOP_SNR_RETENTION_MS);
+    } catch (error) {
+      logger.debug(`[MeshCore:${sourceId}] trace attempt prune failed:`, error);
     }
   }
 }

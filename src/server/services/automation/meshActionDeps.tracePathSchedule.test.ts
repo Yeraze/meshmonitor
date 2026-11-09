@@ -42,13 +42,13 @@ describe('runScheduledTrace (#5723)', () => {
     const deps = createMeshActionDeps();
     const r = await deps.runScheduledTrace({ sourceId: 'mc', pathKey: 'k1', path: path('a', { hashBytes: 2 }), autoReturn: true });
     expect(trace).toHaveBeenCalledTimes(1);
-    expect(trace).toHaveBeenCalledWith(K('a'), { autoReturn: true, hashBytes: 2 });
+    expect(trace).toHaveBeenCalledWith(K('a'), { autoReturn: true, hashBytes: 2, origin: 'schedule' });
     expect(r).toMatchObject({ publicKey: K('a'), traced: true, hops: 2 });
   });
 
   it('"auto" width passes no override', async () => {
     await createMeshActionDeps().runScheduledTrace({ sourceId: 'mc', pathKey: 'k1', path: path('a'), autoReturn: false });
-    expect(trace).toHaveBeenCalledWith(K('a'), { autoReturn: false });
+    expect(trace).toHaveBeenCalledWith(K('a'), { autoReturn: false, origin: 'schedule' });
   });
 
   it('a second call inside the interval sends nothing and reports not due', async () => {

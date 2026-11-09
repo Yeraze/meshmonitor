@@ -408,6 +408,7 @@ const OTHER_PARAMS_COMMANDS: ReadonlySet<string> = new Set([
   'set_telemetry_mode_loc',
   'set_telemetry_mode_env',
   'set_other_params',
+  'set_other_params_raw', // P16 #6285: backup restore, raw byte 1 + optional multi_acks
   'set_auto_add_contacts',
   'set_multi_acks', // P8a #6257: 5th byte of SetOtherParams
 ]);
@@ -2090,7 +2091,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // the firmware as twice as many 1-byte hops and the trace times out
         // (#4786). Build the frame ourselves so we can set the real width:
         // [SendTracePath][tag:4 LE][auth:4 LE][flags][path bytes].
-        const tag = Math.floor(Math.random() * 0x1_0000_0000);
+        // The manager picks the tag so it can log the attempt before the reply
+        // (#6276); it is the same 4 random bytes on air, only chosen one layer up.
+        const requestedTag = params.tag;
+        const tag = typeof requestedTag === 'number' && Number.isInteger(requestedTag) && requestedTag >= 0 && requestedTag <= 0xffff_ffff
+          ? requestedTag
+          : Math.floor(Math.random() * 0x1_0000_0000);
         this.ownTraceTags.set(tag, Date.now() + OWN_TRACE_TAG_TTL_MS);
         const frame = Buffer.alloc(1 + 4 + 4 + 1 + path.length);
         frame.writeUInt8(K.CommandCodes.SendTracePath, 0);
@@ -2822,6 +2828,50 @@ export class MeshCoreNativeBackend extends EventEmitter {
           s.advLocPolicy = advLocPolicy;
         }
         return { ok: true };
+      }
+
+      case 'set_other_params_raw': {
+        // P16 #6285: restore of a device-config backup. Byte 1 goes out
+        // VERBATIM (auto-add bits included), unlike set_other_params. The 5th
+        // byte (multi_acks) is sent only when given (the caller limits it to
+        // 0 or 1 on firmware >= 7) and is read back like set_multi_acks.
+        // Local serial write, no RF.
+        const manual = Number(params.manualAddContactsRaw);
+        if (!Number.isInteger(manual) || manual < 0 || manual > 255) {
+          throw new Error('Invalid manual_add_contacts byte');
+        }
+        const mode = (v: unknown): number => telemetryModeStringToNumber(v ?? 0);
+        const base = mode(params.telemetryModeBase);
+        const loc = mode(params.telemetryModeLoc);
+        const env = mode(params.telemetryModeEnv);
+        const advLoc = Number(params.advLocPolicy ?? 0) & 0xff;
+        const telemPacked = base | (loc << 2) | (env << 4);
+        let multiAcks: number | undefined;
+        if (params.multiAcks !== undefined) {
+          multiAcks = Number(params.multiAcks);
+          if (!Number.isInteger(multiAcks) || multiAcks < 0 || multiAcks > 1) {
+            throw new Error(`Invalid multi_acks value: ${params.multiAcks}`);
+          }
+        }
+        await this.writeOtherParamsFrame(c, K, {
+          manual, telemPacked, advLoc, ...(multiAcks !== undefined ? { multiAcks } : {}),
+        }, 'Device rejected the restored settings');
+        let readback: number | null = null;
+        if (multiAcks !== undefined) {
+          const back = (await c.getSelfInfo(10_000).catch(() => null)) as Record<string, unknown> | null;
+          readback = typeof back?.multiAcks === 'number' ? back.multiAcks : null;
+        }
+        if (this.cachedSelfInfo) {
+          const s: Record<string, unknown> = this.cachedSelfInfo;
+          s.manualAddContacts = manual;
+          s.telemetryMode = telemPacked;
+          s.telemetryModeBase = base;
+          s.telemetryModeLoc = loc;
+          s.telemetryModeEnv = env;
+          s.advLocPolicy = advLoc;
+          if (readback !== null) s.multiAcks = readback;
+        }
+        return { ok: true, multi_acks: readback };
       }
 
       case 'set_auto_add_contacts': {

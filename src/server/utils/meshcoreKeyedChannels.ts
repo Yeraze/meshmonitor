@@ -10,7 +10,12 @@
  */
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
-import { channelKeyFingerprint, pskToHex, type ChannelKeyRow } from '../services/meshcoreFrameIngest.js';
+import {
+  channelKeyFingerprint,
+  pskToHex,
+  MESHCORE_KEYED_CHANNEL_BASE,
+  type ChannelKeyRow,
+} from '../services/meshcoreFrameIngest.js';
 import { resolveMeshcoreKeyAccess, type KeyAccessUser } from './meshcoreKeyAccess.js';
 
 /** One keyed channel on a source. */
@@ -115,4 +120,26 @@ export async function listKeyedChannelsForViewer(
   if (access === 'all') return entries;
   const allowed = new Set(access);
   return entries.filter((e) => allowed.has(e.keyFingerprint));
+}
+
+/**
+ * Display name for a MeshCore channel index in a notification (#6307).
+ *
+ * A keyed index (>= MESHCORE_KEYED_CHANNEL_BASE) takes its name from the key's
+ * channel row, never from the Meshtastic `channel_database` offset path. Any
+ * other index uses the source's own slot row, then "Channel N". Never throws.
+ */
+export async function resolveMeshCoreChannelName(idx: number, sourceId: string): Promise<string> {
+  try {
+    if (idx >= MESHCORE_KEYED_CHANNEL_BASE) {
+      const name = (await keyedChannelNames(sourceId)).get(idx);
+      if (name) return name;
+    } else {
+      const slot = await databaseService.channels.getChannelById(idx, sourceId);
+      if (slot?.name) return slot.name;
+    }
+  } catch {
+    // fall through to the numeric label
+  }
+  return `Channel ${idx}`;
 }

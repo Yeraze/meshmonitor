@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, ne, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
+import { eq, ne, asc, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, ALL_SOURCES, type SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { likeContains } from './likeSearch.js';
@@ -749,7 +749,7 @@ export class MeshCoreRepository extends BaseRepository {
   async upsertNode(
     node: Partial<DbMeshCoreNode> & { publicKey: string },
     sourceId: string,
-  ): Promise<void> {
+  ): Promise<{ inserted: boolean }> {
     if (!sourceId) {
       throw new Error('MeshCoreRepository.upsertNode requires a sourceId');
     }
@@ -916,7 +916,26 @@ export class MeshCoreRepository extends BaseRepository {
           createdAt: now,
           updatedAt: now,
         });
+      return { inserted: true };
     }
+    return { inserted: false };
+  }
+
+  /**
+   * Earliest `createdAt` (epoch ms) among one source's node rows, or null when it
+   * has none. The new-node alert gate uses it to tell a long-running source from
+   * a brand-new one (#6306).
+   */
+  async getEarliestNodeCreatedAt(sourceId: string): Promise<number | null> {
+    const { meshcoreNodes } = this.tables;
+    const rows = await this.db
+      .select({ createdAt: meshcoreNodes.createdAt })
+      .from(meshcoreNodes)
+      .where(eq(meshcoreNodes.sourceId, sourceId))
+      .orderBy(asc(meshcoreNodes.createdAt))
+      .limit(1);
+    const v = rows[0]?.createdAt;
+    return v === null || v === undefined ? null : Number(v);
   }
 
   /**
@@ -2072,6 +2091,37 @@ export class MeshCoreRepository extends BaseRepository {
       keySourceId: r.keySourceId ?? null,
       keyChannelIdx: r.keyChannelIdx == null ? null : Number(r.keyChannelIdx),
     }));
+  }
+
+  /**
+   * Slot channel indices that have channel messages on a source (#6307). Slot
+   * rows carry no key fingerprint; keyed (virtual-key) rows do and are listed by
+   * `getKeyedChannelSummaries` behind the key gate, so they are excluded here.
+   * An MQTT ingest source has no slot rows of its own, so this is the only way
+   * to know which `channel-N` indices carry traffic on it.
+   */
+  async getChannelIndicesWithMessages(sourceId: string): Promise<number[]> {
+    if (!sourceId) return [];
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({ channelKey: meshcoreMessages.fromPublicKey })
+      .from(meshcoreMessages)
+      .where(
+        and(
+          eq(meshcoreMessages.sourceId, sourceId),
+          eq(meshcoreMessages.messageType, 'channel'),
+          isNull(meshcoreMessages.keyFingerprint),
+        ),
+      )
+      .groupBy(meshcoreMessages.fromPublicKey);
+    const out = new Set<number>();
+    for (const r of rows as Array<{ channelKey: string }>) {
+      const key = r.channelKey;
+      if (typeof key !== 'string' || !key.startsWith('channel-')) continue;
+      const n = Number(key.slice('channel-'.length));
+      if (Number.isInteger(n) && n >= 0) out.add(n);
+    }
+    return [...out].sort((a, b) => a - b);
   }
 
   /**

@@ -754,13 +754,33 @@ MeshCore sources have their own **Notifications** tab. Message notifications use
 | **Successful traces and path discoveries** | ✅ | — | Uses the Traceroutes toggle. Failed or timed-out traces and pings do not notify. |
 | **Low Battery** | ✅ | ✅ | MeshCore reports battery as a **voltage (mV)**, so the threshold is in millivolts (default 3300 mV) rather than a 0–100 percentage. |
 | **Inactive Node** | ✅ | ✅ | Alerts when a monitored MeshCore node hasn't been heard within the configured window. |
-| **Newly Found Nodes** | ✅ | — | Sent the first time a contact advertises (display name + device type: Companion / Repeater / Room Server). |
+| **Newly Found Nodes** | ✅ | ✅ | Sent the first time a contact advertises (display name + device type: Companion / Repeater / Room Server). A Repeater hears every advert on the mesh, so its alert is limited; see below. |
 | **Mentions** | ✅ | — | Sent when a channel message or room post names this source's own node as `@[Name]`. Off by default. See below. |
 | **Server Events** | ✅ | ✅ | Lost and restored connection to the source's radio. The first connect after start is silent; the Disconnect button notifies, a source edit or shutdown does not. |
 | **Web Push / Apprise / Desktop / Monitored-node picker** | ✅ | ✅ | Delivery and node selection work the same as Meshtastic. |
 | MQTT, Waypoint arrivals, percentage battery threshold | — | — | No MeshCore equivalent. |
 
 **Volume.** Channel messages stay off until you pick channels. The same message heard on two of your sources notifies once, naming both. A mention and its message notify once. Your own messages never notify.
+
+### MeshCore MQTT Region Feeds
+
+A MeshCore MQTT ingest source has a **Notifications** tab on its page, for signed-in users. It has no radio, so it offers only what a feed can supply:
+
+| Notification | Notes |
+|---|---|
+| **Channel messages** | The picker lists channels this source has messages on, plus keyed (virtual-key) channels you can read. Nothing fires until you pick channels. |
+| **Keywords, emoji reactions, templates** | Same as Meshtastic. |
+| **Inactive Node, Low Battery** | Pick nodes in the monitored-node picker. Low battery reads the observer's reported voltage, in millivolts. |
+| **Server Events** | Startup, plus MQTT broker connection lost and restored (see below). |
+| Direct messages, traces, mentions, new nodes, MQTT, waypoints | Not available. A region feed has no radio and no own node. |
+
+**A region feed can be busy.** A channel such as Public can carry a whole region's traffic, and there is no rate cap: each channel you tick can send many alerts. Pick channels with care. The tab says so next to the picker.
+
+**"Channel N" means slot N of any source.** The feed decrypts with every key MeshMonitor holds, and a device-slot key files the message under its slot number with no key marker. So "Channel 1" on a feed merges slot 1 of every source, the same as `#1` on the feed's Channels tab. Virtual-key channels have their own index and name. A fix is tracked in #6308; it will migrate saved channel picks.
+
+**Who receives what.** A user needs `messages:read` on the source. A message decrypted with a virtual key only reaches users who can read that key.
+
+**Broker connection alerts.** The same alerts exist for a Meshtastic MQTT bridge's upstream broker. A drop notifies only after the link stays down for **two minutes**, so a flapping link stays silent. A rejected login or an eviction stop notifies at once, because no retry is coming. A restore notifies once after a loss that notified. Saving or restarting the source never notifies. The alert names the source and never the broker address.
 
 **Who receives what.** A user needs `messages:read` on the source. A channel message a Repeater decrypted with another source's key only reaches users who can read that key; anonymous push subscribers never get it.
 
@@ -770,6 +790,17 @@ MeshCore sources have their own **Notifications** tab. Message notifications use
 
 ::: tip Upgrading
 Earlier versions hid the direct-message toggle for MeshCore but saved it as on. If you subscribed to push on a MeshCore source, you now start receiving its direct messages and room posts. Turn **Direct messages and room posts** off on that source's Notifications tab if you don't want them.
+:::
+
+**Repeater new-node alerts.** A Repeater source alerts on a node only when the node's advert carried a valid signature and the node is new to that source. Two limits apply, and neither is a setting:
+
+- **Learning period.** For 48 hours after the source first logs the mesh, nothing alerts, and nodes heard in that time never alert later. A Repeater that has logged for longer than that alerts from the first advert after you update. Only a **Purge non-favourite nodes** that removes nodes starts the period again. A restart, reconnect, source edit or preference change does not.
+- **Hourly cap.** At most 10 alerts per source per hour. Alerts over the cap are dropped, and the next alert that goes out ends with "(+N more new nodes since the last alert)".
+
+The counters are stored per source, so a restart cannot reopen a full hour. MeshMonitor sends nothing over the air for these alerts, and a Repeater never sends an Auto Welcome.
+
+::: tip Upgrading
+Earlier versions showed the **Newly Found Nodes** toggle on Repeater sources, then hid it. A Repeater source whose toggle was saved as on starts alerting once its learning period ends. Turn it off on that source's Notifications tab if you don't want these alerts.
 :::
 
 Preferences are saved per source, so a MeshCore source and a Meshtastic source can have independent thresholds. The monitored-node watch list is the exception: nodes picked on any source's tab are watched together (see [Settings Are Saved Per Source](#settings-are-saved-per-source)).

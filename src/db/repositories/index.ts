@@ -124,6 +124,8 @@ export { PkiExchangeStateRepository } from './pkiExchangeState.js';
 export { MapMarkersRepository } from './mapMarkers.js';
 export { MeshCoreHopSnrRepository } from './meshcoreHopSnr.js';
 export type { MeshCoreHopSnrRow } from './meshcoreHopSnr.js';
+export { MeshCoreTraceRunsRepository } from './meshcoreTraceRuns.js';
+export type { MeshCoreTraceRunRow, MeshCoreTraceRunStatus, MeshCoreTraceRunOrigin } from './meshcoreTraceRuns.js';
 export { NodeNameHistoryRepository, NODE_NAME_HISTORY_CAP } from './nodeNameHistory.js';
 export type { NodeNameHistoryRow, NodeNameProtocol } from './nodeNameHistory.js';
 export { MeshCoreCliHistoryRepository } from './meshcoreCliHistory.js';

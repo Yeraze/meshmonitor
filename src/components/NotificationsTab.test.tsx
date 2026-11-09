@@ -8,7 +8,7 @@
  *   - channel/DM/emoji/MQTT/traceroute/new-node notifications do not fire
  * so those controls must be hidden when sourceType === 'meshcore'.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 vi.mock('react-i18next', async () => {
@@ -119,16 +119,20 @@ describe('NotificationsTab — source-type gating', () => {
     expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).toBeNull();
+    // The learning-window note is Repeater only (#6306).
+    expect(screen.queryByText(/notifications\.new_nodes_repeater_note/)).toBeNull();
   });
 
-  it('MeshCore Repeater: hides DM, traceroute, new-node, mention and explains why', async () => {
+  it('MeshCore Repeater: hides DM, traceroute and mention, explains why, and shows new-node with its learning note', async () => {
     renderWithSource('meshcore', 2);
     await waitFor(() => {
       expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull();
     });
     expect(screen.queryByText(/notifications\.direct_messages/)).toBeNull();
     expect(screen.queryByText(/notifications\.traceroutes/)).toBeNull();
-    expect(screen.queryByText(/notifications\.new_nodes/)).toBeNull();
+    // #6306: the new-node toggle is back for a Repeater, with the gate note.
+    expect(screen.queryByText(/notifications\.new_nodes(?!_)/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.new_nodes_repeater_note/)).not.toBeNull();
     expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).toBeNull();
     expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.emoji_reactions/)).not.toBeNull();
@@ -294,5 +298,124 @@ describe('NotificationsTab — a source with nothing saved', () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe('NotificationsTab — MeshCore MQTT ingest source (#6307)', () => {
+  const original = vi.mocked(api.get).getMockImplementation();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }) as unknown as typeof window.matchMedia;
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.startsWith('/api/sources/src-1/meshcore/ingest/channels')) {
+        return Promise.resolve({
+          success: true,
+          data: [
+            { id: 1, name: '', uplinkEnabled: false, downlinkEnabled: false },
+            { id: 3, name: '', uplinkEnabled: false, downlinkEnabled: false },
+          ],
+        });
+      }
+      if (url.startsWith('/api/push/preferences')) {
+        return Promise.resolve({ ...SAVED_PREFS, enabledChannels: [3, 1234], notifyOnMqtt: true, sourceFallback: false });
+      }
+      return (original as (u: string) => Promise<unknown>)(url);
+    }) as never);
+  });
+
+  afterEach(() => {
+    vi.mocked(api.get).mockImplementation(original as never);
+  });
+
+  const prefPosts = () =>
+    (api.post as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => url === '/api/push/preferences');
+
+  it('shows channels, emoji, keywords, format, inactive-node and volt battery with the ingest hint', async () => {
+    renderWithSource('meshcore_mqtt');
+    await waitFor(() => expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull());
+    expect(document.getElementById('lowBatteryThreshold')).toBeNull();
+    expect(screen.queryByText(/notifications\.ingest_unsupported_hint/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.ingest_channels_warning/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.emoji_reactions/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
+    expect(document.getElementById('notif-format-title')).not.toBeNull();
+    expect(screen.queryByText(/notifications\.notify_on_inactive_node/)).not.toBeNull();
+  });
+
+  it('hides DM, MQTT, traceroute, mention, waypoint and new-node', async () => {
+    renderWithSource('meshcore_mqtt');
+    await waitFor(() => expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull());
+    expect(screen.queryByText(/notifications\.direct_messages/)).toBeNull();
+    expect(screen.queryByText(/notifications\.traceroutes/)).toBeNull();
+    expect(screen.queryByText(/notifications\.new_nodes(?!_)/)).toBeNull();
+    expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).toBeNull();
+    expect(screen.queryByText(/notifications\.notify_on_waypoint/)).toBeNull();
+    expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).toBeNull();
+  });
+
+  it('loads channels from the ingest route, not /api/channels/all', async () => {
+    renderWithSource('meshcore_mqtt');
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith('/api/sources/src-1/meshcore/ingest/channels'),
+    );
+    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('/api/channels/all'));
+  });
+
+  it('round-trips saved channels, including an id missing from the list, and saves notifyOnMqtt=true', async () => {
+    renderWithSource('meshcore_mqtt');
+    await waitFor(() => expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull());
+    // The saved id 1234 is not in the list but is still shown (and kept).
+    await waitFor(() => expect(screen.queryAllByRole('checkbox', { checked: true }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByText(/notifications\.save_preferences/));
+    await waitFor(() => expect(prefPosts()).toHaveLength(1));
+    const body = prefPosts()[0][1] as Record<string, unknown>;
+    expect([...(body.enabledChannels as number[])].sort((a, b) => a - b)).toEqual([3, 1234]);
+    expect(body.notifyOnMqtt).toBe(true);
+  });
+
+  it('lists broker wording for server events when they are on', async () => {
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.startsWith('/api/push/preferences')) {
+        return Promise.resolve({ ...SAVED_PREFS, notifyOnServerEvents: true, sourceFallback: false });
+      }
+      return (original as (u: string) => Promise<unknown>)(url);
+    }) as never);
+    renderWithSource('meshcore_mqtt');
+    await waitFor(() => expect(screen.queryByText(/notifications\.server_events_disconnect_broker/)).not.toBeNull());
+    expect(screen.queryByText(/notifications\.server_events_reconnect_broker/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.server_events_disconnect$/)).toBeNull();
+  });
+
+  it('a Repeater shows the no-DM defaults notice; Companion and Meshtastic keep theirs', async () => {
+    const defaults = (url: string) =>
+      url.startsWith('/api/push/preferences')
+        ? Promise.resolve({ ...SAVED_PREFS, usingDefaults: true, sourceFallback: false })
+        : (original as (u: string) => Promise<unknown>)(url);
+    vi.mocked(api.get).mockImplementation(defaults as never);
+    const { unmount } = renderWithSource('meshcore', 2);
+    await waitFor(() => expect(screen.queryByText(/notifications\.using_defaults_notice_no_dm/)).not.toBeNull());
+    unmount();
+    const c = renderWithSource('meshcore', 1);
+    await waitFor(() => expect(screen.queryByText(/notifications\.using_defaults_notice_meshcore/)).not.toBeNull());
+    c.unmount();
+    renderWithSource('meshtastic_tcp');
+    await waitFor(() => expect(screen.queryByText(/notifications\.using_defaults_notice(?!_)/)).not.toBeNull());
+  });
+
+  it('Meshtastic server events keep the radio wording', async () => {
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.startsWith('/api/push/preferences')) {
+        return Promise.resolve({ ...SAVED_PREFS, notifyOnServerEvents: true, sourceFallback: false });
+      }
+      return (original as (u: string) => Promise<unknown>)(url);
+    }) as never);
+    renderWithSource('meshtastic_tcp');
+    await waitFor(() => expect(screen.queryByText(/notifications\.server_events_disconnect$/)).not.toBeNull());
+    expect(screen.queryByText(/notifications\.server_events_disconnect_broker/)).toBeNull();
   });
 });

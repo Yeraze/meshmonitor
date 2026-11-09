@@ -154,7 +154,7 @@ Stock repeater firmware gives you:
 
 A firmware build with packet logging on (`-D MESH_PACKET_LOGGING=1`) prints every frame the repeater hears, and MeshMonitor reads those lines. That adds:
 
-- **Nodes from adverts.** Every advert the repeater hears becomes a node on this source, with its name, type and position. These nodes raise no new-node notification and fire no automation trigger.
+- **Nodes from adverts.** Every advert the repeater hears becomes a node on this source, with its name, type and position. These nodes fire no automation trigger. New-node notifications are on for Repeaters but limited by a 48 hour learning period and a cap of 10 per hour (see [Notifications](./notifications.md)).
 - **Hop counts.** Each of those nodes records how many hops its advert took to reach the repeater (0 = heard direct). One advert usually arrives several times by different routes; the shortest one counts, and the node's next advert replaces it. A node whose advert has not been heard since the upgrade shows its hops as unknown.
 - **Packet Monitor.** Each received frame is logged once you turn capture on. See [Packet Monitor](#packet-monitor).
 - **Channel Messages.** The repeater holds no channel keys, so MeshMonitor decrypts channel text (`GRP_TXT`) with a key from any of your other MeshCore sources, or from a MeshCore entry in the [Channel Database](/features/channel-database#meshcore-channels). These channels are read-only on the repeater source. A user sees a message only if they can read a channel that holds its key.
@@ -442,6 +442,35 @@ meshcore://channel/add?name=<name>&secret=<32 hex chars>[&region_scope=<scope>]
 ```
 
 The link includes the channel secret, so sharing needs **Configuration: write** on the source. **Import from URL** in the channels header reads such a link, shows the name, a masked secret, the scope and the target slot, then writes it to the lowest free slot (never slot 0). If the radio already has that secret, it reports the existing slot instead. A hashtag channel link may leave out the secret; MeshMonitor derives it from the name. See the [MeshCore QR code reference](https://docs.meshcore.io/qr_codes/).
+
+## Companion Backups {#backups}
+
+A MeshCore Companion source has the same **Backup** section as a Meshtastic source, on its **Configuration** page. Each source has its own files, schedule and retention (see [Device Configuration Backup](device.md#device-configuration-backup) for the permissions and file rules). Repeaters and Room Servers have no backup section; use their settings export instead.
+
+### What a backup holds
+
+- The device name, radio parameters (frequency, bandwidth, spreading factor, coding rate), TX power and coordinates
+- The "other parameters": the manual-add flags, the three telemetry sharing modes, the advert location policy, and multi-ACKs when it is 0 or 1
+- Auto-add options, the default path hash size and the BLE PIN (when the radio reports one)
+- Every configured channel slot with its **secret key**, and each channel's region scope
+- A fixed set of MeshMonitor settings for the source: default region, default path hash size and "respond to discovery"
+
+A backup **never** contains the radio's private key or its contacts. To bring an identity back, use **Private key import** in Device Management. The file is plain YAML, so treat it as a secret: it is saved with mode `0600`, kept out of system backups, and downloading it needs `configuration:write` on the source.
+
+### Creating a backup
+
+Creating a backup reads the radio over its local serial or TCP link. Nothing is transmitted over the air. It needs a connected Companion. Scheduled backups skip a source that is offline or busy with a restore.
+
+### What a restore changes
+
+A restore runs best effort, one section at a time, and reports what failed or was skipped. It also never transmits. The order is: name and coordinates, other parameters, auto-add, path hash size, BLE PIN, channels, the MeshMonitor settings, TX power, and the **radio parameters last**.
+
+- **The radio applies at once.** If the backup is for another frequency or preset, the node leaves its mesh until you change it back. The confirmation shows the current and the backup radio side by side and warns when they differ.
+- **TX power** is limited to what the connected radio supports. When it is clamped, the result says so; when the radio's maximum is unknown, TX power is skipped.
+- **Channels:** only the slots in the backup are written. Slot 0 (reserved) is never written, slots past the radio's capacity are skipped, and every other slot stays as it is. Overwriting a slot changes which channel that slot's message history, notification rules and `channel_N` permissions refer to, the same as editing the slot by hand.
+- **BLE PIN:** a changed PIN takes effect after the radio's next boot.
+- **Multi-ACKs** above 1 is not restored (airtime cost), and it is skipped on firmware older than code 7.
+- **Identity:** the restore compares the file's public key with the connected radio. A different key is flagged but does not block, so you can restore settings onto a replacement or freshly reset radio. The radio keeps its own identity.
 
 ## Telemetry
 

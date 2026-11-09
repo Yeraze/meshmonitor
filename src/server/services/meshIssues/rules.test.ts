@@ -58,7 +58,7 @@ function makeNode(overrides: Partial<PooledNode> = {}): PooledNode {
 }
 
 function emptySeries(): NodeTelemetrySeries {
-  return { airUtilTx: [], channelUtilization: [], batteryLevel: [], uptimeSeconds: [] };
+  return { airUtilTx: [], channelUtilization: [], batteryLevel: [], uptimeSeconds: [], batteryMv: [] };
 }
 
 function makeContext(
@@ -71,7 +71,15 @@ function makeContext(
 ): RuleContext {
   const nodeMap = new Map<number, PooledNode>();
   for (const n of nodes) nodeMap.set(n.nodeNum, n);
-  return { nodes: nodeMap, telemetry, positionSpanMeters, nowMs, thresholds, routerBroadcastTelemetryCadence };
+  return {
+    nodes: nodeMap,
+    telemetry,
+    positionSpanMeters,
+    nowMs,
+    thresholds,
+    routerBroadcastTelemetryCadence,
+    sourceLastHeardMs: new Map(),
+  };
 }
 
 describe('evaluateA1 — deprecated role', () => {

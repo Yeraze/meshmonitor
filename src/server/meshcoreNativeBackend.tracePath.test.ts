@@ -181,6 +181,23 @@ describe('MeshCoreNativeBackend — trace_path (#4786)', () => {
     expect(res.data.lastSnr).toBe(-6);
   });
 
+  it('uses the tag the manager chose, and still draws one when none is given (#6276)', async () => {
+    const { backend, conn } = await connectedBackend();
+    const first = backend.sendCommand('trace_path', { path: Uint8Array.from([0x0d]), path_hash_bytes: 1, tag: 0xfedcba98, timeout_ms: 50 });
+    await new Promise((r) => setImmediate(r));
+    expect((conn.sentFrames.at(-1) as Buffer).readUInt32LE(1)).toBe(0xfedcba98);
+    await first.catch(() => undefined);
+
+    const second = backend.sendCommand('trace_path', { path: Uint8Array.from([0x0d]), path_hash_bytes: 1, tag: -5, timeout_ms: 50 });
+    await new Promise((r) => setImmediate(r));
+    const tag = (conn.sentFrames.at(-1) as Buffer).readUInt32LE(1);
+    expect(Number.isInteger(tag)).toBe(true);
+    expect(tag).not.toBe(0xfffffffb);
+    await second.catch(() => undefined);
+    // One frame per trace.
+    expect(conn.sentFrames.filter((f) => f[0] === 36)).toHaveLength(2);
+  });
+
   it('ignores a TraceData push whose tag does not match this request', async () => {
     const { backend, conn } = await connectedBackend();
     const promise = backend.sendCommand('trace_path', {

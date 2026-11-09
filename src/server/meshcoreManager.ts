@@ -105,6 +105,11 @@ import {
 } from '../utils/meshcoreCompanionCli.js';
 import { meshcorePathDiscoveryTimeoutMs } from './constants/meshcorePathDiscovery.js';
 import { MESHCORE_TRACE_BRIDGE_TIMEOUT_MS } from './constants/meshcoreFirmwareTimeout.js';
+import type { MeshCoreTraceRunOrigin } from '../db/repositories/meshcoreTraceRuns.js';
+
+/** Sources whose stale `pending` trace attempts were swept in this process. */
+const sweptTraceRunSources = new Set<string>();
+const PROCESS_START_MS = Date.now();
 import {
   parseMeshCoreIgnoreList,
   isMeshCoreIgnoreListEmpty,
@@ -131,6 +136,7 @@ import {
 import type { MeshCoreObserverConfig, MeshCoreSourceConfig, NormalizedObserverConfig } from './meshcoreConfig.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
+import { newNodeAlertGate } from './services/newNodeAlertGate.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { meshcoreOwnIdentityTracker } from './services/meshcoreOwnIdentityTracker.js';
 import { meshcoreMessageFilter, type MeshCoreClassifyResult } from './services/meshcoreMessageFilter.js';
@@ -1448,6 +1454,56 @@ export type AutoAddConfigPatch = {
   maxHops?: number;
 };
 
+/**
+ * Everything a Companion backup holds, read from the radio over local serial
+ * (P16 #6285). NEVER carries the private key or contacts.
+ */
+export interface MeshCoreBackupSnapshot {
+  publicKey: string;
+  name: string;
+  model?: string;
+  firmwareVer?: number;
+  firmwareBuild?: string;
+  maxChannels?: number;
+  radio: { freq: number; bw: number; sf: number; cr: number } | null;
+  txPower?: number;
+  maxTxPower?: number;
+  latitude?: number;
+  longitude?: number;
+  /** Raw SetOtherParams fields. Telemetry modes are the 2-bit values (0 never, 1 device, 2 always). */
+  otherParams: {
+    manualAddContactsRaw?: number;
+    telemetryModeBase?: number;
+    telemetryModeLoc?: number;
+    telemetryModeEnv?: number;
+    advLocPolicy?: number;
+    multiAcks?: number;
+  };
+  /** null when the firmware does not know commands 58/59. */
+  autoAdd: AutoAddConfig | null;
+  /** null when DeviceInfo is older than v3 (no PIN reported). */
+  blePin: number | null;
+  /** Non-empty slots only. */
+  channels: Array<{ idx: number; name: string; secretHex: string; scope: string | null }>;
+  /** MeshMonitor per-source settings (fixed whitelist). */
+  settings: { defaultScope: string; defaultPathHashSize: 1 | 2 | 3; respondToDiscovery: boolean };
+}
+
+/** One channel slot to write on restore. */
+export interface MeshCoreRestoreChannelSlot {
+  idx: number;
+  name: string;
+  secretHex: string;
+  /** undefined leaves the stored scope alone; null/'' clears it. */
+  scope?: string | null;
+}
+
+export interface MeshCoreRestoreChannelsResult {
+  written: number[];
+  skipped: Array<{ idx: number; reason: string }>;
+  failed: Array<{ idx: number; error: string }>;
+}
+
 /** Result of `MeshCoreManager.removeNonFavoriteContacts` (#5777). */
 export type RemoveNonFavoritesResult =
   | { status: 'done'; removed: number; kept: number; failed: number; total: number }
@@ -2192,6 +2248,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
 
       this.connected = true;
+      void this.sweepStaleTraceRuns();
       this.linkRecoveryReconnect = false;
       // The device's flood scope is unknown right after (re)connect — force the
       // next send to re-assert it (#3667).
@@ -4027,6 +4084,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * running even if notification delivery hiccups.
    */
   private async notifyNewNodeDiscovered(contact: MeshCoreContact): Promise<void> {
+    // Auto Welcome (#6224): the genuinely-new-and-named event greets the node.
+    // Fire-and-forget: a welcome failure must not break the discovery pipeline.
+    // Only this Companion path welcomes; a Repeater sends nothing (#6306).
+    await this.alertNewNode(contact, { onClaimed: () => void this.checkAutoWelcome(contact) });
+  }
+
+  /**
+   * The alert half of {@link notifyNewNodeDiscovered}: dedup, the nameless-key
+   * deferral, and the notification. It sends NOTHING over the air, which is why
+   * the Repeater path (#6306) calls it directly and never Auto Welcome.
+   *
+   * `onClaimed` runs once the key is accepted (named, not yet alerted), before
+   * the notification is built. Failures are logged, never thrown.
+   */
+  private async alertNewNode(
+    contact: MeshCoreContact,
+    opts: { suppressedCount?: number; onClaimed?: () => void } = {},
+  ): Promise<void> {
     try {
       const publicKey = contact.publicKey;
       if (!publicKey || this.notifiedNewNodes.has(publicKey)) return;
@@ -4036,16 +4111,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // Defer until a name arrives. The auto-add 0x80 push carries only the
         // pubkey; the follow-up get_contacts re-read (refreshContacts) or a
         // later named advert resolves this via the pending set (#5340).
-        this.pendingNewNodeNotifications.add(publicKey);
+        this.rememberPendingNewNode(publicKey);
         return;
       }
       this.pendingNewNodeNotifications.delete(publicKey);
-      this.notifiedNewNodes.add(publicKey);
-
-      // Auto Welcome (#6224): this is the one genuinely-new-and-named event, so
-      // greet the node here. Fire-and-forget — a welcome failure must not break
-      // the discovery-notification pipeline.
-      void this.checkAutoWelcome(contact);
+      this.rememberNotifiedNewNode(publicKey);
+      opts.onClaimed?.();
 
       const deviceTypeLabel = contact.advType != null
         ? MESHCORE_DEVICE_TYPE_LABELS[contact.advType] ?? undefined
@@ -4063,11 +4134,34 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         deviceTypeLabel,
         this.sourceId,
         sourceName,
+        // Omitted when absent so a Companion alert keeps its 5-argument call.
+        ...(opts.suppressedCount ? [opts.suppressedCount] as const : []),
       );
     } catch (err) {
       logger.warn(
-        `[MeshCore:${this.sourceId}] notifyNewNodeDiscovered(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
+        `[MeshCore:${this.sourceId}] alertNewNode(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
       );
+    }
+  }
+
+  /** Cap on the per-process new-node dedup and nameless-pending sets (#6306). */
+  private static readonly NEW_NODE_SET_MAX = 4096;
+
+  /** Add to `notifiedNewNodes`, dropping the oldest beyond the cap (a forged-key stream must not grow it). */
+  private rememberNotifiedNewNode(publicKey: string): void {
+    this.notifiedNewNodes.add(publicKey);
+    if (this.notifiedNewNodes.size > MeshCoreManager.NEW_NODE_SET_MAX) {
+      const oldest = this.notifiedNewNodes.values().next().value;
+      if (oldest !== undefined) this.notifiedNewNodes.delete(oldest);
+    }
+  }
+
+  /** Add to `pendingNewNodeNotifications` under the same cap. */
+  private rememberPendingNewNode(publicKey: string): void {
+    this.pendingNewNodeNotifications.add(publicKey);
+    if (this.pendingNewNodeNotifications.size > MeshCoreManager.NEW_NODE_SET_MAX) {
+      const oldest = this.pendingNewNodeNotifications.values().next().value;
+      if (oldest !== undefined) this.pendingNewNodeNotifications.delete(oldest);
     }
   }
 
@@ -4995,12 +5089,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * ADVERT heard by the local repeater → a node on this source (#5553).
    *
-   * Deliberately quiet, per the maintainer decision on #5553: no "new node"
-   * notification and no `trigger.nodeDiscovered` / `trigger.nodeUpdated`
-   * automation event. A logging repeater hears every advert in range, and
-   * firing those per advert would turn passive discovery into a notification
-   * flood. Only the contact-updated socket event fires, so an open Nodes list
-   * refreshes live (it drives no automation).
+   * Automation stays quiet, per the maintainer decision on #5553: no
+   * `trigger.nodeDiscovered` / `trigger.nodeUpdated` event. A logging repeater
+   * hears every advert in range, and an automation per advert would turn
+   * passive discovery into a flood. The contact-updated socket event fires so
+   * an open Nodes list refreshes live (it drives no automation).
+   *
+   * A "new node" NOTIFICATION is on since #6306, behind the shared
+   * {@link newNodeAlertGate} (48 h learning window, 10 alerts per hour), and only
+   * for a node whose signature verified and whose row this advert created. See
+   * {@link maybeAlertRepeaterNewNode}. Auto Welcome never runs here.
    *
    * The node's `repeaterNeighborAt` is left untouched, so an advert-only node
    * is never taken for a zero-hop neighbour; only the `neighbors` poll sets it.
@@ -5015,7 +5113,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   private async ingestRepeaterAdvert(rawHex: string, heardHops: number | null = null): Promise<void> {
     const now = Date.now();
-    const advert = await ingestAdvertFrame(rawHex, this.sourceId, {
+    const ingested = await ingestAdvertFrame(rawHex, this.sourceId, {
       // We heard it just now; the sender's clock may be wrong or unset.
       lastHeardMs: now,
       skipPublicKey: this.repeaterPublicKey,
@@ -5023,8 +5121,51 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       verifySignature: 'always',
       heardHops: this.shortestAdvertHops(rawHex, heardHops, now),
     });
-    if (!advert?.publicKey) return;
+    if (!ingested?.advert?.publicKey) return;
+    const advert = ingested.advert;
     await this.emitStoredContact(advert.publicKey);
+    await this.maybeAlertRepeaterNewNode(advert.publicKey, ingested.inserted, ingested.signatureVerified);
+  }
+
+  /**
+   * #6306: raise a new-node notification for a Repeater advert, or not.
+   *
+   * Alerts only when all of these hold: this is a Repeater source, the advert's
+   * signature verified, and the advert created this source's row (or the key
+   * waits in the nameless-pending set, #5340). Then the gate decides. While it
+   * is learning the node is dropped and never parked, so it cannot alert later.
+   * The name comes from the STORED row (already sanitised), never from advert bytes.
+   *
+   * Sends nothing over the air: no Auto Welcome, no DM, no CLI write.
+   */
+  private async maybeAlertRepeaterNewNode(
+    publicKey: string,
+    inserted: boolean,
+    signatureVerified: boolean,
+  ): Promise<void> {
+    try {
+      if (this.deviceType !== MeshCoreDeviceType.REPEATER || !signatureVerified) return;
+      if (!inserted && !this.pendingNewNodeNotifications.has(publicKey)) return;
+      if (this.notifiedNewNodes.has(publicKey)) return;
+      const row = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, this.sourceId);
+      if (!row) return;
+      const contact = contactFromNodeRow(row);
+      if (!(contact.advName || contact.name)) {
+        // Nameless first advert: wait for a named one, unless the gate is still
+        // learning (then this node is part of what the window hides).
+        if (!(await newNodeAlertGate.isLearning(this.sourceId))) this.rememberPendingNewNode(publicKey);
+        return;
+      }
+      const verdict = await newNodeAlertGate.admit(this.sourceId);
+      if (!verdict.allow) {
+        // Known from now on either way; a dropped node never alerts later.
+        this.pendingNewNodeNotifications.delete(publicKey);
+        return;
+      }
+      await this.alertNewNode(contact, { suppressedCount: verdict.suppressedSinceLast });
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Repeater new-node alert failed: ${(err as Error).message}`);
+    }
   }
 
   /**
@@ -7968,7 +8109,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * estimate (constants/meshcoreFirmwareTimeout.ts). One trace goes out per
    * call; a timeout is never retried here.
    */
-  async traceContactPathDetailed(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2 } = {}): Promise<MeshCoreTracePathOutcome> {
+  async traceContactPathDetailed(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2; origin?: MeshCoreTraceRunOrigin } = {}): Promise<MeshCoreTracePathOutcome> {
     const failed: MeshCoreTracePathOutcome = { ok: false, reason: 'failed' };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Trace-path requires Companion firmware');
@@ -8056,19 +8197,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         return bytes;
       }),
     );
+    // The tag is chosen here (not in the backend) so the attempt can be logged
+    // before the reply (#6276). It is the same 4 random bytes the backend used
+    // to draw; nothing extra goes on air.
+    const traceTag = Math.floor(Math.random() * 0x1_0000_0000);
+    await this.recordTraceRunPending(traceTag, publicKey, tracedHops.join(''), hashBytes, opts);
     try {
       const response = await this.sendBridgeCommand('trace_path', {
         path: pathBytes,
         path_hash_bytes: hashBytes,
+        tag: traceTag,
       }, MESHCORE_TRACE_BRIDGE_TIMEOUT_MS);
       if (!response.success) {
         if (response.data?.timed_out === true) {
           const waitMs = Number(response.data.wait_ms) || 0;
           const suggestedTimeoutMs = Number(response.data.suggested_timeout_ms) || 0;
           logger.info(`[MeshCore] trace_path to ${publicKey.substring(0, 16)}… got no reply within ${waitMs}ms (firmware estimate ${suggestedTimeoutMs}ms)`);
+          void this.settleTraceRun(traceTag, 'timeout');
           return { ok: false, reason: 'timeout', waitMs, suggestedTimeoutMs };
         }
         logger.warn(`[MeshCore] trace_path failed for ${publicKey}: ${response.error}`);
+        void this.settleTraceRun(traceTag, 'failed');
         return failed;
       }
       const d = response.data ?? {};
@@ -8089,10 +8238,67 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         publicKey,
         formatMeshCoreTraceRoute(hops, tracedHops, lastSnr, [...this.contacts.values()], { autoReturn: opts.autoReturn === true }),
       );
+      void this.settleTraceRun(traceTag, 'answered');
       return { ok: true, hops, lastSnr, path: tracedHops };
     } catch (error) {
       logger.error('[MeshCore] traceContactPathDetailed threw:', error);
+      void this.settleTraceRun(traceTag, 'failed');
       return failed;
+    }
+  }
+
+  /**
+   * Log a trace attempt as `pending` just before its frame is sent (#6276).
+   * A trace that never reaches the radio (no path, disconnected) is not logged,
+   * the way Meshtastic records only traceroutes that were sent. A logging
+   * failure never blocks or changes the trace.
+   */
+  private async recordTraceRunPending(
+    traceTag: number,
+    targetPublicKey: string,
+    pathHex: string,
+    hashBytes: number,
+    opts: { autoReturn?: boolean; origin?: MeshCoreTraceRunOrigin },
+  ): Promise<void> {
+    try {
+      await databaseService.meshcoreTraceRuns.insertPending({
+        sourceId: this.sourceId,
+        traceTag,
+        authCode: 0,
+        targetPublicKey,
+        pathHex,
+        hashBytes,
+        autoReturn: opts.autoReturn === true,
+        origin: opts.origin ?? 'manual',
+        sentAt: Date.now(),
+      });
+      void meshcoreTraceIngestService.pruneIfDue(this.sourceId, Date.now());
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to log trace attempt:`, error);
+    }
+  }
+
+  /** Settle a logged trace attempt. Never throws. */
+  private async settleTraceRun(traceTag: number, status: 'answered' | 'timeout' | 'failed'): Promise<void> {
+    try {
+      await databaseService.meshcoreTraceRuns.complete(this.sourceId, traceTag, 0, status, Date.now());
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to settle trace attempt:`, error);
+    }
+  }
+
+  /**
+   * Once per process and source: a `pending` run from before this process
+   * started can never be answered (the wait died with it), so mark it a timeout.
+   */
+  private async sweepStaleTraceRuns(): Promise<void> {
+    if (sweptTraceRunSources.has(this.sourceId)) return;
+    sweptTraceRunSources.add(this.sourceId);
+    try {
+      const n = await databaseService.meshcoreTraceRuns.sweepStalePending(this.sourceId, PROCESS_START_MS, Date.now());
+      if (n > 0) logger.info(`[MeshCore:${this.sourceId}] Marked ${n} unfinished trace attempt(s) from before startup as timed out`);
+    } catch (error) {
+      logger.debug(`[MeshCore:${this.sourceId}] trace attempt sweep failed:`, error);
     }
   }
 
@@ -11436,6 +11642,172 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     if (this.localNode) this.localNode.multiAcks = readback;
     return readback;
+  }
+
+  // ============ Device-config backup (P16 #6285) ============
+
+  /**
+   * Read everything a Companion backup holds. Local serial reads only; never
+   * touches the private key or the contact table, and logs no values.
+   */
+  async readBackupSnapshot(): Promise<MeshCoreBackupSnapshot> {
+    await this.requireCompanionFirmware('Backing up the radio', null);
+    await this.refreshLocalNode();
+    const info = await this.deviceQuery();
+    if (info) this.applyDeviceInfo(info);
+    const node = this.localNode;
+    if (!node) {
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', 'The radio did not report its settings; try again');
+    }
+    const channels = (await this.listChannels()).filter((ch) => isConfiguredMeshCoreChannel(ch));
+    const dbChannels = await databaseService.channels.getAllChannels(this.sourceId);
+    const scopeByIdx = new Map<number, string | null>(
+      dbChannels.map((c: { id: number; scope?: string | null }) => [Number(c.id), c.scope ?? null]),
+    );
+    const autoRes = await this.getAutoAddConfig();
+    const tm = (m?: TelemetryMode): number | undefined =>
+      m === 'never' ? 0 : m === 'device' ? 1 : m === 'always' ? 2 : undefined;
+    const hasRadio = [node.radioFreq, node.radioBw, node.radioSf, node.radioCr].every((v) => typeof v === 'number');
+    return {
+      publicKey: node.publicKey,
+      name: node.name,
+      model: node.model,
+      firmwareVer: node.firmwareVer,
+      firmwareBuild: node.firmwareBuild,
+      maxChannels: node.maxChannels,
+      radio: hasRadio
+        ? { freq: node.radioFreq!, bw: node.radioBw!, sf: node.radioSf!, cr: node.radioCr! }
+        : null,
+      txPower: node.txPower,
+      maxTxPower: node.maxTxPower,
+      latitude: node.latitude,
+      longitude: node.longitude,
+      otherParams: {
+        manualAddContactsRaw: node.manualAddContacts,
+        telemetryModeBase: tm(node.telemetryModeBase),
+        telemetryModeLoc: tm(node.telemetryModeLoc),
+        telemetryModeEnv: tm(node.telemetryModeEnv),
+        advLocPolicy: node.advLocPolicy,
+        multiAcks: node.multiAcks,
+      },
+      autoAdd: autoRes.ok && autoRes.config.supported ? autoRes.config : null,
+      blePin: typeof info?.blePin === 'number' ? info.blePin : null,
+      channels: channels.map((ch) => ({
+        idx: ch.channelIdx,
+        name: ch.name,
+        secretHex: ch.secretHex,
+        scope: scopeByIdx.get(ch.channelIdx) ?? null,
+      })),
+      settings: {
+        defaultScope: await this.getDefaultScope(),
+        defaultPathHashSize: await this.getDefaultPathHashSize(),
+        respondToDiscovery: await this.getRespondToDiscovery(),
+      },
+    };
+  }
+
+  /**
+   * Write the raw SetOtherParams frame (restore only): `manualAddContactsRaw`
+   * goes out verbatim, high bits included. The 5th byte (multi_acks) is sent
+   * only when `multiAcks` is given (0 or 1; firmware code >= 7), and read back.
+   * Local serial write, no RF.
+   */
+  async setOtherParamsRaw(p: {
+    manualAddContactsRaw: number;
+    telemetryModeBase: number;
+    telemetryModeLoc: number;
+    telemetryModeEnv: number;
+    advLocPolicy: number;
+    multiAcks?: number;
+  }): Promise<{ multiAcks: number | null }> {
+    await this.requireCompanionFirmware(
+      'Restoring other parameters',
+      p.multiAcks !== undefined ? MeshCoreManager.COMPANION_CMD_FIRMWARE_MIN : null,
+    );
+    const response = await this.sendBridgeCommand('set_other_params_raw', p);
+    if (!response.success) {
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', response.error || 'The radio did not accept the settings');
+    }
+    const readback = typeof response.data?.multi_acks === 'number' ? response.data.multi_acks : null;
+    if (this.localNode) {
+      this.localNode.manualAddContacts = p.manualAddContactsRaw & 0xff;
+      this.localNode.advLocPolicy = p.advLocPolicy;
+      if (readback !== null) this.localNode.multiAcks = readback;
+    }
+    return { multiAcks: readback };
+  }
+
+  /**
+   * Restore channel slots from a backup. Holds the reorder lock (so sends and
+   * other channel writes wait), writes each slot with a verified write, then
+   * runs ONE mirror sync and persists scopes. Slot 0 (reserved) and slots at or
+   * beyond the radio's capacity are skipped and reported; slots not in
+   * `slots` are never touched. Local serial writes, no RF.
+   */
+  async restoreChannels(slots: MeshCoreRestoreChannelSlot[]): Promise<MeshCoreRestoreChannelsResult> {
+    await this.requireCompanionFirmware('Restoring channels', null);
+    this.assertNoChannelReorder('restoreChannels');
+    let max = this.localNode?.maxChannels;
+    if (max === undefined) {
+      const info = await this.deviceQuery();
+      if (info) this.applyDeviceInfo(info);
+      max = this.localNode?.maxChannels;
+    }
+
+    const result: MeshCoreRestoreChannelsResult = { written: [], skipped: [], failed: [] };
+    let resolveDone!: (r: ChannelReorderResult) => void;
+    const done = new Promise<ChannelReorderResult>((resolve) => { resolveDone = resolve; });
+    this.channelReorder = { original: [], believed: [], done };
+    try {
+      for (const slot of [...slots].sort((a, b) => a.idx - b.idx)) {
+        if (!Number.isInteger(slot.idx) || slot.idx < 0) {
+          result.skipped.push({ idx: slot.idx, reason: 'invalid slot number' });
+        } else if (slot.idx === 0) {
+          result.skipped.push({ idx: 0, reason: 'slot 0 is reserved' });
+        } else if (max !== undefined && slot.idx >= max) {
+          result.skipped.push({ idx: slot.idx, reason: `the radio has ${max} slots` });
+        } else if (!/^[0-9a-f]{32}$/i.test(slot.secretHex)) {
+          result.failed.push({ idx: slot.idx, error: 'the channel key is not 16 bytes of hex' });
+        } else {
+          let lastError = '';
+          let ok = false;
+          for (let attempt = 0; attempt <= MeshCoreManager.CHANNEL_WRITE_RETRIES && !ok; attempt++) {
+            let res: BridgeResponse;
+            try {
+              res = await this.sendBridgeCommand(
+                'set_channel_verified',
+                { idx: slot.idx, name: slot.name, secret_hex: slot.secretHex.toLowerCase(), timeout_ms: MeshCoreManager.CHANNEL_WRITE_TIMEOUT_MS },
+                MeshCoreManager.CHANNEL_WRITE_TIMEOUT_MS + 5_000,
+              );
+            } catch (err) {
+              res = { id: '', success: false, error: (err as Error).message };
+            }
+            const data = res.data as { verified?: boolean } | undefined;
+            if (res.success && data?.verified) ok = true;
+            else lastError = res.success ? 'the slot did not read back as written' : res.error || 'no response';
+          }
+          if (ok) result.written.push(slot.idx);
+          else result.failed.push({ idx: slot.idx, error: lastError });
+        }
+      }
+    } finally {
+      resolveDone({ status: 'unchanged' });
+      this.channelReorder = null;
+    }
+
+    if (result.written.length > 0) {
+      await this.syncChannelsFromDevice().catch((err) => {
+        logger.warn(`[MeshCore:${this.sourceId}] post-restore channel sync failed: ${(err as Error).message}`);
+      });
+      for (const slot of slots) {
+        if (slot.scope !== undefined && result.written.includes(slot.idx)) {
+          await databaseService.channels.updateChannelScope(slot.idx, (slot.scope || '').trim() || null, this.sourceId);
+        }
+      }
+      this.activeFloodScope = undefined;
+      void this.refreshKnownScopes();
+    }
+    return result;
   }
 
   /**

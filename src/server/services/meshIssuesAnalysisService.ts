@@ -32,12 +32,13 @@ import {
   type TelemetryRowInput,
   type NodeTelemetrySeries,
 } from './meshIssues/nodeSnapshot.js';
-import { evaluateAllTierA, type RuleContext } from './meshIssues/rules.js';
+import { evaluateAllTierA, tierASkips, type RuleContext, type RouterTelemetryCadenceStats } from './meshIssues/rules.js';
+import { buildSourceLiveness, type LivenessRow } from './meshIssues/nodeHealth.js';
 import {
   buildMeshCoreSnapshot,
-  buildMeshCoreUptimeSeries,
+  buildMeshCoreTelemetrySeries,
   buildMeshCoreAdvertCadence,
-  MESHCORE_UPTIME_TELEMETRY_TYPE,
+  MESHCORE_ISSUE_TELEMETRY_TYPES,
   type MeshCoreAdvertCadence,
   type MeshCoreNodeInput,
 } from './meshIssues/meshcoreSnapshot.js';
@@ -102,7 +103,10 @@ const POSITION_SPAN_SAMPLE_LIMIT = 500;
 /** MeshCore inputs pooled for one run (#6263 S5). */
 interface MeshCoreRunInputs {
   nodes: Map<number, PooledNode>;
+  /** Uptime (A3) and battery mV (A8) series, keyed by the run-local handle. */
   uptimeTelemetry: Map<number, NodeTelemetrySeries>;
+  /** Raw node rows for the A6 source-liveness map (non-local rows only count). */
+  livenessRows: LivenessRow[];
   positionSpanMeters: Map<number, number>;
   advertCadence: Map<number, MeshCoreAdvertCadence>;
   advertLogEnabled: boolean;
@@ -286,6 +290,10 @@ class MeshIssuesAnalysisService {
         .map((s) => s.id),
     );
 
+    // Each source's own directly-connected node (also used by Tier C below and
+    // by A6, which must not flag the local node). #5388
+    const localNodeSources = await this.resolveLocalNodeSources(sourceIds);
+
     // 2. Nodes — pool physical nodes across every resolved source.
     // intentional cross-source: findings pool physical nodes across every Meshtastic source
     const allNodes = (await databaseService.nodes.getAllNodes(ALL_SOURCES)) as unknown as NodeRow[];
@@ -326,6 +334,7 @@ class MeshIssuesAnalysisService {
         keySecurityIssueDetails: n.keySecurityIssueDetails ?? null,
         isTimeOffsetIssue: n.isTimeOffsetIssue ?? null,
         timeOffsetSeconds: n.timeOffsetSeconds ?? null,
+        isLocal: localNodeSources.get(Number(n.nodeNum))?.has(n.sourceId) ?? false,
       }));
     const nodes = buildPooledNodeSnapshot(nodeInputs);
 
@@ -475,7 +484,6 @@ class MeshIssuesAnalysisService {
     // THAT source only (#5388): its phone-API deviceMetrics (~60s) are stored
     // like mesh telemetry but never went on air at that rate. The same
     // nodeNum heard over the mesh on another source still counts.
-    const localNodeSources = await this.resolveLocalNodeSources(sourceIds);
     const cadenceTelemetry =
       localNodeSources.size === 0
         ? telemetry
@@ -514,14 +522,23 @@ class MeshIssuesAnalysisService {
     // contributes no findings THIS RUN, but does not delete any existing row
     // — persistFindings' clean-run bookkeeping (step 7) closes them the
     // honest way, after thresholds.autoCloseCleanRuns runs with nothing detected.
-    const ctx: RuleContext = {
+    const ctx = this.buildTierAContext({
       nodes,
       telemetry,
       positionSpanMeters,
       nowMs,
       thresholds,
       routerBroadcastTelemetryCadence,
-    };
+      livenessRows: [
+        ...nodeInputs.map((r) => ({
+          sourceId: r.sourceId,
+          lastHeard: r.lastHeard,
+          updatedAt: r.updatedAt,
+          isLocal: r.isLocal,
+        })),
+        ...mc.livenessRows,
+      ],
+    });
     const findings: MeshIssueFinding[] = thresholds.tierAEnabled ? evaluateAllTierA(ctx) : [];
 
     // 6b. Evaluate Tier B — graph-based rules layered on top of Tier A. B7's
@@ -557,7 +574,7 @@ class MeshIssuesAnalysisService {
       reason: 'muted in settings',
     }));
 
-    const skippedRules = [...tierBSkips(tierBCtx), ...tierCSkips(tierCCtx), ...mutedSkips];
+    const skippedRules = [...tierASkips(ctx), ...tierBSkips(tierBCtx), ...tierCSkips(tierCCtx), ...mutedSkips];
 
     // 7. Persist — issue-type agnostic; Tier B findings flow through the
     // same upsert/clean-run bookkeeping as Tier A.
@@ -602,6 +619,24 @@ class MeshIssuesAnalysisService {
   }
 
   /**
+   * The one place a Tier A context is assembled, so the full and MeshCore-only
+   * paths cannot drift (#6279). `livenessRows` becomes A6's per-source
+   * "last sign of life" map, built from non-local node rows of both protocols.
+   */
+  private buildTierAContext(input: {
+    nodes: Map<number, PooledNode>;
+    telemetry: Map<number, NodeTelemetrySeries>;
+    positionSpanMeters: Map<number, number>;
+    nowMs: number;
+    thresholds: ResolvedMeshIssueThresholds;
+    routerBroadcastTelemetryCadence: Map<number, RouterTelemetryCadenceStats>;
+    livenessRows: LivenessRow[];
+  }): RuleContext {
+    const { livenessRows, ...rest } = input;
+    return { ...rest, sourceLastHeardMs: buildSourceLiveness(livenessRows) };
+  }
+
+  /**
    * MeshCore-only run: no Meshtastic source is enabled, so the Meshtastic
    * pipeline (traceroute corpus, RF graph, cadence queries) is skipped and
    * only A3/A4/C2-advert evaluate. Persistence and mute handling match the
@@ -620,14 +655,15 @@ class MeshIssuesAnalysisService {
     // the no-sources case.
     if (mc.nodes.size === 0) return zeroResult(Date.now() - start);
     const nodes = new Map(mc.nodes);
-    const ctx: RuleContext = {
+    const ctx = this.buildTierAContext({
       nodes,
       telemetry: mc.uptimeTelemetry,
       positionSpanMeters: mc.positionSpanMeters,
       nowMs,
       thresholds,
       routerBroadcastTelemetryCadence: new Map(),
-    };
+      livenessRows: mc.livenessRows,
+    });
     const findings: MeshIssueFinding[] = thresholds.tierAEnabled ? evaluateAllTierA(ctx) : [];
     const tierCCtx: TierCRuleContext = {
       nodes,
@@ -656,7 +692,7 @@ class MeshIssuesAnalysisService {
       findingCount: kept.length,
       ...persistResult,
       corpusStats: zeroCorpusStats(),
-      coverage: { ...zeroCoverage(), skippedRules: [...tierCSkips(tierCCtx), ...mutedSkips] },
+      coverage: { ...zeroCoverage(), skippedRules: [...tierASkips(ctx), ...tierCSkips(tierCCtx), ...mutedSkips] },
     };
   }
 
@@ -670,6 +706,7 @@ class MeshIssuesAnalysisService {
     const empty: MeshCoreRunInputs = {
       nodes: new Map(),
       uptimeTelemetry: new Map(),
+      livenessRows: [],
       positionSpanMeters: new Map(),
       advertCadence: new Map(),
       advertLogEnabled: false,
@@ -694,6 +731,8 @@ class MeshIssuesAnalysisService {
           longitudeOverride: n.longitudeOverride ?? null,
           lastHeard: n.lastHeard ?? null,
           updatedAt: n.updatedAt ?? null,
+          lastAdvertHadPosition: n.lastAdvertHadPosition ?? null,
+          isLocalNode: n.isLocalNode ?? null,
         }));
     } catch (err) {
       logger.warn(`[meshIssues] meshcore node read failed, MeshCore skipped this run: ${(err as Error)?.message ?? err}`);
@@ -702,21 +741,36 @@ class MeshIssuesAnalysisService {
     const snapshot = buildMeshCoreSnapshot(rows);
     if (snapshot.nodes.size === 0) return empty;
 
-    const out: MeshCoreRunInputs = { ...empty, nodes: snapshot.nodes };
+    const out: MeshCoreRunInputs = {
+      ...empty,
+      nodes: snapshot.nodes,
+      livenessRows: rows.map((r) => ({
+        sourceId: r.sourceId,
+        lastHeard: r.lastHeard,
+        updatedAt: r.updatedAt,
+        isLocal: !!r.isLocalNode,
+      })),
+    };
 
-    // A3 — uptime series from MeshCore status telemetry.
+    // A3 uptime + A8 battery series from MeshCore telemetry (one bounded query).
     try {
       const telRows = (await databaseService.telemetry.getTelemetryByTypesSince(
-        [MESHCORE_UPTIME_TELEMETRY_TYPE],
+        [...MESHCORE_ISSUE_TELEMETRY_TYPES],
         sinceMs,
         meshcoreSourceIds,
       )) as unknown as TelemetryRow[];
-      out.uptimeTelemetry = buildMeshCoreUptimeSeries(
-        telRows.map((r) => ({ nodeId: r.nodeId, timestamp: r.timestamp, value: r.value, sourceId: r.sourceId })),
+      out.uptimeTelemetry = buildMeshCoreTelemetrySeries(
+        telRows.map((r) => ({
+          nodeId: r.nodeId,
+          telemetryType: r.telemetryType,
+          timestamp: r.timestamp,
+          value: r.value,
+          sourceId: r.sourceId,
+        })),
         snapshot.handleByKey,
       );
     } catch (err) {
-      logger.warn(`[meshIssues] meshcore uptime query failed, A3 degraded: ${(err as Error)?.message ?? err}`);
+      logger.warn(`[meshIssues] meshcore uptime/battery query failed, A3 and A8 degraded: ${(err as Error)?.message ?? err}`);
     }
 
     // A4 — position span from meshcore_position_history, infra nodes only.

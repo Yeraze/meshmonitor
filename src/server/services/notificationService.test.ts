@@ -251,6 +251,18 @@ describe('notificationService.notifyNewMeshCoreNode', () => {
     const body = mockPush.broadcastToPreferenceUsers.mock.calls[0][1].body;
     expect(body).toBe('Nameless detected by MTDL Base');
   });
+
+  it('appends the dropped-node count to the body and to the merged body (#6306)', async () => {
+    await notificationService.notifyNewMeshCoreNode('pubkey123', 'Hill', 'Repeater', 'src2', 'MTDL Base', 4);
+    const payload = mockPush.broadcastToPreferenceUsers.mock.calls[0][1];
+    expect(payload.body).toBe('Hill detected by MTDL Base - Repeater (+4 more new nodes since the last alert)');
+    expect(payload.dedup.merged(['A', 'B']).body).toBe('Hill detected by A, B - Repeater (+4 more new nodes since the last alert)');
+  });
+
+  it('adds no suffix for a zero or missing count (#6306)', async () => {
+    await notificationService.notifyNewMeshCoreNode('pubkey123', 'Hill', undefined, 'src2', 'MTDL Base', 0);
+    expect(mockPush.broadcastToPreferenceUsers.mock.calls[0][1].body).toBe('Hill detected by MTDL Base');
+  });
 });
 
 // ─── notifyTraceroute ─────────────────────────────────────────────────────────

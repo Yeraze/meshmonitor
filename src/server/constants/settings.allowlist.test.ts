@@ -174,7 +174,8 @@ describe('per-source settings key allowlist invariants', () => {
     // #6011 added reticulumLastAnnounceAt (announce cooldown + periodic timer).
     // #6033 added remoteLocalStatsRetryState (Meshtastic remote-LocalStats
     // retry/cooldown state, server-written per-source JSON blob).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(35);
+    // #6306 added newNodeAlertLearnUntil + newNodeAlertRate (new-node alert gate).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(37);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is

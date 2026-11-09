@@ -54,6 +54,11 @@ const statusThresholds = {
   // Non-default on purpose (#4976 review): proves the saved POST body carries
   // the SERVER-provided value, not the client-side ?? 30 fallback.
   routerClusterMaxLinkKm: 15,
+  // Non-default node-health tunables (#6279), distinct from every other field.
+  staleHoursMeshtastic: 36,
+  staleHoursMeshcore: 120,
+  lowBatteryPct: 30,
+  lowBatteryMv: 3400,
 };
 
 const statusResponse = {
@@ -104,8 +109,14 @@ describe('MeshIssuesSection', () => {
     expect(screen.getByText(/12 finding/)).toBeInTheDocument();
     expect(screen.getAllByText('[official]').length).toBe(2);
     // 3 pre-existing MeshMonitor-judgement thresholds + auto-close (#4964
-    // post-epic follow-ups) + router-cluster max link km (#4976).
-    expect(screen.getAllByText('[MeshMonitor]').length).toBe(5);
+    // post-epic follow-ups) + router-cluster max link km (#4976) + the four
+    // node-health tunables (#6279).
+    expect(screen.getAllByText('[MeshMonitor]').length).toBe(9);
+    expect(screen.getByDisplayValue('36')).toBeInTheDocument(); // staleHoursMeshtastic
+    expect(screen.getByDisplayValue('120')).toBeInTheDocument(); // staleHoursMeshcore
+    expect(screen.getByDisplayValue('30')).toBeInTheDocument(); // lowBatteryPct
+    expect(screen.getByDisplayValue('3400')).toBeInTheDocument(); // lowBatteryMv
+    expect(screen.getByText(/LiFePO4/)).toBeInTheDocument();
   });
 
   it('defaults auto-close runs to 3 when the field is absent from status (older server, #4964 post-epic follow-ups)', async () => {
@@ -185,6 +196,10 @@ describe('MeshIssuesSection', () => {
       mesh_issues_over_broadcast_seconds: '300',
       mesh_issues_auto_close_runs: '3',
       mesh_issues_router_cluster_max_link_km: '15',
+      mesh_issues_stale_hours_meshtastic: '36',
+      mesh_issues_stale_hours_meshcore: '120',
+      mesh_issues_low_battery_pct: '30',
+      mesh_issues_low_battery_mv: '3400',
     });
     expect(mockShowToast).toHaveBeenCalledWith('Settings saved', 'success');
   });
@@ -210,6 +225,49 @@ describe('MeshIssuesSection', () => {
     expect(postCall).toBeDefined();
     const body = JSON.parse(postCall![1].body as string);
     expect(body.mesh_issues_auto_close_runs).toBe('7');
+  });
+
+  it('posts a changed low-battery mV and stale-hours value (#6279)', async () => {
+    render(<MeshIssuesSection baseUrl="" />);
+    await waitFor(() => expect(screen.getByDisplayValue('3400')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByDisplayValue('3400'), { target: { value: '3200' } });
+    fireEvent.change(screen.getByDisplayValue('120'), { target: { value: '72' } });
+    await waitFor(() => {
+      const lastCall = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+      expect(lastCall.hasChanges).toBe(true);
+    });
+
+    mockCsrfFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) });
+    const { onSave } = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+    await onSave();
+
+    const postCall = mockCsrfFetch.mock.calls.find(
+      (call) => call[0] === '/api/settings' && call[1]?.method === 'POST'
+    );
+    const body = JSON.parse(postCall![1].body as string);
+    expect(body.mesh_issues_low_battery_mv).toBe('3200');
+    expect(body.mesh_issues_stale_hours_meshcore).toBe('72');
+    expect(body.mesh_issues_stale_hours_meshtastic).toBe('36');
+  });
+
+  it('lists the four node-health rules under Tier A and mutes one on save (#6279)', async () => {
+    render(<MeshIssuesSection baseUrl="" />);
+    await waitFor(() => expect(screen.getByDisplayValue('8')).toBeInTheDocument());
+
+    for (const label of [/Stale infrastructure node/i, /without a position/i, /Low battery/i, /Impossible reported position/i]) {
+      expect(screen.getByRole('checkbox', { name: label })).toBeChecked();
+    }
+    fireEvent.click(screen.getByRole('checkbox', { name: /Low battery/i }));
+    await waitFor(() => {
+      const lastCall = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+      expect(lastCall.hasChanges).toBe(true);
+    });
+    mockCsrfFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) });
+    const { onSave } = mockUseSaveBar.mock.calls[mockUseSaveBar.mock.calls.length - 1][0];
+    await onSave();
+    const postCall = mockCsrfFetch.mock.calls.find((c) => c[0] === '/api/settings' && c[1]?.method === 'POST');
+    expect(JSON.parse(postCall![1].body as string).mesh_issues_disabled_rules).toBe('A8_low_battery');
   });
 
   it('shows an "already running" toast on a 409 from run-now', async () => {

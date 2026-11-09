@@ -326,6 +326,8 @@ export interface MeshCoreConfigurationNavOptions {
   showConsole?: boolean;
   showObserver?: boolean;
   showDangerZone?: boolean;
+  /** Device backups (#6285): a Companion source the viewer may read configuration on. */
+  showBackups?: boolean;
   /** Repeater settings form (#6255): a connected Repeater whose settings were read. */
   showRepeaterSettings?: boolean;
   /** Repeater clock row (#6255): a connected Repeater. */
@@ -361,6 +363,7 @@ export function meshcoreConfigurationNavItems(t: Translate, options: MeshCoreCon
     { id: 'meshcore-device-actions', label: t('meshcore.settings.actions', 'Device actions'), keywords: ['advert', 'flood', 'zero hop', 'discover', 'clock', 'time'] },
     { id: 'meshcore-local-console', label: t('meshcore.localConsole.title', 'Device console'), keywords: ['cli', 'terminal', 'commands', 'serial'], show: options.showConsole === true },
     { id: 'meshcore-observer', label: t('meshcore.observer.title', 'Analyzer Observer'), keywords: ['mqtt', 'analyzer', 'broker', 'upload', 'keys'], show: options.showObserver === true },
+    { id: 'meshcore-config-backup', label: t('config.backup_management', 'Backup'), keywords: ['restore', 'snapshot', 'export', 'yaml'], show: options.showBackups === true },
     // Last on the page, as on Meshtastic.
     { id: 'meshcore-device-management', label: t('config.danger_zone', 'Danger zone'), keywords: ['reboot', 'restart', 'private key', 'backup', 'restore', 'identity'], show: options.showDangerZone === true },
   ];

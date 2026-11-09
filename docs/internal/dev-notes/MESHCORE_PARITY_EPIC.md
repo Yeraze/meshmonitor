@@ -58,6 +58,9 @@ Each phase's scope is the checklist in its issue.
 - [x] **P9 #6255 Repeater settings + danger zone.**
 - [x] **P10 #6256 Remote structured config.**
 - [x] **P11 #6253 Notifications.**
+- [x] **P12 #6279 Mesh Issues node-health rules (A6-A9).**
+- [x] **P13 #6306 Repeater new-node alerts** (shared learning-window + hourly-cap gate).
+- [x] **P17 #6307 Notifications tab for `meshcore_mqtt`** (+ shared debounced broker-link alerts).
 
 ## Phase log
 
@@ -208,3 +211,54 @@ message notifier (channel / DM / room post, content dedup keys, one ordered ment
 server connect/disconnect and trace/path-discovery notifications, a notification capability map for the tab
 (Companion vs Repeater, channel list from `/api/channels/all`), shared audio settings + `useMessageSound`, and
 click-through on the MeshCore page. Follow-ups: Repeater advert new-node alerts; a Notifications tab for `meshcore_mqtt`.
+
+### P12 #6279 (spec: `MESHCORE_PARITY_P12_SPEC.md`)
+Maintainer decisions, 2026-11-09: all recommended options. Infra nodes only; stale 24 h Meshtastic / 96 h MeshCore
+(tunable) and no flag after 30 days; low battery 20 % / 3300 mV (tunable); a position override suppresses A7; A8 skips
+nodes whose A3 battery clause fires; A9 accepted as mostly quiet with discard on; A6-A9 in Tier A. No RF, no notifications.
+Shipped (P12): one shared implementation of A6 stale, A7 no position, A8 low battery and A9 bad position on `PooledNode`
+for both protocols (`rulesNodeHealth.ts`, pure helpers in `nodeHealth.ts`), new `PooledNode` fields (reported position
+class, override, advert-had-position, local), an always-mV `batteryMv` series (MeshCore `mc_battery_mv` and
+`mc_status_battery_volts` x1000), four threshold settings, `tierASkips` (silent-source A6 and no-battery A8) and one
+`buildTierAContext` for both run paths. Deviations: A6 `aliveSources` joins the route's source-id redaction (it would
+have leaked hidden ids); the Meshtastic telemetry query keeps its four DB types. Verified: a Repeater-source's local
+battery rows are filed under the real public key, but that source has no own node row, so they only count when an advert
+creates one.
+
+### P13 #6306 (spec: `MESHCORE_PARITY_P13_SPEC.md`)
+Maintainer answers, 2026-11-09: 48 h learning window and 10 alerts per hour per source as module constants, built as a
+shared protocol-neutral gate (`newNodeAlertGate`) wired to Repeater sources only (explicit exception to "no MeshCore-only
+cap"); state persisted per source; overflow adds "(+N more)" to the next alert; legacy Repeater prefs accepted with a release
+note; "new" is per source; a full node purge re-arms the window, offline gaps do not.
+Shipped (P13): `upsertNode` reports `{ inserted }`, `ingestAdvertFrame` returns `{ advert, inserted, signatureVerified }`,
+`alertNewNode` split from `notifyNewNodeDiscovered` (the Repeater path never runs Auto Welcome), bounded dedup sets,
+`maybeAlertRepeaterNewNode`, purge re-arm, Repeater toggle plus learning note in the Notifications tab. Automation events
+for Repeater adverts stay off (#5553). Follow-ups: the same gate on Meshtastic MQTT; new-node alerts for `meshcore_mqtt`.
+
+### P17 #6307 (spec: `MESHCORE_PARITY_P17_SPEC.md`)
+Maintainer answers, 2026-11-09: one shared debounced broker-link notifier for `meshcore_mqtt` and Meshtastic `mqtt_bridge`;
+120 s grace, auth/eviction stops alert at once, no broker URL in payloads; picker = slot channels with messages on the source
+plus keyed channels the viewer can read; slot-index ambiguity accepted (#6308); inactive-node and low-battery alerts included;
+no MeshCore-only cap, the tab warns next to the picker.
+Shipped (P17): `meshcore_mqtt` capability row plus `unsupportedHint`/`connectionEvents` on every row, `GET /ingest/channels`
+and `getChannelIndicesWithMessages`, shared `NotificationsTab` mounted on the ingest page (capability-driven copy, no-DM
+defaults notice also fixes the Repeater), `resolveMeshCoreChannelName` (fixes keyed-channel titles for every MeshCore source),
+scoped `/api/nodes` lists ingest nodes for the monitored-node picker, `brokerLinkNotifier` wired into `meshcoreMqttManager`
+and `mqttBridgeManager` (dispose is silent). Follow-ups: #6308 slot re-filing; Reticulum Notifications tab; new-node alerts for feeds.
+
+### P16 #6285 (P8b) (spec: `MESHCORE_PARITY_P16_SPEC.md`)
+Maintainer answers, 2026-11-09: migration takes the next free number (226, after P14 took 225); download and create need
+`configuration:write` on the source; stop writing the Meshtastic private key; admins may restore an unowned legacy file of
+the same protocol after an extra confirmation; MeshCore radio restored verbatim and last with a current -> backup
+warning, TX power clamped; fixed whitelist of MeshMonitor settings; source delete keeps files as admin-only orphans;
+slot 0 always skipped.
+Shipped (P16): `backup_history.sourceId` + `protocol` (migration 226, legacy backfill to the only Meshtastic source,
+primary schedule seeded to per-source keys); source-scoped repository and file service (files 0600, dir 0700, `wx`
+collision suffix, per-source purge); new `stored` device-source gate mode; shared `deviceConfigBackupService` pipeline with
+Meshtastic and MeshCore adapters (lock, protocol check, legacy confirm, audit by ids); per-source scheduler with a
+persisted local day guard (a save or restart never fires a backup); `set_other_params_raw` bridge command, manager
+`readBackupSnapshot` / `setOtherParamsRaw` / `restoreChannels`; `BackupManagementSection` with protocol / sourceId /
+connected / canWrite props, a restore summary dialog and a MeshCore Backups section. Fixed: cross-source backup download
+and restore by filename, world-readable backup files, Meshtastic backups including the node private key.
+Deviations: TX power above the radio maximum is clamped and reported under `skipped`;
+the Meshtastic section is not disabled while the radio is offline (the server answers 409).

@@ -135,6 +135,9 @@ import {
   meshcoreHopSnrSqlite, meshcoreHopSnrPostgres, meshcoreHopSnrMysql,
 } from './schema/meshcoreHopSnr.js';
 import {
+  meshcoreTraceRunsSqlite, meshcoreTraceRunsPostgres, meshcoreTraceRunsMysql,
+} from './schema/meshcoreTraceRuns.js';
+import {
   nodeNameHistorySqlite, nodeNameHistoryPostgres, nodeNameHistoryMysql,
 } from './schema/nodeNameHistory.js';
 import {
@@ -369,6 +372,8 @@ export interface ActiveSchema {
   // MeshCore per-hop trace SNR (#5722)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5722 matches the existing ActiveSchema per-dialect table pattern
   meshcoreHopSnr: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6276 same per-backend union as every sibling table in this interface
+  meshcoreTraceRuns: any;
   // Node rename history (#5862)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5862 matches the existing ActiveSchema per-dialect table pattern
   nodeNameHistory: any;
@@ -554,6 +559,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pkiExchangeState: pkiExchangeStateSqlite,
     mapMarkers: mapMarkersSqlite,
     meshcoreHopSnr: meshcoreHopSnrSqlite,
+    meshcoreTraceRuns: meshcoreTraceRunsSqlite,
     nodeNameHistory: nodeNameHistorySqlite,
     mqttBrokerPresets: mqttBrokerPresetsSqlite,
     meshcoreCliHistory: meshcoreCliHistorySqlite,
@@ -649,6 +655,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pkiExchangeState: pkiExchangeStatePostgres,
     mapMarkers: mapMarkersPostgres,
     meshcoreHopSnr: meshcoreHopSnrPostgres,
+    meshcoreTraceRuns: meshcoreTraceRunsPostgres,
     nodeNameHistory: nodeNameHistoryPostgres,
     mqttBrokerPresets: mqttBrokerPresetsPostgres,
     meshcoreCliHistory: meshcoreCliHistoryPostgres,
@@ -744,6 +751,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pkiExchangeState: pkiExchangeStateMysql,
     mapMarkers: mapMarkersMysql,
     meshcoreHopSnr: meshcoreHopSnrMysql,
+    meshcoreTraceRuns: meshcoreTraceRunsMysql,
     nodeNameHistory: nodeNameHistoryMysql,
     mqttBrokerPresets: mqttBrokerPresetsMysql,
     meshcoreCliHistory: meshcoreCliHistoryMysql,
