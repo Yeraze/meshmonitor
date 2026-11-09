@@ -117,6 +117,23 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const [clockSyncing, setClockSyncing] = useState(false);
   const [clockResult, setClockResult] = useState<'ok' | 'failed' | null>(null);
   const actionsRef = useRef(actions);
+  // "Saved" badges clear after 2.5 s; cancel any pending clear on unmount so
+  // no state update lands after the view (or a test environment) is gone.
+  const savedTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  useEffect(() => {
+    const timers = savedTimers.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
+  const clearSavedLater = useCallback((clear: () => void) => {
+    const id = setTimeout(() => {
+      savedTimers.current.delete(id);
+      clear();
+    }, 2500);
+    savedTimers.current.add(id);
+  }, []);
   actionsRef.current = actions;
   const repeaterActive = connected && isRepeater && canReadConfig;
 
@@ -223,7 +240,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     setSavingName(false);
     if (ok) {
       setNameSaved(true);
-      setTimeout(() => setNameSaved(false), 2500);
+      clearSavedLater(() => setNameSaved(false));
     }
   };
 
@@ -236,7 +253,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     setSavingRadio(false);
     if (ok) {
       setRadioSaved(true);
-      setTimeout(() => setRadioSaved(false), 2500);
+      clearSavedLater(() => setRadioSaved(false));
     }
   };
 
@@ -247,7 +264,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     setSavingTxPower(false);
     if (ok) {
       setTxPowerSaved(true);
-      setTimeout(() => setTxPowerSaved(false), 2500);
+      clearSavedLater(() => setTxPowerSaved(false));
     }
   };
 
@@ -259,7 +276,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     setSavingLocation(false);
     if (ok) {
       setLocationSaved(true);
-      setTimeout(() => setLocationSaved(false), 2500);
+      clearSavedLater(() => setLocationSaved(false));
     }
   };
 
@@ -331,7 +348,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     setSavingTelemetry(false);
     if (okBase && okLoc && okEnv) {
       setTelemetrySaved(true);
-      setTimeout(() => setTelemetrySaved(false), 2500);
+      clearSavedLater(() => setTelemetrySaved(false));
     }
   };
 
