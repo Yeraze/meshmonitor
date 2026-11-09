@@ -53,6 +53,7 @@ export * from './meshtasticHeardRepeaters.js';
 export * from './pkiExchangeState.js';
 export * from './mapMarkers.js';
 export * from './meshcoreHopSnr.js';
+export * from './meshcoreTraceRuns.js';
 // Node rename history (#5862)
 export * from './nodeNameHistory.js';
 export * from './mqttBrokerPresets.js';

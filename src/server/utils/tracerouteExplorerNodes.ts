@@ -12,6 +12,7 @@
  * looks anywhere else for coordinates.
  */
 import { isBogusPosition } from '../../utils/nullIsland.js';
+import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
 import { getDisplayDbNodePosition, type SignFlipContext } from '../services/signFlipCorrection.js';
 
 export interface ExplorerNodeRow {
@@ -35,6 +36,13 @@ export interface ExplorerNodeRow {
 
 export interface ExplorerNode {
   nodeNum: number;
+  /** Unified identity: `mt:<nodeNum>` or `mc:<publicKey>` (#6276). */
+  nodeKey: string;
+  protocol: 'meshtastic' | 'meshcore';
+  /** MeshCore only: the full public key. */
+  publicKey?: string;
+  /** MeshCore only: advert type (1 companion, 2 repeater, 3 room, 4 sensor). */
+  meshcoreType?: number | null;
   nodeId: string;
   shortName: string | null;
   longName: string | null;
@@ -87,11 +95,79 @@ export function mergeExplorerNodes(
 
     out.push({
       nodeNum,
+      nodeKey: `mt:${nodeNum}`,
+      protocol: 'meshtastic',
       nodeId: named?.nodeId || hexNodeId(nodeNum),
       shortName: named?.shortName ?? null,
       longName: named?.longName ?? null,
       role: named?.role ?? null,
       hwModel: named?.hwModel ?? null,
+      latitude,
+      longitude,
+    });
+  }
+  return out;
+}
+
+/** A MeshCore node row, already permission-filtered and override-applied. */
+export interface MeshCoreExplorerNodeRow {
+  sourceId: string;
+  publicKey: string;
+  name?: string | null;
+  advType?: number | null;
+  /** Epoch ms. */
+  lastHeard?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+/**
+ * Merge per-source MeshCore node rows into one entry per wanted `mc:<pk>` key
+ * (#6276). Same newest-named / newest-positioned pick as the Meshtastic merge.
+ * Rows arrive with the caller's visibility already applied: a row whose
+ * position the caller may not see has no `latitude`/`longitude`, and a caller
+ * without `nodes:read` passes no rows (the entry then has no name). Keys that
+ * are not `mc:` (unresolved `mch:` hashes) get no entry.
+ */
+export function mergeMeshCoreExplorerNodes(
+  rows: MeshCoreExplorerNodeRow[],
+  wantedKeys: Iterable<string>,
+): ExplorerNode[] {
+  const byKey = new Map<string, MeshCoreExplorerNodeRow[]>();
+  for (const row of rows) {
+    const key = `mc:${row.publicKey.toLowerCase()}`;
+    const list = byKey.get(key);
+    if (list) list.push(row);
+    else byKey.set(key, [row]);
+  }
+  const out: ExplorerNode[] = [];
+  for (const key of new Set(wantedKeys)) {
+    if (!key.startsWith('mc:')) continue;
+    const publicKey = key.slice(3);
+    const candidates = (byKey.get(key) ?? [])
+      .slice()
+      .sort((a, b) => (Number(b.lastHeard) || 0) - (Number(a.lastHeard) || 0));
+    const named = candidates.find(r => r.name) ?? candidates[0];
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    for (const row of candidates) {
+      if (row.latitude == null || row.longitude == null) continue;
+      if (isBogusPosition(row.latitude, row.longitude)) continue;
+      latitude = row.latitude;
+      longitude = row.longitude;
+      break;
+    }
+    out.push({
+      nodeNum: nodeNumFromPubkey(publicKey),
+      nodeKey: key,
+      protocol: 'meshcore',
+      publicKey,
+      meshcoreType: named?.advType ?? null,
+      nodeId: key,
+      shortName: null,
+      longName: named?.name ?? null,
+      role: null,
+      hwModel: null,
       latitude,
       longitude,
     });
