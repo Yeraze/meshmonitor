@@ -626,7 +626,7 @@ router.post(
       }
       // #5485: opt-in return leg; anything but literal true keeps one-way.
       const autoReturn = req.body?.autoReturn === true;
-      const result = await managerFor(req, res).traceContactPathDetailed(publicKey, { autoReturn });
+      const result = await managerFor(req, res).traceContactPathDetailed(publicKey, { autoReturn, origin: 'manual' });
       if (!result.ok) {
         if (result.reason === 'timeout') {
           const seconds = Math.round(result.waitMs / 1000);

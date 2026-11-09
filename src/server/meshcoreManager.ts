@@ -105,6 +105,11 @@ import {
 } from '../utils/meshcoreCompanionCli.js';
 import { meshcorePathDiscoveryTimeoutMs } from './constants/meshcorePathDiscovery.js';
 import { MESHCORE_TRACE_BRIDGE_TIMEOUT_MS } from './constants/meshcoreFirmwareTimeout.js';
+import type { MeshCoreTraceRunOrigin } from '../db/repositories/meshcoreTraceRuns.js';
+
+/** Sources whose stale `pending` trace attempts were swept in this process. */
+const sweptTraceRunSources = new Set<string>();
+const PROCESS_START_MS = Date.now();
 import {
   parseMeshCoreIgnoreList,
   isMeshCoreIgnoreListEmpty,
@@ -2187,6 +2192,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
 
       this.connected = true;
+      void this.sweepStaleTraceRuns();
       this.linkRecoveryReconnect = false;
       // The device's flood scope is unknown right after (re)connect — force the
       // next send to re-assert it (#3667).
@@ -7963,7 +7969,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * estimate (constants/meshcoreFirmwareTimeout.ts). One trace goes out per
    * call; a timeout is never retried here.
    */
-  async traceContactPathDetailed(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2 } = {}): Promise<MeshCoreTracePathOutcome> {
+  async traceContactPathDetailed(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2; origin?: MeshCoreTraceRunOrigin } = {}): Promise<MeshCoreTracePathOutcome> {
     const failed: MeshCoreTracePathOutcome = { ok: false, reason: 'failed' };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Trace-path requires Companion firmware');
@@ -8051,19 +8057,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         return bytes;
       }),
     );
+    // The tag is chosen here (not in the backend) so the attempt can be logged
+    // before the reply (#6276). It is the same 4 random bytes the backend used
+    // to draw; nothing extra goes on air.
+    const traceTag = Math.floor(Math.random() * 0x1_0000_0000);
+    await this.recordTraceRunPending(traceTag, publicKey, tracedHops.join(''), hashBytes, opts);
     try {
       const response = await this.sendBridgeCommand('trace_path', {
         path: pathBytes,
         path_hash_bytes: hashBytes,
+        tag: traceTag,
       }, MESHCORE_TRACE_BRIDGE_TIMEOUT_MS);
       if (!response.success) {
         if (response.data?.timed_out === true) {
           const waitMs = Number(response.data.wait_ms) || 0;
           const suggestedTimeoutMs = Number(response.data.suggested_timeout_ms) || 0;
           logger.info(`[MeshCore] trace_path to ${publicKey.substring(0, 16)}… got no reply within ${waitMs}ms (firmware estimate ${suggestedTimeoutMs}ms)`);
+          void this.settleTraceRun(traceTag, 'timeout');
           return { ok: false, reason: 'timeout', waitMs, suggestedTimeoutMs };
         }
         logger.warn(`[MeshCore] trace_path failed for ${publicKey}: ${response.error}`);
+        void this.settleTraceRun(traceTag, 'failed');
         return failed;
       }
       const d = response.data ?? {};
@@ -8084,10 +8098,67 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         publicKey,
         formatMeshCoreTraceRoute(hops, tracedHops, lastSnr, [...this.contacts.values()], { autoReturn: opts.autoReturn === true }),
       );
+      void this.settleTraceRun(traceTag, 'answered');
       return { ok: true, hops, lastSnr, path: tracedHops };
     } catch (error) {
       logger.error('[MeshCore] traceContactPathDetailed threw:', error);
+      void this.settleTraceRun(traceTag, 'failed');
       return failed;
+    }
+  }
+
+  /**
+   * Log a trace attempt as `pending` just before its frame is sent (#6276).
+   * A trace that never reaches the radio (no path, disconnected) is not logged,
+   * the way Meshtastic records only traceroutes that were sent. A logging
+   * failure never blocks or changes the trace.
+   */
+  private async recordTraceRunPending(
+    traceTag: number,
+    targetPublicKey: string,
+    pathHex: string,
+    hashBytes: number,
+    opts: { autoReturn?: boolean; origin?: MeshCoreTraceRunOrigin },
+  ): Promise<void> {
+    try {
+      await databaseService.meshcoreTraceRuns.insertPending({
+        sourceId: this.sourceId,
+        traceTag,
+        authCode: 0,
+        targetPublicKey,
+        pathHex,
+        hashBytes,
+        autoReturn: opts.autoReturn === true,
+        origin: opts.origin ?? 'manual',
+        sentAt: Date.now(),
+      });
+      void meshcoreTraceIngestService.pruneIfDue(this.sourceId, Date.now());
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to log trace attempt:`, error);
+    }
+  }
+
+  /** Settle a logged trace attempt. Never throws. */
+  private async settleTraceRun(traceTag: number, status: 'answered' | 'timeout' | 'failed'): Promise<void> {
+    try {
+      await databaseService.meshcoreTraceRuns.complete(this.sourceId, traceTag, 0, status, Date.now());
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to settle trace attempt:`, error);
+    }
+  }
+
+  /**
+   * Once per process and source: a `pending` run from before this process
+   * started can never be answered (the wait died with it), so mark it a timeout.
+   */
+  private async sweepStaleTraceRuns(): Promise<void> {
+    if (sweptTraceRunSources.has(this.sourceId)) return;
+    sweptTraceRunSources.add(this.sourceId);
+    try {
+      const n = await databaseService.meshcoreTraceRuns.sweepStalePending(this.sourceId, PROCESS_START_MS, Date.now());
+      if (n > 0) logger.info(`[MeshCore:${this.sourceId}] Marked ${n} unfinished trace attempt(s) from before startup as timed out`);
+    } catch (error) {
+      logger.debug(`[MeshCore:${this.sourceId}] trace attempt sweep failed:`, error);
     }
   }
 

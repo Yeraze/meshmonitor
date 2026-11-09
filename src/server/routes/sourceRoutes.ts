@@ -1829,6 +1829,13 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge MeshCore hop SNR history for deleted source ${req.params.id}:`, hopSnrError);
     }
 
+    // #6276: the source's MeshCore trace attempt log.
+    try {
+      await databaseService.meshcoreTraceRuns.deleteBySourceId(req.params.id);
+    } catch (traceRunsError) {
+      logger.warn(`Failed to purge MeshCore trace runs for deleted source ${req.params.id}:`, traceRunsError);
+    }
+
     // #5862: node rename history is what this source heard.
     try {
       await databaseService.nodeNameHistory.deleteBySourceId(req.params.id);

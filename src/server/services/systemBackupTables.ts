@@ -166,6 +166,8 @@ export const BACKUP_TABLES: string[] = [
   'map_markers',
   // #5722: per-hop SNR history from MeshCore traces (reception history).
   'meshcore_hop_snr',
+  // #6276: attempt log of MeshCore traces sent (answered, timeout, failed).
+  'meshcore_trace_runs',
   // #5862: node rename history (names the nodes broadcast).
   'node_name_history',
   // #5794: saved MQTT broker presets (admin-curated; holds broker logins).

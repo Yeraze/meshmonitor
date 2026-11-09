@@ -243,6 +243,7 @@ import { migration as colorNodesBySourcePrefMigration, runMigration221Postgres, 
 import { migration as reticulumInterfaceLiveStatsMigration, runMigration222Postgres, runMigration222Mysql } from '../server/migrations/222_add_reticulum_interface_live_stats.js';
 import { migration as meshcoreSourcePkiKeysMigration, runMigration223Postgres, runMigration223Mysql } from '../server/migrations/223_add_meshcore_source_pki_keys.js';
 import { migration as meshcorePacketLogDerivedMigration, runMigration224Postgres, runMigration224Mysql } from '../server/migrations/224_meshcore_packet_log_derived_fields.js';
+import { migration as meshcoreTraceRunsMigration, runMigration225Postgres, runMigration225Mysql } from '../server/migrations/225_add_meshcore_trace_runs.js';
 
 // ============================================================================
 // Registry
@@ -3617,4 +3618,18 @@ registry.register({
   sqlite: (db) => meshcorePacketLogDerivedMigration.up(db),
   postgres: (client) => runMigration224Postgres(client),
   mysql: (pool) => runMigration224Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 225: meshcore_trace_runs, an attempt log of the MeshCore traces a
+// source sent, including timeouts and failures (#6276 P14 WP4).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 225,
+  name: 'add_meshcore_trace_runs',
+  settingsKey: 'migration_225_add_meshcore_trace_runs',
+  sqlite: (db) => meshcoreTraceRunsMigration.up(db),
+  postgres: (client) => runMigration225Postgres(client),
+  mysql: (pool) => runMigration225Mysql(pool),
 });

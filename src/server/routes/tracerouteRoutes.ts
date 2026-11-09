@@ -12,9 +12,11 @@ import { applySignFlipToTraceroutes, loadSignFlipContexts, rowSourceId } from '.
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
 import { permittedReadScope } from '../utils/sourcePermissions.js';
 import { mergeExplorerNodes, mergeMeshCoreExplorerNodes, type ExplorerNode, type ExplorerNodeRow, type MeshCoreExplorerNodeRow } from '../utils/tracerouteExplorerNodes.js';
-import { buildMeshCoreTraceRun, type MeshCoreTraceRun } from '../../utils/meshcoreTraceRun.js';
+import { buildMeshCoreTraceRun, keyToSyntheticNum, type MeshCoreTraceRun } from '../../utils/meshcoreTraceRun.js';
 import { buildMeshCorePositionFilter, loadMeshCoreNodesBySource } from '../utils/positionVisibility.js';
 import { applyMeshCorePositionOverridesForViewer } from '../utils/meshcorePositionOverride.js';
+import type { MeshCoreHopSnrRow } from '../../db/repositories/meshcoreHopSnr.js';
+import type { MeshCoreTraceRunRow } from '../../db/repositories/meshcoreTraceRuns.js';
 import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 
@@ -264,7 +266,7 @@ const MESHCORE_RETENTION_DAYS = 90;
 const EXPLORER_MAX_HOURS = 24 * 365;
 
 /** One MeshCore run in the Explorer wire shape (Meshtastic fields plus identity keys). */
-function meshcoreRunToWire(run: MeshCoreTraceRun, id: number) {
+function meshcoreRunToWire(run: MeshCoreTraceRun, id: number, status: 'answered' | 'timeout' | 'failed' | undefined) {
   return {
     protocol: 'meshcore' as const,
     id,
@@ -290,6 +292,39 @@ function meshcoreRunToWire(run: MeshCoreTraceRun, id: number) {
     hopMeta: run.hops,
     traceTag: run.traceTag,
     hashBytes: run.hashBytes,
+    status,
+  };
+}
+
+/** A logged trace that got no usable reply: endpoints only, no legs. */
+function meshcoreUnansweredToWire(sourceId: string, localPublicKey: string | null, log: MeshCoreTraceRunRow) {
+  const fromKey = localPublicKey ? `mc:${localPublicKey}` : `src:${sourceId}`;
+  const toKey = log.targetPublicKey ? `mc:${log.targetPublicKey.toLowerCase()}` : fromKey;
+  const status = log.status === 'timeout' || log.status === 'failed' ? log.status : 'failed';
+  return {
+    protocol: 'meshcore' as const,
+    id: -(log.id ?? 0),
+    sourceId,
+    timestamp: log.sentAt,
+    fromNodeNum: keyToSyntheticNum(fromKey),
+    toNodeNum: keyToSyntheticNum(toKey),
+    route: null as string | null,
+    routeBack: null as string | null,
+    snrTowards: null as string | null,
+    snrBack: null as string | null,
+    channel: null as number | null,
+    packetId: null as number | null,
+    transportMechanism: null as number | null,
+    fromKey,
+    toKey,
+    routeKeys: null as string[] | null,
+    routeBackKeys: null as string[] | null,
+    turnaroundKey: toKey,
+    reachedTarget: false,
+    hopMeta: [] as MeshCoreTraceRun['hops'],
+    traceTag: log.traceTag,
+    hashBytes: log.hashBytes,
+    status: status as 'answered' | 'timeout' | 'failed' | undefined,
   };
 }
 
@@ -371,7 +406,7 @@ router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {
     // requester-first by construction). `meshcore_mqtt` stores no traces.
     const sourceTypeById = new Map(allSources.map(s => [s.id, s.type]));
     const mcSources = sourceIds.filter(id => sourceTypeById.get(id) === 'meshcore');
-    const mcRuns: ReturnType<typeof meshcoreRunToWire>[] = [];
+    const mcRuns: Array<ReturnType<typeof meshcoreRunToWire> | ReturnType<typeof meshcoreUnansweredToWire>> = [];
     let mcNodes: ExplorerNode[] = [];
     let mcTruncated = false;
     if (mcSources.length > 0) {
@@ -381,14 +416,38 @@ router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {
         const { traces, truncated: t } = await databaseService.meshcoreHopSnr
           .getInitiatedTracesForExplorer(sid, sinceMs, MESHCORE_EXPLORER_TRACE_LIMIT);
         if (t) mcTruncated = true;
+        const local = localKeys.get(sid) ?? null;
+        // The attempt log (#6276) supplies the real target and the runs that
+        // never came back. It is joined to the hop groups by (tag, auth);
+        // groups with no log row (older than the log) use the structural split.
+        const { runs: logRuns, truncated: lt } = await databaseService.meshcoreTraceRuns
+          .getForExplorer(sid, sinceMs, MESHCORE_EXPLORER_TRACE_LIMIT);
+        if (lt) mcTruncated = true;
+        const groupByTag = new Map(traces.map(g => [`${g[0].traceTag}:${g[0].authCode}`, g]));
+        const used = new Set<MeshCoreHopSnrRow[]>();
+        for (const log of logRuns) {
+          let group = groupByTag.get(`${log.traceTag}:${log.authCode}`);
+          if (group && used.has(group)) group = undefined;
+          if (group) {
+            used.add(group);
+            // A reply that arrived after the wait gave up still proves it was answered.
+            const run = buildMeshCoreTraceRun(group, { localPublicKey: local, targetPublicKey: log.targetPublicKey });
+            if (run) {
+              mcRuns.push(meshcoreRunToWire({ ...run, timestamp: log.sentAt }, -(log.id ?? 0), 'answered'));
+              continue;
+            }
+          }
+          mcRuns.push(meshcoreUnansweredToWire(sid, local, log));
+        }
         for (const group of traces) {
-          const run = buildMeshCoreTraceRun(group, { localPublicKey: localKeys.get(sid) ?? null });
-          if (run) mcRuns.push(meshcoreRunToWire(run, group[0].id ?? 0));
+          if (used.has(group)) continue;
+          const run = buildMeshCoreTraceRun(group, { localPublicKey: local });
+          if (run) mcRuns.push(meshcoreRunToWire(run, group[0].id ?? 0, undefined));
         }
       }
       const wantedKeys = new Set<string>();
       for (const r of mcRuns) {
-        for (const k of [r.fromKey, r.toKey, r.turnaroundKey, ...r.routeKeys, ...(r.routeBackKeys ?? [])]) {
+        for (const k of [r.fromKey, r.toKey, r.turnaroundKey, ...(r.routeKeys ?? []), ...(r.routeBackKeys ?? [])]) {
           if (k.startsWith('mc:')) wantedKeys.add(k);
         }
       }

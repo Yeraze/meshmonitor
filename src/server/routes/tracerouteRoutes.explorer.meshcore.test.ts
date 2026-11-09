@@ -22,7 +22,7 @@ describe('GET /api/traceroutes/explorer — MeshCore', () => {
   let harness: RouteTestHarness;
 
   const hop = (o: Partial<MeshCoreHopSnrRow>): MeshCoreHopSnrRow => ({
-    sourceId: MC, traceTag: 1, authCode: 1, hopIndex: 0, hopCount: 4, hashBytes: 1,
+    sourceId: MC, traceTag: 1, authCode: 0, hopIndex: 0, hopCount: 4, hashBytes: 1,
     senderPublicKey: null, senderHash: null, senderCandidates: 0,
     receiverPublicKey: null, receiverHash: null, receiverCandidates: 0,
     snrQuarterDb: 0, initiated: true, timestamp: Date.now(), ...o,
@@ -71,6 +71,7 @@ describe('GET /api/traceroutes/explorer — MeshCore', () => {
   afterEach(async () => {
     await harness.db.meshcoreHopSnr.deleteBySourceId(MC);
     await harness.db.meshcoreHopSnr.deleteBySourceId(MC_MQTT);
+    await harness.db.meshcoreTraceRuns.deleteBySourceId(MC);
     await harness.db.sources.deleteSource(MC).catch(() => {});
     await harness.db.sources.deleteSource(MC_MQTT).catch(() => {});
     await harness.db.traceroutes.deleteAllTraceroutes(harness.sourceA);
@@ -180,5 +181,49 @@ describe('GET /api/traceroutes/explorer — MeshCore', () => {
     expect((lim.body.data.sources as any[]).some(s => s.id === MC)).toBe(false);
     const anon = await (await harness.loginAs(null)).get('/explorer');
     expect(mcRuns(anon.body)).toHaveLength(0);
+  });
+
+  describe('with the attempt log (WP4)', () => {
+    const logRun = async (tag: number, status: 'answered' | 'timeout' | 'failed', target: string, ts: number) => {
+      await harness.db.meshcoreTraceRuns.insertPending({
+        sourceId: MC, traceTag: tag, authCode: 0, targetPublicKey: target, pathHex: '6263', hashBytes: 1,
+        autoReturn: true, origin: 'manual', sentAt: ts,
+      });
+      await harness.db.meshcoreTraceRuns.complete(MC, tag, 0, status, ts + 10);
+    };
+
+    it('timeouts and failures become unanswered runs with the real target; the answer rate is real', async () => {
+      await seedTrace(1, Date.now() - HOUR);
+      await logRun(1, 'answered', T, Date.now() - HOUR);
+      await logRun(2, 'timeout', T, Date.now() - 2 * HOUR);
+      await logRun(3, 'failed', R1, Date.now() - 3 * HOUR);
+      const res = await (await harness.loginAs(harness.admin)).get('/explorer');
+      const runs = mcRuns(res.body);
+      expect(runs.map(r => r.status)).toEqual(['answered', 'timeout', 'failed']);
+      expect(runs[1]).toMatchObject({ fromKey: `mc:${L}`, toKey: `mc:${T}`, routeKeys: null, route: null });
+      expect(runs[2]).toMatchObject({ toKey: `mc:${R1}`, status: 'failed' });
+      // Ids never collide with hop-row ids.
+      expect(new Set(runs.map(r => r.id)).size).toBe(3);
+    });
+
+    it('a known target splits the trace there; a Companion target stays off the wire', async () => {
+      const COMP = '64'.repeat(32);
+      await seedTrace(1, Date.now() - HOUR);
+      await logRun(1, 'answered', COMP, Date.now() - HOUR);
+      const res = await (await harness.loginAs(harness.admin)).get('/explorer');
+      const [run] = mcRuns(res.body);
+      expect(run).toMatchObject({ toKey: `mc:${COMP}`, turnaroundKey: `mc:${T}`, reachedTarget: false, status: 'answered' });
+    });
+
+    it('a timeout that was answered late still reads as answered; groups with no log row use the structural split', async () => {
+      await seedTrace(1, Date.now() - HOUR);
+      await logRun(1, 'timeout', T, Date.now() - HOUR);
+      await seedTrace(2, Date.now() - 2 * HOUR); // pre-log trace
+      const runs = mcRuns((await (await harness.loginAs(harness.admin)).get('/explorer')).body);
+      expect(runs).toHaveLength(2);
+      expect(runs[0]).toMatchObject({ status: 'answered', toKey: `mc:${T}` });
+      expect(runs[1].status).toBeUndefined();
+      expect(runs[1].routeKeys).not.toBeNull();
+    });
   });
 });
