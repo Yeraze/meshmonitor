@@ -129,6 +129,25 @@ describe('SecurityTab protocol adapters', () => {
     await waitFor(() => expect(h.post).toHaveBeenCalledWith('/api/settings?sourceId=src-1', { securityDeadNodeDays: '30' }));
   });
 
+  it('clears the previous source\'s dead nodes on a source switch and drops its late response', async () => {
+    route({ dead: [mcDead] });
+    const { rerender } = render(<SecurityTab sourceType="meshcore" sourceId="src-1" />);
+    expect(await screen.findByText('Rep')).toBeTruthy();
+    // src-2's dead-node request never resolves: the old list must not linger.
+    let releaseOld: (v: unknown) => void = () => {};
+    h.get.mockImplementation(async (url: string) => {
+      if (url.includes('sourceId=src-2') && url.startsWith('/api/security/dead-nodes')) return new Promise(() => {});
+      if (url.startsWith('/api/security/meshcore/findings')) return findings();
+      if (url.includes('sourceId=src-1')) return new Promise((r) => { releaseOld = r; });
+      return {};
+    });
+    rerender(<SecurityTab sourceType="meshcore" sourceId="src-2" />);
+    await waitFor(() => expect(screen.queryByText('Rep')).toBeNull());
+    releaseOld({ nodes: [mcDead], count: 1, thresholdDays: 14 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText('Rep')).toBeNull();
+  });
+
   const ownKeyChange = { previousKey: 'a'.repeat(64), detectedAt: Date.now() };
 
   it('shows acknowledge on the own-key card with security:write and posts the source', async () => {

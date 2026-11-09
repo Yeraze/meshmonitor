@@ -126,14 +126,19 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWi
   // it per section and stop asking: the 30 s poll must not retry-loop.
   const deadNodesForbiddenRef = useRef(false);
   const findingsForbiddenRef = useRef(false);
+  // Bumped on every source switch; a response from an older generation is
+  // dropped so a slow request can't repaint the previous source's data.
+  const fetchGenRef = useRef(0);
 
-  const fetchDeadNodes = async (srcParam: string) => {
+  const fetchDeadNodes = async (srcParam: string, gen: number) => {
     if (deadNodesForbiddenRef.current) return;
     try {
       const data = await api.get<DeadNodesResponse>(`/api/security/dead-nodes${srcParam}`);
+      if (gen !== fetchGenRef.current) return;
       setDeadNodes(data.nodes || []);
       if (typeof data.thresholdDays === 'number') setDeadThresholdDays(data.thresholdDays);
     } catch (err) {
+      if (gen !== fetchGenRef.current) return;
       if (err instanceof ApiError && err.status === 403) {
         deadNodesForbiddenRef.current = true;
         setDeadNodesForbidden(true);
@@ -144,12 +149,14 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWi
     }
   };
 
-  const fetchFindings = async (srcParam: string) => {
+  const fetchFindings = async (srcParam: string, gen: number) => {
     if (findingsForbiddenRef.current) return;
     try {
       const res = await api.get<MeshcoreFindingsResponse>(`/api/security/meshcore/findings${srcParam}`);
+      if (gen !== fetchGenRef.current) return;
       setFindings(res.data ?? null);
     } catch (err) {
+      if (gen !== fetchGenRef.current) return;
       if (err instanceof ApiError && err.status === 403) {
         findingsForbiddenRef.current = true;
         setFindingsForbidden(true);
@@ -163,20 +170,22 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWi
   const fetchSecurityData = async () => {
     // Defer until a sourceId resolves — the security endpoints require one.
     if (!sourceId) return;
+    const gen = fetchGenRef.current;
     try {
       const srcParam = `?sourceId=${encodeURIComponent(sourceId)}`;
       if (isMeshCore) {
         await Promise.all([
-          caps.deadNodes ? fetchDeadNodes(srcParam) : Promise.resolve(),
-          fetchFindings(srcParam),
+          caps.deadNodes ? fetchDeadNodes(srcParam, gen) : Promise.resolve(),
+          fetchFindings(srcParam, gen),
         ]);
       } else {
         const [issuesData, statusData, mismatchData] = await Promise.all([
           api.get<SecurityIssuesResponse>(`/api/security/issues${srcParam}`),
           api.get<ScannerStatus>(`/api/security/scanner/status${srcParam}`),
           api.get<{ events: any[] }>(`/api/security/key-mismatches${srcParam}`),
-          fetchDeadNodes(srcParam),
+          fetchDeadNodes(srcParam, gen),
         ]);
+        if (gen !== fetchGenRef.current) return;
         setIssues(issuesData);
         setScannerStatus(statusData);
         setMismatchEvents(mismatchData.events || []);
@@ -190,6 +199,11 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWi
   };
 
   useEffect(() => {
+    // New source: invalidate in-flight responses and clear the previous
+    // source's lists so they never flash under the new one (#6283 review).
+    fetchGenRef.current += 1;
+    setDeadNodes([]);
+    setFindings(null);
     deadNodesForbiddenRef.current = false;
     findingsForbiddenRef.current = false;
     setDeadNodesForbidden(false);
