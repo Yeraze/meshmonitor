@@ -214,6 +214,8 @@ class BackupSchedulerService {
     if (this.isSystemBackupInProgress) {
       return;
     }
+    // Claim the flag before the first await so two ticks can never overlap.
+    this.isSystemBackupInProgress = true;
 
     try {
       // Check if automated system backups are enabled
@@ -244,9 +246,6 @@ class BackupSchedulerService {
       if (lastBackup && lastBackup.startsWith(today)) {
         return; // Already ran a system backup today
       }
-
-      // Set flag to prevent race conditions
-      this.isSystemBackupInProgress = true;
 
       // Run the automated system backup
       logger.debug('⏰ Time for automated system backup...');
