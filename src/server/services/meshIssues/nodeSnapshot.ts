@@ -22,6 +22,7 @@
  * what the WP2 zero-`databaseService`-import gate checks).
  */
 import { getEffectiveDbNodePosition } from '../../utils/nodeEnhancer.js';
+import { isBogusPosition, isValidLatLng } from '../../../utils/nullIsland.js';
 import { INFRA_ROLES } from './thresholds.js';
 import { nodeSubjectKey, meshcoreSubjectKey, type MeshIssueProtocol } from './types.js';
 
@@ -60,6 +61,34 @@ export interface PooledNodeInput {
   keySecurityIssueDetails?: string | null;
   isTimeOffsetIssue?: boolean | number | null;
   timeOffsetSeconds?: number | null;
+  /** This row is the source's own local node (#6279). */
+  isLocal?: boolean | null;
+}
+
+/** What a node last REPORTED (raw pair, overrides ignored): nothing, a usable fix, or junk. */
+export type ReportedPosition = 'none' | 'valid' | 'bogus';
+
+/**
+ * Classify a raw reported lat/lon pair (#6279). `'none'` when either axis is
+ * missing; `'bogus'` for an out-of-range or Null Island pair (precision-offset
+ * aware); otherwise `'valid'`.
+ */
+export function classifyReportedPosition(
+  lat: number | null | undefined,
+  lon: number | null | undefined,
+  precisionBits?: number | null,
+): ReportedPosition {
+  if (lat == null || lon == null) return 'none';
+  if (isBogusPosition(lat, lon, precisionBits)) return 'bogus';
+  return isValidLatLng(lat, lon) ? 'valid' : 'bogus';
+}
+
+/** Why a bogus pair is bogus, for A9 evidence (no coordinates leave the server). */
+export function bogusPositionKind(
+  lat: number | null | undefined,
+  lon: number | null | undefined,
+): 'null_island' | 'out_of_range' {
+  return isValidLatLng(lat, lon) ? 'null_island' : 'out_of_range';
 }
 
 export interface PooledNode {
@@ -120,6 +149,15 @@ export interface PooledNode {
   keySecurityIssueDetails: string | null;
   isTimeOffsetIssue: boolean;
   timeOffsetSeconds: number | null;
+  // Node-health fields (#6279). Optional so pre-existing fixtures keep compiling.
+  /** Freshest row's RAW reported pair (override ignored). Absent means 'none'. */
+  reportedPosition?: ReportedPosition;
+  /** Any row has an enabled position override with coordinates. */
+  hasPositionOverride?: boolean;
+  /** MeshCore: freshest non-null `lastAdvertHadPosition`; null for Meshtastic. */
+  advertHadPosition?: boolean | null;
+  /** Any row is a source's own local node. */
+  isLocal?: boolean;
 }
 
 /** True for a MeshCore-pooled node. */
@@ -220,6 +258,25 @@ function effectivePositionPair(row: PooledNodeInput): { latitude: number; longit
   return { latitude: eff.latitude, longitude: eff.longitude };
 }
 
+/** A row's enabled position override with both coordinates present. */
+export function rowHasPositionOverride(row: {
+  positionOverrideEnabled?: boolean | number | null;
+  latitudeOverride?: number | null;
+  longitudeOverride?: number | null;
+}): boolean {
+  return !!row.positionOverrideEnabled && row.latitudeOverride != null && row.longitudeOverride != null;
+}
+
+/** Classify the freshest row that carries a raw (non-override) lat/lon pair. */
+function reportedPositionOf(sorted: PooledNodeInput[]): ReportedPosition {
+  for (const r of sorted) {
+    if (r.latitude != null && r.longitude != null) {
+      return classifyReportedPosition(r.latitude, r.longitude, r.positionPrecisionBits);
+    }
+  }
+  return 'none';
+}
+
 /** The non-null value with the greatest ABSOLUTE magnitude, or null when
  *  `values` is empty. Used for `timeOffsetSeconds` (#4964 Phase 3 WP2) — a
  *  worst-case-wins merge for a gating field, ties broken by iteration order
@@ -316,6 +373,10 @@ export function buildPooledNodeSnapshot(rows: PooledNodeInput[]): Map<number, Po
       keySecurityIssueDetails: firstNonNull(sorted, (r) => r.keySecurityIssueDetails),
       isTimeOffsetIssue: groupRows.some((r) => !!r.isTimeOffsetIssue),
       timeOffsetSeconds: maxAbsValue(timeOffsetValues),
+      reportedPosition: reportedPositionOf(sorted),
+      hasPositionOverride: groupRows.some(rowHasPositionOverride),
+      advertHadPosition: null,
+      isLocal: groupRows.some((r) => !!r.isLocal),
     });
   }
   return result;
@@ -336,6 +397,8 @@ export interface NodeTelemetrySeries {
   channelUtilization: TelemetrySample[];
   batteryLevel: TelemetrySample[];
   uptimeSeconds: TelemetrySample[];
+  /** Battery in millivolts, always mV (MeshCore volts are scaled on the way in). #6279 */
+  batteryMv: TelemetrySample[];
 }
 
 export const MESH_ISSUE_TELEMETRY_TYPES = [
@@ -344,10 +407,13 @@ export const MESH_ISSUE_TELEMETRY_TYPES = [
   'batteryLevel',
   'uptimeSeconds',
 ] as const;
-export type MeshIssueTelemetryType = (typeof MESH_ISSUE_TELEMETRY_TYPES)[number];
+/** Series keys the builder accepts: the Meshtastic DB types plus the always-mV
+ *  `batteryMv` the MeshCore adapter synthesises (#6279; not a DB telemetry type). */
+const SERIES_TELEMETRY_TYPES = [...MESH_ISSUE_TELEMETRY_TYPES, 'batteryMv'] as const;
+export type MeshIssueTelemetryType = (typeof SERIES_TELEMETRY_TYPES)[number];
 
 function emptySeries(): NodeTelemetrySeries {
-  return { airUtilTx: [], channelUtilization: [], batteryLevel: [], uptimeSeconds: [] };
+  return { airUtilTx: [], channelUtilization: [], batteryLevel: [], uptimeSeconds: [], batteryMv: [] };
 }
 
 export interface TelemetryRowInput {
@@ -374,7 +440,7 @@ export interface TelemetryRowInput {
  * to this module).
  */
 export function buildTelemetrySeries(rows: TelemetryRowInput[]): Map<number, NodeTelemetrySeries> {
-  const knownTypes: readonly string[] = MESH_ISSUE_TELEMETRY_TYPES;
+  const knownTypes: readonly string[] = SERIES_TELEMETRY_TYPES;
   const byNode = new Map<number, TelemetryRowInput[]>();
   for (const row of rows) {
     if (!knownTypes.includes(row.telemetryType)) continue;

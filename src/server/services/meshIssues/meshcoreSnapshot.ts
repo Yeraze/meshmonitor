@@ -23,6 +23,8 @@ import {
 } from '../../../utils/coverage.js';
 import {
   buildTelemetrySeries,
+  classifyReportedPosition,
+  rowHasPositionOverride,
   type NodeTelemetrySeries,
   type PooledNode,
   type TelemetryRowInput,
@@ -62,6 +64,10 @@ export interface MeshCoreNodeInput {
   longitudeOverride?: number | null;
   lastHeard?: number | null;
   updatedAt?: number | null;
+  /** The latest advert carried a position (#5578). Null/absent = unknown. */
+  lastAdvertHadPosition?: boolean | number | null;
+  /** This row is the source's own local companion. */
+  isLocalNode?: boolean | number | null;
 }
 
 export interface MeshCoreSnapshot {
@@ -117,6 +123,12 @@ export function buildMeshCoreSnapshot(rows: MeshCoreNodeInput[]): MeshCoreSnapsh
         break;
       }
     }
+    // Raw reported pair from the freshest row that has one (overrides ignored).
+    const rawRow = sorted.find((r) => r.latitude != null && r.longitude != null);
+    const reportedPosition = rawRow
+      ? classifyReportedPosition(rawRow.latitude, rawRow.longitude, null)
+      : 'none';
+    const advRow = sorted.find((r) => r.lastAdvertHadPosition != null);
     const advType = sorted.find((r) => r.advType != null)?.advType ?? null;
     const heard = groupRows.map(lastHeardMs).filter((v): v is number => v != null);
 
@@ -151,6 +163,10 @@ export function buildMeshCoreSnapshot(rows: MeshCoreNodeInput[]): MeshCoreSnapsh
       keySecurityIssueDetails: null,
       isTimeOffsetIssue: false,
       timeOffsetSeconds: null,
+      reportedPosition,
+      hasPositionOverride: groupRows.some(rowHasPositionOverride),
+      advertHadPosition: advRow ? !!advRow.lastAdvertHadPosition : null,
+      isLocal: groupRows.some((r) => !!r.isLocalNode),
     });
     handleByKey.set(key, handle);
   }
@@ -160,17 +176,32 @@ export function buildMeshCoreSnapshot(rows: MeshCoreNodeInput[]): MeshCoreSnapsh
 export interface MeshCoreUptimeRow {
   /** Node public key (the MeshCore `telemetry.nodeId`). */
   nodeId: string;
+  /** Telemetry type; absent means uptime (the pre-#6279 single-type query). */
+  telemetryType?: string;
   timestamp: number | string;
   value: number;
   sourceId?: string | null;
 }
 
+/** Telemetry types MeshCore writes for battery: local companion mV, remote status volts. */
+export const MESHCORE_BATTERY_MV_TELEMETRY_TYPE = 'mc_battery_mv';
+export const MESHCORE_BATTERY_VOLTS_TELEMETRY_TYPE = 'mc_status_battery_volts';
+
+/** The MeshCore telemetry types the Mesh Issues run reads (#6279). */
+export const MESHCORE_ISSUE_TELEMETRY_TYPES = [
+  MESHCORE_UPTIME_TELEMETRY_TYPE,
+  MESHCORE_BATTERY_MV_TELEMETRY_TYPE,
+  MESHCORE_BATTERY_VOLTS_TELEMETRY_TYPE,
+] as const;
+
 /**
- * Uptime series per MeshCore node for A3's reset clause. Reuses the shared
+ * Per-node telemetry series for MeshCore (#6279): uptime (A3 reset clause) and
+ * battery in mV (A8). `mc_battery_mv` is already mV; `mc_status_battery_volts`
+ * is volts and is scaled x1000 so one unit reaches the rules. Reuses the shared
  * cross-source dedup in `buildTelemetrySeries`; rows for keys not in the
- * snapshot are dropped.
+ * snapshot, and unknown types, are dropped.
  */
-export function buildMeshCoreUptimeSeries(
+export function buildMeshCoreTelemetrySeries(
   rows: MeshCoreUptimeRow[],
   handleByKey: Map<string, number>,
 ): Map<number, NodeTelemetrySeries> {
@@ -178,15 +209,35 @@ export function buildMeshCoreUptimeSeries(
   for (const r of rows) {
     const handle = handleByKey.get(String(r.nodeId).toLowerCase());
     if (handle == null) continue;
+    const type = r.telemetryType ?? MESHCORE_UPTIME_TELEMETRY_TYPE;
+    let telemetryType: string;
+    let value = r.value;
+    if (type === MESHCORE_UPTIME_TELEMETRY_TYPE) telemetryType = 'uptimeSeconds';
+    else if (type === MESHCORE_BATTERY_MV_TELEMETRY_TYPE) telemetryType = 'batteryMv';
+    else if (type === MESHCORE_BATTERY_VOLTS_TELEMETRY_TYPE) {
+      telemetryType = 'batteryMv';
+      value = r.value * 1000;
+    } else continue;
     inputs.push({
       nodeNum: handle,
-      telemetryType: 'uptimeSeconds',
+      telemetryType,
       timestamp: r.timestamp,
-      value: r.value,
+      value,
       sourceId: r.sourceId ?? null,
     });
   }
   return buildTelemetrySeries(inputs);
+}
+
+/** Uptime-only entry point kept for existing callers and tests. */
+export function buildMeshCoreUptimeSeries(
+  rows: MeshCoreUptimeRow[],
+  handleByKey: Map<string, number>,
+): Map<number, NodeTelemetrySeries> {
+  return buildMeshCoreTelemetrySeries(
+    rows.map((r) => ({ ...r, telemetryType: MESHCORE_UPTIME_TELEMETRY_TYPE })),
+    handleByKey,
+  );
 }
 
 export interface MeshCoreAdvertPacketInput {
