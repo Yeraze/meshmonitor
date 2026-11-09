@@ -12,7 +12,8 @@ import { UNKNOWN_ROOM_AUTHOR } from '../utils/meshcoreKeyMatch.js';
 import { advertHasPosition } from '../utils/meshcoreAdvertPosition.js';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
-import { redactCliCommand } from './utils/meshcoreCliRedact.js';
+import { redactCliCommand, extractCliSecret, isSecretReadCommand } from './utils/meshcoreCliRedact.js';
+import { isRepeaterReplyTerminator } from '../utils/meshcoreRepeaterSettings.js';
 import { meshcoreTraceIngestService, type TraceIngestOptions } from './services/meshcoreTraceIngestService.js';
 import { decodeTracePacket, traceDataEventFromPacket, type TraceDataEvent } from '../utils/meshcoreTrace.js';
 import {
@@ -1550,6 +1551,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private repeaterCliChain: Promise<unknown> = Promise.resolve();
   /** Commands queued or running on the serial CLI. The neighbours poll skips when > 0. */
   private repeaterCliPending = 0;
+  /**
+   * True while a secret-bearing command runs on the serial CLI (#6255): its
+   * echo, its reply and any line in the short window after it can hold a
+   * password or private key, so RX / response logging prints `[redacted]`.
+   */
+  private repeaterSecretInFlight = false;
+  private repeaterSecretLingerUntil = 0;
   /**
    * When the last `->` reply line landed on the serial CLI (#5563). The stall
    * probe skips a tick if this is newer than one interval: a console that just
@@ -4823,7 +4831,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * lines feed the Packet Monitor instead.
    */
   private handleSerialData(data: string): void {
-    logger.debug(`[MeshCore] RX: ${data}`);
+    logger.debug(`[MeshCore] RX: ${this.isRepeaterSecretWindow() ? '[redacted]' : data}`);
 
     const line = classifyRepeaterSerialLine(data);
     if (isRepeaterStreamingLine(line.kind)) {
@@ -5567,7 +5575,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private async sendRepeaterCommand(
     command: string,
     timeout: number = 5000,
-    opts: { idleGapMs?: number; probe?: boolean } = {},
+    opts: { idleGapMs?: number; probe?: boolean; secret?: boolean } = {},
   ): Promise<string> {
     this.repeaterCliPending++;
     const run = this.repeaterCliChain.then(() => this.runRepeaterCommand(command, timeout, opts));
@@ -5579,6 +5587,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
+  /** True while a secret CLI command is running or just finished (log redaction window). */
+  private isRepeaterSecretWindow(): boolean {
+    return this.repeaterSecretInFlight || Date.now() < this.repeaterSecretLingerUntil;
+  }
+
+  /**
+   * Run one CLI line on the repeater's serial console and resolve with the raw
+   * reply (`  -> ...`). Public seam for the structured settings service
+   * (`RepeaterCliTransport`, #6255). `secret` forces log redaction; a command
+   * that carries or reads a secret (`password`, `set prv.key`, `get prv.key`,
+   * ...) is detected on its own as well.
+   */
+  async runRepeaterCli(command: string, opts: { timeout?: number; secret?: boolean } = {}): Promise<string> {
+    return this.sendRepeaterCommand(command, opts.timeout ?? 5000, { secret: opts.secret });
+  }
+
   /** True while any serial CLI command is queued or running. */
   isRepeaterCliBusy(): boolean {
     return this.repeaterCliPending > 0;
@@ -5588,11 +5612,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private runRepeaterCommand(
     command: string,
     timeout: number,
-    opts: { idleGapMs?: number; probe?: boolean },
+    opts: { idleGapMs?: number; probe?: boolean; secret?: boolean },
   ): Promise<string> {
     if (!this.serialPort?.isOpen) {
       return Promise.reject(new Error('Serial port not open'));
     }
+    const secret = opts.secret === true || extractCliSecret(command) !== null || isSecretReadCommand(command);
+    const endSecretWindow = () => {
+      if (!secret) return;
+      this.repeaterSecretInFlight = false;
+      this.repeaterSecretLingerUntil = Date.now() + 1000;
+    };
 
     return new Promise((resolve, reject) => {
       const cmdId = `cmd_${++this.commandId}`;
@@ -5606,6 +5636,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         if (idleHandle) clearTimeout(idleHandle);
         this.pendingCommands.delete(cmdId);
         this.removeListener('serial_data', dataHandler);
+        endSecretWindow();
         resolve(lines.join('\n').trim());
       };
 
@@ -5615,6 +5646,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         clearTimeout(timeoutHandle);
         if (idleHandle) clearTimeout(idleHandle);
         this.removeListener('serial_data', dataHandler);
+        endSecretWindow();
         reject(err);
       };
 
@@ -5632,13 +5664,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         }
 
         lines.push(data);
-        logger.debug(`[MeshCore] Response line: ${data}`);
+        logger.debug(`[MeshCore] Response line: ${secret ? '[redacted]' : data}`);
         // Proof of life for the stall probe (#5563). The probe's own reply
         // does not count, or it would skip every second tick.
         if (!opts.probe && data.includes('->')) this.repeaterLastCliReplyAt = Date.now();
 
         // Check for response terminators
-        if (data.includes('-> >') || data.includes('OK') || data.includes('Error') || data.includes('Unknown command')) {
+        if (isRepeaterReplyTerminator(data)) {
           finish();
           return;
         }
@@ -5655,6 +5687,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.pendingCommands.set(cmdId, { resolve, reject: abort, timeout: timeoutHandle });
       this.on('serial_data', dataHandler);
 
+      if (secret) this.repeaterSecretInFlight = true;
       logger.debug(`[MeshCore] TX: ${redactCliCommand(command)}`);
       this.serialPort!.write(command + '\r');
     });
