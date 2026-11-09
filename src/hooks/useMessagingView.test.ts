@@ -26,6 +26,10 @@ vi.mock('../contexts/SettingsContext', () => ({
   useNodeListStyle: () => 'monochrome',
   useSettings: () => mockUseSettings(),
   useNotificationMuteSettings: () => mockUseNotificationMuteSettings(),
+  useOptionalMuteSettings: () => ({
+    ...mockUseNotificationMuteSettings(),
+    enableAudioNotifications: mockUseSettings().enableAudioNotifications,
+  }),
 }));
 vi.mock('../components/ToastContainer', () => ({ useToast: () => mockUseToast() }));
 vi.mock('../utils/notificationSounds', () => ({

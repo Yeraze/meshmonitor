@@ -6611,6 +6611,7 @@
   "meshcore.discover.respond_hint": "MeshCore companion firmware does not answer discovery on its own, so other nodes can only find this one when this is enabled. Replies are zero-hop (direct range) and rate-limited.",
   "meshcore.discover.toggle_failed": "Failed to update setting",
   "meshcore.settings.currently_connected": "Currently connected. Disconnect first to change connection settings.",
+  "meshcore.settings.audio_notifications": "Audio notifications",
   "meshcore.settings.local_node": "Local node",
   "meshcore.settings.name": "Name",
   "meshcore.settings.type": "Type",

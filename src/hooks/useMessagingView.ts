@@ -49,12 +49,11 @@ import { useSource } from '../contexts/SourceContext';
 import { useData } from '../contexts/DataContext';
 import { useMessaging } from '../contexts/MessagingContext';
 import { useUI } from '../contexts/UIContext';
-import { useSettings, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import { useToast } from '../components/ToastContainer';
 import api from '../services/api';
 import { isNearBottom, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX } from '../utils/scrollNearBottom';
 import { logger } from '../utils/logger';
-import { playSound, playChannelSound, DEFAULT_SOUND_ID } from '../utils/notificationSounds';
+import { useMessageSound } from './useMessageSound';
 import type { PollData, RawMessage } from './usePoll';
 
 /**
@@ -110,8 +109,6 @@ export function useMessagingView() {
     setUnreadCounts,
     unreadCountsData,
   } = useMessaging();
-  const { enableAudioNotifications } = useSettings();
-  const { isChannelMuted, isDMMuted } = useNotificationMuteSettings();
 
   const [messages, setMessages] = useState<MeshMessage[]>([]);
   const [channelMessages, setChannelMessages] = useState<{ [key: number]: MeshMessage[] }>({});
@@ -157,26 +154,8 @@ export function useMessagingView() {
     unreadCountsDataRef.current = unreadCountsData;
   }, [unreadCountsData]);
 
-  // Play the notification sound configured for a given channel using the
-  // synthesized Web Audio sound library. Channel `-1` is the DM pseudo-channel;
-  // when no channel is supplied (or it is undefined) the default sound plays,
-  // preserving the previous single-tone behavior. Honors the master audio
-  // toggle exactly as before.
-  const playNotificationSound = useCallback((channelId?: number) => {
-    if (!enableAudioNotifications) {
-      logger.debug('🔇 Audio notifications disabled, skipping sound');
-      return;
-    }
-
-    logger.debug('🔊 playNotificationSound called for channel:', channelId);
-    if (channelId === undefined) {
-      playSound(DEFAULT_SOUND_ID);
-    } else {
-      // Scope the lookup to the active source so per-source selections (and the
-      // DM pseudo-channel) don't leak across sources that share channel numbers.
-      playChannelSound(channelId, sourceId);
-    }
-  }, [enableAudioNotifications, sourceId]);
+  // Shared with MeshCore (P11 S9): master toggle + mutes + per-channel sound.
+  const { playForMessage } = useMessageSound(sourceId);
 
   // Keep refs in sync with the latest state so infinite-scroll loaders read
   // current values instead of a stale closure. See comment at the ref decls.
@@ -682,15 +661,14 @@ export function useMessagingView() {
           if (isFromOther && isTextMessage) {
             logger.debug('New message arrived from other user:', currentNewestMessage.fromNodeId);
             const isDM = currentNewestMessage.channel === -1;
-            const muted = isDM
-              ? isDMMuted(currentNewestMessage.fromNodeId)
-              : isChannelMuted(currentNewestMessage.channel);
-            if (!muted) {
-              // Play the sound configured for this channel (channel -1 is the
-              // DM pseudo-channel, which has its own selectable sound too).
-              playNotificationSound(currentNewestMessage.channel);
-            } else {
-              logger.debug('🔇 Notification sound suppressed (muted):', isDM ? `DM from ${currentNewestMessage.fromNodeId}` : `channel ${currentNewestMessage.channel}`);
+            // Channel -1 is the DM pseudo-channel, which has its own selectable sound.
+            const played = playForMessage({
+              channelId: currentNewestMessage.channel,
+              isDM,
+              muteKey: isDM ? currentNewestMessage.fromNodeId : currentNewestMessage.channel,
+            });
+            if (!played) {
+              logger.debug('Notification sound not played (muted, disabled, or silent):', isDM ? `DM from ${currentNewestMessage.fromNodeId}` : `channel ${currentNewestMessage.channel}`);
             }
           }
         }
@@ -858,7 +836,7 @@ export function useMessagingView() {
         return merged;
       });
     },
-    [isChannelMuted, isDMMuted, playNotificationSound, setPendingMessages, setUnreadCounts]
+    [playForMessage, setPendingMessages, setUnreadCounts]
   );
 
   return {

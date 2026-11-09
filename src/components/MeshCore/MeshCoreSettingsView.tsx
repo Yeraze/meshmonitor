@@ -19,6 +19,8 @@ import { MeshCoreMessageFiltersSection } from './MeshCoreMessageFiltersSection';
 import { MeshCoreContactSyncSection } from './MeshCoreContactSyncSection';
 import { MeshCoreReactionsSection } from './MeshCoreReactionsSection';
 import { MeshCoreRequiredRepeaterSection } from './MeshCoreRequiredRepeaterSection';
+import AudioNotificationSettings from '../AudioNotificationSettings';
+import { useOptionalMuteSettings } from '../../contexts/SettingsContext';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
 /**
@@ -79,6 +81,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   const { showToast } = useToast();
   const { hasPermission, authStatus } = useAuth();
   const { sourceName } = useSource();
+  const audioSettings = useOptionalMuteSettings();
   const isAdmin = authStatus?.user?.isAdmin ?? false;
   const csrfFetch = useCsrfFetch();
   const queryClient = useQueryClient();
@@ -495,6 +498,17 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           <TelemetryDataActions
             sourceId={sourceId}
             sources={[{ id: sourceId, name: sourceName ?? sourceId }]}
+          />
+        </div>
+      )}
+
+      {audioSettings && (
+        <div className="form-section">
+          <h3>{t('meshcore.settings.audio_notifications', 'Audio notifications')}</h3>
+          <AudioNotificationSettings
+            enabled={audioSettings.enableAudioNotifications}
+            onEnabledChange={audioSettings.setEnableAudioNotifications}
+            meshcoreDeviceType={status?.deviceType}
           />
         </div>
       )}
