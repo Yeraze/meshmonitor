@@ -80,6 +80,7 @@ import {
 import { remapMeshCoreChannelReferences, type ChannelRemapSummary } from './services/meshcoreChannelRemapService.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { MeshCoreReactionError } from './errors/meshcoreReactionError.js';
+import { MeshCoreDeviceCommandError } from './errors/meshcoreDeviceCommandError.js';
 import {
   isReactionsOutboundEnabled,
   planOutboundReaction,
@@ -726,6 +727,8 @@ export interface MeshCoreNode {
   advLocPolicy?: number;
   /** Add contacts only on explicit request (1) vs automatically (0). From SelfInfo. */
   manualAddContacts?: number;
+  /** Extra direct ACKs per received ACK-wanting DM (companion-v1.7.4+). From SelfInfo; unset on older firmware. */
+  multiAcks?: number;
   /**
    * Server-side favorite flag (migration 094). Stored locally only — never
    * pushed to the device. Favorited nodes pin to the top of the node list.
@@ -5821,6 +5824,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             longitude: info.longitude,
             advLocPolicy: info.adv_loc_policy,
             manualAddContacts: info.manual_add_contacts,
+            multiAcks: typeof info.multi_acks === 'number' ? info.multi_acks : undefined,
             telemetryModeBase: parseTelemetryMode(info.telemetry_mode_base),
             telemetryModeLoc: parseTelemetryMode(info.telemetry_mode_loc),
             telemetryModeEnv: parseTelemetryMode(info.telemetry_mode_env),
@@ -8635,6 +8639,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private async observeOwnIdentity(publicKey: string | null | undefined): Promise<void> {
     try {
       const status = await meshcoreOwnIdentityTracker.observe(this.sourceId, publicKey);
+      if (status === 'expected') {
+        // P8a #6257: a factory reset announced this. No alert; leave an audit row.
+        const key = (publicKey ?? '').trim().toLowerCase();
+        await databaseService.auditLogAsync(
+          null,
+          'meshcore_factory_reset_identity_changed',
+          'configuration',
+          JSON.stringify({ sourceId: this.sourceId, currentKey: key.slice(0, 8) }),
+          null,
+        );
+        return;
+      }
       if (status !== 'changed') return;
       const change = await meshcoreOwnIdentityTracker.getChange(this.sourceId);
       if (!change) return;
@@ -11093,6 +11109,100 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.error('[MeshCore] Failed to set other params:', error);
       return false;
     }
+  }
+
+  // ============ Companion device commands (P8a #6257) ============
+
+  /** Firmware code (DeviceInfo `fw ver`) from which factory reset / multi_acks exist. */
+  static readonly COMPANION_CMD_FIRMWARE_MIN = 7;
+
+  /**
+   * Common gate for the Companion-only local commands: connected Companion,
+   * firmware known and >= `min`. Throws {@link MeshCoreDeviceCommandError}.
+   */
+  private async requireCompanionFirmware(what: string, min: number | null): Promise<void> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      throw new MeshCoreDeviceCommandError('SOURCE_NOT_CONNECTED', `${what} needs a connected Companion radio`);
+    }
+    if (min === null) return;
+    let ver = this.localNode?.firmwareVer;
+    if (ver === undefined) {
+      const info = await this.deviceQuery();
+      if (info) this.applyDeviceInfo(info);
+      ver = this.localNode?.firmwareVer;
+    }
+    if (typeof ver !== 'number' || ver < min) {
+      throw new MeshCoreDeviceCommandError(
+        'FIRMWARE_UNSUPPORTED',
+        `${what} needs Companion firmware code ${min} or newer (this radio reports ${ver ?? 'unknown'})`,
+      );
+    }
+  }
+
+  /**
+   * Set the Bluetooth PIN (CMD_SET_DEVICE_PIN). 0 = firmware default, else
+   * 100000-999999. Takes effect after the next boot. Local serial write.
+   */
+  async setBlePin(pin: number): Promise<void> {
+    await this.requireCompanionFirmware('Setting the BLE PIN', null);
+    if (!Number.isInteger(pin) || (pin !== 0 && (pin < 100000 || pin > 999999))) {
+      throw new MeshCoreDeviceCommandError('INVALID_PIN', 'BLE PIN must be 0 or 100000-999999');
+    }
+    const response = await this.sendBridgeCommand('set_device_pin', { pin });
+    if (!response.success) {
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', response.error || 'The radio did not accept the PIN');
+    }
+  }
+
+  /** The Bluetooth PIN from DeviceInfo (v3+), or null when the radio does not report it. */
+  async getBlePin(): Promise<number | null> {
+    await this.requireCompanionFirmware('Reading the BLE PIN', null);
+    const info = await this.deviceQuery();
+    if (info) this.applyDeviceInfo(info);
+    return typeof info?.blePin === 'number' ? info.blePin : null;
+  }
+
+  /**
+   * Set the extra direct ACK count (0..1 enforced by the route). Firmware code
+   * >= 7, and the radio is read back: firmware 1.7.3 accepts the frame but
+   * ignores the byte, so a mismatch is `MULTI_ACKS_UNSUPPORTED`.
+   */
+  async setMultiAcks(value: number): Promise<number> {
+    await this.requireCompanionFirmware('Multi-ACKs', MeshCoreManager.COMPANION_CMD_FIRMWARE_MIN);
+    const response = await this.sendBridgeCommand('set_multi_acks', { value });
+    if (!response.success) {
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', response.error || 'The radio did not accept the setting');
+    }
+    const readback = response.data?.multi_acks;
+    if (typeof readback !== 'number' || readback !== value) {
+      throw new MeshCoreDeviceCommandError(
+        'MULTI_ACKS_UNSUPPORTED',
+        'The radio did not keep the multi-ACKs value; its firmware is too old (needs companion-v1.7.4 or newer)',
+      );
+    }
+    if (this.localNode) this.localNode.multiAcks = readback;
+    return readback;
+  }
+
+  /**
+   * Factory reset (CMD_FACTORY_RESET): wipes identity, prefs, channels and
+   * contacts on the radio, then it reboots. Success = frame sent (the radio
+   * may close serial before it answers). Afterwards the stored device key is
+   * dropped and the identity tracker is told the next key change is expected.
+   */
+  async factoryReset(): Promise<void> {
+    await this.requireCompanionFirmware('Factory reset', MeshCoreManager.COMPANION_CMD_FIRMWARE_MIN);
+    const response = await this.sendBridgeCommand('factory_reset', {});
+    if (!response.success) {
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', response.error || 'The radio did not accept the reset');
+    }
+    meshcoreOwnIdentityTracker.expectChange(this.sourceId);
+    try {
+      await databaseService.meshcoreSourcePkiKeys.deleteBySourceId(this.sourceId);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] could not drop the stored device key after reset: ${(err as Error).message}`);
+    }
+    logger.warn(`[MeshCore:${this.sourceId}] Factory reset sent to the radio`);
   }
 
   // ============ Mesh-op throttle primitive ============

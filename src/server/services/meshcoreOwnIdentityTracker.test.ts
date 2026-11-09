@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MeshCoreOwnIdentityTracker, type OwnIdentitySettingsStore } from './meshcoreOwnIdentityTracker.js';
+import { MeshCoreOwnIdentityTracker, EXPECTED_CHANGE_TTL_MS, type OwnIdentitySettingsStore } from './meshcoreOwnIdentityTracker.js';
 
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
@@ -74,4 +74,29 @@ describe('MeshCoreOwnIdentityTracker', () => {
     expect(await t.observe('s1', B)).toBe('changed');
     expect(await t.getChange('s2')).toBeNull();
   });
+
+  it('expectChange: the next differing key is accepted silently, once (P8a #6257)', async () => {
+    const { store } = makeStore();
+    const t = new MeshCoreOwnIdentityTracker(() => store, () => 1000);
+    await t.observe('s1', A);
+    t.expectChange('s1');
+    expect(await t.observe('s1', B)).toBe('expected');
+    expect(await t.getChange('s1')).toBeNull();
+    expect(await t.getCurrentKey('s1')).toBe(B);
+    // Consumed: the next change alerts normally.
+    expect(await t.observe('s1', A)).toBe('changed');
+  });
+
+  it('expectChange is per source and expires', async () => {
+    const { store } = makeStore();
+    let now = 1000;
+    const t = new MeshCoreOwnIdentityTracker(() => store, () => now);
+    await t.observe('s1', A);
+    await t.observe('s2', A);
+    t.expectChange('s1');
+    expect(await t.observe('s2', B)).toBe('changed');
+    now += EXPECTED_CHANGE_TTL_MS + 1;
+    expect(await t.observe('s1', B)).toBe('changed');
+  });
 });
+

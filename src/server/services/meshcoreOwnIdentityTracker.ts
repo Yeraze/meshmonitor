@@ -23,7 +23,14 @@ import { logger } from '../../utils/logger.js';
 export const OWN_IDENTITY_KEY_SETTING = 'meshcoreOwnIdentityKey';
 export const OWN_IDENTITY_CHANGE_SETTING = 'meshcoreOwnIdentityChange';
 
-export type OwnIdentityStatus = 'baseline' | 'same' | 'changed';
+/**
+ * `expected`: the key differs but a factory reset announced it (P8a #6257).
+ * The new key is stored, no change record is written, no alert should fire.
+ */
+export type OwnIdentityStatus = 'baseline' | 'same' | 'changed' | 'expected';
+
+/** An announced identity change is honoured for this long. */
+export const EXPECTED_CHANGE_TTL_MS = 30 * 60 * 1000;
 
 export interface OwnIdentityChange {
   previousKey: string;
@@ -60,6 +67,8 @@ function parseChange(raw: string | null | undefined): OwnIdentityChange | null {
 export class MeshCoreOwnIdentityTracker {
   /** Per-source chain so two overlapping connects cannot both report the same change. */
   private readonly chains = new Map<string, Promise<unknown>>();
+  /** sourceId -> expiry (epoch ms) of an announced identity change. In memory: a reset reboots the radio, not this server. */
+  private readonly expected = new Map<string, number>();
 
   constructor(
     private readonly store: () => OwnIdentitySettingsStore = () => databaseService.settings,
@@ -90,6 +99,17 @@ export class MeshCoreOwnIdentityTracker {
         return 'baseline';
       }
       if (stored === pk) return 'same';
+      const expiry = this.expected.get(sourceId);
+      if (expiry !== undefined) {
+        this.expected.delete(sourceId);
+        if (expiry > this.now()) {
+          await store.setSourceSetting(sourceId, OWN_IDENTITY_KEY_SETTING, pk);
+          logger.info(
+            `[MeshCore:${sourceId}] own public key changed after factory reset ${stored.slice(0, 8)} -> ${pk.slice(0, 8)} (expected)`,
+          );
+          return 'expected';
+        }
+      }
       const change: OwnIdentityChange = { previousKey: stored, currentKey: pk, detectedAt: this.now() };
       // Record first, key second: a crash between them re-reports the change
       // (never loses it); the reverse order could drop it silently.
@@ -100,6 +120,16 @@ export class MeshCoreOwnIdentityTracker {
       );
       return 'changed';
     });
+  }
+
+  /**
+   * Announce that the source's identity is about to change (factory reset,
+   * P8a #6257). The next differing key `observe` sees is accepted silently
+   * (`'expected'`), once, within {@link EXPECTED_CHANGE_TTL_MS}.
+   */
+  expectChange(sourceId: string): void {
+    if (!sourceId) return;
+    this.expected.set(sourceId, this.now() + EXPECTED_CHANGE_TTL_MS);
   }
 
   /** The unacknowledged change record, or null. */
