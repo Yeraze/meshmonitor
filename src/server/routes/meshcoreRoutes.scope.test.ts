@@ -20,7 +20,7 @@ import type { Router } from 'express';
 
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
-import { getPermissionGate, isAuthGate } from '../auth/authMiddleware.js';
+import { getPermissionGate, isAuthGate, isAdminGate } from '../auth/authMiddleware.js';
 import { isMeshcoreTxGate, getMeshcoreChannelGate } from './meshcoreRouteShared.js';
 
 const KEY_NODE = 'a1'.repeat(32);
@@ -492,6 +492,7 @@ function registeredRoutes(router: Router): RegisteredRoute[] {
  *  - `write`: `requireAuth()` + `requirePermission(x, 'write')`.
  *  - `admin`: `requireAuth()` + a `remote_admin` grant (remote admin, CLI and
  *    saved admin credentials; see MESHCORE_REMOTE_ADMIN.md).
+ *  - `site-admin`: `requireAuth()` + `requireAdmin()` (a MeshMonitor admin, no per-source grant). Factory reset (P8a #6257).
  *  - `owner`: `requireAuth()` only. A handle to a job the caller started
  *    through a gated route; the handler serves it to that user on that source.
  *  - `channel-read` / `channel-write`: `requireMeshcoreChannelAccess()`, the
@@ -503,7 +504,7 @@ function registeredRoutes(router: Router): RegisteredRoute[] {
  *    resources. CLI history (#5892): remote rows need `remote_admin:read`,
  *    local rows `configuration:read`, on this source; neither is a 403.
  */
-type Kind = 'read' | 'read-signed-in' | 'write' | 'admin' | 'owner' | 'channel-read' | 'channel-write' | 'listed' | 'handler-scoped';
+type Kind = 'read' | 'read-signed-in' | 'write' | 'admin' | 'owner' | 'channel-read' | 'channel-write' | 'listed' | 'handler-scoped' | 'site-admin';
 
 const CLASSIFIED: Record<string, Record<string, Kind>> = {
   device: {
@@ -580,6 +581,11 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'POST /config/coords': 'write',
     'POST /config/advert-loc-policy': 'write',
     'POST /config/auto-add-contacts': 'write',
+    // P8a #6257: Companion BLE PIN (read is a pairing credential => write grant), multi-ACKs, factory reset.
+    'GET /config/ble-pin': 'write',
+    'POST /config/ble-pin': 'write',
+    'POST /config/multi-acks': 'write',
+    'POST /config/factory-reset': 'site-admin',
     'GET /config/autoadd-config': 'read',
     'POST /config/autoadd-config': 'write',
     'POST /config/telemetry-mode-base': 'write',
@@ -743,6 +749,7 @@ describe('guard: every MeshCore route is classified', () => {
     const signedIn = route.handlers.some((h) => isAuthGate(h));
     const channel = route.handlers.map((h) => getMeshcoreChannelGate(h)).find((a) => a !== undefined);
     const transmits = route.handlers.some((h) => isMeshcoreTxGate(h));
+    if (route.handlers.some((h) => isAdminGate(h))) return signedIn ? 'site-admin' : 'requireAdmin without requireAuth()';
     if (gates.length > 1) return 'more than one permission gate';
     if (transmits && !signedIn) return 'transmits without requireAuth()';
     const gate = gates[0];

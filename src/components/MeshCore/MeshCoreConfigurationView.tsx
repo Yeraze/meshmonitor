@@ -11,6 +11,9 @@ import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
 import { MeshCoreNodePurgeSection } from './MeshCoreNodePurgeSection';
 import { MeshCorePathHashSection } from './MeshCorePathHashSection';
 import { MeshCoreDefaultScopeSection } from './MeshCoreDefaultScopeSection';
+import { MeshCoreBlePinSection } from './MeshCoreBlePinSection';
+import { MeshCoreMultiAcksSection, COMPANION_CMD_FIRMWARE_MIN } from './MeshCoreMultiAcksSection';
+import { FactoryResetWipeList } from '../shared/config/FactoryResetWipeList';
 import { ConfigSection } from '../shared/config/ConfigSection';
 import { DangerZone, DangerZoneActions, DangerZoneButton } from '../shared/config/DangerZone';
 import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
@@ -75,7 +78,8 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   loading = false,
 }) => {
   const { t } = useTranslation();
-  const { hasPermission } = useAuth();
+  const { hasPermission, authStatus } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin === true;
   const canWriteConfig = hasPermission('configuration', 'write');
   const canWriteNodes = hasPermission('nodes', 'write');
   const canWriteConnection = hasPermission('connection', 'write');
@@ -671,6 +675,24 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         />
       )}
       {isCompanion && (
+        <MeshCoreBlePinSection
+          connected={connected}
+          loading={loading}
+          actions={actions}
+          canWriteConfig={canWriteConfig}
+        />
+      )}
+      {isCompanion && (
+        <MeshCoreMultiAcksSection
+          connected={connected}
+          loading={loading}
+          actions={actions}
+          canWriteConfig={canWriteConfig}
+          multiAcks={local?.multiAcks}
+          firmwareVer={local?.firmwareVer}
+        />
+      )}
+      {isCompanion && (
         <MeshCoreDefaultScopeSection
           connected={connected}
           loading={loading}
@@ -757,7 +779,15 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
 
       {/* Device Management — danger zone operations. Companion only. */}
       {showDangerZone && (
-        <MeshCoreDeviceManagement actions={actions} deviceName={local?.name} />
+        <MeshCoreDeviceManagement
+          actions={actions}
+          deviceName={local?.name}
+          publicKey={local?.publicKey}
+          canFactoryReset={isAdmin}
+          isCompanion={isCompanion}
+          firmwareVer={local?.firmwareVer}
+          overNetwork={status?.config?.connectionType === 'tcp' || !!status?.config?.tcpHost}
+        />
       )}
       </div>
       </div>
@@ -779,7 +809,14 @@ const IMPORT_KEY_CONFIRM_WORD = 'IMPORT';
 const MeshCoreDeviceManagement: React.FC<{
   actions: MeshCoreActions;
   deviceName?: string;
-}> = ({ actions, deviceName }) => {
+  publicKey?: string;
+  /** Admin only (the server enforces `requireAdmin`). */
+  canFactoryReset: boolean;
+  isCompanion: boolean;
+  firmwareVer?: number;
+  /** The source reaches the device over TCP / WiFi. */
+  overNetwork: boolean;
+}> = ({ actions, deviceName, publicKey, canFactoryReset, isCompanion, firmwareVer, overNetwork }) => {
   const { t } = useTranslation();
   const [rebooting, setRebooting] = useState(false);
   const [rebootConfirmOpen, setRebootConfirmOpen] = useState(false);
@@ -791,6 +828,28 @@ const MeshCoreDeviceManagement: React.FC<{
   const [importKeyError, setImportKeyError] = useState<string | null>(null);
   // The validated key waiting on the typed-word dialog.
   const [pendingImportKey, setPendingImportKey] = useState<string | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  // Companion firmware before v7 has no factory-reset command.
+  const firmwareTooOld = typeof firmwareVer === 'number' && firmwareVer < COMPANION_CMD_FIRMWARE_MIN;
+  const resetBlockedReason = !isCompanion
+    ? t('meshcore.factory_reset.blocked_not_companion', 'Factory reset works on a Companion only.')
+    : firmwareTooOld
+      ? t('meshcore.factory_reset.blocked_firmware', 'Needs Companion firmware version {{min}} or later.', { min: COMPANION_CMD_FIRMWARE_MIN })
+      : undefined;
+  // The typed word: the device name, or a public-key prefix when it has none.
+  const resetWord = (deviceName ?? '').trim() || (publicKey ?? '').slice(0, 8);
+
+  const handleFactoryReset = async () => {
+    setResetting(true);
+    try {
+      await actions.factoryReset({ confirm: true });
+    } finally {
+      setResetting(false);
+      setResetOpen(false);
+    }
+  };
 
   const handleReboot = async () => {
     setRebootConfirmOpen(false);
@@ -885,6 +944,17 @@ const MeshCoreDeviceManagement: React.FC<{
           >
             {t('meshcore.config.import_key_button', 'Restore Private Key')}
           </DangerZoneButton>
+
+          {canFactoryReset && (
+            <DangerZoneButton
+              onClick={() => setResetOpen(true)}
+              disabled={resetting || resetBlockedReason !== undefined || resetWord === ''}
+              title={resetBlockedReason}
+              data-testid="meshcore-factory-reset-button"
+            >
+              {t('meshcore.factory_reset.button', 'Factory Reset')}
+            </DangerZoneButton>
+          )}
         </DangerZoneActions>
 
         {exportedKey && (
@@ -965,6 +1035,42 @@ const MeshCoreDeviceManagement: React.FC<{
             onCancel={() => setRebootConfirmOpen(false)}
           />
         )}
+
+        <TypedConfirmDialog
+          isOpen={resetOpen}
+          title={t('meshcore.factory_reset.dialog_title', 'Factory reset this device?')}
+          confirmWord={resetWord}
+          confirmLabel={t('meshcore.factory_reset.confirm_label', 'Factory Reset')}
+          danger
+          busy={resetting}
+          onConfirm={() => { void handleFactoryReset(); }}
+          onCancel={() => setResetOpen(false)}
+        >
+          <p>
+            {t('meshcore.factory_reset.dialog_body', {
+              name: deviceName || resetWord,
+              defaultValue: '{{name}} erases its own storage and restarts. This cannot be undone.',
+            })}
+          </p>
+          <FactoryResetWipeList items={['settings', 'channels', 'contacts', 'network', 'identity']} />
+          <p>{t('meshcore.factory_reset.identity_note', 'The device gets a new public key, so other nodes no longer know it by its old one.')}</p>
+          {overNetwork && (
+            <p style={{ color: 'var(--color-warning)' }}>
+              {t('meshcore.factory_reset.network_warning', 'This source reaches the device over TCP or WiFi. You may lose network access, because the WiFi credentials are wiped. You then set the device up again over USB or Bluetooth.')}
+            </p>
+          )}
+          <p>
+            {t('meshcore.factory_reset.backup_first', 'Back up first:')}{' '}
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => { setResetOpen(false); void handleExportKey(); }}
+              data-testid="meshcore-factory-reset-backup"
+            >
+              {t('meshcore.config.export_key_button', 'Backup Private Key')}
+            </button>
+          </p>
+        </TypedConfirmDialog>
 
         <TypedConfirmDialog
           isOpen={pendingImportKey !== null}

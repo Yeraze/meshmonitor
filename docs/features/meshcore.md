@@ -375,6 +375,19 @@ Where you change the device's settings:
 - **Telemetry mode** — Which telemetry classes the device emits (see [Telemetry Modes](#telemetry-modes))
 - **Default path hash size** and **Default region / scope** — separate sections after Telemetry
 - **Radio contact list** and **Device actions** — contact list, adverts, and node discovery
+- **Bluetooth PIN** (Companion) — keep the firmware default (`0`) or set a fixed six-digit PIN (100000–999999). The radio applies it at the next boot, and only Bluetooth builds use it.
+- **Multi-ACKs** (Companion, firmware 1.7.4 or later) — on or off. When on, the radio sends one extra ACK for each direct message it receives, and every hop on the return path repeats it: about one extra transmission per hop per DM. Leave it off on a busy mesh.
+- **Factory reset** (Companion, firmware 1.7.3 or later, admins only) — in the danger zone. Type the device name to confirm. It erases the identity key (the node gets a new public key, so peers lose it), every setting, all channels, the contact list and the WiFi credentials, then reboots. MeshMonitor keeps its own history and records the new key in the audit log instead of raising a key-change alert. Export the private key first if you may want it back. On a WiFi or TCP source you may lose network access to the radio.
+
+#### Share a channel
+
+Each channel card has a **Share** button. It shows a QR code and a link in the format the MeshCore app accepts:
+
+```
+meshcore://channel/add?name=<name>&secret=<32 hex chars>[&region_scope=<scope>]
+```
+
+The link includes the channel secret, so sharing needs **Configuration: write** on the source. **Import from URL** in the channels header reads such a link, shows the name, a masked secret, the scope and the target slot, then writes it to the lowest free slot (never slot 0). If the radio already has that secret, it reports the existing slot instead. A hashtag channel link may leave out the secret; MeshMonitor derives it from the name. See the [MeshCore QR code reference](https://docs.meshcore.io/qr_codes/).
 
 ## Telemetry
 

@@ -5,7 +5,11 @@ import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { UiIcon } from '../icons';
 import { PasswordField } from '../shared/config/PasswordField';
+import { BluetoothPinField, type BluetoothPinMode } from '../shared/config/BluetoothPinField';
 import { ROLE_OPTIONS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS, TIMEZONE_PRESETS } from '../configuration/constants';
+
+/** Meshtastic pairing modes, in protobuf enum order (0 random, 1 fixed, 2 none). */
+const BT_MODES: readonly BluetoothPinMode[] = ['random', 'fixed', 'none'];
 
 interface DeviceConfigurationSectionProps {
   // CollapsibleSection component (passed from parent)
@@ -977,42 +981,15 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
         </div>
         {bluetoothEnabled && (
           <>
-            <div className="setting-item">
-              <label>
-                {t('admin_commands.bluetooth_pairing_mode', 'Pairing Mode')}
-                <span className="setting-description">{t('admin_commands.bluetooth_pairing_mode_description', 'Determines the pairing strategy for the device')}</span>
-              </label>
-              <select
-                value={bluetoothMode}
-                onChange={(e) => onBluetoothConfigChange('mode', parseInt(e.target.value))}
-                disabled={isExecuting}
-                className="setting-input"
-                style={{ width: '100%', maxWidth: '600px' }}
-              >
-                <option value={0}>{t('admin_commands.bluetooth_mode_random_pin', 'Random PIN')}</option>
-                <option value={1}>{t('admin_commands.bluetooth_mode_fixed_pin', 'Fixed PIN')}</option>
-                <option value={2}>{t('admin_commands.bluetooth_mode_no_pin', 'No PIN')}</option>
-              </select>
-            </div>
-            {bluetoothMode === 1 && (
-              <div className="setting-item">
-                <label>
-                  {t('admin_commands.bluetooth_fixed_pin', 'Fixed PIN')}
-                  <span className="setting-description">{t('admin_commands.bluetooth_fixed_pin_description', 'PIN code for pairing (required when using Fixed PIN mode)')}</span>
-                </label>
-                <NumberInput
-                  integer
-                  min={0}
-                  max={999999}
-                  value={bluetoothFixedPin}
-                  onChange={(v) => onBluetoothConfigChange('fixedPin', v)}
-                  disabled={isExecuting}
-                  className="setting-input"
-                  style={{ width: '100%', maxWidth: '600px' }}
-                  placeholder="123456"
-                />
-              </div>
-            )}
+            <BluetoothPinField
+              modes={BT_MODES}
+              mode={BT_MODES[bluetoothMode] ?? 'random'}
+              onModeChange={(m) => onBluetoothConfigChange('mode', BT_MODES.indexOf(m))}
+              pin={bluetoothFixedPin}
+              onPinChange={(v) => onBluetoothConfigChange('fixedPin', v)}
+              fixedRange={{ min: 0, max: 999999 }}
+              disabled={isExecuting}
+            />
           </>
         )}
         <button

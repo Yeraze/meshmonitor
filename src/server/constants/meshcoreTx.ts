@@ -49,6 +49,7 @@ export const SERIAL_ONLY_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'set_auto_add_contacts', // #5502: SetOtherParams read-modify-write, no RF TX
   'get_autoadd_config', 'set_autoadd_config', // #5777: auto-add options (58/59), local serial, no RF TX
   'run_cli', // #5866: companion text CLI (66); fw 1.18 has no verb that transmits
+  'set_device_pin', 'factory_reset', 'set_multi_acks', // P8a #6257: local companion prefs / wipe, no RF TX
   'set_contact_remote_cli', // #5867: contact flag 0x10 read-modify-write, no RF TX
 ]);
 

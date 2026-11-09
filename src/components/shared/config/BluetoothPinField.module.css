@@ -1,0 +1,7 @@
+/* Note under the PIN field (e.g. "applies after reboot"). */
+.note {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
