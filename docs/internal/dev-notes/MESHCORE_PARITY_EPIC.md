@@ -50,8 +50,9 @@ Each phase's scope is the checklist in its issue.
   Analysis positions/traces/solar, estimated positions. May split.
 - [x] **P6 #6263 Dashboard / API / reports:** dashboard widgets, Mesh Issues,
   Prometheus, v1 API read + TX, embed maps.
-- [ ] **P7 #6254 Security view:** dead contacts, hash collisions, advert
-  signatures, own-key change, rates/clock/digest. May split.
+- [x] **P7 #6254 Security view:** dead contacts, hash collisions, advert
+  signatures, own-key change (P7a shipped). P7b (rates, clock flag, scanner,
+  digest, export, DM) is follow-up in #6281.
 - [ ] **P8 #6257 Companion extras:** BLE PIN, factory reset, multi-ACKs,
   device-config backups, channel QR share.
 - [ ] **P9 #6255 Repeater settings + danger zone.**
@@ -129,3 +130,18 @@ gate as 429 + Retry-After); per-source metrics collectors, MeshCore gauges, `mes
 and per-node `mc:` series on `nodes:read`; Dashboard widgets and Live Mesh Activity on MeshCore; Mesh Issues A4/A3/C2
 on MeshCore; embed neighbour links and trace segments under the existing toggles (both ends must be visible, so a
 private-override node is never a line end); user docs in `REST_API.md`, `embed-maps.md`, `packet-monitor.md`, `meshcore.md`.
+
+### P7 #6254 (spec: `MESHCORE_PARITY_P7_SPEC.md`)
+Maintainer answers, 2026-11-08: split into P7a (dead contacts + bulk delete, collisions, advert signatures, name under
+new key, own-key change alert; no migration, no RF) and P7b (rates, clock-offset flag, MeshCore in scanner / digest /
+export / DM). Per-source `securityDeadNodeDays` (Meshtastic 7, MeshCore 14). Bulk delete needs security:write AND
+per-source nodes:write; Companion deletes radio + DB. Own-key alert once per change via `notifyOnServerEvents`. Name
+reuse display-only. Repeater adverts always signature-checked; unchecked = null.
+
+Shipped (P7a): the Security tab is protocol-aware. MeshCore sources show dead contacts (per-source `securityDeadNodeDays`,
+default 14 days; Meshtastic 7) with bulk delete (needs security:write and per-source nodes:write; a connected Companion
+deletes from the radio and DB, others from the DB only), path-hash collisions at the source's hash width, advert
+signature status (Verified / Failed / Not checked; only Repeater and MQTT check), name reused under a new key (display
+only), and an own-key change card with one alert per change and an Acknowledge action. Dead-nodes and findings routes now
+need `nodes:read` on the source for both protocols. No migration, no RF. P7b (rates, clock-offset flag, scanner, digest,
+export, DM) follows in #6281. User docs: `docs/features/security.md`, `meshcore.md`.

@@ -17,6 +17,7 @@
  *   automations    `automation:read`
  *   notifications  signed in (per-user preferences)
  *   settings       `settings:read`
+ *   security       `security:read`            (the Meshtastic Security tab)
  *
  * Hiding a tab is not the access control: every route behind these tabs
  * checks its own grant.
@@ -25,12 +26,12 @@ import { useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { ResourceType } from '../../types/permission';
 
-export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'packets' | 'info' | 'configuration' | 'automations' | 'notifications' | 'settings';
+export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'packets' | 'info' | 'configuration' | 'automations' | 'notifications' | 'settings' | 'security';
 
 /** Every tab, in nav order. */
 export const MESHCORE_VIEWS: readonly MeshCoreView[] = [
   'nodes', 'channels', 'rooms', 'dms', 'telemetry', 'packets', 'info',
-  'configuration', 'automations', 'notifications', 'settings',
+  'configuration', 'automations', 'notifications', 'settings', 'security',
 ];
 
 /** The tab shown when the requested one is not open to the viewer. Always visible. */
@@ -65,6 +66,7 @@ export function visibleMeshCoreViews({ canRead, isAuthenticated, showInfo = true
     automations: canRead('automation'),
     notifications: isAuthenticated,
     settings: canRead('settings'),
+    security: canRead('security'),
   };
   return MESHCORE_VIEWS.filter((view) => open[view]);
 }

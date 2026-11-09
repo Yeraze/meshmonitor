@@ -23,6 +23,8 @@ export interface MeshCoreContact {
    *  Not on the wire contact record; views copy it in from the node row. */
   positionSource?: string | null;
   lastAdvert?: number;
+  /** P7a #6254: latest checked advert signature. true verified, false failed, null/unset not checked. Copied from the node row. */
+  advertSignatureVerified?: boolean | null;
   /** #5363: the server moved latitude/longitude to the sign-flip corrected
    *  point; the reported pair rides along. Display only. */
   positionSignFlipCorrected?: boolean;

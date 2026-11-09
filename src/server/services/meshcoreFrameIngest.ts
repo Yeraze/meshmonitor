@@ -424,20 +424,27 @@ export async function verifyAdvertSignature(advert: DecodedAdvert): Promise<bool
 }
 
 /**
- * The `advertSignatureVerified` value to store for an MQTT-ingested advert
- * (#5909). The check costs an Ed25519 verify per advert, which #5040 chose
- * not to pay on every feed, so it runs only while the cross-source hop toggle
- * is on. With the toggle off the marker is written `false`, so a node never
- * keeps a `true` from an older advert after a newer one went unchecked.
+ * The `advertSignatureVerified` value to store for an advert (#5909, P7a #6254).
+ * Tri-state: `true` verified, `false` CHECKED and failed, `null` not checked.
+ *
+ * `'always'` (a Repeater's own RAW stream, where the Ed25519 verify is the
+ * only cost) always checks. `'toggle'` (MQTT, where adverts come from
+ * strangers, #5040) checks only while the cross-source hop toggle is on; with
+ * it off the marker is `null`, which clears a stale `true` from an older
+ * advert and is never shown as "failed".
  */
-async function advertSignatureMarker(advert: DecodedAdvert): Promise<boolean> {
+async function advertSignatureMarker(
+  advert: DecodedAdvert,
+  mode: 'always' | 'toggle',
+): Promise<boolean | null> {
+  if (mode === 'always') return verifyAdvertSignature(advert);
   let enabled: boolean;
   try {
     enabled = await databaseService.settings.getSettingAsBoolean(CROSS_SOURCE_HOP_RESOLUTION_SETTING, false);
   } catch {
     enabled = false;
   }
-  return enabled ? verifyAdvertSignature(advert) : false;
+  return enabled ? verifyAdvertSignature(advert) : null;
 }
 
 export async function ingestAdvertFrame(
@@ -447,11 +454,13 @@ export async function ingestAdvertFrame(
     lastHeardMs: number | 'advert';
     skipPublicKey?: string | null;
     /**
-     * #5909: store whether the advert's signature verified (meshcore_mqtt
-     * ingest only, where adverts come from strangers). Other callers leave
-     * the marker untouched.
+     * #5909 / P7a #6254: store whether the advert's signature verified.
+     * `'always'` verifies every advert (Repeater RAW stream); `'toggle'`
+     * verifies only while the cross-source hop toggle is on and otherwise
+     * stores null = unchecked (meshcore_mqtt). Omitted leaves the stored
+     * marker untouched.
      */
-    recordSignature?: boolean;
+    verifySignature?: 'always' | 'toggle';
     /**
      * #6220: relays this advert passed through before WE heard it (0 = heard
      * direct), written to `pathLen`. Only a caller that is itself the receiver
@@ -466,7 +475,7 @@ export async function ingestAdvertFrame(
   const advert = packet?.payload?.advert;
   if (!advert?.publicKey) return null;
   if (opts.skipPublicKey && advert.publicKey.toLowerCase() === opts.skipPublicKey.toLowerCase()) return null;
-  const advertSignatureVerified = opts.recordSignature ? await advertSignatureMarker(advert) : undefined;
+  const advertSignatureVerified = opts.verifySignature ? await advertSignatureMarker(advert, opts.verifySignature) : undefined;
 
   await databaseService.meshcore.upsertNode(
     {
@@ -483,7 +492,7 @@ export async function ingestAdvertFrame(
       // coordinates stay, so this is the one record that the node's latest
       // advert had no position.
       lastAdvertHadPosition: advertHasPosition(advert.latitude, advert.longitude),
-      // #5909: undefined (non-MQTT callers) keeps the stored value.
+      // #5909: undefined (no verifySignature) keeps the stored value; null clears it (unchecked).
       advertSignatureVerified,
       lastHeard: opts.lastHeardMs === 'advert' ? advertLastHeardMs(advert.timestamp) : opts.lastHeardMs,
       ...(typeof opts.heardHops === 'number' && Number.isInteger(opts.heardHops) && opts.heardHops >= 0

@@ -894,6 +894,10 @@ Timer Triggers schedule recurring actions independent of incoming traffic:
 - **Three actions** — send a **text** message (token expansion supported) to a channel or contact, fire a MeshCore **advert** (zero-hop by default, or flood; see [Automated flood limit](#automated-flood-limit)), or **run a script** (token-expanded args).
 - **Last-run telemetry** — the UI surfaces the last fire time and outcome per trigger.
 
+## Security
+
+The Security tab works on MeshCore sources. It lists dead contacts, path-hash collisions, advert signature results, names reused under a new key, and own-key changes. See [Security Features](/features/security#meshcore-sources) for details.
+
 ## Automated Channel-Send Auto-Retry
 
 MeshCore channel (broadcast) messages are unacked, fire-and-forget floods — unlike a direct message, there is no firmware ACK to confirm delivery. MeshMonitor instead listens for nearby repeaters re-flooding your own packet (the "heard repeaters" signal, see [Channels](#channels)). When **no** repeater is heard, the message likely reached no one.

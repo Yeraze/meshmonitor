@@ -22,7 +22,7 @@ import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.js';
 import { invalidateSignFlipContext, SIGN_FLIP_SETTING_KEYS } from '../services/signFlipCorrection.js';
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
-import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
+import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey, isValidSecurityDeadNodeDays, SECURITY_DEAD_NODE_DAYS_RANGE } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { assertSafeUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
@@ -609,6 +609,12 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         return fail(res, 400, 'INVALID_MAX_NODE_AGE_HOURS',
           `maxNodeAgeHours must be between ${R.min} and ${R.max} hours (0 = show all)`);
       }
+    }
+
+    // P7a (#6254): Security tab dead-node threshold, whole days.
+    if ('securityDeadNodeDays' in filteredSettings && !isValidSecurityDeadNodeDays(filteredSettings.securityDeadNodeDays)) {
+      return fail(res, 400, 'INVALID_SECURITY_DEAD_NODE_DAYS',
+        `securityDeadNodeDays must be a whole number between ${SECURITY_DEAD_NODE_DAYS_RANGE.min} and ${SECURITY_DEAD_NODE_DAYS_RANGE.max}`);
     }
 
     // #4899: separate Infrastructure age window (MeshCore repeaters/room

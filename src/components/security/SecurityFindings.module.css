@@ -1,0 +1,215 @@
+/* Shared styles for the MeshCore Security findings sections (#6254). */
+
+.section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+
+.title {
+  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.05rem;
+  color: var(--color-text);
+}
+
+.description {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-subtle);
+}
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.countChip {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.countChipActive {
+  border-color: var(--color-caution);
+  color: var(--color-text);
+}
+
+.groupList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.group {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.groupHead {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.mono {
+  font-family: monospace;
+}
+
+.nodeList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nodeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.nodeRef {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--color-text);
+}
+
+.nodeButton {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--color-accent);
+}
+
+.nodeButton:hover {
+  text-decoration: underline;
+}
+
+.nodeName {
+  overflow-wrap: anywhere;
+}
+
+.keyFragment {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
+}
+
+.meta {
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
+}
+
+.badgeFailed {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--color-error);
+}
+
+.original {
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
+}
+
+/* Own-key card */
+.card {
+  margin-top: 1.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-error);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--color-error);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.cardBody {
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+  color: var(--color-text);
+}
+
+.keyRows {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.25rem 0.75rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+}
+
+.keyRows dt {
+  color: var(--color-text-subtle);
+}
+
+.keyRows dd {
+  margin: 0;
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
+  color: var(--color-text-subtle);
+}
+
+.button {
+  padding: 0.4rem 0.75rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

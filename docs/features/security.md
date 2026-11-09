@@ -245,6 +245,27 @@ GET /api/security/issues?sourceId=<source id>
 }
 ```
 
+## MeshCore Sources
+
+The Security tab also works on MeshCore sources. It shows the sections below for the selected source.
+
+### What MeshCore shows
+
+- **Dead contacts**: contacts not heard for N days. Set N per source with "dead after N days". The default is 7 days for Meshtastic and 14 days for MeshCore.
+- **Bulk delete**: you need `security:write` and `nodes:write` on the source. On a connected Companion, MeshMonitor removes the contacts from the radio and the database. On any other source, it removes them from the database only. A removed contact comes back on its next advert.
+- **Path-hash collisions**: repeaters and room servers that share a path hash at the source's hash width. The tab shows counts for 2-byte and 3-byte hashes.
+- **Advert signatures**: each contact shows Verified, Failed, or Not checked. Only Repeater and MQTT sources check signatures. Companion contacts always show Not checked.
+- **Name reused under a new key**: a name that now appears under a different key. This view is for display only. MeshMonitor takes no action.
+- **Own-key change**: a card appears when your own radio key changes. MeshMonitor sends one alert per change through the server-events notification preference. Click **Acknowledge** to clear the card.
+
+The dead-contact list and the findings need `nodes:read` on the source, for both Meshtastic and MeshCore.
+
+### What MeshCore does not have
+
+- Low-entropy key detection
+- Duplicate key detection
+- The duplicate key scanner, the security digest, export, and DM from the Security tab. Issue #6281 tracks these.
+
 ## Best Practices
 
 ### For Network Administrators

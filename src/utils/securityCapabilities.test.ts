@@ -1,0 +1,44 @@
+import { describe, it, expect } from 'vitest';
+import { securityCapabilities } from './securityCapabilities.js';
+
+describe('securityCapabilities', () => {
+  it('Meshtastic keeps today\'s set and none of the MeshCore-only cards', () => {
+    const c = securityCapabilities('meshtastic_tcp');
+    expect(c).toMatchObject({
+      lowEntropy: true, duplicateKeys: true, keyMismatchLog: true, scanner: true, spam: true,
+      timeOffset: true, deadNodes: true, deviceDelete: true, digest: true, notifyDm: true,
+      pathHashCollisions: false, advertSignatures: false, nameReuse: false, ownKeyChange: false,
+    });
+    expect(securityCapabilities(undefined)).toEqual(c);
+    expect(securityCapabilities('mqtt')).toEqual(c);
+  });
+
+  it('MeshCore Companion gets the P7a set with device delete', () => {
+    const c = securityCapabilities('meshcore', 'companion');
+    expect(c).toMatchObject({
+      deadNodes: true, deviceDelete: true, pathHashCollisions: true, advertSignatures: true,
+      nameReuse: true, ownKeyChange: true,
+      lowEntropy: false, duplicateKeys: false, keyMismatchLog: false, scanner: false, spam: false,
+      timeOffset: false, digest: false, notifyDm: false,
+    });
+    expect(securityCapabilities('meshcore', 1).deviceDelete).toBe(true);
+  });
+
+  it('MeshCore Repeater deletes from MeshMonitor only but still tracks its own key', () => {
+    for (const d of ['repeater', 2, 3] as const) {
+      const c = securityCapabilities('meshcore', d);
+      expect(c.deviceDelete).toBe(false);
+      expect(c.ownKeyChange).toBe(true);
+      expect(c.deadNodes).toBe(true);
+    }
+    expect(securityCapabilities('meshcore').deviceDelete).toBe(false);
+  });
+
+  it('meshcore_mqtt: findings and DB-only delete, no own key', () => {
+    const c = securityCapabilities('meshcore_mqtt');
+    expect(c.deadNodes).toBe(true);
+    expect(c.deviceDelete).toBe(false);
+    expect(c.ownKeyChange).toBe(false);
+    expect(c.advertSignatures).toBe(true);
+  });
+});

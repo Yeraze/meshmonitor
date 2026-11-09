@@ -256,11 +256,11 @@ describe('ingestAdvertFrame', () => {
       expect(getSettingAsBoolean).not.toHaveBeenCalled();
     });
 
-    it('is written false WITHOUT a signature check while the toggle is off', async () => {
+    it('is written null (unchecked) WITHOUT a signature check while the toggle is off', async () => {
       getSettingAsBoolean.mockResolvedValueOnce(false);
       const spy = vi.spyOn(Ed25519SignatureVerifier, 'verifyAdvertisementSignature');
-      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, recordSignature: true });
-      expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBe(false);
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, verifySignature: 'toggle' });
+      expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBeNull();
       expect(spy).not.toHaveBeenCalled();
       spy.mockRestore();
     });
@@ -268,20 +268,33 @@ describe('ingestAdvertFrame', () => {
     it('records the check result while the toggle is on', async () => {
       getSettingAsBoolean.mockResolvedValue(true);
       // The test frame carries a dummy signature, so the real check fails.
-      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, recordSignature: true });
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, verifySignature: 'toggle' });
       expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBe(false);
 
       const spy = vi.spyOn(Ed25519SignatureVerifier, 'verifyAdvertisementSignature').mockResolvedValue(true);
-      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, recordSignature: true });
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, verifySignature: 'toggle' });
       expect(upsertNode.mock.calls[1][0].advertSignatureVerified).toBe(true);
       spy.mockRestore();
       getSettingAsBoolean.mockReset().mockResolvedValue(false);
     });
 
-    it('treats a throwing settings read as off', async () => {
+    it('treats a throwing settings read as off (null, unchecked)', async () => {
       getSettingAsBoolean.mockRejectedValueOnce(new Error('db down'));
-      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, recordSignature: true });
-      expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBe(false);
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, verifySignature: 'toggle' });
+      expect(upsertNode.mock.calls[0][0].advertSignatureVerified).toBeNull();
+    });
+
+    it("'always' (Repeater) verifies without reading the toggle: forged -> false, valid -> true", async () => {
+      getSettingAsBoolean.mockClear();
+      // The test frame carries a dummy signature, so the real check fails.
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, verifySignature: 'always' });
+      expect(upsertNode.mock.calls.at(-1)![0].advertSignatureVerified).toBe(false);
+
+      const spy = vi.spyOn(Ed25519SignatureVerifier, 'verifyAdvertisementSignature').mockResolvedValue(true);
+      await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, verifySignature: 'always' });
+      expect(upsertNode.mock.calls.at(-1)![0].advertSignatureVerified).toBe(true);
+      spy.mockRestore();
+      expect(getSettingAsBoolean).not.toHaveBeenCalled();
     });
   });
 });

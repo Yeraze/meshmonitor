@@ -1365,6 +1365,18 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             </div>
           )}
 
+          {/* Advert signature (P7a #6254): null = never checked, never "Failed" */}
+          <div className="node-detail-card" data-testid="meshcore-advert-signature">
+            <div className="node-detail-label">{t('meshcore.advert_signature', 'Advert signature')}</div>
+            <div className="node-detail-value">
+              {contact?.advertSignatureVerified === true
+                ? t('meshcore.advert_signature_verified', 'Verified')
+                : contact?.advertSignatureVerified === false
+                  ? t('meshcore.advert_signature_failed', 'Failed')
+                  : t('meshcore.advert_signature_unchecked', 'Not checked')}
+            </div>
+          </div>
+
           {/* Last Advert */}
           {typeof lastAdvert === 'number' && (
             <div className="node-detail-card">

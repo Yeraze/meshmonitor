@@ -563,7 +563,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       const advert = await ingestAdvertFrame(decoded.event.raw_hex, this.sourceId, {
         lastHeardMs: 'advert',
         // #5909: record signature validity for cross-source hop resolution.
-        recordSignature: true,
+        verifySignature: 'toggle',
       });
       if (advert) this.stats.advertsIngested++;
     } catch (err) {

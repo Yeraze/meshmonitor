@@ -41,6 +41,7 @@ import { MeshCoreSettingsView } from './MeshCoreSettingsView';
 import { MeshCoreRoomsView } from './MeshCoreRoomsView';
 import { MeshCoreAutomationsView } from './MeshCoreAutomationsView';
 import NotificationsTab from '../NotificationsTab';
+import { SecurityTab } from '../SecurityTab';
 import { useAuth } from '../../contexts/AuthContext';
 import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
 import { useOptionalMuteSettings } from '../../contexts/SettingsContext';
@@ -330,6 +331,13 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           <div className="meshcore-notifications-view">
             <NotificationsTab isAdmin={isAdmin} />
           </div>
+        )}
+        {view === 'security' && (
+          <SecurityTab
+            sourceId={sourceId}
+            sourceType="meshcore"
+            onOpenNode={navigateToDm}
+          />
         )}
         {view === 'settings' && (
           <SaveBarProvider>
