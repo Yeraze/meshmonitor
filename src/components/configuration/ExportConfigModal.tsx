@@ -6,14 +6,26 @@ import apiService from '../../services/api';
 import type { Channel } from '../../types/device';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 
+/** What the modal needs from a channel row; a full `Channel` fits. */
+type ShareChannel = Pick<Channel, 'id' | 'name'> & Partial<Channel>;
+
 interface ExportConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
-  channels: Channel[];
+  channels: ShareChannel[];
   deviceConfig: any;
   nodeNum?: number; // Optional node number for remote nodes
   onLoadChannels?: () => Promise<void>; // Optional callback to load channels
   isLoadingChannels?: boolean; // Optional loading state
+  /**
+   * `'meshcore'` (#6257): one channel per URL (single select), no LoRa option,
+   * MeshCore copy and QR hint. Default `'meshtastic'` keeps the existing flow.
+   */
+  protocol?: 'meshtastic' | 'meshcore';
+  /** MeshCore: channel preselected when the modal opens. */
+  initialChannelId?: number;
+  /** Override the resolved source (the MeshCore config view names its own). */
+  sourceId?: string;
 }
 
 export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
@@ -23,11 +35,16 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   deviceConfig,
   nodeNum,
   onLoadChannels,
-  isLoadingChannels = false
+  isLoadingChannels = false,
+  protocol = 'meshtastic',
+  initialChannelId,
+  sourceId: sourceIdProp,
 }) => {
   const { t } = useTranslation();
-  const sourceId = useResolvedSourceId();
-  const [channels, setChannels] = useState<Channel[]>([]);
+  const resolvedSourceId = useResolvedSourceId();
+  const sourceId = sourceIdProp ?? resolvedSourceId;
+  const isMeshCore = protocol === 'meshcore';
+  const [channels, setChannels] = useState<ShareChannel[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
   const [includeLoraConfig, setIncludeLoraConfig] = useState(true);
   const [generatedUrl, setGeneratedUrl] = useState<string>('');
@@ -35,7 +52,20 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && isMeshCore) {
+      // MeshCore: a share URL holds one channel. Offer rows that carry a secret.
+      const shareable = (_channels ?? []).filter(ch => !!ch.psk);
+      setChannels(shareable);
+      setSelectedChannels(new Set(
+        initialChannelId !== undefined && shareable.some(ch => ch.id === initialChannelId)
+          ? [initialChannelId]
+          : [],
+      ));
+      setIncludeLoraConfig(false);
+      setCopied(false);
+      setError(null);
+      setGeneratedUrl('');
+    } else if (isOpen) {
       // For remote nodes (nodeNum provided), use passed channels prop (even if empty)
       // For local nodes, fetch channels from API
       if (nodeNum !== undefined) {
@@ -79,7 +109,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
       setError(null);
       setGeneratedUrl(''); // Clear any previous URL
     }
-  }, [isOpen, nodeNum, _channels, sourceId]);
+  }, [isOpen, isMeshCore, initialChannelId, nodeNum, _channels, sourceId]);
 
   const generateUrl = useCallback(async () => {
     if (selectedChannels.size === 0) {
@@ -90,13 +120,13 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
     setError(null);
     try {
       const channelIds = Array.from(selectedChannels).sort((a, b) => a - b);
-      const url = await apiService.encodeChannelUrl(channelIds, includeLoraConfig, nodeNum, sourceId);
+      const url = await apiService.encodeChannelUrl(channelIds, isMeshCore ? false : includeLoraConfig, nodeNum, sourceId);
       setGeneratedUrl(url);
     } catch (err: any) {
       setError(err.message || 'Failed to generate URL');
       setGeneratedUrl('');
     }
-  }, [selectedChannels, includeLoraConfig, nodeNum, sourceId]);
+  }, [selectedChannels, includeLoraConfig, nodeNum, sourceId, isMeshCore]);
 
   useEffect(() => {
     // Generate URL whenever selections change
@@ -109,6 +139,10 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   }, [selectedChannels, includeLoraConfig, isOpen, generateUrl]);
 
   const toggleChannel = (channelId: number) => {
+    if (isMeshCore) {
+      setSelectedChannels(new Set([channelId]));
+      return;
+    }
     const newSelected = new Set(selectedChannels);
     if (newSelected.has(channelId)) {
       newSelected.delete(channelId);
@@ -198,10 +232,10 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
           overflowY: 'auto'
         }}
       >
-        <h2>{t('export_config.title')}</h2>
+        <h2>{isMeshCore ? t('export_config.meshcore_title') : t('export_config.title')}</h2>
 
         <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem' }}>
-          {t('export_config.description')}
+          {isMeshCore ? t('export_config.meshcore_description') : t('export_config.description')}
         </p>
 
         <div style={{ marginBottom: '1rem' }}>
@@ -213,9 +247,11 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                   {t('export_config.no_channels_title')}
                 </div>
                 <div style={{ marginBottom: '0.75rem', lineHeight: '1.6' }}>
-                  {nodeNum !== undefined 
-                    ? t('export_config.no_channels_remote_help')
-                    : t('export_config.no_channels_local_help')
+                  {isMeshCore
+                    ? t('export_config.meshcore_no_channels')
+                    : nodeNum !== undefined
+                      ? t('export_config.no_channels_remote_help')
+                      : t('export_config.no_channels_local_help')
                   }
                 </div>
                 {onLoadChannels && (
@@ -271,15 +307,19 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
               >
                 <label style={{ display: 'flex', alignItems: 'flex-start', cursor: 'pointer' }}>
                   <input
-                    type="checkbox"
+                    type={isMeshCore ? 'radio' : 'checkbox'}
+                    name={isMeshCore ? 'meshcore-share-channel' : undefined}
                     checked={selectedChannels.has(channel.id)}
                     onChange={() => toggleChannel(channel.id)}
                     style={{ marginRight: '0.5rem', marginTop: '0.25rem' }}
                   />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                      {t('export_config.channel_label', { id: channel.id, name: channel.name })}
+                      {isMeshCore
+                        ? t('export_config.meshcore_channel_label', { id: channel.id, name: channel.name })
+                        : t('export_config.channel_label', { id: channel.id, name: channel.name })}
                     </div>
+                    {!isMeshCore && (
                     <div style={{ fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
                       PSK: {channel.psk ? t('export_config.psk_set') : t('export_config.psk_none')}
                       {channel.positionPrecision !== undefined && channel.positionPrecision !== null && ` | ${t('export_config.position_precision', { bits: channel.positionPrecision })}`}
@@ -287,13 +327,14 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                       {` | ${channel.downlinkEnabled ? t('export_config.downlink_enabled') : t('export_config.downlink_disabled')}`}
                       {channel.useAead && ` | ${t('channels.aead_badge')}`}
                     </div>
+                    )}
                   </div>
                 </label>
               </div>
             ))
           )}
 
-          {(deviceConfig?.lora || nodeNum !== undefined) && (
+          {!isMeshCore && (deviceConfig?.lora || nodeNum !== undefined) && (
             <div style={{ marginTop: '1rem' }}>
               <h3>{t('export_config.device_settings')}</h3>
               <div
@@ -399,7 +440,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                 />
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.5rem', textAlign: 'center' }}>
-                {t('export_config.scan_qr_description')}
+                {isMeshCore ? t('export_config.meshcore_scan_qr_description') : t('export_config.scan_qr_description')}
               </div>
             </div>
           </div>

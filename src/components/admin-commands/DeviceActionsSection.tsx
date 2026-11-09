@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon, type UiIconName } from '../icons';
 import { TypedConfirmDialog } from '../common/TypedConfirmDialog';
+import { FactoryResetWipeList } from '../shared/config/FactoryResetWipeList';
 import styles from './DeviceActionsSection.module.css';
 
 /** Seconds the node waits before it powers off. Matches the reboot default. */
@@ -171,14 +172,11 @@ export const DeviceActionsSection: React.FC<DeviceActionsSectionProps> = ({
           <p>{t(`device_actions.${pendingKey}.confirm_body`, { name, seconds: SHUTDOWN_DELAY_SECONDS })}</p>
           {(pending === 'factoryResetConfig' || pending === 'factoryResetDevice') && (
             <>
-              <p>{t('device_actions.reset_wipes_heading')}</p>
-              <ul>
-                <li>{t('device_actions.reset_wipes_settings')}</li>
-                <li>{t('device_actions.reset_wipes_channels')}</li>
-                <li>{t('device_actions.reset_wipes_nodedb')}</li>
-                <li>{t('device_actions.reset_wipes_network')}</li>
-                {pending === 'factoryResetDevice' && <li>{t('device_actions.reset_wipes_identity')}</li>}
-              </ul>
+              <FactoryResetWipeList
+                items={pending === 'factoryResetDevice'
+                  ? ['settings', 'channels', 'nodedb', 'network', 'identity']
+                  : ['settings', 'channels', 'nodedb', 'network']}
+              />
               <p>{t(`device_actions.${pendingKey}.keeps`)}</p>
               <p className={styles.warn}>{t('device_actions.reset_drop_warning')}</p>
             </>

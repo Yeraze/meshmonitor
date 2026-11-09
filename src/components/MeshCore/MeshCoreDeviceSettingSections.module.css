@@ -65,3 +65,10 @@
   cursor: default;
   opacity: 0.5;
 }
+
+/* Airtime / safety note under a setting. */
+.warning {
+  margin-top: 0.5rem;
+  color: var(--color-warning);
+  font-size: 0.85rem;
+}

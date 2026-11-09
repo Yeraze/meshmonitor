@@ -12,12 +12,13 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import { requireAuth, optionalAuth, requirePermission, hasPermission, requireAdmin } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { ChannelReorderPlanError } from '../meshcoreChannelReorder.js';
 import type { ResourceType } from '../../types/permission.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import type { AutoAddConfigPatch } from '../meshcoreManager.js';
+import { isMeshCoreDeviceCommandError, MESHCORE_DEVICE_COMMAND_ERROR_STATUS } from '../errors/meshcoreDeviceCommandError.js';
 import { managerFor, isValidName, isValidRadioParams, auditMeshcoreEvent } from './meshcoreRouteShared.js';
 
 const router = Router({ mergeParams: true });
@@ -606,6 +607,102 @@ router.post('/config/auto-add-contacts', meshcoreDeviceLimiter, requireAuth(), r
   } catch (error) {
     logger.error('[API] Error setting auto-add contacts:', error);
     return fail(res, 500, 'AUTO_ADD_UPDATE_FAILED', 'Config error');
+  }
+});
+
+/** Map a Companion device-command failure to the envelope; null when it is not one. */
+function failDeviceCommand(res: Response, error: unknown): Response | null {
+  if (!isMeshCoreDeviceCommandError(error)) return null;
+  return fail(res, MESHCORE_DEVICE_COMMAND_ERROR_STATUS[error.code] ?? 502, error.code, error.message);
+}
+
+/**
+ * GET /api/sources/:id/meshcore/config/ble-pin
+ *
+ * The Companion's Bluetooth PIN (DeviceInfo, v3+). A pairing credential, so it
+ * needs configuration:write. `pin` is null when the radio does not report it.
+ */
+router.get('/config/ble-pin', requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const pin = await managerFor(req, res).getBlePin();
+    return ok(res, { pin });
+  } catch (error) {
+    const handled = failDeviceCommand(res, error);
+    if (handled) return handled;
+    logger.error('[API] Error reading BLE PIN:', error);
+    return fail(res, 500, 'BLE_PIN_READ_FAILED', 'Failed to read the BLE PIN');
+  }
+});
+
+/**
+ * POST /api/sources/:id/meshcore/config/ble-pin
+ *
+ * Body: { pin } where pin is 0 (firmware default) or 100000-999999. Takes
+ * effect after the radio's next boot. Local serial write, no RF.
+ */
+router.post('/config/ble-pin', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const pin = (req.body as { pin?: unknown } | undefined)?.pin;
+    if (typeof pin !== 'number' || !Number.isInteger(pin) || (pin !== 0 && (pin < 100000 || pin > 999999))) {
+      return fail(res, 400, 'INVALID_PIN', 'pin must be 0 or a 6-digit number from 100000 to 999999');
+    }
+    await managerFor(req, res).setBlePin(pin);
+    auditMeshcoreEvent(req, 'meshcore_set_ble_pin', 'configuration', { sourceId: req.params.id });
+    return ok(res, { pin, appliesAfterReboot: true });
+  } catch (error) {
+    const handled = failDeviceCommand(res, error);
+    if (handled) return handled;
+    logger.error('[API] Error setting BLE PIN:', error);
+    return fail(res, 500, 'BLE_PIN_UPDATE_FAILED', 'Failed to set the BLE PIN');
+  }
+});
+
+/**
+ * POST /api/sources/:id/meshcore/config/multi-acks
+ *
+ * Body: { value } 0 or 1. Each extra ACK is another direct transmission per
+ * received ACK-wanting DM (repeated by every return hop), so the value is
+ * capped at 1. Needs firmware code 7+ and the radio must keep the value
+ * (else 409 MULTI_ACKS_UNSUPPORTED).
+ */
+router.post('/config/multi-acks', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const value = (req.body as { value?: unknown } | undefined)?.value;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 1) {
+      return fail(res, 400, 'INVALID_VALUE', 'value must be 0 or 1');
+    }
+    const multiAcks = await managerFor(req, res).setMultiAcks(value);
+    auditMeshcoreEvent(req, 'meshcore_set_multi_acks', 'configuration', { sourceId: req.params.id, value: multiAcks });
+    return ok(res, { multiAcks });
+  } catch (error) {
+    const handled = failDeviceCommand(res, error);
+    if (handled) return handled;
+    logger.error('[API] Error setting multi-acks:', error);
+    return fail(res, 500, 'MULTI_ACKS_UPDATE_FAILED', 'Failed to set multi-ACKs');
+  }
+});
+
+/**
+ * POST /api/sources/:id/meshcore/config/factory-reset
+ *
+ * Wipes the Companion (identity, settings, channels, contacts) and reboots it.
+ * Admin only. Body: { confirm: true }. Audited BEFORE the command is sent.
+ * Local serial command, no RF; MeshMonitor's own history is kept.
+ */
+router.post('/config/factory-reset', meshcoreDeviceLimiter, requireAuth(), requireAdmin(), async (req: Request, res: Response) => {
+  try {
+    if ((req.body as { confirm?: unknown } | undefined)?.confirm !== true) {
+      return fail(res, 400, 'DANGER_CONFIRM_REQUIRED', 'Factory reset requires confirm:true - this erases the radio and replaces its identity');
+    }
+    const manager = managerFor(req, res);
+    auditMeshcoreEvent(req, 'meshcore_factory_reset', 'configuration', { sourceId: req.params.id });
+    await manager.factoryReset();
+    return ok(res, { resetSent: true });
+  } catch (error) {
+    const handled = failDeviceCommand(res, error);
+    if (handled) return handled;
+    logger.error('[API] Error sending factory reset:', error);
+    return fail(res, 500, 'FACTORY_RESET_FAILED', 'Failed to send the factory reset');
   }
 });
 

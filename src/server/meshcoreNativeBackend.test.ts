@@ -1336,9 +1336,11 @@ describe('MeshCoreNativeBackend', () => {
       advLocPolicy: 1,
     });
     expect(resp.success).toBe(true);
-    expect(conn.setOtherParamsCalls).toEqual([
-      { manualAddContacts: 1, telemetryModeBase: 2, telemetryModeLoc: 1, telemetryModeEnv: 0, advLocPolicy: 1 },
-    ]);
+    // P8a #6257: one raw frame [38][manual raw byte][telemetry packed][advLoc];
+    // the device reports manual=1, so bit 0 stays set and no other bits appear.
+    expect(conn.setOtherParamsCalls).toEqual([]);
+    expect(conn.rawFrames).toHaveLength(1);
+    expect(Array.from(conn.rawFrames[0])).toEqual([38, 1, 2 | (1 << 2), 1]);
   });
 
   // Regression: issue #3352 — MeshCore's wire protocol expects fixed-point

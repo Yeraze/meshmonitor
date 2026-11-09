@@ -121,6 +121,8 @@ interface RouteCase {
   device?: (typeof DEVICE_METHODS)[number];
   /** Routes that 400 without an explicit sourceId (requireSourceId). */
   explicitOnly?: boolean;
+  /** Gate built with `accept: 'config-capable'` (Meshtastic or MeshCore Companion). */
+  accept?: 'config-capable';
   /** Extra proof the handler ran against `sourceId`. */
   reached?: (sourceId: string, manager: FakeManager) => void;
 }
@@ -162,8 +164,8 @@ const CASES: RouteCase[] = [
   // encode-url embeds full AES PSKs in the returned URL, so it is gated on
   // `configuration:write`, not `:read` (MISC-02 / #6058). With action:'write'
   // the shared cases below also assert a configuration:read-only caller is 403'd.
-  { router: 'channels', method: 'post', route: '/encode-url', action: 'write', from: 'body', payload: { channelIds: 'not-an-array' }, allowed: 400, explicitOnly: true },
-  { router: 'channels', method: 'post', route: '/import-config', action: 'write', from: 'body', payload: {}, allowed: 400, explicitOnly: true },
+  { router: 'channels', method: 'post', route: '/encode-url', action: 'write', from: 'body', payload: { channelIds: 'not-an-array' }, allowed: 400, explicitOnly: true, accept: 'config-capable' },
+  { router: 'channels', method: 'post', route: '/import-config', action: 'write', from: 'body', payload: {}, allowed: 400, explicitOnly: true, accept: 'config-capable' },
   {
     router: 'backup', method: 'post', route: '/restore/:filename', path: '/restore/backup-1.yaml', action: 'write', from: 'body', allowed: 200,
     reached: (_sourceId, manager) => expect(deviceRestoreService.restoreBackup).toHaveBeenCalledWith(manager, expect.any(String)),
@@ -498,7 +500,9 @@ describe('guard: device-config routes are registered with a source-scoped gate',
       const route = registeredRoutes(routers[c.router]).find((r) => key(r.method, r.path) === key(c.method, c.route));
       expect(route, label(c)).toBeDefined();
       const gate = route!.handlers.map((h) => getDeviceSourceGate(h)).find((g) => g !== undefined);
-      expect(gate, label(c)).toEqual({ resource: 'configuration', action: c.action, from: c.from });
+      expect(gate, label(c)).toEqual({
+        resource: 'configuration', action: c.action, from: c.from, ...(c.accept ? { accept: c.accept } : {}),
+      });
     }
   });
 

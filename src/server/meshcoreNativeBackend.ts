@@ -409,7 +409,11 @@ const OTHER_PARAMS_COMMANDS: ReadonlySet<string> = new Set([
   'set_telemetry_mode_env',
   'set_other_params',
   'set_auto_add_contacts',
+  'set_multi_acks', // P8a #6257: 5th byte of SetOtherParams
 ]);
+
+/** Factory reset gives up waiting for an OK/ERR after this long (the firmware closes serial first). */
+const FACTORY_RESET_SILENCE_MS = 3000;
 
 type AutoAddExchangeResult =
   | { kind: 'reply'; config: number; maxHops: number }
@@ -2788,21 +2792,30 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'set_other_params': {
         // Atomic multi-field SetOtherParams (issue #3904). telemetryMode* accept
         // the raw 2-bit values (numeric pass-through) as well as strings.
-        const manualAddContacts = Number(params.manualAddContacts) ? 1 : 0;
+        // Only bit 0 of manual_add_contacts is the caller's: the per-type
+        // auto-add bits above it are read from a fresh SelfInfo and kept
+        // (P8a #6257, meshcore.js's setOtherParams used to wipe them).
+        const manualBit = Number(params.manualAddContacts) ? 1 : 0;
         const telemetryModeBase = telemetryModeStringToNumber(params.telemetryModeBase ?? 0);
         const telemetryModeLoc = telemetryModeStringToNumber(params.telemetryModeLoc ?? 0);
         const telemetryModeEnv = telemetryModeStringToNumber(params.telemetryModeEnv ?? 0);
         const advLocPolicy = Number(params.advLocPolicy ?? 0) & 0xff;
-        await c.setOtherParams({
-          manualAddContacts,
-          telemetryModeBase,
-          telemetryModeLoc,
-          telemetryModeEnv,
-          advLocPolicy,
-        });
+        const info = (await c.getSelfInfo(10_000).catch(() => null)) as Record<string, unknown> | null;
+        const cached = this.cachedSelfInfo as Record<string, unknown> | null;
+        const rawManual = typeof info?.manualAddContacts === 'number'
+          ? info.manualAddContacts
+          : typeof cached?.manualAddContacts === 'number' ? cached.manualAddContacts : 0;
+        const manualAddContacts = ((rawManual & 0xff) & ~0x01) | manualBit;
+        const telemetryPacked = telemetryModeBase | (telemetryModeLoc << 2) | (telemetryModeEnv << 4);
+        await this.writeOtherParamsFrame(c, K, {
+          manual: manualAddContacts,
+          telemPacked: telemetryPacked,
+          advLoc: advLocPolicy,
+        }, 'Device rejected the other-params setting');
         if (this.cachedSelfInfo) {
           const s = this.cachedSelfInfo as any;
           s.manualAddContacts = manualAddContacts;
+          s.telemetryMode = telemetryPacked;
           s.telemetryModeBase = telemetryModeBase;
           s.telemetryModeLoc = telemetryModeLoc;
           s.telemetryModeEnv = telemetryModeEnv;
@@ -2817,49 +2830,90 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // higher bits are per-type auto-add flags, and SetOtherParams(38)
         // rewrites the telemetry modes and advert location policy in the same
         // frame, so this is a read-modify-write against a FRESH SelfInfo.
-        // meshcore.js's setOtherParams writes `manualAddContacts ? 1 : 0`,
-        // which would wipe the higher bits, so the frame is built here:
-        // [38][manual_add_contacts][telemetry modes, packed][advert loc policy].
-        // A 4-byte frame leaves later fields (multi_acks) untouched.
         // Local serial write — nothing is transmitted.
         const enabled = params.enabled === true;
-        const info = (await c.getSelfInfo(10_000)) as Record<string, unknown> | null;
-        if (!info || typeof info.manualAddContacts !== 'number') {
-          throw new Error('Could not read the current device settings');
-        }
-        const current = info.manualAddContacts & 0xff;
-        const next = enabled ? current & ~0x01 : current | 0x01;
-        const bits2 = (v: unknown): number => (typeof v === 'number' ? v : 0) & 0b11;
-        const telemetryPacked = typeof info.telemetryMode === 'number'
-          ? info.telemetryMode & 0xff
-          : bits2(info.telemetryModeBase) | (bits2(info.telemetryModeLoc) << 2) | (bits2(info.telemetryModeEnv) << 4);
-        const advLocPolicy = Number(info.advLocPolicy ?? 0) & 0xff;
-        await new Promise<void>((resolve, reject) => {
-          const onOk = () => {
-            c.off(K.ResponseCodes.Ok, onOk);
-            c.off(K.ResponseCodes.Err, onErr);
-            resolve();
-          };
-          const onErr = () => {
-            c.off(K.ResponseCodes.Ok, onOk);
-            c.off(K.ResponseCodes.Err, onErr);
-            reject(new Error('Device rejected the auto-add setting'));
-          };
-          c.once(K.ResponseCodes.Ok, onOk);
-          c.once(K.ResponseCodes.Err, onErr);
-          // 38 = CMD_SET_OTHER_PARAMS.
-          c.sendToRadioFrame(Uint8Array.from([38, next & 0xff, telemetryPacked, advLocPolicy]));
-        });
+        const cur = await this.readOtherParams(c);
+        const next = enabled ? cur.manual & ~0x01 : cur.manual | 0x01;
+        await this.writeOtherParamsFrame(c, K, {
+          manual: next,
+          telemPacked: cur.telemPacked,
+          advLoc: cur.advLoc,
+        }, 'Device rejected the auto-add setting');
         if (this.cachedSelfInfo) {
           const s: Record<string, unknown> = this.cachedSelfInfo;
           s.manualAddContacts = next;
-          s.telemetryMode = telemetryPacked;
-          s.telemetryModeBase = telemetryPacked & 0b11;
-          s.telemetryModeLoc = (telemetryPacked >> 2) & 0b11;
-          s.telemetryModeEnv = (telemetryPacked >> 4) & 0b11;
-          s.advLocPolicy = advLocPolicy;
+          s.telemetryMode = cur.telemPacked;
+          s.telemetryModeBase = cur.telemPacked & 0b11;
+          s.telemetryModeLoc = (cur.telemPacked >> 2) & 0b11;
+          s.telemetryModeEnv = (cur.telemPacked >> 4) & 0b11;
+          s.advLocPolicy = cur.advLoc;
         }
         return { manual_add_contacts: next, auto_add: (next & 0x01) === 0 };
+      }
+
+      case 'set_multi_acks': {
+        // P8a #6257: 5th byte of SetOtherParams (companion-v1.7.4+). Older
+        // firmware ignores it, so read SelfInfo back and report what the
+        // device kept: the manager turns a mismatch into MULTI_ACKS_UNSUPPORTED.
+        // Local serial write; the AIRTIME effect is why the route caps it at 1.
+        const value = Number(params.value);
+        if (!Number.isInteger(value) || value < 0 || value > 255) {
+          throw new Error(`Invalid multi_acks value: ${params.value}`);
+        }
+        const cur = await this.readOtherParams(c);
+        await this.writeOtherParamsFrame(c, K, {
+          manual: cur.manual,
+          telemPacked: cur.telemPacked,
+          advLoc: cur.advLoc,
+          multiAcks: value,
+        }, 'Device rejected the multi-ACKs setting');
+        const back = (await c.getSelfInfo(10_000).catch(() => null)) as Record<string, unknown> | null;
+        const readback = typeof back?.multiAcks === 'number' ? back.multiAcks : null;
+        if (this.cachedSelfInfo && readback !== null) {
+          this.cachedSelfInfo.multiAcks = readback;
+        }
+        return { multi_acks: readback, requested: value };
+      }
+
+      case 'set_device_pin': {
+        // P8a #6257: CMD_SET_DEVICE_PIN (37) [37][u32 LE pin]. No meshcore.js
+        // helper. Firmware accepts 0 or 100000-999999 (else ERR); applies
+        // after the next boot. Local serial write, no RF.
+        const pin = Number(params.pin);
+        if (!Number.isInteger(pin) || (pin !== 0 && (pin < 100000 || pin > 999999))) {
+          throw new Error('BLE PIN must be 0 or 100000-999999');
+        }
+        const frame = new Uint8Array(5);
+        frame[0] = 37;
+        new DataView(frame.buffer).setUint32(1, pin, true);
+        await this.rawOkErr(c, K, frame, 'Device rejected the BLE PIN');
+        return { ok: true, pin };
+      }
+
+      case 'factory_reset': {
+        // P8a #6257: CMD_FACTORY_RESET (51) [51]['r','e','s','e','t']. The
+        // firmware disables serial BEFORE formatting, so the OK may never
+        // arrive: resolve on OK, on disconnect, or after 3 s of silence.
+        // ERR fails. Local only, but it wipes identity, prefs, channels,
+        // contacts. The caller audits first.
+        const frame = Uint8Array.from([51, 0x72, 0x65, 0x73, 0x65, 0x74]);
+        const how = await new Promise<'ok' | 'disconnected' | 'silence'>((resolve, reject) => {
+          const cleanup = () => {
+            clearTimeout(timer);
+            c.off(K.ResponseCodes.Ok, onOk);
+            c.off(K.ResponseCodes.Err, onErr);
+            this.off('disconnected', onDisc);
+          };
+          const onOk = () => { cleanup(); resolve('ok'); };
+          const onErr = () => { cleanup(); reject(new Error('Device rejected the factory reset')); };
+          const onDisc = () => { cleanup(); resolve('disconnected'); };
+          const timer = setTimeout(() => { cleanup(); resolve('silence'); }, FACTORY_RESET_SILENCE_MS);
+          c.once(K.ResponseCodes.Ok, onOk);
+          c.once(K.ResponseCodes.Err, onErr);
+          this.once('disconnected', onDisc);
+          c.sendToRadioFrame(frame);
+        });
+        return { ok: true, how };
       }
 
       case 'get_autoadd_config': {
@@ -3336,6 +3390,60 @@ export class MeshCoreNativeBackend extends EventEmitter {
     }
   }
 
+  /** Fresh SelfInfo -> the raw SetOtherParams fields (P8a #6257). */
+  private async readOtherParams(c: AnyConnection): Promise<{ manual: number; telemPacked: number; advLoc: number }> {
+    const info = (await c.getSelfInfo(10_000)) as Record<string, unknown> | null;
+    if (!info || typeof info.manualAddContacts !== 'number') {
+      throw new Error('Could not read the current device settings');
+    }
+    const bits2 = (v: unknown): number => (typeof v === 'number' ? v : 0) & 0b11;
+    const telemPacked = typeof info.telemetryMode === 'number'
+      ? info.telemetryMode & 0xff
+      : bits2(info.telemetryModeBase) | (bits2(info.telemetryModeLoc) << 2) | (bits2(info.telemetryModeEnv) << 4);
+    return {
+      manual: info.manualAddContacts & 0xff,
+      telemPacked,
+      advLoc: Number(info.advLocPolicy ?? 0) & 0xff,
+    };
+  }
+
+  /** Send a raw frame and wait for the generic Ok / Err response. */
+  private rawOkErr(c: AnyConnection, K: MeshCoreJsModule['Constants'], frame: Uint8Array, errMsg: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const onOk = () => {
+        c.off(K.ResponseCodes.Ok, onOk);
+        c.off(K.ResponseCodes.Err, onErr);
+        resolve();
+      };
+      const onErr = () => {
+        c.off(K.ResponseCodes.Ok, onOk);
+        c.off(K.ResponseCodes.Err, onErr);
+        reject(new Error(errMsg));
+      };
+      c.once(K.ResponseCodes.Ok, onOk);
+      c.once(K.ResponseCodes.Err, onErr);
+      c.sendToRadioFrame(frame);
+    });
+  }
+
+  /**
+   * The one writer of CMD_SET_OTHER_PARAMS (38):
+   * `[38][manual_add_contacts raw byte][telemetry packed][advert loc policy][multi_acks?]`.
+   * `manual` is the RAW byte (auto-add bits kept). Without `multiAcks` the
+   * frame is 4 bytes and the firmware leaves multi_acks untouched. Callers
+   * run inside runOtherParamsOp (a read-modify-write needs it).
+   */
+  private writeOtherParamsFrame(
+    c: AnyConnection,
+    K: MeshCoreJsModule['Constants'],
+    f: { manual: number; telemPacked: number; advLoc: number; multiAcks?: number },
+    errMsg: string,
+  ): Promise<void> {
+    const bytes = [38, f.manual & 0xff, f.telemPacked & 0xff, f.advLoc & 0xff];
+    if (f.multiAcks !== undefined) bytes.push(f.multiAcks & 0xff);
+    return this.rawOkErr(c, K, Uint8Array.from(bytes), errMsg);
+  }
+
   // ---------------- selfInfo / contact helpers ----------------
 
   private selfInfoToBridgeShape(): Record<string, unknown> | null {
@@ -3355,6 +3463,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
       longitude: fixedToDegrees(info.advLon),
       adv_loc_policy: info.advLocPolicy,
       manual_add_contacts: (info as any).manualAddContacts,
+      multi_acks: info.multiAcks,
       telemetry_mode_base: (info as any).telemetryModeBase,
       telemetry_mode_loc: (info as any).telemetryModeLoc,
       telemetry_mode_env: (info as any).telemetryModeEnv,

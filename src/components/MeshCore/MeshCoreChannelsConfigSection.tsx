@@ -17,6 +17,8 @@
  *    delete an existing channel.
  *  - Show the secret in hex, masked by default, with show/copy/generate.
  *  - Reorder the slots on the device (#5379, MeshCoreChannelReorderPanel).
+ *  - Share one channel as a `meshcore://channel/add` URL + QR, and import one
+ *    from such a URL (#6257), through the shared Export/Import config modals.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -41,6 +43,9 @@ import { useDiscardGuard } from '../shared/config/useDiscardGuard';
 import { base64ToHex, generateChannelKey, hexToBase64, isValidChannelKey } from '../shared/config/channelKey';
 import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
 import { MESHCORE_DOCS } from './meshcoreDocs';
+import { ExportConfigModal } from '../configuration/ExportConfigModal';
+import { ImportConfigModal } from '../configuration/ImportConfigModal';
+import { lowestFreeMeshcoreSlot, MESHCORE_DEFAULT_MAX_CHANNELS } from '../../utils/meshcoreChannelUrl';
 import styles from './MeshCoreChannelsConfigSection.module.css';
 
 interface MeshCoreChannelsConfigSectionProps {
@@ -119,6 +124,11 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   // Saved-regions catalog (#3770) — offered as scope-field suggestions so the
   // operator can pick a known region instead of typing it.
   const [savedRegions, setSavedRegions] = useState<string[]>([]);
+  // Slot count the device reports; null until known (then the default applies).
+  const [maxChannels, setMaxChannels] = useState<number | null>(null);
+  // Channel being shared (Export modal) / Import-from-URL modal open (#6257).
+  const [shareIdx, setShareIdx] = useState<number | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const { showToast } = useToast();
 
   const dirty = !!editing && (editing.isNew || !draftsEqual(editing.draft, editing.original));
@@ -146,6 +156,25 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     })();
     return () => { cancelled = true; };
   }, [baseUrl, sourceId, csrfFetch]);
+
+  // The device's slot capacity bounds where a new channel may go. Best effort:
+  // a viewer without connection:read keeps the default capacity.
+  useEffect(() => {
+    if (!sourceId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await csrfFetch(`${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/status`);
+        if (!response.ok) return;
+        const body = await response.json();
+        const max = body?.data?.localNode?.maxChannels;
+        if (!cancelled && typeof max === 'number' && max > 0) setMaxChannels(max);
+      } catch {
+        /* non-fatal — the default capacity applies */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [baseUrl, sourceId, csrfFetch, reloadTick]);
 
   useEffect(() => {
     if (!sourceId) return;
@@ -181,12 +210,12 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   // Find the smallest free channel index, starting at 1 — slot 0 is reserved
   // for MeshCore's implicit "Public" channel and must never be offered as a
   // destination for a newly added channel (issue #4733). The server mirrors
-  // this with a hard reject on writes to channel 0.
-  const nextFreeIdx = useMemo(() => {
-    const used = new Set(channels.map(c => c.id));
-    for (let i = 1; i < 256; i++) if (!used.has(i)) return i;
-    return 255;
-  }, [channels]);
+  // this with a hard reject on writes to channel 0. Bounded by the device's
+  // `maxChannels`; null when every slot is taken (#6257, no 255 fallback).
+  const nextFreeIdx = useMemo(
+    () => lowestFreeMeshcoreSlot(channels.map(c => c.id), maxChannels ?? MESHCORE_DEFAULT_MAX_CHANNELS),
+    [channels, maxChannels],
+  );
 
   const editName = editing?.draft.name ?? '';
   // A channel whose name starts with `#` is a hashtag channel: its secret is
@@ -224,6 +253,10 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   };
 
   const startAdd = () => {
+    if (nextFreeIdx === null) {
+      showToast(t('meshcore.channels.no_free_slot', 'No free channel slot. Delete a channel first.'), 'error');
+      return;
+    }
     const draft: ChannelDraft = { name: '', secretHex: generateChannelKey(SECRET_BYTES, 'hex'), scope: '' };
     setEditing({ idx: nextFreeIdx, isNew: true, draft, original: draft });
   };
@@ -430,6 +463,15 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
         title={t('meshcore.channels.title', 'Channels')}
         docsUrl={`${MESHCORE_DOCS}#channels`}
         canWrite={canWriteConfig}
+        headerActions={
+          <ConfigItemCardButton
+            onClick={() => setImportOpen(true)}
+            disabled={!canConfigure}
+            data-testid="mc-channel-import"
+          >
+            <UiIcon name="import" size={14} /> {t('meshcore.channels.import_url', 'Import from URL')}
+          </ConfigItemCardButton>
+        }
         description={t(
           'meshcore.channels.hint',
           'Channels on this MeshCore device. Each channel is a name plus a 16-byte (AES-128) shared secret. Name a channel with a leading "#" (e.g. #general) to join a public hashtag channel — its secret is derived from the name so it matches everyone else on that topic.',
@@ -505,6 +547,16 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
                   chips={chipsFor(row)}
                   expanded={isEditing}
                   disabled={!canConfigure}
+                  actions={row.psk ? (
+                    <ConfigItemCardButton
+                      onClick={() => setShareIdx(row.id)}
+                      disabled={!canConfigure}
+                      title={t('meshcore.channels.share_title', 'Share this channel as a URL and QR code')}
+                      data-testid="mc-channel-share"
+                    >
+                      <UiIcon name="link" size={14} /> {t('meshcore.channels.share', 'Share')}
+                    </ConfigItemCardButton>
+                  ) : undefined}
                   onEdit={() => discard.guard(() => startEdit(row))}
                   onDelete={() => { void handleDelete(row.id); }}
                   deleteTitle={t('meshcore.channels.delete_title', 'Delete channel {{idx}}?', { idx: row.id })}
@@ -535,7 +587,8 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
           <div className={styles.addBar}>
             <ConfigItemCardButton
               onClick={() => discard.guard(startAdd)}
-              disabled={!canConfigure || !!editing?.isNew}
+              disabled={!canConfigure || !!editing?.isNew || nextFreeIdx === null}
+              title={nextFreeIdx === null ? t('meshcore.channels.no_free_slot', 'No free channel slot. Delete a channel first.') : undefined}
               data-testid="mc-channel-add"
             >
               <UiIcon name="plus" size={14} /> {t('meshcore.channels.add', 'Add channel')}
@@ -552,6 +605,27 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
         )}
 
         <DiscardChangesDialog guard={discard} />
+
+        {shareIdx !== null && (
+          <ExportConfigModal
+            isOpen
+            onClose={() => setShareIdx(null)}
+            channels={channels}
+            deviceConfig={null}
+            protocol="meshcore"
+            initialChannelId={shareIdx}
+            sourceId={sourceId}
+          />
+        )}
+        {importOpen && (
+          <ImportConfigModal
+            isOpen
+            onClose={() => setImportOpen(false)}
+            onImportSuccess={reload}
+            protocol="meshcore"
+            sourceId={sourceId}
+          />
+        )}
 
         {confirmResetPublic && publicRow && (
           <ConfirmDialog
