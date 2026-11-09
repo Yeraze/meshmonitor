@@ -170,3 +170,12 @@ Repeater (fw 1.15+) and Companion (protocol 14+), admin + typed name for power-o
 expected identity change, `set prv.key` in the danger guard, extra CLI reply terminators, and the repeater secret
 debug-log leak fixed.
 
+
+### P10 #6256 (spec: `MESHCORE_PARITY_P10_SPEC.md`)
+Maintainer answers, 2026-11-09: the same `RepeaterSettingsForm` + settings service over a remote CLI transport; reads per
+group (identity / adverts / access) with a cost line, nothing on mount, flood warning when the path is unknown; caps one
+operation per (source, target), 40 remote commands / 10 min per source, ≥ 1 s gap, `recordMeshTx` per command, stop at the
+first timeout (rest `NOT_SENT`), no retries or auto re-login; admin password console-only, radio read-only remotely, TX
+power writable with a warning; `remote_admin:write` for read and save; Room Server hides forwarding knobs; readback only
+the sent keys; export/import from read values without secrets (also on the local form); one redacted CLI-history row per
+set; requires a remembered admin session.
