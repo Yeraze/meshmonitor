@@ -32,8 +32,8 @@ function makeRow(overrides: Partial<MeshIssueRow> = {}): MeshIssueRow {
 const ALL_TYPES = Object.keys(ISSUE_TYPE_LABELS);
 
 describe('columnsForType — structural invariants (spec §8.1/§10.1)', () => {
-  it('returns 18 canonical issue types to check', () => {
-    expect(ALL_TYPES.length).toBe(18);
+  it('returns 22 canonical issue types to check', () => {
+    expect(ALL_TYPES.length).toBe(22);
   });
 
   for (const type of ALL_TYPES) {
@@ -296,5 +296,45 @@ describe('unknown-type fallback (spec §8.5)', () => {
     expect(() => primary.render(row, CTX)).not.toThrow();
     expect(primary.render(row, CTX)).toBe(new Date(row.lastDetected).toLocaleString());
     expect(primary.sortValue(row)).toBe(row.lastDetected);
+  });
+});
+
+describe('node-health columns (#6279)', () => {
+  const renderAll = (row: MeshIssueRow) =>
+    Object.fromEntries(columnsForType(row.issueType).map((c) => [c.key, c.render(row, CTX)]));
+
+  it('A8 on a MeshCore row: mV filled, percent empty, threshold and age shown', () => {
+    const row = makeRow({
+      issueType: 'A8_low_battery',
+      subjectKey: 'mc:' + 'ab'.repeat(32),
+      nodeNum: null,
+      evidence: {
+        roleName: 'Repeater',
+        latestBatteryPct: null,
+        latestBatteryMv: 3100,
+        thresholdUsed: 3300,
+        latestReadingAgeMs: 2 * 3_600_000,
+        sampleCount: 4,
+        unit: 'mv',
+      },
+    });
+    const r = renderAll(row);
+    expect(r.latestBatteryMv).toBe('3100');
+    expect(r.latestBatteryPct).toBe('—');
+    expect(r.thresholdUsed).toBe('3300');
+    expect(r.latestReadingAgeMs).not.toBe('—');
+    const mv = columnsForType('A8_low_battery').find((c) => c.key === 'latestBatteryMv')!;
+    expect(mv.sortValue(row)).toBe(3100);
+    expect(columnsForType('A8_low_battery').find((c) => c.key === 'latestBatteryPct')!.sortValue(row)).toBeNull();
+  });
+
+  it('A6 formats the stale age as a duration and A9 shows the problem kind', () => {
+    const a6 = renderAll(makeRow({ issueType: 'A6_stale_node', evidence: { lastHeardAgeMs: 30 * 3_600_000, thresholdHours: 24 } }));
+    expect(a6.lastHeardAgeMs).not.toBe('—');
+    expect(a6.thresholdHours).toBe('24');
+    const a9 = renderAll(makeRow({ issueType: 'A9_bad_position', evidence: { positionIssue: 'null_island' } }));
+    expect(String(a9.positionIssue).toLowerCase()).toContain('null');
+    const a7 = renderAll(makeRow({ issueType: 'A7_no_position', evidence: { clause: 'no_position' } }));
+    expect(a7.clause).not.toBe('—');
   });
 });

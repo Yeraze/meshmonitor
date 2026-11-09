@@ -12,7 +12,7 @@ import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import { drizzle as drizzlePostgres } from 'drizzle-orm/node-postgres';
 import { drizzle as drizzleMysql } from 'drizzle-orm/mysql2';
 import * as schema from '../schema/index.js';
-import { MeshCoreHopSnrRepository, type MeshCoreHopSnrRow } from './meshcoreHopSnr.js';
+import { MeshCoreHopSnrRepository, EXPLORER_ROW_SCAN_LIMIT, type MeshCoreHopSnrRow } from './meshcoreHopSnr.js';
 import {
   migration as migration201,
   runMigration201Postgres,
@@ -175,6 +175,44 @@ function runRepoSuite(getRepo: () => MeshCoreHopSnrRepository, clear: () => Prom
     expect((await repo.getResolvedLinks(SRC_A, 2000)).map((r) => r.timestamp)).toEqual([6000, 3000]);
     expect(await repo.getResolvedLinks(SRC_A, 0, 1)).toHaveLength(1);
     expect(await repo.getResolvedLinks(SRC_B, 0)).toHaveLength(1);
+  });
+
+  it('getInitiatedTracesForExplorer groups initiated traces, newest first, and flags both truncation caps (#6276)', async () => {
+    const t = (tag: number, hopIndex: number, ts: number, over: Partial<MeshCoreHopSnrRow> = {}) =>
+      row({ traceTag: tag, hopIndex, initiated: true, timestamp: ts, ...over });
+    await repo.insertHops(SRC_A, [
+      t(1, 0, 1000), t(1, 1, 1000),
+      t(2, 1, 2000), t(2, 0, 2000),
+      row({ traceTag: 3, hopIndex: 0, initiated: false, timestamp: 3000 }),
+    ]);
+    await repo.insertHops(SRC_B, [row({ sourceId: SRC_B, traceTag: 9, initiated: true, timestamp: 4000 })]);
+    const all = await repo.getInitiatedTracesForExplorer(SRC_A, 0, 10);
+    expect(all.truncated).toBe(false);
+    expect(all.traces.map((g) => g.map((r) => [r.traceTag, r.hopIndex]))).toEqual([
+      [[2, 0], [2, 1]],
+      [[1, 0], [1, 1]],
+    ]);
+    // Trace cap: a third trace exists beyond the limit.
+    const capped = await repo.getInitiatedTracesForExplorer(SRC_A, 0, 1);
+    expect(capped.truncated).toBe(true);
+    expect(capped.traces).toHaveLength(1);
+    // Exactly the cap is not truncation.
+    expect((await repo.getInitiatedTracesForExplorer(SRC_A, 0, 2)).truncated).toBe(false);
+    expect((await repo.getInitiatedTracesForExplorer(SRC_A, 1500, 10)).traces).toHaveLength(1);
+    expect((await repo.getInitiatedTracesForExplorer(SRC_B, 0, 10)).traces).toHaveLength(1);
+    expect(await repo.getInitiatedTracesForExplorer(SRC_A, 0, 0)).toEqual({ traces: [], truncated: false });
+    await expect(repo.getInitiatedTracesForExplorer('', 0, 5)).rejects.toThrow(/sourceId/);
+  });
+
+  it('getInitiatedTracesForExplorer flags the row scan cap (#6276)', async () => {
+    const rows: MeshCoreHopSnrRow[] = [];
+    for (let i = 0; i < EXPLORER_ROW_SCAN_LIMIT + 1; i++) {
+      rows.push(row({ traceTag: i + 1, initiated: true, timestamp: 10_000 + i }));
+    }
+    for (let i = 0; i < rows.length; i += 1000) await repo.insertHops(SRC_A, rows.slice(i, i + 1000));
+    const r = await repo.getInitiatedTracesForExplorer(SRC_A, 0, EXPLORER_ROW_SCAN_LIMIT + 10);
+    expect(r.truncated).toBe(true);
+    expect(r.traces).toHaveLength(EXPLORER_ROW_SCAN_LIMIT);
   });
 
   it('retention and source deletion touch only that source', async () => {

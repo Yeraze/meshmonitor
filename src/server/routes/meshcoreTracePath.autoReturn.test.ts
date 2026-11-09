@@ -51,7 +51,7 @@ describe('POST /contacts/:publicKey/trace-path — auto return path (#5485)', ()
     const res = await agent.post(url()).send({ autoReturn: true });
 
     expect(res.status).toBe(200);
-    expect(traceContactPath).toHaveBeenCalledWith(VALID_PK, { autoReturn: true });
+    expect(traceContactPath).toHaveBeenCalledWith(VALID_PK, { autoReturn: true, origin: 'manual' });
     expect(res.body).toMatchObject({ success: true, path: ['5e', 'f6', '5e'], lastSnr: 3 });
   });
 
@@ -65,6 +65,6 @@ describe('POST /contacts/:publicKey/trace-path — auto return path (#5485)', ()
     const res = await (body ? req.send(body) : req.send());
 
     expect(res.status).toBe(200);
-    expect(traceContactPath).toHaveBeenCalledWith(VALID_PK, { autoReturn: false });
+    expect(traceContactPath).toHaveBeenCalledWith(VALID_PK, { autoReturn: false, origin: 'manual' });
   });
 });

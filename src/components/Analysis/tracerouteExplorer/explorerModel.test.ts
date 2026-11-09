@@ -7,12 +7,15 @@ import {
   groupByPair,
   pathVariants,
   snrBand,
+  nodeLabel,
+  runToKeySegments,
   summarize,
   type ExplorerNodeWire,
   type ExplorerRunWire,
 } from './explorerModel';
 
 const A = 0xa1, B = 0xb2, R1 = 0x11, R2 = 0x22, R3 = 0x33;
+const k = (n: number) => `mt:${n}`;
 
 let nextId = 1;
 function wire(o: Partial<ExplorerRunWire> = {}): ExplorerRunWire {
@@ -39,9 +42,9 @@ describe('buildRuns', () => {
   it('parses forward/return sequences with per-link SNR in dB', () => {
     const [run] = buildRuns([wire()]);
     expect(run.answered).toBe(true);
-    expect(run.forward).toEqual([A, R1, R2, B]);
+    expect(run.forward).toEqual([k(A), k(R1), k(R2), k(B)]);
     expect(run.forwardSnr).toEqual([6, -3, -10]);
-    expect(run.back).toEqual([B, R2, R1, A]);
+    expect(run.back).toEqual([k(B), k(R2), k(R1), k(A)]);
     expect(run.hops).toBe(2);
     expect(run.asymmetric).toBe(false);
     expect(run.transport).toBe('rf');
@@ -54,7 +57,7 @@ describe('buildRuns', () => {
 
   it('treats an empty route as a direct, answered run', () => {
     const [run] = buildRuns([wire({ route: '[]', routeBack: '[]', snrTowards: '[20]', snrBack: '[12]' })]);
-    expect(run).toMatchObject({ answered: true, forward: [A, B], hops: 0 });
+    expect(run).toMatchObject({ answered: true, forward: [k(A), k(B)], hops: 0 });
     expect(run.forwardSnr).toEqual([5]);
   });
 
@@ -101,8 +104,8 @@ describe('buildRuns', () => {
 });
 
 describe('filterRuns', () => {
-  const nodes = new Map<number, ExplorerNodeWire>([
-    [R3, { nodeNum: R3, nodeId: '!00000033', shortName: 'PEAK', longName: 'Bald Peak', role: null, hwModel: null, latitude: null, longitude: null }],
+  const nodes = new Map<string, ExplorerNodeWire>([
+    [k(R3), { nodeNum: R3, nodeId: '!00000033', shortName: 'PEAK', longName: 'Bald Peak', role: null, hwModel: null, latitude: null, longitude: null }],
   ]);
   const runs = buildRuns([
     wire({ timestamp: 1 }),
@@ -120,7 +123,7 @@ describe('filterRuns', () => {
     expect(ts({ transports: ['mqtt'] })).toEqual([2]);
   });
   it('filters by relay node and by name search', () => {
-    expect(ts({ nodeNum: R1 })).toEqual([1]);
+    expect(ts({ nodeKey: k(R1) })).toEqual([1]);
     expect(ts({ search: 'peak' })).toEqual([2]);
     expect(ts({ search: '!00000011' })).toEqual([1]);
   });
@@ -143,7 +146,7 @@ describe('aggregates', () => {
 
   it('groups by pair, newest pair first', () => {
     const pairs = groupByPair(runs);
-    expect(pairs.map(p => p.key)).toEqual([`${R1}>${R2}`, `${A}>${B}`]);
+    expect(pairs.map(p => p.key)).toEqual([`${k(R1)}>${k(R2)}`, `${k(A)}>${k(B)}`]);
     expect(pairs[1]).toMatchObject({ answeredCount: 3, distinctPaths: 2, medianHops: 2 });
     expect(pairs[1].latestAnswered?.timestamp).toBe(3);
     expect(pairs[0]).toMatchObject({ answeredCount: 0, latestAnswered: null, medianHops: null });
@@ -152,20 +155,120 @@ describe('aggregates', () => {
   it('lists path variants by frequency', () => {
     const v = pathVariants(groupByPair(runs)[1].runs);
     expect(v.map(x => [x.path, x.count])).toEqual([
-      [[A, R1, R2, B], 2],
-      [[A, R3, B], 1],
+      [[k(A), k(R1), k(R2), k(B)], 2],
+      [[k(A), k(R3), k(B)], 1],
     ]);
   });
 
   it('aggregates undirected link usage across both legs', () => {
     const links = aggregateLinks(runs);
-    const ar1 = links.find(l => l.a === R1 && l.b === A);
+    const ar1 = links.find(l => l.a === k(A) && l.b === k(R1));
     // 2 runs × (forward A→R1 + return R1→A)
     expect(ar1).toMatchObject({ count: 4 });
-    expect(links.find(l => (l.a === A && l.b === R3) || (l.a === R3 && l.b === A))?.count).toBe(1);
+    expect(links.find(l => [l.a, l.b].sort().join() === [k(A), k(R3)].sort().join())?.count).toBe(1);
   });
 
   it('bands SNR', () => {
     expect([snrBand(3), snrBand(0), snrBand(-5), snrBand(-8), snrBand(null)]).toEqual(['good', 'good', 'fair', 'poor', 'unknown']);
+  });
+});
+
+describe('MeshCore runs (#6276)', () => {
+  const L = 'aa'.repeat(32), R = '11'.repeat(32), T = '77'.repeat(32), COMP = 'cc'.repeat(32);
+  const mc = (o: Partial<ExplorerRunWire> = {}): ExplorerRunWire => {
+    const id = nextId++;
+    return {
+      protocol: 'meshcore', id, sourceId: 'mc-src', timestamp: 2_000_000 + id,
+      // synthetic numbers deliberately collide with the Meshtastic node A
+      fromNodeNum: A, toNodeNum: B, route: '[]', routeBack: '[]', snrTowards: '[20]', snrBack: '[-4]',
+      channel: null, packetId: null, transportMechanism: null,
+      fromKey: `mc:${L}`, toKey: `mc:${T}`, routeKeys: [`mc:${L}`, `mc:${T}`], routeBackKeys: [`mc:${T}`, `mc:${L}`],
+      turnaroundKey: `mc:${T}`, reachedTarget: true, traceTag: id, ...o,
+    };
+  };
+
+  it('keeps a MeshCore node and a Meshtastic node with the same synthetic number distinct', () => {
+    const runs = buildRuns([wire({ timestamp: 5 }), mc({ timestamp: 6 })]);
+    const [m, t] = runs;
+    expect(m.protocol).toBe('meshcore');
+    expect(t.protocol).toBe('meshtastic');
+    expect(m.fromNodeNum).toBe(t.fromNodeNum);
+    expect(m.fromKey).not.toBe(t.fromKey);
+    expect(m.pairKey).not.toBe(t.pairKey);
+    expect(m.transport).toBe('rf');
+  });
+
+  it('builds legs from the key arrays; SNR is dB*4 and a -128 is unknown', () => {
+    const [run] = buildRuns([mc({
+      routeKeys: [`mc:${L}`, `mc:${R}`, `mc:${T}`], routeBackKeys: [`mc:${T}`, `mc:${R}`, `mc:${L}`],
+      route: JSON.stringify([1]), snrTowards: '[20,-128]', snrBack: '[8,-4]',
+    })]);
+    expect(run).toMatchObject({ answered: true, hops: 1, reachedTarget: true });
+    expect(run.forwardSnr).toEqual([5, null]);
+    expect(run.backSnr).toEqual([2, -1]);
+  });
+
+  it('a turnaround before a companion target aligns SNR to the legs and keeps the target as toKey', () => {
+    const [run] = buildRuns([mc({
+      toKey: `mc:${COMP}`, reachedTarget: false, turnaroundKey: `mc:${R}`,
+      routeKeys: [`mc:${L}`, `mc:${R}`], routeBackKeys: [`mc:${R}`, `mc:${L}`],
+      snrTowards: '[20,-128]', snrBack: '[-128,-4]',
+    })]);
+    expect(run.toKey).toBe(`mc:${COMP}`);
+    expect(run.forward).toEqual([`mc:${L}`, `mc:${R}`]);
+    expect(run.forwardSnr).toEqual([5]);
+    expect(run.backSnr).toEqual([-1]);
+    expect(run.reachedTarget).toBe(false);
+  });
+
+  it('a timeout or failed run is unanswered but keeps its endpoints', () => {
+    const [run] = buildRuns([mc({ status: 'timeout', routeKeys: null, routeBackKeys: null, route: null, routeBack: null, snrTowards: null, snrBack: null })]);
+    expect(run).toMatchObject({ answered: false, forward: null, fromKey: `mc:${L}`, toKey: `mc:${T}` });
+  });
+
+  it('never merges MeshCore runs, even with equal tags on different sources', () => {
+    const a = mc({ id: 900, traceTag: 5 }), b = mc({ id: 901, traceTag: 5, sourceId: 'mc-2' });
+    expect(buildRuns([a, b])).toHaveLength(2);
+  });
+
+  it('aggregateLinks skips mch: ends', () => {
+    const [run] = buildRuns([mc({
+      routeKeys: [`mc:${L}`, 'mch:a3', `mc:${T}`], routeBackKeys: [`mc:${T}`, 'mch:a3', `mc:${L}`],
+      route: JSON.stringify([4294967295]), snrTowards: '[20,12]', snrBack: '[8,-4]',
+    })]);
+    expect(aggregateLinks([run])).toEqual([]);
+  });
+
+  it('searches by public-key prefix and by hash; filters by protocol', () => {
+    const runs = buildRuns([wire({ timestamp: 1 }), mc({ timestamp: 2, routeKeys: [`mc:${L}`, 'mch:a3', `mc:${T}`], routeBackKeys: null })]);
+    const none = new Map<string, ExplorerNodeWire>();
+    const f = (o: Partial<typeof DEFAULT_FILTERS>) => filterRuns(runs, { ...DEFAULT_FILTERS, ...o }, none).map(r => r.timestamp);
+    expect(f({ search: '7777' })).toEqual([2]);
+    expect(f({ search: 'a3' })).toEqual([2]);
+    expect(f({ protocol: 'meshtastic' })).toEqual([1]);
+    expect(f({ protocol: 'meshcore' })).toEqual([2]);
+    expect(f({ nodeKey: `mc:${R}` })).toEqual([]);
+    expect(f({ nodeKey: 'mch:a3' })).toEqual([2]);
+  });
+
+  it('labels: name, then 8 hex; unresolved hash as ?hash', () => {
+    const nodes = new Map<string, ExplorerNodeWire>([
+      [`mc:${L}`, { nodeNum: 1, nodeKey: `mc:${L}`, protocol: 'meshcore', nodeId: `mc:${L}`, shortName: null, longName: 'Hilltop', role: null, hwModel: null, latitude: null, longitude: null }],
+    ]);
+    expect(nodeLabel(nodes, `mc:${L}`)).toBe('Hilltop');
+    expect(nodeLabel(nodes, `mc:${T}`)).toBe('77777777');
+    expect(nodeLabel(nodes, 'mch:a3')).toBe('?a3');
+    expect(nodeLabel(nodes, 'mt:161')).toBe('!00a1');
+  });
+
+  it('runToKeySegments: one segment per positioned pair, mch: and unpositioned ends skipped', () => {
+    const [run] = buildRuns([mc({
+      routeKeys: [`mc:${L}`, `mc:${R}`, 'mch:a3', `mc:${T}`], routeBackKeys: null,
+      route: JSON.stringify([1, 4294967295]), snrTowards: '[20,12,8]', snrBack: null,
+    })]);
+    const p: Record<string, [number, number]> = { [`mc:${L}`]: [1, 1], [`mc:${R}`]: [2, 2], [`mc:${T}`]: [3, 3] };
+    const segs = runToKeySegments(run, key => p[key] ?? null);
+    expect(segs).toHaveLength(1);
+    expect(segs[0]).toMatchObject({ fromKey: `mc:${L}`, toKey: `mc:${R}`, leg: 'forward', avgSnr: 5 });
   });
 });

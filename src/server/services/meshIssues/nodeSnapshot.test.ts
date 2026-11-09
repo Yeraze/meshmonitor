@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildPooledNodeSnapshot, buildTelemetrySeries, type PooledNodeInput } from './nodeSnapshot.js';
+import {
+  buildPooledNodeSnapshot,
+  buildTelemetrySeries,
+  classifyReportedPosition,
+  bogusPositionKind,
+  type PooledNodeInput,
+} from './nodeSnapshot.js';
 
 function makeInput(overrides: Partial<PooledNodeInput> = {}): PooledNodeInput {
   return {
@@ -269,9 +275,9 @@ describe('buildTelemetrySeries', () => {
     ];
     const series = buildTelemetrySeries(rows);
     expect(series.get(100)!.airUtilTx).toHaveLength(1);
-    // No stray key beyond the four known series.
+    // No stray key beyond the known series.
     expect(Object.keys(series.get(100)!).sort()).toEqual(
-      ['airUtilTx', 'batteryLevel', 'channelUtilization', 'uptimeSeconds'].sort()
+      ['airUtilTx', 'batteryLevel', 'batteryMv', 'channelUtilization', 'uptimeSeconds'].sort()
     );
   });
 
@@ -291,5 +297,86 @@ describe('buildTelemetrySeries', () => {
     expect(series.get(100)!.channelUtilization).toHaveLength(0);
     expect(series.get(200)!.airUtilTx).toHaveLength(0);
     expect(series.get(200)!.channelUtilization).toHaveLength(1);
+  });
+});
+
+describe('node-health fields (#6279)', () => {
+  it('reportedPosition is none when no row has a raw pair', () => {
+    const node = buildPooledNodeSnapshot([makeInput({ updatedAt: 1000 })]).get(100)!;
+    expect(node.reportedPosition).toBe('none');
+    expect(node.hasPositionOverride).toBe(false);
+  });
+
+  it('an override does not hide a bogus raw pair, and counts as an override', () => {
+    const node = buildPooledNodeSnapshot([
+      makeInput({
+        updatedAt: 1000,
+        latitude: 0,
+        longitude: 0,
+        positionOverrideEnabled: 1,
+        latitudeOverride: 40,
+        longitudeOverride: -100,
+      }),
+    ]).get(100)!;
+    expect(node.reportedPosition).toBe('bogus');
+    expect(node.hasPositionOverride).toBe(true);
+    expect(node.latitude).toBe(40);
+  });
+
+  it('an override without raw coordinates is still none, and an incomplete override is not an override', () => {
+    const withOverride = buildPooledNodeSnapshot([
+      makeInput({ updatedAt: 1000, positionOverrideEnabled: true, latitudeOverride: 1, longitudeOverride: 2 }),
+    ]).get(100)!;
+    expect(withOverride.reportedPosition).toBe('none');
+    expect(withOverride.hasPositionOverride).toBe(true);
+    const half = buildPooledNodeSnapshot([
+      makeInput({ updatedAt: 1000, positionOverrideEnabled: true, latitudeOverride: 1 }),
+    ]).get(100)!;
+    expect(half.hasPositionOverride).toBe(false);
+  });
+
+  it('classifies a valid fix, out-of-range junk, and a precision-offset Null Island fix', () => {
+    expect(classifyReportedPosition(40, -100)).toBe('valid');
+    expect(classifyReportedPosition(1853.45, -1598.75)).toBe('bogus');
+    expect(classifyReportedPosition(null, 5)).toBe('none');
+    expect(classifyReportedPosition(0, 0)).toBe('bogus');
+    expect(bogusPositionKind(0, 0)).toBe('null_island');
+    expect(bogusPositionKind(1853.45, 0)).toBe('out_of_range');
+  });
+
+  it('takes the class from the freshest row that has a raw pair', () => {
+    const node = buildPooledNodeSnapshot([
+      makeInput({ sourceId: 'src-a', updatedAt: 1000, latitude: 40, longitude: -100 }),
+      makeInput({ sourceId: 'src-b', updatedAt: 2000, latitude: 0, longitude: 0 }),
+      makeInput({ sourceId: 'src-c', updatedAt: 3000 }),
+    ]).get(100)!;
+    expect(node.reportedPosition).toBe('bogus');
+  });
+
+  it('hasPositionOverride and isLocal are ORed across rows', () => {
+    const node = buildPooledNodeSnapshot([
+      makeInput({ sourceId: 'src-a', updatedAt: 1000 }),
+      makeInput({
+        sourceId: 'src-b',
+        updatedAt: 500,
+        isLocal: true,
+        positionOverrideEnabled: 1,
+        latitudeOverride: 1,
+        longitudeOverride: 2,
+      }),
+    ]).get(100)!;
+    expect(node.hasPositionOverride).toBe(true);
+    expect(node.isLocal).toBe(true);
+  });
+});
+
+describe('buildTelemetrySeries batteryMv (#6279)', () => {
+  it('keeps batteryMv as its own sorted series', () => {
+    const series = buildTelemetrySeries([
+      { nodeNum: 100, telemetryType: 'batteryMv', timestamp: 2000, value: 3500, sourceId: 'src-a' },
+      { nodeNum: 100, telemetryType: 'batteryMv', timestamp: 1000, value: 3600, sourceId: 'src-a' },
+    ]);
+    expect(series.get(100)!.batteryMv.map((s) => s.value)).toEqual([3600, 3500]);
+    expect(series.get(100)!.batteryLevel).toEqual([]);
   });
 });

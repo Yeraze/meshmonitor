@@ -58,6 +58,8 @@ Each phase's scope is the checklist in its issue.
 - [x] **P9 #6255 Repeater settings + danger zone.**
 - [x] **P10 #6256 Remote structured config.**
 - [x] **P11 #6253 Notifications.**
+- [x] **P12 #6279 Mesh Issues node-health rules (A6-A9).**
+- [x] **P13 #6306 Repeater new-node alerts** (shared learning-window + hourly-cap gate).
 
 ## Phase log
 
@@ -196,6 +198,29 @@ message notifier (channel / DM / room post, content dedup keys, one ordered ment
 server connect/disconnect and trace/path-discovery notifications, a notification capability map for the tab
 (Companion vs Repeater, channel list from `/api/channels/all`), shared audio settings + `useMessageSound`, and
 click-through on the MeshCore page. Follow-ups: Repeater advert new-node alerts; a Notifications tab for `meshcore_mqtt`.
+
+### P12 #6279 (spec: `MESHCORE_PARITY_P12_SPEC.md`)
+Maintainer decisions, 2026-11-09: all recommended options. Infra nodes only; stale 24 h Meshtastic / 96 h MeshCore
+(tunable) and no flag after 30 days; low battery 20 % / 3300 mV (tunable); a position override suppresses A7; A8 skips
+nodes whose A3 battery clause fires; A9 accepted as mostly quiet with discard on; A6-A9 in Tier A. No RF, no notifications.
+Shipped (P12): one shared implementation of A6 stale, A7 no position, A8 low battery and A9 bad position on `PooledNode`
+for both protocols (`rulesNodeHealth.ts`, pure helpers in `nodeHealth.ts`), new `PooledNode` fields (reported position
+class, override, advert-had-position, local), an always-mV `batteryMv` series (MeshCore `mc_battery_mv` and
+`mc_status_battery_volts` x1000), four threshold settings, `tierASkips` (silent-source A6 and no-battery A8) and one
+`buildTierAContext` for both run paths. Deviations: A6 `aliveSources` joins the route's source-id redaction (it would
+have leaked hidden ids); the Meshtastic telemetry query keeps its four DB types. Verified: a Repeater-source's local
+battery rows are filed under the real public key, but that source has no own node row, so they only count when an advert
+creates one.
+
+### P13 #6306 (spec: `MESHCORE_PARITY_P13_SPEC.md`)
+Maintainer answers, 2026-11-09: 48 h learning window and 10 alerts per hour per source as module constants, built as a
+shared protocol-neutral gate (`newNodeAlertGate`) wired to Repeater sources only (explicit exception to "no MeshCore-only
+cap"); state persisted per source; overflow adds "(+N more)" to the next alert; legacy Repeater prefs accepted with a release
+note; "new" is per source; a full node purge re-arms the window, offline gaps do not.
+Shipped (P13): `upsertNode` reports `{ inserted }`, `ingestAdvertFrame` returns `{ advert, inserted, signatureVerified }`,
+`alertNewNode` split from `notifyNewNodeDiscovered` (the Repeater path never runs Auto Welcome), bounded dedup sets,
+`maybeAlertRepeaterNewNode`, purge re-arm, Repeater toggle plus learning note in the Notifications tab. Automation events
+for Repeater adverts stay off (#5553). Follow-ups: the same gate on Meshtastic MQTT; new-node alerts for `meshcore_mqtt`.
 
 ### P16 #6285 (P8b) (spec: `MESHCORE_PARITY_P16_SPEC.md`)
 Maintainer answers, 2026-11-09: migration takes the next free number (226, after P14 took 225); download and create need

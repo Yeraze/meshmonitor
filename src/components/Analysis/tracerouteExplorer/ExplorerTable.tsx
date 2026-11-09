@@ -13,6 +13,7 @@ import {
   formatSnr,
   nodeLabel,
   nodeLongLabel,
+  type ExplorerProtocol,
   snrBand,
   type ExplorerNodeWire,
   type ExplorerPair,
@@ -27,16 +28,16 @@ const PAGE = 200;
 const SPARK_RUNS = 14;
 
 interface Ctx {
-  nodes: Map<number, ExplorerNodeWire>;
+  nodes: Map<string, ExplorerNodeWire>;
   sourceNames: Map<string, string>;
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
 }
 
 export const PathChips: React.FC<{
-  seq: number[];
+  seq: string[];
   snr: Array<number | null>;
-  nodes: Map<number, ExplorerNodeWire>;
+  nodes: Map<string, ExplorerNodeWire>;
 }> = ({ seq, snr, nodes }) => (
   <span className={styles.path}>
     {seq.map((n, i) => (
@@ -68,6 +69,18 @@ const SourceCell: React.FC<{ ids: string[]; ctx: Ctx }> = ({ ids, ctx }) => {
   );
 };
 
+/** Which protocol a run came from; shown on every row so a mixed window is readable. */
+export const ProtocolChip: React.FC<{ protocol: ExplorerProtocol }> = ({ protocol }) => {
+  const { t } = useTranslation();
+  return (
+    <span className={styles.tag} data-testid="explorer-protocol-chip" data-protocol={protocol}>
+      {protocol === 'meshcore'
+        ? t('analysis.traceroute_explorer.protocol_meshcore', 'MeshCore')
+        : t('analysis.traceroute_explorer.protocol_meshtastic', 'Meshtastic')}
+    </span>
+  );
+};
+
 const RunResult: React.FC<{ run: ExplorerRun }> = ({ run }) => {
   const { t } = useTranslation();
   return (
@@ -78,6 +91,7 @@ const RunResult: React.FC<{ run: ExplorerRun }> = ({ run }) => {
           : t('analysis.traceroute_explorer.no_response', 'No response')}
       </span>
       <span className={styles.tags}>
+        <ProtocolChip protocol={run.protocol} />
         <span className={styles.tag}>{run.transport.toUpperCase()}</span>
         {run.routeChanged && (
           <span className={`${styles.tag} ${styles.tagFlag}`}>{t('analysis.traceroute_explorer.route_changed', 'Route changed')}</span>
@@ -132,9 +146,9 @@ export const ExplorerTable: React.FC<ExplorerTableProps> = props => {
       </td>
       {!child && (
         <td className={styles.pair}>
-          {nodeLabel(ctx.nodes, run.fromNodeNum)}
+          {nodeLabel(ctx.nodes, run.fromKey)}
           <UiIcon name="forward" size={12} className={styles.pairArrow} />
-          {nodeLabel(ctx.nodes, run.toNodeNum)}
+          {nodeLabel(ctx.nodes, run.toKey)}
         </td>
       )}
       <td>
@@ -232,9 +246,10 @@ export const ExplorerTable: React.FC<ExplorerTableProps> = props => {
                     <When ts={pair.runs[0].timestamp} ctx={ctx} />
                   </td>
                   <td className={styles.pair}>
-                    {nodeLabel(ctx.nodes, pair.fromNodeNum)}
+                    {nodeLabel(ctx.nodes, pair.fromKey)}
                     <UiIcon name="forward" size={12} className={styles.pairArrow} />
-                    {nodeLabel(ctx.nodes, pair.toNodeNum)}
+                    {nodeLabel(ctx.nodes, pair.toKey)}
+                    <ProtocolChip protocol={pair.protocol} />
                   </td>
                   <td>
                     {latest?.forward ? (

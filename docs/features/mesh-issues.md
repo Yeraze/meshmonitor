@@ -69,6 +69,23 @@ matters, and what to do about it — see the
 | **A3** Infra node on failing power | Infrastructure role, not powered (battery ≠101), and either ≥2 uptime resets in 7 days or battery <20% | 20% battery floor `[MeshMonitor]` | warning (resets) / info (battery only) |
 | **A4** Mobile infra node | Infrastructure role whose observed position span exceeds the mobility distance | 500 m `[MeshMonitor]`, tunable | warning |
 | **A5** Cosplay router | ROUTER role with `isUnmessagable=false` (firmware ≥2.5.0), or broadcasting telemetry with a median interval under 2 hours (≥5 samples, needs the packet log) | 2 h median, 5 samples `[MeshMonitor]` | info |
+| **A6** Stale node | Infrastructure node not heard for longer than its stale window and for no more than 30 days. At least one source that hears it must itself have heard something inside the window | 24 h Meshtastic, 96 h MeshCore `[MeshMonitor]`, tunable | warning |
+| **A7** No position | Infrastructure node with no reported position and no position override (clauses: `no_position`, `position_sharing_disabled` on Meshtastic with 0 precision bits, `advert_without_position` on MeshCore when the last advert carried none) | — | info |
+| **A8** Low battery | Infrastructure node whose latest in-window battery reading is under the line. A3 keeps a node whose own battery clause fires, so a node shows once | 20 % Meshtastic, 3300 mV MeshCore `[MeshMonitor]`, tunable | warning |
+| **A9** Bad position | Infrastructure node whose reported position is Null Island or out of range (overrides ignored). Evidence names the problem, never the coordinates | — | info |
+
+A6–A9 run on both protocols from one implementation and look at infrastructure
+nodes only (Meshtastic routing roles, MeshCore repeaters and room servers).
+Stale is measured from `lastHeard`, the local node is never flagged, and a node
+unheard for over 30 days counts as retired and is left alone (its finding
+auto-closes). The MeshCore window is longer because a far repeater only
+refreshes `lastHeard` on a flood advert (47 h by default). A8 reads telemetry
+samples, not the last value on the node row, so an old reading cannot raise it;
+a Meshtastic node reporting 101 % (powered) or 0 % without a voltage is skipped.
+A9 mostly stays quiet while **Discard invalid positions** is on, because
+Null Island fixes are then never stored; it reports legacy rows and installs
+that turned discard off. None of these rules send anything on the radio or
+notify.
 
 ### Tier B — RF adjacency graph
 
@@ -179,7 +196,7 @@ account can see.
 
 MeshCore contacts are pooled across every enabled `meshcore` and
 `meshcore_mqtt` source by public key. A node counts as infrastructure when its
-advert type is Repeater or Room Server. Three checks run on them, all from
+advert type is Repeater or Room Server. Several checks run on them, all from
 data MeshMonitor already holds (no packets are sent):
 
 | Rule | Fires when | Notes |
@@ -189,8 +206,15 @@ data MeshMonitor already holds (no packets are sent):
 | **C2** Advert cadence | A repeater's median **flood** advert gap is under 6 hours, or its median **zero-hop** advert gap is under 60 minutes (at least 4 adverts) | Needs the MeshCore packet log (`meshcore_packet_log_enabled`); copies of one advert heard by several observers count once |
 
 When the MeshCore packet log is off, the advert check shows in the coverage
-preface as skipped instead of reporting a clean result. Stale, no-position,
-low-battery and bad-position rules are not in this set.
+preface as skipped instead of reporting a clean result.
+
+A6 to A9 (stale, no position, low battery, bad position) also run on
+repeaters and room servers; see the Tier A table. MeshCore battery comes from
+the status telemetry the operator already polls: `mc_battery_mv` (a local
+companion) and `mc_status_battery_volts` (a remote repeater, scaled to mV). A
+repeater with no battery telemetry in the window shows as skipped for A8, not
+as healthy. A repeater that is the connected source itself is judged only when
+its node row exists; the poller does not create one.
 
 A MeshCore finding is keyed `mc:<public key>` and has no node number. Its
 evidence carries the public key, the contact name and the contributing source
@@ -286,7 +310,7 @@ about 3 hours); much slower, and it lengthens correspondingly.
 
 ## Muting a rule
 
-Each rule (all 18 issue types, one row per rule, grouped by tier) has its own
+Each rule (all 22 issue types, one row per rule, grouped by tier) has its own
 mute checkbox under **Global Settings → Mesh Issues Analysis → Individual
 rules**, alongside the coarser Tier A/B/C toggles. Uncheck one to stop
 detecting it without touching anything else.
@@ -326,7 +350,7 @@ Issues Analysis**. The controls are global and require `settings:write`.
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| Tier A | on | Node health rules (A1–A5). |
+| Tier A | on | Node health rules (A1–A9). |
 | Tier B | on | RF adjacency graph rules (B1–B7). |
 | Tier C | on | Node-flag rules (C1, C2). |
 | Individual rules | all on | Below the tier toggles, one checkbox per rule (grouped by tier) mutes just that rule — see [Muting a rule](#muting-a-rule). Coverage shadow (B7) lives here now; it's the one rule observed firing at pathological volume (500+ findings) on a busy mesh. |
@@ -342,6 +366,10 @@ Issues Analysis**. The controls are global and require `settings:write`.
 | Broadcast interval floor | 300 s | 30–3,600 s | `[MeshMonitor]` |
 | Router cluster max link | 30 km | 1–500 km | `[MeshMonitor]`, B1 distance guard |
 | Auto-close after | 3 clean runs | 1–20 | `[MeshMonitor]` |
+| Stale after, Meshtastic | 24 h | 2–720 h | `[MeshMonitor]`, A6 |
+| Stale after, MeshCore | 96 h | 12–720 h | `[MeshMonitor]`, A6 |
+| Low battery, Meshtastic | 20 % | 1–80 % | `[MeshMonitor]`, A8 and the A3 battery clause |
+| Low battery, MeshCore | 3300 mV | 2500–4100 mV | `[MeshMonitor]`, A8. LiFePO4 packs rest near 3.2–3.3 V, so lower this for them |
 
 Every value is **clamped when read**, not rejected on save: an out-of-range
 number you enter is silently pulled back to the nearer bound the next time

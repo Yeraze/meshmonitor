@@ -31,7 +31,7 @@ vi.mock('../../map/BaseMap', () => ({
 
 vi.mock('../../map/layers/TraceroutePathsLayer', () => ({
   TraceroutePathsLayer: ({ segments }: any) => (
-    <div data-testid="focus-layer" data-legs={segments.map((s: any) => `${s.leg}:${s.fromNodeNum}-${s.toNodeNum}`).join(',')} />
+    <div data-testid="focus-layer" data-legs={segments.map((s: any) => `${s.leg}:${s.fromKey ?? s.fromNodeNum}-${s.toKey ?? s.toNodeNum}`).join(',')} />
   ),
 }));
 
@@ -69,7 +69,7 @@ const wire = (o: Partial<ExplorerRunWire>): ExplorerRunWire => ({
   channel: 0, packetId: null, transportMechanism: 1, ...o,
 });
 
-const nodes = new Map([node(A, 1), node(B, 2), node(R, 3)].map(n => [n.nodeNum, n]));
+const nodes = new Map([node(A, 1), node(B, 2), node(R, 3)].map(n => [`mt:${n.nodeNum}`, n]));
 const runs = buildRuns([wire({ id: 1 }), wire({ id: 2, timestamp: 2 }), wire({ id: 3, timestamp: 3, route: null, routeBack: null })]);
 
 function renderMap(props: Partial<React.ComponentProps<typeof ExplorerMap>> = {}) {
@@ -116,14 +116,14 @@ describe('ExplorerMap', () => {
   it('reports a node click', () => {
     const { onNodeClick } = renderMap();
     fireEvent.click(screen.getAllByTestId('node-marker')[0]);
-    expect(onNodeClick).toHaveBeenCalledWith(A);
+    expect(onNodeClick).toHaveBeenCalledWith(`mt:${A}`);
   });
 
   it('says so when no node has a visible position', () => {
     render(
       <ExplorerMap
         runs={runs}
-        nodes={new Map([node(A, null), node(B, null), node(R, null)].map(n => [n.nodeNum, n]))}
+        nodes={new Map([node(A, null), node(B, null), node(R, null)].map(n => [`mt:${n.nodeNum}`, n]))}
         focusRun={null}
         selectedRun={null}
         nodeFilter={null}
@@ -135,5 +135,24 @@ describe('ExplorerMap', () => {
     );
     expect(screen.getByText(/None of these nodes has a position/)).toBeInTheDocument();
     expect(screen.queryAllByTestId('link-line')).toHaveLength(0);
+  });
+
+  it('MeshCore focus segments carry keys; unpositioned and unresolved hops are skipped', () => {
+    const K1 = '11'.repeat(32), K2 = '22'.repeat(32), K3 = '33'.repeat(32);
+    const mcNode = (key: string, lat: number | null): ExplorerNodeWire => ({
+      nodeNum: 7, nodeKey: `mc:${key}`, protocol: 'meshcore', nodeId: `mc:${key}`, shortName: null, longName: `MC ${key.slice(0, 2)}`,
+      role: null, hwModel: null, latitude: lat, longitude: lat == null ? null : 10,
+    });
+    const mcNodes = new Map([mcNode(K1, 1), mcNode(K2, 2), mcNode(K3, null)].map(n => [n.nodeKey!, n]));
+    const [run] = buildRuns([wire({
+      protocol: 'meshcore', id: 50, packetId: null, fromNodeNum: 7, toNodeNum: 7, route: '[7,4294967295]', routeBack: null,
+      snrTowards: '[20,12,8]', snrBack: null,
+      fromKey: `mc:${K1}`, toKey: `mc:${K3}`, routeKeys: [`mc:${K1}`, `mc:${K2}`, 'mch:a3', `mc:${K3}`], routeBackKeys: null,
+      turnaroundKey: `mc:${K3}`, reachedTarget: true, traceTag: 1,
+    })]);
+    render(
+      <ExplorerMap runs={[run]} nodes={mcNodes} focusRun={run} selectedRun={null} nodeFilter={null} lineMode="usage" fitKey="k" onNodeClick={vi.fn()} onBackgroundClick={vi.fn()} />,
+    );
+    expect(screen.getByTestId('focus-layer').dataset.legs).toBe(`forward:mc:${K1}-mc:${K2}`);
   });
 });

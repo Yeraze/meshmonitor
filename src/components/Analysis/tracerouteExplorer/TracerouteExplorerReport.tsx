@@ -23,11 +23,14 @@ import {
   buildRuns,
   filterRuns,
   groupByPair,
+  nodeKeyOf,
   nodeLongLabel,
   summarize,
   type ExplorerFilters,
   type ExplorerNodeWire,
+  type ExplorerProtocol,
   type ExplorerRun,
+  type ProtocolFilter,
   type ResultFilter,
 } from './explorerModel';
 import { ExplorerMap, type LineMode } from './ExplorerMap';
@@ -46,8 +49,10 @@ interface Prefs {
   group: GroupMode;
   lines: LineMode;
   split: number;
+  /** Protocol filter; only applied while both protocols are in the window. */
+  protocol: ProtocolFilter;
 }
-const DEFAULT_PREFS: Prefs = { view: 'split', group: 'pair', lines: 'usage', split: 52 };
+const DEFAULT_PREFS: Prefs = { view: 'split', group: 'pair', lines: 'usage', split: 52, protocol: 'all' };
 
 function loadPrefs(): Prefs {
   try {
@@ -58,6 +63,7 @@ function loadPrefs(): Prefs {
       view: p.view === 'table' || p.view === 'map' || p.view === 'split' ? p.view : DEFAULT_PREFS.view,
       group: p.group === 'flat' ? 'flat' : 'pair',
       lines: p.lines === 'snr' ? 'snr' : 'usage',
+      protocol: p.protocol === 'meshtastic' || p.protocol === 'meshcore' ? p.protocol : 'all',
       split: typeof p.split === 'number' && p.split >= 25 && p.split <= 75 ? p.split : DEFAULT_PREFS.split,
     };
   } catch {
@@ -120,11 +126,20 @@ export const TracerouteExplorerReport: React.FC = () => {
   const data = query.data;
 
   const allRuns = useMemo(() => buildRuns(data?.runs ?? []), [data]);
-  const nodes = useMemo(() => new Map<number, ExplorerNodeWire>((data?.nodes ?? []).map(n => [n.nodeNum, n])), [data]);
+  const nodes = useMemo(() => new Map<string, ExplorerNodeWire>((data?.nodes ?? []).map(n => [nodeKeyOf(n), n])), [data]);
+  const protocolsPresent = useMemo(() => new Set(allRuns.map(r => r.protocol)), [allRuns]);
+  const bothProtocols = protocolsPresent.size > 1;
+  // The saved protocol choice applies only while it can be changed from the UI.
+  const activeFilters = useMemo<ExplorerFilters>(
+    () => ({ ...filters, protocol: bothProtocols ? prefs.protocol : 'all' }),
+    [filters, bothProtocols, prefs.protocol],
+  );
   const sourceNames = useMemo(() => new Map((data?.sources ?? []).map(s => [s.id, s.name])), [data]);
-  const devices = useMemo<DeviceInfo[]>(
-    () =>
-      (data?.nodes ?? []).map(n => ({
+  // Per protocol: a synthetic MeshCore number must never match a Meshtastic node.
+  const devicesByProtocol = useMemo<Record<ExplorerProtocol, DeviceInfo[]>>(() => {
+    const out: Record<ExplorerProtocol, DeviceInfo[]> = { meshtastic: [], meshcore: [] };
+    for (const n of data?.nodes ?? []) {
+      out[n.protocol ?? 'meshtastic'].push({
         nodeNum: n.nodeNum,
         user: {
           id: n.nodeId,
@@ -134,18 +149,19 @@ export const TracerouteExplorerReport: React.FC = () => {
           role: n.role != null ? String(n.role) : undefined,
         },
         position: n.latitude != null && n.longitude != null ? { latitude: n.latitude, longitude: n.longitude } : undefined,
-      })),
-    [data],
-  );
+      });
+    }
+    return out;
+  }, [data]);
 
   const sourceRuns = useMemo(
     () => (sourceFilter ? allRuns.filter(r => r.sourceIds.includes(sourceFilter)) : allRuns),
     [allRuns, sourceFilter],
   );
-  const mapRuns = useMemo(() => filterRuns(sourceRuns, { ...filters, nodeNum: null }, nodes), [sourceRuns, filters, nodes]);
+  const mapRuns = useMemo(() => filterRuns(sourceRuns, { ...activeFilters, nodeKey: null }, nodes), [sourceRuns, activeFilters, nodes]);
   const tableRuns = useMemo(
-    () => (syncMap && filters.nodeNum != null ? filterRuns(sourceRuns, filters, nodes) : mapRuns),
-    [syncMap, sourceRuns, filters, nodes, mapRuns],
+    () => (syncMap && activeFilters.nodeKey != null ? filterRuns(sourceRuns, activeFilters, nodes) : mapRuns),
+    [syncMap, sourceRuns, activeFilters, nodes, mapRuns],
   );
   const pairs = useMemo(() => groupByPair(tableRuns), [tableRuns]);
   const summary = useMemo(() => summarize(tableRuns), [tableRuns]);
@@ -183,8 +199,8 @@ export const TracerouteExplorerReport: React.FC = () => {
     setSelectedKey(prev => (prev === run.key ? null : run.key));
     setHoverKey(null);
   };
-  const onNodeClick = (nodeNum: number) => {
-    setFilter('nodeNum', filters.nodeNum === nodeNum ? null : nodeNum);
+  const onNodeClick = (nodeKey: string) => {
+    setFilter('nodeKey', filters.nodeKey === nodeKey ? null : nodeKey);
     setSelectedKey(null);
   };
   const onTogglePair = (key: string) =>
@@ -218,7 +234,7 @@ export const TracerouteExplorerReport: React.FC = () => {
   };
 
   const fitKey = `${rangeId}|${sourceFilter}|${data ? 'loaded' : 'empty'}`;
-  const filterNode = filters.nodeNum != null ? nodeLongLabel(nodes, filters.nodeNum) : null;
+  const filterNode = filters.nodeKey != null ? nodeLongLabel(nodes, filters.nodeKey) : null;
 
   return (
     <>
@@ -270,6 +286,24 @@ export const TracerouteExplorerReport: React.FC = () => {
               ))}
             </select>
           </label>
+          {bothProtocols && (
+            <div className={styles.field}>
+              <span>{t('analysis.traceroute_explorer.protocol', 'Protocol')}</span>
+              <Segmented<ProtocolFilter>
+                label={t('analysis.traceroute_explorer.protocol', 'Protocol')}
+                value={prefs.protocol}
+                onChange={v => {
+                  updatePrefs({ protocol: v });
+                  setSelectedKey(null);
+                }}
+                options={[
+                  { id: 'all', label: t('analysis.traceroute_explorer.result_all', 'All') },
+                  { id: 'meshtastic', label: t('analysis.traceroute_explorer.protocol_meshtastic', 'Meshtastic') },
+                  { id: 'meshcore', label: t('analysis.traceroute_explorer.protocol_meshcore', 'MeshCore') },
+                ]}
+              />
+            </div>
+          )}
           <div className={styles.field}>
             <span>{t('analysis.traceroute_explorer.result', 'Result')}</span>
             <Segmented<ResultFilter>
@@ -332,7 +366,7 @@ export const TracerouteExplorerReport: React.FC = () => {
               <button
                 type="button"
                 aria-label={t('analysis.traceroute_explorer.clear_node', 'Clear node filter')}
-                onClick={() => setFilter('nodeNum', null)}
+                onClick={() => setFilter('nodeKey', null)}
               >
                 <UiIcon name="close" size={12} />
               </button>
@@ -375,6 +409,16 @@ export const TracerouteExplorerReport: React.FC = () => {
               'analysis.traceroute_explorer.retention',
               'The database keeps the newest {{count}} runs per node pair, so older history thins out on busy pairs.',
               { count: data.retentionPerPair },
+            )}
+            {data.meshcoreRetentionDays != null && protocolsPresent.has('meshcore') && (
+              <>
+                {' '}
+                {t(
+                  'analysis.traceroute_explorer.retention_meshcore',
+                  'MeshCore traces are kept for {{count}} days.',
+                  { count: data.meshcoreRetentionDays },
+                )}
+              </>
             )}
           </div>
         )}
@@ -437,7 +481,7 @@ export const TracerouteExplorerReport: React.FC = () => {
               nodes={nodes}
               focusRun={focusRun}
               selectedRun={selectedRun}
-              nodeFilter={filters.nodeNum}
+              nodeFilter={filters.nodeKey}
               lineMode={prefs.lines}
               fitKey={fitKey}
               onNodeClick={onNodeClick}
@@ -469,8 +513,8 @@ export const TracerouteExplorerReport: React.FC = () => {
             <div className={styles.mapHint}>
               {focusRun
                 ? t('analysis.traceroute_explorer.hint_run', '{{from}} to {{to}}', {
-                    from: nodeLongLabel(nodes, focusRun.fromNodeNum),
-                    to: nodeLongLabel(nodes, focusRun.toNodeNum),
+                    from: nodeLongLabel(nodes, focusRun.fromKey),
+                    to: nodeLongLabel(nodes, focusRun.toKey),
                   })
                 : filterNode
                   ? t('analysis.traceroute_explorer.hint_node', 'Showing routes through {{name}}', { name: filterNode })
@@ -534,7 +578,7 @@ export const TracerouteExplorerReport: React.FC = () => {
       </div>
 
       <div className="reports-panel">
-        <ExplorerDetail run={selectedRun} pairRuns={pairRuns} nodes={nodes} devices={devices} sourceNames={sourceNames} />
+        <ExplorerDetail run={selectedRun} pairRuns={pairRuns} nodes={nodes} devicesByProtocol={devicesByProtocol} sourceNames={sourceNames} />
       </div>
     </>
   );

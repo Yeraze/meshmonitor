@@ -79,7 +79,7 @@ interface MeshCoreSendManager {
   // Request/operation senders (#3835).
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
   traceContactPath(publicKey: string): Promise<unknown>;
-  traceContactPathDetailed(publicKey: string, opts?: { autoReturn?: boolean; hashBytes?: 1 | 2 }): Promise<{ ok: boolean; reason?: string; hops?: unknown[]; lastSnr?: number }>;
+  traceContactPathDetailed(publicKey: string, opts?: { autoReturn?: boolean; hashBytes?: 1 | 2; origin?: 'manual' | 'schedule' | 'automation' | 'api' }): Promise<{ ok: boolean; reason?: string; hops?: unknown[]; lastSnr?: number }>;
   requestNeighbors(publicKey?: string): Promise<unknown>;
   /** Floor-checked advert for automated senders (see MeshCoreManager.sendAutomatedAdvert). */
   sendAutomatedAdvert(mode: MeshCoreAdvertMode, origin: string): Promise<{ sent: boolean; reason?: string }>;
@@ -295,6 +295,7 @@ export function createMeshActionDeps(): ActionDeps {
       }
       const outcome = await raw.traceContactPathDetailed(path.publicKey, {
         autoReturn,
+        origin: 'schedule',
         ...(path.hashBytes === 'auto' ? {} : { hashBytes: path.hashBytes }),
       });
       logger.info(`[Automation] scheduled trace to ${who} on ${sourceId}: ${outcome.ok ? `${outcome.hops?.length ?? 0} hop(s)` : (outcome.reason ?? 'failed')}`);

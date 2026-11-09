@@ -172,7 +172,8 @@ function redactValue(
     const out: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(obj)) {
       if (
-        (key === 'sources' || key === 'sourceIds') &&
+        // `aliveSources` (A6, #6279) is another list of source ids and gets the same cut.
+        (key === 'sources' || key === 'sourceIds' || key === 'aliveSources') &&
         Array.isArray(v) &&
         v.every((s) => typeof s === 'string')
       ) {

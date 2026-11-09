@@ -49,6 +49,8 @@ export interface HopSnrLinkEnd {
 export const HOP_SNR_HISTORY_LIMIT = 2000;
 /** Most rows a caller may ask one history read for (the chart view, #5765). */
 export const HOP_SNR_HISTORY_MAX_LIMIT = 20000;
+/** Row scan cap for the Traceroute Explorer reader (#6276). */
+export const EXPLORER_ROW_SCAN_LIMIT = HOP_SNR_HISTORY_MAX_LIMIT;
 
 export class MeshCoreHopSnrRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
@@ -198,6 +200,43 @@ export class MeshCoreHopSnrRepository extends BaseRepository {
       g.push(row);
     }
     return order.map((k) => this.dedupeHopIndexes(groups.get(k)!));
+  }
+
+  /**
+   * Initiated traces for the Traceroute Explorer (#6276): the same grouping as
+   * `getInitiatedTraces`, but it scans up to `EXPLORER_ROW_SCAN_LIMIT` rows and
+   * reports `truncated` when either that scan cap or the `limitTraces` cap cut
+   * the result (the older traces beyond them are silently absent otherwise).
+   */
+  async getInitiatedTracesForExplorer(
+    sourceId: string,
+    sinceMs: number,
+    limitTraces: number,
+  ): Promise<{ traces: MeshCoreHopSnrRow[][]; truncated: boolean }> {
+    this.requireSource(sourceId, 'getInitiatedTracesForExplorer');
+    if (limitTraces <= 0) return { traces: [], truncated: false };
+    const t = this.tables.meshcoreHopSnr;
+    const rows = await this.db.select().from(t)
+      .where(and(this.withSourceScope(t, sourceId), eq(t.initiated, true), gte(t.timestamp, sinceMs)))
+      .orderBy(desc(t.timestamp), desc(t.id))
+      // One extra row tells "exactly the cap" apart from "more than the cap".
+      .limit(EXPLORER_ROW_SCAN_LIMIT + 1);
+    let truncated = rows.length > EXPLORER_ROW_SCAN_LIMIT;
+    const order: string[] = [];
+    const groups = new Map<string, MeshCoreHopSnrRow[]>();
+    for (const raw of rows.slice(0, EXPLORER_ROW_SCAN_LIMIT)) {
+      const row = this.toRow(raw as Record<string, unknown>);
+      const key = `${row.traceTag}:${row.authCode}`;
+      let g = groups.get(key);
+      if (!g) {
+        if (order.length >= limitTraces) { truncated = true; continue; }
+        g = [];
+        groups.set(key, g);
+        order.push(key);
+      }
+      g.push(row);
+    }
+    return { traces: order.map((k) => this.dedupeHopIndexes(groups.get(k)!)), truncated };
   }
 
   private async loadInitiatedTrace(sourceId: string, traceTag: number, authCode: number, sinceMs: number): Promise<MeshCoreHopSnrRow[]> {

@@ -179,19 +179,22 @@ describe('v1 read — MeshCore source', () => {
     await get('/packets/999999').expect(404);
   });
 
-  it('traceroutes: synthetic route, quarter-dB snr, null return leg, hops[]', async () => {
+  it('traceroutes: loop split into outbound and return legs, quarter-dB snr, hops[]', async () => {
     await grantAll();
     const res = await get('/traceroutes').expect(200);
     expect(res.body.count).toBe(1);
     const t = res.body.data[0];
     expect(t.protocol).toBe('meshcore');
     expect(t.fromNodeId).toBe(`mc:${K1}`);
-    expect(t.toNodeId).toBe(`mc:${K3}`);
-    expect(JSON.parse(t.snrTowards)).toEqual([20, -8]);
-    expect(t.routeBack).toBeNull();
+    // One path hash (K2) plus the link back into the local radio: a loop, so `to` is the turnaround.
+    expect(t.toNodeId).toBe(`mc:${K2}`);
+    expect(t.toNodeId).not.toBe(t.fromNodeId);
+    expect(JSON.parse(t.snrTowards)).toEqual([20]);
+    expect(JSON.parse(t.routeBack)).toEqual([]);
+    expect(JSON.parse(t.snrBack)).toEqual([-8]);
     expect(t.hops).toHaveLength(2);
-    await get(`/traceroutes/mc:${K1}/mc:${K3}`).expect(200);
-    await get(`/traceroutes/mc:${K1}/mc:${K2}`).expect(404);
+    await get(`/traceroutes/mc:${K1}/mc:${K2}`).expect(200);
+    await get(`/traceroutes/mc:${K1}/mc:${K3}`).expect(404);
   });
 
   it('network: stats, topology edges and direct-neighbors', async () => {
@@ -201,7 +204,7 @@ describe('v1 read — MeshCore source', () => {
     const topo = (await get('/network/topology').expect(200)).body.data;
     expect(topo.nodes).toHaveLength(3);
     expect(topo.nodes.every((n: any) => n.protocol === 'meshcore')).toBe(true);
-    expect(topo.edges[0]).toMatchObject({ protocol: 'meshcore', from: `mc:${K1}`, to: `mc:${K3}`, snr: [20, -8] });
+    expect(topo.edges[0]).toMatchObject({ protocol: 'meshcore', from: `mc:${K1}`, to: `mc:${K2}`, snr: [20] });
     const dn = await get('/network/direct-neighbors').expect(200);
     expect(dn.body.data[`mc:${K1}`]).toMatchObject({ protocol: 'meshcore', nodeKey: `mc:${K1}`, packetCount: 1 });
   });

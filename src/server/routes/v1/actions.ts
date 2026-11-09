@@ -147,7 +147,7 @@ router.post('/traceroute', attachSource('traceroute', 'write'), deviceLimit, asy
         return fail(res, 409, 'MESHCORE_TRACE_FAILED',
           'Trace failed: the source must be a Companion device and the contact must be known');
       }
-      void manager.traceContactPathDetailed(publicKey, { autoReturn: false }).catch((err: unknown) => {
+      void manager.traceContactPathDetailed(publicKey, { autoReturn: false, origin: 'api' }).catch((err: unknown) => {
         logger.warn(`[v1/actions] MeshCore trace to ${publicKey.slice(0, 16)}… failed:`, err);
       });
       return ok(res, {
