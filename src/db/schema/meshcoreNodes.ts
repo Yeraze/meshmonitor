@@ -52,6 +52,16 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // only by meshcore_mqtt ingest. NULL = never checked (device sources, or a
   // row that predates 215).
   advertSignatureVerified: integer('advertSignatureVerified', { mode: 'boolean' }),
+  // #6281 (migration 225): security scanner flags. Written only by the scanner
+  // (setNodeSecurityFlags) and the clear route; upsertNode never touches them.
+  isExcessivePackets: integer('isExcessivePackets', { mode: 'boolean' }).default(false),
+  packetRatePerHour: integer('packetRatePerHour'),
+  advertRatePerHour: integer('advertRatePerHour'),
+  packetRateLastChecked: integer('packetRateLastChecked'), // ms
+  isTimeOffsetIssue: integer('isTimeOffsetIssue', { mode: 'boolean' }).default(false),
+  timeOffsetSeconds: integer('timeOffsetSeconds'),
+  timeOffsetSource: text('timeOffsetSource'), // 'advert' | 'message'
+  timeOffsetCheckedAt: integer('timeOffsetCheckedAt'), // ms
   // #5842 (migration 206): MeshMonitor-only location override, parallel to the
   // Meshtastic `nodes.positionOverride*` columns. Advert ingest never writes
   // these, and the override is never copied into latitude/longitude above.
@@ -180,6 +190,14 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   // only by meshcore_mqtt ingest. NULL = never checked (device sources, or a
   // row that predates 215).
   advertSignatureVerified: pgBoolean('advertSignatureVerified'),
+  isExcessivePackets: pgBoolean('isExcessivePackets').default(false),
+  packetRatePerHour: pgInteger('packetRatePerHour'),
+  advertRatePerHour: pgInteger('advertRatePerHour'),
+  packetRateLastChecked: pgBigint('packetRateLastChecked', { mode: 'number' }),
+  isTimeOffsetIssue: pgBoolean('isTimeOffsetIssue').default(false),
+  timeOffsetSeconds: pgInteger('timeOffsetSeconds'),
+  timeOffsetSource: pgText('timeOffsetSource'),
+  timeOffsetCheckedAt: pgBigint('timeOffsetCheckedAt', { mode: 'number' }),
   positionOverrideEnabled: pgBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: pgDoublePrecision('latitudeOverride'),
   longitudeOverride: pgDoublePrecision('longitudeOverride'),
@@ -271,6 +289,14 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   // only by meshcore_mqtt ingest. NULL = never checked (device sources, or a
   // row that predates 215).
   advertSignatureVerified: myBoolean('advertSignatureVerified'),
+  isExcessivePackets: myBoolean('isExcessivePackets').default(false),
+  packetRatePerHour: myInt('packetRatePerHour'),
+  advertRatePerHour: myInt('advertRatePerHour'),
+  packetRateLastChecked: myBigint('packetRateLastChecked', { mode: 'number' }),
+  isTimeOffsetIssue: myBoolean('isTimeOffsetIssue').default(false),
+  timeOffsetSeconds: myInt('timeOffsetSeconds'),
+  timeOffsetSource: myVarchar('timeOffsetSource', { length: 16 }),
+  timeOffsetCheckedAt: myBigint('timeOffsetCheckedAt', { mode: 'number' }),
   positionOverrideEnabled: myBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: myDouble('latitudeOverride'),
   longitudeOverride: myDouble('longitudeOverride'),
