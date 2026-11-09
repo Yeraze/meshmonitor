@@ -151,3 +151,8 @@ Maintainer answers, 2026-11-08: leak fix (device backups exported every source's
 PR #6284; P8a = BLE PIN, multi-ACKs (0/1 only, airtime warning), factory reset (admin + typed name, fw ≥ 7, TCP allowed
 with warning, expected identity change audited not alerted), channel share/import URL (`configuration:write`,
 `region_scope` included); P8b = per-source protocol-aware device-config backups (migration 226).
+Shipped (P8a): BLE PIN (raw cmd 37), multi-ACKs 0/1 with SelfInfo readback (fw ≥ 7; v1.7.3 ignores byte 5),
+factory reset (cmd 51, fw ≥ 7, admin + typed name, expected identity change audited not alerted), channel share/import
+via `meshcore://channel/add` with shared Export/Import modals and the config-capable device gate. Fixed: the raw
+other-params writer preserves the auto-add bits. Leak fix shipped separately (#6284). P8b (per-source config backups,
+migration 226) follows.
