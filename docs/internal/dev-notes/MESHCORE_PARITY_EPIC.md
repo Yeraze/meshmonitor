@@ -156,3 +156,10 @@ factory reset (cmd 51, fw ≥ 7, admin + typed name, expected identity change au
 via `meshcore://channel/add` with shared Export/Import modals and the config-capable device gate. Fixed: the raw
 other-params writer preserves the auto-add bits. Leak fix shipped separately (#6284). P8b (per-source config backups,
 migration 226) follows.
+
+### P9 #6255 (spec: `MESHCORE_PARITY_P9_SPEC.md`)
+Maintainer answers, 2026-11-08: Off (0) allowed for both advert intervals with a reachability warning (clamps otherwise
+60–240 min / 6–168 h); power-off and key restore admin + typed name on both protocols, restore auto-reboots with a pinned
+expected key; forwarding knobs use firmware ranges with inline warnings (af < 1, flood.max ≤ 2, repeat off); guest
+password never sent to the browser; `set prv.key` added to the danger guard; existing repeater secret debug-log leak fixed;
+Companion gets power-off too.
