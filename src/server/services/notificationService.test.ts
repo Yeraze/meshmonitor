@@ -155,6 +155,15 @@ describe('notificationService.getServiceStatus', () => {
     expect(status.anyAvailable).toBe(true); // apprise still available
   });
 
+  it('returns anyAvailable=true when only desktop is available', () => {
+    mockPush.isAvailable.mockReturnValue(false);
+    mockApprise.isAvailable.mockReturnValue(false);
+    mockDesktop.isAvailable.mockReturnValue(true);
+    const status = notificationService.getServiceStatus();
+    expect(status.desktop).toBe(true);
+    expect(status.anyAvailable).toBe(true);
+  });
+
   it('returns anyAvailable=false when both unavailable', () => {
     mockPush.isAvailable.mockReturnValue(false);
     mockApprise.isAvailable.mockReturnValue(false);

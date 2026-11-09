@@ -13,7 +13,7 @@ import notifier from 'node-notifier';
 import path from 'path';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { shouldFilterNotificationAsync, getUserNotificationPreferencesAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
+import { shouldFilterNotificationAsync, getUserNotificationPreferencesAsync, renderMessagePayloadForUserAsync, messageReadableByUserAsync, payloadBlockedForUserAsync, type NotificationMuteVenue } from '../utils/notificationFiltering.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import { notificationDedup, type NotificationDedupSpec } from './notificationDedup.js';
 
@@ -40,6 +40,16 @@ export interface DesktopNotificationPayload {
   message?: MessageTemplateContext;
   /** Cross-source dedup (#5729); see `notificationDedup.ts`. */
   dedup?: NotificationDedupSpec;
+  /**
+   * MeshCore keyed channel message (#5551): only recipients with access to this
+   * channel key get the event. Server-side input; never shown.
+   */
+  keyFingerprint?: string | null;
+  /**
+   * Venue of an event that follows a mute (a mention): a recipient who muted
+   * it is skipped. Server-side input; never shown.
+   */
+  muteVenue?: NotificationMuteVenue;
 }
 
 export interface DesktopNotificationFilterContext {
@@ -49,6 +59,10 @@ export interface DesktopNotificationFilterContext {
   viaMqtt?: boolean;
   /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
   isTapback?: boolean;
+  /** MeshCore keyed channel message (#5551): recipient needs access to this key. */
+  keyFingerprint?: string | null;
+  /** DM / room mute key (`mutedDMs.nodeUuid`), so a per-DM mute applies. */
+  nodeUuid?: string;
   /** Phase B: source this notification originated from (required). */
   sourceId: string;
   /** Phase B: human-readable source name. */
@@ -127,15 +141,9 @@ class DesktopNotificationService {
       for (const user of users) {
         if (!user.isActive) continue;
 
-        // Phase B: permission check — user must have messages:read on this source
-        try {
-          const allowed = await databaseService.checkPermissionAsync(user.id, 'messages', 'read', filterContext.sourceId);
-          if (!allowed) {
-            filtered++;
-            continue;
-          }
-        } catch (error) {
-          logger.error(`Permission check failed for user ${user.id}:`, error);
+        // Phase B: permission check — user must have messages:read on this
+        // source and, for a keyed MeshCore message, access to its channel key.
+        if (!(await messageReadableByUserAsync(user.id, filterContext.sourceId, filterContext.keyFingerprint))) {
           filtered++;
           continue;
         }
@@ -203,6 +211,9 @@ class DesktopNotificationService {
         const prefs = await getUserNotificationPreferencesAsync(user.id, effectiveSourceId);
         if (!prefs || !prefs.enableWebPush) continue;
         if (!(prefs as any)[preferenceName]) continue;
+
+        // Keyed MeshCore message / muted venue (mentions): a gate on the payload.
+        if ((payload.keyFingerprint || payload.muteVenue) && await payloadBlockedForUserAsync(user.id, effectiveSourceId, payload)) continue;
 
         if (!this.claimDesktop(payload, effectiveSourceId ?? payload.sourceId)) {
           return { sent: 0, failed: 0, filtered: 1 };

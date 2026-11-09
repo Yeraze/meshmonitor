@@ -3,7 +3,7 @@ import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import type { DbPushSubscription } from '../../db/types.js';
-import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, renderMessagePayloadForUserAsync, messageReadableByUserAsync, payloadBlockedForUserAsync, type NotificationMuteVenue } from '../utils/notificationFiltering.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import { resolveLocalNodeNameForSource } from '../utils/localNodeNameForSource.js';
 import { notificationDedup, dedupTag, joinSourceNames, type DedupClaim, type NotificationDedupSpec } from './notificationDedup.js';
@@ -36,6 +36,16 @@ export interface PushNotificationPayload {
   message?: MessageTemplateContext;
   /** Cross-source dedup (#5729); see `notificationDedup.ts`. Never sent on the wire. */
   dedup?: NotificationDedupSpec;
+  /**
+   * MeshCore keyed channel message (#5551): only recipients with access to this
+   * channel key get the event. Server-side input; never sent on the wire.
+   */
+  keyFingerprint?: string | null;
+  /**
+   * Venue of an event that follows a mute (a mention): a recipient who muted
+   * it is skipped. Server-side input; never sent on the wire.
+   */
+  muteVenue?: NotificationMuteVenue;
 }
 
 /**
@@ -382,6 +392,8 @@ class PushNotificationService {
       const wirePayload: PushNotificationPayload = { ...payload };
       delete wirePayload.message;
       delete wirePayload.dedup;
+      delete wirePayload.keyFingerprint;
+      delete wirePayload.muteVenue;
 
       await webpush.sendNotification(
         pushSubscription,
@@ -493,6 +505,10 @@ class PushNotificationService {
       viaMqtt?: boolean;
       /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
       isTapback?: boolean;
+      /** MeshCore keyed channel message (#5551): recipient needs access to this key. */
+      keyFingerprint?: string | null;
+      /** DM / room mute key (`mutedDMs.nodeUuid`), so a per-DM mute applies. */
+      nodeUuid?: string;
       sourceId: string;
       sourceName: string;
     }
@@ -560,6 +576,8 @@ class PushNotificationService {
       const notificationPayload: PushNotificationPayload = { ...payload, title: rendered.title, body };
       delete notificationPayload.message;
       delete notificationPayload.dedup;
+      delete notificationPayload.keyFingerprint;
+      delete notificationPayload.muteVenue;
       if (payload.dedup) {
         notificationPayload.tag = dedupTag(payload.dedup.key);
         notificationPayload.renotify = false;
@@ -600,25 +618,30 @@ class PushNotificationService {
       viaMqtt?: boolean;
       /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
       isTapback?: boolean;
+      /** MeshCore keyed channel message (#5551): recipient needs access to this key. */
+      keyFingerprint?: string | null;
+      /** DM / room mute key (`mutedDMs.nodeUuid`), so a per-DM mute applies. */
+      nodeUuid?: string;
       sourceId: string;
       sourceName: string;
     }
   ): Promise<boolean> {
     // Anonymous users get all notifications (no filtering) - they've opted in by subscribing
+    // A keyed MeshCore message is the one exception: an anonymous subscriber
+    // has no key access, so it never receives one.
     if (!userId) {
+      if (filterContext.keyFingerprint) {
+        logger.debug('Anonymous user - keyed message filtered');
+        return true;
+      }
       logger.debug('Anonymous user - no filtering applied (user opted in by subscribing)');
       return false;
     }
 
     // Phase B: permission check — user must have messages:read on this source
-    try {
-      const allowed = await databaseService.checkPermissionAsync(userId, 'messages', 'read', filterContext.sourceId);
-      if (!allowed) {
-        logger.debug(`🔒 User ${userId} lacks messages:read on source ${filterContext.sourceId}`);
-        return true;
-      }
-    } catch (error) {
-      logger.error(`Permission check failed for user ${userId}:`, error);
+    // and, for a keyed MeshCore message, access to its channel key.
+    if (!(await messageReadableByUserAsync(userId, filterContext.sourceId, filterContext.keyFingerprint))) {
+      logger.debug(`🔒 User ${userId} cannot read this message on source ${filterContext.sourceId}`);
       return true;
     }
 
@@ -702,6 +725,12 @@ class PushNotificationService {
         }
       }
 
+      // Keyed MeshCore message / muted venue (mentions): a gate on the payload.
+      if ((payload.keyFingerprint || payload.muteVenue) && await payloadBlockedForUserAsync(userId, effectiveSourceId, payload)) {
+        filtered++;
+        continue;
+      }
+
       // #4020: the targeted alert pipeline (low-battery, inactive-node) already
       // decided this user should be notified — the check service is the sole
       // authority on intent, so we must not re-gate on prefs[preferenceKey]
@@ -757,9 +786,12 @@ class PushNotificationService {
 
       // Apply node name prefix if user has it enabled
       const prefixedBody = await applyNodeNamePrefixAsync(userId, base.body, localNodeName, effectiveSourceId);
-      const notificationPayload = prefixedBody !== base.body
+      const prefixed = prefixedBody !== base.body
         ? { ...base, body: prefixedBody }
         : base;
+      // Server-side gate inputs stay off the wire (sendToSubscription strips
+      // them too; this keeps the payload clean at the call boundary).
+      const { keyFingerprint: _kf, muteVenue: _mv, ...notificationPayload } = prefixed;
 
       const success = await this.sendToSubscription(subscription, notificationPayload);
       if (success) {
