@@ -34,6 +34,7 @@ vi.mock('../../services/database.js', () => ({ default: mockDb }));
 
 const mockRules = vi.hoisted(() => ({
   evaluateAllTierA: vi.fn(),
+  tierASkips: vi.fn(),
 }));
 vi.mock('./meshIssues/rules.js', () => mockRules);
 
@@ -229,6 +230,7 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
     mockDb.getTelemetryTimestampsAsync.mockResolvedValue([]);
     mockDb.getBroadcastTelemetryTimestampsAsync.mockResolvedValue([]);
     mockRules.evaluateAllTierA.mockReturnValue([]);
+    mockRules.tierASkips.mockReturnValue([]);
     mockRulesTierB.evaluateAllTierB.mockReturnValue([]);
     mockRulesTierB.tierBSkips.mockReturnValue([]);
     mockRulesTierC.evaluateAllTierC.mockReturnValue([]);
@@ -1106,6 +1108,36 @@ describe('meshIssuesAnalysisService.runAnalysis', () => {
 
       expect(ctx.localNodeSources.size).toBe(0);
       expect(findings).toHaveLength(1);
+    });
+  });
+
+  describe('node-health context (#6279)', () => {
+    beforeEach(() => {
+      mockDb.sources.getAllSources.mockResolvedValue([makeSource()]);
+    });
+
+    it('marks the source local node, builds per-source liveness from non-local rows, and surfaces Tier A skips', async () => {
+      mockDb.settings.getLocalNodeNumForSource.mockResolvedValue(100);
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        makeNodeRow({ nodeNum: 100, lastHeard: Math.floor(NOW / 1000) }), // local: must not count as liveness
+        makeNodeRow({ nodeNum: 200, lastHeard: Math.floor((NOW - 2 * 3_600_000) / 1000) }),
+      ]);
+      mockRules.tierASkips.mockReturnValue([{ rule: 'A8', reason: 'no battery telemetry in window' }]);
+
+      const result = await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+
+      const ctx = mockRules.evaluateAllTierA.mock.calls[0][0];
+      expect(ctx.nodes.get(100).isLocal).toBe(true);
+      expect(ctx.nodes.get(200).isLocal).toBe(false);
+      expect(ctx.sourceLastHeardMs.get('src-a')).toBe(NOW - 2 * 3_600_000);
+      expect(mockRules.tierASkips).toHaveBeenCalledWith(ctx);
+      expect(result.coverage.skippedRules).toContainEqual({ rule: 'A8', reason: 'no battery telemetry in window' });
+    });
+
+    it('does not ask the DB for the MeshCore-only battery telemetry types on the Meshtastic query', async () => {
+      await meshIssuesAnalysisService.runAnalysis({ lookbackHours: 168, pairBucketHours: 6, nowMs: NOW });
+      const firstTypes = mockDb.telemetry.getTelemetryByTypesSince.mock.calls[0][0];
+      expect(firstTypes).toEqual(['airUtilTx', 'channelUtilization', 'batteryLevel', 'uptimeSeconds']);
     });
   });
 

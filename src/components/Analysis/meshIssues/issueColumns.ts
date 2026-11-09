@@ -391,6 +391,29 @@ const COLUMNS_BY_TYPE: Record<string, () => IssueColumn[]> = {
     simpleColumn('telemetryCadenceClause', 'Cadence'),
     simpleColumn('firmwareVersion', 'Firmware'),
   ],
+  A6_stale_node: () => [
+    simpleColumn('roleName', 'Role'),
+    durationMsColumn('lastHeardAgeMs', 'Not heard for', { primary: true }),
+    simpleColumn('thresholdHours', 'Window h', { align: 'right', numeric: true }),
+  ],
+  A7_no_position: () => [
+    simpleColumn('roleName', 'Role'),
+    simpleColumn('clause', 'Clause', { primary: true }),
+    simpleColumn('positionPrecisionBits', 'Precision bits', { align: 'right', numeric: true }),
+  ],
+  A8_low_battery: () => [
+    simpleColumn('roleName', 'Role'),
+    simpleColumn('latestBatteryPct', 'Battery %', { primary: true, defaultDir: 'asc', align: 'right', numeric: true }),
+    simpleColumn('latestBatteryMv', 'Battery mV', { defaultDir: 'asc', align: 'right', numeric: true }),
+    simpleColumn('thresholdUsed', 'Threshold', { align: 'right', numeric: true }),
+    durationMsColumn('latestReadingAgeMs', 'Reading age'),
+    simpleColumn('sampleCount', 'Samples', { align: 'right', numeric: true }),
+  ],
+  A9_bad_position: () => [
+    simpleColumn('roleName', 'Role'),
+    simpleColumn('positionIssue', 'Problem', { primary: true }),
+    simpleColumn('positionPrecisionBits', 'Precision bits', { align: 'right', numeric: true }),
+  ],
   B1_router_cluster: () => [
     simpleColumn('size', 'Size', { primary: true, align: 'right', numeric: true }),
     membersColumn(),

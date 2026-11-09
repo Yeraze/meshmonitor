@@ -28,6 +28,15 @@ import {
   type MeshIssueFinding,
   type MeshIssueProtocol,
 } from './types.js';
+import { meshcoreEvidence, infraRoleName, infraBatteryDischarging } from './nodeHealth.js';
+import {
+  evaluateA6,
+  evaluateA7,
+  evaluateA8,
+  evaluateA9,
+  nodeHealthSkips,
+} from './rulesNodeHealth.js';
+import type { RuleSkip } from './rulesTierB.js';
 import { runRulesIsolated, type RuleEntry } from './ruleRunner.js';
 import {
   isInfraNode,
@@ -43,8 +52,6 @@ import {
   UTILIZATION_WINDOW_HOURS,
   CONGESTED_AREA_MIN_NODES,
   AREA_GRID_BIN_DEG,
-  BATTERY_LOW_PCT,
-  BATTERY_MIN_SAMPLES,
   UPTIME_RESET_MIN_COUNT,
   POWER_WINDOW_HOURS,
   MOBILE_MIN_PRECISION_BITS,
@@ -75,23 +82,14 @@ export interface RuleContext {
   /** A5's telemetry-cadence clause input — dedicated-router nodes only,
    *  populated only when packet_log is enabled (#4964 post-epic follow-up). */
   routerBroadcastTelemetryCadence: Map<number, RouterTelemetryCadenceStats>;
+  /** sourceId -> newest sign of life among that source's NON-local node rows
+   *  (A6's liveness guard, #6279). */
+  sourceLastHeardMs: Map<string, number>;
 }
 
 function roleName(role: number | null): string {
   if (role == null) return 'Unknown';
   return ROLE_NAMES[role] ?? `Role ${role}`;
-}
-
-/** Evidence identity fields for a MeshCore finding (#6263 S5). */
-function meshcoreEvidence(node: PooledNode): Record<string, unknown> {
-  return { publicKey: node.nodeKey, nodeName: node.longName, sourceIds: node.sourceIds };
-}
-
-const MESHCORE_ROLE_NAMES: Record<number, string> = { 2: 'Repeater', 3: 'Room Server' };
-
-function infraRoleName(node: PooledNode): string {
-  if (isMeshCoreNode(node)) return node.advType != null ? (MESHCORE_ROLE_NAMES[node.advType] ?? `Type ${node.advType}`) : 'Unknown';
-  return roleName(node.role);
 }
 
 function sortedUnique(values: string[]): string[] {
@@ -325,16 +323,13 @@ export function evaluateA3(ctx: RuleContext): MeshIssueFinding[] {
       if (isUptimeReboot(uptimeSamples[i - 1].value, uptimeSamples[i].value)) uptimeResets++;
     }
 
-    const batterySamples = series
-      ? series.batteryLevel.filter((s) => s.timestamp >= windowStart)
-      : [];
-    const batterySampleCount = batterySamples.length;
-    const minBatteryLevel = batterySampleCount > 0 ? Math.min(...batterySamples.map((s) => s.value)) : null;
+    const discharge = infraBatteryDischarging(node, series, windowStart, ctx.thresholds);
+    const batterySamples = discharge.samples;
+    const batterySampleCount = discharge.sampleCount;
+    const minBatteryLevel = discharge.minBatteryLevel;
 
     const resetsClauseMet = uptimeResets >= UPTIME_RESET_MIN_COUNT;
-    const batteryClauseMet =
-      !meshcore &&
-      batterySampleCount >= BATTERY_MIN_SAMPLES && minBatteryLevel != null && minBatteryLevel < BATTERY_LOW_PCT;
+    const batteryClauseMet = discharge.met;
 
     if (!resetsClauseMet && !batteryClauseMet) continue;
 
@@ -508,12 +503,25 @@ const ALL_RULES: ReadonlyArray<RuleEntry<RuleContext>> = [
   ['A3', evaluateA3, BOTH_PROTOCOLS],
   ['A4', evaluateA4, BOTH_PROTOCOLS],
   ['A5', evaluateA5, MESHTASTIC_ONLY],
+  ['A6', evaluateA6, BOTH_PROTOCOLS],
+  ['A7', evaluateA7, BOTH_PROTOCOLS],
+  ['A8', evaluateA8, BOTH_PROTOCOLS],
+  ['A9', evaluateA9, BOTH_PROTOCOLS],
 ];
 
-/** A1..A5 in order. Never throws — a rule that cannot evaluate returns []. */
+/** A1..A9 in order. Never throws — a rule that cannot evaluate returns []. */
 export function evaluateAllTierA(ctx: RuleContext): MeshIssueFinding[] {
   return runRulesIsolated('Tier A', ALL_RULES, ctx, (c, protocols) => {
     const nodes = nodesForProtocols(c.nodes, protocols);
     return nodes === c.nodes ? c : { ...c, nodes };
   });
+}
+
+/**
+ * Coarse availability notes for Tier A (#6279), mirroring `tierCSkips`: A6
+ * nodes held back because every source that hears them is silent, and A8 when
+ * no infra node has a usable battery reading.
+ */
+export function tierASkips(ctx: RuleContext): RuleSkip[] {
+  return nodeHealthSkips(ctx);
 }

@@ -95,6 +95,68 @@ describe('meshIssuesRoutes with MeshCore findings', () => {
     expect(res.body.data.issues[0].evidence.nodeName).toBe('Hill Repeater');
   });
 
+  describe('node-health findings (#6279)', () => {
+    const a8 = (sourceIds: string[]): MeshIssueFinding => ({
+      issueType: MESH_ISSUE_TYPES.A8_LOW_BATTERY,
+      subjectKey: meshcoreSubjectKey(PK),
+      nodeNum: null,
+      severity: 'warning',
+      confidence: 'high',
+      evidence: {
+        publicKey: PK,
+        nodeName: 'Hill Repeater',
+        sourceIds,
+        latestBatteryPct: null,
+        latestBatteryMv: 3100,
+        unit: 'mv',
+        thresholdUsed: 3300,
+        sources: sourceIds,
+      },
+      sourceIds,
+      recommendation: 'The battery is low.',
+    });
+
+    it('strips hidden sourceIds and the contact name from an A8 MeshCore row', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(a8([harness.sourceA, harness.sourceB]), Date.now());
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/api/analysis/mesh-issues');
+      expect(res.status).toBe(200);
+      const issue = res.body.data.issues[0];
+      expect(issue.issueType).toBe('A8_low_battery');
+      expect(issue.sourceIds).toEqual([harness.sourceA]);
+      expect(issue.evidence.sourceIds).toEqual([harness.sourceA]);
+      expect(issue.evidence.nodeName).toBeNull();
+      expect(issue.evidence.latestBatteryMv).toBe(3100);
+      expect(JSON.stringify(issue)).not.toContain(harness.sourceB);
+    });
+
+    it('strips hidden source ids from A6 aliveSources', async () => {
+      await databaseService.upsertMeshIssueFindingAsync(
+        {
+          ...a8([harness.sourceA, harness.sourceB]),
+          issueType: MESH_ISSUE_TYPES.A6_STALE_NODE,
+          evidence: {
+            publicKey: PK,
+            nodeName: 'Hill Repeater',
+            sourceIds: [harness.sourceA, harness.sourceB],
+            aliveSources: [harness.sourceA, harness.sourceB],
+            sources: [harness.sourceA, harness.sourceB],
+            lastHeardAgeMs: 1,
+            thresholdHours: 96,
+          },
+        },
+        Date.now(),
+      );
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/api/analysis/mesh-issues');
+      const issue = res.body.data.issues[0];
+      expect(issue.evidence.aliveSources).toEqual([harness.sourceA]);
+      expect(JSON.stringify(issue)).not.toContain(harness.sourceB);
+    });
+  });
+
   describe('By Node grouping', () => {
     const PK2 = 'cd'.repeat(32);
 

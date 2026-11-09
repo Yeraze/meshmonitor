@@ -207,4 +207,120 @@ describe('meshIssuesAnalysisService with MeshCore sources', () => {
     expect(keys.filter((k) => k.startsWith('mc:'))).toEqual([]);
     expect(persisted().find((f) => f.subjectKey === 'node:100').nodeNum).toBe(100);
   });
+
+  describe('node-health rules A6-A9 (#6279)', () => {
+    const PK2 = 'cd'.repeat(32);
+    const PK3 = 'ef'.repeat(32);
+    const DAY = 24 * HOUR;
+    const types = () => persisted().map((f) => f.issueType);
+
+    // PK: stale 5 d, no position, 3.1 V. PK2: fresh, Null Island. PK3: fresh companion (keeps the source live).
+    const nodeSet = () => [
+      mcNode({ lastHeard: NOW - 5 * DAY, updatedAt: NOW - 5 * DAY, latitude: null, longitude: null }),
+      mcNode({ publicKey: PK2, latitude: 0, longitude: 0 }),
+      mcNode({ publicKey: PK3, advType: 1 }),
+    ];
+
+    it('a MeshCore-only run emits A6-A9 with mc: subjectKeys and null nodeNum', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([source('mc-1', 'meshcore')]);
+      mockDb.meshcore.getPositionHistory.mockResolvedValue([]);
+      mockDb.meshcore.getAllNodes.mockResolvedValue(nodeSet());
+      mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue([
+        { nodeId: PK, nodeNum: 1, telemetryType: 'mc_status_battery_volts', value: 3.1, timestamp: NOW - HOUR, sourceId: 'mc-1' },
+      ]);
+
+      await run();
+
+      expect(mockDb.telemetry.getTelemetryByTypesSince).toHaveBeenCalledWith(
+        ['mc_status_uptime_secs', 'mc_battery_mv', 'mc_status_battery_volts'],
+        expect.any(Number),
+        ['mc-1'],
+      );
+      const by = (t: string) => persisted().find((f) => f.issueType === t);
+      expect(by('A6_stale_node').subjectKey).toBe(`mc:${PK}`);
+      expect(by('A7_no_position').subjectKey).toBe(`mc:${PK}`);
+      expect(by('A9_bad_position').subjectKey).toBe(`mc:${PK2}`);
+      const a8 = by('A8_low_battery');
+      expect(a8.subjectKey).toBe(`mc:${PK}`);
+      expect(a8.evidence).toMatchObject({ unit: 'mv', latestBatteryMv: 3100, publicKey: PK });
+      for (const t of ['A6_stale_node', 'A7_no_position', 'A8_low_battery', 'A9_bad_position']) {
+        expect(by(t).nodeNum).toBeNull();
+      }
+      expect(JSON.stringify(by('A9_bad_position').evidence)).not.toMatch(/"lat|"lon/i);
+    });
+
+    it('a silent source yields a skip, not A6 findings', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([source('mc-1', 'meshcore')]);
+      mockDb.meshcore.getPositionHistory.mockResolvedValue([]);
+      mockDb.meshcore.getAllNodes.mockResolvedValue([
+        mcNode({ lastHeard: NOW - 5 * DAY, updatedAt: NOW - 5 * DAY }),
+      ]);
+
+      const result = await run();
+
+      expect(types()).not.toContain('A6_stale_node');
+      expect(result.coverage.skippedRules).toContainEqual({ rule: 'A6', reason: '1 node(s) skipped, source(s) silent' });
+    });
+
+    it('a muted A8 is not emitted and appears in skippedRules', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([source('mc-1', 'meshcore')]);
+      mockDb.meshcore.getPositionHistory.mockResolvedValue([]);
+      mockDb.meshcore.getAllNodes.mockResolvedValue(nodeSet());
+      mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue([
+        { nodeId: PK, nodeNum: 1, telemetryType: 'mc_battery_mv', value: 3000, timestamp: NOW - HOUR, sourceId: 'mc-1' },
+      ]);
+      mockDb.settings.getSetting.mockImplementation(async (k: string) =>
+        k === 'mesh_issues_disabled_rules' ? 'A8_low_battery' : null,
+      );
+
+      const result = await run();
+
+      expect(types()).not.toContain('A8_low_battery');
+      expect(types()).toContain('A7_no_position');
+      expect(result.coverage.skippedRules).toContainEqual({ rule: 'A8', reason: 'muted in settings' });
+    });
+
+    it('honours the stale-hours and low-battery tunables', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([source('mc-1', 'meshcore')]);
+      mockDb.meshcore.getPositionHistory.mockResolvedValue([]);
+      mockDb.meshcore.getAllNodes.mockResolvedValue([
+        mcNode({ lastHeard: NOW - 50 * HOUR, updatedAt: NOW - 50 * HOUR }),
+        mcNode({ publicKey: PK3, advType: 1 }),
+      ]);
+      mockDb.telemetry.getTelemetryByTypesSince.mockResolvedValue([
+        { nodeId: PK, nodeNum: 1, telemetryType: 'mc_battery_mv', value: 3400, timestamp: NOW - HOUR, sourceId: 'mc-1' },
+      ]);
+      mockDb.settings.getSetting.mockImplementation(async (k: string) =>
+        ({ mesh_issues_stale_hours_meshcore: '24', mesh_issues_low_battery_mv: '3500' } as Record<string, string>)[k] ?? null,
+      );
+
+      await run();
+
+      expect(types()).toContain('A6_stale_node');
+      expect(types()).toContain('A8_low_battery');
+    });
+
+    it('a mixed run pools both protocols and keeps node:<nodeNum> for Meshtastic', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([source('mt-1', 'meshtastic_tcp'), source('mc-1', 'meshcore')]);
+      mockDb.meshcore.getPositionHistory.mockResolvedValue([]);
+      mockDb.meshcore.getAllNodes.mockResolvedValue(nodeSet());
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        // ROUTER at Null Island, fresh -> A9. The local node row keeps mt-1 out of A6 liveness.
+        { nodeNum: 100, nodeId: '!00000064', sourceId: 'mt-1', longName: 'Router', role: 2, latitude: 0, longitude: 0,
+          lastHeard: Math.floor(NOW / 1000), updatedAt: NOW },
+        { nodeNum: 200, nodeId: '!000000c8', sourceId: 'mt-1', longName: 'Quiet Router', role: 2, latitude: 40, longitude: -100,
+          lastHeard: Math.floor((NOW - 3 * DAY) / 1000), updatedAt: NOW - 3 * DAY },
+      ]);
+
+      await run();
+
+      const a9 = persisted().filter((f) => f.issueType === 'A9_bad_position').map((f) => f.subjectKey).sort();
+      expect(a9).toEqual([`mc:${PK2}`, 'node:100'].sort());
+      expect(persisted().find((f) => f.subjectKey === 'node:100' && f.issueType === 'A9_bad_position').nodeNum).toBe(100);
+      // Node 100 is fresh, so mt-1 is live and the 3-day-old Meshtastic router is stale.
+      const a6 = persisted().filter((f) => f.issueType === 'A6_stale_node').map((f) => f.subjectKey);
+      expect(a6).toContain('node:200');
+      expect(a6).toContain(`mc:${PK}`);
+    });
+  });
 });

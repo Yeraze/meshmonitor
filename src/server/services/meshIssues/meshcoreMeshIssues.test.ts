@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildMeshCoreSnapshot,
   buildMeshCoreUptimeSeries,
+  buildMeshCoreTelemetrySeries,
   buildMeshCoreAdvertCadence,
   MESHCORE_ADVERT_DEDUPE_WINDOW_MS,
   type MeshCoreNodeInput,
@@ -50,6 +51,7 @@ function ruleCtx(nodes: Map<number, PooledNode>, extra: Partial<RuleContext> = {
     nowMs: NOW,
     thresholds: DEFAULT_MESH_ISSUE_THRESHOLDS,
     routerBroadcastTelemetryCadence: new Map(),
+    sourceLastHeardMs: new Map(),
     ...extra,
   };
 }
@@ -345,5 +347,64 @@ describe('Meshtastic-only rules never see MeshCore nodes', () => {
       windowHours: 168,
     };
     expect(evaluateAllTierC(ctx)).toEqual([]);
+  });
+});
+
+describe('MeshCore node-health inputs (#6279)', () => {
+  it('derives reportedPosition, override, advertHadPosition and isLocal', () => {
+    const { nodes } = buildMeshCoreSnapshot([
+      mcRow({ sourceId: 'mc-1', lastHeard: NOW - 2 * HOUR, lastAdvertHadPosition: false }),
+      mcRow({
+        sourceId: 'mc-2',
+        lastHeard: NOW - 3 * HOUR,
+        isLocalNode: true,
+        positionOverrideEnabled: true,
+        latitudeOverride: 1,
+        longitudeOverride: 2,
+      }),
+    ]);
+    const n = [...nodes.values()][0];
+    expect(n.reportedPosition).toBe('valid');
+    expect(n.hasPositionOverride).toBe(true);
+    expect(n.advertHadPosition).toBe(false);
+    expect(n.isLocal).toBe(true);
+  });
+
+  it('flags bogus and absent reported positions, and null advertHadPosition when unknown', () => {
+    const bogus = [...buildMeshCoreSnapshot([mcRow({ latitude: 0, longitude: 0 })]).nodes.values()][0];
+    expect(bogus.reportedPosition).toBe('bogus');
+    expect(bogus.advertHadPosition).toBeNull();
+    const none = [...buildMeshCoreSnapshot([mcRow({ latitude: null, longitude: null })]).nodes.values()][0];
+    expect(none.reportedPosition).toBe('none');
+  });
+
+  it('normalises mc_battery_mv and mc_status_battery_volts into batteryMv (mV), deduping across sources', () => {
+    const { handleByKey } = buildMeshCoreSnapshot([mcRow()]);
+    const key = PK_REPEATER.toLowerCase();
+    const handle = handleByKey.get(key)!;
+    const series = buildMeshCoreTelemetrySeries(
+      [
+        { nodeId: PK_REPEATER, telemetryType: 'mc_battery_mv', timestamp: 1000, value: 3400, sourceId: 'mc-1' },
+        { nodeId: PK_REPEATER, telemetryType: 'mc_status_battery_volts', timestamp: 2000, value: 3.25, sourceId: 'mc-1' },
+        { nodeId: PK_REPEATER, telemetryType: 'mc_status_battery_volts', timestamp: 2000, value: 3.25, sourceId: 'mc-2' },
+        { nodeId: PK_REPEATER, telemetryType: 'mc_status_uptime_secs', timestamp: 2000, value: 99, sourceId: 'mc-1' },
+        { nodeId: PK_REPEATER, telemetryType: 'mc_other', timestamp: 2000, value: 1, sourceId: 'mc-1' },
+        { nodeId: 'ff'.repeat(32), telemetryType: 'mc_battery_mv', timestamp: 2000, value: 1, sourceId: 'mc-1' },
+      ],
+      handleByKey,
+    );
+    const s = series.get(handle)!;
+    expect(s.batteryMv.map((x) => x.value)).toEqual([3400, 3250]);
+    expect(s.uptimeSeconds.map((x) => x.value)).toEqual([99]);
+    expect(series.size).toBe(1);
+  });
+
+  it('the uptime wrapper treats untyped rows as uptime', () => {
+    const { handleByKey } = buildMeshCoreSnapshot([mcRow()]);
+    const series = buildMeshCoreUptimeSeries(
+      [{ nodeId: PK_REPEATER, timestamp: 1000, value: 5, sourceId: 'mc-1' }],
+      handleByKey,
+    );
+    expect([...series.values()][0].uptimeSeconds).toHaveLength(1);
   });
 });

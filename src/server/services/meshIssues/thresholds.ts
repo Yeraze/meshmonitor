@@ -37,6 +37,24 @@ export const AREA_GRID_BIN_DEG = 0.05;
 /** Battery percent below which an infra node counts as deep-discharging. [ours] */
 export const BATTERY_LOW_PCT = 20;
 
+/** Millivolts below which a MeshCore node's battery counts as low (matches
+ *  the low-battery notification default). [ours] */
+export const BATTERY_LOW_MV = 3300;
+
+/** A6: hours without a sign of life before a Meshtastic infra node is stale.
+ *  NodeInfo defaults to about every 3 h. [ours] */
+export const STALE_HOURS_MESHTASTIC = 24;
+
+/** A6: same for MeshCore. Far repeaters only refresh `lastHeard` on flood
+ *  adverts (47 h firmware default), so the window is wider. [ours] */
+export const STALE_HOURS_MESHCORE = 96;
+
+/** A6: beyond this age a node counts as decommissioned, not stale, days. [ours] */
+export const STALE_MAX_AGE_DAYS = 30;
+
+/** A8: trailing samples that must all be low for high confidence. [ours] */
+export const BATTERY_CONFIRM_SAMPLES = 3;
+
 /** Minimum batteryLevel samples in-window before the A3 battery clause fires. [ours] */
 export const BATTERY_MIN_SAMPLES = 3;
 
@@ -234,6 +252,10 @@ export interface ResolvedMeshIssueThresholds {
   /** seconds, [ours] */ overBroadcastSeconds: number;
   /** count, [ours] */ autoCloseCleanRuns: number;
   /** km, [ours] */ routerClusterMaxLinkKm: number;
+  /** hours without a sign of life before a Meshtastic infra node is stale, [ours] */ staleHoursMeshtastic: number;
+  /** hours without a sign of life before a MeshCore infra node is stale, [ours] */ staleHoursMeshcore: number;
+  /** percent, Meshtastic low-battery line (A3 battery clause + A8), [ours] */ lowBatteryPct: number;
+  /** millivolts, MeshCore low-battery line (A8), [ours] */ lowBatteryMv: number;
   /** Resolved, validated, sorted `MESH_ISSUE_RULE_IDS` subset (report reorg
    *  #4964 WP2, spec §4.5/§5.2). Unknown ids from the raw CSV are dropped.
    *  Includes `B7_coverage_shadow` when the legacy `mesh_issues_b7_enabled`
@@ -253,6 +275,10 @@ export const DEFAULT_MESH_ISSUE_THRESHOLDS: ResolvedMeshIssueThresholds = {
   overBroadcastSeconds: OVER_BROADCAST_INTERVAL_SECONDS,
   autoCloseCleanRuns: AUTO_CLOSE_CLEAN_RUNS,
   routerClusterMaxLinkKm: ROUTER_CLUSTER_MAX_LINK_KM,
+  staleHoursMeshtastic: STALE_HOURS_MESHTASTIC,
+  staleHoursMeshcore: STALE_HOURS_MESHCORE,
+  lowBatteryPct: BATTERY_LOW_PCT,
+  lowBatteryMv: BATTERY_LOW_MV,
   disabledRules: [],
 };
 
@@ -274,6 +300,10 @@ export const MESH_ISSUE_THRESHOLD_SETTINGS_KEYS = [
   'mesh_issues_over_broadcast_seconds',
   'mesh_issues_auto_close_runs',
   'mesh_issues_router_cluster_max_link_km',
+  'mesh_issues_stale_hours_meshtastic',
+  'mesh_issues_stale_hours_meshcore',
+  'mesh_issues_low_battery_pct',
+  'mesh_issues_low_battery_mv',
   'mesh_issues_disabled_rules',
 ] as const;
 
@@ -405,6 +435,34 @@ export function resolveThresholds(raw: Record<string, unknown>): ResolvedMeshIss
       DEFAULT_MESH_ISSUE_THRESHOLDS.routerClusterMaxLinkKm,
       1,
       500
+    ),
+    staleHoursMeshtastic: resolveClampedNumber(
+      raw,
+      'mesh_issues_stale_hours_meshtastic',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.staleHoursMeshtastic,
+      2,
+      720
+    ),
+    staleHoursMeshcore: resolveClampedNumber(
+      raw,
+      'mesh_issues_stale_hours_meshcore',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.staleHoursMeshcore,
+      12,
+      720
+    ),
+    lowBatteryPct: resolveClampedNumber(
+      raw,
+      'mesh_issues_low_battery_pct',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.lowBatteryPct,
+      1,
+      80
+    ),
+    lowBatteryMv: resolveClampedNumber(
+      raw,
+      'mesh_issues_low_battery_mv',
+      DEFAULT_MESH_ISSUE_THRESHOLDS.lowBatteryMv,
+      2500,
+      4100
     ),
   };
 }
