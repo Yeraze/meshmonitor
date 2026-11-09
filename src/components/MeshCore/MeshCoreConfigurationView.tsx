@@ -122,7 +122,11 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const loadRepeaterSettings = useCallback(async () => {
     setRepeaterLoading(true);
     try {
-      setRepeaterSnapshot(await actionsRef.current.getRepeaterSettings());
+      // Optional call + catch: the effect fires with `void`, so a rejection
+      // here would surface as an unhandled promise rejection.
+      setRepeaterSnapshot((await actionsRef.current.getRepeaterSettings?.()) ?? null);
+    } catch {
+      setRepeaterSnapshot(null);
     } finally {
       setRepeaterLoading(false);
     }
