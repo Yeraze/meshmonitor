@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ConnectionStatus, MeshCoreActions, TelemetryMode } from './hooks/useMeshCore';
+import type { ConnectionStatus, MeshCoreActions, RepeaterSettingsSnapshot, TelemetryMode } from './hooks/useMeshCore';
 import { RADIO_PRESETS, findPresetId } from './radioPresets';
 import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreChannelsConfigSection } from './MeshCoreChannelsConfigSection';
@@ -12,12 +12,11 @@ import { MeshCoreNodePurgeSection } from './MeshCoreNodePurgeSection';
 import { MeshCorePathHashSection } from './MeshCorePathHashSection';
 import { MeshCoreDefaultScopeSection } from './MeshCoreDefaultScopeSection';
 import { MeshCoreBlePinSection } from './MeshCoreBlePinSection';
-import { MeshCoreMultiAcksSection, COMPANION_CMD_FIRMWARE_MIN } from './MeshCoreMultiAcksSection';
-import { FactoryResetWipeList } from '../shared/config/FactoryResetWipeList';
+import { MeshCoreDeviceManagement } from './MeshCoreDeviceManagement';
+import { companionCapabilities, type DeviceManagementCapabilities } from './deviceManagementCapabilities';
+import { RepeaterSettingsForm } from './RepeaterSettingsForm';
+import { MeshCoreMultiAcksSection } from './MeshCoreMultiAcksSection';
 import { ConfigSection } from '../shared/config/ConfigSection';
-import { DangerZone, DangerZoneActions, DangerZoneButton } from '../shared/config/DangerZone';
-import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
-import { TypedConfirmDialog } from '../common/TypedConfirmDialog';
 import { MESHCORE_DOCS } from './meshcoreDocs';
 import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
@@ -36,6 +35,7 @@ const COMPANION_ONLY_DEVICES = new Set([2, 3]);
 // sections that came from the Settings tab (#5683 follow-up) keep the
 // companion test they had there.
 const DEVICE_TYPE_COMPANION = 1;
+const DEVICE_TYPE_REPEATER = 2;
 
 interface MeshCoreConfigurationViewProps {
   status: ConnectionStatus | null;
@@ -106,6 +106,43 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const [telBase, setTelBase] = useState<TelemetryMode>(local?.telemetryModeBase ?? 'always');
   const [telLoc, setTelLoc] = useState<TelemetryMode>(local?.telemetryModeLoc ?? 'always');
   const [telEnv, setTelEnv] = useState<TelemetryMode>(local?.telemetryModeEnv ?? 'always');
+
+  // Repeater (#6255 P9): its settings live on the device, read over the serial CLI.
+  const isRepeater = status?.deviceType === DEVICE_TYPE_REPEATER || local?.advType === DEVICE_TYPE_REPEATER;
+  const canReadConfig = hasPermission('configuration', 'read', { sourceId });
+  const [repeaterSnapshot, setRepeaterSnapshot] = useState<RepeaterSettingsSnapshot | null>(null);
+  const [repeaterLoading, setRepeaterLoading] = useState(false);
+  const [adminPasswordChanged, setAdminPasswordChanged] = useState(false);
+  const [clockSyncing, setClockSyncing] = useState(false);
+  const [clockResult, setClockResult] = useState<'ok' | 'failed' | null>(null);
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  const repeaterActive = connected && isRepeater && canReadConfig;
+
+  const loadRepeaterSettings = useCallback(async () => {
+    setRepeaterLoading(true);
+    try {
+      setRepeaterSnapshot(await actionsRef.current.getRepeaterSettings());
+    } finally {
+      setRepeaterLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!repeaterActive) {
+      setRepeaterSnapshot(null);
+      return;
+    }
+    void loadRepeaterSettings();
+  }, [repeaterActive, sourceId, loadRepeaterSettings]);
+
+  const handleSyncClock = async () => {
+    setClockSyncing(true);
+    setClockResult(null);
+    const ok = await actions.syncDeviceTime();
+    setClockSyncing(false);
+    setClockResult(ok ? 'ok' : 'failed');
+  };
 
   const presetId = useMemo(() => findPresetId(freq, bw, sf, cr), [freq, bw, sf, cr]);
 
@@ -245,7 +282,10 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const showContactSync = isCompanion && hasSourceAddressing;
   const showConsole = !!sourceId && canWriteConfig;
   const showObserver = !!sourceId && notCompanionOnlyDevice;
-  const showDangerZone = connected && canWriteConfig && notCompanionOnlyDevice;
+  const showDangerZone = connected && canWriteConfig && (notCompanionOnlyDevice || isRepeater);
+  const showRepeaterClock = repeaterActive;
+  // Its chips need a section to jump to, so they wait for the read.
+  const showRepeaterSettings = repeaterActive && repeaterSnapshot !== null;
   // MeshCoreObserverSection renders nothing without this grant (its own gate).
   const canReadObserver = hasPermission('configuration', 'read', { sourceId });
   const navItems = meshcoreConfigurationNavItems(t, {
@@ -255,7 +295,20 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     showConsole,
     showObserver: showObserver && canReadObserver,
     showDangerZone,
+    showRepeaterSettings,
+    showRepeaterClock,
   });
+
+  const deviceCapabilities: DeviceManagementCapabilities = isRepeater
+    ? {
+        reboot: repeaterSnapshot?.capabilities.reboot ?? true,
+        powerOff: repeaterSnapshot?.capabilities.powerOff ?? false,
+        keyExport: repeaterSnapshot?.capabilities.keyExport ?? false,
+        keyImport: repeaterSnapshot?.capabilities.keyImport ?? false,
+        factoryReset: false,
+        reasons: repeaterSnapshot?.capabilities.reasons,
+      }
+    : companionCapabilities(local?.firmwareVer);
 
   const handleSaveTelemetry = async () => {
     setSavingTelemetry(true);
@@ -414,19 +467,88 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               </span>
             )}
           </div>
-          <div style={{ marginTop: '0.75rem' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={advLoc}
-                onChange={e => void handleToggleAdvLoc(e.target.checked)}
-                disabled={!connected || savingAdvLoc || !canWriteConfig}
-              />
-              {t('meshcore.config.advert_loc_policy', 'Include location in adverts')}
-            </label>
-          </div>
+          {!isRepeater && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={advLoc}
+                  onChange={e => void handleToggleAdvLoc(e.target.checked)}
+                  disabled={!connected || savingAdvLoc || !canWriteConfig}
+                />
+                {t('meshcore.config.advert_loc_policy', 'Include location in adverts')}
+              </label>
+            </div>
+          )}
         </ConfigSection>
       </div>
+
+      {showRepeaterClock && (
+        <>
+          {repeaterSnapshot ? (
+            <RepeaterSettingsForm
+              values={repeaterSnapshot.values}
+              guestPasswordSet={repeaterSnapshot.guestPasswordSet}
+              firmwareVersion={repeaterSnapshot.firmware?.version ?? local?.ver}
+              radio={{ sf: local?.radioSf, bw: local?.radioBw, cr: local?.radioCr }}
+              canWrite={canWriteConfig}
+              onSave={actions.saveRepeaterSettings}
+              onSaved={(patch, response) => {
+                if (patch.adminPassword !== undefined && response.results.adminPassword?.ok) {
+                  setAdminPasswordChanged(true);
+                }
+                void loadRepeaterSettings();
+              }}
+            />
+          ) : (
+            <div className="meshcore-empty-state" style={{ marginBottom: '1rem' }} role="status">
+              {repeaterLoading
+                ? t('meshcore.repeater.loading', 'Reading repeater settings…')
+                : t('meshcore.repeater.load_failed', 'Could not read the repeater settings.')}{' '}
+              {!repeaterLoading && (
+                <button type="button" className="btn-secondary" onClick={() => void loadRepeaterSettings()}>
+                  {t('meshcore.repeater.retry', 'Retry')}
+                </button>
+              )}
+            </div>
+          )}
+          {adminPasswordChanged && (
+            <p role="status" data-testid="repeater-stale-credentials" style={{ color: 'var(--color-warning)' }}>
+              {t('meshcore.repeater.stale_credentials', 'The admin password changed. Saved remote-admin credentials for this repeater are now stale: update them in the remote admin login.')}
+            </p>
+          )}
+          <div id="meshcore-config-repeater-clock">
+            <ConfigSection
+              title={t('meshcore.repeater.clock_title', 'Clock')}
+              docsUrl={`${MESHCORE_DOCS}#configuration`}
+              description={t('meshcore.repeater.clock_hint', 'Sets the repeater clock to this server\'s time. A repeater clock only moves forward, so a clock that runs ahead cannot be set back.')}
+              canWrite={canWriteConfig}
+              collapsible
+            >
+              <button
+                type="button"
+                onClick={() => void handleSyncClock()}
+                disabled={!connected || clockSyncing || !canWriteConfig}
+                data-testid="repeater-sync-clock"
+              >
+                {clockSyncing
+                  ? t('meshcore.repeater.clock_syncing', 'Syncing…')
+                  : t('meshcore.repeater.sync_clock', 'Sync clock')}
+              </button>
+              {clockResult === 'ok' && (
+                <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
+                  <UiIcon name="check" size={14} /> {t('meshcore.repeater.clock_synced', 'Clock synced')}
+                </span>
+              )}
+              {clockResult === 'failed' && (
+                <span style={{ marginLeft: '0.75rem', color: 'var(--color-error)' }} role="alert">
+                  {t('meshcore.repeater.clock_failed', 'Clock not synced')}
+                </span>
+              )}
+            </ConfigSection>
+          </div>
+        </>
+      )}
 
       <div id="meshcore-config-radio">
         <ConfigSection
@@ -777,13 +899,14 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         />
       )}
 
-      {/* Device Management — danger zone operations. Companion only. */}
+      {/* Device Management — danger zone operations (Companion and Repeater). */}
       {showDangerZone && (
         <MeshCoreDeviceManagement
           actions={actions}
           deviceName={local?.name}
           publicKey={local?.publicKey}
-          canFactoryReset={isAdmin}
+          capabilities={deviceCapabilities}
+          isAdmin={isAdmin}
           isCompanion={isCompanion}
           firmwareVer={local?.firmwareVer}
           overNetwork={status?.config?.connectionType === 'tcp' || !!status?.config?.tcpHost}
@@ -791,305 +914,6 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
       )}
       </div>
       </div>
-    </div>
-  );
-};
-
-/**
- * Danger-zone device management: reboot + key backup/restore.
- * Extracted as a sub-component to keep ConfigurationView manageable.
- *
- * Reboot and key import each confirm in an in-app dialog (#5830); key import
- * needs a typed word. The hook sends `confirm: true` to satisfy the server's
- * DANGER_CONFIRM_REQUIRED check, so these dialogs are the only guard: the
- * action runs from the dialog's Confirm and nowhere else.
- */
-const IMPORT_KEY_CONFIRM_WORD = 'IMPORT';
-
-const MeshCoreDeviceManagement: React.FC<{
-  actions: MeshCoreActions;
-  deviceName?: string;
-  publicKey?: string;
-  /** Admin only (the server enforces `requireAdmin`). */
-  canFactoryReset: boolean;
-  isCompanion: boolean;
-  firmwareVer?: number;
-  /** The source reaches the device over TCP / WiFi. */
-  overNetwork: boolean;
-}> = ({ actions, deviceName, publicKey, canFactoryReset, isCompanion, firmwareVer, overNetwork }) => {
-  const { t } = useTranslation();
-  const [rebooting, setRebooting] = useState(false);
-  const [rebootConfirmOpen, setRebootConfirmOpen] = useState(false);
-  const [exportingKey, setExportingKey] = useState(false);
-  const [exportedKey, setExportedKey] = useState<string | null>(null);
-  const [importKeyOpen, setImportKeyOpen] = useState(false);
-  const [importKeyDraft, setImportKeyDraft] = useState('');
-  const [importingKey, setImportingKey] = useState(false);
-  const [importKeyError, setImportKeyError] = useState<string | null>(null);
-  // The validated key waiting on the typed-word dialog.
-  const [pendingImportKey, setPendingImportKey] = useState<string | null>(null);
-  const [resetOpen, setResetOpen] = useState(false);
-  const [resetting, setResetting] = useState(false);
-
-  // Companion firmware before v7 has no factory-reset command.
-  const firmwareTooOld = typeof firmwareVer === 'number' && firmwareVer < COMPANION_CMD_FIRMWARE_MIN;
-  const resetBlockedReason = !isCompanion
-    ? t('meshcore.factory_reset.blocked_not_companion', 'Factory reset works on a Companion only.')
-    : firmwareTooOld
-      ? t('meshcore.factory_reset.blocked_firmware', 'Needs Companion firmware version {{min}} or later.', { min: COMPANION_CMD_FIRMWARE_MIN })
-      : undefined;
-  // The typed word: the device name, or a public-key prefix when it has none.
-  const resetWord = (deviceName ?? '').trim() || (publicKey ?? '').slice(0, 8);
-
-  const handleFactoryReset = async () => {
-    setResetting(true);
-    try {
-      await actions.factoryReset({ confirm: true });
-    } finally {
-      setResetting(false);
-      setResetOpen(false);
-    }
-  };
-
-  const handleReboot = async () => {
-    setRebootConfirmOpen(false);
-    setRebooting(true);
-    try {
-      await actions.rebootDevice({ confirm: true });
-    } finally {
-      setRebooting(false);
-    }
-  };
-
-  const handleExportKey = async () => {
-    setExportingKey(true);
-    setExportedKey(null);
-    try {
-      const hex = await actions.exportPrivateKey();
-      if (hex) {
-        setExportedKey(hex);
-      }
-    } finally {
-      setExportingKey(false);
-    }
-  };
-
-  const handleCopyKey = async () => {
-    if (!exportedKey) return;
-    try {
-      await navigator.clipboard.writeText(exportedKey);
-    } catch {
-      window.prompt('Copy this private key:', exportedKey);
-    }
-  };
-
-  /** Validates the draft, then asks for the typed word. Sends nothing. */
-  const requestImportKey = () => {
-    if (importingKey) return;
-    const hex = importKeyDraft.trim();
-    if (!/^[0-9a-fA-F]{128}$/.test(hex)) {
-      setImportKeyError(t('meshcore.config.import_key_invalid', 'Key must be a 128-character hex string.'));
-      return;
-    }
-    setImportKeyError(null);
-    setPendingImportKey(hex);
-  };
-
-  const handleImportKey = async () => {
-    const hex = pendingImportKey;
-    if (!hex || importingKey) return;
-    setImportingKey(true);
-    setImportKeyError(null);
-    try {
-      const ok = await actions.importPrivateKey(hex, { confirm: true });
-      if (ok) {
-        setImportKeyOpen(false);
-        setImportKeyDraft('');
-      } else {
-        setImportKeyError(t('meshcore.config.import_key_failed', 'Import failed.'));
-      }
-    } finally {
-      setImportingKey(false);
-      setPendingImportKey(null);
-    }
-  };
-
-  return (
-    // The id wraps the whole zone so the section filter hides all of it.
-    <div id="meshcore-device-management">
-      <DangerZone>
-        <DangerZoneActions>
-          <DangerZoneButton
-            onClick={() => setRebootConfirmOpen(true)}
-            disabled={rebooting}
-            data-testid="meshcore-reboot-button"
-          >
-            {rebooting
-              ? t('meshcore.config.rebooting', 'Rebooting…')
-              : t('meshcore.config.reboot_button', 'Reboot Device')}
-          </DangerZoneButton>
-
-          <DangerZoneButton
-            variant="plain"
-            onClick={handleExportKey}
-            disabled={exportingKey}
-          >
-            {exportingKey
-              ? t('meshcore.config.exporting_key', 'Exporting…')
-              : t('meshcore.config.export_key_button', 'Backup Private Key')}
-          </DangerZoneButton>
-
-          <DangerZoneButton
-            onClick={() => { setImportKeyDraft(''); setImportKeyError(null); setImportKeyOpen(true); }}
-          >
-            {t('meshcore.config.import_key_button', 'Restore Private Key')}
-          </DangerZoneButton>
-
-          {canFactoryReset && (
-            <DangerZoneButton
-              onClick={() => setResetOpen(true)}
-              disabled={resetting || resetBlockedReason !== undefined || resetWord === ''}
-              title={resetBlockedReason}
-              data-testid="meshcore-factory-reset-button"
-            >
-              {t('meshcore.factory_reset.button', 'Factory Reset')}
-            </DangerZoneButton>
-          )}
-        </DangerZoneActions>
-
-        {exportedKey && (
-          <div style={{
-            background: 'var(--color-surface)',
-            padding: '0.75rem',
-            borderRadius: '6px',
-            fontFamily: 'var(--font-mono, monospace)',
-            fontSize: '0.85em',
-            wordBreak: 'break-all',
-          }}>
-            <div style={{ marginBottom: '0.5rem', color: 'var(--color-warning)' }}>
-              {t('meshcore.config.export_key_warning', 'Store this key securely. Anyone with it can impersonate this device.')}
-            </div>
-            <div>{exportedKey}</div>
-            <button
-              type="button"
-              className="btn-secondary"
-              style={{ marginTop: '0.5rem', fontSize: '0.85em' }}
-              onClick={handleCopyKey}
-            >
-              {t('meshcore.config.copy_key', 'Copy to clipboard')}
-            </button>
-          </div>
-        )}
-
-        {importKeyOpen && (
-          <div style={{
-            background: 'var(--color-surface)',
-            padding: '0.75rem',
-            borderRadius: '6px',
-          }}>
-            <div style={{ marginBottom: '0.5rem', color: 'var(--color-error)' }}>
-              {t('meshcore.config.import_key_warning', 'This replaces the device identity. All contacts will need to re-discover this node.')}
-            </div>
-            <input
-              type="text"
-              value={importKeyDraft}
-              onChange={(e) => setImportKeyDraft(e.target.value)}
-              disabled={importingKey}
-              placeholder="128-character hex private key"
-              aria-label={t('meshcore.config.import_key_input', 'Private key (hex)')}
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                fontFamily: 'var(--font-mono, monospace)',
-                boxSizing: 'border-box',
-                marginBottom: '0.5rem',
-              }}
-            />
-            {importKeyError && (
-              <div style={{ color: 'var(--color-error)', marginBottom: '0.5rem' }} role="alert">{importKeyError}</div>
-            )}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button type="button" className="btn-secondary" onClick={() => setImportKeyOpen(false)} disabled={importingKey}>
-                {t('meshcore.config.cancel', 'Cancel')}
-              </button>
-              <button type="button" className="btn-primary" onClick={requestImportKey} disabled={importingKey || importKeyDraft.trim().length === 0}
-                style={{ color: 'var(--color-error)' }}>
-                {importingKey
-                  ? t('meshcore.config.importing_key', 'Importing…')
-                  : t('meshcore.config.import_key_confirm_button', 'Import Key')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {rebootConfirmOpen && (
-          <ConfirmDialog
-            title={t('meshcore.config.reboot_dialog_title', 'Reboot the device?')}
-            message={t('meshcore.config.reboot_dialog_message', {
-              name: deviceName ?? t('meshcore.config.this_device', 'this device'),
-              defaultValue: '{{name}} disconnects and restarts.',
-            })}
-            confirmLabel={t('meshcore.config.reboot_button', 'Reboot Device')}
-            cancelLabel={t('common.cancel', 'Cancel')}
-            onConfirm={() => { void handleReboot(); }}
-            onCancel={() => setRebootConfirmOpen(false)}
-          />
-        )}
-
-        <TypedConfirmDialog
-          isOpen={resetOpen}
-          title={t('meshcore.factory_reset.dialog_title', 'Factory reset this device?')}
-          confirmWord={resetWord}
-          confirmLabel={t('meshcore.factory_reset.confirm_label', 'Factory Reset')}
-          danger
-          busy={resetting}
-          onConfirm={() => { void handleFactoryReset(); }}
-          onCancel={() => setResetOpen(false)}
-        >
-          <p>
-            {t('meshcore.factory_reset.dialog_body', {
-              name: deviceName || resetWord,
-              defaultValue: '{{name}} erases its own storage and restarts. This cannot be undone.',
-            })}
-          </p>
-          <FactoryResetWipeList items={['settings', 'channels', 'contacts', 'network', 'identity']} />
-          <p>{t('meshcore.factory_reset.identity_note', 'The device gets a new public key, so other nodes no longer know it by its old one.')}</p>
-          {overNetwork && (
-            <p style={{ color: 'var(--color-warning)' }}>
-              {t('meshcore.factory_reset.network_warning', 'This source reaches the device over TCP or WiFi. You may lose network access, because the WiFi credentials are wiped. You then set the device up again over USB or Bluetooth.')}
-            </p>
-          )}
-          <p>
-            {t('meshcore.factory_reset.backup_first', 'Back up first:')}{' '}
-            <button
-              type="button"
-              className="btn-link"
-              onClick={() => { setResetOpen(false); void handleExportKey(); }}
-              data-testid="meshcore-factory-reset-backup"
-            >
-              {t('meshcore.config.export_key_button', 'Backup Private Key')}
-            </button>
-          </p>
-        </TypedConfirmDialog>
-
-        <TypedConfirmDialog
-          isOpen={pendingImportKey !== null}
-          title={t('meshcore.config.import_key_dialog_title', 'Replace the device identity?')}
-          confirmWord={IMPORT_KEY_CONFIRM_WORD}
-          confirmLabel={t('meshcore.config.import_key_confirm_button', 'Import Key')}
-          danger
-          busy={importingKey}
-          onConfirm={() => { void handleImportKey(); }}
-          onCancel={() => setPendingImportKey(null)}
-        >
-          <p>
-            {t(
-              'meshcore.config.import_key_dialog_body',
-              'This REPLACES the device identity with the imported private key. Every contact will need to re-discover this node. It cannot be undone without the old key.',
-            )}
-          </p>
-        </TypedConfirmDialog>
-      </DangerZone>
     </div>
   );
 };

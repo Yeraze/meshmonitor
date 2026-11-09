@@ -1,0 +1,62 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.unit {
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+}
+
+.warn {
+  margin: 0.25rem 0 0;
+  color: var(--color-warning);
+  font-size: 0.85em;
+}
+
+.note {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+}
+
+.ok {
+  color: var(--color-success);
+  font-size: 0.85em;
+}
+
+.err {
+  color: var(--color-error);
+  font-size: 0.85em;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.hint {
+  margin: 0.5rem 0 0;
+  color: var(--color-warning);
+}

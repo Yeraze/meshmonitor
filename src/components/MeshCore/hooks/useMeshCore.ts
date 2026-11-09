@@ -40,6 +40,62 @@ import { remapChannelCustomOrder } from '../meshcoreChannelOrder';
 import { emitChannelsReordered, remapChannelKey, slotMoveMap } from '../meshcoreChannelReorderEvents';
 import { emitFiltersChanged, subscribeFiltersChanged } from '../meshcoreFilterEvents';
 
+/** A Repeater's readable settings (#6255 P9). Secrets are never in here. */
+export interface RepeaterSettingsValues {
+  lat?: number;
+  lon?: number;
+  advertInterval?: number;
+  floodAdvertInterval?: number;
+  floodMax?: number;
+  repeat?: boolean;
+  af?: number;
+  rxDelay?: number;
+  txDelay?: number;
+  directTxDelay?: number;
+  allowReadOnly?: boolean;
+}
+
+export interface RepeaterCapabilities {
+  /** Reboot is always on for a connected Repeater; factory reset is Companion-only. */
+  reboot?: boolean;
+  powerOff: boolean;
+  keyExport: boolean;
+  keyImport: boolean;
+  factoryReset?: boolean;
+  /** Why an action is off, keyed like the flags above. */
+  reasons?: Partial<Record<'reboot' | 'powerOff' | 'keyExport' | 'keyImport' | 'factoryReset', string>>;
+}
+
+export interface RepeaterSettingsSnapshot {
+  values: RepeaterSettingsValues;
+  guestPasswordSet: boolean;
+  capabilities: RepeaterCapabilities;
+  firmware?: { version?: string | null; gates?: unknown };
+}
+
+export type RepeaterSettingsPatch = Partial<RepeaterSettingsValues> & {
+  adminPassword?: string;
+  guestPassword?: string;
+};
+
+export interface RepeaterKeyResult {
+  ok: boolean;
+  changed?: boolean;
+  value?: number | boolean | string;
+  error?: string;
+  code?: string;
+}
+
+export interface RepeaterSaveResponse {
+  /** False when any key failed (still HTTP 200). */
+  ok?: boolean;
+  results: Record<string, RepeaterKeyResult>;
+  values?: RepeaterSettingsValues;
+  guestPasswordSet?: boolean;
+  read?: boolean;
+  drifted?: boolean;
+}
+
 export type TelemetryMode = 'always' | 'device' | 'never';
 
 /**
@@ -415,6 +471,12 @@ export interface MeshCoreActions {
     total: number;
     neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
   } | null>;
+  /** Read a Repeater's settings over its serial CLI (#6255 P9). Null on failure. */
+  getRepeaterSettings: () => Promise<RepeaterSettingsSnapshot | null>;
+  /** Save changed Repeater settings. Returns per-key results, or null on a request failure. */
+  saveRepeaterSettings: (patch: RepeaterSettingsPatch) => Promise<RepeaterSaveResponse | null>;
+  /** Power the device off until it is power-cycled. Admin only; destructive. */
+  powerOffDevice: (opts?: { confirm?: boolean }) => Promise<boolean>;
   /** Reboot the locally connected device. Destructive — requires confirm flow. */
   rebootDevice: (opts?: { confirm?: boolean }) => Promise<boolean>;
   /** Read the BLE pairing PIN (0 = firmware default). Null on failure. P8a #6257. */
@@ -2042,6 +2104,59 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
+  const getRepeaterSettings = useCallback(async (): Promise<RepeaterSettingsSnapshot | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/repeater-settings`);
+      const data = await parseJsonResponse(response);
+      if (!data.success) {
+        setError(data.error || 'Failed to read repeater settings');
+        return null;
+      }
+      return data.data as RepeaterSettingsSnapshot;
+    } catch (_err) {
+      setError('Failed to read repeater settings');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const saveRepeaterSettings = useCallback(async (patch: RepeaterSettingsPatch): Promise<RepeaterSaveResponse | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/repeater-settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await parseJsonResponse(response);
+      if (!data.success) {
+        setError(data.error || 'Failed to save repeater settings');
+        return null;
+      }
+      return data.data as RepeaterSaveResponse;
+    } catch (_err) {
+      setError('Failed to save repeater settings');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const powerOffDevice = useCallback(async (opts?: { confirm?: boolean }): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/power-off`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: opts?.confirm ?? true }),
+      });
+      const data = await parseJsonResponse(response);
+      if (!data.success) {
+        setError(data.error || 'Power off failed');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Power off failed');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const rebootDevice = useCallback(async (opts?: { confirm?: boolean }): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/reboot`, {
@@ -2717,6 +2832,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       syncDeviceTime,
       getNeighbours,
       rebootDevice,
+      getRepeaterSettings,
+      saveRepeaterSettings,
+      powerOffDevice,
       getBlePin,
       setBlePin,
       setMultiAcks,

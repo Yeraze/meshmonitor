@@ -10,7 +10,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ hasPermission: () => true }),
+  useAuth: () => ({
+    hasPermission: () => true,
+    authStatus: { authenticated: true, user: { isAdmin: true } },
+  }),
 }));
 vi.mock('../ToastContainer', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
@@ -114,7 +117,7 @@ describe('MeshCore danger zone (#5830)', () => {
     expect(actions.rebootDevice).not.toHaveBeenCalled();
   });
 
-  it('key import needs the typed word before it sends', async () => {
+  it('key import needs the typed device name before it sends', async () => {
     const actions = makeActions();
     render(<MeshCoreConfigurationView status={status} actions={actions} />);
     openImport();
@@ -124,12 +127,12 @@ describe('MeshCore danger zone (#5830)', () => {
     const confirm = within(dialog).getByRole('button', { name: 'meshcore.config.import_key_confirm_button' }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
     const input = within(dialog).getByRole('textbox');
-    fireEvent.change(input, { target: { value: 'import' } });
+    fireEvent.change(input, { target: { value: 'radio one' } });
     expect(confirm.disabled).toBe(true);
     fireEvent.click(confirm);
     expect(actions.importPrivateKey).not.toHaveBeenCalled();
 
-    fireEvent.change(input, { target: { value: 'IMPORT' } });
+    fireEvent.change(input, { target: { value: 'Radio One' } });
     expect(confirm.disabled).toBe(false);
     fireEvent.click(confirm);
     await waitFor(() => expect(actions.importPrivateKey).toHaveBeenCalledWith(VALID_KEY, { confirm: true }));
