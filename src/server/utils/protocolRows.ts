@@ -16,6 +16,7 @@
 import type { DbMeshCoreNode, DbMeshCoreMessage, DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 import type { MeshCoreHopSnrRow } from '../../db/repositories/meshcoreHopSnr.js';
 import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
+import { buildMeshCoreTraceRun } from '../../utils/meshcoreTraceRun.js';
 import { unifiedNodeKey } from '../../utils/nodeIdentity.js';
 import { meshcoreChannelIdx } from './meshcoreChannelIdx.js';
 
@@ -136,39 +137,40 @@ export function meshcoreMessageToV1(row: DbMeshCoreMessage, sourceId?: string | 
 export interface MeshcoreTraceOptions {
   /** The source's own key, used for an unresolved first sender (the requester). */
   localPublicKey?: string | null;
-}
-
-function endFields(key: string | null | undefined): { nodeId: string | null; nodeNum: number } {
-  const k = keyFields(key);
-  return { nodeId: k.nodeId, nodeNum: k.nodeNum ?? UNRESOLVED_NODE_NUM };
+  /** The contact the trace was sent to, when known (splits the round trip there). */
+  targetPublicKey?: string | null;
 }
 
 /**
- * Map the hop rows of ONE trace (any order) to a v1 traceroute row. `route`
- * holds the nodes between requester and responder (synthetic numbers,
- * `UNRESOLVED_NODE_NUM` where the hop did not resolve to a contact);
- * `snrTowards` holds one dB*4 value per link, requester side first;
- * `routeBack` / `snrBack` are null (a MeshCore trace has no return leg).
+ * Map the hop rows of ONE trace (any order) to a v1 traceroute row, through the
+ * shared run builder (`buildMeshCoreTraceRun`, also used by the Explorer).
+ *
+ * A stored trace is a loop local -> hops -> local. `fromNode*` is the local
+ * radio; `toNode*` is the turnaround (or the target when the caller knows it).
+ * `route` / `snrTowards` are the outbound leg, `routeBack` / `snrBack` the
+ * return leg (null when the return link was not recorded). Synthetic numbers
+ * are display only; `UNRESOLVED_NODE_NUM` marks a hop that did not resolve.
  * Returns null for an empty trace.
  */
 export function meshcoreTraceToV1(rows: MeshCoreHopSnrRow[], opts: MeshcoreTraceOptions = {}) {
-  if (rows.length === 0) return null;
+  const run = buildMeshCoreTraceRun(rows, {
+    localPublicKey: opts.localPublicKey ?? null,
+    targetPublicKey: opts.targetPublicKey ?? null,
+  });
+  if (!run) return null;
   const hops = [...rows].sort((a, b) => a.hopIndex - b.hopIndex);
   const first = hops[0];
-  const last = hops[hops.length - 1];
-  const from = endFields(first.senderPublicKey ?? opts.localPublicKey ?? null);
-  const to = endFields(last.receiverPublicKey);
-  const between = hops.slice(0, -1).map((h) => endFields(h.receiverPublicKey).nodeNum);
+  const idOf = (key: string): string | null => (key.startsWith('mc:') ? key : null);
   return {
     protocol: 'meshcore' as const,
-    fromNodeId: from.nodeId,
-    fromNodeNum: from.nodeNum,
-    toNodeId: to.nodeId,
-    toNodeNum: to.nodeNum,
-    route: JSON.stringify(between),
-    routeBack: null,
-    snrTowards: JSON.stringify(hops.map((h) => h.snrQuarterDb)),
-    snrBack: null,
+    fromNodeId: idOf(run.fromKey),
+    fromNodeNum: run.fromNodeNum,
+    toNodeId: idOf(run.toKey),
+    toNodeNum: run.toNodeNum,
+    route: run.route,
+    routeBack: run.routeBack,
+    snrTowards: run.snrTowards,
+    snrBack: run.snrBack,
     channel: null,
     hops: hops.map((h) => ({
       index: h.hopIndex,
@@ -176,7 +178,7 @@ export function meshcoreTraceToV1(rows: MeshCoreHopSnrRow[], opts: MeshcoreTrace
       hash: h.receiverHash ?? null,
       snr: h.snrQuarterDb / 4,
     })),
-    initiated: hops.some((h) => h.initiated),
+    initiated: run.initiated,
     traceTag: first.traceTag,
     timestamp: first.timestamp,
     sourceId: first.sourceId,
