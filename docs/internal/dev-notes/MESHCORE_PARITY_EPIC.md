@@ -149,7 +149,7 @@ export, DM) follows in #6281. User docs: `docs/features/security.md`, `meshcore.
 Shipped (P7b / P15, #6281; spec: `MESHCORE_PARITY_P15_SPEC.md`): MeshCore uses the same 30 packets/hour and 30 minute
 thresholds as Meshtastic from one constant file (`constants/securityThresholds.ts`). Rates count distinct packet
 hashes from the MeshCore packet log (off = rate flags untouched, hint in the tab); the clock offset comes from the newest
-advert or DM sender time, and a never-set clock is shown as "Clock not set". Migration 225 adds the flag columns to
+advert or DM sender time, and a never-set clock is shown as "Clock not set". Migration 227 adds the flag columns to
 `meshcore_nodes` (only the scanner and the clear route write them). One scanner, one issues collector
 (`securityIssuesService`), one digest formatter (sections), one export and one notification-text builder serve both
 protocols. Digest settings now save per source with a global fallback; an unconfigured source is skipped, not failed.

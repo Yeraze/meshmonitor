@@ -1,12 +1,12 @@
 /**
- * Migration 225 (#6281): meshcore_nodes security flag columns, on SQLite,
+ * Migration 227 (#6281): meshcore_nodes security flag columns, on SQLite,
  * PostgreSQL and MySQL. PG/MySQL blocks use isolated databases.
  */
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { migration, runMigration225Postgres, runMigration225Mysql } from './225_add_meshcore_node_security_flags.js';
+import { migration, runMigration227Postgres, runMigration227Mysql } from './227_add_meshcore_node_security_flags.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -25,7 +25,7 @@ const COLS = [
   'timeOffsetCheckedAt',
 ];
 
-describe('Migration 225 — SQLite', () => {
+describe('Migration 227 — SQLite', () => {
   let db: Database.Database;
   beforeEach(() => {
     db = new Database(':memory:');
@@ -52,11 +52,11 @@ describe('Migration 225 — SQLite', () => {
   });
 });
 
-describe.skipIf(!postgresAvailable)('Migration 225 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('Migration 227 — PostgreSQL (container)', () => {
   let pool: pg.Pool;
   let cleanup: (() => Promise<void>) | undefined;
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig225'));
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig227'));
     await pool.query(`CREATE TABLE meshcore_nodes ("sourceId" TEXT, "publicKey" TEXT, name TEXT)`);
     await pool.query(`INSERT INTO meshcore_nodes VALUES ('src-1', 'aa', 'n')`);
   });
@@ -67,8 +67,8 @@ describe.skipIf(!postgresAvailable)('Migration 225 — PostgreSQL (container)', 
   it('adds the columns and is idempotent', async () => {
     const client = await pool.connect();
     try {
-      await runMigration225Postgres(client);
-      await expect(runMigration225Postgres(client)).resolves.toBeUndefined();
+      await runMigration227Postgres(client);
+      await expect(runMigration227Postgres(client)).resolves.toBeUndefined();
     } finally {
       client.release();
     }
@@ -84,11 +84,11 @@ describe.skipIf(!postgresAvailable)('Migration 225 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('Migration 225 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('Migration 227 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let cleanup: (() => Promise<void>) | undefined;
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig225'));
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig227'));
     await pool.query(`CREATE TABLE meshcore_nodes (sourceId VARCHAR(64), publicKey VARCHAR(64), name VARCHAR(64))`);
     await pool.query(`INSERT INTO meshcore_nodes VALUES ('src-1', 'aa', 'n')`);
   });
@@ -97,8 +97,8 @@ describe.skipIf(!mysqlAvailable)('Migration 225 — MySQL (container)', () => {
   });
 
   it('adds the columns and is idempotent', async () => {
-    await runMigration225Mysql(pool);
-    await expect(runMigration225Mysql(pool)).resolves.toBeUndefined();
+    await runMigration227Mysql(pool);
+    await expect(runMigration227Mysql(pool)).resolves.toBeUndefined();
     const [rows] = await pool.query(`SELECT * FROM meshcore_nodes`);
     const r = (rows as Array<Record<string, unknown>>)[0];
     expect(Number(r.isExcessivePackets)).toBe(0);

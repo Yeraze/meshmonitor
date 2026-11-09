@@ -1,5 +1,5 @@
 /**
- * Migration 225: persisted security flags on `meshcore_nodes` (#6281, P7b).
+ * Migration 227: persisted security flags on `meshcore_nodes` (#6281, P7b).
  *
  *   isExcessivePackets     boolean, default false   packets/hour over the threshold
  *   packetRatePerHour      int                      distinct packets in the last hour
@@ -22,7 +22,7 @@ import {
   addColumnIfMissingMysql,
 } from './helpers.js';
 
-const LABEL = 'Migration 225';
+const LABEL = 'Migration 227';
 const TABLE = 'meshcore_nodes';
 
 // ============ SQLite ============
@@ -48,7 +48,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration225Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration227Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): adding ${TABLE} security flag columns...`);
   await addColumnIfMissingPostgres(client, TABLE, 'isExcessivePackets', '"isExcessivePackets" BOOLEAN DEFAULT false');
   await addColumnIfMissingPostgres(client, TABLE, 'packetRatePerHour', '"packetRatePerHour" INTEGER');
@@ -63,7 +63,7 @@ export async function runMigration225Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration225Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration227Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): adding ${TABLE} security flag columns...`);
   await addColumnIfMissingMysql(pool, TABLE, 'isExcessivePackets', 'isExcessivePackets BOOLEAN DEFAULT false');
   await addColumnIfMissingMysql(pool, TABLE, 'packetRatePerHour', 'packetRatePerHour INT');
