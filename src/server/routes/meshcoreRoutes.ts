@@ -22,6 +22,7 @@ import contactsRoutes from './meshcoreContactsRoutes.js';
 import configRoutes from './meshcoreConfigRoutes.js';
 import messagingRoutes from './meshcoreMessagingRoutes.js';
 import adminRoutes from './meshcoreAdminRoutes.js';
+import remoteSettingsRoutes from './meshcoreRemoteSettingsRoutes.js';
 import automationRoutes from './meshcoreAutomationRoutes.js';
 import packetRoutes from './meshcorePacketRoutes.js';
 import ingestReadRoutes from './meshcoreIngestReadRoutes.js';
@@ -62,6 +63,7 @@ router.use(contactsRoutes);
 router.use(configRoutes);
 router.use(messagingRoutes);
 router.use(adminRoutes);
+router.use(remoteSettingsRoutes);
 router.use(automationRoutes);
 
 export default router;

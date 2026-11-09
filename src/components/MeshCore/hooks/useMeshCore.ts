@@ -53,6 +53,10 @@ export interface RepeaterSettingsValues {
   txDelay?: number;
   directTxDelay?: number;
   allowReadOnly?: boolean;
+  /** Remote reads (#6256 P10): the node's name, TX power (dBm) and `freq,bw,sf,cr` radio string. */
+  name?: string;
+  txPower?: number;
+  radio?: string;
 }
 
 export interface RepeaterCapabilities {
@@ -84,6 +88,8 @@ export interface RepeaterKeyResult {
   value?: number | boolean | string;
   error?: string;
   code?: string;
+  /** Remote: false when the key was accepted but no readback ran (the run stopped early). */
+  verified?: boolean;
 }
 
 export interface RepeaterSaveResponse {
@@ -94,7 +100,27 @@ export interface RepeaterSaveResponse {
   guestPasswordSet?: boolean;
   read?: boolean;
   drifted?: boolean;
+  /** Remote only: radio commands this request sent. */
+  sent?: number;
 }
+
+/** Settings groups a remote read asks for one at a time (#6256 P10). */
+export type RemoteSettingsGroup = 'identity' | 'adverts' | 'access';
+
+export interface RemoteSettingsReadData {
+  values: RepeaterSettingsValues;
+  guestPasswordSet: boolean;
+  errors: Record<string, string>;
+  firmware: string | null;
+  deviceType: 'repeater' | 'room';
+  sent: number;
+  stoppedAt?: string;
+}
+
+/** A remote settings call's outcome; errors keep the server code for the form. */
+export type RemoteSettingsResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; code?: string; error: string; field?: string; retryAfterSeconds?: number };
 
 export type TelemetryMode = 'always' | 'device' | 'never';
 
@@ -475,6 +501,10 @@ export interface MeshCoreActions {
   getRepeaterSettings: () => Promise<RepeaterSettingsSnapshot | null>;
   /** Save changed Repeater settings. Returns per-key results, or null on a request failure. */
   saveRepeaterSettings: (patch: RepeaterSettingsPatch) => Promise<RepeaterSaveResponse | null>;
+  /** Read settings groups from a remote Repeater / Room Server over RF (#6256 P10). */
+  readRemoteSettings: (publicKey: string, groups: RemoteSettingsGroup[]) => Promise<RemoteSettingsResult<RemoteSettingsReadData>>;
+  /** Save changed settings on a remote Repeater / Room Server over RF (#6256 P10). */
+  saveRemoteSettings: (publicKey: string, patch: RepeaterSettingsPatch) => Promise<RemoteSettingsResult<RepeaterSaveResponse>>;
   /** Power the device off until it is power-cycled. Admin only; destructive. */
   powerOffDevice: (opts?: { confirm?: boolean }) => Promise<boolean>;
   /** Reboot the locally connected device. Destructive — requires confirm flow. */
@@ -2138,6 +2168,50 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const remoteSettingsCall = useCallback(async <T,>(
+    path: string,
+    init: RequestInit,
+  ): Promise<RemoteSettingsResult<T>> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}${path}`, {
+        ...init,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await parseJsonResponse(response);
+      if (!data.success) {
+        reportTxDisabled(response.status, data);
+        return {
+          ok: false,
+          code: typeof data.code === 'string' ? data.code : undefined,
+          error: data.error || 'Request failed',
+          field: typeof data.field === 'string' ? data.field : undefined,
+          retryAfterSeconds: typeof data.retryAfterSeconds === 'number' ? data.retryAfterSeconds : undefined,
+        };
+      }
+      return { ok: true, data: data.data as T };
+    } catch (_err) {
+      return { ok: false, error: 'Request failed' };
+    }
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
+
+  const readRemoteSettings = useCallback(
+    (publicKey: string, groups: RemoteSettingsGroup[]) =>
+      remoteSettingsCall<RemoteSettingsReadData>(`/admin/settings/${encodeURIComponent(publicKey)}/read`, {
+        method: 'POST',
+        body: JSON.stringify({ groups }),
+      }),
+    [remoteSettingsCall],
+  );
+
+  const saveRemoteSettings = useCallback(
+    (publicKey: string, patch: RepeaterSettingsPatch) =>
+      remoteSettingsCall<RepeaterSaveResponse>(`/admin/settings/${encodeURIComponent(publicKey)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    [remoteSettingsCall],
+  );
+
   const powerOffDevice = useCallback(async (opts?: { confirm?: boolean }): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/power-off`, {
@@ -2834,6 +2908,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       rebootDevice,
       getRepeaterSettings,
       saveRepeaterSettings,
+      readRemoteSettings,
+      saveRemoteSettings,
       powerOffDevice,
       getBlePin,
       setBlePin,
