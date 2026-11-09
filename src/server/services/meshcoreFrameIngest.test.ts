@@ -182,12 +182,12 @@ describe('frameRoomPostId', () => {
 
 describe('ingestAdvertFrame', () => {
   it('upserts the advert fields with undefined-preserves semantics', async () => {
-    const advert = await ingestAdvertFrame(
+    const ingested = await ingestAdvertFrame(
       buildAdvertFrame({ publicKey: NODE_KEY, advType: 2 }),
       'src-rep',
       { lastHeardMs: 1234 },
     );
-    expect(advert?.publicKey.toLowerCase()).toBe(NODE_KEY);
+    expect(ingested?.advert.publicKey.toLowerCase()).toBe(NODE_KEY);
     expect(upsertNode).toHaveBeenCalledTimes(1);
     const [node, sourceId] = upsertNode.mock.calls[0];
     expect(sourceId).toBe('src-rep');
@@ -224,6 +224,25 @@ describe('ingestAdvertFrame', () => {
     );
     const [node] = upsertNode.mock.calls[0];
     expect(node.lastAdvertHadPosition).toBe(false);
+  });
+
+  describe('insert and signature report (#6306)', () => {
+    it('reports inserted from the repository result; a missing result reads as not inserted', async () => {
+      upsertNode.mockResolvedValueOnce({ inserted: true });
+      expect((await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1 }))?.inserted).toBe(true);
+      upsertNode.mockResolvedValueOnce({ inserted: false });
+      expect((await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1 }))?.inserted).toBe(false);
+      expect((await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1 }))?.inserted).toBe(false);
+    });
+
+    it('reports signatureVerified only for a checked, passing signature', async () => {
+      // Not checked (no verifySignature) and checked-and-failed (dummy signature) both read false.
+      expect((await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1 }))?.signatureVerified).toBe(false);
+      expect((await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, verifySignature: 'always' }))?.signatureVerified).toBe(false);
+      const spy = vi.spyOn(Ed25519SignatureVerifier, 'verifyAdvertisementSignature').mockResolvedValue(true);
+      expect((await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, verifySignature: 'always' }))?.signatureVerified).toBe(true);
+      spy.mockRestore();
+    });
   });
 
   describe('heardHops → pathLen (#6220)', () => {

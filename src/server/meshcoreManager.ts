@@ -136,6 +136,7 @@ import {
 import type { MeshCoreObserverConfig, MeshCoreSourceConfig, NormalizedObserverConfig } from './meshcoreConfig.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
+import { newNodeAlertGate } from './services/newNodeAlertGate.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { meshcoreOwnIdentityTracker } from './services/meshcoreOwnIdentityTracker.js';
 import { meshcoreMessageFilter, type MeshCoreClassifyResult } from './services/meshcoreMessageFilter.js';
@@ -4028,6 +4029,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * running even if notification delivery hiccups.
    */
   private async notifyNewNodeDiscovered(contact: MeshCoreContact): Promise<void> {
+    // Auto Welcome (#6224): the genuinely-new-and-named event greets the node.
+    // Fire-and-forget: a welcome failure must not break the discovery pipeline.
+    // Only this Companion path welcomes; a Repeater sends nothing (#6306).
+    await this.alertNewNode(contact, { onClaimed: () => void this.checkAutoWelcome(contact) });
+  }
+
+  /**
+   * The alert half of {@link notifyNewNodeDiscovered}: dedup, the nameless-key
+   * deferral, and the notification. It sends NOTHING over the air, which is why
+   * the Repeater path (#6306) calls it directly and never Auto Welcome.
+   *
+   * `onClaimed` runs once the key is accepted (named, not yet alerted), before
+   * the notification is built. Failures are logged, never thrown.
+   */
+  private async alertNewNode(
+    contact: MeshCoreContact,
+    opts: { suppressedCount?: number; onClaimed?: () => void } = {},
+  ): Promise<void> {
     try {
       const publicKey = contact.publicKey;
       if (!publicKey || this.notifiedNewNodes.has(publicKey)) return;
@@ -4037,16 +4056,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // Defer until a name arrives. The auto-add 0x80 push carries only the
         // pubkey; the follow-up get_contacts re-read (refreshContacts) or a
         // later named advert resolves this via the pending set (#5340).
-        this.pendingNewNodeNotifications.add(publicKey);
+        this.rememberPendingNewNode(publicKey);
         return;
       }
       this.pendingNewNodeNotifications.delete(publicKey);
-      this.notifiedNewNodes.add(publicKey);
-
-      // Auto Welcome (#6224): this is the one genuinely-new-and-named event, so
-      // greet the node here. Fire-and-forget — a welcome failure must not break
-      // the discovery-notification pipeline.
-      void this.checkAutoWelcome(contact);
+      this.rememberNotifiedNewNode(publicKey);
+      opts.onClaimed?.();
 
       const deviceTypeLabel = contact.advType != null
         ? MESHCORE_DEVICE_TYPE_LABELS[contact.advType] ?? undefined
@@ -4064,11 +4079,34 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         deviceTypeLabel,
         this.sourceId,
         sourceName,
+        // Omitted when absent so a Companion alert keeps its 5-argument call.
+        ...(opts.suppressedCount ? [opts.suppressedCount] as const : []),
       );
     } catch (err) {
       logger.warn(
-        `[MeshCore:${this.sourceId}] notifyNewNodeDiscovered(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
+        `[MeshCore:${this.sourceId}] alertNewNode(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
       );
+    }
+  }
+
+  /** Cap on the per-process new-node dedup and nameless-pending sets (#6306). */
+  private static readonly NEW_NODE_SET_MAX = 4096;
+
+  /** Add to `notifiedNewNodes`, dropping the oldest beyond the cap (a forged-key stream must not grow it). */
+  private rememberNotifiedNewNode(publicKey: string): void {
+    this.notifiedNewNodes.add(publicKey);
+    if (this.notifiedNewNodes.size > MeshCoreManager.NEW_NODE_SET_MAX) {
+      const oldest = this.notifiedNewNodes.values().next().value;
+      if (oldest !== undefined) this.notifiedNewNodes.delete(oldest);
+    }
+  }
+
+  /** Add to `pendingNewNodeNotifications` under the same cap. */
+  private rememberPendingNewNode(publicKey: string): void {
+    this.pendingNewNodeNotifications.add(publicKey);
+    if (this.pendingNewNodeNotifications.size > MeshCoreManager.NEW_NODE_SET_MAX) {
+      const oldest = this.pendingNewNodeNotifications.values().next().value;
+      if (oldest !== undefined) this.pendingNewNodeNotifications.delete(oldest);
     }
   }
 
@@ -4996,12 +5034,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * ADVERT heard by the local repeater → a node on this source (#5553).
    *
-   * Deliberately quiet, per the maintainer decision on #5553: no "new node"
-   * notification and no `trigger.nodeDiscovered` / `trigger.nodeUpdated`
-   * automation event. A logging repeater hears every advert in range, and
-   * firing those per advert would turn passive discovery into a notification
-   * flood. Only the contact-updated socket event fires, so an open Nodes list
-   * refreshes live (it drives no automation).
+   * Automation stays quiet, per the maintainer decision on #5553: no
+   * `trigger.nodeDiscovered` / `trigger.nodeUpdated` event. A logging repeater
+   * hears every advert in range, and an automation per advert would turn
+   * passive discovery into a flood. The contact-updated socket event fires so
+   * an open Nodes list refreshes live (it drives no automation).
+   *
+   * A "new node" NOTIFICATION is on since #6306, behind the shared
+   * {@link newNodeAlertGate} (48 h learning window, 10 alerts per hour), and only
+   * for a node whose signature verified and whose row this advert created. See
+   * {@link maybeAlertRepeaterNewNode}. Auto Welcome never runs here.
    *
    * The node's `repeaterNeighborAt` is left untouched, so an advert-only node
    * is never taken for a zero-hop neighbour; only the `neighbors` poll sets it.
@@ -5016,7 +5058,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   private async ingestRepeaterAdvert(rawHex: string, heardHops: number | null = null): Promise<void> {
     const now = Date.now();
-    const advert = await ingestAdvertFrame(rawHex, this.sourceId, {
+    const ingested = await ingestAdvertFrame(rawHex, this.sourceId, {
       // We heard it just now; the sender's clock may be wrong or unset.
       lastHeardMs: now,
       skipPublicKey: this.repeaterPublicKey,
@@ -5024,8 +5066,51 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       verifySignature: 'always',
       heardHops: this.shortestAdvertHops(rawHex, heardHops, now),
     });
-    if (!advert?.publicKey) return;
+    if (!ingested?.advert?.publicKey) return;
+    const advert = ingested.advert;
     await this.emitStoredContact(advert.publicKey);
+    await this.maybeAlertRepeaterNewNode(advert.publicKey, ingested.inserted, ingested.signatureVerified);
+  }
+
+  /**
+   * #6306: raise a new-node notification for a Repeater advert, or not.
+   *
+   * Alerts only when all of these hold: this is a Repeater source, the advert's
+   * signature verified, and the advert created this source's row (or the key
+   * waits in the nameless-pending set, #5340). Then the gate decides. While it
+   * is learning the node is dropped and never parked, so it cannot alert later.
+   * The name comes from the STORED row (already sanitised), never from advert bytes.
+   *
+   * Sends nothing over the air: no Auto Welcome, no DM, no CLI write.
+   */
+  private async maybeAlertRepeaterNewNode(
+    publicKey: string,
+    inserted: boolean,
+    signatureVerified: boolean,
+  ): Promise<void> {
+    try {
+      if (this.deviceType !== MeshCoreDeviceType.REPEATER || !signatureVerified) return;
+      if (!inserted && !this.pendingNewNodeNotifications.has(publicKey)) return;
+      if (this.notifiedNewNodes.has(publicKey)) return;
+      const row = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, this.sourceId);
+      if (!row) return;
+      const contact = contactFromNodeRow(row);
+      if (!(contact.advName || contact.name)) {
+        // Nameless first advert: wait for a named one, unless the gate is still
+        // learning (then this node is part of what the window hides).
+        if (!(await newNodeAlertGate.isLearning(this.sourceId))) this.rememberPendingNewNode(publicKey);
+        return;
+      }
+      const verdict = await newNodeAlertGate.admit(this.sourceId);
+      if (!verdict.allow) {
+        // Known from now on either way; a dropped node never alerts later.
+        this.pendingNewNodeNotifications.delete(publicKey);
+        return;
+      }
+      await this.alertNewNode(contact, { suppressedCount: verdict.suppressedSinceLast });
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Repeater new-node alert failed: ${(err as Error).message}`);
+    }
   }
 
   /**

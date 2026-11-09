@@ -21,6 +21,7 @@ import NotificationFormatSection from './NotificationFormatSection';
 import styles from './NotificationsTab.module.css';
 import { defaultNotificationPreferences } from '../utils/notificationDefaults';
 import { notificationCapabilities, loadNotificationChannels } from '../utils/notificationCapabilities';
+import { NEW_NODE_LEARN_HOURS, NEW_NODE_CAP_PER_HOUR } from '../utils/newNodeAlertLimits';
 
 type StatusTone = 'info' | 'success' | 'warning' | 'error';
 interface StatusFeedback {
@@ -878,8 +879,17 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                   />
                   <span style={{ fontWeight: '500' }}><UiIcon name="sparkles" /> {t('notifications.new_nodes')}</span>
                 </label>
+                {caps.newNodeNote === 'repeater_learning' && (
+                  <div className={styles.muted} style={{ fontSize: '12px', marginTop: '6px' }}>
+                    {t('notifications.new_nodes_repeater_note', {
+                      hours: NEW_NODE_LEARN_HOURS,
+                      cap: NEW_NODE_CAP_PER_HOUR,
+                    })}
+                  </div>
+                )}
               </div>
-              ) : (
+              ) : null}
+              {!caps.dm && (
               <div className={styles.muted} style={{ fontSize: '12px', marginBottom: '16px' }}>
                 {t('notifications.repeater_unsupported_hint')}
               </div>

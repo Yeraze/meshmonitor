@@ -447,6 +447,15 @@ async function advertSignatureMarker(
   return enabled ? verifyAdvertSignature(advert) : null;
 }
 
+/** What {@link ingestAdvertFrame} did with an advert (#6306). */
+export interface IngestedAdvert {
+  advert: DecodedAdvert;
+  /** The advert created this source's row (the key was new to the source). */
+  inserted: boolean;
+  /** The Ed25519 signature was checked and verified. */
+  signatureVerified: boolean;
+}
+
 export async function ingestAdvertFrame(
   rawHex: string,
   sourceId: string,
@@ -470,14 +479,14 @@ export async function ingestAdvertFrame(
      */
     heardHops?: number | null;
   },
-): Promise<DecodedAdvert | null> {
+): Promise<IngestedAdvert | null> {
   const packet = decodeMeshCorePacket(rawHex);
   const advert = packet?.payload?.advert;
   if (!advert?.publicKey) return null;
   if (opts.skipPublicKey && advert.publicKey.toLowerCase() === opts.skipPublicKey.toLowerCase()) return null;
   const advertSignatureVerified = opts.verifySignature ? await advertSignatureMarker(advert, opts.verifySignature) : undefined;
 
-  await databaseService.meshcore.upsertNode(
+  const upserted = await databaseService.meshcore.upsertNode(
     {
       publicKey: advert.publicKey,
       name: advert.name ?? undefined,
@@ -501,5 +510,10 @@ export async function ingestAdvertFrame(
     },
     sourceId,
   );
-  return advert;
+  return {
+    advert,
+    inserted: upserted?.inserted === true,
+    // Only a CHECKED and passing signature counts; null/false/undefined do not.
+    signatureVerified: advertSignatureVerified === true,
+  };
 }

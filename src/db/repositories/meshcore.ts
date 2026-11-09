@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, ne, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
+import { eq, ne, asc, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, ALL_SOURCES, type SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { likeContains } from './likeSearch.js';
@@ -698,7 +698,7 @@ export class MeshCoreRepository extends BaseRepository {
   async upsertNode(
     node: Partial<DbMeshCoreNode> & { publicKey: string },
     sourceId: string,
-  ): Promise<void> {
+  ): Promise<{ inserted: boolean }> {
     if (!sourceId) {
       throw new Error('MeshCoreRepository.upsertNode requires a sourceId');
     }
@@ -858,7 +858,26 @@ export class MeshCoreRepository extends BaseRepository {
           createdAt: now,
           updatedAt: now,
         });
+      return { inserted: true };
     }
+    return { inserted: false };
+  }
+
+  /**
+   * Earliest `createdAt` (epoch ms) among one source's node rows, or null when it
+   * has none. The new-node alert gate uses it to tell a long-running source from
+   * a brand-new one (#6306).
+   */
+  async getEarliestNodeCreatedAt(sourceId: string): Promise<number | null> {
+    const { meshcoreNodes } = this.tables;
+    const rows = await this.db
+      .select({ createdAt: meshcoreNodes.createdAt })
+      .from(meshcoreNodes)
+      .where(eq(meshcoreNodes.sourceId, sourceId))
+      .orderBy(asc(meshcoreNodes.createdAt))
+      .limit(1);
+    const v = rows[0]?.createdAt;
+    return v === null || v === undefined ? null : Number(v);
   }
 
   /**

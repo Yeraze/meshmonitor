@@ -14,9 +14,13 @@ describe('notificationCapabilities', () => {
     const c = notificationCapabilities('meshcore', 1);
     expect(c).toMatchObject({ dm: true, rooms: true, mqtt: false, waypoint: false, traceroute: true, newNode: 'on', mention: true, channels: true, emoji: true, batteryUnit: 'voltage' });
   });
-  it('Repeater hides dm/trace/newNode/mention', () => {
+  it('Repeater hides dm/trace/mention and gets new-node with the learning note (#6306)', () => {
     const c = notificationCapabilities('meshcore', 2);
-    expect(c).toMatchObject({ dm: false, traceroute: false, newNode: 'unsupported', mention: false, channels: true, emoji: true });
+    expect(c).toMatchObject({ dm: false, traceroute: false, newNode: 'on', newNodeNote: 'repeater_learning', mention: false, channels: true, emoji: true });
+  });
+  it('only the Repeater carries the new-node note (#6306)', () => {
+    expect(notificationCapabilities('meshcore', 1).newNodeNote).toBeNull();
+    expect(notificationCapabilities('meshtastic').newNodeNote).toBeNull();
   });
   it('unknown device type behaves as Companion', () => {
     expect(notificationCapabilities('meshcore', undefined).dm).toBe(true);

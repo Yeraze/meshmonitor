@@ -37,6 +37,7 @@ import meshcorePositionHistoryService from '../services/meshcorePositionHistoryS
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain, requireMeshcoreTx, failIfTxDisabled, maskContactPositionsForViewOnMap } from './meshcoreRouteShared.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { newNodeAlertGate } from '../services/newNodeAlertGate.js';
 import {
   getMeshCoreNeighboursFetchRegistry,
   isValidNeighboursRequestId,
@@ -398,7 +399,8 @@ router.get(
  * untouched, and each removed node's rename history goes with it — the same
  * cascade `deleteNode` runs for a single node. Returns `{ deleted }`.
  *
- * Mesh impact: a DB purge only, no RF and no serial write — so no
+ * A purge that deleted rows also re-arms the new-node alert learning window
+ * (#6306). Mesh impact: a DB purge only, no RF and no serial write — so no
  * requireMeshcoreTx() gate. The radio's own contact table is left alone
  * (that is the separate /contacts/remove-non-favorites action).
  */
@@ -411,6 +413,11 @@ router.post(
     try {
       const sourceId = req.params.id;
       const deleted = await databaseService.meshcore.deleteNonFavoriteNodes(sourceId);
+      // #6306: every node heard again after a purge is "new", so restart the
+      // new-node learning window. It can only suppress alerts. The window is
+      // persisted, so a restart does not undo it. A single-node delete does not
+      // re-arm. A Companion has no gate, so the stored value is unused there.
+      if (deleted > 0) await newNodeAlertGate.rearm(sourceId);
       auditMeshcoreEvent(req, 'meshcore_nodes_purge_non_favourites', 'configuration', {
         sourceId,
         deleted,
