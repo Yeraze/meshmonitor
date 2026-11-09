@@ -690,6 +690,10 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // Per-sender last-alert times for MeshCore mention notifications (JSON),
   // written only by meshcoreMentionNotificationService.
   'meshcoreMentionNotifyState',
+  // New-node alert gate state (learning window end, hourly counter), written only
+  // by newNodeAlertGate.
+  'newNodeAlertLearnUntil',
+  'newNodeAlertRate',
   // Sign-flipped position correction (#5363), Settings -> Node Display.
   'signFlipCorrectionEnabled',
   'signFlipCorrectionRangeKm',
@@ -1117,6 +1121,8 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'statusMessageLastVerified',  // deviceAdminService.ts rememberVerifiedStatusMessage (#5745; last Status Message a read-back confirmed on the node)
   'tracePathScheduleState',  // tracePathScheduleService.ts (#5723; persisted per-path intervals and hourly cap)
   'meshcoreMentionNotifyState',  // meshcoreMentionNotificationService.ts (persisted per-sender mention cooldown, never client-writable)
+  'newNodeAlertLearnUntil',  // newNodeAlertGate.ts (#6306; persisted learning-window end, only a purge re-arms it)
+  'newNodeAlertRate',  // newNodeAlertGate.ts (#6306; persisted hourly alert counter, so a restart or save cannot reopen the hour)
   'remoteLocalStatsRetryState',  // meshtasticManager.ts remote-LocalStats scheduler (#6033; persisted per-node miss counter + cooldown, so a restart/save cannot re-arm or clear it)
   'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)
   // POST /api/sources/:id/forwarding (forwardingRoutes.ts, #5446) — gated on

@@ -59,6 +59,7 @@ Each phase's scope is the checklist in its issue.
 - [x] **P10 #6256 Remote structured config.**
 - [x] **P11 #6253 Notifications.**
 - [x] **P12 #6279 Mesh Issues node-health rules (A6-A9).**
+- [x] **P13 #6306 Repeater new-node alerts** (shared learning-window + hourly-cap gate).
 
 ## Phase log
 
@@ -210,3 +211,13 @@ class, override, advert-had-position, local), an always-mV `batteryMv` series (M
 have leaked hidden ids); the Meshtastic telemetry query keeps its four DB types. Verified: a Repeater-source's local
 battery rows are filed under the real public key, but that source has no own node row, so they only count when an advert
 creates one.
+
+### P13 #6306 (spec: `MESHCORE_PARITY_P13_SPEC.md`)
+Maintainer answers, 2026-11-09: 48 h learning window and 10 alerts per hour per source as module constants, built as a
+shared protocol-neutral gate (`newNodeAlertGate`) wired to Repeater sources only (explicit exception to "no MeshCore-only
+cap"); state persisted per source; overflow adds "(+N more)" to the next alert; legacy Repeater prefs accepted with a release
+note; "new" is per source; a full node purge re-arms the window, offline gaps do not.
+Shipped (P13): `upsertNode` reports `{ inserted }`, `ingestAdvertFrame` returns `{ advert, inserted, signatureVerified }`,
+`alertNewNode` split from `notifyNewNodeDiscovered` (the Repeater path never runs Auto Welcome), bounded dedup sets,
+`maybeAlertRepeaterNewNode`, purge re-arm, Repeater toggle plus learning note in the Notifications tab. Automation events
+for Repeater adverts stay off (#5553). Follow-ups: the same gate on Meshtastic MQTT; new-node alerts for `meshcore_mqtt`.

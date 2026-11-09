@@ -45,7 +45,7 @@ export interface PollerDatabase {
     ) => Promise<{ value: number } | null>;
   };
   meshcore: {
-    upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<void>;
+    upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<unknown>;
     markHeard: (sourceId: string, publicKey: string, heardAtMs: number) => Promise<void>;
   };
 }
