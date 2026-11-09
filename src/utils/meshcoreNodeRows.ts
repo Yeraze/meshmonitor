@@ -12,6 +12,7 @@ import type { SortField } from '../types/ui.js';
 import type { SortKey } from './nodeSort.js';
 import type { NodeFilterSubject } from './nodeAdvancedFilter.js';
 import type { ExportColumn } from './nodeExport.js';
+import { findNameReuse, nameReuseSuspectKeys } from './meshcoreNameReuse.js';
 
 export interface MeshCoreNodeRow {
   publicKey: string;
@@ -40,6 +41,10 @@ export interface MeshCoreNodeRow {
   isRepeaterNeighbor: boolean;
   /** Propagated from the contact's `isLocal` flag (#4438). */
   isLocal: boolean;
+  /** P7a #6254: latest advert signature failed verification (null/unset = not checked). */
+  advertSignatureFailed: boolean;
+  /** P7a #6254: another key heard first uses this name (display only). */
+  nameReuseSuspect: boolean;
   /** Lets shared grouping treat a row with no `advType` as MeshCore. */
   readonly isMeshCore: true;
 }
@@ -76,6 +81,8 @@ export function mergeNodesAndContacts(
       // `MeshCoreNode` never carries `isLocal`; only the synthetic local
       // contact row does (#4438). Filled in when a matching contact merges.
       isLocal: false,
+      advertSignatureFailed: n.advertSignatureVerified === false,
+      nameReuseSuspect: false,
       isMeshCore: true,
     });
   }
@@ -123,11 +130,18 @@ export function mergeNodesAndContacts(
         isIgnored: false,
         isRepeaterNeighbor: false,
         isLocal: c.isLocal === true,
+        advertSignatureFailed: c.advertSignatureVerified === false,
+        nameReuseSuspect: false,
         isMeshCore: true,
       });
     }
   }
   const rows = Array.from(byKey.values());
+  // Same rule as the server's Security findings (one shared implementation).
+  const suspects = nameReuseSuspectKeys(findNameReuse(nodes));
+  if (suspects.size > 0) {
+    for (const r of rows) r.nameReuseSuspect = suspects.has(r.publicKey.toLowerCase());
+  }
   if (ignoredKeys && ignoredKeys.size > 0) {
     for (const r of rows) r.isIgnored = ignoredKeys.has(r.publicKey.toLowerCase());
   }
@@ -172,6 +186,7 @@ export function toMeshCoreFilterSubject(r: MeshCoreNodeRow): NodeFilterSubject {
     isFavorite: r.isFavorite,
     role: r.advType ?? 0,
     channel: -1,
+    securityFlagged: r.advertSignatureFailed || r.nameReuseSuspect,
   };
 }
 

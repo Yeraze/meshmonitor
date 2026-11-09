@@ -1,0 +1,29 @@
+/* Dead nodes section, shared by every protocol (#6254). */
+.section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+.title { margin: 0 0 0.75rem; font-size: 1.05rem; color: var(--color-text); }
+.threshold { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 0.85rem; color: var(--color-text); }
+.daysInput { width: 5rem; min-width: 0; padding: 0.3rem 0.4rem; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-bg); color: var(--color-text); }
+.warning { display: flex; align-items: center; gap: 0.3rem; margin: 0 0 0.75rem; font-size: 0.82rem; color: var(--color-warning); }
+.message { margin: 0 0 0.75rem; font-size: 0.85rem; color: var(--color-text-subtle); }
+.empty { margin: 0; font-size: 0.9rem; color: var(--color-text-subtle); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.button, .danger { padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.85rem; cursor: pointer; background: var(--color-surface-hover); color: var(--color-text); }
+.danger { background: var(--color-error); color: var(--color-bg); }
+.button:disabled, .danger:disabled { opacity: 0.6; cursor: not-allowed; }
+.scroll { overflow-x: auto; max-width: 100%; }
+.table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 0.88rem; }
+.table th, .table td { padding: 0.4rem 0.5rem; text-align: left; border-bottom: 1px solid var(--color-border); }
+.checkCol { width: 30px; }
+.row { opacity: 0.8; }
+.rowSelected { opacity: 1; }
+.mono { font-family: monospace; font-size: 0.85rem; }
+.subtle { color: var(--color-text-subtle); font-style: italic; }
+.shortName { margin-left: 0.5rem; font-size: 0.8rem; color: var(--color-text-subtle); }
+.warn { color: var(--color-warning); }

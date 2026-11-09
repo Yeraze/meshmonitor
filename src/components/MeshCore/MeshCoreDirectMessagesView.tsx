@@ -43,6 +43,7 @@ import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 import { compareMeshCoreMessages } from './messageOrder';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { parseJsonResponse } from '../../utils/parseJsonResponse';
+import { indexNodeFields, mergeNodeFields } from '../../utils/meshcoreNodeFieldMerge';
 import { readRequiredRepeaters, mergeMeshCoreHeardBy, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
 
 interface MeshCoreDirectMessagesViewProps {
@@ -86,19 +87,6 @@ interface MeshCoreDirectMessagesViewProps {
   /** #5964: Node Details' Show on Map. Switches to the Nodes map, selects
    *  the node and opens its popup. Unset hides the button. */
   onShowOnMap?: (publicKey: string) => void;
-}
-
-/** Copy the node row's #5578 advert-position fields onto the contact. */
-function withAdvertPosition(
-  contact: MeshCoreContact | null,
-  fields: Pick<MeshCoreContact, 'lastAdvertHadPosition' | 'positionSource'> | undefined,
-): MeshCoreContact | null {
-  if (!contact || !fields) return contact;
-  return {
-    ...contact,
-    lastAdvertHadPosition: fields.lastAdvertHadPosition ?? contact.lastAdvertHadPosition,
-    positionSource: fields.positionSource ?? contact.positionSource,
-  };
 }
 
 /** True when the publicKey is a real 64-char hex (i.e. not a synthetic / prefix key). */
@@ -304,29 +292,12 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   // contacts. Build a publicKey -> isFavorite lookup so favorited peers can be
   // pinned to the top of the DM list (issue #3620), mirroring the Meshtastic
   // DM list and the MeshCore node list.
-  // #5390: durable First Heard (epoch ms) lives on the node rows, not the
-  // live contact records, so the detail panel reads it from here.
-  const firstHeardByKey = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const n of nodes) {
-      if (n.publicKey && typeof n.firstHeard === 'number') map.set(n.publicKey, n.firstHeard);
-    }
-    return map;
-  }, [nodes]);
-
-  // #5578: the map's "hide nodes without a current position advert" toggle
-  // reads two fields from the durable node row (the node row wins over the
-  // live contact, as in MeshCoreNodesView). The detail panel needs them to
-  // hide Show on Map for a node the map would not draw (#5964).
-  const advertPositionByKey = useMemo(() => {
-    const map = new Map<string, Pick<MeshCoreContact, 'lastAdvertHadPosition' | 'positionSource'>>();
-    for (const n of nodes) {
-      if (!n.publicKey) continue;
-      if (n.lastAdvertHadPosition == null && n.positionSource == null) continue;
-      map.set(n.publicKey, { lastAdvertHadPosition: n.lastAdvertHadPosition, positionSource: n.positionSource });
-    }
-    return map;
-  }, [nodes]);
+  // #5578 advert-position fields and the P7a advert signature live on the
+  // node row (it wins over the live contact). The panel needs the first two to
+  // hide Show on Map for a node the map would not draw (#5964). One shared
+  // merge (S8) copies them across.
+  // #5390: durable First Heard (epoch ms) also comes from this index.
+  const nodeFieldIndex = useMemo(() => indexNodeFields(nodes), [nodes]);
 
   const dmSortOptions = useMemo(
     () => [
@@ -888,7 +859,10 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
             )}
             <div className="meshcore-detail-pane">
               <MeshCoreContactDetailPanel
-                contact={withAdvertPosition(contactsByKey.get(selected) ?? null, advertPositionByKey.get(selected))}
+                contact={(() => {
+                  const raw = contactsByKey.get(selected);
+                  return raw ? mergeNodeFields(raw, nodeFieldIndex, ['advertPosition', 'advertSignatureVerified']) : null;
+                })()}
                 publicKey={selected}
                 // An ignored or blocked node is off the map (#5408).
                 onShowOnMap={ignoredModeByKey.has(selected.toLowerCase()) ? undefined : onShowOnMap}
@@ -931,7 +905,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   logoutRemote: actions.logoutRemote,
                 }}
                 receiveOnly={receiveOnly}
-                firstHeard={firstHeardByKey.get(selected)}
+                firstHeard={nodeFieldIndex.firstHeard.get(selected)}
                 localNativeCli={localNativeCli}
                 onSetRemoteCli={actions.setContactRemoteCli}
                 canWriteConfig={canWriteConfig && connected}

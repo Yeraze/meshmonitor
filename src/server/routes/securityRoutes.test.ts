@@ -19,7 +19,7 @@ vi.mock('../../services/database.js', () => ({
     getNodesWithTimeOffsetIssuesAsync: vi.fn().mockResolvedValue([]),
     getTopBroadcastersAsync: vi.fn().mockResolvedValue([]),
     nodes: { getAllNodes: vi.fn().mockResolvedValue([]), getNode: vi.fn(), upsertNode: vi.fn().mockResolvedValue(undefined) },
-    settings: { getSetting: vi.fn().mockResolvedValue(null), getLocalNodeNumForSource: vi.fn().mockResolvedValue(null) },
+    settings: { getSetting: vi.fn().mockResolvedValue(null), getSettingForSource: vi.fn().mockResolvedValue(null), getLocalNodeNumForSource: vi.fn().mockResolvedValue(null) },
     getKeyRepairLogAsync: vi.fn().mockResolvedValue([]),
     updateNodeTimeOffsetFlagsAsync: vi.fn().mockResolvedValue(undefined),
   }
@@ -204,7 +204,7 @@ describe('securityRoutes — per-source scanner', () => {
   });
 
   describe('source-scoped reads require a sourceId', () => {
-    it.each(['/api/security/issues', '/api/security/export', '/api/security/key-mismatches'])(
+    it.each(['/api/security/issues', '/api/security/export', '/api/security/key-mismatches', '/api/security/dead-nodes'])(
       '%s 400s MISSING_SOURCE_ID when sourceId omitted',
       async (path) => {
         const app = createApp();
@@ -242,6 +242,7 @@ describe('securityRoutes — per-source scanner', () => {
       getManagerMock.mockImplementation((id: string) => {
         if (id === 'src-1') return { sourceId: id, sourceType: 'meshtastic_tcp', isNodeInDeviceDb: () => false };
         if (id === 'mc-1') return { sourceId: id, sourceType: 'meshcore' };
+        if (id === 'rt-1') return { sourceId: id, sourceType: 'reticulum' };
         return undefined;
       });
       getAllManagersMock.mockReturnValue([
@@ -263,19 +264,21 @@ describe('securityRoutes — per-source scanner', () => {
       expect(runScanMock).not.toHaveBeenCalled();
     });
 
-    it('GET /dead-nodes with meshcore sourceId → 400 INVALID_SOURCE_TYPE', async () => {
+    // P7a (#6254): MeshCore dead-node detection exists now (see
+    // securityRoutes.meshcore.test.ts); only unsupported source types are rejected.
+    it('GET /dead-nodes with an unsupported source type → 400 INVALID_SOURCE_TYPE', async () => {
       const app = createApp();
-      const res = await request(app).get('/api/security/dead-nodes?sourceId=mc-1');
+      const res = await request(app).get('/api/security/dead-nodes?sourceId=rt-1');
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('INVALID_SOURCE_TYPE');
       expect(res.body.success).toBe(false);
     });
 
-    it('POST /dead-nodes/bulk-delete with meshcore sourceId → 400 INVALID_SOURCE_TYPE', async () => {
+    it('POST /dead-nodes/bulk-delete with an unsupported source type → 400 INVALID_SOURCE_TYPE', async () => {
       const app = createApp();
       const res = await request(app)
         .post('/api/security/dead-nodes/bulk-delete')
-        .send({ sourceId: 'mc-1', nodeNums: [1234] });
+        .send({ sourceId: 'rt-1', nodeNums: [1234] });
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('INVALID_SOURCE_TYPE');
       expect(res.body.success).toBe(false);

@@ -9,6 +9,7 @@ import { TabType, SortField } from '../types/ui';
 import { nodePassesTransportFilter, transportCutoffSec, isMqttOnlySourceType } from '../utils/nodeTransport';
 import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
+import { isSecurityFlagged } from '../utils/nodeAdvancedFilter';
 import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
 import MapAgeFilterControl from './map/MapAgeFilterControl';
 import MapAircraftDisplayControl from './map/MapAircraftDisplayControl';
@@ -1534,10 +1535,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const filteredNodes = useMemo(() => {
     return processedNodes.filter(node => {
       if (securityFilter === 'flaggedOnly') {
-        if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
+        if (!isSecurityFlagged(node)) return false;
       }
       if (securityFilter === 'hideFlagged') {
-        if (node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) return false;
+        if (isSecurityFlagged(node)) return false;
       }
       if (channelFilter !== 'all') {
         const nodeChannel = node.channel ?? 0;
@@ -2308,10 +2309,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               const filteredCount = processedNodes.filter(node => {
                 // Security filter
                 if (securityFilter === 'flaggedOnly') {
-                  if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
+                  if (!isSecurityFlagged(node)) return false;
                 }
                 if (securityFilter === 'hideFlagged') {
-                  if (node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) return false;
+                  if (isSecurityFlagged(node)) return false;
                 }
                 // Incomplete nodes filter
                 if (!showIncompleteNodes && !isNodeComplete(node)) {

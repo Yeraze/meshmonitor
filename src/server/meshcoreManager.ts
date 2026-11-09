@@ -128,6 +128,8 @@ import {
 import type { MeshCoreObserverConfig, MeshCoreSourceConfig, NormalizedObserverConfig } from './meshcoreConfig.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
+import { serverEventNotificationService } from './services/serverEventNotificationService.js';
+import { meshcoreOwnIdentityTracker } from './services/meshcoreOwnIdentityTracker.js';
 import { meshcoreMessageFilter, type MeshCoreClassifyResult } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MeshCoreAutoFavoriteScheduler, runAutoFavoriteSweep as runAutoFavoriteSweepService } from './services/meshcoreAutoFavorite.js';
@@ -719,6 +721,8 @@ export interface MeshCoreNode {
   /** #5578: did the latest advert heard carry a position? `false` = no (the
    *  coordinates above are then the last known fix); unset/null = unknown. */
   lastAdvertHadPosition?: boolean | null;
+  /** P7a #6254: latest checked advert signature; null/unset = not checked. */
+  advertSignatureVerified?: boolean | null;
   advLocPolicy?: number;
   /** Add contacts only on explicit request (1) vs automatically (0). From SelfInfo. */
   manualAddContacts?: number;
@@ -1440,6 +1444,21 @@ export type RemoveNonFavoritesResult =
   | { status: 'busy' }
   | { status: 'unavailable' }
   | { status: 'failed'; error: string };
+
+/** Result of `MeshCoreManager.removeContactsBulk` (P7a, #6254). */
+export type RemoveContactsBulkResult =
+  | {
+      status: 'done';
+      /** Keys removed from the radio AND MeshMonitor. */
+      removedFromDevice: string[];
+      /** Keys the radio refused or could not reach; removed from MeshMonitor only. */
+      removedLocalOnly: string[];
+      /** Keys that could not be removed anywhere (DB failure). */
+      failed: string[];
+      total: number;
+    }
+  | { status: 'busy' }
+  | { status: 'unavailable' };
 
 /**
  * MeshCore Manager class
@@ -2189,6 +2208,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // #6195: capture this Companion's own device private key (encrypted at
       // rest) so the server can decrypt our echoed DMs for #6194 heard-by
       // disambiguation. Fire-and-forget: a failure must never break connect.
+      // P7a (#6254): track the radio's own key independently of that capture,
+      // which skips most key changes (no export, no store).
+      if (this.deviceType === MeshCoreDeviceType.COMPANION) {
+        void this.observeOwnIdentity(this.localNode?.publicKey);
+      }
       void this.maybeExportAndStorePkiKey().catch((err) =>
         logger.debug(`[MeshCore:${this.sourceId}] device-key capture failed: ${(err as Error).message}`));
 
@@ -4938,6 +4962,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // We heard it just now; the sender's clock may be wrong or unset.
       lastHeardMs: now,
       skipPublicKey: this.repeaterPublicKey,
+      // P7a (#6254): the verify is one Ed25519 check per advert already heard.
+      verifySignature: 'always',
       heardHops: this.shortestAdvertHops(rawHex, heardHops, now),
     });
     if (!advert?.publicKey) return;
@@ -5749,6 +5775,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // placeholder that other code paths key off.
         const keyResponse = await this.sendRepeaterCommand('get public.key');
         this.repeaterPublicKey = parseRepeaterPublicKeyReply(keyResponse) ?? this.repeaterPublicKey;
+        // P7a (#6254): the key came from the local CLI, no RF. The tracker
+        // ignores the 'repeater' placeholder and anything not 64-hex.
+        void this.observeOwnIdentity(this.repeaterPublicKey);
 
         logger.debug(`[MeshCore] Name response: ${safeJson(nameResponse)}`);
         logger.debug(`[MeshCore] Radio response: ${safeJson(radioResponse)}`);
@@ -8551,6 +8580,72 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return { status: 'failed', error: (error as Error).message };
     } finally {
       this.bulkRemoveInFlight = false;
+    }
+  }
+
+  /**
+   * Remove the given contacts from the radio AND MeshMonitor (P7a, #6254: the
+   * Security tab's dead-contact bulk delete). One `remove_contact` round-trip
+   * per key through {@link removeContact}; when the radio refuses a key, that
+   * key falls back to {@link forgetLocalContact} so the row still leaves
+   * MeshMonitor. Serial/TCP only; nothing is transmitted over RF. Shares the
+   * single-flight guard with {@link removeNonFavoriteContacts}.
+   *
+   * `unavailable` (not a connected Companion): the caller does the DB-only
+   * delete with `forgetLocalContact` itself. Favourite / local-key / ignored
+   * exclusions are the caller's job.
+   */
+  async removeContactsBulk(publicKeys: readonly string[]): Promise<RemoveContactsBulkResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { status: 'unavailable' };
+    }
+    if (this.bulkRemoveInFlight) return { status: 'busy' };
+    this.bulkRemoveInFlight = true;
+    try {
+      const seen = new Set<string>();
+      const keys = publicKeys.filter((k) => {
+        const lk = String(k).toLowerCase();
+        if (seen.has(lk)) return false;
+        seen.add(lk);
+        return true;
+      });
+      const removedFromDevice: string[] = [];
+      const removedLocalOnly: string[] = [];
+      const failed: string[] = [];
+      for (const key of keys) {
+        if (await this.removeContact(key)) {
+          removedFromDevice.push(key);
+        } else if (await this.forgetLocalContact(key)) {
+          removedLocalOnly.push(key);
+        } else {
+          failed.push(key);
+        }
+      }
+      return { status: 'done', removedFromDevice, removedLocalOnly, failed, total: keys.length };
+    } finally {
+      this.bulkRemoveInFlight = false;
+    }
+  }
+
+  /**
+   * P7a (#6254): feed the radio's own key to the persisted identity tracker.
+   * The tracker is edge-triggered, so a change alerts once, even across a
+   * reconnect or restart. Best-effort: never breaks connect.
+   */
+  private async observeOwnIdentity(publicKey: string | null | undefined): Promise<void> {
+    try {
+      const status = await meshcoreOwnIdentityTracker.observe(this.sourceId, publicKey);
+      if (status !== 'changed') return;
+      const change = await meshcoreOwnIdentityTracker.getChange(this.sourceId);
+      if (!change) return;
+      await serverEventNotificationService.notifyOwnKeyChanged(
+        this.sourceId,
+        this.sourceName,
+        change.previousKey.slice(0, 8),
+        change.currentKey.slice(0, 8),
+      );
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] own-identity check failed: ${(err as Error).message}`);
     }
   }
 
@@ -11421,6 +11516,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // #5578: the durable row is the truth for both map-filter fields.
           positionSource: n.positionSource ?? undefined,
           lastAdvertHadPosition: n.lastAdvertHadPosition ?? undefined,
+          advertSignatureVerified: n.advertSignatureVerified ?? null,
           batteryMv: n.batteryMv ?? undefined,
           uptimeSecs: n.uptimeSecs ?? undefined,
           txPower: n.txPower ?? undefined,

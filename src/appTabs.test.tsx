@@ -62,7 +62,7 @@ describe('appTabs', () => {
     const { SecurityTab } = tabs;
     render(
       <Suspense fallback={null}>
-        <SecurityTab onTabChange={() => {}} onSelectDMNode={() => {}} />
+        <SecurityTab onTabChange={() => {}} onOpenNode={() => {}} />
       </Suspense>,
     );
     expect(await screen.findByText('SecurityTab body')).toBeTruthy();

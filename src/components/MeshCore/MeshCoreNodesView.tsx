@@ -39,13 +39,15 @@ import { isMeshCoreRowComplete } from '../../utils/meshcoreNodeCompleteness';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge, meshcoreLastHeardMs } from '../../utils/meshcoreAge';
 import { formatTimeOrDate } from '../../utils/datetime';
 import { UiIcon } from '../icons';
+import type { SecurityFilter } from '../../types/ui';
+import { indexNodeFields, mergeNodeFields } from '../../utils/meshcoreNodeFieldMerge';
 import styles from './MeshCoreNodesView.module.css';
 
 type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
 /** Shared filter popup sections MeshCore supports (the rest are Meshtastic-only). */
 const MESHCORE_FILTER_FEATURES: Partial<Record<NodeFilterFeature, boolean>> = {
-  security: false, telemetry: false, environment: false, pki: false, remoteAdmin: false,
+  security: true, telemetry: false, environment: false, pki: false, remoteAdmin: false,
   mqtt: false, favoriteLocked: false, hiddenFromMap: false, powerSource: false, channels: false,
   position: true, unknown: true, ignored: true, favorites: true, hops: true, roles: true,
 };
@@ -173,6 +175,9 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     direction: 'desc',
   });
   const [nodeFilters, setNodeFilters] = usePersistedNodeFilters('meshcoreNodeFilters');
+  // P7a #6254: the shared Security filter (signature failed / name reuse). Local
+  // to this view so it never leaks into the Meshtastic Nodes tab.
+  const [securityFilter, setSecurityFilter] = useState<SecurityFilter>('all');
   const [filterPopupOpen, setFilterPopupOpen] = useState(false);
   const [groupByRole, setGroupByRole] = useState<boolean>(() => readGroupNodesByRole());
   const toggleGroupByRole = useCallback(() => {
@@ -374,8 +379,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 
   // Advanced filter (shared predicate). The list and the map both use this set.
   const filtered = useMemo(
-    () => aged.filter((r) => passesNodeFilters(toMeshCoreFilterSubject(r), nodeFilters)),
-    [aged, nodeFilters],
+    () => aged.filter((r) => passesNodeFilters(toMeshCoreFilterSubject(r), nodeFilters, { securityFilter })),
+    [aged, nodeFilters, securityFilter],
   );
   const searched = useMemo(() => {
     if (!searchQuery.trim()) return filtered;
@@ -397,8 +402,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const rows = flatOrdered;
 
   const filtersActive = useMemo(
-    () => JSON.stringify(nodeFilters) !== JSON.stringify(DEFAULT_NODE_FILTERS),
-    [nodeFilters],
+    () => JSON.stringify(nodeFilters) !== JSON.stringify(DEFAULT_NODE_FILTERS) || securityFilter !== 'all',
+    [nodeFilters, securityFilter],
   );
   const roleOptions = useMemo(
     () => MESHCORE_ROLE_FILTER_OPTIONS.map((o) => ({ value: o.value, label: t(meshcoreRoleLabelKey(o.value), o.label) })),
@@ -420,53 +425,15 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
    *  the map's centering / polar-grid origin never loses the local node.
    *  Uses `isLocal` (#4438), not the `(local)` naming convention. */
   const visibleKeys = useMemo(() => new Set(filtered.map(r => r.publicKey)), [filtered]);
-  // #5390: First Heard lives on the durable node rows, not the live contact
-  // records — copy it across so the map popup can show it.
-  const firstHeardByKey = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const n of nodes) {
-      if (n.publicKey && typeof n.firstHeard === 'number') map.set(n.publicKey, n.firstHeard);
-    }
-    return map;
-  }, [nodes]);
-  // #5578: the map's "hide nodes without a current position advert" filter
-  // reads two more durable node-row fields. The node row wins over the live
-  // contact record: it is what every ingest path writes.
-  const advertPositionByKey = useMemo(() => {
-    const map = new Map<string, { lastAdvertHadPosition?: boolean | null; positionSource?: string | null }>();
-    for (const n of nodes) {
-      if (!n.publicKey) continue;
-      if (n.lastAdvertHadPosition == null && n.positionSource == null) continue;
-      map.set(n.publicKey, { lastAdvertHadPosition: n.lastAdvertHadPosition, positionSource: n.positionSource });
-    }
-    return map;
-  }, [nodes]);
-  // Battery lives on the node rows; copy it across for the map popup (#6259).
-  const batteryByKey = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const n of nodes) {
-      if (n.publicKey && typeof n.batteryMv === 'number') map.set(n.publicKey, n.batteryMv);
-    }
-    return map;
-  }, [nodes]);
+  // First Heard, battery, #5578 advert-position fields and the P7a advert
+  // signature live on the durable node rows; one shared merge copies them
+  // across for the map popup (S8).
+  const nodeFieldIndex = useMemo(() => indexNodeFields(nodes), [nodes]);
   const visibleContacts = useMemo(
     () => contacts
       .filter(c => visibleKeys.has(c.publicKey) || c.isLocal === true)
-      .map(raw => {
-        const batteryMv = batteryByKey.get(raw.publicKey);
-        const c = batteryMv !== undefined && raw.batteryMv === undefined ? { ...raw, batteryMv } : raw;
-        const firstHeard = firstHeardByKey.get(c.publicKey);
-        const advertPosition = advertPositionByKey.get(c.publicKey);
-        const withFirstHeard = firstHeard !== undefined && c.firstHeard === undefined ? { ...c, firstHeard } : c;
-        return advertPosition
-          ? {
-              ...withFirstHeard,
-              lastAdvertHadPosition: advertPosition.lastAdvertHadPosition ?? withFirstHeard.lastAdvertHadPosition,
-              positionSource: advertPosition.positionSource ?? withFirstHeard.positionSource,
-            }
-          : withFirstHeard;
-      }),
-    [contacts, visibleKeys, batteryByKey, firstHeardByKey, advertPositionByKey],
+      .map(raw => mergeNodeFields(raw, nodeFieldIndex)),
+    [contacts, visibleKeys, nodeFieldIndex],
   );
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
@@ -767,6 +734,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
       <AdvancedNodeFilterPopup
         isOpen={filterPopupOpen}
         nodeFilters={nodeFilters}
+        securityFilter={securityFilter}
+        onSecurityFilterChange={setSecurityFilter}
         onNodeFiltersChange={setNodeFilters}
         onClose={() => setFilterPopupOpen(false)}
         features={MESHCORE_FILTER_FEATURES}

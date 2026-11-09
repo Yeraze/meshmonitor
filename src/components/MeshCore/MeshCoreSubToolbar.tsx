@@ -4,6 +4,7 @@ import { SourceNav, type SourceNavItem } from '../nav/SourceNav';
 import {
   DEVICE_CONFIGURATION_NAV_ENTRY,
   MAP_NAV_ENTRY,
+  SECURITY_NAV_ENTRY,
   SOURCE_SETTINGS_NAV_ENTRY,
   sharedSourceNavPresentation,
   type SharedSourceNavEntry,
@@ -50,6 +51,7 @@ const ITEMS: Item[] = [
   { id: 'automations', labelKey: 'meshcore.nav.automations', fallback: 'Automations', icon: 'bot' },
   { id: 'notifications', labelKey: 'meshcore.nav.notifications', fallback: 'Notifications', icon: 'notifications' },
   { id: 'settings', ...SOURCE_SETTINGS_NAV_ENTRY },
+  { id: 'security', ...SECURITY_NAV_ENTRY },
 ];
 
 /**

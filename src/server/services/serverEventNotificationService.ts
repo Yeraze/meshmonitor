@@ -147,6 +147,34 @@ class ServerEventNotificationService {
   }
 
   /**
+   * P7a (#6254): a MeshCore source's own radio reported a different public key
+   * than the one stored on its last connect. The caller (the MeshCore manager)
+   * is edge-triggered and persisted, so this fires once per detected change.
+   * Same `notifyOnServerEvents` preference as the connection events; only the
+   * first 8 hex chars of each key are sent.
+   */
+  public async notifyOwnKeyChanged(
+    sourceId: string,
+    sourceName: string,
+    oldKeyPrefix: string,
+    newKeyPrefix: string,
+  ): Promise<void> {
+    try {
+      const payload = {
+        title: `Node Key Changed · ${sourceName}`,
+        body: `The radio's public key changed from ${oldKeyPrefix.slice(0, 8)} to ${newKeyPrefix.slice(0, 8)}. This means a different device or a reset identity.`,
+        type: 'warning' as const,
+        sourceId,
+        sourceName,
+      };
+      await notificationService.broadcastToPreferenceUsers('notifyOnServerEvents', payload);
+      logger.info(`Own-key change notification sent for source ${sourceId}`);
+    } catch (error) {
+      logger.error('Error sending own-key change notification:', error);
+    }
+  }
+
+  /**
    * Format duration in a human-readable format
    */
   private formatDuration(ms: number): string {

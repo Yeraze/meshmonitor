@@ -56,6 +56,13 @@ export const MAP_NAV_ENTRY = {
   fallback: 'Map',
 } as const satisfies SharedSourceNavEntry;
 
+/** The Security tab (#6254): Meshtastic's sidebar and MeshCore's nav read the same. */
+export const SECURITY_NAV_ENTRY = {
+  icon: 'security',
+  labelKey: 'nav.security',
+  fallback: 'Security',
+} as const satisfies SharedSourceNavEntry;
+
 export const SOURCE_SETTINGS_NAV_ENTRY = {
   icon: 'settings',
   labelKey: 'nav.settings',

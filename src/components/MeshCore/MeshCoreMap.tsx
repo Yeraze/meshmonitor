@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import type { LeafletEvent, Marker as LeafletMarker } from 'leaflet';
 import { Popup, Tooltip, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -526,6 +527,19 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
           <>
             <div className="node-popup-grid">
               <MeshCoreDetails model={model} />
+              {typeof c.advertSignatureVerified === 'boolean' && (
+                <div className="node-popup-item node-popup-item-full" data-testid="meshcore-popup-signature">
+                  <span className="node-popup-icon">
+                    <UiIcon name={c.advertSignatureVerified ? 'security' : 'securityAlert'} />
+                  </span>
+                  <span className="node-popup-value">
+                    {t('meshcore.advert_signature', 'Advert signature')}:{' '}
+                    {c.advertSignatureVerified
+                      ? t('meshcore.advert_signature_verified', 'Verified')
+                      : t('meshcore.advert_signature_failed', 'Failed')}
+                  </span>
+                </div>
+              )}
             </div>
             <LastHeardFooter lastHeard={model.lastHeard} firstHeard={model.firstHeard} mode="absolute" timeFormat={timeFormat} dateFormat={dateFormat} />
           </>
@@ -533,7 +547,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
         actions={<NodeActions actions={actions} />}
       />
     );
-  }, [onNavigateToDm, timeFormat, dateFormat]);
+  }, [onNavigateToDm, timeFormat, dateFormat, t]);
 
   const markers: NodeMarkerDescriptor[] = useMemo(
     () => visibleContacts.map(c => {

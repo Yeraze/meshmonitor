@@ -26,6 +26,7 @@ describe('visibleMeshCoreViews (#5666)', () => {
     ['automation', 'automations'],
     ['packetmonitor', 'packets'],
     ['dashboard', 'telemetry'],
+    ['security', 'security'],
   ] as const)('%s:read opens the %s tab, and nothing else', (resource, view) => {
     expect(views([resource])).toEqual(MESHCORE_VIEWS.filter((v) => v === 'nodes' || v === 'info' || v === view));
   });
@@ -52,7 +53,7 @@ describe('visibleMeshCoreViews (#5666)', () => {
   });
 
   it('every grant, signed in: every tab, in nav order', () => {
-    const all = ['messages', 'dashboard', 'packetmonitor', 'configuration', 'automation', 'settings'];
+    const all = ['messages', 'dashboard', 'packetmonitor', 'configuration', 'automation', 'settings', 'security'];
     expect(views(all, { isAuthenticated: true })).toEqual([...MESHCORE_VIEWS]);
   });
 });
