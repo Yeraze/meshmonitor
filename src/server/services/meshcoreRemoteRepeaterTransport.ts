@@ -89,6 +89,7 @@ export function createRemoteRepeaterTransport(
       }
       if (opts.signal?.aborted) throw new RemoteTransportAbortedError();
       opts.beforeSend?.(cmd);
+      // Only a command handed to the radio counts as mesh TX; the guards above throw before this.
       try {
         const result = await manager.sendCliCommand(publicKey, cmd, { timeoutMs: opts.timeoutMs });
         opts.afterSend?.(cmd, { reply: result.reply, elapsedMs: result.elapsedMs });

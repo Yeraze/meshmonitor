@@ -60,8 +60,19 @@ const inFlight = new Set<string>();
 const budget = new Map<string, number[]>();
 /** Last `ver` reply per (source:target), so gates cost one command per target. */
 const firmwareCache = new Map<string, string | null>();
-/** Last advert.interval read per (source:target): the firmware zeroes 1–59 on any save. */
+/** Last advert.interval read per (source:target): the firmware zeroes 1–59 on any save. Lost on restart; the drift check then just skips. */
 const advertIntervalCache = new Map<string, number>();
+/** Both caches hold one entry per target someone has opened; cap them so a long uptime cannot grow them without bound. */
+const CACHE_MAX_ENTRIES = 500;
+
+function cacheSet<V>(cache: Map<string, V>, key: string, value: V): void {
+  cache.delete(key);
+  cache.set(key, value);
+  if (cache.size > CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+}
 
 /** Test hook: clear the in-memory budget, busy and firmware state. */
 export function resetRemoteSettingsStateForTests(): void {
@@ -78,6 +89,11 @@ class BudgetExceededError extends Error {
   }
 }
 
+/**
+ * The live, pruned send list for a source. `beforeSend` pushes onto the returned
+ * array, which is the one stored in the map. Preflight refuses a run that would
+ * exceed the cap; `beforeSend` re-checks per command as the hard stop.
+ */
 function budgetUsed(sourceId: string, now = Date.now()): number[] {
   const kept = (budget.get(sourceId) ?? []).filter((t) => now - t < REMOTE_SETTINGS_BUDGET_WINDOW_MS);
   budget.set(sourceId, kept);
@@ -114,7 +130,9 @@ function resolveTarget(req: Request, res: Response): Target | null {
     return null;
   }
   const manager = managerFor(req, res);
-  if (manager.getConnectionStatus().deviceType !== MeshCoreDeviceType.COMPANION && manager.getConnectionStatus().connected) {
+  // A disconnected source has no meaningful device type; preflight answers SOURCE_NOT_CONNECTED.
+  const status = manager.getConnectionStatus();
+  if (status.connected && status.deviceType !== MeshCoreDeviceType.COMPANION) {
     fail(res, 400, 'COMPANION_REQUIRED', 'Remote settings need a Companion source');
     return null;
   }
@@ -218,7 +236,7 @@ async function firmwareFor(target: Target, run: RunContext | null): Promise<{ ve
     if (err instanceof RemoteTransportAbortedError || err instanceof BudgetExceededError) throw err;
     ver = null;
   }
-  firmwareCache.set(target.cacheKey, ver);
+  cacheSet(firmwareCache, target.cacheKey, ver);
   return { ver, gates: getRepeaterGates(ver) };
 }
 
@@ -290,7 +308,7 @@ router.post('/admin/settings/:publicKey/read', ...gates, async (req: Request, re
       const { ver, gates: fw } = await firmwareFor(target, run);
       const read = await readRepeaterSettings(run.transport, fw, { keys, deviceType: target.deviceType });
       if (typeof read.values.advertInterval === 'number') {
-        advertIntervalCache.set(target.cacheKey, read.values.advertInterval);
+        cacheSet(advertIntervalCache, target.cacheKey, read.values.advertInterval);
       }
       auditMeshcoreEvent(req, 'meshcore_remote_settings_read', 'remote_admin', {
         sourceId: target.sourceId,
@@ -360,7 +378,7 @@ router.patch('/admin/settings/:publicKey', ...gates, async (req: Request, res: R
         deviceType: target.deviceType,
       });
       if (typeof result.read.values.advertInterval === 'number') {
-        advertIntervalCache.set(target.cacheKey, result.read.values.advertInterval);
+        cacheSet(advertIntervalCache, target.cacheKey, result.read.values.advertInterval);
       }
       const changed: Record<string, unknown> = {};
       for (const [key, r] of Object.entries(result.results)) {

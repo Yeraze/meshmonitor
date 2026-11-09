@@ -52,13 +52,14 @@ describe('createRemoteRepeaterTransport', () => {
     expect(recordMeshTx).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses destructive and oversized commands without sending', async () => {
-    const { manager, sendCliCommand } = fakeManager();
+  it('refuses destructive and oversized commands without sending or recording TX', async () => {
+    const { manager, sendCliCommand, recordMeshTx } = fakeManager();
     const t = createRemoteRepeaterTransport(manager, PK);
     await expect(t.run('reboot')).rejects.toThrow(/destructive/);
     await expect(t.run(`set prv.key ${'a'.repeat(128)}`)).rejects.toThrow(/destructive/);
     await expect(t.run(`set name ${'x'.repeat(240)}`)).rejects.toThrow(/too long/);
     expect(sendCliCommand).not.toHaveBeenCalled();
+    expect(recordMeshTx).not.toHaveBeenCalled();
   });
 
   it('stops before sending once aborted, including during the gap', async () => {
@@ -76,7 +77,7 @@ describe('createRemoteRepeaterTransport', () => {
   });
 
   it('calls beforeSend per command and lets it refuse the send', async () => {
-    const { manager, sendCliCommand } = fakeManager();
+    const { manager, sendCliCommand, recordMeshTx } = fakeManager();
     let n = 0;
     const t = createRemoteRepeaterTransport(manager, PK, {
       minGapMs: 0,
@@ -88,5 +89,6 @@ describe('createRemoteRepeaterTransport', () => {
     await t.run('get af');
     await expect(t.run('get repeat')).rejects.toThrow('budget');
     expect(sendCliCommand).toHaveBeenCalledTimes(1);
+    expect(recordMeshTx).toHaveBeenCalledTimes(1);
   });
 });
