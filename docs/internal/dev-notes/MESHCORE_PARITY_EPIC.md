@@ -52,7 +52,7 @@ Each phase's scope is the checklist in its issue.
   Prometheus, v1 API read + TX, embed maps.
 - [x] **P7 #6254 Security view:** dead contacts, hash collisions, advert
   signatures, own-key change (P7a shipped). P7b (rates, clock flag, scanner,
-  digest, export, DM) is follow-up in #6281.
+  digest, export, DM) shipped as P15 (#6281).
 - [ ] **P8 #6257 Companion extras:** BLE PIN, factory reset, multi-ACKs,
   device-config backups, channel QR share.
 - [x] **P9 #6255 Repeater settings + danger zone.**
@@ -145,6 +145,18 @@ signature status (Verified / Failed / Not checked; only Repeater and MQTT check)
 only), and an own-key change card with one alert per change and an Acknowledge action. Dead-nodes and findings routes now
 need `nodes:read` on the source for both protocols. No migration, no RF. P7b (rates, clock-offset flag, scanner, digest,
 export, DM) follows in #6281. User docs: `docs/features/security.md`, `meshcore.md`.
+
+Shipped (P7b / P15, #6281; spec: `MESHCORE_PARITY_P15_SPEC.md`): MeshCore uses the same 30 packets/hour and 30 minute
+thresholds as Meshtastic from one constant file (`constants/securityThresholds.ts`). Rates count distinct packet
+hashes from the MeshCore packet log (off = rate flags untouched, hint in the tab); the clock offset comes from the newest
+advert or DM sender time, and a never-set clock is shown as "Clock not set". Migration 225 adds the flag columns to
+`meshcore_nodes` (only the scanner and the clear route write them). One scanner, one issues collector
+(`securityIssuesService`), one digest formatter (sections), one export and one notification-text builder serve both
+protocols. Digest settings now save per source with a global fallback; an unconfigured source is skipped, not failed.
+`/issues`, `/export`, `/key-mismatches` need `nodes:read` on the source; the shared export now lists spam- and
+clock-only nodes. "Send notification" is draft-only on Companion sources and chat contacts (and now also on Meshtastic
+excessive-packet and clock rows), text <= 75 bytes, flood warning when no path is known, disabled when the contact is
+not on the radio (the firmware looks the recipient up in its table).
 
 ### P8 #6257 (spec: `MESHCORE_PARITY_P8_SPEC.md`)
 Maintainer answers, 2026-11-08: leak fix (device backups exported every source's channel secrets) shipped first as
