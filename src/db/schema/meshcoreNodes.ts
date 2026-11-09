@@ -52,7 +52,7 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // only by meshcore_mqtt ingest. NULL = never checked (device sources, or a
   // row that predates 215).
   advertSignatureVerified: integer('advertSignatureVerified', { mode: 'boolean' }),
-  // #6281 (migration 225): security scanner flags. Written only by the scanner
+  // #6281 (migration 227): security scanner flags. Written only by the scanner
   // (setNodeSecurityFlags) and the clear route; upsertNode never touches them.
   isExcessivePackets: integer('isExcessivePackets', { mode: 'boolean' }).default(false),
   packetRatePerHour: integer('packetRatePerHour'),

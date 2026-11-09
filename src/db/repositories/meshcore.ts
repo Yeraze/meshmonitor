@@ -38,7 +38,7 @@ const OVERRIDE_KEYS = [
 ] as const;
 
 /**
- * The #6281 security-scanner columns (migration 225). Only
+ * The #6281 security-scanner columns (migration 227). Only
  * `setNodeSecurityFlags` / `clearNodeSecurityFlags` write them; `upsertNode`
  * strips them so a contact sync can never touch them.
  */
@@ -150,7 +150,7 @@ export interface DbMeshCoreNode {
    * drops these keys so advert ingest can never touch them. Read sides apply
    * them through `src/server/utils/meshcorePositionOverride.ts`.
    */
-  /** #6281 (migration 225): scanner-owned security flags. `upsertNode` never writes them. */
+  /** #6281 (migration 227): scanner-owned security flags. `upsertNode` never writes them. */
   isExcessivePackets?: boolean | null;
   packetRatePerHour?: number | null;
   advertRatePerHour?: number | null;
