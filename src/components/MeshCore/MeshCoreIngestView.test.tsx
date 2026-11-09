@@ -30,6 +30,26 @@ vi.mock('react-i18next', async () => {
 
 vi.mock('../icons', () => ({ UiIcon: () => <span /> }));
 
+// Sign-in state and push click-through are driven per test (#6307).
+const auth = vi.hoisted(() => ({ authenticated: true, isAdmin: false }));
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    authStatus: { authenticated: auth.authenticated, user: auth.authenticated ? { isAdmin: auth.isAdmin } : null },
+    hasPermission: () => true,
+  }),
+}));
+const nav = vi.hoisted(() => ({
+  pending: null as null | { type: 'channel' | 'dm'; sourceId?: string; channelId?: number },
+  clear: vi.fn(),
+}));
+vi.mock('../../hooks/usePushNotificationNavigation', () => ({
+  usePushNotificationNavigation: () => ({ pendingNavigation: nav.pending, clearPendingNavigation: nav.clear }),
+}));
+// The shared tab has its own suites; here only the mount matters.
+vi.mock('../NotificationsTab', () => ({
+  default: ({ isAdmin }: { isAdmin: boolean }) => <div data-testid="notifications-tab">{String(isAdmin)}</div>,
+}));
+
 import { MeshCoreIngestView } from './MeshCoreIngestView';
 
 const OVERVIEW = {
@@ -54,6 +74,10 @@ const OVERVIEW = {
 };
 
 beforeEach(() => {
+  auth.authenticated = true;
+  auth.isAdmin = false;
+  nav.pending = null;
+  nav.clear.mockReset();
   get.mockReset();
   get.mockImplementation(async (url: string) => {
     if (url.includes('/overview')) return OVERVIEW;
@@ -187,5 +211,38 @@ describe('MeshCoreIngestView (#5096)', () => {
     get.mockRejectedValue(new Error('broker unreachable'));
     renderView();
     expect(await screen.findByText(/broker unreachable/i)).toBeTruthy();
+  });
+
+  describe('Notifications tab (#6307)', () => {
+    it('appears for a signed-in viewer and mounts the shared tab', async () => {
+      auth.isAdmin = true;
+      render(<MeshCoreIngestView sourceId="ing-1" baseUrl="" />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+      expect((await screen.findByTestId('notifications-tab')).textContent).toBe('true');
+    });
+
+    it('is absent for an anonymous viewer', async () => {
+      auth.authenticated = false;
+      render(<MeshCoreIngestView sourceId="ing-1" baseUrl="" />);
+      await screen.findByText('MCO');
+      expect(screen.queryByRole('button', { name: 'Notifications' })).toBeNull();
+    });
+
+    it('a channel click-through for this source switches to the Channels tab', async () => {
+      nav.pending = { type: 'channel', sourceId: 'ing-1', channelId: 3 };
+      render(<MeshCoreIngestView sourceId="ing-1" baseUrl="" />);
+      await waitFor(() => expect(nav.clear).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(get.mock.calls.some(c => String(c[0]).includes('/ingest/messages'))).toBe(true),
+      );
+    });
+
+    it('ignores a click-through for another source', async () => {
+      nav.pending = { type: 'channel', sourceId: 'other', channelId: 3 };
+      render(<MeshCoreIngestView sourceId="ing-1" baseUrl="" />);
+      await screen.findByText('MCO');
+      expect(nav.clear).not.toHaveBeenCalled();
+      expect(get.mock.calls.some(c => String(c[0]).includes('/ingest/messages'))).toBe(false);
+    });
   });
 });

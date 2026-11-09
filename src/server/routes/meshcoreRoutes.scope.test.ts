@@ -682,6 +682,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'GET /ingest/overview': 'read',
     'GET /ingest/nodes': 'read',
     'GET /ingest/messages': 'read',
+    // #6307: the Notifications channel picker (slot indices with messages + readable keyed channels).
+    'GET /ingest/channels': 'read',
   },
   filter: {
     'GET /ignored-nodes': 'read',

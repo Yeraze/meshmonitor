@@ -149,6 +149,18 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
   // Nothing is saved for this source yet: the values shown are the built-in
   // defaults, not another source's settings. The first save creates the row.
   const [usingDefaults, setUsingDefaults] = useState(false);
+  // A region feed lists only channels it has seen, so a saved id can be missing
+  // from the list. Show it too, so the user can untick it and a save never drops
+  // it unseen (#6307).
+  const pickerChannels: Channel[] =
+    caps.unsupportedHint === 'ingest'
+      ? [
+          ...channels,
+          ...preferences.enabledChannels
+            .filter(id => !channels.some(c => c.id === id))
+            .map(id => ({ id, name: '', uplinkEnabled: false, downlinkEnabled: false }) as Channel),
+        ].sort((a, b) => a.id - b.id)
+      : channels;
   const [whitelistText, setWhitelistText] = useState('');
   const [blacklistText, setBlacklistText] = useState('');
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
@@ -319,7 +331,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
       const channelList = await loadNotificationChannels(currentSourceId, sourceType);
       setChannels(channelList);
 
-      if (preferences.enabledChannels.length === 0 && channelList.length > 0) {
+      // A region feed (MeshCore MQTT) can be very busy: never pre-tick its channels.
+      if (preferences.enabledChannels.length === 0 && channelList.length > 0 && caps.unsupportedHint !== 'ingest') {
         setPreferences(prev => ({
           ...prev,
           enabledChannels: channelList.map(c => c.id)
@@ -698,7 +711,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
           style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '0 0 16px', padding: '10px 12px', borderRadius: '6px', fontSize: '14px' }}
         >
           <UiIcon name="info" size={16} />
-          <span>{t(isMeshCore ? 'notifications.using_defaults_notice_meshcore' : 'notifications.using_defaults_notice')}</span>
+          <span>{t(!caps.dm ? 'notifications.using_defaults_notice_no_dm' : isMeshCore ? 'notifications.using_defaults_notice_meshcore' : 'notifications.using_defaults_notice')}</span>
         </p>
       )}
 
@@ -889,9 +902,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                 )}
               </div>
               ) : null}
-              {!caps.dm && (
+              {caps.unsupportedHint && (
               <div className={styles.muted} style={{ fontSize: '12px', marginBottom: '16px' }}>
-                {t('notifications.repeater_unsupported_hint')}
+                {t(caps.unsupportedHint === 'ingest' ? 'notifications.ingest_unsupported_hint' : 'notifications.repeater_unsupported_hint')}
               </div>
               )}
 
@@ -1329,8 +1342,18 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                       listStyleType: 'disc'
                     }}>
                       <li>{t('notifications.server_events_startup')}</li>
-                      <li>{t('notifications.server_events_disconnect')}</li>
-                      <li>{t('notifications.server_events_reconnect')}</li>
+                      {caps.connectionEvents === 'radio' && (
+                        <>
+                          <li>{t('notifications.server_events_disconnect')}</li>
+                          <li>{t('notifications.server_events_reconnect')}</li>
+                        </>
+                      )}
+                      {caps.connectionEvents === 'broker' && (
+                        <>
+                          <li>{t('notifications.server_events_disconnect_broker')}</li>
+                          <li>{t('notifications.server_events_reconnect_broker')}</li>
+                        </>
+                      )}
                     </ul>
                   </div>
                 )}
@@ -1393,11 +1416,16 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                 padding: '12px'
               }}>
                 <div style={{ fontWeight: '600', marginBottom: '8px' }}>{t('notifications.channels')}:</div>
-                {channels.length === 0 ? (
+                {caps.unsupportedHint === 'ingest' && (
+                  <p className={styles.muted} style={{ fontSize: '12px', margin: '0 0 8px' }}>
+                    {t('notifications.ingest_channels_warning')}
+                  </p>
+                )}
+                {pickerChannels.length === 0 ? (
                   <p className={styles.muted} style={{ fontSize: '14px', margin: 0 }}>{t('notifications.no_channels')}</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {channels.map(channel => (
+                    {pickerChannels.map(channel => (
                       <label
                         key={channel.id}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}

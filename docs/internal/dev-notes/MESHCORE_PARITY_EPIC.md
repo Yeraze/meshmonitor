@@ -60,6 +60,7 @@ Each phase's scope is the checklist in its issue.
 - [x] **P11 #6253 Notifications.**
 - [x] **P12 #6279 Mesh Issues node-health rules (A6-A9).**
 - [x] **P13 #6306 Repeater new-node alerts** (shared learning-window + hourly-cap gate).
+- [x] **P17 #6307 Notifications tab for `meshcore_mqtt`** (+ shared debounced broker-link alerts).
 
 ## Phase log
 
@@ -221,6 +222,17 @@ Shipped (P13): `upsertNode` reports `{ inserted }`, `ingestAdvertFrame` returns 
 `alertNewNode` split from `notifyNewNodeDiscovered` (the Repeater path never runs Auto Welcome), bounded dedup sets,
 `maybeAlertRepeaterNewNode`, purge re-arm, Repeater toggle plus learning note in the Notifications tab. Automation events
 for Repeater adverts stay off (#5553). Follow-ups: the same gate on Meshtastic MQTT; new-node alerts for `meshcore_mqtt`.
+
+### P17 #6307 (spec: `MESHCORE_PARITY_P17_SPEC.md`)
+Maintainer answers, 2026-11-09: one shared debounced broker-link notifier for `meshcore_mqtt` and Meshtastic `mqtt_bridge`;
+120 s grace, auth/eviction stops alert at once, no broker URL in payloads; picker = slot channels with messages on the source
+plus keyed channels the viewer can read; slot-index ambiguity accepted (#6308); inactive-node and low-battery alerts included;
+no MeshCore-only cap, the tab warns next to the picker.
+Shipped (P17): `meshcore_mqtt` capability row plus `unsupportedHint`/`connectionEvents` on every row, `GET /ingest/channels`
+and `getChannelIndicesWithMessages`, shared `NotificationsTab` mounted on the ingest page (capability-driven copy, no-DM
+defaults notice also fixes the Repeater), `resolveMeshCoreChannelName` (fixes keyed-channel titles for every MeshCore source),
+scoped `/api/nodes` lists ingest nodes for the monitored-node picker, `brokerLinkNotifier` wired into `meshcoreMqttManager`
+and `mqttBridgeManager` (dispose is silent). Follow-ups: #6308 slot re-filing; Reticulum Notifications tab; new-node alerts for feeds.
 
 ### P16 #6285 (P8b) (spec: `MESHCORE_PARITY_P16_SPEC.md`)
 Maintainer answers, 2026-11-09: migration takes the next free number (226, after P14 took 225); download and create need
