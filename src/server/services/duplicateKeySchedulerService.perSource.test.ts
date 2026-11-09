@@ -47,13 +47,14 @@ const h = vi.hoisted(() => ({
   updateNodeSpamFlagsAsyncMock: vi.fn().mockResolvedValue(undefined),
   updateNodeTimeOffsetFlagsAsyncMock: vi.fn().mockResolvedValue(undefined),
   getAllManagersMock: vi.fn(),
+  getMeshcoreNodesBySourceMock: vi.fn(),
 }));
 const {
   getNodesWithPublicKeysMock, getAllNodesMock, getPacketCountsMock,
   getLatestTimestampsMock, getSettingForSourceMock, getLocalNodeNumForSourceMock,
   updateNodeSecurityFlagsMock, updateNodeLowEntropyFlagMock,
   updateNodeSpamFlagsAsyncMock, updateNodeTimeOffsetFlagsAsyncMock,
-  getAllManagersMock,
+  getAllManagersMock, getMeshcoreNodesBySourceMock,
 } = h;
 
 vi.mock('../../services/database.js', () => ({
@@ -63,6 +64,11 @@ vi.mock('../../services/database.js', () => ({
     updateNodeSpamFlagsAsync: h.updateNodeSpamFlagsAsyncMock,
     getPacketCountsPerNodeLastHourAsync: h.getPacketCountsMock,
     getTopBroadcastersAsync: vi.fn().mockResolvedValue([]),
+    meshcore: {
+      getNodesBySource: h.getMeshcoreNodesBySourceMock,
+      getLatestDmSenderTimes: vi.fn().mockResolvedValue([]),
+      setNodeSecurityFlags: vi.fn().mockResolvedValue(undefined),
+    },
     nodes: {
       getAllNodes: h.getAllNodesMock,
       getNodesWithPublicKeys: h.getNodesWithPublicKeysMock,
@@ -76,6 +82,8 @@ vi.mock('../../services/database.js', () => ({
     },
   }
 }));
+
+vi.mock('./meshcorePacketLogService.js', () => ({ default: { isEnabled: vi.fn().mockResolvedValue(false) } }));
 
 vi.mock('../../utils/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -113,6 +121,7 @@ describe('duplicateKeySchedulerService per-source', () => {
     getAllNodesMock.mockImplementation(async (sourceId?: string) => allNodesBySource[sourceId ?? ''] ?? []);
     getPacketCountsMock.mockImplementation(async (sourceId?: string) => packetCountsBySource[sourceId ?? ''] ?? []);
     getLatestTimestampsMock.mockResolvedValue([]);
+    getMeshcoreNodesBySourceMock.mockResolvedValue([]);
     getSettingForSourceMock.mockImplementation(async (sourceId: string | null | undefined, key: string) => {
       if (!sourceId) return null;
       return settingsBySource[sourceId]?.[key] ?? null;
@@ -138,7 +147,7 @@ describe('duplicateKeySchedulerService per-source', () => {
     expect(getPacketCountsMock).toHaveBeenCalledWith('src-B');
   });
 
-  it('skips MeshCore device and MeshCore MQTT ingest sources in scans and status (#6252)', async () => {
+  it('sends MeshCore device and MQTT sources to the MeshCore scan, not the Meshtastic key scan (#6252, #6281)', async () => {
     getAllManagersMock.mockReturnValue([
       { sourceId: 'src-A', sourceType: 'meshtastic_tcp' },
       { sourceId: 'mc-dev', sourceType: 'meshcore' },
@@ -148,8 +157,10 @@ describe('duplicateKeySchedulerService per-source', () => {
 
     expect(getNodesWithPublicKeysMock).toHaveBeenCalledTimes(1);
     expect(getNodesWithPublicKeysMock).toHaveBeenCalledWith('src-A');
+    expect(getMeshcoreNodesBySourceMock).toHaveBeenCalledWith('mc-dev');
+    expect(getMeshcoreNodesBySourceMock).toHaveBeenCalledWith('mc-mqtt');
     const status = duplicateKeySchedulerService.getStatus() as { sources: Record<string, unknown> };
-    expect(Object.keys(status.sources)).toEqual(['src-A']);
+    expect(Object.keys(status.sources).sort()).toEqual(['mc-dev', 'mc-mqtt', 'src-A']);
   });
 
   it('does NOT flag a node as duplicate when its "duplicate" is on a different source', async () => {
