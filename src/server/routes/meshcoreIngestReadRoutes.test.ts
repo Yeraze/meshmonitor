@@ -41,6 +41,7 @@ vi.mock('../auth/authMiddleware.js', () => ({
   optionalAuth: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   requireAuth: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  requireAdmin: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 vi.mock('../../services/database.js', () => ({
