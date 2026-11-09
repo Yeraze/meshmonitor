@@ -243,6 +243,7 @@ import { migration as colorNodesBySourcePrefMigration, runMigration221Postgres, 
 import { migration as reticulumInterfaceLiveStatsMigration, runMigration222Postgres, runMigration222Mysql } from '../server/migrations/222_add_reticulum_interface_live_stats.js';
 import { migration as meshcoreSourcePkiKeysMigration, runMigration223Postgres, runMigration223Mysql } from '../server/migrations/223_add_meshcore_source_pki_keys.js';
 import { migration as meshcorePacketLogDerivedMigration, runMigration224Postgres, runMigration224Mysql } from '../server/migrations/224_meshcore_packet_log_derived_fields.js';
+import { migration as backupHistorySourceProtocolMigration, runMigration225Postgres, runMigration225Mysql } from '../server/migrations/225_backup_history_source_protocol.js';
 
 // ============================================================================
 // Registry
@@ -3617,4 +3618,18 @@ registry.register({
   sqlite: (db) => meshcorePacketLogDerivedMigration.up(db),
   postgres: (client) => runMigration224Postgres(client),
   mysql: (pool) => runMigration224Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 225: backup_history.sourceId + protocol, legacy backfill and the
+// per-source backup schedule seed (#6285 P8b).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 225,
+  name: 'backup_history_source_protocol',
+  settingsKey: 'migration_225_backup_history_source_protocol',
+  sqlite: (db) => backupHistorySourceProtocolMigration.up(db),
+  postgres: (client) => runMigration225Postgres(client),
+  mysql: (pool) => runMigration225Mysql(pool),
 });

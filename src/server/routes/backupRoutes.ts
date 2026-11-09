@@ -83,9 +83,9 @@ backupRouter.post('/settings', requirePermission('configuration', 'write'), asyn
 // check is scoped to the target source (named `?sourceId`, else the primary),
 // not a plain `configuration:read` that a grant on ANY source would satisfy
 // (#6073).
-backupRouter.get('/list', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups'), async (_req: Request, res: Response) => {
+backupRouter.get('/list', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups'), async (req: Request, res: Response) => {
   try {
-    const backups = await backupFileService.listBackups();
+    const backups = await backupFileService.listBackups(getDeviceSourceTarget(req).sourceId);
     res.json(backups);
   } catch (error) {
     logger.error('❌ Error listing backups:', error);
@@ -106,7 +106,7 @@ backupRouter.get('/download/:filename', requireDeviceSourcePermission('configura
       return res.status(400).json({ error: 'Invalid filename format' });
     }
 
-    const content = await backupFileService.getBackup(filename);
+    const content = await backupFileService.getBackup(getDeviceSourceTarget(req).sourceId, filename);
 
     res.setHeader('Content-Type', 'application/x-yaml');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -133,7 +133,7 @@ backupRouter.delete('/delete/:filename', requireDeviceSourcePermission('configur
       return res.status(400).json({ error: 'Invalid filename format' });
     }
 
-    await backupFileService.deleteBackup(filename);
+    await backupFileService.deleteBackup(getDeviceSourceTarget(req).sourceId, filename);
 
     logger.debug(`🗑️  Backup deleted: ${filename}`);
 
@@ -161,7 +161,7 @@ backupRouter.post('/restore/:filename', extendRequestTimeout(DEVICE_RESTORE_TIME
 
     const { manager, sourceId } = getDeviceSourceTarget(req);
 
-    const content = await backupFileService.getBackup(filename);
+    const content = await backupFileService.getBackup(sourceId, filename);
     const result = await deviceRestoreService.restoreBackup(manager, content);
 
     void databaseService.auditLogAsync(

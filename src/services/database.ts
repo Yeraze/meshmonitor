@@ -5662,6 +5662,8 @@ class DatabaseService {
     fileSize?: number | null;
     nodeId?: string | null;
     nodeNum?: number | null;
+    sourceId?: string | null;
+    protocol?: string;
   }): Promise<void> {
     return this.backupHistory.insertBackupHistory({
       ...backup,

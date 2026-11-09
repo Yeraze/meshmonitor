@@ -45,7 +45,7 @@ router.get('/device-config', requireDeviceSourcePermission('configuration', 'rea
 router.get('/device/backup', requireDeviceSourcePermission('configuration', 'read', 'query'), async (req: Request, res: Response) => {
   try {
     const saveToFile = req.query.save === 'true';
-    const { manager: backupManager } = getDeviceSourceTarget(req);
+    const { manager: backupManager, sourceId: backupSourceId } = getDeviceSourceTarget(req);
     logger.debug(`📦 Device backup requested (save=${saveToFile})...`);
 
     // Generate YAML backup using the device backup service
@@ -57,7 +57,7 @@ router.get('/device/backup', requireDeviceSourcePermission('configuration', 'rea
 
     if (saveToFile) {
       // Save to disk with new filename format
-      const filename = await backupFileService.saveBackup(yamlBackup, 'manual', nodeId);
+      const filename = await backupFileService.saveBackup({ content: yamlBackup, type: 'manual', sourceId: backupSourceId, protocol: 'meshtastic', nodeId });
 
       // Also send the file for download
       res.setHeader('Content-Type', 'application/x-yaml');

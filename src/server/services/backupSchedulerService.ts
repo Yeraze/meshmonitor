@@ -215,7 +215,7 @@ class BackupSchedulerService {
       const nodeId = localNodeInfo?.nodeId || '!unknown';
 
       // Save to disk
-      const filename = await backupFileService.saveBackup(yamlBackup, 'automatic', nodeId);
+      const filename = await backupFileService.saveBackup({ content: yamlBackup, type: 'automatic', sourceId: meshtasticManager.sourceId, protocol: 'meshtastic', nodeId });
 
       logger.info(`✅ Automated device backup completed: ${filename}`);
     } catch (error) {
@@ -258,7 +258,7 @@ class BackupSchedulerService {
     const nodeId = localNodeInfo?.nodeId || '!unknown';
 
     // Save to disk
-    const filename = await backupFileService.saveBackup(yamlBackup, 'manual', nodeId);
+    const filename = await backupFileService.saveBackup({ content: yamlBackup, type: 'manual', sourceId: meshtasticManager.sourceId, protocol: 'meshtastic', nodeId });
 
     logger.info(`✅ Manual backup completed: ${filename}`);
 

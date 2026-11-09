@@ -32,8 +32,13 @@ const POSTGRES_CREATE = `
     "fileSize" INTEGER,
     "backupType" TEXT NOT NULL,
     timestamp BIGINT NOT NULL,
-    "createdAt" BIGINT NOT NULL
-  )
+    "createdAt" BIGINT NOT NULL,
+    "sourceId" TEXT,
+    protocol TEXT NOT NULL DEFAULT 'meshtastic'
+  );
+  DROP TABLE IF EXISTS sources CASCADE;
+  CREATE TABLE sources (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, config TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, "displayOrder" INTEGER NOT NULL DEFAULT 0, "createdAt" BIGINT NOT NULL, "updatedAt" BIGINT NOT NULL, "createdBy" INTEGER)
+
 `;
 
 const MYSQL_CREATE = `
@@ -47,11 +52,15 @@ const MYSQL_CREATE = `
     fileSize INT,
     backupType VARCHAR(16) NOT NULL,
     timestamp BIGINT NOT NULL,
-    createdAt BIGINT NOT NULL
-  )
+    createdAt BIGINT NOT NULL,
+    sourceId VARCHAR(36),
+    protocol VARCHAR(16) NOT NULL DEFAULT 'meshtastic'
+  );
+  DROP TABLE IF EXISTS sources;
+  CREATE TABLE sources (id VARCHAR(36) PRIMARY KEY, name VARCHAR(255) NOT NULL, type VARCHAR(32) NOT NULL, config TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, displayOrder INT NOT NULL DEFAULT 0, createdAt BIGINT NOT NULL, updatedAt BIGINT NOT NULL, createdBy INT)
 `;
 
-const ALL_TABLES = ['backup_history'];
+const ALL_TABLES = ['backup_history', 'sources'];
 
 /**
  * Shared test suite that runs against any backend.
@@ -75,6 +84,7 @@ function runBackupHistoryTests(getBackend: () => TestBackend) {
     await repo.insertBackupHistory({
       nodeId: '!abcd1234',
       nodeNum: 12345,
+      sourceId: 's1',
       filename: 'backup_2024.json',
       filePath: '/backups/backup_2024.json',
       fileSize: 1024,
@@ -83,7 +93,7 @@ function runBackupHistoryTests(getBackend: () => TestBackend) {
       createdAt: now,
     });
 
-    const list = await repo.getBackupHistoryList();
+    const list = await repo.getBackupHistoryList('s1');
     expect(list).toHaveLength(1);
     expect(list[0].filename).toBe('backup_2024.json');
     expect(list[0].backupType).toBe('auto');
@@ -93,7 +103,7 @@ function runBackupHistoryTests(getBackend: () => TestBackend) {
     const backend = getBackend();
     if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
 
-    const list = await repo.getBackupHistoryList();
+    const list = await repo.getBackupHistoryList('s1');
     expect(list).toHaveLength(0);
   });
 
@@ -102,10 +112,10 @@ function runBackupHistoryTests(getBackend: () => TestBackend) {
     if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
 
     const base = Date.now();
-    await repo.insertBackupHistory({ filename: 'old.json', filePath: '/old.json', backupType: 'manual', timestamp: base - 2000, createdAt: base });
-    await repo.insertBackupHistory({ filename: 'new.json', filePath: '/new.json', backupType: 'auto', timestamp: base, createdAt: base });
+    await repo.insertBackupHistory({ sourceId: 's1', filename: 'old.json', filePath: '/old.json', backupType: 'manual', timestamp: base - 2000, createdAt: base });
+    await repo.insertBackupHistory({ sourceId: 's1', filename: 'new.json', filePath: '/new.json', backupType: 'auto', timestamp: base, createdAt: base });
 
-    const list = await repo.getBackupHistoryList();
+    const list = await repo.getBackupHistoryList('s1');
     expect(list[0].filename).toBe('new.json');
     expect(list[1].filename).toBe('old.json');
   });
