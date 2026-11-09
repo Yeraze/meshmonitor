@@ -17,10 +17,10 @@
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget, getConfigCapableTarget } from '../utils/deviceSourcePermission.js';
 import { fail } from '../utils/apiResponse.js';
-import { deviceBackupService } from '../services/deviceBackupService.js';
-import { backupFileService } from '../services/backupFileService.js';
+import { deviceConfigBackupService, RestoreInProgressError } from '../services/deviceConfigBackupService.js';
+import { backupTargetLimiter } from '../middleware/backupTargetLimiter.js';
 
 const router: Router = Router();
 
@@ -39,53 +39,41 @@ router.get('/device-config', requireDeviceSourcePermission('configuration', 'rea
   }
 });
 
-// Export complete device configuration as YAML backup
-// Compatible with Meshtastic CLI --export-config format
-// Query param ?save=true will save to disk instead of just downloading
-router.get('/device/backup', requireDeviceSourcePermission('configuration', 'read', 'query'), async (req: Request, res: Response) => {
-  try {
-    const saveToFile = req.query.save === 'true';
-    const { manager: backupManager, sourceId: backupSourceId } = getDeviceSourceTarget(req);
-    logger.debug(`📦 Device backup requested (save=${saveToFile})...`);
+// Export complete device configuration as YAML backup (Meshtastic CLI
+// --export-config compatible; MeshCore Companion in its own YAML).
+// Query param ?save=true will also keep the file on disk.
+// The file holds secrets (PSKs, PINs), so it needs configuration:write.
+router.get(
+  '/device/backup',
+  requireDeviceSourcePermission('configuration', 'write', 'query', 'device backups', { accept: 'config-capable' }),
+  backupTargetLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const saveToFile = req.query.save === 'true';
+      const target = getConfigCapableTarget(req);
+      const backupTarget = { sourceId: target.sourceId, protocol: target.protocol, manager: target.manager };
+      logger.debug(`Device backup requested (save=${saveToFile}, protocol=${target.protocol})...`);
 
-    // Generate YAML backup using the device backup service
-    const yamlBackup = await deviceBackupService.generateBackup(backupManager);
-
-    // Get node ID for filename
-    const localNodeInfo = backupManager.getLocalNodeInfo();
-    const nodeId = localNodeInfo?.nodeId || '!unknown';
-
-    if (saveToFile) {
-      // Save to disk with new filename format
-      const filename = await backupFileService.saveBackup({ content: yamlBackup, type: 'manual', sourceId: backupSourceId, protocol: 'meshtastic', nodeId });
-
-      // Also send the file for download
-      res.setHeader('Content-Type', 'application/x-yaml');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(yamlBackup);
-
-      logger.debug(`✅ Device backup saved and downloaded: ${filename}`);
-    } else {
-      // Just download, don't save - generate filename for display
-      const nodeIdNumber = nodeId.startsWith('!') ? nodeId.substring(1) : nodeId;
-      const now = new Date();
-      const date = now.toISOString().split('T')[0];
-      const time = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-      const filename = `${nodeIdNumber}-${date}-${time}.yaml`;
+      const { filename, content } = saveToFile
+        ? await deviceConfigBackupService.create(backupTarget, 'manual', {
+            userId: req.user?.id ?? null,
+            ip: req.ip || null,
+          })
+        : await deviceConfigBackupService.generateOnly(backupTarget);
 
       res.setHeader('Content-Type', 'application/x-yaml');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(yamlBackup);
-
-      logger.debug(`✅ Device backup generated: ${filename}`);
+      res.send(content);
+      logger.debug(`Device backup ${saveToFile ? 'saved and downloaded' : 'generated'}: ${filename}`);
+    } catch (error) {
+      if (error instanceof RestoreInProgressError) {
+        return fail(res, 409, 'RESTORE_IN_PROGRESS', error.message);
+      }
+      logger.error('Error generating device backup:', error instanceof Error ? error.message : String(error));
+      return fail(res, 500, 'DEVICE_BACKUP_FAILED', 'Failed to generate device backup');
     }
-  } catch (error) {
-    logger.error('❌ Error generating device backup:', error);
-    fail(res, 500, 'DEVICE_BACKUP_FAILED', 'Failed to generate device backup', {
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
+  },
+);
 
 router.post('/device/reboot', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
   try {

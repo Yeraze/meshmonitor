@@ -451,6 +451,12 @@ class DeviceBackupService {
         continue;
       }
 
+      // The node's private key is never written to a backup (#6285): restore
+      // does not use it, and the file is a plaintext secret store.
+      if (key === 'privateKey' || key === 'private_key') {
+        continue;
+      }
+
       // TAK team + role (#5613) must not go through convertEnumValue: that
       // maps by key name, so TAKConfig.role (a MemberRole) would be written as
       // a DEVICE role name — MemberRole 2 (TeamLead) would export as "ROUTER".

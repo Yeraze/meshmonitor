@@ -363,13 +363,9 @@ setTimeout(async () => {
       makeMeshtastic: (id, cfg) => new MeshtasticManager(id, cfg),
     });
 
-    // Initialize backup scheduler. Pass a resolver (not a captured instance)
-    // so the scheduler always targets the registry's current primary
-    // meshtastic_tcp source, mirroring what the retired Proxy alias used to
-    // provide transparently (#3962 Phase 4.2a WP4).
-    backupSchedulerService.initialize(
-      () => getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager
-    );
+    // Initialize backup scheduler. Per-source: it walks the stored sources
+    // (Meshtastic TCP and MeshCore) and asks the registry for each live manager.
+    backupSchedulerService.initialize(sourceManagerRegistry);
     logger.debug('Backup scheduler initialized');
 
     // Initialize duplicate key scanner

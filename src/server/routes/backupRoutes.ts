@@ -2,10 +2,19 @@ import { Router, Request, Response } from 'express';
 import { promises as fsp } from 'fs';
 import { requireAdmin, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
-import { backupFileService } from '../services/backupFileService.js';
+import { BackupNotFoundError } from '../services/backupFileService.js';
+import {
+  deviceConfigBackupService,
+  BackupProtocolMismatchError,
+  RestoreInProgressError,
+  LegacyConfirmRequiredError,
+  type CallerInfo,
+} from '../services/deviceConfigBackupService.js';
+import { backupSchedulerService } from '../services/backupSchedulerService.js';
+import { backupTargetLimiter } from '../middleware/backupTargetLimiter.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { systemBackupService, SystemBackupInProgressError } from '../services/systemBackupService.js';
-import { deviceRestoreService } from '../services/deviceRestoreService.js';
-import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
+import { requireDeviceSourcePermission, getStoredBackupTarget, getConfigCapableTarget } from '../utils/deviceSourcePermission.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
@@ -13,8 +22,8 @@ import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 /** System backup: streams every table to disk. Minutes on a large database. */
 const SYSTEM_BACKUP_TIMEOUT_MS = 15 * 60_000;
 
-/** Device config restore: pushes every backed-up admin config section to the node in sequence. */
-const DEVICE_RESTORE_TIMEOUT_MS = 90_000;
+/** Device config restore: the slowest adapter bounds it (MeshCore pushes many serial writes). */
+const DEVICE_RESTORE_TIMEOUT_MS = 120_000;
 
 /**
  * Config-backup endpoints (device config YAML backups).
@@ -22,167 +31,178 @@ const DEVICE_RESTORE_TIMEOUT_MS = 90_000;
  */
 const backupRouter = Router();
 
-// Get backup settings
-backupRouter.get('/settings', requirePermission('configuration', 'read'), async (_req: Request, res: Response) => {
-  try {
-    const enabled = await databaseService.settings.getSetting('backup_enabled') === 'true';
-    const maxBackups = parseInt(await databaseService.settings.getSetting('backup_maxBackups') || '7', 10);
-    const backupTime = await databaseService.settings.getSetting('backup_time') || '02:00';
+const FILENAME_RE = /^[a-zA-Z0-9\-_]+\.yaml$/;
 
+/** Map pipeline errors to the response. Unknown errors are 500 with no detail. */
+function failBackup(res: Response, error: unknown, code: string, message: string): void {
+  if (error instanceof BackupNotFoundError) {
+    fail(res, 404, 'BACKUP_NOT_FOUND', 'Backup not found');
+  } else if (error instanceof BackupProtocolMismatchError) {
+    fail(res, 409, 'BACKUP_PROTOCOL_MISMATCH', error.message);
+  } else if (error instanceof RestoreInProgressError) {
+    fail(res, 409, 'RESTORE_IN_PROGRESS', error.message);
+  } else if (error instanceof LegacyConfirmRequiredError) {
+    fail(res, 409, 'LEGACY_CONFIRM_REQUIRED', error.message);
+  } else {
+    logger.error(`${message}:`, error instanceof Error ? error.message : String(error));
+    fail(res, 500, code, message);
+  }
+}
+
+const callerOf = (req: Request): CallerInfo => ({
+  isAdmin: Boolean(req.user?.isAdmin),
+  userId: req.user?.id ?? null,
+  ip: req.ip || null,
+});
+
+// Per-source schedule. The day guard and last-result fields are additive.
+backupRouter.get('/settings', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups', { accept: 'stored' }), async (req: Request, res: Response) => {
+  try {
+    const { sourceId } = getStoredBackupTarget(req);
+    const settings = await backupSchedulerService.readSettings(sourceId);
     res.json({
-      enabled,
-      maxBackups,
-      backupTime,
+      enabled: settings.enabled,
+      maxBackups: settings.maxBackups,
+      backupTime: settings.backupTime,
+      lastAutomaticBackupDate: settings.lastAutomaticBackupDate,
+      lastAutomaticBackupAt: settings.lastAutomaticBackupAt,
+      lastAutomaticBackupError: settings.lastAutomaticBackupError,
     });
   } catch (error) {
-    logger.error('❌ Error getting backup settings:', error);
-    res.status(500).json({
-      error: 'Failed to get backup settings',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
+    failBackup(res, error, 'BACKUP_SETTINGS_FAILED', 'Failed to get backup settings');
   }
 });
 
-// Save backup settings
-backupRouter.post('/settings', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+backupRouter.post('/settings', requireDeviceSourcePermission('configuration', 'write', 'body', 'device backups', { accept: 'stored' }), async (req: Request, res: Response) => {
   try {
-    const { enabled, maxBackups, backupTime } = req.body;
+    const { sourceId } = getStoredBackupTarget(req);
+    const { enabled, maxBackups, backupTime } = req.body ?? {};
 
-    // Validate inputs
     if (typeof enabled !== 'boolean') {
-      return res.status(400).json({ error: 'Invalid enabled value' });
+      return fail(res, 400, 'INVALID_ENABLED', 'Invalid enabled value');
     }
-
     if (typeof maxBackups !== 'number' || maxBackups < 1 || maxBackups > 365) {
-      return res.status(400).json({ error: 'Invalid maxBackups value (must be 1-365)' });
+      return fail(res, 400, 'INVALID_MAX_BACKUPS', 'Invalid maxBackups value (must be 1-365)');
+    }
+    if (!backupTime || !/^([01]\d|2[0-3]):[0-5]\d$/.test(backupTime)) {
+      return fail(res, 400, 'INVALID_BACKUP_TIME', 'Invalid backupTime format (must be HH:MM)');
     }
 
-    if (!backupTime || !/^\d{2}:\d{2}$/.test(backupTime)) {
-      return res.status(400).json({ error: 'Invalid backupTime format (must be HH:MM)' });
-    }
-
-    // Save settings
-    await databaseService.settings.setSetting('backup_enabled', enabled.toString());
-    await databaseService.settings.setSetting('backup_maxBackups', maxBackups.toString());
-    await databaseService.settings.setSetting('backup_time', backupTime);
-
-    logger.debug(`⚙️  Backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
-
-    res.json({ success: true });
+    await backupSchedulerService.applySettings(sourceId, { enabled, maxBackups, backupTime });
+    logger.debug(`Backup settings updated for source ${sourceId}: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
+    return ok(res);
   } catch (error) {
-    logger.error('❌ Error saving backup settings:', error);
-    res.status(500).json({
-      error: 'Failed to save backup settings',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
+    return failBackup(res, error, 'BACKUP_SETTINGS_FAILED', 'Failed to save backup settings');
   }
 });
 
-// List all backups.
-// Device config backups belong to the connected Meshtastic device, so the
-// check is scoped to the target source (named `?sourceId`, else the primary),
-// not a plain `configuration:read` that a grant on ANY source would satisfy
-// (#6073).
-backupRouter.get('/list', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups'), async (req: Request, res: Response) => {
+// List a source's backups (metadata only). Admins also see unowned legacy rows
+// of the same protocol, flagged `legacy`.
+backupRouter.get('/list', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups', { accept: 'stored' }), async (req: Request, res: Response) => {
   try {
-    const backups = await backupFileService.listBackups(getDeviceSourceTarget(req).sourceId);
+    const { sourceId, protocol } = getStoredBackupTarget(req);
+    const backups = await deviceConfigBackupService.list(sourceId, protocol, callerOf(req));
     res.json(backups);
   } catch (error) {
-    logger.error('❌ Error listing backups:', error);
-    res.status(500).json({
-      error: 'Failed to list backups',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
+    failBackup(res, error, 'BACKUP_LIST_FAILED', 'Failed to list backups');
   }
 });
 
-// Download a specific backup. Source-scoped like `/list` (#6073).
-backupRouter.get('/download/:filename', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups'), async (req: Request, res: Response) => {
+// No-secret summary for the restore confirm dialog.
+backupRouter.get('/summary/:filename', requireDeviceSourcePermission('configuration', 'read', 'query', 'device backups', { accept: 'stored' }), async (req: Request, res: Response) => {
+  try {
+    const { filename } = req.params;
+    if (!FILENAME_RE.test(filename)) {
+      return fail(res, 400, 'INVALID_FILENAME', 'Invalid filename format');
+    }
+    const { sourceId, protocol } = getStoredBackupTarget(req);
+    // For the current-vs-backup comparison the MeshCore adapter reads the live
+    // manager when one is registered; a disconnected source just gets the file side.
+    const manager = sourceManagerRegistry.getManager(sourceId);
+    const summary = await deviceConfigBackupService.summarize(sourceId, protocol, filename, callerOf(req), manager);
+    return ok(res, summary);
+  } catch (error) {
+    return failBackup(res, error, 'BACKUP_SUMMARY_FAILED', 'Failed to summarize backup');
+  }
+});
+
+// Download a specific backup. A file holds secrets (PSKs, PINs), so it needs
+// `configuration:write` on its own source, like the PSK display rule.
+backupRouter.get('/download/:filename', requireDeviceSourcePermission('configuration', 'write', 'query', 'device backups', { accept: 'stored' }), async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
 
     // Validate filename to prevent directory traversal - only allow alphanumeric, hyphens, underscores, and .yaml extension
-    if (!/^[a-zA-Z0-9\-_]+\.yaml$/.test(filename)) {
-      return res.status(400).json({ error: 'Invalid filename format' });
-    }
-
-    const content = await backupFileService.getBackup(getDeviceSourceTarget(req).sourceId, filename);
-
-    res.setHeader('Content-Type', 'application/x-yaml');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(content);
-
-    logger.debug(`📥 Backup downloaded: ${filename}`);
-  } catch (error) {
-    logger.error('❌ Error downloading backup:', error);
-    res.status(500).json({
-      error: 'Failed to download backup',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
-
-// Delete a specific backup. Source-scoped like `/list` (#6073); a plain
-// `configuration:write` on any source must not delete another source's backups.
-backupRouter.delete('/delete/:filename', requireDeviceSourcePermission('configuration', 'write', 'query', 'device backups'), async (req: Request, res: Response) => {
-  try {
-    const { filename } = req.params;
-
-    // Validate filename to prevent directory traversal - only allow alphanumeric, hyphens, underscores, and .yaml extension
-    if (!/^[a-zA-Z0-9\-_]+\.yaml$/.test(filename)) {
-      return res.status(400).json({ error: 'Invalid filename format' });
-    }
-
-    await backupFileService.deleteBackup(getDeviceSourceTarget(req).sourceId, filename);
-
-    logger.debug(`🗑️  Backup deleted: ${filename}`);
-
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('❌ Error deleting backup:', error);
-    res.status(500).json({
-      error: 'Failed to delete backup',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
-
-// Restore a saved backup to the connected local device (#4926).
-// Writes each config section back via admin messages. Overwrites current
-// device config, so the frontend confirms before calling this.
-backupRouter.post('/restore/:filename', extendRequestTimeout(DEVICE_RESTORE_TIMEOUT_MS), requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
-  try {
-    const { filename } = req.params;
-
-    // Same directory-traversal guard as download/delete.
-    if (!/^[a-zA-Z0-9\-_]+\.yaml$/.test(filename)) {
+    if (!FILENAME_RE.test(filename)) {
       return fail(res, 400, 'INVALID_FILENAME', 'Invalid filename format');
     }
 
-    const { manager, sourceId } = getDeviceSourceTarget(req);
+    const { sourceId } = getStoredBackupTarget(req);
+    const content = await deviceConfigBackupService.get(sourceId, filename, callerOf(req));
 
-    const content = await backupFileService.getBackup(sourceId, filename);
-    const result = await deviceRestoreService.restoreBackup(manager, content);
-
-    void databaseService.auditLogAsync(
-      req.user!.id,
-      'device_backup_restored',
-      'device_backup',
-      JSON.stringify({ filename, sourceId, applied: result.applied.length, failed: result.failed.length }),
-      req.ip || null
-    );
-
-    logger.debug(`♻️  Backup restored: ${filename} (${result.applied.length} applied, ${result.failed.length} failed)`);
-
-    return ok(res, result);
+    res.setHeader('Content-Type', 'application/x-yaml');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return void res.send(content);
   } catch (error) {
-    logger.error('❌ Error restoring backup:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    // Not-connected / transaction failures are operational, not server bugs.
-    const status = /not connected|transaction/i.test(message) ? 409 : 500;
-    return fail(res, status, 'RESTORE_FAILED', message);
+    return failBackup(res, error, 'BACKUP_DOWNLOAD_FAILED', 'Failed to download backup');
   }
 });
+
+// Delete a specific backup, inside the target source only.
+backupRouter.delete('/delete/:filename', requireDeviceSourcePermission('configuration', 'write', 'query', 'device backups', { accept: 'stored' }), async (req: Request, res: Response) => {
+  try {
+    const { filename } = req.params;
+
+    if (!FILENAME_RE.test(filename)) {
+      return fail(res, 400, 'INVALID_FILENAME', 'Invalid filename format');
+    }
+
+    const { sourceId } = getStoredBackupTarget(req);
+    await deviceConfigBackupService.delete(sourceId, filename, callerOf(req));
+    return ok(res);
+  } catch (error) {
+    return failBackup(res, error, 'BACKUP_DELETE_FAILED', 'Failed to delete backup');
+  }
+});
+
+// Restore a saved backup to the connected local device (#4926, #6285).
+// Overwrites current device config, so the frontend confirms before calling this.
+// The file must belong to the target source (admins may also use an unowned
+// legacy file of the same protocol after `confirmLegacy: true`).
+backupRouter.post(
+  '/restore/:filename',
+  extendRequestTimeout(DEVICE_RESTORE_TIMEOUT_MS),
+  requireDeviceSourcePermission('configuration', 'write', 'body', 'device backups', { accept: 'config-capable' }),
+  backupTargetLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const { filename } = req.params;
+
+      // Same directory-traversal guard as download/delete.
+      if (!FILENAME_RE.test(filename)) {
+        return fail(res, 400, 'INVALID_FILENAME', 'Invalid filename format');
+      }
+
+      const target = getConfigCapableTarget(req);
+      const result = await deviceConfigBackupService.restore(
+        { sourceId: target.sourceId, protocol: target.protocol, manager: target.manager },
+        filename,
+        callerOf(req),
+        { confirmLegacy: req.body?.confirmLegacy === true },
+      );
+
+      logger.debug(`Backup restored: ${filename} (${result.applied.length} applied, ${result.failed.length} failed)`);
+      return ok(res, result);
+    } catch (error) {
+      // Not-connected / transaction failures are operational, not server bugs.
+      if (error instanceof Error && /not connected|transaction/i.test(error.message)
+        && !(error instanceof BackupNotFoundError)) {
+        return fail(res, 409, 'RESTORE_FAILED', error.message);
+      }
+      return failBackup(res, error, 'RESTORE_FAILED', 'Failed to restore backup');
+    }
+  },
+);
 
 /**
  * System-backup endpoints (full database export/import to JSON archives).
