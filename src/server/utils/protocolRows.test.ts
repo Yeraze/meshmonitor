@@ -65,25 +65,33 @@ describe('protocolRows', () => {
     snrQuarterDb: 0, initiated: true, timestamp: 1000, ...o,
   });
 
-  it('maps a trace: snr stays dB*4 per link, route between ends, sentinel for unresolved', () => {
-    const local = 'aa'.repeat(32), mid = 'bb'.repeat(32), end = 'cc'.repeat(32);
-    const t = meshcoreTraceToV1([
-      hop({ hopIndex: 2, receiverPublicKey: end, receiverHash: 'cc', snrQuarterDb: -8 }),
-      hop({ hopIndex: 0, senderPublicKey: null, receiverPublicKey: mid, receiverHash: 'bb', snrQuarterDb: 22 }),
-      hop({ hopIndex: 1, receiverPublicKey: null, receiverHash: 'dd', snrQuarterDb: 14 }),
-    ], { localPublicKey: local })!;
+  const local = 'aa'.repeat(32), bb = 'bb'.repeat(32), dd = 'dd'.repeat(32), comp = 'cc'.repeat(32);
+  const loop = [
+    hop({ hopIndex: 0, hopCount: 4, senderPublicKey: local, receiverPublicKey: bb, receiverHash: 'bb', snrQuarterDb: 22 }),
+    hop({ hopIndex: 1, hopCount: 4, receiverPublicKey: dd, receiverHash: 'dd', snrQuarterDb: 14 }),
+    hop({ hopIndex: 2, hopCount: 4, receiverPublicKey: bb, receiverHash: 'bb', snrQuarterDb: 10 }),
+    hop({ hopIndex: 3, hopCount: 4, senderPublicKey: bb, senderHash: 'bb', receiverPublicKey: local, receiverHash: null, snrQuarterDb: -8 }),
+  ];
+
+  it('maps a trace as a loop local -> hops -> local; to is the turnaround, not the local radio', () => {
+    const t = meshcoreTraceToV1([...loop].reverse(), { localPublicKey: local })!;
     expect(t.fromNodeId).toBe(`mc:${local}`);
-    expect(t.toNodeId).toBe(`mc:${end}`);
-    expect(JSON.parse(t.route)).toEqual([nodeNumFromPubkey(mid), UNRESOLVED_NODE_NUM]);
-    expect(JSON.parse(t.snrTowards)).toEqual([22, 14, -8]);
-    expect(t.routeBack).toBeNull();
-    expect(t.snrBack).toBeNull();
-    expect(t.hops).toEqual([
-      { index: 0, publicKey: mid, hash: 'bb', snr: 5.5 },
-      { index: 1, publicKey: null, hash: 'dd', snr: 3.5 },
-      { index: 2, publicKey: end, hash: 'cc', snr: -2 },
-    ]);
+    expect(t.toNodeId).toBe(`mc:${dd}`);
+    expect(t.toNodeId).not.toBe(t.fromNodeId);
+    expect(JSON.parse(t.route)).toEqual([nodeNumFromPubkey(bb)]);
+    expect(JSON.parse(t.snrTowards)).toEqual([22, 14]);
+    expect(JSON.parse(t.routeBack!)).toEqual([nodeNumFromPubkey(bb)]);
+    expect(JSON.parse(t.snrBack!)).toEqual([10, -8]);
+    expect(t.hops.map((h) => h.index)).toEqual([0, 1, 2, 3]);
     expect(t.timestamp).toBe(1000);
+  });
+
+  it('a known companion target is the destination even though it is not on the wire', () => {
+    const t = meshcoreTraceToV1(loop, { localPublicKey: local, targetPublicKey: comp })!;
+    expect(t.toNodeId).toBe(`mc:${comp}`);
+    expect(t.toNodeId).not.toBe(t.fromNodeId);
+    expect(JSON.parse(t.route)).toEqual([nodeNumFromPubkey(bb), nodeNumFromPubkey(dd)]);
+    expect(JSON.parse(t.snrTowards)).toEqual([22, 14, -128]);
   });
 
   it('returns null for an empty trace and sentinel ends when nothing resolved', () => {
@@ -91,7 +99,7 @@ describe('protocolRows', () => {
     const t = meshcoreTraceToV1([hop({})])!;
     expect(t.fromNodeNum).toBe(UNRESOLVED_NODE_NUM);
     expect(t.fromNodeId).toBeNull();
-    expect(JSON.parse(t.route)).toEqual([]);
+    expect(JSON.parse(t.route)).toEqual([UNRESOLVED_NODE_NUM]);
   });
 
   it('maps a packet; plaintext only when supplied', () => {

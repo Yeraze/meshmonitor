@@ -30,7 +30,7 @@ vi.mock('./explorerApi', async orig => {
 vi.mock('./ExplorerMap', () => ({
   ExplorerMap: (props: any) => (
     <div data-testid="map-stub" data-runs={props.runs.length} data-focus={props.focusRun?.key ?? ''}>
-      <button type="button" onClick={() => props.onNodeClick(0x11)}>
+      <button type="button" onClick={() => props.onNodeClick('mt:17')}>
         click-relay
       </button>
     </div>
@@ -267,5 +267,89 @@ describe('TracerouteExplorerReport', () => {
     await waitFor(() => expect(fetchExplorer).toHaveBeenCalledWith({ hours: 168, sourceIds: [] }));
     // A new window starts with nothing selected.
     expect(screen.queryByTestId('traceroute-explorer-detail')).not.toBeInTheDocument();
+  });
+
+  describe('with MeshCore runs (#6276)', () => {
+    const L = 'aa'.repeat(32), RP = '11'.repeat(32), TT = '77'.repeat(32), COMP = 'cc'.repeat(32);
+    const mcNode = (key: string, name: string) => ({
+      nodeNum: 5, nodeKey: `mc:${key}`, protocol: 'meshcore' as const, publicKey: key, nodeId: `mc:${key}`,
+      shortName: null, longName: name, role: null, hwModel: null, latitude: 1, longitude: 2,
+    });
+    const mcRun = (o: Partial<ExplorerRunWire> = {}): ExplorerRunWire => ({
+      protocol: 'meshcore', id: 100, sourceId: 'mc-1', timestamp: NOW - 500,
+      fromNodeNum: 5, toNodeNum: 5, route: JSON.stringify([5]), routeBack: JSON.stringify([5]),
+      snrTowards: '[20,12]', snrBack: '[8,-4]', channel: null, packetId: null, transportMechanism: null,
+      fromKey: `mc:${L}`, toKey: `mc:${TT}`, routeKeys: [`mc:${L}`, `mc:${RP}`, `mc:${TT}`],
+      routeBackKeys: [`mc:${TT}`, `mc:${RP}`, `mc:${L}`], turnaroundKey: `mc:${TT}`, reachedTarget: true,
+      hopMeta: [], traceTag: 9, ...o,
+    });
+    const mixed = (runs: ExplorerRunWire[], extra: Partial<ExplorerResponse> = {}) =>
+      response({
+        sources: [{ id: 'src-1', name: 'Home TCP' }, { id: 'mc-1', name: 'Companion' }],
+        runs: [...runs, ...response().runs],
+        nodes: [...response().nodes, mcNode(L, 'Local MC'), mcNode(RP, 'Rptr'), mcNode(TT, 'Target'), mcNode(COMP, 'Comp')],
+        meshcoreRetentionDays: 90,
+        ...extra,
+      });
+
+    it('shows a protocol chip per row, the protocol filter, and the MeshCore retention line', async () => {
+      fetchExplorer.mockResolvedValue(mixed([mcRun()]));
+      const user = userEvent.setup();
+      renderReport();
+      await screen.findAllByTestId('explorer-pair-row');
+      const chips = screen.getAllByTestId('explorer-protocol-chip').map(c => c.dataset.protocol);
+      expect(chips).toContain('meshcore');
+      expect(chips).toContain('meshtastic');
+      expect(screen.getByText(/MeshCore traces are kept for 90 days/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Every run' }));
+      expect(screen.getAllByTestId('explorer-run-row')).toHaveLength(5);
+      const group = screen.getByRole('group', { name: 'Protocol' });
+      await user.click(within(group).getByRole('button', { name: 'MeshCore' }));
+      expect(screen.getAllByTestId('explorer-run-row')).toHaveLength(1);
+      expect(JSON.parse(localStorage.getItem('meshmonitor.tracerouteExplorer.prefs')!).protocol).toBe('meshcore');
+    });
+
+    it('hides the protocol filter when only one protocol is in the window', async () => {
+      renderReport();
+      await screen.findAllByTestId('explorer-pair-row');
+      expect(screen.queryByRole('group', { name: 'Protocol' })).not.toBeInTheDocument();
+    });
+
+    it('a saved MeshCore filter is ignored while only Meshtastic runs exist', async () => {
+      localStorage.setItem('meshmonitor.tracerouteExplorer.prefs', JSON.stringify({ protocol: 'meshcore' }));
+      renderReport();
+      expect(await screen.findAllByTestId('explorer-pair-row')).toHaveLength(2);
+    });
+
+    it('hides pair history for a MeshCore run and shows the turnaround note when the target is off the wire', async () => {
+      fetchExplorer.mockResolvedValue(mixed([
+        mcRun({
+          toKey: `mc:${COMP}`, reachedTarget: false, turnaroundKey: `mc:${RP}`,
+          routeKeys: [`mc:${L}`, `mc:${RP}`], routeBackKeys: [`mc:${RP}`, `mc:${L}`],
+          route: JSON.stringify([5]), routeBack: JSON.stringify([]), snrTowards: '[20,-128]', snrBack: '[-128,8]',
+        }),
+      ]));
+      const user = userEvent.setup();
+      renderReport();
+      await screen.findAllByTestId('explorer-pair-row');
+      await user.click(screen.getByRole('button', { name: 'Every run' }));
+      await user.click(within(screen.getByRole('group', { name: 'Protocol' })).getByRole('button', { name: 'MeshCore' }));
+      await user.click(screen.getAllByTestId('explorer-run-row')[0]);
+      const detail = screen.getByTestId('traceroute-explorer-detail');
+      expect(within(detail).queryByRole('button', { name: 'Pair history' })).not.toBeInTheDocument();
+      expect(within(detail).getByTestId('explorer-turnaround-note').textContent).toBe('Turned at Rptr; Comp does not forward traces');
+    });
+
+    it('keeps Pair history for a Meshtastic run in a mixed window', async () => {
+      fetchExplorer.mockResolvedValue(mixed([mcRun()]));
+      const user = userEvent.setup();
+      renderReport();
+      await screen.findAllByTestId('explorer-pair-row');
+      await user.click(screen.getByRole('button', { name: 'Every run' }));
+      await user.click(within(screen.getByRole('group', { name: 'Protocol' })).getByRole('button', { name: 'Meshtastic' }));
+      await user.click(screen.getAllByTestId('explorer-run-row')[0]);
+      expect(within(screen.getByTestId('traceroute-explorer-detail')).getByRole('button', { name: 'Pair history' })).toBeInTheDocument();
+    });
   });
 });

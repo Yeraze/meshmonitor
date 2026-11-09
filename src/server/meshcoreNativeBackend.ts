@@ -2090,7 +2090,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // the firmware as twice as many 1-byte hops and the trace times out
         // (#4786). Build the frame ourselves so we can set the real width:
         // [SendTracePath][tag:4 LE][auth:4 LE][flags][path bytes].
-        const tag = Math.floor(Math.random() * 0x1_0000_0000);
+        // The manager picks the tag so it can log the attempt before the reply
+        // (#6276); it is the same 4 random bytes on air, only chosen one layer up.
+        const requestedTag = params.tag;
+        const tag = typeof requestedTag === 'number' && Number.isInteger(requestedTag) && requestedTag >= 0 && requestedTag <= 0xffff_ffff
+          ? requestedTag
+          : Math.floor(Math.random() * 0x1_0000_0000);
         this.ownTraceTags.set(tag, Date.now() + OWN_TRACE_TAG_TTL_MS);
         const frame = Buffer.alloc(1 + 4 + 4 + 1 + path.length);
         frame.writeUInt8(K.CommandCodes.SendTracePath, 0);
