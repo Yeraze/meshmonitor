@@ -22,6 +22,22 @@ describe('notificationCapabilities', () => {
     expect(notificationCapabilities('meshcore', 1).newNodeNote).toBeNull();
     expect(notificationCapabilities('meshtastic').newNodeNote).toBeNull();
   });
+  it('MeshCore MQTT ingest: channels, emoji, filters, volts; no DM/mqtt/trace/mention/waypoint/new-node (#6307)', () => {
+    const c = notificationCapabilities('meshcore_mqtt');
+    expect(c).toMatchObject({
+      dm: false, rooms: false, channels: true, emoji: true, mqtt: false, traceroute: false,
+      newNode: 'unsupported', waypoint: false, mention: false, batteryUnit: 'voltage',
+      messageFilters: true, unsupportedHint: 'ingest', connectionEvents: 'broker',
+    });
+  });
+  it('unsupportedHint and connectionEvents per source type (#6307)', () => {
+    expect(notificationCapabilities('meshcore', 2)).toMatchObject({ unsupportedHint: 'repeater', connectionEvents: 'radio' });
+    expect(notificationCapabilities('meshcore', 1)).toMatchObject({ unsupportedHint: null, connectionEvents: 'radio' });
+    expect(notificationCapabilities('meshtastic_tcp')).toMatchObject({ unsupportedHint: null, connectionEvents: 'radio' });
+    expect(notificationCapabilities(undefined).connectionEvents).toBe('radio');
+    expect(notificationCapabilities('mqtt_bridge').connectionEvents).toBe('broker');
+    expect(notificationCapabilities('mqtt_broker').connectionEvents).toBe('none');
+  });
   it('unknown device type behaves as Companion', () => {
     expect(notificationCapabilities('meshcore', undefined).dm).toBe(true);
   });
@@ -38,6 +54,11 @@ describe('loadNotificationChannels', () => {
     vi.mocked(api.get).mockResolvedValue([{ id: 9 }]);
     await loadNotificationChannels('s 2', 'meshcore');
     expect(api.get).toHaveBeenCalledWith('/api/channels/all?sourceId=s%202');
+  });
+  it('uses the ingest channels route for MeshCore MQTT and unwraps the envelope (#6307)', async () => {
+    vi.mocked(api.get).mockResolvedValue({ success: true, data: [{ id: 3, name: '' }] });
+    expect(await loadNotificationChannels('s 3', 'meshcore_mqtt')).toEqual([{ id: 3, name: '' }]);
+    expect(api.get).toHaveBeenCalledWith('/api/sources/s%203/meshcore/ingest/channels');
   });
   it('returns [] for a non-array reply', async () => {
     vi.mocked(api.get).mockResolvedValue({});

@@ -24,6 +24,8 @@ import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
+import databaseService from '../../services/database.js';
+import { listKeyedChannelsForViewer } from '../utils/meshcoreKeyedChannels.js';
 
 const router = Router({ mergeParams: true });
 
@@ -165,6 +167,52 @@ router.get(
     } catch (error) {
       logger.error('[API] MeshCore ingest messages failed:', error);
       return fail(res, 500, 'INGEST_MESSAGES_FAILED', 'Failed to fetch ingest messages');
+    }
+  },
+);
+
+/**
+ * GET /api/sources/:id/meshcore/ingest/channels
+ *
+ * The channels a Notifications picker can offer for this source (#6307):
+ *   - slot indices that have messages here, listed with `name: ''` so the UI
+ *     shows "Channel N" (an ingest source has no slot rows, so other sources'
+ *     slot names never leak), and
+ *   - keyed (virtual-key) channels the viewer may read, with their names.
+ * `/api/channels/all` is left alone: it also feeds the channel_N grant editor.
+ */
+router.get(
+  '/ingest/channels',
+  optionalAuth(),
+  requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mgr = ingestManagerFor(req);
+      if (!mgr) return refuseDeviceSource(res);
+      const sourceId = (req.params as { id: string }).id;
+
+      const slotIds = await databaseService.meshcore.getChannelIndicesWithMessages(sourceId);
+      const keyed = await listKeyedChannelsForViewer(req.user, sourceId);
+      const keyedIds = new Set(keyed.map((k) => k.id));
+
+      const channels = [
+        ...slotIds
+          .filter((id) => !keyedIds.has(id))
+          .map((id) => ({ id, name: '', role: 2, uplinkEnabled: false, downlinkEnabled: false })),
+        ...keyed.map((k) => ({
+          id: k.id,
+          name: k.name,
+          role: 2,
+          uplinkEnabled: false,
+          downlinkEnabled: false,
+          keyed: true,
+          virtual: k.virtual,
+        })),
+      ].sort((a, b) => a.id - b.id);
+      return ok(res, channels);
+    } catch (error) {
+      logger.error('[API] MeshCore ingest channels failed:', error);
+      return fail(res, 500, 'INGEST_CHANNELS_FAILED', 'Failed to list ingest channels');
     }
   },
 );
