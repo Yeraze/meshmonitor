@@ -186,6 +186,36 @@ The danger zone on a Repeater offers reboot, **power off** (firmware 1.15 or lat
 
 All of these are console commands to the radio on its USB link; none of them transmit. Repeater passwords and keys never appear in MeshMonitor's logs.
 
+**Export / import.** **Export settings** saves the values already on the form as JSON. It never includes passwords, and leaves out name, position and radio unless you tick **Include name, position and radio**. **Import settings** fills the form from such a file and skips anything this device can't take; nothing changes until you press **Save**.
+
+### Remote settings {#remote-settings}
+
+From a Companion source you can read and change a remote Repeater or Room Server's settings with the same form, without typing commands. Open the node, log in as admin in its remote console, then expand **Settings**. You need the `remote_admin:write` permission on the source and a remembered admin login: the form never logs in on its own.
+
+Every value is one encrypted message to the node and one reply, over the mesh. MeshCore has no way to read or write several settings in one message, so the form is careful with airtime:
+
+- Nothing is read until you press **Read** on a group (**Identity & radio**, **Adverts & forwarding**, **Access**). Each group shows what the read costs before you press it.
+- A save sends only the fields you changed, then reads those back.
+- Commands go at least 1 second apart, one node at a time, at most 40 per source every 10 minutes.
+- If a command gets no reply, the run stops. Fields it never reached show **Not sent**; fields sent before the stop show **Sent, not verified**. Nothing retries.
+
+| Radio preset | Read 1 value, direct | Save 1 value | 15 values direct | 15 values over 3 hops |
+|---|---|---|---|---|
+| 62.5 kHz / SF7 / CR5 | 0.36 s | 0.44 s | 5.3 s | 22.5 s |
+| 250 kHz / SF10 / CR5 (default) | 0.47 s | 0.58 s | 7.1 s | 30.8 s |
+| 250 kHz / SF11 / CR5 | 0.86 s | 1.08 s | 13.0 s | 56.8 s |
+| 62.5 kHz / SF8 / CR8 | 0.83 s | 1.08 s | 12.5 s | 54.0 s |
+
+With no known path to the node, every message floods: each repeater that hears it sends it again. On a mesh with 50 repeaters that is 18–45 s of mesh airtime per value. The form warns when the path is unknown; learn the path first (a trace, or wait for an advert) when you can.
+
+What the remote form offers differs from the local one:
+
+- **Identity & radio**: name (1–31 bytes), position and TX power can be changed. Lowering TX power can cut the node off from you. The radio (frequency, bandwidth, SF, CR) is shown read-only, because a change needs a reboot and a wrong one strands the node.
+- The **admin password** is not in the form; change it from the console with `password <new>`.
+- A **Room Server** has no forwarding: repeat, flood max and the delays are hidden.
+
+Each save writes one line per changed setting to the CLI history, with passwords masked.
+
 ## The MeshCore Page
 
 Each MeshCore source has its own multi-pane page accessible by clicking the source in the dashboard sidebar. The sidebar lists **Map**, **Channels**, **Rooms**, **Node Details**, **Telemetry**, **Packet Monitor**, **Node Info**, **Device Configuration**, **Automations**, **Notifications** and **Settings**. A tab shows only when you hold the read permission its data needs on that source. The main views:

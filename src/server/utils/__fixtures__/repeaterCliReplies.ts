@@ -3,7 +3,7 @@
  * `local` is the serial form (`  -> ` prefix); `remote` is the same reply as a
  * remote-admin response carries it (no prefix).
  */
-export type FixtureKind = 'ok' | 'error' | 'unknown' | 'value';
+export type FixtureKind = 'ok' | 'error' | 'unknown' | 'value' | 'empty';
 
 export interface RepeaterReplyFixture {
   name: string;
@@ -42,6 +42,12 @@ export const REPEATER_REPLY_FIXTURES: RepeaterReplyFixture[] = [
   f('key restore new fw', `OK, reboot to apply! New pubkey: ${PUB}`, 'ok'),
   f('lowercase ok', 'ok', 'ok'),
   f('lowercase error', 'error', 'error'),
+  // Remote-admin replies (P10): bare text, no `->` prefix.
+  f('get radio', '> 869.618,62.5,8,8', 'value', '869.618,62.5,8,8'),
+  f('get tx', '> 22', 'value', '22'),
+  f('set name bad chars', 'Error, bad chars', 'error'),
+  f('room repeat deprecated', 'ERR - repeat now deprecated', 'error'),
+  { name: 'no reply', local: '', remote: '', kind: 'empty' },
   // Secret echo: classified ok, but the classified text must never repeat it.
   f('admin password echo', 'password now: hunter2', 'ok'),
 ];

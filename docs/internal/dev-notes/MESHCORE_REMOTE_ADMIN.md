@@ -580,6 +580,37 @@ then prints `"  -> " + reply`. There is no end marker, and a multi-line reply
 - **Never automate** `advert`, `advert.zerohop` or `discover.neighbors`: they
   transmit.
 
+### Remote structured settings (#6256, P10)
+
+`POST /admin/settings/:publicKey/read` and `PATCH /admin/settings/:publicKey`
+(`meshcoreRemoteSettingsRoutes.ts`) run the P9 settings service
+(`meshcoreRepeaterSettingsService.ts`) over `meshcoreRemoteRepeaterTransport.ts`
+instead of the local serial CLI. One schema (`utils/meshcoreRepeaterSettings.ts`)
+and one form (`RepeaterSettingsForm`, `mode="remote"`) serve both.
+
+Firmware facts the design rests on:
+
+- **No batching.** CommonCLI takes one command per CliData DM and replies in one
+  DM of at most ~160 B. There is no config dump.
+- **No ACK for CliData.** A lost request and a lost reply look the same: a timeout.
+- **`is_retry` silence.** A repeated sender timestamp gets no reply, so a resend
+  of the same packet cannot recover a lost reply. We never retry; the run stops
+  at the first timeout and marks the rest `NOT_SENT`.
+- The repeater waits ~600 ms before replying; remote `set advert.interval` /
+  `set flood.advert.interval` restart the timer without sending an advert.
+- The first save of any setting zeroes an `advert.interval` of 1–59; the PATCH
+  reads it back when the last read held such a value.
+
+Limits (maintainer decisions, process-local like the managers): one operation per
+(source, target) (`REMOTE_SETTINGS_BUSY`), 40 commands per 10 minutes per source
+(`REMOTE_SETTINGS_BUDGET`, counted per command actually sent), ≥ 1 s between
+commands, `recordMeshTx()` after each so schedulers back off, reply timeout from
+`resolveCliTimeoutMs`. An active remembered admin session is required
+(`ADMIN_SESSION_REQUIRED`, a DB check that sends nothing); the routes never log in.
+The transport re-checks the danger pattern and the 230 B cap before sending. Each
+`set` writes one redacted `meshcore_cli_history` row; reads write none. The admin
+password is not offered remotely (`remote: 'none'`), and `radio` is read-only.
+
 ## The CliConsoleBody primitive
 
 `src/components/MeshCore/CliConsoleBody.tsx` owns:
