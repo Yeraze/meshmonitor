@@ -124,6 +124,17 @@ export class NewNodeAlertGate {
     return until;
   }
 
+  /**
+   * True while the learning window is open. Initialises the window like
+   * {@link admit} does, but never touches the hourly counter.
+   */
+  isLearning(sourceId: string): Promise<boolean> {
+    return this.serialise(sourceId, async () => {
+      const now = this.deps.now();
+      return now < (await this.resolveLearnUntil(sourceId, now));
+    });
+  }
+
   /** Read-only: end of the learning window, or null when it is not set yet. */
   async learningUntil(sourceId: string): Promise<number | null> {
     return parseEpoch(await this.deps.getSourceSetting(sourceId, SETTING_LEARN_UNTIL));
