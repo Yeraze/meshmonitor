@@ -1113,7 +1113,7 @@ Clearing the log needs `packetmonitor:write`. The Users page offers only a read 
 
 ## Notifications
 
-Each MeshCore source has its own **Notifications** tab, with Low Battery, Inactive Node, Newly Found Nodes, Server Events and **Mentions**, delivered by Web Push or Apprise. Settings are saved per user and per source.
+Each MeshCore source has its own **Notifications** tab, delivered by Web Push, Apprise or desktop notifications. It covers direct messages and room posts, channel messages, keywords, successful traces and path discoveries, Low Battery, Inactive Node, Newly Found Nodes, Server Events and **Mentions**, with the same rules as Meshtastic. A Repeater source offers channel messages and the node alerts only. Settings are saved per user and per source, and the **Settings** view has per-channel sounds.
 
 **Mentions** alerts you when a channel message or room post names the source's own node as `@[Name]`. A reply to you starts with `@[Name]:`, so it alerts too. It is off until you turn it on. One sender can alert at most once every 5 minutes per source, and that limit is stored, so a restart does not reset it. Direct messages, your own messages, and senders you ignore or block never alert. It sends nothing over the radio.
 
@@ -1126,7 +1126,6 @@ MeshCore support has come a long way since 4.5 — remote administration, path v
 Known gaps and limitations:
 
 - **Repeater / Room Server per-source parity** is behind Companion. A Repeater source is USB only, cannot send messages or traces, and cannot run the Analyzer Observer. Most of what it shows beyond neighbours and local telemetry needs a packet-logging firmware build (see [What a Repeater Source Shows](#what-a-repeater-source-shows)).
-- **Notifications** cover fewer events than on Meshtastic. MeshCore sources have no alerts for direct messages, channel messages (other than Mentions) or keywords.
 - **Companion-only telemetry mode toggles** — Repeaters report what they report; the base/loc/env toggle is meaningful on Companions.
 
 The roadmap is incremental: keep landing MeshCore features each release, keep aligning the UI vocabulary with Meshtastic, and gradually close the remaining parity gap.

@@ -49,6 +49,8 @@ import { SaveBar } from '../SaveBar';
 import { SourceNavLayout } from '../nav/SourceNavLayout';
 import './MeshCoreTab.css';
 import './MeshCorePage.css';
+import { usePushNotificationNavigation } from '../../hooks/usePushNotificationNavigation';
+import { resolveMeshCoreNotificationTarget } from './meshcoreNotificationNav';
 // The automation views (auto-ack, auto-announce, auto-responder, timer
 // triggers) lean on the shared settings stylesheet — .setting-item,
 // .setting-input, .automation-section-header. Without this import the
@@ -177,6 +179,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   useEffect(() => {
     if (view !== 'dms') setPendingDmContact(null);
     if (view !== 'nodes') setPendingMapNode(null);
+    if (view !== 'channels') setPendingChannelIdx(null);
+    if (view !== 'rooms') setPendingRoom(null);
   }, [view]);
 
   // Deep link from outside the page (Mesh Issues, #6263): select the contact
@@ -186,6 +190,27 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     const key = takePendingMeshCoreContact();
     if (key) showNodeOnMap(key);
   }, [sourceId, showNodeOnMap]);
+
+  // Notification click-through (#6253): open the channel, room or DM the
+  // notification was about. Payloads for another source are left alone.
+  const { pendingNavigation, clearPendingNavigation } = usePushNotificationNavigation();
+  const [pendingChannelIdx, setPendingChannelIdx] = useState<number | null>(null);
+  const [pendingRoom, setPendingRoom] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingNavigation) return;
+    if (pendingNavigation.sourceId && pendingNavigation.sourceId !== sourceId) return;
+    const target = resolveMeshCoreNotificationTarget(pendingNavigation, contacts);
+    if (target.kind === 'channel') {
+      setPendingChannelIdx(target.channelIdx);
+      setView('channels');
+    } else if (target.kind === 'room') {
+      setPendingRoom(target.publicKey);
+      setView('rooms');
+    } else if (target.kind === 'dm') {
+      navigateToDm(target.publicKey);
+    }
+    clearPendingNavigation();
+  }, [pendingNavigation, sourceId, contacts, navigateToDm, clearPendingNavigation]);
 
   return (
     <div className="meshcore-page">
@@ -253,6 +278,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             sourceId={sourceId}
             onNodeNameClick={navigateToDm}
             receiveOnly={receiveOnly}
+            initialChannelIdx={pendingChannelIdx}
           />
         )}
         {view === 'rooms' && (
@@ -265,6 +291,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             sourceId={sourceId}
             onNodeNameClick={navigateToDm}
             receiveOnly={receiveOnly}
+            initialRoom={pendingRoom}
           />
         )}
         {view === 'dms' && (

@@ -57,7 +57,7 @@ Each phase's scope is the checklist in its issue.
   device-config backups, channel QR share.
 - [x] **P9 #6255 Repeater settings + danger zone.**
 - [x] **P10 #6256 Remote structured config.**
-- [ ] **P11 #6253 Notifications.**
+- [x] **P11 #6253 Notifications.**
 
 ## Phase log
 
@@ -190,3 +190,9 @@ Maintainer answers, 2026-11-09: room posts follow the DM toggle and DM mute; acc
 MeshCore subscribers (release note); a mute beats a mention; the Disconnect button notifies, shutdown/edits stay silent;
 the per-DM mute fix applies to Meshtastic too; Repeater "New nodes" hidden with a hint (follow-up); click-through in P11;
 key-access gate on every MeshCore notification (closes the mention leak of keyed channel text).
+Shipped (P11): protocol-neutral `dispatchMessageNotification` (Meshtastic adapter unchanged except the DM-mute fix),
+key-access gate on every notification path (closes the mention leak), desktop counts as an available service, MeshCore
+message notifier (channel / DM / room post, content dedup keys, one ordered mention→message chain per source), MeshCore
+server connect/disconnect and trace/path-discovery notifications, a notification capability map for the tab
+(Companion vs Repeater, channel list from `/api/channels/all`), shared audio settings + `useMessageSound`, and
+click-through on the MeshCore page. Follow-ups: Repeater advert new-node alerts; a Notifications tab for `meshcore_mqtt`.
