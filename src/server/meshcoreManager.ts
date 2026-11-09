@@ -5010,7 +5010,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   private async ingestRepeaterAdvert(rawHex: string, heardHops: number | null = null): Promise<void> {
     const now = Date.now();
-    const advert = await ingestAdvertFrame(rawHex, this.sourceId, {
+    const ingested = await ingestAdvertFrame(rawHex, this.sourceId, {
       // We heard it just now; the sender's clock may be wrong or unset.
       lastHeardMs: now,
       skipPublicKey: this.repeaterPublicKey,
@@ -5018,6 +5018,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       verifySignature: 'always',
       heardHops: this.shortestAdvertHops(rawHex, heardHops, now),
     });
+    const advert = ingested?.advert;
     if (!advert?.publicKey) return;
     await this.emitStoredContact(advert.publicKey);
   }

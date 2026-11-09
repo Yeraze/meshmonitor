@@ -64,7 +64,7 @@ export interface RemoteTelemetrySchedulerDatabase {
       state: { missCount: number; cooldownUntil: number | null },
       when?: number,
     ) => Promise<void>;
-    upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<void>;
+    upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<unknown>;
     markHeard: (sourceId: string, publicKey: string, heardAtMs: number) => Promise<void>;
   };
   /**
