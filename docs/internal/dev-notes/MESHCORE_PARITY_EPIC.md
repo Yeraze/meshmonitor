@@ -184,3 +184,9 @@ access, `name` / `txPower` / `radio` keys, `readback:'sent'`, stop-at-first-time
 remote mode inside the remote console, and settings export/import on both forms. Deviations: TX power is a hard 1–30 dBm
 range (plus the warning); an empty reply also stops a remote run; no "Discover path" link next to the flood warning
 (the warning says to learn the path first).
+
+### P11 #6253 (spec: `MESHCORE_PARITY_P11_SPEC.md`)
+Maintainer answers, 2026-11-09: room posts follow the DM toggle and DM mute; accept DM pushes starting for existing
+MeshCore subscribers (release note); a mute beats a mention; the Disconnect button notifies, shutdown/edits stay silent;
+the per-DM mute fix applies to Meshtastic too; Repeater "New nodes" hidden with a hint (follow-up); click-through in P11;
+key-access gate on every MeshCore notification (closes the mention leak of keyed channel text).
