@@ -145,3 +145,9 @@ signature status (Verified / Failed / Not checked; only Repeater and MQTT check)
 only), and an own-key change card with one alert per change and an Acknowledge action. Dead-nodes and findings routes now
 need `nodes:read` on the source for both protocols. No migration, no RF. P7b (rates, clock-offset flag, scanner, digest,
 export, DM) follows in #6281. User docs: `docs/features/security.md`, `meshcore.md`.
+
+### P8 #6257 (spec: `MESHCORE_PARITY_P8_SPEC.md`)
+Maintainer answers, 2026-11-08: leak fix (device backups exported every source's channel secrets) shipped first as
+PR #6284; P8a = BLE PIN, multi-ACKs (0/1 only, airtime warning), factory reset (admin + typed name, fw ≥ 7, TCP allowed
+with warning, expected identity change audited not alerted), channel share/import URL (`configuration:write`,
+`region_scope` included); P8b = per-source protocol-aware device-config backups (migration 226).
