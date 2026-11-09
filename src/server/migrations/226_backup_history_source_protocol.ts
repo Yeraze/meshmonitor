@@ -1,5 +1,5 @@
 /**
- * Migration 225: per-source, protocol-aware device-config backups (#6285 P8b).
+ * Migration 226: per-source, protocol-aware device-config backups (#6285 P8b).
  *
  *   backup_history.sourceId  TEXT NULL     owning source (NULL = legacy / unowned)
  *   backup_history.protocol  TEXT NOT NULL DEFAULT 'meshtastic'
@@ -24,7 +24,7 @@ import {
   createIndexIfMissingMysql,
 } from './helpers.js';
 
-const LABEL = 'Migration 225';
+const LABEL = 'Migration 226';
 const TABLE = 'backup_history';
 const INDEX = 'idx_backup_history_source_ts';
 
@@ -74,7 +74,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration225Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration226Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): adding sourceId/protocol to ${TABLE}...`);
   await addColumnIfMissingPostgres(client, TABLE, 'sourceId', '"sourceId" TEXT');
   await addColumnIfMissingPostgres(client, TABLE, 'protocol', `"protocol" TEXT NOT NULL DEFAULT 'meshtastic'`);
@@ -106,7 +106,7 @@ export async function runMigration225Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration225Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration226Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): adding sourceId/protocol to ${TABLE}...`);
   await addColumnIfMissingMysql(pool, TABLE, 'sourceId', 'sourceId VARCHAR(36)');
   await addColumnIfMissingMysql(pool, TABLE, 'protocol', "protocol VARCHAR(16) NOT NULL DEFAULT 'meshtastic'");

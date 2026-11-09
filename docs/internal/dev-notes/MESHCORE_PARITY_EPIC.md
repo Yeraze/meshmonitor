@@ -150,7 +150,7 @@ export, DM) follows in #6281. User docs: `docs/features/security.md`, `meshcore.
 Maintainer answers, 2026-11-08: leak fix (device backups exported every source's channel secrets) shipped first as
 PR #6284; P8a = BLE PIN, multi-ACKs (0/1 only, airtime warning), factory reset (admin + typed name, fw ≥ 7, TCP allowed
 with warning, expected identity change audited not alerted), channel share/import URL (`configuration:write`,
-`region_scope` included); P8b = per-source protocol-aware device-config backups (migration 225).
+`region_scope` included); P8b = per-source protocol-aware device-config backups (migration 226).
 Shipped (P8a): BLE PIN (raw cmd 37), multi-ACKs 0/1 with SelfInfo readback (fw ≥ 7; v1.7.3 ignores byte 5),
 factory reset (cmd 51, fw ≥ 7, admin + typed name, expected identity change audited not alerted), channel share/import
 via `meshcore://channel/add` with shared Export/Import modals and the config-capable device gate. Fixed: the raw
@@ -198,12 +198,12 @@ server connect/disconnect and trace/path-discovery notifications, a notification
 click-through on the MeshCore page. Follow-ups: Repeater advert new-node alerts; a Notifications tab for `meshcore_mqtt`.
 
 ### P16 #6285 (P8b) (spec: `MESHCORE_PARITY_P16_SPEC.md`)
-Maintainer answers, 2026-11-09: migration takes the next free number (225); download and create need
+Maintainer answers, 2026-11-09: migration takes the next free number (226, after P14 took 225); download and create need
 `configuration:write` on the source; stop writing the Meshtastic private key; admins may restore an unowned legacy file of
 the same protocol after an extra confirmation; MeshCore radio restored verbatim and last with a current -> backup
 warning, TX power clamped; fixed whitelist of MeshMonitor settings; source delete keeps files as admin-only orphans;
 slot 0 always skipped.
-Shipped (P16): `backup_history.sourceId` + `protocol` (migration 225, legacy backfill to the only Meshtastic source,
+Shipped (P16): `backup_history.sourceId` + `protocol` (migration 226, legacy backfill to the only Meshtastic source,
 primary schedule seeded to per-source keys); source-scoped repository and file service (files 0600, dir 0700, `wx`
 collision suffix, per-source purge); new `stored` device-source gate mode; shared `deviceConfigBackupService` pipeline with
 Meshtastic and MeshCore adapters (lock, protocol check, legacy confirm, audit by ids); per-source scheduler with a
@@ -211,5 +211,5 @@ persisted local day guard (a save or restart never fires a backup); `set_other_p
 `readBackupSnapshot` / `setOtherParamsRaw` / `restoreChannels`; `BackupManagementSection` with protocol / sourceId /
 connected / canWrite props, a restore summary dialog and a MeshCore Backups section. Fixed: cross-source backup download
 and restore by filename, world-readable backup files, Meshtastic backups including the node private key.
-Deviations: the migration is 225 (not 226); TX power above the radio maximum is clamped and reported under `skipped`;
+Deviations: TX power above the radio maximum is clamped and reported under `skipped`;
 the Meshtastic section is not disabled while the radio is offline (the server answers 409).

@@ -1,19 +1,19 @@
 /**
- * Migration 225 on the PostgreSQL / MySQL containers (#6285): columns, index,
+ * Migration 226 on the PostgreSQL / MySQL containers (#6285): columns, index,
  * backfill rule, schedule seed, idempotent rerun, no clobber. Each fixture
  * owns an isolated database.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { runMigration225Postgres, runMigration225Mysql } from './225_backup_history_source_protocol.js';
+import { runMigration226Postgres, runMigration226Mysql } from './226_backup_history_source_protocol.js';
 import { postgresAvailable, mysqlAvailable, createIsolatedPostgresDatabase, createIsolatedMysqlDatabase } from '../../db/repositories/test-utils.js';
 
-describe.skipIf(!postgresAvailable)('migration 225 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('migration 226 — PostgreSQL (container)', () => {
   let pool: pg.Pool;
   let cleanup: (() => Promise<void>) | undefined;
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig225'));
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig226'));
   });
   afterAll(async () => {
     await cleanup?.();
@@ -28,7 +28,7 @@ describe.skipIf(!postgresAvailable)('migration 225 — PostgreSQL (container)', 
   });
   const run = async () => {
     const client = await pool.connect();
-    try { await runMigration225Postgres(client); } finally { client.release(); }
+    try { await runMigration226Postgres(client); } finally { client.release(); }
   };
   const addSource = (id: string, type: string, order = 0) =>
     pool.query(`INSERT INTO sources (id,name,type,config,"displayOrder","createdAt","updatedAt") VALUES ($1,$1,$2,'{}',$3,1,1)`, [id, type, order]);
@@ -63,11 +63,11 @@ describe.skipIf(!postgresAvailable)('migration 225 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('migration 225 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('migration 226 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let cleanup: (() => Promise<void>) | undefined;
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig225'));
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig226'));
   });
   afterAll(async () => {
     await cleanup?.();
@@ -92,8 +92,8 @@ describe.skipIf(!mysqlAvailable)('migration 225 — MySQL (container)', () => {
   it('one source: columns, index, backfill, seed; rerun idempotent; no clobber', async () => {
     await addSource('a', 'meshtastic_tcp');
     await pool.query("INSERT INTO settings VALUES ('source:a:backup_time','09:00',1,1)");
-    await runMigration225Mysql(pool);
-    await runMigration225Mysql(pool);
+    await runMigration226Mysql(pool);
+    await runMigration226Mysql(pool);
     const [cols] = await pool.query(`SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='backup_history' AND COLUMN_NAME IN ('sourceId','protocol')`);
     expect((cols as unknown[]).length).toBe(2);
     const [idx] = await pool.query(`SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND INDEX_NAME='idx_backup_history_source_ts'`);
@@ -108,7 +108,7 @@ describe.skipIf(!mysqlAvailable)('migration 225 — MySQL (container)', () => {
   it('two sources: rows stay NULL; only the primary is seeded', async () => {
     await addSource('a', 'meshtastic_tcp', 2);
     await addSource('b', 'meshtastic_tcp', 1);
-    await runMigration225Mysql(pool);
+    await runMigration226Mysql(pool);
     const [rows] = await pool.query(`SELECT sourceId FROM backup_history`);
     expect((rows as Array<{ sourceId: string | null }>)[0].sourceId).toBeNull();
     expect(await val('source:b:backup_enabled')).toBe('true');
@@ -116,7 +116,7 @@ describe.skipIf(!mysqlAvailable)('migration 225 — MySQL (container)', () => {
   });
 
   it('zero sources: no seed', async () => {
-    await runMigration225Mysql(pool);
+    await runMigration226Mysql(pool);
     const [r] = await pool.query("SELECT COUNT(*) AS c FROM settings WHERE `key` LIKE 'source:%'");
     expect(Number((r as Array<{ c: number }>)[0].c)).toBe(0);
   });

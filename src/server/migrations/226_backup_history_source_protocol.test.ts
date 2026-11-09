@@ -1,10 +1,10 @@
 /**
- * migration 225 (#6285) on SQLite: columns, backfill rule, per-source schedule
+ * migration 226 (#6285) on SQLite: columns, backfill rule, per-source schedule
  * seed, idempotence. PG/MySQL live in the `.pgmysql.test.ts` sibling.
  */
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { migration } from './225_backup_history_source_protocol.js';
+import { migration } from './226_backup_history_source_protocol.js';
 
 function fixture(sourceRows: Array<{ id: string; type: string; enabled?: number; order?: number; created?: number }>) {
   const db = new Database(':memory:');
@@ -30,7 +30,7 @@ const setGlobals = (db: Database.Database) => {
   ins.run('backup_lastAutomaticBackup', '2026-11-08T02:00:00.000Z');
 };
 
-describe('migration 225 — SQLite', () => {
+describe('migration 226 — SQLite', () => {
   it('adds columns + index; legacy rows default to meshtastic', () => {
     const db = fixture([]);
     migration.up(db);
