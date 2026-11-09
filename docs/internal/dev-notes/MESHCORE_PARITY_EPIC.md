@@ -58,6 +58,7 @@ Each phase's scope is the checklist in its issue.
 - [x] **P9 #6255 Repeater settings + danger zone.**
 - [x] **P10 #6256 Remote structured config.**
 - [x] **P11 #6253 Notifications.**
+- [x] **P12 #6279 Mesh Issues node-health rules (A6-A9).**
 
 ## Phase log
 
@@ -196,3 +197,16 @@ message notifier (channel / DM / room post, content dedup keys, one ordered ment
 server connect/disconnect and trace/path-discovery notifications, a notification capability map for the tab
 (Companion vs Repeater, channel list from `/api/channels/all`), shared audio settings + `useMessageSound`, and
 click-through on the MeshCore page. Follow-ups: Repeater advert new-node alerts; a Notifications tab for `meshcore_mqtt`.
+
+### P12 #6279 (spec: `MESHCORE_PARITY_P12_SPEC.md`)
+Maintainer decisions, 2026-11-09: all recommended options. Infra nodes only; stale 24 h Meshtastic / 96 h MeshCore
+(tunable) and no flag after 30 days; low battery 20 % / 3300 mV (tunable); a position override suppresses A7; A8 skips
+nodes whose A3 battery clause fires; A9 accepted as mostly quiet with discard on; A6-A9 in Tier A. No RF, no notifications.
+Shipped (P12): one shared implementation of A6 stale, A7 no position, A8 low battery and A9 bad position on `PooledNode`
+for both protocols (`rulesNodeHealth.ts`, pure helpers in `nodeHealth.ts`), new `PooledNode` fields (reported position
+class, override, advert-had-position, local), an always-mV `batteryMv` series (MeshCore `mc_battery_mv` and
+`mc_status_battery_volts` x1000), four threshold settings, `tierASkips` (silent-source A6 and no-battery A8) and one
+`buildTierAContext` for both run paths. Deviations: A6 `aliveSources` joins the route's source-id redaction (it would
+have leaked hidden ids); the Meshtastic telemetry query keeps its four DB types. Verified: a Repeater-source's local
+battery rows are filed under the real public key, but that source has no own node row, so they only count when an advert
+creates one.
