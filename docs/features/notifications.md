@@ -769,7 +769,7 @@ MeshCore sources have their own **Notifications** tab. Message notifications use
 **Sounds.** The MeshCore **Settings** view has the same audio notification settings as Meshtastic: a master toggle and a sound per channel (direct messages and room posts share the DM sound).
 
 ::: tip Upgrading
-Before 4.15.x the direct-message toggle was hidden for MeshCore but saved as on. If you subscribed to push on a MeshCore source, you now start receiving its direct messages and room posts. Turn **Direct messages and room posts** off on that source's Notifications tab if you don't want them.
+Earlier versions hid the direct-message toggle for MeshCore but saved it as on. If you subscribed to push on a MeshCore source, you now start receiving its direct messages and room posts. Turn **Direct messages and room posts** off on that source's Notifications tab if you don't want them.
 :::
 
 Preferences are saved per source, so a MeshCore source and a Meshtastic source can have independent thresholds. The monitored-node watch list is the exception: nodes picked on any source's tab are watched together (see [Settings Are Saved Per Source](#settings-are-saved-per-source)).
