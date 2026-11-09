@@ -119,6 +119,10 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     if (toggleNavPin()) setToolbarExpanded(true);
   }, [toggleNavPin]);
   const [pendingDmContact, setPendingDmContact] = useState<string | null>(null);
+  // Security tab "Send notification" (#6281): a draft for the pending DM
+  // contact. Consumed once by the message stream, which seeds its compose
+  // draft; never sent for the user.
+  const [pendingDmDraft, setPendingDmDraft] = useState<string | null>(null);
   // #5964: Node Details → Show on Map. Same hand-off shape as
   // `pendingDmContact`: set the key, switch to the Nodes view (list + map),
   // and drop the key once the view changes away again.
@@ -167,6 +171,13 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     setView('dms');
   }, []);
 
+  // `nodeKey` is `mc:<64-hex>`; open that contact's DM with the draft pre-filled.
+  const openDmWithDraft = useCallback((nodeKey: string, draft: string) => {
+    setPendingDmContact(nodeKey.startsWith('mc:') ? nodeKey.slice(3) : nodeKey);
+    setPendingDmDraft(draft);
+    setView('dms');
+  }, []);
+
   const showNodeOnMap = useCallback((publicKey: string) => {
     setPendingMapNode(publicKey);
     setView('nodes');
@@ -177,7 +188,10 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   }, [status, onStatusChange]);
 
   useEffect(() => {
-    if (view !== 'dms') setPendingDmContact(null);
+    if (view !== 'dms') {
+      setPendingDmContact(null);
+      setPendingDmDraft(null);
+    }
     if (view !== 'nodes') setPendingMapNode(null);
     if (view !== 'channels') setPendingChannelIdx(null);
     if (view !== 'rooms') setPendingRoom(null);
@@ -305,6 +319,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             baseUrl={baseUrl}
             sourceId={sourceId}
             initialSelectedContact={pendingDmContact}
+            initialDraft={pendingDmDraft}
+            onInitialDraftConsumed={() => setPendingDmDraft(null)}
             receiveOnly={receiveOnly}
             ignoredNodes={ignoredNodesQuery.data}
             onSetIgnoredNode={handleSetIgnoredNode}
@@ -363,7 +379,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           <SecurityTab
             sourceId={sourceId}
             sourceType="meshcore"
+            deviceType={status?.deviceType}
             onOpenNode={navigateToDm}
+            onOpenDmWithDraft={openDmWithDraft}
           />
         )}
         {view === 'settings' && (

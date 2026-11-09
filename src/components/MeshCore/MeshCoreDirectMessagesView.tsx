@@ -71,6 +71,14 @@ interface MeshCoreDirectMessagesViewProps {
   sourceId?: string;
   /** When set, auto-selects this contact on mount or when the value changes. */
   initialSelectedContact?: string | null;
+  /**
+   * Text to pre-fill in the compose box of the `initialSelectedContact`
+   * conversation (Security tab notification, #6281). Applied once; a later
+   * switch to another contact never re-seeds it. The user sends it.
+   */
+  initialDraft?: string | null;
+  /** Called once the draft is in the compose box, so the page can drop it. */
+  onInitialDraftConsumed?: () => void;
   /** True when this MeshCore source is in strict receive-only mode (#4547
    *  Phase 2). Threaded to MeshCoreContactDetailPanel and
    *  MeshCoreNodeTelemetryConfig; WP3 wires the DM send-box gate itself. */
@@ -120,6 +128,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   baseUrl,
   sourceId,
   initialSelectedContact,
+  initialDraft,
+  onInitialDraftConsumed,
   receiveOnly = false,
   ignoredNodes,
   onSetIgnoredNode,
@@ -849,6 +859,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   onReact={canReact ? (m, e) => actions.sendReaction(m, e) : undefined}
                   reactionEmojis={tapbackEmojis}
                   conversationKey={`dm-${selected}`}
+                  initialDraft={selected === initialSelectedContact ? initialDraft : null}
+                  onInitialDraftConsumed={onInitialDraftConsumed}
                   unreadAnchorMs={entryLastRead}
                   maxBytes={150}
                   onLoadOlder={loadOlderDmHistory}
@@ -861,7 +873,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               <MeshCoreContactDetailPanel
                 contact={(() => {
                   const raw = contactsByKey.get(selected);
-                  return raw ? mergeNodeFields(raw, nodeFieldIndex, ['advertPosition', 'advertSignatureVerified']) : null;
+                  return raw ? mergeNodeFields(raw, nodeFieldIndex, ['advertPosition', 'advertSignatureVerified', 'clockOffset']) : null;
                 })()}
                 publicKey={selected}
                 // An ignored or blocked node is off the map (#5408).

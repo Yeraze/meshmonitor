@@ -25,6 +25,8 @@ export interface MeshCoreContact {
   lastAdvert?: number;
   /** P7a #6254: latest checked advert signature. true verified, false failed, null/unset not checked. Copied from the node row. */
   advertSignatureVerified?: boolean | null;
+  /** #6281: persisted clock offset in seconds (positive = node behind). Copied from the node row. */
+  clockOffsetSeconds?: number | null;
   /** #5363: the server moved latitude/longitude to the sign-flip corrected
    *  point; the reported pair rides along. Display only. */
   positionSignFlipCorrected?: boolean;

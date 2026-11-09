@@ -4,6 +4,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { resolveAppriseServerUrl, appriseNotifyEndpoint } from './appriseNotificationService.js';
 import type { Cron as CronJob } from 'croner';
+import { CLOCK_NOT_SET_OFFSET_SECONDS } from '../../utils/securityClock.js';
 import {
   collectSecurityIssues,
   type CollectedSecurityIssues,
@@ -279,7 +280,7 @@ export function formatDigestDetailed(
 }
 
 /** A year or more off: a node whose clock was never set (no RTC, factory default). */
-const CLOCK_NOT_SET_SECONDS = 365 * 86400;
+const CLOCK_NOT_SET_SECONDS = CLOCK_NOT_SET_OFFSET_SECONDS;
 
 function mcName(node: { longName: string | null; shortName: string | null; publicKey?: string | null }): string {
   return node.longName || node.shortName || (node.publicKey ? `mc:${node.publicKey.slice(0, 8)}` : 'unknown');

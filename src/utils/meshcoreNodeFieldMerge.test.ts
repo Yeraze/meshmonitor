@@ -28,6 +28,12 @@ describe('mergeNodeFields', () => {
     const unchecked = mergeNodeFields({ publicKey: PK }, indexNodeFields([node({ advertSignatureVerified: null })]));
     expect(unchecked.advertSignatureVerified).toBeUndefined();
   });
+  it('merges the persisted clock offset only when the node row carries one (#6281)', () => {
+    const flagged = mergeNodeFields({ publicKey: PK }, indexNodeFields([node({ clockOffsetSeconds: 7200 })]));
+    expect(flagged.clockOffsetSeconds).toBe(7200);
+    const c = { publicKey: PK };
+    expect(mergeNodeFields(c, indexNodeFields([node({ clockOffsetSeconds: null })]))).toBe(c);
+  });
   it('honours a field subset (DM view does not copy battery / first heard)', () => {
     const idx = indexNodeFields([node({ batteryMv: 4000, firstHeard: 5, advertSignatureVerified: false })]);
     const c = mergeNodeFields({ publicKey: PK }, idx, ['advertPosition', 'advertSignatureVerified']);

@@ -83,6 +83,13 @@ interface MeshCoreMessageStreamProps {
   conversationKey?: string;
   /** Maximum UTF-8 byte length for a message. Send is blocked when exceeded. */
   maxBytes?: number;
+  /**
+   * Text to pre-fill the compose box with once (Security tab notification,
+   * #6281). Seeded when it first arrives; the user reads it and sends it.
+   */
+  initialDraft?: string | null;
+  /** Called after the draft was applied, so the owner can drop it. */
+  onInitialDraftConsumed?: () => void;
   /** When provided together with `hasMoreOlder`, the stream requests older
    *  history (#4460) once the user scrolls near the top, throttled to avoid
    *  spamming the caller. The caller owns fetching/prepending and is expected
@@ -180,6 +187,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   reactionEmojis,
   conversationKey,
   maxBytes = 130,
+  initialDraft,
+  onInitialDraftConsumed,
   onLoadOlder,
   hasMoreOlder,
   loadingOlder,
@@ -192,6 +201,14 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const { t } = useTranslation();
   // Per stream instance; not cleared when the conversation changes (as before).
   const [draftStore] = useState(() => createComposeDraftStore());
+  // Seed the compose draft once per handed-over text (#6281).
+  const seededDraftRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (initialDraft == null || initialDraft === '' || seededDraftRef.current === initialDraft) return;
+    seededDraftRef.current = initialDraft;
+    draftStore.set(initialDraft);
+    onInitialDraftConsumed?.();
+  }, [initialDraft, draftStore, onInitialDraftConsumed]);
   const [translateModalOpen, setTranslateModalOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);

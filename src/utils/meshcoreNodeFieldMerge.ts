@@ -11,10 +11,10 @@
 import type { MeshCoreNode } from '../components/MeshCore/hooks/useMeshCore.js';
 import type { MeshCoreContact } from './meshcoreHelpers.js';
 
-export type NodeMergeField = 'batteryMv' | 'firstHeard' | 'advertPosition' | 'advertSignatureVerified';
+export type NodeMergeField = 'batteryMv' | 'firstHeard' | 'advertPosition' | 'advertSignatureVerified' | 'clockOffset';
 
 export const ALL_NODE_MERGE_FIELDS: readonly NodeMergeField[] = [
-  'batteryMv', 'firstHeard', 'advertPosition', 'advertSignatureVerified',
+  'batteryMv', 'firstHeard', 'advertPosition', 'advertSignatureVerified', 'clockOffset',
 ];
 
 export interface NodeFieldIndex {
@@ -23,6 +23,8 @@ export interface NodeFieldIndex {
   advertPosition: Map<string, Pick<MeshCoreContact, 'lastAdvertHadPosition' | 'positionSource'>>;
   /** Only keys whose stored value is true or false; null/undefined = not checked. */
   advertSignatureVerified: Map<string, boolean>;
+  /** Persisted clock offset in seconds, only for nodes the scan currently flags (#6281). */
+  clockOffset: Map<string, number>;
 }
 
 /** Index the node rows by public key. */
@@ -32,6 +34,7 @@ export function indexNodeFields(nodes: readonly MeshCoreNode[]): NodeFieldIndex 
     firstHeard: new Map(),
     advertPosition: new Map(),
     advertSignatureVerified: new Map(),
+    clockOffset: new Map(),
   };
   for (const n of nodes) {
     if (!n.publicKey) continue;
@@ -43,6 +46,7 @@ export function indexNodeFields(nodes: readonly MeshCoreNode[]): NodeFieldIndex 
         positionSource: n.positionSource,
       });
     }
+    if (typeof n.clockOffsetSeconds === 'number') idx.clockOffset.set(n.publicKey, n.clockOffsetSeconds);
     // SQLite booleans can arrive as 0/1 from older rows.
     const sig = n.advertSignatureVerified as boolean | number | null | undefined;
     if (sig === true || sig === 1) idx.advertSignatureVerified.set(n.publicKey, true);
@@ -80,6 +84,10 @@ export function mergeNodeFields(
   if (fields.includes('advertSignatureVerified')) {
     const sig = idx.advertSignatureVerified.get(key);
     if (sig !== undefined) c = { ...c, advertSignatureVerified: sig };
+  }
+  if (fields.includes('clockOffset')) {
+    const clockOffsetSeconds = idx.clockOffset.get(key);
+    if (clockOffsetSeconds !== undefined) c = { ...c, clockOffsetSeconds };
   }
   return c;
 }

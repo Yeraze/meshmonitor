@@ -77,3 +77,74 @@ export type OpenNode = (nodeKey: string) => void;
 export function keyPrefix(key: string | null | undefined): string {
   return key ? key.slice(0, 8) : '';
 }
+
+/** One node in `/api/security/issues` (both protocols; the MeshCore-only fields are optional). */
+export interface SecurityIssueView {
+  /** `mt:<nodeNum>` or `mc:<64-hex key>`. */
+  nodeKey: string;
+  protocol?: 'meshtastic' | 'meshcore';
+  nodeNum: number;
+  shortName: string;
+  longName: string;
+  /** Epoch seconds. */
+  lastHeard: number | null;
+  keyIsLowEntropy: boolean;
+  duplicateKeyDetected: boolean;
+  keySecurityIssueDetails?: string;
+  publicKey?: string;
+  hwModel?: number;
+  isExcessivePackets?: boolean;
+  packetRatePerHour?: number | null;
+  /** Epoch seconds. */
+  packetRateLastChecked?: number | null;
+  isTimeOffsetIssue?: boolean;
+  /** Receipt minus node time; positive = the node is behind. */
+  timeOffsetSeconds?: number | null;
+  advType?: number | null;
+  advertRatePerHour?: number | null;
+  timeOffsetSource?: string | null;
+  hasKnownPath?: boolean;
+  onDevice?: boolean;
+}
+
+export interface TopBroadcasterView {
+  nodeNum: number;
+  nodeKey?: string;
+  shortName: string | null;
+  longName: string | null;
+  packetCount: number;
+}
+
+export interface SecurityIssuesResponse {
+  protocol?: 'meshtastic' | 'meshcore';
+  total: number;
+  lowEntropyCount: number;
+  duplicateKeyCount: number;
+  excessivePacketsCount: number;
+  timeOffsetCount: number;
+  nodes: SecurityIssueView[];
+  topBroadcasters: TopBroadcasterView[];
+  thresholds?: { packetsPerHour: number; timeOffsetMinutes: number };
+  /** MeshCore only: false when the packet monitor is off, so rates are not measured. */
+  packetLogEnabled?: boolean;
+}
+
+export interface ScannerStatus {
+  running: boolean;
+  scanningNow: boolean;
+  intervalHours: number;
+  lastScanTime: number | null;
+}
+
+/** How a row's "Send notification" button should look for one node. */
+export interface NotifyState {
+  /** Render the button at all. */
+  visible: boolean;
+  /** Visible but disabled, with `hint` as its title. */
+  disabled?: boolean;
+  hint?: string;
+  /** No stored route: the DM floods the mesh. */
+  floodWarning?: boolean;
+}
+
+export type NotifyKind = 'excessivePackets' | 'timeOffset';

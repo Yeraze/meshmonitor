@@ -56,6 +56,14 @@ router.get('/issues', requireSourceId('query'), nodesReadOnSource, async (req: R
     const protocol = sourceProtocol(secSourceId);
     // Top broadcasters come from the stored rates on MeshCore, so this 30 s poll never reads the packet log.
     const issues = await collectSecurityIssues(databaseService as never, secSourceId, { protocol, topBroadcasters: 5 });
+    if (protocol === 'meshcore') {
+      // The notification DM needs the contact in the radio's table (the firmware looks the recipient up there).
+      const contacts = new Map(
+        ((sourceManagerRegistry.getManager(secSourceId) as unknown as MeshCoreSecurityManager | undefined)?.getContacts?.() ?? [])
+          .map(c => [c.publicKey.toLowerCase(), c.onDevice === true] as const),
+      );
+      for (const n of issues.nodes) n.onDevice = contacts.get((n.publicKey ?? '').toLowerCase()) === true;
+    }
     const packetLogEnabled = protocol === 'meshcore' ? await meshcorePacketLogService.isEnabled() : undefined;
     return res.json({
       ...issues,

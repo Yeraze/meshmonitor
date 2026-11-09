@@ -14,6 +14,7 @@
 import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
 import { listSignatureFailures, findNameReuse } from './meshcoreSecurityFindings.js';
 import { meshcoreOwnIdentityTracker } from './meshcoreOwnIdentityTracker.js';
+import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 
 export type SecurityProtocol = 'meshtastic' | 'meshcore';
 
@@ -45,6 +46,10 @@ export interface SecurityIssueNode {
   advertSignatureFailed?: boolean;
   /** Set on a node that reuses the name of an older key. */
   nameReused?: boolean;
+  /** The source has a stored route to the node (a DM would not flood). */
+  hasKnownPath?: boolean;
+  /** The contact is in the radio's table (a Companion can DM it). Set by the route, not the collector. */
+  onDevice?: boolean;
 }
 
 export interface SecurityTopBroadcaster {
@@ -86,15 +91,33 @@ export interface CollectedSecurityIssues {
   ownKeyChange: SecurityOwnKeyChange | null;
 }
 
+/** A Meshtastic node row as the issue queries return it (only the fields read here). */
+export interface MeshtasticIssueRow {
+  nodeNum: number;
+  shortName?: string | null;
+  longName?: string | null;
+  lastHeard?: number | null;
+  keyIsLowEntropy?: boolean | null;
+  duplicateKeyDetected?: boolean | null;
+  keySecurityIssueDetails?: string | null;
+  publicKey?: string | null;
+  hwModel?: number | null;
+  isExcessivePackets?: boolean | null;
+  packetRatePerHour?: number | null;
+  packetRateLastChecked?: number | null;
+  isTimeOffsetIssue?: boolean | null;
+  timeOffsetSeconds?: number | null;
+}
+
 /** The slice of DatabaseService the collector reads. */
 export interface SecurityIssuesDb {
-  getNodesWithKeySecurityIssuesAsync(sourceId?: string): Promise<any[]>;
-  getNodesWithExcessivePacketsAsync(sourceId?: string): Promise<any[]>;
-  getNodesWithTimeOffsetIssuesAsync(sourceId?: string): Promise<any[]>;
-  getTopBroadcastersAsync(limit: number, sourceId?: string): Promise<any[]>;
+  getNodesWithKeySecurityIssuesAsync(sourceId?: string): Promise<MeshtasticIssueRow[]>;
+  getNodesWithExcessivePacketsAsync(sourceId?: string): Promise<MeshtasticIssueRow[]>;
+  getNodesWithTimeOffsetIssuesAsync(sourceId?: string): Promise<MeshtasticIssueRow[]>;
+  getTopBroadcastersAsync(limit: number, sourceId?: string): Promise<SecurityTopBroadcaster[]>;
   meshcore?: {
-    getNodesBySource(sourceId: string): Promise<any[]>;
-    getSecurityFlaggedNodes(sourceId: string): Promise<any[]>;
+    getNodesBySource(sourceId: string): Promise<DbMeshCoreNode[]>;
+    getSecurityFlaggedNodes(sourceId: string): Promise<DbMeshCoreNode[]>;
   };
 }
 
@@ -108,7 +131,7 @@ const EMPTY_COUNTS = {
   ownKeyChanged: 0,
 };
 
-function mtNode(node: any, flags: 'key' | 'other'): SecurityIssueNode {
+function mtNode(node: MeshtasticIssueRow, flags: 'key' | 'other'): SecurityIssueNode {
   const n = node;
   return {
     nodeKey: `mt:${Number(n.nodeNum)}`,
@@ -116,12 +139,12 @@ function mtNode(node: any, flags: 'key' | 'other'): SecurityIssueNode {
     nodeNum: n.nodeNum,
     shortName: n.shortName || 'Unknown',
     longName: n.longName || 'Unknown',
-    lastHeard: n.lastHeard,
-    keyIsLowEntropy: flags === 'key' ? n.keyIsLowEntropy : n.keyIsLowEntropy || false,
-    duplicateKeyDetected: flags === 'key' ? n.duplicateKeyDetected : n.duplicateKeyDetected || false,
+    lastHeard: n.lastHeard ?? null,
+    keyIsLowEntropy: (flags === 'key' ? n.keyIsLowEntropy : n.keyIsLowEntropy || false) as boolean,
+    duplicateKeyDetected: (flags === 'key' ? n.duplicateKeyDetected : n.duplicateKeyDetected || false) as boolean,
     keySecurityIssueDetails: n.keySecurityIssueDetails,
     publicKey: n.publicKey,
-    hwModel: n.hwModel,
+    hwModel: n.hwModel as number | undefined,
     isExcessivePackets: n.isExcessivePackets || false,
     packetRatePerHour: n.packetRatePerHour || null,
     packetRateLastChecked: n.packetRateLastChecked || null,
@@ -161,7 +184,7 @@ async function collectMeshtastic(db: SecurityIssuesDb, sourceId: string, topN: n
   }
 
   const nodes = Array.from(all.values());
-  const topBroadcasters = (await db.getTopBroadcastersAsync(topN, sourceId)) as SecurityTopBroadcaster[];
+  const topBroadcasters = await db.getTopBroadcastersAsync(topN, sourceId);
   return finish('meshtastic', nodes, topBroadcasters, null);
 }
 
@@ -175,7 +198,7 @@ async function collectMeshcore(db: SecurityIssuesDb, sourceId: string, topN: num
     meshcoreOwnIdentityTracker.getCurrentKey(sourceId),
   ]);
 
-  const toNode = (n: any): SecurityIssueNode => {
+  const toNode = (n: DbMeshCoreNode): SecurityIssueNode => {
     const pk = String(n.publicKey).toLowerCase();
     const checkedMs = n.packetRateLastChecked != null ? Number(n.packetRateLastChecked) : null;
     return {
@@ -201,12 +224,13 @@ async function collectMeshcore(db: SecurityIssuesDb, sourceId: string, topN: num
       timeOffsetSource: n.timeOffsetSource ?? null,
       advertSignatureFailed: false,
       nameReused: false,
+      hasKnownPath: n.pathLen != null || !!n.outPath,
     };
   };
 
   const byKey = new Map<string, SecurityIssueNode>();
   for (const n of flagged) byKey.set(String(n.publicKey).toLowerCase(), toNode(n));
-  const ensure = (n: any): SecurityIssueNode => {
+  const ensure = (n: DbMeshCoreNode): SecurityIssueNode => {
     const pk = String(n.publicKey).toLowerCase();
     let e = byKey.get(pk);
     if (!e) {
@@ -228,7 +252,7 @@ async function collectMeshcore(db: SecurityIssuesDb, sourceId: string, topN: num
       return {
         nodeNum: nodeNumFromPubkey(pk),
         nodeKey: `mc:${pk}`,
-        shortName: n.name ?? null,
+        shortName: null,
         longName: n.name ?? null,
         packetCount: Number(n.packetRatePerHour),
       };
