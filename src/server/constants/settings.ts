@@ -242,8 +242,14 @@ export const VALID_SETTINGS_KEYS = [
   // Max km between positioned nodes for B1/B6 cluster adjacency (#4976) —
   // default 30, clamp 1-500, resolved via resolveThresholds.
   'mesh_issues_router_cluster_max_link_km',
+  // Node-health tunables (#6279): A6 stale windows (hours, per protocol) and
+  // A8/A3 low-battery lines — each clamped in resolveThresholds.
+  'mesh_issues_stale_hours_meshtastic',
+  'mesh_issues_stale_hours_meshcore',
+  'mesh_issues_low_battery_pct',
+  'mesh_issues_low_battery_mv',
   // Per-rule mute list, CSV of MESH_ISSUE_RULE_IDS (report reorg #4964 WP2,
-  // spec §5.2/§9.5). One key for all 18 rules — see thresholds.ts's
+  // spec §5.2/§9.5). One key for all 22 rules — see thresholds.ts's
   // resolveDisabledRules for the clamp-on-read parse.
   'mesh_issues_disabled_rules',
   'mesh_issues_last_run_summary',
@@ -979,6 +985,10 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'mesh_issues_snr_asymmetry_db',           // "
   'mesh_issues_over_broadcast_seconds',     // "
   'mesh_issues_auto_close_runs',            // global batch job (#4964 post-epic follow-up)
+  'mesh_issues_stale_hours_meshtastic',     // global batch job (#6279 node health)
+  'mesh_issues_stale_hours_meshcore',       // "
+  'mesh_issues_low_battery_pct',            // "
+  'mesh_issues_low_battery_mv',             // "
   'mesh_issues_disabled_rules',             // global batch job (#4964 report reorg)
   'mesh_issues_last_run_summary',           // "
   'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
