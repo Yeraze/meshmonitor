@@ -119,16 +119,20 @@ describe('NotificationsTab — source-type gating', () => {
     expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).toBeNull();
+    // The learning-window note is Repeater only (#6306).
+    expect(screen.queryByText(/notifications\.new_nodes_repeater_note/)).toBeNull();
   });
 
-  it('MeshCore Repeater: hides DM, traceroute, new-node, mention and explains why', async () => {
+  it('MeshCore Repeater: hides DM, traceroute and mention, explains why, and shows new-node with its learning note', async () => {
     renderWithSource('meshcore', 2);
     await waitFor(() => {
       expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull();
     });
     expect(screen.queryByText(/notifications\.direct_messages/)).toBeNull();
     expect(screen.queryByText(/notifications\.traceroutes/)).toBeNull();
-    expect(screen.queryByText(/notifications\.new_nodes/)).toBeNull();
+    // #6306: the new-node toggle is back for a Repeater, with the gate note.
+    expect(screen.queryByText(/notifications\.new_nodes(?!_)/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.new_nodes_repeater_note/)).not.toBeNull();
     expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).toBeNull();
     expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.emoji_reactions/)).not.toBeNull();

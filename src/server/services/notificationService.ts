@@ -260,15 +260,20 @@ class NotificationService {
     displayName: string,
     deviceTypeLabel: string | undefined,
     sourceId: string,
-    sourceName: string
+    sourceName: string,
+    /** #6306: nodes the new-node alert gate dropped since the last alert (appended as "(+N more)"). */
+    suppressedCount?: number
   ): Promise<void> {
     try {
       const typeText = deviceTypeLabel ? ` - ${deviceTypeLabel}` : '';
+      const moreText = suppressedCount && suppressedCount > 0
+        ? ` (+${suppressedCount} more new nodes since the last alert)`
+        : '';
       const title = `New MeshCore Device Detected`;
       // #4845: title carries the service, body says which instance detected it.
       const payload: NotificationPayload = {
         title,
-        body: `${displayName} detected by ${sourceName}${typeText}`,
+        body: `${displayName} detected by ${sourceName}${typeText}${moreText}`,
         type: 'info',
         sourceId,
         sourceName,
@@ -277,7 +282,7 @@ class NotificationService {
         // key is the device's identity on every source.
         dedup: {
           key: `meshcore-new-node:${publicKey}`,
-          merged: (names) => ({ title, body: `${displayName} detected by ${names.join(', ')}${typeText}` }),
+          merged: (names) => ({ title, body: `${displayName} detected by ${names.join(', ')}${typeText}${moreText}` }),
         },
       };
 

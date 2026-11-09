@@ -4,7 +4,8 @@
  * (isFavorite / device flags & 0x01) kept, per-source isolation, the
  * nodes:write gate, and the count preview.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { newNodeAlertGate } from '../services/newNodeAlertGate.js';
 import contactsRoutes from './meshcoreContactsRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
@@ -59,6 +60,33 @@ describe('meshcoreContactsRoutes — purge non-favourite nodes', () => {
     expect(await keysFor(harness.sourceA)).toEqual([key(1)]);
     // sourceB untouched.
     expect(await keysFor(harness.sourceB)).toEqual([key(4)]);
+  });
+
+  it('re-arms the new-node learning window for the purged source only when rows were deleted (#6306)', async () => {
+    const rearm = vi.spyOn(newNodeAlertGate, 'rearm').mockResolvedValue(undefined);
+    try {
+      const agent = await harness.loginAs(harness.admin);
+      await agent.post(`${base(harness.sourceA)}/nodes/purge-non-favourites`).expect(200);
+      expect(rearm).toHaveBeenCalledTimes(1);
+      expect(rearm).toHaveBeenCalledWith(harness.sourceA);
+      // Nothing left to delete: no re-arm.
+      await agent.post(`${base(harness.sourceA)}/nodes/purge-non-favourites`).expect(200);
+      expect(rearm).toHaveBeenCalledTimes(1);
+    } finally {
+      rearm.mockRestore();
+    }
+  });
+
+  it('a refused purge does not re-arm (#6306)', async () => {
+    const rearm = vi.spyOn(newNodeAlertGate, 'rearm').mockResolvedValue(undefined);
+    try {
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.post(`${base(harness.sourceA)}/nodes/purge-non-favourites`)).status).toBe(403);
+      expect(rearm).not.toHaveBeenCalled();
+    } finally {
+      rearm.mockRestore();
+    }
   });
 
   it('is idempotent — a second purge deletes nothing', async () => {

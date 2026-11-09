@@ -560,12 +560,12 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // delayed publish must not make a silent node look freshly heard. The
       // shared helper caps the claim at now, since a forged FUTURE time would
       // park the node at the top of every "last heard" sort indefinitely.
-      const advert = await ingestAdvertFrame(decoded.event.raw_hex, this.sourceId, {
+      const ingested = await ingestAdvertFrame(decoded.event.raw_hex, this.sourceId, {
         lastHeardMs: 'advert',
         // #5909: record signature validity for cross-source hop resolution.
         verifySignature: 'toggle',
       });
-      if (advert) this.stats.advertsIngested++;
+      if (ingested) this.stats.advertsIngested++;
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);
     }
