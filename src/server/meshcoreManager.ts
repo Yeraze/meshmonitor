@@ -11174,7 +11174,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       throw new MeshCoreDeviceCommandError('COMMAND_FAILED', response.error || 'The radio did not accept the setting');
     }
     const readback = response.data?.multi_acks;
-    if (typeof readback !== 'number' || readback !== value) {
+    if (typeof readback !== 'number') {
+      // No readback at all (SelfInfo timed out or a busy radio) is not proof of
+      // old firmware; report it as a failed command the user can retry.
+      logger.warn(`[MeshCore:${this.sourceId}] multi-ACKs readback missing; cannot confirm the setting`);
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', 'The radio did not report its settings back; try again');
+    }
+    if (readback !== value) {
       throw new MeshCoreDeviceCommandError(
         'MULTI_ACKS_UNSUPPORTED',
         'The radio did not keep the multi-ACKs value; its firmware is too old (needs companion-v1.7.4 or newer)',
@@ -11200,7 +11206,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     try {
       await databaseService.meshcoreSourcePkiKeys.deleteBySourceId(this.sourceId);
     } catch (err) {
-      logger.warn(`[MeshCore:${this.sourceId}] could not drop the stored device key after reset: ${(err as Error).message}`);
+      logger.warn(`[MeshCore:${this.sourceId}] could not drop the stored device key after reset (it is replaced on the next key capture): ${(err as Error).message}`);
     }
     logger.warn(`[MeshCore:${this.sourceId}] Factory reset sent to the radio`);
   }

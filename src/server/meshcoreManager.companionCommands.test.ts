@@ -61,8 +61,11 @@ describe('MeshCoreManager Companion commands (P8a #6257)', () => {
     const { m } = make({ multiAcksReadback: 0 });
     await expect(m.setMultiAcks(1)).rejects.toMatchObject({ code: 'MULTI_ACKS_UNSUPPORTED' });
     expect(m.getLocalNode()?.multiAcks).toBeUndefined();
+  });
+
+  it('a missing multi-acks readback is a retryable COMMAND_FAILED, not old firmware', async () => {
     const none = make({ multiAcksReadback: null });
-    await expect(none.m.setMultiAcks(1)).rejects.toMatchObject({ code: 'MULTI_ACKS_UNSUPPORTED' });
+    await expect(none.m.setMultiAcks(1)).rejects.toMatchObject({ code: 'COMMAND_FAILED' });
   });
 
   it('factoryReset sends the command, drops the PKI row and announces the identity change', async () => {

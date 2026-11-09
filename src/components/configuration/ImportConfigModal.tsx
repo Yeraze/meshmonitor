@@ -138,7 +138,6 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({
       setImportStatus(t('import_config.status_sending'));
       const result = await apiService.importConfig(url, nodeNum, sourceId);
 
-      console.log('Import result:', result);
 
       // If reboot is required, wait for device to reconnect and sync
       if (result.requiresReboot) {
