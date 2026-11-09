@@ -25,6 +25,7 @@
 
 import { EventEmitter } from 'events';
 import { MqttBrokerClient, MqttReconnectCoordinator, type MqttClientCapabilities } from './transports/mqttBrokerClient.js';
+import { attachBrokerLinkNotifier, type BrokerLinkNotifier } from './services/brokerLinkNotifier.js';
 import {
   MqttPacketFilter,
   type MqttFilterConfig,
@@ -396,6 +397,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   private readonly sourceName: string;
   private readonly config: MqttBridgeSourceConfig;
   private client: MqttBrokerClient | null = null;
+  /** Debounced upstream-link alerts (#6307). Disposed silently on stop / client swap. */
+  private brokerLink: BrokerLinkNotifier | null = null;
   private parentBroker: MqttBrokerManager | null = null;
   private parentListener: ((p: MqttBrokerLocalPacket) => void) | null = null;
   private registryAddedListener: ((m: ISourceManager) => void) | null = null;
@@ -572,6 +575,12 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     });
     this.client = client;
     if (this.reconnectCoordinator) client.setCoordinator(this.reconnectCoordinator);
+    // Attach BEFORE the auth / eviction listeners below so a stop alerts first.
+    this.brokerLink?.dispose();
+    this.brokerLink = attachBrokerLinkNotifier(client, {
+      sourceId: this.sourceId,
+      sourceName: this.sourceName,
+    });
     client.on('error', (err) => {
       this.lastError = err.message;
     });
@@ -665,6 +674,9 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     logger.info(
       `MQTT bridge ${this.sourceId}: parent broker attached late; reconnecting upstream as ${this.subscriberClientId}`,
     );
+    // Internal re-login under the gateway ID, not an outage: stay silent.
+    this.brokerLink?.dispose();
+    this.brokerLink = null;
     old.removeAllListeners();
     old.on('error', () => {});
     await old.disconnect().catch(() => {});
@@ -815,6 +827,9 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       await this.publisherPool.close();
       this.publisherPool = null;
     }
+    // Silent: stopping or saving is never an outage.
+    this.brokerLink?.dispose();
+    this.brokerLink = null;
     if (this.client) {
       await this.client.disconnect();
       this.client = null;

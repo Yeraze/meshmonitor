@@ -1918,6 +1918,37 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Slot channel indices that have channel messages on a source (#6307). Slot
+   * rows carry no key fingerprint; keyed (virtual-key) rows do and are listed by
+   * `getKeyedChannelSummaries` behind the key gate, so they are excluded here.
+   * An MQTT ingest source has no slot rows of its own, so this is the only way
+   * to know which `channel-N` indices carry traffic on it.
+   */
+  async getChannelIndicesWithMessages(sourceId: string): Promise<number[]> {
+    if (!sourceId) return [];
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({ channelKey: meshcoreMessages.fromPublicKey })
+      .from(meshcoreMessages)
+      .where(
+        and(
+          eq(meshcoreMessages.sourceId, sourceId),
+          eq(meshcoreMessages.messageType, 'channel'),
+          isNull(meshcoreMessages.keyFingerprint),
+        ),
+      )
+      .groupBy(meshcoreMessages.fromPublicKey);
+    const out = new Set<number>();
+    for (const r of rows as Array<{ channelKey: string }>) {
+      const key = r.channelKey;
+      if (typeof key !== 'string' || !key.startsWith('channel-')) continue;
+      const n = Number(key.slice('channel-'.length));
+      if (Number.isInteger(n) && n >= 0) out.add(n);
+    }
+    return [...out].sort((a, b) => a - b);
+  }
+
+  /**
    * Get messages for a specific conversation (to/from a public key)
    */
   async getMessagesForConversation(publicKey: string, limit: number = 50): Promise<DbMeshCoreMessage[]> {

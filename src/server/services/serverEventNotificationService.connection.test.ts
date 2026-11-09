@@ -21,4 +21,15 @@ describe('connection events (P11 S6)', () => {
     expect(broadcast.mock.calls[1][1].body).toMatch(/^Connection to the radio restored/);
     expect(JSON.stringify(broadcast.mock.calls)).not.toMatch(/Meshtastic/);
   });
+
+  it("link 'broker' uses broker wording and never says radio (#6307)", async () => {
+    await svc.notifyNodeConnected('mqtt1', 'Feed', 'broker');
+    await svc.notifyNodeDisconnected('mqtt1', 'Feed', 'broker');
+    await svc.notifyNodeConnected('mqtt1', 'Feed', 'broker');
+    expect(broadcast).toHaveBeenCalledTimes(2);
+    expect(broadcast.mock.calls[0][1].body).toBe('Lost connection to the MQTT broker');
+    expect(broadcast.mock.calls[0][1].title).toBe('MQTT Broker Disconnected · Feed');
+    expect(broadcast.mock.calls[1][1].body).toMatch(/^Connection to the MQTT broker restored/);
+    expect(JSON.stringify(broadcast.mock.calls)).not.toMatch(/radio/i);
+  });
 });

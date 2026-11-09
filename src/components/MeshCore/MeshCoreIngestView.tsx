@@ -13,12 +13,13 @@
  *   Nodes     everything learned from adverts
  *   Channels  messages decrypted with keys we hold
  *   Packets   the existing MeshCorePacketMonitorView, reachable at last
+ *   Notifications  the shared NotificationsTab, for signed-in users (#6307)
  *
  * There is no Telemetry tab: observer battery/uptime/noise floor land as
  * ordinary telemetry rows, so the cross-source Telemetry page already graphs
  * them and a fourth copy here would drift.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { UiIcon } from '../icons';
@@ -26,8 +27,14 @@ import { MeshCorePacketMonitorView } from './MeshCorePacketMonitorView';
 import styles from './MeshCoreIngestView.module.css';
 import { MeshCoreClockOffset } from './MeshCoreClockOffset';
 import { meshcoreClockOffsetMs } from '../../utils/meshcoreMessageTime';
+import { useAuth } from '../../contexts/AuthContext';
+import { useMeshCoreViewAccess } from './meshCoreViewAccess';
+import { usePushNotificationNavigation } from '../../hooks/usePushNotificationNavigation';
 
-type IngestTab = 'overview' | 'nodes' | 'channels' | 'packets';
+// Same shared tab the device page mounts; loaded on demand (it is large).
+const NotificationsTab = lazy(() => import('../NotificationsTab'));
+
+type IngestTab = 'overview' | 'nodes' | 'channels' | 'packets' | 'notifications';
 
 interface ObserverRow {
   publicKey: string;
@@ -105,6 +112,20 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
   const [messages, setMessages] = useState<IngestMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Notifications tab (#6307): the shared NotificationsTab, shown by the same
+  // rule as the device page (signed in).
+  const { authStatus } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin ?? false;
+  const showNotifications = useMeshCoreViewAccess(false).includes('notifications');
+  const { pendingNavigation, clearPendingNavigation } = usePushNotificationNavigation();
+  useEffect(() => {
+    if (!pendingNavigation) return;
+    // A click-through for another source is left alone.
+    if (pendingNavigation.sourceId && pendingNavigation.sourceId !== sourceId) return;
+    if (pendingNavigation.type === 'channel') setTab('channels');
+    clearPendingNavigation();
+  }, [pendingNavigation, sourceId, clearPendingNavigation]);
+
   const prefix = useMemo(
     // ApiService.get() does NOT prepend /api — baseUrl is the app base only.
     () => `/api/sources/${encodeURIComponent(sourceId)}/meshcore/ingest`,
@@ -175,6 +196,9 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
     { id: 'nodes', label: t('meshcore.ingest.tab_nodes', 'Nodes') },
     { id: 'channels', label: t('meshcore.ingest.tab_channels', 'Channels') },
     { id: 'packets', label: t('meshcore.ingest.tab_packets', 'Packets') },
+    ...(showNotifications
+      ? [{ id: 'notifications' as const, label: t('meshcore.ingest.tab_notifications', 'Notifications') }]
+      : []),
   ];
 
   return (
@@ -334,6 +358,14 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
 
       {tab === 'packets' && (
         <MeshCorePacketMonitorView baseUrl={baseUrl} sourceId={sourceId} onNodeClick={() => setTab('nodes')} />
+      )}
+
+      {tab === 'notifications' && showNotifications && (
+        <div className={styles.notificationsPane}>
+          <Suspense fallback={null}>
+            <NotificationsTab isAdmin={isAdmin} />
+          </Suspense>
+        </div>
       )}
     </div>
   );

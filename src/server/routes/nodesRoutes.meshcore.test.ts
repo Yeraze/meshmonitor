@@ -210,3 +210,44 @@ describe('GET /nodes — MeshCore hopsAway (#6220)', () => {
     expect(hops).toEqual({ Me: 0, Far: 3, Direct: 0, Unknown: undefined });
   });
 });
+
+describe('GET /nodes — MeshCore MQTT ingest nodes (#6307)', () => {
+  let harness: RouteTestHarness;
+  const KEY_ING = '18'.repeat(32);
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', nodesRouter) });
+    managers.length = 0;
+    managers.push({
+      sourceId: harness.sourceA,
+      sourceType: 'meshcore_mqtt',
+      getLocalNode: () => null,
+      getAllNodes: async () => [
+        { publicKey: KEY_ING, name: 'Region Repeater', advType: 2, lastHeard: Date.now() },
+      ],
+    });
+  });
+
+  afterEach(async () => {
+    managers.length = 0;
+    await harness.cleanup();
+  });
+
+  it('a scoped request lists ingest nodes with includeAllMeshcore and nodes:read', async () => {
+    await grantNodes(harness.limited.id, harness.sourceA, { read: true });
+    const agent = await harness.loginAs(harness.limited);
+    const rows = meshcoreRows((await agent.get(`/nodes?sourceId=${harness.sourceA}&includeAllMeshcore=true`)).body);
+    expect(rows.map((r) => r.longName)).toEqual(['Region Repeater']);
+  });
+
+  it('the unscoped aggregate leaves ingest nodes out, even for an admin', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    expect(meshcoreRows((await agent.get('/nodes?includeAllMeshcore=true')).body)).toEqual([]);
+  });
+
+  it('no grant gives nothing', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const rows = meshcoreRows((await agent.get(`/nodes?sourceId=${harness.sourceA}&includeAllMeshcore=true`)).body);
+    expect(rows).toEqual([]);
+  });
+});
