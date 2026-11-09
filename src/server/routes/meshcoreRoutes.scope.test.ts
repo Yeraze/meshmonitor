@@ -65,6 +65,7 @@ const { default: contactsRoutes } = await import('./meshcoreContactsRoutes.js');
 const { default: configRoutes } = await import('./meshcoreConfigRoutes.js');
 const { default: messagingRoutes } = await import('./meshcoreMessagingRoutes.js');
 const { default: adminRoutes } = await import('./meshcoreAdminRoutes.js');
+const { default: remoteSettingsRoutes } = await import('./meshcoreRemoteSettingsRoutes.js');
 const { default: automationRoutes } = await import('./meshcoreAutomationRoutes.js');
 const { default: packetRoutes } = await import('./meshcorePacketRoutes.js');
 const { default: ingestReadRoutes } = await import('./meshcoreIngestReadRoutes.js');
@@ -707,6 +708,11 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
   estimatedPositions: {
     'GET /estimated-positions': 'read',
   },
+  // #6256: remote structured settings over the remote-admin CLI (transmits; remote_admin:write).
+  remoteSettings: {
+    'POST /admin/settings/:publicKey/read': 'admin',
+    'PATCH /admin/settings/:publicKey': 'admin',
+  },
   // #5892: stored CLI history. Sends nothing; grants checked per row kind.
   cliHistory: {
     'GET /cli-history': 'handler-scoped',
@@ -736,6 +742,7 @@ describe('guard: every MeshCore route is classified', () => {
     config: configRoutes,
     messaging: messagingRoutes,
     admin: adminRoutes,
+    remoteSettings: remoteSettingsRoutes,
     automation: automationRoutes,
     packet: packetRoutes,
     ingest: ingestReadRoutes,
