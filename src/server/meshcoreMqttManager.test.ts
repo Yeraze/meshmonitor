@@ -25,6 +25,10 @@ class FakeClient {
     this.handlers.set(event, fn);
     return this;
   }
+  /** The broker-link notifier detaches with off(); the fake keeps one handler per event, so a no-op. */
+  off() {
+    return this;
+  }
   removeAllListeners() {
     this.handlers.clear();
     return this;

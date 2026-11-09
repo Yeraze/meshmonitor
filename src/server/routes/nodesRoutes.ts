@@ -34,7 +34,7 @@ import {
   getSourcePairTarget,
   listPermittedSourceIds,
 } from '../utils/sourceScopedAccess.js';
-import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshCoreMqttManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { loadNodeViewAccess, enhanceNodeForClient, checkNodeChannelAccess, resolveNodePositionScope, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
 import { applyMeshCorePositionOverrides, loadMeshCorePositionOverrides } from '../utils/meshcorePositionOverride.js';
 import { createSignFlipResolver, applySignFlipCorrection, rowSourceId } from '../services/signFlipCorrection.js';
@@ -162,8 +162,14 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     // render them alongside Meshtastic nodes. MeshCore stores lastSeen in ms;
     // dashboard age-cutoff expects seconds, so we down-convert here.
     const allMeshcoreManagers = sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager);
+    // #6307: a request scoped to ONE source also lists that source's MQTT ingest
+    // nodes, so the notification monitored-node picker is not empty for a region
+    // feed. The unscoped aggregate stays device-only: region nodes must not flood
+    // the dashboard map. The nodes:read / viewOnMap gates below are unchanged.
     const meshcoreManagers = nodesSourceId
-      ? allMeshcoreManagers.filter(m => m.sourceId === nodesSourceId)
+      ? sourceManagerRegistry.getAllManagers().filter(
+          m => m.sourceId === nodesSourceId && (isMeshCoreManager(m) || isMeshCoreMqttManager(m)),
+        ) as typeof allMeshcoreManagers
       : allMeshcoreManagers;
     // By default MeshCore nodes are only appended when they have a position
     // (the aggregate dashboard map use-case). Consumers that need the full node

@@ -183,6 +183,22 @@
   white-space: nowrap;
 }
 
+/* Pane for the shared NotificationsTab (ported from .meshcore-notifications-view
+   in MeshCorePage.css). min-height: 0 lets a column-flex child overflow-scroll. */
+.notificationsPane {
+  --notifications-pane-padding: 1.5rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--notifications-pane-padding);
+}
+
+/* NotificationsTab's SectionNav parks itself under the app header; this pane is
+   the scroller, so pull it up by the pane padding to sit flush. */
+.notificationsPane :global(.section-nav) {
+  top: calc(-1 * var(--notifications-pane-padding));
+}
+
 @media (max-width: 700px) {
   .summary {
     gap: 8px;
