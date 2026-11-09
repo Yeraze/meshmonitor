@@ -1,0 +1,52 @@
+.panel {
+  background: var(--color-surface);
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85em;
+  word-break: break-all;
+}
+
+.mono {
+  font-family: var(--font-mono, monospace);
+}
+
+.warn {
+  margin-bottom: 0.5rem;
+  color: var(--color-warning);
+}
+
+.warnText {
+  color: var(--color-warning);
+}
+
+.error {
+  margin-bottom: 0.5rem;
+  color: var(--color-error);
+}
+
+.errorGap {
+  margin-bottom: 0.5rem;
+  color: var(--color-error);
+}
+
+.errorText {
+  color: var(--color-error);
+}
+
+.smallBtn {
+  margin-top: 0.5rem;
+  font-size: 0.85em;
+}
+
+.keyInput {
+  width: 100%;
+  padding: 0.5rem;
+  font-family: var(--font-mono, monospace);
+  box-sizing: border-box;
+  margin-bottom: 0.5rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+}

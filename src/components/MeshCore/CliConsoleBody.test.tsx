@@ -23,6 +23,7 @@ describe('CliConsoleBody — DANGER_COMMAND_PATTERN', () => {
     ['set factory mode'],
     ['poweroff'],
     ['shutdown'],
+    [`set prv.key ${'ab'.repeat(64)}`],
   ])('flags danger command %s', (cmd) => {
     expect(DANGER_COMMAND_PATTERN.test(cmd)).toBe(true);
   });
@@ -35,6 +36,7 @@ describe('CliConsoleBody — DANGER_COMMAND_PATTERN', () => {
     ['set reboot.interval 30'],
     ['ver'],
     ['stats'],
+    ['get prv.key'],
   ])('does not flag non-danger command %s', (cmd) => {
     expect(DANGER_COMMAND_PATTERN.test(cmd)).toBe(false);
   });

@@ -55,7 +55,7 @@ Each phase's scope is the checklist in its issue.
   digest, export, DM) is follow-up in #6281.
 - [ ] **P8 #6257 Companion extras:** BLE PIN, factory reset, multi-ACKs,
   device-config backups, channel QR share.
-- [ ] **P9 #6255 Repeater settings + danger zone.**
+- [x] **P9 #6255 Repeater settings + danger zone.**
 - [ ] **P10 #6256 Remote structured config.**
 - [ ] **P11 #6253 Notifications.**
 
@@ -156,3 +156,17 @@ factory reset (cmd 51, fw ≥ 7, admin + typed name, expected identity change au
 via `meshcore://channel/add` with shared Export/Import modals and the config-capable device gate. Fixed: the raw
 other-params writer preserves the auto-add bits. Leak fix shipped separately (#6284). P8b (per-source config backups,
 migration 226) follows.
+
+### P9 #6255 (spec: `MESHCORE_PARITY_P9_SPEC.md`)
+Maintainer answers, 2026-11-08: Off (0) allowed for both advert intervals with a reachability warning (clamps otherwise
+60–240 min / 6–168 h); power-off and key restore admin + typed name on both protocols, restore auto-reboots with a pinned
+expected key; forwarding knobs use firmware ranges with inline warnings (af < 1, flood.max ≤ 2, repeat off); guest
+password never sent to the browser; `set prv.key` added to the danger guard; existing repeater secret debug-log leak fixed;
+Companion gets power-off too.
+Shipped (P9): shared repeater settings schema + CLI reply parser (`utils/meshcoreRepeaterSettings.ts`), LoRa airtime
+estimate (`utils/loraAirtime.ts`), transport-agnostic settings service (local serial now; P10 adds the remote transport),
+GET/PATCH repeater-settings (diff + readback), Repeater coords / reboot / clock sync / key export+restore, power-off for
+Repeater (fw 1.15+) and Companion (protocol 14+), admin + typed name for power-off and restore on both protocols, pinned
+expected identity change, `set prv.key` in the danger guard, extra CLI reply terminators, and the repeater secret
+debug-log leak fixed.
+

@@ -57,6 +57,7 @@ function makeActions(): MeshCoreActions {
         getDefaultPathHashSize: 1,
         getDefaultScope: '',
         fetchSavedRegions: [],
+        getRepeaterSettings: null,
       };
       const record = target as unknown as Record<string, unknown>;
       if (!(key in record)) record[key] = resolved(key in known ? known[key] : true);
@@ -164,11 +165,13 @@ describe('MeshCore Device Configuration section nav', () => {
     expect(chipIds()).toEqual([
       'meshcore-config-name',
       'meshcore-config-location',
+      'meshcore-config-repeater-clock',
       'meshcore-config-radio',
       'meshcore-config-tx-power',
       'meshcore-config-telemetry',
       'meshcore-device-actions',
       'meshcore-local-console',
+      'meshcore-device-management',
     ]);
     expectChipsMatchPage(container);
   });
