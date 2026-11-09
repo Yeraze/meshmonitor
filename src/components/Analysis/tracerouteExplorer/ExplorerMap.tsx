@@ -23,7 +23,9 @@ import {
   formatSnr,
   nodeLabel,
   nodeLongLabel,
+  mtKey,
   runNodes,
+  runToKeySegments,
   type ExplorerNodeWire,
   type ExplorerRun,
 } from './explorerModel';
@@ -107,14 +109,14 @@ const BackgroundClick: React.FC<{ onClick: () => void }> = ({ onClick }) => {
 
 export interface ExplorerMapProps {
   runs: ExplorerRun[];
-  nodes: Map<number, ExplorerNodeWire>;
+  nodes: Map<string, ExplorerNodeWire>;
   focusRun: ExplorerRun | null;
   /** The pinned run (not the hover preview); the map zooms to it. */
   selectedRun: ExplorerRun | null;
-  nodeFilter: number | null;
+  nodeFilter: string | null;
   lineMode: LineMode;
   fitKey: string;
-  onNodeClick: (nodeNum: number) => void;
+  onNodeClick: (nodeKey: string) => void;
   onBackgroundClick: () => void;
 }
 
@@ -139,7 +141,7 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
   const markerStroke = useCssColor('--color-text-subtle', '#a6adc8');
 
   const pos = useCallback(
-    (n: number): [number, number] | null => {
+    (n: string): [number, number] | null => {
       const node = nodes.get(n);
       return node && node.latitude != null && node.longitude != null ? [node.latitude, node.longitude] : null;
     },
@@ -149,7 +151,7 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
   const links = useMemo(() => aggregateLinks(runs.filter(r => r.answered)), [runs]);
 
   const shownNodes = useMemo(() => {
-    const set = new Set<number>();
+    const set = new Set<string>();
     for (const run of runs) for (const n of runNodes(run)) set.add(n);
     if (focusRun) for (const n of runNodes(focusRun)) set.add(n);
     return [...set].filter(n => pos(n) !== null);
@@ -162,7 +164,10 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
 
   const focusSegments = useMemo<TracerouteRenderSegment[]>(() => {
     if (!focusRun?.answered) return [];
-    return decomposeTraceroute(focusRun.wire, { resolvePosition: pos });
+    // MeshCore legs are key sequences with no node numbers; Meshtastic keeps
+    // the shared decomposition (its hop numbers map to `mt:` keys).
+    if (focusRun.protocol === 'meshcore') return runToKeySegments(focusRun, pos);
+    return decomposeTraceroute(focusRun.wire, { resolvePosition: (n: number) => pos(mtKey(n)) });
   }, [focusRun, pos]);
 
   const selectedPoints = useMemo(
@@ -229,8 +234,8 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
             renderPopup={seg => (
               <Tooltip sticky>
                 {t('analysis.traceroute_explorer.segment_tooltip', '{{from}} to {{to}}: {{snr}} dB', {
-                  from: nodeLabel(nodes, seg.fromNodeNum ?? 0),
-                  to: nodeLabel(nodes, seg.toNodeNum ?? 0),
+                  from: nodeLabel(nodes, seg.fromKey ?? mtKey(seg.fromNodeNum ?? 0)),
+                  to: nodeLabel(nodes, seg.toKey ?? mtKey(seg.toNodeNum ?? 0)),
                   snr: formatSnr(seg.avgSnr),
                 })}
               </Tooltip>
@@ -238,16 +243,16 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
           />
         )}
 
-        {focusRun && !focusRun.answered && pos(focusRun.fromNodeNum) && pos(focusRun.toNodeNum) && (
+        {focusRun && !focusRun.answered && pos(focusRun.fromKey) && pos(focusRun.toKey) && (
           <Polyline
-            positions={[pos(focusRun.fromNodeNum)!, pos(focusRun.toNodeNum)!]}
+            positions={[pos(focusRun.fromKey)!, pos(focusRun.toKey)!]}
             pathOptions={{ color: errorColor, weight: 2, dashArray: '3 7' }}
           />
         )}
 
         {shownNodes.map(n => {
           const p = pos(n)!;
-          const isEndpoint = focusRun ? n === focusRun.fromNodeNum || n === focusRun.toNodeNum : n === nodeFilter;
+          const isEndpoint = focusRun ? n === focusRun.fromKey || n === focusRun.toKey : n === nodeFilter;
           const dimmed = !!focusRun && !focusNodes.has(n);
           return (
             <CircleMarker
