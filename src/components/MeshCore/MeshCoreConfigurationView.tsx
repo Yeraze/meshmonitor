@@ -23,6 +23,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import SectionNav from '../SectionNav';
+import BackupManagementSection from '../configuration/BackupManagementSection';
 import { meshcoreConfigurationNavItems } from '../search/configSections';
 import navStyles from './MeshCoreSectionNav.module.css';
 import sectionNavLayout from '../SectionNav.module.css';
@@ -287,6 +288,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const showConsole = !!sourceId && canWriteConfig;
   const showObserver = !!sourceId && notCompanionOnlyDevice;
   const showDangerZone = connected && canWriteConfig && (notCompanionOnlyDevice || isRepeater);
+  // Device backups (#6285): Companion only. Stored files stay reachable while
+  // the radio is offline, so this does not wait for a connection.
+  const showBackups = !!sourceId && canReadConfig && !isRepeater && notCompanionOnlyDevice;
   const showRepeaterClock = repeaterActive;
   // Its chips need a section to jump to, so they wait for the read.
   const showRepeaterSettings = repeaterActive && repeaterSnapshot !== null;
@@ -299,6 +303,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     showConsole,
     showObserver: showObserver && canReadObserver,
     showDangerZone,
+    showBackups,
     showRepeaterSettings,
     showRepeaterClock,
   });
@@ -901,6 +906,19 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           sourceId={sourceId}
           canWriteNodes={canWriteNodes}
         />
+      )}
+
+      {/* Device backups (#6285): list, download, schedule always; create and
+          restore need a live radio. */}
+      {showBackups && (
+        <div id="meshcore-config-backup">
+          <BackupManagementSection
+            protocol="meshcore"
+            sourceId={sourceId}
+            connected={connected}
+            canWrite={canWriteConfig}
+          />
+        </div>
       )}
 
       {/* Device Management — danger zone operations (Companion and Repeater). */}

@@ -82,3 +82,9 @@
   border: none;
   font-weight: bold;
 }
+
+.confirm:disabled,
+.danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

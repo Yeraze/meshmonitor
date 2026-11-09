@@ -26,6 +26,7 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ hasPermission: (resource: string, action: string) => grants(resource, action) }),
 }));
 vi.mock('../ToastContainer', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
+vi.mock('../../hooks/useSaveBar', () => ({ useSaveBar: vi.fn() }));
 vi.mock('../../hooks/useCsrfFetch', () => ({
   useCsrfFetch: () => (globalThis as { fetch: typeof fetch }).fetch,
 }));
