@@ -20,7 +20,8 @@ vi.mock('../utils/resolveSourceManager.js', () => ({
 const mockDeviceBackupService = vi.hoisted(() => ({
   generateBackup: vi.fn(),
 }));
-vi.mock('../services/deviceBackupService.js', () => ({
+vi.mock('../services/deviceBackupService.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/deviceBackupService.js')>()),
   deviceBackupService: mockDeviceBackupService,
 }));
 
@@ -29,10 +30,12 @@ const mockBackupFileService = vi.hoisted(() => ({
 }));
 vi.mock('../services/backupFileService.js', () => ({
   backupFileService: mockBackupFileService,
+  BackupNotFoundError: class BackupNotFoundError extends Error {},
 }));
 
 const mockDb = vi.hoisted(() => ({
   purgeAllNodesAsync: vi.fn(),
+  auditLogAsync: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../../services/database.js', () => ({
   default: mockDb,
@@ -82,7 +85,7 @@ describe('GET /device/backup', () => {
     const res = await request(app).get('/device/backup');
     expect(res.status).toBe(200);
     expect(res.text).toBe('yaml-content');
-    expect(res.headers['content-disposition']).toContain('abcd1234');
+    expect(res.headers['content-disposition']).toMatch(/mt-abcd1234-/);
     expect(mockBackupFileService.saveBackup).not.toHaveBeenCalled();
   });
 
@@ -92,12 +95,15 @@ describe('GET /device/backup', () => {
     mockBackupFileService.saveBackup.mockResolvedValue('saved.yaml');
     const res = await request(app).get('/device/backup?save=true');
     expect(res.status).toBe(200);
-    expect(mockBackupFileService.saveBackup).toHaveBeenCalledWith('yaml-content', 'manual', '!abcd1234');
+    expect(mockBackupFileService.saveBackup).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'yaml-content', type: 'manual', sourceId: 'src-1', protocol: 'meshtastic', nodeId: '!abcd1234',
+    }));
     expect(res.headers['content-disposition']).toContain('saved.yaml');
   });
 
   it('returns 500 on backup failure', async () => {
     mockDeviceBackupService.generateBackup.mockRejectedValue(new Error('fail'));
+    mockManager.getLocalNodeInfo.mockReturnValue({ nodeId: '!abcd1234' });
     const res = await request(app).get('/device/backup');
     expect(res.status).toBe(500);
     expect(res.body.error).toBe('Failed to generate device backup');

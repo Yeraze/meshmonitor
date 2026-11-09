@@ -3023,7 +3023,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
             device's configuration and restore to it, so the list and schedule
             stay on Device Configuration (#5683 follow-up decision). */}
         <div id="config-backup">
-          <BackupManagementSection />
+          <BackupManagementSection protocol="meshtastic" canWrite={canWrite} />
         </div>
       </div>{/* End settings-content */}
       </>

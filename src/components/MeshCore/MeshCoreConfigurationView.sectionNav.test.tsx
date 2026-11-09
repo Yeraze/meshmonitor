@@ -46,6 +46,7 @@ const ALL_IDS = [
   'meshcore-device-actions',
   'meshcore-local-console',
   'meshcore-observer',
+  'meshcore-config-backup',
   'meshcore-device-management',
 ];
 

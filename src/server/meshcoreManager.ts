@@ -1449,6 +1449,56 @@ export type AutoAddConfigPatch = {
   maxHops?: number;
 };
 
+/**
+ * Everything a Companion backup holds, read from the radio over local serial
+ * (P16 #6285). NEVER carries the private key or contacts.
+ */
+export interface MeshCoreBackupSnapshot {
+  publicKey: string;
+  name: string;
+  model?: string;
+  firmwareVer?: number;
+  firmwareBuild?: string;
+  maxChannels?: number;
+  radio: { freq: number; bw: number; sf: number; cr: number } | null;
+  txPower?: number;
+  maxTxPower?: number;
+  latitude?: number;
+  longitude?: number;
+  /** Raw SetOtherParams fields. Telemetry modes are the 2-bit values (0 never, 1 device, 2 always). */
+  otherParams: {
+    manualAddContactsRaw?: number;
+    telemetryModeBase?: number;
+    telemetryModeLoc?: number;
+    telemetryModeEnv?: number;
+    advLocPolicy?: number;
+    multiAcks?: number;
+  };
+  /** null when the firmware does not know commands 58/59. */
+  autoAdd: AutoAddConfig | null;
+  /** null when DeviceInfo is older than v3 (no PIN reported). */
+  blePin: number | null;
+  /** Non-empty slots only. */
+  channels: Array<{ idx: number; name: string; secretHex: string; scope: string | null }>;
+  /** MeshMonitor per-source settings (fixed whitelist). */
+  settings: { defaultScope: string; defaultPathHashSize: 1 | 2 | 3; respondToDiscovery: boolean };
+}
+
+/** One channel slot to write on restore. */
+export interface MeshCoreRestoreChannelSlot {
+  idx: number;
+  name: string;
+  secretHex: string;
+  /** undefined leaves the stored scope alone; null/'' clears it. */
+  scope?: string | null;
+}
+
+export interface MeshCoreRestoreChannelsResult {
+  written: number[];
+  skipped: Array<{ idx: number; reason: string }>;
+  failed: Array<{ idx: number; error: string }>;
+}
+
 /** Result of `MeshCoreManager.removeNonFavoriteContacts` (#5777). */
 export type RemoveNonFavoritesResult =
   | { status: 'done'; removed: number; kept: number; failed: number; total: number }
@@ -11587,6 +11637,172 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     if (this.localNode) this.localNode.multiAcks = readback;
     return readback;
+  }
+
+  // ============ Device-config backup (P16 #6285) ============
+
+  /**
+   * Read everything a Companion backup holds. Local serial reads only; never
+   * touches the private key or the contact table, and logs no values.
+   */
+  async readBackupSnapshot(): Promise<MeshCoreBackupSnapshot> {
+    await this.requireCompanionFirmware('Backing up the radio', null);
+    await this.refreshLocalNode();
+    const info = await this.deviceQuery();
+    if (info) this.applyDeviceInfo(info);
+    const node = this.localNode;
+    if (!node) {
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', 'The radio did not report its settings; try again');
+    }
+    const channels = (await this.listChannels()).filter((ch) => isConfiguredMeshCoreChannel(ch));
+    const dbChannels = await databaseService.channels.getAllChannels(this.sourceId);
+    const scopeByIdx = new Map<number, string | null>(
+      dbChannels.map((c: { id: number; scope?: string | null }) => [Number(c.id), c.scope ?? null]),
+    );
+    const autoRes = await this.getAutoAddConfig();
+    const tm = (m?: TelemetryMode): number | undefined =>
+      m === 'never' ? 0 : m === 'device' ? 1 : m === 'always' ? 2 : undefined;
+    const hasRadio = [node.radioFreq, node.radioBw, node.radioSf, node.radioCr].every((v) => typeof v === 'number');
+    return {
+      publicKey: node.publicKey,
+      name: node.name,
+      model: node.model,
+      firmwareVer: node.firmwareVer,
+      firmwareBuild: node.firmwareBuild,
+      maxChannels: node.maxChannels,
+      radio: hasRadio
+        ? { freq: node.radioFreq!, bw: node.radioBw!, sf: node.radioSf!, cr: node.radioCr! }
+        : null,
+      txPower: node.txPower,
+      maxTxPower: node.maxTxPower,
+      latitude: node.latitude,
+      longitude: node.longitude,
+      otherParams: {
+        manualAddContactsRaw: node.manualAddContacts,
+        telemetryModeBase: tm(node.telemetryModeBase),
+        telemetryModeLoc: tm(node.telemetryModeLoc),
+        telemetryModeEnv: tm(node.telemetryModeEnv),
+        advLocPolicy: node.advLocPolicy,
+        multiAcks: node.multiAcks,
+      },
+      autoAdd: autoRes.ok && autoRes.config.supported ? autoRes.config : null,
+      blePin: typeof info?.blePin === 'number' ? info.blePin : null,
+      channels: channels.map((ch) => ({
+        idx: ch.channelIdx,
+        name: ch.name,
+        secretHex: ch.secretHex,
+        scope: scopeByIdx.get(ch.channelIdx) ?? null,
+      })),
+      settings: {
+        defaultScope: await this.getDefaultScope(),
+        defaultPathHashSize: await this.getDefaultPathHashSize(),
+        respondToDiscovery: await this.getRespondToDiscovery(),
+      },
+    };
+  }
+
+  /**
+   * Write the raw SetOtherParams frame (restore only): `manualAddContactsRaw`
+   * goes out verbatim, high bits included. The 5th byte (multi_acks) is sent
+   * only when `multiAcks` is given (0 or 1; firmware code >= 7), and read back.
+   * Local serial write, no RF.
+   */
+  async setOtherParamsRaw(p: {
+    manualAddContactsRaw: number;
+    telemetryModeBase: number;
+    telemetryModeLoc: number;
+    telemetryModeEnv: number;
+    advLocPolicy: number;
+    multiAcks?: number;
+  }): Promise<{ multiAcks: number | null }> {
+    await this.requireCompanionFirmware(
+      'Restoring other parameters',
+      p.multiAcks !== undefined ? MeshCoreManager.COMPANION_CMD_FIRMWARE_MIN : null,
+    );
+    const response = await this.sendBridgeCommand('set_other_params_raw', p);
+    if (!response.success) {
+      throw new MeshCoreDeviceCommandError('COMMAND_FAILED', response.error || 'The radio did not accept the settings');
+    }
+    const readback = typeof response.data?.multi_acks === 'number' ? response.data.multi_acks : null;
+    if (this.localNode) {
+      this.localNode.manualAddContacts = p.manualAddContactsRaw & 0xff;
+      this.localNode.advLocPolicy = p.advLocPolicy;
+      if (readback !== null) this.localNode.multiAcks = readback;
+    }
+    return { multiAcks: readback };
+  }
+
+  /**
+   * Restore channel slots from a backup. Holds the reorder lock (so sends and
+   * other channel writes wait), writes each slot with a verified write, then
+   * runs ONE mirror sync and persists scopes. Slot 0 (reserved) and slots at or
+   * beyond the radio's capacity are skipped and reported; slots not in
+   * `slots` are never touched. Local serial writes, no RF.
+   */
+  async restoreChannels(slots: MeshCoreRestoreChannelSlot[]): Promise<MeshCoreRestoreChannelsResult> {
+    await this.requireCompanionFirmware('Restoring channels', null);
+    this.assertNoChannelReorder('restoreChannels');
+    let max = this.localNode?.maxChannels;
+    if (max === undefined) {
+      const info = await this.deviceQuery();
+      if (info) this.applyDeviceInfo(info);
+      max = this.localNode?.maxChannels;
+    }
+
+    const result: MeshCoreRestoreChannelsResult = { written: [], skipped: [], failed: [] };
+    let resolveDone!: (r: ChannelReorderResult) => void;
+    const done = new Promise<ChannelReorderResult>((resolve) => { resolveDone = resolve; });
+    this.channelReorder = { original: [], believed: [], done };
+    try {
+      for (const slot of [...slots].sort((a, b) => a.idx - b.idx)) {
+        if (!Number.isInteger(slot.idx) || slot.idx < 0) {
+          result.skipped.push({ idx: slot.idx, reason: 'invalid slot number' });
+        } else if (slot.idx === 0) {
+          result.skipped.push({ idx: 0, reason: 'slot 0 is reserved' });
+        } else if (max !== undefined && slot.idx >= max) {
+          result.skipped.push({ idx: slot.idx, reason: `the radio has ${max} slots` });
+        } else if (!/^[0-9a-f]{32}$/i.test(slot.secretHex)) {
+          result.failed.push({ idx: slot.idx, error: 'the channel key is not 16 bytes of hex' });
+        } else {
+          let lastError = '';
+          let ok = false;
+          for (let attempt = 0; attempt <= MeshCoreManager.CHANNEL_WRITE_RETRIES && !ok; attempt++) {
+            let res: BridgeResponse;
+            try {
+              res = await this.sendBridgeCommand(
+                'set_channel_verified',
+                { idx: slot.idx, name: slot.name, secret_hex: slot.secretHex.toLowerCase(), timeout_ms: MeshCoreManager.CHANNEL_WRITE_TIMEOUT_MS },
+                MeshCoreManager.CHANNEL_WRITE_TIMEOUT_MS + 5_000,
+              );
+            } catch (err) {
+              res = { id: '', success: false, error: (err as Error).message };
+            }
+            const data = res.data as { verified?: boolean } | undefined;
+            if (res.success && data?.verified) ok = true;
+            else lastError = res.success ? 'the slot did not read back as written' : res.error || 'no response';
+          }
+          if (ok) result.written.push(slot.idx);
+          else result.failed.push({ idx: slot.idx, error: lastError });
+        }
+      }
+    } finally {
+      resolveDone({ status: 'unchanged' });
+      this.channelReorder = null;
+    }
+
+    if (result.written.length > 0) {
+      await this.syncChannelsFromDevice().catch((err) => {
+        logger.warn(`[MeshCore:${this.sourceId}] post-restore channel sync failed: ${(err as Error).message}`);
+      });
+      for (const slot of slots) {
+        if (slot.scope !== undefined && result.written.includes(slot.idx)) {
+          await databaseService.channels.updateChannelScope(slot.idx, (slot.scope || '').trim() || null, this.sourceId);
+        }
+      }
+      this.activeFloodScope = undefined;
+      void this.refreshKnownScopes();
+    }
+    return result;
   }
 
   /**

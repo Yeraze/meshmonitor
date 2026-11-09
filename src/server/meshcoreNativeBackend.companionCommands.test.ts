@@ -180,5 +180,60 @@ describe('MeshCoreNativeBackend Companion commands (P8a #6257)', () => {
       await b.sendCommand('set_auto_add_contacts', { enabled: true });
       expect(ref.current!.frames[0]).toHaveLength(4);
     });
+
+    describe('set_other_params_raw (P16 #6285 restore)', () => {
+      it('is serial-only (allowed in receive-only)', () => {
+        expect(SERIAL_ONLY_BRIDGE_COMMANDS.has('set_other_params_raw')).toBe(true);
+        expect(isRfBridgeCommand('set_other_params_raw')).toBe(false);
+      });
+      it('writes byte 1 verbatim (high bits kept) as a 4-byte frame without multi_acks', async () => {
+        const b = await make();
+        const r = await b.sendCommand('set_other_params_raw', {
+          manualAddContactsRaw: 0b0001_1110, telemetryModeBase: 2, telemetryModeLoc: 1, telemetryModeEnv: 0, advLocPolicy: 3,
+        });
+        expect(r).toMatchObject({ success: true, data: { multi_acks: null } });
+        expect(ref.current!.frames).toEqual([[38, 0b0001_1110, 2 | (1 << 2), 3]]);
+      });
+      it('ignores the device\'s current manual byte (unlike set_other_params)', async () => {
+        const b = await make();
+        ref.current!.selfInfo.manualAddContacts = 0b1111_0000;
+        await b.sendCommand('set_other_params_raw', {
+          manualAddContactsRaw: 0b0000_0001, telemetryModeBase: 0, telemetryModeLoc: 0, telemetryModeEnv: 0, advLocPolicy: 0,
+        });
+        expect(ref.current!.frames[0]).toEqual([38, 0b0000_0001, 0, 0]);
+      });
+      it('adds the 5th byte only when multiAcks is given, and reads it back', async () => {
+        const b = await make();
+        const r = await b.sendCommand('set_other_params_raw', {
+          manualAddContactsRaw: 6, telemetryModeBase: 1, telemetryModeLoc: 2, telemetryModeEnv: 0, advLocPolicy: 1, multiAcks: 1,
+        });
+        expect(ref.current!.frames).toEqual([[38, 6, 9, 1, 1]]);
+        expect(r).toMatchObject({ success: true, data: { multi_acks: 1 } });
+      });
+      it('reports the readback when the firmware ignores byte 5', async () => {
+        const b = await make();
+        ref.current!.keepsMultiAcks = false;
+        const r = await b.sendCommand('set_other_params_raw', {
+          manualAddContactsRaw: 6, telemetryModeBase: 1, telemetryModeLoc: 2, telemetryModeEnv: 0, advLocPolicy: 1, multiAcks: 1,
+        });
+        expect((r.data as { multi_acks: number }).multi_acks).toBe(0);
+      });
+      it.each([2, 255, -1, 1.5])('rejects multiAcks %s without sending', async (multiAcks) => {
+        const b = await make();
+        const r = await b.sendCommand('set_other_params_raw', {
+          manualAddContactsRaw: 6, telemetryModeBase: 0, telemetryModeLoc: 0, telemetryModeEnv: 0, advLocPolicy: 0, multiAcks,
+        });
+        expect(r.success).toBe(false);
+        expect(ref.current!.frames).toEqual([]);
+      });
+      it.each([256, -1, 1.5])('rejects manual byte %s without sending', async (manualAddContactsRaw) => {
+        const b = await make();
+        const r = await b.sendCommand('set_other_params_raw', {
+          manualAddContactsRaw, telemetryModeBase: 0, telemetryModeLoc: 0, telemetryModeEnv: 0, advLocPolicy: 0,
+        });
+        expect(r.success).toBe(false);
+        expect(ref.current!.frames).toEqual([]);
+      });
+    });
   });
 });

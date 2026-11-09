@@ -1534,39 +1534,43 @@ The backup export includes your complete device configuration:
 - **Position**: GPS settings, broadcast intervals, smart position, fixed position coordinates
 - **Power**: Battery management, sleep settings, shutdown behavior
 - **Network**: WiFi credentials, Bluetooth settings
-- **Security**: Device keys (encrypted)
+- **Security**: Admin and public keys. The node's **private key is not written** to new backups (a restore never used it). Older backup files may still contain it; delete them if that matters.
 - **MQTT**: Broker settings, encryption, topics, credentials
 - **Module Configuration**: All enabled modules (telemetry, neighbor info, canned messages, detection sensor, etc.)
 - **Channel Configuration**: All channels with encryption keys (encoded in channel URL)
 
 ### Backup Features
 
+#### Per-source backups
+
+Backups belong to one source. Each Meshtastic TCP source and each MeshCore Companion source has its own list, its own schedule and its own retention. A file made on one source never shows up on, downloads from, or restores onto another source: asking for another source's filename returns "not found".
+
+- **Download and Create Backup Now** need `configuration:write` on the source, because a file holds secrets (channel keys, the Bluetooth PIN, MQTT credentials). Listing files and reading the schedule need `configuration:read`.
+- **Restore** needs `configuration:write` on the source you restore to, and a connected radio.
+- **Source deletion** keeps the files. They become admin-only "orphans" you can still download or delete.
+- Files written before per-source backups ("legacy" files) go to the only Meshtastic source when there is exactly one, and are admin-only otherwise. An admin can restore a legacy file of the same device type onto a connected source after a second confirmation.
+- Files are saved with mode `0600` in a `0700` directory, and are not part of system backups. On first start after the upgrade, MeshMonitor tightens existing files to `0600`.
+
 #### Automated Backups
 
-MeshMonitor can automatically create backups on a daily schedule:
+MeshMonitor can automatically create backups on a daily schedule, per source:
 
-1. Open **Device Configuration** → **Backup** (the **Device Backup Management** section)
+1. Open **Device Configuration** → **Backup** (the **Device Backup Management** section) for the source
 2. Check **Enable Automatic Backups**
 3. Set the **Daily Backup Time** (server time zone)
 4. Set **Maximum Backups to Keep** (1-365)
 5. Click **Save Backup Settings**
 
-Automated backups are stored in the `/data/backups/` directory with filenames in the format:
+Saving never starts a backup. If you pick a time that has already passed today, the first run is tomorrow. A restart never triggers a catch-up backup: a missed slot is skipped. A source that is offline at its slot is skipped, and the section shows why on its "last automatic backup" line.
+
+The first time you upgrade, the old single schedule moves to your primary Meshtastic source. Every other source starts with automatic backups off (default 02:00, keep 7).
+
+Backups are stored in the `/data/backups/` directory with filenames in the format:
 ```
-{nodeId}-{timestamp}.yaml
+{mt|mc}-{nodeId}-{YYYY-MM-DD}-{HH-MM-SS}.yaml
 ```
 
-Example: `43588558-2025-10-28-12-34-18.yaml`
-
-#### Manual Backups
-
-To create an on-demand backup:
-
-1. Open **Device Configuration** → **Backup** (the **Device Backup Management** section)
-2. Click **Create Backup Now**
-3. MeshMonitor saves the backup on the server and downloads a copy to your computer
-
-**Show Saved Backups** lists the stored files, each with Download, Restore and Delete.
+`mt` is a Meshtastic file and `mc` a MeshCore Companion file. The time is UTC. Example: `mt-43588558-2025-10-28-12-34-18.yaml`. Files made by older versions keep their old names.
 
 ### Backup File Format
 

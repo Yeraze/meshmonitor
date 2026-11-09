@@ -21,6 +21,8 @@ export interface ConfirmDialogProps {
   cancelLabel: string;
   /** Styles the confirm button as destructive. Default true. */
   danger?: boolean;
+  /** Disables the confirm button (e.g. until a second confirmation is ticked). */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -32,6 +34,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   confirmLabel,
   cancelLabel,
   danger = true,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }) => {
@@ -61,6 +64,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button
             type="button"
             className={danger ? styles.danger : styles.confirm}
+            disabled={confirmDisabled}
             onClick={onConfirm}
           >
             {confirmLabel}

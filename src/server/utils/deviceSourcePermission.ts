@@ -40,14 +40,17 @@ import { fail } from './apiResponse.js';
 import { resolveSourceManager } from './resolveSourceManager.js';
 import { refuseNonMeshtasticSource } from './requireMeshtasticDeviceSource.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
 import databaseService from '../../services/database.js';
 
 /** Which device protocols a gate lets through (#6257 S3).
  *  `meshtastic` (default): Meshtastic TCP only, the behaviour of every older route.
- *  `config-capable`: Meshtastic TCP, or a connected MeshCore Companion. */
-export type DeviceSourceAccept = 'meshtastic' | 'config-capable';
+ *  `config-capable`: Meshtastic TCP, or a connected MeshCore Companion.
+ *  `stored`: any `meshtastic_tcp` or `meshcore` source in ANY connection state,
+ *  with no manager bound. For routes that only touch stored files (device
+ *  config backups: list, download, delete, summary, schedule settings). */
+export type DeviceSourceAccept = 'meshtastic' | 'config-capable' | 'stored';
 
 export interface DeviceSourceTarget {
   /** The source the permission was checked against and the handler acts on. */
@@ -69,6 +72,14 @@ export interface MeshCoreDeviceSourceTarget {
 
 export type ConfigCapableTarget = DeviceSourceTarget | MeshCoreDeviceSourceTarget;
 
+/** Target of a `stored` gate: a source row, no manager (#6285). */
+export interface StoredBackupTarget {
+  sourceId: string;
+  protocol: 'meshtastic' | 'meshcore';
+  /** False when the request named no source and the primary was used. */
+  named: boolean;
+}
+
 /** What a `requireDeviceSourcePermission()` middleware enforces. Read by the
  *  route guard tests. */
 export interface DeviceSourceGate {
@@ -88,7 +99,7 @@ export function getDeviceSourceGate(handler: unknown): DeviceSourceGate | undefi
   return (handler as { [DEVICE_SOURCE_GATE]?: DeviceSourceGate } | null | undefined)?.[DEVICE_SOURCE_GATE];
 }
 
-type TargetCarrier = { [TARGET]?: ConfigCapableTarget };
+type TargetCarrier = { [TARGET]?: ConfigCapableTarget | StoredBackupTarget };
 
 const isBlank = (value: unknown): boolean => value === undefined || value === null || value === '';
 
@@ -115,7 +126,29 @@ export function getConfigCapableTarget(req: Request): ConfigCapableTarget {
   if (!target) {
     throw new Error('getDeviceSourceTarget: route is not behind requireDeviceSourcePermission()');
   }
+  if (!('manager' in target)) {
+    throw new Error('getConfigCapableTarget: route is behind a `stored` gate; use getStoredBackupTarget()');
+  }
   return target;
+}
+
+/** The target of a route behind an `accept: 'stored'` gate. */
+export function getStoredBackupTarget(req: Request): StoredBackupTarget {
+  const target = (req as unknown as TargetCarrier)[TARGET];
+  if (!target) {
+    throw new Error('getStoredBackupTarget: route is not behind requireDeviceSourcePermission()');
+  }
+  if ('manager' in target) {
+    throw new Error('getStoredBackupTarget: route is not behind a `stored` gate');
+  }
+  return target;
+}
+
+/** The target's source id, whatever kind of gate resolved it. */
+function targetSourceId(req: Request): string {
+  const target = (req as unknown as TargetCarrier)[TARGET];
+  if (!target) throw new Error('requireDeviceSourcePermission: no target resolved');
+  return target.sourceId;
 }
 
 /**
@@ -152,6 +185,19 @@ export function requireDeviceSourcePermission(
       return;
     }
 
+    if (accept === 'stored') {
+      // No manager: the handler works on stored files. Omitted -> the primary
+      // Meshtastic source (the legacy single-source behaviour).
+      const sourceId = named ?? getPrimaryMeshtasticManager(sourceManagerRegistry)?.sourceId;
+      if (!sourceId) {
+        fail(res, 404, 'SOURCE_NOT_FOUND', 'No source was named and no primary Meshtastic source is configured.');
+        return;
+      }
+      (req as unknown as TargetCarrier)[TARGET] = { sourceId, protocol: 'meshtastic', named: named !== undefined };
+      next();
+      return;
+    }
+
     // A config-capable gate lets a named MeshCore source keep its OWN manager
     // (resolveSourceManager would hand back the primary Meshtastic radio).
     if (accept === 'config-capable' && named !== undefined) {
@@ -174,11 +220,30 @@ export function requireDeviceSourcePermission(
   };
 
   const checkPermission = requirePermission(resource, action, {
-    sourceIdFrom: (req) => getConfigCapableTarget(req).sourceId,
+    sourceIdFrom: (req) => targetSourceId(req),
     requireSourceId: true,
   });
 
+  const bindStored: RequestHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const target = (req as unknown as TargetCarrier)[TARGET] as StoredBackupTarget;
+    const row = await databaseService.sources.getSource(target.sourceId).catch(() => null);
+    if (!row) {
+      fail(res, 404, 'SOURCE_NOT_FOUND', `Source "${target.sourceId}" was not found.`);
+      return;
+    }
+    if (row.type !== 'meshtastic_tcp' && row.type !== 'meshcore') {
+      fail(res, 400, 'SOURCE_NOT_BACKUP_CAPABLE', `Source "${target.sourceId}" has no device configuration to back up.`);
+      return;
+    }
+    target.protocol = row.type === 'meshcore' ? 'meshcore' : 'meshtastic';
+    next();
+  };
+
   const bindDevice: RequestHandler = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (accept === 'stored') {
+      await bindStored(req, res, next);
+      return;
+    }
     const target = getConfigCapableTarget(req);
     if (target.protocol === 'meshcore') {
       // Must be a live Companion: a Repeater (or a disconnected source) has
