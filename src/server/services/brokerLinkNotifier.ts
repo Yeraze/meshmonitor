@@ -28,8 +28,8 @@ export const BROKER_LINK_GRACE_MS = 120_000;
 
 /** The slice of `MqttBrokerClient` (an EventEmitter) this needs. */
 export interface BrokerLinkEmitter {
-  on(event: string, listener: (...args: any[]) => void): unknown;
-  off(event: string, listener: (...args: any[]) => void): unknown;
+  on(event: string, listener: (...args: unknown[]) => void): unknown;
+  off(event: string, listener: (...args: unknown[]) => void): unknown;
 }
 
 export interface BrokerLinkNotifierOptions {
