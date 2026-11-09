@@ -14,8 +14,8 @@ import {
 } from './meshIssueRuleIds';
 
 describe('MESH_ISSUE_RULE_IDS', () => {
-  it('has exactly 18 entries, matching MESH_ISSUE_TYPE_IDS', () => {
-    expect(MESH_ISSUE_RULE_IDS).toHaveLength(18);
+  it('has exactly 22 entries, matching MESH_ISSUE_TYPE_IDS', () => {
+    expect(MESH_ISSUE_RULE_IDS).toHaveLength(22);
     expect(MESH_ISSUE_RULE_IDS).toEqual(Object.values(MESH_ISSUE_TYPE_IDS));
   });
 
@@ -43,14 +43,17 @@ describe('tierOfRule', () => {
 });
 
 describe('ruleIdsByTier', () => {
-  it('partitions every rule id into exactly one of A/B/C, covering all 18', () => {
+  it('partitions every rule id into exactly one of A/B/C, covering all 22', () => {
     const groups = ruleIdsByTier();
     const total = groups.A.length + groups.B.length + groups.C.length;
-    expect(total).toBe(18);
-    expect(groups.A).toHaveLength(7);
+    expect(total).toBe(22);
+    expect(groups.A).toHaveLength(11);
     expect(groups.B).toHaveLength(7);
     expect(groups.C).toHaveLength(4);
     expect(groups.B).toContain(MESH_ISSUE_TYPE_IDS.B7_COVERAGE_SHADOW);
+    for (const id of ['A6_stale_node', 'A7_no_position', 'A8_low_battery', 'A9_bad_position']) {
+      expect(groups.A).toContain(id);
+    }
   });
 });
 

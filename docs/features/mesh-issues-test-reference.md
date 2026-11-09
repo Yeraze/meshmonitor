@@ -94,6 +94,54 @@ uptime resets, and position history.
 
 ---
 
+### A6 — Stale node
+
+| | |
+| --- | --- |
+| **Fires when** | An infrastructure node (either protocol) was last heard more than its stale window ago, and less than 30 days ago. At least one source that hears it must have heard something inside the same window |
+| **Severity** | warning |
+| **Threshold** | **24 h** Meshtastic, **96 h** MeshCore `[MeshMonitor]`, tunable. 30-day cut-off is fixed |
+| **Why it matters** | A router or repeater that went quiet leaves a hole in coverage. The liveness check stops a disconnected radio from marking every node stale. |
+| **What to do** | Check power and antenna. Dismiss if the node was retired. On MeshCore, raise the window if the repeater's flood-advert interval is longer. |
+
+---
+
+### A7 — Infrastructure node without a position
+
+| | |
+| --- | --- |
+| **Fires when** | An infrastructure node has no reported position and no position override. Clauses: `no_position`, `position_sharing_disabled` (Meshtastic, precision 0 bits), `advert_without_position` (MeshCore, last advert had no position) |
+| **Severity** | info |
+| **Threshold** | None |
+| **Why it matters** | Without a position the node is missing from maps, coverage checks and the mobile-node test. |
+| **What to do** | Set a fixed position (Meshtastic), or set latitude and longitude in the Repeater settings or CLI (MeshCore). |
+
+---
+
+### A8 — Low battery
+
+| | |
+| --- | --- |
+| **Fires when** | An infrastructure node's latest in-window battery sample is under the line, and its A3 battery clause is not already firing |
+| **Severity** | warning (confidence high when the last 3 samples are all low) |
+| **Threshold** | **20 %** Meshtastic, **3300 mV** MeshCore `[MeshMonitor]`, tunable |
+| **Why it matters** | A node on a failing battery drops off the mesh without warning. |
+| **What to do** | Check the power source and charging, then recharge or replace the battery. LiFePO4 packs rest near 3.2–3.3 V; lower the mV line for them. |
+
+---
+
+### A9 — Impossible reported position
+
+| | |
+| --- | --- |
+| **Fires when** | An infrastructure node reports Null Island (0, 0, precision-offset aware) or out-of-range coordinates. A position override does not hide it |
+| **Severity** | info |
+| **Threshold** | None |
+| **Why it matters** | A bad fix pollutes maps and distance maths. Mostly quiet while **Discard invalid positions** is on, because such fixes are then never stored. |
+| **What to do** | Fix the GPS or set a fixed position. |
+
+---
+
 ## Tier B — RF adjacency graph
 
 These tests build a graph of which nodes can hear each other — from
@@ -335,7 +383,7 @@ Thresholds marked `[official]` come from Meshtastic's own ROUTER_LATE
 documentation. Thresholds marked `[MeshMonitor]` are MeshMonitor's own
 judgement — chosen to avoid false positives on small or sparse meshes.
 
-Five thresholds are tunable in **Global Settings > Mesh Issues Analysis**:
+Nine thresholds are tunable in **Global Settings > Mesh Issues Analysis**:
 
 | Setting | Default | Rules affected |
 | --- | --- | --- |
@@ -345,6 +393,10 @@ Five thresholds are tunable in **Global Settings > Mesh Issues Analysis**:
 | Link SNR asymmetry | 6 dB | B3 |
 | Broadcast interval floor | 300 s | C2 |
 | Router cluster max link | 30 km | B1 (distance guard) |
+| Stale after, Meshtastic | 24 h | A6 |
+| Stale after, MeshCore | 96 h | A6 |
+| Low battery, Meshtastic | 20 % | A8, A3 battery clause |
+| Low battery, MeshCore | 3300 mV | A8 |
 
 All other thresholds are fixed in code. See the
 [Mesh Issues Analysis](./mesh-issues#where-the-thresholds-come-from)

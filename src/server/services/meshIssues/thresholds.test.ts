@@ -37,6 +37,13 @@ describe('resolveThresholds — defaults', () => {
     expect(DEFAULT_MESH_ISSUE_THRESHOLDS.routerClusterMaxLinkKm).toBe(ROUTER_CLUSTER_MAX_LINK_KM);
   });
 
+  it('node-health defaults (#6279): 24 h / 96 h stale, 20 % / 3300 mV low battery', () => {
+    expect(DEFAULT_MESH_ISSUE_THRESHOLDS.staleHoursMeshtastic).toBe(24);
+    expect(DEFAULT_MESH_ISSUE_THRESHOLDS.staleHoursMeshcore).toBe(96);
+    expect(DEFAULT_MESH_ISSUE_THRESHOLDS.lowBatteryPct).toBe(20);
+    expect(DEFAULT_MESH_ISSUE_THRESHOLDS.lowBatteryMv).toBe(3300);
+  });
+
   it('returns a fresh object each call — mutating the result never affects the shared default', () => {
     const resolved = resolveThresholds({});
     (resolved as { airUtilTxPct: number }).airUtilTxPct = 999;
@@ -62,6 +69,10 @@ describe('resolveThresholds — numeric clamps', () => {
     { key: 'mesh_issues_over_broadcast_seconds', field: 'overBroadcastSeconds', min: 30, max: 3600 },
     { key: 'mesh_issues_auto_close_runs', field: 'autoCloseCleanRuns', min: 1, max: 20 },
     { key: 'mesh_issues_router_cluster_max_link_km', field: 'routerClusterMaxLinkKm', min: 1, max: 500 },
+    { key: 'mesh_issues_stale_hours_meshtastic', field: 'staleHoursMeshtastic', min: 2, max: 720 },
+    { key: 'mesh_issues_stale_hours_meshcore', field: 'staleHoursMeshcore', min: 12, max: 720 },
+    { key: 'mesh_issues_low_battery_pct', field: 'lowBatteryPct', min: 1, max: 80 },
+    { key: 'mesh_issues_low_battery_mv', field: 'lowBatteryMv', min: 2500, max: 4100 },
   ];
 
   for (const { key, field, min, max } of cases) {
@@ -139,8 +150,8 @@ describe('resolveThresholds — boolean default-ON toggles', () => {
 });
 
 describe('MESH_ISSUE_THRESHOLD_SETTINGS_KEYS', () => {
-  it('has exactly twelve entries — one per user-tunable field', () => {
-    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(12);
+  it('has exactly sixteen entries — one per user-tunable field', () => {
+    expect(MESH_ISSUE_THRESHOLD_SETTINGS_KEYS).toHaveLength(16);
   });
 
   it('every key round-trips through resolveThresholds without throwing', () => {
