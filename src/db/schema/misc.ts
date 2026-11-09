@@ -20,6 +20,8 @@ export const backupHistorySqlite = sqliteTable('backup_history', {
   backupType: text('backupType').notNull(), // 'auto' or 'manual'
   timestamp: integer('timestamp').notNull(),
   createdAt: integer('createdAt').notNull(),
+  sourceId: text('sourceId'), // NULL = legacy / unowned (admin-only)
+  protocol: text('protocol').notNull().default('meshtastic'),
 });
 
 export const backupHistoryPostgres = pgTable('backup_history', {
@@ -32,6 +34,8 @@ export const backupHistoryPostgres = pgTable('backup_history', {
   backupType: pgText('backupType').notNull(),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  sourceId: pgText('sourceId'),
+  protocol: pgText('protocol').notNull().default('meshtastic'),
 });
 
 // ============ SYSTEM BACKUP HISTORY ============
@@ -383,6 +387,8 @@ export const backupHistoryMysql = mysqlTable('backup_history', {
   backupType: myVarchar('backupType', { length: 32 }).notNull(),
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  sourceId: myVarchar('sourceId', { length: 36 }),
+  protocol: myVarchar('protocol', { length: 16 }).notNull().default('meshtastic'),
 });
 
 export const systemBackupHistoryMysql = mysqlTable('system_backup_history', {

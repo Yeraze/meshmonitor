@@ -119,6 +119,11 @@ describe('extendRequestTimeout route coverage (pin test)', () => {
     });
   }
 
+  it('device restore allows the slowest adapter (MeshCore, 120 s) before the socket timeout', () => {
+    const content = readRoute('backupRoutes.ts');
+    expect(content).toMatch(/DEVICE_RESTORE_TIMEOUT_MS\s*=\s*120_000/);
+  });
+
   it('does NOT extend the timeout on automation run-now (unbounded; relies on the global 504 safety net)', () => {
     const content = readRoute('automationRoutes.ts');
     expect(pathExtendsTimeout(content, '/:id/run-now')).toBe(false);

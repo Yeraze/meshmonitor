@@ -8,24 +8,53 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { useSource } from '../../contexts/SourceContext';
+import { useAuth } from '../../contexts/AuthContext';
 import '../../styles/BackupManagement.css';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import BackupRestoreConfirmDialog, { type BackupProtocol, type BackupSummaryData } from './BackupRestoreConfirmDialog';
 
 interface BackupFile {
   filename: string;
   timestamp: string;
   size: number;
   type: 'manual' | 'automatic';
+  /** An unowned (legacy / orphaned) file; the server sends these to admins only. */
+  legacy?: boolean;
 }
 
 interface BackupManagementSectionProps {
   onBackupCreated?: () => void;
+  /** Which device type this section backs up. Default `meshtastic`. */
+  protocol?: BackupProtocol;
+  /** The source to act on. Default: the surrounding SourceContext. */
+  sourceId?: string | null;
+  /** False while the radio is offline: create and restore are disabled (list, download and delete still work). */
+  connected?: boolean;
+  /** False when the viewer lacks configuration:write: create, download, restore, delete and the schedule are disabled. */
+  canWrite?: boolean;
 }
 
-const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBackupCreated }) => {
+/** Add `sourceId` to a URL's query string when a source is selected. */
+function withSource(url: string, sourceId: string | null): string {
+  if (!sourceId) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}sourceId=${encodeURIComponent(sourceId)}`;
+}
+
+const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({
+  onBackupCreated,
+  protocol = 'meshtastic',
+  sourceId: sourceIdProp,
+  connected = true,
+  canWrite = true,
+}) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { sourceId } = useSource();
+  const { sourceId: contextSourceId } = useSource();
+  const sourceId = sourceIdProp !== undefined ? sourceIdProp : contextSourceId;
+  const { authStatus } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin === true;
+  const [lastAuto, setLastAuto] = useState<{ at: string | null; error: string | null }>({ at: null, error: null });
+  const [pendingRestore, setPendingRestore] = useState<{ filename: string; summary: BackupSummaryData } | null>(null);
 
   // State
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
@@ -67,11 +96,16 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
   // Load backup settings on mount
   useEffect(() => {
     void loadBackupSettings();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- #6285 reload the schedule when the source changes
+  }, [sourceId]);
 
   const loadBackupSettings = async () => {
     try {
-      const settings = await apiService.get<{ enabled?: boolean; maxBackups?: number; backupTime?: string }>('/api/backup/settings');
+      const settings = await apiService.get<{
+        enabled?: boolean; maxBackups?: number; backupTime?: string;
+        lastAutomaticBackupAt?: string | null; lastAutomaticBackupError?: string | null;
+      }>(withSource('/api/backup/settings', sourceId));
+      setLastAuto({ at: settings.lastAutomaticBackupAt ?? null, error: settings.lastAutomaticBackupError ?? null });
       const enabled = settings.enabled || false;
       const max = settings.maxBackups || 7;
       const time = settings.backupTime || '02:00';
@@ -99,7 +133,8 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       await apiService.post('/api/backup/settings', {
         enabled: autoBackupEnabled,
         maxBackups,
-        backupTime
+        backupTime,
+        ...(sourceId ? { sourceId } : {}),
       });
 
       // Update initial values to match saved settings
@@ -136,14 +171,13 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
     try {
       showToast(t('backup_management.toast_creating_backup'), 'info');
 
-      // Scope the backup to the currently-selected source so multi-source
-      // setups back up the active source rather than always the primary one.
-      // When sourceId is null (legacy/single-source view) the backend falls
-      // back to the primary manager, preserving existing behavior.
-      const endpoint = sourceId
-        ? `/api/device/backup?save=true&sourceId=${encodeURIComponent(sourceId)}`
-        : '/api/device/backup?save=true';
-      await apiService.download(endpoint, { defaultName: 'meshtastic-backup.yaml' });
+      // Always scoped to this section's source. When sourceId is null
+      // (legacy/single-source view) the backend falls back to the primary
+      // Meshtastic source, preserving existing behavior.
+      const endpoint = withSource('/api/device/backup?save=true', sourceId);
+      await apiService.download(endpoint, {
+        defaultName: protocol === 'meshcore' ? 'meshcore-backup.yaml' : 'meshtastic-backup.yaml',
+      });
 
       showToast(t('backup_management.toast_backup_created'), 'success');
       if (onBackupCreated) onBackupCreated();
@@ -156,7 +190,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
   const handleShowBackups = async () => {
     try {
       setIsLoadingBackups(true);
-      const backups = await apiService.get<BackupFile[]>('/api/backup/list');
+      const backups = await apiService.get<BackupFile[]>(withSource('/api/backup/list', sourceId));
       setBackupList(backups);
       setIsBackupModalOpen(true);
     } catch (error) {
@@ -169,7 +203,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
   const handleDownloadBackup = async (filename: string) => {
     try {
-      const yamlContent = await apiService.getText(`/api/backup/download/${encodeURIComponent(filename)}`);
+      const yamlContent = await apiService.getText(withSource(`/api/backup/download/${encodeURIComponent(filename)}`, sourceId));
 
       const blob = new Blob([yamlContent], { type: 'application/x-yaml' });
       const url = window.URL.createObjectURL(blob);
@@ -188,11 +222,28 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
     }
   };
 
+  // Step 1: fetch the no-secret summary and show it in the confirm dialog.
   const handleRestoreBackup = async (filename: string) => {
-    if (!confirm(t('backup_management.confirm_restore', { filename }))) {
-      return;
+    try {
+      setRestoringFilename(filename);
+      const resp = await apiService.get<{ data?: BackupSummaryData }>(
+        withSource(`/api/backup/summary/${encodeURIComponent(filename)}`, sourceId),
+      );
+      if (!resp?.data) throw new Error(t('backup_management.summary_missing'));
+      setPendingRestore({ filename, summary: resp.data });
+    } catch (error) {
+      logger.error('Error reading backup summary:', error);
+      showToast(t('backup_management.toast_restore_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
+    } finally {
+      setRestoringFilename(null);
     }
+  };
 
+  // Step 2: the user confirmed in the dialog.
+  const confirmRestore = async () => {
+    if (!pendingRestore) return;
+    const { filename, summary } = pendingRestore;
+    setPendingRestore(null);
     try {
       setRestoringFilename(filename);
       showToast(t('backup_management.toast_restoring'), 'info');
@@ -201,22 +252,23 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       // ApiService does not unwrap `data`, so read result off the `data` field.
       const resp = await apiService.post<{ data?: { failed?: unknown[]; requiresReboot?: boolean } }>(
         `/api/backup/restore/${encodeURIComponent(filename)}`,
-        sourceId ? { sourceId } : {}
+        { ...(sourceId ? { sourceId } : {}), ...(summary.legacy ? { confirmLegacy: true } : {}) }
       );
       const failedCount = resp?.data?.failed?.length ?? 0;
       // Only mention a reboot when the backend actually applied a change that
-      // needs one (a successful LoRa write) — over-warning confuses users, and
-      // silently dropping it left them unaware the device restarts.
+      // needs one. Meshtastic restarts to apply LoRa; a MeshCore radio only
+      // takes a changed BLE PIN at its next boot.
       const requiresReboot = resp?.data?.requiresReboot ?? false;
+      const keySuffix = protocol === 'meshcore' ? '_meshcore_boot' : '_reboot';
 
       if (failedCount > 0) {
         showToast(
-          t(requiresReboot ? 'backup_management.toast_restored_partial_reboot' : 'backup_management.toast_restored_partial', { failed: failedCount }),
+          t(requiresReboot ? `backup_management.toast_restored_partial${keySuffix}` : 'backup_management.toast_restored_partial', { failed: failedCount }),
           'success'
         );
       } else {
         showToast(
-          t(requiresReboot ? 'backup_management.toast_restored_reboot' : 'backup_management.toast_restored'),
+          t(requiresReboot ? `backup_management.toast_restored${keySuffix}` : 'backup_management.toast_restored'),
           'success'
         );
       }
@@ -234,7 +286,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
     }
 
     try {
-      await apiService.delete(`/api/backup/delete/${encodeURIComponent(filename)}`);
+      await apiService.delete(withSource(`/api/backup/delete/${encodeURIComponent(filename)}`, sourceId));
 
       showToast(t('backup_management.toast_deleted'), 'success');
       // Refresh the backup list
@@ -271,7 +323,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       }}>
         <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>{t('backup_management.about_title')}</h4>
         <p style={{ color: 'var(--color-text-subtle)', margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
-          {t('backup_management.about_description')}
+          {t(protocol === 'meshcore' ? 'backup_management.about_description_meshcore' : 'backup_management.about_description')}
         </p>
       </div>
 
@@ -283,13 +335,16 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
         </p>
         <button
           onClick={handleManualBackup}
+          disabled={!connected || !canWrite}
+          title={!connected ? t('backup_management.offline_hint') : undefined}
           style={{
+            opacity: connected && canWrite ? 1 : 0.6,
             backgroundColor: 'var(--color-accent-alt)',
             color: '#fff',
             padding: '0.75rem 1.5rem',
             border: 'none',
             borderRadius: '4px',
-            cursor: 'pointer',
+            cursor: connected && canWrite ? 'pointer' : 'not-allowed',
             fontSize: '1rem',
             fontWeight: 'bold',
             marginRight: '1rem'
@@ -323,6 +378,14 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
           {t('backup_management.auto_description')}
         </p>
 
+        {(lastAuto.at || lastAuto.error) && (
+          <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem', fontSize: '0.85rem' }}>
+            {lastAuto.error
+              ? t('backup_management.last_auto_failed', { when: formatTimestamp(lastAuto.at ?? ''), reason: t(`backup_management.auto_error_${lastAuto.error}`, lastAuto.error) })
+              : t('backup_management.last_auto_ok', { when: formatTimestamp(lastAuto.at ?? '') })}
+          </p>
+        )}
+
         {/* No bottom margin: this is the last block on the Configuration page,
             and a margin here collapses through the section and adds 16px
             below the list (the stack spaces sections itself). */}
@@ -333,6 +396,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               type="checkbox"
               checked={autoBackupEnabled}
               onChange={(e) => setAutoBackupEnabled(e.target.checked)}
+              disabled={!canWrite}
               style={{ width: '18px', height: '18px', cursor: 'pointer' }}
             />
             <span style={{ fontWeight: 'bold' }}>{t('backup_management.enable_auto')}</span>
@@ -349,7 +413,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               integer
               value={maxBackups}
               onChange={setMaxBackups}
-              disabled={!autoBackupEnabled}
+              disabled={!autoBackupEnabled || !canWrite}
               style={{
                 padding: '0.5rem',
                 borderRadius: '4px',
@@ -374,7 +438,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
               type="time"
               value={backupTime}
               onChange={(e) => setBackupTime(e.target.value)}
-              disabled={!autoBackupEnabled}
+              disabled={!autoBackupEnabled || !canWrite}
               style={{
                 padding: '0.5rem',
                 borderRadius: '4px',
@@ -425,6 +489,11 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
                       <tr key={backup.filename}>
                         <td data-label={`${t('backup_management.table_filename')}:`} className="backup-filename">
                           {backup.filename}
+                          {backup.legacy && isAdmin && (
+                            <span className="backup-type-badge manual" style={{ marginLeft: '0.5rem' }}>
+                              {t('backup_management.legacy_badge')}
+                            </span>
+                          )}
                         </td>
                         <td data-label={`${t('backup_management.table_date')}:`} className="backup-date">
                           {formatTimestamp(backup.timestamp)}
@@ -441,15 +510,17 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
                           <div className="backup-actions">
                             <button
                               onClick={() => handleDownloadBackup(backup.filename)}
+                              disabled={!canWrite}
                               className="backup-btn download"
                             >
                               {t('backup_management.download')}
                             </button>
                             <button
                               onClick={() => handleRestoreBackup(backup.filename)}
-                              disabled={restoringFilename !== null}
+                              disabled={restoringFilename !== null || !connected || !canWrite}
+                              title={!connected ? t('backup_management.offline_hint') : undefined}
                               className="backup-btn restore"
-                              style={restoringFilename !== null ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+                              style={restoringFilename !== null || !connected || !canWrite ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
                             >
                               {restoringFilename === backup.filename
                                 ? t('backup_management.restoring')
@@ -457,7 +528,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
                             </button>
                             <button
                               onClick={() => handleDeleteBackup(backup.filename)}
-                              disabled={restoringFilename !== null}
+                              disabled={restoringFilename !== null || !canWrite}
                               className="backup-btn delete"
                             >
                               {t('backup_management.delete')}
@@ -481,6 +552,15 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
             </div>
           </div>
         </div>
+      )}
+      {pendingRestore && (
+        <BackupRestoreConfirmDialog
+          filename={pendingRestore.filename}
+          protocol={protocol}
+          summary={pendingRestore.summary}
+          onConfirm={() => { void confirmRestore(); }}
+          onCancel={() => setPendingRestore(null)}
+        />
       )}
     </ConfigSection>
     </NumberInputScope>

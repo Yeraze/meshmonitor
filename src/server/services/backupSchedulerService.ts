@@ -5,27 +5,47 @@
 
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { deviceBackupService } from './deviceBackupService.js';
 import { backupFileService } from './backupFileService.js';
 import { systemBackupService } from './systemBackupService.js';
+import { deviceConfigBackupService, isBackupBusy, type BackupTarget } from './deviceConfigBackupService.js';
+import type { BackupProtocol } from './backupAdapters/index.js';
+import type { ISourceManager } from '../sourceManagerRegistry.js';
+
+/** The slice of the source registry the scheduler needs. */
+export interface BackupSchedulerRegistry {
+  getManager(sourceId: string): ISourceManager | undefined;
+}
+
+export interface BackupScheduleSettings {
+  enabled: boolean;
+  maxBackups: number;
+  backupTime: string;
+}
+
+const key = (sourceId: string, name: string): string => `source:${sourceId}:${name}`;
+
+/** Local `YYYY-MM-DD` (the scheduler matches a LOCAL HH:MM, so the day guard is local too). */
+export function localDateString(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+const hhmm = (d: Date): string => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 class BackupSchedulerService {
   private schedulerInterval: NodeJS.Timeout | null = null;
   private isRunning = false;
   private isDeviceBackupInProgress = false;
   private isSystemBackupInProgress = false;
-  // Resolver rather than a captured instance: #3962 Phase 4.2a WP4 removed the
-  // live Proxy alias that used to make a stored manager reference always
-  // track the registry's current primary meshtastic_tcp source. A resolver
-  // function preserves that "always current" behavior without the Proxy —
-  // call it fresh on every use instead of caching the manager at initialize() time.
-  private resolveManager: (() => any) | null = null;
+  private registry: BackupSchedulerRegistry | null = null;
 
   /**
-   * Initialize the backup scheduler
+   * Initialize the backup scheduler. The registry is read fresh on every
+   * pass, so a source added or removed later is picked up.
    */
-  initialize(resolveManager: () => any): void {
-    this.resolveManager = resolveManager;
+  initialize(registry: BackupSchedulerRegistry): void {
+    this.registry = registry;
 
     // Initialize backup directories
     backupFileService.initializeBackupDirectory();
@@ -34,7 +54,7 @@ class BackupSchedulerService {
     // Start the scheduler
     this.start();
 
-    logger.info('✅ Backup scheduler initialized (device + system backups)');
+    logger.info('Backup scheduler initialized (per-source device backups + system backups)');
   }
 
   /**
@@ -84,59 +104,106 @@ class BackupSchedulerService {
   }
 
   /**
-   * Check if it's time to run a device backup and execute if needed
+   * Persist a source's schedule. Saving never triggers a backup: when the
+   * chosen time is not later than now, today's guard is set, so only the next
+   * day's slot fires.
    */
-  private async checkAndRunDeviceBackup(): Promise<void> {
-    // Prevent multiple concurrent device backup executions
+  async applySettings(sourceId: string, settings: BackupScheduleSettings, now: Date = new Date()): Promise<void> {
+    const s = databaseService.settings;
+    await s.setSetting(key(sourceId, 'backup_enabled'), String(settings.enabled));
+    await s.setSetting(key(sourceId, 'backup_maxBackups'), String(settings.maxBackups));
+    await s.setSetting(key(sourceId, 'backup_time'), settings.backupTime);
+    if (settings.enabled && settings.backupTime <= hhmm(now)) {
+      await s.setSetting(key(sourceId, 'backup_lastAutomaticBackupDate'), localDateString(now));
+    }
+  }
+
+  /** Read a source's schedule and the last automatic result. */
+  async readSettings(sourceId: string): Promise<BackupScheduleSettings & {
+    lastAutomaticBackupDate: string | null;
+    lastAutomaticBackupAt: string | null;
+    lastAutomaticBackupError: string | null;
+  }> {
+    const s = databaseService.settings;
+    const maxRaw = parseInt((await s.getSetting(key(sourceId, 'backup_maxBackups'))) || '7', 10);
+    return {
+      enabled: (await s.getSetting(key(sourceId, 'backup_enabled'))) === 'true',
+      maxBackups: Number.isNaN(maxRaw) ? 7 : maxRaw,
+      backupTime: (await s.getSetting(key(sourceId, 'backup_time'))) || '02:00',
+      lastAutomaticBackupDate: (await s.getSetting(key(sourceId, 'backup_lastAutomaticBackupDate'))) || null,
+      lastAutomaticBackupAt: (await s.getSetting(key(sourceId, 'backup_lastAutomaticBackupAt'))) || null,
+      lastAutomaticBackupError: (await s.getSetting(key(sourceId, 'backup_lastAutomaticBackupError'))) || null,
+    };
+  }
+
+  /**
+   * Check every Meshtastic TCP and MeshCore source, sequentially, and back up
+   * those whose local HH:MM matches now and that have not run today.
+   */
+  async checkAndRunDeviceBackup(now: Date = new Date()): Promise<void> {
+    // Prevent multiple concurrent device backup passes
     if (this.isDeviceBackupInProgress) {
       return;
     }
-
+    this.isDeviceBackupInProgress = true;
     try {
-      // Check if automated device backups are enabled
-      const enabled = await databaseService.settings.getSetting('backup_enabled');
-      if (enabled !== 'true') {
-        return; // Automated device backups are disabled
+      const sources = await databaseService.sources.getAllSources();
+      for (const source of sources) {
+        if (source.type !== 'meshtastic_tcp' && source.type !== 'meshcore') continue;
+        try {
+          await this.checkSource(source.id, source.type === 'meshcore' ? 'meshcore' : 'meshtastic', now);
+        } catch (error) {
+          logger.error(`Error in device backup scheduler check for source ${source.id}:`, error instanceof Error ? error.message : String(error));
+        }
       }
-
-      // Get the configured backup time (HH:MM format)
-      const backupTime = await databaseService.settings.getSetting('backup_time') || '02:00';
-      const [targetHour, targetMinute] = backupTime.split(':').map(Number);
-
-      // Get current time
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
-
-      // Check if we're within the backup time window (same hour and minute)
-      if (currentHour !== targetHour || currentMinute !== targetMinute) {
-        return; // Not time yet
-      }
-
-      // Check if we already ran a device backup today
-      const lastBackupKey = 'backup_lastAutomaticBackup';
-      const lastBackup = await databaseService.settings.getSetting(lastBackupKey);
-      const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
-
-      if (lastBackup && lastBackup.startsWith(today)) {
-        return; // Already ran a device backup today
-      }
-
-      // Set flag to prevent race conditions
-      this.isDeviceBackupInProgress = true;
-
-      // Run the automated device backup
-      logger.debug('⏰ Time for automated device backup...');
-      await this.runAutomatedDeviceBackup();
-
-      // Update last device backup timestamp
-      await databaseService.settings.setSetting(lastBackupKey, now.toISOString());
     } catch (error) {
-      logger.error('❌ Error in device backup scheduler check:', error);
+      logger.error('Error in device backup scheduler check:', error);
     } finally {
-      // Always release the lock
       this.isDeviceBackupInProgress = false;
     }
+  }
+
+  private async checkSource(sourceId: string, protocol: BackupProtocol, now: Date): Promise<void> {
+    const s = databaseService.settings;
+    if ((await s.getSetting(key(sourceId, 'backup_enabled'))) !== 'true') return;
+
+    const backupTime = (await s.getSetting(key(sourceId, 'backup_time'))) || '02:00';
+    if (backupTime !== hhmm(now)) return; // not this minute
+
+    const today = localDateString(now);
+    if ((await s.getSetting(key(sourceId, 'backup_lastAutomaticBackupDate'))) === today) return;
+
+    // The slot is reached: set the guard first, so a skip, a failure or a
+    // restart in the same minute never runs it twice. No catch-up later.
+    await s.setSetting(key(sourceId, 'backup_lastAutomaticBackupDate'), today);
+
+    let error = '';
+    try {
+      const manager = this.registry?.getManager(sourceId);
+      if (!manager || !manager.getStatus().connected) {
+        error = 'SOURCE_NOT_CONNECTED';
+      } else if (protocol === 'meshcore' && !(await this.isCompanion(manager))) {
+        error = 'SOURCE_NOT_COMPANION';
+      } else if (isBackupBusy(sourceId)) {
+        error = 'BACKUP_BUSY';
+      } else {
+        const target: BackupTarget = { sourceId, protocol, manager };
+        const { filename } = await deviceConfigBackupService.create(target, 'automatic');
+        logger.info(`Automated ${protocol} backup completed for source ${sourceId}: ${filename}`);
+      }
+    } catch (err) {
+      error = 'BACKUP_FAILED';
+      logger.error(`Automated device backup failed for source ${sourceId}:`, err instanceof Error ? err.message : String(err));
+    }
+    if (error) logger.warn(`Automated device backup for source ${sourceId} did not run: ${error}`);
+    await s.setSetting(key(sourceId, 'backup_lastAutomaticBackupError'), error);
+    await s.setSetting(key(sourceId, 'backup_lastAutomaticBackupAt'), now.toISOString());
+  }
+
+  private async isCompanion(manager: ISourceManager): Promise<boolean> {
+    const { MeshCoreDeviceType } = await import('../meshcoreManager.js');
+    const status = (manager as unknown as { getConnectionStatus(): { deviceType?: unknown } }).getConnectionStatus();
+    return status.deviceType === MeshCoreDeviceType.COMPANION;
   }
 
   /**
@@ -147,6 +214,8 @@ class BackupSchedulerService {
     if (this.isSystemBackupInProgress) {
       return;
     }
+    // Claim the flag before the first await so two ticks can never overlap.
+    this.isSystemBackupInProgress = true;
 
     try {
       // Check if automated system backups are enabled
@@ -178,9 +247,6 @@ class BackupSchedulerService {
         return; // Already ran a system backup today
       }
 
-      // Set flag to prevent race conditions
-      this.isSystemBackupInProgress = true;
-
       // Run the automated system backup
       logger.debug('⏰ Time for automated system backup...');
       await this.runAutomatedSystemBackup();
@@ -192,34 +258,6 @@ class BackupSchedulerService {
     } finally {
       // Always release the lock
       this.isSystemBackupInProgress = false;
-    }
-  }
-
-  /**
-   * Run an automated device backup
-   */
-  private async runAutomatedDeviceBackup(): Promise<void> {
-    try {
-      if (!this.resolveManager) {
-        throw new Error('Meshtastic manager not initialized');
-      }
-      const meshtasticManager = this.resolveManager();
-
-      logger.debug('🤖 Running automated device backup...');
-
-      // Generate the backup YAML
-      const yamlBackup = await deviceBackupService.generateBackup(meshtasticManager);
-
-      // Get node ID for filename
-      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-      const nodeId = localNodeInfo?.nodeId || '!unknown';
-
-      // Save to disk
-      const filename = await backupFileService.saveBackup(yamlBackup, 'automatic', nodeId);
-
-      logger.info(`✅ Automated device backup completed: ${filename}`);
-    } catch (error) {
-      logger.error('❌ Failed to run automated device backup:', error);
     }
   }
 
@@ -240,32 +278,6 @@ class BackupSchedulerService {
   }
 
   /**
-   * Manually trigger a backup (for testing or manual execution)
-   */
-  async triggerManualBackup(): Promise<string> {
-    if (!this.resolveManager) {
-      throw new Error('Meshtastic manager not initialized');
-    }
-    const meshtasticManager = this.resolveManager();
-
-    logger.debug('👤 Running manual backup...');
-
-    // Generate the backup YAML
-    const yamlBackup = await deviceBackupService.generateBackup(meshtasticManager);
-
-    // Get node ID for filename
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
-    const nodeId = localNodeInfo?.nodeId || '!unknown';
-
-    // Save to disk
-    const filename = await backupFileService.saveBackup(yamlBackup, 'manual', nodeId);
-
-    logger.info(`✅ Manual backup completed: ${filename}`);
-
-    return filename;
-  }
-
-  /**
    * Manually trigger a system backup
    */
   async triggerManualSystemBackup(): Promise<string> {
@@ -280,41 +292,17 @@ class BackupSchedulerService {
   }
 
   /**
-   * Get scheduler status
+   * Get scheduler status. Device schedules are per source (`readSettings`);
+   * only the system schedule is global.
    */
   async getStatus(): Promise<{
     running: boolean;
-    device: {
-      nextCheck: string | null;
-      enabled: boolean;
-      backupTime: string;
-    };
     system: {
       nextCheck: string | null;
       enabled: boolean;
       backupTime: string;
     };
   }> {
-    // Device backup settings
-    const deviceEnabled = await databaseService.settings.getSetting('backup_enabled') === 'true';
-    const deviceBackupTime = await databaseService.settings.getSetting('backup_time') || '02:00';
-
-    let deviceNextCheck: string | null = null;
-    if (this.isRunning && deviceEnabled) {
-      const now = new Date();
-      const [targetHour, targetMinute] = deviceBackupTime.split(':').map(Number);
-
-      const next = new Date(now);
-      next.setHours(targetHour, targetMinute, 0, 0);
-
-      // If the time has passed today, schedule for tomorrow
-      if (next <= now) {
-        next.setDate(next.getDate() + 1);
-      }
-
-      deviceNextCheck = next.toISOString();
-    }
-
     // System backup settings
     const systemEnabled = await databaseService.settings.getSetting('system_backup_enabled') === 'true';
     const systemBackupTime = await databaseService.settings.getSetting('system_backup_time') || '03:00';
@@ -337,11 +325,6 @@ class BackupSchedulerService {
 
     return {
       running: this.isRunning,
-      device: {
-        nextCheck: deviceNextCheck,
-        enabled: deviceEnabled,
-        backupTime: deviceBackupTime
-      },
       system: {
         nextCheck: systemNextCheck,
         enabled: systemEnabled,
