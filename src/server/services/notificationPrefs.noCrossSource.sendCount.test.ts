@@ -107,6 +107,8 @@ const USER_1_ROW_ON_A = {
   mutedDMs: [],
   messageTitleTemplate: null,
   messageBodyTemplate: null,
+  messageTextMaxPush: null,
+  messageTextMaxApprise: null,
 };
 
 type MessageEvent = { kind: 'message'; text: string; channelId: number; isDirectMessage: boolean; viaMqtt?: boolean };

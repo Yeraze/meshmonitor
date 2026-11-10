@@ -59,6 +59,8 @@ const ROW_A = {
   mutedDMs: [{ nodeUuid: '!aaaa0002', muteUntil: null }],
   messageTitleTemplate: 'A {{ senderName }}',
   messageBodyTemplate: 'A {{ text }}',
+  messageTextMaxPush: 250,
+  messageTextMaxApprise: 500,
 };
 
 const DEFAULTS = defaultNotificationPreferences();
