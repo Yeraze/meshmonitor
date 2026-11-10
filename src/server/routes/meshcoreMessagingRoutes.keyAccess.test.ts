@@ -14,7 +14,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
-import { channelKeyFingerprint, keyedChannelIndex } from '../services/meshcoreFrameIngest.js';
+import { channelKeyFingerprint, keyedChannelIndex, MESHCORE_UNRESOLVED_KEY_FINGERPRINT } from '../services/meshcoreFrameIngest.js';
+import { MESHCORE_PUBLIC_CHANNEL_SECRET } from '../utils/meshcoreGroupEcho.js';
 import { resolveMeshcoreKeyAccess, canSeeKeyedMessage } from '../utils/meshcoreKeyAccess.js';
 import { searchReadableMessages } from '../utils/messageSearch.js';
 import type { MeshCoreManager as MeshCoreManagerType } from '../meshcoreManager.js';
@@ -41,6 +42,7 @@ const { default: channelRoutes } = await import('./channelRoutes.js');
 const SECRET = '0123456789abcdef0123456789abcdef';
 const SECRET_B64 = Buffer.from(SECRET, 'hex').toString('base64');
 const FP = channelKeyFingerprint(SECRET);
+const PUBLIC_FP = channelKeyFingerprint(Buffer.from(MESHCORE_PUBLIC_CHANNEL_SECRET).toString('hex'));
 const IDX = keyedChannelIndex(SECRET);
 const KEY_SLOT = 3;
 
@@ -149,7 +151,8 @@ describe('keyed MeshCore channel messages — read gate (#5551)', () => {
 
     it('is refused by the gate the live socket uses', async () => {
       const access = await resolveMeshcoreKeyAccess({ id: harness.limited.id, isAdmin: false });
-      expect(access).toEqual([]);
+      // Only the firmware-published Public channel passes for everyone (#6308).
+      expect(access).toEqual([PUBLIC_FP]);
       expect(canSeeKeyedMessage(access, { keyFingerprint: FP })).toBe(false);
       expect(canSeeKeyedMessage(access, { keyFingerprint: null })).toBe(true);
     });
@@ -188,7 +191,7 @@ describe('keyed MeshCore channel messages — read gate (#5551)', () => {
       harness = await createRouteTestApp({ mount: (app) => app.use('/:id/meshcore', meshcoreRoutes) });
       await harness.grant(harness.limited.id, 'messages', 'read', B);
       const access = await resolveMeshcoreKeyAccess({ id: harness.limited.id, isAdmin: false });
-      expect(access).toEqual([FP]);
+      expect([...(access as string[])].sort()).toEqual([FP, PUBLIC_FP].sort());
     });
   });
 
@@ -223,5 +226,28 @@ describe('keyed MeshCore channel messages — read gate (#5551)', () => {
 
   it('anonymous viewers get nothing keyed', async () => {
     expect(await resolveMeshcoreKeyAccess(null)).toEqual([]);
+  });
+
+  it('/channels/all skips an unresolved legacy slot (no phantom channel_N grant row, #6308)', async () => {
+    await databaseService.meshcore.insertMessage({
+      id: 'legacy_1', fromPublicKey: 'channel-3', fromName: 'Old', text: 'old', timestamp: 1_000,
+      messageType: 'channel', keyFingerprint: MESHCORE_UNRESOLVED_KEY_FINGERPRINT, createdAt: 1_000,
+    }, A);
+    const admin = await harness.loginAs(harness.admin);
+    const list = await admin.get(listUrl());
+    const listed = list.body.map((c: { id: number }) => c.id);
+    expect(listed).toContain(IDX);
+    expect(listed.filter((id: number) => id < 1000 && id !== KEY_SLOT)).toEqual([]);
+  });
+
+  it('never grants the unresolved-legacy sentinel to a non-admin (#6308)', async () => {
+    const access = await resolveMeshcoreKeyAccess({ id: harness.limited.id, isAdmin: false });
+    expect(canSeeKeyedMessage(access, { keyFingerprint: MESHCORE_UNRESOLVED_KEY_FINGERPRINT })).toBe(false);
+    expect(canSeeKeyedMessage('all', { keyFingerprint: MESHCORE_UNRESOLVED_KEY_FINGERPRINT })).toBe(true);
+  });
+
+  it('always grants the Public channel fingerprint to a signed-in user (#6308)', async () => {
+    const access = await resolveMeshcoreKeyAccess({ id: harness.limited.id, isAdmin: false });
+    expect(canSeeKeyedMessage(access, { keyFingerprint: PUBLIC_FP })).toBe(true);
   });
 });

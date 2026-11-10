@@ -3,6 +3,7 @@
  * from the database for condition evaluation. All reads are best-effort: a miss
  * returns null and the condition resolves to false rather than throwing.
  */
+import { keyedChannelNameFor } from '../../utils/meshcoreKeyedChannels.js';
 import databaseService from '../../../services/database.js';
 import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import type { NodeDataProvider, NodeFacts, StaleCandidate } from './engineContext.js';
@@ -25,14 +26,17 @@ function nodeIdOf(nodeNum: number): string {
  * in the per-source `channels` table. An MQTT source has no channel rows at
  * all, so every one of its channels is named only here.
  *
- * Meshtastic rows only, and never for a MeshCore source: a MeshCore channel
- * index is a device slot, not a Channel Database id.
+ * Meshtastic rows only. A MeshCore source resolves a keyed index (#6308) to the
+ * name of the key's channel instead; any other MeshCore index is a device slot
+ * and has no name here.
  */
 async function virtualChannelName(sourceId: string | null, channelIndex: number): Promise<string | null> {
   if (!Number.isInteger(channelIndex) || channelIndex < CHANNEL_DB_OFFSET) return null;
   if (sourceId) {
     const source = await databaseService.sources.getSource(sourceId);
-    if (source && isAnyMeshCoreSourceType(source.type)) return null;
+    // A MeshCore index is a device slot, not a Channel Database id; only a
+    // keyed index (#6308) has a name, taken from the key that opened it.
+    if (source && isAnyMeshCoreSourceType(source.type)) return keyedChannelNameFor(sourceId, channelIndex);
   }
   const entry = await databaseService.channelDatabase.getByIdAsync(channelIndex - CHANNEL_DB_OFFSET);
   if (!entry || (entry.protocol ?? 'meshtastic') !== 'meshtastic') return null;

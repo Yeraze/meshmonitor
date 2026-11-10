@@ -1,8 +1,8 @@
 /**
  * GET /ingest/channels — the Notifications channel picker source (#6307).
  *
- * Real auth middleware and a real in-memory database. Slot indices come from
- * the message table (name-less, per source); keyed channels come from
+ * Real auth middleware and a real in-memory database. Every MQTT channel row is keyed
+ * (#6308), so there is no slot list; keyed channels come from
  * `listKeyedChannelsForViewer`, which owns the key gate and is mocked here so
  * the route's own union / scoping / permission rules are what is under test.
  */
@@ -22,8 +22,14 @@ vi.mock('../sourceManagerRegistry.js', () => ({
 // The key gate has its own tests; here: admins see the keyed entry, others do not.
 vi.mock('../utils/meshcoreKeyedChannels.js', () => ({
   listKeyedChannelsForViewer: vi.fn(async (user: { isAdmin?: boolean } | null | undefined) =>
-    user?.isAdmin ? [{ id: 1234, name: 'Secret Club', keyFingerprint: 'ab12', virtual: true }] : [],
+    user?.isAdmin
+      ? [
+          { id: 3, name: '', keyFingerprint: 'unresolved', virtual: false, legacy: true },
+          { id: 1234, name: 'Secret Club', keyFingerprint: 'ab12', virtual: true, legacy: false },
+        ]
+      : [],
   ),
+  keyedChannelNames: vi.fn(async () => new Map<number, string>()),
 }));
 
 import ingestReadRoutes from './meshcoreIngestReadRoutes.js';
@@ -70,27 +76,16 @@ afterEach(async () => {
 });
 
 describe('GET /ingest/channels', () => {
-  it('lists slot indices with messages, without a name, and never another source', async () => {
-    await seed(harness.sourceA, 'channel-3');
+  it('has no slot branch: un-keyed rows never produce an entry (#6308)', async () => {
     await seed(harness.sourceA, 'channel-3');
     await seed(harness.sourceA, 'channel-1');
-    await seed(harness.sourceB, 'channel-5');
     await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
-    const agent = await harness.loginAs(harness.limited);
-    const res = await agent.get(path(harness.sourceA));
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.map((c: { id: number }) => c.id)).toEqual([1, 3]);
-    expect(res.body.data.every((c: { name: string }) => c.name === '')).toBe(true);
-  });
-
-  it('ignores DM rows and fingerprinted rows in the slot list', async () => {
-    await seed(harness.sourceA, 'channel-2', { messageType: 'text' });
-    await seed(harness.sourceA, 'channel-1234', { keyFingerprint: 'ab12' });
-    await seed(harness.sourceA, 'channel-4');
-    const agent = await harness.loginAs(harness.admin);
-    const res = await agent.get(path(harness.sourceA));
-    expect(res.body.data.map((c: { id: number }) => c.id)).toEqual([4, 1234]);
+    const limited = await harness.loginAs(harness.limited);
+    expect((await limited.get(path(harness.sourceA))).body.data).toEqual([]);
+    // Admins get only what the keyed lister returns, not the raw slot ids.
+    const admin = await harness.loginAs(harness.admin);
+    const ids = (await admin.get(path(harness.sourceA))).body.data.map((c: { id: number }) => c.id);
+    expect(ids).not.toContain(1);
   });
 
   it('shows a keyed channel, named, only to a viewer the key gate admits', async () => {
@@ -102,9 +97,18 @@ describe('GET /ingest/channels', () => {
 
     const admin = await harness.loginAs(harness.admin);
     const shown = await admin.get(path(harness.sourceA));
-    expect(shown.body.data).toEqual([
+    expect(shown.body.data).toContainEqual(
       expect.objectContaining({ id: 1234, name: 'Secret Club', keyed: true, virtual: true }),
-    ]);
+    );
+  });
+
+  it('marks an unresolved legacy slot as legacy, admins only', async () => {
+    await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+    const limited = await harness.loginAs(harness.limited);
+    expect((await limited.get(path(harness.sourceA))).body.data.find((c: { id: number }) => c.id === 3)).toBeUndefined();
+    const admin = await harness.loginAs(harness.admin);
+    const legacy = (await admin.get(path(harness.sourceA))).body.data.find((c: { id: number }) => c.id === 3);
+    expect(legacy).toMatchObject({ id: 3, legacy: true, keyed: false });
   });
 
   it('403 without messages:read on the source', async () => {

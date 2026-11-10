@@ -67,6 +67,10 @@ interface IngestNode {
 interface IngestMessage {
   id?: string | number;
   channelIdx?: number | null;
+  /** Name of the key's channel; set only for rows the viewer may read (#6308). */
+  channelName?: string | null;
+  /** Older row whose key could not be recovered (#6308); admins only. */
+  legacy?: boolean;
   text?: string | null;
   fromName?: string | null;
   timestamp?: number | null;
@@ -339,7 +343,15 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
               {messages.map((m, i) => (
                 <li key={m.id ?? i} className={styles.message}>
                   <span className={styles.messageMeta}>
-                    {m.channelIdx != null ? `#${m.channelIdx}` : ''} {m.fromName || ''}
+                    {m.channelIdx != null
+                      ? (m.channelName || t('meshcore.ingest.channel_unnamed', { id: m.channelIdx, defaultValue: 'Channel {{id}}' }))
+                      : ''}{' '}
+                    {m.legacy && (
+                      <span className={styles.legacyTag}>
+                        {t('meshcore.ingest.channel_legacy', '(older, key unknown)')}
+                      </span>
+                    )}{' '}
+                    {m.fromName || ''}
                   </span>
                   <span className={styles.messageText}>{m.text}</span>
                   <span className={styles.messageAge}>

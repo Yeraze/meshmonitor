@@ -77,8 +77,7 @@ import {
   decryptGroupTextFrame,
   frameChannelMessageId,
   ingestAdvertFrame,
-  keyedChannelIndex,
-  channelKeyFingerprint,
+  keyedFilingFor,
   noteVirtualChannelDecrypt,
   type ChannelKeyCandidate,
 } from './services/meshcoreFrameIngest.js';
@@ -697,8 +696,11 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
           rssi: decoded.event.rssi ?? undefined,
           createdAt: Date.now(),
           ...(sec !== null ? { senderTimestamp: sec } : {}),
-          // Only for a virtual-channel key (#5552); slot-keyed rows are unchanged.
-          ...(plain.keyFingerprint ? { keyFingerprint: plain.keyFingerprint } : {}),
+          // Provenance of the decrypting key (#6308). Every row is key-gated,
+          // whether a device slot or a virtual channel opened it.
+          keyFingerprint: plain.keyFingerprint,
+          keySourceId: plain.keySourceId,
+          keyChannelIdx: plain.keyChannelIdx,
       };
 
       // Ignore / Block (#5408): block drops the message before it is stored;
@@ -817,30 +819,23 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     senderName: string | null;
     timestampSec: number;
     channelIdx: number;
-    /** Set only for a MeshCore virtual-channel key (#5552); gates reads. */
-    keyFingerprint: string | null;
+    /** Gates reads: every MQTT channel row is key-gated (#6308). */
+    keyFingerprint: string;
+    keySourceId: string | null;
+    keyChannelIdx: number | null;
     key: ChannelKeyCandidate;
   } | null> {
     const res = await decryptGroupTextFrame(group);
     if (!res) return null;
-    const base = { text: res.text, senderName: res.senderName, timestampSec: res.timestampSec, key: res.key };
-    if (res.key.channelIdx === null) {
-      // A virtual channel (#5552) has no device slot. File it under the
-      // secret-derived index and stamp the fingerprint, so only users granted
-      // that channel_database entry can read it.
-      return {
-        ...base,
-        channelIdx: keyedChannelIndex(res.key.secretHex),
-        keyFingerprint: channelKeyFingerprint(res.key.secretHex),
-      };
-    }
+    // One filing rule for every key (#6308): the secret-derived index plus the
+    // key's provenance, so reads gate on the key and slot N of two sources never
+    // merges into one un-gated channel.
     return {
-      ...base,
-      // The row id of the key that decrypted it IS the channel index — the
-      // only way to know which channel a frame belongs to, since the wire
-      // carries a hash rather than an index.
-      channelIdx: res.key.channelIdx,
-      keyFingerprint: null,
+      text: res.text,
+      senderName: res.senderName,
+      timestampSec: res.timestampSec,
+      key: res.key,
+      ...keyedFilingFor(res.key),
     };
   }
 

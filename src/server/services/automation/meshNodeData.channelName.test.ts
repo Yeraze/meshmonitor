@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createRouteTestApp, type RouteTestHarness } from '../../test-helpers/routeTestApp.js';
 import { createMeshNodeDataProvider } from './meshNodeData.js';
 import { CHANNEL_DB_OFFSET } from '../../constants/meshtastic.js';
+import { keyedChannelIndex, channelKeyFingerprint } from '../meshcoreFrameIngest.js';
 
 const MQTT_SOURCE = 'rt-mqtt-5738';
 const MC_SOURCE = 'rt-mc-5738';
@@ -70,5 +71,54 @@ describe('getChannelName (#5738)', () => {
   it('never reads the Channel Database for a MeshCore source', async () => {
     const id = await addKey('LongFast');
     expect(await nameOf(MC_SOURCE, CHANNEL_DB_OFFSET + id)).toBeNull();
+  });
+
+  describe('keyed MeshCore indices (#6308)', () => {
+    const MC_MQTT = 'rt-mcmqtt-6308';
+    const SECRET = '0123456789abcdef0123456789abcdef';
+    const IDX = keyedChannelIndex(SECRET);
+
+    const seedKeyed = async (sourceId: string) => {
+      await harness.db.channels.upsertChannel(
+        { id: 2, name: 'ops', psk: Buffer.from(SECRET, 'hex').toString('base64'), role: 2 },
+        MC_SOURCE,
+      );
+      await harness.db.meshcore.insertMessage(
+        {
+          id: `k_${sourceId}`, fromPublicKey: `channel-${IDX}`, text: 'x', timestamp: 1, createdAt: 1,
+          messageType: 'channel', keyFingerprint: channelKeyFingerprint(SECRET), keySourceId: MC_SOURCE, keyChannelIdx: 2,
+        } as never,
+        sourceId,
+      );
+    };
+
+    beforeEach(async () => {
+      await harness.db.sources.deleteSource(MC_MQTT).catch(() => {});
+      await harness.db.sources.createSource({ id: MC_MQTT, name: MC_MQTT, type: 'meshcore_mqtt', config: {}, enabled: true });
+    });
+    afterEach(async () => {
+      await harness.db.meshcore.deleteAllMessagesForSource(MC_MQTT).catch(() => {});
+      await harness.db.meshcore.deleteAllMessagesForSource(MC_SOURCE).catch(() => {});
+      await harness.db.sources.deleteSource(MC_MQTT).catch(() => {});
+    });
+
+    it('names a keyed index on an MQTT feed after the key that opened it', async () => {
+      await seedKeyed(MC_MQTT);
+      expect(await nameOf(MC_MQTT, IDX)).toBe('ops');
+    });
+
+    it('names a keyed index on a Repeater/Companion source too', async () => {
+      await seedKeyed(MC_SOURCE);
+      expect(await nameOf(MC_SOURCE, IDX)).toBe('ops');
+    });
+
+    it('returns null for a keyed index the source has no messages on', async () => {
+      expect(await nameOf(MC_MQTT, IDX)).toBeNull();
+    });
+
+    it('leaves a Meshtastic source unchanged for the same index', async () => {
+      await seedKeyed(MC_MQTT);
+      expect(await nameOf(MQTT_SOURCE, IDX)).toBeNull();
+    });
   });
 });

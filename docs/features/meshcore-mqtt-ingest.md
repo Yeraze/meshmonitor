@@ -68,7 +68,7 @@ Channel traffic is decrypted with the channel keys you already hold. You do not 
 
 Only channels you hold a key for are readable; everything else on the feed stays encrypted and is simply skipped.
 
-A message decrypted with a Channel Database key is shown only to users who can read that key. New entries start with no user access. See [Who can read MeshCore channel traffic](/features/channel-database#who-can-read-meshcore-channel-traffic).
+Every channel message is filed under a channel derived from its key, so two sources that hold the same key share one channel, and the Channels tab shows the channel name. A message is shown only to users who can read that key: a channel on one of your sources (`channel_N:read` or `messages:read` there) or a Channel Database entry you were granted. The Public channel, whose key is published in the firmware, is shown to every signed-in user with `messages:read` on the feed. Messages stored before this change whose key cannot be identified stay visible to admins only, tagged "older, key unknown". New entries start with no user access. See [Who can read MeshCore channel traffic](/features/channel-database#who-can-read-meshcore-channel-traffic).
 
 ::: warning A clock-less sender can hide a repeat
 MeshCore encrypts `timestamp | flags | text`. When a sender's clock is unset the timestamp is `0`, so two separate transmissions of *identical text on the same channel* are byte-identical on the wire and the second is treated as a duplicate. There is nothing to distinguish them; the alternative would break de-duplication for every observer.
@@ -118,7 +118,7 @@ Packet capture is opt-in, as it is for every monitor.
 
 ## Notifications
 
-The source page has a **Notifications** tab for signed-in users. It alerts on channel messages you pick, inactive nodes, low observer battery, and broker connection loss. Direct messages, traces, mentions and new-node alerts do not apply to a feed with no radio. A region's channels can be busy, so nothing fires until you pick channels. See [MeshCore MQTT Region Feeds](/features/notifications#meshcore-mqtt-region-feeds) for the picker rules and the slot-number caveat.
+The source page has a **Notifications** tab for signed-in users. It alerts on channel messages you pick, inactive nodes, low observer battery, and broker connection loss. Direct messages, traces, mentions and new-node alerts do not apply to a feed with no radio. A region's channels can be busy, so nothing fires until you pick channels. See [MeshCore MQTT Region Feeds](/features/notifications#meshcore-mqtt-region-feeds) for the picker rules and the channel rules.
 
 ## Mesh impact
 

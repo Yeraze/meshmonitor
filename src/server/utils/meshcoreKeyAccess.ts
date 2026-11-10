@@ -21,15 +21,26 @@
  * 'meshcore') is a key too: its per-entry `canRead` grant adds its fingerprint.
  * A disabled row still grants reads of what it already decrypted.
  *
+ * The MeshCore Public channel secret is published in the firmware, so gating it
+ * protects nothing: every signed-in viewer passes for its fingerprint (#6308).
+ * The per-source `messages:read` check on the route still applies.
+ *
  * Rows WITHOUT a fingerprint (every message a source decrypted with its own
- * key, every DM, every MQTT row) are unaffected. This gate is ANDed onto the
- * existing per-source checks; it never grants anything they deny.
+ * key, every DM) are unaffected. MQTT channel rows carry a fingerprint like any
+ * other keyed row (#6308); a legacy row whose key could not be recovered holds
+ * MESHCORE_UNRESOLVED_KEY_FINGERPRINT, which is never granted, so only admins
+ * see it. This gate is ANDed onto the existing per-source checks; it never
+ * grants anything they deny.
  */
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
 import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import { channelKeyFingerprint, pskToHex, type ChannelKeyRow } from '../services/meshcoreFrameIngest.js';
+import { MESHCORE_PUBLIC_CHANNEL_SECRET } from './meshcoreGroupEcho.js';
+
+/** Fingerprint of the firmware-published Public channel secret. */
+const PUBLIC_CHANNEL_FINGERPRINT = channelKeyFingerprint(Buffer.from(MESHCORE_PUBLIC_CHANNEL_SECRET).toString('hex'));
 
 /** The caller fields this module reads. */
 export interface KeyAccessUser {
@@ -53,7 +64,7 @@ export async function resolveMeshcoreKeyAccess(
 
   // One `messages:read` lookup per source, one `channel_N:read` per slot.
   const messagesRead = new Map<string, Promise<boolean>>();
-  const allowed = new Set<string>();
+  const allowed = new Set<string>([PUBLIC_CHANNEL_FINGERPRINT]);
   for (const ch of all) {
     const secretHex = pskToHex(ch.psk);
     if (!secretHex || !ch.sourceId) continue;

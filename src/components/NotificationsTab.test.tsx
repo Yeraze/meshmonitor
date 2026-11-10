@@ -358,6 +358,21 @@ describe('NotificationsTab — MeshCore MQTT ingest source (#6307)', () => {
     expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).toBeNull();
   });
 
+  it('labels an unresolved legacy channel distinctly (#6308)', async () => {
+    const base = vi.mocked(api.get).getMockImplementation() as (u: string) => Promise<unknown>;
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.startsWith('/api/sources/src-1/meshcore/ingest/channels')) {
+        return Promise.resolve({
+          success: true,
+          data: [{ id: 5, name: '', legacy: true, uplinkEnabled: false, downlinkEnabled: false }],
+        });
+      }
+      return base(url);
+    }) as never);
+    renderWithSource('meshcore_mqtt');
+    expect(await screen.findByText("Channel 5 (older messages)")).toBeTruthy();
+  });
+
   it('loads channels from the ingest route, not /api/channels/all', async () => {
     renderWithSource('meshcore_mqtt');
     await waitFor(() =>
