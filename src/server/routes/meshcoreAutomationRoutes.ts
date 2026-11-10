@@ -19,6 +19,8 @@ import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { findSplitTimerTooFrequent } from '../utils/timerSplitGuard.js';
+import { MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/meshcoreMessageLimits.js';
 import { parseAutoPingSettingsUpdate, readAutoPingSettings } from '../utils/autoPingSettings.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import {
@@ -1231,6 +1233,11 @@ router.post(
       );
       if (badMode) {
         return fail(res, 400, 'INVALID_ADVERT_MODE', `Trigger ${String(badMode.id ?? '')}: advertMode must be one of: ${MESHCORE_ADVERT_MODES.join(', ')}`);
+      }
+      // A timer that splits long messages must fire at most every 5 minutes (#6316).
+      const tooFast = findSplitTimerTooFrequent(body.triggers);
+      if (tooFast) {
+        return fail(res, 400, 'SPLIT_TIMER_INTERVAL_TOO_SHORT', `Trigger ${tooFast.id}: a timer that splits long messages needs an interval of at least ${MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES} minutes`);
       }
       // Run state belongs to the scheduler; keep the stored values (#5827).
       const storedJson = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreTimerTriggers');

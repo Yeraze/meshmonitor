@@ -549,6 +549,8 @@ export interface MeshCoreAutomationScopeConfig {
 }
 
 export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeConfig {
+  /** Split a long reply into up to 3 marked parts instead of truncating (#6316). */
+  multiline?: boolean;
   id: string;
   name: string;
   enabled: boolean;
@@ -599,6 +601,8 @@ export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeCon
  * template applies on the next tick.
  */
 export interface MeshCoreTimerTrigger extends MeshCoreAutomationScopeConfig {
+  /** Split a long message into up to 3 marked parts (#6316). Needs interval >= 5 min. */
+  multiline?: boolean;
   id: string;
   name: string;
   enabled: boolean;
@@ -13618,22 +13622,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Multi-channel (#6230): read the channels array, coercing an old
     // single-channel timer into a one-item array.
     const channelIndexes = this.timerChannelIndexes(trigger);
-    const dispatch = async (text: string): Promise<boolean> => {
+    // Every channel gets part 1, then part 2, and so on (#6230, #6316). With
+    // split off the text is truncated to the byte cap, as on the air today.
+    // `allowSplit` is false for a script that emits several messages.
+    const dispatch = async (text: string, allowSplit = true): Promise<boolean> => {
+      const split = trigger.multiline === true && allowSplit;
+      const label = `Timer ${trigger.id}`;
       if (trigger.destination === 'dm' && trigger.contactPublicKey) {
-        return this.sendMessage(text, trigger.contactPublicKey, undefined, scopeOverride);
+        return (await this.sendAutomatedText(text, {
+          toPublicKey: trigger.contactPublicKey, scopeOverride, split, label,
+        })).ok;
       }
       if (channelIndexes.length === 0) return false;
-      // One send per channel, awaited in sequence so the per-source serialized
-      // send path spaces them on air exactly as runAutoAnnounceCycle does — the
-      // existing TX gap is reused, no new cadence or cap (#6230). All must
-      // succeed for the run to count as ok.
-      let allOk = true;
-      for (const idx of channelIndexes) {
-        // Automated sender → opt into channel-send auto-retry (#3979).
-        const ok = await this.sendMessage(text, undefined, idx, scopeOverride, true);
-        if (!ok) allOk = false;
-      }
-      return allOk;
+      return (await this.sendAutomatedText(text, {
+        channelIdxs: channelIndexes, scopeOverride, split, label,
+      })).ok;
     };
 
     let ok = true;
@@ -13815,7 +13818,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     scriptPath: string,
     scriptArgsString: string | undefined,
     env: Record<string, string>,
-    dispatch: (text: string) => Promise<boolean>,
+    dispatch: (text: string, allowSplit?: boolean) => Promise<boolean>,
     triggerLabel: string,
   ): Promise<RunScriptResult> {
     const expandedArgs = scriptArgsString
@@ -13829,11 +13832,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return result;
     }
 
+    // Only single-message script output may split (#6316).
+    const nonEmpty = result.wouldSendMessages.filter((m) => (m || '').trim());
+    const allowSplit = nonEmpty.length === 1;
     for (const msg of result.wouldSendMessages) {
       const trimmed = (msg || '').trim();
       if (!trimmed) continue;
       try {
-        const ok = await dispatch(trimmed);
+        const ok = await dispatch(trimmed, allowSplit);
         if (!ok) {
           logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script: send failed for "${trimmed.substring(0, 50)}"`);
         }
@@ -13938,14 +13944,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const senderContact = this.resolveContactByPrefix(message.fromPublicKey);
         // Scope/region for the reply (#3833): inherit / trigger / unscoped / named.
         const scopeOverride = MeshCoreManager.resolveAutomationScopeOverride(trigger, message);
-        const dispatch = async (text: string): Promise<boolean> => {
+        // `allowSplit` is false for a script that emits several messages
+        // (#6316): only single-message output splits, like Meshtastic.
+        const dispatch = async (text: string, allowSplit = true): Promise<boolean> => {
+          const split = trigger.multiline === true && allowSplit;
           if (trigger.replyAsDM || isDM) {
             const targetKey = senderContact?.publicKey || message.fromPublicKey;
-            return this.sendMessage(text, targetKey, undefined, scopeOverride);
+            return (await this.sendAutomatedText(text, {
+              toPublicKey: targetKey, scopeOverride, split, label: `Auto-responder ${trigger.id}`,
+            })).ok;
           }
           if (typeof channelIdx === 'number') {
-            // Automated sender → opt into channel-send auto-retry (#3979).
-            return this.sendMessage(text, undefined, channelIdx, scopeOverride, true);
+            return (await this.sendAutomatedText(text, {
+              channelIdxs: [channelIdx], scopeOverride, split, label: `Auto-responder ${trigger.id}`,
+            })).ok;
           }
           return false;
         };
@@ -14533,7 +14545,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const splitEnabled = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckSplitLongMessages')) === 'true';
       await this.sendAutomatedText(replyText, {
         toPublicKey: sendAsDM ? dmPublicKey : undefined,
-        channelIdxs: sendAsDM ? undefined : [channelIdx],
+        channelIdxs: sendAsDM ? undefined : channelIdx === undefined ? [] : [channelIdx],
         scopeOverride,
         split: splitEnabled,
         label: 'Auto-ack',
@@ -14605,7 +14617,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           if (!t.alive) continue;
           // Re-check before EVERY part: the pre-send delay and the gap are
           // long enough for receive-only to be switched on (#4547).
-          if (!this.connected || !this.canTransmit()) {
+          if (!this.canTransmit()) {
             logger.debug(`⏭️ [MeshCore:${this.sourceId}] ${opts.label}: cannot transmit, dropping part ${i + 1}/${parts.length}`);
             return;
           }

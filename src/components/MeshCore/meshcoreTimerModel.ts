@@ -7,6 +7,7 @@
  */
 import { isValidCron } from 'cron-validator';
 import type { ScopeMode } from './ScopeSelectField';
+import { MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/meshcoreMessageLimits';
 import { newTriggerId } from '../shared/automation/triggerList';
 import {
   DEFAULT_MESHCORE_ADVERT_MODE,
@@ -37,6 +38,8 @@ export interface MeshCoreTimerTrigger {
   /** @deprecated Use channelIndexes. Kept so old single-channel timers keep working (#6230). */
   channelIndex?: number;
   contactPublicKey?: string;
+  /** Split a long message into up to 3 marked parts (#6316). Interval timers need >= 5 min. */
+  multiline?: boolean;
   /** MeshCore scope/region for the sent message (#3833). */
   scopeMode?: ScopeMode;
   scopeName?: string;
@@ -97,7 +100,7 @@ export interface MeshCoreTimerErrors {
   intervalMinutes?: string;
 }
 
-type TFn = (key: string, fallback: string) => string;
+type TFn = (key: string, fallback: string, options?: Record<string, unknown>) => string;
 
 /**
  * Errors for one trigger. `isNew` adds the name rule, which only the old Add
@@ -113,6 +116,19 @@ export function validateMeshCoreTimer(tr: MeshCoreTimerTrigger, isNew: boolean, 
   }
   if (tr.scheduleType === 'interval' && (!Number.isFinite(tr.intervalMinutes) || (tr.intervalMinutes ?? 0) <= 0)) {
     errs.intervalMinutes = t('meshcore.automation.timers.invalid_interval_short', 'Interval must be at least 1 minute');
+  }
+  if (
+    tr.multiline === true &&
+    tr.responseType !== 'advert' &&
+    tr.scheduleType === 'interval' &&
+    !errs.intervalMinutes &&
+    (tr.intervalMinutes ?? 0) < MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES
+  ) {
+    errs.intervalMinutes = t(
+      'automation.split_long.timer_min_interval',
+      'A timer that splits long messages needs an interval of at least {{minutes}} minutes.',
+      { minutes: MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES },
+    );
   }
   return errs;
 }

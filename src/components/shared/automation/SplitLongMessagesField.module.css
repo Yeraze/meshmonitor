@@ -1,8 +1,3 @@
-/*
- * MeshCoreAutoAckSection. CSS module — do not add these rules to the global
- * sheets (CLAUDE.md CSS containment rule).
- */
-
 .toggleRow {
   display: flex;
   align-items: center;
@@ -15,7 +10,7 @@
   margin: 0;
 }
 
-.toggleRow .toggleLabel {
+.toggleLabel {
   margin: 0;
   font-weight: bold;
 }
