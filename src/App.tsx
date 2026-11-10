@@ -2188,7 +2188,7 @@ function App() {
           // correctly, but on a LAN the round trip is milliseconds, so the
           // button just flashed and the user was told nothing.
           const toast = resolveNeighborInfoErrorToast(response.status, errorData, t('errors.unknown'));
-          showToast(t(toast.key, toast.params), toast.variant);
+          showToast(t(toast.key, toast.params ?? {}), toast.variant);
         }
         return;
       }

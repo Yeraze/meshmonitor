@@ -26,6 +26,7 @@ import { normalizeChannelUrlPskToBase64, getPskBase64ByteLength } from '../../ut
 import styles from './ChannelDatabaseSection.module.css';
 import MeshCoreChannelImport from './MeshCoreChannelImport';
 import AeadBadge from '../channels/AeadBadge';
+import type { TranslateFn } from '../../types/translate';
 
 /**
  * Shape of a decoded channel returned by `apiService.decodeChannelUrl`
@@ -93,7 +94,7 @@ interface SortableChannelCardProps {
   onDelete: (channelId: number) => void;
   decryptionRunning: boolean;
   formatTimestamp: (timestamp: number | null) => string;
-  t: (key: string, options?: any) => string;
+  t: TranslateFn;
 }
 
 // Sortable channel card component

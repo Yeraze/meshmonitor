@@ -32,6 +32,7 @@ import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import styles from './DashboardSidebar.module.css';
 import MqttProxyWarning from './MqttProxyWarning';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory';
+import type { TranslateFn } from '../../types/translate';
 
 // Narrow, LOCAL slices of `source.config` / the status poll for the compact
 // Analyzer Observer badge (#5014 Phase 2 WP3 §4.9) — not imports of a
@@ -169,7 +170,7 @@ interface DashboardSidebarProps {
 function getActivityBadge(
   total: number,
   active: number | undefined,
-  t: (key: string, opts?: any) => string,
+  t: TranslateFn,
 ): { count: string; window: string; tone: 'live' | 'partial' | 'idle'; title: string } | null {
   if (active === undefined || total <= 0) return null;
   // Live = >50% of heard nodes still active; partial = some but minority;
