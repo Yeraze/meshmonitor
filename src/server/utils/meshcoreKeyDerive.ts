@@ -4,7 +4,7 @@
  * Returns null on any bad input; callers then fall back to an unpinned
  * announcement.
  */
-import { ed25519 } from '@noble/curves/ed25519';
+import { ed25519 } from '@noble/curves/ed25519.js';
 
 export function derivePublicKeyFromPrivateHex(privHex: string): string | null {
   try {
@@ -12,9 +12,9 @@ export function derivePublicKeyFromPrivateHex(privHex: string): string | null {
     const scalarBytes = Buffer.from(privHex.slice(0, 64), 'hex');
     let n = 0n;
     for (let i = 31; i >= 0; i--) n = (n << 8n) | BigInt(scalarBytes[i]);
-    n %= ed25519.CURVE.n;
+    n %= ed25519.Point.Fn.ORDER;
     if (n === 0n) return null;
-    return ed25519.ExtendedPoint.BASE.multiply(n).toHex();
+    return ed25519.Point.BASE.multiply(n).toHex();
   } catch {
     return null;
   }

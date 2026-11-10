@@ -27,7 +27,7 @@
  *    records repeaters and emits `meshcore:channel-heard`.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ed25519 } from '@noble/curves/ed25519';
+import { ed25519 } from '@noble/curves/ed25519.js';
 import { sha512 } from '@noble/hashes/sha2';
 import {
   deriveMeshCoreDmSecret,
@@ -214,7 +214,7 @@ describe('MeshCoreManager.findDmEchoMatch (pure, 1-byte prefix + window)', () =>
 
 // ── #6195: device-key-backed disambiguation of colliding DM echoes ──────────
 
-const L = ed25519.CURVE.n;
+const L = ed25519.Point.Fn.ORDER;
 function numLE(b: Uint8Array): bigint {
   let r = 0n;
   for (let i = b.length - 1; i >= 0; i--) r = (r << 8n) | BigInt(b[i]);
