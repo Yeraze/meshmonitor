@@ -616,3 +616,38 @@ describe('SettingsTab — Tropospheric ducting overlay section (#5734)', () => {
     expect(body.ductingOverlayEnabled).toBe('false');
   });
 });
+
+// MQTT root directory refresh (#6337): one admin-only global switch, next to
+// elevation, reusing this suite's mocks.
+describe('SettingsTab — MQTT root directory refresh section (#6337)', () => {
+  beforeEach(() => {
+    csrfFetchMock.mockClear();
+    csrfFetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    saveBarCapture.current = null;
+    installFetchMock();
+  });
+
+  it('is off by default and says what the request reveals', async () => {
+    serverSettings = {};
+    renderSettings();
+    await screen.findByRole('heading', { name: 'MQTT root directory refresh' });
+    const box = document.getElementById('mqttRootDirectoryRefreshEnabled') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(screen.getByText(/IP address and that someone used the finder/)).toBeTruthy();
+  });
+
+  it('loads a stored value and saves the edit as a strict boolean', async () => {
+    serverSettings = { mqttRootDirectoryRefreshEnabled: 'true' };
+    renderSettings();
+    await screen.findByRole('heading', { name: 'MQTT root directory refresh' });
+    const box = document.getElementById('mqttRootDirectoryRefreshEnabled') as HTMLInputElement;
+    await waitFor(() => expect(box.checked).toBe(true));
+
+    fireEvent.click(box);
+    await waitFor(() => expect(box.checked).toBe(false));
+    await saveBarCapture.current!.onSave();
+    const [, options] = csrfFetchMock.mock.calls[csrfFetchMock.mock.calls.length - 1];
+    const body = JSON.parse((options as RequestInit).body as string);
+    expect(body.mqttRootDirectoryRefreshEnabled).toBe('false');
+  });
+});

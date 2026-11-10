@@ -77,6 +77,10 @@ Admin only. Picks the Meshtastic TCP source used where a request names no source
 
 An admin-only switch for the [ducting overlay](/features/maps#tropospheric-ducting-overlay) on the Map tab and the Dashboard map. Off by default. See [Settings → Tropospheric ducting overlay](/features/settings#tropospheric-ducting-overlay).
 
+### MQTT root directory refresh
+
+An admin-only switch that lets the MQTT **Find topics** search fetch the current community root list from `api.meshtastic.org`. Off by default. See [Settings → MQTT root directory refresh](/features/settings#mqtt-root-directory-refresh).
+
 ### Position Estimation
 
 ::: tip New in 4.9.3

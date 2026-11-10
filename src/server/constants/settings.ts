@@ -522,6 +522,10 @@ export const VALID_SETTINGS_KEYS = [
   // write (ADMIN_ONLY_SETTINGS_KEYS below). Not secret: every map viewer reads
   // it to decide whether to show the toggle.
   'ductingOverlayEnabled',
+  // MQTT root finder live directory refresh (#6337). Global, off by default,
+  // admin-only write (ADMIN_ONLY_SETTINGS_KEYS below). When on, a finder use
+  // may fetch the community root list from api.meshtastic.org.
+  'mqttRootDirectoryRefreshEnabled',
   // Default Meshtastic source (#5245). Global, admin-only write
   // (ADMIN_ONLY_SETTINGS_KEYS), hidden from non-admins (SECRET_SETTINGS_KEYS).
   // Empty = Automatic (first TCP source started). Applied live to the registry.
@@ -1020,6 +1024,7 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)
   'elevationSourceUrl',                     // :305, also SECRET_SETTINGS_KEYS
   'ductingOverlayEnabled',                  // global outbound service (#5734), read via getSetting
+  'mqttRootDirectoryRefreshEnabled',        // global outbound service (#6337), read via getSetting
   'defaultMeshtasticSourceId',              // one install-wide default source (#5245), read via getSetting
   'adsbMatchEnabled',                       // global outbound service (#5374), read via getSetting
   'adsbFeed',                               // "
@@ -1194,6 +1199,9 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
  */
 export const ADMIN_ONLY_SETTINGS_KEYS = new Set<string>([
   'ductingOverlayEnabled',
+  // #6337: turning it on lets any finder user make the server contact
+  // api.meshtastic.org.
+  'mqttRootDirectoryRefreshEnabled',
   // #5245: picks the radio every source-less send goes out on.
   'defaultMeshtasticSourceId',
   // #6064: the analytics provider + config inject a <script> into the HTML

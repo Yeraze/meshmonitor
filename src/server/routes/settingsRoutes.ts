@@ -454,6 +454,9 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       'adsbMatchEnabled',
       // Ducting overlay (#5734): lets map viewers trigger NOAA requests.
       'ductingOverlayEnabled',
+      // MQTT root directory refresh (#6337): lets finder users trigger
+      // requests to api.meshtastic.org.
+      'mqttRootDirectoryRefreshEnabled',
     ] as const;
 
     for (const key of STRICT_BOOLEAN_SETTINGS_KEYS) {

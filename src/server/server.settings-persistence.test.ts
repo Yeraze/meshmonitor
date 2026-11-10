@@ -233,6 +233,8 @@ function validTestValue(key: string, suffix = ''): string {
     meshwarsBaseUrl: 'https://meshwars.example.org',
     // Ducting overlay (#5734): strict boolean.
     ductingOverlayEnabled: 'true',
+    // MQTT root directory refresh (#6337): strict boolean.
+    mqttRootDirectoryRefreshEnabled: 'true',
     // Reliable PKI (#5691): enums, INVALID_RELIABLE_PKI_MODE otherwise.
     reliablePkiMode: 'asNeeded',
     reliablePkiSourceMode: 'off',
@@ -602,6 +604,9 @@ describe('Settings Persistence', () => {
         // Ducting overlay (#5734) — same Category C pattern; read
         // server-side by ductingRoutes and publicly by useDuctingEnabled().
         'ductingOverlayEnabled',
+        // MQTT root directory refresh (#6337) — same Category C pattern; read
+        // server-side by the root finder's directoryProvider.
+        'mqttRootDirectoryRefreshEnabled',
         // OpenSky credentials (#5877), same pattern.
         'adsb_opensky_client_id', 'adsb_opensky_client_secret',
         // Virtual Node message replay (#6160) — loaded directly by SettingsTab

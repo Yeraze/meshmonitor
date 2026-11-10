@@ -188,7 +188,7 @@ Roots are ranked by how close they are to you when MeshMonitor knows where you a
 - MeshMonitor listens from its own network, not from your radio's. A broker that only the radio's network can reach shows as unreachable.
 - Quiet roots can be missed in 60 seconds.
 - You need the permission that lets you save the root: **Edit sources** for a bridge, **Edit configuration** on that source for a device, and admin for a saved preset.
-- The community list is a copy of `data/mqttRoots.json` from [meshtastic/api](https://github.com/meshtastic/api), commit `7406a79f7ecd819d7df6c1761f4e0ac6fde657d3`. It works offline and is not refreshed live.
+- The community list is a copy of `data/mqttRoots.json` from [meshtastic/api](https://github.com/meshtastic/api), commit `7406a79f7ecd819d7df6c1761f4e0ac6fde657d3`. It works offline. An admin can turn on [MQTT root directory refresh](/features/settings#mqtt-root-directory-refresh) to fetch the current list from `api.meshtastic.org` instead; the results show which copy was used.
 - This version does not look up your country, state or city from your position, so those rows appear only when they match something heard. The ranking uses the community list and the distance to the nearest node that reported its position.
 - The root checks in the form (no spaces, no `+` or `#`, at most 31 bytes, no trailing `/`, not ending in `/2`) are advice shown as you type. They do not block a save.
 
