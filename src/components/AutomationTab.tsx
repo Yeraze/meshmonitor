@@ -96,6 +96,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
     autoAnnounceMessage, setAutoAnnounceMessage,
     autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
     autoAnnounceHopLimit, setAutoAnnounceHopLimit,
+    autoAnnounceSplitLongMessages, setAutoAnnounceSplitLongMessages,
     autoAnnounceOnStart, setAutoAnnounceOnStart,
     autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
     autoAnnounceSchedule, setAutoAnnounceSchedule,
@@ -272,6 +273,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               onChannelIndexesChange={setAutoAnnounceChannelIndexes}
               hopLimit={autoAnnounceHopLimit}
               onHopLimitChange={setAutoAnnounceHopLimit}
+              splitLongMessages={autoAnnounceSplitLongMessages}
+              onSplitLongMessagesChange={setAutoAnnounceSplitLongMessages}
               onAnnounceOnStartChange={setAutoAnnounceOnStart}
               onUseScheduleChange={setAutoAnnounceUseSchedule}
               onScheduleChange={setAutoAnnounceSchedule}

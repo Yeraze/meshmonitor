@@ -24,6 +24,8 @@ import {
   timerResponseType,
   type TimerTriggerErrors,
 } from './timerTriggerModel';
+import { SplitLongMessagesField } from '../shared/automation/SplitLongMessagesField';
+import { SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/messageSplitLimits';
 import layout from '../AutomationFormLayout.module.css';
 import styles from './TimerTriggerEditor.module.css';
 
@@ -302,6 +304,22 @@ const TimerTriggerEditor: React.FC<TimerTriggerEditorProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Split long messages (#6330): opt-in, needs a 5-minute floor. */}
+      {!hasNone && (
+        <SplitLongMessagesField
+          id={`timer-split-${tr.id}`}
+          protocol="meshtastic"
+          checked={tr.multiline === true}
+          onChange={(v) => onChange({ multiline: v })}
+          perTargetCount={selectedChannels.length}
+          extraWarning={t(
+            'automation.split_long.timer_min_interval',
+            'A timer that splits long messages needs an interval of at least {{minutes}} minutes.',
+            { minutes: SPLIT_TIMER_MIN_INTERVAL_MINUTES },
+          )}
+        />
+      )}
     </div>
   );
 };

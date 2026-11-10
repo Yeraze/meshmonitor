@@ -18,6 +18,7 @@ import { extractParameters } from './utils';
 import { patternText, renderSampleResponse, editableChannels, triggerSyntax, type TriggerErrors } from './triggerModel';
 import { responderPatternList } from '../../utils/responderTrigger';
 import { ResponderSyntaxSelect } from '../shared/automation/ResponderSyntaxSelect';
+import { SplitLongMessagesField } from '../shared/automation/SplitLongMessagesField';
 import { COOLDOWN_SECONDS_MAX } from '../automationInputLimits';
 import { NumberInput } from '../common/NumberInput';
 import { UiIcon } from '../icons';
@@ -379,15 +380,15 @@ const TriggerEditor: React.FC<TriggerEditorProps> = ({
 
       {/* Options */}
       {responseType !== 'script' && responseType !== 'traceroute' && responseType !== 'mailbox' && (
-        <label className={styles.option}>
-          <input
-            type="checkbox"
-            checked={!!trigger.multiline}
-            onChange={(e) => onChange({ multiline: e.target.checked })}
-            disabled={disabled}
-          />
-          <span>{t('auto_responder.multiline_label')}</span>
-        </label>
+        // Multiline = the shared split option (#6330): up to 3 marked parts.
+        <SplitLongMessagesField
+          id={`${idBase}-multiline`}
+          protocol="meshtastic"
+          label={t('auto_responder.multiline_label')}
+          checked={!!trigger.multiline}
+          onChange={(v) => onChange({ multiline: v })}
+          disabled={disabled}
+        />
       )}
       <label className={hasDm ? styles.option : `${styles.option} ${styles.optionOff}`}>
         <input

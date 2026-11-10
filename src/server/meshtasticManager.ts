@@ -132,7 +132,14 @@ import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } fr
 import { automationPacketTracker, randomPacketId, type SendOrigin } from './utils/automationPacketTracker.js';
 import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy, WANT_CONFIG_NONCE_FULL, WANT_CONFIG_NONCE_ONLY_CONFIG, modemPresetChannelName } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy, WANT_CONFIG_NONCE_FULL, WANT_CONFIG_NONCE_ONLY_CONFIG, modemPresetChannelName, MAX_MESSAGE_BYTES } from './constants/meshtastic.js';
+import { SPLIT_PART_GAP_MS } from '../utils/messageSplitLimits.js';
+import {
+  SplitSequenceLock,
+  planAutomatedTextParts,
+  sendAutomatedTextParts,
+  type AutomatedTextResult,
+} from './utils/automatedTextSplit.js';
 import { QuickCloseDetector } from './meshtastic/quickCloseDetector.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
 import { MODULE_FIELD_BY_ADMIN_TYPE, CONFIG_TYPE_MAP } from './constants/configTypes.js';
@@ -4375,6 +4382,7 @@ class MeshtasticManager implements ISourceManager {
       response?: string; // Text message with expansion tokens (when responseType is 'text')
       channels?: Array<number | 'none'>; // Channel indexes to send output to, or ['none'] for no mesh output (#6230)
       channel?: number | 'none'; // Legacy single channel (#6230 back-compat)
+      multiline?: boolean; // Split long messages into up to 3 marked parts (#6330)
       enabled: boolean;
       lastRun?: number;
       lastResult?: 'success' | 'error';
@@ -4428,9 +4436,9 @@ class MeshtasticManager implements ISourceManager {
         // a multi-channel timer never bursts — no new cadence or cap is added.
         const timerChannels = normalizeTimerChannels(trigger);
         if (responseType === 'text' && trigger.response?.trim()) {
-          await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, timerChannels);
+          await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, timerChannels, trigger.multiline === true);
         } else if (trigger.scriptPath) {
-          await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, timerChannels, trigger.scriptArgs);
+          await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, timerChannels, trigger.scriptArgs, trigger.multiline === true);
         } else {
           logger.error(`⏱️ Timer "${trigger.name}" has no valid response configured`);
           await this.updateTimerTriggerResult(trigger.id, 'error', 'No response configured');
@@ -4971,7 +4979,7 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Execute a timer trigger script and send output to specified channel
    */
-  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channels: Array<number | 'none'>, scriptArgs?: string): Promise<void> {
+  private async executeTimerScript(triggerId: string, triggerName: string, scriptPath: string, channels: Array<number | 'none'>, scriptArgs?: string, split = false): Promise<void> {
     const startTime = Date.now();
     // Multi-channel (#6230): the script runs ONCE; its responses go to every
     // selected channel. 'none' (or an empty selection) means the script owns
@@ -5120,23 +5128,25 @@ class MeshtasticManager implements ISourceManager {
           // TX gap is reused, no new cadence (#6230).
           logger.debug(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to ${targetChannels.length} channel(s)`);
 
-          for (const channel of targetChannels) {
-            scriptResponses.forEach((resp, index) => {
-              const truncated = this.truncateMessageForMeshtastic(resp, 200);
-
-              this.enqueueAutomation(
-                truncated,
-                0, // destination: 0 for channel broadcast
-                undefined, // no reply-to packet ID for timer messages
-                () => {
-                  logger.debug(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
-                },
-                (reason: string) => {
-                  logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
-                },
-                channel // channel number
-              );
+          if (split && scriptResponses.length === 1) {
+            // Split (#6330): only a script that prints exactly one message
+            // can split. Part i goes to every channel, then part i+1.
+            await this.sendAutomatedText(scriptResponses[0], {
+              channels: targetChannels,
+              split: true,
+              label: `Timer "${triggerName}" response`,
             });
+          } else {
+            // Each response cut to the 200-byte cap, channel by channel.
+            for (const channel of targetChannels) {
+              for (let index = 0; index < scriptResponses.length; index++) {
+                await this.sendAutomatedText(scriptResponses[index], {
+                  channels: [channel],
+                  split: false,
+                  label: `Timer response ${index + 1}/${scriptResponses.length}`,
+                });
+              }
+            }
           }
         } else {
           logger.debug(`⏱️ Timer "${triggerName}" script executed (no mesh output)`);
@@ -5159,35 +5169,26 @@ class MeshtasticManager implements ISourceManager {
    * Execute a timer trigger text message and send to specified channel
    * Uses the same token expansion as auto-announce
    */
-  private async executeTimerTextMessage(triggerId: string, triggerName: string, message: string, channels: Array<number | 'none'>): Promise<void> {
+  private async executeTimerTextMessage(triggerId: string, triggerName: string, message: string, channels: Array<number | 'none'>, split = false): Promise<void> {
     try {
       logger.debug(`⏱️ Executing timer text message: "${triggerName}"`);
 
       // Replace tokens once; the same rendered body goes to every channel (#6230).
       const expandedMessage = await this.replaceAnnouncementTokens(message);
-      const truncated = this.truncateMessageForMeshtastic(expandedMessage, 200);
 
       // 'none' is a script-only choice; a text timer has none, but filter defensively.
       const targetChannels = channels.filter((c): c is number => c !== 'none');
 
-      // One enqueue per channel. The message queue sends one item every
-      // SEND_INTERVAL_MS, so multi-channel timers are spaced on air by the
-      // existing per-source TX gap and never burst (#6230).
-      for (const channel of targetChannels) {
-        logger.debug(`⏱️ Timer "${triggerName}" queuing to channel ${channel}: ${truncated.substring(0, 50)}${truncated.length > 50 ? '...' : ''}`);
-        this.enqueueAutomation(
-          truncated,
-          0, // destination: 0 for channel broadcast
-          undefined, // no reply-to packet ID for timer messages
-          () => {
-            logger.debug(`✅ Timer "${triggerName}" message delivered to channel ${channel}`);
-          },
-          (reason: string) => {
-            logger.warn(`❌ Timer "${triggerName}" message failed to channel ${channel}: ${reason}`);
-          },
-          channel // channel number
-        );
-      }
+      // One queue item per channel (per part when split, #6330). The message
+      // queue sends one item every SEND_INTERVAL_MS, so multi-channel timers
+      // are spaced on air by the existing per-source TX gap and never burst
+      // (#6230). Split off: cut to the 200-byte cap.
+      logger.debug(`⏱️ Timer "${triggerName}" queuing to ${targetChannels.length} channel(s)${split ? ' (split)' : ''}`);
+      await this.sendAutomatedText(expandedMessage, {
+        channels: targetChannels,
+        split,
+        label: `Timer "${triggerName}" message`,
+      });
 
       await this.updateTimerTriggerResult(triggerId, 'success');
 
@@ -11411,6 +11412,81 @@ class MeshtasticManager implements ISourceManager {
     );
   }
 
+  /** Per-source split mutex (#6330); the shared runner holds it per sequence. */
+  private readonly splitSequenceLock = new SplitSequenceLock();
+
+  /**
+   * Send one automated text (Auto Responder, Timer Triggers, Auto Announce,
+   * Automation Engine) fitted to the 200-byte Meshtastic cap (#6330). The
+   * same shared runner as MeshCore's `sendAutomatedText` (#6316).
+   *
+   * Split off: one part per target, cut to the cap with "...". Split on: up
+   * to SPLIT_MAX_PARTS parts marked "(i/N)", SPLIT_PART_GAP_MS apart, the last
+   * part cut with "..." when the text does not fit. A multi-part sequence
+   * holds a per-source mutex so two sequences never interleave.
+   *
+   * Default transport is the per-source message queue, which also spaces its
+   * sends 30 s apart, so on air the parts are at least that far apart; the
+   * queue keeps its retries and delivery callbacks. `direct` sends with
+   * `sendTextMessage` instead (the Automation Engine's channel path), where
+   * the 10 s gap is the real gap.
+   */
+  async sendAutomatedText(
+    text: string,
+    opts: {
+      /** DM to this node. Absent: send to `channels`. */
+      destination?: number;
+      channels?: number[];
+      split: boolean;
+      label: string;
+      /** Reply-to packet id, set on the first part only. */
+      replyId?: number;
+      /** Queue attempts per part (DM verification). */
+      maxAttempts?: number;
+      hopLimitOverride?: number;
+      origin?: SendOrigin;
+      direct?: boolean;
+    },
+  ): Promise<AutomatedTextResult> {
+    const isDm = opts.destination !== undefined;
+    const plan = planAutomatedTextParts(text, { maxBytes: MAX_MESSAGE_BYTES, split: opts.split, ellipsis: true });
+    const origin: SendOrigin = opts.origin ?? 'automation';
+    const targets = isDm
+      ? [{ name: `!${opts.destination!.toString(16).padStart(8, '0')}`, channel: undefined as number | undefined }]
+      : (opts.channels ?? []).map((c) => ({ name: `channel ${c}`, channel: c as number | undefined }));
+    return sendAutomatedTextParts(text, plan, targets, {
+      lock: this.splitSequenceLock,
+      gapMs: SPLIT_PART_GAP_MS,
+      canTransmit: () => this.canTransmit(),
+      logPrefix: `[Meshtastic:${this.sourceId}]`,
+      label: opts.label,
+      sendPart: async (t, part, i) => {
+        const replyId = i === 0 ? opts.replyId : undefined;
+        const tag = plan.parts.length > 1 ? ` part ${i + 1}/${plan.parts.length}` : '';
+        if (opts.direct) {
+          await this.sendTextMessage(
+            part, t.channel ?? 0, opts.destination, replyId, undefined, undefined, undefined,
+            opts.hopLimitOverride !== undefined ? { hopLimitOverride: opts.hopLimitOverride, origin } : { origin },
+          );
+          return true;
+        }
+        this.messageQueue.enqueue(
+          part,
+          isDm ? opts.destination! : 0,
+          replyId,
+          () => logger.debug(`✅ ${opts.label}${tag} delivered to ${t.name}`),
+          (reason: string) => logger.warn(`❌ ${opts.label}${tag} failed to ${t.name}: ${reason}`),
+          t.channel,
+          opts.maxAttempts,
+          undefined,
+          opts.hopLimitOverride,
+          origin,
+        );
+        return true;
+      },
+    });
+  }
+
   async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }, options?: { hopLimitOverride?: number; origin?: SendOrigin }): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
@@ -14052,25 +14128,12 @@ class MeshtasticManager implements ISourceManager {
             // parseAutoResponderResponse already logged the reason
             return;
           }
-          if (multilineEnabled && responseValue.responses.length === 1) {
-            // Split into multiple messages if enabled — only safe when
-            // the parsed payload was a single response. Multi-response
-            // JSON intentionally bypasses splitting (see Multiple
-            // Responses Support in docs/features/automation.md).
-            responseValue.responses = this.splitMessageForMeshtastic(responseValue.responses[0], 200);
-            if (responseValue.responses.length > 1) {
-              logger.debug(`📝 Split response into ${responseValue.responses.length} messages`);
-            }
-          } else {
-            // Truncate each response and only log when truncation actually changed bytes.
-            responseValue.responses = responseValue.responses.map((oldVal, i) => {
-              const newVal = this.truncateMessageForMeshtastic(oldVal, 200);
-              if (newVal.length !== oldVal.length) {
-                logger.debug(`✂️  Response ${i + 1} truncated from ${oldVal.length} to ${newVal.length} characters`);
-              }
-              return newVal;
-            });
-          }
+          // Multiline (#6330): one parsed response splits through the shared
+          // splitter, up to SPLIT_MAX_PARTS parts marked "(i/N)", 10 s apart
+          // (the queue spaces them further). Multi-response JSON never splits
+          // (see Multiple Responses Support in docs/features/automation.md):
+          // each response is cut to the 200-byte cap.
+          const splitResponse = multilineEnabled && responseValue.responses.length === 1;
 
           // Enqueue all messages for delivery with retry logic
           // Respond on the channel the message came from.
@@ -14084,23 +14147,23 @@ class MeshtasticManager implements ISourceManager {
           // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
           const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
           const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${message.channel}`;
-          logger.debug(`🤖 Enqueueing ${responseValue.responses.length} auto-response message(s) to ${target}${trigger.verifyResponse ? ' (with verification)' : ''}`);
+          logger.debug(`🤖 Enqueueing ${responseValue.responses.length} auto-response message(s) to ${target}${splitResponse ? ' (split)' : ''}${trigger.verifyResponse ? ' (with verification)' : ''}`);
 
-          responseValue.responses.forEach((msg, index) => {
-            const isFirstMessage = index === 0;
-            this.enqueueAutomation(
-              msg,
-              isDM ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
-              isFirstMessage ? packetId : undefined, // Reply to original message for first response
-              () => {
-                logger.debug(`✅ Auto-response ${index + 1}/${responseValue.responses.length} delivered to ${target}`);
-              },
-              (reason: string) => {
-                logger.warn(`❌ Auto-response ${index + 1}/${responseValue.responses.length} failed to ${target}: ${reason}`);
-              },
-              isDM ? undefined : message.channel as number, // channel: undefined for DM, channel number for channel
-              maxAttempts
-            );
+          const responses = responseValue.responses;
+          // Not awaited: a split reply waits between parts, and the packet
+          // handler must not stall on it. Responses go out in order.
+          void (async () => {
+            for (let index = 0; index < responses.length; index++) {
+              await this.sendAutomatedText(responses[index], {
+                ...(isDM ? { destination: message.fromNodeNum } : { channels: [message.channel as number] }),
+                split: splitResponse,
+                label: `Auto-response ${index + 1}/${responses.length}`,
+                replyId: index === 0 ? packetId : undefined, // Reply to original message for first response
+                maxAttempts,
+              });
+            }
+          })().catch((err: unknown) => {
+            logger.warn(`❌ Auto-response to ${target} failed: ${(err as Error)?.message ?? err}`);
           });
 
           // Record cooldown timestamp

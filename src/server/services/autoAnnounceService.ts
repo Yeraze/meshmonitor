@@ -244,23 +244,21 @@ export class AutoAnnounceService {
       // (#5414); the manual "Send Announcement" button is not.
       const origin = triggeredByAutomation ? 'automation' : 'manual';
 
-      channelIndexes.forEach((channelIdx, i) => {
-        this.mgr.messageQueue.enqueue(
-          replacedMessage,
-          0, // destination: 0 for channel broadcast
-          undefined, // no reply-to for announcements
-          () => {
-            logger.debug(`✅ Auto-announcement ${i + 1}/${channelIndexes.length} delivered to channel ${channelIdx}`);
-          },
-          (reason: string) => {
-            logger.warn(`❌ Auto-announcement ${i + 1}/${channelIndexes.length} failed on channel ${channelIdx}: ${reason}`);
-          },
-          channelIdx, // channel number
-          1, // single attempt, no retry for broadcasts
-          undefined, // not a tapback
-          hopLimitOverride,
-          origin,
-        );
+      // Split long messages (#6330, opt-in, off by default): up to 3 marked
+      // parts, part i to every channel, then part i+1. Off: cut to the
+      // 200-byte cap. Queue items keep the single-attempt broadcast rule.
+      const split = (await settings.getSettingForSource(sourceId, 'autoAnnounceSplitLongMessages')) === 'true';
+      // Not awaited: a split sequence waits between parts, and the last-fire
+      // time below must be stamped now.
+      void this.mgr.sendAutomatedText(replacedMessage, {
+        channels: channelIndexes,
+        split,
+        label: 'Auto-announcement',
+        maxAttempts: 1, // single attempt, no retry for broadcasts
+        hopLimitOverride,
+        origin,
+      }).catch((error: Error) => {
+        logger.warn(`❌ Auto-announcement send failed: ${error.message}`);
       });
 
       // Update last announcement time (per-source)

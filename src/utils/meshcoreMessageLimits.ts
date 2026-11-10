@@ -45,11 +45,12 @@ export function meshcoreMessageByteCap(dest: { isDm: boolean; nodeName?: string 
 }
 
 /**
- * Split-long-message limits for automated MeshCore senders (#6316).
- * Fixed by the maintainer: at most 3 parts, 10 s apart. Shared with the UI so
- * the airtime warning text cannot drift from the real behaviour.
+ * Split-long-message limits for automated MeshCore senders (#6316). Meshtastic
+ * uses the same values (#6330), so they live in the protocol-neutral
+ * `messageSplitLimits` module; these names stay for existing callers.
  */
-export const MESHCORE_SPLIT_MAX_PARTS = 3;
-export const MESHCORE_SPLIT_PART_GAP_MS = 10_000;
-/** Shortest timer interval (minutes) allowed when a timer splits long messages. */
-export const MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES = 5;
+export {
+  SPLIT_MAX_PARTS as MESHCORE_SPLIT_MAX_PARTS,
+  SPLIT_PART_GAP_MS as MESHCORE_SPLIT_PART_GAP_MS,
+  SPLIT_TIMER_MIN_INTERVAL_MINUTES as MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES,
+} from './messageSplitLimits.js';

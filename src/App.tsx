@@ -612,6 +612,7 @@ function App() {
     setHopEmojiMqtt,
     setAutoAckHopLimit,
     setAutoAnnounceHopLimit,
+    setAutoAnnounceSplitLongMessages,
     setAutoAckTestMessages,
     setAutoAnnounceEnabled,
     setAutoAnnounceIntervalHours,
@@ -1054,6 +1055,7 @@ function App() {
           setHopEmojiZeroHop(settings.hopEmojiZeroHop ?? '');
           setHopEmojiMqtt(settings.hopEmojiMqtt ?? '');
           setAutoAnnounceHopLimit(hopLimitSettingValue(settings.autoAnnounceHopLimit));
+          setAutoAnnounceSplitLongMessages(settings.autoAnnounceSplitLongMessages === 'true');
 
           if (settings.autoAckTestMessages) {
             setAutoAckTestMessages(settings.autoAckTestMessages);

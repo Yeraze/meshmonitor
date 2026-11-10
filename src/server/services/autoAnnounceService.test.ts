@@ -13,6 +13,8 @@
  * `heartbeatScheduler.test.ts`'s style.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { MeshtasticManager } from '../meshtasticManager.js';
+import { SplitSequenceLock } from '../utils/automatedTextSplit.js';
 
 const mockGetSettingForSource = vi.fn();
 const mockGetSetting = vi.fn();
@@ -81,6 +83,11 @@ function makeFakeManager(overrides: Partial<{
     replaceAnnouncementTokens: vi.fn(async (message: string) => message.replace('{VERSION}', '9.9.9')),
     messageQueue: { enqueue: vi.fn() },
     broadcastNodeInfoToChannels: vi.fn().mockResolvedValue(undefined),
+    // The real shared split sender (#6330), run against this fake's queue.
+    splitSequenceLock: new SplitSequenceLock(),
+    sendAutomatedText(this: unknown, text: string, opts: unknown) {
+      return (MeshtasticManager.prototype.sendAutomatedText as (...a: unknown[]) => unknown).call(this, text, opts);
+    },
   };
 }
 
@@ -440,6 +447,52 @@ describe('AutoAnnounceService', () => {
       expect(mgr.messageQueue.enqueue).toHaveBeenCalledTimes(1);
       const chan = (mgr.messageQueue.enqueue as ReturnType<typeof vi.fn>).mock.calls[0][5];
       expect(chan).toBe(3);
+    });
+
+    it('cuts an over-long announcement to the 200-byte cap with split off (#6330)', async () => {
+      stubSettings({ autoAnnounceMessage: 'word '.repeat(80), autoAnnounceChannelIndexes: '[0]' });
+      const mgr = makeFakeManager();
+      const svc = new AutoAnnounceService(mgr as any);
+
+      await svc.sendAutoAnnouncement(true);
+
+      const calls = (mgr.messageQueue.enqueue as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls).toHaveLength(1);
+      expect(Buffer.byteLength(calls[0][0], 'utf8')).toBeLessThanOrEqual(200);
+      expect(calls[0][0].endsWith('...')).toBe(true);
+    });
+
+    it('splits a long announcement into marked parts, part by part across channels, when split is on (#6330)', async () => {
+      vi.useFakeTimers();
+      try {
+        stubSettings({
+          autoAnnounceMessage: 'word '.repeat(60), // 300 bytes: two parts
+          autoAnnounceChannelIndexes: '[0,2]',
+          autoAnnounceSplitLongMessages: 'true',
+          autoAnnounceHopLimit: '0',
+        });
+        const mgr = makeFakeManager();
+        const svc = new AutoAnnounceService(mgr as any);
+
+        await svc.sendAutoAnnouncement(false);
+        const enqueue = mgr.messageQueue.enqueue as ReturnType<typeof vi.fn>;
+        expect(enqueue).toHaveBeenCalledTimes(2); // part 1 to both channels
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(enqueue).toHaveBeenCalledTimes(4);
+
+        const calls = enqueue.mock.calls;
+        expect(calls.map((c) => c[5])).toEqual([0, 2, 0, 2]);
+        expect(calls[0][0].startsWith('(1/2) ')).toBe(true);
+        expect(calls[2][0].startsWith('(2/2) ')).toBe(true);
+        for (const c of calls) {
+          expect(Buffer.byteLength(c[0], 'utf8')).toBeLessThanOrEqual(200);
+          expect(c[6]).toBe(1); // single attempt
+          expect(c[8]).toBe(0); // hop-limit override kept
+          expect(c[9]).toBe('manual'); // the button is a manual send
+        }
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('updates lastAnnouncementTime via setSourceSetting for a per-source manager', async () => {

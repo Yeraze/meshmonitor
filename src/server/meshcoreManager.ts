@@ -92,7 +92,7 @@ import {
 } from './services/meshcoreReactionSend.js';
 import { MESHCORE_SPLIT_PART_GAP_MS } from './constants/meshcoreMessageLimits.js';
 import { planMeshCoreTextParts } from './utils/meshcoreSplitPlan.js';
-import { utf8ByteLength } from './utils/splitUtf8Message.js';
+import { SplitSequenceLock, sendAutomatedTextParts, type AutomatedTextResult } from './utils/automatedTextSplit.js';
 import { MeshCoreResendError } from './errors/meshcoreResendError.js';
 import {
   MESHCORE_LOGIN_BRIDGE_TIMEOUT_MS,
@@ -14619,8 +14619,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
-  /** Tail of the per-source split mutex (#6316). */
-  private splitSequenceLock: Promise<unknown> = Promise.resolve();
+  /** Per-source split mutex (#6316); shared runner in automatedTextSplit (#6330). */
+  private splitSequenceLock = new SplitSequenceLock();
 
   /**
    * Send one automated text (Auto Ack, Auto Responder, timers, Auto Announce,
@@ -14628,12 +14628,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    *
    * Split off: one send per target, truncated to the cap so the stored row
    * matches the air. Split on: up to MESHCORE_SPLIT_MAX_PARTS marked parts,
-   * MESHCORE_SPLIT_PART_GAP_MS apart. Send order is by part: part i goes to
-   * every target channel back to back, then the gap, then part i+1. The gap is
-   * awaited outside the send lock. A multi-part sequence holds a per-source
-   * mutex so two sequences never interleave their (i/N) markers. Chat parts do
-   * not stamp recordMeshTx. A target whose part fails is dropped from later
-   * parts; the run stops when no target is left or receive-only is switched on.
+   * MESHCORE_SPLIT_PART_GAP_MS apart. Order, gap, mutex, receive-only re-check
+   * and drop-on-failure come from the shared `sendAutomatedTextParts`, which
+   * Meshtastic uses too (#6330). Chat parts do not stamp recordMeshTx.
    */
   async sendAutomatedText(
     text: string,
@@ -14644,74 +14641,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       split: boolean;
       label: string;
     },
-  ): Promise<{ ok: boolean; sentParts: number; totalParts: number; truncated: boolean; perTarget: Array<{ target: string; sentParts: number }> }> {
+  ): Promise<AutomatedTextResult> {
     const isDm = opts.toPublicKey !== undefined;
     const plan = planMeshCoreTextParts(text, { isDm, nodeName: this.localNode?.name, split: opts.split });
-    const { parts, truncated, maxBytes } = plan;
     const targets = isDm
-      ? [{ name: 'DM', channel: undefined as number | undefined, sent: 0, alive: true }]
-      : (opts.channelIdxs ?? []).map((c) => ({ name: `channel ${c}`, channel: c as number | undefined, sent: 0, alive: true }));
-    const result = () => {
-      const sentParts = targets.length ? Math.min(...targets.map((t) => t.sent)) : 0;
-      return {
-        ok: targets.length > 0 && parts.length > 0 && targets.every((t) => t.sent === parts.length),
-        sentParts,
-        totalParts: parts.length,
-        truncated,
-        perTarget: targets.map((t) => ({ target: t.name, sentParts: t.sent })),
-      };
-    };
-    if (truncated) {
-      logger.warn(
-        `[MeshCore:${this.sourceId}] ${opts.label}: message is ${utf8ByteLength(text)} bytes, over the ${maxBytes}-byte cap` +
-        `${parts.length > 1 ? ` x ${parts.length} parts` : ''}; the tail was cut`,
-      );
-    }
-    if (parts.length === 0 || targets.length === 0) return result();
-
-    const run = async () => {
-      for (let i = 0; i < parts.length; i++) {
-        if (!targets.some((t) => t.alive)) break;
-        if (i > 0) {
-          // Fixed gap so parts do not collide with each other's repeater
-          // re-floods. Outside runSerialized: other sends are not held up.
-          await new Promise((resolve) => setTimeout(resolve, MESHCORE_SPLIT_PART_GAP_MS));
-        }
-        for (const t of targets) {
-          if (!t.alive) continue;
-          // Re-check before EVERY part: the pre-send delay and the gap are
-          // long enough for receive-only to be switched on (#4547).
-          if (!this.canTransmit()) {
-            logger.debug(`⏭️ [MeshCore:${this.sourceId}] ${opts.label}: cannot transmit, dropping part ${i + 1}/${parts.length}`);
-            return;
-          }
-          logger.debug(`[MeshCore:${this.sourceId}] ${opts.label} ${t.name} part ${i + 1}/${parts.length} (${utf8ByteLength(parts[i])} bytes)`);
-          const sent = isDm
-            ? await this.sendMessage(parts[i], opts.toPublicKey, undefined, opts.scopeOverride)
-            // Automated sender: opt into channel-send auto-retry (#3979).
-            : await this.sendMessage(parts[i], undefined, t.channel, opts.scopeOverride, true);
-          if (!sent) {
-            // Later parts without the earlier ones are noise.
-            if (parts.length > 1) {
-              logger.warn(`[MeshCore:${this.sourceId}] ${opts.label}: part ${i + 1}/${parts.length} to ${t.name} failed; skipping the rest for it`);
-            }
-            t.alive = false;
-          } else {
-            t.sent++;
-          }
-        }
-      }
-    };
-
-    if (parts.length > 1) {
-      // Per-source mutex: a sequence waits for the running one to finish.
-      const task = this.splitSequenceLock.then(run);
-      this.splitSequenceLock = task.then(() => undefined, () => undefined);
-      await task;
-    } else {
-      await run();
-    }
-    return result();
+      ? [{ name: 'DM', channel: undefined as number | undefined }]
+      : (opts.channelIdxs ?? []).map((c) => ({ name: `channel ${c}`, channel: c as number | undefined }));
+    return sendAutomatedTextParts(text, plan, targets, {
+      lock: this.splitSequenceLock,
+      gapMs: MESHCORE_SPLIT_PART_GAP_MS,
+      canTransmit: () => this.canTransmit(),
+      logPrefix: `[MeshCore:${this.sourceId}]`,
+      label: opts.label,
+      sendPart: (t, part) => isDm
+        ? this.sendMessage(part, opts.toPublicKey, undefined, opts.scopeOverride)
+        // Automated sender: opt into channel-send auto-retry (#3979).
+        : this.sendMessage(part, undefined, t.channel, opts.scopeOverride, true),
+    });
   }
 
   private async attemptReconnect(): Promise<void> {

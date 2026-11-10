@@ -16,6 +16,10 @@
  * NO run-log row. The live event-bus path (automationEngineService) is untouched.
  */
 import { planMeshCoreTextParts } from '../../utils/meshcoreSplitPlan.js';
+import { planAutomatedTextParts } from '../../utils/automatedTextSplit.js';
+import { MESHTASTIC_MAX_TEXT_BYTES } from '../../../utils/messageSplitLimits.js';
+import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
+import { isMeshtasticManager } from '../../sourceManagerTypes.js';
 import {
   categoryOf,
   stepOutputNameOf,
@@ -189,10 +193,15 @@ function recordingDeps(
       return { sourceId: row.id, sourceName: row.name, previous, enabled: mode === 'toggle' ? !previous : Boolean(enabled) };
     },
     async sendMessage(a) {
-      // #6316: report how many parts a MeshCore split would send. Nothing is sent.
-      const plannedParts = a.splitLongMessages
-        ? planMeshCoreTextParts(a.text, { isDm: typeof a.destination === 'string', split: true }).parts.length
-        : undefined;
+      // #6316/#6330: report how many parts a split would send. Nothing is sent.
+      let plannedParts: number | undefined;
+      if (a.splitLongMessages) {
+        const m = a.sourceId ? sourceManagerRegistry.getManager(a.sourceId) : undefined;
+        const meshtastic = typeof a.destination === 'number' || (m !== undefined && isMeshtasticManager(m));
+        plannedParts = meshtastic
+          ? planAutomatedTextParts(a.text, { maxBytes: MESHTASTIC_MAX_TEXT_BYTES, split: true, ellipsis: true }).parts.length
+          : planMeshCoreTextParts(a.text, { isDm: typeof a.destination === 'string', split: true }).parts.length;
+      }
       return { action: 'sendMessage', ...a, ...(plannedParts !== undefined ? { plannedParts } : {}) };
     },
     async sendTapback(a) { return { action: 'tapback', ...a }; },
