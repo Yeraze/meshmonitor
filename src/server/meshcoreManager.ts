@@ -13450,15 +13450,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     });
 
     const rendered = await replaceMeshCoreAnnounceTokens(message, this);
+    // One call for every channel (#6316): part by part, so each channel gets
+    // its parts in order. `sent` counts channels where every part went out.
+    const split = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceSplitLongMessages')) === 'true';
     let sent = 0;
-    for (const idx of channelIndexes) {
-      try {
-        // Automated sender → opt into channel-send auto-retry (#3979).
-        const ok = await this.sendMessage(rendered, undefined, idx, scopeOverride, true);
-        if (ok) sent += 1;
-      } catch (err) {
-        logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: send to channel ${idx} threw: ${(err as Error).message}`);
-      }
+    try {
+      const res = await this.sendAutomatedText(rendered, {
+        channelIdxs: channelIndexes, scopeOverride, split, label: 'Auto-announce',
+      });
+      sent = res.perTarget.filter((t) => t.sentParts === res.totalParts && res.totalParts > 0).length;
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: send threw: ${(err as Error).message}`);
     }
 
     this.autoAnnounceLastRunAt = Date.now();

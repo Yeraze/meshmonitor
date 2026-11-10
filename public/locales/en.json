@@ -7352,6 +7352,7 @@
   "automation.split_long.warning": "Long messages go out as up to {{parts}} messages, {{seconds}} seconds apart, each marked like \"(1/{{parts}})\". Each one is repeated by every repeater in range.",
   "automation.split_long.warning_channels": "This run sends to {{count}} channels, so up to {{total}} messages per run.",
   "automation.split_long.timer_min_interval": "A timer that splits long messages needs an interval of at least {{minutes}} minutes.",
+  "meshcore.automation.announce.split_label": "Long Announcements",
   "meshcore.automation.autoack.split_label": "Long Replies",
   "meshcore.automation.autoping.description": "When enabled, a contact can DM \"ping N\" to this companion to get N pings back, or \"ping stop\" to cancel. Each ping records its round trip, a timeout, and whether it went direct or by flood. Companion sources only.",
   "meshcore.automation.delete_distance.title": "Auto Delete by Distance",

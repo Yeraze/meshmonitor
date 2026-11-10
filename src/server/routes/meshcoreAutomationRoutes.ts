@@ -1004,6 +1004,7 @@ router.get(
       const intervalHours = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceIntervalHours');
       const message = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceMessage');
       const channelIndexesRaw = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceChannelIndexes');
+      const announceSplit = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceSplitLongMessages');
       const announceOnStart = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceOnStart');
       const useSchedule = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceUseSchedule');
       const schedule = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceSchedule');
@@ -1026,6 +1027,7 @@ router.get(
             .filter(Boolean)
             .map(s => parseInt(s, 10))
             .filter(n => Number.isFinite(n)),
+          splitLongMessages: announceSplit === 'true',
           announceOnStart: announceOnStart === 'true',
           useSchedule: useSchedule === 'true',
           schedule: schedule || '0 */6 * * *',
@@ -1062,6 +1064,7 @@ router.post(
         intervalHours,
         message,
         channelIndexes,
+        splitLongMessages,
         announceOnStart,
         useSchedule,
         schedule,
@@ -1075,6 +1078,7 @@ router.post(
         intervalHours?: number;
         message?: string;
         channelIndexes?: number[];
+        splitLongMessages?: boolean;
         announceOnStart?: boolean;
         useSchedule?: boolean;
         schedule?: string;
@@ -1105,6 +1109,9 @@ router.post(
           ? channelIndexes.filter(n => Number.isFinite(n)).join(',')
           : '';
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceChannelIndexes', csv);
+      }
+      if (splitLongMessages !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceSplitLongMessages', String(splitLongMessages === true));
       }
       if (announceOnStart !== undefined) {
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceOnStart', String(announceOnStart));
