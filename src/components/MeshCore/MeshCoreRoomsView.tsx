@@ -615,6 +615,51 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     );
   }, [loginError, syncFailure, t]);
 
+  // Shared by the logged-in stats header and the login card (#6267): saving goes
+  // through the sessionless sync-config endpoint, so it needs no login. Callers
+  // gate on `canConfig`.
+  const syncConfigControls = (
+    <span className="meshcore-room-sync-config">
+      <label title={t('meshcore.rooms.sync_enabled_tooltip', 'Periodically re-login to fetch new posts')}>
+        <input
+          type="checkbox"
+          checked={syncEnabled}
+          onChange={e => { setSyncEnabled(e.target.checked); setSyncConfigDirty(true); }}
+        />
+        {t('meshcore.rooms.auto_sync', 'Auto-sync')}
+      </label>
+      {syncEnabled && (
+        <select
+          value={syncInterval}
+          onChange={e => { setSyncInterval(Number(e.target.value)); setSyncConfigDirty(true); }}
+        >
+          <option value={60}>1h</option>
+          <option value={120}>2h</option>
+          <option value={240}>4h</option>
+          <option value={480}>8h</option>
+          <option value={720}>12h</option>
+          <option value={1440}>24h</option>
+        </select>
+      )}
+      {syncConfigDirty && (
+        <button className="meshcore-room-sync-save" onClick={handleSaveSyncConfig}>
+          {t('meshcore.rooms.save_sync', 'Save')}
+        </button>
+      )}
+      {syncFailure && (
+        <span
+          className="meshcore-room-sync-warning"
+          title={syncFailure.reason === 'rejected'
+            ? t('meshcore.rooms.sync_failed_rejected', 'The room server refused the saved password, so auto-sync was turned off.')
+            : t('meshcore.rooms.sync_failed_no_reply', 'The last {{count}} scheduled logins went unanswered.', { count: syncFailure.count })}
+        >
+          <UiIcon name="alert" size={12} />
+        </span>
+      )}
+      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
+    </span>
+  );
+
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
 
   return (
@@ -792,6 +837,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               {loginNotice && !loginError && (
                 <div className={loginProgressStyles.notice} role="status">{loginNotice}</div>
               )}
+              {selectedRoom && canConfig && storedCreds.has(selectedRoom) && (
+                <div className={styles.loginSync}>{syncConfigControls}</div>
+              )}
               {selectedRoom && storedCreds.has(selectedRoom) && (
                 <div className="meshcore-room-saved-cred">
                   {savedCredWarning && (
@@ -834,47 +882,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                 )}
               </span>
               {/* Sync config toggle */}
-              {canConfig && (
-                <span className="meshcore-room-sync-config">
-                  <label title={t('meshcore.rooms.sync_enabled_tooltip', 'Periodically re-login to fetch new posts')}>
-                    <input
-                      type="checkbox"
-                      checked={syncEnabled}
-                      onChange={e => { setSyncEnabled(e.target.checked); setSyncConfigDirty(true); }}
-                    />
-                    {t('meshcore.rooms.auto_sync', 'Auto-sync')}
-                  </label>
-                  {syncEnabled && (
-                    <select
-                      value={syncInterval}
-                      onChange={e => { setSyncInterval(Number(e.target.value)); setSyncConfigDirty(true); }}
-                    >
-                      <option value={60}>1h</option>
-                      <option value={120}>2h</option>
-                      <option value={240}>4h</option>
-                      <option value={480}>8h</option>
-                      <option value={720}>12h</option>
-                      <option value={1440}>24h</option>
-                    </select>
-                  )}
-                  {syncConfigDirty && (
-                    <button className="meshcore-room-sync-save" onClick={handleSaveSyncConfig}>
-                      {t('meshcore.rooms.save_sync', 'Save')}
-                    </button>
-                  )}
-                  {syncFailure && (
-                    <span
-                      className="meshcore-room-sync-warning"
-                      title={syncFailure.reason === 'rejected'
-                        ? t('meshcore.rooms.sync_failed_rejected', 'The room server refused the saved password, so auto-sync was turned off.')
-                        : t('meshcore.rooms.sync_failed_no_reply', 'The last {{count}} scheduled logins went unanswered.', { count: syncFailure.count })}
-                    >
-                      <UiIcon name="alert" size={12} />
-                    </span>
-                  )}
-                  <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
-                </span>
-              )}
+              {canConfig && syncConfigControls}
             </div>
             <MeshCoreMessageStream
               messages={filtered}
