@@ -690,6 +690,31 @@ describe('MeshCoreChannelsView — sending', () => {
 
     expect(actions.sendMessage).toHaveBeenCalledWith('channel ops msg', undefined, 2);
   });
+
+  it('caps the composer at 160 - (node name bytes + 2) (#6303): 154 for "self"', async () => {
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+    });
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+    await waitFor(() => screen.getByText('Public'));
+    fireEvent.click(screen.getByText('Public'));
+    const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'a'.repeat(155) } });
+    expect(screen.getByText('155/154')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
+  });
 });
 
 describe('MeshCoreChannelsView — unread indicator (#3703)', () => {

@@ -21,6 +21,8 @@ export type MeshCorePacketRow = MeshCoreOtaPacketEvent & {
   srcHash?: string | null;
   senderPubKey?: string | null;
   advertName?: string | null;
+  /** Observer that heard this copy; null = this source's own radio (#6265). */
+  observerId?: string | null;
 };
 
 export interface MeshCorePacketFilters {

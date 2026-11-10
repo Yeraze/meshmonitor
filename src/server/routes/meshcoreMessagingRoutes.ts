@@ -22,6 +22,7 @@ import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isVal
   requireMeshcoreChannelAccess, canAccessMeshcoreChannel, requireMeshcoreTx, failIfTxDisabled,
   startTrackedLogin, respondLoginCancelled } from './meshcoreRouteShared.js';
 import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
+import { meshcoreMessageByteCap } from '../constants/meshcoreMessageLimits.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
@@ -441,18 +442,14 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
   try {
     const { text, toPublicKey, channelIdx, scope } = req.body;
 
-    // Determine per-context byte limit before validating the message.
-    // DM (toPublicKey present) → 150 bytes.
-    // Channel with scope → 120 bytes. Channel without scope → 130 bytes.
-    let msgMaxBytes: number;
-    if (toPublicKey !== undefined && toPublicKey !== null && toPublicKey !== '') {
-      msgMaxBytes = VALIDATION.MAX_MESSAGE_BYTES_DM;
-    } else {
-      const hasScope = typeof scope === 'string' && scope.trim().length > 0;
-      msgMaxBytes = hasScope
-        ? VALIDATION.MAX_MESSAGE_BYTES_CHANNEL_SCOPED
-        : VALIDATION.MAX_MESSAGE_BYTES_CHANNEL;
-    }
+    // Per-context byte limit. DM: 160. Channel: 160 minus the "<node name>: "
+    // prefix the firmware writes into the same buffer (#6303); scope does not
+    // use text room. Unknown name falls back to the worst case.
+    const isDm = toPublicKey !== undefined && toPublicKey !== null && toPublicKey !== '';
+    const msgMaxBytes = meshcoreMessageByteCap({
+      isDm,
+      nodeName: isDm ? undefined : managerFor(req, res).getLocalNode()?.name,
+    });
 
     // Validate message text using the context-appropriate byte limit.
     const textValidation = isValidMessage(text, msgMaxBytes);

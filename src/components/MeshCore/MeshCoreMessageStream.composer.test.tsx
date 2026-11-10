@@ -61,17 +61,17 @@ describe('MeshCoreMessageStream shared composer', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
   });
 
-  it('shows the byte counter against maxBytes (DM 150) and blocks an over-limit send', () => {
+  it('shows the byte counter against maxBytes (DM 160) and blocks an over-limit send', () => {
     const onSend = vi.fn(async () => true);
-    render(<MeshCoreMessageStream messages={[]} maxBytes={150} onSend={onSend} />);
-    fireEvent.change(box(), { target: { value: 'a'.repeat(151) } });
-    expect(screen.getByText('151/150')).toBeTruthy();
+    render(<MeshCoreMessageStream messages={[]} maxBytes={160} onSend={onSend} />);
+    fireEvent.change(box(), { target: { value: 'a'.repeat(161) } });
+    expect(screen.getByText('161/160')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.keyDown(box(), { key: 'Enter' });
     expect(onSend).not.toHaveBeenCalled();
-    fireEvent.change(box(), { target: { value: 'a'.repeat(150) } });
+    fireEvent.change(box(), { target: { value: 'a'.repeat(160) } });
     fireEvent.keyDown(box(), { key: 'Enter' });
-    expect(onSend).toHaveBeenCalledWith('a'.repeat(150));
+    expect(onSend).toHaveBeenCalledWith('a'.repeat(160));
   });
 
   it('clears the draft after a successful send', async () => {

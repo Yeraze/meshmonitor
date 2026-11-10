@@ -74,10 +74,10 @@ describe('message templates — per-source and per-user isolation', () => {
       messageBodyTemplate: 'A-only {{ text }}',
     }).expect(200);
 
-    const fromA = await renderMessagePayloadForUserAsync(harness.limited.id, payload('Source A'), harness.sourceA, 'Source A');
+    const fromA = await renderMessagePayloadForUserAsync(harness.limited.id, payload('Source A'), harness.sourceA, 'Source A', 'push');
     expect(fromA).toEqual({ title: 'A-only LongFast', body: 'A-only hello' });
 
-    const fromB = await renderMessagePayloadForUserAsync(harness.limited.id, payload('Source B'), harness.sourceB, 'Source B');
+    const fromB = await renderMessagePayloadForUserAsync(harness.limited.id, payload('Source B'), harness.sourceB, 'Source B', 'push');
     expect(fromB).toEqual({ title: 'LongFast · Source B', body: 'Alice Mobile: hello' });
   });
 
@@ -90,7 +90,7 @@ describe('message templates — per-source and per-user isolation', () => {
     expect((await harness.db.notifications.getUserPreferences(harness.limited.id, harness.sourceA))?.messageTitleTemplate).toBeNull();
     expect((await harness.db.notifications.getUserPreferences(harness.limited.id, harness.sourceB))?.messageTitleTemplate).toBe('B1');
 
-    const fromB = await renderMessagePayloadForUserAsync(harness.limited.id, payload('Source B'), harness.sourceB, 'Source B');
+    const fromB = await renderMessagePayloadForUserAsync(harness.limited.id, payload('Source B'), harness.sourceB, 'Source B', 'push');
     expect(fromB.title).toBe('B1');
   });
 
@@ -111,11 +111,11 @@ describe('message templates — per-source and per-user isolation', () => {
     const agent = await harness.loginAs(harness.limited);
     await agent.post('/push/preferences').send({ sourceId: harness.sourceA, messageTitleTemplate: 'mine {{ channelName }}' }).expect(200);
 
-    const other = await renderMessagePayloadForUserAsync(harness.admin.id, payload('Source A'), harness.sourceA, 'Source A');
+    const other = await renderMessagePayloadForUserAsync(harness.admin.id, payload('Source A'), harness.sourceA, 'Source A', 'push');
     expect(other.title).toBe('LongFast · Source A');
-    const anonymous = await renderMessagePayloadForUserAsync(null, payload('Source A'), harness.sourceA, 'Source A');
+    const anonymous = await renderMessagePayloadForUserAsync(null, payload('Source A'), harness.sourceA, 'Source A', 'push');
     expect(anonymous.title).toBe('LongFast · Source A');
-    const mine = await renderMessagePayloadForUserAsync(harness.limited.id, payload('Source A'), harness.sourceA, 'Source A');
+    const mine = await renderMessagePayloadForUserAsync(harness.limited.id, payload('Source A'), harness.sourceA, 'Source A', 'push');
     expect(mine.title).toBe('mine LongFast');
   });
 });

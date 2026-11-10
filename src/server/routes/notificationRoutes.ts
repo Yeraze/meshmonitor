@@ -5,7 +5,7 @@ import { logger } from '../../utils/logger.js';
 import { fail } from '../utils/apiResponse.js';
 import path from 'path';
 import { getAppriseConfigDir } from '../config/dataDir.js';
-import { validateMessageTemplate, normalizeTemplate } from '../../utils/notificationTemplate.js';
+import { validateMessageTemplate, normalizeTemplate, validateMessageTextMax } from '../../utils/notificationTemplate.js';
 import { defaultNotificationPreferences } from '../../utils/notificationDefaults.js';
 import { pushNotificationService } from '../services/pushNotificationService.js';
 import { appriseNotificationService, resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
@@ -500,6 +500,18 @@ pushRouter.post(
         });
       }
       body[field] = normalizeTemplate(body[field]);
+    }
+
+    // Message text length (#6278), one per delivery service. null or a blank
+    // string clears it (back to the default of 100). Anything else must be a
+    // whole number in range, so a typo fails at save instead of being clamped.
+    for (const field of ['messageTextMaxPush', 'messageTextMaxApprise'] as const) {
+      if (body[field] === undefined) continue;
+      if (typeof body[field] === 'string' && body[field].trim() === '') body[field] = null;
+      const problem = validateMessageTextMax(body[field]);
+      if (problem) {
+        return fail(res, 400, 'INVALID_MESSAGE_TEXT_MAX', problem.message, { field });
+      }
     }
 
     // Base row. The own-row read rethrows: a failed read must fail the save,
