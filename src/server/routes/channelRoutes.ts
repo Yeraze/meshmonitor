@@ -40,6 +40,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { fail } from '../utils/apiResponse.js';
 import { listKeyedChannelsForViewer } from '../utils/meshcoreKeyedChannels.js';
+import { isKeyedChannelIndex } from '../services/meshcoreFrameIngest.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
 import { requireDeviceSourcePermission, getDeviceSourceTarget, getConfigCapableTarget } from '../utils/deviceSourcePermission.js';
 import {
@@ -184,6 +185,9 @@ router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
           const slotIds = new Set(projected.map((c) => Number(c.id)));
           for (const k of keyed) {
             if (slotIds.has(k.id)) continue;
+            // An unresolved legacy MQTT slot (#6308) has no keyed index; listing it
+            // here would make the UsersTab grant editor show a phantom channel_N row.
+            if (!isKeyedChannelIndex(k.id)) continue;
             listed.push({
               ...transformChannel({ id: k.id, name: k.name, role: 2, psk: null }, { includePsk: false }),
               pskSet: true,

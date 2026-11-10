@@ -100,7 +100,13 @@ beforeEach(() => {
     if (url.includes('/messages')) {
       return {
         success: true,
-        data: { messages: [{ id: 'm1', channelIdx: 0, text: 'hello region', timestamp: Date.now() }] },
+        data: {
+          messages: [
+            { id: 'm1', channelIdx: 0, text: 'hello region', timestamp: Date.now() },
+            { id: 'm2', channelIdx: 20001, channelName: 'Ops', text: 'ops talk', timestamp: Date.now() },
+            { id: 'm3', channelIdx: 3, legacy: true, text: 'old talk', timestamp: Date.now() },
+          ],
+        },
       };
     }
     return { success: true, data: {} };
@@ -186,6 +192,20 @@ describe('MeshCoreIngestView (#5096)', () => {
 
     fireEvent.click(screen.getByText('Channels', { selector: 'button' }));
     expect(await screen.findByText('hello region')).toBeTruthy();
+  });
+
+  it('shows the channel name, a fallback label, and a tag on older rows (#6308)', async () => {
+    renderView();
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    fireEvent.click(screen.getByText('Channels', { selector: 'button' }));
+
+    const rowOf = async (text: string) => (await screen.findByText(text)).closest('li') as HTMLElement;
+    expect((await rowOf('ops talk')).textContent).toContain('Ops');
+    expect((await rowOf('ops talk')).textContent).not.toContain('#20001');
+    expect((await rowOf('hello region')).textContent).toContain('Channel 0');
+    const legacy = await rowOf('old talk');
+    expect(legacy.textContent).toContain('Channel 3');
+    expect(legacy.textContent).toContain('older, key unknown');
   });
 
   it('mounts the packet monitor for this source on the Packets tab', async () => {

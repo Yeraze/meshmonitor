@@ -768,7 +768,7 @@ A MeshCore MQTT ingest source has a **Notifications** tab on its page, for signe
 
 | Notification | Notes |
 |---|---|
-| **Channel messages** | The picker lists channels this source has messages on, plus keyed (virtual-key) channels you can read. Nothing fires until you pick channels. |
+| **Channel messages** | The picker lists channels this source has messages on, named by key (a channel shared by two sources is one channel), limited to the ones you can read. Nothing fires until you pick channels. |
 | **Keywords, emoji reactions, templates** | Same as Meshtastic. |
 | **Inactive Node, Low Battery** | Pick nodes in the monitored-node picker. Low battery reads the observer's reported voltage, in millivolts. |
 | **Server Events** | Startup, plus MQTT broker connection lost and restored (see below). |
@@ -776,9 +776,9 @@ A MeshCore MQTT ingest source has a **Notifications** tab on its page, for signe
 
 **A region feed can be busy.** A channel such as Public can carry a whole region's traffic, and there is no rate cap: each channel you tick can send many alerts. Pick channels with care. The tab says so next to the picker.
 
-**"Channel N" means slot N of any source.** The feed decrypts with every key MeshMonitor holds, and a device-slot key files the message under its slot number with no key marker. So "Channel 1" on a feed merges slot 1 of every source, the same as `#1` on the feed's Channels tab. Virtual-key channels have their own index and name. A fix is tracked in #6308; it will migrate saved channel picks.
+**Channels are named by key.** The feed decrypts with every key MeshMonitor holds and files each message under the channel that key belongs to, so the picker lists channels by name, not by slot number. Two sources that hold the same key share one channel. Older messages whose key could not be identified show as "Channel N (older messages)" and only admins see them.
 
-**Who receives what.** A user needs `messages:read` on the source. A message decrypted with a virtual key only reaches users who can read that key.
+**Who receives what.** A user needs `messages:read` on the source. A channel message only reaches users who can read the key that opened it. The Public channel reaches every signed-in user with `messages:read` on the feed.
 
 **Broker connection alerts.** The same alerts exist for a Meshtastic MQTT bridge's upstream broker. A drop notifies only after the link stays down for **two minutes**, so a flapping link stays silent. A rejected login or an eviction stop notifies at once, because no retry is coming. A restore notifies once after a loss that notified. Saving or restarting the source never notifies. The alert names the source and never the broker address.
 
