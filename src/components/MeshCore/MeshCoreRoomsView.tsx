@@ -123,6 +123,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const [loggedInRooms, setLoggedInRooms] = useState<Set<string>>(new Set());
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
+  // True when the last login got no reply (a room sends none on refusal, #6332).
+  const [loginNoReply, setLoginNoReply] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   // Live "attempt n of 3" progress + cancel for the login in flight (#5400).
   const { progress: loginProgress, run: runLogin, cancel: cancelLoginAttempt } = useMeshCoreLoginProgress(actions);
@@ -408,6 +410,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
         setLoginNotice(t('meshcore.rooms.login_cancelled', 'Login cancelled'));
       } else if (result.success) {
         setLoggedInRooms(prev => new Set(prev).add(selectedRoom));
+      } else if (result.reason === 'no_reply' || result.code === 'ROOM_LOGIN_NO_REPLY') {
+        setLoginNoReply(true);
       } else if (result.reason === 'rejected') {
         // Say so rather than dropping the user on a blank login card: the
         // saved password is the thing at fault, and the forget button below
@@ -451,6 +455,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     // select). `loggedInRooms` is NOT cleared: de-selecting is a view change,
     // not a logout.
     setLoginError(null);
+    setLoginNoReply(false);
     setLoginNotice(null);
     setLoginPassword('');
     setRememberPassword(false);
@@ -472,6 +477,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     if (!selectedRoom) return;
     setLoginLoading(true);
     setLoginError(null);
+    setLoginNoReply(false);
     setLoginNotice(null);
     try {
       const { value: result, cancelledByUser } = await runLogin((requestId) =>
@@ -494,6 +500,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
         setSyncFailure(null);
       } else {
         setLoginError(result.error || t('meshcore.rooms.login_failed', 'Login failed'));
+        setLoginNoReply(result.reason === 'no_reply' || result.code === 'ROOM_LOGIN_NO_REPLY');
       }
     } catch {
       setLoginError(t('meshcore.rooms.login_failed', 'Login failed'));
@@ -595,7 +602,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     markRoomRead(sourceId, selectedRoom, latest || Date.now());
   }, [sourceId, selectedRoom, filtered, roomLatest]);
 
-  const showLoginOverlay = selectedRoom && !isLoggedIn(selectedRoom) && !loginLoading;
+  const showLoginBanner = selectedRoom && !isLoggedIn(selectedRoom) && !loginLoading;
 
   // Explains a stored password that has stopped working. Suppressed while
   // `loginError` is showing: that already carries this session's live outcome,
@@ -793,13 +800,15 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
           </div>
         )}
 
-        {showLoginOverlay && (
-          <div className="meshcore-room-login-overlay">
-            <div className="meshcore-room-login-card">
-              <h3>{t('meshcore.rooms.login_title', 'Login to Room Server')}</h3>
-              <p className="meshcore-room-login-name">
-                {activeRoom?.advName || activeRoom?.name || selectedRoom.substring(0, 16) + '…'}
-              </p>
+        {showLoginBanner && (
+          <div className={styles.loginBanner}>
+            <p className={styles.loginBannerText}>
+              {t(
+                'meshcore.rooms.not_logged_in_banner',
+                'Not logged in \u2014 showing saved posts. Log in to post or fetch new ones.',
+              )}
+            </p>
+            <div className={styles.loginBannerControls}>
               <PasswordField
                 className="meshcore-room-login-input"
                 autoComplete="off"
@@ -809,7 +818,6 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                 placeholder={t('meshcore.rooms.password_placeholder', 'Password (empty for guest)')}
                 disabled={loginLoading || receiveOnly}
                 title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
-                autoFocus
               />
               {canRemember && (
                 <label className="meshcore-room-login-remember">
@@ -831,39 +839,48 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                   ? t('meshcore.rooms.logging_in', 'Logging in…')
                   : t('meshcore.rooms.login_button', 'Login')}
               </button>
-              {loginError && (
-                <div className="meshcore-room-login-error">{loginError}</div>
-              )}
-              {loginNotice && !loginError && (
-                <div className={loginProgressStyles.notice} role="status">{loginNotice}</div>
-              )}
-              {selectedRoom && canConfig && storedCreds.has(selectedRoom) && (
-                <div className={styles.loginSync}>{syncConfigControls}</div>
-              )}
-              {selectedRoom && storedCreds.has(selectedRoom) && (
-                <div className="meshcore-room-saved-cred">
-                  {savedCredWarning && (
-                    <p className="meshcore-room-saved-cred-warning">{savedCredWarning}</p>
-                  )}
-                  <button
-                    type="button"
-                    className="meshcore-room-forget-btn"
-                    onClick={handleForgetCredential}
-                    disabled={forgetting}
-                  >
-                    {forgetting
-                      ? t('meshcore.rooms.forgetting_password', 'Forgetting…')
-                      : t('meshcore.rooms.forget_password', 'Forget saved password')}
-                  </button>
-                </div>
-              )}
             </div>
+            {loginError && (
+              <div className="meshcore-room-login-error">{loginError}</div>
+            )}
+            {loginNoReply && (
+              <p className={styles.loginHint}>
+                {t(
+                  'meshcore.rooms.login_no_reply_hint',
+                  'A room server sends no reply when it refuses a login. A timeout usually means this radio is no longer in the room\u2019s access list, a guest password is needed (or the room does not allow read-only guests), or the room is out of range.',
+                )}
+              </p>
+            )}
+            {loginNotice && !loginError && (
+              <div className={loginProgressStyles.notice} role="status">{loginNotice}</div>
+            )}
+            {selectedRoom && canConfig && storedCreds.has(selectedRoom) && (
+              <div className={styles.loginSync}>{syncConfigControls}</div>
+            )}
+            {selectedRoom && storedCreds.has(selectedRoom) && (
+              <div className="meshcore-room-saved-cred">
+                {savedCredWarning && (
+                  <p className="meshcore-room-saved-cred-warning">{savedCredWarning}</p>
+                )}
+                <button
+                  type="button"
+                  className="meshcore-room-forget-btn"
+                  onClick={handleForgetCredential}
+                  disabled={forgetting}
+                >
+                  {forgetting
+                    ? t('meshcore.rooms.forgetting_password', 'Forgetting…')
+                    : t('meshcore.rooms.forget_password', 'Forget saved password')}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {selectedRoom && isLoggedIn(selectedRoom) && (
+        {selectedRoom && (
           <>
-            {/* Room stats header */}
+            {/* Room stats header (login-only: sync actions) */}
+            {isLoggedIn(selectedRoom) && (
             <div className="meshcore-room-stats-header">
               <span className="meshcore-room-stats-name">
                 {activeRoom?.advName || activeRoom?.name || selectedRoom.substring(0, 16) + '…'}
@@ -884,11 +901,13 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               {/* Sync config toggle */}
               {canConfig && syncConfigControls}
             </div>
+            )}
             <MeshCoreMessageStream
               messages={filtered}
               contacts={contacts}
               sourceId={sourceId}
               selfPublicKey={selfKey}
+              hideComposer={!isLoggedIn(selectedRoom)}
               disabled={!connected || !canSend || receiveOnly}
               disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
               emptyText={t('meshcore.rooms.no_messages', 'No posts in this room yet')}
