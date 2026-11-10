@@ -11,6 +11,7 @@ import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
 import { MeshCoreNodePurgeSection } from './MeshCoreNodePurgeSection';
 import { MeshCorePathHashSection } from './MeshCorePathHashSection';
 import { MeshCoreDefaultScopeSection } from './MeshCoreDefaultScopeSection';
+import { MeshCoreSenderNamesSection } from './MeshCoreSenderNamesSection';
 import { MeshCoreBlePinSection } from './MeshCoreBlePinSection';
 import { MeshCoreDeviceManagement } from './MeshCoreDeviceManagement';
 import { companionCapabilities, type DeviceManagementCapabilities } from './deviceManagementCapabilities';
@@ -850,6 +851,14 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           canWriteNodes={canWriteNodes}
           otherSweepRunning={nodeSweepRunning}
           onSweepRunningChange={setRegionSweepRunning}
+        />
+      )}
+      {isCompanion && (
+        <MeshCoreSenderNamesSection
+          connected={connected}
+          loading={loading}
+          actions={actions}
+          canWriteConfig={canWriteConfig}
         />
       )}
 

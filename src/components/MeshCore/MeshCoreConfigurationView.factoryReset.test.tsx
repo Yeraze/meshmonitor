@@ -22,6 +22,7 @@ import type { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
 const makeActions = (): MeshCoreActions => ({
   getDefaultPathHashSize: vi.fn().mockResolvedValue(1),
   getDefaultScope: vi.fn().mockResolvedValue(''),
+  getSenderNamePolicy: vi.fn().mockResolvedValue({ enabled: false, allowedNames: [] }), setSenderNamePolicy: vi.fn(),
   fetchSavedRegions: vi.fn().mockResolvedValue([]),
   getBlePin: vi.fn().mockResolvedValue(0),
   setBlePin: vi.fn().mockResolvedValue(true),

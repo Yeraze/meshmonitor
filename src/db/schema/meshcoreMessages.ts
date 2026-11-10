@@ -48,6 +48,9 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   // resend can reuse it; #5759 (migration 203) also writes it on received
   // rows and own DMs. NULL for rows written before, and for room posts.
   senderTimestamp: integer('senderTimestamp'),
+  // Migration 231 (#6282): the allowlisted name this own channel send went out
+  // under as a raw packet. NULL on every other row.
+  senderNameOverride: text('senderNameOverride'),
 
   // Reactions (#5759, migration 203). mc1Hash = MC1 reaction hash of this
   // message (ordinary rows only). The reaction* columns are set on reaction
@@ -99,6 +102,7 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   scopeCode: pgInteger('scopeCode'),
   scopeName: pgText('scopeName'),
   senderTimestamp: pgBigint('senderTimestamp', { mode: 'number' }),
+  senderNameOverride: pgText('senderNameOverride'),
   mc1Hash: pgText('mc1Hash'),
   reactionEmoji: pgText('reactionEmoji'),
   reactionFormat: pgText('reactionFormat'),
@@ -132,6 +136,7 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   scopeCode: myInt('scopeCode'),
   scopeName: myText('scopeName'),
   senderTimestamp: myBigint('senderTimestamp', { mode: 'number' }),
+  senderNameOverride: myText('senderNameOverride'),
   mc1Hash: myVarchar('mc1Hash', { length: 8 }),
   reactionEmoji: myVarchar('reactionEmoji', { length: 64 }),
   reactionFormat: myVarchar('reactionFormat', { length: 24 }),

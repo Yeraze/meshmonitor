@@ -156,6 +156,22 @@ export interface NativeBackendConfig {
   tcpPort?: number;
 }
 
+/**
+ * A `CMD_SEND_RAW_PACKET` failure with a stable code the manager and routes
+ * can map to an HTTP status (#6282): `FIRMWARE_UNSUPPORTED` (Err 1 or a
+ * companion older than v13), `TABLE_FULL` (Err 3), `ILLEGAL_ARG` (Err 6),
+ * `FRAME_INVALID`, `RAW_SEND_FAILED` (any other Err), `TIMEOUT`.
+ */
+export class MeshCoreRawSendError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = 'MeshCoreRawSendError';
+  }
+}
+
+/** First companion protocol version that has `CMD_SEND_RAW_PACKET` (fw 1.16). */
+export const MIN_RAW_PACKET_FW_VER = 13;
+
 export interface BridgeShapedResponse {
   id: string;
   success: boolean;
@@ -1499,6 +1515,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
         ...(err instanceof MeshCoreTraceTimeoutError
           ? { data: { timed_out: true, wait_ms: err.waitMs, suggested_timeout_ms: err.suggestedTimeoutMs } }
           : {}),
+        // #6282: a raw send names its failure so the route can pick a status.
+        ...(err instanceof MeshCoreRawSendError ? { data: { error_code: err.code } } : {}),
       };
     }
   }
@@ -1635,6 +1653,41 @@ export class MeshCoreNativeBackend extends EventEmitter {
         }
       };
       const timer = setTimeout(() => done({ kind: 'timeout' }), MeshCoreNativeBackend.AUTOADD_REPLY_TIMEOUT_MS);
+      c.on('rx', onRx);
+      void c.sendToRadioFrame(frame);
+    });
+  }
+
+  /**
+   * Send one frame and wait for the first reply `accept` recognises, or an Err
+   * (reported with its code byte), or silence. Call inside runExclusiveRadioOp.
+   * Frames on the 'rx' tap may be number[] (serial/TCP) or Uint8Array.
+   */
+  private frameExchange<T>(
+    c: AnyConnection,
+    frame: Uint8Array,
+    accept: (f: Uint8Array) => T | undefined,
+    timeoutMs: number,
+  ): Promise<{ kind: 'reply'; value: T } | { kind: 'err'; code: number | null } | { kind: 'timeout' }> {
+    const K = this.constants!;
+    return new Promise((resolve) => {
+      type R = { kind: 'reply'; value: T } | { kind: 'err'; code: number | null } | { kind: 'timeout' };
+      const done = (v: R) => {
+        clearTimeout(timer);
+        c.off('rx', onRx);
+        resolve(v);
+      };
+      const onRx = (raw: Uint8Array | number[]) => {
+        if (!raw || raw.length < 1) return;
+        const f = Uint8Array.from(raw);
+        if (f[0] === K.ResponseCodes.Err) {
+          done({ kind: 'err', code: f.length > 1 ? f[1] : null });
+          return;
+        }
+        const v = accept(f);
+        if (v !== undefined) done({ kind: 'reply', value: v });
+      };
+      const timer = setTimeout(() => done({ kind: 'timeout' }), timeoutMs);
       c.on('rx', onRx);
       void c.sendToRadioFrame(frame);
     });
@@ -3037,6 +3090,59 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { reply: reply.text };
       }
 
+      case 'send_raw_packet': {
+        // CMD_SEND_RAW_PACKET (65), companion v13+ (fw 1.16, #6282). The caller
+        // hands us a finished packet frame `[65][priority][raw packet]`; the
+        // radio queues it as is (no route bits, no transport codes, not marked
+        // seen). This puts energy on the air, so it is an RF command: it is in
+        // RF_BRIDGE_COMMANDS and blocked in receive-only mode.
+        if (this.cachedFirmwareVer == null || this.cachedFirmwareVer < MIN_RAW_PACKET_FW_VER) {
+          throw new MeshCoreRawSendError(
+            'FIRMWARE_UNSUPPORTED',
+            `Raw packet send needs companion protocol v${MIN_RAW_PACKET_FW_VER}+ (device reports ` +
+              `${this.cachedFirmwareVer == null ? 'unknown' : 'v' + this.cachedFirmwareVer})`,
+          );
+        }
+        const hex = typeof params.frame_hex === 'string' ? params.frame_hex : '';
+        const frame = /^([0-9a-f]{2})+$/i.test(hex) ? Uint8Array.from(Buffer.from(hex, 'hex')) : null;
+        // 176 = firmware MAX_FRAME_SIZE; longer frames corrupt silently on serial.
+        if (!frame || frame[0] !== 65 || frame.length < 4 || frame.length > 176) {
+          throw new MeshCoreRawSendError('FRAME_INVALID', 'Invalid raw packet frame');
+        }
+        const res = await this.runExclusiveRadioOp(
+          () => this.frameExchange(c, frame, (f) => (f[0] === K.ResponseCodes.Ok ? true : undefined), 5_000),
+          'send_raw_packet',
+        );
+        if (res.kind === 'timeout') throw new MeshCoreRawSendError('TIMEOUT', 'Raw packet send timed out');
+        if (res.kind === 'err') {
+          if (res.code === 1) throw new MeshCoreRawSendError('FIRMWARE_UNSUPPORTED', 'Device does not support raw packet send');
+          if (res.code === 3) throw new MeshCoreRawSendError('TABLE_FULL', 'Device send queue is full');
+          if (res.code === 6) throw new MeshCoreRawSendError('ILLEGAL_ARG', 'Device rejected the raw packet');
+          throw new MeshCoreRawSendError('RAW_SEND_FAILED', `Device rejected the raw packet (err ${res.code ?? '?'})`);
+        }
+        return { sent: true };
+      }
+
+      case 'get_default_flood_scope': {
+        // CMD_GET_DEFAULT_FLOOD_SCOPE (64) -> RESP_CODE_DEFAULT_FLOOD_SCOPE (28):
+        // `[28][name 31][key 16]`, or just `[28]` when the node has no default.
+        // Local read, no RF. Needed to mirror `sendFloodScoped` on a raw send.
+        if (this.cachedFirmwareVer != null && this.cachedFirmwareVer < 11) return { default: null };
+        const res = await this.runExclusiveRadioOp(
+          () => this.frameExchange(c, Uint8Array.from([64]), (f) => (f[0] === 28 ? f : undefined), 5_000),
+          'get_default_flood_scope',
+        );
+        if (res.kind === 'timeout') throw new Error('get_default_flood_scope timed out');
+        if (res.kind === 'err') return { default: null };
+        const f = res.value;
+        if (f.length < 1 + 31 + 16) return { default: null };
+        const nameBytes = f.subarray(1, 32);
+        const nul = nameBytes.indexOf(0);
+        const name = Buffer.from(nameBytes.subarray(0, nul < 0 ? nameBytes.length : nul)).toString('utf8');
+        const key = Buffer.from(f.subarray(32, 48)).toString('hex');
+        return { default: { name, key_hex: key } };
+      }
+
       case 'get_stats': {
         const type = String(params.type ?? 'core');
         const typeCode =
@@ -3056,7 +3162,24 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
       case 'device_query': {
         // SupportedCompanionProtocolVersion = 1
-        const info = await c.deviceQuery(1);
+        // meshcore.js drops the trailing `client_repeat` (v9+, byte 80) and
+        // `path_hash_mode` (v10+, byte 81) bytes into `manufacturerModel`, so
+        // tap the raw DeviceInfo frame (RESP 13) for them (#6282).
+        let rawInfo: Uint8Array | null = null;
+        const tapInfo = (raw: Uint8Array | number[]) => {
+          if (raw && raw.length >= 1 && raw[0] === 13) rawInfo = Uint8Array.from(raw);
+        };
+        c.on?.('rx', tapInfo);
+        let info: Awaited<ReturnType<typeof c.deviceQuery>>;
+        try {
+          info = await c.deviceQuery(1);
+        } finally {
+          c.off?.('rx', tapInfo);
+        }
+        const rawFrame = rawInfo as Uint8Array | null;
+        const fwv = typeof info?.firmwareVer === 'number' ? info.firmwareVer : 0;
+        const repeat = rawFrame && fwv >= 9 && rawFrame.length > 80 ? rawFrame[80] !== 0 : undefined;
+        const pathHashMode = rawFrame && fwv >= 10 && rawFrame.length > 81 ? rawFrame[81] : undefined;
         // The upstream meshcore.js library reads the entire remainder of the
         // DeviceInfo frame as `manufacturerModel`. Newer firmware packs the
         // hardware model name and a firmware-version string (e.g. "v1.7.0") as
@@ -3087,6 +3210,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
           ver: verString,
           max_contacts: maxContacts,
           max_channels: maxChannels,
+          repeat,
+          path_hash_mode: pathHashMode,
         };
       }
 

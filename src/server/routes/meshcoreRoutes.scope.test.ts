@@ -567,6 +567,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'POST /config/discoverable': 'write',
     'GET /config/default-scope': 'read',
     'POST /config/default-scope': 'write',
+    'GET /config/sender-names': 'read', // #6282
+    'PUT /config/sender-names': 'write',
     'GET /config/default-path-hash-size': 'read',
     'POST /config/default-path-hash-size': 'write',
     'GET /saved-regions': 'read',

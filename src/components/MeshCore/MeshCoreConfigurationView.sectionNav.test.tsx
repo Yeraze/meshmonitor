@@ -41,6 +41,7 @@ const ALL_IDS = [
   'meshcore-config-telemetry',
   'meshcore-path-hash',
   'meshcore-default-scope',
+  'meshcore-sender-names',
   'meshcore-channels',
   'meshcore-contact-sync',
   'meshcore-device-actions',
@@ -57,6 +58,7 @@ function makeActions(): MeshCoreActions {
       const known: Record<string, unknown> = {
         getDefaultPathHashSize: 1,
         getDefaultScope: '',
+        getSenderNamePolicy: { enabled: false, allowedNames: [] },
         fetchSavedRegions: [],
         getRepeaterSettings: null,
       };

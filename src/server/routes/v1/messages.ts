@@ -14,7 +14,7 @@ import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
-import { meshcoreMessageByteCap } from '../../constants/meshcoreMessageLimits.js';
+import { meshcoreMessageByteCap, meshcoreChannelTextCap } from '../../constants/meshcoreMessageLimits.js';
 import { MAX_MESSAGE_BYTES, PortNum } from '../../constants/meshtastic.js';
 import { loadV1Access, requireScopedSourceId } from './sourceParam.js';
 import type { NodeViewAccess } from '../../utils/nodeEnhancer.js';
@@ -25,7 +25,9 @@ import { meshcoreMessageToV1, meshcoreNodeKey, parseMeshcoreNodeId, withMeshtast
 import { fail } from '../../utils/apiResponse.js';
 import type { User } from '../../../types/auth.js';
 import { resolveTransmitTarget } from '../../utils/transmitTarget.js';
-import { canAccessMeshcoreChannel } from '../meshcoreRouteShared.js';
+import { canAccessMeshcoreChannel, auditMeshcoreEvent } from '../meshcoreRouteShared.js';
+import { decideSenderName } from '../../utils/meshcoreSenderNameRequest.js';
+import { isMeshCoreSenderNameError, MESHCORE_SENDER_NAME_ERROR_STATUS } from '../../errors/meshcoreSenderNameError.js';
 
 const isMeshCoreSource = (req: Request): boolean =>
   isAnyMeshCoreSourceType((req as Request & { source?: { type?: string } }).source?.type);
@@ -291,7 +293,7 @@ router.get('/:messageId', async (req: Request, res: Response) => {
  * shares the UI's `messageLimiter` bucket.
  */
 async function sendMeshCoreMessage(req: Request, res: Response, sourceId: string): Promise<Response | void> {
-  const { text, channel, toNodeId, scope } = req.body ?? {};
+  const { text, channel, toNodeId, scope, senderName } = req.body ?? {};
   if (!text || typeof text !== 'string' || text.trim().length === 0) {
     return fail(res, 400, 'INVALID_INPUT', 'Message text is required');
   }
@@ -368,6 +370,65 @@ async function sendMeshCoreMessage(req: Request, res: Response, sourceId: string
     if (manager.isReceiveOnly()) return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
     if (!manager.isConnected()) return fail(res, 503, 'SOURCE_NOT_CONNECTED', 'MeshCore source is not connected');
 
+    // Optional sender-name override (#6282): the channel write grant checked
+    // above AND a name on this source's allowlist. Default is off.
+    const nameDecision = await decideSenderName({
+      sourceId,
+      raw: senderName,
+      isDm: !!toPublicKey,
+      hasChannel: channelIdx !== undefined,
+      localNodeName: manager.getLocalNode()?.name,
+    });
+    if (nameDecision.kind === 'reject') {
+      if (nameDecision.denied) {
+        auditMeshcoreEvent(req, 'meshcore_message_sent_as_denied', 'messages', {
+          sourceId,
+          channelIdx,
+          code: nameDecision.code,
+          userId: user.id,
+          via: 'v1',
+        });
+      }
+      return fail(res, nameDecision.status, nameDecision.code, nameDecision.message);
+    }
+    if (nameDecision.kind === 'override') {
+      const rawCap = meshcoreChannelTextCap(nameDecision.name, { raw: true });
+      if (byteLen > rawCap) return tooLarge(rawCap);
+      try {
+        const sent = await manager.sendChannelMessageAs(trimmedText, channelIdx as number, nameDecision.name, scopeOverride);
+        // No message text in the audit row, by design.
+        auditMeshcoreEvent(req, 'meshcore_message_sent_as', 'messages', {
+          sourceId,
+          channelIdx,
+          senderName: nameDecision.name,
+          scope: sent.message?.scopeName ?? null,
+          textBytes: byteLen,
+          messageId: sent.message?.id ?? null,
+          userId: user.id,
+          via: 'v1',
+        });
+        return res.status(201).json({
+          success: true,
+          data: {
+            messageId: sent.message?.id ?? null,
+            requestId: null,
+            deliveryState: 'pending',
+            messageCount: 1,
+            text: trimmedText,
+            channel: channelIdx,
+            toNodeId: 'broadcast',
+            protocol: 'meshcore',
+            senderName: nameDecision.name,
+          },
+        });
+      } catch (error) {
+        if (isMeshCoreSenderNameError(error)) {
+          return fail(res, MESHCORE_SENDER_NAME_ERROR_STATUS[error.code], error.code, error.message);
+        }
+        throw error;
+      }
+    }
+
     const result = await manager.sendMessageWithResult(trimmedText, toPublicKey, channelIdx, scopeOverride, false);
     if (!result.ok) return fail(res, 400, 'SEND_FAILED', 'Failed to send message');
 
@@ -424,6 +485,9 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
     if (!msgSourceId) return;
     if (isMeshCoreSource(req)) {
       return await sendMeshCoreMessage(req, res, msgSourceId);
+    }
+    if (req.body?.senderName !== undefined && req.body?.senderName !== null) {
+      return fail(res, 400, 'INVALID_INPUT', 'senderName is supported on MeshCore sources only');
     }
     const activeManager = resolveSourceManager(msgSourceId);
 
