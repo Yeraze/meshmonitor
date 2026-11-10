@@ -46,6 +46,8 @@ export interface TimerTrigger {
   channels?: Array<number | 'none'>; // Channel indexes (0-7) to send output to, or ['none'] for scripts with no mesh output (#6230)
   /** @deprecated Use channels instead. Kept so old single-channel timers keep working (#6230). */
   channel?: number | 'none'; // Legacy single channel index (0-7), or 'none' for scripts with no mesh output
+  /** Split a long message into up to 3 marked parts (#6330). Needs a schedule of at least 5 minutes. */
+  multiline?: boolean;
   enabled: boolean; // Whether this timer is active
   lastRun?: number; // Unix timestamp of last execution
   lastResult?: 'success' | 'error'; // Result of last execution

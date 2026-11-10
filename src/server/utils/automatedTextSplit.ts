@@ -1,0 +1,147 @@
+/**
+ * Shared plan + paced send for automated text on every protocol (#6316
+ * MeshCore, #6330 Meshtastic). One implementation: each manager supplies its
+ * byte cap, its targets and how one part goes out; the order, the gap, the
+ * per-source mutex, the receive-only re-check and the drop-on-failure rule
+ * live here.
+ */
+import { splitUtf8Message, truncateUtf8Bytes, utf8ByteLength } from './splitUtf8Message.js';
+import { SPLIT_MAX_PARTS } from '../../utils/messageSplitLimits.js';
+import { logger } from '../../utils/logger.js';
+
+export interface AutomatedTextPlan {
+  parts: string[];
+  truncated: boolean;
+  maxBytes: number;
+}
+
+const ELLIPSIS = '...';
+
+/**
+ * Fit one automated text to `maxBytes`: split into up to SPLIT_MAX_PARTS
+ * marked parts when `split` is on, otherwise truncate to one part. A cut text
+ * ends in "..." on both protocols (#6330), so the reader can see the tail is
+ * missing. Pure; no IO.
+ */
+export function planAutomatedTextParts(
+  text: string,
+  opts: { maxBytes: number; split: boolean },
+): AutomatedTextPlan {
+  const { maxBytes } = opts;
+  const { parts, truncated } = splitUtf8Message(text, {
+    maxBytes,
+    maxParts: opts.split ? SPLIT_MAX_PARTS : 1,
+  });
+  if (truncated && parts.length > 0) {
+    const last = parts.length - 1;
+    parts[last] = truncateUtf8Bytes(parts[last], maxBytes - utf8ByteLength(ELLIPSIS)).trimEnd() + ELLIPSIS;
+  }
+  return { parts, truncated, maxBytes };
+}
+
+/**
+ * Per-source mutex for multi-part sequences: a sequence waits until the
+ * running one finishes, so two sequences never interleave their (i/N) markers.
+ */
+export class SplitSequenceLock {
+  private tail: Promise<unknown> = Promise.resolve();
+
+  run<T>(fn: () => Promise<T>): Promise<T> {
+    const task = this.tail.then(fn);
+    this.tail = task.then(() => undefined, () => undefined);
+    return task;
+  }
+}
+
+export interface AutomatedTextResult {
+  ok: boolean;
+  sentParts: number;
+  totalParts: number;
+  truncated: boolean;
+  perTarget: Array<{ target: string; sentParts: number }>;
+}
+
+export interface SplitSendTarget {
+  /** Log/result name, e.g. "DM" or "channel 2". */
+  name: string;
+}
+
+/**
+ * Send a planned text to every target.
+ *
+ * Send order is by part: part i goes to every target back to back, then the
+ * gap, then part i+1. The gap is awaited outside any send lock. A multi-part
+ * sequence holds `lock`. Before every part `canTransmit` is re-checked; a
+ * target whose part fails is dropped from later parts, and the run stops when
+ * no target is left.
+ */
+export async function sendAutomatedTextParts<T extends SplitSendTarget>(
+  text: string,
+  plan: AutomatedTextPlan,
+  targetList: T[],
+  deps: {
+    lock: SplitSequenceLock;
+    gapMs: number;
+    canTransmit: () => boolean;
+    /** Resolves false on a failed part. A throw propagates to the caller. */
+    sendPart: (target: T, part: string, index: number) => Promise<boolean>;
+    /** Log prefix, e.g. `[MeshCore:src1]`. */
+    logPrefix: string;
+    label: string;
+  },
+): Promise<AutomatedTextResult> {
+  const { parts, truncated, maxBytes } = plan;
+  const { logPrefix, label } = deps;
+  const targets = targetList.map((t) => ({ t, sent: 0, alive: true }));
+  const result = (): AutomatedTextResult => ({
+    ok: targets.length > 0 && parts.length > 0 && targets.every((x) => x.sent === parts.length),
+    sentParts: targets.length ? Math.min(...targets.map((x) => x.sent)) : 0,
+    totalParts: parts.length,
+    truncated,
+    perTarget: targets.map((x) => ({ target: x.t.name, sentParts: x.sent })),
+  });
+  if (truncated) {
+    logger.warn(
+      `${logPrefix} ${label}: message is ${utf8ByteLength(text)} bytes, over the ${maxBytes}-byte cap` +
+      `${parts.length > 1 ? ` x ${parts.length} parts` : ''}; the tail was cut`,
+    );
+  }
+  if (parts.length === 0 || targets.length === 0) return result();
+
+  const run = async () => {
+    for (let i = 0; i < parts.length; i++) {
+      if (!targets.some((x) => x.alive)) break;
+      if (i > 0) {
+        // Fixed gap so parts do not collide with each other's repeats.
+        await new Promise((resolve) => setTimeout(resolve, deps.gapMs));
+      }
+      for (const x of targets) {
+        if (!x.alive) continue;
+        // Re-check before EVERY part: the gap is long enough for receive-only
+        // to be switched on (#4547).
+        if (!deps.canTransmit()) {
+          logger.debug(`⏭️ ${logPrefix} ${label}: cannot transmit, dropping part ${i + 1}/${parts.length}`);
+          return;
+        }
+        logger.debug(`${logPrefix} ${label} ${x.t.name} part ${i + 1}/${parts.length} (${utf8ByteLength(parts[i])} bytes)`);
+        const sent = await deps.sendPart(x.t, parts[i], i);
+        if (!sent) {
+          // Later parts without the earlier ones are noise.
+          if (parts.length > 1) {
+            logger.warn(`${logPrefix} ${label}: part ${i + 1}/${parts.length} to ${x.t.name} failed; skipping the rest for it`);
+          }
+          x.alive = false;
+        } else {
+          x.sent++;
+        }
+      }
+    }
+  };
+
+  if (parts.length > 1) {
+    await deps.lock.run(run);
+  } else {
+    await run();
+  }
+  return result();
+}

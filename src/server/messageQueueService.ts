@@ -92,6 +92,17 @@ export class MessageQueueService {
   }
 
   /**
+   * True while any of these queue ids is still waiting to be sent (#6330).
+   * A sent item leaves the queue (it may still wait for an ACK); a failed one
+   * is removed too.
+   */
+  hasQueued(ids: Iterable<string>): boolean {
+    const set = new Set(ids);
+    if (set.size === 0) return false;
+    return this.queue.some((m) => set.has(m.id));
+  }
+
+  /**
    * Record an external send to update rate limiting
    * Call this after sending a message outside the queue (e.g., tapback)
    * to ensure queued messages respect the send interval

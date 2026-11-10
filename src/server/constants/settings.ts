@@ -107,6 +107,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoAnnounceChannelIndexes',
   // Hop-limit override for auto-announcements (#5121).
   'autoAnnounceHopLimit',
+  'autoAnnounceSplitLongMessages',
   'autoAnnounceOnStart',
   'autoAnnounceUseSchedule',
   'autoAnnounceSchedule',
@@ -644,6 +645,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // Auto-announce
   'autoAnnounceChannelIndexes',
   'autoAnnounceHopLimit',
+  'autoAnnounceSplitLongMessages',
   'autoAnnounceEnabled',
   'autoAnnounceIntervalHours',
   'autoAnnounceMessage',

@@ -52,6 +52,9 @@ interface AutomationContextType {
   /** Hop-limit override (#5121): '' = inherit the node's own, else '0'–'7'. */
   autoAnnounceHopLimit: string;
   setAutoAnnounceHopLimit: React.Dispatch<React.SetStateAction<string>>;
+  /** Split a long announcement into up to 3 marked parts (#6330). */
+  autoAnnounceSplitLongMessages: boolean;
+  setAutoAnnounceSplitLongMessages: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceOnStart: boolean;
   setAutoAnnounceOnStart: React.Dispatch<React.SetStateAction<boolean>>;
   autoAnnounceUseSchedule: boolean;
@@ -142,6 +145,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAnnounceMessage, setAutoAnnounceMessage] = useState<string>('MeshMonitor {VERSION} online for {DURATION} {FEATURES}');
   const [autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes] = useState<number[]>([0]);
   const [autoAnnounceHopLimit, setAutoAnnounceHopLimit] = useState<string>('');
+  const [autoAnnounceSplitLongMessages, setAutoAnnounceSplitLongMessages] = useState<boolean>(false);
   const [autoAnnounceOnStart, setAutoAnnounceOnStart] = useState<boolean>(false);
   const [autoAnnounceUseSchedule, setAutoAnnounceUseSchedule] = useState<boolean>(false);
   const [autoAnnounceSchedule, setAutoAnnounceSchedule] = useState<string>('0 */6 * * *');
@@ -237,6 +241,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         if (s.autoAnnounceMessage !== undefined) setAutoAnnounceMessage(s.autoAnnounceMessage);
         if (s.autoAnnounceChannelIndexes !== undefined) setAutoAnnounceChannelIndexes(jsonArr<number>('autoAnnounceChannelIndexes', [0]));
         setAutoAnnounceHopLimit(hopLimitSettingValue(s.autoAnnounceHopLimit));
+        setAutoAnnounceSplitLongMessages(s.autoAnnounceSplitLongMessages === 'true');
         if (s.autoAnnounceOnStart !== undefined) setAutoAnnounceOnStart(bool('autoAnnounceOnStart'));
         if (s.autoAnnounceUseSchedule !== undefined) setAutoAnnounceUseSchedule(bool('autoAnnounceUseSchedule'));
         if (s.autoAnnounceSchedule !== undefined) setAutoAnnounceSchedule(s.autoAnnounceSchedule);
@@ -300,6 +305,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAnnounceMessage, setAutoAnnounceMessage,
     autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
     autoAnnounceHopLimit, setAutoAnnounceHopLimit,
+    autoAnnounceSplitLongMessages, setAutoAnnounceSplitLongMessages,
     autoAnnounceOnStart, setAutoAnnounceOnStart,
     autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
     autoAnnounceSchedule, setAutoAnnounceSchedule,
@@ -350,6 +356,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAnnounceMessage, setAutoAnnounceMessage,
     autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
     autoAnnounceHopLimit, setAutoAnnounceHopLimit,
+    autoAnnounceSplitLongMessages, setAutoAnnounceSplitLongMessages,
     autoAnnounceOnStart, setAutoAnnounceOnStart,
     autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
     autoAnnounceSchedule, setAutoAnnounceSchedule,

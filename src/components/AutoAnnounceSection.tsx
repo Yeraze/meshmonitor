@@ -13,6 +13,7 @@ import { ConfigGroup } from './shared/config/ConfigGroup';
 import { TokenInsertButtons } from './shared/automation/TokenInsertButtons';
 import apiService from '../services/api';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
+import { SplitLongMessagesField } from './shared/automation/SplitLongMessagesField';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
@@ -37,6 +38,9 @@ interface AutoAnnounceSectionProps {
   /** Hop-limit override (#5121): '' = inherit, '0'–'7' = pinned. */
   hopLimit?: string;
   onHopLimitChange?: (hopLimit: string) => void;
+  /** Split a long announcement into up to 3 marked parts (#6330). */
+  splitLongMessages?: boolean;
+  onSplitLongMessagesChange?: (split: boolean) => void;
   // NodeInfo broadcasting props
   nodeInfoEnabled?: boolean;
   nodeInfoChannels?: number[];
@@ -88,6 +92,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onScheduleChange,
   hopLimit = '',
   onHopLimitChange,
+  splitLongMessages = false,
+  onSplitLongMessagesChange,
   // NodeInfo broadcasting props
   nodeInfoEnabled = false,
   nodeInfoChannels = EMPTY_CHANNELS as number[],
@@ -111,6 +117,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const [localUseSchedule, setLocalUseSchedule] = useState(useSchedule);
   const [localSchedule, setLocalSchedule] = useState(schedule || '0 */6 * * *');
   const [localHopLimit, setLocalHopLimit] = useState(hopLimit);
+  const [localSplitLongMessages, setLocalSplitLongMessages] = useState(splitLongMessages);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -133,10 +140,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalUseSchedule(useSchedule);
     setLocalSchedule(schedule || '0 */6 * * *');
     setLocalHopLimit(hopLimit);
+    setLocalSplitLongMessages(splitLongMessages);
     setLocalNodeInfoEnabled(nodeInfoEnabled);
     setLocalNodeInfoChannels(nodeInfoChannels);
     setLocalNodeInfoDelaySeconds(nodeInfoDelaySeconds);
-  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, splitLongMessages, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Fetch last announcement time (per-source)
   useEffect(() => {
@@ -190,11 +198,12 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       localUseSchedule !== useSchedule ||
       localSchedule !== (schedule || '0 */6 * * *') ||
       localHopLimit !== hopLimit ||
+      localSplitLongMessages !== splitLongMessages ||
       localNodeInfoEnabled !== nodeInfoEnabled ||
       !arraysEqual(localNodeInfoChannels, nodeInfoChannels) ||
       localNodeInfoDelaySeconds !== nodeInfoDelaySeconds;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localUseSchedule, localSchedule, localHopLimit, enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localUseSchedule, localSchedule, localHopLimit, localSplitLongMessages, splitLongMessages, enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -206,10 +215,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLocalUseSchedule(useSchedule);
     setLocalSchedule(schedule || '0 */6 * * *');
     setLocalHopLimit(hopLimit);
+    setLocalSplitLongMessages(splitLongMessages);
     setLocalNodeInfoEnabled(nodeInfoEnabled);
     setLocalNodeInfoChannels(nodeInfoChannels);
     setLocalNodeInfoDelaySeconds(nodeInfoDelaySeconds);
-  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
+  }, [enabled, intervalHours, message, channelIndexes, announceOnStart, useSchedule, schedule, hopLimit, splitLongMessages, nodeInfoEnabled, nodeInfoChannels, nodeInfoDelaySeconds]);
 
   // Wrap handleSave for useSaveBar (needs to be defined before useSaveBar call)
   const handleSaveForSaveBar = useCallback(async () => {
@@ -239,6 +249,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           autoAnnounceUseSchedule: String(localUseSchedule),
           autoAnnounceSchedule: localSchedule,
           autoAnnounceHopLimit: localHopLimit,
+          autoAnnounceSplitLongMessages: String(localSplitLongMessages),
           // NodeInfo broadcasting settings
           autoAnnounceNodeInfoEnabled: String(localNodeInfoEnabled),
           autoAnnounceNodeInfoChannels: JSON.stringify(localNodeInfoChannels),
@@ -259,6 +270,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       onUseScheduleChange(localUseSchedule);
       onScheduleChange(localSchedule);
       onHopLimitChange?.(localHopLimit);
+      onSplitLongMessagesChange?.(localSplitLongMessages);
       onNodeInfoEnabledChange?.(localNodeInfoEnabled);
       onNodeInfoChannelsChange?.(localNodeInfoChannels);
       onNodeInfoDelayChange?.(localNodeInfoDelaySeconds);
@@ -271,7 +283,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localUseSchedule, scheduleError, localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localSchedule, localHopLimit, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMessageChange, onChannelIndexesChange, onAnnounceOnStartChange, onUseScheduleChange, onScheduleChange, onHopLimitChange, onNodeInfoEnabledChange, onNodeInfoChannelsChange, onNodeInfoDelayChange]);
+  }, [localUseSchedule, scheduleError, localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localSchedule, localHopLimit, localSplitLongMessages, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMessageChange, onChannelIndexesChange, onAnnounceOnStartChange, onUseScheduleChange, onScheduleChange, onHopLimitChange, onSplitLongMessagesChange, onNodeInfoEnabledChange, onNodeInfoChannelsChange, onNodeInfoDelayChange]);
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();
@@ -566,6 +578,18 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             value={localHopLimit}
             onChange={setLocalHopLimit}
             disabled={!localEnabled}
+          />
+        </div>
+        {/* Long announcements (#6330): cut to 200 bytes (default) or split into up to 3 sends. */}
+        <div className="setting-item">
+          <label>{t('automation.auto_announce.split_label', 'Long Announcements')}</label>
+          <SplitLongMessagesField
+            id="autoAnnounceSplitLongMessages"
+            protocol="meshtastic"
+            checked={localSplitLongMessages}
+            onChange={setLocalSplitLongMessages}
+            disabled={!localEnabled}
+            perTargetCount={localChannelIndexes.length}
           />
         </div>
         </ConfigGroup>

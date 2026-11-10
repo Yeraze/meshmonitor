@@ -124,5 +124,7 @@ export function finalizeTimerTrigger(tr: TimerTrigger): TimerTrigger {
     response: type === 'text' ? (tr.response ?? '').trim() : undefined,
     channels,
     channel: undefined,
+    // No mesh output, nothing to split (#6330).
+    multiline: tr.multiline === true && !(channels.length === 1 && channels[0] === 'none') ? true : undefined,
   };
 }
