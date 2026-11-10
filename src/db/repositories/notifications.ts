@@ -72,6 +72,9 @@ export interface NotificationPreferences {
    */
   messageTitleTemplate: string | null;
   messageBodyTemplate: string | null;
+  /** Message text length (#6278): Web Push / desktop and Apprise. NULL = the default of 100. */
+  messageTextMaxPush: number | null;
+  messageTextMaxApprise: number | null;
 }
 
 /**
@@ -340,6 +343,8 @@ export class NotificationsRepository extends BaseRepository {
       mutedDMs: JSON.stringify(prefs.mutedDMs ?? []),
       messageTitleTemplate: prefs.messageTitleTemplate ?? null,
       messageBodyTemplate: prefs.messageBodyTemplate ?? null,
+      messageTextMaxPush: prefs.messageTextMaxPush ?? null,
+      messageTextMaxApprise: prefs.messageTextMaxApprise ?? null,
       updatedAt: now,
     };
 
@@ -1404,6 +1409,14 @@ export class NotificationsRepository extends BaseRepository {
       mutedDMs: parseJsonArray(row.mutedDMs) as unknown as MutedDM[],
       messageTitleTemplate: typeof row.messageTitleTemplate === 'string' && row.messageTitleTemplate.length > 0 ? row.messageTitleTemplate : null,
       messageBodyTemplate: typeof row.messageBodyTemplate === 'string' && row.messageBodyTemplate.length > 0 ? row.messageBodyTemplate : null,
+      messageTextMaxPush: positiveIntOrNull(row.messageTextMaxPush),
+      messageTextMaxApprise: positiveIntOrNull(row.messageTextMaxApprise),
     };
   }
+}
+
+/** A stored text length reads back as a positive integer, or null (the default). */
+function positiveIntOrNull(value: unknown): number | null {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null;
 }

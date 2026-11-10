@@ -188,5 +188,6 @@ export const bridgeTemplate: AutomationTemplate = {
   icon: 'bidirectional',
   tags: ['Bridge', 'MeshCore', 'Relay'],
   params: PARAMS,
+  multi: true,
   build,
 };

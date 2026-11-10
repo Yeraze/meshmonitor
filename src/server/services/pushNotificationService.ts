@@ -3,6 +3,7 @@ import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import type { DbPushSubscription } from '../../db/types.js';
+import { fitWebPushPayload } from '../utils/pushPayloadSize.js';
 import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, renderMessagePayloadForUserAsync, messageReadableByUserAsync, payloadBlockedForUserAsync, type NotificationMuteVenue } from '../utils/notificationFiltering.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import { resolveLocalNodeNameForSource } from '../utils/localNodeNameForSource.js';
@@ -397,7 +398,7 @@ class PushNotificationService {
 
       await webpush.sendNotification(
         pushSubscription,
-        JSON.stringify(wirePayload),
+        JSON.stringify(fitWebPushPayload(wirePayload)),
         {
           TTL: ttl
         }
@@ -567,7 +568,7 @@ class PushNotificationService {
 
       // Render AFTER the filter decision (#5593): the user's templates shape
       // the text only, never whether a notification is sent.
-      const rendered = await renderMessagePayloadForUserAsync(userId, renderInput, renderSourceId, shownSourceName);
+      const rendered = await renderMessagePayloadForUserAsync(userId, renderInput, renderSourceId, shownSourceName, 'push');
 
       // Apply node name prefix if user has it enabled (per-source prefs)
       const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, renderSourceId);

@@ -38,6 +38,7 @@ import {
 import MeshCorePacketDetailModal from './MeshCorePacketDetailModal';
 import './MeshCorePacketMonitor.css';
 import styles from './MeshCorePacketMonitorView.module.css';
+import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
 
 const PacketStatsChart = React.lazy(() => import('../PacketStatsChart'));
@@ -243,22 +244,46 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     setPathHashInput('');
   }, []);
 
-  /** The From cell: the advert name, else the best contact match for the source hash. */
-  const resolveFrom = useCallback((p: Packet): { label: string | null; publicKey: string | null } => {
+  /** Names come from the node list, so they follow the same `nodes:read` rule as that list. */
+  const canSeeNames = hasPermission('nodes', 'read', { sourceId });
+  /**
+   * The From cell. A full sender key (ADVERT / ANON_REQ) names the node; a bare
+   * 1-byte hash names it only when exactly one known contact owns that hash.
+   * An ambiguous hash shows `0x2f?` and an unknown one `0x2f`: never a guess.
+   */
+  const resolveFrom = useCallback((p: Packet): { label: string | null; publicKey: string | null; title?: string } => {
     const derived = p.srcHash !== undefined || p.senderPubKey !== undefined || p.advertName !== undefined
       ? { srcHash: p.srcHash ?? null, senderPubKey: p.senderPubKey ?? null, advertName: p.advertName ?? null }
       : deriveMeshCorePacketFields(p.rawHex);
-    const exact = derived.senderPubKey ? contactByKey.get(derived.senderPubKey.toLowerCase()) : undefined;
-    if (exact) return { label: derived.advertName || exact.name, publicKey: exact.publicKey };
-    if (derived.advertName) return { label: derived.advertName, publicKey: null };
+    if (derived.senderPubKey) {
+      const key = derived.senderPubKey.toLowerCase();
+      const short = `${key.slice(0, 8)}…`;
+      if (!canSeeNames) return { label: short, publicKey: null, title: key };
+      const exact = contactByKey.get(key);
+      if (exact) return { label: derived.advertName || exact.name, publicKey: exact.publicKey, title: key };
+      return { label: derived.advertName || short, publicKey: null, title: key };
+    }
     if (!derived.srcHash) return { label: null, publicKey: null };
-    const r = resolveHop(derived.srcHash as RepeaterOption['hopByte'], contactOptions);
-    return {
-      label: r.matches.length > 0 ? r.label : `0x${derived.srcHash}`,
-      publicKey: r.matches.length === 1 ? r.matches[0].publicKey : null,
-    };
-  }, [contactByKey, contactOptions]);
-
+    const hash = derived.srcHash.toLowerCase();
+    if (!canSeeNames) return { label: `0x${hash}`, publicKey: null };
+    const r = resolveHop(hash as RepeaterOption['hopByte'], contactOptions);
+    if (r.matches.length === 1) {
+      return { label: r.matches[0].name, publicKey: r.matches[0].publicKey, title: r.matches[0].publicKey };
+    }
+    return { label: r.matches.length > 1 ? `0x${hash}?` : `0x${hash}`, publicKey: null };
+  }, [canSeeNames, contactByKey, contactOptions]);
+  /**
+   * TX/RX marker, only where the row's data decides it. An observer that is the
+   * packet's own sender published it (TX); a local radio or another observer
+   * heard it (RX). Collapsed rows hold many observers, so they get no marker.
+   */
+  const directionOf = (p: Packet): 'tx' | 'rx' | null => {
+    if (grouped) return null;
+    const obs = p.observerId ? p.observerId.toLowerCase() : null;
+    const sender = (p.senderPubKey ?? deriveMeshCorePacketFields(p.rawHex).senderPubKey)?.toLowerCase() ?? null;
+    if (obs && sender && obs === sender) return 'tx';
+    return 'rx';
+  };
   const saveSettings = useCallback(async (patch: Record<string, string>): Promise<boolean> => {
     setSavingSettings(true);
     try {
@@ -628,6 +653,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
                   );
                 }
                 const from = resolveFrom(p);
+                const dir = directionOf(p);
                 return (
                   <div
                     key={p.id ?? `${p.timestamp}-${vr.index}`}
@@ -641,6 +667,21 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
                     <div className={`${styles.cell} mcpm-mono`}>{formatTime(p.timestamp)}</div>
                     <div className={styles.cell}><span className="mcpm-badge">{payloadLabel(p)}</span></div>
                     <div className={styles.cell}>
+                      {dir && (
+                        <span
+                          className={styles.dir}
+                          data-testid={`mcpm-dir-${dir}`}
+                          role="img"
+                          aria-label={dir === 'tx'
+                            ? t('meshcore.packets.dirTx', 'Sent by this node (own TX)')
+                            : t('meshcore.packets.dirRx', 'Heard over the air (RX)')}
+                          title={dir === 'tx'
+                            ? t('meshcore.packets.dirTx', 'Sent by this node (own TX)')
+                            : t('meshcore.packets.dirRx', 'Heard over the air (RX)')}
+                        >
+                          <UiIcon name={dir === 'tx' ? 'uploadData' : 'downloadData'} size={12} />
+                        </span>
+                      )}
                       {from.label === null ? (
                         <span className={styles.fromMuted}>—</span>
                       ) : from.publicKey && onNodeClick ? (
@@ -648,12 +689,12 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
                           type="button"
                           className={styles.fromButton}
                           onClick={e => { e.stopPropagation(); onNodeClick(from.publicKey!); }}
-                          title={t('meshcore.packets.openContact', 'Open this contact')}
+                          title={from.title ?? t('meshcore.packets.openContact', 'Open this contact')}
                         >
                           {from.label}
                         </button>
                       ) : (
-                        <span>{from.label}</span>
+                        <span title={from.title}>{from.label}</span>
                       )}
                     </div>
                     <div className={`${styles.cell} mcpm-route`}>{routeLabel(p)}</div>

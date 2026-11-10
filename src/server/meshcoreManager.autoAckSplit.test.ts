@@ -29,6 +29,8 @@ interface Opts {
   scopeName?: string;
   channelScope?: string | null;
   defaultScope?: string | null;
+  /** Local node name; unset leaves the name unknown (worst-case channel cap). */
+  nodeName?: string;
   /** Stub `sendMessage` itself (default). False drives the real send path over a stubbed bridge. */
   stubSendMessage?: boolean;
   /** Result of the Nth (1-based) stubbed send; default true. */
@@ -39,6 +41,7 @@ function makeManager(opts: Opts) {
   const m = new MeshCoreManager('test-source');
   (m as any).deviceType = MeshCoreDeviceType.COMPANION;
   (m as any).connected = true;
+  if (opts.nodeName) (m as any).localNode = { name: opts.nodeName };
   (m as any).contacts.set(SENDER_KEY, { publicKey: SENDER_KEY, advName: 'Alice' });
 
   const sends: Send[] = [];
@@ -122,12 +125,12 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
   });
 
   describe('split off (default)', () => {
-    it('sends ONE reply truncated to the unscoped channel cap (130 bytes)', async () => {
+    it('sends ONE reply truncated to the worst-case channel cap (127 bytes) when the node name is unknown', async () => {
       const { manager, sends } = makeManager({ reply: 'x'.repeat(400) });
       await onChannel(manager);
       await vi.advanceTimersByTimeAsync(PART_DELAY_MS * 5);
       expect(sends).toHaveLength(1);
-      expect(sends[0].text).toBe('x'.repeat(130));
+      expect(sends[0].text).toBe('x'.repeat(127));
       expect(sends[0].channel).toBe(1);
       expect(sends[0].autoRetry).toBe(true);
     });
@@ -135,22 +138,35 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
     it('treats an explicit "false" the same as an unset key', async () => {
       const { manager, sends } = makeManager({ reply: 'x'.repeat(400), split: false });
       await onChannel(manager);
-      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(130)]);
+      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(127)]);
     });
 
-    it('truncates a DM reply to the DM cap (150 bytes)', async () => {
+    it('truncates a DM reply to the DM cap (160 bytes)', async () => {
       const { manager, sends } = makeManager({ reply: 'x'.repeat(400) });
       await asDm(manager);
       expect(sends).toHaveLength(1);
-      expect(sends[0].text).toBe('x'.repeat(150));
+      expect(sends[0].text).toBe('x'.repeat(160));
       expect(sends[0].dest).toBe(SENDER_KEY);
     });
 
     it('uses the DM cap for "always respond via DM" on a channel trigger', async () => {
       const { manager, sends } = makeManager({ reply: 'x'.repeat(400), useDM: true });
       await onChannel(manager);
-      expect(sends.map((s) => bytes(s.text))).toEqual([150]);
+      expect(sends.map((s) => bytes(s.text))).toEqual([160]);
       expect(sends[0].dest).toBe(SENDER_KEY);
+    });
+
+    it('derives the channel cap from the node name (160 - (name bytes + 2))', async () => {
+      const { manager, sends } = makeManager({ reply: 'x'.repeat(400), nodeName: 'Bob' });
+      await onChannel(manager);
+      expect(sends.map((s) => bytes(s.text))).toEqual([155]);
+    });
+
+    it('counts multi-byte name bytes', async () => {
+      // 4 chars x 3 bytes = 12 bytes -> 160 - 14 = 146
+      const { manager, sends } = makeManager({ reply: 'x'.repeat(400), nodeName: '日本語表' });
+      await onChannel(manager);
+      expect(sends.map((s) => bytes(s.text))).toEqual([146]);
     });
 
     it.each([
@@ -158,23 +174,17 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
       ['the source default scope', { defaultScope: 'berlin' }],
       ['a named reply scope', { scopeMode: 'named', scopeName: 'lyon' }],
       ['the trigger scope', { scopeMode: 'trigger' }],
-    ])('truncates to the scoped channel cap (120 bytes) under %s', async (_label, scopeOpts) => {
-      const { manager, sends } = makeManager({ reply: 'x'.repeat(400), ...scopeOpts });
+    ])('keeps the same channel cap under %s (transport codes are outside the text)', async (_label, scopeOpts) => {
+      const { manager, sends } = makeManager({ reply: 'x'.repeat(400), nodeName: 'Bob', ...scopeOpts });
       await onChannel(manager, trigger({ scopeName: 'lyon', scopeCode: 7 }));
-      expect(sends.map((s) => bytes(s.text))).toEqual([120]);
-    });
-
-    it('uses the unscoped cap when the reply is forced unscoped over a scoped channel', async () => {
-      const { manager, sends } = makeManager({ reply: 'x'.repeat(400), channelScope: 'berlin', scopeMode: 'unscoped' });
-      await onChannel(manager);
-      expect(sends.map((s) => bytes(s.text))).toEqual([130]);
+      expect(sends.map((s) => bytes(s.text))).toEqual([155]);
     });
 
     it('never halves a multi-byte character at the cap', async () => {
-      // 129 ASCII bytes then an emoji that straddles the 130-byte cap.
-      const { manager, sends } = makeManager({ reply: `${'x'.repeat(129)}😀 tail` });
+      // 126 ASCII bytes then an emoji that straddles the 127-byte cap.
+      const { manager, sends } = makeManager({ reply: `${'x'.repeat(126)}😀 tail` });
       await onChannel(manager);
-      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(129)]);
+      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(126)]);
     });
 
     it('stores the same text it put on air', async () => {
@@ -182,8 +192,8 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
       const stored: string[] = [];
       manager.on('message', (msg: MeshCoreMessage) => stored.push(msg.text));
       await onChannel(manager);
-      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(130)]);
-      expect(stored).toEqual(['x'.repeat(130)]);
+      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(127)]);
+      expect(stored).toEqual(['x'.repeat(127)]);
     });
   });
 
@@ -215,7 +225,7 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
 
       sends.forEach((s, i) => {
         expect(s.text.startsWith(`(${i + 1}/3) `)).toBe(true);
-        expect(bytes(s.text)).toBeLessThanOrEqual(130);
+        expect(bytes(s.text)).toBeLessThanOrEqual(127);
         expect(s.channel).toBe(1);
         // Channel retry stays on for every part (#3979).
         expect(s.autoRetry).toBe(true);
@@ -233,17 +243,17 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
       await vi.advanceTimersByTimeAsync(PART_DELAY_MS * 5);
       await run;
       expect(sends).toHaveLength(3);
-      expect(sends.map((s) => bytes(s.text))).toEqual([150, 150, 150]);
+      expect(sends.map((s) => bytes(s.text))).toEqual([160, 160, 160]);
       expect(sends.map((s) => s.text.slice(0, 6))).toEqual(['(1/3) ', '(2/3) ', '(3/3) ']);
       expect(sends.every((s) => s.dest === SENDER_KEY)).toBe(true);
     });
 
-    it('budgets each part from the scoped channel cap', async () => {
-      const { manager, sends } = makeManager({ reply: 'x'.repeat(2000), split: true, channelScope: 'berlin' });
+    it('budgets each part from the name-based channel cap, scoped or not', async () => {
+      const { manager, sends } = makeManager({ reply: 'x'.repeat(2000), split: true, channelScope: 'berlin', nodeName: 'Bob' });
       const run = onChannel(manager);
       await vi.advanceTimersByTimeAsync(PART_DELAY_MS * 5);
       await run;
-      expect(sends.map((s) => bytes(s.text))).toEqual([120, 120, 120]);
+      expect(sends.map((s) => bytes(s.text))).toEqual([155, 155, 155]);
     });
 
     it('passes the same scope override to every part', async () => {

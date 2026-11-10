@@ -484,7 +484,7 @@ class AppriseNotificationService {
 
       // Render AFTER the filter decision (#5593): the user's templates shape
       // the text only, never whether a notification is sent.
-      const rendered = await renderMessagePayloadForUserAsync(userId, payload, filterContext.sourceId, filterContext.sourceName);
+      const rendered = await renderMessagePayloadForUserAsync(userId, payload, filterContext.sourceId, filterContext.sourceName, 'apprise');
 
       // Apply node name prefix if user has it enabled (per-source prefs)
       const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, filterContext.sourceId);

@@ -12,6 +12,7 @@ import { isValidCron } from 'cron-validator';
 import apiService from '../../services/api';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { loadNodeOptions } from './loadNodeOptions';
 import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption, type NodeMultiOption, type AutomationOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
@@ -325,39 +326,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<{ regions: Array<{ name: string }> }>('/api/automations/regions')
       .then((r) => setRegions((r.regions ?? []).map((x) => x.name)))
       .catch(() => setRegions([]));
-    apiService.get<Array<{
-      nodeNum: number;
-      longName?: string;
-      shortName?: string;
-      nodeId?: string;
-      mobile?: number;
-      isMobile?: boolean;
-      asset?: { retentionDays: number };
-      user?: { id?: string; longName?: string; shortName?: string };
-    }>>('/api/nodes')
-      .then((list) => {
-        const rows = Array.isArray(list) ? list : [];
-        setNodes(rows
-          .filter((n) => {
-            const num = Number(n.nodeNum);
-            // Drop broadcast / unset MeshCore stubs from the hand-picker.
-            return Number.isFinite(num) && num > 0 && num !== 0xffffffff;
-          })
-          .map((n) => {
-            const nodeNum = Number(n.nodeNum);
-            const nodeId = n.nodeId || n.user?.id || `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
-            return {
-              nodeNum,
-              longName: n.longName || n.user?.longName,
-              shortName: n.shortName || n.user?.shortName,
-              nodeId,
-              mobile: n.mobile,
-              isMobile: n.isMobile,
-              asset: n.asset,
-            };
-          }));
-      })
-      .catch(() => setNodes([]));
+    void loadNodeOptions().then(setNodes);
   }, []);
 
   const switchToJson = () => { setJsonText(JSON.stringify(compile(form), null, 2)); setMode('json'); };
