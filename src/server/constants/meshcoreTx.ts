@@ -27,6 +27,7 @@ export const RF_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'login',
   'get_status',
   'reset_path',
+  'send_raw_packet', // #6282: CMD_SEND_RAW_PACKET, a finished packet onto the air
 ]);
 
 /** Local-serial-only commands. Allowed in receive-only mode. */
@@ -51,6 +52,7 @@ export const SERIAL_ONLY_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'run_cli', // #5866: companion text CLI (66); fw 1.18 has no verb that transmits
   'set_device_pin', 'factory_reset', 'set_multi_acks', // P8a #6257: local companion prefs / wipe, no RF TX
   'set_other_params_raw', // P16 #6285: backup restore, SetOtherParams raw frame, no RF TX
+  'get_default_flood_scope', // #6282: CMD_GET_DEFAULT_FLOOD_SCOPE (64), local read, no RF TX
   'set_contact_remote_cli', // #5867: contact flag 0x10 read-modify-write, no RF TX
 ]);
 

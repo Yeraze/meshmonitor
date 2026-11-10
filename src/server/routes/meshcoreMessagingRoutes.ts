@@ -22,12 +22,14 @@ import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isVal
   requireMeshcoreChannelAccess, canAccessMeshcoreChannel, requireMeshcoreTx, failIfTxDisabled,
   startTrackedLogin, respondLoginCancelled } from './meshcoreRouteShared.js';
 import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
-import { meshcoreMessageByteCap } from '../constants/meshcoreMessageLimits.js';
+import { meshcoreMessageByteCap, meshcoreChannelTextCap } from '../constants/meshcoreMessageLimits.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
 import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import { isMeshCoreResendError, MESHCORE_RESEND_ERROR_STATUS } from '../errors/meshcoreResendError.js';
+import { isMeshCoreSenderNameError, MESHCORE_SENDER_NAME_ERROR_STATUS } from '../errors/meshcoreSenderNameError.js';
+import { decideSenderName } from '../utils/meshcoreSenderNameRequest.js';
 import { isMeshCoreReactionError, MESHCORE_REACTION_ERROR_STATUS } from '../errors/meshcoreReactionError.js';
 
 // Room-server login retries over RF can legitimately run past the 30s
@@ -440,12 +442,13 @@ router.delete('/messages/:messageId', requireAuth(), requirePermission('messages
  */
 router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
-    const { text, toPublicKey, channelIdx, scope } = req.body;
+    const { text, toPublicKey, channelIdx, scope, senderName } = req.body;
 
     // Per-context byte limit. DM: 160. Channel: 160 minus the "<node name>: "
     // prefix the firmware writes into the same buffer (#6303); scope does not
     // use text room. Unknown name falls back to the worst case.
     const isDm = toPublicKey !== undefined && toPublicKey !== null && toPublicKey !== '';
+    // With a senderName the byte cap is checked below against the raw cap.
     const msgMaxBytes = meshcoreMessageByteCap({
       isDm,
       nodeName: isDm ? undefined : managerFor(req, res).getLocalNode()?.name,
@@ -496,6 +499,53 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
         return res.status(400).json({ success: false, error: 'scope must be 63 characters or fewer' });
       }
       scopeOverride = scope;
+    }
+
+    // Optional sender-name override (#6282): needs today's grant (checked by the
+    // route guard) AND a name on this source's allowlist. Default is off.
+    const nameDecision = await decideSenderName({
+      sourceId: req.params.id,
+      raw: senderName,
+      isDm,
+      hasChannel: parsedChannelIdx !== undefined,
+      localNodeName: managerFor(req, res).getLocalNode()?.name,
+    });
+    if (nameDecision.kind === 'reject') {
+      if (nameDecision.denied) {
+        auditMeshcoreEvent(req, 'meshcore_message_sent_as_denied', 'messages', {
+          sourceId: req.params.id,
+          channelIdx: parsedChannelIdx,
+          code: nameDecision.code,
+          via: 'api',
+        });
+      }
+      return fail(res, nameDecision.status, nameDecision.code, nameDecision.message);
+    }
+    if (nameDecision.kind === 'override') {
+      const rawCap = meshcoreChannelTextCap(nameDecision.name, { raw: true });
+      if (Buffer.byteLength(text, 'utf8') > rawCap) {
+        return fail(res, 400, 'INVALID_INPUT', `Message exceeds ${rawCap} bytes for this sender name`);
+      }
+      try {
+        const result = await managerFor(req, res).sendChannelMessageAs(text, parsedChannelIdx as number, nameDecision.name, scopeOverride);
+        // No message text in the audit row, by design.
+        auditMeshcoreEvent(req, 'meshcore_message_sent_as', 'messages', {
+          sourceId: req.params.id,
+          channelIdx: parsedChannelIdx,
+          senderName: nameDecision.name,
+          scope: result.message?.scopeName ?? null,
+          textBytes: Buffer.byteLength(text, 'utf8'),
+          messageId: result.message?.id ?? null,
+          via: 'api',
+        });
+        return res.json({ success: true, message: 'Message sent' });
+      } catch (error) {
+        if (failIfTxDisabled(res, error)) return;
+        if (isMeshCoreSenderNameError(error)) {
+          return fail(res, MESHCORE_SENDER_NAME_ERROR_STATUS[error.code], error.code, error.message);
+        }
+        throw error;
+      }
     }
 
     const success = await managerFor(req, res).sendMessage(text, toPublicKey, parsedChannelIdx, scopeOverride);

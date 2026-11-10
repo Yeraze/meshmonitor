@@ -1045,6 +1045,15 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     : `#${(m.scopeCode ?? 0).toString(16).padStart(4, '0')}`}
                 </div>
               )}
+              {m.senderNameOverride && (
+                <div
+                  className="mc-message-scope"
+                  data-testid="mc-sent-as"
+                  title={t('meshcore.sent_as_tooltip', 'Sent through the API under this sender name, not the node name')}
+                >
+                  <UiIcon name="user" size={13} /> {t('meshcore.sent_as', 'Sent as {{name}}', { name: m.senderNameOverride })}
+                </div>
+              )}
               {/* #6239: the heard-by antenna now renders on the header row
                   above (was a full line here). */}
               {m.text && <LinkPreview text={m.text} />}

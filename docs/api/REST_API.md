@@ -121,6 +121,7 @@ Body:
 | `channel` | integer 0–255 | Channel slot. Use this or `toNodeId`, not both. |
 | `toNodeId` | string | `mc:<publicKey>` or a 64-character hex key. Sends a direct message. |
 | `scope` | string, up to 63 characters | Optional region for a channel message. Not allowed with `toNodeId`. |
+| `senderName` | string, 1–31 bytes | Optional. Send a channel message under this name instead of the node's name. Off by default; see [Send under another name](#send-under-another-name). Not allowed with `toNodeId`. |
 
 Limits:
 
@@ -154,10 +155,31 @@ For a direct message, `channel` is `-1` and `toNodeId` is the `mc:` id.
 | 400 | `INVALID_INPUT` | Missing text, both or neither of `channel` and `toNodeId`, a bad channel or key, or a bad `scope`. |
 | 400 | `SEND_FAILED` | The radio refused the send. |
 | 403 | `FORBIDDEN` | The token's user lacks the write grant. |
+| 403 | `SENDER_NAME_DISABLED` | `senderName` was sent but the source does not allow it. |
+| 403 | `SENDER_NAME_NOT_ALLOWED` | `senderName` is not on the source's allowed list. |
 | 409 | `TX_DISABLED` | The source is receive-only. |
+| 409 | `CLIENT_REPEAT_ON`, `CHANNEL_KEY_UNAVAILABLE` | `senderName` only: the companion has client repeat on, or the channel key is not stored. |
 | 413 | `PAYLOAD_TOO_LARGE` | The text is over the byte limit for its kind. |
+| 422 | `FIRMWARE_UNSUPPORTED` | `senderName` only: the companion firmware is older than 1.16. |
 | 429 | — | The message rate limit was hit. |
 | 503 | `SOURCE_NOT_CONNECTED` | The MeshCore source is offline. |
+
+##### Send under another name {#send-under-another-name}
+
+A bot or alert script can post on a MeshCore channel under a name of its own, such as `Alerts Bot`, instead of the node's name. This is off by default.
+
+- A source admin turns it on and lists the names it allows: `PUT /api/sources/{id}/meshcore/config/sender-names` with `{"enabled": true, "allowedNames": ["Alerts Bot"]}` (up to 16 names; needs `configuration:write` on the source), or **Device Configuration, API sender names** in the web UI. `GET` on the same path reads the list.
+- A caller needs its normal write grant on the channel **and** a name from that list. Names match exactly (case-sensitive). A name that is the node's own name needs no list entry.
+- A name is 1 to 31 bytes, with no `:`, no control, bidi or zero-width characters, and no leading `#`.
+- The text limit is 155 bytes minus the name's bytes minus 2, which is 5 bytes lower than a normal send. Over it answers `413`.
+- Channel messages only. A direct message with `senderName` answers `400`. A Meshtastic source answers `400`.
+- Needs companion firmware 1.16 or later (`422` `FIRMWARE_UNSUPPORTED`) and **client repeat off** (`409` `CLIENT_REPEAT_ON`).
+- Every send under a name writes an audit row (`meshcore_message_sent_as`) with the source, channel, name, scope, byte count and message id. It never stores the text. A refused attempt writes `meshcore_message_sent_as_denied`.
+- The radio's own copy of the packet is dropped, so the message appears once. A resend of such a message goes out raw under the same name and is refused if the name has since left the list.
+
+::: warning Impersonation
+MeshCore does not prove who sent a channel message. Anyone who holds the channel write grant on a source that allows a name can post as that name, and receivers cannot tell. List only names you want your API callers to use.
+:::
 
 #### Actions on MeshCore sources
 
