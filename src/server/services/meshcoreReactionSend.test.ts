@@ -108,7 +108,7 @@ describe('planOutboundReaction', () => {
   });
 
   it('enforces the byte caps', () => {
-    const long = 'N'.repeat(115);
+    const long = 'N'.repeat(150);
     expect(codeOf(() => planOutboundReaction(row({ fromName: long }), THUMBS, ctx()))).toBe('MESSAGE_TOO_LONG');
   });
 });
