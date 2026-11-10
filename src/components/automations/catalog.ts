@@ -6,6 +6,7 @@
  * `kind` maps to an input renderer in AutomationBuilder.
  */
 import { CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS, CLOCK_OUT_OF_SYNC_MIN_SECONDS, CLOCK_OUT_OF_SYNC_MAX_SECONDS } from '../../utils/clockOutOfSync';
+import { MESHCORE_MAX_TEXT_BYTES, MESHCORE_SPLIT_MAX_PARTS, MESHCORE_SPLIT_PART_GAP_MS } from '../../utils/meshcoreMessageLimits';
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
 export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect' | 'resultTarget' | 'tracePaths' | 'datetimeLocal' | 'timeZone';
@@ -775,6 +776,10 @@ export const ACTIONS: BlockDef[] = [
         // sends. Reuses Phase 2's showIf.truthy so an unset/blank/0 `to` hides it.
         showIf: { field: 'to', truthy: true },
         help: 'Resend this DM (1–3) until the recipient ACKs it — the same retry Auto-Acknowledge uses. Leave blank for a single send. Setting it routes the DM through the source’s outgoing queue, which also spaces sends 30 seconds apart. Meshtastic DMs only: ignored for channel messages and MeshCore, and ignored when Hop limit is 0.',
+      },
+      {
+        name: 'splitLongMessages', label: 'Split long messages', kind: 'checkbox', advanced: true,
+        help: `MeshCore only. A MeshCore message holds ${MESHCORE_MAX_TEXT_BYTES} bytes in a DM, less on a channel (${MESHCORE_MAX_TEXT_BYTES} minus your node name and 2). A longer message is cut to fit unless you split it. Split messages go out as up to ${MESHCORE_SPLIT_MAX_PARTS} messages, ${MESHCORE_SPLIT_PART_GAP_MS / 1000} seconds apart, each marked like "(1/${MESHCORE_SPLIT_MAX_PARTS})", and every repeater in range repeats each one. Each source and channel sends its own set, so airtime grows with both. Meshtastic sources ignore this and cut at 200 bytes.`,
       },
       HOP_LIMIT_FIELD,
       {

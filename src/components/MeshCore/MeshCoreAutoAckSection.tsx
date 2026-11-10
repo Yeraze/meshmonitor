@@ -10,9 +10,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { ConfigSection } from '../shared/config/ConfigSection';
 import { ConfigGroup } from '../shared/config/ConfigGroup';
+import { SplitLongMessagesField } from '../shared/automation/SplitLongMessagesField';
 import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
-import { UiIcon } from '../icons';
-import styles from './MeshCoreAutoAckSection.module.css';
 
 interface MeshCoreAutoAckSectionProps {
   baseUrl: string;
@@ -510,36 +509,13 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
 
         {/* Long replies (#5564): truncate (default) or split into up to 3 sends. */}
         <div className="setting-item">
-          <label>
-            {t('meshcore.automation.autoack.split_label', 'Long Replies')}
-            <span className="setting-description">
-              {t(
-                'meshcore.automation.autoack.split_description',
-                'A MeshCore message holds 160 bytes in a DM. On a channel it holds 160 bytes minus your node name and 2 (155 for a 3-byte name, 127 for a 31-byte name). A longer reply is cut to fit unless you split it. Applies to DM and channel replies.',
-              )}
-            </span>
-          </label>
-          <div className={styles.toggleRow}>
-            <input
-              type="checkbox"
-              id="meshcoreAutoAckSplitLongMessages"
-              checked={settings.splitLongMessages}
-              onChange={(e) => update('splitLongMessages', e.target.checked)}
-              disabled={disabled || !canWrite}
-            />
-            <label htmlFor="meshcoreAutoAckSplitLongMessages" className={styles.toggleLabel}>
-              {t('meshcore.automation.autoack.split_toggle', 'Split long messages')}
-            </label>
-          </div>
-          <div className={styles.warning} role="note">
-            <UiIcon name="alert" size={14} />
-            <span>
-              {t(
-                'meshcore.automation.autoack.split_warning',
-                'Long replies go out as up to 3 messages, 10 seconds apart, each marked like "(1/3)". Each one is repeated by every repeater in range.',
-              )}
-            </span>
-          </div>
+          <label>{t('meshcore.automation.autoack.split_label', 'Long Replies')}</label>
+          <SplitLongMessagesField
+            id="meshcoreAutoAckSplitLongMessages"
+            checked={settings.splitLongMessages}
+            onChange={(v) => update('splitLongMessages', v)}
+            disabled={disabled || !canWrite}
+          />
         </div>
         </ConfigGroup>
 

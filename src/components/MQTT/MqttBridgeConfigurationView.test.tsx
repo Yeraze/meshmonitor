@@ -60,6 +60,13 @@ vi.mock('../../hooks/useMqttBrokerPresets', () => {
     useDeleteBrokerPreset: action,
   };
 });
+vi.mock('./MqttRootFinder', () => ({
+  MqttRootFinder: (props: { disabled?: boolean; defaultRegionRoot: string; onPickRoot: (r: string) => void }) => (
+    <button type="button" disabled={props.disabled} data-region={props.defaultRegionRoot} onClick={() => props.onPickRoot('msh/US/WA')}>
+      find-topics-stub
+    </button>
+  ),
+}));
 vi.mock('../../hooks/useDashboardData', () => ({ useSourceStatuses: () => new Map() }));
 vi.mock('../BBoxMapEditor', () => ({ default: () => <div data-testid="bbox-editor" /> }));
 vi.mock('../../hooks/useSaveBar', () => ({
@@ -466,5 +473,38 @@ describe('MQTT bridge setup: saved broker presets (#5794)', () => {
     expect((dialog.querySelector('#save-broker-preset-rootTopic') as HTMLInputElement).value).toBe('msh/US');
     // The stored password is not in the form, so the dialog says so.
     expect(screen.getByTestId('save-broker-preset-no-password')).toBeInTheDocument();
+  });
+});
+
+describe('MQTT root finder on the bridge subscriptions (#6287)', () => {
+  const stubButton = () => screen.getByRole('button', { name: 'find-topics-stub' }) as HTMLButtonElement;
+  const subs = () => screen.getByDisplayValue('msh/US/#') as HTMLTextAreaElement;
+
+  it('seeds the search from the first subscription and sends no request on mount', async () => {
+    await renderSection();
+    expect(stubButton().dataset.region).toBe('msh/US');
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('a pick replaces a single <root>/# line and saves nothing', async () => {
+    await renderSection();
+    fireEvent.click(stubButton());
+    expect(screen.getByDisplayValue('msh/US/WA/#')).toBeTruthy();
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('a pick appends when there are several lines', async () => {
+    await renderSection();
+    fireEvent.change(subs(), { target: { value: 'msh/US/#\nmsh/EU_868/#' } });
+    fireEvent.click(stubButton());
+    expect((screen.getByDisplayValue(/msh\/US\/WA\/#/) as HTMLTextAreaElement).value).toBe(
+      'msh/US/#\nmsh/EU_868/#\nmsh/US/WA/#',
+    );
+  });
+
+  it('is disabled without sources:write', async () => {
+    state.canWrite = false;
+    await renderSection();
+    expect(stubButton().disabled).toBe(true);
   });
 });

@@ -340,3 +340,26 @@ export const translateLimiter = rateLimit({
   },
   ...(env.rateLimitTranslate === 0 ? { skip: () => true } : {}),
 });
+
+// MQTT root-topic finder (#6287) — each start opens a ~60 s subscribe-only
+// connection to a third-party broker, so this limiter protects THAT broker,
+// not our CPU. Unlike the limiters above it does NOT skip private-network IPs
+// (a reverse proxy puts every client on one). Keyed per user, then IP.
+// The in-service caps (1 per user / endpoint, 2 total, 2 min cooldown) are the
+// real control; this is the outer layer. 5 starts per 10 minutes.
+export const mqttRootFinderLimiter = rateLimit({
+  ...rateLimitConfig,
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => userOrIpKeyGenerator(req as { ip?: string; user?: { id?: number | string } }),
+  handler: (req, res) => {
+    const key = userOrIpKeyGenerator(req as { ip?: string; user?: { id?: number | string } });
+    logger.warn(`🚫 Rate limit exceeded for MQTT_ROOT_FINDER - Key: ${key}`);
+    res.status(429).json({
+      success: false,
+      error: 'Too many topic searches, please wait before starting another',
+      code: 'ROOT_FINDER_BUSY',
+      retryAfterSeconds: 600,
+    });
+  },
+});

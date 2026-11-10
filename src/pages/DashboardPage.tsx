@@ -6,6 +6,8 @@
  * per-source data fetched via the useDashboardData hooks.
  */
 
+import { MqttRootFinder } from '../components/MQTT/MqttRootFinder';
+import { applyRootToSubscriptions, defaultBridgeRegionRoot } from '../components/MQTT/mqttRootDefaults';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -1582,6 +1584,20 @@ function DashboardInner() {
                     onChange={(e) => setFormMqttBridgeSubscriptions(e.target.value)}
                   />
                 </label>
+                <MqttRootFinder
+                  context="bridge"
+                  sourceId={editingSource?.id ?? null}
+                  currentRoot={formMqttBridgeSubscriptions.split('\n')[0]?.trim() ?? ''}
+                  defaultRegionRoot={defaultBridgeRegionRoot(formMqttBridgeSubscriptions)}
+                  getTarget={() =>
+                    formMqttBridgeUrl.trim()
+                      ? { broker: { url: formMqttBridgeUrl }, username: formMqttBridgeUsername, password: formMqttBridgePassword }
+                      : null
+                  }
+                  onPickRoot={(root) =>
+                    setFormMqttBridgeSubscriptions(applyRootToSubscriptions(formMqttBridgeSubscriptions, root))
+                  }
+                />
                 {/* Advanced bridge settings (mode, forwarding, ok_to_mqtt,
                     publish channel/topic filters, geofence, topic rewrites)
                     live on the bridge's Configuration page so they're

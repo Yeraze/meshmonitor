@@ -457,6 +457,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     if ((tr.preSendDelaySeconds ?? 0) > 0) {
       chips.push({ label: t('meshcore.automation.responder.chip_delay', '+{{seconds}}s delay', { seconds: tr.preSendDelaySeconds }) });
     }
+    if (tr.multiline) chips.push({ label: t('meshcore.automation.responder.chip_split', 'Split'), title: t('automation.split_long.toggle', 'Split long messages') });
     if (tr.scopeMode && tr.scopeMode !== 'inherit') {
       chips.push({ label: tr.scopeMode === 'named' ? `#${tr.scopeName ?? ''}` : tr.scopeMode, tone: 'caution' });
     }

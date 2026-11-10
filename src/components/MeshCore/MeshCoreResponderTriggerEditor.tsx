@@ -9,6 +9,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumberInput } from '../common/NumberInput';
 import { ScopeSelectField } from './ScopeSelectField';
+import { SplitLongMessagesField } from '../shared/automation/SplitLongMessagesField';
 import { ResponderSyntaxSelect } from '../shared/automation/ResponderSyntaxSelect';
 import { meshCoreTriggerSyntax } from './meshcoreResponderMatch';
 import type {
@@ -193,6 +194,13 @@ export const MeshCoreResponderTriggerEditor: React.FC<MeshCoreResponderTriggerEd
           />
         </label>
       </div>
+
+      <SplitLongMessagesField
+        id={`responder-split-${tr.id}`}
+        checked={tr.multiline === true}
+        onChange={(v) => onChange({ multiline: v })}
+        disabled={disabled}
+      />
 
       <fieldset className={styles.channels}>
         <legend className={styles.legend}>

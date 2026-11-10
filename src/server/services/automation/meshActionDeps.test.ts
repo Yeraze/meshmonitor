@@ -67,6 +67,35 @@ describe('createMeshActionDeps sendMessage — MeshCore scope (#3833)', () => {
 
 // Regression tests for #4018: a MeshCore DM destination is a pubkey string, and
 // must reach the manager as `toPublicKey`, not be silently dropped.
+describe('createMeshActionDeps sendMessage — MeshCore split (#6316)', () => {
+  beforeEach(() => { getManager.mockReset(); });
+
+  it('routes a MeshCore channel send through sendAutomatedText with split off by default', async () => {
+    const sendAutomatedText = vi.fn().mockResolvedValue({ ok: true, totalParts: 1, truncated: true });
+    const sendMessage = vi.fn();
+    getManager.mockReturnValue({ sendMessage, sendAutomatedText });
+    const deps = createMeshActionDeps();
+    const r = await deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 2, scopeOverride: 'paris' });
+    expect(sendAutomatedText).toHaveBeenCalledWith('hi', expect.objectContaining({ channelIdxs: [2], scopeOverride: 'paris', split: false }));
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(r).toEqual({ ok: true, parts: 1, truncated: true });
+  });
+
+  it('passes split on and a DM key', async () => {
+    const sendAutomatedText = vi.fn().mockResolvedValue({ ok: true, totalParts: 3, truncated: false });
+    getManager.mockReturnValue({ sendMessage: vi.fn(), sendAutomatedText });
+    const deps = createMeshActionDeps();
+    await deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 0, destination: 'abcd', splitLongMessages: true });
+    expect(sendAutomatedText).toHaveBeenCalledWith('hi', expect.objectContaining({ toPublicKey: 'abcd', split: true }));
+  });
+
+  it('throws when no part could be sent', async () => {
+    getManager.mockReturnValue({ sendMessage: vi.fn(), sendAutomatedText: vi.fn().mockResolvedValue({ ok: false, totalParts: 1, truncated: false }) });
+    const deps = createMeshActionDeps();
+    await expect(deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 0 })).rejects.toThrow(/failed to send/);
+  });
+});
+
 describe('createMeshActionDeps sendMessage — MeshCore DM destination (#4018)', () => {
   beforeEach(() => { getManager.mockReset(); });
 
