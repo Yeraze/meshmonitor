@@ -55,7 +55,15 @@ export function scopeTransportKey(name: string): Buffer {
  * including the reserved-value clamping.
  */
 export function computeTransportCode(name: string, payloadType: number, payloadHex: string): number {
-  const key = scopeTransportKey(name);
+  return computeTransportCodeWithKey(scopeTransportKey(name), payloadType, payloadHex);
+}
+
+/**
+ * Same as {@link computeTransportCode} but from an already-derived 16-byte
+ * transport key (e.g. the node's persistent default scope key, which has no
+ * known name).
+ */
+export function computeTransportCodeWithKey(key: Uint8Array, payloadType: number, payloadHex: string): number {
   const payload = hexToBytes(payloadHex);
   const data = Buffer.concat([Buffer.from([payloadType & 0xff]), Buffer.from(payload)]);
   const digest = createHmac('sha256', key).update(data).digest();

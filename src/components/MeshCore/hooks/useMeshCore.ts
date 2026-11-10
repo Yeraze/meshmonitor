@@ -285,6 +285,8 @@ export interface MeshCoreMessage {
    *  reactions (#5759); before that only on our own channel sends (#5512).
    *  Absent on older rows; an own channel send without it can't be resent. */
   senderTimestamp?: number;
+  /** Set when this own channel send went out under an override sender name (#6282). */
+  senderNameOverride?: string | null;
   /** Reactions (#5759). Set = this row is a reaction and `text` equals it. */
   reactionEmoji?: string | null;
   /** Wire format the reaction arrived in (`mc1-channel`, `mc1-dm`, `mco-v3`, …). */
@@ -415,6 +417,12 @@ export interface MeshCorePositionOverrideInput {
   isPrivate?: boolean;
 }
 
+/** Per-source sender-name override policy (#6282). */
+export interface SenderNamePolicy {
+  enabled: boolean;
+  allowedNames: string[];
+}
+
 export interface MeshCoreActions {
   connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
@@ -456,6 +464,10 @@ export interface MeshCoreActions {
   getDefaultScope: () => Promise<string>;
   /** Set the per-source default region/scope. Returns the normalized value, or null on error. */
   setDefaultScope: (scope: string) => Promise<string | null>;
+  /** Read the per-source sender-name override policy (#6282). Null on error. */
+  getSenderNamePolicy: () => Promise<SenderNamePolicy | null>;
+  /** Replace the per-source sender-name override policy. Returns the stored policy, or null on error. */
+  setSenderNamePolicy: (policy: SenderNamePolicy) => Promise<SenderNamePolicy | null>;
   /** Read the per-source default MeshCore path hash size (1/2/3 bytes) (#4945). */
   getDefaultPathHashSize: () => Promise<1 | 2 | 3>;
   /** Set the per-source default path hash size. Returns the applied value, or null on error. */
@@ -1508,6 +1520,38 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return typeof data.scope === 'string' ? data.scope : '';
     } catch (_err) {
       setError('Failed to update default scope');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const getSenderNamePolicy = useCallback(async (): Promise<SenderNamePolicy | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/sender-names`);
+      const data = await parseJsonResponse(response);
+      const d = data.data as Partial<SenderNamePolicy> | undefined;
+      return data.success && d && typeof d.enabled === 'boolean' && Array.isArray(d.allowedNames)
+        ? { enabled: d.enabled, allowedNames: d.allowedNames }
+        : null;
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const setSenderNamePolicy = useCallback(async (policy: SenderNamePolicy): Promise<SenderNamePolicy | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/sender-names`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(policy),
+      });
+      const data = await parseJsonResponse(response);
+      if (!data.success) {
+        setError(data.error || 'Failed to update sender names');
+        return null;
+      }
+      return data.data as SenderNamePolicy;
+    } catch (_err) {
+      setError('Failed to update sender names');
       return null;
     }
   }, [mcPrefix, csrfFetch]);
@@ -2905,6 +2949,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setDiscoverable,
       getDefaultScope,
       setDefaultScope,
+      getSenderNamePolicy,
+      setSenderNamePolicy,
       getDefaultPathHashSize,
       setDefaultPathHashSize,
       discoverRegions,

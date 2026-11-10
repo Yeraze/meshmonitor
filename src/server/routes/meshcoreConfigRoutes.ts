@@ -22,6 +22,7 @@ import { isMeshCoreDeviceCommandError, MESHCORE_DEVICE_COMMAND_ERROR_STATUS } fr
 import { readRepeaterSettings, writeRepeaterSettings, type RepeaterCliTransport } from '../services/meshcoreRepeaterSettingsService.js';
 import { getRepeaterGates, validateRepeaterPatch, getRepeaterSettingDef } from '../../utils/meshcoreRepeaterSettings.js';
 import { MeshCoreDeviceType } from '../meshcoreManager.js';
+import { readSenderNamePolicy, writeSenderNamePolicy, validateSenderNamePolicyInput } from '../utils/meshcoreSenderNamePolicy.js';
 import { managerFor, isValidName, isValidRadioParams, auditMeshcoreEvent } from './meshcoreRouteShared.js';
 
 const router = Router({ mergeParams: true });
@@ -122,6 +123,59 @@ router.post(
     } catch (error) {
       logger.error('[API] Error setting default scope:', error);
       res.status(500).json({ success: false, error: 'Failed to update setting' });
+    }
+  },
+);
+
+/**
+ * GET /api/sources/:id/meshcore/config/sender-names (#6282)
+ *
+ * The per-source sender-name override policy: `{ enabled, allowedNames }`.
+ * Default is off with no names. Impersonation risk: a caller who passes this
+ * list can post on a channel as that name (GRP_TXT carries no sender proof).
+ */
+router.get(
+  '/config/sender-names',
+  optionalAuth(),
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      return ok(res, await readSenderNamePolicy(req.params.id));
+    } catch (error) {
+      logger.error('[API] Error reading sender-name policy:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to read setting');
+    }
+  },
+);
+
+/**
+ * PUT /api/sources/:id/meshcore/config/sender-names (#6282)
+ * Body: `{ enabled: boolean, allowedNames: string[] }` (up to 16 names, each
+ * 1-31 bytes, NFC, no ':' / control / bidi / zero-width / leading '#').
+ * Replaces the whole policy. Audited (names only).
+ */
+router.put(
+  '/config/sender-names',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const parsed = validateSenderNamePolicyInput(req.body);
+    if (!parsed.ok) return fail(res, 400, 'INVALID_INPUT', parsed.message);
+    try {
+      const before = await readSenderNamePolicy(req.params.id);
+      await writeSenderNamePolicy(req.params.id, parsed.policy);
+      auditMeshcoreEvent(req, 'meshcore_sender_names_updated', 'configuration', {
+        sourceId: req.params.id,
+        enabledBefore: before.enabled,
+        enabled: parsed.policy.enabled,
+        allowedNamesBefore: before.allowedNames,
+        allowedNames: parsed.policy.allowedNames,
+      });
+      return ok(res, parsed.policy);
+    } catch (error) {
+      logger.error('[API] Error saving sender-name policy:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to update setting');
     }
   },
 );

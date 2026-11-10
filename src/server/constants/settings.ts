@@ -823,6 +823,11 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreReactionsInboundEnabled',
   // MeshCore outbound reactions (#5762) — per source; default in MESHCORE_REACTIONS_OUTBOUND_DEFAULT
   'meshcoreReactionsOutboundEnabled',
+  // MeshCore sender-name override policy (#6282) — per source, JSON
+  // {enabled, allowedNames[]}. Written ONLY by PUT
+  // /api/sources/:id/meshcore/config/sender-names (per-source `configuration`
+  // write, audited), so it is NOT_POSTABLE and kept out of the public GET.
+  'meshcoreSenderNameOverride',
   // MeshCore Required Repeater (#6178) — per source (full repeater public key)
   'meshcoreRequiredRepeater',
   // MeshCore Required Repeaters list + mode (#6193) — per source
@@ -1135,6 +1140,9 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'forwardingRules',
   // PUT /api/sources/:id/forwarding/enabled (#5537) — same gate as the rules.
   'forwardingEnabled',
+  // PUT /api/sources/:id/meshcore/config/sender-names (#6282): the per-source
+  // sender-name allowlist. A generic POST must not be able to widen it.
+  'meshcoreSenderNameOverride',
 ]);
 
 /**
@@ -1166,6 +1174,9 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
   'forwardingRules',
   // Forwarding master switch (#5537) — same reasoning as the rules.
   'forwardingEnabled',
+  // Sender-name allowlist (#6282): the names a source may post as. Readable
+  // only through the dedicated per-source `configuration` route.
+  'meshcoreSenderNameOverride',
   // Default Meshtastic source (#5245). Not a secret, but it names a source a
   // non-admin viewer may not be able to read, and only admins can change it.
   'defaultMeshtasticSourceId',

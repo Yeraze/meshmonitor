@@ -678,6 +678,24 @@ components:
             MeshCore only. One-off region (flood scope) for this channel send. An empty
             string sends unscoped. Not allowed with `toNodeId`.
           example: "usa"
+        senderName:
+          type: string
+          minLength: 1
+          maxLength: 31
+          description: |
+            MeshCore channel sends only. Send under this sender name instead of the
+            node's own name. Off by default: a source admin must enable the override
+            and list the allowed names (`PUT /api/sources/{id}/meshcore/config/sender-names`).
+            Needs your normal channel write grant AND a name on that list, else 403
+            `SENDER_NAME_DISABLED` / `SENDER_NAME_NOT_ALLOWED`. 1-31 bytes, no `:`, no
+            control, bidi or zero-width characters, no leading `#`. Not allowed with
+            `toNodeId` or on a Meshtastic source (400). Needs companion firmware v1.16
+            or later (422 `FIRMWARE_UNSUPPORTED`) and client repeat off (409
+            `CLIENT_REPEAT_ON`). The text limit is 155 minus the name's bytes minus 2
+            (413 over it). Every such send is written to the audit log (no text).
+            Anyone with the grant can post as an allowed name; the protocol cannot
+            prove who sent a channel message.
+          example: "Alerts Bot"
 
     SendMessageResponse:
       type: object

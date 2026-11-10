@@ -247,6 +247,7 @@ import { migration as meshcoreTraceRunsMigration, runMigration225Postgres, runMi
 import { migration as backupHistorySourceProtocolMigration, runMigration226Postgres, runMigration226Mysql } from '../server/migrations/226_backup_history_source_protocol.js';
 import { migration as meshcoreNodeSecurityFlagsMigration, runMigration227Postgres, runMigration227Mysql } from '../server/migrations/227_add_meshcore_node_security_flags.js';
 import { migration as addNotificationTextMaxMigration, runMigration229Postgres, runMigration229Mysql } from '../server/migrations/229_add_notification_text_max.js';
+import { migration as addMeshcoreMessageSenderNameOverrideMigration, runMigration231Postgres, runMigration231Mysql } from '../server/migrations/231_add_meshcore_message_sender_name_override.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
@@ -3708,4 +3709,20 @@ registry.register({
   sqlite: (db) => meshcoreNeighborWatchMigration.up(db),
   postgres: (client) => runMigration230Postgres(client),
   mysql: (pool) => runMigration230Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 231: `meshcore_messages.senderNameOverride` (#6282). PER-SOURCE.
+// The allowlisted sender name an API caller sent an own channel message under
+// (raw CMD_SEND_RAW_PACKET). NULL for every other row. A resend of a row with
+// this set is rebuilt as a raw packet, never sent under the real node name.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 231,
+  name: 'add_meshcore_message_sender_name_override',
+  settingsKey: 'migration_231_add_meshcore_message_sender_name_override',
+  sqlite: (db) => addMeshcoreMessageSenderNameOverrideMigration.up(db),
+  postgres: (client) => runMigration231Postgres(client),
+  mysql: (pool) => runMigration231Mysql(pool),
 });

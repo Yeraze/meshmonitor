@@ -313,7 +313,8 @@ export function auditMeshcoreEvent(
   resource: 'remote_admin' | 'configuration' | 'messages',
   details: Record<string, unknown>,
 ): void {
-  const userId = req.session?.userId ?? null;
+  // API-token callers have no session; fall back to the authenticated user.
+  const userId = req.session?.userId ?? (req as Request & { user?: { id?: number } }).user?.id ?? null;
   const ip = req.ip || req.socket?.remoteAddress || null;
   // #5892: a CLI line can carry a password or key (`password <new>`,
   // `set guest.password ...`, `set prv.key ...`). Never store it in clear.
