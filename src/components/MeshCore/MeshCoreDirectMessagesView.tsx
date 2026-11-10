@@ -34,6 +34,7 @@ import { UiIcon } from '../icons';
 import { DmFilterSelect } from '../messages/DmFilterSelect';
 import { NodeSortControls } from '../nodes/NodeSortControls';
 import { NodeStatChips } from '../nodes/NodeStatChips';
+import { MESHCORE_MAX_MESSAGE_BYTES_DM } from '../../utils/meshcoreMessageLimits';
 import { usePersistedListSort } from '../../hooks/usePersistedListSort';
 import { passesDmFilter } from '../../utils/dmListFilter';
 import { formatMessagePreview } from '../../utils/messagePreview';
@@ -862,7 +863,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   initialDraft={selected === initialSelectedContact ? initialDraft : null}
                   onInitialDraftConsumed={onInitialDraftConsumed}
                   unreadAnchorMs={entryLastRead}
-                  maxBytes={150}
+                  maxBytes={MESHCORE_MAX_MESSAGE_BYTES_DM}
                   onLoadOlder={loadOlderDmHistory}
                   hasMoreOlder={dmHistoryReady && dmHasMore}
                   loadingOlder={dmLoadingOlder}

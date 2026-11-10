@@ -7342,7 +7342,7 @@
   "meshcore.automation.autoack.node_ignore_list": "Sender Ignore List",
   "meshcore.automation.autoack.node_ignore_list_description": "Never auto-acknowledge these senders — use it to break a bot echo loop. One entry per line, or comma-separated. An entry is either a public key (full key or any leading prefix, with or without a leading \"!\") or a contact/sender name. Names are matched ignoring case and extra spaces, and are the only way to exclude a channel sender, because MeshCore channel packets carry no sender key.",
   "meshcore.automation.autoack.split_label": "Long Replies",
-  "meshcore.automation.autoack.split_description": "A MeshCore message holds about 150 bytes in a DM and 120 to 130 bytes on a channel. A longer reply is cut to fit unless you split it. Applies to DM and channel replies.",
+  "meshcore.automation.autoack.split_description": "A MeshCore message holds 160 bytes in a DM. On a channel it holds 160 bytes minus your node name and 2 (155 for a 3-byte name, 127 for a 31-byte name). A longer reply is cut to fit unless you split it. Applies to DM and channel replies.",
   "meshcore.automation.autoack.split_toggle": "Split long messages",
   "meshcore.automation.autoack.split_warning": "Long replies go out as up to 3 messages, 10 seconds apart, each marked like \"(1/3)\". Each one is repeated by every repeater in range.",
   "meshcore.automation.autoping.description": "When enabled, a contact can DM \"ping N\" to this companion to get N pings back, or \"ping stop\" to cancel. Each ping records its round trip, a timeout, and whether it went direct or by flood. Companion sources only.",

@@ -515,7 +515,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             <span className="setting-description">
               {t(
                 'meshcore.automation.autoack.split_description',
-                'A MeshCore message holds about 150 bytes in a DM and 120 to 130 bytes on a channel. A longer reply is cut to fit unless you split it. Applies to DM and channel replies.',
+                'A MeshCore message holds 160 bytes in a DM. On a channel it holds 160 bytes minus your node name and 2 (155 for a 3-byte name, 127 for a 31-byte name). A longer reply is cut to fit unless you split it. Applies to DM and channel replies.',
               )}
             </span>
           </label>
