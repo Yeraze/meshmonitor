@@ -67,6 +67,9 @@ interface NotificationPreferences {
   // #5593: message-notification templates; null = the built-in default.
   messageTitleTemplate: string | null;
   messageBodyTemplate: string | null;
+  // #6278: message text length per service; null = the default of 100.
+  messageTextMaxPush: number | null;
+  messageTextMaxApprise: number | null;
 }
 
 // The fields this tab edits. Saves send only these: the server merges them
@@ -98,6 +101,8 @@ const EDITED_PREFERENCE_FIELDS: ReadonlyArray<keyof NotificationPreferences> = [
   'appriseUrls',
   'messageTitleTemplate',
   'messageBodyTemplate',
+  'messageTextMaxPush',
+  'messageTextMaxApprise',
 ];
 
 function editedPreferenceFields(prefs: NotificationPreferences): Partial<NotificationPreferences> {
@@ -1396,15 +1401,20 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                 )}
               </div>
 
-              {/* Message notification format (#5593) — message notifications
-                  don't fire for MeshCore, so there is nothing to format there. */}
+              {/* Message notification format (#5593, #6278) — shown for every
+                  source type that sends message notifications (Meshtastic and
+                  MeshCore share it); gated by caps.messageFilters. */}
               {caps.messageFilters && (
                 <NotificationFormatSection
                   titleTemplate={preferences.messageTitleTemplate}
                   bodyTemplate={preferences.messageBodyTemplate}
                   sourceName={currentSourceName}
                   prefixWithNodeName={preferences.prefixWithNodeName}
+                  textMaxPush={preferences.messageTextMaxPush}
+                  textMaxApprise={preferences.messageTextMaxApprise}
+                  showApprise={preferences.enableApprise}
                   onChange={(next) => setPreferences(prev => ({ ...prev, ...next }))}
+                  onTextMaxChange={(next) => setPreferences(prev => ({ ...prev, ...next }))}
                 />
               )}
 

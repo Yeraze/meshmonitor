@@ -7,7 +7,7 @@
  * a real send. An empty field means "use the built-in default", which is shown
  * as the field's placeholder.
  */
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import TokenTextField from './automations/TokenTextField';
 import { UiIcon } from './icons';
@@ -16,6 +16,9 @@ import {
   MESSAGE_BODY_TEMPLATE_MAX,
   MESSAGE_TEMPLATE_TOKENS,
   MESSAGE_TITLE_TEMPLATE_MAX,
+  MESSAGE_TEXT_MAX_LIMIT,
+  MESSAGE_TEXT_MAX_MIN,
+  MESSAGE_TEXT_MAX_DEFAULT,
   renderMessageNotification,
   type MessageTemplateContext,
 } from '../utils/notificationTemplate';
@@ -30,7 +33,67 @@ export interface NotificationFormatSectionProps {
   sourceName?: string | null;
   /** The user's "prefix with node name" setting, so the preview can show it. */
   prefixWithNodeName?: boolean;
+  /** Message text length for Web Push / desktop. Null = the default (100). */
+  textMaxPush?: number | null;
+  /** Message text length for Apprise. Null = the default (100). */
+  textMaxApprise?: number | null;
+  /** Show the Apprise length input (Apprise is on for this source). */
+  showApprise?: boolean;
+  onTextMaxChange?: (next: { messageTextMaxPush: number | null; messageTextMaxApprise: number | null }) => void;
 }
+
+/** Blank stores null. A number is clamped into the allowed range. */
+function textMaxFromInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const n = Math.floor(Number(trimmed));
+  if (!Number.isFinite(n)) return null;
+  return Math.min(MESSAGE_TEXT_MAX_LIMIT, Math.max(MESSAGE_TEXT_MAX_MIN, n));
+}
+
+interface TextMaxInputProps {
+  id: string;
+  label: string;
+  value: number | null;
+  onCommit: (next: number | null) => void;
+  styles: Record<string, string>;
+  placeholder: string;
+}
+
+/**
+ * Number input that keeps what the user types while they type, stores the
+ * clamped value as they go, and snaps the display to it on blur.
+ */
+const TextMaxInput: React.FC<TextMaxInputProps> = ({ id, label, value, onCommit, styles: s, placeholder }) => {
+  const [draft, setDraft] = useState<string>(value === null ? '' : String(value));
+  useEffect(() => {
+    setDraft((prev) => (textMaxFromInput(prev) === value ? prev : value === null ? '' : String(value)));
+  }, [value]);
+  return (
+    <div className={s.fieldGroup}>
+      <label className={s.label} htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        className={s.numberField}
+        min={MESSAGE_TEXT_MAX_MIN}
+        max={MESSAGE_TEXT_MAX_LIMIT}
+        step={1}
+        value={draft}
+        placeholder={placeholder}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          onCommit(textMaxFromInput(e.target.value));
+        }}
+        onBlur={() => {
+          const next = textMaxFromInput(draft);
+          setDraft(next === null ? '' : String(next));
+        }}
+      />
+    </div>
+  );
+};
 
 const VALID_TOKENS: ReadonlySet<string> = new Set(MESSAGE_TEMPLATE_TOKENS);
 
@@ -45,6 +108,10 @@ const NotificationFormatSection: React.FC<NotificationFormatSectionProps> = ({
   onChange,
   sourceName,
   prefixWithNodeName,
+  textMaxPush = null,
+  textMaxApprise = null,
+  showApprise = false,
+  onTextMaxChange,
 }) => {
   const { t } = useTranslation();
   const title = titleTemplate ?? '';
@@ -55,7 +122,8 @@ const NotificationFormatSection: React.FC<NotificationFormatSectionProps> = ({
       sourceName: sourceName || t('notifications.format_sample_source'),
       senderName: t('notifications.format_sample_sender'),
       senderShortName: t('notifications.format_sample_sender_short'),
-      text: t('notifications.format_sample_text'),
+      // A longer sample once the user sets a length, so the cut is visible.
+      text: t(textMaxPush === null ? 'notifications.format_sample_text' : 'notifications.format_sample_text_long'),
       serviceLabel: 'Meshtastic',
     };
     const channel: MessageTemplateContext = {
@@ -65,12 +133,12 @@ const NotificationFormatSection: React.FC<NotificationFormatSectionProps> = ({
     };
     const dm: MessageTemplateContext = { ...base, channelName: '', isDM: true };
     return { channel, dm };
-  }, [sourceName, t]);
+  }, [sourceName, t, textMaxPush]);
 
   const templates = { titleTemplate, bodyTemplate };
   const previews = [
-    { key: 'channel', icon: 'channels' as const, label: t('notifications.format_preview_channel'), rendered: renderMessageNotification(samples.channel, templates) },
-    { key: 'dm', icon: 'directMessages' as const, label: t('notifications.format_preview_dm'), rendered: renderMessageNotification(samples.dm, templates) },
+    { key: 'channel', icon: 'channels' as const, label: t('notifications.format_preview_channel'), rendered: renderMessageNotification(samples.channel, templates, { textMax: textMaxPush }) },
+    { key: 'dm', icon: 'directMessages' as const, label: t('notifications.format_preview_dm'), rendered: renderMessageNotification(samples.dm, templates, { textMax: textMaxPush }) },
   ];
   const nodePrefix = prefixWithNodeName ? `[${t('notifications.format_sample_node')}] ` : '';
 
@@ -144,6 +212,42 @@ const NotificationFormatSection: React.FC<NotificationFormatSectionProps> = ({
           ))}
         </ul>
       </div>
+
+      {onTextMaxChange && (
+        <div className={styles.fieldGroup} data-testid="notification-text-length">
+          <TextMaxInput
+            id="notif-text-max-push"
+            label={t('notifications.text_max_push_label')}
+            value={textMaxPush}
+            placeholder={String(MESSAGE_TEXT_MAX_DEFAULT)}
+            styles={styles}
+            onCommit={(next) =>
+              onTextMaxChange({ messageTextMaxPush: next, messageTextMaxApprise: textMaxApprise })
+            }
+          />
+          {showApprise && (
+            <TextMaxInput
+              id="notif-text-max-apprise"
+              label={t('notifications.text_max_apprise_label')}
+              value={textMaxApprise}
+              placeholder={String(MESSAGE_TEXT_MAX_DEFAULT)}
+              styles={styles}
+              onCommit={(next) =>
+                onTextMaxChange({ messageTextMaxPush: textMaxPush, messageTextMaxApprise: next })
+              }
+            />
+          )}
+          <div className={styles.fieldMeta}>
+            <span>
+              {t('notifications.text_max_help', {
+                min: MESSAGE_TEXT_MAX_MIN,
+                max: MESSAGE_TEXT_MAX_LIMIT,
+                defaultLen: MESSAGE_TEXT_MAX_DEFAULT,
+              })}
+            </span>
+          </div>
+        </div>
+      )}
 
       <p className={styles.previewTitle}>{t('notifications.format_preview_title')}</p>
       <div className={styles.previews}>
