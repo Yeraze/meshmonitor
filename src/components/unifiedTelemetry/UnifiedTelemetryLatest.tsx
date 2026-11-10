@@ -18,11 +18,12 @@ import { unitScale, formatDuration, isUptimeType } from '../../utils/telemetryFo
 import { UiIcon } from '../icons';
 import styles from './UnifiedTelemetryLatest.module.css';
 import '../../styles/unified.css';
+import type { TranslateFn } from '../../types/translate';
 
 /** Snapshot poll interval. One batched request per poll. */
 export const LATEST_POLL_MS = 60_000;
 
-type TFn = (key: string, options?: Record<string, unknown>) => string;
+type TFn = TranslateFn;
 
 interface TelemetryEntry {
   nodeId: string;

@@ -11,8 +11,10 @@
  * "no cutoff / show all" (#4947, #5338).
  */
 
+import type { TranslateFn } from '../types/translate.js';
+
 /** Minimal i18next-compatible translate signature. */
-export type AgeWindowTranslate = (key: string, options?: Record<string, unknown>) => string;
+export type AgeWindowTranslate = TranslateFn;
 
 /** True when `hours` means "no cutoff" (unset, ≤ 0, NaN, or Infinity). */
 export function isUnlimitedAgeWindow(hours: number | null | undefined): boolean {

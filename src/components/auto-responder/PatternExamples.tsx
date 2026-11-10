@@ -198,7 +198,7 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern, disa
                         aria-disabled={disabled || undefined}
                         title={disabled ? disabledTitle : t(`auto_responder.${item.titleKey ?? 'examples_click_to_use'}`)}
                       >{item.pattern}</code>
-                      {' '}- {t(`auto_responder.${item.descKey}`, item.values)}
+                      {' '}- {t(`auto_responder.${item.descKey}`, item.values ?? {})}
                     </div>
                   ))}
                   {group.titleKey === 'examples_group_time' && (

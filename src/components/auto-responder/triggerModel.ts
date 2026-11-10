@@ -15,13 +15,14 @@ import {
 import { normalizeTriggerChannels } from '../../utils/autoResponderUtils';
 import { resolveResponderSyntax, substituteResponderParams, type ResponderSyntax } from '../../utils/responderTrigger';
 import { matchResponderTriggerNative, validateResponderTriggerNative } from '../../utils/responderTriggerNative';
+import type { TranslateFn } from '../../types/translate.js';
 
 /** Meshtastic's legacy default: a saved trigger with no `syntax` is a DSL pattern (#5924). */
 export function triggerSyntax(trigger: { syntax?: unknown }): ResponderSyntax {
   return resolveResponderSyntax(trigger.syntax, 'pattern');
 }
 
-type TFn = (key: string, options?: Record<string, unknown>) => string;
+type TFn = TranslateFn;
 
 export interface Validation {
   valid: boolean;
