@@ -35,6 +35,7 @@ import DeviceCounterNote from './DeviceCounterNote';
 import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
 import { isDeviceCounterType } from '../utils/deviceCounters';
 import { isTransportSeriesComponentType } from '../utils/transportSeries';
+import type { TranslateFn } from '../types/translate';
 
 /** Telemetry types that represent discrete integer values where fractional display is meaningless */
 const INTEGER_TELEMETRY_TYPES = new Set([
@@ -259,7 +260,7 @@ interface TelemetryGraphWidgetProps {
   getColor: (type: string) => string;
   timeFormat: TimeFormat;
   hours: number;
-  t: (key: string, opts?: Record<string, unknown>) => string;
+  t: TranslateFn;
   canEditSettings: boolean;
 }
 
@@ -1184,7 +1185,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                   getColor={getColor}
                   timeFormat={timeFormat}
                   hours={effectiveHours}
-                  t={t as (key: string, opts?: Record<string, unknown>) => string}
+                  t={t}
                   canEditSettings={canEditSettings}
                 />
               ))}

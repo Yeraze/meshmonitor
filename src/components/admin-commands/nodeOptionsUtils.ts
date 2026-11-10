@@ -1,3 +1,4 @@
+import type { TranslateFn } from '../../types/translate.js';
 export interface NodeOption {
   nodeNum: number;
   nodeId: string;
@@ -16,7 +17,7 @@ export interface NodeOption {
 export function buildNodeOptions(
   nodes: any[],
   currentNodeId: string,
-  t: (key: string, options?: any) => string
+  t: TranslateFn
 ): NodeOption[] {
   const options: NodeOption[] = [];
   

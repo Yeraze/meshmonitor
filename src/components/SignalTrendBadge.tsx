@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import apiService, { SignalTrendResult } from '../services/api';
 import { UiIcon, type UiIconName } from './icons';
 import './NodeDetailsBlock.css';
+import type { TranslateFn } from '../types/translate';
 
 export interface SignalTrendBadgeProps {
   /** Meshtastic `!hex` node id, or a 64-hex MeshCore public key. */
@@ -36,7 +37,7 @@ function signalTrendIcon(trend: SignalTrendResult['trend']): UiIconName {
  */
 function buildSignalTrendTooltip(
   trend: SignalTrendResult,
-  translate: (key: string, opts?: Record<string, unknown>) => string,
+  translate: TranslateFn,
 ): string {
   const parts: string[] = [];
   const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}`;

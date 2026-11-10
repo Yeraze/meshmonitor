@@ -60,8 +60,9 @@ import { meshcoreClockOffsetMs } from '../utils/meshcoreMessageTime';
 import { messageRowPropsEqual } from '../components/messages/messageRowSupport';
 import type { ReactionChip } from '../components/MeshCore/meshcoreReactionGroups';
 import MessageExportDialog from '../components/MessageExportDialog/MessageExportDialog';
+import type { TranslateFn } from '../types/translate';
 
-type TFn = (key: string, options?: Record<string, unknown>) => string;
+type TFn = TranslateFn;
 
 // ── Types ────────────────────────────────────────────────────────────────
 

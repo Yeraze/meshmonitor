@@ -5,6 +5,8 @@
  * only-export-components stays clean and the edge cases are unit-testable.
  */
 
+import type { TranslateFn } from '../types/translate.js';
+
 export interface ReceptionHopFields {
   hopStart: number | null;
   hopLimit: number | null;
@@ -16,7 +18,7 @@ export interface ReceptionHopFields {
   hopCount?: number | null;
 }
 
-type TFn = (key: string, options?: Record<string, unknown>) => string;
+type TFn = TranslateFn;
 
 const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 
