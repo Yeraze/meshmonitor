@@ -10,6 +10,8 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumberInput } from '../common/NumberInput';
 import { ScopeSelectField } from './ScopeSelectField';
+import { SplitLongMessagesField } from '../shared/automation/SplitLongMessagesField';
+import { MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/meshcoreMessageLimits';
 import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
 import {
   DEFAULT_MESHCORE_ADVERT_MODE,
@@ -239,6 +241,20 @@ export const MeshCoreTimerTriggerEditor: React.FC<MeshCoreTimerTriggerEditorProp
             </label>
           )}
         </div>
+      )}
+
+      {sends && (
+        <SplitLongMessagesField
+          id={`timer-split-${tr.id}`}
+          checked={tr.multiline === true}
+          onChange={(v) => onChange({ multiline: v })}
+          perTargetCount={(tr.destination || 'channel') === 'channel' ? selectedChannels.length : 1}
+          extraWarning={t(
+            'automation.split_long.timer_min_interval',
+            'A timer that splits long messages needs an interval of at least {{minutes}} minutes.',
+            { minutes: MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES },
+          )}
+        />
       )}
 
       {sends && (

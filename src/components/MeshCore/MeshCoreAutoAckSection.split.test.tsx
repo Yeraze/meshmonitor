@@ -87,7 +87,7 @@ describe('MeshCoreAutoAckSection — split long messages (#5564)', () => {
   it('shows the airtime warning next to the toggle, on or off', async () => {
     await renderLoaded({ enabled: true });
     const warning = screen.getByRole('note');
-    expect(warning).toHaveTextContent('Long replies go out as up to 3 messages');
+    expect(warning).toHaveTextContent('Long messages go out as up to 3 messages');
     expect(warning).toHaveTextContent('Each one is repeated by every repeater in range.');
     // Same setting block as the toggle.
     expect(warning.closest('.setting-item')).toBe(toggle().closest('.setting-item'));

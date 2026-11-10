@@ -42,6 +42,8 @@ export interface ActionDeps {
     /** MeshCore scope/region override (#3833). undefined = inherit channel/default;
      *  '' = explicit unscoped; non-empty = that region. Ignored by Meshtastic. */
     scopeOverride?: string | null;
+    /** MeshCore only (#6316): split a long message into up to 3 marked parts instead of cutting it. */
+    splitLongMessages?: boolean;
     /**
      * App-level DM resend cap (#4340 Phase 3), 1–3. Absent = one direct send —
      * today's behaviour for every existing automation. Honoured ONLY for a
@@ -478,6 +480,8 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       // Only forward the key when set, so the default (inherit) call shape — and
       // thus the run-log resolvedParams and existing tests — is unchanged.
       const scopeArg = scopeOverride !== undefined ? { scopeOverride } : {};
+      // #6316: only forward when on, so the default call shape is unchanged.
+      const splitArg = p.splitLongMessages === true ? { splitLongMessages: true } : {};
 
       // #4340 Phase 3. Only forward the key when set, so the default (unset)
       // call shape — and thus the run-log resolvedParams and every existing
@@ -549,7 +553,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           // unknown), so the chosen scope governs a DM's propagation just as it does
           // a channel broadcast — dropping it forced DMs onto the source default.
           // 'inherit' still leaves scopeArg empty, so DMs default as before.
-          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...attemptsArg, ...hopLimitArg }));
+          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...splitArg, ...attemptsArg, ...hopLimitArg }));
           continue;
         }
         const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
@@ -557,7 +561,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
           const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
           if (!match) continue; // channel not present on this source
-          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg, ...attemptsArg, ...hopLimitArg }));
+          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg, ...splitArg, ...attemptsArg, ...hopLimitArg }));
         }
       }
 

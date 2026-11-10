@@ -75,6 +75,8 @@ interface MeshSendManager {
 
 /** MeshCore companion managers send via a different method signature. */
 interface MeshCoreSendManager {
+  /** Cap-fitting, optionally splitting sender (#6316). Absent on test doubles. */
+  sendAutomatedText?(text: string, opts: { toPublicKey?: string; channelIdxs?: number[]; scopeOverride?: string | null; split: boolean; label: string }): Promise<{ ok: boolean; totalParts: number; truncated: boolean }>;
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss?: boolean): Promise<boolean>;
   // Request/operation senders (#3835).
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
@@ -134,6 +136,7 @@ async function sendTextVia(
   maxAttempts?: number,
   hopLimitOverride?: number,
   replyToHash?: string,
+  splitLongMessages?: boolean,
 ): Promise<unknown> {
   if (!sourceId) throw new Error('automation action requires a target source');
   const manager = resolveManager(sourceId) as ISourceManager | undefined;
@@ -206,6 +209,20 @@ async function sendTextVia(
     // channel-send auto-retry (#3979). Inert unless the global opt-in setting is
     // on; user-initiated sends go through the route, not here.
     const toPublicKey = typeof destination === 'string' ? destination : undefined;
+    // #6316: fit the text to the firmware cap (truncate, or split into up to 3
+    // parts when the action asks for it) so the stored row matches the air.
+    if (typeof raw.sendAutomatedText === 'function') {
+      const res = await raw.sendAutomatedText(text, {
+        ...(toPublicKey !== undefined ? { toPublicKey } : { channelIdxs: [channel] }),
+        scopeOverride,
+        split: splitLongMessages === true,
+        label: 'Automation',
+      });
+      if (!res.ok) {
+        throw new Error(`source "${sourceId}" failed to send the MeshCore message (node not connected or send rejected)`);
+      }
+      return res.totalParts > 1 || res.truncated ? { ok: true, parts: res.totalParts, truncated: res.truncated } : true;
+    }
     const ok = await raw.sendMessage(text, toPublicKey, channel, scopeOverride, true);
     if (ok === false) {
       throw new Error(`source "${sourceId}" failed to send the MeshCore message (node not connected or send rejected)`);
@@ -217,8 +234,8 @@ async function sendTextVia(
 
 export function createMeshActionDeps(): ActionDeps {
   return {
-    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts, hopLimitOverride, replyToHash }) {
-      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts, hopLimitOverride, replyToHash);
+    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts, hopLimitOverride, replyToHash, splitLongMessages }) {
+      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts, hopLimitOverride, replyToHash, splitLongMessages);
     },
 
     // #5482: the service owns the persisted 30-minute floor, onlyWhenChanged,
