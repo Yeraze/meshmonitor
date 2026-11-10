@@ -19,20 +19,20 @@ const ELLIPSIS = '...';
 
 /**
  * Fit one automated text to `maxBytes`: split into up to SPLIT_MAX_PARTS
- * marked parts when `split` is on, otherwise truncate to one part. With
- * `ellipsis`, a cut text ends in "..." (Meshtastic's existing convention).
- * Pure; no IO.
+ * marked parts when `split` is on, otherwise truncate to one part. A cut text
+ * ends in "..." on both protocols (#6330), so the reader can see the tail is
+ * missing. Pure; no IO.
  */
 export function planAutomatedTextParts(
   text: string,
-  opts: { maxBytes: number; split: boolean; ellipsis?: boolean },
+  opts: { maxBytes: number; split: boolean },
 ): AutomatedTextPlan {
   const { maxBytes } = opts;
   const { parts, truncated } = splitUtf8Message(text, {
     maxBytes,
     maxParts: opts.split ? SPLIT_MAX_PARTS : 1,
   });
-  if (truncated && opts.ellipsis && parts.length > 0) {
+  if (truncated && parts.length > 0) {
     const last = parts.length - 1;
     parts[last] = truncateUtf8Bytes(parts[last], maxBytes - utf8ByteLength(ELLIPSIS)).trimEnd() + ELLIPSIS;
   }

@@ -37,6 +37,9 @@ import {
   NODEINFO_BROADCAST_DELAY_SECONDS,
 } from '../utils/schedulerInterval.js';
 
+/** Skip-if-still-queued key for this source's announcements (#6330). */
+const ANNOUNCE_BACKLOG_KEY = 'announce';
+
 export class AutoAnnounceService {
   private announceScheduler: CronOrIntervalScheduler | null = null;
 
@@ -201,6 +204,14 @@ export class AutoAnnounceService {
       return;
     }
 
+    // Skip if still queued (#6330): the previous announcement has not left
+    // this source's message queue yet. Scheduled fires only; the manual
+    // "Send Announcement" button always goes through.
+    if (triggeredByAutomation && this.mgr.isAutomationBacklogged(ANNOUNCE_BACKLOG_KEY)) {
+      logger.info(`📢 Auto-announce (${ANNOUNCE_BACKLOG_KEY}, source ${this.mgr.sourceId}): skipped, the previous announcement is still in the message queue`);
+      return;
+    }
+
     try {
       // All auto-announce settings are per-source (written by AutoAnnounceSection
       // via /api/settings?sourceId=).
@@ -250,14 +261,15 @@ export class AutoAnnounceService {
       const split = (await settings.getSettingForSource(sourceId, 'autoAnnounceSplitLongMessages')) === 'true';
       // Not awaited: a split sequence waits between parts, and the last-fire
       // time below must be stamped now.
-      void this.mgr.sendAutomatedText(replacedMessage, {
+      void this.mgr.runAutomationFire(ANNOUNCE_BACKLOG_KEY, () => this.mgr.sendAutomatedText(replacedMessage, {
         channels: channelIndexes,
         split,
         label: 'Auto-announcement',
         maxAttempts: 1, // single attempt, no retry for broadcasts
         hopLimitOverride,
         origin,
-      }).catch((error: Error) => {
+        backlogKey: ANNOUNCE_BACKLOG_KEY,
+      })).catch((error: Error) => {
         logger.warn(`❌ Auto-announcement send failed: ${error.message}`);
       });
 

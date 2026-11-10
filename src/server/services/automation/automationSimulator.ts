@@ -199,7 +199,7 @@ function recordingDeps(
         const m = a.sourceId ? sourceManagerRegistry.getManager(a.sourceId) : undefined;
         const meshtastic = typeof a.destination === 'number' || (m !== undefined && isMeshtasticManager(m));
         plannedParts = meshtastic
-          ? planAutomatedTextParts(a.text, { maxBytes: MESHTASTIC_MAX_TEXT_BYTES, split: true, ellipsis: true }).parts.length
+          ? planAutomatedTextParts(a.text, { maxBytes: MESHTASTIC_MAX_TEXT_BYTES, split: true }).parts.length
           : planMeshCoreTextParts(a.text, { isDm: typeof a.destination === 'string', split: true }).parts.length;
       }
       return { action: 'sendMessage', ...a, ...(plannedParts !== undefined ? { plannedParts } : {}) };

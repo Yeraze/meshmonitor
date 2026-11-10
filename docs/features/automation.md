@@ -189,7 +189,7 @@ A MeshCore text message is small. A DM holds **160 bytes**. A channel message ho
 
 Five MeshCore senders have a **Split long messages** option that sets what happens to a message over the cap: Auto Acknowledge, Auto Responder (per trigger), Timer Triggers (per timer), Auto Announce, and the Automation Engine **Send a message** action. It is **off by default**. One setting covers DM and channel sends. Every one of them also cuts an over-long message to the cap itself, so the stored message matches what went on air.
 
-**Off (default)**: MeshMonitor cuts the reply to the cap and sends one message. The cut never lands inside a character. The message list shows the text that was sent.
+**Off (default)**: MeshMonitor cuts the reply to the cap and sends one message. The cut message ends in `...` so the reader can see text is missing. The cut never lands inside a character. The message list shows the text that was sent.
 
 ::: warning Behaviour change
 Before this option existed, MeshMonitor handed the full reply to the radio and stored the full text, even though the radio could not send all of it. MeshMonitor now cuts the reply itself, so the stored message matches what went on air. If your reply loses its tail, shorten the template or turn on **Split long messages**.
@@ -199,7 +199,7 @@ Before this option existed, MeshMonitor handed the full reply to the radio and s
 
 - Each part starts with a marker such as `(1/3)`, so the reader knows more is coming. The marker counts toward the byte cap.
 - MeshMonitor breaks at a line break, the end of a sentence, a comma, or a space when it can. It only breaks inside a word when there is no better place, and never inside a character.
-- A reply too long for 3 parts loses its tail: the third part is cut to fit.
+- A reply too long for 3 parts loses its tail: the third part is cut to fit and ends in `...`.
 - A reply that fits in one message goes out as before, with no marker.
 - If one part fails to send, MeshMonitor skips the rest. It also stops if the source is switched to receive-only between parts.
 - The per-sender cooldown counts the whole reply once, not once per part.
@@ -215,7 +215,7 @@ Every part is a separate transmission, and every repeater in range repeats each 
 
 ### Long Replies on Meshtastic {#meshtastic-long-replies}
 
-A Meshtastic text message holds **200 bytes**. The same **Split long messages** option covers Meshtastic, with the same limits as MeshCore: up to **3 messages**, **10 seconds apart**, each marked like `(1/3)`, and a reply too long for 3 messages is cut. On Meshtastic the cut part ends in `...`.
+A Meshtastic text message holds **200 bytes**. The same **Split long messages** option covers Meshtastic, with the same limits as MeshCore: up to **3 messages**, **10 seconds apart**, each marked like `(1/3)`, and a reply too long for 3 messages is cut, ending in `...`.
 
 - **Auto Responder**: the per-trigger **Multiline** option (see [Multiline Support](#multiline-support)).
 - **Timer Triggers**: **Split long messages** in the timer editor. It is **off by default**. A timer with splitting on must run at most every **5 minutes**; MeshMonitor refuses to save a faster cron schedule.
@@ -229,6 +229,23 @@ Auto Responder, Timer and Auto Announce parts go through the source's outgoing q
 ::: warning Airtime
 Every part is a separate transmission, and every node that rebroadcasts repeats each one. A 3-part message costs three times the airtime of one. Keep templates short enough that most messages fit in one part.
 :::
+
+**Skip if still queued**: a Meshtastic Timer Trigger or Auto Announce fire is skipped while that timer's (or that source's announcement's) messages from the previous fire are still waiting in the outgoing queue. This holds with splitting on or off. The skip is logged with the timer id (or `announce`). A manual **Send Announcement** always goes through. The queue lives in memory, so a restart clears it and the next fire runs.
+
+#### Mesh impact {#split-mesh-impact}
+
+These figures are for one full 200-byte Meshtastic part (about 237 bytes on air, preamble 16):
+
+| Preset | 1 part | 3 parts, our node | 3 parts, hop limit 3 (about 4 sends each) |
+|---|---|---|---|
+| LongFast (SF11 / BW250 / CR 4/5) | about 2.0 s | about 6 s | about 24 s |
+| MediumFast (SF9 / BW250 / CR 4/5) | about 0.6 s | about 1.8 s | about 7 s |
+
+- **Auto Responder, Timer Triggers, Auto Announce**: every part goes through the source's outgoing queue, which sends at most one message every 30 seconds. Our node therefore stays under about 7% of the airtime on LongFast, however many parts or channels a fire has.
+- **Backlog bound**: because a timer or announcement is skipped while its previous fire is still queued, one timer or one source's announcement never has more than one fire waiting in the queue. A fire is at most 3 parts × the number of channels. A timer on 8 channels with splitting on queues 24 messages, which take 12 minutes to leave the queue, so a 5-minute timer then fires about every 15 minutes instead of piling up.
+- **Timer floor**: a timer with splitting on must run at most every 5 minutes.
+- **Automation Engine**: a channel message goes straight to the radio, 3 parts × channels × sources per fire, 10 seconds apart. The rule's rate limit counts fires, not parts, so set a cooldown.
+- **Off (default)**: one message per target, cut to 200 bytes. No extra packets.
 
 ### Skip Incomplete Nodes {#skip-incomplete-nodes-ack}
 

@@ -4429,6 +4429,13 @@ class MeshtasticManager implements ISourceManager {
         if (await this.isAutomationAirtimeGated()) {
           return;
         }
+        // Skip if still queued (#6330): the previous fire's messages have not
+        // all left the queue, so another fire would only grow the backlog.
+        const backlogKey = `timer:${trigger.id}`;
+        if (this.isAutomationBacklogged(backlogKey)) {
+          logger.info(`⏱️ Timer "${trigger.name}" (${trigger.id}): skipped, the previous fire is still in the message queue`);
+          return;
+        }
         const responseType = trigger.responseType || 'script'; // Default to script for backward compatibility
         // Multi-channel (#6230): read the channels array, coercing an old
         // single-channel timer into a one-item array. Each chosen channel gets
@@ -4436,9 +4443,13 @@ class MeshtasticManager implements ISourceManager {
         // a multi-channel timer never bursts — no new cadence or cap is added.
         const timerChannels = normalizeTimerChannels(trigger);
         if (responseType === 'text' && trigger.response?.trim()) {
-          await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, timerChannels, trigger.multiline === true);
+          const response = trigger.response;
+          await this.runAutomationFire(backlogKey, () =>
+            this.executeTimerTextMessage(trigger.id, trigger.name, response, timerChannels, trigger.multiline === true));
         } else if (trigger.scriptPath) {
-          await this.executeTimerScript(trigger.id, trigger.name, trigger.scriptPath, timerChannels, trigger.scriptArgs, trigger.multiline === true);
+          const scriptPath = trigger.scriptPath;
+          await this.runAutomationFire(backlogKey, () =>
+            this.executeTimerScript(trigger.id, trigger.name, scriptPath, timerChannels, trigger.scriptArgs, trigger.multiline === true));
         } else {
           logger.error(`⏱️ Timer "${trigger.name}" has no valid response configured`);
           await this.updateTimerTriggerResult(trigger.id, 'error', 'No response configured');
@@ -5135,6 +5146,7 @@ class MeshtasticManager implements ISourceManager {
               channels: targetChannels,
               split: true,
               label: `Timer "${triggerName}" response`,
+              backlogKey: `timer:${triggerId}`,
             });
           } else {
             // Each response cut to the 200-byte cap, channel by channel.
@@ -5144,6 +5156,7 @@ class MeshtasticManager implements ISourceManager {
                   channels: [channel],
                   split: false,
                   label: `Timer response ${index + 1}/${scriptResponses.length}`,
+                  backlogKey: `timer:${triggerId}`,
                 });
               }
             }
@@ -5188,6 +5201,7 @@ class MeshtasticManager implements ISourceManager {
         channels: targetChannels,
         split,
         label: `Timer "${triggerName}" message`,
+        backlogKey: `timer:${triggerId}`,
       });
 
       await this.updateTimerTriggerResult(triggerId, 'success');
@@ -11416,6 +11430,40 @@ class MeshtasticManager implements ISourceManager {
   private readonly splitSequenceLock = new SplitSequenceLock();
 
   /**
+   * Skip-if-still-queued state for Timer Triggers and Auto Announce (#6330),
+   * keyed `timer:<id>` / `announce`. This manager is one source, so the keys
+   * are per source. A fire is in flight while its sends are being planned or
+   * split (the 10 s gaps), then its queue item ids are kept until the queue
+   * has sent them all.
+   *
+   * In-memory on purpose: the message queue itself is in-memory, so a restart
+   * drains it, and a fresh process has nothing queued to wait for.
+   */
+  private readonly automationBacklog = new Map<string, { inFlight: boolean; ids: string[] }>();
+
+  /** True while a previous fire for `key` is still being sent or still sits in the queue. */
+  isAutomationBacklogged(key: string): boolean {
+    const entry = this.automationBacklog.get(key);
+    if (!entry) return false;
+    return entry.inFlight || this.messageQueue.hasQueued(entry.ids);
+  }
+
+  /**
+   * Run one Timer Trigger / Auto Announce fire under `key`: queue items that
+   * `sendAutomatedText({ backlogKey: key })` creates during `fn` are tracked
+   * until sent. The caller checks `isAutomationBacklogged` first.
+   */
+  async runAutomationFire<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const entry = { inFlight: true, ids: [] as string[] };
+    this.automationBacklog.set(key, entry);
+    try {
+      return await fn();
+    } finally {
+      entry.inFlight = false;
+    }
+  }
+
+  /**
    * Send one automated text (Auto Responder, Timer Triggers, Auto Announce,
    * Automation Engine) fitted to the 200-byte Meshtastic cap (#6330). The
    * same shared runner as MeshCore's `sendAutomatedText` (#6316).
@@ -11446,10 +11494,12 @@ class MeshtasticManager implements ISourceManager {
       hopLimitOverride?: number;
       origin?: SendOrigin;
       direct?: boolean;
+      /** Record queue ids under this fire key (see runAutomationFire). */
+      backlogKey?: string;
     },
   ): Promise<AutomatedTextResult> {
     const isDm = opts.destination !== undefined;
-    const plan = planAutomatedTextParts(text, { maxBytes: MAX_MESSAGE_BYTES, split: opts.split, ellipsis: true });
+    const plan = planAutomatedTextParts(text, { maxBytes: MAX_MESSAGE_BYTES, split: opts.split });
     const origin: SendOrigin = opts.origin ?? 'automation';
     const targets = isDm
       ? [{ name: `!${opts.destination!.toString(16).padStart(8, '0')}`, channel: undefined as number | undefined }]
@@ -11470,7 +11520,7 @@ class MeshtasticManager implements ISourceManager {
           );
           return true;
         }
-        this.messageQueue.enqueue(
+        const queueId = this.messageQueue.enqueue(
           part,
           isDm ? opts.destination! : 0,
           replyId,
@@ -11482,6 +11532,7 @@ class MeshtasticManager implements ISourceManager {
           opts.hopLimitOverride,
           origin,
         );
+        if (opts.backlogKey) this.automationBacklog.get(opts.backlogKey)?.ids.push(queueId);
         return true;
       },
     });

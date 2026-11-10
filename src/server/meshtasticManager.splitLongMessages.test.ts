@@ -6,6 +6,8 @@
  *   a per-source mutex, the receive-only re-check, and the direct path.
  * - Auto Responder "multiline" now splits through it (no more unbounded,
  *   unmarked parts), and multi-response JSON never splits.
+ * - Timer Triggers skip a fire while the previous fire is still in flight or
+ *   still in the message queue.
  *
  * Mock preamble copied from meshtasticManager.autoAckResponderPingTxDisabled.test.ts.
  */
@@ -159,10 +161,15 @@ vi.mock('./services/dataEventEmitter.js', () => ({
   },
 }));
 
-const mockEnqueue = vi.fn();
+let queueSeq = 0;
+/** Queue ids the fake queue still holds (#6330 skip-if-still-queued). */
+const stillQueued = new Set<string>();
+const mockEnqueue = vi.fn((..._args: unknown[]) => `q${++queueSeq}`);
+const mockHasQueued = vi.fn((ids: Iterable<string>) => [...ids].some((id) => stillQueued.has(id)));
 vi.mock('./messageQueueService.js', () => {
   const mockInstance = {
     enqueue: mockEnqueue,
+    hasQueued: mockHasQueued,
     setSendCallback: vi.fn(),
     handleAck: vi.fn(),
     handleFailure: vi.fn(),
@@ -378,5 +385,80 @@ describe('Auto Responder multiline uses the shared split (#6330)', () => {
     expect(texts[0].startsWith('(1/')).toBe(false);
     expect(bytes(texts[0])).toBeLessThanOrEqual(200);
     expect(texts[1]).toBe('second');
+  });
+});
+
+describe('Timer Triggers skip a fire while the previous one is still queued (#6330)', () => {
+  let manager: any;
+  let cron: typeof import('./utils/cronScheduler.js');
+  let loggerModule: any;
+
+  const timers = (over: Record<string, unknown> = {}) => JSON.stringify([
+    { id: 'tA', name: 'A', cronExpression: '*/10 * * * *', responseType: 'text', response: 'hello', channels: [0], enabled: true, ...over },
+    { id: 'tB', name: 'B', cronExpression: '*/10 * * * *', responseType: 'text', response: 'other', channels: [1], enabled: true },
+  ]);
+
+  /** Arm the timers and return each one's cron callback, by timer id. */
+  async function arm(json: string): Promise<Record<string, () => Promise<void>>> {
+    wireSettings({ timerTriggers: json });
+    (cron.scheduleCron as any).mockClear();
+    await manager.startTimerScheduler();
+    const out: Record<string, () => Promise<void>> = {};
+    const ids = JSON.parse(json).map((t: { id: string }) => t.id);
+    (cron.scheduleCron as any).mock.calls.forEach((c: unknown[], i: number) => { out[ids[i]] = c[1] as () => Promise<void>; });
+    return out;
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    stillQueued.clear();
+    cron = await import('./utils/cronScheduler.js');
+    loggerModule = await import('../utils/logger.js');
+    manager = managerModule.fallbackManager;
+    manager.isConnected = true;
+    manager.actualDeviceConfig = { lora: { txEnabled: true } };
+    manager.isAutomationAirtimeGated = vi.fn().mockResolvedValue(false);
+    manager.replaceAnnouncementTokens = vi.fn(async (m: string) => m);
+    manager.automationBacklog = new Map();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('skips while its items are queued, fires again once they are sent, and leaves other timers alone', async () => {
+    const fire = await arm(timers());
+    await fire.tA();
+    expect(mockEnqueue).toHaveBeenCalledTimes(1);
+    stillQueued.add(mockEnqueue.mock.results[0].value as string);
+
+    await fire.tA();
+    expect(mockEnqueue).toHaveBeenCalledTimes(1);
+    expect(loggerModule.logger.info).toHaveBeenCalledWith(expect.stringContaining('(tA): skipped'));
+
+    await fire.tB(); // a different timer is not held back
+    expect(mockEnqueue).toHaveBeenCalledTimes(2);
+
+    stillQueued.clear();
+    await fire.tA();
+    expect(mockEnqueue).toHaveBeenCalledTimes(3);
+  });
+
+  it('applies with split off too, and while a split sequence is still being queued', async () => {
+    vi.useFakeTimers();
+    const fire = await arm(timers({ response: LONG, multiline: true }));
+    const first = fire.tA();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockEnqueue).toHaveBeenCalledTimes(1); // part 1; part 2 waits for the gap
+
+    await fire.tA(); // in flight: skipped
+    expect(mockEnqueue).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await first;
+    expect(mockEnqueue).toHaveBeenCalledTimes(2);
+    stillQueued.add(mockEnqueue.mock.results[1].value as string);
+    await fire.tA(); // part 2 still queued: skipped
+    expect(mockEnqueue).toHaveBeenCalledTimes(2);
   });
 });

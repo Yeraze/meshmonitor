@@ -54,6 +54,10 @@ import { AutoAnnounceService } from './autoAnnounceService.js';
 // Fake manager
 // ---------------------------------------------------------------------------
 
+/** Queue ids the fake queue still holds (#6330 skip-if-still-queued). */
+let queueSeq = 0;
+const stillQueued = new Set<string>();
+
 function makeFakeManager(overrides: Partial<{
   sourceId: string;
   deviceConnected: boolean;
@@ -81,12 +85,20 @@ function makeFakeManager(overrides: Partial<{
     isUdpBroadcastRelayEnabled: vi.fn(() => state.udpRelayEnabled),
     canTransmit: vi.fn(() => state.txEnabled || state.udpRelayEnabled),
     replaceAnnouncementTokens: vi.fn(async (message: string) => message.replace('{VERSION}', '9.9.9')),
-    messageQueue: { enqueue: vi.fn() },
+    messageQueue: { enqueue: vi.fn(() => `q${++queueSeq}`), hasQueued: vi.fn((ids: Iterable<string>) => [...ids].some((id) => stillQueued.has(id))) },
     broadcastNodeInfoToChannels: vi.fn().mockResolvedValue(undefined),
     // The real shared split sender (#6330), run against this fake's queue.
     splitSequenceLock: new SplitSequenceLock(),
     sendAutomatedText(this: unknown, text: string, opts: unknown) {
       return (MeshtasticManager.prototype.sendAutomatedText as (...a: unknown[]) => unknown).call(this, text, opts);
+    },
+    // Real skip-if-still-queued bookkeeping (#6330).
+    automationBacklog: new Map(),
+    isAutomationBacklogged(this: unknown, key: string) {
+      return (MeshtasticManager.prototype.isAutomationBacklogged as (...a: unknown[]) => unknown).call(this, key);
+    },
+    runAutomationFire(this: unknown, key: string, fn: () => Promise<unknown>) {
+      return (MeshtasticManager.prototype.runAutomationFire as (...a: unknown[]) => unknown).call(this, key, fn);
     },
   };
 }
@@ -493,6 +505,35 @@ describe('AutoAnnounceService', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('skips a scheduled announcement while the previous one is still queued (#6330)', async () => {
+      stubSettings({ autoAnnounceChannelIndexes: '[0,1]' });
+      stillQueued.clear();
+      const mgr = makeFakeManager();
+      const svc = new AutoAnnounceService(mgr as any);
+      const enqueue = mgr.messageQueue.enqueue as ReturnType<typeof vi.fn>;
+
+      await svc.sendAutoAnnouncement(true);
+      expect(enqueue).toHaveBeenCalledTimes(2);
+      for (const r of enqueue.mock.results) stillQueued.add(r.value as string);
+
+      // Channel 1's copy is still waiting: the next fire is skipped.
+      stillQueued.delete(enqueue.mock.results[0].value as string);
+      mockSetSourceSetting.mockClear();
+      await svc.sendAutoAnnouncement(true);
+      expect(enqueue).toHaveBeenCalledTimes(2);
+      expect(mockSetSourceSetting).not.toHaveBeenCalled();
+
+      // The manual button still goes through.
+      await svc.sendAutoAnnouncement(false);
+      expect(enqueue).toHaveBeenCalledTimes(4);
+
+      // Once the queue has sent them all, the next scheduled fire runs.
+      await vi.advanceTimersByTimeAsync(0); // let the manual send settle (fake timers)
+      stillQueued.clear();
+      await svc.sendAutoAnnouncement(true);
+      expect(enqueue).toHaveBeenCalledTimes(6);
     });
 
     it('updates lastAnnouncementTime via setSourceSetting for a per-source manager', async () => {
