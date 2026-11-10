@@ -62,6 +62,9 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   timeOffsetSeconds: integer('timeOffsetSeconds'),
   timeOffsetSource: text('timeOffsetSource'), // 'advert' | 'message'
   timeOffsetCheckedAt: integer('timeOffsetCheckedAt'), // ms
+  // #6274 (migration 230): set once this reporter's neighbour table has had its
+  // first evaluation. Only the neighbour watch writes it; upsertNode never does.
+  neighborWatchBaselinedAt: integer('neighborWatchBaselinedAt'), // ms
   // #5842 (migration 206): MeshMonitor-only location override, parallel to the
   // Meshtastic `nodes.positionOverride*` columns. Advert ingest never writes
   // these, and the override is never copied into latitude/longitude above.
@@ -198,6 +201,7 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   timeOffsetSeconds: pgInteger('timeOffsetSeconds'),
   timeOffsetSource: pgText('timeOffsetSource'),
   timeOffsetCheckedAt: pgBigint('timeOffsetCheckedAt', { mode: 'number' }),
+  neighborWatchBaselinedAt: pgBigint('neighborWatchBaselinedAt', { mode: 'number' }),
   positionOverrideEnabled: pgBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: pgDoublePrecision('latitudeOverride'),
   longitudeOverride: pgDoublePrecision('longitudeOverride'),
@@ -297,6 +301,7 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   timeOffsetSeconds: myInt('timeOffsetSeconds'),
   timeOffsetSource: myVarchar('timeOffsetSource', { length: 16 }),
   timeOffsetCheckedAt: myBigint('timeOffsetCheckedAt', { mode: 'number' }),
+  neighborWatchBaselinedAt: myBigint('neighborWatchBaselinedAt', { mode: 'number' }),
   positionOverrideEnabled: myBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: myDouble('latitudeOverride'),
   longitudeOverride: myDouble('longitudeOverride'),

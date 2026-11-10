@@ -111,6 +111,9 @@ import {
   meshcoreNeighborsSqlite, meshcoreNeighborsPostgres, meshcoreNeighborsMysql,
 } from './schema/meshcoreNeighbors.js';
 import {
+  meshcoreNeighborWatchSqlite, meshcoreNeighborWatchPostgres, meshcoreNeighborWatchMysql,
+} from './schema/meshcoreNeighborWatch.js';
+import {
   meshcorePacketLogSqlite, meshcorePacketLogPostgres, meshcorePacketLogMysql,
 } from './schema/meshcorePacketLog.js';
 import {
@@ -353,6 +356,8 @@ export interface ActiveSchema {
   meshcoreNodes: any;
   meshcoreMessages: any;
   meshcoreNeighbors: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6274 same dialect-union escape hatch as every table above
+  meshcoreNeighborWatch: any;
   meshcorePacketLog: any;
   meshcorePositionHistory: any;
   meshcoreHeardRepeaters: any;
@@ -551,6 +556,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesSqlite,
     meshcoreMessages: meshcoreMessagesSqlite,
     meshcoreNeighbors: meshcoreNeighborsSqlite,
+    meshcoreNeighborWatch: meshcoreNeighborWatchSqlite,
     meshcorePacketLog: meshcorePacketLogSqlite,
     meshcorePositionHistory: meshcorePositionHistorySqlite,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersSqlite,
@@ -647,6 +653,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesPostgres,
     meshcoreMessages: meshcoreMessagesPostgres,
     meshcoreNeighbors: meshcoreNeighborsPostgres,
+    meshcoreNeighborWatch: meshcoreNeighborWatchPostgres,
     meshcorePacketLog: meshcorePacketLogPostgres,
     meshcorePositionHistory: meshcorePositionHistoryPostgres,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersPostgres,
@@ -743,6 +750,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesMysql,
     meshcoreMessages: meshcoreMessagesMysql,
     meshcoreNeighbors: meshcoreNeighborsMysql,
+    meshcoreNeighborWatch: meshcoreNeighborWatchMysql,
     meshcorePacketLog: meshcorePacketLogMysql,
     meshcorePositionHistory: meshcorePositionHistoryMysql,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersMysql,

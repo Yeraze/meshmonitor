@@ -24,6 +24,7 @@ import {
   parseCooldownScope,
   parseRateLimit,
   effectiveTelemetryCooldown,
+  NEIGHBOR_CONFIRM_HOURS_DEFAULT,
   type AutomationGraph,
   type AutomationNode,
   type TriggerType,
@@ -45,6 +46,7 @@ import {
   buildNodeStaleContext,
   buildNodeOnlineContext,
   buildNodeRebootedContext,
+  buildNeighborAddedContext,
   buildClockOutOfSyncContext,
   buildNodePowerChangedContext,
   buildBecameLikelyAircraftContext,
@@ -63,7 +65,7 @@ import {
 } from './triggerContext.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
-import type { MeshCoreNodeEventFacts, NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
+import type { MeshCoreNodeEventFacts, NeighborSightingData, NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { readScheduleWindow } from '../../../types/scheduleWindow.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, normalizeGeofenceAnchor, shapeFromWaypoint, type GeofenceMode, type GeofenceShape } from './geo.js';
@@ -1372,6 +1374,36 @@ export class AutomationEngineService {
   ): Promise<number> {
     const ctx = buildNodeRebootedContext(nodeNum, publicKey, previousUptimeSeconds, uptimeSeconds, sourceId, this.now());
     return this.runTrigger(ctx);
+  }
+
+  /**
+   * A pending MeshCore neighbour was seen again in a repeater's neighbour table
+   * (`trigger.neighborAdded`, #6274). The neighbour watch already did the
+   * bookkeeping and stored both timestamps, so each rule decides for itself, with
+   * no per-automation state, whether this sighting is the one that crosses its
+   * `confirmHours`: `prevLastHeardAt - firstSeenAt < H <= lastHeardAt - firstSeenAt`.
+   * That is exactly once per rule per pending episode and survives a restart.
+   *
+   * Self-origin guard (#3914): drop only when the NEIGHBOUR is our own key. A
+   * reporter that is our own repeater is the point of this trigger.
+   */
+  async onNeighborSighting(d: NeighborSightingData, sourceId: string | null): Promise<number> {
+    if (!d.neighborPublicKey) return 0;
+    if (await this.isSelfMeshCore(sourceId, d.neighborPublicKey)) return 0;
+    const ctx = buildNeighborAddedContext(d, sourceId, this.now());
+    const hoursOf = (a: { triggerNode: { params?: Record<string, unknown> } }): number => {
+      const raw = a.triggerNode.params?.confirmHours;
+      const h = raw == null || raw === '' ? NEIGHBOR_CONFIRM_HOURS_DEFAULT : Number(raw);
+      return Number.isFinite(h) ? h : NEIGHBOR_CONFIRM_HOURS_DEFAULT;
+    };
+    return this.runTrigger(
+      ctx,
+      (a) => {
+        const ms = hoursOf(a) * 3_600_000;
+        return d.prevLastHeardAt - d.firstSeenAt < ms && ms <= d.lastHeardAt - d.firstSeenAt;
+      },
+      (a) => `neighbour not yet (or no longer crossing) ${hoursOf(a)} h`,
+    );
   }
 
   /**
