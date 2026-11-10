@@ -228,6 +228,18 @@ describe('keyed MeshCore channel messages — read gate (#5551)', () => {
     expect(await resolveMeshcoreKeyAccess(null)).toEqual([]);
   });
 
+  it('/channels/all skips an unresolved legacy slot (no phantom channel_N grant row, #6308)', async () => {
+    await databaseService.meshcore.insertMessage({
+      id: 'legacy_1', fromPublicKey: 'channel-3', fromName: 'Old', text: 'old', timestamp: 1_000,
+      messageType: 'channel', keyFingerprint: MESHCORE_UNRESOLVED_KEY_FINGERPRINT, createdAt: 1_000,
+    }, A);
+    const admin = await harness.loginAs(harness.admin);
+    const list = await admin.get(listUrl());
+    const listed = list.body.map((c: { id: number }) => c.id);
+    expect(listed).toContain(IDX);
+    expect(listed.filter((id: number) => id < 1000 && id !== KEY_SLOT)).toEqual([]);
+  });
+
   it('never grants the unresolved-legacy sentinel to a non-admin (#6308)', async () => {
     const access = await resolveMeshcoreKeyAccess({ id: harness.limited.id, isAdmin: false });
     expect(canSeeKeyedMessage(access, { keyFingerprint: MESHCORE_UNRESOLVED_KEY_FINGERPRINT })).toBe(false);

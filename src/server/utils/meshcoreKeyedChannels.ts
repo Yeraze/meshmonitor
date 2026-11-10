@@ -14,6 +14,8 @@ import {
   channelKeyFingerprint,
   pskToHex,
   MESHCORE_KEYED_CHANNEL_BASE,
+  isKeyedChannelIndex,
+  MESHCORE_UNRESOLVED_KEY_FINGERPRINT,
   type ChannelKeyRow,
 } from '../services/meshcoreFrameIngest.js';
 import { resolveMeshcoreKeyAccess, type KeyAccessUser } from './meshcoreKeyAccess.js';
@@ -28,6 +30,9 @@ export interface KeyedChannelEntry {
    *  `channel_database` row), not another source's device slot. The channels
    *  view shows a `(Virtual)` marker and hides the send bar for these (#6159). */
   virtual: boolean;
+  /** True for an unresolved legacy MQTT slot (#6308): `id` is a device slot
+   *  number, not a keyed index, and only admins can see it. */
+  legacy: boolean;
 }
 
 function parseChannelKey(key: string): number | null {
@@ -87,6 +92,7 @@ export async function listKeyedChannels(
       name: recorded || nameByFp.get(s.keyFingerprint) || '',
       keyFingerprint: s.keyFingerprint,
       virtual: virtualFps.has(s.keyFingerprint),
+      legacy: s.keyFingerprint === MESHCORE_UNRESOLVED_KEY_FINGERPRINT,
     });
   }
   return [...byId.values()].sort((a, b) => a.id - b.id);
@@ -96,9 +102,19 @@ export async function listKeyedChannels(
 export async function keyedChannelNames(sourceId: string): Promise<Map<number, string>> {
   const out = new Map<number, string>();
   for (const e of await listKeyedChannels(sourceId)) {
-    if (e.name) out.set(e.id, e.name);
+    if (e.name && !e.legacy) out.set(e.id, e.name);
   }
   return out;
+}
+
+/**
+ * Display name of one keyed channel index on a MeshCore source, or null when
+ * the index is not keyed or no key names it. One lookup shared by the ingest
+ * read routes and the automation engine (#6308).
+ */
+export async function keyedChannelNameFor(sourceId: string, idx: number): Promise<string | null> {
+  if (!isKeyedChannelIndex(idx)) return null;
+  return (await keyedChannelNames(sourceId)).get(idx) ?? null;
 }
 
 /**

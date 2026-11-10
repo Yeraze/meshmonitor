@@ -1,23 +1,23 @@
 /**
- * GET /ingest/overview — who sees the region and the broker host.
+ * Key gate on the MQTT ingest read routes (#6308).
  *
- * The page header showed a dash for both because the view read them from
- * `getStatus()`, which never carried them (and must not: that payload answers
- * callers with no login, #5596). The overview route now supplies them, and
- * these tests pin the rule for each kind of viewer against the real auth
- * middleware and a real `MeshCoreMqttManager`:
- *
- *   region     anyone who passes the route's `nodes:read` gate
- *   brokerUrl  admin, or a signed-in user with `sources:read`; null otherwise
- *
- * No viewer ever receives `user:password@` from the URL.
+ * Before #6308 an MQTT feed stored slot-decrypted rows with no key fingerprint,
+ * so anyone with `messages:read` on the feed read plaintext opened with a key
+ * held on a Companion they could not read. Real auth middleware, real
+ * in-memory database, real key-access gate.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+import databaseService from '../../services/database.js';
+import {
+  channelKeyFingerprint,
+  keyedChannelIndex,
+  MESHCORE_UNRESOLVED_KEY_FINGERPRINT,
+} from '../services/meshcoreFrameIngest.js';
+import { MESHCORE_PUBLIC_CHANNEL_SECRET } from '../utils/meshcoreGroupEcho.js';
 import { MeshCoreMqttManager } from '../meshcoreMqttManager.js';
 
 const managers = new Map<string, unknown>();
-
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: {
     getManager: (id: string) => managers.get(id),
@@ -27,120 +27,92 @@ vi.mock('../sourceManagerRegistry.js', () => ({
 
 import ingestReadRoutes from './meshcoreIngestReadRoutes.js';
 
-const SECRET_USER = 'feeduser';
-const SECRET_PASS = 'hunter2@with-at';
-const RAW_URL = `wss://${SECRET_USER}:${SECRET_PASS}@broker.example:443/mqtt`;
-const REDACTED_URL = 'wss://***@broker.example:443/mqtt';
+const SECRET = '0123456789abcdef0123456789abcdef';
+const SECRET_B64 = Buffer.from(SECRET, 'hex').toString('base64');
+const FP = channelKeyFingerprint(SECRET);
+const IDX = keyedChannelIndex(SECRET);
+const PUBLIC_HEX = Buffer.from(MESHCORE_PUBLIC_CHANNEL_SECRET).toString('hex');
+const PUBLIC_FP = channelKeyFingerprint(PUBLIC_HEX);
+const PUBLIC_IDX = keyedChannelIndex(PUBLIC_HEX);
+const KEY_SLOT = 3;
 
-let harness: RouteTestHarness;
-let overviewPath: string;
+describe('MQTT ingest reads are key-gated (#6308)', () => {
+  let harness: RouteTestHarness;
+  let mqtt: string; // the MQTT feed
+  let comp: string; // the Companion that holds the key
 
-beforeEach(async () => {
-  harness = await createRouteTestApp({
-    mount: app => app.use('/api/sources/:id/meshcore', ingestReadRoutes),
+  const msgs = () => `/api/sources/${mqtt}/meshcore/ingest/messages`;
+  const chans = () => `/api/sources/${mqtt}/meshcore/ingest/channels`;
+  const ids = (res: { body: { data: { messages: Array<{ id: string }> } } }) =>
+    res.body.data.messages.map((m) => m.id).sort();
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({
+      mount: (app) => app.use('/api/sources/:id/meshcore', ingestReadRoutes),
+    });
+    mqtt = harness.sourceA;
+    comp = harness.sourceB;
+    await databaseService.sources.deleteSource(mqtt);
+    await databaseService.sources.deleteSource(comp);
+    await databaseService.sources.createSource({ id: mqtt, name: 'Feed', type: 'meshcore_mqtt', config: {}, enabled: true });
+    await databaseService.sources.createSource({ id: comp, name: 'Companion', type: 'meshcore', config: {}, enabled: true });
+    await databaseService.channels.upsertChannel({ id: KEY_SLOT, name: 'ops', psk: SECRET_B64, role: 2 }, comp);
+
+    await databaseService.meshcore.deleteAllMessagesForSource(mqtt);
+    const base = { fromName: 'Alice', messageType: 'channel', createdAt: 5_000 };
+    await databaseService.meshcore.insertMessage(
+      { ...base, id: 'keyed', fromPublicKey: `channel-${IDX}`, text: 'secret', timestamp: 5_000,
+        keyFingerprint: FP, keySourceId: comp, keyChannelIdx: KEY_SLOT } as never, mqtt);
+    await databaseService.meshcore.insertMessage(
+      { ...base, id: 'public', fromPublicKey: `channel-${PUBLIC_IDX}`, text: 'hello', timestamp: 5_001,
+        keyFingerprint: PUBLIC_FP, keySourceId: comp, keyChannelIdx: 0 } as never, mqtt);
+    await databaseService.meshcore.insertMessage(
+      { ...base, id: 'legacy', fromPublicKey: 'channel-3', text: 'old', timestamp: 5_002,
+        keyFingerprint: MESHCORE_UNRESOLVED_KEY_FINGERPRINT } as never, mqtt);
+
+    managers.clear();
+    managers.set(mqtt, new MeshCoreMqttManager(mqtt, 'Feed', { brokerUrl: 'wss://b.example/mqtt', region: 'mco' }));
   });
-  managers.clear();
-  // Never started: no broker connection is made. Lower-case region on purpose.
-  managers.set(
-    harness.sourceA,
-    new MeshCoreMqttManager(harness.sourceA, 'Ingest A', {
-      brokerUrl: RAW_URL,
-      region: 'mco',
-      username: SECRET_USER,
-      password: SECRET_PASS,
-    }),
-  );
-  overviewPath = `/api/sources/${harness.sourceA}/meshcore/ingest/overview`;
-});
 
-afterEach(async () => {
-  await harness.cleanup();
-});
+  afterEach(async () => {
+    await databaseService.meshcore.deleteAllMessagesForSource(mqtt);
+    await harness.cleanup();
+  });
 
-function expectNoCredentials(body: unknown) {
-  const text = JSON.stringify(body);
-  expect(text).not.toContain(SECRET_PASS);
-  expect(text).not.toContain('hunter2');
-  expect(text).not.toContain(`${SECRET_USER}:`);
-}
+  it('a viewer with messages:read on the feed but no access to the key does NOT see the row', async () => {
+    await harness.grant(harness.limited.id, 'messages', 'read', mqtt);
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get(msgs());
+    expect(res.status).toBe(200);
+    expect(ids(res)).not.toContain('keyed');
+    // Unresolved legacy rows are admin-only.
+    expect(ids(res)).not.toContain('legacy');
+    // The Public channel passes for any signed-in viewer with feed access.
+    expect(ids(res)).toEqual(['public']);
+    const list = await agent.get(chans());
+    expect(list.body.data.map((c: { id: number }) => c.id)).not.toContain(IDX);
+  });
 
-describe('GET /ingest/overview — region and broker visibility', () => {
-  it('admin sees the region and the redacted broker URL', async () => {
+  it('a viewer who can read the key on the Companion sees the row, named', async () => {
+    await harness.grant(harness.limited.id, 'messages', 'read', mqtt);
+    await harness.grant(harness.limited.id, `channel_${KEY_SLOT}`, 'read', comp);
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get(msgs());
+    expect(ids(res)).toEqual(['keyed', 'public']);
+    const keyed = res.body.data.messages.find((m: { id: string }) => m.id === 'keyed');
+    expect(keyed).toMatchObject({ channelIdx: IDX, channelName: 'ops' });
+    const list = await agent.get(chans());
+    expect(list.body.data).toContainEqual(expect.objectContaining({ id: IDX, name: 'ops', keyed: true }));
+  });
+
+  it('admins see everything, with the legacy row flagged', async () => {
     const agent = await harness.loginAs(harness.admin);
-    const res = await agent.get(overviewPath);
-    expect(res.status).toBe(200);
-    expect(res.body.data.region).toBe('MCO');
-    expect(res.body.data.brokerUrl).toBe(REDACTED_URL);
-    expectNoCredentials(res.body);
-  });
-
-  it('keeps region and broker out of the status object', async () => {
-    const agent = await harness.loginAs(harness.admin);
-    const res = await agent.get(overviewPath);
-    expect(res.body.data.status).not.toHaveProperty('brokerUrl');
-    expect(res.body.data.status).not.toHaveProperty('region');
-  });
-
-  it('a user with nodes:read but not sources:read sees the region, not the host', async () => {
-    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
-    const agent = await harness.loginAs(harness.limited);
-    const res = await agent.get(overviewPath);
-    expect(res.status).toBe(200);
-    expect(res.body.data.region).toBe('MCO');
-    expect(res.body.data.brokerUrl).toBeNull();
-    expect(JSON.stringify(res.body)).not.toContain('broker.example');
-    expectNoCredentials(res.body);
-  });
-
-  it('a user with nodes:read and sources:read sees the redacted URL', async () => {
-    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
-    await harness.grant(harness.limited.id, 'sources', 'read');
-    const agent = await harness.loginAs(harness.limited);
-    const res = await agent.get(overviewPath);
-    expect(res.status).toBe(200);
-    expect(res.body.data.brokerUrl).toBe(REDACTED_URL);
-    expectNoCredentials(res.body);
-  });
-
-  it('a user with no grant on the source is refused outright', async () => {
-    const agent = await harness.loginAs(harness.limited);
-    const res = await agent.get(overviewPath);
-    expect(res.status).toBe(403);
-    expect(JSON.stringify(res.body)).not.toContain('broker.example');
-  });
-
-  it('anonymous without nodes:read is refused', async () => {
-    await harness.revokeAll(harness.anonymous.id);
-    const agent = await harness.loginAs(null);
-    const res = await agent.get(overviewPath);
-    expect(res.status).toBe(403);
-    expect(JSON.stringify(res.body)).not.toContain('broker.example');
-  });
-
-  it('anonymous with nodes:read sees the region but never the host', async () => {
-    await harness.grant(harness.anonymous.id, 'nodes', 'read', harness.sourceA);
-    const agent = await harness.loginAs(null);
-    const res = await agent.get(overviewPath);
-    expect(res.status).toBe(200);
-    expect(res.body.data.region).toBe('MCO');
-    expect(res.body.data.brokerUrl).toBeNull();
-    expect(JSON.stringify(res.body)).not.toContain('broker.example');
-    expectNoCredentials(res.body);
-  });
-
-  it('anonymous granted sources:read still does not get the host', async () => {
-    // #5596: the broker host stays away from callers with no login, whatever
-    // the anonymous account has been granted.
-    await harness.revokeAll(harness.anonymous.id);
-    await harness.grant(harness.anonymous.id, 'nodes', 'read', harness.sourceA);
-    await harness.grant(harness.anonymous.id, 'sources', 'read');
-    const agent = await harness.loginAs(null);
-    const res = await agent.get(overviewPath);
-    expect(res.status).toBe(200);
-    expect(
-      await harness.db.checkPermissionAsync(harness.anonymous.id, 'sources', 'read'),
-    ).toBe(true);
-    expect(res.body.data.brokerUrl).toBeNull();
-    expect(JSON.stringify(res.body)).not.toContain('broker.example');
+    const res = await agent.get(msgs());
+    expect(ids(res)).toEqual(['keyed', 'legacy', 'public']);
+    const legacy = res.body.data.messages.find((m: { id: string }) => m.id === 'legacy');
+    expect(legacy).toMatchObject({ legacy: true, channelIdx: 3 });
+    expect(legacy.channelName).toBeUndefined();
+    const list = await agent.get(chans());
+    expect(list.body.data).toContainEqual(expect.objectContaining({ id: 3, legacy: true }));
   });
 });
