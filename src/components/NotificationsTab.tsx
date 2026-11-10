@@ -1443,7 +1443,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                           }}
                           style={{ width: '16px', height: '16px' }}
                         />
-                        <span style={{ fontSize: '14px' }}>{channel.name || t('notifications.channel_number', { id: channel.id })}</span>
+                        <span style={{ fontSize: '14px' }}>
+                          {(channel as { legacy?: boolean }).legacy
+                            ? t('notifications.channel_legacy', { id: channel.id, defaultValue: 'Channel {{id}} (older messages)' })
+                            : channel.name || t('notifications.channel_number', { id: channel.id })}
+                        </span>
                       </label>
                     ))}
                   </div>

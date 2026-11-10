@@ -61,6 +61,7 @@ Each phase's scope is the checklist in its issue.
 - [x] **P12 #6279 Mesh Issues node-health rules (A6-A9).**
 - [x] **P13 #6306 Repeater new-node alerts** (shared learning-window + hourly-cap gate).
 - [x] **P17 #6307 Notifications tab for `meshcore_mqtt`** (+ shared debounced broker-link alerts).
+- [x] **P18 #6308 File slot-decrypted MQTT channel rows under a keyed index** (closes a read leak; migration 228).
 
 ## Phase log
 
@@ -245,6 +246,20 @@ and `getChannelIndicesWithMessages`, shared `NotificationsTab` mounted on the in
 defaults notice also fixes the Repeater), `resolveMeshCoreChannelName` (fixes keyed-channel titles for every MeshCore source),
 scoped `/api/nodes` lists ingest nodes for the monitored-node picker, `brokerLinkNotifier` wired into `meshcoreMqttManager`
 and `mqttBridgeManager` (dispose is silent). Follow-ups: #6308 slot re-filing; Reticulum Notifications tab; new-node alerts for feeds.
+
+### P18 #6308 (spec: `MESHCORE_PARITY_P18_SPEC.md`)
+Maintainer answers, 2026-11-10: unrecoverable legacy rows keep `channel-N` with the `unresolved` fingerprint (admin-only);
+the shared gate always grants the Public channel fingerprint to signed-in users on every MeshCore source (source
+`messages:read` still required; Packet Monitor anonymous rule unchanged); notification prefs for slot N fan out to the
+re-filed keyed channels plus every secret now at slot N on a MeshCore source, originals kept, mutes merged.
+Shipped (P18): `keyedFilingFor` (one filing rule for Repeater, Companion OTA and MQTT), MQTT rows stamped with
+`keyFingerprint`/`keySourceId`/`keyChannelIdx` (the read leak: slot rows had no fingerprint, so `messages:read` on the feed
+bypassed the key gate), `/ingest/messages` returns `channelIdx`/`channelName`/`legacy`, `/ingest/channels` drops the slot
+branch (`getChannelIndicesWithMessages` removed), `/api/channels/all` skips legacy ids, automation name filters resolve
+keyed indices (`keyedChannelNameFor`, also fixes the Repeater), migration 228 (recovers the key from the content-derived
+message id, SQLite/PG/MySQL, fans out prefs and read markers). Release notes: numeric channel filters in automations are
+not rewritten (use name filters); `channel_N` grants on MQTT feeds no longer gate anything; the feed now key-gates channel
+messages. Follow-ups: merge the MQTT and device GRP_TXT store pipelines; #5379 remap does not move notification prefs.
 
 ### P16 #6285 (P8b) (spec: `MESHCORE_PARITY_P16_SPEC.md`)
 Maintainer answers, 2026-11-09: migration takes the next free number (226, after P14 took 225); download and create need
