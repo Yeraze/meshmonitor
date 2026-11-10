@@ -26,6 +26,7 @@ import type { SendOrigin } from '../../utils/automationPacketTracker.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE } from '../../../types/meshcoreAdvert.js';
 import { tracePathScheduleService } from '../tracePathScheduleService.js';
 import { TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR } from '../../../types/tracePathSchedule.js';
+import { MESHTASTIC_MAX_TEXT_BYTES } from '../../../utils/messageSplitLimits.js';
 
 /**
  * A Meshtastic manager's per-source outgoing queue (meshtasticManager.ts:1107,
@@ -125,7 +126,7 @@ function mgr(sourceId: string | null): MeshSendManager {
  * `{{ trigger.text }}` (a relayed LXMF reply, a script result) went to the
  * radio and never delivered (#6202).
  */
-const MESHTASTIC_TEXT_MAX_BYTES = 200;
+const MESHTASTIC_TEXT_MAX_BYTES = MESHTASTIC_MAX_TEXT_BYTES;
 function truncateForMeshtastic(text: string): string {
   const bytes = utf8ByteLength(text);
   if (bytes <= MESHTASTIC_TEXT_MAX_BYTES) return text;
