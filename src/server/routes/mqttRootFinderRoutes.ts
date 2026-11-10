@@ -48,6 +48,7 @@ export function createMqttRootFinderRouter(opts: RootFinderRouterOptions = {}): 
         userId: user.id,
         endpointKey: t.endpointKey,
         broker: t.broker,
+        protocol: t.protocol,
         regionRoot: t.regionRoot,
         userPos: t.userPos,
       });

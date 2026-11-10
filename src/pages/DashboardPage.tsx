@@ -1866,6 +1866,24 @@ function DashboardInner() {
                     {t('source.form.mc_mqtt_region_help', "The region segment of the topic this source subscribes to. Uppercased on save.")}
                   </span>
                 </label>
+                <MqttRootFinder
+                  protocol="meshcore"
+                  context="meshcore_mqtt"
+                  sourceId={editingSource?.id ?? null}
+                  currentRoot={formMcMqttRegion.trim().toUpperCase()}
+                  defaultRegionRoot=""
+                  getTarget={() =>
+                    formMcMqttBrokerUrl.trim()
+                      ? {
+                          broker: { url: formMcMqttBrokerUrl.trim() },
+                          username: formMcMqttUsername,
+                          password: formMcMqttPassword,
+                          rejectUnauthorized: formMcMqttRejectUnauthorized,
+                        }
+                      : null
+                  }
+                  onPickRoot={(code) => setFormMcMqttRegion(code.toUpperCase())}
+                />
 
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mc_mqtt_username', 'Username (optional)')}</span>
