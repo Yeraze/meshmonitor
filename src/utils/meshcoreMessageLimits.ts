@@ -43,3 +43,22 @@ export function meshcoreChannelMaxBytes(nodeName?: string | null): number {
 export function meshcoreMessageByteCap(dest: { isDm: boolean; nodeName?: string | null }): number {
   return dest.isDm ? MESHCORE_MAX_MESSAGE_BYTES_DM : meshcoreChannelMaxBytes(dest.nodeName);
 }
+
+/**
+ * Largest `"<name>: <text>"` body (bytes) a raw `CMD_SEND_RAW_PACKET` frame can
+ * carry. The radio frame limit is 176 bytes (`MAX_FRAME_SIZE`); the raw frame is
+ * `cmd + priority + header + [4 transport codes] + path_len + 3 + 16*ceil((5+L)/16)`,
+ * which gives L <= 155 both scoped and unscoped (#6282).
+ */
+export const MESHCORE_RAW_MAX_BODY_BYTES = 155;
+
+/**
+ * Text budget (bytes) for one channel message sent under `senderName`.
+ * Normal path: the firmware cap, `160 - (name + 2)`. Raw path (a sender-name
+ * override sent as a hand-built packet): `155 - (name + 2)`, 5 bytes lower.
+ */
+export function meshcoreChannelTextCap(senderName: string, opts: { raw: boolean }): number {
+  const nameBytes = Math.min(encoder.encode(senderName).length, MESHCORE_MAX_NODE_NAME_BYTES);
+  const total = opts.raw ? MESHCORE_RAW_MAX_BODY_BYTES : MESHCORE_MAX_TEXT_BYTES;
+  return total - (nameBytes + CHANNEL_PREFIX_SUFFIX_BYTES);
+}
