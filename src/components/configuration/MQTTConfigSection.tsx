@@ -17,6 +17,7 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
 import { MqttRootFinder } from '../MQTT/MqttRootFinder';
 import { MqttRootFieldError } from '../MQTT/MqttRootFieldError';
+import { isChangedInvalidMqttRoot } from '../../utils/mqttRootTopic';
 import { defaultDeviceRegionRoot } from '../MQTT/mqttRootDefaults';
 import { MqttDocsLinks } from '../MQTT/MqttDocsLinks';
 import {
@@ -265,6 +266,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   const stagedLinkTarget =
     canQuickConfig && quickConfigSelection && linkSource?.type === 'meshtastic_tcp' ? quickConfigSelection : '';
   const hasChanges = deviceHasChanges || stagedLinkTarget !== '';
+  // The server refuses a changed root that breaks the root rules (#6338).
+  const rootBlocksSave = isChangedInvalidMqttRoot(mqttRoot, baseline.mqttRoot);
 
   // Detect the "client proxy on, but nothing to proxy through" misconfiguration:
   // the form has MQTT and proxyToClientEnabled on, and the parent Meshtastic
@@ -368,7 +371,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
     isSaving,
     onSave: handleSave,
     onDismiss: resetChanges,
-    numberScope
+    numberScope,
+    invalid: rootBlocksSave
   });
 
   return (

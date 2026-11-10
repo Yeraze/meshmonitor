@@ -46,6 +46,15 @@ export function validateMqttRoot(s: string): MqttRootValidation {
   return { ok: true };
 }
 
+/**
+ * True when a root differs from the saved one and breaks R8. The server
+ * refuses exactly this on save (#6338); an unchanged bad root still saves.
+ */
+export function isChangedInvalidMqttRoot(next: string, saved: string | null | undefined): boolean {
+  if (next === (saved ?? '')) return false;
+  return !validateMqttRoot(next).ok;
+}
+
 /** NFC-compose and keep only letters and digits in any script. */
 export function sanitizeSegment(s: string): string {
   return s.normalize('NFC').replace(/[^\p{L}\p{N}]/gu, '').normalize('NFC');

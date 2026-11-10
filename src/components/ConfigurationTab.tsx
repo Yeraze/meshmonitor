@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
+import { mqttRootErrorMessage } from './MQTT/mqttRootApiError';
 import { normalizeMeshtasticKey } from '../utils/meshtasticKeyFormat';
 import { policyToSend, toKnownPolicy } from '../utils/packetSignaturePolicy';
 import { useToast } from './ToastContainer';
@@ -1172,7 +1173,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       return true;
     } catch (error) {
       logger.error('Error saving MQTT config:', error);
-      const errorMsg = error instanceof Error ? error.message : t('config.mqtt_failed');
+      const errorMsg = mqttRootErrorMessage(error, t)
+        ?? (error instanceof Error ? error.message : t('config.mqtt_failed'));
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.mqtt_failed')}: ${errorMsg}`, 'error');
       return false;

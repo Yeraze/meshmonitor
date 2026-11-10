@@ -36,6 +36,7 @@ import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../servi
 import { mqttGeoSweepService, type GeoSweepStatsSink } from '../services/mqttGeoSweepService.js';
 import type { MqttFilterConfig } from '../mqttPacketFilter.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { checkMqttRootSave, failInvalidMqttRoot } from '../utils/mqttRootGuard.js';
 import { DEFAULT_MESHTASTIC_SOURCE_SETTING, applyDefaultMeshtasticSource, readConfiguredDefaultMeshtasticSourceId } from '../utils/defaultMeshtasticSource.js';
 import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
 import { observerBrokerKey } from '../meshcoreConfig.js';
@@ -1024,6 +1025,10 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       if (hopErr) {
         return res.status(400).json({ error: hopErr });
       }
+      // The broker's topic prefix (#6338). Unset (or null) means `msh`; `''` would make
+      // the prefix `/`, so it is refused here.
+      const rootErr = checkMqttRootSave(config.rootTopic ?? undefined, undefined, { allowEmpty: false });
+      if (rootErr) return failInvalidMqttRoot(res, rootErr, 'rootTopic');
     }
 
     const vnErr = await validateVirtualNodeConfig(type, config);
@@ -1333,6 +1338,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         if (hopErr) {
           return res.status(400).json({ error: hopErr });
         }
+        // The broker's topic prefix (#6338), checked only when it changes.
+        const prevRootTopic = (existing.config as Record<string, unknown> | null | undefined)?.rootTopic;
+        const rootErr = checkMqttRootSave(config.rootTopic ?? undefined, prevRootTopic, { allowEmpty: false });
+        if (rootErr) return failInvalidMqttRoot(res, rootErr, 'rootTopic');
       }
 
       // Prevent duplicate host:port combinations (exclude self)

@@ -190,6 +190,7 @@ export const CONFIG_APPLIERS: Record<LoadConfigType, ConfigApplier> = {
       mapPositionPrecision: finiteOrZero(map.positionPrecision),
       mapShouldReportLocation: map.shouldReportLocation === true,
       loadedForNodeNum: nodeNum,
+      loadedRoot: config.root ?? '',
     });
   },
 
