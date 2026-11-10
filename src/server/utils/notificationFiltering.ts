@@ -80,6 +80,9 @@ export interface NotificationPreferences {
   /** Message-notification templates (#5593). NULL = the built-in default. */
   messageTitleTemplate: string | null;
   messageBodyTemplate: string | null;
+  /** Message text length (#6278). NULL = the default of 100. */
+  messageTextMaxPush: number | null;
+  messageTextMaxApprise: number | null;
 }
 
 /**
@@ -276,6 +279,8 @@ async function readLegacyPreferencesBlobAsync(userId: number): Promise<Notificat
       // Templates postdate the legacy blob (#5593): always the default.
       messageTitleTemplate: null,
       messageBodyTemplate: null,
+      messageTextMaxPush: null,
+      messageTextMaxApprise: null,
     };
   } catch (error) {
     logger.error(`Failed to read legacy preferences blob for user ${userId}:`, error);
