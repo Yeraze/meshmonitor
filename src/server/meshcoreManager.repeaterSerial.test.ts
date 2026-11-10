@@ -230,6 +230,9 @@ describe('ingestRepeaterNeighborsReply (#5500)', () => {
   let insertSpy: ReturnType<typeof vi.spyOn>;
   let storedSpy: ReturnType<typeof vi.spyOn>;
   let emitSpy: ReturnType<typeof vi.spyOn>;
+  let watchBaselinedSpy: ReturnType<typeof vi.spyOn>;
+  let watchRowsSpy: ReturnType<typeof vi.spyOn>;
+  let watchApplySpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -259,6 +262,12 @@ describe('ingestRepeaterNeighborsReply (#5500)', () => {
     insertSpy = vi.spyOn(databaseService.meshcore, 'insertNeighborsBatch').mockResolvedValue(undefined);
     storedSpy = vi.spyOn(databaseService.meshcore, 'getNeighborsForReporter').mockResolvedValue([]);
     emitSpy = vi.spyOn(dataEventEmitter, 'emitMeshCoreContactUpdated').mockImplementation(() => undefined);
+    // #6274: the neighbour watch reads and writes its own ledger.
+    watchBaselinedSpy = vi.spyOn(databaseService.meshcore, 'getNeighborWatchBaselinedAt').mockResolvedValue(NOW - 1000);
+    watchRowsSpy = vi.spyOn(databaseService.meshcore, 'getNeighborWatch').mockResolvedValue([]);
+    watchApplySpy = vi.spyOn(databaseService.meshcore, 'applyNeighborWatchChanges').mockResolvedValue(undefined);
+    vi.spyOn(databaseService.meshcore, 'setNeighborWatchBaselined').mockResolvedValue(undefined);
+    vi.spyOn(databaseService.meshcore, 'pruneNeighborWatch').mockResolvedValue(0);
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -345,6 +354,49 @@ describe('ingestRepeaterNeighborsReply (#5500)', () => {
     await m.ingestRepeaterNeighborsReply('-> ABCD1234:12:40');
     expect(upsertSpy).toHaveBeenCalledTimes(1);
     expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  describe('neighbour watch call site (#6274)', () => {
+    const K_GONE = 'dd'.repeat(32);
+    const pendingGone = {
+      neighborPublicKey: K_GONE, state: 'pending' as const, firstSeenAt: NOW - 3_600_000,
+      lastHeardAt: NOW - 3_600_000, lastSnr: 1, sightings: 1,
+    };
+
+    it('a short (complete) reply passes complete=true: a pending neighbour missing from it is discarded', async () => {
+      watchRowsSpy.mockResolvedValue([pendingGone]);
+      await manager().ingestRepeaterNeighborsReply('-> ABCD1234:12:40');
+      expect(watchApplySpy).toHaveBeenCalledTimes(1);
+      const [src, reporter, upserts, deletes] = watchApplySpy.mock.calls[0];
+      expect([src, reporter]).toEqual(['src-rep', SELF_KEY]);
+      expect(deletes).toEqual([K_GONE]);
+      // only the row this reply returned, as a new pending neighbour
+      expect((upserts as Array<{ neighborPublicKey: string; state: string }>).map((u) => [u.neighborPublicKey, u.state]))
+        .toEqual([[K_HILL, 'pending']]);
+    });
+
+    it('a possibly truncated reply passes complete=false: the missing pending neighbour is kept', async () => {
+      watchRowsSpy.mockResolvedValue([pendingGone]);
+      const lines = Array.from({ length: 8 }, (_, n) => `${(0xa0000000 + n).toString(16).toUpperCase()}:${100 + n}:-40`);
+      await manager().ingestRepeaterNeighborsReply(`-> ${lines.join('\n')}`);
+      const calls = watchApplySpy.mock.calls;
+      for (const c of calls) expect(c[3]).not.toContain(K_GONE);
+    });
+
+    it('merged (carried) rows never reach the watch', async () => {
+      storedSpy.mockResolvedValue([{ neighborPublicKey: K_AMB1, snr: 1, lastHeardSecs: 9999, timestamp: NOW }]);
+      const lines = Array.from({ length: 8 }, (_, n) => `${(0xa0000000 + n).toString(16).toUpperCase()}:${100 + n}:-40`);
+      await manager().ingestRepeaterNeighborsReply(`-> ${lines.join('\n')}`);
+      const touched = watchApplySpy.mock.calls.flatMap((c) => (c[2] as Array<{ neighborPublicKey: string }>).map((u) => u.neighborPublicKey));
+      expect(touched).not.toContain(K_AMB1);
+    });
+
+    it('a failing watch never breaks neighbour storage', async () => {
+      watchBaselinedSpy.mockRejectedValue(new Error('db down'));
+      const result = await manager().ingestRepeaterNeighborsReply('-> ABCD1234:12:40');
+      expect(result).toHaveLength(1);
+      expect(insertSpy).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('returns null when the device says not supported', async () => {

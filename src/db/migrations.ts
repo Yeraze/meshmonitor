@@ -3682,20 +3682,6 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 230: confirmed new-neighbour ledger (meshcore_neighbor_watch) and
-// meshcore_nodes.neighborWatchBaselinedAt (#6274).
-// ---------------------------------------------------------------------------
-
-registry.register({
-  number: 230,
-  name: 'add_meshcore_neighbor_watch',
-  settingsKey: 'migration_230_add_meshcore_neighbor_watch',
-  sqlite: (db) => meshcoreNeighborWatchMigration.up(db),
-  postgres: (client) => runMigration230Postgres(client),
-  mysql: (pool) => runMigration230Mysql(pool),
-});
-
-// ---------------------------------------------------------------------------
 // Migration 229: configurable message-notification text length (#6278).
 // PER-USER, PER-SOURCE. Two nullable integer columns on
 // user_notification_preferences; NULL = the default of 100.
@@ -3708,4 +3694,18 @@ registry.register({
   sqlite: (db) => addNotificationTextMaxMigration.up(db),
   postgres: (client) => runMigration229Postgres(client),
   mysql: (pool) => runMigration229Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 230: confirmed new-neighbour ledger (meshcore_neighbor_watch) and
+// meshcore_nodes.neighborWatchBaselinedAt (#6274).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 230,
+  name: 'add_meshcore_neighbor_watch',
+  settingsKey: 'migration_230_add_meshcore_neighbor_watch',
+  sqlite: (db) => meshcoreNeighborWatchMigration.up(db),
+  postgres: (client) => runMigration230Postgres(client),
+  mysql: (pool) => runMigration230Mysql(pool),
 });
