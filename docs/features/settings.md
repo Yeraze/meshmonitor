@@ -711,6 +711,18 @@ Two lookups per flagging, then up to six re-checks (at most eight in all); no pa
 - While the setting is off, `GET /api/ducting/forecast` answers `403` with code `DUCTING_DISABLED`, to admins too.
 - The forecast covers the busiest group of nodes you can see on the map. When your sources have a local node with a position you may see, MeshMonitor centres the area on those nodes first. It never uses nodes you cannot see, so two viewers with different access can get different areas.
 
+## MQTT root directory refresh {#mqtt-root-directory-refresh}
+
+**Description**: Lets the MQTT [Find topics](/features/mqtt-setups) search fetch the current community root list from `https://api.meshtastic.org/resource/mqttRoots`, so new communities show up without a MeshMonitor update. Admin-only, global (not per source); under **Global Settings → MQTT root directory refresh**.
+
+**Fields**:
+- **Refresh the community root list (contacts api.meshtastic.org)** — off by default. While it is off, the finder uses only the list bundled with MeshMonitor and the server makes no requests for it. Only an admin can change it.
+
+**Notes**:
+- The server fetches the list only after someone starts a Meshtastic topic search, at most once a day (once an hour after a failure). There is no timer and nothing runs at startup. Nothing goes over the mesh.
+- The request is a plain GET with no location, broker, topic or user details. It does tell `api.meshtastic.org` (and Cloudflare, which serves it) this server's IP address and that someone used the finder.
+- The list is checked before use and kept in memory only. If the fetch fails or the list looks wrong, the finder keeps the last good copy or the bundled one. The finder shows which copy it used.
+
 ## Database Maintenance {#database-maintenance}
 
 **Description**: An optional nightly job that deletes old data and then runs `VACUUM`. It works on SQLite, PostgreSQL and MySQL. It is **off by default** on every backend, so turn it on if you want old data pruned. Under **Settings → Database Maintenance**.

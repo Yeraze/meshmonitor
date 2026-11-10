@@ -15,7 +15,8 @@
 
 import { randomUUID } from 'crypto';
 import { reverseGeocode } from '../offlineGeocoder/reverseGeocode.js';
-import { getDirectory, type MqttRootDirectory } from './directory.js';
+import type { MqttRootDirectory } from './directory.js';
+import { directoryProvider, type DirectoryStatus } from './directoryProvider.js';
 import {
   buildCommunity,
   buildLadder,
@@ -86,6 +87,8 @@ export interface SampleView {
   ladder: LadderRow[];
   community: CommunityRow[];
   heard: RankedHeard[];
+  /** Where the community directory came from (#6337). Meshtastic only. */
+  directory?: DirectoryStatus;
   error?: SamplerErrorCode;
 }
 
@@ -103,7 +106,9 @@ interface Job {
 
 export interface RootFinderServiceOptions {
   now?: () => number;
-  directory?: MqttRootDirectory;
+  /** A fixed directory, or a getter read on every poll (#6337). */
+  directory?: MqttRootDirectory | (() => MqttRootDirectory);
+  directoryStatus?: () => DirectoryStatus;
   createSampler?: (opts: RootSamplerOptions) => RootSampler;
   /** Offline reverse geocoder (#6336). Defaults to the embedded data. */
   geocoder?: (pos: LatLon) => Place | undefined;
@@ -115,13 +120,18 @@ export class RootFinderService {
   private readonly jobs = new Map<string, Job>();
   private readonly lastEnd = new Map<number, number>();
   private readonly now: () => number;
-  private readonly directory: MqttRootDirectory;
+  private readonly directory: () => MqttRootDirectory;
+  private readonly directoryStatus: () => DirectoryStatus;
   private readonly createSampler: (opts: RootSamplerOptions) => RootSampler;
   private readonly geocoder: (pos: LatLon) => Place | undefined;
 
   constructor(opts: RootFinderServiceOptions = {}) {
     this.now = opts.now ?? Date.now;
-    this.directory = opts.directory ?? getDirectory();
+    const dir = opts.directory;
+    this.directory =
+      typeof dir === 'function' ? dir : dir ? () => dir : () => directoryProvider.current();
+    this.directoryStatus =
+      opts.directoryStatus ?? (dir ? () => ({ source: 'bundled' }) : () => directoryProvider.status());
     this.createSampler = opts.createSampler ?? ((o) => new RootSampler(o));
     this.geocoder = opts.geocoder ?? reverseGeocode;
   }
@@ -242,7 +252,7 @@ export class RootFinderService {
       regionRoot: job.regionRoot,
       heard: snap.heard,
       place: job.place,
-      directory: this.directory,
+      directory: this.directory(),
     };
     const ladder = buildLadder(common);
     const community = buildCommunity({ ...common, userPos: job.userPos });
@@ -253,6 +263,7 @@ export class RootFinderService {
       ladder,
       community,
       heard: ranked,
+      directory: this.directoryStatus(),
     };
   }
 

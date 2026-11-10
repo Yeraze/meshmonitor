@@ -57,6 +57,8 @@ export interface SampleViewData {
   ladder: LadderRowView[];
   community: CommunityRowView[];
   heard: HeardRowView[];
+  /** Where the community directory came from (#6337). Meshtastic only. */
+  directory?: { source: 'bundled' | 'live'; fetchedAt?: number };
   error?: 'UNREACHABLE' | 'TIMEOUT' | 'AUTH_REJECTED' | 'SUBSCRIBE_DENIED' | 'EVICTED' | 'BLOCKED_TARGET';
 }
 

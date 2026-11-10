@@ -246,10 +246,14 @@ export function buildLadder(opts: {
 function entryServesUser(
   entry: DirectoryEntry,
   subRoot: string | null,
+  place?: Place,
   userPos?: LatLon,
 ): boolean {
   if (subRoot && underOrEqual(entry.root, subRoot)) return true;
-  if (userPos) {
+  // design#167 subdivisions-form entry (#6337).
+  const iso = place?.subdivisionIso?.toUpperCase();
+  if (iso && entry.subdivisions?.includes(iso)) return true;
+  if (userPos && entry.center && entry.radiusKm !== undefined) {
     const d = haversineKm(userPos, { lat: entry.center[0], lon: entry.center[1] });
     if (d <= entry.radiusKm) return true;
   }
@@ -272,7 +276,7 @@ export function buildCommunity(opts: {
   const rows: CommunityRow[] = [];
   for (const e of directory.entries) {
     if (!underOrEqual(e.root, regionRoot) || e.root === regionRoot) continue;
-    if (!entryServesUser(e, subRoot, userPos)) continue;
+    if (!entryServesUser(e, subRoot, place, userPos)) continue;
     const own = findHeard(heard, e.root);
     rows.push({
       root: e.root,

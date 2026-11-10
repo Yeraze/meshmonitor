@@ -298,3 +298,50 @@ describe('root finder isolation (d): import boundary', () => {
     });
   }
 });
+
+// --- (e) directory refresh (#6337) -------------------------------------------
+// vi.mock is hoisted, so this applies to the whole file.
+vi.mock('../../utils/ssrfGuard.js', async (orig) => ({
+  ...(await orig<typeof import('../../utils/ssrfGuard.js')>()),
+  safeFetch: vi.fn(async () => {
+    touched.push('safeFetch');
+    throw new Error('network is not allowed in this test');
+  }),
+}));
+
+describe('root finder isolation (e): directory refresh', () => {
+  const entry = (root: string) => ({ root, name: root, center: [41.9, -87.9] as [number, number], radiusKm: 50 });
+
+  it('the service itself never fetches, on start or on poll', async () => {
+    const { RootFinderService } = await import('./rootFinderService.js');
+    const svc = new RootFinderService({ createSampler: (o) => new RootSampler(o) });
+    const { sampleId } = svc.start({
+      userId: 1,
+      endpointKey: '10.1.2.3:1883:false',
+      broker: { url: 'mqtt://10.1.2.3:1883' },
+      regionRoot: 'msh/US',
+    });
+    await tick();
+    expect(svc.get(1, sampleId)?.directory).toEqual({ source: 'bundled' });
+    expect(touched).not.toContain('safeFetch');
+    await svc.cancel(1, sampleId);
+  });
+
+  it('get() reads the directory at poll time, so a refresh takes effect', async () => {
+    const { RootFinderService } = await import('./rootFinderService.js');
+    let dir = { entries: [entry('msh/US/IL/Before')], neighbors: {}, subdivisionSegments: {} };
+    const svc = new RootFinderService({ directory: () => dir, createSampler: (o) => new RootSampler(o) });
+    const { sampleId } = svc.start({
+      userId: 2,
+      endpointKey: '10.1.2.4:1883:false',
+      broker: { url: 'mqtt://10.1.2.4:1883' },
+      regionRoot: 'msh/US',
+      userPos: { lat: 41.9, lon: -87.9 },
+    });
+    await tick();
+    expect(svc.get(2, sampleId)?.community.map((r) => r.root)).toEqual(['msh/US/IL/Before']);
+    dir = { entries: [entry('msh/US/IL/After')], neighbors: {}, subdivisionSegments: {} };
+    expect(svc.get(2, sampleId)?.community.map((r) => r.root)).toEqual(['msh/US/IL/After']);
+    await svc.cancel(2, sampleId);
+  });
+});

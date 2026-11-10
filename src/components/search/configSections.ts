@@ -58,6 +58,8 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   'settings-default-source',
   'settings-remote-admin',
   'settings-apprise-server', 'settings-elevation',
+  // MQTT root directory refresh (#6337): one global outbound service, like elevation.
+  'settings-mqtt-root-directory',
   // Ducting overlay (#5734): one global outbound service, like elevation.
   'settings-ducting',
   // ADS-B flight matching (#5374): one global outbound service, like elevation.
@@ -197,6 +199,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-remote-admin', label: t('settings.remote_admin_section', 'Remote Administration'), keywords: ['admin', 'password', 'credentials'] },
     { id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server'), keywords: ['notifications', 'email', 'push', 'webhook'] },
     { id: 'settings-elevation', label: t('settings.elevation_section', 'Elevation / Terrain'), keywords: ['dem', 'terrain', 'altitude', 'height'] },
+    { id: 'settings-mqtt-root-directory', label: t('settings.mqtt_root_directory_section', 'MQTT root directory refresh'), keywords: ['mqtt', 'root', 'topic', 'directory', 'community', 'meshtastic', 'finder'] },
     { id: 'settings-ducting', label: t('settings.ducting_section', 'Tropospheric ducting overlay'), keywords: ['ducting', 'tropo', 'tropospheric', 'refraction', 'gfs', 'noaa', 'propagation', 'weather'] },
     { id: 'settings-adsb', label: t('settings.adsb_section', 'Flight matching (ADS-B)'), keywords: ['adsb', 'ads-b', 'aircraft', 'flight', 'plane', 'callsign', 'adsb.lol', 'adsb.fi'] },
     { id: 'settings-virtual-node-replay', label: t('settings.vn_replay_section', 'Virtual Node message replay'), keywords: ['virtual node', 'vn', 'replay', 'reconnect', 'missed', 'messages', 'android', 'app', 'backlog'] },
@@ -221,7 +224,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
 
   const adminOnly = new Set([
     'settings-default-source',
-    'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-ducting', 'settings-adsb', 'settings-meshwars',
+    'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-mqtt-root-directory', 'settings-ducting', 'settings-adsb', 'settings-meshwars',
     'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics', 'settings-system',
   ]);
   const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt']);

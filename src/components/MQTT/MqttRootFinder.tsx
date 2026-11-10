@@ -311,6 +311,15 @@ export const MqttRootFinder: React.FC<MqttRootFinderProps> = ({
               {t(isMc ? 'mqtt_root_finder.meshcore_quiet_note' : 'mqtt_root_finder.quiet_note')}
             </p>
           )}
+          {view && !isMc && view.directory && (
+            <p className={styles.status}>
+              {view.directory.source === 'live' && view.directory.fetchedAt
+                ? t('mqtt_root_finder.directory_updated', {
+                    date: new Date(view.directory.fetchedAt).toLocaleString(),
+                  })
+                : t('mqtt_root_finder.directory_bundled')}
+            </p>
+          )}
 
           <div className={styles.field}>
             <label htmlFor="mqtt-root-finder-custom">

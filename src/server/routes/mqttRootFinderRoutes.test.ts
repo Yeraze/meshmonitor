@@ -54,6 +54,8 @@ let now = 1_000_000;
 
 let harness: RouteTestHarness;
 let service: RootFinderService;
+// #6337: stands in for the directory refresh, so no test touches the network.
+let refreshDirectory = vi.fn(async () => {});
 
 const passthrough = (_req: unknown, _res: unknown, next: () => void) => next();
 
@@ -63,7 +65,7 @@ async function mount(startLimiter: any = passthrough) {
     createSampler: (o) => new StubSampler(o) as any,
   });
   harness = await createRouteTestApp({
-    mount: (app) => app.use('/api/mqtt/root-finder', createMqttRootFinderRouter({ service, startLimiter })),
+    mount: (app) => app.use('/api/mqtt/root-finder', createMqttRootFinderRouter({ service, startLimiter, refreshDirectory })),
   });
 }
 
@@ -77,6 +79,7 @@ const bridgeBody = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   stubs = [];
   now = 1_000_000;
+  refreshDirectory = vi.fn(async () => {});
 });
 afterEach(async () => {
   await harness.db.sources.deleteSource('rt-bridge').catch(() => undefined);
@@ -491,6 +494,8 @@ describe('MeshCore region finder (#6335)', () => {
     expect(stubs[0].opts.regionRoot).toBe('meshcore');
     expect(stubs[0].opts.adapter.filters('meshcore')).toEqual(['meshcore/+/+/status']);
     expect(stubs[0].opts.broker.rejectUnauthorized).toBeUndefined();
+    // MeshCore regions use no directory, so a start never refreshes it (#6337).
+    expect(refreshDirectory).not.toHaveBeenCalled();
   });
 
   it('returns activity-ranked regions with no ladder, community or location', async () => {
@@ -570,5 +575,61 @@ describe('MeshCore region finder (#6335)', () => {
     const res = await agent.post('/api/mqtt/root-finder/samples').send(mcBody());
     expect(res.status).toBe(429);
     expect(res.body.code).toBe('ROOT_FINDER_BUSY');
+  });
+});
+
+describe('directory refresh trigger (#6337)', () => {
+  beforeEach(async () => {
+    await mount();
+  });
+
+  it('fires once after a successful Meshtastic start', async () => {
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.post('/api/mqtt/root-finder/samples').send(bridgeBody())).status).toBe(202);
+    expect(refreshDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  it('a rejected refresh does not fail the start', async () => {
+    refreshDirectory.mockRejectedValue(new Error('boom'));
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.post('/api/mqtt/root-finder/samples').send(bridgeBody())).status).toBe(202);
+  });
+
+  it('does not fire for a forbidden, invalid or busy start', async () => {
+    const viewer = await harness.loginAs(harness.limited);
+    expect((await viewer.post('/api/mqtt/root-finder/samples').send(bridgeBody())).status).toBe(403);
+
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    const bad = await agent.post('/api/mqtt/root-finder/samples').send(bridgeBody({ regionRoot: 'msh/US/+' }));
+    expect(bad.status).toBe(400);
+    expect(refreshDirectory).not.toHaveBeenCalled();
+
+    expect((await agent.post('/api/mqtt/root-finder/samples').send(bridgeBody())).status).toBe(202);
+    const busy = await agent
+      .post('/api/mqtt/root-finder/samples')
+      .send(bridgeBody({ broker: { url: 'mqtt://10.5.5.5:1883' } }));
+    expect(busy.status).toBe(429);
+    expect(refreshDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire when the start limiter rejects', async () => {
+    await harness.cleanup();
+    const limiter = (_req: unknown, res: any) => res.status(429).json({ success: false });
+    await mount(limiter);
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.post('/api/mqtt/root-finder/samples').send(bridgeBody())).status).toBe(429);
+    expect(refreshDirectory).not.toHaveBeenCalled();
+  });
+
+  it('shows the directory source on a Meshtastic poll', async () => {
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    const start = await agent.post('/api/mqtt/root-finder/samples').send(bridgeBody());
+    const res = await agent.get(`/api/mqtt/root-finder/samples/${start.body.data.sampleId}`);
+    expect(res.body.data.directory).toEqual({ source: 'bundled' });
   });
 });
