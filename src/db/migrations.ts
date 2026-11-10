@@ -246,6 +246,7 @@ import { migration as meshcorePacketLogDerivedMigration, runMigration224Postgres
 import { migration as meshcoreTraceRunsMigration, runMigration225Postgres, runMigration225Mysql } from '../server/migrations/225_add_meshcore_trace_runs.js';
 import { migration as backupHistorySourceProtocolMigration, runMigration226Postgres, runMigration226Mysql } from '../server/migrations/226_backup_history_source_protocol.js';
 import { migration as meshcoreNodeSecurityFlagsMigration, runMigration227Postgres, runMigration227Mysql } from '../server/migrations/227_add_meshcore_node_security_flags.js';
+import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 
 // ============================================================================
 // Registry
@@ -3662,4 +3663,18 @@ registry.register({
   sqlite: (db) => meshcoreNodeSecurityFlagsMigration.up(db),
   postgres: (client) => runMigration227Postgres(client),
   mysql: (pool) => runMigration227Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 228: re-file MeshCore MQTT slot-decrypted channel rows under their
+// keyed index and fan out per-channel notification state (#6308).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 228,
+  name: 'refile_meshcore_mqtt_slot_channels',
+  settingsKey: 'migration_228_refile_meshcore_mqtt_slot_channels',
+  sqlite: (db) => refileMeshcoreMqttSlotChannelsMigration.up(db),
+  postgres: (client) => runMigration228Postgres(client),
+  mysql: (pool) => runMigration228Mysql(pool),
 });
