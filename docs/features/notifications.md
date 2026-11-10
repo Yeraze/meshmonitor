@@ -680,7 +680,7 @@ Write a token as <code v-pre>{{ name }}</code>. Anything else in the template is
 | <code v-pre>{{ channelName }}</code> | Channel name. Empty for a direct message |
 | <code v-pre>{{ senderName }}</code> | Sender's long name |
 | <code v-pre>{{ senderShortName }}</code> | Sender's short name (the long name when there is none) |
-| <code v-pre>{{ text }}</code> | The message text, cut to 100 characters |
+| <code v-pre>{{ text }}</code> | The message text, cut to 100 characters unless you raise it (see [Message text length](#message-text-length)) |
 | <code v-pre>{{ serviceLabel }}</code> | Network type: Meshtastic, MeshCore, MQTT or Reticulum |
 | <code v-pre>{{ isDM }}</code> | `DM` for a direct message, empty otherwise |
 
@@ -696,8 +696,29 @@ Examples:
 
 - **One pair for channels and direct messages.** Your templates apply to both. For a direct message <code v-pre>{{ channelName }}</code> is empty, and a separator left dangling beside an empty token (`·`, `•`, `|`, `:`, `,`, `-`, `/`) is dropped, so <code v-pre>{{ channelName }} · {{ sourceName }}</code> reads `Home Base` for a DM, not `· Home Base`. The preview shows both cases.
 - **Unknown tokens are rejected when you save.** A typo such as <code v-pre>{{ source_name }}</code> is flagged under the field and the save fails with a message that names it. Only the seven tokens above are valid here; Automation tokens such as <code v-pre>{{ trigger.text }}</code> are not.
-- **Limits.** A title template can be 200 characters and a body template 500. The rendered title is cut at 150 characters and the body at 400. The title is one line; the body may have several.
+- **Limits.** A title template can be 200 characters and a body template 500. The rendered title is cut at 150 characters. The body is cut at 400, or at 300 more than your text length when that is larger (never more than 1000). The title is one line; the body may have several.
 - **Plain text only.** `<` and `>` are not allowed in a template, and nothing in a notification is treated as markup.
+
+#### Message text length
+
+By default the <code v-pre>{{ text }}</code> token shows the first 100 characters of a message. A Meshtastic message is at most about 230 characters and a MeshCore message about 160, so a longer limit shows most messages in full. Set it under **Message Notification Format**:
+
+- **Message text length: Web Push / desktop** applies to browser push and to desktop notifications.
+- **Message text length: Apprise** applies to Apprise targets. It appears when Apprise is on for the source.
+
+Pick a whole number from 20 to 1000, or leave the box empty to keep 100. Nothing changes until you set a value. Each setting is saved per user and per source, and applies to Meshtastic and MeshCore sources alike. It changes only how much text a notification shows, never who gets one or how many go out. Keyword filters always match the full message.
+
+Long text costs nothing on the mesh, but the receiving service may cut it:
+
+| Apprise target | Body limit |
+|---|---|
+| Discord | 2000 |
+| Pushover | 1024 |
+| Telegram | 4096 |
+| SMS targets | 160 |
+
+For a target with a short limit, add `?overflow=split` (send the rest as more messages) or `?overflow=truncate` (cut at the limit) to its Apprise URL. Web Push also shortens an oversized body by itself so the payload fits the push service's size limit.
+
 - **A template that renders to nothing falls back to the default**, so a notification is never blank.
 - **Filters are not affected.** Whitelist and blacklist keywords match the original message text, never the formatted notification. A template changes what a notification says, not whether it is sent.
 - **Prefix with Node Name still works.** With that option on, `[YourNodeName] ` goes in front of the body after your template is rendered. It never goes in the title.
