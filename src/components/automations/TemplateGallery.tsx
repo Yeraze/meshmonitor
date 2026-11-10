@@ -16,6 +16,8 @@
 import { useEffect, useState } from 'react';
 import apiService from '../../services/api';
 import { FieldInput, type SourceOption, type UnifiedChannelOption } from './AutomationBuilder';
+import type { NodeMultiOption } from './NodeMultiFieldInput';
+import { loadNodeOptions } from './loadNodeOptions';
 import { fieldVisible } from './catalog';
 import { UiIcon, UI_ICON_DEFINITIONS, type UiIconName } from '../icons';
 import { validateAutomationGraph } from '../../types/automation';
@@ -74,6 +76,7 @@ function seedFromBuild(template: AutomationTemplate): BuiltAutomation | null {
 export default function TemplateGallery({ onClose, onInstalled, templates = TEMPLATES }: TemplateGalleryProps) {
   const [sources, setSources] = useState<SourceOption[]>([]);
   const [channels, setChannels] = useState<UnifiedChannelOption[]>([]);
+  const [nodes, setNodes] = useState<NodeMultiOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AutomationTemplate | null>(null);
@@ -104,12 +107,20 @@ export default function TemplateGallery({ onClose, onInstalled, templates = TEMP
       .finally(() => setLoading(false));
   }, []);
 
+  // Node list for the nodeMulti picker (#6271); same loader as the automation editor.
+  useEffect(() => {
+    let live = true;
+    void loadNodeOptions().then((n) => { if (live) setNodes(n); });
+    return () => { live = false; };
+  }, []);
+
   if (selected) {
     return (
       <TemplateWizard
         template={selected}
         sources={sources}
         channels={channels}
+        nodes={nodes}
         onBack={() => setSelected(null)}
         onClose={onClose}
         onInstalled={onInstalled}
@@ -153,10 +164,11 @@ export default function TemplateGallery({ onClose, onInstalled, templates = TEMP
   );
 }
 
-function TemplateWizard({ template, sources, channels, onBack, onClose, onInstalled }: {
+function TemplateWizard({ template, sources, channels, nodes, onBack, onClose, onInstalled }: {
   template: AutomationTemplate;
   sources: SourceOption[];
   channels: UnifiedChannelOption[];
+  nodes: NodeMultiOption[];
   onBack: () => void;
   onClose: () => void;
   onInstalled: (rows: InstalledAutomationRow[]) => void;
@@ -263,7 +275,7 @@ function TemplateWizard({ template, sources, channels, onBack, onClose, onInstal
           channels={channels}
           scripts={[]}
           regions={[]}
-          nodes={[]}
+          nodes={nodes}
           triggerType="trigger.message"
           onChange={(v) => setParam(p.name, v)}
         />

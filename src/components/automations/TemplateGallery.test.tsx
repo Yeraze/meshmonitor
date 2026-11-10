@@ -104,7 +104,40 @@ function renderGallery(templates: AutomationTemplate[], onInstalled = vi.fn(), o
   return { onInstalled, onClose };
 }
 
+function makeNodeTemplate(): AutomationTemplate {
+  return {
+    id: 'fake-nodes',
+    name: 'Fake Nodes',
+    description: 'Template with a node picker.',
+    icon: 'bot',
+    tags: [],
+    params: [{ name: 'nodeNums', label: 'Only watch these nodes', kind: 'nodeMulti' }],
+    build(): BuiltAutomation {
+      return { name: 'Nodes Auto', description: 'd', config: minimalGraph('t', 'a') };
+    },
+  };
+}
+
 describe('TemplateGallery', () => {
+  it('lists mesh nodes in the nodeMulti picker (#6271)', async () => {
+    mockedGet.mockImplementation((endpoint: string) => {
+      if (endpoint === '/api/sources') return Promise.resolve(SAMPLE_SOURCES);
+      if (endpoint === '/api/nodes') {
+        return Promise.resolve([
+          { nodeNum: 1234, longName: 'Hilltop Relay', shortName: 'HILL', nodeId: '!000004d2' },
+          { nodeNum: 0xffffffff, longName: 'Broadcast Stub' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    renderGallery([makeNodeTemplate()]);
+    await screen.findByText('Fake Nodes');
+    await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/api/nodes'));
+    await userEvent.click(screen.getByRole('button', { name: 'Use template' }));
+    expect(await screen.findByText(/Hilltop Relay/)).toBeInTheDocument();
+    expect(screen.queryByText(/Broadcast Stub/)).not.toBeInTheDocument();
+  });
+
   it('renders a card for each injected template', async () => {
     renderGallery([makeSingleTemplate(), makeDualTemplate()]);
     expect(await screen.findByText('Fake Single')).toBeInTheDocument();
