@@ -278,6 +278,23 @@ describe('stored and preset credentials', () => {
     expect(text).not.toContain('positions');
   });
 
+  it('names the subdivision offline from the bridge centre, with no coordinates in the response (#6336)', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const start = await agent.post('/api/mqtt/root-finder/samples').send(bridgeBody({ sourceId: 'rt-bridge' }));
+    stubs[0].heard = [{ root: 'msh/US/IL', nodes: 2, messages: 3, retainedOnly: false }];
+    const res = await agent.get(`/api/mqtt/root-finder/samples/${start.body.data.sampleId}`);
+    expect(res.status).toBe(200);
+    // The bbox centre (41, -89) is in Illinois.
+    expect(res.body.data.ladder).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'subdivision', root: 'msh/US/IL', heard: true })]),
+    );
+    expect(res.body.data.heard[0]).toMatchObject({ root: 'msh/US/IL', tier: 1 });
+    const text = JSON.stringify([start.body, res.body]);
+    expect(text).not.toMatch(/"(lat|lon|lng|latitude|longitude|place|subdivisionName|subdivisionIso)"/);
+    // No JSON number equal to the centre's latitude or longitude.
+    expect(text).not.toMatch(/[:,[]\s*(41|-89)(\.0+)?\s*[,\]}]/);
+  });
+
   it('a preset login is filled only for the preset endpoint', async () => {
     const preset = await harness.db.mqttBrokerPresets.createAsync({
       name: `rf-${Math.random()}`,
