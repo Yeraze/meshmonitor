@@ -7,10 +7,11 @@
  * a real send. An empty field means "use the built-in default", which is shown
  * as the field's placeholder.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import TokenTextField from './automations/TokenTextField';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
 import {
   DEFAULT_MESSAGE_TEMPLATES,
   MESSAGE_BODY_TEMPLATE_MAX,
@@ -42,58 +43,31 @@ export interface NotificationFormatSectionProps {
   onTextMaxChange?: (next: { messageTextMaxPush: number | null; messageTextMaxApprise: number | null }) => void;
 }
 
-/** Blank stores null. A number is clamped into the allowed range. */
-function textMaxFromInput(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (trimmed === '') return null;
-  const n = Math.floor(Number(trimmed));
-  if (!Number.isFinite(n)) return null;
-  return Math.min(MESSAGE_TEXT_MAX_LIMIT, Math.max(MESSAGE_TEXT_MAX_MIN, n));
-}
-
-interface TextMaxInputProps {
+/** Number field for a text length: blank = default (null), 20 to 1000 otherwise. */
+const TextMaxInput: React.FC<{
   id: string;
   label: string;
   value: number | null;
   onCommit: (next: number | null) => void;
   styles: Record<string, string>;
   placeholder: string;
-}
-
-/**
- * Number input that keeps what the user types while they type, stores the
- * clamped value as they go, and snaps the display to it on blur.
- */
-const TextMaxInput: React.FC<TextMaxInputProps> = ({ id, label, value, onCommit, styles: s, placeholder }) => {
-  const [draft, setDraft] = useState<string>(value === null ? '' : String(value));
-  useEffect(() => {
-    setDraft((prev) => (textMaxFromInput(prev) === value ? prev : value === null ? '' : String(value)));
-  }, [value]);
-  return (
-    <div className={s.fieldGroup}>
-      <label className={s.label} htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type="number"
-        inputMode="numeric"
-        className={s.numberField}
-        min={MESSAGE_TEXT_MAX_MIN}
-        max={MESSAGE_TEXT_MAX_LIMIT}
-        step={1}
-        value={draft}
-        placeholder={placeholder}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          onCommit(textMaxFromInput(e.target.value));
-        }}
-        onBlur={() => {
-          const next = textMaxFromInput(draft);
-          setDraft(next === null ? '' : String(next));
-        }}
-      />
-    </div>
-  );
-};
+}> = ({ id, label, value, onCommit, styles: s, placeholder }) => (
+  <div className={s.fieldGroup}>
+    <label className={s.label} htmlFor={id}>{label}</label>
+    <NumberInput
+      id={id}
+      className={s.numberField}
+      allowEmpty
+      integer
+      min={MESSAGE_TEXT_MAX_MIN}
+      max={MESSAGE_TEXT_MAX_LIMIT}
+      value={value}
+      placeholder={placeholder}
+      showReason
+      onChange={onCommit}
+    />
+  </div>
+);
 
 const VALID_TOKENS: ReadonlySet<string> = new Set(MESSAGE_TEMPLATE_TOKENS);
 

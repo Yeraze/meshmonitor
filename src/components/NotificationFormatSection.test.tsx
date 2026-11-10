@@ -201,15 +201,16 @@ describe('NotificationFormatSection - message text length (#6278)', () => {
     expect(onTextMaxChange).toHaveBeenLastCalledWith({ messageTextMaxPush: null, messageTextMaxApprise: null });
   });
 
-  it('clamps into 20 to 1000 and snaps the display on blur', () => {
+  it('never stores a value outside 20 to 1000', () => {
     const onTextMaxChange = vi.fn();
     render(<MaxHost onTextMaxChange={onTextMaxChange} />);
     fireEvent.change(pushInput(), { target: { value: '5000' } });
-    expect(onTextMaxChange).toHaveBeenLastCalledWith({ messageTextMaxPush: 1000, messageTextMaxApprise: null });
-    fireEvent.blur(pushInput());
-    expect(pushInput().value).toBe('1000');
     fireEvent.change(pushInput(), { target: { value: '3' } });
-    expect(onTextMaxChange).toHaveBeenLastCalledWith({ messageTextMaxPush: 20, messageTextMaxApprise: null });
+    fireEvent.change(pushInput(), { target: { value: '12.5' } });
+    expect(onTextMaxChange).not.toHaveBeenCalled();
+    expect(pushInput().getAttribute('aria-invalid')).toBe('true');
+    fireEvent.change(pushInput(), { target: { value: '1000' } });
+    expect(onTextMaxChange).toHaveBeenLastCalledWith({ messageTextMaxPush: 1000, messageTextMaxApprise: null });
   });
 
   it('the preview reflects the push length', () => {
