@@ -44,7 +44,10 @@ import {
   MESHCORE_DEVICE_TABLE_FULL,
   MeshCoreContactNotOnDeviceError,
 } from './meshcoreDeviceContactErrors.js';
-import { resolveMessageScope } from './meshcoreScopeResolve.js';
+import { resolveMessageScope, scopeTransportKey } from './meshcoreScopeResolve.js';
+import { buildRawGroupTextFrame, RawFrameTooLargeError } from './utils/meshcoreRawGroupText.js';
+import { MeshCoreSenderNameError } from './errors/meshcoreSenderNameError.js';
+import { readSenderNamePolicy, checkSenderName } from './utils/meshcoreSenderNamePolicy.js';
 import type { DbMeshCoreMessage } from '../db/repositories/meshcore.js';
 import { isReactionText, isReactionEmoji, mc1ChannelBody } from '../utils/meshcoreReactions.js';
 import { readRequiredRepeaters, requiredRepeatersHeard } from '../utils/meshcoreHeardBy.js';
@@ -964,6 +967,38 @@ export interface MeshCoreSendResult {
   message?: MeshCoreMessage;
 }
 
+/**
+ * Sender names MeshMonitor recently sent under as an override (#6282), shared
+ * by every source in the process. A sibling source (a second companion or a
+ * logging repeater on the same channel) hears our raw send as a message from
+ * "Name", and only this registry tells it the name is ours. Erring towards
+ * "ours" is the safe direction (same rule as #5551): it only stops automations
+ * from replying. Entries expire after {@link SENDER_NAME_OVERRIDE_TTL_MS}.
+ */
+const SENDER_NAME_OVERRIDE_TTL_MS = 30 * 60 * 1000;
+const recentSenderNameOverrides = new Map<string, number>();
+
+function noteSenderNameOverride(name: string, now: number = Date.now()): void {
+  recentSenderNameOverrides.set(name.trim().toLowerCase(), now + SENDER_NAME_OVERRIDE_TTL_MS);
+}
+
+function isRecentSenderNameOverride(name: string | null | undefined, now: number = Date.now()): boolean {
+  if (!name) return false;
+  const key = name.trim().toLowerCase();
+  const until = recentSenderNameOverrides.get(key);
+  if (until === undefined) return false;
+  if (until <= now) {
+    recentSenderNameOverrides.delete(key);
+    return false;
+  }
+  return true;
+}
+
+/** Test seam: forget every recorded override name. */
+export function __resetSenderNameOverridesForTests(): void {
+  recentSenderNameOverrides.clear();
+}
+
 /** MeshCore PAYLOAD_TYPE_GRP_TXT — a channel text message. */
 const MESHCORE_PAYLOAD_GRP_TXT = 0x05;
 
@@ -977,6 +1012,7 @@ const MESHCORE_PAYLOAD_GRP_TXT = 0x05;
  */
 async function isLocalMeshCoreSenderName(name: string | null | undefined): Promise<boolean> {
   if (!name) return false;
+  if (isRecentSenderNameOverride(name)) return true;
   try {
     const [{ sourceManagerRegistry }, { isMeshCoreManager }] = await Promise.all([
       import('./sourceManagerRegistry.js'),
@@ -992,6 +1028,20 @@ async function isLocalMeshCoreSenderName(name: string | null | undefined): Promi
   }
   return false;
 }
+
+/** One own channel send awaiting its heard-by echo (#3700). */
+export interface PendingChannelSend {
+  channelIdx: number;
+  sentAt: number;
+  text: string;
+  /** Raw override sends (#6282): the exact payload we sent, compared directly. */
+  payloadHex?: string;
+  /** Raw override sends (#6282): the name in the packet (default: node name). */
+  senderName?: string;
+}
+
+/** How long a raw send's own radio copy is suppressed (#6282). */
+const OWN_RAW_ECHO_TTL_MS = 10 * 60 * 1000;
 
 /** Shared inputs of the received-message tail (#5759). */
 interface ReceivedMessageOpts {
@@ -1116,6 +1166,10 @@ export interface MeshCoreMessage extends MeshCoreReactionFields {
    *  it too, as the MC1 reaction hash input. A resendable row is only our own
    *  channel send (see `withResendInfo`). Undefined for rooms and old rows. */
   senderTimestamp?: number;
+  /** The allowlisted sender name this own channel send went out under as a raw
+   *  packet (#6282). Unset on every other row. A resend of such a row is
+   *  rebuilt raw, never sent under the real node name. */
+  senderNameOverride?: string | null;
   /** User-initiated resends so far (#5512), counted from persisted `retry`
    *  events marked `userInitiated`, so a restart doesn't reset the cap. */
   resendCount?: number;
@@ -1815,7 +1869,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * decrypted plaintext matches — not merely the most recent send. Pruned lazily
    * on each inbound packet and on each new send.
    */
-  private pendingChannelSends: Map<string, { channelIdx: number; sentAt: number; text: string }> = new Map();
+  private pendingChannelSends: Map<string, PendingChannelSend> = new Map();
+  /**
+   * Own raw sends (#6282) awaiting the radio's copy of their own packet. The
+   * radio never marks a `CMD_SEND_RAW_PACKET` packet as seen, so when a repeater
+   * re-floods it the companion delivers it back as a NEW channel message from
+   * the override name. Keyed `${wireSecond}|${"Name: text"}`; value = expiry ms.
+   */
+  private ownRawEchoes: Map<string, number> = new Map();
 
   /**
    * De-dup guard so a single received copy of an echoed channel packet is
@@ -2876,6 +2937,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // device prefixes "Name: " onto the text body. Split it out so the UI can
       // show the sender and the body separately.
       const rawText: string = data.text ?? '';
+      // The radio's copy of our own raw override send (#6282): drop it before
+      // anything stores, notifies or replies. It would otherwise show as a
+      // second bubble from the override name and could trigger Auto-Ack,
+      // Auto-Responder, Forwarding or an automation reply loop.
+      if (this.isOwnRawEcho(data.sender_timestamp, rawText)) {
+        logger.debug(`[MeshCore:${this.sourceId}] Dropped radio copy of own raw send on channel ${data.channel_idx}`);
+        return;
+      }
       const prefixMatch = rawText.match(/^([^:\n]{1,32}):\s*(.*)$/s);
       const fromName = prefixMatch ? prefixMatch[1].trim() : undefined;
       const body = prefixMatch ? prefixMatch[2] : rawText;
@@ -2929,6 +2998,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
         // Raw wire second (#5759), as in the contact_message case.
         senderTimestamp: chWireSec ?? undefined,
+        // A sibling source's override name (#6282): ours, so no automation,
+        // notification or auto-reply may treat it as a stranger's message.
+        ...(isRecentSenderNameOverride(fromName) ? { selfOrigin: true } : {}),
       };
       const chOpts: ReceivedMessageOpts = {
         isDM: false,
@@ -3478,10 +3550,35 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * (#3700). Prunes entries older than HEARD_WINDOW_MS so the map never grows
    * unbounded on a chatty channel.
    */
-  private registerPendingChannelSend(messageId: string, channelIdx: number, text: string): void {
+  private registerPendingChannelSend(
+    messageId: string,
+    channelIdx: number,
+    text: string,
+    raw?: { payloadHex: string; senderName: string },
+  ): void {
     const now = Date.now();
     this.prunePendingChannelSends(now);
-    this.pendingChannelSends.set(messageId, { channelIdx, sentAt: now, text });
+    this.pendingChannelSends.set(messageId, { channelIdx, sentAt: now, text, ...(raw ?? {}) });
+  }
+
+  /** Remember a raw send so the radio's copy of it can be dropped (#6282). */
+  private registerOwnRawEcho(wireSecond: number, wireText: string, now: number = Date.now()): void {
+    for (const [k, until] of this.ownRawEchoes) if (until <= now) this.ownRawEchoes.delete(k);
+    this.ownRawEchoes.set(`${wireSecond}|${wireText}`, now + OWN_RAW_ECHO_TTL_MS);
+  }
+
+  /** True when this inbound channel frame is the radio's copy of our own raw send. */
+  private isOwnRawEcho(senderTimestamp: unknown, wireText: string, now: number = Date.now()): boolean {
+    if (this.ownRawEchoes.size === 0) return false;
+    const sec = meshcoreWireSecond(senderTimestamp);
+    if (sec === null) return false;
+    const until = this.ownRawEchoes.get(`${sec}|${wireText}`);
+    if (until === undefined) return false;
+    if (until <= now) {
+      this.ownRawEchoes.delete(`${sec}|${wireText}`);
+      return false;
+    }
+    return true;
   }
 
   /** Drop pending channel sends (and stale attribution guards) older than the
@@ -3818,7 +3915,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   static findEchoMatch(
     data: any,
-    pendingChannelSends: Map<string, { channelIdx: number; sentAt: number; text: string }>,
+    pendingChannelSends: Map<string, PendingChannelSend>,
     now: number,
     windowMs: number,
     opts: {
@@ -3847,9 +3944,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (pathHops.length === 0) return null;
 
     // Without our own node name we can't confirm self-origin — bail rather than
-    // risk crediting a third-party message.
+    // risk crediting a third-party message. (A raw override send carries its own
+    // name, so it needs no node name; see the per-entry check below.)
     const selfName = opts.selfName;
-    if (!selfName) return null;
 
     // Recover the GRP_TXT payload (`[channel_hash:1][MAC:2][ciphertext]`) from
     // the raw OTA frame; `path_hops` above already gives the relay chain.
@@ -3864,13 +3961,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       .sort((a, b) => a[1].sentAt - b[1].sentAt);
 
     for (const [messageId, entry] of candidates) {
-      const secret = opts.resolveChannelSecret(entry.channelIdx);
-      if (!secret) continue;
-      const plaintext = tryDecodeGroupTextPayload(payloadHex, secret);
-      if (!plaintext) continue;
-      // Self-origin + exact-text check in one comparison: MeshCore prefixes the
-      // sender name, so our own echo decrypts to `"<selfName>: <text>"`.
-      if (plaintext.body !== `${selfName}: ${entry.text}`) continue;
+      if (entry.payloadHex) {
+        // Raw override send (#6282): we know the exact payload, so compare it.
+        if (entry.payloadHex.toLowerCase() !== payloadHex.toLowerCase()) continue;
+      } else {
+        if (!selfName) continue;
+        const secret = opts.resolveChannelSecret(entry.channelIdx);
+        if (!secret) continue;
+        const plaintext = tryDecodeGroupTextPayload(payloadHex, secret);
+        if (!plaintext) continue;
+        // Self-origin + exact-text check in one comparison: MeshCore prefixes the
+        // sender name, so our own echo decrypts to `"<selfName>: <text>"`.
+        if (plaintext.body !== `${selfName}: ${entry.text}`) continue;
+      }
       return {
         messageId,
         channelIdx: entry.channelIdx,
@@ -5529,6 +5632,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       scopeCode: dbMsg.scopeCode ?? null,
       scopeName: dbMsg.scopeName ?? null,
       senderTimestamp: dbMsg.senderTimestamp ?? undefined,
+      senderNameOverride: dbMsg.senderNameOverride ?? undefined,
       keySourceId: dbMsg.keySourceId ?? null,
       keyChannelIdx: dbMsg.keyChannelIdx ?? null,
       keyFingerprint: dbMsg.keyFingerprint ?? null,
@@ -5571,6 +5675,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         scopeCode: message.scopeCode ?? null,
         scopeName: message.scopeName ?? null,
         senderTimestamp: message.senderTimestamp ?? null,
+        senderNameOverride: message.senderNameOverride ?? null,
         mc1Hash: extra?.mc1Hash ?? null,
         reactionEmoji: message.reactionEmoji ?? null,
         reactionFormat: message.reactionFormat ?? null,
@@ -5640,7 +5745,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.debug(o.logLine);
-      if (o.autoReplies !== false) {
+      if (o.autoReplies !== false && !message.selfOrigin) {
         void this.checkAutoAcknowledge(message, o.isDM, o.channelIdx, o.hopCount, o.route);
         void this.checkAutoPingThenResponder(message, o);
         void this.checkForwarding(message, o.isDM, o.channelIdx);
@@ -6699,6 +6804,148 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Send a channel message under an override sender name (#6282), as a raw
+   * `CMD_SEND_RAW_PACKET` frame built here. The caller has already passed the
+   * per-source allowlist (`checkSenderName`); the manager re-checks nothing
+   * about permissions, only what the radio and channel allow.
+   *
+   * Differences from a normal send, all handled in
+   * {@link performRawChannelSend}: scope is computed here (the radio's own
+   * scope state is ignored and `applyFloodScope` is never called), the radio's
+   * own copy of the packet is suppressed, and a resend goes out raw again.
+   * Throws {@link MeshCoreSenderNameError} for a refusal and `TxDisabledError`
+   * in receive-only mode. No auto-retry is ever armed.
+   */
+  async sendChannelMessageAs(
+    text: string,
+    channelIdx: number,
+    senderName: string,
+    scopeOverride?: string | null,
+  ): Promise<MeshCoreSendResult> {
+    this.requireTransmit();
+    if (!this.connected || this.deviceType === MeshCoreDeviceType.REPEATER) {
+      throw new MeshCoreSenderNameError('SOURCE_NOT_CONNECTED', 'Source is not connected to a companion radio');
+    }
+    const idx = (await this.channelIdxAfterReorder(channelIdx)) ?? channelIdx;
+    return this.runSerialized(() =>
+      this.performRawChannelSend({ text, channelIdx: idx, senderName, scopeOverride }),
+    );
+  }
+
+  /**
+   * Body of a raw override send. Call inside {@link runSerialized}. With
+   * `resend` set it stores no row and emits nothing: it re-sends the stored
+   * message with its ORIGINAL timestamp, so the payload (and its hash) is
+   * byte for byte the same and repeaters that already relayed it drop the copy.
+   */
+  private async performRawChannelSend(o: {
+    text: string;
+    channelIdx: number;
+    senderName: string;
+    scopeOverride?: string | null;
+    resend?: { senderTimestamp: number; messageId: string };
+  }): Promise<MeshCoreSendResult> {
+    this.requireTransmit();
+    const { text, channelIdx, senderName } = o;
+
+    // Secret first: no point asking the radio anything without it.
+    const secret = await this.loadChannelSecret(channelIdx);
+    if (!secret) {
+      throw new MeshCoreSenderNameError('CHANNEL_KEY_UNAVAILABLE', 'The channel key is not available for this source');
+    }
+
+    // One local read gives client-repeat state and the path hash mode.
+    const info = await this.deviceQuery();
+    if (info?.repeat === true) {
+      // With client repeat on, the radio would also re-transmit its own raw packet.
+      throw new MeshCoreSenderNameError(
+        'CLIENT_REPEAT_ON',
+        'Sender name override is not available while client repeat is on for this companion',
+      );
+    }
+    let pathHashMode = info?.pathHashMode;
+    if (typeof pathHashMode !== 'number') {
+      logger.warn(`[MeshCore:${this.sourceId}] path_hash_mode unknown; raw send uses 1-byte hashes (mode 0)`);
+      pathHashMode = 0;
+    }
+
+    // Mirror sendFloodScoped: '' = unscoped, a name = that region, null = the
+    // node's own persistent default region (or unscoped when it has none).
+    const normalizedOverride = MeshCoreManager.normalizeScopeOverride(o.scopeOverride);
+    const region = normalizedOverride !== undefined
+      ? normalizedOverride
+      : await this.resolveScopeForSend(channelIdx);
+    let transportKey: Buffer | null = null;
+    if (region) {
+      transportKey = scopeTransportKey(region);
+    } else if (region === null) {
+      const def = await this.sendBridgeCommand('get_default_flood_scope', {});
+      if (!def.success) {
+        throw new MeshCoreSenderNameError('SEND_FAILED', 'Could not read the node default flood scope');
+      }
+      const keyHex = def.data?.default?.key_hex;
+      if (typeof keyHex === 'string' && /^[0-9a-f]{32}$/i.test(keyHex)) transportKey = Buffer.from(keyHex, 'hex');
+    }
+
+    // Stamped after the device round-trips above, as in performScopedSend.
+    const ts = o.resend?.senderTimestamp ?? Math.floor(Date.now() / 1000);
+    let built;
+    try {
+      built = buildRawGroupTextFrame({ secret, senderName, text, ts, pathHashMode, transportKey });
+    } catch (err) {
+      if (err instanceof RawFrameTooLargeError) {
+        throw new MeshCoreSenderNameError('TEXT_TOO_LONG', 'The message is too long to send under this sender name');
+      }
+      throw err;
+    }
+
+    const resp = await this.sendBridgeCommand('send_raw_packet', { frame_hex: built.frame.toString('hex') });
+    if (!resp.success) {
+      const code = resp.data?.error_code as string | undefined;
+      if (code === 'FIRMWARE_UNSUPPORTED' || code === 'TABLE_FULL' || code === 'ILLEGAL_ARG') {
+        throw new MeshCoreSenderNameError(code, resp.error || 'Raw packet send failed');
+      }
+      throw new MeshCoreSenderNameError('SEND_FAILED', resp.error || 'Raw packet send failed');
+    }
+
+    // The radio's copy of this very packet must not be treated as a new message.
+    this.registerOwnRawEcho(ts, built.wireText);
+    noteSenderNameOverride(senderName);
+
+    if (o.resend) {
+      this.registerPendingChannelSend(o.resend.messageId, channelIdx, text, {
+        payloadHex: built.payloadHex,
+        senderName,
+      });
+      return { ok: true, senderTimestamp: ts };
+    }
+
+    const msgId = `sent-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    const sentMessage: MeshCoreMessage = {
+      id: msgId,
+      fromPublicKey: this.localNode?.publicKey || 'local',
+      fromName: senderName,
+      toPublicKey: MeshCoreManager.channelPublicKey(channelIdx),
+      text,
+      timestamp: Date.now(),
+      receivedAt: Date.now(),
+      sourceId: this.sourceId,
+      scopeName: region || null,
+      senderTimestamp: ts,
+      senderNameOverride: senderName,
+    };
+    const mc1Hash = mc1HashForChannelWire(built.wireText, ts);
+    const storedSent = this.addMessage(sentMessage, { mc1Hash });
+    void this.afterMessageStored(sentMessage, mc1Hash, storedSent);
+    this.emit('message', sentMessage);
+    dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
+    this.recordMessageEvent(msgId, 'submitted', 'observed');
+    this.registerPendingChannelSend(msgId, channelIdx, text, { payloadHex: built.payloadHex, senderName });
+    logger.debug(`[MeshCore:${this.sourceId}] Raw channel send as override name (${built.wireText.length} chars)`);
+    return { ok: true, senderTimestamp: ts, message: sentMessage };
+  }
+
+  /**
    * Margin applied to the firmware's `estTimeout` before a DM send is treated
    * as missed (#3977). Absorbs normal jitter; not itself a protocol constant.
    */
@@ -7405,6 +7652,41 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         );
       }
 
+      // A message sent under an override name (#6282) is re-sent raw with the
+      // same name, timestamp and text, never through the normal path (which
+      // would put the real node name on it). It needs the override to still be
+      // allowed: a name removed from the list must not keep resending.
+      if (row.senderNameOverride) {
+        if (!channelMatch) {
+          throw new MeshCoreResendError('RESEND_UNAVAILABLE', 'Only a channel message can carry a sender name');
+        }
+        const policy = await readSenderNamePolicy(this.sourceId);
+        const allowed = checkSenderName(policy, row.senderNameOverride);
+        if (!allowed.ok) {
+          throw new MeshCoreResendError('RESEND_UNAVAILABLE', 'This sender name is no longer allowed on this source');
+        }
+        let rawResult: MeshCoreSendResult;
+        try {
+          rawResult = await this.performRawChannelSend({
+            text: row.text,
+            channelIdx: Number(channelMatch[1]),
+            senderName: allowed.name,
+            scopeOverride: row.scopeName ?? undefined,
+            resend: { senderTimestamp: Number(row.senderTimestamp), messageId },
+          });
+        } catch (err) {
+          if (err instanceof MeshCoreSenderNameError) {
+            throw new MeshCoreResendError(
+              err.code === 'SEND_FAILED' || err.code === 'TABLE_FULL' || err.code === 'ILLEGAL_ARG' ? 'SEND_FAILED' : 'RESEND_UNAVAILABLE',
+              err.message,
+            );
+          }
+          throw err;
+        }
+        if (!rawResult.ok) throw new MeshCoreResendError('SEND_FAILED', 'The radio did not accept the resend');
+        return this.finishUserResend(messageId, summary.resendCount, false);
+      }
+
       // Channel resend goes out on the channel slot; a DM resend (#6194) goes
       // out to the recipient's public key via the same DM send path. Both reuse
       // the original wire timestamp so repeaters that saw the original drop the
@@ -7429,39 +7711,48 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         throw new MeshCoreResendError('SEND_FAILED', 'The radio did not accept the resend');
       }
 
-      const resentAt = Date.now();
-      const resendCount = summary.resendCount + 1;
-      this.resendLedger.set(messageId, { count: resendCount, last: resentAt });
-      // Awaited, not fire-and-forget: this row IS the cap, so it must land
-      // before the next resend request reads it.
-      try {
-        await databaseService.messageEvents.recordEvent({
-          sourceId: this.sourceId,
-          messageId,
-          eventType: 'retry',
-          provenance: 'observed',
-          timestamp: resentAt,
-          detail: JSON.stringify({ attempt: resendCount, userInitiated: true }),
-        });
-      } catch (err) {
-        logger.warn(
-          `[MeshCore:${this.sourceId}] Failed to record resend event for ${messageId}: ${(err as Error).message}`,
-        );
-      }
-      const msg = this.messages.find((m) => m.id === messageId);
-      if (msg) {
-        msg.resendCount = resendCount;
-        msg.lastResendAt = resentAt;
-      }
-      dataEventEmitter.emitMeshCoreMessageUpdated(
-        { id: messageId, resendCount, lastResendAt: resentAt },
-        this.sourceId,
-      );
-      logger.info(
-        `[MeshCore:${this.sourceId}] User resend ${resendCount}/${MeshCoreManager.RESEND_MAX} of ${isDm ? 'direct' : 'channel'} message ${messageId}`,
-      );
-      return { id: messageId, resendCount, lastResendAt: resentAt };
+      return this.finishUserResend(messageId, summary.resendCount, isDm);
     });
+  }
+
+  /** Record a successful user resend: ledger, persisted `retry` event, bubble update. */
+  private async finishUserResend(
+    messageId: string,
+    prevCount: number,
+    isDm: boolean,
+  ): Promise<{ id: string; resendCount: number; lastResendAt: number }> {
+    const resentAt = Date.now();
+    const resendCount = prevCount + 1;
+    this.resendLedger.set(messageId, { count: resendCount, last: resentAt });
+    // Awaited, not fire-and-forget: this row IS the cap, so it must land
+    // before the next resend request reads it.
+    try {
+      await databaseService.messageEvents.recordEvent({
+        sourceId: this.sourceId,
+        messageId,
+        eventType: 'retry',
+        provenance: 'observed',
+        timestamp: resentAt,
+        detail: JSON.stringify({ attempt: resendCount, userInitiated: true }),
+      });
+    } catch (err) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] Failed to record resend event for ${messageId}: ${(err as Error).message}`,
+      );
+    }
+    const msg = this.messages.find((m) => m.id === messageId);
+    if (msg) {
+      msg.resendCount = resendCount;
+      msg.lastResendAt = resentAt;
+    }
+    dataEventEmitter.emitMeshCoreMessageUpdated(
+      { id: messageId, resendCount, lastResendAt: resentAt },
+      this.sourceId,
+    );
+    logger.info(
+      `[MeshCore:${this.sourceId}] User resend ${resendCount}/${MeshCoreManager.RESEND_MAX} of ${isDm ? 'direct' : 'channel'} message ${messageId}`,
+    );
+    return { id: messageId, resendCount, lastResendAt: resentAt };
   }
 
   /**
@@ -14211,7 +14502,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // sender-name check instead.
       const isSelf = (!!localKey && fromKey.toLowerCase() === localKey)
         || (isDM && isOwnPublicKey(fromKey))
-        || (!isDM && !!this.localNode?.name && message.fromName === this.localNode.name);
+        || (!isDM && !!this.localNode?.name && message.fromName === this.localNode.name)
+        || (!isDM && await isLocalMeshCoreSenderName(message.fromName));
 
       const senderContact = isDM ? this.resolveContactByPrefix(fromKey) : undefined;
       const channelRow = !isDM && typeof channelIdx === 'number'
