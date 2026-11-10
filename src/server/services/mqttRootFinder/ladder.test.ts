@@ -126,6 +126,31 @@ describe('buildCommunity', () => {
     });
     expect(rows.find((r) => r.root === 'msh/US/IL/Chi')).toMatchObject({ heard: true, nodes: 9, messages: 99 });
   });
+
+  it('handles a design#167 subdivisions-only entry without a centre (#6337)', () => {
+    const subDir = {
+      ...dir,
+      entries: [...dir.entries, { root: 'msh/US/TXMesh', name: 'TX mesh', subdivisions: ['US-TX'] }],
+    };
+    // A position-only lookup must not throw on the missing centre.
+    expect(() =>
+      buildCommunity({ regionRoot: 'msh/US', userPos: { lat: 31, lon: -99 }, heard: [], directory: subDir }),
+    ).not.toThrow();
+    const rows = buildCommunity({
+      regionRoot: 'msh/US',
+      place: { cc: 'US', subdivisionName: 'Texas', subdivisionIso: 'US-TX' },
+      heard: [],
+      directory: subDir,
+    });
+    expect(rows.map((r) => r.root)).toContain('msh/US/TXMesh');
+    const other = buildCommunity({
+      regionRoot: 'msh/US',
+      place: { cc: 'US', subdivisionName: 'Ohio', subdivisionIso: 'US-OH' },
+      heard: [],
+      directory: subDir,
+    });
+    expect(other.map((r) => r.root)).not.toContain('msh/US/TXMesh');
+  });
 });
 
 describe('rankHeard', () => {

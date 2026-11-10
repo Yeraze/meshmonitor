@@ -9,7 +9,9 @@
  * socket timeout and common reverse-proxy idle timeouts.
  *
  * Mesh impact: none. The sampler subscribes and never publishes; nothing here
- * writes to the database, a radio, or the event bus. A sample belongs to the
+ * writes to the database, a radio, or the event bus. A Meshtastic start may
+ * refresh the community directory from api.meshtastic.org, only when an admin
+ * turned that on (#6337). A sample belongs to the
  * user who started it; anyone else gets a 404.
  */
 import { Router, type Request, type RequestHandler, type Response } from 'express';
@@ -22,6 +24,11 @@ import {
   RootFinderBusyError,
   type RootFinderService,
 } from '../services/mqttRootFinder/rootFinderService.js';
+import {
+  directoryProvider,
+  DIRECTORY_REFRESH_SETTING,
+} from '../services/mqttRootFinder/directoryProvider.js';
+import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import type { User } from '../../types/auth.js';
 
@@ -29,11 +36,22 @@ export interface RootFinderRouterOptions {
   service?: RootFinderService;
   /** Outer HTTP limiter for starts. Tests pass a no-op. */
   startLimiter?: RequestHandler;
+  /**
+   * Called after a successful Meshtastic start (#6337). Does nothing unless an
+   * admin turned on `mqttRootDirectoryRefreshEnabled`. Tests pass a spy.
+   */
+  refreshDirectory?: () => Promise<void>;
 }
 
 export function createMqttRootFinderRouter(opts: RootFinderRouterOptions = {}): Router {
   const service = opts.service ?? defaultService;
   const startLimiter = opts.startLimiter ?? mqttRootFinderLimiter;
+  const refreshDirectory =
+    opts.refreshDirectory ??
+    (() =>
+      directoryProvider.refreshIfStale(
+        async () => (await databaseService.settings.getSetting(DIRECTORY_REFRESH_SETTING)) === 'true',
+      ));
   const router = Router();
 
   router.post('/samples', requireAuth(), startLimiter, async (req: Request, res: Response) => {
@@ -52,6 +70,11 @@ export function createMqttRootFinderRouter(opts: RootFinderRouterOptions = {}): 
         regionRoot: t.regionRoot,
         userPos: t.userPos,
       });
+      // Only after a start that passed every cap, so the finder's limits also
+      // bound the directory fetch. Fire and forget; it never throws.
+      if (t.protocol === 'meshtastic') {
+        void refreshDirectory().catch(() => {});
+      }
       res.status(202);
       return ok(res, started);
     } catch (e) {

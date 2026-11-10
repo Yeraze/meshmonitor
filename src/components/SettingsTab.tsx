@@ -236,6 +236,7 @@ interface SettingsDraft {
   // `adsb_api_token` key (admins receive it unmasked).
   // Tropospheric ducting overlay (#5734). Global, admin-only, off by default.
   ductingOverlayEnabled: boolean;
+  mqttRootDirectoryRefreshEnabled: boolean;
   adsbMatchEnabled: boolean;
   adsbFeed: string;
   adsbApiToken: string;
@@ -596,6 +597,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     elevationEnabled: false,
     elevationSourceUrl: '',
     ductingOverlayEnabled: false,
+    mqttRootDirectoryRefreshEnabled: false,
     adsbMatchEnabled: false,
     adsbFeed: DEFAULT_ADSB_FEED,
     adsbApiToken: '',
@@ -649,6 +651,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
   // Ducting overlay (#5734): same Category C pattern as elevation.
   const [initialDuctingOverlayEnabled, setInitialDuctingOverlayEnabled] = useState(false);
+  const [initialMqttRootDirectoryRefreshEnabled, setInitialMqttRootDirectoryRefreshEnabled] = useState(false);
   // ADS-B flight matching (#5374): same Category C pattern as elevation.
   const [initialAdsbMatchEnabled, setInitialAdsbMatchEnabled] = useState(false);
   const [initialAdsbFeed, setInitialAdsbFeed] = useState<string>(DEFAULT_ADSB_FEED);
@@ -869,6 +872,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const ductingOn = settings.ductingOverlayEnabled === 'true';
           updateField('ductingOverlayEnabled', ductingOn);
           setInitialDuctingOverlayEnabled(ductingOn);
+
+          // MQTT root directory refresh (#6337). Off unless stored 'true'.
+          const rootDirOn = settings.mqttRootDirectoryRefreshEnabled === 'true';
+          updateField('mqttRootDirectoryRefreshEnabled', rootDirOn);
+          setInitialMqttRootDirectoryRefreshEnabled(rootDirOn);
 
           // ADS-B flight matching (#5374). Off unless stored 'true'; an
           // unknown feed reads as the default.
@@ -1106,6 +1114,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       elevationEnabled: initialElevationEnabled,
       elevationSourceUrl: initialElevationSourceUrl,
       ductingOverlayEnabled: initialDuctingOverlayEnabled,
+      mqttRootDirectoryRefreshEnabled: initialMqttRootDirectoryRefreshEnabled,
       adsbMatchEnabled: initialAdsbMatchEnabled,
       adsbFeed: initialAdsbFeed,
       adsbApiToken: initialAdsbApiToken,
@@ -1140,7 +1149,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
       initialVirtualNodeReplayEnabled, initialVirtualNodeReplayExcludeIps,
-      initialDuctingOverlayEnabled,
+      initialDuctingOverlayEnabled, initialMqttRootDirectoryRefreshEnabled,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
       initialAdsbOpenSkyClientId, initialAdsbOpenSkyClientSecret,
       initialTranslationEnabled, initialTranslationProvider, initialTranslationFields, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
@@ -1350,6 +1359,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialElevationEnabled(d.elevationEnabled);
     setInitialElevationSourceUrl(d.elevationSourceUrl.trim());
     setInitialDuctingOverlayEnabled(d.ductingOverlayEnabled);
+    setInitialMqttRootDirectoryRefreshEnabled(d.mqttRootDirectoryRefreshEnabled);
     setInitialAdsbMatchEnabled(d.adsbMatchEnabled);
     setInitialAdsbFeed(d.adsbFeed);
     setInitialAdsbApiToken(d.adsbApiToken.trim());
@@ -1468,6 +1478,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         elevationEnabled: draft.elevationEnabled ? 'true' : 'false',
         elevationSourceUrl: draft.elevationSourceUrl.trim(),
         ductingOverlayEnabled: draft.ductingOverlayEnabled ? 'true' : 'false',
+        mqttRootDirectoryRefreshEnabled: draft.mqttRootDirectoryRefreshEnabled ? 'true' : 'false',
         adsbMatchEnabled: draft.adsbMatchEnabled ? 'true' : 'false',
         adsbFeed: draft.adsbFeed,
         adsb_api_token: draft.adsbApiToken.trim(),
@@ -3320,6 +3331,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 </p>
               )}
             </div>
+          </div>
+        </div>}
+
+        {show('settings-mqtt-root-directory') && isAdmin && <div id="settings-mqtt-root-directory" className="settings-section">
+          <h3>{t('settings.mqtt_root_directory_section', 'MQTT root directory refresh')}</h3>
+          <p className="setting-description">
+            {t(
+              'settings.mqtt_root_directory_section_description',
+              'The MQTT topic finder suggests community roots from a list bundled with MeshMonitor. While on, a topic search may also fetch the current list from api.meshtastic.org, at most once a day. The request is a plain GET with no location, broker, topic or user details, but it tells api.meshtastic.org (and Cloudflare, which serves it) this server\'s IP address and that someone used the finder. Nothing is sent over the mesh.'
+            )}
+          </p>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="mqttRootDirectoryRefreshEnabled"
+                type="checkbox"
+                checked={draft.mqttRootDirectoryRefreshEnabled}
+                onChange={(e) => updateField('mqttRootDirectoryRefreshEnabled', e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.mqtt_root_directory_enabled_label', 'Refresh the community root list (contacts api.meshtastic.org)')}</span>
+            </label>
+            <span className="setting-description">
+              {t('settings.mqtt_root_directory_enabled_description', 'Off by default. While off, the finder uses only the bundled list and the server makes no requests for it.')}
+            </span>
           </div>
         </div>}
 

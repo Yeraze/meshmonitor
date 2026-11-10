@@ -95,6 +95,20 @@ describe('MqttRootFinder', () => {
     expect(screen.getAllByText(/mqtt_root_finder.retained$|^retained$/).length).toBeGreaterThan(0);
   });
 
+  it('shows where the community directory came from (#6337)', async () => {
+    api.get.mockResolvedValue(view({ directory: { source: 'bundled' } }));
+    setup();
+    await startAndPoll();
+    expect(screen.getByText(/mqtt_root_finder.directory_bundled|bundled copy/)).toBeTruthy();
+  });
+
+  it('shows an updated directory footnote for a live copy (#6337)', async () => {
+    api.get.mockResolvedValue(view({ directory: { source: 'live', fetchedAt: Date.UTC(2026, 10, 1) } }));
+    setup();
+    await startAndPoll();
+    expect(screen.getByText(/mqtt_root_finder.directory_updated|Root directory: updated/)).toBeTruthy();
+  });
+
   it('picking a row calls onPickRoot and makes no save call', async () => {
     const { onPickRoot } = setup();
     await startAndPoll();
