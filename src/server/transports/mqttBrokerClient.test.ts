@@ -13,6 +13,7 @@ function makeFakeClient() {
   c.reconnectAt = [] as number[];
   c.subscribe = vi.fn((_t: string[], _o: unknown, cb?: any) => cb && cb(null, [], {}));
   c.publish = vi.fn((_t: string, _p: Buffer, _o: unknown, cb?: any) => cb && cb());
+  c.unsubscribe = vi.fn((_t: string[], _o: unknown, cb?: any) => cb && cb(null));
   c.end = vi.fn((_f: boolean, _o: unknown, cb?: any) => cb && cb());
   c.reconnect = vi.fn(() => {
     c.reconnectAt.push(Date.now());
@@ -71,6 +72,66 @@ describe('MqttBrokerClient', () => {
     expect(typeof lastConnectOptions().lookup).toBe('function');
     // and it disables mqtt.js auto-reconnect (we drive reconnects ourselves)
     expect(lastConnectOptions().reconnectPeriod).toBe(0);
+  });
+
+  describe('one-shot options (#6287)', () => {
+    it('keeps the 30 s connect timeout by default', () => {
+      void new MqttBrokerClient({ url: 'mqtt://broker.test:1883' }).connect();
+      expect(lastConnectOptions().connectTimeout).toBe(30_000);
+    });
+
+    it('honours connectTimeoutMs', () => {
+      void new MqttBrokerClient({ url: 'mqtt://broker.test:1883', connectTimeoutMs: 10_000 }).connect();
+      expect(lastConnectOptions().connectTimeout).toBe(10_000);
+    });
+
+    it('schedules a reconnect after a drop by default', () => {
+      const client = new MqttBrokerClient({ url: 'mqtt://broker.test:1883' });
+      void client.connect();
+      const fake = lastFakeClient();
+      up(fake);
+      down(fake);
+      vi.advanceTimersByTime(2000);
+      expect(fake.reconnect).toHaveBeenCalled();
+    });
+
+    it('never reconnects when autoReconnect is false', () => {
+      const client = new MqttBrokerClient({ url: 'mqtt://broker.test:1883', autoReconnect: false });
+      void client.connect();
+      const fake = lastFakeClient();
+      up(fake);
+      down(fake);
+      vi.advanceTimersByTime(120_000);
+      expect(fake.reconnect).not.toHaveBeenCalled();
+      fake.isUp = false;
+      client.doReconnect();
+      expect(fake.reconnect).not.toHaveBeenCalled();
+    });
+
+    it('unsubscribe removes the topic from the resubscribe set', async () => {
+      const client = new MqttBrokerClient({ url: 'mqtt://broker.test:1883' });
+      void client.connect();
+      const fake = lastFakeClient();
+      up(fake);
+      await client.subscribe(['a/#', 'b/#']);
+      await client.unsubscribe(['a/#']);
+      expect(fake.unsubscribe).toHaveBeenCalledWith(['a/#'], {}, expect.any(Function));
+      fake.subscribe.mockClear();
+      down(fake);
+      up(fake); // fresh session resubscribes from the set
+      expect(fake.subscribe).toHaveBeenCalledTimes(1);
+      expect(fake.subscribe.mock.calls[0][0]).toEqual(['b/#']);
+    });
+
+    it('unsubscribe while offline only edits the set', async () => {
+      const client = new MqttBrokerClient({ url: 'mqtt://broker.test:1883' });
+      await client.subscribe(['a/#']);
+      await client.unsubscribe(['a/#']);
+      void client.connect();
+      const fake = lastFakeClient();
+      up(fake);
+      expect(fake.subscribe).not.toHaveBeenCalled();
+    });
   });
 
   describe('stability-gated backoff reset', () => {

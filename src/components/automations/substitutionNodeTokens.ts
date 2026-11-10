@@ -39,6 +39,7 @@ export const SUBJECT_NODE_TRIGGER_TYPES = [
   'trigger.nodeOnline',
   'trigger.nodeRebooted',
   'trigger.nodePowerChanged',
+  'trigger.clockOutOfSync',
   'trigger.batteryTrend',
   'trigger.becameLikelyAircraft',
   'trigger.neighborAdded',

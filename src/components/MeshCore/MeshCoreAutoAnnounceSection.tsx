@@ -15,6 +15,7 @@ import { ConfigGroup } from '../shared/config/ConfigGroup';
 import { TokenInsertButtons } from '../shared/automation/TokenInsertButtons';
 import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
 import { isTxDisabledBody } from '../../utils/txDisabled';
+import { SplitLongMessagesField } from '../shared/automation/SplitLongMessagesField';
 import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
 import { DEFAULT_MESHCORE_ADVERT_MODE, isMeshCoreAdvertMode, type MeshCoreAdvertMode } from '../../types/meshcoreAdvert';
 
@@ -32,6 +33,7 @@ interface AutoAnnounceSettings {
   intervalHours: number;
   message: string;
   channelIndexes: number[];
+  splitLongMessages: boolean;
   announceOnStart: boolean;
   useSchedule: boolean;
   schedule: string;
@@ -57,6 +59,7 @@ const DEFAULTS: AutoAnnounceSettings = {
   intervalHours: 6,
   message: DEFAULT_MESSAGE,
   channelIndexes: [0],
+  splitLongMessages: false,
   announceOnStart: false,
   useSchedule: false,
   schedule: DEFAULT_SCHEDULE,
@@ -109,6 +112,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
           intervalHours: typeof json.data.intervalHours === 'number' ? json.data.intervalHours : 6,
           message: json.data.message || DEFAULT_MESSAGE,
           channelIndexes: Array.isArray(json.data.channelIndexes) ? json.data.channelIndexes : [0],
+          splitLongMessages: !!json.data.splitLongMessages,
           announceOnStart: !!json.data.announceOnStart,
           useSchedule: !!json.data.useSchedule,
           schedule: json.data.schedule || DEFAULT_SCHEDULE,
@@ -185,6 +189,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
       settings.intervalHours !== initial.intervalHours ||
       settings.message !== initial.message ||
       !arraysEqual(settings.channelIndexes, initial.channelIndexes) ||
+      settings.splitLongMessages !== initial.splitLongMessages ||
       settings.announceOnStart !== initial.announceOnStart ||
       settings.useSchedule !== initial.useSchedule ||
       settings.schedule !== initial.schedule ||
@@ -223,6 +228,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             intervalHours: settings.intervalHours,
             message: settings.message,
             channelIndexes: settings.channelIndexes,
+            splitLongMessages: settings.splitLongMessages,
             announceOnStart: settings.announceOnStart,
             useSchedule: settings.useSchedule,
             schedule: settings.schedule,
@@ -495,6 +501,18 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Long announcements (#6316): truncate (default) or split into up to 3 sends. */}
+        <div className="setting-item">
+          <label>{t('meshcore.automation.announce.split_label', 'Long Announcements')}</label>
+          <SplitLongMessagesField
+            id="meshcoreAutoAnnounceSplitLongMessages"
+            checked={settings.splitLongMessages}
+            onChange={(v) => update('splitLongMessages', v)}
+            disabled={disabled || !canWrite}
+            perTargetCount={settings.channelIndexes.length}
+          />
         </div>
 
         {/* MeshCore scope/region for the announcement (#3833) */}

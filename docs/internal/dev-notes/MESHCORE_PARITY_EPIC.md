@@ -277,3 +277,16 @@ connected / canWrite props, a restore summary dialog and a MeshCore Backups sect
 and restore by filename, world-readable backup files, Meshtastic backups including the node private key.
 Deviations: TX power above the radio maximum is clamped and reported under `skipped`;
 the Meshtastic section is not disabled while the radio is offline (the server answers 409).
+
+### #6273 clock out of sync (spec: `ISSUE_6273_SPEC.md`)
+Maintainer answers, 2026-11-10: default threshold 300 s (range 120-86400), two consecutive out-of-sync samples, once per
+episode; Device Health rate limit 10 an hour; device sources only (no `meshcore_mqtt` sampling); no Sync-clock action;
+Meshtastic wiring is a follow-up.
+Shipped: `detectClockOffset` (`meshcoreDeviceHealth.ts`) stores `mc_rtc_drift_secs` samples from verified adverts (replay
+check on sender time, one an hour per node) and emits `node:clockOffset`; Companion reads the sender time
+stashed from the raw advert at the firmware push, Repeater needs `signatureVerified`, the local poller feeds its own
+device clock (no throttle; the poller stores the row). `trigger.clockOutOfSync` is protocol neutral
+(`utils/clockOutOfSync.ts`: edge rule, text, threshold range); history lives in telemetry so a restart or save cannot
+re-fire it. Device Health alert appended last. The Security scan reads the latest stored sample as an `advert` offset,
+so the clock flag works with the packet log off. Follow-ups: Meshtastic samples (packet `rxTime` vs sender time);
+`meshcore_mqtt` sampling from the broker envelope time; #6274 neighbour alert.

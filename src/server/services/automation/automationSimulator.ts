@@ -15,6 +15,7 @@
  * branch routing, resolved action params, simulated variable writes) and writes
  * NO run-log row. The live event-bus path (automationEngineService) is untouched.
  */
+import { planMeshCoreTextParts } from '../../utils/meshcoreSplitPlan.js';
 import {
   categoryOf,
   stepOutputNameOf,
@@ -187,7 +188,13 @@ function recordingDeps(
       const previous = Boolean(row.enabled);
       return { sourceId: row.id, sourceName: row.name, previous, enabled: mode === 'toggle' ? !previous : Boolean(enabled) };
     },
-    async sendMessage(a) { return { action: 'sendMessage', ...a }; },
+    async sendMessage(a) {
+      // #6316: report how many parts a MeshCore split would send. Nothing is sent.
+      const plannedParts = a.splitLongMessages
+        ? planMeshCoreTextParts(a.text, { isDm: typeof a.destination === 'string', split: true }).parts.length
+        : undefined;
+      return { action: 'sendMessage', ...a, ...(plannedParts !== undefined ? { plannedParts } : {}) };
+    },
     async sendTapback(a) { return { action: 'tapback', ...a }; },
     async manageNode(a) { return { action: 'nodeManage', ...a }; },
     async requestData(a) { return { action: 'requestData', ...a }; },

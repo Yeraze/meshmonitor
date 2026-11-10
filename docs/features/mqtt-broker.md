@@ -5,7 +5,7 @@ The embedded MQTT broker and bidirectional bridges shipped in MeshMonitor 4.6 (P
 :::
 
 ::: tip Setting one up?
-The [MQTT Setup Guide](/features/mqtt-setups) walks through the common setups step by step: one node to an upstream server, several nodes, and one node to several servers. This page is the reference for every option.
+The [MQTT Setup Guide](/features/mqtt-setups) walks through the common setups step by step: one node to an upstream server, several nodes, and one node to several servers. To pick a root topic for a server, see [Finding a root topic](/features/mqtt-setups#finding-a-root-topic). This page is the reference for every option.
 :::
 
 MeshMonitor can run its own MQTT broker inside the same container, so your Meshtastic devices (and any other MQTT clients on your network) can publish directly to MeshMonitor — and MeshMonitor can relay that traffic, with **filtering rules**, to public upstream brokers like `mqtt.meshtastic.org`.

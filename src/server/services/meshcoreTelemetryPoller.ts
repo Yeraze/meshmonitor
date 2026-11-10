@@ -26,7 +26,7 @@ import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type { MeshCoreManager, MeshCoreDeviceInfo } from '../meshcoreManager.js';
 import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
-import { detectMeshCoreReboot, detectMeshCorePowerChange } from './meshcoreDeviceHealth.js';
+import { detectMeshCoreReboot, detectMeshCorePowerChange, detectClockOffset, type ClockOffsetTelemetry } from './meshcoreDeviceHealth.js';
 import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
 
 /**
@@ -43,6 +43,8 @@ export interface PollerDatabase {
       telemetryType: string,
       sourceId?: string,
     ) => Promise<{ value: number } | null>;
+    // Optional: the clock-offset history for trigger.clockOutOfSync (#6273).
+    getTelemetryByNode?: ClockOffsetTelemetry['getTelemetryByNode'];
   };
   meshcore: {
     upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<unknown>;
@@ -518,6 +520,21 @@ export class MeshCoreTelemetryPoller {
         1,
         core.batteryMv,
         manager.sourceId,
+      );
+    }
+
+    // #6273: the attached device's own clock reading feeds trigger.clockOutOfSync.
+    // The drift row is already in `rows` (the batch below stores it, as before);
+    // this reads the prior samples first, so it must run before the insert.
+    if (snapshot.rtcDriftSecs !== undefined) {
+      await detectClockOffset(
+        this.database.telemetry,
+        nodeId,
+        snapshot.rtcDriftSecs,
+        'device',
+        Math.floor(now / 1000) - snapshot.rtcDriftSecs,
+        manager.sourceId,
+        now,
       );
     }
 

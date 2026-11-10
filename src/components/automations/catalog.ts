@@ -5,6 +5,8 @@
  * metadata only; the engine validates the resulting graph server-side. Field
  * `kind` maps to an input renderer in AutomationBuilder.
  */
+import { CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS, CLOCK_OUT_OF_SYNC_MIN_SECONDS, CLOCK_OUT_OF_SYNC_MAX_SECONDS } from '../../utils/clockOutOfSync';
+import { MESHCORE_MAX_TEXT_BYTES, MESHCORE_SPLIT_MAX_PARTS, MESHCORE_SPLIT_PART_GAP_MS } from '../../utils/meshcoreMessageLimits';
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
 export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect' | 'resultTarget' | 'tracePaths' | 'datetimeLocal' | 'timeZone';
@@ -386,6 +388,16 @@ export const TRIGGERS: BlockDef[] = [
     ],
   },
   {
+    type: 'trigger.clockOutOfSync',
+    label: 'A MeshCore node’s clock is out of sync',
+    description: 'Fires when a MeshCore node’s clock is off by more than the threshold on two samples in a row, and again only after a sample in sync. MeshMonitor measures this passively from adverts it already hears (and from the attached device’s own clock), so no packet is sent. A repeater whose clock was never set reads “Clock not set”. The firmware refuses to move a clock backwards, so only a clock that is behind can be fixed by a time sync. MQTT sources are not sampled. Meshtastic is not wired yet.',
+    fields: [
+      { name: 'thresholdSeconds', label: 'Off by more than (seconds)', kind: 'number', placeholder: String(CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS), help: `Whole seconds, ${CLOCK_OUT_OF_SYNC_MIN_SECONDS} to ${CLOCK_OUT_OF_SYNC_MAX_SECONDS}. The floor covers relay delay and a repeater clock that reads to the minute.` },
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
+  {
     type: 'trigger.batteryTrend',
     label: 'A node’s battery is steadily draining',
     description: 'Fires when a node’s battery level falls by at least the given amount across a lookback window — the “solar node losing charge / not charging” alert. Computed from the battery-level telemetry a node already reports; battery history is checked on a slow periodic tick (about every 15 minutes) against every Meshtastic node on every source, so narrow it with a “Source is one of…” condition. It fires once per decline and re-arms only after the battery recovers (net drop back under the threshold). Meshtastic only — MeshCore has no battery history. Heuristic note: the protocol carries no charge-state field, so a falling level is a proxy for “not charging”, not a certainty — it can false-alarm under heavy load and does not know day from night.',
@@ -410,7 +422,7 @@ export const TRIGGERS: BlockDef[] = [
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged', 'trigger.batteryTrend', 'trigger.becameLikelyAircraft', 'trigger.neighborAdded'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged', 'trigger.batteryTrend', 'trigger.becameLikelyAircraft', 'trigger.clockOutOfSync', 'trigger.neighborAdded'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 // #5595: MeshCore contact facts on the node triggers. MeshCore has no node
@@ -473,6 +485,10 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     { value: 'previousUptimeSeconds', label: 'Uptime before reset (s)' },
     { value: 'uptimeSeconds', label: 'Uptime after reset (s)' },
   ],
+  'trigger.clockOutOfSync': [
+    { value: 'offsetSeconds', label: 'Clock offset (s, positive = node is behind)' },
+    { value: 'thresholdSeconds', label: 'Threshold (s)' },
+  ],
   'trigger.nodePowerChanged': [
     { value: 'nodeNum', label: 'Node #' },
     { value: 'batteryLevel', label: 'Battery level (%, >100 = powered)' },
@@ -518,6 +534,10 @@ const EVENT_STRING: Record<string, FieldOpt[]> = {
     { value: 'reactionTargetSender', label: 'MeshCore: sender of the message reacted to' },
   ],
   'trigger.telemetry': [{ value: 'telemetryType', label: 'Metric name' }],
+  'trigger.clockOutOfSync': [
+    { value: 'direction', label: 'Direction (behind / ahead / notSet)' },
+    { value: 'sampleSource', label: 'Sample source (advert / device)' },
+  ],
   'trigger.nodeUpdated': MESHCORE_NODE_EVENT_STRING_FIELDS,
   'trigger.nodeDiscovered': MESHCORE_NODE_EVENT_STRING_FIELDS,
   'trigger.neighborAdded': [
@@ -776,6 +796,10 @@ export const ACTIONS: BlockDef[] = [
         // sends. Reuses Phase 2's showIf.truthy so an unset/blank/0 `to` hides it.
         showIf: { field: 'to', truthy: true },
         help: 'Resend this DM (1–3) until the recipient ACKs it — the same retry Auto-Acknowledge uses. Leave blank for a single send. Setting it routes the DM through the source’s outgoing queue, which also spaces sends 30 seconds apart. Meshtastic DMs only: ignored for channel messages and MeshCore, and ignored when Hop limit is 0.',
+      },
+      {
+        name: 'splitLongMessages', label: 'Split long messages', kind: 'checkbox', advanced: true,
+        help: `MeshCore only. A MeshCore message holds ${MESHCORE_MAX_TEXT_BYTES} bytes in a DM, less on a channel (${MESHCORE_MAX_TEXT_BYTES} minus your node name and 2). A longer message is cut to fit unless you split it. Split messages go out as up to ${MESHCORE_SPLIT_MAX_PARTS} messages, ${MESHCORE_SPLIT_PART_GAP_MS / 1000} seconds apart, each marked like "(1/${MESHCORE_SPLIT_MAX_PARTS})", and every repeater in range repeats each one. Each source and channel sends its own set, so airtime grows with both. Meshtastic sources ignore this and cut at 200 bytes.`,
       },
       HOP_LIMIT_FIELD,
       {

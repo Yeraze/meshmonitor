@@ -27,6 +27,7 @@ export type DataEventType =
   | 'node:rebooted'
   | 'neighbor:sighting'
   | 'node:powerChanged'
+  | 'node:clockOffset'
   | 'node:aircraft'
   | 'message:new'
   | 'channel:updated'
@@ -195,6 +196,21 @@ export interface NeighborSightingData {
   lastHeardAt: number;
   snr: number | null;
   sightings: number;
+}
+
+/**
+ * A passive clock-offset sample for a MeshCore node (#6273): receipt time minus
+ * the node's own time, in seconds (positive = the node is behind). Carries the
+ * two stored samples before this one so `trigger.clockOutOfSync` can decide
+ * whether the sample starts an out-of-sync episode. Nothing here is sent over
+ * the air; the sample comes from adverts already heard or the local clock read.
+ */
+export interface NodeClockOffsetData {
+  publicKey: string;
+  offsetSeconds: number;
+  /** The stored samples before this one, newest first (at most 2). */
+  previousOffsets: number[];
+  sampleSource: 'advert' | 'device';
 }
 
 /**
@@ -438,6 +454,20 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Neighbour sighting: ${data.neighborPublicKey.substring(0, 12)}… via ${data.reporterPublicKey.substring(0, 12)}… (sighting ${data.sightings})`);
+  }
+
+  /**
+   * Emit a clock-offset sample (used by trigger.clockOutOfSync, #6273).
+   */
+  emitNodeClockOffset(data: NodeClockOffsetData, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'node:clockOffset',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Node clock offset: ${data.publicKey.substring(0, 12)} ${data.offsetSeconds}s (${data.sampleSource})`);
   }
 
   /**

@@ -22,6 +22,7 @@ import {
   detectPowerTransition,
   POWERED_BATTERY_LEVEL_THRESHOLD,
 } from '../utils/poweredState.js';
+import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
 import { logger } from '../../utils/logger.js';
 
 /** The one telemetry-repo method this helper needs. Optional so test/mock
@@ -160,5 +161,128 @@ export async function detectMeshCorePowerChange(
     logger.warn(
       `MeshCore power-change detection failed for ${publicKey.substring(0, 12)}…: ${e instanceof Error ? e.message : String(e)}`,
     );
+  }
+}
+
+/** The telemetry type that stores clock offsets (server time minus node time, in seconds). */
+export const CLOCK_OFFSET_TELEMETRY_TYPE = 'mc_rtc_drift_secs';
+
+/** Stored clock samples per key and source: at most one an hour from adverts. */
+export const CLOCK_SAMPLE_MIN_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Telemetry methods {@link detectClockOffset} needs. Optional so mock DBs that
+ *  lack them simply record nothing. */
+export interface ClockOffsetTelemetry {
+  getTelemetryByNode?: (
+    nodeId: string,
+    limit?: number,
+    sinceTimestamp?: number,
+    beforeTimestamp?: number,
+    offset?: number,
+    telemetryType?: string,
+    sourceId?: string,
+  ) => Promise<Array<{ value: number; timestamp: number }>>;
+  insertTelemetry?: (
+    row: {
+      nodeId: string;
+      nodeNum: number;
+      telemetryType: string;
+      value: number;
+      unit?: string;
+      timestamp: number;
+      createdAt: number;
+    },
+    sourceId?: string,
+  ) => Promise<boolean>;
+}
+
+/** Last stored advert sample per `sourceId:publicKey`. Limits storage only, so
+ *  it does not need to survive a restart (the alert history is in telemetry). */
+const lastAdvertSampleAt = new Map<string, number>();
+const CLOCK_THROTTLE_MAX_KEYS = 5000;
+
+/** Test hook: forget the storage throttle. */
+export function resetClockOffsetThrottleForTests(): void {
+  lastAdvertSampleAt.clear();
+}
+
+/**
+ * Record one passive clock sample for a MeshCore node and emit
+ * `node:clockOffset` for `trigger.clockOutOfSync` (#6273).
+ *
+ * `offsetSeconds` is receipt time minus the node's own time (positive = the node
+ * is behind). The callers must pass only samples that are safe to trust: a
+ * Repeater advert whose signature verified, an advert the Companion firmware
+ * accepted, or the attached device's own clock.
+ *
+ * - `advert` samples: dropped when the sender time is not newer than the newest
+ *   stored sample's (a replay, or a duplicate copy a flood makes), and stored at
+ *   most once an hour per node. The row is inserted here.
+ * - `device` samples: read from the attached device itself, so no replay or
+ *   throttle rule applies, and the CALLER stores the row (the telemetry poller
+ *   writes it in its own batch, as it always did). This only reads the prior
+ *   samples and emits, so it must run before that batch is inserted.
+ *
+ * Reads and writes the DB only; it sends no packets.
+ *
+ * @returns true when a sample was accepted
+ */
+export async function detectClockOffset(
+  telemetry: ClockOffsetTelemetry,
+  publicKey: string,
+  offsetSeconds: number,
+  sampleSource: 'advert' | 'device',
+  senderSec: number,
+  sourceId: string,
+  receivedAtMs: number = Date.now(),
+): Promise<boolean> {
+  try {
+    if (!telemetry?.getTelemetryByNode) return false;
+    if (!Number.isFinite(offsetSeconds) || !Number.isFinite(senderSec)) return false;
+    const key = `${sourceId}:${publicKey}`;
+    if (sampleSource === 'advert') {
+      // A zero stamp cannot be told from a repeat, so it is never sampled.
+      if (!(senderSec > 0)) return false;
+      const last = lastAdvertSampleAt.get(key);
+      if (last !== undefined && receivedAtMs - last < CLOCK_SAMPLE_MIN_INTERVAL_MS) return false;
+    }
+
+    const stored = await telemetry.getTelemetryByNode(
+      publicKey, 3, undefined, undefined, 0, CLOCK_OFFSET_TELEMETRY_TYPE, sourceId,
+    );
+    // Newest first. A row's sender time is its receipt second minus its offset.
+    const sorted = [...stored].sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+    if (sampleSource === 'advert' && sorted.length > 0) {
+      const newest = sorted[0];
+      const newestSender = Math.floor(Number(newest.timestamp) / 1000) - Number(newest.value);
+      if (senderSec <= newestSender) return false;
+    }
+
+    const previousOffsets = sorted.slice(0, 2).map((r) => Number(r.value));
+    if (sampleSource === 'advert') {
+      if (!telemetry.insertTelemetry) return false;
+      await telemetry.insertTelemetry(
+        {
+          nodeId: publicKey,
+          nodeNum: nodeNumFromPubkey(publicKey),
+          telemetryType: CLOCK_OFFSET_TELEMETRY_TYPE,
+          value: offsetSeconds,
+          unit: 's',
+          timestamp: receivedAtMs,
+          createdAt: receivedAtMs,
+        },
+        sourceId,
+      );
+      if (lastAdvertSampleAt.size >= CLOCK_THROTTLE_MAX_KEYS) lastAdvertSampleAt.clear();
+      lastAdvertSampleAt.set(key, receivedAtMs);
+    }
+
+    dataEventEmitter.emitNodeClockOffset({ publicKey, offsetSeconds, previousOffsets, sampleSource }, sourceId);
+    return true;
+  } catch (e) {
+    logger.warn(
+      `MeshCore clock offset sampling failed for ${publicKey.substring(0, 12)}…: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return false;
   }
 }
