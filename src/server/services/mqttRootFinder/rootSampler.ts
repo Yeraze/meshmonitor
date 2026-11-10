@@ -125,6 +125,11 @@ export class RootSampler {
     return this.status;
   }
 
+  /** Epoch ms when the sample reached a final state, else null. */
+  getEndedAt(): number | null {
+    return this.endedAt || null;
+  }
+
   snapshot(): SamplerSnapshot {
     const end = this.endedAt || Date.now();
     const elapsed = this.startedAt ? Math.min(Math.max(0, end - this.startedAt), this.durationMs) : 0;
