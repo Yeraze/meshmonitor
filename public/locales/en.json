@@ -6541,6 +6541,8 @@
   "meshcore.rooms.password_placeholder": "Password (empty for guest)",
   "meshcore.rooms.login_button": "Login",
   "meshcore.rooms.login_failed": "Login failed",
+  "meshcore.rooms.not_logged_in_banner": "Not logged in \u2014 showing saved posts. Log in to post or fetch new ones.",
+  "meshcore.rooms.login_no_reply_hint": "A room server sends no reply when it refuses a login. A timeout usually means this radio is no longer in the room\u2019s access list, a guest password is needed (or the room does not allow read-only guests), or the room is out of range.",
   "meshcore.rooms.logging_in": "Logging in…",
   "meshcore.rooms.login_cancelled": "Login cancelled",
   "meshcore.loginProgress.starting": "Sending login…",

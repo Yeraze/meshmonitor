@@ -251,3 +251,46 @@ describe('deviceHealthTemplate', () => {
     });
   });
 });
+
+describe('deviceHealthTemplate: confirmed new neighbour (#6274)', () => {
+  const nb = (values: Record<string, unknown>) => {
+    const built = buildMany({ neighborConfirmed: true, ...values });
+    expect(built).toHaveLength(1);
+    return built[0];
+  };
+
+  it('declares the checkbox and gates its fields behind it', () => {
+    const byName = Object.fromEntries(deviceHealthTemplate.params.map((p) => [p.name, p]));
+    expect(byName.neighborConfirmed.kind).toBe('checkbox');
+    for (const f of ['neighborConfirmHours', 'neighborMinSnr']) {
+      expect(byName[f].showIf).toEqual({ field: 'neighborConfirmed', truthy: true });
+    }
+  });
+
+  it('builds trigger.neighborAdded with the default 72 h and a 5 per hour rate limit', () => {
+    const { name, config } = nb({});
+    expect(name).toBe('Device Health — New neighbour confirmed');
+    expect(triggerNode(config).type).toBe('trigger.neighborAdded');
+    expect(triggerNode(config).params).toEqual({ confirmHours: 72, rateLimit: { maxActions: 5, windowSeconds: 3600 } });
+    expect(validateAutomationGraph(config).valid).toBe(true);
+  });
+
+  it('clamps confirmHours to 6..336 and rounds', () => {
+    expect(triggerNode(nb({ neighborConfirmHours: '2' }).config).params!.confirmHours).toBe(6);
+    expect(triggerNode(nb({ neighborConfirmHours: '9999' }).config).params!.confirmHours).toBe(336);
+    expect(triggerNode(nb({ neighborConfirmHours: '48.4' }).config).params!.confirmHours).toBe(48);
+  });
+
+  it('adds an SNR condition only when asked, and never the Meshtastic node-id filter', () => {
+    const plain = nb({ nodeNums: [111] }).config;
+    expect(plain.nodes.some((n) => n.type === 'condition.string')).toBe(false);
+    expect(plain.nodes.some((n) => n.type === 'condition.numeric')).toBe(false);
+    const withSnr = nb({ neighborMinSnr: '5' }).config;
+    expect(withSnr.nodes.find((n) => n.type === 'condition.numeric')!.params).toEqual({ field: 'snr', op: '>=', value: '5' });
+  });
+
+  it('keeps the source filter', () => {
+    const { config } = nb({ sourceIds: ['mc-1'] });
+    expect(config.nodes.find((n) => n.type === 'condition.sourceFilter')!.params).toEqual({ sourceIds: ['mc-1'] });
+  });
+});

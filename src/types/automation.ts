@@ -37,7 +37,8 @@ export type TriggerType =
   | 'trigger.nodePowerChanged'
   | 'trigger.batteryTrend'
   | 'trigger.becameLikelyAircraft'
-  | 'trigger.clockOutOfSync';
+  | 'trigger.clockOutOfSync'
+  | 'trigger.neighborAdded';
 
 export type ConditionType =
   | 'condition.always'
@@ -94,8 +95,14 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.nodePowerChanged',
   'trigger.batteryTrend',
   'trigger.becameLikelyAircraft',
+  'trigger.neighborAdded',
   'trigger.clockOutOfSync',
 ];
+
+/** `trigger.neighborAdded` confirmation window, in hours (#6274). */
+export const NEIGHBOR_CONFIRM_HOURS_DEFAULT = 72;
+export const NEIGHBOR_CONFIRM_HOURS_MIN = 6;
+export const NEIGHBOR_CONFIRM_HOURS_MAX = 336;
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
   'condition.always',
@@ -1035,6 +1042,17 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           const dir = p.direction == null || p.direction === '' ? 'either' : String(p.direction);
           if (!['lost', 'restored', 'either'].includes(dir)) {
             errors.push(`trigger.nodePowerChanged "${n.id}" requires params.direction to be one of: lost, restored, either`);
+          }
+          break;
+        }
+        case 'trigger.neighborAdded': {
+          // Confirmed new neighbour (#6274). Blank means the default (72 h); a set
+          // value must be a whole number of hours inside the supported range.
+          if (p.confirmHours != null && p.confirmHours !== '') {
+            const h = Number(p.confirmHours);
+            if (!Number.isInteger(h) || h < NEIGHBOR_CONFIRM_HOURS_MIN || h > NEIGHBOR_CONFIRM_HOURS_MAX) {
+              errors.push(`trigger.neighborAdded "${n.id}" requires params.confirmHours to be a whole number from ${NEIGHBOR_CONFIRM_HOURS_MIN} to ${NEIGHBOR_CONFIRM_HOURS_MAX}`);
+            }
           }
           break;
         }

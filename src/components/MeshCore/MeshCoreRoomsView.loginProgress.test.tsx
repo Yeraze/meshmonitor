@@ -12,7 +12,8 @@ vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
   return createReactI18nextMock();
 });
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock('../../contexts/AuthContext', async () => ({
+  AuthContext: (await import('react')).createContext(null),
   useAuth: () => ({ hasPermission: () => true }),
 }));
 
