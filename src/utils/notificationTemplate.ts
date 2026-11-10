@@ -51,8 +51,45 @@ export const MESSAGE_BODY_TEMPLATE_MAX = 500;
 export const MESSAGE_TITLE_RENDERED_MAX = 150;
 export const MESSAGE_BODY_RENDERED_MAX = 400;
 
-/** The `text` token is cut to this length (same limit as before #5593). */
-export const MESSAGE_TEXT_MAX = 100;
+/** The `text` token is cut to this length unless a user raises it (same limit as before #5593). */
+export const MESSAGE_TEXT_MAX_DEFAULT = 100;
+/** Kept for callers that predate the setting. */
+export const MESSAGE_TEXT_MAX = MESSAGE_TEXT_MAX_DEFAULT;
+/** Range a user may pick for the `text` token length (#6278). */
+export const MESSAGE_TEXT_MAX_MIN = 20;
+export const MESSAGE_TEXT_MAX_LIMIT = 1000;
+/** Hard cap on a rendered body, however long `text` is allowed to be. */
+export const MESSAGE_BODY_RENDERED_LIMIT = 1000;
+/** Room left in the body for the sender prefix and any template text. */
+const BODY_HEADROOM = 300;
+
+/** Clamp a stored `text` length. Null, blank or invalid means the default. */
+export function resolveMessageTextMax(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return MESSAGE_TEXT_MAX_DEFAULT;
+  return Math.min(MESSAGE_TEXT_MAX_LIMIT, Math.max(MESSAGE_TEXT_MAX_MIN, Math.floor(value)));
+}
+
+/** Rendered body cap for a given `text` length. */
+function bodyRenderedMax(textMax: number): number {
+  return Math.min(MESSAGE_BODY_RENDERED_LIMIT, Math.max(MESSAGE_BODY_RENDERED_MAX, textMax + BODY_HEADROOM));
+}
+
+/**
+ * Check a `text` length setting from a request. Null (blank) is valid and
+ * means the default. Returns an error message, or null when valid.
+ */
+export function validateMessageTextMax(value: unknown): { message: string } | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    return { message: 'Message text length must be a whole number or blank' };
+  }
+  if (value < MESSAGE_TEXT_MAX_MIN || value > MESSAGE_TEXT_MAX_LIMIT) {
+    return {
+      message: `Message text length must be between ${MESSAGE_TEXT_MAX_MIN} and ${MESSAGE_TEXT_MAX_LIMIT}`,
+    };
+  }
+  return null;
+}
 
 /** What `{{ isDM }}` renders for a direct message. It renders empty otherwise. */
 export const IS_DM_LABEL = 'DM';
@@ -156,8 +193,16 @@ export function validateMessageTemplate(
   return null;
 }
 
+/** Cut to `max` UTF-16 units without splitting a surrogate pair (an emoji). */
 function truncate(value: string, max: number): string {
-  return value.length > max ? `${value.substring(0, max - 3)}...` : value;
+  if (value.length <= max) return value;
+  const chars = Array.from(value);
+  let out = '';
+  for (const ch of chars) {
+    if (out.length + ch.length > max - 3) break;
+    out += ch;
+  }
+  return `${out}...`;
 }
 
 /** Token values are data: drop control characters, flatten line breaks. */
@@ -196,6 +241,7 @@ function renderOne(
   template: string,
   kind: 'title' | 'body',
   values: Record<MessageTemplateToken, string>,
+  bodyMax: number,
 ): string {
   const rendered = interpolate(cleanTemplate(template, kind), (path) => {
     // Unknown tokens render empty. The route rejects them at save, so this
@@ -208,7 +254,7 @@ function renderOne(
     .map(tidyLine)
     .filter((line) => line.length > 0);
   const joined = kind === 'title' ? lines.join(' ') : lines.join('\n');
-  return truncate(joined, kind === 'title' ? MESSAGE_TITLE_RENDERED_MAX : MESSAGE_BODY_RENDERED_MAX);
+  return truncate(joined, kind === 'title' ? MESSAGE_TITLE_RENDERED_MAX : bodyMax);
 }
 
 /**
@@ -224,14 +270,17 @@ function renderOne(
 export function renderMessageNotification(
   context: MessageTemplateContext,
   templates?: MessageTemplates | null,
+  opts?: { textMax?: number | null },
 ): RenderedMessageNotification {
+  const textMax = resolveMessageTextMax(opts?.textMax);
+  const bodyMax = bodyRenderedMax(textMax);
   const senderName = cleanValue(context.senderName);
   const values: Record<MessageTemplateToken, string> = {
     sourceName: cleanValue(context.sourceName),
     channelName: context.isDM ? '' : cleanValue(context.channelName),
     senderName,
     senderShortName: cleanValue(context.senderShortName) || senderName,
-    text: truncate(cleanValue(context.text), MESSAGE_TEXT_MAX),
+    text: truncate(cleanValue(context.text), textMax),
     serviceLabel: cleanValue(context.serviceLabel),
     isDM: context.isDM ? IS_DM_LABEL : '',
   };
@@ -239,9 +288,9 @@ export function renderMessageNotification(
   const titleTemplate = normalizeTemplate(templates?.titleTemplate);
   const bodyTemplate = normalizeTemplate(templates?.bodyTemplate);
 
-  let title = titleTemplate ? renderOne(titleTemplate, 'title', values) : '';
-  if (title.length === 0) title = renderOne(defaults.title, 'title', values);
-  let body = bodyTemplate ? renderOne(bodyTemplate, 'body', values) : '';
-  if (body.length === 0) body = renderOne(defaults.body, 'body', values);
+  let title = titleTemplate ? renderOne(titleTemplate, 'title', values, bodyMax) : '';
+  if (title.length === 0) title = renderOne(defaults.title, 'title', values, bodyMax);
+  let body = bodyTemplate ? renderOne(bodyTemplate, 'body', values, bodyMax) : '';
+  if (body.length === 0) body = renderOne(defaults.body, 'body', values, bodyMax);
   return { title, body };
 }
