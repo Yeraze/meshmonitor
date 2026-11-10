@@ -372,6 +372,26 @@ Below every MeshCore composer (channel and DM) a live **`<bytes>/<limit>`** coun
 
 The counter appears only once the draft is non-empty, turns **yellow at 90%** of the limit and **red when over**, and the **Send button is disabled while over the limit** (the backend rejects an over-budget send as well).
 
+### Send under another name (API) {#api-sender-names}
+
+An API caller can send a channel message under a name of its own (`senderName` on the send endpoints, see the [REST API](/api/REST_API#send-under-another-name)). This is off by default and needs a source admin to set it up.
+
+**Setup.** Open **Device Configuration, API sender names** on a companion source. Turn on *Allow API callers to send under these names* and list up to 16 names, one per line. Saving needs `configuration:write` on the source. Each name is 1 to 31 bytes, with no `:`, no control characters and no leading `#`.
+
+**What it sends.** MeshMonitor builds the channel packet itself and hands it to the radio as a raw packet, so the name in the message is the name you chose. The radio's own name is not used.
+
+- Needs companion firmware **1.16 or later**. Older firmware answers `FIRMWARE_UNSUPPORTED`.
+- Needs **client repeat off** on the companion. With it on, the radio would send its own raw packet a second time, so MeshMonitor refuses.
+- **Scope** works as for a normal send: a per-message scope, else the channel's scope, else the source default, else the node's own default region.
+- The text limit is **5 bytes lower** than a normal channel send: 155 minus the name's bytes minus 2.
+- The message shows once, with a **Sent as <name>** line on the bubble. The radio's own copy of the packet is dropped, so Auto-Acknowledge, Auto-Responder, Forwarding and notifications never answer it. On a second source on the same channel the message counts as ours for the next 30 minutes, so nothing there answers it either.
+- **Resend** goes out raw under the same name and the same time stamp. It is refused if the name was removed from the list or the feature was turned off.
+- Receive-only mode blocks it like any other send.
+
+::: warning Impersonation
+MeshCore does not prove who sent a channel message. Anyone with write access to the channel, on a source that allows a name, can post as that name. Receivers, MeshCore apps and MeshMonitor's own block list cannot tell the difference. List only names you want your API callers to use. Every send is in the audit log (`meshcore_message_sent_as`, no message text), and so is each list change (`meshcore_sender_names_updated`).
+:::
+
 ### Reactions
 
 MeshMonitor reads emoji reactions sent by [MeshCore One](https://github.com/Avi0n/MeshCoreOne) (1.4.1 and later) and meshcore-open. MeshCore has no reaction packet: these apps send a short text message that names the target by a hash, so without this support a reaction shows as a line like `@[Alice]👍` followed by eight odd characters.
@@ -728,6 +748,8 @@ Every CLI command, login outcome, and credential mutation writes an `audit_log` 
 | `meshcore_remote_cli` / `_failed` / `_blocked` | per-CLI command on a remote node |
 | `meshcore_local_cli` / `_failed` / `_blocked` | per-CLI command on the local node |
 | `meshcore_credential_forget` | `DELETE /admin/credentials/:pubkey` |
+| `meshcore_message_sent_as` / `_denied` | channel send under an API sender name (no text stored) / refused attempt (#6282) |
+| `meshcore_sender_names_updated` | the per-source sender-name list changed (#6282) |
 
 The `details` JSON captures `sourceId`, `publicKey` (where relevant), the command text, reply length, and elapsed milliseconds. MeshMonitor masks passwords and keys in the command text before it stores it (see [CLI command history](#cli-command-history)). **The plaintext password never appears in audit details**, verified by the canary test referenced above.
 

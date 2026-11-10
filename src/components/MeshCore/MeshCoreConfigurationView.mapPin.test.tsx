@@ -34,7 +34,7 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     setCoords: ok(), setAdvertLocPolicy: ok(), setTelemetryModeBase: ok(), setTelemetryModeLoc: ok(),
     setTelemetryModeEnv: ok(), refreshAll: vi.fn().mockResolvedValue(undefined), clearError: vi.fn(),
     getDefaultPathHashSize: vi.fn().mockResolvedValue(1), setDefaultPathHashSize: vi.fn().mockResolvedValue(1),
-    getDefaultScope: vi.fn().mockResolvedValue(''), setDefaultScope: vi.fn().mockResolvedValue(''),
+    getDefaultScope: vi.fn().mockResolvedValue(''), setDefaultScope: vi.fn().mockResolvedValue(''), getSenderNamePolicy: vi.fn().mockResolvedValue({ enabled: false, allowedNames: [] }), setSenderNamePolicy: vi.fn(),
     discoverRegions: vi.fn().mockResolvedValue(null), discoverNodes: vi.fn().mockResolvedValue(null),
     fetchSavedRegions: vi.fn().mockResolvedValue([]), addSavedRegion: vi.fn().mockResolvedValue(null),
     ...overrides,

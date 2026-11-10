@@ -277,3 +277,17 @@ connected / canWrite props, a restore summary dialog and a MeshCore Backups sect
 and restore by filename, world-readable backup files, Meshtastic backups including the node private key.
 Deviations: TX power above the radio maximum is clamped and reported under `skipped`;
 the Meshtastic section is not disabled while the radio is offline (the server answers 409).
+
+### #6282 senderName override for API channel sends (spec: `ISSUE_6282_SPEC.md`)
+Maintainer decisions, 2026-11-10: per-source opt-in (default off), up to 16 allowed names edited with `configuration:write`,
+callers also need today's send grants; names 1-31 bytes NFC with no `:`, control, bidi, zero-width or leading `#`; full scope
+support mirroring `sendFloodScoped` (incl. `CMD_GET_DEFAULT_FLOOD_SCOPE`); 409 when client repeat is on; firmware gate >= 13
+plus runtime Err 1 -> `FIRMWARE_UNSUPPORTED`.
+Shipped: `buildRawGroupTextFrame` (raw `CMD_SEND_RAW_PACKET` frame), `meshcoreChannelTextCap(name, {raw})` (155 - name - 2),
+native `send_raw_packet` (RF, receive-only gated) and `get_default_flood_scope`, `device_query` now returns `repeat` and
+`path_hash_mode`, `MeshCoreManager.sendChannelMessageAs` (no `applyFloodScope`), own-echo suppression (10 min), heard-by match
+on the exact payload, process-wide recent-override-name registry (30 min) so sibling sources flag `selfOrigin` and skip
+auto-replies, raw resend (refused when the name left the list), migration 230 (`meshcore_messages.senderNameOverride`),
+`GET/PUT /config/sender-names`, `senderName` on both send routes, audit rows (no text), UI card and "Sent as" label.
+Follow-ups: automations / Auto-Responder / scheduled sends setting a name; a composer field; Virtual Node raw packets.
+

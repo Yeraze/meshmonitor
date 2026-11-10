@@ -358,6 +358,7 @@ export function meshcoreConfigurationNavItems(t: Translate, options: MeshCoreCon
     { id: 'meshcore-config-telemetry', label: t('meshcore.config.telemetry', 'Telemetry'), keywords: ['battery', 'sensors', 'environment'] },
     { id: 'meshcore-path-hash', label: t('meshcore.path_hash.title', 'Default path hash size'), keywords: ['path', 'hash', 'routing', 'bytes'], show: options.isCompanion === true },
     { id: 'meshcore-default-scope', label: t('meshcore.scope.title', 'Default region / scope'), keywords: ['region', 'scope', 'flood'], show: options.isCompanion === true },
+    { id: 'meshcore-sender-names', label: t('meshcore.sender_names.title', 'API sender names'), keywords: ['sender', 'name', 'api', 'impersonate', 'bot'], show: options.isCompanion === true },
     { id: 'meshcore-channels', label: t('meshcore.channels.title', 'Channels'), keywords: ['psk', 'secret', 'hashtag', 'slots'], show: options.showChannels === true },
     { id: 'meshcore-contact-sync', label: t('meshcore.contact_sync.title', 'Radio contact list'), keywords: ['contacts', 'sync', 'auto add', 'favorites'], show: options.showContactSync === true },
     { id: 'meshcore-device-actions', label: t('meshcore.settings.actions', 'Device actions'), keywords: ['advert', 'flood', 'zero hop', 'discover', 'clock', 'time'] },

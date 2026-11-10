@@ -3170,7 +3170,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           if (raw && raw.length >= 1 && raw[0] === 13) rawInfo = Uint8Array.from(raw);
         };
         c.on?.('rx', tapInfo);
-        let info: any;
+        let info: Awaited<ReturnType<typeof c.deviceQuery>>;
         try {
           info = await c.deviceQuery(1);
         } finally {

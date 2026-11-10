@@ -41,6 +41,7 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     getDefaultPathHashSize: vi.fn().mockResolvedValue(1),
     setDefaultPathHashSize: vi.fn().mockResolvedValue(1),
     getDefaultScope: vi.fn().mockResolvedValue(''),
+    getSenderNamePolicy: vi.fn().mockResolvedValue({ enabled: false, allowedNames: [] }), setSenderNamePolicy: vi.fn(),
     setDefaultScope: vi.fn().mockResolvedValue(''),
     discoverRegions: vi.fn().mockResolvedValue(null),
     discoverNodes: vi.fn().mockResolvedValue(null),
