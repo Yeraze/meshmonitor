@@ -48,7 +48,7 @@ import {
 } from './meshcoreDeviceContactErrors.js';
 import { resolveMessageScope, scopeTransportKey } from './meshcoreScopeResolve.js';
 import { buildRawGroupTextFrame, RawFrameTooLargeError } from './utils/meshcoreRawGroupText.js';
-import { MeshCoreSenderNameError } from './errors/meshcoreSenderNameError.js';
+import { MeshCoreSenderNameError, isMeshCoreSenderNameError } from './errors/meshcoreSenderNameError.js';
 import { readSenderNamePolicy, checkSenderName } from './utils/meshcoreSenderNamePolicy.js';
 import type { DbMeshCoreMessage } from '../db/repositories/meshcore.js';
 import { isReactionText, isReactionEmoji, mc1ChannelBody } from '../utils/meshcoreReactions.js';
@@ -7712,7 +7712,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             resend: { senderTimestamp: Number(row.senderTimestamp), messageId },
           });
         } catch (err) {
-          if (err instanceof MeshCoreSenderNameError) {
+          if (isMeshCoreSenderNameError(err)) {
             throw new MeshCoreResendError(
               err.code === 'SEND_FAILED' || err.code === 'TABLE_FULL' || err.code === 'ILLEGAL_ARG' ? 'SEND_FAILED' : 'RESEND_UNAVAILABLE',
               err.message,
