@@ -383,7 +383,7 @@ An API caller can send a channel message under a name of its own (`senderName` o
 - Needs **client repeat off** on the companion. With it on, the radio would send its own raw packet a second time, so MeshMonitor refuses.
 - **Scope** works as for a normal send: a per-message scope, else the channel's scope, else the source default, else the node's own default region.
 - The text limit is **5 bytes lower** than a normal channel send: 155 minus the name's bytes minus 2.
-- The message shows once, with a **Sent as <name>** line on the bubble. The radio's own copy of the packet is dropped, so Auto-Acknowledge, Auto-Responder, Forwarding and notifications never answer it. On a second source on the same channel the message counts as ours for the next 30 minutes, so nothing there answers it either.
+- The message shows once, with a **Sent as `<name>`** line on the bubble. The radio's own copy of the packet is dropped, so Auto-Acknowledge, Auto-Responder, Forwarding and notifications never answer it. On a second source on the same channel the message counts as ours for the next 30 minutes, so nothing there answers it either.
 - **Resend** goes out raw under the same name and the same time stamp. It is refused if the name was removed from the list or the feature was turned off.
 - Receive-only mode blocks it like any other send.
 
