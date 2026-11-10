@@ -14,6 +14,7 @@ import { HOP_LIMIT_OVERRIDE_MAX, parseHopLimitOverride } from '../utils/hopLimit
 import { tracePathScheduleParamErrors } from './tracePathSchedule.js';
 import { readScheduleWindow } from './scheduleWindow.js';
 import { isMeshCoreAdvertMode } from './meshcoreAdvert.js';
+import { parseClockThresholdSeconds, CLOCK_OUT_OF_SYNC_MIN_SECONDS, CLOCK_OUT_OF_SYNC_MAX_SECONDS } from '../utils/clockOutOfSync.js';
 
 export const AUTOMATION_CONFIG_VERSION = 1;
 
@@ -35,7 +36,8 @@ export type TriggerType =
   | 'trigger.nodeRebooted'
   | 'trigger.nodePowerChanged'
   | 'trigger.batteryTrend'
-  | 'trigger.becameLikelyAircraft';
+  | 'trigger.becameLikelyAircraft'
+  | 'trigger.clockOutOfSync';
 
 export type ConditionType =
   | 'condition.always'
@@ -92,6 +94,7 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.nodePowerChanged',
   'trigger.batteryTrend',
   'trigger.becameLikelyAircraft',
+  'trigger.clockOutOfSync',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
@@ -1032,6 +1035,15 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           const dir = p.direction == null || p.direction === '' ? 'either' : String(p.direction);
           if (!['lost', 'restored', 'either'].includes(dir)) {
             errors.push(`trigger.nodePowerChanged "${n.id}" requires params.direction to be one of: lost, restored, either`);
+          }
+          break;
+        }
+        case 'trigger.clockOutOfSync': {
+          // #6273. A blank threshold means the default (300 s); a value must be
+          // a whole number of seconds in the range the sampling can resolve.
+          const raw = p.thresholdSeconds;
+          if (raw != null && raw !== '' && parseClockThresholdSeconds(raw) == null) {
+            errors.push(`trigger.clockOutOfSync "${n.id}" requires params.thresholdSeconds to be a whole number from ${CLOCK_OUT_OF_SYNC_MIN_SECONDS} to ${CLOCK_OUT_OF_SYNC_MAX_SECONDS}`);
           }
           break;
         }
