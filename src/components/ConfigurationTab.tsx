@@ -2564,6 +2564,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
           <ModuleAvailabilityGate available={supportedModules?.mqtt} moduleName="MQTT">
             <MQTTConfigSection
               configVersion={configVersion}
+              loraRegion={region}
               mqttEnabled={mqttEnabled}
               setMqttEnabled={setMqttEnabled}
               mqttAddress={mqttAddress}
