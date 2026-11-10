@@ -627,4 +627,31 @@ describe('MeshCoreTelemetryPoller — directly-attached Repeater (#5533)', () =>
       vi.useRealTimers();
     }
   });
+
+  it('feeds the attached device\'s own drift to the clock-sample helper before storing it (#6273)', async () => {
+    const { dataEventEmitter } = await import('./dataEventEmitter.js');
+    const emitSpy = vi.spyOn(dataEventEmitter, 'emitNodeClockOffset').mockImplementation(() => undefined);
+    const nowMs = Date.UTC(2026, 9, 2, 12, 34, 47);
+    const manager = makeManager({
+      sourceId: 'src-clock',
+      publicKey: FULL_PUBKEY,
+      core: FULL_CORE,
+      deviceTime: Math.floor(nowMs / 1000) - 900, // device runs 15 minutes behind
+    });
+    const { db, batches } = makeDatabase();
+    const priorRows = [{ value: 880, timestamp: nowMs - 600_000 }, { value: 2, timestamp: nowMs - 1_200_000 }];
+    db.telemetry.getTelemetryByNode = vi.fn(async () => priorRows);
+
+    await new MeshCoreTelemetryPoller({ registry: makeRegistry(manager), database: db, intervalMs: 60_000 }).pollOnce();
+
+    expect(emitSpy).toHaveBeenCalledTimes(1);
+    expect(emitSpy.mock.calls[0][0]).toMatchObject({
+      publicKey: FULL_PUBKEY,
+      offsetSeconds: expect.any(Number),
+      previousOffsets: [880, 2],
+      sampleSource: 'device',
+    });
+    // The poller still stores the drift row itself, in its own batch.
+    expect(batches[0].rows.some((r) => r.telemetryType === `${MC_TELEMETRY_PREFIX}rtc_drift_secs`)).toBe(true);
+  });
 });

@@ -277,7 +277,7 @@ These work for Meshtastic and MeshCore with the same thresholds:
 
 Your own radio is never flagged. Adverts are listed with the rate for information; advert cadence has its own check in Mesh Issues.
 
-**MeshCore clock offset** comes from the newest advert (the time inside the advert) or direct message (the sender time) for each node. A node with no real-time clock stamps a default date in the past, so it is years off. The tab shows these as **Clock not set**. Other nodes drop adverts older than one they hold, so such a node is hard to hear until you set its time. Room server posts are ignored, because they replay when you log in.
+**MeshCore clock offset** comes from the newest advert (the time inside the advert) or direct message (the sender time) for each node. A node with no real-time clock stamps a default date in the past, so it is years off. The tab shows these as **Clock not set**. Other nodes drop adverts older than one they hold, so such a node is hard to hear until you set its time. Room server posts are ignored, because they replay when you log in. With the packet log off, the scan also uses the clock samples MeshMonitor stores from live adverts (the same samples the Device Health clock alert uses), so the flag still works.
 
 **Scanner.** The 24-hour scan (plus one 5 minutes after start) now covers MeshCore sources, including MeshCore MQTT sources. It only reads the database and writes flags. It sends nothing and fires no events. **Run scan now** works on both. Flags stay until the next scan or until you clear them.
 

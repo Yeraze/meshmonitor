@@ -32,6 +32,7 @@ const PAYLOADS: Record<DataEventType, (marker: string) => unknown> = {
   'meshcore:node:changed': (marker) => ({ publicKey: 'ab'.repeat(32), name: marker, changed: ['name'] }),
   'node:mobility': (marker) => ({ nodeNum: NODE_NUM, previous: 0, current: 1, marker }),
   'node:rebooted': (marker) => ({ nodeNum: NODE_NUM, previousUptimeSeconds: 9, uptimeSeconds: 1, marker }),
+  'node:clockOffset': (marker) => ({ publicKey: 'ab'.repeat(32), offsetSeconds: 600, previousOffsets: [], sampleSource: 'advert', marker }),
   'node:powerChanged': (marker) => ({ nodeNum: NODE_NUM, previousPowered: false, powered: true, batteryLevel: 101, marker }),
   'node:aircraft': (marker) => ({ nodeNum: NODE_NUM, previous: null, current: true, basis: 'agl', marker }),
   'channel:updated': (marker) => ({ id: 0, name: marker, psk: 'AQ==', role: 1 }),
@@ -80,7 +81,7 @@ const watchFlights = (client: SocketTestClient, sourceIds: string[]): Promise<un
   new Promise((resolve) => client.socket.emit('packet-flights:subscribe', sourceIds, resolve));
 /** Types a viewer who is not an admin can never receive. */
 const ADMIN_ONLY: DataEventType[] = [
-  'node:discovered', 'meshcore:node:changed', 'node:mobility', 'node:rebooted', 'node:powerChanged',
+  'node:discovered', 'meshcore:node:changed', 'node:mobility', 'node:rebooted', 'node:clockOffset', 'node:powerChanged',
   'node:aircraft', 'meshbeacon:received', 'auto-ping:update', 'firmware:status',
 ];
 

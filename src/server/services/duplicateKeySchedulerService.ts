@@ -11,6 +11,7 @@ import {
   computeMeshcorePacketRates,
   computeMeshcoreClockOffsets,
   isClockOffsetFlagged,
+  type MeshcoreDriftSample,
 } from './meshcoreSecurityScan.js';
 import {
   EXCESSIVE_PACKETS_PER_HOUR,
@@ -309,6 +310,22 @@ class DuplicateKeySchedulerService {
       : [];
     const dms = await repo.getLatestDmSenderTimes(sourceId, nowMs - MESHCORE_SCAN_DM_WINDOW_MS, MESHCORE_SCAN_DM_LIMIT);
 
+    // #6273: samples stored from live adverts, so the clock flag works with the
+    // packet log off. Auxiliary: a read failure leaves the other sources intact.
+    const driftSamples: MeshcoreDriftSample[] = [];
+    try {
+      const latest = await databaseService.telemetry?.getLatestTelemetrySampleForAllNodes?.(
+        'mc_rtc_drift_secs', sourceId,
+      );
+      for (const [publicKey, s] of latest ?? []) {
+        if (s.timestamp >= nowMs - MESHCORE_SCAN_DM_WINDOW_MS) {
+          driftSamples.push({ publicKey, driftSeconds: s.value, observedAt: s.timestamp });
+        }
+      }
+    } catch (err) {
+      logger.warn(`🔐 [${sourceId}] MeshCore scan could not read clock samples: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     const rates = computeMeshcorePacketRates(packets, nodes, {
       nowMs,
       windowMs: EXCESSIVE_PACKETS_WINDOW_MS,
@@ -320,6 +337,7 @@ class DuplicateKeySchedulerService {
       nodes,
       nowMs,
       localKeys,
+      driftSamples,
     });
 
     const writes: MeshCoreSecurityFlagsUpdate[] = [];

@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   setFlagsMock: vi.fn(),
   getPacketsMock: vi.fn(),
   logEnabledMock: vi.fn(),
+  driftMock: vi.fn(),
 }));
 
 vi.mock('../../services/database.js', () => ({
@@ -24,6 +25,7 @@ vi.mock('../../services/database.js', () => ({
     },
     nodes: {},
     settings: {},
+    telemetry: { getLatestTelemetrySampleForAllNodes: h.driftMock },
   },
 }));
 vi.mock('./meshcorePacketLogService.js', () => ({ default: { isEnabled: h.logEnabledMock } }));
@@ -59,6 +61,7 @@ describe('duplicateKeySchedulerService MeshCore scan (#6281)', () => {
     h.getDmMock.mockResolvedValue([]);
     h.setFlagsMock.mockResolvedValue(undefined);
     h.getPacketsMock.mockResolvedValue([]);
+    h.driftMock.mockResolvedValue(new Map());
   });
 
   it('flags a spammer and a skewed clock, clears stale flags, skips the local node', async () => {
@@ -132,6 +135,34 @@ describe('duplicateKeySchedulerService MeshCore scan (#6281)', () => {
     expect(h.setFlagsMock.mock.calls[0][0]).toBe('mc-mqtt');
     expect(duplicateKeySchedulerService.getStatus('mc-bad').lastScanTime).toBeNull();
     expect(duplicateKeySchedulerService.getStatus('mc-bad').scanningNow).toBe(false);
+  });
+
+  it('flags a clock from a stored advert drift sample with the packet log off (#6273)', async () => {
+    const now = Date.now();
+    h.logEnabledMock.mockResolvedValue(false);
+    h.getNodesBySourceMock.mockResolvedValue([{ publicKey: SKEWED }, { publicKey: QUIET }]);
+    h.driftMock.mockResolvedValue(new Map([
+      [SKEWED, { value: 9000, timestamp: now - 3600_000 }],
+      [QUIET, { value: 4, timestamp: now - 3600_000 }],
+    ]));
+    await (duplicateKeySchedulerService as any).runMeshcoreScan('mc-1');
+    expect(h.driftMock).toHaveBeenCalledWith('mc_rtc_drift_secs', 'mc-1');
+    expect(h.getPacketsMock).not.toHaveBeenCalled();
+    expect(h.setFlagsMock).toHaveBeenCalledTimes(1);
+    const [, writes] = h.setFlagsMock.mock.calls[0];
+    expect(writes).toEqual([
+      expect.objectContaining({ publicKey: SKEWED, isTimeOffsetIssue: true, timeOffsetSeconds: 9000, timeOffsetSource: 'advert' }),
+    ]);
+  });
+
+  it('ignores a drift sample older than the scan window, and survives a read failure (#6273)', async () => {
+    const now = Date.now();
+    h.getNodesBySourceMock.mockResolvedValue([{ publicKey: SKEWED }]);
+    h.driftMock.mockResolvedValueOnce(new Map([[SKEWED, { value: 9000, timestamp: now - 30 * 86_400_000 }]]));
+    await (duplicateKeySchedulerService as any).runMeshcoreScan('mc-1');
+    expect(h.setFlagsMock).not.toHaveBeenCalled();
+    h.driftMock.mockRejectedValueOnce(new Error('db down'));
+    await expect((duplicateKeySchedulerService as any).runMeshcoreScan('mc-1')).resolves.toBeUndefined();
   });
 
   it('refuses a second scan while one runs for the same source', async () => {

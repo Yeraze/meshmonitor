@@ -169,3 +169,39 @@ describe('computeMeshcoreClockOffsets', () => {
     expect(out.size).toBe(0);
   });
 });
+
+describe('computeMeshcoreClockOffsets: stored drift samples (#6273)', () => {
+  it('reads a stored sample as an advert-source offset, with the packet log off', () => {
+    const out = computeMeshcoreClockOffsets({
+      adverts: [], dms: [], nodes, nowMs: NOW,
+      driftSamples: [{ publicKey: KEY_A.toUpperCase(), driftSeconds: 7200, observedAt: NOW - 1000 }],
+    });
+    const o = out.get(KEY_A)!;
+    expect(o.offsetMs).toBe(7200_000);
+    expect(o.source).toBe('advert');
+    expect(isClockOffsetFlagged(o.offsetMs)).toBe(true);
+  });
+
+  it('the newest observation still wins, and the local node is skipped', () => {
+    const nowSec = Math.floor(NOW / 1000);
+    const dm = { fromPublicKey: KEY_A, senderTimestamp: nowSec - 1, receivedAtMs: NOW };
+    const out = computeMeshcoreClockOffsets({
+      adverts: [], dms: [dm], nodes, nowMs: NOW,
+      driftSamples: [{ publicKey: KEY_A, driftSeconds: 7200, observedAt: NOW - 5000 }],
+    });
+    expect(out.get(KEY_A)!.source).toBe('message');
+    const local = computeMeshcoreClockOffsets({
+      adverts: [], dms: [], nodes, nowMs: NOW, localKeys: new Set([KEY_A]),
+      driftSamples: [{ publicKey: KEY_A, driftSeconds: 7200, observedAt: NOW }],
+    });
+    expect(local.has(KEY_A)).toBe(false);
+  });
+
+  it('ignores non-finite samples', () => {
+    const out = computeMeshcoreClockOffsets({
+      adverts: [], dms: [], nodes, nowMs: NOW,
+      driftSamples: [{ publicKey: KEY_A, driftSeconds: NaN, observedAt: NOW }],
+    });
+    expect(out.has(KEY_A)).toBe(false);
+  });
+});

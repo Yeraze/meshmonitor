@@ -27,6 +27,7 @@
  * they don't need one.
  */
 import { compile, type WorkflowForm, type FormBlock } from '../compile';
+import { CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS, CLOCK_OUT_OF_SYNC_MIN_SECONDS, CLOCK_OUT_OF_SYNC_MAX_SECONDS } from '../../../utils/clockOutOfSync';
 import type { AutomationTemplate, BuiltAutomation, ParamSpec } from './types';
 
 // ─── value coercion ──────────────────────────────────────────────────────────
@@ -73,6 +74,8 @@ const DEFAULTS = {
   highNoiseFloor: -90,   // dBm
   trendWindowHours: 6,   // h
   trendMinDropPercent: 15, // percentage points
+  clockDriftSeconds: CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS, // s (MeshCore clock alert)
+  clockRateMax: 10,      // max clock alerts per hour per automation
   cooldownSeconds: 3600, // per-node throttle on the recurring telemetry alerts
 } as const;
 
@@ -154,6 +157,14 @@ const PARAMS: ParamSpec[] = [
     name: 'trendMinDropPercent', label: 'Minimum drop (percentage points)', kind: 'number',
     placeholder: String(DEFAULTS.trendMinDropPercent), showIf: { field: 'batteryDeclining', truthy: true },
     help: 'Fire when the battery fell by at least this many points across the window.',
+  },
+
+  // 11. Clock out of sync (MeshCore)
+  { name: 'clockOutOfSync', label: 'Alert when a node\'s clock is out of sync (MeshCore)', kind: 'checkbox' },
+  {
+    name: 'clockDriftThresholdSeconds', label: 'Clock off by more than (seconds)', kind: 'number',
+    placeholder: String(DEFAULTS.clockDriftSeconds), showIf: { field: 'clockOutOfSync', truthy: true },
+    help: `Measured passively from adverts. A repeater whose clock was never set reads 'Clock not set'. From ${CLOCK_OUT_OF_SYNC_MIN_SECONDS} to ${CLOCK_OUT_OF_SYNC_MAX_SECONDS} seconds.`,
   },
 ];
 
@@ -387,6 +398,30 @@ const ALERTS: AlertSpec[] = [
       }, c);
     },
   },
+  {
+    key: 'clockOutOfSync',
+    build: (v, c) => {
+      const raw = numOr(v.clockDriftThresholdSeconds, DEFAULTS.clockDriftSeconds);
+      // Whole seconds inside the range the sampling can resolve; anything else falls back.
+      const t = Number.isInteger(raw) && raw >= CLOCK_OUT_OF_SYNC_MIN_SECONDS && raw <= CLOCK_OUT_OF_SYNC_MAX_SECONDS
+        ? raw
+        : DEFAULTS.clockDriftSeconds;
+      return assemble({
+        nameSuffix: 'Clock out of sync',
+        description: `Notify when a MeshCore node's clock is off by more than ${t} seconds. Measured from adverts; sends nothing.`,
+        trigger: {
+          type: 'trigger.clockOutOfSync',
+          // Capped at 10 alerts an hour per automation (maintainer decision, #6273).
+          params: { thresholdSeconds: t, rateLimit: { maxActions: DEFAULTS.clockRateMax, windowSeconds: 3600 } },
+        },
+        notify: {
+          title: 'Clock out of sync: {{ node.longName }}',
+          body: `{{ node.longName }} clock is {{ trigger.offsetText }} (threshold {{ trigger.thresholdSeconds }}s).`,
+          type: 'warning',
+        },
+      }, c);
+    },
+  },
 ];
 
 // ─── build ───────────────────────────────────────────────────────────────────
@@ -409,7 +444,7 @@ function build(values: Record<string, unknown>): BuiltAutomation[] {
 export const deviceHealthTemplate: AutomationTemplate = {
   id: 'device-health',
   name: 'Device Health',
-  description: 'Get notified when a node’s health slips — low battery or voltage, high temperature or channel utilization, a lost heartbeat, a reboot, a power-source switch, a noisy RF floor, or a steadily draining battery. Installs one automation per alert you enable.',
+  description: 'Get notified when a node’s health slips — low battery or voltage, high temperature or channel utilization, a lost heartbeat, a reboot, a power-source switch, a noisy RF floor, a steadily draining battery, or a MeshCore clock that drifts. Installs one automation per alert you enable.',
   icon: 'notifications',
   tags: ['Notifications', 'Health'],
   params: PARAMS,

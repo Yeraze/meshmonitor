@@ -11,6 +11,7 @@ import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import type { MeshCoreNodeEventFacts, NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import type { TriggerType } from '../../../types/automation.js';
+import { clockOffsetText, clockDirection } from '../../../utils/clockOutOfSync.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji, hopOrMqttEmoji, type HopEmojiOverrides } from '../../../utils/hopEmoji.js';
 import { autoAckIsIp, autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
@@ -657,6 +658,42 @@ export function buildNodeRebootedContext(
       publicKey: publicKey ?? undefined,
       previousUptimeSeconds,
       uptimeSeconds,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
+/**
+ * Build the trigger context for a MeshCore clock sample that starts an
+ * out-of-sync episode (`trigger.clockOutOfSync`, #6273). Subject node = the
+ * node whose clock is off. MeshCore has no node number, so the subject key is
+ * the public key (same degrade as {@link buildNodeRebootedContext}).
+ * `thresholdSeconds` is the firing automation's own threshold, so this builds
+ * one context per automation.
+ */
+export function buildClockOutOfSyncContext(
+  publicKey: string,
+  offsetSeconds: number,
+  sampleSource: 'advert' | 'device',
+  thresholdSeconds: number,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.clockOutOfSync',
+    sourceId,
+    subjectNodeNum: null,
+    subjectNodeKey: publicKey,
+    timestamp,
+    fields: {
+      nodeNum: null,
+      publicKey,
+      offsetSeconds,
+      offsetText: clockOffsetText(offsetSeconds),
+      direction: clockDirection(offsetSeconds),
+      sampleSource,
+      thresholdSeconds,
       sourceId,
       timestamp,
     },

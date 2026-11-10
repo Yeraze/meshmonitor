@@ -45,6 +45,7 @@ import {
   buildNodeStaleContext,
   buildNodeOnlineContext,
   buildNodeRebootedContext,
+  buildClockOutOfSyncContext,
   buildNodePowerChangedContext,
   buildBecameLikelyAircraftContext,
   buildBatteryTrendContext,
@@ -79,6 +80,7 @@ import {
   cooldownKeyFor,
   createStepOutputs,
 } from './engineContext.js';
+import { CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS, parseClockThresholdSeconds, isClockOutOfSyncEdge } from '../../../utils/clockOutOfSync.js';
 
 interface LoadedAutomation {
   id: string;
@@ -1370,6 +1372,39 @@ export class AutomationEngineService {
   ): Promise<number> {
     const ctx = buildNodeRebootedContext(nodeNum, publicKey, previousUptimeSeconds, uptimeSeconds, sourceId, this.now());
     return this.runTrigger(ctx);
+  }
+
+  /**
+   * A passive MeshCore clock sample (`trigger.clockOutOfSync`, #6273). The
+   * sample and the two stored samples before it arrive with the event, so each
+   * rule only applies its own threshold. It fires when this sample and the one
+   * before are past the threshold and the one before that was not: two
+   * consecutive bad samples, once per episode. The history lives in the
+   * telemetry table, so a restart or a settings save can neither re-fire a
+   * rule nor reset it. Sends nothing.
+   *
+   * No self-origin guard (#3914): no automation action can change a node's clock.
+   */
+  async onClockOffset(
+    publicKey: string,
+    offsetSeconds: number,
+    previousOffsets: readonly number[],
+    sampleSource: 'advert' | 'device',
+    sourceId: string | null,
+  ): Promise<number> {
+    const autos = this.index.get('trigger.clockOutOfSync');
+    if (!autos || autos.length === 0) return 0;
+    const now = this.now();
+    let fired = 0;
+    for (const a of autos) {
+      const raw = (a.triggerNode.params as Record<string, unknown> | undefined)?.thresholdSeconds;
+      const threshold = raw == null || raw === '' ? CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS : parseClockThresholdSeconds(raw);
+      if (threshold == null) continue;
+      if (!isClockOutOfSyncEdge(offsetSeconds, previousOffsets, threshold)) continue;
+      const ctx = buildClockOutOfSyncContext(publicKey, offsetSeconds, sampleSource, threshold, sourceId, now);
+      fired += await this.fireStaleTransition(a, ctx, now);
+    }
+    return fired;
   }
 
   /**
