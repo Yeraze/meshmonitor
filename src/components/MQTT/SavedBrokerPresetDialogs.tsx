@@ -19,6 +19,9 @@ import {
   type SavedBrokerPresetBody,
 } from '../../hooks/useMqttBrokerPresets';
 import { defaultMqttPort } from '../../utils/mqttBrokerEndpoint';
+import { MqttRootFinder } from './MqttRootFinder';
+import { MqttRootFieldError } from './MqttRootFieldError';
+import { defaultDeviceRegionRoot } from './mqttRootDefaults';
 import styles from './SavedBrokerPresetDialogs.module.css';
 
 /** A form's current broker values, offered to "Save as preset". */
@@ -152,6 +155,22 @@ const PresetEditor: React.FC<{
         value={values.rootTopic}
         onChange={(e) => set('rootTopic', e.target.value)}
         placeholder="msh/US/FL"
+      />
+      <MqttRootFieldError value={values.rootTopic} />
+      <MqttRootFinder
+        context="preset"
+        defaultRegionRoot={defaultDeviceRegionRoot(values.rootTopic)}
+        currentRoot={values.rootTopic}
+        getTarget={() =>
+          values.host.trim()
+            ? {
+                broker: { url: `${values.tls ? 'mqtts' : 'mqtt'}://${values.host.trim()}:${values.port}` },
+                username: values.username,
+                password: values.password,
+              }
+            : null
+        }
+        onPickRoot={(root) => set('rootTopic', root)}
       />
       <p className={styles.hint}>
         {t(

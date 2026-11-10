@@ -157,6 +157,41 @@ The broker's **Hop limit on delivery to radios** settings decide how far injecte
 
 The settings change only what radios receive. What MeshMonitor stores, and what a bridge sends upstream, keep the original hop limit.
 
+## Finding a root topic {#finding-a-root-topic}
+
+Public servers group traffic under a root topic, such as `msh/US/WA`. A good root keeps your area's traffic and drops the rest. **Find topics** lists the roots that are in use on a server, so you do not have to guess.
+
+It sits next to every root field: the Device Config MQTT root, the remote-admin MQTT root, a bridge's upstream topics, and the root of a saved broker preset (admins).
+
+1. Fill in the broker address first. Add the login if the server needs one.
+2. Select **Find topics**. The **Search under** box starts at your radio's region, for example `msh/US`. Edit it to search somewhere else.
+3. Select **Listen for 60 seconds**. Rows appear as MeshMonitor hears them. **Stop** ends the search early and keeps what it heard.
+4. Select a row. This fills the root field and closes the sheet. It does not save. Use the form's normal **Save** when you are ready.
+
+The sheet shows three lists:
+
+- **Suggested**: the region, and the country or subdivision rows that fit what was heard.
+- **Community**: entries from a built-in list of known community roots that serve your area. They show even when nothing was heard, marked **not heard**.
+- **Heard on the broker**: every root that was active, with node and message counts. A **retained** badge means only stored messages were seen, so the root may be old. **at least** means the count stopped early: very busy roots are cut after 300 packets.
+
+Roots are ranked by how close they are to you when MeshMonitor knows where you are. For a device it uses the radio's position. For a bridge it uses the centre of the bridge's bounding box, if it has one. Otherwise it ranks by activity. Your location is read on the server. It never goes to the broker, never reaches the browser, and is never logged.
+
+**What it does to the mesh and the broker**
+
+- It sends nothing to your radio and nothing over LoRa. It only subscribes. It publishes no message, sets no last-will, and stores nothing.
+- It opens one connection to the broker for about 60 seconds, with a new random client ID, so it cannot knock a running bridge off the server. It never subscribes to `#`.
+- A server that allows only one connection per login can still disconnect a running bridge that shares the login. The search then stops with an error.
+- Limits: one search per user, one per broker, two on the whole instance, and a two-minute wait after a search ends. Starting more than five searches in ten minutes is refused.
+
+**Notes**
+
+- MeshMonitor listens from its own network, not from your radio's. A broker that only the radio's network can reach shows as unreachable.
+- Quiet roots can be missed in 60 seconds.
+- You need the permission that lets you save the root: **Edit sources** for a bridge, **Edit configuration** on that source for a device, and admin for a saved preset.
+- The community list is a copy of `data/mqttRoots.json` from [meshtastic/api](https://github.com/meshtastic/api), commit `7406a79f7ecd819d7df6c1761f4e0ac6fde657d3`. It works offline and is not refreshed live.
+- This version does not look up your country, state or city from your position, so those rows appear only when they match something heard. The ranking uses the community list and the distance to the nearest node that reported its position.
+- The root checks in the form (no spaces, no `+` or `#`, at most 31 bytes, no trailing `/`, not ending in `/2`) are advice shown as you type. They do not block a save.
+
 ## Checklist
 
 Before you turn on downlink anywhere:
@@ -173,6 +208,7 @@ Before you turn on downlink anywhere:
 
 ## Related
 
+- [Finding a root topic](#finding-a-root-topic)
 - [Embedded MQTT Broker & Bridge](/features/mqtt-broker): every option in detail
 - [Why don't I see MQTT traffic?](/features/mqtt-broker#why-no-mqtt-traffic)
 - [MQTT Client Proxy sidecar](/add-ons/mqtt-proxy)

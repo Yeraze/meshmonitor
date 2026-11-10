@@ -68,6 +68,16 @@ export interface MqttBrokerClientOptions {
   maxEvictions?: number;
   /** Window for {@link maxEvictions}, in ms. Defaults to 10 minutes. */
   evictionWindowMs?: number;
+  /**
+   * CONNECT timeout in ms. Defaults to 30 s. One-shot clients (the root
+   * finder, #6287) use a shorter one.
+   */
+  connectTimeoutMs?: number;
+  /**
+   * When `false`, the client never schedules a reconnect: a dropped socket
+   * stays down. For one-shot clients. Defaults to `true`.
+   */
+  autoReconnect?: boolean;
 }
 
 
@@ -298,7 +308,7 @@ export class MqttBrokerClient extends EventEmitter {
       clean: true,
       keepalive: this.options.keepalive ?? 15, // match Meshtastic firmware (PubSubClient default)
       reconnectPeriod: 0, // we handle reconnect ourselves
-      connectTimeout: 30_000,
+      connectTimeout: this.options.connectTimeoutMs ?? 30_000,
       rejectUnauthorized: this.options.rejectUnauthorized ?? true,
       // Cache DNS across connections/reconnects. The hostname stays on the
       // socket, so TLS SNI / cert validation is unaffected. See cachingDnsLookup.ts.
@@ -459,6 +469,22 @@ export class MqttBrokerClient extends EventEmitter {
     });
   }
 
+  /**
+   * Drop topic filters. Removes them from the re-subscribe set (so a later
+   * reconnect does not bring them back) and, when connected, tells the broker.
+   */
+  unsubscribe(topics: string[]): Promise<void> {
+    for (const t of topics) {
+      this.subscriptions.delete(t);
+      this.deniedSubscriptions.delete(t);
+    }
+    if (!this.client || !this.connected) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      // A failed UNSUBSCRIBE is harmless to the caller: the set is already clean.
+      this.client!.unsubscribe(topics, {}, () => resolve());
+    });
+  }
+
   publish(topic: string, payload: Buffer, retained = false): Promise<void> {
     if (!this.client) return Promise.reject(new Error('MqttBrokerClient not connected'));
     // A client that gave up after repeated rejected logins never connects
@@ -490,6 +516,7 @@ export class MqttBrokerClient extends EventEmitter {
    */
   doReconnect(): void {
     if (this.stopping || this.authStopped || this.evictionStopped || !this.client) return;
+    if (this.options.autoReconnect === false) return;
     if (this.connected) return;
     this.client.reconnect();
   }
@@ -689,6 +716,7 @@ export class MqttBrokerClient extends EventEmitter {
 
   private scheduleReconnect(): void {
     if (this.stopping || this.authStopped || this.evictionStopped || !this.client) return;
+    if (this.options.autoReconnect === false) return;
     if (this.coordinator) {
       this.coordinator.requestReconnect(this);
       return;
