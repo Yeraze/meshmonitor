@@ -160,6 +160,20 @@ vi.mock('../init', () => ({
   appBasename: '',
 }));
 
+// The finder's own behaviour is covered in MqttRootFinder.test.tsx; here we
+// only check the mount: props in, one value out (#6335).
+const finderProps: Record<string, any>[] = [];
+vi.mock('../components/MQTT/MqttRootFinder', () => ({
+  MqttRootFinder: (props: Record<string, any>) => {
+    finderProps.push(props);
+    return (
+      <button type="button" onClick={() => props.onPickRoot('tpa')}>
+        {`finder-${props.context}`}
+      </button>
+    );
+  },
+}));
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -398,5 +412,32 @@ describe('MeshCore MQTT ingest source fieldset (#5040 Phase 1)', () => {
     const { container } = renderPage();
     openEditModal();
     expect((container.querySelector('input[type="password"]') as HTMLInputElement).placeholder).toBe('');
+  });
+
+  it('mounts the region finder under the Region field; a pick fills Region and saves nothing (#6335)', () => {
+    mockFetchOk();
+    finderProps.length = 0;
+    renderPage();
+    openAddModal();
+    selectMcMqttType();
+    fireEvent.change(screen.getByPlaceholderText('wss://mqtt.meshmapper.net:443'), {
+      target: { value: ' wss://broker.example:443 ' },
+    });
+
+    const props = finderProps.filter((p) => p.context === 'meshcore_mqtt').at(-1)!;
+    expect(props.protocol).toBe('meshcore');
+    expect(props.getTarget()).toEqual({
+      broker: { url: 'wss://broker.example:443' },
+      username: '',
+      password: '',
+      rejectUnauthorized: true,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'finder-meshcore_mqtt' }));
+    expect((screen.getByPlaceholderText('MCO') as HTMLInputElement).value).toBe('TPA');
+    expect(findPostCall()).toBeUndefined();
+    expect(
+      (global.fetch as any).mock.calls.filter(([, init]: [string, RequestInit]) => init?.method && init.method !== 'GET'),
+    ).toEqual([]);
   });
 });

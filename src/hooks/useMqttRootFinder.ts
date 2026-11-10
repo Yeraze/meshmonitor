@@ -14,7 +14,8 @@ import apiService, { ApiError } from '../services/api';
 const BASE = '/api/mqtt/root-finder/samples';
 const POLL_MS = 1000;
 
-export type RootFinderContext = 'bridge' | 'device' | 'remote_device' | 'preset';
+export type RootFinderContext = 'bridge' | 'device' | 'remote_device' | 'preset' | 'meshcore_mqtt';
+export type RootFinderProtocol = 'meshtastic' | 'meshcore';
 export type SampleStatus = 'connecting' | 'sampling' | 'done' | 'failed' | 'cancelled';
 
 export interface LadderRowView {
@@ -47,6 +48,7 @@ export interface HeardRowView {
 }
 
 export interface SampleViewData {
+  protocol?: RootFinderProtocol;
   status: SampleStatus;
   elapsedMs: number;
   durationMs: number;
@@ -71,6 +73,8 @@ export interface RootFinderTarget {
   username?: string;
   password?: string;
   brokerPresetId?: number | null;
+  /** MeshCore ingest only: the form's TLS-verify checkbox, sent when off. */
+  rejectUnauthorized?: boolean;
 }
 
 export interface StartParams {
@@ -78,7 +82,8 @@ export interface StartParams {
   sourceId?: string | null;
   nodeNum?: number | null;
   target: RootFinderTarget;
-  regionRoot: string;
+  /** Meshtastic only. MeshCore samples every region and sends none. */
+  regionRoot?: string;
 }
 
 export type RootFinderPhase = 'idle' | 'starting' | 'running' | 'finished' | 'rejected';
@@ -140,13 +145,14 @@ export function useMqttRootFinder() {
       setState({ phase: 'starting', view: null });
       const body = {
         context: p.context,
-        regionRoot: p.regionRoot,
+        ...(p.regionRoot ? { regionRoot: p.regionRoot } : {}),
         broker: p.target.broker,
         ...(p.sourceId ? { sourceId: p.sourceId } : {}),
         ...(p.nodeNum != null ? { nodeNum: p.nodeNum } : {}),
         ...(p.target.username ? { username: p.target.username } : {}),
         ...(p.target.password ? { password: p.target.password } : {}),
         ...(p.target.brokerPresetId ? { brokerPresetId: p.target.brokerPresetId } : {}),
+        ...(p.target.rejectUnauthorized === false ? { rejectUnauthorized: false } : {}),
       };
       try {
         const res = await apiService.post<{ data?: { sampleId: string } }>(BASE, body);

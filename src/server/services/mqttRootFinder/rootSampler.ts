@@ -46,7 +46,7 @@ export interface SamplerClient {
 }
 
 export interface RootSamplerOptions {
-  broker: { url: string; username?: string; password?: string };
+  broker: { url: string; username?: string; password?: string; rejectUnauthorized?: boolean };
   regionRoot: string;
   adapter: RootAdapter;
   durationMs?: number;
@@ -77,6 +77,8 @@ export function buildSamplerClientOptions(broker: RootSamplerOptions['broker']):
     url: broker.url,
     username: broker.username,
     password: broker.password,
+    // Only a MeshCore ingest form may turn TLS verification off (#6335).
+    ...(broker.rejectUnauthorized === false ? { rejectUnauthorized: false } : {}),
     // Always a fresh random ID. Never a configured one: reusing a bridge's ID
     // would evict the running bridge (#5893).
     clientIdPrefix: 'mm-roots',
@@ -241,7 +243,7 @@ export class RootSampler {
       void this.finish('done');
       return;
     }
-    const obs = this.opts.adapter.classify(topic, payload);
+    const obs = this.opts.adapter.classify(topic, payload, { retained });
     if (!obs) return;
     this.totalMessages++;
 
