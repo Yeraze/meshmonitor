@@ -15,6 +15,7 @@ import {
   type SamplerClient,
 } from './rootSampler.js';
 import { meshtasticRootAdapter } from './meshtasticRootAdapter.js';
+import { createMeshcoreRegionAdapter } from './meshcoreRegionAdapter.js';
 import { loadProtobufDefinitions, getProtobufRoot } from '../../protobufLoader.js';
 
 class FakeClient extends EventEmitter implements SamplerClient {
@@ -301,5 +302,56 @@ describe('meshtastic map reports', () => {
     fake.msg('msh/US/WA/2/map/', Buffer.from([0xff, 0xff, 0xff]));
     expect(s.snapshot().heard.find((x) => x.root === 'msh/US/WA')?.messages).toBe(1);
     await s.cancel();
+  });
+});
+
+describe('meshcore region sampling (#6335)', () => {
+  const NOW = Date.parse('2026-11-10T12:00:00Z');
+  const key = (n: number) => n.toString(16).toUpperCase().padStart(64, '0');
+  const status = (k: string, over: Record<string, unknown> = {}) =>
+    Buffer.from(
+      JSON.stringify({ status: 'online', timestamp: new Date(NOW).toISOString(), origin: 'o', origin_id: k, ...over }),
+    );
+  const mc = () =>
+    make({ regionRoot: 'meshcore', adapter: createMeshcoreRegionAdapter(() => NOW), broker: { url: 'mqtt://b:1883' } });
+
+  it('subscribes once to the status filter and never unsubscribes', async () => {
+    const s = mc();
+    await s.start();
+    expect(fake.subscribe).toHaveBeenCalledTimes(1);
+    expect(fake.subscribe.mock.calls[0][0]).toEqual(['meshcore/+/+/status']);
+    for (let i = 0; i < 400; i++) fake.msg(`meshcore/MCO/${key(1)}/status`, status(key(1)), true);
+    expect(fake.unsubscribe).not.toHaveBeenCalled();
+    await s.cancel();
+  });
+
+  it('counts active observers and status messages per region, retained included', async () => {
+    const s = mc();
+    await s.start();
+    fake.msg(`meshcore/MCO/${key(1)}/status`, status(key(1)), true);
+    fake.msg(`meshcore/MCO/${key(2)}/status`, status(key(2)), true);
+    fake.msg(`meshcore/MCO/${key(3)}/status`, status(key(3), { status: 'offline' }), true);
+    fake.msg(`meshcore/TPA/${key(4)}/status`, status(key(4), { timestamp: undefined }), true);
+    fake.msg(`meshcore/TPA/${key(5)}/status`, status(key(5), { timestamp: undefined }), false);
+    fake.msg(`meshcore/TPA/${key(6)}/packets`, status(key(6)), false); // not a status topic
+    const heard = s.snapshot().heard;
+    expect(heard.find((h) => h.root === 'MCO')).toMatchObject({ nodes: 2, messages: 3, retainedOnly: true });
+    expect(heard.find((h) => h.root === 'TPA')).toMatchObject({ nodes: 1, messages: 2, retainedOnly: false });
+    await s.cancel();
+  });
+
+  it('honours MAX_ROOTS', async () => {
+    const s = mc();
+    await s.start();
+    for (let i = 0; i < MAX_ROOTS + 5; i++) {
+      fake.msg(`meshcore/R${i}/${key(i + 1)}/status`, status(key(i + 1)), true);
+    }
+    expect(s.snapshot().heard).toHaveLength(MAX_ROOTS);
+    await s.cancel();
+  });
+
+  it('passes rejectUnauthorized: false through only when set', () => {
+    expect(buildSamplerClientOptions({ url: 'mqtts://b:8883', rejectUnauthorized: false }).rejectUnauthorized).toBe(false);
+    expect(buildSamplerClientOptions({ url: 'mqtts://b:8883' })).not.toHaveProperty('rejectUnauthorized');
   });
 });

@@ -167,6 +167,104 @@ describe('MqttRootFinder', () => {
   });
 });
 
+describe('MqttRootFinder (MeshCore regions, #6335)', () => {
+  const mcView = (over: Record<string, unknown> = {}) =>
+    view({
+      protocol: 'meshcore',
+      regionFloor: false,
+      ladder: [],
+      community: [],
+      heard: [
+        { root: 'MCO', nodes: 4, messages: 9, depth: 1, tier: 3, retainedOnly: true, floor: false },
+        { root: 'TPA', nodes: 0, messages: 2, depth: 1, tier: 3, retainedOnly: true, floor: false },
+      ],
+      ...over,
+    });
+
+  const mcSetup = (props: Partial<React.ComponentProps<typeof MqttRootFinder>> = {}) =>
+    setup({
+      protocol: 'meshcore',
+      context: 'meshcore_mqtt',
+      defaultRegionRoot: '',
+      currentRoot: 'XYZ',
+      getTarget: () => ({ broker: { url: 'wss://b.test:443' }, rejectUnauthorized: false }),
+      ...props,
+    });
+
+  const mcOpen = () => fireEvent.click(screen.getByRole('button', { name: /meshcore_button|Find regions/ }));
+
+  it('starts without a region root, hides Search under, ladder, community and the retained badge', async () => {
+    api.get.mockResolvedValue(mcView());
+    mcSetup();
+    mcOpen();
+    expect(document.getElementById('mqtt-root-finder-region')).toBeNull();
+    await act(async () => {
+      fireEvent.click(startBtn());
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(api.post).toHaveBeenCalledWith('/api/mqtt/root-finder/samples', {
+      context: 'meshcore_mqtt',
+      broker: { url: 'wss://b.test:443' },
+      sourceId: 'src1',
+      rejectUnauthorized: false,
+    });
+    expect(screen.getByText('MCO')).toBeTruthy();
+    expect(screen.getByText('TPA')).toBeTruthy();
+    expect(screen.getByText(/regions_heading|Active regions/)).toBeTruthy();
+    expect(screen.queryByText(/mqtt_root_finder.suggested|^Suggested$/)).toBeNull();
+    expect(screen.queryByText(/mqtt_root_finder.community|^Community$/)).toBeNull();
+    expect(screen.queryAllByText(/mqtt_root_finder.retained$|^retained$/)).toHaveLength(0);
+    expect(screen.getAllByText(/observers|observer online/).length).toBeGreaterThan(0);
+  });
+
+  it('picking a region calls onPickRoot with the code and saves nothing', async () => {
+    api.get.mockResolvedValue(mcView());
+    const { onPickRoot } = mcSetup();
+    mcOpen();
+    await act(async () => {
+      fireEvent.click(startBtn());
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    fireEvent.click(screen.getByText('MCO'));
+    expect(onPickRoot).toHaveBeenCalledWith('MCO');
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.put).not.toHaveBeenCalled();
+    expect(api.patch).not.toHaveBeenCalled();
+  });
+
+  it('validates a typed region code and upper-cases it on pick', () => {
+    const { onPickRoot } = mcSetup();
+    mcOpen();
+    const input = document.getElementById('mqtt-root-finder-custom') as HTMLInputElement;
+    const use = screen.getByRole('button', { name: /use_custom|Use this root/ }) as HTMLButtonElement;
+    fireEvent.change(input, { target: { value: 'meshcore/MCO' } });
+    expect(screen.getByRole('alert').textContent).toMatch(/meshcore_custom_invalid|letters/);
+    expect(use.disabled).toBe(true);
+    fireEvent.change(input, { target: { value: 'mco' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(use.disabled).toBe(false);
+    fireEvent.click(use);
+    expect(onPickRoot).toHaveBeenCalledWith('MCO');
+  });
+
+  it('adds a MeshCore hint to a denied subscribe', async () => {
+    api.get.mockResolvedValue(mcView({ status: 'failed', error: 'SUBSCRIBE_DENIED', heard: [] }));
+    mcSetup();
+    mcOpen();
+    await act(async () => {
+      fireEvent.click(startBtn());
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByRole('alert').textContent).toMatch(/meshcore_subscribe_denied_hint|operator/);
+  });
+});
+
 describe('MqttRootFieldError', () => {
   it('renders nothing for a valid or empty root and a message otherwise', () => {
     const { container, rerender } = render(<MqttRootFieldError value="msh/US" />);

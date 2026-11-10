@@ -37,6 +37,19 @@ The right-hand column is not a roadmap. Those are consequences of reading someon
 
 The source subscribes to `meshcore/{REGION}/+/packets` and `meshcore/{REGION}/+/status`.
 
+### Finding your region
+
+Not sure which code your area uses? Fill in the **Broker URL** (and login, if the broker needs one), then click **Find regions** under the Region field. MeshMonitor listens to the broker's observer status messages (`meshcore/+/+/status`) for 60 seconds and lists every region it heard, busiest first:
+
+- **Observers online** counts distinct observers whose status says `online` and is under 15 minutes old (or arrived live while listening). Status messages are retained, so an observer that died without saying so would otherwise count forever.
+- **Status messages** counts every status heard for that region, online or not.
+
+Status messages carry no location, so regions are ranked by activity, not distance. Click a region (or type a code) to fill the Region field; nothing is saved until you click **Save**.
+
+The search subscribes only: it never publishes, never touches your radio or this source's own connection, and uses its own throwaway client ID. It needs the **Sources: write** permission, the same as saving the source. Searches share the MQTT topic finder's limits: 60 seconds each, one at a time per user and per broker, two across the server, a 2-minute pause between searches, and 5 starts per 10 minutes. When editing a saved source with the password left blank, the stored login is used only if the broker URL still points at the same broker.
+
+A broker whose access rules forbid `meshcore/+/+/status` reports that it does not allow listing regions. Ask its operator for your code.
+
 ### One broker per source
 
 Deliberate. Add a second source for a second broker — creating two sources on the same broker **and** region is rejected with a 409, because per-observer de-duplication is scoped per source, so a duplicate feed would collapse nowhere and silently double every count.
