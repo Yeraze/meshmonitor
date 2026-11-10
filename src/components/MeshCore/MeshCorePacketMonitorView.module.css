@@ -151,3 +151,10 @@
   color: var(--color-text-subtle);
   font-size: 13px;
 }
+
+.dir {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 0.35rem;
+  color: var(--color-text-subtle);
+}
