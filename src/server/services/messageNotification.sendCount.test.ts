@@ -178,6 +178,20 @@ describe('message notification send counts are unchanged by templates (#5593)', 
     expect(after.counts).toEqual(EXPECTED);
   });
 
+  it('text length settings (#6278): the counts and recipients are identical', async () => {
+    const before = await run({});
+    // 20 cuts the text to the bone; a keyword filter must still see the raw text.
+    const short = await run({ messageTextMaxPush: 20, messageTextMaxApprise: 20 });
+    const long = await run({ messageTextMaxPush: 1000, messageTextMaxApprise: 1000 });
+    for (const after of [short, long]) {
+      expect(after.counts).toEqual(before.counts);
+      expect(after.calls).toEqual(before.calls);
+      expect(after.pushRecipients).toEqual(before.pushRecipients);
+      expect(after.appriseRecipients).toEqual(before.appriseRecipients);
+    }
+    expect(long.counts).toEqual(EXPECTED);
+  });
+
   it('a mix of default and custom recipients: still the same counts', async () => {
     loadMatrix({});
     for (const id of [1, 3, 5, 7, 9]) {

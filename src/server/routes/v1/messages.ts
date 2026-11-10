@@ -14,6 +14,7 @@ import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
+import { meshcoreMessageByteCap } from '../../constants/meshcoreMessageLimits.js';
 import { MAX_MESSAGE_BYTES, PortNum } from '../../constants/meshtastic.js';
 import { loadV1Access, requireScopedSourceId } from './sourceParam.js';
 import type { NodeViewAccess } from '../../utils/nodeEnhancer.js';
@@ -24,7 +25,7 @@ import { meshcoreMessageToV1, meshcoreNodeKey, parseMeshcoreNodeId, withMeshtast
 import { fail } from '../../utils/apiResponse.js';
 import type { User } from '../../../types/auth.js';
 import { resolveTransmitTarget } from '../../utils/transmitTarget.js';
-import { VALIDATION, canAccessMeshcoreChannel } from '../meshcoreRouteShared.js';
+import { canAccessMeshcoreChannel } from '../meshcoreRouteShared.js';
 
 const isMeshCoreSource = (req: Request): boolean =>
   isAnyMeshCoreSourceType((req as Request & { source?: { type?: string } }).source?.type);
@@ -326,15 +327,14 @@ async function sendMeshCoreMessage(req: Request, res: Response, sourceId: string
   }
 
   const trimmedText = text.trim();
-  const maxBytes = toPublicKey
-    ? VALIDATION.MAX_MESSAGE_BYTES_DM
-    : scopeOverride && scopeOverride.trim().length > 0
-      ? VALIDATION.MAX_MESSAGE_BYTES_CHANNEL_SCOPED
-      : VALIDATION.MAX_MESSAGE_BYTES_CHANNEL;
   const byteLen = Buffer.byteLength(trimmedText, 'utf8');
-  if (byteLen > maxBytes) {
-    return fail(res, 413, 'PAYLOAD_TOO_LARGE',
-      `Message exceeds the MeshCore maximum of ${maxBytes} bytes (${byteLen} bytes encoded); MeshCore messages are not split`);
+  const tooLarge = (maxBytes: number) => fail(res, 413, 'PAYLOAD_TOO_LARGE',
+    `Message exceeds the MeshCore maximum of ${maxBytes} bytes (${byteLen} bytes encoded); MeshCore messages are not split`);
+  // A DM cap is fixed. A channel cap depends on the source's node name (the
+  // firmware prefixes "<name>: " into the same 160-byte buffer, #6303), so it
+  // is checked once the manager is resolved below.
+  if (toPublicKey && byteLen > meshcoreMessageByteCap({ isDm: true })) {
+    return tooLarge(meshcoreMessageByteCap({ isDm: true }));
   }
 
   // Permissions: a DM needs messages:write; a channel needs write on that slot
@@ -361,6 +361,10 @@ async function sendMeshCoreMessage(req: Request, res: Response, sourceId: string
     if (target.kind === 'refused') return fail(res, target.status, target.code, target.message);
     if (target.kind !== 'meshcore') return fail(res, 400, 'SOURCE_NOT_MESHCORE', 'Source is not a MeshCore source');
     const manager = target.manager;
+    if (!toPublicKey) {
+      const channelCap = meshcoreMessageByteCap({ isDm: false, nodeName: manager.getLocalNode()?.name });
+      if (byteLen > channelCap) return tooLarge(channelCap);
+    }
     if (manager.isReceiveOnly()) return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
     if (!manager.isConnected()) return fail(res, 503, 'SOURCE_NOT_CONNECTED', 'MeshCore source is not connected');
 

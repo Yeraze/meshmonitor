@@ -1,5 +1,5 @@
 /**
- * Drizzle schema for `meshcore_neighbor_watch` (issue #6274, migration 229).
+ * Drizzle schema for `meshcore_neighbor_watch` (issue #6274, migration 230).
  *
  * A per-reporter ledger of the neighbours a MeshCore repeater's table has
  * listed. `meshcore_neighbor_info` is replaced wholesale on every poll, so it

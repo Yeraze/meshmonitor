@@ -80,6 +80,9 @@ export interface NotificationPreferences {
   /** Message-notification templates (#5593). NULL = the built-in default. */
   messageTitleTemplate: string | null;
   messageBodyTemplate: string | null;
+  /** Message text length (#6278). NULL = the default of 100. */
+  messageTextMaxPush: number | null;
+  messageTextMaxApprise: number | null;
 }
 
 /**
@@ -276,6 +279,8 @@ async function readLegacyPreferencesBlobAsync(userId: number): Promise<Notificat
       // Templates postdate the legacy blob (#5593): always the default.
       messageTitleTemplate: null,
       messageBodyTemplate: null,
+      messageTextMaxPush: null,
+      messageTextMaxApprise: null,
     };
   } catch (error) {
     logger.error(`Failed to read legacy preferences blob for user ${userId}:`, error);
@@ -601,11 +606,15 @@ export async function resolveAppriseTargetAsync(
  * add it to the rendered body afterwards, the same for a default and a custom
  * template.
  */
+/** Which delivery service is rendering; picks the user's text length (#6278). */
+export type MessageDeliveryService = 'push' | 'desktop' | 'apprise';
+
 export async function renderMessagePayloadForUserAsync(
   userId: number | null | undefined,
   payload: { title: string; body: string; message?: MessageTemplateContext },
   sourceId: string,
   sourceName: string,
+  service: MessageDeliveryService,
 ): Promise<{ title: string; body: string }> {
   if (!payload.message) {
     return { title: `[${sourceName}] ${payload.title}`, body: payload.body };
@@ -619,10 +628,17 @@ export async function renderMessagePayloadForUserAsync(
       logger.error(`Failed to load message templates for user ${userId} on source ${sourceId}:`, error);
     }
   }
-  return renderMessageNotification(payload.message, {
-    titleTemplate: prefs?.messageTitleTemplate,
-    bodyTemplate: prefs?.messageBodyTemplate,
-  });
+  // Web Push and desktop share one length; Apprise has its own (#6278). This
+  // only changes the text. Who is notified, and how often, is decided elsewhere.
+  const textMax = service === 'apprise' ? prefs?.messageTextMaxApprise : prefs?.messageTextMaxPush;
+  return renderMessageNotification(
+    payload.message,
+    {
+      titleTemplate: prefs?.messageTitleTemplate,
+      bodyTemplate: prefs?.messageBodyTemplate,
+    },
+    { textMax },
+  );
 }
 
 /**

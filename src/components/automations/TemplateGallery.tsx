@@ -16,6 +16,8 @@
 import { useEffect, useState } from 'react';
 import apiService from '../../services/api';
 import { FieldInput, type SourceOption, type UnifiedChannelOption } from './AutomationBuilder';
+import type { NodeMultiOption } from './NodeMultiFieldInput';
+import { loadNodeOptions } from './loadNodeOptions';
 import { fieldVisible } from './catalog';
 import { UiIcon, UI_ICON_DEFINITIONS, type UiIconName } from '../icons';
 import { validateAutomationGraph } from '../../types/automation';
@@ -61,9 +63,22 @@ function TemplateIcon({ name, size = 28 }: { name: string; size?: number }) {
 
 /** Seed the editable name/description from a first build() pass. Templates that need
  * required params may throw on an empty `{}` — that's fine, we just fall back. */
+function isMultiTemplate(template: AutomationTemplate): boolean {
+  if (template.multi) return true;
+  try {
+    const built = template.build({});
+    return Array.isArray(built) && built.length > 1;
+  } catch {
+    return false;
+  }
+}
+
 function seedFromBuild(template: AutomationTemplate): BuiltAutomation | null {
   try {
     const built = template.build({});
+    // Multi-automation templates have no single "first" identity worth showing (#6272):
+    // the wizard Name/Description are template-level text there.
+    if (template.multi || (Array.isArray(built) && built.length > 1)) return null;
     const first = Array.isArray(built) ? built[0] : built;
     return first ?? null;
   } catch {
@@ -74,6 +89,7 @@ function seedFromBuild(template: AutomationTemplate): BuiltAutomation | null {
 export default function TemplateGallery({ onClose, onInstalled, templates = TEMPLATES }: TemplateGalleryProps) {
   const [sources, setSources] = useState<SourceOption[]>([]);
   const [channels, setChannels] = useState<UnifiedChannelOption[]>([]);
+  const [nodes, setNodes] = useState<NodeMultiOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AutomationTemplate | null>(null);
@@ -104,12 +120,20 @@ export default function TemplateGallery({ onClose, onInstalled, templates = TEMP
       .finally(() => setLoading(false));
   }, []);
 
+  // Node list for the nodeMulti picker (#6271); same loader as the automation editor.
+  useEffect(() => {
+    let live = true;
+    void loadNodeOptions().then((n) => { if (live) setNodes(n); });
+    return () => { live = false; };
+  }, []);
+
   if (selected) {
     return (
       <TemplateWizard
         template={selected}
         sources={sources}
         channels={channels}
+        nodes={nodes}
         onBack={() => setSelected(null)}
         onClose={onClose}
         onInstalled={onInstalled}
@@ -153,10 +177,11 @@ export default function TemplateGallery({ onClose, onInstalled, templates = TEMP
   );
 }
 
-function TemplateWizard({ template, sources, channels, onBack, onClose, onInstalled }: {
+function TemplateWizard({ template, sources, channels, nodes, onBack, onClose, onInstalled }: {
   template: AutomationTemplate;
   sources: SourceOption[];
   channels: UnifiedChannelOption[];
+  nodes: NodeMultiOption[];
   onBack: () => void;
   onClose: () => void;
   onInstalled: (rows: InstalledAutomationRow[]) => void;
@@ -164,6 +189,7 @@ function TemplateWizard({ template, sources, channels, onBack, onClose, onInstal
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [name, setName] = useState(() => seedFromBuild(template)?.name ?? template.name);
   const [description, setDescription] = useState(() => seedFromBuild(template)?.description ?? template.description);
+  const isMulti = isMultiTemplate(template);
   const [errors, setErrors] = useState<string[]>([]);
   const [installing, setInstalling] = useState(false);
   const [outcomes, setOutcomes] = useState<InstallOutcome[] | null>(null);
@@ -187,10 +213,18 @@ function TemplateWizard({ template, sources, channels, onBack, onClose, onInstal
       setErrors(['This template produced no automations to install.']);
       return;
     }
-    // The wizard's editable Name/Description apply to the first automation only —
-    // a multi-automation (bridge) template's remaining rows keep their own
-    // build()-derived identity.
-    list[0] = { ...list[0], name, description };
+    if (template.multi || list.length > 1) {
+      // Wizard Name prefixes every installed automation (#6272); each keeps its own
+      // description. A built name that already leads with the template name has
+      // that lead swapped for the wizard Name rather than doubled.
+      const lead = `${template.name} — `;
+      list.forEach((a, i) => {
+        const rest = a.name.startsWith(lead) ? a.name.slice(lead.length) : a.name;
+        list[i] = { ...a, name: `${name.trim() || template.name} — ${rest}` };
+      });
+    } else {
+      list[0] = { ...list[0], name, description };
+    }
 
     const validationErrors: string[] = [];
     for (const a of list) {
@@ -248,10 +282,13 @@ function TemplateWizard({ template, sources, channels, onBack, onClose, onInstal
         <label className="ae-field-label">Name</label>
         <input className="ae-input" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
-      <div className="ae-field">
-        <label className="ae-field-label">Description</label>
-        <textarea className="ae-textarea" value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
+      {/* Multi-automation templates keep each automation's own description. */}
+      {!isMulti && (
+        <div className="ae-field">
+          <label className="ae-field-label">Description</label>
+          <textarea className="ae-textarea" value={description} onChange={(e) => setDescription(e.target.value)} />
+        </div>
+      )}
 
       {template.params.filter((p) => fieldVisible(p, values)).map((p) => (
         <FieldInput
@@ -263,7 +300,7 @@ function TemplateWizard({ template, sources, channels, onBack, onClose, onInstal
           channels={channels}
           scripts={[]}
           regions={[]}
-          nodes={[]}
+          nodes={nodes}
           triggerType="trigger.message"
           onChange={(v) => setParam(p.name, v)}
         />

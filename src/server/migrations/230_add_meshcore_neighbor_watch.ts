@@ -1,5 +1,5 @@
 /**
- * Migration 229: confirmed new-neighbour tracking (#6274).
+ * Migration 230: confirmed new-neighbour tracking (#6274).
  *
  *   meshcore_neighbor_watch                a per-reporter ledger of the neighbours
  *                                          a repeater's table has listed: when each
@@ -22,7 +22,7 @@ import {
   createTableIfMissingMysql,
 } from './helpers.js';
 
-const LABEL = 'Migration 229';
+const LABEL = 'Migration 230';
 const TABLE = 'meshcore_neighbor_watch';
 const UNIQUE_INDEX = 'meshcore_neighbor_watch_uniq';
 const SOURCE_INDEX = 'meshcore_neighbor_watch_source_idx';
@@ -62,7 +62,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration229Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration230Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
   await client.query(`
     CREATE TABLE IF NOT EXISTS ${TABLE} (
@@ -93,7 +93,7 @@ export async function runMigration229Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration229Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration230Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
   await createTableIfMissingMysql(
     pool,

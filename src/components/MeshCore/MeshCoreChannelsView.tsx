@@ -44,6 +44,7 @@ import {
 } from './meshcoreChannelOrder';
 import { formatRelativeTime } from '../../utils/datetime';
 import styles from './MeshCoreChannelsView.module.css';
+import { meshcoreChannelMaxBytes } from '../../utils/meshcoreMessageLimits';
 import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 
 const MOBILE_BREAKPOINT = 768;
@@ -1153,13 +1154,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           onLoadOlder={loadOlderHistory}
           hasMoreOlder={historyReady && hasMoreHistory}
           loadingOlder={loadingOlderHistory}
-          maxBytes={
-            showScopeOverride && overrideScope !== null && overrideScope !== ''
-              ? 120
-              : resolvedScope
-              ? 120
-              : 130
-          }
+          maxBytes={meshcoreChannelMaxBytes(status?.localNode?.name)}
         />
         </>)}
       </div>

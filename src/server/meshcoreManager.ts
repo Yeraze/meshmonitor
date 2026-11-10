@@ -14560,7 +14560,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // matches what went on air. Split on: up to AUTO_ACK_SPLIT_MAX_PARTS
       // sends, each with a "(1/3) " marker, the last one truncated. A reply
       // that already fits is sent as-is either way.
-      const maxBytes = await this.autoAckReplyByteCap(sendAsDM, channelIdx, scopeOverride);
+      const maxBytes = this.autoAckReplyByteCap(sendAsDM);
       const splitEnabled = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckSplitLongMessages')) === 'true';
       const { parts, truncated } = splitUtf8Message(replyText, {
         maxBytes,
@@ -14613,21 +14613,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private static readonly AUTO_ACK_SPLIT_PART_DELAY_MS = 10_000;
 
   /**
-   * Byte cap for one Auto-Acknowledge send (#5564), from the caps the HTTP
-   * send route uses. A channel send counts as scoped when it will carry a
-   * named region, resolved the same way `performScopedSend` resolves it:
-   * the override if there is one, else the channel scope, else the source
-   * default.
+   * Byte cap for one Auto-Acknowledge send (#5564), from the same helper the
+   * HTTP send route uses. A channel cap depends on this source's node name
+   * (the firmware prefixes "<name>: ", #6303); scope does not change it.
    */
-  private async autoAckReplyByteCap(
-    sendAsDM: boolean,
-    channelIdx: number | undefined,
-    scopeOverride: string | null | undefined,
-  ): Promise<number> {
-    if (sendAsDM) return meshcoreMessageByteCap({ isDm: true, scoped: false });
-    const override = MeshCoreManager.normalizeScopeOverride(scopeOverride);
-    const region = override !== undefined ? override : await this.resolveScopeForSend(channelIdx);
-    return meshcoreMessageByteCap({ isDm: false, scoped: !!region });
+  private autoAckReplyByteCap(sendAsDM: boolean): number {
+    return meshcoreMessageByteCap({ isDm: sendAsDM, nodeName: this.localNode?.name });
   }
 
   private async attemptReconnect(): Promise<void> {

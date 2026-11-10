@@ -62,7 +62,7 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   timeOffsetSeconds: integer('timeOffsetSeconds'),
   timeOffsetSource: text('timeOffsetSource'), // 'advert' | 'message'
   timeOffsetCheckedAt: integer('timeOffsetCheckedAt'), // ms
-  // #6274 (migration 229): set once this reporter's neighbour table has had its
+  // #6274 (migration 230): set once this reporter's neighbour table has had its
   // first evaluation. Only the neighbour watch writes it; upsertNode never does.
   neighborWatchBaselinedAt: integer('neighborWatchBaselinedAt'), // ms
   // #5842 (migration 206): MeshMonitor-only location override, parallel to the

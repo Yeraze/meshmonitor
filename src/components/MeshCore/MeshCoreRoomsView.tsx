@@ -50,6 +50,7 @@ import {
   type OrderableItem,
 } from './meshcoreChannelOrder';
 import styles from './MeshCoreRoomsView.module.css';
+import { MESHCORE_MAX_MESSAGE_BYTES_DM } from '../../utils/meshcoreMessageLimits';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -892,6 +893,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
               emptyText={t('meshcore.rooms.no_messages', 'No posts in this room yet')}
               onSend={handleSend}
+              maxBytes={MESHCORE_MAX_MESSAGE_BYTES_DM}
               onNodeNameClick={onNodeNameClick}
               conversationKey={`room-${selectedRoom}`}
               unreadAnchorMs={entryRoomLastRead}

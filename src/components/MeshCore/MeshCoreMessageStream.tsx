@@ -22,6 +22,7 @@ import { groupMeshCoreReactions } from './meshcoreReactionGroups';
 import { MeshCoreReactionChips, MeshCoreUnmatchedReaction } from './MeshCoreReactionChips';
 import Modal from '../common/Modal';
 import { resendAvailability, RESEND_MAX, type ResendAvailabilityOpts } from './meshcoreResend';
+import { MESHCORE_MAX_MESSAGE_BYTES_CHANNEL_WORST_CASE } from '../../utils/meshcoreMessageLimits';
 import { EmojiPickerModal, type TapbackEmoji } from '../EmojiPickerModal/EmojiPickerModal';
 import { isReactableRow, reactionEmojiOptions } from './meshcoreReactionClient';
 import { isReactionEmoji } from '../../utils/meshcoreReactions';
@@ -186,7 +187,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onReact,
   reactionEmojis,
   conversationKey,
-  maxBytes = 130,
+  maxBytes = MESHCORE_MAX_MESSAGE_BYTES_CHANNEL_WORST_CASE,
   initialDraft,
   onInitialDraftConsumed,
   onLoadOlder,

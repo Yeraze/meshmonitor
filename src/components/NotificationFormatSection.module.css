@@ -52,6 +52,19 @@
   border-radius: 6px;
 }
 
+.numberField {
+  width: 8rem;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-active);
+  border-radius: 6px;
+}
+
 .field:focus {
   outline: none;
 }

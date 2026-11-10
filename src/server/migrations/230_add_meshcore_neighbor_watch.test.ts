@@ -1,5 +1,5 @@
 /**
- * Migration 229 (#6274): meshcore_neighbor_watch table and
+ * Migration 230 (#6274): meshcore_neighbor_watch table and
  * meshcore_nodes.neighborWatchBaselinedAt, on SQLite, PostgreSQL and MySQL.
  * PG/MySQL blocks use isolated databases.
  */
@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { migration, runMigration229Postgres, runMigration229Mysql } from './229_add_meshcore_neighbor_watch.js';
+import { migration, runMigration230Postgres, runMigration230Mysql } from './230_add_meshcore_neighbor_watch.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -15,7 +15,7 @@ import {
   createIsolatedMysqlDatabase,
 } from '../../db/repositories/test-utils.js';
 
-describe('Migration 229 — SQLite', () => {
+describe('Migration 230 — SQLite', () => {
   let db: Database.Database;
   beforeEach(() => {
     db = new Database(':memory:');
@@ -48,11 +48,11 @@ describe('Migration 229 — SQLite', () => {
   });
 });
 
-describe.skipIf(!postgresAvailable)('Migration 229 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('Migration 230 — PostgreSQL (container)', () => {
   let pool: pg.Pool;
   let cleanup: (() => Promise<void>) | undefined;
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig229'));
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig230'));
     await pool.query(`CREATE TABLE meshcore_nodes ("sourceId" TEXT, "publicKey" TEXT, name TEXT)`);
     await pool.query(`INSERT INTO meshcore_nodes VALUES ('src-1', 'aa', 'n')`);
   });
@@ -63,8 +63,8 @@ describe.skipIf(!postgresAvailable)('Migration 229 — PostgreSQL (container)', 
   it('creates the table and column, enforces the unique key, and is idempotent', async () => {
     const client = await pool.connect();
     try {
-      await runMigration229Postgres(client);
-      await runMigration229Postgres(client);
+      await runMigration230Postgres(client);
+      await runMigration230Postgres(client);
     } finally {
       client.release();
     }
@@ -80,11 +80,11 @@ describe.skipIf(!postgresAvailable)('Migration 229 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('Migration 229 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('Migration 230 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let cleanup: (() => Promise<void>) | undefined;
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig229'));
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig230'));
     await pool.query(`CREATE TABLE meshcore_nodes (sourceId VARCHAR(64), publicKey VARCHAR(64), name VARCHAR(64))`);
     await pool.query(`INSERT INTO meshcore_nodes VALUES ('src-1', 'aa', 'n')`);
   });
@@ -93,8 +93,8 @@ describe.skipIf(!mysqlAvailable)('Migration 229 — MySQL (container)', () => {
   });
 
   it('creates the table and column, enforces the unique key, and is idempotent', async () => {
-    await runMigration229Mysql(pool);
-    await runMigration229Mysql(pool);
+    await runMigration230Mysql(pool);
+    await runMigration230Mysql(pool);
     const [nodes] = await pool.query(`SELECT neighborWatchBaselinedAt AS v FROM meshcore_nodes`);
     expect((nodes as Array<{ v: unknown }>)[0].v).toBeNull();
     const ins = `INSERT INTO meshcore_neighbor_watch (sourceId,reporterPublicKey,neighborPublicKey,state,firstSeenAt,lastHeardAt,updatedAt)

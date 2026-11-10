@@ -7,11 +7,15 @@ import {
   MESSAGE_BODY_RENDERED_MAX,
   MESSAGE_BODY_TEMPLATE_MAX,
   MESSAGE_TEMPLATE_TOKENS,
+  MESSAGE_TEXT_MAX_DEFAULT,
+  MESSAGE_TEXT_MAX_LIMIT,
   MESSAGE_TITLE_RENDERED_MAX,
   MESSAGE_TITLE_TEMPLATE_MAX,
   normalizeTemplate,
   renderMessageNotification,
   validateMessageTemplate,
+  validateMessageTextMax,
+  resolveMessageTextMax,
   type MessageTemplateContext,
 } from './notificationTemplate';
 
@@ -252,5 +256,83 @@ describe('normalizeTemplate', () => {
     expect(normalizeTemplate(undefined)).toBeNull();
     expect(normalizeTemplate('  \n ')).toBeNull();
     expect(normalizeTemplate('{{ text }}')).toBe('{{ text }}');
+  });
+});
+
+describe('configurable text length (#6278)', () => {
+  const longText = 'x'.repeat(1500);
+  const body = (textMax?: number | null, over: Partial<MessageTemplateContext> = {}) =>
+    renderMessageNotification(dm({ text: longText, ...over }), { bodyTemplate: '{{ text }}' }, { textMax }).body;
+
+  it('keeps 100 by default', () => {
+    expect(MESSAGE_TEXT_MAX_DEFAULT).toBe(100);
+    expect(body()).toHaveLength(100);
+    expect(body(null)).toHaveLength(100);
+    expect(renderMessageNotification(dm({ text: longText }), { bodyTemplate: '{{ text }}' }).body).toHaveLength(100);
+  });
+
+  it('honours 250 and 1000', () => {
+    expect(body(250)).toHaveLength(250);
+    expect(body(1000)).toHaveLength(1000);
+  });
+
+  it('clamps above 1000 and below the minimum', () => {
+    expect(body(5000)).toHaveLength(MESSAGE_TEXT_MAX_LIMIT);
+    expect(body(1)).toHaveLength(20);
+    expect(resolveMessageTextMax(undefined)).toBe(100);
+    expect(resolveMessageTextMax(Number.NaN)).toBe(100);
+  });
+
+  it('shows a message in full when it fits', () => {
+    const text = 'y'.repeat(230);
+    expect(body(250, { text })).toBe(text);
+  });
+
+  it('scales the body cap with the text length', () => {
+    const r = renderMessageNotification(
+      dm({ text: longText, senderName: 'n'.repeat(50) }),
+      { bodyTemplate: '[{{ senderName }}] {{ text }}' },
+      { textMax: 1000 },
+    );
+    expect(r.body.length).toBeGreaterThan(MESSAGE_BODY_RENDERED_MAX);
+    expect(r.body.length).toBeLessThanOrEqual(1000);
+  });
+
+  it('still caps a body that repeats {{ text }}', () => {
+    const r = renderMessageNotification(
+      dm({ text: longText }),
+      { bodyTemplate: '{{ text }} {{ text }} {{ text }}' },
+      { textMax: 250 },
+    );
+    expect(r.body).toHaveLength(550);
+    expect(r.body.endsWith('...')).toBe(true);
+    const big = renderMessageNotification(
+      dm({ text: longText }),
+      { bodyTemplate: '{{ text }} {{ text }}' },
+      { textMax: 1000 },
+    );
+    expect(big.body).toHaveLength(1000);
+  });
+
+  it('never splits an emoji at the cut', () => {
+    for (const textMax of [20, 21, 22, 23]) {
+      const out = body(textMax, { text: '😀'.repeat(50) });
+      expect(out.endsWith('...')).toBe(true);
+      expect(out.length).toBeLessThanOrEqual(textMax);
+      // No lone surrogate: round-tripping through UTF-8 is lossless.
+      expect(Buffer.from(out, 'utf8').toString('utf8')).toBe(out);
+      expect(out).not.toContain('\uFFFD');
+    }
+  });
+
+  it('validates the setting', () => {
+    expect(validateMessageTextMax(null)).toBeNull();
+    expect(validateMessageTextMax(20)).toBeNull();
+    expect(validateMessageTextMax(1000)).toBeNull();
+    expect(validateMessageTextMax(19)).not.toBeNull();
+    expect(validateMessageTextMax(1001)).not.toBeNull();
+    expect(validateMessageTextMax(100.5)).not.toBeNull();
+    expect(validateMessageTextMax('100')).not.toBeNull();
+    expect(validateMessageTextMax(Number.NaN)).not.toBeNull();
   });
 });
