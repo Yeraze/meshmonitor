@@ -200,6 +200,15 @@ describe('executeAction', () => {
     expect('scopeOverride' in calls[0].args).toBe(false);
   });
 
+  it('sendMessage: splitLongMessages is forwarded only when on (#6316)', async () => {
+    const a = recorder();
+    await executeAction(node('action.sendMessage', { text: 'hi', channel: 1 }), ctx({ from: 5, channel: 1, isDM: false }), a.deps);
+    expect('splitLongMessages' in a.calls[0].args).toBe(false);
+    const b = recorder();
+    await executeAction(node('action.sendMessage', { text: 'hi', channel: 1, splitLongMessages: true }), ctx({ from: 5, channel: 1, isDM: false }), b.deps);
+    expect(b.calls[0].args.splitLongMessages).toBe(true);
+  });
+
   it('sendMessage: unscoped scope passes empty-string override', async () => {
     const { calls, deps } = recorder();
     await executeAction(

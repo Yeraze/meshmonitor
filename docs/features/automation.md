@@ -185,9 +185,9 @@ This is on for every Meshtastic source after you upgrade, with the default of `2
 
 ### Long Replies on MeshCore {#meshcore-long-replies}
 
-A MeshCore text message is small. MeshMonitor caps one message at **150 bytes** for a DM, **130 bytes** for a channel, and **120 bytes** for a channel reply that carries a region scope. These are UTF-8 bytes, not characters: an emoji takes 4 bytes and a CJK character takes 3. A template that looks short can go over the cap once `{NODE_NAME}`, `{ROUTE}` and the other tokens are filled in.
+A MeshCore text message is small. A DM holds **160 bytes**. A channel message holds 160 bytes minus your node name and 2, because the radio puts `<name>: ` in front of the text (155 for a 3-byte name, 127 for a 31-byte name). A region scope does not change the cap. These are UTF-8 bytes, not characters: an emoji takes 4 bytes and a CJK character takes 3. A template that looks short can go over the cap once `{NODE_NAME}`, `{ROUTE}` and the other tokens are filled in.
 
-The MeshCore Auto-Acknowledge section has a **Split long messages** toggle that sets what happens to a reply over the cap. It is a per-source setting, it is **off by default**, and one toggle covers DM and channel replies.
+Five MeshCore senders have a **Split long messages** option that sets what happens to a message over the cap: Auto Acknowledge, Auto Responder (per trigger), Timer Triggers (per timer), Auto Announce, and the Automation Engine **Send a message** action. It is **off by default**. One setting covers DM and channel sends. Every one of them also cuts an over-long message to the cap itself, so the stored message matches what went on air.
 
 **Off (default)**: MeshMonitor cuts the reply to the cap and sends one message. The cut never lands inside a character. The message list shows the text that was sent.
 
@@ -203,6 +203,11 @@ Before this option existed, MeshMonitor handed the full reply to the radio and s
 - A reply that fits in one message goes out as before, with no marker.
 - If one part fails to send, MeshMonitor skips the rest. It also stops if the source is switched to receive-only between parts.
 - The per-sender cooldown counts the whole reply once, not once per part.
+- Split sequences on one source never mix: a new split message waits until the running one finishes, so the `(1/3)` markers stay in order.
+- When a timer, announce or action sends to several channels, part 1 goes to every channel, then part 2, and so on.
+- **Auto Responder and Timer scripts**: only a script that prints exactly one message can split. A script that prints several messages has each one cut to the cap.
+- **Timer Triggers**: a timer with splitting on must run at most every **5 minutes**. MeshMonitor refuses to save a faster one (interval or cron).
+- Meshtastic is not affected. Its **Multiline Support** keeps its own rules.
 
 ::: warning Airtime
 Every part is a separate transmission, and every repeater in range repeats each one. A 3-part reply costs three times the airtime of a single reply across the whole mesh. With [channel-send auto-retry](/features/meshcore#automated-channel-send-auto-retry) on, a part that no repeater echoes is resent once, so a 3-part channel reply can reach 6 transmissions from your node. A DM part that gets no acknowledgement is retried up to 3 times. Set a per-sender cooldown, and keep the template short enough that most replies fit in one message.

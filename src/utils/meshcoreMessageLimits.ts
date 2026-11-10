@@ -43,3 +43,13 @@ export function meshcoreChannelMaxBytes(nodeName?: string | null): number {
 export function meshcoreMessageByteCap(dest: { isDm: boolean; nodeName?: string | null }): number {
   return dest.isDm ? MESHCORE_MAX_MESSAGE_BYTES_DM : meshcoreChannelMaxBytes(dest.nodeName);
 }
+
+/**
+ * Split-long-message limits for automated MeshCore senders (#6316).
+ * Fixed by the maintainer: at most 3 parts, 10 s apart. Shared with the UI so
+ * the airtime warning text cannot drift from the real behaviour.
+ */
+export const MESHCORE_SPLIT_MAX_PARTS = 3;
+export const MESHCORE_SPLIT_PART_GAP_MS = 10_000;
+/** Shortest timer interval (minutes) allowed when a timer splits long messages. */
+export const MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES = 5;

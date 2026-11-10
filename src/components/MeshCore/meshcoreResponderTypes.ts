@@ -30,6 +30,8 @@ export interface MeshCoreAutoResponderTrigger {
   cooldownSeconds: number;
   /** Delay (s) after a match before sending the reply. 0 = immediate, max 120 (#3953). */
   preSendDelaySeconds?: number;
+  /** Split a long reply into up to 3 marked parts instead of cutting it (#6316). */
+  multiline?: boolean;
   /** MeshCore scope/region for the reply (#3833). */
   scopeMode?: ScopeMode;
   scopeName?: string;

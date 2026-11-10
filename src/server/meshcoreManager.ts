@@ -88,8 +88,9 @@ import {
   planOutboundReaction,
   type OutboundReactionMeta,
 } from './services/meshcoreReactionSend.js';
-import { meshcoreMessageByteCap } from './constants/meshcoreMessageLimits.js';
-import { splitUtf8Message, utf8ByteLength } from './utils/splitUtf8Message.js';
+import { MESHCORE_SPLIT_PART_GAP_MS } from './constants/meshcoreMessageLimits.js';
+import { planMeshCoreTextParts } from './utils/meshcoreSplitPlan.js';
+import { utf8ByteLength } from './utils/splitUtf8Message.js';
 import { MeshCoreResendError } from './errors/meshcoreResendError.js';
 import {
   MESHCORE_LOGIN_BRIDGE_TIMEOUT_MS,
@@ -548,6 +549,8 @@ export interface MeshCoreAutomationScopeConfig {
 }
 
 export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeConfig {
+  /** Split a long reply into up to 3 marked parts instead of truncating (#6316). */
+  multiline?: boolean;
   id: string;
   name: string;
   enabled: boolean;
@@ -598,6 +601,8 @@ export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeCon
  * template applies on the next tick.
  */
 export interface MeshCoreTimerTrigger extends MeshCoreAutomationScopeConfig {
+  /** Split a long message into up to 3 marked parts (#6316). Needs interval >= 5 min. */
+  multiline?: boolean;
   id: string;
   name: string;
   enabled: boolean;
@@ -13445,15 +13450,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     });
 
     const rendered = await replaceMeshCoreAnnounceTokens(message, this);
+    // One call for every channel (#6316): part by part, so each channel gets
+    // its parts in order. `sent` counts channels where every part went out.
+    const split = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceSplitLongMessages')) === 'true';
     let sent = 0;
-    for (const idx of channelIndexes) {
-      try {
-        // Automated sender → opt into channel-send auto-retry (#3979).
-        const ok = await this.sendMessage(rendered, undefined, idx, scopeOverride, true);
-        if (ok) sent += 1;
-      } catch (err) {
-        logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: send to channel ${idx} threw: ${(err as Error).message}`);
-      }
+    try {
+      const res = await this.sendAutomatedText(rendered, {
+        channelIdxs: channelIndexes, scopeOverride, split, label: 'Auto-announce',
+      });
+      sent = res.perTarget.filter((t) => t.sentParts === res.totalParts && res.totalParts > 0).length;
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: send threw: ${(err as Error).message}`);
     }
 
     this.autoAnnounceLastRunAt = Date.now();
@@ -13617,22 +13624,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Multi-channel (#6230): read the channels array, coercing an old
     // single-channel timer into a one-item array.
     const channelIndexes = this.timerChannelIndexes(trigger);
-    const dispatch = async (text: string): Promise<boolean> => {
+    // Every channel gets part 1, then part 2, and so on (#6230, #6316). With
+    // split off the text is truncated to the byte cap, as on the air today.
+    // `allowSplit` is false for a script that emits several messages.
+    const dispatch = async (text: string, allowSplit = true): Promise<boolean> => {
+      const split = trigger.multiline === true && allowSplit;
+      const label = `Timer ${trigger.id}`;
       if (trigger.destination === 'dm' && trigger.contactPublicKey) {
-        return this.sendMessage(text, trigger.contactPublicKey, undefined, scopeOverride);
+        return (await this.sendAutomatedText(text, {
+          toPublicKey: trigger.contactPublicKey, scopeOverride, split, label,
+        })).ok;
       }
       if (channelIndexes.length === 0) return false;
-      // One send per channel, awaited in sequence so the per-source serialized
-      // send path spaces them on air exactly as runAutoAnnounceCycle does — the
-      // existing TX gap is reused, no new cadence or cap (#6230). All must
-      // succeed for the run to count as ok.
-      let allOk = true;
-      for (const idx of channelIndexes) {
-        // Automated sender → opt into channel-send auto-retry (#3979).
-        const ok = await this.sendMessage(text, undefined, idx, scopeOverride, true);
-        if (!ok) allOk = false;
-      }
-      return allOk;
+      return (await this.sendAutomatedText(text, {
+        channelIdxs: channelIndexes, scopeOverride, split, label,
+      })).ok;
     };
 
     let ok = true;
@@ -13814,7 +13820,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     scriptPath: string,
     scriptArgsString: string | undefined,
     env: Record<string, string>,
-    dispatch: (text: string) => Promise<boolean>,
+    dispatch: (text: string, allowSplit?: boolean) => Promise<boolean>,
     triggerLabel: string,
   ): Promise<RunScriptResult> {
     const expandedArgs = scriptArgsString
@@ -13828,11 +13834,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return result;
     }
 
+    // Only single-message script output may split (#6316).
+    const nonEmpty = result.wouldSendMessages.filter((m) => (m || '').trim());
+    const allowSplit = nonEmpty.length === 1;
     for (const msg of result.wouldSendMessages) {
       const trimmed = (msg || '').trim();
       if (!trimmed) continue;
       try {
-        const ok = await dispatch(trimmed);
+        const ok = await dispatch(trimmed, allowSplit);
         if (!ok) {
           logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script: send failed for "${trimmed.substring(0, 50)}"`);
         }
@@ -13937,14 +13946,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const senderContact = this.resolveContactByPrefix(message.fromPublicKey);
         // Scope/region for the reply (#3833): inherit / trigger / unscoped / named.
         const scopeOverride = MeshCoreManager.resolveAutomationScopeOverride(trigger, message);
-        const dispatch = async (text: string): Promise<boolean> => {
+        // `allowSplit` is false for a script that emits several messages
+        // (#6316): only single-message output splits, like Meshtastic.
+        const dispatch = async (text: string, allowSplit = true): Promise<boolean> => {
+          const split = trigger.multiline === true && allowSplit;
           if (trigger.replyAsDM || isDM) {
             const targetKey = senderContact?.publicKey || message.fromPublicKey;
-            return this.sendMessage(text, targetKey, undefined, scopeOverride);
+            return (await this.sendAutomatedText(text, {
+              toPublicKey: targetKey, scopeOverride, split, label: `Auto-responder ${trigger.id}`,
+            })).ok;
           }
           if (typeof channelIdx === 'number') {
-            // Automated sender → opt into channel-send auto-retry (#3979).
-            return this.sendMessage(text, undefined, channelIdx, scopeOverride, true);
+            return (await this.sendAutomatedText(text, {
+              channelIdxs: [channelIdx], scopeOverride, split, label: `Auto-responder ${trigger.id}`,
+            })).ok;
           }
           return false;
         };
@@ -14524,70 +14539,117 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         dmPublicKey = contact.publicKey;
       }
 
-      // Fit the reply to the byte cap for its destination and scope (#5564).
-      // Split off (default): ONE send, truncated to the cap, so the stored row
-      // matches what went on air. Split on: up to AUTO_ACK_SPLIT_MAX_PARTS
-      // sends, each with a "(1/3) " marker, the last one truncated. A reply
-      // that already fits is sent as-is either way.
-      const maxBytes = this.autoAckReplyByteCap(sendAsDM);
+      // Fit the reply to the byte cap for its destination (#5564). Split off
+      // (default): ONE send, truncated to the cap, so the stored row matches
+      // what went on air. Split on: up to MESHCORE_SPLIT_MAX_PARTS marked
+      // sends, the last one truncated. Shared with the other automated
+      // senders through sendAutomatedText (#6316).
       const splitEnabled = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckSplitLongMessages')) === 'true';
-      const { parts, truncated } = splitUtf8Message(replyText, {
-        maxBytes,
-        maxParts: splitEnabled ? MeshCoreManager.AUTO_ACK_SPLIT_MAX_PARTS : 1,
+      await this.sendAutomatedText(replyText, {
+        toPublicKey: sendAsDM ? dmPublicKey : undefined,
+        channelIdxs: sendAsDM ? undefined : channelIdx === undefined ? [] : [channelIdx],
+        scopeOverride,
+        split: splitEnabled,
+        label: 'Auto-ack',
       });
-      if (truncated) {
-        logger.warn(
-          `[MeshCore:${sourceId}] Auto-ack: reply is ${utf8ByteLength(replyText)} bytes, over the ${maxBytes}-byte cap` +
-          `${parts.length > 1 ? ` x ${parts.length} parts` : ''}; the tail was cut`,
-        );
-      }
-
-      const target = sendAsDM ? 'DM' : `channel ${channelIdx}`;
-      for (let i = 0; i < parts.length; i++) {
-        if (i > 0) {
-          // Fixed gap between parts so they do not collide with each other's
-          // repeater re-floods. Awaited here, OUTSIDE the send lock, so other
-          // sends on this source are not held up for the wait.
-          await new Promise((resolve) => setTimeout(resolve, MeshCoreManager.AUTO_ACK_SPLIT_PART_DELAY_MS));
-        }
-        // Re-check before EVERY part: the pre-send delay and the gap between
-        // parts are long enough for receive-only to be switched on (#4547).
-        if (!this.canTransmit()) {
-          logger.debug(`⏭️ [MeshCore:${sourceId}] Auto-ack: receive-only mode, dropping part ${i + 1}/${parts.length}`);
-          return;
-        }
-        logger.debug(`[MeshCore:${sourceId}] Auto-ack ${target} part ${i + 1}/${parts.length} (${utf8ByteLength(parts[i])} bytes)`);
-        const sent = sendAsDM
-          ? await this.sendMessage(parts[i], dmPublicKey, undefined, scopeOverride)
-          // Automated sender → opt into channel-send auto-retry (#3979).
-          : await this.sendMessage(parts[i], undefined, channelIdx, scopeOverride, true);
-        if (!sent) {
-          // Stop at the first failure: later parts without the earlier ones
-          // are noise, and a radio that just refused a send needs no more.
-          if (parts.length > 1) {
-            logger.warn(`[MeshCore:${sourceId}] Auto-ack: part ${i + 1}/${parts.length} failed to send; skipping the rest`);
-          }
-          return;
-        }
-      }
     } catch (err) {
       logger.error(`[MeshCore:${this.sourceId}] Auto-ack handler threw: ${(err as Error).message}`);
     }
   }
 
-  /** Most sends one Auto-Acknowledge reply may be split into (#5564). */
-  private static readonly AUTO_ACK_SPLIT_MAX_PARTS = 3;
-
-  /** Wait between the parts of a split Auto-Acknowledge reply (#5564). */
-  private static readonly AUTO_ACK_SPLIT_PART_DELAY_MS = 10_000;
+  /** Tail of the per-source split mutex (#6316). */
+  private splitSequenceLock: Promise<unknown> = Promise.resolve();
 
   /**
-   * Byte cap for one Auto-Acknowledge send (#5564), from the same helper the
-   * HTTP send route uses. A channel cap depends on this source's node name
-   * (the firmware prefixes "<name>: ", #6303); scope does not change it.
+   * Send one automated text (Auto Ack, Auto Responder, timers, Auto Announce,
+   * Automation Engine) fitted to the firmware byte cap (#6316).
+   *
+   * Split off: one send per target, truncated to the cap so the stored row
+   * matches the air. Split on: up to MESHCORE_SPLIT_MAX_PARTS marked parts,
+   * MESHCORE_SPLIT_PART_GAP_MS apart. Send order is by part: part i goes to
+   * every target channel back to back, then the gap, then part i+1. The gap is
+   * awaited outside the send lock. A multi-part sequence holds a per-source
+   * mutex so two sequences never interleave their (i/N) markers. Chat parts do
+   * not stamp recordMeshTx. A target whose part fails is dropped from later
+   * parts; the run stops when no target is left or receive-only is switched on.
    */
-  private autoAckReplyByteCap(sendAsDM: boolean): number {
-    return meshcoreMessageByteCap({ isDm: sendAsDM, nodeName: this.localNode?.name });
+  async sendAutomatedText(
+    text: string,
+    opts: {
+      toPublicKey?: string;
+      channelIdxs?: number[];
+      scopeOverride?: string | null;
+      split: boolean;
+      label: string;
+    },
+  ): Promise<{ ok: boolean; sentParts: number; totalParts: number; truncated: boolean; perTarget: Array<{ target: string; sentParts: number }> }> {
+    const isDm = opts.toPublicKey !== undefined;
+    const plan = planMeshCoreTextParts(text, { isDm, nodeName: this.localNode?.name, split: opts.split });
+    const { parts, truncated, maxBytes } = plan;
+    const targets = isDm
+      ? [{ name: 'DM', channel: undefined as number | undefined, sent: 0, alive: true }]
+      : (opts.channelIdxs ?? []).map((c) => ({ name: `channel ${c}`, channel: c as number | undefined, sent: 0, alive: true }));
+    const result = () => {
+      const sentParts = targets.length ? Math.min(...targets.map((t) => t.sent)) : 0;
+      return {
+        ok: targets.length > 0 && parts.length > 0 && targets.every((t) => t.sent === parts.length),
+        sentParts,
+        totalParts: parts.length,
+        truncated,
+        perTarget: targets.map((t) => ({ target: t.name, sentParts: t.sent })),
+      };
+    };
+    if (truncated) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] ${opts.label}: message is ${utf8ByteLength(text)} bytes, over the ${maxBytes}-byte cap` +
+        `${parts.length > 1 ? ` x ${parts.length} parts` : ''}; the tail was cut`,
+      );
+    }
+    if (parts.length === 0 || targets.length === 0) return result();
+
+    const run = async () => {
+      for (let i = 0; i < parts.length; i++) {
+        if (!targets.some((t) => t.alive)) break;
+        if (i > 0) {
+          // Fixed gap so parts do not collide with each other's repeater
+          // re-floods. Outside runSerialized: other sends are not held up.
+          await new Promise((resolve) => setTimeout(resolve, MESHCORE_SPLIT_PART_GAP_MS));
+        }
+        for (const t of targets) {
+          if (!t.alive) continue;
+          // Re-check before EVERY part: the pre-send delay and the gap are
+          // long enough for receive-only to be switched on (#4547).
+          if (!this.canTransmit()) {
+            logger.debug(`⏭️ [MeshCore:${this.sourceId}] ${opts.label}: cannot transmit, dropping part ${i + 1}/${parts.length}`);
+            return;
+          }
+          logger.debug(`[MeshCore:${this.sourceId}] ${opts.label} ${t.name} part ${i + 1}/${parts.length} (${utf8ByteLength(parts[i])} bytes)`);
+          const sent = isDm
+            ? await this.sendMessage(parts[i], opts.toPublicKey, undefined, opts.scopeOverride)
+            // Automated sender: opt into channel-send auto-retry (#3979).
+            : await this.sendMessage(parts[i], undefined, t.channel, opts.scopeOverride, true);
+          if (!sent) {
+            // Later parts without the earlier ones are noise.
+            if (parts.length > 1) {
+              logger.warn(`[MeshCore:${this.sourceId}] ${opts.label}: part ${i + 1}/${parts.length} to ${t.name} failed; skipping the rest for it`);
+            }
+            t.alive = false;
+          } else {
+            t.sent++;
+          }
+        }
+      }
+    };
+
+    if (parts.length > 1) {
+      // Per-source mutex: a sequence waits for the running one to finish.
+      const task = this.splitSequenceLock.then(run);
+      this.splitSequenceLock = task.then(() => undefined, () => undefined);
+      await task;
+    } else {
+      await run();
+    }
+    return result();
   }
 
   private async attemptReconnect(): Promise<void> {
