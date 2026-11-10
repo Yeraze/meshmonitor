@@ -14,6 +14,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { reverseGeocode } from '../offlineGeocoder/reverseGeocode.js';
 import type { MqttRootDirectory } from './directory.js';
 import { directoryProvider, type DirectoryStatus } from './directoryProvider.js';
 import {
@@ -109,6 +110,8 @@ export interface RootFinderServiceOptions {
   directory?: MqttRootDirectory | (() => MqttRootDirectory);
   directoryStatus?: () => DirectoryStatus;
   createSampler?: (opts: RootSamplerOptions) => RootSampler;
+  /** Offline reverse geocoder (#6336). Defaults to the embedded data. */
+  geocoder?: (pos: LatLon) => Place | undefined;
 }
 
 const isActive = (s: SamplerStatus) => s === 'connecting' || s === 'sampling';
@@ -120,6 +123,7 @@ export class RootFinderService {
   private readonly directory: () => MqttRootDirectory;
   private readonly directoryStatus: () => DirectoryStatus;
   private readonly createSampler: (opts: RootSamplerOptions) => RootSampler;
+  private readonly geocoder: (pos: LatLon) => Place | undefined;
 
   constructor(opts: RootFinderServiceOptions = {}) {
     this.now = opts.now ?? Date.now;
@@ -129,6 +133,7 @@ export class RootFinderService {
     this.directoryStatus =
       opts.directoryStatus ?? (dir ? () => ({ source: 'bundled' }) : () => directoryProvider.status());
     this.createSampler = opts.createSampler ?? ((o) => new RootSampler(o));
+    this.geocoder = opts.geocoder ?? reverseGeocode;
   }
 
   /** Mark ended jobs, drop old ones, drop expired cooldowns. */
@@ -196,13 +201,28 @@ export class RootFinderService {
       protocol,
       regionRoot,
       userPos: params.userPos,
-      place: params.place,
+      place: this.placeFor(params),
       sampler,
       endedAt: null,
     };
     this.jobs.set(job.id, job);
     void sampler.start();
     return { sampleId: job.id, durationMs: sampler.snapshot().durationMs || SAMPLE_DURATION_MS };
+  }
+
+  /**
+   * The place the Meshtastic ladder is built from, resolved once per job so
+   * `get()` stays cheap. Never logged: it is as private as the position.
+   */
+  private placeFor(params: StartSampleParams): Place | undefined {
+    // MeshCore samples have no ladder, so they never need a place (#6335).
+    if (params.protocol === 'meshcore') return undefined;
+    if (params.place || !params.userPos) return params.place;
+    try {
+      return this.geocoder(params.userPos);
+    } catch {
+      return undefined;
+    }
   }
 
   private remainingSeconds(job: Job): number {

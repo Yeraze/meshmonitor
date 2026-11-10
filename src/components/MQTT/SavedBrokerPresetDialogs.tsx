@@ -9,6 +9,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import Modal from '../common/Modal';
 import { NumberInput } from '../common/NumberInput';
 import {
@@ -21,6 +22,8 @@ import {
 import { defaultMqttPort } from '../../utils/mqttBrokerEndpoint';
 import { MqttRootFinder } from './MqttRootFinder';
 import { MqttRootFieldError } from './MqttRootFieldError';
+import { mqttRootErrorMessage } from './mqttRootApiError';
+import { isChangedInvalidMqttRoot } from '../../utils/mqttRootTopic';
 import { defaultDeviceRegionRoot } from './mqttRootDefaults';
 import styles from './SavedBrokerPresetDialogs.module.css';
 
@@ -80,8 +83,17 @@ function bodyFromValues(v: EditorValues): SavedBrokerPresetBody {
   };
 }
 
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+function errorText(err: unknown, t: TFunction): string {
+  return mqttRootErrorMessage(err, t) ?? (err instanceof Error ? err.message : String(err));
+}
+
+/**
+ * The server trims a preset root and strips a trailing `/`, then refuses it
+ * when it changed and breaks the root rules (#6338). `saved` is the stored
+ * root, or undefined for a new preset.
+ */
+function presetRootBlocksSave(rootTopic: string, saved: string | null | undefined): boolean {
+  return isChangedInvalidMqttRoot(rootTopic.trim().replace(/\/+$/, ''), saved);
 }
 
 const PresetEditor: React.FC<{
@@ -208,7 +220,7 @@ export const SaveBrokerPresetDialog: React.FC<{
       await create.mutateAsync(bodyFromValues(values));
       onClose();
     } catch (err) {
-      setError(errorText(err));
+      setError(errorText(err, t));
     }
   };
 
@@ -239,7 +251,7 @@ export const SaveBrokerPresetDialog: React.FC<{
             type="button"
             className="btn-primary"
             onClick={() => void save()}
-            disabled={!values || !values.name.trim() || create.isPending}
+            disabled={!values || !values.name.trim() || presetRootBlocksSave(values.rootTopic, undefined) || create.isPending}
             data-testid="save-broker-preset-submit"
           >
             {t('mqtt_presets.saved.save_button', 'Save preset')}
@@ -295,7 +307,7 @@ export const ManageBrokerPresetsDialog: React.FC<{
       setTarget(null);
       setValues(null);
     } catch (err) {
-      setError(errorText(err));
+      setError(errorText(err, t));
     }
   };
 
@@ -305,7 +317,7 @@ export const ManageBrokerPresetsDialog: React.FC<{
       await remove.mutateAsync(id);
       setConfirmDeleteId(null);
     } catch (err) {
-      setError(errorText(err));
+      setError(errorText(err, t));
     }
   };
 
@@ -340,7 +352,12 @@ export const ManageBrokerPresetsDialog: React.FC<{
                 type="button"
                 className="btn-primary"
                 onClick={() => void saveEdit()}
-                disabled={!values.name.trim() || update.isPending || create.isPending}
+                disabled={
+                  !values.name.trim()
+                  || presetRootBlocksSave(values.rootTopic, target.mode === 'edit' ? target.preset.rootTopic : undefined)
+                  || update.isPending
+                  || create.isPending
+                }
                 data-testid="manage-broker-preset-submit"
               >
                 {t('mqtt_presets.saved.save_button', 'Save preset')}

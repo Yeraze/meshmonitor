@@ -34,6 +34,7 @@ import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { isModuleConfigNotAppliedError, isModuleConfigUnverifiedError } from '../errors/moduleConfigVerifyError.js';
 import { safeJson } from '../utils/redactSecrets.js';
 import { fillDeviceMqttFromPreset } from '../services/mqttBrokerPresetFill.js';
+import { checkMqttRootSave, failInvalidMqttRoot } from '../utils/mqttRootGuard.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -251,6 +252,9 @@ router.post('/mqtt', requireDeviceSourcePermission('configuration', 'write', 'bo
     const presetErr = await fillDeviceMqttFromPreset(config);
     if (presetErr) return fail(res, presetErr.status, presetErr.code, presetErr.message);
     const { manager: cfgMqttManager } = getDeviceSourceTarget(req);
+    // Refuse a bad root, but only when it changes (#6338).
+    const rootErr = checkMqttRootSave(config.root, cfgMqttManager.getActualModuleConfig?.()?.mqtt?.root);
+    if (rootErr) return failInvalidMqttRoot(res, rootErr, 'root');
     await cfgMqttManager.setMQTTConfig(config);
     res.json({ success: true, message: 'MQTT configuration sent' });
   } catch (error) {

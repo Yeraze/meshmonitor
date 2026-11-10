@@ -92,12 +92,49 @@ describe('mqtt broker preset routes', () => {
     [{ ...FLORIDA, host: 'broker.fl-mesh.org:1883' }, 'host'],
     [{ ...FLORIDA, port: 70000 }, 'port'],
     [{ ...FLORIDA, tls: 'yes' }, 'tls'],
-    [{ ...FLORIDA, rootTopic: 'msh/#' }, 'rootTopic'],
   ])('rejects an invalid body (%#: %s)', async (body, field) => {
     const res = await createAsAdmin(body);
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_INPUT');
     expect(res.body.error).toContain(field);
+  });
+
+  // The root is checked as a device would (#6338), after the trim and the
+  // trailing-slash strip.
+  it.each([
+    ['msh/#', 'WILDCARD'],
+    ['msh/US FL', 'WHITESPACE'],
+    ['msh/US/2', 'ENDS_WITH_2'],
+    ['msh\u200B', 'INVISIBLE'],
+    ['/msh', 'SLASH'],
+    ['msh//US', 'SLASH'],
+    ['a'.repeat(32), 'TOO_LONG'],
+  ])('refuses the root %j (%s)', async (rootTopic, reason) => {
+    const res = await createAsAdmin({ ...FLORIDA, rootTopic });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ success: false, code: 'INVALID_MQTT_ROOT', field: 'rootTopic', reason });
+    expect(await harness.db.mqttBrokerPresets.listAsync()).toEqual([]);
+  });
+
+  it('still saves a preset with no root', async () => {
+    const res = await createAsAdmin({ ...FLORIDA, rootTopic: '' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.rootTopic).toBeNull();
+  });
+
+  it('renames a preset whose stored root is bad, but refuses a new bad root', async () => {
+    // A bad root saved before #6338 (or by a system restore).
+    const stored = await harness.db.mqttBrokerPresets.createAsync({
+      name: 'Old', host: 'broker.fl-mesh.org', port: 1883, tls: false, username: null, password: null, rootTopic: 'msh/US/2',
+    });
+    const admin = await harness.loginAs(harness.admin);
+    const renamed = await admin.put(`/mqtt-broker-presets/${stored.id}`).send({ ...FLORIDA, name: 'Renamed', rootTopic: 'msh/US/2' });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.data).toMatchObject({ name: 'Renamed', rootTopic: 'msh/US/2' });
+
+    const changed = await admin.put(`/mqtt-broker-presets/${stored.id}`).send({ ...FLORIDA, name: 'Renamed', rootTopic: 'msh/#' });
+    expect(changed.status).toBe(400);
+    expect(changed.body).toMatchObject({ code: 'INVALID_MQTT_ROOT', reason: 'WILDCARD' });
   });
 
   it('strips a trailing slash from the root topic and lowercases the host', async () => {

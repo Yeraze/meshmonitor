@@ -246,15 +246,42 @@ describe('root finder isolation (d): import boundary', () => {
     ['MQTT broker (embedded)', /transports\/mqttBroker\.js/],
   ];
 
-  const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'));
+  // The offline geocoder (#6336) feeds the finder, so it is held to the same rules.
+  const geoDir = path.join(dir, '../offlineGeocoder');
+  const sources = (d: string, prefix: string) =>
+    readdirSync(d)
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+      .map((f) => ({ file: prefix + f, full: path.join(d, f) }));
+  const all = [...sources(dir, ''), ...sources(geoDir, 'offlineGeocoder/')];
+  const files = all.map((f) => f.file);
 
-  it('finds the finder sources', () => {
-    expect(files).toEqual(expect.arrayContaining(['rootSampler.ts', 'rootFinderService.ts', 'ladder.ts', 'meshcoreRegionAdapter.ts']));
+  it('finds the finder and geocoder sources', () => {
+    expect(files).toEqual(
+      expect.arrayContaining([
+        'rootSampler.ts',
+        'rootFinderService.ts',
+        'ladder.ts',
+        'meshcoreRegionAdapter.ts',
+        'offlineGeocoder/reverseGeocode.ts',
+        'offlineGeocoder/pip.ts',
+        'offlineGeocoder/codec.ts',
+      ]),
+    );
   });
 
-  for (const file of files) {
+  it('the geocoder does no network or file I/O', () => {
+    for (const { file, full } of all.filter((f) => f.file.startsWith('offlineGeocoder/'))) {
+      const src = readFileSync(full, 'utf8');
+      const imports = [...src.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
+      for (const spec of imports) {
+        expect(/^(fs|net|http|https|dns|tls|child_process|mqtt)$|^node:/.test(spec), `${file} imports ${spec}`).toBe(false);
+      }
+    }
+  });
+
+  for (const { file, full } of all) {
     it(`${file} imports no forbidden module`, () => {
-      const src = readFileSync(path.join(dir, file), 'utf8');
+      const src = readFileSync(full, 'utf8');
       const imports = [...src.matchAll(/(?:^|\n)\s*(?:import|export)\s[^;]*?from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
       const dynamic = [...src.matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
       for (const spec of [...imports, ...dynamic]) {
@@ -265,7 +292,7 @@ describe('root finder isolation (d): import boundary', () => {
     });
 
     it(`${file} has no publish call`, () => {
-      const src = readFileSync(path.join(dir, file), 'utf8');
+      const src = readFileSync(full, 'utf8');
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
       expect(/\.publish\s*\(/.test(code)).toBe(false);
     });

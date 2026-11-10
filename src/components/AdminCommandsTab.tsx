@@ -6,6 +6,7 @@ import { PacketSignaturePolicyPicker } from './configuration/PacketSignaturePoli
 import { PacketSignaturePolicyConfirmDialog } from './configuration/PacketSignaturePolicyConfirmDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import apiService, { type AdminCommandAck } from '../services/api';
+import { mqttRootErrorMessage } from './MQTT/mqttRootApiError';
 import { useToast } from './ToastContainer';
 import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { useTxStatus } from '../hooks/useTxStatus';
@@ -1001,7 +1002,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       if (isTxDisabledError(error)) {
         showToast(t('tx_disabled.send_blocked_toast'), 'warning');
       } else {
-        showToast(error.message || t('admin_commands.failed_execute_command'), 'error');
+        // A refused MQTT root comes back localised (#6338).
+        showToast(mqttRootErrorMessage(error, t) || error.message || t('admin_commands.failed_execute_command'), 'error');
       }
       console.error('Admin command error:', error);
       throw error;
@@ -3044,6 +3046,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         mqttMapPositionPrecision={configState.mqtt.mapPositionPrecision}
         mqttMapShouldReportLocation={configState.mqtt.mapShouldReportLocation}
         mqttLoadedForSelectedNode={mqttConfigLoadedForSelectedNode}
+        mqttSavedRoot={configState.mqtt.loadedRoot}
         onMQTTConfigChange={handleMQTTConfigChange}
         onSaveMQTTConfig={handleSetMQTTConfig}
         neighborInfoEnabled={configState.neighborInfo.enabled}

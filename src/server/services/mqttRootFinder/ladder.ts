@@ -32,7 +32,7 @@ export interface HeardRoot {
   positions?: LatLon[];
 }
 
-/** A resolved place for the user. Phase 1 has no geocoder, so this is optional. */
+/** A resolved place for the user, from the offline geocoder (#6336). Absent without a position. */
 export interface Place {
   /** ISO 3166-1 alpha-2, e.g. `US`. */
   cc: string;
