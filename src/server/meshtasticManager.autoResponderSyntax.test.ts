@@ -42,6 +42,8 @@ describe('Meshtastic Auto-Responder syntax (#5924)', () => {
     manager.replaceAcknowledgementTokens = async (s: string) => s;
     enqueue = vi.fn();
     manager.enqueueAutomation = enqueue;
+    // Text replies go through the shared splitter's sender (#6330).
+    manager.sendAutomatedText = vi.fn(async (text: string) => { enqueue(text); return { sentParts: 1, totalParts: 1 }; });
   });
 
   afterEach(() => vi.restoreAllMocks());
