@@ -26,10 +26,18 @@ import channelDatabaseRoutes from './channelDatabaseRoutes.js';
 import databaseService from '../../services/database.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { channelKeyFingerprint, decryptGroupTextFrame, keyedChannelIndex } from '../services/meshcoreFrameIngest.js';
-import { resolveMeshcoreKeyAccess } from '../utils/meshcoreKeyAccess.js';
+import { resolveMeshcoreKeyAccess as resolveAllKeyAccess } from '../utils/meshcoreKeyAccess.js';
+import { MESHCORE_PUBLIC_CHANNEL_SECRET } from '../utils/meshcoreGroupEcho.js';
 import { listKeyedChannelsForViewer } from '../utils/meshcoreKeyedChannels.js';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
 import { buildGrpTxtFrame } from '../test-helpers/meshcoreFrames.js';
+
+/** The MeshCore Public key is granted to every signed-in user (#6308 Q2); these tests are about the other keys. */
+const PUBLIC_FP = channelKeyFingerprint(Buffer.from(MESHCORE_PUBLIC_CHANNEL_SECRET).toString('hex'));
+async function resolveMeshcoreKeyAccess(user: Parameters<typeof resolveAllKeyAccess>[0]): ReturnType<typeof resolveAllKeyAccess> {
+  const all = await resolveAllKeyAccess(user);
+  return Array.isArray(all) ? all.filter((fp: string) => fp !== PUBLIC_FP) : all;
+}
 
 const SECRET = '0123456789abcdef0123456789abcdef';
 const SECRET_B64 = Buffer.from(SECRET, 'hex').toString('base64');
@@ -276,7 +284,7 @@ describe('MeshCore virtual channels (#5552)', () => {
       });
       expect(await resolveMeshcoreKeyAccess(limited)).toEqual([channelKeyFingerprint(SECRET)]);
       expect(await listKeyedChannelsForViewer(limited, A)).toEqual([
-        { id: keyedChannelIndex(SECRET), name: 'vc', keyFingerprint: channelKeyFingerprint(SECRET), virtual: true },
+        { id: keyedChannelIndex(SECRET), name: 'vc', keyFingerprint: channelKeyFingerprint(SECRET), virtual: true, legacy: false },
       ]);
 
       // A disabled row stops decrypting new traffic.
