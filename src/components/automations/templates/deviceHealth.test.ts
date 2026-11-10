@@ -214,4 +214,40 @@ describe('deviceHealthTemplate', () => {
       }
     }
   });
+
+  describe('clock out of sync (MeshCore, #6273)', () => {
+    it('declares the checkbox and a gated threshold field', () => {
+      const byName = Object.fromEntries(deviceHealthTemplate.params.map((p) => [p.name, p]));
+      expect(byName.clockOutOfSync.kind).toBe('checkbox');
+      expect(byName.clockOutOfSync.label).toBe('Alert when a node\'s clock is out of sync (MeshCore)');
+      expect(byName.clockDriftThresholdSeconds.showIf).toEqual({ field: 'clockOutOfSync', truthy: true });
+      expect(byName.clockDriftThresholdSeconds.placeholder).toBe('300');
+    });
+
+    it('builds the trigger with the default 300 s threshold and a 10 an hour rate limit', () => {
+      const built = buildMany({ clockOutOfSync: true });
+      expect(built).toHaveLength(1);
+      expect(built[0].name).toBe('Device Health — Clock out of sync');
+      const t = triggerNode(built[0].config);
+      expect(t.type).toBe('trigger.clockOutOfSync');
+      expect(t.params).toEqual({ thresholdSeconds: 300, rateLimit: { maxActions: 10, windowSeconds: 3600 } });
+      const notify = built[0].config.nodes.find((n) => n.type === 'action.notify')!;
+      expect(notify.params!.body).toBe('{{ node.longName }} clock is {{ trigger.offsetText }} (threshold {{ trigger.thresholdSeconds }}s).');
+      expect(validateAutomationGraph(built[0].config).valid).toBe(true);
+    });
+
+    it('honours a valid threshold and falls back for an out-of-range one', () => {
+      expect(triggerNode(buildMany({ clockOutOfSync: true, clockDriftThresholdSeconds: '900' })[0].config).params!.thresholdSeconds).toBe(900);
+      for (const bad of ['60', '100000', '300.5']) {
+        const built = buildMany({ clockOutOfSync: true, clockDriftThresholdSeconds: bad });
+        expect(triggerNode(built[0].config).params!.thresholdSeconds).toBe(300);
+        expect(validateAutomationGraph(built[0].config).valid).toBe(true);
+      }
+    });
+
+    it('is appended last, so the low-battery floor stays at index 0', () => {
+      const built = buildMany({ lowBattery: true, clockOutOfSync: true });
+      expect(built.map((b) => b.name)).toEqual(['Device Health — Low battery', 'Device Health — Clock out of sync']);
+    });
+  });
 });

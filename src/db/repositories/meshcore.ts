@@ -282,7 +282,7 @@ export interface DbMeshCoreMessage {
    * rows and own DMs carry it too. Null for rows written before, and room posts.
    */
   senderTimestamp?: number | null;
-  /** Allowlisted sender name a raw override send used (#6282, migration 230). */
+  /** Allowlisted sender name a raw override send used (#6282, migration 231). */
   senderNameOverride?: string | null;
   /** MC1 reaction hash of this message (#5759, migration 203). Ordinary rows only. */
   mc1Hash?: string | null;

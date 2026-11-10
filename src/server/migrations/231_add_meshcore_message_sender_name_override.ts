@@ -1,5 +1,5 @@
 /**
- * Migration 230: `meshcore_messages.senderNameOverride` (#6282).
+ * Migration 231: `meshcore_messages.senderNameOverride` (#6282).
  *
  *   senderNameOverride TEXT NULL - the sender name an API caller asked this
  *   own channel send to go out under (instead of the node's real name).
@@ -19,7 +19,7 @@ import {
   addColumnIfMissingMysql,
 } from './helpers.js';
 
-const LABEL = 'Migration 230';
+const LABEL = 'Migration 231';
 const TABLE = 'meshcore_messages';
 const COLUMN = 'senderNameOverride';
 
@@ -39,7 +39,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration230Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration231Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): adding ${COLUMN} to ${TABLE}...`);
   await addColumnIfMissingPostgres(client, TABLE, COLUMN, '"senderNameOverride" TEXT');
   logger.info(`${LABEL} complete (PostgreSQL)`);
@@ -47,7 +47,7 @@ export async function runMigration230Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration230Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration231Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): adding ${COLUMN} to ${TABLE}...`);
   await addColumnIfMissingMysql(pool, TABLE, COLUMN, 'senderNameOverride TEXT NULL');
   logger.info(`${LABEL} complete (MySQL)`);

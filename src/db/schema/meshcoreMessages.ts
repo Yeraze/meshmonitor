@@ -48,7 +48,7 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   // resend can reuse it; #5759 (migration 203) also writes it on received
   // rows and own DMs. NULL for rows written before, and for room posts.
   senderTimestamp: integer('senderTimestamp'),
-  // Migration 230 (#6282): the allowlisted name this own channel send went out
+  // Migration 231 (#6282): the allowlisted name this own channel send went out
   // under as a raw packet. NULL on every other row.
   senderNameOverride: text('senderNameOverride'),
 

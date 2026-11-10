@@ -833,6 +833,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import nodesRoutes from './routes/nodesRoutes.js';
 import nodeNameHistoryRoutes from './routes/nodeNameHistoryRoutes.js';
 import mqttBrokerPresetRoutes from './routes/mqttBrokerPresetRoutes.js';
+import mqttRootFinderRoutes from './routes/mqttRootFinderRoutes.js';
 import ductingRoutes from './routes/ductingRoutes.js';
 import translationRoutes from './routes/translationRoutes.js';
 
@@ -1085,6 +1086,8 @@ apiRouter.use('/', nodesRoutes);
 apiRouter.use('/', nodeNameHistoryRoutes);
 // #5794: saved MQTT broker presets (global, admin-managed)
 apiRouter.use('/mqtt-broker-presets', mqttBrokerPresetRoutes);
+// #6287: MQTT root topic finder (subscribe-only sampler, start-and-poll)
+apiRouter.use('/mqtt/root-finder', mqttRootFinderRoutes);
 // #5734: tropospheric ducting forecast from NOAA GFS (gated by ductingOverlayEnabled + map read)
 apiRouter.use('/ducting', ductingRoutes);
 

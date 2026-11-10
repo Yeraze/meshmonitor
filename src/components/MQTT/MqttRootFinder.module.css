@@ -1,0 +1,129 @@
+/* MQTT root topic finder (#6287). */
+
+.trigger {
+  margin-top: 0.4rem;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.privacy {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-subtle);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field label {
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
+
+.field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.4s linear;
+}
+
+.status {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
+
+.section h4 {
+  margin: 0.4rem 0 0.2rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.45rem 0.25rem;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover,
+.row:focus-visible {
+  background: var(--color-border);
+}
+
+.root {
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.badge {
+  padding: 0 0.35rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.6rem;
+  font-size: 0.72rem;
+}
+
+.fieldError {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-error);
+}
+
+.warning {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-warning);
+}
+
+.error {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-error);
+}

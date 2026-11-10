@@ -1,9 +1,9 @@
 /**
- * Tests for migration 230 — `meshcore_messages.senderNameOverride` (#6282).
+ * Tests for migration 231 — `meshcore_messages.senderNameOverride` (#6282).
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { migration } from './230_add_meshcore_message_sender_name_override.js';
+import { migration } from './231_add_meshcore_message_sender_name_override.js';
 
 function createTable(db: Database.Database): void {
   db.exec(`
@@ -19,7 +19,7 @@ function createTable(db: Database.Database): void {
   `);
 }
 
-describe('Migration 230 — meshcore_messages.senderNameOverride', () => {
+describe('Migration 231 — meshcore_messages.senderNameOverride', () => {
   it('adds a nullable column and is idempotent', () => {
     const db = new Database(':memory:');
     createTable(db);

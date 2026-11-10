@@ -15,6 +15,9 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
+import { MqttRootFinder } from '../MQTT/MqttRootFinder';
+import { MqttRootFieldError } from '../MQTT/MqttRootFieldError';
+import { defaultDeviceRegionRoot } from '../MQTT/mqttRootDefaults';
 import { MqttDocsLinks } from '../MQTT/MqttDocsLinks';
 import {
   applyPresetToDevice,
@@ -70,10 +73,13 @@ interface MQTTConfigSectionProps {
   onSave: (extra?: { brokerPresetId?: number }) => Promise<boolean>;
   /** Bumped when the page reloads config from the node (#5797). */
   configVersion?: number;
+  /** The radio's LoRa region code; seeds where the topic finder searches (#6287). */
+  loraRegion?: number;
 }
 
 const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   configVersion,
+  loraRegion,
   mqttEnabled,
   mqttAddress,
   mqttUsername,
@@ -617,6 +623,25 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
                 onChange={(e) => setMqttRoot(e.target.value)}
                 className="setting-input"
                 placeholder="msh/US"
+              />
+              <MqttRootFieldError value={mqttRoot} />
+              <MqttRootFinder
+                context="device"
+                sourceId={currentSourceId}
+                disabled={!canEditMqtt}
+                currentRoot={mqttRoot}
+                defaultRegionRoot={defaultDeviceRegionRoot(mqttRoot, loraRegion)}
+                getTarget={() => ({
+                  broker: { address: mqttAddress, tlsEnabled },
+                  username: mqttUsername,
+                  password: mqttPassword,
+                  brokerPresetId:
+                    serverFillPreset?.savedId !== undefined &&
+                    matchDevicePreset({ address: mqttAddress, tlsEnabled }, [serverFillPreset])
+                      ? serverFillPreset.savedId
+                      : null,
+                })}
+                onPickRoot={setMqttRoot}
               />
             </div>
             <div className="setting-item">

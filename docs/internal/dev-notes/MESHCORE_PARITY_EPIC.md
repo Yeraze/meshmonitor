@@ -287,7 +287,19 @@ Shipped: `buildRawGroupTextFrame` (raw `CMD_SEND_RAW_PACKET` frame), `meshcoreCh
 native `send_raw_packet` (RF, receive-only gated) and `get_default_flood_scope`, `device_query` now returns `repeat` and
 `path_hash_mode`, `MeshCoreManager.sendChannelMessageAs` (no `applyFloodScope`), own-echo suppression (10 min), heard-by match
 on the exact payload, process-wide recent-override-name registry (30 min) so sibling sources flag `selfOrigin` and skip
-auto-replies, raw resend (refused when the name left the list), migration 230 (`meshcore_messages.senderNameOverride`),
+auto-replies, raw resend (refused when the name left the list), migration 231 (`meshcore_messages.senderNameOverride`),
 `GET/PUT /config/sender-names`, `senderName` on both send routes, audit rows (no text), UI card and "Sent as" label.
 Follow-ups: automations / Auto-Responder / scheduled sends setting a name; a composer field; Virtual Node raw packets.
 
+### #6273 clock out of sync (spec: `ISSUE_6273_SPEC.md`)
+Maintainer answers, 2026-11-10: default threshold 300 s (range 120-86400), two consecutive out-of-sync samples, once per
+episode; Device Health rate limit 10 an hour; device sources only (no `meshcore_mqtt` sampling); no Sync-clock action;
+Meshtastic wiring is a follow-up.
+Shipped: `detectClockOffset` (`meshcoreDeviceHealth.ts`) stores `mc_rtc_drift_secs` samples from verified adverts (replay
+check on sender time, one an hour per node) and emits `node:clockOffset`; Companion reads the sender time
+stashed from the raw advert at the firmware push, Repeater needs `signatureVerified`, the local poller feeds its own
+device clock (no throttle; the poller stores the row). `trigger.clockOutOfSync` is protocol neutral
+(`utils/clockOutOfSync.ts`: edge rule, text, threshold range); history lives in telemetry so a restart or save cannot
+re-fire it. Device Health alert appended last. The Security scan reads the latest stored sample as an `advert` offset,
+so the clock flag works with the packet log off. Follow-ups: Meshtastic samples (packet `rxTime` vs sender time);
+`meshcore_mqtt` sampling from the broker envelope time; #6274 neighbour alert.

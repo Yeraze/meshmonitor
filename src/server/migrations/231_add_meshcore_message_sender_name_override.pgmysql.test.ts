@@ -1,11 +1,11 @@
 /**
- * Migration 230 — PostgreSQL / MySQL container behaviour (isolated DBs).
+ * Migration 231 — PostgreSQL / MySQL container behaviour (isolated DBs).
  * A silent skip still reports success; confirm via `numPendingTests`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { runMigration230Postgres, runMigration230Mysql } from './230_add_meshcore_message_sender_name_override.js';
+import { runMigration231Postgres, runMigration231Mysql } from './231_add_meshcore_message_sender_name_override.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -15,12 +15,12 @@ import {
 
 const NAME = 'Zo\u00eb Bot';
 
-describe.skipIf(!postgresAvailable)('migration 230 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('migration 231 — PostgreSQL (container)', () => {
   let pool: pg.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig230'));
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig231'));
     await pool.query('DROP TABLE IF EXISTS meshcore_messages CASCADE');
     await pool.query(`
       CREATE TABLE meshcore_messages (
@@ -42,8 +42,8 @@ describe.skipIf(!postgresAvailable)('migration 230 — PostgreSQL (container)', 
   it('adds a nullable TEXT column, is idempotent, and round-trips', async () => {
     const client = await pool.connect();
     try {
-      await runMigration230Postgres(client);
-      await expect(runMigration230Postgres(client)).resolves.toBeUndefined();
+      await runMigration231Postgres(client);
+      await expect(runMigration231Postgres(client)).resolves.toBeUndefined();
     } finally {
       client.release();
     }
@@ -59,12 +59,12 @@ describe.skipIf(!postgresAvailable)('migration 230 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('migration 230 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('migration 231 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig230'));
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig231'));
     await pool.query('DROP TABLE IF EXISTS meshcore_messages');
     await pool.query(`
       CREATE TABLE meshcore_messages (
@@ -84,8 +84,8 @@ describe.skipIf(!mysqlAvailable)('migration 230 — MySQL (container)', () => {
   });
 
   it('adds a nullable TEXT column, is idempotent, and round-trips', async () => {
-    await runMigration230Mysql(pool);
-    await expect(runMigration230Mysql(pool)).resolves.toBeUndefined();
+    await runMigration231Mysql(pool);
+    await expect(runMigration231Mysql(pool)).resolves.toBeUndefined();
     const [before] = await pool.query(`SELECT senderNameOverride FROM meshcore_messages WHERE id = 'a'`);
     expect((before as any[])[0].senderNameOverride).toBeNull();
     await pool.query(`UPDATE meshcore_messages SET senderNameOverride = '${NAME}' WHERE id = 'a'`);
