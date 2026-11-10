@@ -92,6 +92,26 @@ These two triggers are designed for fleets of **stationary** GPS nodes (rooftops
 - Prefer **Cooldown applies to = node** so one stolen site does not suppress alerts for the rest of the fleet.
 - Pair with **Send a message** (channel) and/or **Send a notification** (Apprise) actions.
 
+### New neighbour confirmed {#new-neighbour-confirmed}
+
+`trigger.neighborAdded` (MeshCore) fires once when a repeater's neighbour table lists a node it did
+not list before, and the node is still listed after the **Confirm after** time (default 72 hours,
+6 to 336). A neighbour that drops out of a full read of the table before then never alerts.
+
+- **No airtime.** It reads the neighbour table MeshMonitor already polls and stores a first-seen
+  and last-heard time per neighbour. It sends nothing and adds no poll.
+- **No burst on deploy.** The first poll of each repeater only records what is already listed.
+  A node purge or deleting the source records a fresh baseline.
+- **Zero-hop repeaters only.** The firmware lists only repeaters heard directly. Repeater sources
+  poll every 5 minutes. A Companion source polls only for nodes with neighbour polling turned on,
+  and reads the 10 strongest neighbours per poll, so a weak new neighbour may never confirm.
+- **Tokens.** `{{ node.* }}` describes the new neighbour. `trigger.reporterName`,
+  `trigger.reporterPublicKey`, `trigger.neighborPublicKey`, `trigger.snr`, `trigger.firstSeenAt`,
+  `trigger.lastHeardAt`, `trigger.confirmedAfterHours` and `trigger.sightings` are also available.
+  Filter by signal with a number condition on `snr`.
+- **Limit.** The Device Health template caps it at 5 alerts per hour.
+- A neighbour unseen for 30 days counts as new again when it returns.
+
 ### Became likely aircraft
 
 Fires once when a node's [likely-aircraft flag](/features/settings#likely-aircraft-detection) turns
@@ -904,7 +924,8 @@ The gallery ships with these templates today:
   the adverts MeshMonitor already hears, so it sends nothing. It fires after two samples in a row
   are off by more than the threshold (300 seconds by default, 120 to 86400), once per episode, and
   at most 10 times an hour. A repeater whose clock was never set reads "Clock not set". MQTT
-  sources are not sampled.
+  sources are not sampled. A MeshCore-only alert, "a repeater gains a confirmed new neighbour", is
+  covered under [New neighbour confirmed](#new-neighbour-confirmed).
 - **Timed Announcement** — posts a message to the Meshtastic and MeshCore channels you pick, on a
   repeat (every 5 minutes up to once a day), between a start and an end time. It turns itself off
   when the event ends. See [Timed events](#timed-events-start-end-and-time-zone).

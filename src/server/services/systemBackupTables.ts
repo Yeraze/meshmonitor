@@ -121,6 +121,8 @@ export const BACKUP_TABLES: string[] = [
   'meshcore_nodes',
   'meshcore_messages',
   'meshcore_neighbor_info',
+  // #6274: per-repeater first-seen ledger for the confirmed new-neighbour alert.
+  'meshcore_neighbor_watch',
   'meshcore_position_history',
   'meshcore_heard_repeaters',
   'reticulum_destinations',

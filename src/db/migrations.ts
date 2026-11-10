@@ -248,8 +248,9 @@ import { migration as backupHistorySourceProtocolMigration, runMigration226Postg
 import { migration as meshcoreNodeSecurityFlagsMigration, runMigration227Postgres, runMigration227Mysql } from '../server/migrations/227_add_meshcore_node_security_flags.js';
 import { migration as addNotificationTextMaxMigration, runMigration229Postgres, runMigration229Mysql } from '../server/migrations/229_add_notification_text_max.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
+import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
-// ============================================================================
+// =====================================================================
 // Registry
 // ============================================================================
 
@@ -3693,4 +3694,18 @@ registry.register({
   sqlite: (db) => addNotificationTextMaxMigration.up(db),
   postgres: (client) => runMigration229Postgres(client),
   mysql: (pool) => runMigration229Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 230: confirmed new-neighbour ledger (meshcore_neighbor_watch) and
+// meshcore_nodes.neighborWatchBaselinedAt (#6274).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 230,
+  name: 'add_meshcore_neighbor_watch',
+  settingsKey: 'migration_230_add_meshcore_neighbor_watch',
+  sqlite: (db) => meshcoreNeighborWatchMigration.up(db),
+  postgres: (client) => runMigration230Postgres(client),
+  mysql: (pool) => runMigration230Mysql(pool),
 });

@@ -1836,6 +1836,14 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge MeshCore trace runs for deleted source ${req.params.id}:`, traceRunsError);
     }
 
+    // #6274: the source's MeshCore neighbour-watch ledger. Deleting the source
+    // re-baselines for good; a node purge clears it through the repository.
+    try {
+      await databaseService.meshcore.deleteNeighborWatchForSource(req.params.id);
+    } catch (neighborWatchError) {
+      logger.warn(`Failed to purge MeshCore neighbour watch for deleted source ${req.params.id}:`, neighborWatchError);
+    }
+
     // #5862: node rename history is what this source heard.
     try {
       await databaseService.nodeNameHistory.deleteBySourceId(req.params.id);

@@ -53,6 +53,18 @@ const SECURITY_FLAG_KEYS = [
   'timeOffsetCheckedAt',
 ] as const;
 
+export type MeshCoreNeighborWatchState = 'baseline' | 'pending' | 'confirmed';
+
+/** One neighbour-watch ledger row (#6274). Times are epoch ms. */
+export interface MeshCoreNeighborWatchRow {
+  neighborPublicKey: string;
+  state: MeshCoreNeighborWatchState;
+  firstSeenAt: number;
+  lastHeardAt: number;
+  lastSnr: number | null;
+  sightings: number;
+}
+
 /** One scanner write for a node (#6281). Times are epoch ms; the offset is seconds. */
 export interface MeshCoreSecurityFlagsUpdate {
   publicKey: string;
@@ -162,6 +174,8 @@ export interface DbMeshCoreNode {
   timeOffsetSource?: string | null;
   /** ms */
   timeOffsetCheckedAt?: number | null;
+  /** ms; set once a repeater's neighbour table has had its first evaluation (#6274) */
+  neighborWatchBaselinedAt?: number | null;
   positionOverrideEnabled?: boolean | null;
   latitudeOverride?: number | null;
   longitudeOverride?: number | null;
@@ -783,6 +797,13 @@ export class MeshCoreRepository extends BaseRepository {
     if (OVERRIDE_KEYS.some((k) => k in node)) {
       const stripped = { ...node } as Record<string, unknown>;
       for (const k of OVERRIDE_KEYS) delete stripped[k];
+      node = stripped as typeof node;
+    }
+
+    // #6274: the neighbour watch marker has its own writer too.
+    if ('neighborWatchBaselinedAt' in node) {
+      const stripped = { ...node } as Record<string, unknown>;
+      delete stripped.neighborWatchBaselinedAt;
       node = stripped as typeof node;
     }
 
@@ -1927,6 +1948,8 @@ export class MeshCoreRepository extends BaseRepository {
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
     // #5862: the node's rename history on this source goes with it.
     await this.dropNameHistory(h => h.deleteForNode('meshcore', publicKey, sourceId));
+    // #6274: the node's own neighbour ledger goes with it.
+    await this.deleteNeighborWatchForReporter(sourceId, publicKey);
     return this.getAffectedRows(result) > 0;
   }
 
@@ -1985,6 +2008,13 @@ export class MeshCoreRepository extends BaseRepository {
     for (const row of rows) {
       await this.dropNameHistory(h => h.deleteForNode('meshcore', row.publicKey as string, sourceId));
     }
+    // #6274: a purge re-baselines. Every neighbour heard again is "new", so the
+    // ledger goes and the surviving favourites lose their baselined marker.
+    await this.deleteNeighborWatchForSource(sourceId);
+    await this.db
+      .update(meshcoreNodes)
+      .set({ neighborWatchBaselinedAt: null })
+      .where(eq(meshcoreNodes.sourceId, sourceId));
     return rows.length;
   }
 
@@ -2005,6 +2035,8 @@ export class MeshCoreRepository extends BaseRepository {
     const { meshcoreNodes } = this.tables;
     await this.db.delete(meshcoreNodes);
     await this.dropNameHistory(h => h.deleteAllForProtocol('meshcore'));
+    // #6274: no node left, so no neighbour ledger either (all sources).
+    await this.db.delete(this.tables.meshcoreNeighborWatch);
     return count;
   }
 
@@ -3373,15 +3405,136 @@ export class MeshCoreRepository extends BaseRepository {
     await this.db
       .delete(meshcoreNeighbors)
       .where(and(eq(meshcoreNeighbors.sourceId, sourceId), eq(meshcoreNeighbors.publicKey, publicKey)));
+    await this.deleteNeighborWatchForReporter(sourceId, publicKey);
   }
 
   async deleteAllNeighbors(sourceId?: string): Promise<void> {
-    const { meshcoreNeighbors } = this.tables;
+    const { meshcoreNeighbors, meshcoreNeighborWatch } = this.tables;
     if (sourceId) {
       await this.db.delete(meshcoreNeighbors).where(eq(meshcoreNeighbors.sourceId, sourceId));
+      await this.deleteNeighborWatchForSource(sourceId);
     } else {
       await this.db.delete(meshcoreNeighbors);
+      await this.db.delete(meshcoreNeighborWatch);
     }
+  }
+
+  // ============ Neighbour Watch Methods (#6274) ============
+
+  /** Every ledger row one reporter holds on one source. */
+  async getNeighborWatch(sourceId: string, reporterPublicKey: string): Promise<MeshCoreNeighborWatchRow[]> {
+    if (!sourceId) throw new Error('MeshCoreRepository.getNeighborWatch requires a sourceId');
+    const { meshcoreNeighborWatch: t } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.sourceId, sourceId), eq(t.reporterPublicKey, reporterPublicKey)));
+    return rows.map((r: Record<string, unknown>) => ({
+      neighborPublicKey: r.neighborPublicKey as string,
+      state: r.state as MeshCoreNeighborWatchState,
+      firstSeenAt: Number(r.firstSeenAt),
+      lastHeardAt: Number(r.lastHeardAt),
+      lastSnr: r.lastSnr == null ? null : Number(r.lastSnr),
+      sightings: Number(r.sightings ?? 0),
+    }));
+  }
+
+  /**
+   * Apply one planned change set for a reporter: upsert the given rows (keyed
+   * by the unique index) and delete the listed neighbour keys. Source scoped.
+   */
+  async applyNeighborWatchChanges(
+    sourceId: string,
+    reporterPublicKey: string,
+    upserts: MeshCoreNeighborWatchRow[],
+    deleteKeys: string[],
+  ): Promise<void> {
+    if (!sourceId) throw new Error('MeshCoreRepository.applyNeighborWatchChanges requires a sourceId');
+    const { meshcoreNeighborWatch: t } = this.tables;
+    const now = this.now();
+    if (deleteKeys.length > 0) {
+      await this.db
+        .delete(t)
+        .where(
+          and(eq(t.sourceId, sourceId), eq(t.reporterPublicKey, reporterPublicKey), inArray(t.neighborPublicKey, deleteKeys)),
+        );
+    }
+    for (const u of upserts) {
+      const values = {
+        sourceId,
+        reporterPublicKey,
+        neighborPublicKey: u.neighborPublicKey,
+        state: u.state,
+        firstSeenAt: u.firstSeenAt,
+        lastHeardAt: u.lastHeardAt,
+        lastSnr: u.lastSnr,
+        sightings: u.sightings,
+        updatedAt: now,
+      };
+      const set = {
+        state: u.state,
+        firstSeenAt: u.firstSeenAt,
+        lastHeardAt: u.lastHeardAt,
+        lastSnr: u.lastSnr,
+        sightings: u.sightings,
+        updatedAt: now,
+      };
+      const target = [t.sourceId, t.reporterPublicKey, t.neighborPublicKey];
+      if (this.isMySQL()) {
+        await this.db.insert(t).values(values).onDuplicateKeyUpdate({ set });
+      } else {
+        await this.db.insert(t).values(values).onConflictDoUpdate({ target, set });
+      }
+    }
+  }
+
+  /** Drop ledger rows (any state) of one source not heard since `olderThanMs`. Returns the count. */
+  async pruneNeighborWatch(sourceId: string, olderThanMs: number): Promise<number> {
+    if (!sourceId) throw new Error('MeshCoreRepository.pruneNeighborWatch requires a sourceId');
+    const { meshcoreNeighborWatch: t } = this.tables;
+    const stale = await this.db
+      .select({ id: t.id })
+      .from(t)
+      .where(and(eq(t.sourceId, sourceId), lt(t.lastHeardAt, olderThanMs)));
+    if (stale.length === 0) return 0;
+    await this.db.delete(t).where(and(eq(t.sourceId, sourceId), lt(t.lastHeardAt, olderThanMs)));
+    return stale.length;
+  }
+
+  /** The reporter's baselined marker (null = never evaluated). */
+  async getNeighborWatchBaselinedAt(sourceId: string, reporterPublicKey: string): Promise<number | null> {
+    if (!sourceId) throw new Error('MeshCoreRepository.getNeighborWatchBaselinedAt requires a sourceId');
+    const { meshcoreNodes } = this.tables;
+    const rows = await this.db
+      .select({ at: meshcoreNodes.neighborWatchBaselinedAt })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, reporterPublicKey), eq(meshcoreNodes.sourceId, sourceId)));
+    const v = rows[0]?.at;
+    return v == null ? null : Number(v);
+  }
+
+  /** Stamp the reporter as baselined. Updates an existing node row only. */
+  async setNeighborWatchBaselined(sourceId: string, reporterPublicKey: string, atMs: number): Promise<void> {
+    if (!sourceId) throw new Error('MeshCoreRepository.setNeighborWatchBaselined requires a sourceId');
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({ neighborWatchBaselinedAt: atMs })
+      .where(and(eq(meshcoreNodes.publicKey, reporterPublicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  /** Remove one reporter's ledger rows (its node was deleted). */
+  async deleteNeighborWatchForReporter(sourceId: string, reporterPublicKey: string): Promise<void> {
+    if (!sourceId) throw new Error('MeshCoreRepository.deleteNeighborWatchForReporter requires a sourceId');
+    const { meshcoreNeighborWatch: t } = this.tables;
+    await this.db.delete(t).where(and(eq(t.sourceId, sourceId), eq(t.reporterPublicKey, reporterPublicKey)));
+  }
+
+  /** Remove every ledger row of one source (purge, source delete). */
+  async deleteNeighborWatchForSource(sourceId: string): Promise<void> {
+    if (!sourceId) throw new Error('MeshCoreRepository.deleteNeighborWatchForSource requires a sourceId');
+    const { meshcoreNeighborWatch: t } = this.tables;
+    await this.db.delete(t).where(eq(t.sourceId, sourceId));
   }
 
   // ============ Packet-log Methods ============
