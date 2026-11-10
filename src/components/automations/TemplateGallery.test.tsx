@@ -188,6 +188,48 @@ describe('TemplateGallery', () => {
     await waitFor(() => expect(onInstalled).toHaveBeenCalledWith([createdRow]));
   });
 
+  it('seeds a multi-automation template with template-level name and prefixes every install (#6272)', async () => {
+    renderGallery([makeDualTemplate()]);
+    await screen.findByText('Fake Dual');
+    await userEvent.click(screen.getByRole('button', { name: 'Use template' }));
+    const nameInput = screen.getByDisplayValue('Fake Dual');
+    expect(screen.queryByDisplayValue('Fake Dual A')).not.toBeInTheDocument();
+    expect(screen.queryByText('Description')).not.toBeInTheDocument();
+
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, 'Home');
+    mockedPost.mockResolvedValue({ id: 'x', name: 'n', description: null, enabled: false, config: '{}' });
+    await userEvent.click(screen.getByRole('button', { name: 'Install' }));
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(2));
+    expect(mockedPost.mock.calls[0][1]).toMatchObject({ name: 'Home — Fake Dual A', description: 'first' });
+    expect(mockedPost.mock.calls[1][1]).toMatchObject({ name: 'Home — Fake Dual B', description: 'second' });
+  });
+
+  it('swaps a leading template name for the wizard name instead of doubling it (#6272)', async () => {
+    const t = makeDualTemplate();
+    t.multi = true;
+    t.build = () => [
+      { name: 'Fake Dual — Alpha', description: 'a', config: minimalGraph('t1', 'a1') },
+      { name: 'Fake Dual — Beta', description: 'b', config: minimalGraph('t2', 'a2') },
+    ];
+    renderGallery([t]);
+    await screen.findByText('Fake Dual');
+    await userEvent.click(screen.getByRole('button', { name: 'Use template' }));
+    mockedPost.mockResolvedValue({ id: 'x', name: 'n', description: null, enabled: false, config: '{}' });
+    await userEvent.click(screen.getByRole('button', { name: 'Install' }));
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(2));
+    expect(mockedPost.mock.calls[0][1].name).toBe('Fake Dual — Alpha');
+    expect(mockedPost.mock.calls[1][1].name).toBe('Fake Dual — Beta');
+  });
+
+  it('keeps single-automation naming: seeded from the built automation, wizard name/description apply (#6272)', async () => {
+    renderGallery([makeSingleTemplate()]);
+    await screen.findByText('Fake Single');
+    await userEvent.click(screen.getByRole('button', { name: 'Use template' }));
+    expect(screen.getByDisplayValue('Fake Single Automation')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('desc')).toBeInTheDocument();
+  });
+
   it('surfaces a partial failure across a multi-automation (bridge) template without rolling back', async () => {
     const { onInstalled } = renderGallery([makeDualTemplate()]);
     await screen.findByText('Fake Dual');
@@ -207,9 +249,9 @@ describe('TemplateGallery', () => {
     await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(2));
 
     // First succeeded and is reported as installed…
-    expect(await screen.findByText(/Installed "Fake Dual A"/)).toBeInTheDocument();
+    expect(await screen.findByText(/Installed "Fake Dual — Fake Dual A"/)).toBeInTheDocument();
     // …second failed and its error is surfaced, verbatim.
-    expect(screen.getByText(/Failed to install "Fake Dual B": second automation rejected/)).toBeInTheDocument();
+    expect(screen.getByText(/Failed to install "Fake Dual — Fake Dual B": second automation rejected/)).toBeInTheDocument();
 
     // Partial failure withholds onInstalled — the caller must not treat this as done.
     expect(onInstalled).not.toHaveBeenCalled();

@@ -63,9 +63,22 @@ function TemplateIcon({ name, size = 28 }: { name: string; size?: number }) {
 
 /** Seed the editable name/description from a first build() pass. Templates that need
  * required params may throw on an empty `{}` — that's fine, we just fall back. */
+function isMultiTemplate(template: AutomationTemplate): boolean {
+  if (template.multi) return true;
+  try {
+    const built = template.build({});
+    return Array.isArray(built) && built.length > 1;
+  } catch {
+    return false;
+  }
+}
+
 function seedFromBuild(template: AutomationTemplate): BuiltAutomation | null {
   try {
     const built = template.build({});
+    // Multi-automation templates have no single "first" identity worth showing (#6272):
+    // the wizard Name/Description are template-level text there.
+    if (template.multi || (Array.isArray(built) && built.length > 1)) return null;
     const first = Array.isArray(built) ? built[0] : built;
     return first ?? null;
   } catch {
@@ -176,6 +189,7 @@ function TemplateWizard({ template, sources, channels, nodes, onBack, onClose, o
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [name, setName] = useState(() => seedFromBuild(template)?.name ?? template.name);
   const [description, setDescription] = useState(() => seedFromBuild(template)?.description ?? template.description);
+  const isMulti = isMultiTemplate(template);
   const [errors, setErrors] = useState<string[]>([]);
   const [installing, setInstalling] = useState(false);
   const [outcomes, setOutcomes] = useState<InstallOutcome[] | null>(null);
@@ -199,10 +213,18 @@ function TemplateWizard({ template, sources, channels, nodes, onBack, onClose, o
       setErrors(['This template produced no automations to install.']);
       return;
     }
-    // The wizard's editable Name/Description apply to the first automation only —
-    // a multi-automation (bridge) template's remaining rows keep their own
-    // build()-derived identity.
-    list[0] = { ...list[0], name, description };
+    if (template.multi || list.length > 1) {
+      // Wizard Name prefixes every installed automation (#6272); each keeps its own
+      // description. A built name that already leads with the template name has
+      // that lead swapped for the wizard Name rather than doubled.
+      const lead = `${template.name} — `;
+      list.forEach((a, i) => {
+        const rest = a.name.startsWith(lead) ? a.name.slice(lead.length) : a.name;
+        list[i] = { ...a, name: `${name.trim() || template.name} — ${rest}` };
+      });
+    } else {
+      list[0] = { ...list[0], name, description };
+    }
 
     const validationErrors: string[] = [];
     for (const a of list) {
@@ -260,10 +282,13 @@ function TemplateWizard({ template, sources, channels, nodes, onBack, onClose, o
         <label className="ae-field-label">Name</label>
         <input className="ae-input" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
-      <div className="ae-field">
-        <label className="ae-field-label">Description</label>
-        <textarea className="ae-textarea" value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
+      {/* Multi-automation templates keep each automation's own description. */}
+      {!isMulti && (
+        <div className="ae-field">
+          <label className="ae-field-label">Description</label>
+          <textarea className="ae-textarea" value={description} onChange={(e) => setDescription(e.target.value)} />
+        </div>
+      )}
 
       {template.params.filter((p) => fieldVisible(p, values)).map((p) => (
         <FieldInput
