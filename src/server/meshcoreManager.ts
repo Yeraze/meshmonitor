@@ -152,8 +152,7 @@ import { MESHCORE_PAYLOAD_ADVERT, computeMeshCoreHopsAway } from '../utils/cover
 import {
   ingestAdvertFrame,
   decryptGroupTextFrame,
-  channelKeyFingerprint,
-  keyedChannelIndex,
+  keyedFilingFor,
   frameChannelMessageId,
   frameRoomPostId,
   noteVirtualChannelDecrypt,
@@ -5339,8 +5338,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     },
   ): Promise<void> {
     const { rawHex, snr, rssi, hopCount, hops, idPrefix } = frame;
-    const fingerprint = channelKeyFingerprint(plain.key.secretHex);
-    const channelIdx = keyedChannelIndex(plain.key.secretHex);
+    const { channelIdx, keyFingerprint: fingerprint, keySourceId, keyChannelIdx } = keyedFilingFor(plain.key);
     const id = frameChannelMessageId(idPrefix, this.sourceId, fingerprint, plain.timestampSec, plain.text);
     const now = Date.now();
     // Raw wire second (#5759): the MC1 reaction hash input.
@@ -5361,8 +5359,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       hopCount: typeof hopCount === 'number' ? hopCount : null,
       routePath: hops && hops.length > 0 ? hops.join(',') : null,
       // Both null when a virtual channel's key (#5552) opened it.
-      keySourceId: plain.key.sourceId,
-      keyChannelIdx: plain.key.channelIdx,
+      keySourceId,
+      keyChannelIdx,
       keyFingerprint: fingerprint,
     };
 

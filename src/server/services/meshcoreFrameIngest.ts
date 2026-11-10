@@ -84,6 +84,37 @@ export function keyedChannelIndex(secretHex: string): number {
   return MESHCORE_KEYED_CHANNEL_BASE + parseInt(channelKeyFingerprint(secretHex).slice(0, 4), 16);
 }
 
+/**
+ * Fingerprint stamped on a legacy MQTT channel row whose decrypting key could
+ * not be recovered (#6308, migration 228). Not hex, so it never equals a real
+ * fingerprint. `resolveMeshcoreKeyAccess` never emits it, so the shared read
+ * gate shows such rows to admins only.
+ */
+export const MESHCORE_UNRESOLVED_KEY_FINGERPRINT = 'unresolved';
+
+/** Where a decrypted channel row files, and which key proves read access. */
+export interface KeyedFiling {
+  channelIdx: number;
+  keyFingerprint: string;
+  keySourceId: string | null;
+  keyChannelIdx: number | null;
+}
+
+/**
+ * The one filing rule for a frame decrypted with `key` (#6308). Every path that
+ * stores a decrypted group frame (Repeater RAW, Companion OTA, MQTT) files the
+ * row under the secret-derived index and stamps the key's provenance, so reads
+ * gate on the key rather than on a slot number that differs per source.
+ */
+export function keyedFilingFor(key: ChannelKeyCandidate): KeyedFiling {
+  return {
+    channelIdx: keyedChannelIndex(key.secretHex),
+    keyFingerprint: channelKeyFingerprint(key.secretHex),
+    keySourceId: key.sourceId,
+    keyChannelIdx: key.channelIdx,
+  };
+}
+
 /** True when `idx` is a keyed-channel index (see {@link keyedChannelIndex}). */
 export function isKeyedChannelIndex(idx: number): boolean {
   return Number.isInteger(idx) && idx >= MESHCORE_KEYED_CHANNEL_BASE;

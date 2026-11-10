@@ -24,6 +24,8 @@ import {
   advertLastHeardMs,
   channelKeyFingerprint,
   keyedChannelIndex,
+  keyedFilingFor,
+  MESHCORE_UNRESOLVED_KEY_FINGERPRINT,
   isKeyedChannelIndex,
   MESHCORE_KEYED_CHANNEL_BASE,
   findChannelKeysByHash,
@@ -363,5 +365,33 @@ describe('openGroupFrame (#5567)', () => {
   it('opens nothing for any other payload type', () => {
     const group = groupOf(buildGrpTxtFrame(1, 'A: b', SECRET_A));
     expect(openGroupFrame(0x02, group, SECRET_A)).toBeNull();
+  });
+});
+
+describe('keyedFilingFor (#6308)', () => {
+  it('returns the secret-derived index, fingerprint and the key provenance', () => {
+    const key = { sourceId: 'src-1', channelIdx: 4, channelDbId: null, name: 'x', secretHex: SECRET_A };
+    expect(keyedFilingFor(key)).toEqual({
+      channelIdx: keyedChannelIndex(SECRET_A),
+      keyFingerprint: channelKeyFingerprint(SECRET_A),
+      keySourceId: 'src-1',
+      keyChannelIdx: 4,
+    });
+  });
+
+  it('leaves provenance null for a virtual channel key', () => {
+    const f = keyedFilingFor({ sourceId: null, channelIdx: null, channelDbId: 9, name: 'v', secretHex: SECRET_B });
+    expect(f.keySourceId).toBeNull();
+    expect(f.keyChannelIdx).toBeNull();
+  });
+
+  it('fingerprint prefix equals the on-air channel hash', () => {
+    expect(channelKeyFingerprint(SECRET_A).slice(0, 2).toLowerCase())
+      .toBe(ChannelCrypto.calculateChannelHash(SECRET_A).toLowerCase());
+  });
+
+  it('the unresolved sentinel is not hex and fits varchar(32)', () => {
+    expect(MESHCORE_UNRESOLVED_KEY_FINGERPRINT).not.toMatch(/^[0-9a-f]+$/);
+    expect(MESHCORE_UNRESOLVED_KEY_FINGERPRINT.length).toBeLessThanOrEqual(32);
   });
 });
