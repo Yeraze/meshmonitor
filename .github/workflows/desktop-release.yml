@@ -63,6 +63,8 @@ jobs:
           npx tsc --project tsconfig.server.json
           New-Item -ItemType Directory -Force -Path "dist/server/routes/v1"
           Copy-Item "src/server/routes/v1/openapi.yaml" "dist/server/routes/v1/"
+          # The offline geocoder's data ships as compiled modules (#6336).
+          foreach ($f in "admin1.data.js", "cities.data.js") { if (-not (Test-Path "dist/server/data/geo/$f")) { throw "dist/server/data/geo/$f missing (#6336)" } }
         shell: pwsh
 
       - name: Download Node.js for bundling
@@ -278,6 +280,8 @@ jobs:
           npx tsc --project tsconfig.server.json
           mkdir -p dist/server/routes/v1
           cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/
+          # The offline geocoder's data ships as compiled modules (#6336).
+          for f in admin1.data.js cities.data.js; do test -f "dist/server/data/geo/$f" || { echo "::error::dist/server/data/geo/$f missing (#6336)"; exit 1; }; done
 
       - name: Download Node.js for bundling (ARM64)
         run: |
@@ -649,6 +653,8 @@ jobs:
           npx tsc --project tsconfig.server.json
           mkdir -p dist/server/routes/v1
           cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/
+          # The offline geocoder's data ships as compiled modules (#6336).
+          for f in admin1.data.js cities.data.js; do test -f "dist/server/data/geo/$f" || { echo "::error::dist/server/data/geo/$f missing (#6336)"; exit 1; }; done
 
       # NOTE: No Apprise sidecar is bundled for the x86_64 macOS release. This job
       # cross-compiles to x86_64 on an Apple Silicon (arm64) runner and PyInstaller
