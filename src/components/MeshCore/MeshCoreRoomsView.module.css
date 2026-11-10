@@ -55,3 +55,16 @@
   opacity: 0.8;
   white-space: nowrap;
 }
+
+/* Auto-sync controls inside the login card (#6267). */
+.loginSync {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.loginSync > :global(.meshcore-room-sync-config) {
+  margin-left: 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
