@@ -189,7 +189,8 @@ Roots are ranked by how close they are to you when MeshMonitor knows where you a
 - Quiet roots can be missed in 60 seconds.
 - You need the permission that lets you save the root: **Edit sources** for a bridge, **Edit configuration** on that source for a device, and admin for a saved preset.
 - The community list is a copy of `data/mqttRoots.json` from [meshtastic/api](https://github.com/meshtastic/api), commit `7406a79f7ecd819d7df6c1761f4e0ac6fde657d3`. It works offline and is not refreshed live.
-- This version does not look up your country, state or city from your position, so those rows appear only when they match something heard. The ranking uses the community list and the distance to the nearest node that reported its position.
+- MeshMonitor names your country, state or province, and nearest city from your position, offline, from data built into the server. So **Suggested** shows rows like `msh/US/WA` and `msh/US/WA/seattle`, and in the US, roots in a neighbouring state rank just after your own. No position, no lookup. Outside the US, community roots often use their own names (`msh/EU_868/DE/S-H` rather than `DE/SH`), so they match only by distance.
+- The place data comes from [Natural Earth](https://www.naturalearthdata.com/) (public domain) and [GeoNames](https://www.geonames.org/) (CC BY 4.0). See [`THIRD_PARTY_DATA.md`](https://github.com/Yeraze/meshmonitor/blob/main/THIRD_PARTY_DATA.md).
 - The root checks in the form (no spaces, no `+` or `#`, at most 31 bytes, no trailing `/`, not ending in `/2`) are advice shown as you type. They do not block a save.
 
 ## Checklist
