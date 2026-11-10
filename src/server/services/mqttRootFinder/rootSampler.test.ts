@@ -47,24 +47,19 @@ class FakeClient extends EventEmitter implements SamplerClient {
 }
 
 let fake: FakeClient;
-let optsSeen: any;
 function make(over: Partial<ConstructorParameters<typeof RootSampler>[0]> = {}, durationMs = 60_000) {
   return new RootSampler({
     broker: { url: 'mqtt://broker.test:1883', username: 'u', password: 'p' },
     regionRoot: 'msh/US',
     adapter: meshtasticRootAdapter,
     durationMs,
-    createClient: (o) => {
-      optsSeen = o;
-      return fake;
-    },
+    createClient: () => fake,
     ...over,
   });
 }
 
 beforeEach(() => {
   fake = new FakeClient();
-  optsSeen = undefined;
   vi.useFakeTimers();
 });
 afterEach(() => vi.useRealTimers());

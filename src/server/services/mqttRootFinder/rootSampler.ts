@@ -35,7 +35,7 @@ export type SamplerStatus = 'connecting' | 'sampling' | 'done' | 'failed' | 'can
 
 /** The part of MqttBrokerClient the sampler uses. Lets tests inject a fake. */
 export interface SamplerClient {
-  on(event: string, listener: (...args: any[]) => void): unknown;
+  on(event: string, listener: (...args: never[]) => void): unknown;
   connect(): Promise<void>;
   subscribe(topics: string[]): Promise<void>;
   unsubscribe(topics: string[]): Promise<void>;
