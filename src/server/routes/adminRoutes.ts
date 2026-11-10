@@ -56,6 +56,7 @@ import { channelPskToStoredBase64 } from '../utils/channelPsk.js';
 import { formatAdminMqttConfig } from '../utils/adminMqttConfig.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 import { fillDeviceMqttFromPreset } from '../services/mqttBrokerPresetFill.js';
+import { checkMqttRootSave, failInvalidMqttRoot } from '../utils/mqttRootGuard.js';
 
 // Admin operations round-trip to the radio and can legitimately run past the
 // 30s default socket timeout; extend it per-route so the caller gets the
@@ -2129,6 +2130,14 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
           // A saved broker preset's login, for a caller who was not shown it (#5794).
           const presetErr = await fillDeviceMqttFromPreset(params.config);
           if (presetErr) return fail(res, presetErr.status, presetErr.code, presetErr.message);
+          // Refuse a bad root, but only when it changes (#6338). The previous
+          // root comes from this source's cache of the target node; an
+          // unknown one counts as a change.
+          const prevMqtt = isLocalNode
+            ? acManager.getActualModuleConfig?.()?.mqtt
+            : acManager.getRemoteNodeConfig?.(destinationNodeNum)?.moduleConfig?.mqtt;
+          const rootErr = checkMqttRootSave(params.config.root, prevMqtt?.root);
+          if (rootErr) return failInvalidMqttRoot(res, rootErr, 'root');
         }
         buildAdminMessage = (passkey) => protobufService.createSetMQTTConfigMessage(params.config, passkey);
         break;

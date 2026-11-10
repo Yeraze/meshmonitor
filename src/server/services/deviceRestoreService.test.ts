@@ -91,6 +91,27 @@ describe('deviceRestoreService', () => {
     expect(() => deviceRestoreService.parseBackup('just a string')).toThrow();
   });
 
+  // A restore is verbatim (#4926): a root the save routes would refuse
+  // (#6338) is still sent, and only reported as a warning.
+  it('restores a bad MQTT root as-is and records a warning, not a failure', async () => {
+    const mgr = makeManager();
+    const yaml = sampleBackup({ module_config: { mqtt: { enabled: true, root: 'msh/US/2' } } });
+    const result = await runRestore(mgr, yaml);
+
+    expect(mgr.setMQTTConfig).toHaveBeenCalledWith(expect.objectContaining({ root: 'msh/US/2' }));
+    expect(result.applied).toContain('module.mqtt');
+    expect(result.failed).toEqual([]);
+    expect(result.warnings).toEqual([
+      { section: 'module.mqtt', warning: expect.stringContaining('ENDS_WITH_2') },
+    ]);
+  });
+
+  it('records no warning for a good MQTT root', async () => {
+    const mgr = makeManager();
+    const result = await runRestore(mgr, sampleBackup({ module_config: { mqtt: { enabled: true, root: 'msh/US' } } }));
+    expect(result.warnings).toEqual([]);
+  });
+
   it('opens and commits an edit transaction around the writes', async () => {
     const mgr = makeManager();
     await runRestore(mgr, sampleBackup());

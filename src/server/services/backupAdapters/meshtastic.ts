@@ -83,6 +83,6 @@ export const meshtasticBackupAdapter: DeviceConfigBackupAdapter<MeshtasticManage
 
   async restore(manager, doc) {
     const r = await deviceRestoreService.restoreBackup(manager, doc.yaml);
-    return { applied: r.applied, failed: r.failed, channels: r.channels, requiresReboot: r.requiresReboot };
+    return { applied: r.applied, failed: r.failed, warnings: r.warnings, channels: r.channels, requiresReboot: r.requiresReboot };
   },
 };

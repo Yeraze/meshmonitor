@@ -22,6 +22,7 @@ import YAML from 'yamljs';
 import { EnumMappings } from './deviceBackupService.js';
 import { logger } from '../../utils/logger.js';
 import { normalizeTakConfig } from '../../utils/takConfig.js';
+import { restoredMqttRootProblem, MQTT_ROOT_REASON_MESSAGES } from '../utils/mqttRootGuard.js';
 
 /**
  * The subset of the Meshtastic manager the restore drives. The real
@@ -113,6 +114,8 @@ const MODULE_FIELD_TO_TYPE: Record<string, string> = {
 export interface RestoreResult {
   applied: string[];
   failed: Array<{ section: string; error: string }>;
+  /** Sections applied verbatim despite a problem worth noting (#6338). */
+  warnings?: Array<{ section: string; warning: string }>;
   channels: number;
   requiresReboot: boolean;
 }
@@ -140,6 +143,7 @@ class DeviceRestoreService {
 
     const applied: string[] = [];
     const failed: Array<{ section: string; error: string }> = [];
+    const warnings: Array<{ section: string; warning: string }> = [];
     let channels = 0;
     let requiresReboot = false;
 
@@ -205,6 +209,14 @@ class DeviceRestoreService {
 
     // --- Module config sections (ModuleConfig.*) ---
     if (moduleConfig.mqtt) {
+      // A restore is verbatim (#4926), so a root the save routes would refuse
+      // (#6338) is still sent; it is only logged and reported.
+      const rootProblem = restoredMqttRootProblem(moduleConfig.mqtt.root);
+      if (rootProblem) {
+        const warning = `MQTT root is not valid (${rootProblem}): ${MQTT_ROOT_REASON_MESSAGES[rootProblem]} It was restored as-is.`;
+        logger.warn(`⚠️ Restore: module.mqtt ${warning}`);
+        warnings.push({ section: 'module.mqtt', warning });
+      }
       await runSection('module.mqtt', () => manager.setMQTTConfig(moduleConfig.mqtt));
     }
     if (moduleConfig.telemetry) {
@@ -286,7 +298,7 @@ class DeviceRestoreService {
     }
 
     logger.info(`✅ Restore complete: ${applied.length} section(s) applied, ${failed.length} failed, ${channels} channel(s)`);
-    return { applied, failed, channels, requiresReboot };
+    return { applied, failed, warnings, channels, requiresReboot };
   }
 }
 

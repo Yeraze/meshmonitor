@@ -1852,8 +1852,12 @@ class ApiService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to set MQTT configuration');
+      const error = await response.json().catch(() => ({}));
+      // Keep `code` and the body so the form can localise INVALID_MQTT_ROOT (#6338).
+      throw new ApiError(error.error || 'Failed to set MQTT configuration', response.status, {
+        code: error.code,
+        body: error,
+      });
     }
 
     return response.json();

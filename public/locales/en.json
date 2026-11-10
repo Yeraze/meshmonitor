@@ -8315,5 +8315,7 @@
   "mqtt_root_finder.validation.WILDCARD": "A root cannot contain + or #.",
   "mqtt_root_finder.validation.SLASH": "A root cannot start or end with / or have an empty part.",
   "mqtt_root_finder.validation.ENDS_WITH_2": "A root cannot end in /2.",
-  "mqtt_root_finder.validation.TOO_LONG": "A root can be at most 31 bytes."
+  "mqtt_root_finder.validation.TOO_LONG": "A root can be at most 31 bytes.",
+  "mqtt_root_finder.validation.NOT_STRING": "A root must be text.",
+  "mqtt_root_finder.validation.EMPTY": "A root cannot be empty."
 }

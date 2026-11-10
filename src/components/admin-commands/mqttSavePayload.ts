@@ -33,7 +33,7 @@ export interface AdminMqttSavePayload {
 }
 
 /** The form fields the payload is built from (the local form has no load gate). */
-export type MqttSaveFields = Omit<MQTTConfigState, 'loadedForNodeNum'>;
+export type MqttSaveFields = Omit<MQTTConfigState, 'loadedForNodeNum' | 'loadedRoot'>;
 
 export function buildAdminMqttSavePayload(mqtt: MqttSaveFields): AdminMqttSavePayload {
   return {

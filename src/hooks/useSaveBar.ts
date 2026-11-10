@@ -20,6 +20,11 @@ export interface UseSaveBarOptions {
    * section, and Dismiss also puts those fields back to their saved values.
    */
   numberScope?: NumberInputScopeHandle;
+  /**
+   * The section holds a value the server would refuse (e.g. a changed MQTT
+   * root that breaks the root rules, #6338): the SaveBar will not save it.
+   */
+  invalid?: boolean;
 }
 
 /**
@@ -28,7 +33,7 @@ export interface UseSaveBarOptions {
  */
 export const useSaveBar = (options: UseSaveBarOptions): void => {
   const { id, sectionName, hasChanges, isSaving, onSave, onDismiss, numberScope } = options;
-  const invalid = numberScope?.invalid ?? false;
+  const invalid = (numberScope?.invalid ?? false) || (options.invalid ?? false);
   const resetNumbers = numberScope?.reset;
   const { registerSection, unregisterSection, updateSection, setActiveSection, activeSection } = useSaveBarContext();
   const inheritedGroup = useSaveBarGroup();

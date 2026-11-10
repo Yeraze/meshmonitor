@@ -38,6 +38,8 @@ export interface RestoreResult {
   failed: Array<{ section: string; error: string }>;
   /** Sections left out on purpose (not applicable, out of range, refused). */
   skipped?: Array<{ section: string; reason: string }>;
+  /** Sections applied as-is despite a problem worth noting (#6338). */
+  warnings?: Array<{ section: string; warning: string }>;
   channels: number;
   requiresReboot: boolean;
   identityMismatch?: boolean;
