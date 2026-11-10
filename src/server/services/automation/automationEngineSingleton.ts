@@ -8,7 +8,7 @@
  */
 import { logger } from '../../../utils/logger.js';
 import databaseService from '../../../services/database.js';
-import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData, type MeshCoreNodeEventFacts, type TelemetryEventRow } from '../dataEventEmitter.js';
+import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeClockOffsetData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData, type MeshCoreNodeEventFacts, type TelemetryEventRow } from '../dataEventEmitter.js';
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
@@ -216,6 +216,13 @@ export async function routeEventToEngine(e: AutomationEngineService, event: Data
       break;
     }
 
+    case 'node:clockOffset': {
+      // #6273: a passive MeshCore clock sample. Detection history lives in the
+      // telemetry table; the engine only applies each rule's threshold.
+      const data = event.data as NodeClockOffsetData;
+      await e.onClockOffset(data.publicKey, data.offsetSeconds, data.previousOffsets, data.sampleSource, sourceId);
+      break;
+    }
     case 'node:aircraft': {
       // Likely-aircraft classification (#5364/#5365 Phase 1 WP3): the
       // classification-queue seam detected a genuine transition into the

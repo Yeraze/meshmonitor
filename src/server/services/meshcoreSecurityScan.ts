@@ -38,6 +38,15 @@ export interface MeshcorePacketRate {
   adverts: number;
 }
 
+/** One stored `mc_rtc_drift_secs` sample (#6273). */
+export interface MeshcoreDriftSample {
+  publicKey: string;
+  /** Receipt minus sender time, seconds. Positive = the node's clock is behind. */
+  driftSeconds: number;
+  /** When the sample was stored, epoch ms. */
+  observedAt: number;
+}
+
 export interface MeshcoreClockOffset {
   /** Receipt minus sender time, ms. Positive = the node's clock is behind. */
   offsetMs: number;
@@ -108,6 +117,12 @@ export function computeMeshcoreClockOffsets(input: {
   nodes: readonly MeshcoreScanNode[];
   nowMs: number;
   localKeys?: ReadonlySet<string>;
+  /**
+   * #6273: the passive clock samples MeshMonitor stored from adverts it heard
+   * (`mc_rtc_drift_secs`, server minus node, seconds). They work with the packet
+   * log off. Reported as source `'advert'`; the newest observation still wins.
+   */
+  driftSamples?: readonly MeshcoreDriftSample[];
 }): Map<string, MeshcoreClockOffset> {
   const local = input.localKeys ?? new Set<string>();
   const best = new Map<string, MeshcoreClockOffset>();
@@ -123,6 +138,11 @@ export function computeMeshcoreClockOffsets(input: {
     if (!a) continue;
     // A zero stamp is a clock that was never set: its offset is the receipt time itself.
     offer(a.key, { offsetMs: p.timestamp - a.seconds * 1000, source: 'advert', observedAt: p.timestamp });
+  }
+
+  for (const s of input.driftSamples ?? []) {
+    if (!Number.isFinite(s.driftSeconds) || !Number.isFinite(s.observedAt)) continue;
+    offer(lc(s.publicKey), { offsetMs: s.driftSeconds * 1000, source: 'advert', observedAt: s.observedAt });
   }
 
   const keys = input.nodes.map((n) => lc(n.publicKey));
