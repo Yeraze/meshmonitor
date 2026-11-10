@@ -467,6 +467,8 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoAnnounceIntervalHours',
   'meshcoreAutoAnnounceMessage',
   'meshcoreAutoAnnounceChannelIndexes',
+  // Split a long announce into up to 3 sends instead of truncating it (#6316)
+  'meshcoreAutoAnnounceSplitLongMessages',
   'meshcoreAutoAnnounceOnStart',
   'meshcoreAutoAnnounceUseSchedule',
   'meshcoreAutoAnnounceSchedule',
@@ -778,6 +780,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoAnnounceIntervalHours',
   'meshcoreAutoAnnounceMessage',
   'meshcoreAutoAnnounceChannelIndexes',
+  // Split a long announce into up to 3 sends instead of truncating it (#6316)
+  'meshcoreAutoAnnounceSplitLongMessages',
   'meshcoreAutoAnnounceOnStart',
   'meshcoreAutoAnnounceUseSchedule',
   'meshcoreAutoAnnounceSchedule',

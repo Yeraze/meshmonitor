@@ -62,3 +62,13 @@ export function meshcoreChannelTextCap(senderName: string, opts: { raw: boolean 
   const total = opts.raw ? MESHCORE_RAW_MAX_BODY_BYTES : MESHCORE_MAX_TEXT_BYTES;
   return total - (nameBytes + CHANNEL_PREFIX_SUFFIX_BYTES);
 }
+
+/**
+ * Split-long-message limits for automated MeshCore senders (#6316).
+ * Fixed by the maintainer: at most 3 parts, 10 s apart. Shared with the UI so
+ * the airtime warning text cannot drift from the real behaviour.
+ */
+export const MESHCORE_SPLIT_MAX_PARTS = 3;
+export const MESHCORE_SPLIT_PART_GAP_MS = 10_000;
+/** Shortest timer interval (minutes) allowed when a timer splits long messages. */
+export const MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES = 5;

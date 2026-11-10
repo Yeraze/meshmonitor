@@ -73,7 +73,7 @@ describe('MeshCoreAutoAnnounceSection advert mode', () => {
     csrfFetchMock.mockReset().mockImplementation(mockFetch({ enabled: true, channelIndexes: [0], advertEnabled: true, advertMode: 'flood' }));
     render(<MeshCoreAutoAnnounceSection baseUrl="" sourceId="src1" />);
     await waitFor(() => expect(flood()).toBeChecked());
-    expect(screen.getByRole('note')).toHaveTextContent(/at most once per hour per source/);
+    expect(screen.getAllByRole('note').map((n) => n.textContent).join(' ')).toMatch(/at most once per hour per source/);
   });
 
   it('treats an enabled burst from an older server (no advertMode) as flood', async () => {

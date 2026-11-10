@@ -19,6 +19,8 @@ import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { findSplitTimerTooFrequent } from '../utils/timerSplitGuard.js';
+import { MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/meshcoreMessageLimits.js';
 import { parseAutoPingSettingsUpdate, readAutoPingSettings } from '../utils/autoPingSettings.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import {
@@ -1002,6 +1004,7 @@ router.get(
       const intervalHours = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceIntervalHours');
       const message = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceMessage');
       const channelIndexesRaw = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceChannelIndexes');
+      const announceSplit = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceSplitLongMessages');
       const announceOnStart = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceOnStart');
       const useSchedule = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceUseSchedule');
       const schedule = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceSchedule');
@@ -1024,6 +1027,7 @@ router.get(
             .filter(Boolean)
             .map(s => parseInt(s, 10))
             .filter(n => Number.isFinite(n)),
+          splitLongMessages: announceSplit === 'true',
           announceOnStart: announceOnStart === 'true',
           useSchedule: useSchedule === 'true',
           schedule: schedule || '0 */6 * * *',
@@ -1060,6 +1064,7 @@ router.post(
         intervalHours,
         message,
         channelIndexes,
+        splitLongMessages,
         announceOnStart,
         useSchedule,
         schedule,
@@ -1073,6 +1078,7 @@ router.post(
         intervalHours?: number;
         message?: string;
         channelIndexes?: number[];
+        splitLongMessages?: boolean;
         announceOnStart?: boolean;
         useSchedule?: boolean;
         schedule?: string;
@@ -1103,6 +1109,9 @@ router.post(
           ? channelIndexes.filter(n => Number.isFinite(n)).join(',')
           : '';
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceChannelIndexes', csv);
+      }
+      if (splitLongMessages !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceSplitLongMessages', String(splitLongMessages === true));
       }
       if (announceOnStart !== undefined) {
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceOnStart', String(announceOnStart));
@@ -1231,6 +1240,11 @@ router.post(
       );
       if (badMode) {
         return fail(res, 400, 'INVALID_ADVERT_MODE', `Trigger ${String(badMode.id ?? '')}: advertMode must be one of: ${MESHCORE_ADVERT_MODES.join(', ')}`);
+      }
+      // A timer that splits long messages must fire at most every 5 minutes (#6316).
+      const tooFast = findSplitTimerTooFrequent(body.triggers);
+      if (tooFast) {
+        return fail(res, 400, 'SPLIT_TIMER_INTERVAL_TOO_SHORT', `Trigger ${tooFast.id}: a timer that splits long messages needs an interval of at least ${MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES} minutes`);
       }
       // Run state belongs to the scheduler; keep the stored values (#5827).
       const storedJson = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreTimerTriggers');

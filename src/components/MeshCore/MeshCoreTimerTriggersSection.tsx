@@ -162,7 +162,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   const isDirty = (tr: MeshCoreTimerTrigger) => savedJsonById.get(tr.id) !== JSON.stringify(tr);
 
   const errorsFor = useCallback(
-    (tr: MeshCoreTimerTrigger) => validateMeshCoreTimer(tr, isNew(tr), t),
+    (tr: MeshCoreTimerTrigger) => validateMeshCoreTimer(tr, isNew(tr), (k, f, o) => String(t(k, f, o as never))),
     [isNew, t],
   );
 
