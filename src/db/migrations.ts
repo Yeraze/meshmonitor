@@ -3694,8 +3694,6 @@ registry.register({
   postgres: (client) => runMigration230Postgres(client),
   mysql: (pool) => runMigration230Mysql(pool),
 });
-||||||| 98da1bde0
-=======
 
 // ---------------------------------------------------------------------------
 // Migration 229: configurable message-notification text length (#6278).
