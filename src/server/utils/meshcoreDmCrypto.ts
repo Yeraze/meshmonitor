@@ -33,7 +33,7 @@
  * inbound-packet path.
  */
 import { createHmac, createCipheriv, createDecipheriv } from 'node:crypto';
-import { x25519, edwardsToMontgomeryPub } from '@noble/curves/ed25519';
+import { x25519, ed25519 } from '@noble/curves/ed25519.js';
 import { hexToBytes } from '../../utils/meshcorePacketDecode.js';
 import { secretToKeys, AES_BLOCK_SIZE, CIPHER_MAC_SIZE } from './meshcoreGroupEcho.js';
 
@@ -67,7 +67,7 @@ export function deriveMeshCoreDmSecret(ourPrivHex: string, peerPubHex: string): 
 
     const scalar = priv.subarray(0, SCALAR_BYTES);
     // Ed25519 public key → Montgomery u-coordinate, then X25519 scalar mult.
-    const montgomeryPub = edwardsToMontgomeryPub(peerPub);
+    const montgomeryPub = ed25519.utils.toMontgomery(peerPub);
     const shared = x25519.getSharedSecret(scalar, montgomeryPub);
     return Buffer.from(shared);
   } catch {

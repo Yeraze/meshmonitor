@@ -11,7 +11,7 @@
  * firmware output. See the module header in meshcoreDmCrypto.ts.
  */
 import { describe, it, expect } from 'vitest';
-import { x25519, ed25519 } from '@noble/curves/ed25519';
+import { x25519, ed25519 } from '@noble/curves/ed25519.js';
 import { sha512 } from '@noble/hashes/sha2';
 import crypto from 'node:crypto';
 import {
@@ -20,7 +20,7 @@ import {
   encodeDmTextPayload,
 } from './meshcoreDmCrypto.js';
 
-const L = ed25519.CURVE.n;
+const L = ed25519.Point.Fn.ORDER;
 function bytesToNumberLE(b: Uint8Array): bigint {
   let r = 0n;
   for (let i = b.length - 1; i >= 0; i--) r = (r << 8n) | BigInt(b[i]);
