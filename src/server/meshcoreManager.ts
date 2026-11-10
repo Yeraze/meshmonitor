@@ -25,6 +25,7 @@ import {
 import { isBogusPosition } from '../utils/nullIsland.js';
 import { isCorruptMeshCoreContactRecord, sanitizeMeshCoreName } from '../utils/meshcoreName.js';
 import databaseService from '../services/database.js';
+import { detectClockOffset } from './services/meshcoreDeviceHealth.js';
 import type { MeshcorePathfindingFilterSettings } from '../services/database.js';
 import type { MessageEventType, MessageEventProvenance } from '../db/repositories/messageEvents.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
@@ -1596,7 +1597,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // ADVERT_HASH_TTL_MS.
   // `hadPosition` (#5578): whether that advert frame carried coordinates.
   // `hops` (#5595): relays that frame crossed, from its path_len byte.
-  private recentAdvertHashes: Map<string, { hash: string; at: number; hadPosition: boolean; hops: number | undefined }> = new Map();
+  private recentAdvertHashes: Map<string, { hash: string; at: number; hadPosition: boolean; hops: number | undefined; senderSec: number }> = new Map();
   private static readonly ADVERT_HASH_TTL_MS = 30_000;
   private static readonly ADVERT_HASH_MAX_ENTRIES = 512;
 
@@ -3043,6 +3044,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const advertOrigin: MeshCoreAdvertOrigin | undefined = recentAdvert
           ? { packetHash: recentAdvert.hash, hops: recentAdvert.hops }
           : undefined;
+        // #6273: the firmware pushed this advert, so it already checked the
+        // signature and the replay rule. Sample the sender's clock from the raw
+        // copy we stashed. Passive; the local node is read from the device itself.
+        if (recentAdvert && event_type === 'contact_advertised') {
+          void this.sampleAdvertClock(publicKey, recentAdvert.senderSec, recentAdvert.at);
+        }
         // Captured before the set below: a contact we didn't already know about
         // is a genuine new-node discovery. Bulk contact-list sync populates
         // this.contacts directly (not via this event), so a first connect
@@ -4186,7 +4193,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     const key = advert.publicKey.toLowerCase();
     this.recentAdvertHashes.delete(key); // re-insert so Map order stays oldest-first
-    this.recentAdvertHashes.set(key, { hash, at: now, hadPosition: advertHasPosition(advert.latitude, advert.longitude), hops });
+    this.recentAdvertHashes.set(key, {
+      hash, at: now, hadPosition: advertHasPosition(advert.latitude, advert.longitude), hops,
+      // #6273: the sender's own time, for the passive clock sample.
+      senderSec: Number(advert.timestamp),
+    });
     while (this.recentAdvertHashes.size > MeshCoreManager.ADVERT_HASH_MAX_ENTRIES) {
       const oldest = this.recentAdvertHashes.keys().next().value;
       if (oldest === undefined) break;
@@ -4195,17 +4206,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * #6273: record one passive clock sample from a trusted advert. Skips this
+   * source's own key (the poller reads the attached device's clock instead).
+   * Sends nothing.
+   */
+  private async sampleAdvertClock(publicKey: string, senderSec: number, receivedAtMs: number): Promise<void> {
+    const key = publicKey.toLowerCase();
+    const own = [this.repeaterPublicKey, this.localNode?.publicKey]
+      .filter((k): k is string => typeof k === 'string' && k !== '')
+      .map((k) => k.toLowerCase());
+    if (own.includes(key)) return;
+    if (!(senderSec > 0)) return;
+    const offsetSeconds = Math.floor(receivedAtMs / 1000) - senderSec;
+    await detectClockOffset(databaseService.telemetry, key, offsetSeconds, 'advert', senderSec, this.sourceId, receivedAtMs);
+  }
+
+  /**
    * Claim (and forget) the recent raw advert for `publicKey`, if still fresh:
    * its hash (#5534), whether it carried a position (#5578) and how many
    * relays it crossed (#5595).
    */
-  private takeRecentAdvert(publicKey: string): { hash: string; hadPosition: boolean; hops: number | undefined } | undefined {
+  private takeRecentAdvert(publicKey: string): { hash: string; hadPosition: boolean; hops: number | undefined; senderSec: number; at: number } | undefined {
     const key = publicKey.toLowerCase();
     const entry = this.recentAdvertHashes.get(key);
     if (!entry) return undefined;
     this.recentAdvertHashes.delete(key);
     if (Date.now() - entry.at > MeshCoreManager.ADVERT_HASH_TTL_MS) return undefined;
-    return { hash: entry.hash, hadPosition: entry.hadPosition, hops: entry.hops };
+    return { hash: entry.hash, hadPosition: entry.hadPosition, hops: entry.hops, senderSec: entry.senderSec, at: entry.at };
   }
 
   /**
@@ -5122,6 +5149,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     });
     if (!ingested?.advert?.publicKey) return;
     const advert = ingested.advert;
+    // #6273: only a verified signature may put a clock offset on a key.
+    if (ingested.signatureVerified) {
+      void this.sampleAdvertClock(advert.publicKey, Number(advert.timestamp), now);
+    }
     await this.emitStoredContact(advert.publicKey);
     await this.maybeAlertRepeaterNewNode(advert.publicKey, ingested.inserted, ingested.signatureVerified);
   }
