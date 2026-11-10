@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet.heat';
+import type { Layer } from 'leaflet';
+import { HeatLayer } from 'leaflet.heat';
 import { useDashboardSources } from '../../../hooks/useDashboardData';
 import { useCoverageGrid, usePositions } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
@@ -99,24 +99,17 @@ export default function CoverageHeatmapLayer() {
       1.0: '#ef4444', // red
     };
 
-    const heat = (L as unknown as {
-      heatLayer: (
-        pts: Array<[number, number, number]>,
-        opts: {
-          radius: number;
-          blur: number;
-          maxZoom: number;
-          minOpacity?: number;
-          gradient?: Record<number, string>;
-        },
-      ) => L.Layer;
-    }).heatLayer(points, {
+    // leaflet.heat 1.x is an ES module exporting the HeatLayer class; it no
+    // longer registers L.heatLayer on import (#6296). Its bundled types extend
+    // Leaflet 2's generic Layer, which @types/leaflet 1.9 lacks, so view it as a
+    // plain 1.9 Layer (it is one at runtime).
+    const heat: Layer = new HeatLayer(points, {
       radius: 35,
       blur: 25,
       maxZoom: 17,
       minOpacity: 0.4,
       gradient,
-    });
+    }) as unknown as Layer;
     heat.addTo(map);
     return () => {
       map.removeLayer(heat);

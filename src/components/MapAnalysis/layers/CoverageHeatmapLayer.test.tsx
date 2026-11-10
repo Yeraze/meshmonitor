@@ -9,7 +9,10 @@ import { MapAnalysisProvider } from '../MapAnalysisContext';
 vi.mock('react-leaflet', () => ({
   useMap: () => ({ addLayer: vi.fn(), removeLayer: vi.fn(), getZoom: () => 12 }),
 }));
-vi.mock('leaflet.heat', () => ({}));
+// leaflet.heat 1.x exports a HeatLayer class (#6296).
+vi.mock('leaflet.heat', () => ({
+  HeatLayer: vi.fn(function HeatLayer() { return { addTo: vi.fn() }; }),
+}));
 
 vi.mock('leaflet', () => {
   const heatLayer = vi.fn(() => ({ addTo: vi.fn() }));
@@ -34,11 +37,11 @@ vi.mock('../../../hooks/useDashboardData', () => ({
   useDashboardSources: () => ({ data: [{ id: 'a', name: 'A' }] }),
 }));
 
-import L from 'leaflet';
+import { HeatLayer } from 'leaflet.heat';
 import CoverageHeatmapLayer from './CoverageHeatmapLayer';
 
 beforeEach(() => {
-  (L as unknown as { heatLayer: ReturnType<typeof vi.fn> }).heatLayer.mockClear();
+  (HeatLayer as unknown as ReturnType<typeof vi.fn>).mockClear();
   localStorage.setItem(
     'mapAnalysis.config.v1',
     JSON.stringify({
@@ -70,7 +73,7 @@ describe('CoverageHeatmapLayer', () => {
       </QueryClientProvider>,
     );
     expect(
-      (L as unknown as { heatLayer: ReturnType<typeof vi.fn> }).heatLayer,
+      (HeatLayer as unknown as ReturnType<typeof vi.fn>),
     ).toHaveBeenCalled();
   });
 });

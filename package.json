@@ -75,7 +75,7 @@
     "i18next-http-backend": "^4.0.10",
     "jszip": "^3.10.2",
     "leaflet": "^1.9.4",
-    "leaflet.heat": "^0.2.0",
+    "leaflet.heat": "^1.0.0",
     "leaflet.markercluster": "^1.5.3",
     "lucide-react": "^1.65.0",
     "maplibre-gl": "^6.16.0",
