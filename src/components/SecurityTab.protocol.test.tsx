@@ -5,7 +5,7 @@
  * MeshCore swaps in the new ones; the dead-node list keys on nodeKey.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../test/mockI18n');
@@ -86,7 +86,7 @@ describe('SecurityTab protocol adapters', () => {
     expect(h.get.mock.calls.some(([u]) => String(u).includes('/meshcore/findings'))).toBe(false);
   });
 
-  it('MeshCore hides low-entropy/duplicate/scanner/digest and shows the new sections', async () => {
+  it('MeshCore hides low-entropy/duplicate and shows the P7a sections plus scanner and digest (#6281)', async () => {
     route({ dead: [mcDead] });
     render(<SecurityTab sourceType="meshcore" sourceId="src-1" />);
     expect(await screen.findByTestId('security-path-hash-collisions')).toBeTruthy();
@@ -94,9 +94,10 @@ describe('SecurityTab protocol adapters', () => {
     expect(screen.getByTestId('security-name-reuse')).toBeTruthy();
     expect(screen.getByTestId('security-dead-nodes')).toBeTruthy();
     expect(screen.getByTestId('security-dead-nodes-reappear')).toBeTruthy();
-    expect(screen.queryByText('security.scanner_status')).toBeNull();
-    expect(screen.queryByText('Security Digest')).toBeNull();
-    expect(h.get.mock.calls.some(([u]) => String(u).includes('/api/security/issues'))).toBe(false);
+    expect(screen.getByText('security.scanner_status')).toBeTruthy();
+    expect(screen.getByText('Security Digest')).toBeTruthy();
+    expect(screen.queryByText(/security\.low_entropy_count/)).toBeNull();
+    expect(h.get.mock.calls.some(([u]) => String(u).includes('/api/security/issues'))).toBe(true);
   });
 
   it('bulk delete sends nodeKeys and sourceId; never-heard rows are not in Select All', async () => {
@@ -123,7 +124,7 @@ describe('SecurityTab protocol adapters', () => {
     // threshold load async; clicking a disabled Save was flaky under CI load).
     await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
     fireEvent.change(input, { target: { value: '30' } });
-    const save = screen.getByText('Save').closest('button') as HTMLButtonElement;
+    const save = within(screen.getByTestId('security-dead-nodes')).getByText('Save').closest('button') as HTMLButtonElement;
     await waitFor(() => expect(save.disabled).toBe(false));
     fireEvent.click(save);
     await waitFor(() => expect(h.post).toHaveBeenCalledWith('/api/settings?sourceId=src-1', { securityDeadNodeDays: '30' }));
@@ -171,9 +172,11 @@ describe('SecurityTab protocol adapters', () => {
     render(<SecurityTab sourceType="meshcore" sourceId="src-1" />);
     expect(await screen.findByTestId('security-dead-nodes-forbidden')).toBeTruthy();
     expect(screen.getByTestId('security-findings-forbidden')).toBeTruthy();
-    const calls = h.get.mock.calls.length;
+    // The two forbidden sections stop polling; the rest of the page keeps its 30 s refresh.
+    const forbiddenCalls = () => h.get.mock.calls.filter(([u]) => /\/dead-nodes|\/meshcore\/findings/.test(String(u))).length;
+    const calls = forbiddenCalls();
     await vi.advanceTimersByTimeAsync(95_000);
-    expect(h.get.mock.calls.length).toBe(calls);
+    expect(forbiddenCalls()).toBe(calls);
     vi.useRealTimers();
   });
 

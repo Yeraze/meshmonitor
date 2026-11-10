@@ -253,11 +253,12 @@ describe('securityRoutes — per-source scanner', () => {
       mockDb.settings.getLocalNodeNumForSource.mockResolvedValue('0');
     });
 
-    it('POST /scanner/scan with meshcore sourceId → 400 INVALID_SOURCE_TYPE', async () => {
+    // #6281: the scanner now covers MeshCore; only unsupported types are rejected.
+    it('POST /scanner/scan with an unsupported source type → 400 INVALID_SOURCE_TYPE', async () => {
       const app = createApp();
       const res = await request(app)
         .post('/api/security/scanner/scan')
-        .send({ sourceId: 'mc-1' });
+        .send({ sourceId: 'rt-1' });
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('INVALID_SOURCE_TYPE');
       expect(res.body.success).toBe(false);

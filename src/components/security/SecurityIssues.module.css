@@ -1,0 +1,29 @@
+/* Styles for the shared Security sections added in #6281. The global SecurityTab.css is frozen. */
+
+.hint {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-caution);
+  border-radius: 6px;
+  background: var(--color-surface);
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
+
+.notifyGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.floodWarning {
+  font-size: 0.78rem;
+  color: var(--color-warning);
+}
+
+.source {
+  color: var(--color-text-subtle);
+}

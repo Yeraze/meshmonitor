@@ -7,7 +7,9 @@
  *
  * Meshtastic (and every non-MeshCore source type) keeps today's set. MeshCore
  * P7a adds dead contacts, collisions, signatures, name reuse and own-key
- * change; the per-key rates, clock offset, scanner and digest stay P7b.
+ * change; P7b (#6281) adds per-key rates, clock offset, the scanner and the
+ * digest. `notifyDm` (a draft DM to the node's owner) needs a Companion: a
+ * Repeater source or an MQTT ingest source has no way to send one.
  */
 import { isAnyMeshCoreSourceType } from './nodeTypeCategory.js';
 
@@ -69,9 +71,9 @@ export function securityCapabilities(
     lowEntropy: false,
     duplicateKeys: false,
     keyMismatchLog: false,
-    scanner: false,
-    spam: false,
-    timeOffset: false,
+    scanner: true,
+    spam: true,
+    timeOffset: true,
     deadNodes: true,
     // Only a connected Companion has a contact table to delete from; a
     // Repeater or an MQTT ingest source deletes from MeshMonitor only.
@@ -81,7 +83,7 @@ export function securityCapabilities(
     nameReuse: true,
     // An MQTT ingest source has no radio identity of its own.
     ownKeyChange: isDevice,
-    digest: false,
-    notifyDm: false,
+    digest: true,
+    notifyDm: isDevice && isCompanion(deviceType) && !isRepeaterKind(deviceType),
   };
 }
