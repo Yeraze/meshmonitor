@@ -34,7 +34,7 @@ interface Mqtt {
 const saveMqtt = vi.fn(async () => {});
 const changes: Array<[string, unknown]> = [];
 
-function Harness({ initial }: { initial: Partial<Mqtt> }) {
+function Harness({ initial, savedRoot }: { initial: Partial<Mqtt>; savedRoot?: string }) {
   const [mqtt, setMqtt] = useState<Mqtt>({
     enabled: true,
     address: '',
@@ -65,6 +65,7 @@ function Harness({ initial }: { initial: Partial<Mqtt> }) {
       mqttMapPositionPrecision={0}
       mqttMapShouldReportLocation={false}
       mqttLoadedForSelectedNode={true}
+      mqttSavedRoot={savedRoot}
       onMQTTConfigChange={(f, v) => {
         changes.push([f, v]);
         setMqtt((prev) => ({ ...prev, [f]: v }));
@@ -186,5 +187,27 @@ describe('remote-admin MQTT config — broker presets (#5689)', () => {
     expect(changes).toEqual([['tlsEnabled', true]]);
     expect(screen.queryByText('Use TLS encryption for MQTT connection')).toBeNull();
     expect(screen.getByText('Send encrypted packets to MQTT')).toBeInTheDocument();
+  });
+});
+
+// #6338: the server refuses a CHANGED root that breaks the root rules, so the
+// Save button is blocked on the same test; a bad root the node already holds
+// does not block an unrelated edit.
+describe('remote-admin MQTT config — root save gate (#6338)', () => {
+  const saveButton = () => mqttSection().querySelector('button.save-button') as HTMLButtonElement;
+
+  it('blocks Save on a changed root that breaks the rules', () => {
+    render(<Harness initial={{ root: 'msh/US/2' }} savedRoot="msh/US" />);
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it('allows Save when the node already holds that root', () => {
+    render(<Harness initial={{ root: 'msh/US/2' }} savedRoot="msh/US/2" />);
+    expect(saveButton().disabled).toBe(false);
+  });
+
+  it('allows Save on a changed valid root', () => {
+    render(<Harness initial={{ root: 'msh/US/FL' }} savedRoot="msh/US" />);
+    expect(saveButton().disabled).toBe(false);
   });
 });

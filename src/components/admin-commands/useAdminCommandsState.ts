@@ -78,6 +78,9 @@ export interface MQTTConfigState {
   // form that was never loaded writes defaults over the node. Save is allowed
   // only when this matches the selected node (same rule as security, #4736).
   loadedForNodeNum: number | null;
+  // The root the node reported on load. The server refuses a CHANGED root
+  // that breaks the root rules (#6338), so Save is blocked on the same test.
+  loadedRoot?: string;
 }
 
 // Security Config State
@@ -546,6 +549,7 @@ const initialState: AdminCommandsState = {
     mapPositionPrecision: 0,
     mapShouldReportLocation: false,
     loadedForNodeNum: null,
+    loadedRoot: '',
   },
   security: {
     adminKeys: [''],

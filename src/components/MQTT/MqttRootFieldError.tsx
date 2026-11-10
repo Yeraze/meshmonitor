@@ -1,6 +1,8 @@
 /**
- * Inline root-topic validation message (#6287, design#167 R8). UI only: the
- * server does not reject a root on save, so this is advice, not a gate.
+ * Inline root-topic validation message (#6287, design#167 R8). The server
+ * refuses a changed root that breaks these rules (#6338, code
+ * INVALID_MQTT_ROOT), and the device and preset forms block Save on one; an
+ * unchanged bad root still saves, so here it reads as advice.
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';

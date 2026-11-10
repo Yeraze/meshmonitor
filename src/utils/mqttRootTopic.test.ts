@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateMqttRoot,
+  isChangedInvalidMqttRoot,
   sanitizeSegment,
   trimToBytes,
   rootFromTopic,
@@ -112,5 +113,20 @@ describe('gatewayFromTopic', () => {
   it('reads the gateway segment', () => {
     expect(gatewayFromTopic('msh/US/2/e/LongFast/!abcd1234')).toBe('!abcd1234');
     expect(gatewayFromTopic('msh/US/2/map/')).toBeNull();
+  });
+});
+
+describe('isChangedInvalidMqttRoot (#6338)', () => {
+  it('blocks only a changed root that breaks the rules', () => {
+    expect(isChangedInvalidMqttRoot('msh/US/2', 'msh/US')).toBe(true);
+    expect(isChangedInvalidMqttRoot('msh/US/FL', 'msh/US')).toBe(false);
+    expect(isChangedInvalidMqttRoot('msh/US ', 'msh/US ')).toBe(false);
+    expect(isChangedInvalidMqttRoot('', 'msh/US')).toBe(false);
+  });
+
+  it('treats a missing saved root as empty', () => {
+    expect(isChangedInvalidMqttRoot('msh/#', undefined)).toBe(true);
+    expect(isChangedInvalidMqttRoot('msh/#', null)).toBe(true);
+    expect(isChangedInvalidMqttRoot('', undefined)).toBe(false);
   });
 });

@@ -22,6 +22,7 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 import type { MqttBrokerPreset, MqttBrokerPresetInput } from '../../db/repositories/mqttBrokerPresets.js';
 import type { User } from '../../types/auth.js';
+import { checkMqttRootSave, failInvalidMqttRoot, type MqttRootGuardError } from '../utils/mqttRootGuard.js';
 
 const router = Router();
 
@@ -71,7 +72,7 @@ function optionalString(value: unknown, field: string, max: number): { value: st
 export function parsePresetBody(
   body: unknown,
   stored?: MqttBrokerPreset,
-): { input?: MqttBrokerPresetInput; error?: string } {
+): { input?: MqttBrokerPresetInput; error?: string; rootError?: MqttRootGuardError } {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { error: 'body must be an object' };
   const b = body as Record<string, unknown>;
 
@@ -109,13 +110,16 @@ export function parsePresetBody(
 
   const root = optionalString(typeof b.rootTopic === 'string' ? b.rootTopic.trim() : b.rootTopic, 'rootTopic', PRESET_FIELD_MAX);
   if (root.error) return { error: root.error };
-  const rootTopic = root.value === null ? null : root.value.replace(/\/+$/, '');
-  if (rootTopic !== null && /[#+\s]/.test(rootTopic)) {
-    return { error: 'rootTopic must be a plain topic such as msh/US/FL, with no # or + wildcards or spaces' };
-  }
+  // Trim and strip a trailing `/` (kept for compatibility), then check the
+  // root as a device would (#6338), but only when it changes, so a rename
+  // still saves a preset that already holds a bad root.
+  const stripped = root.value === null ? null : root.value.replace(/\/+$/, '');
+  const rootTopic = stripped || null;
+  const rootError = checkMqttRootSave(rootTopic ?? '', stored ? (stored.rootTopic ?? '') : undefined);
+  if (rootError) return { error: rootError.message, rootError };
 
   return {
-    input: { name, host, port, tls, username: username.value, password, rootTopic: rootTopic || null },
+    input: { name, host, port, tls, username: username.value, password, rootTopic },
   };
 }
 
@@ -153,7 +157,8 @@ router.get('/', requireAuth(), async (req: Request, res: Response) => {
 
 router.post('/', requireAdmin(), async (req: Request, res: Response) => {
   try {
-    const { input, error } = parsePresetBody(req.body);
+    const { input, error, rootError } = parsePresetBody(req.body);
+    if (rootError) return failInvalidMqttRoot(res, rootError, 'rootTopic');
     if (!input) return fail(res, 400, 'INVALID_INPUT', error ?? 'invalid preset');
     if (await databaseService.mqttBrokerPresets.isNameTakenAsync(input.name)) {
       return fail(res, 409, 'BROKER_PRESET_NAME_TAKEN', `A saved preset is already named "${input.name}"`);
@@ -179,7 +184,8 @@ router.put('/:id', requireAdmin(), async (req: Request, res: Response) => {
     if (id === null) return fail(res, 400, 'INVALID_INPUT', 'id must be a positive integer');
     const stored = await databaseService.mqttBrokerPresets.getAsync(id);
     if (!stored) return fail(res, 404, 'BROKER_PRESET_NOT_FOUND', 'No saved preset has that id');
-    const { input, error } = parsePresetBody(req.body, stored);
+    const { input, error, rootError } = parsePresetBody(req.body, stored);
+    if (rootError) return failInvalidMqttRoot(res, rootError, 'rootTopic');
     if (!input) return fail(res, 400, 'INVALID_INPUT', error ?? 'invalid preset');
     if (await databaseService.mqttBrokerPresets.isNameTakenAsync(input.name, id)) {
       return fail(res, 409, 'BROKER_PRESET_NAME_TAKEN', `A saved preset is already named "${input.name}"`);

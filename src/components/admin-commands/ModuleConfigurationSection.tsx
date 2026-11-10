@@ -19,6 +19,7 @@ import type { Channel } from '../../types/device';
 import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
 import { MqttRootFinder } from '../MQTT/MqttRootFinder';
 import { MqttRootFieldError } from '../MQTT/MqttRootFieldError';
+import { isChangedInvalidMqttRoot } from '../../utils/mqttRootTopic';
 import { defaultDeviceRegionRoot } from '../MQTT/mqttRootDefaults';
 import { useSource } from '../../contexts/SourceContext';
 import { applyPresetToDevice, devicePresetDraft, matchDevicePreset } from '../MQTT/brokerPresets';
@@ -54,6 +55,8 @@ interface ModuleConfigurationSectionProps {
   mqttMapShouldReportLocation: boolean;
   /** Save is blocked until this node's MQTT config is loaded (firmware replaces the struct). */
   mqttLoadedForSelectedNode: boolean;
+  /** The root the node reported on load; a changed invalid root blocks Save (#6338). */
+  mqttSavedRoot?: string;
   onMQTTConfigChange: (field: string, value: any) => void;
   onSaveMQTTConfig: () => Promise<void>;
 
@@ -160,6 +163,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   mqttMapPositionPrecision,
   mqttMapShouldReportLocation,
   mqttLoadedForSelectedNode,
+  mqttSavedRoot,
   onMQTTConfigChange,
   onSaveMQTTConfig,
   neighborInfoEnabled,
@@ -227,6 +231,8 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
 }) => {
   const { t } = useTranslation();
   const { sourceId: rootFinderSourceId } = useSource();
+  // The server refuses a changed root that breaks the root rules (#6338).
+  const mqttRootBlocksSave = isChangedInvalidMqttRoot(mqttRoot, mqttSavedRoot);
 
   // nanopb caps `broadcast_message` at 100 bytes + NUL. One byte over and the
   // device drops the entire MeshBeacon config with no error and no log line, so
@@ -524,12 +530,12 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         )}
         <button
           className="save-button"
-          onClick={mqttNumbers.invalid || !mqttLoadedForSelectedNode ? undefined : onSaveMQTTConfig}
-          disabled={isExecuting || selectedNodeNum === null || mqttNumbers.invalid || !mqttLoadedForSelectedNode}
+          onClick={mqttNumbers.invalid || mqttRootBlocksSave || !mqttLoadedForSelectedNode ? undefined : onSaveMQTTConfig}
+          disabled={isExecuting || selectedNodeNum === null || mqttNumbers.invalid || mqttRootBlocksSave || !mqttLoadedForSelectedNode}
           title={!mqttLoadedForSelectedNode ? t('admin_commands.mqtt_save_needs_load', MQTT_SAVE_NEEDS_LOAD) : undefined}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null || mqttNumbers.invalid || !mqttLoadedForSelectedNode) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null || mqttNumbers.invalid || !mqttLoadedForSelectedNode) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || mqttNumbers.invalid || mqttRootBlocksSave || !mqttLoadedForSelectedNode) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || mqttNumbers.invalid || mqttRootBlocksSave || !mqttLoadedForSelectedNode) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_mqtt_config')}
