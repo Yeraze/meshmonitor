@@ -5,11 +5,12 @@
  * sampler (which must stay free of source managers and databases):
  *
  *   - permission per context, the same one that would let the user SAVE the
- *     root: sources:write (bridge), configuration:write on the source (device,
- *     remote device), admin (preset);
+ *     root: sources:write (bridge, MeshCore ingest), configuration:write on the
+ *     source (device, remote device), admin (preset);
  *   - the broker address, vetted with the SSRF guard;
- *   - the login: typed, or a preset's (endpoint-bound), or a bridge's stored
- *     one (endpoint-bound). A stored secret never reaches another host;
+ *   - the login: typed, or a preset's (endpoint-bound), or a bridge's or
+ *     MeshCore ingest source's stored one (endpoint-bound). A stored secret
+ *     never reaches another host;
  *   - the user's location, read on the server (never from the browser).
  */
 
@@ -28,10 +29,11 @@ import { rootDepth, validateMqttRoot } from '../../utils/mqttRootTopic.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager, isMeshtasticManager } from '../sourceManagerTypes.js';
 import type { LatLon } from '../services/mqttRootFinder/ladder.js';
+import type { RootFinderProtocol } from '../services/mqttRootFinder/rootFinderService.js';
 import type { User } from '../../types/auth.js';
 
-export type RootFinderContext = 'bridge' | 'device' | 'remote_device' | 'preset';
-const CONTEXTS: RootFinderContext[] = ['bridge', 'device', 'remote_device', 'preset'];
+export type RootFinderContext = 'bridge' | 'device' | 'remote_device' | 'preset' | 'meshcore_mqtt';
+const CONTEXTS: RootFinderContext[] = ['bridge', 'device', 'remote_device', 'preset', 'meshcore_mqtt'];
 
 export interface TargetError {
   status: number;
@@ -40,9 +42,11 @@ export interface TargetError {
 }
 
 export interface ResolvedTarget {
-  broker: { url: string; username?: string; password?: string };
+  broker: { url: string; username?: string; password?: string; rejectUnauthorized?: boolean };
   /** `host:port:tls`, lower case. */
   endpointKey: string;
+  protocol: RootFinderProtocol;
+  /** Empty for `meshcore`: the service walks the whole `meshcore/` tree. */
   regionRoot: string;
   userPos?: LatLon;
 }
@@ -122,6 +126,8 @@ async function mayStart(
     case 'preset':
       return user.isAdmin === true;
     case 'bridge':
+    case 'meshcore_mqtt':
+      // The same gate as saving the source.
       return hasPermission(user, 'sources', 'write', sourceId);
     case 'device':
     case 'remote_device':
@@ -134,6 +140,11 @@ async function mayStart(
 async function bridgeSource(sourceId: string) {
   const row = await databaseService.sources.getSource(sourceId).catch(() => null);
   return row && row.type === 'mqtt_bridge' ? row : null;
+}
+
+async function meshcoreMqttSource(sourceId: string) {
+  const row = await databaseService.sources.getSource(sourceId).catch(() => null);
+  return row && row.type === 'meshcore_mqtt' ? row : null;
 }
 
 /** Position of one node on one source: the override if set, else the last fix. */
@@ -176,7 +187,9 @@ export async function resolveSampleTarget(
   const context = body.context as RootFinderContext;
   if (!CONTEXTS.includes(context)) return err(400, 'BAD_REQUEST', 'Unknown context.');
 
-  const region = parseRegionRoot(body.regionRoot);
+  const protocol: RootFinderProtocol = context === 'meshcore_mqtt' ? 'meshcore' : 'meshtastic';
+  // MeshCore samples the whole `meshcore/` tree, so a region root is ignored.
+  const region = protocol === 'meshcore' ? { root: '' } : parseRegionRoot(body.regionRoot);
   if ('error' in region) return region;
 
   let sourceId = blank(body.sourceId) ? undefined : str(body.sourceId);
@@ -185,15 +198,18 @@ export async function resolveSampleTarget(
     sourceId = getPrimaryMeshtasticManager(sourceManagerRegistry)?.sourceId;
     if (!sourceId) return err(400, 'MISSING_SOURCE_ID', 'sourceId is required.');
   }
-  if (context === 'preset' || context === 'bridge') {
-    // A preset has no source. A bridge may be new (no sourceId yet).
-    if (context === 'preset') sourceId = undefined;
-  }
+  // A preset has no source. A bridge or MeshCore ingest source may be new
+  // (no sourceId yet).
+  if (context === 'preset') sourceId = undefined;
 
   if (!(await mayStart(user, context, sourceId))) {
     return err(403, 'FORBIDDEN', 'You may not search topics here.');
   }
 
+  // A MeshCore ingest source names its broker by URL only.
+  if (protocol === 'meshcore' && !(isObj(body.broker) && typeof body.broker.url === 'string')) {
+    return err(400, 'INVALID_BROKER', 'That broker address is not valid.');
+  }
   const parsed = parseBroker(body.broker);
   if ('error' in parsed) return parsed;
   const { broker } = parsed;
@@ -269,6 +285,23 @@ export async function resolveSampleTarget(
         if (username === undefined && !blank(storedUp.username)) username = storedUp.username as string;
       }
     }
+  } else if (context === 'meshcore_mqtt' && sourceId) {
+    const row = await meshcoreMqttSource(sourceId);
+    if (!row) return err(404, 'SOURCE_NOT_FOUND', 'Source not found.');
+    const stored = isObj(row.config) ? row.config : {};
+    if (password === undefined) {
+      // Same endpoint-binding rule as the save path (see the bridge branch).
+      const merged = mergeSourceConfigOnSave(
+        'meshcore_mqtt',
+        stored,
+        { brokerUrl: str(rawBroker.url) ?? '', password: '' },
+        'editor',
+      );
+      if (!blank(merged.password)) {
+        password = merged.password as string;
+        if (username === undefined && !blank(stored.username)) username = stored.username as string;
+      }
+    }
   } else if (context === 'device') {
     const mgr = sourceId ? sourceManagerRegistry.getManager(sourceId) : undefined;
     const local = mgr && isMeshtasticManager(mgr) ? mgr.getLocalNodeInfo() : null;
@@ -284,8 +317,14 @@ export async function resolveSampleTarget(
         url: broker.url,
         ...(username !== undefined ? { username } : {}),
         ...(password !== undefined ? { password } : {}),
+        // TLS verification may be turned off only for a MeshCore ingest
+        // source, from the form's own checkbox, as the saved source would.
+        ...(context === 'meshcore_mqtt' && body.rejectUnauthorized === false
+          ? { rejectUnauthorized: false }
+          : {}),
       },
       endpointKey: broker.endpointKey,
+      protocol,
       regionRoot: region.root,
       ...(userPos ? { userPos } : {}),
     },

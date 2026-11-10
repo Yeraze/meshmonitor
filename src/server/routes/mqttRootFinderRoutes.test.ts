@@ -456,3 +456,119 @@ describe('start limiter', () => {
     expect(lastBody.code).toBe('ROOT_FINDER_BUSY');
   });
 });
+
+describe('MeshCore region finder (#6335)', () => {
+  const mcBody = (over: Record<string, unknown> = {}) => ({
+    context: 'meshcore_mqtt',
+    broker: { url: 'mqtt://10.1.2.3:1883' },
+    ...over,
+  });
+
+  beforeEach(async () => {
+    await mount();
+    await harness.db.sources.createSource({
+      id: 'rt-mc',
+      name: 'MC ingest',
+      type: 'meshcore_mqtt',
+      enabled: false,
+      config: { brokerUrl: 'mqtt://10.1.2.3:1883', region: 'MCO', username: 'mc-user', password: 'mc-pw' },
+    } as any);
+  });
+  afterEach(async () => {
+    await harness.db.sources.deleteSource('rt-mc').catch(() => undefined);
+  });
+
+  it('403 for a viewer, 202 with sources:write, and samples the meshcore tree', async () => {
+    const viewer = await harness.loginAs(harness.limited);
+    expect((await viewer.post('/api/mqtt/root-finder/samples').send(mcBody())).status).toBe(403);
+    expect(stubs).toHaveLength(0);
+
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post('/api/mqtt/root-finder/samples').send(mcBody({ regionRoot: 'msh/US' }));
+    expect(res.status).toBe(202);
+    // regionRoot is ignored: MeshCore always walks `meshcore/`.
+    expect(stubs[0].opts.regionRoot).toBe('meshcore');
+    expect(stubs[0].opts.adapter.filters('meshcore')).toEqual(['meshcore/+/+/status']);
+    expect(stubs[0].opts.broker.rejectUnauthorized).toBeUndefined();
+  });
+
+  it('returns activity-ranked regions with no ladder, community or location', async () => {
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    const start = await agent.post('/api/mqtt/root-finder/samples').send(mcBody());
+    stubs[0].heard = [
+      { root: 'TPA', nodes: 1, messages: 5, retainedOnly: true },
+      { root: 'MCO', nodes: 3, messages: 4, retainedOnly: true },
+    ];
+    const res = await agent.get(`/api/mqtt/root-finder/samples/${start.body.data.sampleId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ protocol: 'meshcore', hasLocation: false, ladder: [], community: [] });
+    expect(res.body.data.heard.map((h: { root: string }) => h.root)).toEqual(['MCO', 'TPA']);
+  });
+
+  it('honours the TLS-verify checkbox only for meshcore_mqtt', async () => {
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    await agent.post('/api/mqtt/root-finder/samples').send(mcBody({ rejectUnauthorized: false }));
+    expect(stubs[0].opts.broker.rejectUnauthorized).toBe(false);
+
+    stubs[0].end('done');
+    now += 10 * 60_000;
+    await agent.post('/api/mqtt/root-finder/samples').send(bridgeBody({ rejectUnauthorized: false }));
+    expect(stubs[1].opts.broker.rejectUnauthorized).toBeUndefined();
+  });
+
+  it('reuses the stored login on the same brokerUrl and drops it on another host', async () => {
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    const same = await agent.post('/api/mqtt/root-finder/samples').send(mcBody({ sourceId: 'rt-mc' }));
+    expect(same.status).toBe(202);
+    expect(stubs[0].opts.broker).toMatchObject({ username: 'mc-user', password: 'mc-pw' });
+    expect(JSON.stringify(same.body)).not.toContain('mc-pw');
+
+    stubs[0].end('done');
+    now += 10 * 60_000;
+    const other = await agent
+      .post('/api/mqtt/root-finder/samples')
+      .send(mcBody({ sourceId: 'rt-mc', broker: { url: 'mqtt://10.9.9.9:1883' } }));
+    expect(other.status).toBe(202);
+    expect(stubs[1].opts.broker.password).toBeUndefined();
+    expect(stubs[1].opts.broker.username).toBeUndefined();
+  });
+
+  it('404 for a sourceId that is not a meshcore_mqtt source', async () => {
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post('/api/mqtt/root-finder/samples').send(mcBody({ sourceId: harness.sourceA }));
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('SOURCE_NOT_FOUND');
+    expect(stubs).toHaveLength(0);
+  });
+
+  it('requires a broker URL and blocks unsafe targets', async () => {
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    const noUrl = await agent
+      .post('/api/mqtt/root-finder/samples')
+      .send(mcBody({ broker: { address: '10.1.2.3', tlsEnabled: false } }));
+    expect(noUrl.status).toBe(400);
+    expect(noUrl.body.code).toBe('INVALID_BROKER');
+    const blocked = await agent
+      .post('/api/mqtt/root-finder/samples')
+      .send(mcBody({ broker: { url: 'mqtt://169.254.169.254:1883' } }));
+    expect(blocked.status).toBe(400);
+    expect(blocked.body.code).toBe('ROOT_FINDER_TARGET_BLOCKED');
+    expect(stubs).toHaveLength(0);
+  });
+
+  it('shares the per-endpoint cap with Meshtastic samples', async () => {
+    const admin = await harness.loginAs(harness.admin);
+    expect((await admin.post('/api/mqtt/root-finder/samples').send(bridgeBody())).status).toBe(202);
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post('/api/mqtt/root-finder/samples').send(mcBody());
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe('ROOT_FINDER_BUSY');
+  });
+});

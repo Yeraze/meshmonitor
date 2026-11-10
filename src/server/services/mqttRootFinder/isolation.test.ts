@@ -68,15 +68,16 @@ import { connect } from 'mqtt';
 import { MqttBrokerClient } from '../../transports/mqttBrokerClient.js';
 import { RootSampler } from './rootSampler.js';
 import { meshtasticRootAdapter } from './meshtasticRootAdapter.js';
+import { meshcoreRegionAdapter } from './meshcoreRegionAdapter.js';
 
 const connectOpts = () => (connect as any).mock.calls.at(-1)[1];
 const tick = () => new Promise((r) => setImmediate(r));
 
-function makeSampler(durationMs = 60_000) {
+function makeSampler(durationMs = 60_000, protocol: 'meshtastic' | 'meshcore' = 'meshtastic') {
   return new RootSampler({
     broker: { url: 'mqtt://10.1.2.3:1883', username: 'u', password: 'p' },
-    regionRoot: 'msh/US',
-    adapter: meshtasticRootAdapter,
+    regionRoot: protocol === 'meshcore' ? 'meshcore' : 'msh/US',
+    adapter: protocol === 'meshcore' ? meshcoreRegionAdapter : meshtasticRootAdapter,
     durationMs,
   });
 }
@@ -117,6 +118,25 @@ describe('root finder isolation (a)(c): no publish, no ingest, no writes', () =>
     await vi.advanceTimersByTimeAsync(60_000);
     await s.whenDone();
     expect(s.getStatus()).toBe('done');
+    noMeshSideEffects();
+  });
+
+  it('a full MeshCore region sample publishes nothing and touches no ingest, event bus or database', async () => {
+    const s = makeSampler(60_000, 'meshcore');
+    await connectUp(s);
+    const key = 'AB'.repeat(32);
+    const body = Buffer.from(
+      JSON.stringify({ status: 'online', timestamp: new Date().toISOString(), origin: 'o', origin_id: key }),
+    );
+    for (let i = 0; i < 400; i++) fakes[0].emit('message', `meshcore/MCO/${key}/status`, body, { retain: true });
+    fakes[0].emit('message', `meshcore/TPA/${key}/status`, body, {});
+    await vi.advanceTimersByTimeAsync(60_000);
+    await s.whenDone();
+    expect(s.getStatus()).toBe('done');
+    expect(s.snapshot().heard.find((h) => h.root === 'MCO')).toMatchObject({ nodes: 1, messages: 400 });
+    const topics: string[] = fakes[0].subscribe.mock.calls.flatMap((c: unknown[]) => c[0] as string[]);
+    expect(topics).toEqual(['meshcore/+/+/status']);
+    expect(fakes[0].unsubscribe).not.toHaveBeenCalled();
     noMeshSideEffects();
   });
 
@@ -213,6 +233,8 @@ describe('root finder isolation (d): import boundary', () => {
     ['source manager registry', /sourceManagerRegistry/],
     ['Meshtastic manager', /meshtasticManager/],
     ['MeshCore manager', /meshcoreManager/],
+    ['MeshCore MQTT ingest manager', /meshcoreMqttManager/],
+    ['MeshCore observer publisher', /meshcoreObserverPublisher/],
     ['MQTT broker manager', /mqttBrokerManager/],
     ['MQTT bridge manager / publisher pool', /mqttBridge(Manager|PublisherPool)/],
     ['MQTT ingestion', /mqttIngestion/],
@@ -239,6 +261,7 @@ describe('root finder isolation (d): import boundary', () => {
         'rootSampler.ts',
         'rootFinderService.ts',
         'ladder.ts',
+        'meshcoreRegionAdapter.ts',
         'offlineGeocoder/reverseGeocode.ts',
         'offlineGeocoder/pip.ts',
         'offlineGeocoder/codec.ts',

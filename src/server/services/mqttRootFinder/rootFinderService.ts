@@ -27,6 +27,8 @@ import {
   type RankedHeard,
 } from './ladder.js';
 import { meshtasticRootAdapter } from './meshtasticRootAdapter.js';
+import { MESHCORE_ROOT, meshcoreRegionAdapter, rankRegions } from './meshcoreRegionAdapter.js';
+import type { RootAdapter } from './rootAdapter.js';
 import {
   RootSampler,
   SAMPLE_DURATION_MS,
@@ -40,6 +42,14 @@ export const MAX_ACTIVE_PER_ENDPOINT = 1;
 export const MAX_ACTIVE_GLOBAL = 2;
 export const USER_COOLDOWN_MS = 2 * 60_000;
 export const FINISHED_RETENTION_MS = 5 * 60_000;
+
+/** Which protocol's topic tree a sample walks. */
+export type RootFinderProtocol = 'meshtastic' | 'meshcore';
+
+const ADAPTERS: Record<RootFinderProtocol, RootAdapter> = {
+  meshtastic: meshtasticRootAdapter,
+  meshcore: meshcoreRegionAdapter,
+};
 
 export class RootFinderBusyError extends Error {
   constructor(
@@ -55,7 +65,10 @@ export interface StartSampleParams {
   userId: number;
   /** `host:port:tls`, lower case. */
   endpointKey: string;
-  broker: { url: string; username?: string; password?: string };
+  broker: { url: string; username?: string; password?: string; rejectUnauthorized?: boolean };
+  /** Defaults to `meshtastic`. */
+  protocol?: RootFinderProtocol;
+  /** Ignored for `meshcore`, which always walks the whole `meshcore/` tree. */
   regionRoot: string;
   /** Server-side location. Used only for ranking; never returned. */
   userPos?: LatLon;
@@ -64,6 +77,7 @@ export interface StartSampleParams {
 
 /** What `GET /samples/:id` returns. No coordinates, no credentials, no raw errors. */
 export interface SampleView {
+  protocol: RootFinderProtocol;
   status: SamplerStatus;
   elapsedMs: number;
   durationMs: number;
@@ -79,6 +93,7 @@ interface Job {
   id: string;
   userId: number;
   endpointKey: string;
+  protocol: RootFinderProtocol;
   regionRoot: string;
   userPos?: LatLon;
   place?: Place;
@@ -162,16 +177,19 @@ export class RootFinderService {
       );
     }
 
+    const protocol = params.protocol ?? 'meshtastic';
+    const regionRoot = protocol === 'meshcore' ? MESHCORE_ROOT : params.regionRoot;
     const sampler = this.createSampler({
       broker: params.broker,
-      regionRoot: params.regionRoot,
-      adapter: meshtasticRootAdapter,
+      regionRoot,
+      adapter: ADAPTERS[protocol],
     });
     const job: Job = {
       id: randomUUID(),
       userId: params.userId,
       endpointKey: params.endpointKey,
-      regionRoot: params.regionRoot,
+      protocol,
+      regionRoot,
       userPos: params.userPos,
       place: this.placeFor(params),
       sampler,
@@ -187,6 +205,8 @@ export class RootFinderService {
    * `get()` stays cheap. Never logged: it is as private as the position.
    */
   private placeFor(params: StartSampleParams): Place | undefined {
+    // MeshCore samples have no ladder, so they never need a place (#6335).
+    if (params.protocol === 'meshcore') return undefined;
     if (params.place || !params.userPos) return params.place;
     try {
       return this.geocoder(params.userPos);
@@ -206,6 +226,18 @@ export class RootFinderService {
     const job = this.jobs.get(id);
     if (!job || job.userId !== userId) return null;
     const snap = job.sampler.snapshot();
+    const base = {
+      protocol: job.protocol,
+      status: snap.status,
+      elapsedMs: snap.elapsedMs,
+      durationMs: snap.durationMs,
+      regionFloor: snap.regionFloor,
+      ...(snap.error ? { error: snap.error } : {}),
+    };
+    if (job.protocol === 'meshcore') {
+      // Regions are flat community labels: no ladder, no directory, no distance.
+      return { ...base, hasLocation: false, ladder: [], community: [], heard: rankRegions(snap.heard) };
+    }
     const common = {
       regionRoot: job.regionRoot,
       heard: snap.heard,
@@ -216,15 +248,11 @@ export class RootFinderService {
     const community = buildCommunity({ ...common, userPos: job.userPos });
     const ranked = rankHeard({ ...common, userPos: job.userPos });
     return {
-      status: snap.status,
-      elapsedMs: snap.elapsedMs,
-      durationMs: snap.durationMs,
-      regionFloor: snap.regionFloor,
+      ...base,
       hasLocation: !!job.userPos || !!job.place,
       ladder,
       community,
       heard: ranked,
-      ...(snap.error ? { error: snap.error } : {}),
     };
   }
 

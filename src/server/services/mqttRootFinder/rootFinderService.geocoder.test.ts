@@ -67,6 +67,13 @@ describe('RootFinderService geocoder', () => {
     );
   });
 
+  it('never geocodes a MeshCore sample (#6335)', () => {
+    const geocoder = vi.fn(() => PLACE);
+    const svc = make(geocoder);
+    svc.start(params({ userPos: POS, protocol: 'meshcore' }));
+    expect(geocoder).not.toHaveBeenCalled();
+  });
+
   it('does not call the geocoder without a position', () => {
     const geocoder = vi.fn(() => PLACE);
     const svc = make(geocoder);
