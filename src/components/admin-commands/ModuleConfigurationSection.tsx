@@ -17,6 +17,10 @@ import {
 } from './useAdminCommandsState';
 import type { Channel } from '../../types/device';
 import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
+import { MqttRootFinder } from '../MQTT/MqttRootFinder';
+import { MqttRootFieldError } from '../MQTT/MqttRootFieldError';
+import { defaultDeviceRegionRoot } from '../MQTT/mqttRootDefaults';
+import { useSource } from '../../contexts/SourceContext';
 import { applyPresetToDevice, devicePresetDraft, matchDevicePreset } from '../MQTT/brokerPresets';
 
 const MQTT_SAVE_NEEDS_LOAD =
@@ -222,6 +226,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   takHeaderActions,
 }) => {
   const { t } = useTranslation();
+  const { sourceId: rootFinderSourceId } = useSource();
 
   // nanopb caps `broadcast_message` at 100 bytes + NUL. One byte over and the
   // device drops the entire MeshBeacon config with no error and no log line, so
@@ -354,6 +359,21 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 placeholder="msh/US"
                 className="setting-input"
                 style={{ width: '100%', maxWidth: '600px' }}
+              />
+              <MqttRootFieldError value={mqttRoot} />
+              <MqttRootFinder
+                context="remote_device"
+                sourceId={rootFinderSourceId}
+                nodeNum={selectedNodeNum}
+                disabled={isExecuting}
+                currentRoot={mqttRoot}
+                defaultRegionRoot={defaultDeviceRegionRoot(mqttRoot)}
+                getTarget={() => ({
+                  broker: { address: mqttAddress, tlsEnabled: mqttTlsEnabled },
+                  username: mqttUsername,
+                  password: mqttPassword,
+                })}
+                onPickRoot={(root) => onMQTTConfigChange('root', root)}
               />
             </div>
             <div className="setting-item">

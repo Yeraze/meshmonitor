@@ -50,6 +50,9 @@ import {
   type UplinkTopicMode,
 } from './mqttBridgeConfig';
 import BrokerPresetSelector from './BrokerPresetSelector';
+import { MqttRootFinder } from './MqttRootFinder';
+import { MqttRootFieldError } from './MqttRootFieldError';
+import { applyRootToSubscriptions, defaultBridgeRegionRoot } from './mqttRootDefaults';
 import {
   applyPresetToBridge,
   matchBridgePreset,
@@ -692,6 +695,34 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             onChange={(e) => patch('subscriptions', e.target.value)}
           />
         </label>
+        {form.subscriptions
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l.endsWith('/#') && !l.includes('+'))
+          .map((l) => (
+            <MqttRootFieldError key={l} warn value={l.slice(0, -2)} />
+          ))}
+        <MqttRootFinder
+          context="bridge"
+          sourceId={sourceId}
+          disabled={!canWrite}
+          currentRoot={form.subscriptions.split('\n')[0]?.trim() ?? ''}
+          defaultRegionRoot={defaultBridgeRegionRoot(form.subscriptions)}
+          getTarget={() =>
+            form.url.trim()
+              ? {
+                  broker: { url: form.url },
+                  username: form.username,
+                  password: form.password,
+                  brokerPresetId:
+                    serverFillPreset?.savedId !== undefined && matchBridgePreset(form.url, [serverFillPreset])
+                      ? serverFillPreset.savedId
+                      : null,
+                }
+              : null
+          }
+          onPickRoot={(root) => patch('subscriptions', applyRootToSubscriptions(form.subscriptions, root))}
+        />
         <fieldset style={{ border: '1px solid var(--color-surface-hover)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
           <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--color-text-subtle)' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
