@@ -664,6 +664,50 @@ export function buildNodeRebootedContext(
 }
 
 /**
+ * Build the trigger context for a confirmed new MeshCore neighbour
+ * (`trigger.neighborAdded`, #6274). The subject node is the NEIGHBOUR, so
+ * `{{ node.* }}` describes it and node-scoped cooldown keys off its public key;
+ * the reporter (the repeater whose table listed it) is in the `reporter*` fields.
+ * Detection happened in the neighbour watch; this only shapes what the
+ * conditions and interpolation read.
+ */
+export function buildNeighborAddedContext(
+  d: {
+    reporterPublicKey: string;
+    reporterName?: string | null;
+    neighborPublicKey: string;
+    firstSeenAt: number;
+    lastHeardAt: number;
+    snr: number | null;
+    sightings: number;
+  },
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  const confirmedAfterHours = Math.round(((d.lastHeardAt - d.firstSeenAt) / 3_600_000) * 10) / 10;
+  return {
+    triggerType: 'trigger.neighborAdded',
+    sourceId,
+    subjectNodeNum: null,
+    subjectNodeKey: d.neighborPublicKey,
+    timestamp,
+    fields: {
+      reporterName: d.reporterName ?? '',
+      reporterPublicKey: d.reporterPublicKey,
+      neighborPublicKey: d.neighborPublicKey,
+      publicKey: d.neighborPublicKey,
+      snr: d.snr ?? undefined,
+      firstSeenAt: d.firstSeenAt,
+      lastHeardAt: d.lastHeardAt,
+      confirmedAfterHours,
+      sightings: d.sightings,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
+/**
  * Build the trigger context for a node's transition INTO the likely-aircraft
  * flagged state (`trigger.becameLikelyAircraft` — #5364/#5365 Phase 1 WP3,
  * spec §4.10). Subject node = the flagged node, so `{{ node.* }}` hydration

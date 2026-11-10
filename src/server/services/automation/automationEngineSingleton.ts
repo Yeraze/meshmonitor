@@ -8,7 +8,7 @@
  */
 import { logger } from '../../../utils/logger.js';
 import databaseService from '../../../services/database.js';
-import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData, type MeshCoreNodeEventFacts, type TelemetryEventRow } from '../dataEventEmitter.js';
+import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData, type NeighborSightingData, type MeshCoreNodeEventFacts, type TelemetryEventRow } from '../dataEventEmitter.js';
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
@@ -203,6 +203,14 @@ export async function routeEventToEngine(e: AutomationEngineService, event: Data
       // (the prior uptime row), not here, so this is a pure event forward.
       const data = event.data as { nodeNum: number | null; publicKey?: string | null; previousUptimeSeconds: number; uptimeSeconds: number };
       await e.onNodeRebooted(data.nodeNum, data.publicKey ?? null, data.previousUptimeSeconds, data.uptimeSeconds, sourceId);
+      break;
+    }
+
+    case 'neighbor:sighting': {
+      // Confirmed new neighbour (#6274): the neighbour watch saw a pending
+      // neighbour again. Fire trigger.neighborAdded for the rules whose
+      // confirmHours this sighting crosses. State lives in the DB ledger.
+      await e.onNeighborSighting(event.data as NeighborSightingData, sourceId);
       break;
     }
 

@@ -470,6 +470,7 @@ export const SOCKET_EVENT_GATES: Record<DataEventType, SocketEventGate> = {
   'node:rebooted': serverOnly('Feeds `trigger.nodeRebooted`.'),
   'node:powerChanged': serverOnly('Feeds `trigger.nodePowerChanged`.'),
   'node:aircraft': serverOnly('Feeds `trigger.becameLikelyAircraft`.'),
+  'neighbor:sighting': serverOnly('Feeds `trigger.neighborAdded`.'),
   'meshbeacon:received': serverOnly('Feeds `trigger.meshBeacon`; the payload carries the offered channel PSK.'),
 };
 

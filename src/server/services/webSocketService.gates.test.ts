@@ -33,6 +33,7 @@ const PAYLOADS: Record<DataEventType, (marker: string) => unknown> = {
   'node:mobility': (marker) => ({ nodeNum: NODE_NUM, previous: 0, current: 1, marker }),
   'node:rebooted': (marker) => ({ nodeNum: NODE_NUM, previousUptimeSeconds: 9, uptimeSeconds: 1, marker }),
   'node:powerChanged': (marker) => ({ nodeNum: NODE_NUM, previousPowered: false, powered: true, batteryLevel: 101, marker }),
+  'neighbor:sighting': (marker) => ({ reporterPublicKey: 'cd'.repeat(32), neighborPublicKey: 'ab'.repeat(32), firstSeenAt: 1, prevLastHeardAt: 2, lastHeardAt: 3, snr: 1, sightings: 2, marker }),
   'node:aircraft': (marker) => ({ nodeNum: NODE_NUM, previous: null, current: true, basis: 'agl', marker }),
   'channel:updated': (marker) => ({ id: 0, name: marker, psk: 'AQ==', role: 1 }),
   'telemetry:batch': (marker) => ({ [NODE_NUM]: [{ nodeId: NODE_ID, nodeNum: NODE_NUM, telemetryType: 'batteryLevel', value: 80, unit: marker }] }),
@@ -81,7 +82,7 @@ const watchFlights = (client: SocketTestClient, sourceIds: string[]): Promise<un
 /** Types a viewer who is not an admin can never receive. */
 const ADMIN_ONLY: DataEventType[] = [
   'node:discovered', 'meshcore:node:changed', 'node:mobility', 'node:rebooted', 'node:powerChanged',
-  'node:aircraft', 'meshbeacon:received', 'auto-ping:update', 'firmware:status',
+  'node:aircraft', 'neighbor:sighting', 'meshbeacon:received', 'auto-ping:update', 'firmware:status',
 ];
 
 function emit(type: DataEventType, sourceId: string | undefined, marker: string, data: unknown = PAYLOADS[type](marker)): void {

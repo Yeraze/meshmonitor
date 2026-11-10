@@ -25,6 +25,7 @@ export type DataEventType =
   | 'meshcore:node:changed'
   | 'node:mobility'
   | 'node:rebooted'
+  | 'neighbor:sighting'
   | 'node:powerChanged'
   | 'node:aircraft'
   | 'message:new'
@@ -177,6 +178,23 @@ export interface NodeRebootedData {
   publicKey?: string | null;
   previousUptimeSeconds: number;
   uptimeSeconds: number;
+}
+
+/**
+ * A pending MeshCore neighbour was seen again in a repeater's neighbour table
+ * (#6274). Feeds `trigger.neighborAdded`, which fires once the neighbour has
+ * stayed `confirmHours`. The subject is the NEIGHBOUR; the reporter is the
+ * repeater whose table listed it. Times are epoch ms.
+ */
+export interface NeighborSightingData {
+  reporterPublicKey: string;
+  reporterName?: string | null;
+  neighborPublicKey: string;
+  firstSeenAt: number;
+  prevLastHeardAt: number;
+  lastHeardAt: number;
+  snr: number | null;
+  sightings: number;
 }
 
 /**
@@ -406,6 +424,20 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Node rebooted: ${data.nodeNum ?? data.publicKey ?? '?'} (uptime ${data.previousUptimeSeconds}s → ${data.uptimeSeconds}s)`);
+  }
+
+  /**
+   * Emit a pending-neighbour sighting (used by trigger.neighborAdded, #6274).
+   */
+  emitNeighborSighting(data: NeighborSightingData, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'neighbor:sighting',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Neighbour sighting: ${data.neighborPublicKey.substring(0, 12)}… via ${data.reporterPublicKey.substring(0, 12)}… (sighting ${data.sightings})`);
   }
 
   /**

@@ -96,6 +96,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.nodePowerChanged': [['nodeNum', 'Node number'], ['direction', 'lost (now on battery) / restored (now powered)'], ['powered', 'true if now on external/USB power'], ['previousPowered', 'true if previously on external/USB power'], ['batteryLevel', 'Battery level (%, >100 = powered)']],
   'trigger.batteryTrend': [['nodeNum', 'Node number'], ['dropPercent', 'Observed drop over the window (percentage points)'], ['windowHours', 'Lookback window (hours)'], ['minDropPercent', 'Configured drop threshold (points)'], ['startLevel', 'Battery level at the window start (%)'], ['latestLevel', 'Latest battery level (%)']],
   'trigger.becameLikelyAircraft': [['nodeNum', 'Node number'], ['altitude', 'Altitude (m MSL)'], ['heightAboveGround', 'Height above ground (m, AGL basis only)'], ['groundElevation', 'Ground elevation (m)'], ['basis', 'agl / msl'], ['thresholdM', 'Threshold crossed (m)'], ['previousLikelyAircraft', 'Previous likely-aircraft flag (false / null)'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude']],
+  'trigger.neighborAdded': [['reporterName', 'Repeater name'], ['reporterPublicKey', 'Repeater public key'], ['neighborPublicKey', 'New neighbour public key'], ['snr', 'Neighbour SNR (dB)'], ['firstSeenAt', 'First seen (epoch ms)'], ['lastHeardAt', 'Last heard (epoch ms)'], ['confirmedAfterHours', 'Hours between first and last sighting'], ['sightings', 'Times seen']],
   'trigger.schedule': [],
 };
 
@@ -110,6 +111,7 @@ const TRIGGER_LABEL: Record<string, string> = {
   'trigger.nodePowerChanged': 'Node power changed',
   'trigger.batteryTrend': 'Battery draining',
   'trigger.becameLikelyAircraft': 'Became likely aircraft',
+  'trigger.neighborAdded': 'New neighbour confirmed',
 };
 
 /** Drawer listing every available substitution token (current trigger first). */

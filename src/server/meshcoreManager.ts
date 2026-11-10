@@ -25,6 +25,7 @@ import {
 import { isBogusPosition } from '../utils/nullIsland.js';
 import { isCorruptMeshCoreContactRecord, sanitizeMeshCoreName } from '../utils/meshcoreName.js';
 import databaseService from '../services/database.js';
+import { observeNeighbours, type FreshNeighbour } from './services/neighborWatch.js';
 import type { MeshcorePathfindingFilterSettings } from '../services/database.js';
 import type { MessageEventType, MessageEventProvenance } from '../db/repositories/messageEvents.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
@@ -9536,8 +9537,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       .filter((n) => n.fullPublicKey !== null)
       .map((n) => ({ neighborPublicKey: n.fullPublicKey!, snr: n.snr, lastHeardSecs: n.heardSecondsAgo }));
 
+    // #6274: the watch sees only rows THIS read returned, never the carried
+    // ones mergeNeighbourRows adds back (their ages are extrapolated).
+    const watchRows: FreshNeighbour[] = fresh
+      .filter((n) => n.neighborPublicKey.toLowerCase() !== publicKey.toLowerCase())
+      .map((n) => ({ neighborKey: n.neighborPublicKey.toLowerCase(), heardSecondsAgo: n.lastHeardSecs, snr: n.snr }));
+
     if (complete) {
       await databaseService.meshcore.insertNeighborsBatch(this.sourceId, publicKey, fresh);
+      await this.watchNeighbours(publicKey, watchRows, true);
       return { written: fresh.length, stored: 'replaced' };
     }
     if (neighbours.length === 0) return { written: 0, stored: 'none' };
@@ -9545,7 +9553,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const stored = await databaseService.meshcore.getNeighborsForReporter(this.sourceId, publicKey);
     const rows = mergeNeighbourRows(fresh, stored, total, neighbours.length, Date.now());
     await databaseService.meshcore.insertNeighborsBatch(this.sourceId, publicKey, rows);
+    await this.watchNeighbours(publicKey, watchRows, false);
     return { written: fresh.length, stored: 'merged' };
+  }
+
+  /**
+   * Feed one poll's returned neighbour rows to the confirmed-new-neighbour
+   * watch (#6274). DB writes and one in-process event only: no airtime. Never
+   * throws, so it cannot break neighbour storage. `complete` is true only for a
+   * read of the whole, untruncated table (absence is then evidence).
+   */
+  private async watchNeighbours(reporterKey: string, rows: FreshNeighbour[], complete: boolean): Promise<void> {
+    await observeNeighbours(databaseService.meshcore, this.sourceId, reporterKey, rows, {
+      complete,
+      pollAtMs: Date.now(),
+    });
   }
 
   /**
@@ -10732,7 +10754,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     const rows = resolved.map((r) => ({ neighborPublicKey: r.publicKey, snr: r.snr, lastHeardSecs: r.lastHeardSecs }));
     try {
-      if (isNeighborsReplyPossiblyTruncated(reply)) {
+      const truncated = isNeighborsReplyPossiblyTruncated(reply);
+      if (truncated) {
         // The firmware caps the reply at ~134 chars, so older neighbours may
         // be missing: merge, as the #5413 partial-read path does.
         const stored = await databaseService.meshcore.getNeighborsForReporter(this.sourceId, self);
@@ -10741,6 +10764,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       } else {
         await databaseService.meshcore.insertNeighborsBatch(this.sourceId, self, rows);
       }
+      // #6274: only the rows this reply returned (`resolved`), never the merged
+      // set. A truncated reply is a partial read: absence proves nothing.
+      await this.watchNeighbours(
+        self,
+        resolved.map((r) => ({ neighborKey: r.publicKey.toLowerCase(), heardSecondsAgo: r.lastHeardSecs, snr: r.snr })),
+        // An entry we could not resolve to a unique key is a missing row too.
+        !truncated && resolved.length === parsed.length,
+      );
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] failed to persist repeater neighbours: ${(err as Error).message}`);
     }

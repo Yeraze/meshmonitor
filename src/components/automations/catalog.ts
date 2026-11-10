@@ -396,11 +396,21 @@ export const TRIGGERS: BlockDef[] = [
       COOLDOWN_SCOPE,
     ],
   },
+  {
+    type: 'trigger.neighborAdded',
+    label: 'A repeater gains a confirmed new neighbour (MeshCore)',
+    description: 'Fires once when a repeater’s neighbour table lists a node it did not list before, and the node is still there after the confirmation time. It watches the neighbour table MeshMonitor already polls, so it sends nothing to the mesh. The first poll of a repeater only records what is already listed, so turning this on does not alert on existing neighbours. A neighbour that drops out before the time is up never alerts. Zero-hop repeaters only (firmware table). Needs neighbour polling: always on for Repeater sources; opt-in per node for Companion sources (top 10 strongest per poll, so weak neighbours may never confirm). {{ node.* }} describes the new neighbour.',
+    fields: [
+      { name: 'confirmHours', label: 'Confirm after (hours)', kind: 'number', placeholder: '72', help: 'How long a new neighbour must stay in the table before it counts. Whole hours, 6 to 336. Default 72.' },
+      COOLDOWN,
+      COOLDOWN_SCOPE,
+    ],
+  },
 ];
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged', 'trigger.batteryTrend', 'trigger.becameLikelyAircraft'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged', 'trigger.batteryTrend', 'trigger.becameLikelyAircraft', 'trigger.neighborAdded'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 // #5595: MeshCore contact facts on the node triggers. MeshCore has no node
@@ -477,6 +487,11 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     { value: 'startLevel', label: 'Battery at window start (%)' },
     { value: 'latestLevel', label: 'Latest battery (%)' },
   ],
+  'trigger.neighborAdded': [
+    { value: 'snr', label: 'Neighbour SNR (dB)' },
+    { value: 'confirmedAfterHours', label: 'Hours since first seen' },
+    { value: 'sightings', label: 'Times seen' },
+  ],
   'trigger.becameMobile': [{ value: 'nodeNum', label: 'Node #' }, { value: 'mobile', label: 'Mobile flag (1)' }, { value: 'previousMobile', label: 'Previous mobile flag' }],
   'trigger.becameLikelyAircraft': [
     { value: 'nodeNum', label: 'Node #' },
@@ -505,6 +520,11 @@ const EVENT_STRING: Record<string, FieldOpt[]> = {
   'trigger.telemetry': [{ value: 'telemetryType', label: 'Metric name' }],
   'trigger.nodeUpdated': MESHCORE_NODE_EVENT_STRING_FIELDS,
   'trigger.nodeDiscovered': MESHCORE_NODE_EVENT_STRING_FIELDS,
+  'trigger.neighborAdded': [
+    { value: 'reporterName', label: 'Repeater name' },
+    { value: 'reporterPublicKey', label: 'Repeater public key' },
+    { value: 'neighborPublicKey', label: 'Neighbour public key' },
+  ],
   'trigger.meshBeacon': [
     { value: 'message', label: 'Beacon text' },
     { value: 'offerChannelName', label: 'Offered channel name' },
