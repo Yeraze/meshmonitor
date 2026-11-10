@@ -541,7 +541,11 @@ jobs:
           retention-days: 30
 
   build-macos-x64:
-    runs-on: macos-14
+    # macos-latest (arm64) cross-compiles the x86_64 bundle; the explicit
+    # `macos-14` label was retired by GitHub ("configuration
+    # macos-14-arm64-us-default is not supported"), which cancelled this job
+    # instantly on v4.17.3-rc3 and rc4. Same fix as desktop-ci.yml (#6231).
+    runs-on: macos-latest
     timeout-minutes: 120
     permissions:
       contents: write
@@ -770,7 +774,7 @@ jobs:
         run: npm install
 
       # Build the Tauri app (app bundle only, we'll create DMG after re-signing)
-      # IMPORTANT: --target is required because this runs on ARM64 (macos-14) but builds for x64
+      # IMPORTANT: --target is required because this runs on ARM64 (macos-latest) but builds for x64
       - name: Build Tauri app (release)
         working-directory: desktop
         env:
