@@ -68,3 +68,33 @@
   flex-wrap: wrap;
   justify-content: center;
 }
+
+/* Compact not-logged-in banner above the read-only saved posts (#6332). */
+.loginBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-surface-hover);
+  text-align: center;
+}
+
+.loginBannerText {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.loginBannerControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.loginHint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-faint);
+}
