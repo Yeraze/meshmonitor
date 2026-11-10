@@ -29,8 +29,6 @@ import { fail } from '../utils/apiResponse.js';
 import { TX_DISABLED_CODE, isTxDisabledError } from '../errors/txDisabledError.js';
 import { MESHCORE_RECEIVE_ONLY_MESSAGE } from '../constants/meshcoreTx.js';
 import {
-  MESHCORE_MAX_MESSAGE_BYTES_CHANNEL,
-  MESHCORE_MAX_MESSAGE_BYTES_CHANNEL_SCOPED,
   MESHCORE_MAX_MESSAGE_BYTES_DM,
 } from '../constants/meshcoreMessageLimits.js';
 import { CONTACT_NOT_ON_DEVICE_MESSAGE } from '../meshcoreDeviceContactErrors.js';
@@ -207,12 +205,13 @@ export function failContactNotOnDevice(res: Response): void {
 export const VALIDATION = {
   /** MeshCore public keys are 64-character hex strings (32 bytes) */
   PUBLIC_KEY_LENGTH: 64,
-  /** Maximum message byte limits per context (UTF-8 byte count, not char count) */
-  MAX_MESSAGE_BYTES_CHANNEL: MESHCORE_MAX_MESSAGE_BYTES_CHANNEL,
-  MAX_MESSAGE_BYTES_CHANNEL_SCOPED: MESHCORE_MAX_MESSAGE_BYTES_CHANNEL_SCOPED,
+  /**
+   * DM byte limit (UTF-8 bytes, not chars). A channel limit depends on the
+   * source's node name: use `meshcoreMessageByteCap` (#6303).
+   */
   MAX_MESSAGE_BYTES_DM: MESHCORE_MAX_MESSAGE_BYTES_DM,
   /** Legacy fallback — keep for safety ceiling in shared validation path */
-  MAX_MESSAGE_LENGTH: 150,
+  MAX_MESSAGE_LENGTH: MESHCORE_MAX_MESSAGE_BYTES_DM,
   /** Maximum device name length */
   MAX_NAME_LENGTH: 32,
   /** Maximum message history limit */

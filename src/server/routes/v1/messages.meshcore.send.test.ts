@@ -36,6 +36,7 @@ const makeStub = (over: Record<string, unknown> = {}) => ({
   sourceType: 'meshcore',
   isReceiveOnly: vi.fn(() => false),
   isConnected: vi.fn(() => true),
+  getLocalNode: vi.fn(() => ({ name: 'Bob' }) as { name?: string } | null),
   sendMessageWithResult: vi.fn(async () => ({ ok: true, message: { id: `${MC}_row1` } })),
   ...over,
 });
@@ -139,16 +140,31 @@ describe('v1 POST /messages — MeshCore source', () => {
     expect(stub.sendMessageWithResult).not.toHaveBeenCalled();
   });
 
-  it('413 over the per-context byte limits (DM, channel, scoped channel); not split', async () => {
+  it('413 over the DM cap (160); at the cap is accepted; not split', async () => {
     user = h.admin;
-    const dm = 'a'.repeat(VALIDATION.MAX_MESSAGE_BYTES_DM + 1);
-    const ch = 'a'.repeat(VALIDATION.MAX_MESSAGE_BYTES_CHANNEL + 1);
-    const sc = 'a'.repeat(VALIDATION.MAX_MESSAGE_BYTES_CHANNEL_SCOPED + 1);
-    await post({ text: dm, toNodeId: PK }).expect(413);
-    await post({ text: ch, channel: 0 }).expect(413);
-    await post({ text: sc, channel: 0, scope: 'usa' }).expect(413);
-    await post({ text: 'a'.repeat(VALIDATION.MAX_MESSAGE_BYTES_DM), toNodeId: PK }).expect(201);
+    expect(VALIDATION.MAX_MESSAGE_BYTES_DM).toBe(160);
+    await post({ text: 'a'.repeat(161), toNodeId: PK }).expect(413);
+    await post({ text: 'a'.repeat(160), toNodeId: PK }).expect(201);
     expect(stub.sendMessageWithResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('channel cap follows the node name: 155 for "Bob", scope does not change it (#6303)', async () => {
+    user = h.admin;
+    await post({ text: 'a'.repeat(156), channel: 0 }).expect(413);
+    await post({ text: 'a'.repeat(156), channel: 0, scope: 'usa' }).expect(413);
+    await post({ text: 'a'.repeat(155), channel: 0 }).expect(201);
+    await post({ text: 'a'.repeat(155), channel: 0, scope: 'usa' }).expect(201);
+    expect(stub.sendMessageWithResult).toHaveBeenCalledTimes(2);
+  });
+
+  it('channel cap is 127 for a 31-byte name and when the name is unknown', async () => {
+    user = h.admin;
+    stub.getLocalNode.mockReturnValue({ name: 'n'.repeat(31) });
+    await post({ text: 'a'.repeat(128), channel: 0 }).expect(413);
+    await post({ text: 'a'.repeat(127), channel: 0 }).expect(201);
+    stub.getLocalNode.mockReturnValue(null);
+    await post({ text: 'a'.repeat(128), channel: 0 }).expect(413);
+    await post({ text: 'a'.repeat(127), channel: 0 }).expect(201);
   });
 
   it('409 TX_DISABLED when receive-only; 503 when not connected', async () => {

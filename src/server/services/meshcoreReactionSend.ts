@@ -19,8 +19,8 @@ import {
 } from '../../utils/meshcoreReactionTarget.js';
 import { meshcoreChannelIndexOf } from '../utils/meshcoreMessageMerge.js';
 import {
-  MESHCORE_MAX_MESSAGE_BYTES_CHANNEL_SCOPED,
   MESHCORE_MAX_MESSAGE_BYTES_DM,
+  meshcoreChannelMaxBytes,
 } from '../constants/meshcoreMessageLimits.js';
 import { MeshCoreReactionError } from '../errors/meshcoreReactionError.js';
 
@@ -85,7 +85,7 @@ export function planOutboundReaction(
     if (!targetSender || wireText === null) {
       throw new MeshCoreReactionError('TARGET_NOT_REACTABLE', blockerMessage('TARGET_NOT_REACTABLE'));
     }
-    if (Buffer.byteLength(wireText, 'utf8') > MESHCORE_MAX_MESSAGE_BYTES_CHANNEL_SCOPED) {
+    if (Buffer.byteLength(wireText, 'utf8') > meshcoreChannelMaxBytes(ctx.selfName)) {
       throw new MeshCoreReactionError('MESSAGE_TOO_LONG', 'Reaction is too long for a channel message');
     }
     return {
