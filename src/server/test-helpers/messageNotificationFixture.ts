@@ -24,6 +24,8 @@ export interface FixturePrefs {
   mutedDMs: Array<{ nodeUuid: string; muteUntil: number | null }>;
   messageTitleTemplate: string | null;
   messageBodyTemplate: string | null;
+  messageTextMaxPush: number | null;
+  messageTextMaxApprise: number | null;
   /** Event toggles read by `broadcastToPreferenceUsers`; absent = off. */
   notifyOnNewNode?: boolean;
   notifyOnWaypoint?: boolean;
@@ -47,6 +49,8 @@ export function fixturePrefs(over: Partial<FixturePrefs> = {}): FixturePrefs {
     mutedDMs: [],
     messageTitleTemplate: null,
     messageBodyTemplate: null,
+    messageTextMaxPush: null,
+    messageTextMaxApprise: null,
     ...over,
   };
 }

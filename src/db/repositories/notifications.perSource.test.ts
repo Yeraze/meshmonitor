@@ -194,6 +194,8 @@ describe('NotificationsRepository — per-source isolation (#4020)', () => {
       ['mutedDMs', [{ nodeUuid: '!aaaa0002', muteUntil: null }], [{ nodeUuid: '!bbbb0003', muteUntil: null }]],
       ['messageTitleTemplate', 'A {{ sender }}', null],
       ['messageBodyTemplate', 'A {{ text }}', 'B {{ text }}'],
+      ['messageTextMaxPush', 250, null],
+      ['messageTextMaxApprise', 1000, 20],
     ];
 
     it('covers every field of NotificationPreferences', async () => {
