@@ -28,6 +28,11 @@ import type { RemoveContactsBulkResult } from '../meshcoreManager.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
 import { duplicateKeySchedulerService } from '../services/duplicateKeySchedulerService.js';
 import { securityDigestService } from '../services/securityDigestService.js';
+import { collectSecurityIssues } from '../services/securityIssuesService.js';
+import { buildSecurityExport, type SecurityExportFormat } from '../utils/securityExport.js';
+import { securityCapabilities } from '../../utils/securityCapabilities.js';
+import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
+import { EXCESSIVE_PACKETS_PER_HOUR, TIME_OFFSET_THRESHOLD_MINUTES } from '../constants/securityThresholds.js';
 import { logger } from '../../utils/logger.js';
 
 const router = Router();
@@ -35,113 +40,39 @@ const router = Router();
 // All routes require security:read permission
 router.use(requirePermission('security', 'read'));
 
-// Get all nodes with security issues
-router.get('/issues', requireSourceId('query'), async (req: Request, res: Response) => {
+// nodes:read on the source gates every per-source node read (both protocols).
+const nodesReadOnSource = requirePermission('nodes', 'read', { sourceIdFrom: 'query', requireSourceId: true });
+
+/** Protocol of a source for the shared reads: MeshCore (device or MQTT) or Meshtastic. */
+function sourceProtocol(sourceId: string): 'meshcore' | 'meshtastic' {
+  return isAnyMeshCoreSourceType(sourceManagerRegistry.getManager(sourceId)?.sourceType) ? 'meshcore' : 'meshtastic';
+}
+
+// Get all nodes with security issues. Wire fields are unchanged; nodeKey,
+// protocol, counts, thresholds and (MeshCore) findings are additive.
+router.get('/issues', requireSourceId('query'), nodesReadOnSource, async (req: Request, res: Response) => {
   try {
-    const secSourceId = req.query.sourceId as string | undefined;
-    const nodesWithKeyIssues = await databaseService.getNodesWithKeySecurityIssuesAsync(secSourceId);
-    const nodesWithExcessivePackets = await databaseService.getNodesWithExcessivePacketsAsync(secSourceId);
-
-    // Combine and deduplicate
-    const allIssueNodes = new Map<number, any>();
-
-    for (const node of nodesWithKeyIssues) {
-      allIssueNodes.set(node.nodeNum, {
-        nodeNum: node.nodeNum,
-        shortName: node.shortName || 'Unknown',
-        longName: node.longName || 'Unknown',
-        lastHeard: node.lastHeard,
-        keyIsLowEntropy: node.keyIsLowEntropy,
-        duplicateKeyDetected: node.duplicateKeyDetected,
-        keySecurityIssueDetails: node.keySecurityIssueDetails,
-        publicKey: node.publicKey,
-        hwModel: node.hwModel,
-        isExcessivePackets: (node as any).isExcessivePackets || false,
-        packetRatePerHour: (node as any).packetRatePerHour || null,
-        packetRateLastChecked: (node as any).packetRateLastChecked || null,
-        isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false,
-        timeOffsetSeconds: (node as any).timeOffsetSeconds || null
-      });
+    const secSourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
+    const protocol = sourceProtocol(secSourceId);
+    // Top broadcasters come from the stored rates on MeshCore, so this 30 s poll never reads the packet log.
+    const issues = await collectSecurityIssues(databaseService as never, secSourceId, { protocol, topBroadcasters: 5 });
+    if (protocol === 'meshcore') {
+      // The notification DM needs the contact in the radio's table (the firmware looks the recipient up there).
+      const contacts = new Map(
+        ((sourceManagerRegistry.getManager(secSourceId) as unknown as MeshCoreSecurityManager | undefined)?.getContacts?.() ?? [])
+          .map(c => [c.publicKey.toLowerCase(), c.onDevice === true] as const),
+      );
+      for (const n of issues.nodes) n.onDevice = contacts.get((n.publicKey ?? '').toLowerCase()) === true;
     }
-
-    for (const node of nodesWithExcessivePackets) {
-      if (!allIssueNodes.has(node.nodeNum)) {
-        allIssueNodes.set(node.nodeNum, {
-          nodeNum: node.nodeNum,
-          shortName: node.shortName || 'Unknown',
-          longName: node.longName || 'Unknown',
-          lastHeard: node.lastHeard,
-          keyIsLowEntropy: node.keyIsLowEntropy || false,
-          duplicateKeyDetected: node.duplicateKeyDetected || false,
-          keySecurityIssueDetails: node.keySecurityIssueDetails,
-          publicKey: node.publicKey,
-          hwModel: node.hwModel,
-          isExcessivePackets: (node as any).isExcessivePackets || false,
-          packetRatePerHour: (node as any).packetRatePerHour || null,
-          packetRateLastChecked: (node as any).packetRateLastChecked || null,
-          isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false,
-          timeOffsetSeconds: (node as any).timeOffsetSeconds || null
-        });
-      } else {
-        // Merge excessive packets info into existing node
-        const existing = allIssueNodes.get(node.nodeNum)!;
-        existing.isExcessivePackets = (node as any).isExcessivePackets || false;
-        existing.packetRatePerHour = (node as any).packetRatePerHour || null;
-        existing.packetRateLastChecked = (node as any).packetRateLastChecked || null;
-      }
-    }
-
-    // Add time offset nodes
-    const nodesWithTimeOffset = await databaseService.getNodesWithTimeOffsetIssuesAsync(secSourceId);
-
-    for (const node of nodesWithTimeOffset) {
-      if (!allIssueNodes.has(node.nodeNum)) {
-        allIssueNodes.set(node.nodeNum, {
-          nodeNum: node.nodeNum,
-          shortName: node.shortName || 'Unknown',
-          longName: node.longName || 'Unknown',
-          lastHeard: node.lastHeard,
-          keyIsLowEntropy: node.keyIsLowEntropy || false,
-          duplicateKeyDetected: node.duplicateKeyDetected || false,
-          keySecurityIssueDetails: node.keySecurityIssueDetails,
-          publicKey: node.publicKey,
-          hwModel: node.hwModel,
-          isExcessivePackets: (node as any).isExcessivePackets || false,
-          packetRatePerHour: (node as any).packetRatePerHour || null,
-          packetRateLastChecked: (node as any).packetRateLastChecked || null,
-          isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false,
-          timeOffsetSeconds: (node as any).timeOffsetSeconds || null
-        });
-      } else {
-        const existing = allIssueNodes.get(node.nodeNum)!;
-        existing.isTimeOffsetIssue = (node as any).isTimeOffsetIssue || false;
-        existing.timeOffsetSeconds = (node as any).timeOffsetSeconds || null;
-      }
-    }
-
-    const nodesWithIssues = Array.from(allIssueNodes.values());
-
-    // Categorize issues
-    const lowEntropyNodes = nodesWithIssues.filter(node => node.keyIsLowEntropy);
-    const duplicateKeyNodes = nodesWithIssues.filter(node => node.duplicateKeyDetected);
-    const excessivePacketsNodes = nodesWithIssues.filter(node => node.isExcessivePackets);
-    const timeOffsetNodes = nodesWithIssues.filter(node => node.isTimeOffsetIssue);
-
-    // Get top 5 broadcasters for spam analysis
-    const topBroadcasters = await databaseService.getTopBroadcastersAsync(5, secSourceId);
-
+    const packetLogEnabled = protocol === 'meshcore' ? await meshcorePacketLogService.isEnabled() : undefined;
     return res.json({
-      total: nodesWithIssues.length,
-      lowEntropyCount: lowEntropyNodes.length,
-      duplicateKeyCount: duplicateKeyNodes.length,
-      excessivePacketsCount: excessivePacketsNodes.length,
-      timeOffsetCount: timeOffsetNodes.length,
-      nodes: nodesWithIssues,
-      topBroadcasters
+      ...issues,
+      thresholds: { packetsPerHour: EXCESSIVE_PACKETS_PER_HOUR, timeOffsetMinutes: TIME_OFFSET_THRESHOLD_MINUTES },
+      ...(packetLogEnabled !== undefined ? { packetLogEnabled } : {}),
     });
   } catch (error) {
     logger.error('Error getting security issues:', error);
-    return res.status(500).json({ error: 'Failed to get security issues' });
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to get security issues');
   }
 });
 
@@ -163,6 +94,7 @@ router.get('/scanner/status', (req: Request, res: Response) => {
 router.post(
   '/scanner/scan',
   requirePermission('security', 'write', { sourceIdFrom: 'body' }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'body', requireSourceId: true }),
   async (req: Request, res: Response) => {
     try {
       const sourceId = req.body?.sourceId;
@@ -175,15 +107,14 @@ router.post(
       if (!manager) {
         return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
       }
-      if (!isMeshtasticManager(manager)) {
-        return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Security scan is Meshtastic-only');
+      const isMeshCore = isAnyMeshCoreSourceType(manager.sourceType);
+      if (isMeshCore ? !securityCapabilities(manager.sourceType).scanner : !isMeshtasticManager(manager)) {
+        return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Security scan is not available for this source type');
       }
 
       const status = duplicateKeySchedulerService.getStatus(sourceId);
       if (status.scanningNow) {
-        return res.status(409).json({
-          error: `A scan is already in progress for source ${sourceId}`
-        });
+        return fail(res, 409, 'SCAN_IN_PROGRESS', `A scan is already in progress for source ${sourceId}`);
       }
 
       void databaseService.auditLogAsync(
@@ -210,89 +141,66 @@ router.post(
   }
 );
 
-// Export security issues
-router.get('/export', requireSourceId('query'), async (req: Request, res: Response) => {
+// Export security issues (both protocols; includes spam- and clock-only nodes)
+router.get('/export', requireSourceId('query'), nodesReadOnSource, async (req: Request, res: Response) => {
   try {
-    const format = req.query.format as string || 'csv';
-    const exportSourceId = req.query.sourceId as string | undefined;
-
-    const nodesWithIssues = await databaseService.getNodesWithKeySecurityIssuesAsync(exportSourceId);
-    const timestamp = new Date().toISOString();
+    const format: SecurityExportFormat = req.query.format === 'json' ? 'json' : 'csv';
+    const exportSourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
+    const protocol = sourceProtocol(exportSourceId);
+    const issues = await collectSecurityIssues(databaseService as never, exportSourceId, { protocol, topBroadcasters: 5 });
 
     // Log the export action
     void databaseService.auditLogAsync(
       req.user!.id,
       'security_export',
       'security',
-      `Security issues exported as ${format.toUpperCase()}`,
+      `Security issues exported as ${format.toUpperCase()} for source ${exportSourceId}`,
       req.ip || null
     );
 
-    if (format === 'json') {
-      // JSON export
-      const jsonData = {
-        exportDate: timestamp,
-        total: nodesWithIssues.length,
-        lowEntropyCount: nodesWithIssues.filter(n => n.keyIsLowEntropy).length,
-        duplicateKeyCount: nodesWithIssues.filter(n => n.duplicateKeyDetected).length,
-        nodes: nodesWithIssues.map(node => ({
-          nodeNum: node.nodeNum,
-          nodeId: `!${node.nodeNum.toString(16).padStart(8, '0')}`,
-          shortName: node.shortName || 'Unknown',
-          longName: node.longName || 'Unknown',
-          hwModel: node.hwModel,
-          lastHeard: node.lastHeard,
-          lastHeardDate: node.lastHeard ? new Date(node.lastHeard * 1000).toISOString() : null,
-          keyIsLowEntropy: node.keyIsLowEntropy,
-          duplicateKeyDetected: node.duplicateKeyDetected,
-          keySecurityIssueDetails: node.keySecurityIssueDetails,
-          isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false,
-          timeOffsetSeconds: (node as any).timeOffsetSeconds || null,
-          // Include partial key hash for duplicate identification (first 16 chars only)
-          keyHashPrefix: node.publicKey ? node.publicKey.substring(0, 16) : null
-        }))
-      };
-
-      res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', `attachment; filename="security-scan-${Date.now()}.json"`);
-      // Use pretty-printed JSON for consistency with other exports
-      return res.send(JSON.stringify(jsonData, null, 2));
-    } else {
-      // CSV export (default)
-      const csvRows = [
-        // Header row
-        'Node ID,Short Name,Long Name,Hardware Model,Last Heard,Low-Entropy Key,Duplicate Key,Time Offset,Offset (seconds),Issue Details,Key Hash Prefix'
-      ];
-
-      nodesWithIssues.forEach(node => {
-        const nodeId = `!${node.nodeNum.toString(16).padStart(8, '0')}`;
-        const shortName = (node.shortName || 'Unknown').replace(/,/g, ';'); // Escape commas
-        const longName = (node.longName || 'Unknown').replace(/,/g, ';');
-        const hwModel = node.hwModel || '';
-        const lastHeard = node.lastHeard ? new Date(node.lastHeard * 1000).toISOString() : 'Never';
-        const isLowEntropy = node.keyIsLowEntropy ? 'Yes' : 'No';
-        const isDuplicate = node.duplicateKeyDetected ? 'Yes' : 'No';
-        const isTimeOffset = (node as any).isTimeOffsetIssue ? 'Yes' : 'No';
-        const offsetSeconds = (node as any).timeOffsetSeconds ?? '';
-        const details = (node.keySecurityIssueDetails || '').replace(/,/g, ';').replace(/\n/g, ' ');
-        const keyPrefix = node.publicKey ? node.publicKey.substring(0, 16) : '';
-
-        csvRows.push(`${nodeId},"${shortName}","${longName}",${hwModel},${lastHeard},${isLowEntropy},${isDuplicate},${isTimeOffset},${offsetSeconds},"${details}",${keyPrefix}`);
-      });
-
-      const csvContent = csvRows.join('\n');
-
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="security-scan-${Date.now()}.csv"`);
-      return res.send(csvContent);
-    }
+    const out = buildSecurityExport(issues, format);
+    res.setHeader('Content-Type', out.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="security-scan-${Date.now()}.${out.extension}"`);
+    return res.send(out.body);
   } catch (error) {
     logger.error('Error exporting security issues:', error);
-    return res.status(500).json({ error: 'Failed to export security issues' });
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to export security issues');
   }
 });
 
-// Clear security issues for a specific node (requires write permission)
+/**
+ * Clear a Meshtastic node's security flags in one source. `includeSpam` also
+ * resets the excessive-packet flag (the new `/nodes/clear` route); the legacy
+ * `/nodes/:nodeNum/clear` alias keeps its old reach.
+ */
+async function clearMeshtasticNodeFlags(
+  nodeNum: number,
+  sourceId: string,
+  includeSpam: boolean,
+): Promise<{ nodeName: string } | null> {
+  const node = await databaseService.nodes.getNode(nodeNum, sourceId);
+  if (!node) return null;
+  const nodeName = node.shortName || node.longName || `Node ${nodeNum}`;
+
+  // Clear all security flags
+  await databaseService.nodes.upsertNode({
+    nodeNum,
+    nodeId: node.nodeId,
+    keyIsLowEntropy: false,
+    duplicateKeyDetected: false,
+    keyMismatchDetected: false,
+    keySecurityIssueDetails: null, // null explicitly clears the field (undefined would preserve existing value)
+  }, sourceId);
+
+  // Clear time offset flags (scoped to the requested source per migration 029)
+  await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null, sourceId);
+  if (includeSpam) {
+    await databaseService.updateNodeSpamFlagsAsync(nodeNum, false, 0, Math.floor(Date.now() / 1000), sourceId);
+  }
+  return { nodeName };
+}
+
+// Legacy alias: clear security issues for a Meshtastic node (requires write permission)
 router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), requireSourceId('body'), async (req: Request, res: Response) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum, 10);
@@ -305,26 +213,11 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), req
     // lookup + write so we clear/rewrite the correct source's row (not a
     // cross-source first match, and not the 'default' source).
     const clearSourceId = req.body.sourceId as string;
-
-    const node = await databaseService.nodes.getNode(nodeNum, clearSourceId);
-    if (!node) {
+    const cleared = await clearMeshtasticNodeFlags(nodeNum, clearSourceId, false);
+    if (!cleared) {
       return res.status(404).json({ error: 'Node not found' });
     }
-
-    const nodeName = node.shortName || node.longName || `Node ${nodeNum}`;
-
-    // Clear all security flags
-    await databaseService.nodes.upsertNode({
-      nodeNum,
-      nodeId: node.nodeId,
-      keyIsLowEntropy: false,
-      duplicateKeyDetected: false,
-      keyMismatchDetected: false,
-      keySecurityIssueDetails: null, // null explicitly clears the field (undefined would preserve existing value)
-    }, clearSourceId);
-
-    // Clear time offset flags (scoped to the requested source per migration 029)
-    await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null, clearSourceId);
+    const { nodeName } = cleared;
 
     // Log the action
     void databaseService.auditLogAsync(
@@ -349,11 +242,71 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), req
   }
 });
 
+const MT_NODE_KEY_RE = /^mt:(\d{1,10})$/;
+const MC_NODE_KEY_RE = /^mc:([0-9a-fA-F]{64})$/;
+
+/**
+ * POST /api/security/nodes/clear  { sourceId, nodeKey }
+ * Clear the spam and clock-offset flags of one node on either protocol
+ * (Meshtastic also clears its key flags). `nodeKey` is `mt:<num>` or `mc:<64-hex>`.
+ */
+router.post(
+  '/nodes/clear',
+  requirePermission('security', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
+      const nodeKey = req.body?.nodeKey;
+      if (typeof nodeKey !== 'string') {
+        return fail(res, 400, 'INVALID_NODE_KEY', 'nodeKey must be mt:<node number> or mc:<64-hex public key>');
+      }
+      const manager = sourceManagerRegistry.getManager(sourceId);
+      if (!manager) {
+        return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+      }
+      const isMeshCore = isAnyMeshCoreSourceType(manager.sourceType);
+      let name: string;
+      if (isMeshCore) {
+        const m = MC_NODE_KEY_RE.exec(nodeKey);
+        if (!m) return fail(res, 400, 'INVALID_NODE_KEY', 'nodeKey must be mc:<64-hex public key> for a MeshCore source');
+        const pk = m[1].toLowerCase();
+        const existing = await databaseService.meshcore.getNodeByPublicKeyAndSource(pk, sourceId);
+        if (!existing || !(await databaseService.meshcore.clearNodeSecurityFlags(sourceId, existing.publicKey, 'both'))) {
+          return fail(res, 404, 'NODE_NOT_FOUND', 'Node not found');
+        }
+        name = existing.name || `mc:${pk.slice(0, 8)}`;
+      } else {
+        const m = MT_NODE_KEY_RE.exec(nodeKey);
+        const nodeNum = m ? Number(m[1]) : NaN;
+        if (!m || !Number.isInteger(nodeNum) || nodeNum > 0xffffffff) {
+          return fail(res, 400, 'INVALID_NODE_KEY', 'nodeKey must be mt:<node number> for a Meshtastic source');
+        }
+        const cleared = await clearMeshtasticNodeFlags(nodeNum, sourceId, true);
+        if (!cleared) return fail(res, 404, 'NODE_NOT_FOUND', 'Node not found');
+        name = cleared.nodeName;
+      }
+
+      void databaseService.auditLogAsync(
+        req.user!.id,
+        'security_issues_cleared',
+        'security',
+        `Cleared security issues for ${name} (${nodeKey}) on source ${sourceId}`,
+        req.ip || null
+      );
+      return ok(res, { nodeKey, nodeName: name });
+    } catch (error) {
+      logger.error('Error clearing security issues:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to clear security issues');
+    }
+  }
+);
+
 /**
  * GET /api/security/key-mismatches
  * Returns recent key mismatch events from the repair log
  */
-router.get('/key-mismatches', requireSourceId('query'), async (req: Request, res: Response) => {
+router.get('/key-mismatches', requireSourceId('query'), nodesReadOnSource, async (req: Request, res: Response) => {
   try {
     // Scope to the requested source so the repair log doesn't leak events from
     // every source into one source's view (same class as the dead-nodes bug).

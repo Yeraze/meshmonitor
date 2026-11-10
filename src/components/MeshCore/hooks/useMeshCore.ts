@@ -216,6 +216,8 @@ export interface MeshCoreNode {
   lastAdvertHadPosition?: boolean | null;
   /** P7a #6254: latest checked advert signature (true / false); null or unset = not checked. */
   advertSignatureVerified?: boolean | null;
+  /** #6281: persisted clock offset in seconds (positive = node behind); set while flagged, else null. */
+  clockOffsetSeconds?: number | null;
   advLocPolicy?: number;
   /** P8a #6257: 0 or 1 (extra ACKs on received DMs). Absent on firmware before v7. */
   multiAcks?: number;

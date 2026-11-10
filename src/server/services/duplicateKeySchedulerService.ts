@@ -4,13 +4,28 @@ import { detectDuplicateKeys, checkLowEntropyKey, isBenign28UpgradeRenumber } fr
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import type { DbNode } from '../../db/types.js';
+import type { MeshCoreSecurityFlagsUpdate } from '../../db/repositories/meshcore.js';
+import meshcorePacketLogService from './meshcorePacketLogService.js';
+import { loadMeshcorePackets } from './meshcorePacketWindow.js';
+import {
+  computeMeshcorePacketRates,
+  computeMeshcoreClockOffsets,
+  isClockOffsetFlagged,
+} from './meshcoreSecurityScan.js';
+import {
+  EXCESSIVE_PACKETS_PER_HOUR,
+  EXCESSIVE_PACKETS_WINDOW_MS,
+  TIME_OFFSET_THRESHOLD_MS,
+} from '../constants/securityThresholds.js';
 
-/** Threshold for excessive packets per hour (spam detection) */
-const EXCESSIVE_PACKETS_THRESHOLD = 30;
+/** Thresholds are shared with MeshCore, the digest and the UI copy (#6281). */
+const EXCESSIVE_PACKETS_THRESHOLD = EXCESSIVE_PACKETS_PER_HOUR;
 
-/** Threshold for time offset detection (in minutes, configurable via env var) */
-const TIME_OFFSET_THRESHOLD_MINUTES = parseInt(process.env.TIME_OFFSET_THRESHOLD_MINUTES || '30', 10);
-const TIME_OFFSET_THRESHOLD_MS = TIME_OFFSET_THRESHOLD_MINUTES * 60 * 1000;
+/** How far back the MeshCore scan reads the packet log (its retention window). */
+const MESHCORE_SCAN_LOG_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** How far back, and how many, DM sender clocks the MeshCore scan reads. */
+const MESHCORE_SCAN_DM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const MESHCORE_SCAN_DM_LIMIT = 2000;
 
 /**
  * Scheduled security scanning service — per-source.
@@ -76,15 +91,15 @@ class DuplicateKeySchedulerService {
    * a collision in source A does not block a scan of source B.
    */
   async runScanAllSources(): Promise<void> {
-    // Exclude MeshCore sources, device and MQTT ingest alike (#6252) — they
-    // have no Meshtastic node table / public-key security model, so scanning
-    // them would be empty and wasteful.
-    const managers = sourceManagerRegistry.getAllManagers().filter(m => !isAnyMeshCoreSourceType(m.sourceType));
+    // MeshCore sources (device and MQTT ingest) run the packet-rate and
+    // clock-offset scan only (#6281): identity is the key, so there are no
+    // low-entropy or duplicate-key checks. `runScan` dispatches by source type.
+    const managers = sourceManagerRegistry.getAllManagers();
     if (managers.length === 0) {
       logger.debug('🔐 No source managers registered — skipping scheduled security scan');
       return;
     }
-    await Promise.all(managers.map(m => this.runScan(m.sourceId).catch(err => {
+    await Promise.all(managers.map(m => this.runScan(m.sourceId, m.sourceType).catch(err => {
       logger.error(`Error scanning source ${m.sourceId}:`, err);
     })));
   }
@@ -92,7 +107,7 @@ class DuplicateKeySchedulerService {
   /**
    * Run a single scan for a specific source.
    */
-  async runScan(sourceId: string): Promise<void> {
+  async runScan(sourceId: string, sourceType?: string): Promise<void> {
     if (!sourceId) {
       logger.warn('🔐 runScan() called without a sourceId — refusing');
       return;
@@ -107,6 +122,12 @@ class DuplicateKeySchedulerService {
     let scanSuccessful = true;
 
     try {
+      if (isAnyMeshCoreSourceType(sourceType ?? sourceManagerRegistry.getManager?.(sourceId)?.sourceType)) {
+        await this.runMeshcoreScan(sourceId);
+        this.lastScanTime.set(sourceId, Math.floor(Date.now() / 1000));
+        return;
+      }
+
       logger.debug(`🔐 Running scheduled security scan for source ${sourceId}...`);
 
       // Get all nodes with public keys for this source only
@@ -265,6 +286,106 @@ class DuplicateKeySchedulerService {
   }
 
   /**
+   * MeshCore scan for one source (#6281): per-key packet rates from the packet
+   * log and clock offsets from ADVERT/DM sender times. DB reads and flag
+   * writes only; nothing is sent and no event fires. Throws on failure so
+   * `runScan` leaves `lastScanTime` alone.
+   *
+   * With the packet log off, rate flags are left untouched (no data to judge
+   * by); offsets still come from DMs.
+   */
+  private async runMeshcoreScan(sourceId: string): Promise<void> {
+    logger.debug(`🔐 [${sourceId}] Running MeshCore security scan...`);
+    const repo = databaseService.meshcore;
+    const nowMs = Date.now();
+    const nodes = await repo.getNodesBySource(sourceId);
+    const localKeys = new Set<string>(
+      nodes.filter((n) => n.isLocalNode).map((n) => n.publicKey.toLowerCase()),
+    );
+
+    const logEnabled = await meshcorePacketLogService.isEnabled();
+    const packets = logEnabled
+      ? await loadMeshcorePackets([sourceId], nowMs - MESHCORE_SCAN_LOG_WINDOW_MS)
+      : [];
+    const dms = await repo.getLatestDmSenderTimes(sourceId, nowMs - MESHCORE_SCAN_DM_WINDOW_MS, MESHCORE_SCAN_DM_LIMIT);
+
+    const rates = computeMeshcorePacketRates(packets, nodes, {
+      nowMs,
+      windowMs: EXCESSIVE_PACKETS_WINDOW_MS,
+      localKeys,
+    });
+    const offsets = computeMeshcoreClockOffsets({
+      adverts: packets.filter((p) => p.payloadType === 0x04),
+      dms,
+      nodes,
+      nowMs,
+      localKeys,
+    });
+
+    const writes: MeshCoreSecurityFlagsUpdate[] = [];
+    let flaggedSpam = 0;
+    let flaggedClock = 0;
+    for (const node of nodes) {
+      const pk = node.publicKey.toLowerCase();
+      const row: MeshCoreSecurityFlagsUpdate = { publicKey: node.publicKey };
+      let dirty = false;
+      const isLocal = localKeys.has(pk);
+
+      if (isLocal) {
+        if (node.isExcessivePackets) {
+          Object.assign(row, { isExcessivePackets: false, packetRatePerHour: null, advertRatePerHour: null, packetRateLastChecked: null });
+          dirty = true;
+        }
+        if (node.isTimeOffsetIssue) {
+          Object.assign(row, { isTimeOffsetIssue: false, timeOffsetSeconds: null, timeOffsetSource: null, timeOffsetCheckedAt: null });
+          dirty = true;
+        }
+        if (dirty) writes.push(row);
+        continue;
+      }
+
+      if (logEnabled) {
+        const rate = rates.get(pk);
+        const count = rate?.packets ?? 0;
+        if (count > EXCESSIVE_PACKETS_PER_HOUR) {
+          Object.assign(row, {
+            isExcessivePackets: true,
+            packetRatePerHour: count,
+            advertRatePerHour: rate?.adverts ?? 0,
+            packetRateLastChecked: nowMs,
+          });
+          flaggedSpam++;
+          dirty = true;
+        } else if (node.isExcessivePackets) {
+          Object.assign(row, { isExcessivePackets: false, packetRatePerHour: null, advertRatePerHour: null, packetRateLastChecked: null });
+          dirty = true;
+        }
+      }
+
+      const off = offsets.get(pk);
+      if (off && isClockOffsetFlagged(off.offsetMs, TIME_OFFSET_THRESHOLD_MS)) {
+        Object.assign(row, {
+          isTimeOffsetIssue: true,
+          timeOffsetSeconds: Math.round(off.offsetMs / 1000),
+          timeOffsetSource: off.source,
+          timeOffsetCheckedAt: nowMs,
+        });
+        flaggedClock++;
+        dirty = true;
+      } else if (node.isTimeOffsetIssue) {
+        Object.assign(row, { isTimeOffsetIssue: false, timeOffsetSeconds: null, timeOffsetSource: null, timeOffsetCheckedAt: null });
+        dirty = true;
+      }
+      if (dirty) writes.push(row);
+    }
+
+    if (writes.length > 0) await repo.setNodeSecurityFlags(sourceId, writes);
+    logger.info(
+      `🔐 [${sourceId}] MeshCore security scan: ${nodes.length} nodes, ${flaggedSpam} excessive packets, ${flaggedClock} clock offsets${logEnabled ? '' : ' (packet log off: rates skipped)'}`,
+    );
+  }
+
+  /**
    * Spam detection, scoped to a single source.
    * Uses per-source localNodeNum and per-source packet counts.
    */
@@ -405,7 +526,7 @@ class DuplicateKeySchedulerService {
     const allKeys = new Set<string>([
       ...this.isScanning.keys(),
       ...this.lastScanTime.keys(),
-      ...sourceManagerRegistry.getAllManagers().filter(m => !isAnyMeshCoreSourceType(m.sourceType)).map(m => m.sourceId),
+      ...sourceManagerRegistry.getAllManagers().map(m => m.sourceId),
     ]);
     for (const sid of allKeys) {
       sources[sid] = {

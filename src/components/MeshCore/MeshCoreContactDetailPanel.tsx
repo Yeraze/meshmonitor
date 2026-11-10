@@ -38,6 +38,7 @@ import NodeNameHistory from '../NodeNameHistory';
 import SignalTrendBadge from '../SignalTrendBadge';
 import SmartHopsGraphs from '../SmartHopsGraphs';
 import LinkQualityGraph from '../LinkQualityGraph';
+import { isClockNotSet, formatCompactSpan } from '../../utils/securityClock';
 
 /** Stand-in so the fetch hook can run unconditionally when no actions are wired. */
 const NO_NEIGHBOURS_FETCH_ACTIONS: MeshCoreNeighboursFetchActions = {
@@ -1379,6 +1380,22 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                   : t('meshcore.advert_signature_unchecked', 'Not checked')}
             </div>
           </div>
+
+          {/* Clock offset (#6281): only while the security scan flags the node */}
+          {typeof contact?.clockOffsetSeconds === 'number' && (
+            <div className="node-detail-card" data-testid="meshcore-clock-offset">
+              <div className="node-detail-label">{t('meshcore.clock_offset', 'Clock offset')}</div>
+              <div className="node-detail-value">
+                {isClockNotSet(contact.clockOffsetSeconds)
+                  ? t('security.clock_not_set', 'Clock not set')
+                  : `${formatCompactSpan(contact.clockOffsetSeconds)} ${
+                      contact.clockOffsetSeconds >= 0
+                        ? t('meshcore.clock_offset_behind', 'behind')
+                        : t('meshcore.clock_offset_ahead', 'ahead')
+                    }`}
+              </div>
+            </div>
+          )}
 
           {/* Last Advert */}
           {typeof lastAdvert === 'number' && (

@@ -37,6 +37,45 @@ const OVERRIDE_KEYS = [
   'positionOverrideIsPrivate',
 ] as const;
 
+/**
+ * The #6281 security-scanner columns (migration 227). Only
+ * `setNodeSecurityFlags` / `clearNodeSecurityFlags` write them; `upsertNode`
+ * strips them so a contact sync can never touch them.
+ */
+const SECURITY_FLAG_KEYS = [
+  'isExcessivePackets',
+  'packetRatePerHour',
+  'advertRatePerHour',
+  'packetRateLastChecked',
+  'isTimeOffsetIssue',
+  'timeOffsetSeconds',
+  'timeOffsetSource',
+  'timeOffsetCheckedAt',
+] as const;
+
+/** One scanner write for a node (#6281). Times are epoch ms; the offset is seconds. */
+export interface MeshCoreSecurityFlagsUpdate {
+  publicKey: string;
+  isExcessivePackets?: boolean;
+  packetRatePerHour?: number | null;
+  advertRatePerHour?: number | null;
+  packetRateLastChecked?: number | null;
+  isTimeOffsetIssue?: boolean;
+  timeOffsetSeconds?: number | null;
+  timeOffsetSource?: 'advert' | 'message' | null;
+  timeOffsetCheckedAt?: number | null;
+}
+
+/** A direct message's sender clock, for the clock-offset scan (#6281). */
+export interface MeshCoreDmSenderTime {
+  /** Sender key as stored: a full key or a prefix. */
+  fromPublicKey: string;
+  /** Wire sender timestamp, epoch seconds. */
+  senderTimestamp: number;
+  /** MeshMonitor receipt time, epoch ms. */
+  receivedAtMs: number;
+}
+
 /** A MeshCore contact's location override (#5842). */
 export interface MeshCorePositionOverride {
   publicKey: string;
@@ -111,6 +150,18 @@ export interface DbMeshCoreNode {
    * drops these keys so advert ingest can never touch them. Read sides apply
    * them through `src/server/utils/meshcorePositionOverride.ts`.
    */
+  /** #6281 (migration 227): scanner-owned security flags. `upsertNode` never writes them. */
+  isExcessivePackets?: boolean | null;
+  packetRatePerHour?: number | null;
+  advertRatePerHour?: number | null;
+  /** ms */
+  packetRateLastChecked?: number | null;
+  isTimeOffsetIssue?: boolean | null;
+  /** receipt minus sender time, seconds; positive = the node is behind */
+  timeOffsetSeconds?: number | null;
+  timeOffsetSource?: string | null;
+  /** ms */
+  timeOffsetCheckedAt?: number | null;
   positionOverrideEnabled?: boolean | null;
   latitudeOverride?: number | null;
   longitudeOverride?: number | null;
@@ -735,6 +786,13 @@ export class MeshCoreRepository extends BaseRepository {
       node = stripped as typeof node;
     }
 
+    // #6281: the scanner flags have their own writers too.
+    if (SECURITY_FLAG_KEYS.some((k) => k in node)) {
+      const stripped = { ...node } as Record<string, unknown>;
+      for (const k of SECURITY_FLAG_KEYS) delete stripped[k];
+      node = stripped as typeof node;
+    }
+
     if (shouldDiscardPosition(node.latitude ?? null, node.longitude ?? null, undefined, getDiscardInvalidPositions())) {
       const { latitude: _blat, longitude: _blon, ...rest } = node;
       node = rest as typeof node;
@@ -1137,6 +1195,124 @@ export class MeshCoreRepository extends BaseRepository {
       createdAt: now,
       updatedAt: now,
     });
+  }
+
+  /**
+   * Write the scanner's security flags for a batch of nodes of one source
+   * (#6281). Updates existing rows only (a flag on a node we do not hold is
+   * meaningless), scoped by `sourceId`.
+   */
+  async setNodeSecurityFlags(sourceId: string, rows: MeshCoreSecurityFlagsUpdate[]): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setNodeSecurityFlags requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+    for (const row of rows) {
+      const set: Record<string, unknown> = {};
+      for (const k of SECURITY_FLAG_KEYS) {
+        const v = (row as unknown as Record<string, unknown>)[k];
+        if (v !== undefined) set[k] = v;
+      }
+      if (Object.keys(set).length === 0) continue;
+      set.updatedAt = now;
+      await this.db
+        .update(meshcoreNodes)
+        .set(set)
+        .where(and(eq(meshcoreNodes.publicKey, row.publicKey), this.withSourceScope(meshcoreNodes, sourceId)));
+    }
+  }
+
+  /** Nodes of one source with an excessive-packets or clock-offset flag set (#6281). */
+  async getSecurityFlaggedNodes(sourceId: string): Promise<DbMeshCoreNode[]> {
+    if (!sourceId) return [];
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(
+        and(
+          eq(meshcoreNodes.sourceId, sourceId),
+          or(eq(meshcoreNodes.isExcessivePackets, true), eq(meshcoreNodes.isTimeOffsetIssue, true)),
+        ),
+      )
+      .orderBy(desc(meshcoreNodes.packetRatePerHour), desc(meshcoreNodes.publicKey));
+    return this.toNodeRows(result);
+  }
+
+  /**
+   * Clear the spam and/or clock-offset flags of one node (#6281). `which`
+   * defaults to both. Returns true when the node exists on this source.
+   */
+  async clearNodeSecurityFlags(
+    sourceId: string,
+    publicKey: string,
+    which: 'spam' | 'timeOffset' | 'both' = 'both',
+  ): Promise<boolean> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.clearNodeSecurityFlags requires a sourceId');
+    }
+    const existing = await this.getNodeByPublicKeyAndSource(publicKey, sourceId);
+    if (!existing) return false;
+    const { meshcoreNodes } = this.tables;
+    const set: Record<string, unknown> = { updatedAt: this.now() };
+    if (which !== 'timeOffset') {
+      set.isExcessivePackets = false;
+      set.packetRatePerHour = null;
+      set.advertRatePerHour = null;
+      set.packetRateLastChecked = null;
+    }
+    if (which !== 'spam') {
+      set.isTimeOffsetIssue = false;
+      set.timeOffsetSeconds = null;
+      set.timeOffsetSource = null;
+      set.timeOffsetCheckedAt = null;
+    }
+    await this.db
+      .update(meshcoreNodes)
+      .set(set)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), this.withSourceScope(meshcoreNodes, sourceId)));
+    return true;
+  }
+
+  /**
+   * Sender clocks of direct messages received since `sinceMs`, newest first,
+   * at most `limit` (#6281). Excludes room posts (they replay on login),
+   * channel traffic, and rows without a wire sender time. The caller keeps the
+   * newest row per sender and drops its own key.
+   */
+  async getLatestDmSenderTimes(sourceId: string, sinceMs: number, limit: number): Promise<MeshCoreDmSenderTime[]> {
+    if (!sourceId || limit <= 0) return [];
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({
+        fromPublicKey: meshcoreMessages.fromPublicKey,
+        senderTimestamp: meshcoreMessages.senderTimestamp,
+        createdAt: meshcoreMessages.createdAt,
+      })
+      .from(meshcoreMessages)
+      .where(
+        and(
+          eq(meshcoreMessages.sourceId, sourceId),
+          this.directMessageClause(),
+          or(isNull(meshcoreMessages.messageType), ne(meshcoreMessages.messageType, 'room_post')),
+          isNotNull(meshcoreMessages.senderTimestamp),
+          isNull(meshcoreMessages.reactionEmoji),
+          gte(meshcoreMessages.createdAt, sinceMs),
+        ),
+      )
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
+      .limit(limit);
+    const out: MeshCoreDmSenderTime[] = [];
+    for (const r of this.normalizeBigInts(rows) as unknown as Array<{
+      fromPublicKey: string;
+      senderTimestamp: number | null;
+      createdAt: number;
+    }>) {
+      if (typeof r.senderTimestamp !== 'number') continue;
+      out.push({ fromPublicKey: r.fromPublicKey, senderTimestamp: r.senderTimestamp, receivedAtMs: r.createdAt });
+    }
+    return out;
   }
 
   /** Clear the location override for a (sourceId, publicKey) node (#5842). */

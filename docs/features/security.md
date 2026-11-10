@@ -221,7 +221,7 @@ Retrieve all nodes currently flagged with security issues:
 GET /api/security/issues?sourceId=<source id>
 ```
 
-**Authentication**: Requires `security:read` permission. The `sourceId` query parameter is required.
+**Authentication**: Requires `security:read` and `nodes:read` on the source. The `sourceId` query parameter is required. Each node also carries `nodeKey` (`mt:<number>` or `mc:<key>`) and `protocol`. The response adds `counts`, `thresholds` and, for MeshCore, `packetLogEnabled`. MeshCore times are in seconds.
 
 **Response**:
 ```json
@@ -260,11 +260,57 @@ The Security tab also works on MeshCore sources. It shows the sections below for
 
 The dead-contact list and the findings need `nodes:read` on the source, for both Meshtastic and MeshCore.
 
+### Packet rates, clock offset, scanner, digest and export
+
+These work for Meshtastic and MeshCore with the same thresholds:
+
+| Check | Threshold | Notes |
+|---|---|---|
+| Excessive packets | more than **30 packets per hour** | Counted over the last hour at scan time. |
+| Clock offset | more than **30 minutes** | Set `TIME_OFFSET_THRESHOLD_MINUTES` to change it. A positive value means the node is behind. |
+
+**MeshCore packet rates need the packet log.** MeshCore counts distinct packets per key from the MeshCore packet monitor. Turn on **Packet Monitor** for the source, or the tab shows "Enable the MeshCore Packet Monitor to measure rates" and leaves rate flags as they are. MeshMonitor counts a packet once, however many observers or repeaters passed it on. It credits a packet to a key by:
+
+- the full key, for adverts and anonymous requests;
+- the one-byte sender hash, only when a single known contact on the source has that first byte (requests, responses and direct messages);
+- never for group messages, ACKs and path packets, which carry no sender.
+
+Your own radio is never flagged. Adverts are listed with the rate for information; advert cadence has its own check in Mesh Issues.
+
+**MeshCore clock offset** comes from the newest advert (the time inside the advert) or direct message (the sender time) for each node. A node with no real-time clock stamps a default date in the past, so it is years off. The tab shows these as **Clock not set**. Other nodes drop adverts older than one they hold, so such a node is hard to hear until you set its time. Room server posts are ignored, because they replay when you log in.
+
+**Scanner.** The 24-hour scan (plus one 5 minutes after start) now covers MeshCore sources, including MeshCore MQTT sources. It only reads the database and writes flags. It sends nothing and fires no events. **Run scan now** works on both. Flags stay until the next scan or until you clear them.
+
+**Digest.** The daily Apprise digest covers MeshCore. Its sections are Excessive packets, Clock offset, Advert signature failed, Name reused under new key, and Own key changed (pending acknowledge). Collisions are not in the digest, because they are a configuration matter. Save digest settings per source: the Apprise URL, report type, format and "suppress when empty" belong to the source, and the enable switch and send time are global. If a source has no value for those four, MeshMonitor uses the global one. A source with no Apprise URL is skipped, not reported as a failure.
+
+**Export.** Export as CSV or JSON from either protocol. The file lists every node with a flag, including nodes flagged only for spam or clock offset. CSV cells are quoted and escaped. The Meshtastic columns keep their order, and "Excessive Packets" and "Packets per Hour" come last. MeshCore has its own columns.
+
+**Permissions.** `/issues`, `/export` and `/key-mismatches` need `nodes:read` on the source, as well as `security:read`. Scan and clear need `security:write` and `nodes:read` on the source.
+
+### Send notification (a draft, never sent for you)
+
+Rows for excessive packets and clock offset have a **Send notification** button, on Meshtastic and on MeshCore. It opens the node's direct message with a short English text in the box. You read it and press Send. MeshMonitor never sends it for you.
+
+- The text is 75 bytes or less.
+- MeshCore needs a **Companion** source and a **chat contact** target. Repeaters and Room Servers do not read DMs, so they get no button. The contact must be in the radio's table; if it is not, the button is disabled.
+- You need `messages:write` on the source.
+- When MeshMonitor knows no path to the node, a warning shows: "No known path: this DM will flood the mesh".
+
+**Airtime cost.** Estimates for one click (US: SF7 / 62.5 kHz; EU: SF8 / 62.5 kHz), with an 89-byte packet at 3 hops:
+
+| Case | US | EU |
+|---|---|---|
+| One DM on a known path (4 transmissions) | 1.43 s, plus the ACK 0.53 s | 3.74 s, plus the ACK 1.12 s |
+| No path, so it floods (about 50 repeaters) | about 18 s across the mesh | about 46 s across the mesh |
+| Worst case with no ACK (2 path retries and 1 flood) | about 22 s | about 57 s |
+
+One click is one DM. It does not grow with node count, has no timer and never repeats by itself. It uses the normal message rate limit and the normal DM retry rules.
+
 ### What MeshCore does not have
 
-- Low-entropy key detection
-- Duplicate key detection
-- The duplicate key scanner, the security digest, export, and DM from the Security tab. Issue #6281 tracks these.
+- Low-entropy key detection and duplicate key detection (a MeshCore node is its key).
+- Notification DMs to Repeaters or Room Servers.
+- Per-sender spam counts for group messages (they carry no sender).
 
 ## Best Practices
 

@@ -732,6 +732,11 @@ export interface MeshCoreNode {
   lastAdvertHadPosition?: boolean | null;
   /** P7a #6254: latest checked advert signature; null/unset = not checked. */
   advertSignatureVerified?: boolean | null;
+  /**
+   * #6281: persisted clock offset (seconds; receipt minus the node's own time,
+   * positive = node behind). Set only while the security scan flags the node.
+   */
+  clockOffsetSeconds?: number | null;
   advLocPolicy?: number;
   /** Add contacts only on explicit request (1) vs automatically (0). From SelfInfo. */
   manualAddContacts?: number;
@@ -12248,6 +12253,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           positionSource: n.positionSource ?? undefined,
           lastAdvertHadPosition: n.lastAdvertHadPosition ?? undefined,
           advertSignatureVerified: n.advertSignatureVerified ?? null,
+          clockOffsetSeconds: n.isTimeOffsetIssue ? (n.timeOffsetSeconds ?? null) : null,
           batteryMv: n.batteryMv ?? undefined,
           uptimeSecs: n.uptimeSecs ?? undefined,
           txPower: n.txPower ?? undefined,

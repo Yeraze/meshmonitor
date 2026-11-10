@@ -17,6 +17,7 @@ import { ALL_SOURCES } from '../../db/repositories/base.js';
 import { isMqttSourceType } from '../../db/repositories/sources.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../../utils/coverage.js';
+import { loadMeshcorePackets } from './meshcorePacketWindow.js';
 import meshcorePacketLogService from './meshcorePacketLogService.js';
 import type { DbNode, DbTelemetry } from '../../db/types.js';
 import type { TracerouteRow, NeighborRow } from '../../db/repositories/analysis.js';
@@ -39,7 +40,6 @@ import {
   buildMeshCoreAdvertCadence,
   MESHCORE_ISSUE_TELEMETRY_TYPES,
   type MeshCoreAdvertCadence,
-  type MeshCoreAdvertPacketInput,
   type MeshCoreNodeInput,
 } from './meshIssues/meshcoreSnapshot.js';
 import {
@@ -99,9 +99,6 @@ const TRACEROUTE_PAGE_SIZE = 2000;
 const POSITION_SPAN_CHUNK_SIZE = 25;
 /** Same sample cap `nodeMobilityService` uses, so the two classifications can never disagree about the underlying data. */
 const POSITION_SPAN_SAMPLE_LIMIT = 500;
-/** MeshCore advert log reads: rows per page and max pages per source (bounds memory). */
-const MESHCORE_ADVERT_PAGE_SIZE = 5000;
-const MESHCORE_ADVERT_MAX_PAGES = 10;
 
 /** MeshCore inputs pooled for one run (#6263 S5). */
 interface MeshCoreRunInputs {
@@ -790,7 +787,7 @@ class MeshIssuesAnalysisService {
       for (const [h, n] of snapshot.nodes) if (n.advType === 2) repeaters.add(h);
       if (repeaters.size > 0) {
         try {
-          const packets = await this.loadMeshcoreAdverts(meshcoreSourceIds, sinceMs);
+          const packets = await loadMeshcorePackets(meshcoreSourceIds, sinceMs, { payloadType: MESHCORE_PAYLOAD_ADVERT });
           out.advertCadence = buildMeshCoreAdvertCadence(packets, snapshot.handleByKey, repeaters);
         } catch (err) {
           logger.warn(`[meshIssues] meshcore advert read failed, C2 advert cadence degraded: ${(err as Error)?.message ?? err}`);
@@ -827,32 +824,6 @@ class MeshIssuesAnalysisService {
       for (const { nodeNum, spanKm } of spans) if (spanKm != null) result.set(nodeNum, spanKm * 1000);
     }
     return result;
-  }
-
-  private async loadMeshcoreAdverts(sourceIds: string[], sinceMs: number): Promise<MeshCoreAdvertPacketInput[]> {
-    const out: MeshCoreAdvertPacketInput[] = [];
-    for (const sourceId of sourceIds) {
-      for (let page = 0; page < MESHCORE_ADVERT_MAX_PAGES; page++) {
-        const rows = await databaseService.meshcore.getPackets({
-          sourceId,
-          payloadType: MESHCORE_PAYLOAD_ADVERT,
-          since: sinceMs,
-          limit: MESHCORE_ADVERT_PAGE_SIZE,
-          offset: page * MESHCORE_ADVERT_PAGE_SIZE,
-        });
-        for (const r of rows) {
-          out.push({
-            sourceId: r.sourceId,
-            timestamp: Number(r.timestamp),
-            routeType: r.routeType ?? null,
-            hopCount: r.hopCount ?? null,
-            senderPubKey: r.senderPubKey ?? null,
-          });
-        }
-        if (rows.length < MESHCORE_ADVERT_PAGE_SIZE) break;
-      }
-    }
-    return out;
   }
 
   /**

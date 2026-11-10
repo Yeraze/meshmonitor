@@ -4,6 +4,12 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { resolveAppriseServerUrl, appriseNotifyEndpoint } from './appriseNotificationService.js';
 import type { Cron as CronJob } from 'croner';
+import { CLOCK_NOT_SET_OFFSET_SECONDS } from '../../utils/securityClock.js';
+import {
+  collectSecurityIssues,
+  type CollectedSecurityIssues,
+  type SecurityIssueNode,
+} from './securityIssuesService.js';
 
 interface SecurityIssuesData {
   total: number;
@@ -33,6 +39,18 @@ interface SecurityIssuesData {
 }
 
 export type DigestFormat = 'text' | 'markdown';
+
+/**
+ * One digest section (#6281 S5): a title, how many nodes it covers, and the
+ * detail lines the "detailed" report prints under the heading. Both protocols
+ * build sections; one formatter renders them.
+ */
+export interface DigestSection {
+  title: string;
+  count: number;
+  /** Detail lines under the heading; empty prints "None". */
+  body: (markdown: boolean) => string[];
+}
 
 function nodeName(node: { nodeNum: number; longName: string | null; shortName: string | null }): string {
   return node.longName || node.shortName || `!${node.nodeNum.toString(16).padStart(8, '0')}`;
@@ -68,53 +86,53 @@ function detailsLink(baseUrl: string, markdown: boolean): string | null {
   return markdown ? `[View details](${baseUrl}/security)` : `View details: ${baseUrl}/security`;
 }
 
-export function formatDigestSummary(
-  issues: SecurityIssuesData,
+const plural = (n: number, word: string): string => `${n} ${word}${n !== 1 ? 's' : ''}`;
+
+function emptyDigest(date: string, baseUrl: string, md: boolean): string {
+  if (md) {
+    return [
+      `# MeshMonitor Security Digest — ${date}`,
+      '',
+      '> No security issues detected.',
+      '',
+      detailsLink(baseUrl, true),
+    ].filter((l): l is string => l !== null).join('\n');
+  }
+  return [
+    `MeshMonitor Security Digest — ${date}`,
+    '',
+    'No security issues detected.',
+    '',
+    detailsLink(baseUrl, false),
+  ].filter((l): l is string => l !== null).join('\n');
+}
+
+/** The one summary renderer: a count table (markdown) or aligned count lines (text). */
+export function formatSummarySections(
+  sections: DigestSection[],
+  total: number,
   baseUrl: string,
   suppressEmpty: boolean = true,
-  format: DigestFormat = 'text'
+  format: DigestFormat = 'text',
 ): string | null {
   const date = new Date().toISOString().split('T')[0];
   const md = format === 'markdown';
-  const issueTypeCount = [
-    issues.duplicateKeyCount > 0,
-    issues.lowEntropyCount > 0,
-    issues.excessivePacketsCount > 0,
-    issues.timeOffsetCount > 0,
-  ].filter(Boolean).length;
+  const issueTypeCount = sections.filter((x) => x.count > 0).length;
 
-  if (issues.total === 0) {
+  if (total === 0) {
     if (suppressEmpty) return null;
-    if (md) {
-      return [
-        `# MeshMonitor Security Digest — ${date}`,
-        '',
-        '> No security issues detected.',
-        '',
-        detailsLink(baseUrl, true),
-      ].filter((l): l is string => l !== null).join('\n');
-    }
-    return [
-      `MeshMonitor Security Digest — ${date}`,
-      '',
-      'No security issues detected.',
-      '',
-      detailsLink(baseUrl, false),
-    ].filter((l): l is string => l !== null).join('\n');
+    return emptyDigest(date, baseUrl, md);
   }
 
   if (md) {
     return [
       `# MeshMonitor Security Digest — ${date}`,
       '',
-      `> **${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''}** detected across **${issues.total} nodes**`,
+      `> **${plural(issueTypeCount, 'issue type')}** detected across **${total} nodes**`,
       '',
       '| Issue Type | Count |',
       '|---|---|',
-      `| Duplicate PSK | ${issues.duplicateKeyCount} |`,
-      `| Low-Entropy Key | ${issues.lowEntropyCount} |`,
-      `| Excessive Packets | ${issues.excessivePacketsCount} |`,
-      `| Time Offset | ${issues.timeOffsetCount} |`,
+      ...sections.map((x) => `| ${x.title} | ${x.count} |`),
       '',
       detailsLink(baseUrl, true),
     ].filter((l): l is string => l !== null).join('\n');
@@ -123,15 +141,133 @@ export function formatDigestSummary(
   return [
     `MeshMonitor Security Digest — ${date}`,
     '',
-    `${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''} detected across ${issues.total} nodes`,
+    `${plural(issueTypeCount, 'issue type')} detected across ${total} nodes`,
     '',
-    `  Duplicate PSK:    ${issues.duplicateKeyCount} node${issues.duplicateKeyCount !== 1 ? 's' : ''}`,
-    `  Low-Entropy Key:  ${issues.lowEntropyCount} node${issues.lowEntropyCount !== 1 ? 's' : ''}`,
-    `  Excessive Packets: ${issues.excessivePacketsCount} node${issues.excessivePacketsCount !== 1 ? 's' : ''}`,
-    `  Time Offset:      ${issues.timeOffsetCount} node${issues.timeOffsetCount !== 1 ? 's' : ''}`,
+    ...sections.map((x) => {
+      const label = `${x.title}:`;
+      return `  ${label.padEnd(18)}${label.length >= 18 ? ' ' : ''}${plural(x.count, 'node')}`;
+    }),
     '',
     detailsLink(baseUrl, false),
   ].filter((l): l is string => l !== null).join('\n');
+}
+
+/** The one detailed renderer: every section, with its detail lines or "None". */
+export function formatDetailedSections(
+  sections: DigestSection[],
+  total: number,
+  baseUrl: string,
+  suppressEmpty: boolean = true,
+  format: DigestFormat = 'text',
+): string | null {
+  const date = new Date().toISOString().split('T')[0];
+  const md = format === 'markdown';
+  const issueTypeCount = sections.filter((x) => x.count > 0).length;
+
+  if (total === 0) {
+    if (suppressEmpty) return null;
+    return emptyDigest(date, baseUrl, md);
+  }
+
+  const lines: string[] = [];
+  if (md) {
+    lines.push(
+      `# MeshMonitor Security Digest — ${date}`,
+      '',
+      `> **${plural(issueTypeCount, 'issue type')}** detected across **${total} nodes**`,
+    );
+  } else {
+    lines.push(
+      `MeshMonitor Security Digest — ${date}`,
+      '',
+      `${plural(issueTypeCount, 'issue type')} detected across ${total} nodes`,
+    );
+  }
+
+  for (const section of sections) {
+    lines.push('', md ? `## ${section.title}` : `--- ${section.title} ---`);
+    const body = section.body(md);
+    lines.push(...(body.length > 0 ? body : [md ? '*None*' : 'None']));
+  }
+
+  const link = detailsLink(baseUrl, md);
+  if (link !== null) lines.push('', link);
+  return lines.join('\n');
+}
+
+function meshtasticSections(issues: SecurityIssuesData): DigestSection[] {
+  const dupNodes = issues.nodes.filter(n => n.duplicateKeyDetected);
+  const lowEntropyNodes = issues.nodes.filter(n => n.keyIsLowEntropy);
+  const excessiveNodes = issues.nodes.filter(n => n.isExcessivePackets);
+  const timeOffsetNodes = issues.nodes.filter(n => n.isTimeOffsetIssue);
+  return [
+    {
+      title: 'Duplicate PSK',
+      count: issues.duplicateKeyCount,
+      // Group by publicKey.
+      body: (md) => {
+        const lines: string[] = [];
+        if (dupNodes.length === 0) return lines;
+        const groups = new Map<string, typeof issues.nodes>();
+        for (const node of dupNodes) {
+          const key = node.publicKey || 'unknown';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key)!.push(node);
+        }
+        let groupNum = 1;
+        for (const [, groupNodes] of groups) {
+          if (groupNodes.length > 1) {
+            if (md) {
+              lines.push(`**Group ${groupNum}** (${groupNodes.length} nodes):`);
+              for (const node of groupNodes) lines.push(`- ${nodeName(node)} \`${nodeId(node.nodeNum)}\``);
+            } else {
+              lines.push(`  Group ${groupNum} (${groupNodes.length} nodes):`);
+              for (const node of groupNodes) lines.push(`    - ${nodeName(node)} (${nodeId(node.nodeNum)})`);
+            }
+            groupNum++;
+          }
+        }
+        if (groupNum === 1) {
+          lines.push(`${dupNodes.length} node${dupNodes.length !== 1 ? 's' : ''} with duplicate keys`);
+        }
+        return lines;
+      },
+    },
+    {
+      title: 'Low-Entropy Key',
+      count: issues.lowEntropyCount,
+      body: (md) =>
+        lowEntropyNodes.map((node) =>
+          md ? `- **${nodeName(node)}** \`${nodeId(node.nodeNum)}\`` : `  - ${nodeName(node)} (${nodeId(node.nodeNum)})`),
+    },
+    {
+      title: 'Excessive Packets',
+      count: issues.excessivePacketsCount,
+      body: (md) =>
+        excessiveNodes.map((node) => {
+          const rate = node.packetRatePerHour != null ? ` — ${node.packetRatePerHour} pkt/hr` : '';
+          return md ? `- **${nodeName(node)}**${rate}` : `  - ${nodeName(node)}${rate}`;
+        }),
+    },
+    {
+      title: 'Time Offset',
+      count: issues.timeOffsetCount,
+      body: (md) =>
+        timeOffsetNodes.map((node) => {
+          const offset = node.timeOffsetSeconds != null ? ` — ${formatDrift(node.timeOffsetSeconds)} drift` : '';
+          return md ? `- **${nodeName(node)}**${offset}` : `  - ${nodeName(node)}${offset}`;
+        }),
+    },
+  ];
+}
+
+export function formatDigestSummary(
+  issues: SecurityIssuesData,
+  baseUrl: string,
+  suppressEmpty: boolean = true,
+  format: DigestFormat = 'text'
+): string | null {
+  return formatSummarySections(meshtasticSections(issues), issues.total, baseUrl, suppressEmpty, format);
 }
 
 export function formatDigestDetailed(
@@ -140,135 +276,73 @@ export function formatDigestDetailed(
   suppressEmpty: boolean = true,
   format: DigestFormat = 'text'
 ): string | null {
-  const date = new Date().toISOString().split('T')[0];
-  const md = format === 'markdown';
-  const issueTypeCount = [
-    issues.duplicateKeyCount > 0,
-    issues.lowEntropyCount > 0,
-    issues.excessivePacketsCount > 0,
-    issues.timeOffsetCount > 0,
-  ].filter(Boolean).length;
+  return formatDetailedSections(meshtasticSections(issues), issues.total, baseUrl, suppressEmpty, format);
+}
 
-  if (issues.total === 0) {
-    if (suppressEmpty) return null;
-    if (md) {
-      return [
-        `# MeshMonitor Security Digest — ${date}`,
-        '',
-        '> No security issues detected.',
-        '',
-        detailsLink(baseUrl, true),
-      ].filter((l): l is string => l !== null).join('\n');
-    }
-    return [
-      `MeshMonitor Security Digest — ${date}`,
-      '',
-      'No security issues detected.',
-      '',
-      detailsLink(baseUrl, false),
-    ].filter((l): l is string => l !== null).join('\n');
-  }
+/** A year or more off: a node whose clock was never set (no RTC, factory default). */
+const CLOCK_NOT_SET_SECONDS = CLOCK_NOT_SET_OFFSET_SECONDS;
 
-  const lines: string[] = [];
+function mcName(node: { longName: string | null; shortName: string | null; publicKey?: string | null }): string {
+  return node.longName || node.shortName || (node.publicKey ? `mc:${node.publicKey.slice(0, 8)}` : 'unknown');
+}
 
-  if (md) {
-    lines.push(
-      `# MeshMonitor Security Digest — ${date}`,
-      '',
-      `> **${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''}** detected across **${issues.total} nodes**`,
-    );
-  } else {
-    lines.push(
-      `MeshMonitor Security Digest — ${date}`,
-      '',
-      `${issueTypeCount} issue type${issueTypeCount !== 1 ? 's' : ''} detected across ${issues.total} nodes`,
-    );
-  }
+/** MeshCore sections (#6281): rates, clock, advert signatures, name reuse and the own-key change. */
+export function meshcoreDigestSections(issues: CollectedSecurityIssues): DigestSection[] {
+  const keyTag = (n: SecurityIssueNode): string => (n.publicKey ? `\`${n.publicKey.slice(0, 8)}\`` : '');
+  const keyTagText = (n: SecurityIssueNode): string => (n.publicKey ? ` (${n.publicKey.slice(0, 8)})` : '');
+  const nodes = issues.nodes;
+  const own = issues.ownKeyChange;
+  return [
+    {
+      title: 'Excessive packets',
+      count: issues.counts.excessivePackets,
+      body: (md) =>
+        nodes.filter((n) => n.isExcessivePackets).map((n) => {
+          const rate = n.packetRatePerHour != null ? ` — ${n.packetRatePerHour} pkt/hr` : '';
+          return md ? `- **${mcName(n)}**${rate}` : `  - ${mcName(n)}${rate}`;
+        }),
+    },
+    {
+      title: 'Clock offset',
+      count: issues.counts.timeOffset,
+      body: (md) =>
+        nodes.filter((n) => n.isTimeOffsetIssue).map((n) => {
+          const sec = n.timeOffsetSeconds;
+          const detail =
+            sec == null ? '' : Math.abs(sec) >= CLOCK_NOT_SET_SECONDS ? ' — clock not set' : ` — ${formatDrift(sec)} drift`;
+          return md ? `- **${mcName(n)}**${detail}` : `  - ${mcName(n)}${detail}`;
+        }),
+    },
+    {
+      title: 'Advert signature failed',
+      count: issues.counts.signatureFailure,
+      body: (md) =>
+        nodes.filter((n) => n.advertSignatureFailed).map((n) =>
+          md ? `- **${mcName(n)}** ${keyTag(n)}` : `  - ${mcName(n)}${keyTagText(n)}`),
+    },
+    {
+      title: 'Name reused under new key',
+      count: issues.counts.nameReuse,
+      body: (md) =>
+        nodes.filter((n) => n.nameReused).map((n) =>
+          md ? `- **${mcName(n)}** ${keyTag(n)}` : `  - ${mcName(n)}${keyTagText(n)}`),
+    },
+    {
+      title: 'Own key changed (pending acknowledge)',
+      count: issues.counts.ownKeyChanged,
+      body: (md) => {
+        if (!own) return [];
+        const from = own.previousKey ? own.previousKey.slice(0, 8) : 'unknown';
+        const to = own.currentKey ? own.currentKey.slice(0, 8) : 'unknown';
+        return [md ? `- \`${from}\` → \`${to}\`` : `  - ${from} -> ${to}`];
+      },
+    },
+  ];
+}
 
-  // Duplicate PSK — group by publicKey
-  const dupNodes = issues.nodes.filter(n => n.duplicateKeyDetected);
-  lines.push('', md ? '## Duplicate PSK' : '--- Duplicate PSK ---');
-  if (dupNodes.length === 0) {
-    lines.push(md ? '*None*' : 'None');
-  } else {
-    const groups = new Map<string, typeof issues.nodes>();
-    for (const node of dupNodes) {
-      const key = node.publicKey || 'unknown';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(node);
-    }
-    let groupNum = 1;
-    for (const [, groupNodes] of groups) {
-      if (groupNodes.length > 1) {
-        if (md) {
-          lines.push(`**Group ${groupNum}** (${groupNodes.length} nodes):`);
-          for (const node of groupNodes) {
-            lines.push(`- ${nodeName(node)} \`${nodeId(node.nodeNum)}\``);
-          }
-        } else {
-          lines.push(`  Group ${groupNum} (${groupNodes.length} nodes):`);
-          for (const node of groupNodes) {
-            lines.push(`    - ${nodeName(node)} (${nodeId(node.nodeNum)})`);
-          }
-        }
-        groupNum++;
-      }
-    }
-    if (groupNum === 1) {
-      lines.push(`${dupNodes.length} node${dupNodes.length !== 1 ? 's' : ''} with duplicate keys`);
-    }
-  }
-
-  // Low-Entropy Key
-  const lowEntropyNodes = issues.nodes.filter(n => n.keyIsLowEntropy);
-  lines.push('', md ? '## Low-Entropy Key' : '--- Low-Entropy Key ---');
-  if (lowEntropyNodes.length === 0) {
-    lines.push(md ? '*None*' : 'None');
-  } else {
-    for (const node of lowEntropyNodes) {
-      if (md) {
-        lines.push(`- **${nodeName(node)}** \`${nodeId(node.nodeNum)}\``);
-      } else {
-        lines.push(`  - ${nodeName(node)} (${nodeId(node.nodeNum)})`);
-      }
-    }
-  }
-
-  // Excessive Packets
-  const excessiveNodes = issues.nodes.filter(n => n.isExcessivePackets);
-  lines.push('', md ? '## Excessive Packets' : '--- Excessive Packets ---');
-  if (excessiveNodes.length === 0) {
-    lines.push(md ? '*None*' : 'None');
-  } else {
-    for (const node of excessiveNodes) {
-      const rate = node.packetRatePerHour != null ? ` — ${node.packetRatePerHour} pkt/hr` : '';
-      if (md) {
-        lines.push(`- **${nodeName(node)}**${rate}`);
-      } else {
-        lines.push(`  - ${nodeName(node)}${rate}`);
-      }
-    }
-  }
-
-  // Time Offset
-  const timeOffsetNodes = issues.nodes.filter(n => n.isTimeOffsetIssue);
-  lines.push('', md ? '## Time Offset' : '--- Time Offset ---');
-  if (timeOffsetNodes.length === 0) {
-    lines.push(md ? '*None*' : 'None');
-  } else {
-    for (const node of timeOffsetNodes) {
-      const offset = node.timeOffsetSeconds != null ? ` — ${formatDrift(node.timeOffsetSeconds)} drift` : '';
-      if (md) {
-        lines.push(`- **${nodeName(node)}**${offset}`);
-      } else {
-        lines.push(`  - ${nodeName(node)}${offset}`);
-      }
-    }
-  }
-
-  const link = detailsLink(baseUrl, md);
-  if (link !== null) lines.push('', link);
-  return lines.join('\n');
+/** Total shown in a MeshCore digest: flagged nodes plus an unacknowledged own-key change. */
+export function meshcoreDigestTotal(issues: CollectedSecurityIssues): number {
+  return issues.total + (issues.ownKeyChange ? 1 : 0);
 }
 
 class SecurityDigestService {
@@ -306,48 +380,62 @@ class SecurityDigestService {
     logger.info(`Security digest scheduled at ${time} daily`);
   }
 
-  async sendDigest(sourceIdOverride?: string): Promise<{ success: boolean; message: string }> {
+  async sendDigest(sourceIdOverride?: string): Promise<{ success: boolean; message: string; skipped?: boolean }> {
     if (!this.databaseService) {
       return { success: false, message: 'Service not initialized' };
     }
 
     // When a specific sourceId is requested, dispatch only that one; otherwise
-    // iterate every registered source and build a per-source digest.
+    // iterate every registered source (Meshtastic and MeshCore, #6281) and
+    // build a per-source digest.
     const targetSourceIds = sourceIdOverride
       ? [sourceIdOverride]
-      // Exclusion, so it widens with the predicate: a digest is about OUR
-      // node's key/security posture, which an ingest source does not have.
-      : sourceManagerRegistry.getAllManagers()
-          .filter(m => !isAnyMeshCoreSourceType(m.sourceType))
-          .map(m => m.sourceId);
+      : sourceManagerRegistry.getAllManagers().map(m => m.sourceId);
 
     if (targetSourceIds.length === 0) {
       return { success: false, message: 'No sources available' };
     }
 
-    const results: Array<{ sourceId: string; success: boolean; message: string }> = [];
+    const results: Array<{ sourceId: string; success: boolean; message: string; skipped?: boolean }> = [];
     for (const sid of targetSourceIds) {
       results.push(await this.sendDigestForSource(sid));
     }
 
     const anyFailure = results.some(r => !r.success);
-    const summary = results.map(r => `${r.sourceId}:${r.success ? 'ok' : r.message}`).join(', ');
-    return { success: !anyFailure, message: summary || 'No digests sent' };
+    const summary = results.map(r => `${r.sourceId}:${r.skipped ? 'skipped' : r.success ? 'ok' : r.message}`).join(', ');
+    const allSkipped = results.length > 0 && results.every(r => r.skipped);
+    return {
+      success: !anyFailure,
+      message: summary || 'No digests sent',
+      ...(allSkipped ? { skipped: true } : {}),
+    };
   }
 
-  private async sendDigestForSource(sourceId: string): Promise<{ sourceId: string; success: boolean; message: string }> {
-    // Apprise URL is per-source (falls back to global via getSettingForSource)
+  /**
+   * A digest setting for a source. The four per-source digest keys fall back to
+   * the global row when the source has none (#6281): the Security tab used to
+   * save them globally, so an existing global Apprise URL still applies.
+   */
+  private async digestSetting(sourceId: string, key: string): Promise<string | null> {
+    const own = await this.databaseService.settings.getSettingForSource(sourceId, key);
+    if (own !== null && own !== undefined && own !== '') return own;
+    const global = await this.databaseService.settings.getSetting?.(key);
+    return global ?? own ?? null;
+  }
+
+  private async sendDigestForSource(sourceId: string): Promise<{ sourceId: string; success: boolean; message: string; skipped?: boolean }> {
     const appriseUrl = this.databaseService.settings
-      ? await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestAppriseUrl')
+      ? await this.digestSetting(sourceId, 'securityDigestAppriseUrl')
       : null;
     if (!appriseUrl) {
-      return { sourceId, success: false, message: 'No Apprise URL configured' };
+      // Not configured is not a failure: nothing was asked for (#6281).
+      return { sourceId, success: true, skipped: true, message: 'No Apprise URL configured' };
     }
 
-    const reportType = (await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestReportType')) || 'summary';
-    const suppressEmptyRaw = await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestSuppressEmpty');
+    const reportType = (await this.digestSetting(sourceId, 'securityDigestReportType')) || 'summary';
+    const suppressEmptyRaw = await this.digestSetting(sourceId, 'securityDigestSuppressEmpty');
     const suppressEmpty = suppressEmptyRaw !== 'false';
-    const format = ((await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestFormat')) || 'text') as DigestFormat;
+    const format = ((await this.digestSetting(sourceId, 'securityDigestFormat')) || 'text') as DigestFormat;
     // externalUrl is a GLOBAL-only setting (#4437) — one origin per install, not
     // one per source (see settingsRoutes.ts's validation comment). Deliberately
     // `getSetting`, NOT `getSettingForSource`: the latter, when passed a truthy
@@ -371,51 +459,36 @@ class SecurityDigestService {
     }
 
     try {
-      const [keyIssueNodes, excessiveNodes, timeOffsetNodes, topBroadcasters] = await Promise.all([
-        this.databaseService.getNodesWithKeySecurityIssuesAsync(sourceId),
-        this.databaseService.getNodesWithExcessivePacketsAsync(sourceId),
-        this.databaseService.getNodesWithTimeOffsetIssuesAsync(sourceId),
-        this.databaseService.getTopBroadcastersAsync(10, sourceId),
-      ]);
+      const protocol = isAnyMeshCoreSourceType(sourceManagerRegistry.getManager?.(sourceId)?.sourceType)
+        ? 'meshcore'
+        : 'meshtastic';
+      const collected = await collectSecurityIssues(this.databaseService, sourceId, { protocol, topBroadcasters: 10 });
 
-      // Merge and deduplicate (same pattern as securityRoutes.ts)
-      const nodeMap = new Map<number, any>();
-      for (const node of keyIssueNodes) {
-        nodeMap.set(node.nodeNum, { ...node, isExcessivePackets: false, packetRatePerHour: null, isTimeOffsetIssue: false, timeOffsetSeconds: null });
+      let sections: DigestSection[];
+      let total: number;
+      let issues: { total: number };
+      if (protocol === 'meshcore') {
+        sections = meshcoreDigestSections(collected);
+        total = meshcoreDigestTotal(collected);
+        issues = { total };
+      } else {
+        const data: SecurityIssuesData = {
+          total: collected.total,
+          lowEntropyCount: collected.lowEntropyCount,
+          duplicateKeyCount: collected.duplicateKeyCount,
+          excessivePacketsCount: collected.excessivePacketsCount,
+          timeOffsetCount: collected.timeOffsetCount,
+          nodes: collected.nodes,
+          topBroadcasters: collected.topBroadcasters,
+        };
+        sections = meshtasticSections(data);
+        total = data.total;
+        issues = data;
       }
-      for (const node of excessiveNodes) {
-        const existing = nodeMap.get(node.nodeNum);
-        if (existing) {
-          existing.isExcessivePackets = true;
-          existing.packetRatePerHour = node.packetRatePerHour;
-        } else {
-          nodeMap.set(node.nodeNum, { ...node, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: true, isTimeOffsetIssue: false, timeOffsetSeconds: null });
-        }
-      }
-      for (const node of timeOffsetNodes) {
-        const existing = nodeMap.get(node.nodeNum);
-        if (existing) {
-          existing.isTimeOffsetIssue = (node as any).isTimeOffsetIssue || false;
-          existing.timeOffsetSeconds = (node as any).timeOffsetSeconds || null;
-        } else {
-          nodeMap.set(node.nodeNum, { ...node, keyIsLowEntropy: false, duplicateKeyDetected: false, isExcessivePackets: false, isTimeOffsetIssue: (node as any).isTimeOffsetIssue || false, timeOffsetSeconds: (node as any).timeOffsetSeconds || null });
-        }
-      }
-
-      const allNodes = Array.from(nodeMap.values());
-      const issues: SecurityIssuesData = {
-        total: allNodes.length,
-        lowEntropyCount: allNodes.filter((n: any) => n.keyIsLowEntropy).length,
-        duplicateKeyCount: allNodes.filter((n: any) => n.duplicateKeyDetected).length,
-        excessivePacketsCount: allNodes.filter((n: any) => n.isExcessivePackets).length,
-        timeOffsetCount: allNodes.filter((n: any) => n.isTimeOffsetIssue).length,
-        nodes: allNodes,
-        topBroadcasters,
-      };
 
       const rawBody = reportType === 'detailed'
-        ? formatDigestDetailed(issues, baseUrl, suppressEmpty, format)
-        : formatDigestSummary(issues, baseUrl, suppressEmpty, format);
+        ? formatDetailedSections(sections, total, baseUrl, suppressEmpty, format)
+        : formatSummarySections(sections, total, baseUrl, suppressEmpty, format);
 
       if (rawBody === null) {
         logger.debug(`[${sourceId}] Security digest suppressed — no issues found`);

@@ -245,6 +245,7 @@ import { migration as meshcoreSourcePkiKeysMigration, runMigration223Postgres, r
 import { migration as meshcorePacketLogDerivedMigration, runMigration224Postgres, runMigration224Mysql } from '../server/migrations/224_meshcore_packet_log_derived_fields.js';
 import { migration as meshcoreTraceRunsMigration, runMigration225Postgres, runMigration225Mysql } from '../server/migrations/225_add_meshcore_trace_runs.js';
 import { migration as backupHistorySourceProtocolMigration, runMigration226Postgres, runMigration226Mysql } from '../server/migrations/226_backup_history_source_protocol.js';
+import { migration as meshcoreNodeSecurityFlagsMigration, runMigration227Postgres, runMigration227Mysql } from '../server/migrations/227_add_meshcore_node_security_flags.js';
 
 // ============================================================================
 // Registry
@@ -3647,4 +3648,18 @@ registry.register({
   sqlite: (db) => backupHistorySourceProtocolMigration.up(db),
   postgres: (client) => runMigration226Postgres(client),
   mysql: (pool) => runMigration226Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 227: persisted security flags (packet rate, clock offset) on
+// meshcore_nodes (#6281 P7b).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 227,
+  name: 'add_meshcore_node_security_flags',
+  settingsKey: 'migration_227_add_meshcore_node_security_flags',
+  sqlite: (db) => meshcoreNodeSecurityFlagsMigration.up(db),
+  postgres: (client) => runMigration227Postgres(client),
+  mysql: (pool) => runMigration227Mysql(pool),
 });

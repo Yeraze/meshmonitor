@@ -992,7 +992,7 @@ Timer Triggers schedule recurring actions independent of incoming traffic:
 
 ## Security
 
-The Security tab works on MeshCore sources. It lists dead contacts, path-hash collisions, advert signature results, names reused under a new key, and own-key changes. See [Security Features](/features/security#meshcore-sources) for details.
+The Security tab works on MeshCore sources. It lists dead contacts, path-hash collisions, advert signature results, names reused under a new key, and own-key changes. It also flags nodes that send more than 30 packets an hour (turn on the Packet Monitor to measure this) and nodes whose clock is off by more than 30 minutes or was never set. It has a scanner, a daily Apprise digest, CSV/JSON export, and a draft-only "Send notification" DM for Companion sources. See [Security Features](/features/security#meshcore-sources) for details.
 
 ## Automated Channel-Send Auto-Retry
 
