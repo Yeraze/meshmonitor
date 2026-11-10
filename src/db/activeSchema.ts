@@ -356,6 +356,7 @@ export interface ActiveSchema {
   meshcoreNodes: any;
   meshcoreMessages: any;
   meshcoreNeighbors: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6274 same dialect-union escape hatch as every table above
   meshcoreNeighborWatch: any;
   meshcorePacketLog: any;
   meshcorePositionHistory: any;
