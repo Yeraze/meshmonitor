@@ -194,7 +194,7 @@ export function validateMessageTemplate(
 }
 
 /** Cut to `max` UTF-16 units without splitting a surrogate pair (an emoji). */
-function truncate(value: string, max: number): string {
+export function truncate(value: string, max: number): string {
   if (value.length <= max) return value;
   const chars = Array.from(value);
   let out = '';
