@@ -724,3 +724,57 @@ describe('createMeshActionDeps sendMessage — Meshtastic 200-byte cut (#6202)',
     expect(sendMessage.mock.calls[0][0]).toBe('w'.repeat(500));
   });
 });
+
+// #6330: the engine's split option now covers Meshtastic too, through the
+// manager's shared sendAutomatedText.
+describe('createMeshActionDeps sendMessage — Meshtastic split (#6330)', () => {
+  beforeEach(() => { getManager.mockReset(); });
+
+  it('sends a channel split direct through sendAutomatedText', async () => {
+    const sendTextMessage = vi.fn();
+    const sendAutomatedText = vi.fn().mockResolvedValue({ ok: true, totalParts: 2, truncated: false });
+    getManager.mockReturnValue({ sendTextMessage, sendAutomatedText });
+    const deps = createMeshActionDeps();
+
+    const res = await deps.sendMessage({ sourceId: 'mt', text: 'z'.repeat(300), channel: 2, splitLongMessages: true, hopLimitOverride: 1 });
+
+    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(sendAutomatedText).toHaveBeenCalledWith('z'.repeat(300), expect.objectContaining({
+      channels: [2], split: true, direct: true, hopLimitOverride: 1,
+    }));
+    expect(res).toEqual({ ok: true, parts: 2, truncated: false });
+  });
+
+  it('keeps a queued DM on the queue (maxAttempts) when splitting', async () => {
+    const sendAutomatedText = vi.fn().mockResolvedValue({ ok: true, totalParts: 3, truncated: true });
+    getManager.mockReturnValue({ sendTextMessage: vi.fn(), sendAutomatedText });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'q'.repeat(700), channel: 0, destination: 123, maxAttempts: 3, splitLongMessages: true });
+
+    const opts = sendAutomatedText.mock.calls[0][1];
+    expect(opts).toMatchObject({ destination: 123, maxAttempts: 3, split: true });
+    expect(opts.direct).toBeUndefined();
+  });
+
+  it('throws when no part went out', async () => {
+    const sendAutomatedText = vi.fn().mockResolvedValue({ ok: false, totalParts: 2, truncated: false });
+    getManager.mockReturnValue({ sendTextMessage: vi.fn(), sendAutomatedText });
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'mt', text: 'z'.repeat(300), channel: 0, splitLongMessages: true }))
+      .rejects.toThrow(/failed to send the Meshtastic message/);
+  });
+
+  it('split off keeps the old single truncated send', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    const sendAutomatedText = vi.fn();
+    getManager.mockReturnValue({ sendTextMessage, sendAutomatedText });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'x'.repeat(300), channel: 0 });
+
+    expect(sendAutomatedText).not.toHaveBeenCalled();
+    expect(Buffer.byteLength(sendTextMessage.mock.calls[0][0] as string, 'utf8')).toBe(200);
+  });
+});

@@ -42,7 +42,7 @@ export interface ActionDeps {
     /** MeshCore scope/region override (#3833). undefined = inherit channel/default;
      *  '' = explicit unscoped; non-empty = that region. Ignored by Meshtastic. */
     scopeOverride?: string | null;
-    /** MeshCore only (#6316): split a long message into up to 3 marked parts instead of cutting it. */
+    /** Split a long message into up to 3 marked parts instead of cutting it (MeshCore #6316, Meshtastic #6330). */
     splitLongMessages?: boolean;
     /**
      * App-level DM resend cap (#4340 Phase 3), 1–3. Absent = one direct send —

@@ -42,15 +42,18 @@ const SEND_CALL = new RegExp(
       'requestRemoteLocalStats',
       'broadcastWaypoint',
       'sendAutoAnnouncement',
+      // Shared split sender (#6330); takes an explicit origin, default automation.
+      'sendAutomatedText',
     ].join('|') +
     ')!?\\(',
   'g',
 );
 
-// Files whose matches are not Meshtastic sends (MeshCore backend; the ADS-B
-// lookup queue's own `enqueue`).
+// Files whose matches are not Meshtastic sends (MeshCore backend and manager;
+// the ADS-B lookup queue's own `enqueue`).
 const NOT_MESHTASTIC = new Set([
   'src/server/meshcoreNativeBackend.ts',
+  'src/server/meshcoreManager.ts',
   'src/server/services/adsbMatchService.ts',
 ]);
 
@@ -66,7 +69,9 @@ const EXPECTED: Record<string, number> = {
   // (origin comes from the queued entry), and thin delegates that pass the
   // caller's origin through (broadcastWaypointDelete, sendAutoAnnouncement,
   // broadcastNodeInfoToChannel[s]). Reliable PKI priming NodeInfo (#5691).
-  'src/server/meshtasticManager.ts': 41,
+  // sendAutomatedText (#6330): its queue enqueue carries the caller's origin
+  // (default automation), plus the responder and timer callers.
+  'src/server/meshtasticManager.ts': 44,
   // Queue send + NodeInfo broadcast; origin follows triggeredByAutomation
   // (the "Send Announcement" button is manual). Plus the scheduler's calls.
   'src/server/services/autoAnnounceService.ts': 5,
@@ -77,8 +82,9 @@ const EXPECTED: Record<string, number> = {
   // (#5482); the real dep is waypointService.upsertAndBroadcastForAutomation,
   // which tags the send.
   'src/server/services/automation/actionExecutor.ts': 1,
-  // Automation Engine actions — all tagged.
-  'src/server/services/automation/meshActionDeps.ts': 9,
+  // Automation Engine actions — all tagged. Includes the Meshtastic and
+  // MeshCore sendAutomatedText split calls (#6316, #6330).
+  'src/server/services/automation/meshActionDeps.ts': 11,
   // Manual via routes (copyNodeInfo), automation via the enrichment scheduler
   // (pushNodeInfoRequestForNode) — the origin is a parameter.
   'src/server/services/nodeInfoCopyService.ts': 1,
@@ -120,7 +126,8 @@ describe('automation send callers are pinned (#5414)', () => {
 
   it('MeshtasticManager only enqueues through the automation helper', () => {
     const src = readFileSync(join(SERVER_DIR, 'meshtasticManager.ts'), 'utf8');
-    // The single raw call is the one inside enqueueAutomation itself.
-    expect(src.match(/this\.messageQueue\.enqueue\(/g) ?? []).toHaveLength(1);
+    // One raw call inside enqueueAutomation, one inside sendAutomatedText,
+    // which passes an explicit origin (default 'automation', #6330).
+    expect(src.match(/this\.messageQueue\.enqueue\(/g) ?? []).toHaveLength(2);
   });
 });

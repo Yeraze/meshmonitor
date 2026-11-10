@@ -189,7 +189,7 @@ A MeshCore text message is small. A DM holds **160 bytes**. A channel message ho
 
 Five MeshCore senders have a **Split long messages** option that sets what happens to a message over the cap: Auto Acknowledge, Auto Responder (per trigger), Timer Triggers (per timer), Auto Announce, and the Automation Engine **Send a message** action. It is **off by default**. One setting covers DM and channel sends. Every one of them also cuts an over-long message to the cap itself, so the stored message matches what went on air.
 
-**Off (default)**: MeshMonitor cuts the reply to the cap and sends one message. The cut never lands inside a character. The message list shows the text that was sent.
+**Off (default)**: MeshMonitor cuts the reply to the cap and sends one message. The cut message ends in `...` so the reader can see text is missing. The cut never lands inside a character. The message list shows the text that was sent.
 
 ::: warning Behaviour change
 Before this option existed, MeshMonitor handed the full reply to the radio and stored the full text, even though the radio could not send all of it. MeshMonitor now cuts the reply itself, so the stored message matches what went on air. If your reply loses its tail, shorten the template or turn on **Split long messages**.
@@ -199,7 +199,7 @@ Before this option existed, MeshMonitor handed the full reply to the radio and s
 
 - Each part starts with a marker such as `(1/3)`, so the reader knows more is coming. The marker counts toward the byte cap.
 - MeshMonitor breaks at a line break, the end of a sentence, a comma, or a space when it can. It only breaks inside a word when there is no better place, and never inside a character.
-- A reply too long for 3 parts loses its tail: the third part is cut to fit.
+- A reply too long for 3 parts loses its tail: the third part is cut to fit and ends in `...`.
 - A reply that fits in one message goes out as before, with no marker.
 - If one part fails to send, MeshMonitor skips the rest. It also stops if the source is switched to receive-only between parts.
 - The per-sender cooldown counts the whole reply once, not once per part.
@@ -207,11 +207,45 @@ Before this option existed, MeshMonitor handed the full reply to the radio and s
 - When a timer, announce or action sends to several channels, part 1 goes to every channel, then part 2, and so on.
 - **Auto Responder and Timer scripts**: only a script that prints exactly one message can split. A script that prints several messages has each one cut to the cap.
 - **Timer Triggers**: a timer with splitting on must run at most every **5 minutes**. MeshMonitor refuses to save a faster one (interval or cron).
-- Meshtastic is not affected. Its **Multiline Support** keeps its own rules.
+- Meshtastic uses the same rules (#6330); see [Long Replies on Meshtastic](#meshtastic-long-replies).
 
 ::: warning Airtime
 Every part is a separate transmission, and every repeater in range repeats each one. A 3-part reply costs three times the airtime of a single reply across the whole mesh. With [channel-send auto-retry](/features/meshcore#automated-channel-send-auto-retry) on, a part that no repeater echoes is resent once, so a 3-part channel reply can reach 6 transmissions from your node. A DM part that gets no acknowledgement is retried up to 3 times. Set a per-sender cooldown, and keep the template short enough that most replies fit in one message.
 :::
+
+### Long Replies on Meshtastic {#meshtastic-long-replies}
+
+A Meshtastic text message holds **200 bytes**. The same **Split long messages** option covers Meshtastic, with the same limits as MeshCore: up to **3 messages**, **10 seconds apart**, each marked like `(1/3)`, and a reply too long for 3 messages is cut, ending in `...`.
+
+- **Auto Responder**: the per-trigger **Multiline** option (see [Multiline Support](#multiline-support)).
+- **Timer Triggers**: **Split long messages** in the timer editor. It is **off by default**. A timer with splitting on must run at most every **5 minutes**; MeshMonitor refuses to save a faster cron schedule.
+- **Auto Announce**: **Long Announcements** under the channel list. It is **off by default**.
+- **Automation Engine**: the **Split long messages** option of the **Send a message** action.
+
+With splitting off, each sender cuts the message to 200 bytes, ending in `...`. Auto Announce used to hand the whole text to the radio; it now cuts it too, so a long announcement no longer fails to send.
+
+Auto Responder, Timer and Auto Announce parts go through the source's outgoing queue, which waits 30 seconds between sends, so on air the parts are at least 30 seconds apart. The Automation Engine sends a channel message straight to the radio, 10 seconds between parts; a DM with **Max attempts** set keeps the queue. When a timer, announce or action sends to several channels, part 1 goes to every channel, then part 2. Timer scripts split only when they print exactly one message.
+
+::: warning Airtime
+Every part is a separate transmission, and every node that rebroadcasts repeats each one. A 3-part message costs three times the airtime of one. Keep templates short enough that most messages fit in one part.
+:::
+
+**Skip if still queued**: a Meshtastic Timer Trigger or Auto Announce fire is skipped while that timer's (or that source's announcement's) messages from the previous fire are still waiting in the outgoing queue. This holds with splitting on or off. The skip is logged with the timer id (or `announce`). A manual **Send Announcement** always goes through. The queue lives in memory, so a restart clears it and the next fire runs.
+
+#### Mesh impact {#split-mesh-impact}
+
+These figures are for one full 200-byte Meshtastic part (about 237 bytes on air, preamble 16):
+
+| Preset | 1 part | 3 parts, our node | 3 parts, hop limit 3 (about 4 sends each) |
+|---|---|---|---|
+| LongFast (SF11 / BW250 / CR 4/5) | about 2.0 s | about 6 s | about 24 s |
+| MediumFast (SF9 / BW250 / CR 4/5) | about 0.6 s | about 1.8 s | about 7 s |
+
+- **Auto Responder, Timer Triggers, Auto Announce**: every part goes through the source's outgoing queue, which sends at most one message every 30 seconds. Our node therefore stays under about 7% of the airtime on LongFast, however many parts or channels a fire has.
+- **Backlog bound**: because a timer or announcement is skipped while its previous fire is still queued, one timer or one source's announcement never has more than one fire waiting in the queue. A fire is at most 3 parts × the number of channels. A timer on 8 channels with splitting on queues 24 messages, which take 12 minutes to leave the queue, so a 5-minute timer then fires about every 15 minutes instead of piling up.
+- **Timer floor**: a timer with splitting on must run at most every 5 minutes.
+- **Automation Engine**: a channel message goes straight to the radio, 3 parts × channels × sources per fire, 10 seconds apart. The rule's rate limit counts fires, not parts, so set a cooldown.
+- **Off (default)**: one message per target, cut to 200 bytes. No extra packets.
 
 ### Skip Incomplete Nodes {#skip-incomplete-nodes-ack}
 
@@ -1096,43 +1130,21 @@ When someone sends "reboot !abc12345", the script is called with arguments `--de
 
 ### Multiline Support
 
-For **Text** and **HTTP** response types, you can enable multiline support to automatically split long responses into multiple messages. This feature is useful when responses exceed the 200-character limit.
+For **Text** and **HTTP** response types, **Multiline** splits a long reply instead of cutting it. A Meshtastic message holds **200 bytes**. These are UTF-8 bytes, not characters: an emoji takes 4 bytes. Multiline uses the same splitter and limits as MeshCore's **Split long messages** (see [Long Replies](#meshcore-long-replies)):
 
-**How It Works**:
+- At most **3 messages**, each marked like `(1/3)`. The marker counts toward the 200 bytes.
+- A reply too long for 3 messages loses its tail. The third message is cut to fit and ends in `...`.
+- A reply that fits in one message goes out as before, with no marker.
+- MeshMonitor breaks at a line break, the end of a sentence, a comma or a space when it can, and never inside a character.
+- Only a single reply splits. Each item of a `{"responses": [...]}` array is cut to 200 bytes instead (see [Multiple Responses Support](#multiple-responses-support)).
 
-When multiline is enabled, responses are intelligently split using the following priority:
+With Multiline off, MeshMonitor cuts a long reply to 200 bytes, ending in `...`.
 
-1. **Line Breaks** (if using >50% of available space)
-   - Splits on `\n` characters
-   - Best for pre-formatted multi-paragraph responses
+::: warning Behaviour change (#6330)
+Multiline used to split a reply into as many messages as it needed, with no marker. It now sends at most 3 marked messages and cuts the rest.
+:::
 
-2. **Sentence Endings** (if using >50% of space)
-   - Splits after `. `, `! `, or `? `
-   - Keeps complete sentences together
-
-3. **Punctuation** (if using >50% of space)
-   - Splits after `, `, `; `, `: `, or ` - `
-   - Preserves clause boundaries
-
-4. **Spaces** (if using >30% of space)
-   - Splits at word boundaries
-   - Avoids cutting words in half
-
-5. **Hyphens** (if using >30% of space)
-   - Splits at hyphenated words
-   - Last resort before character splitting
-
-6. **Character Split** (if no better option)
-   - Splits at exactly 200 characters
-   - Only used when absolutely necessary
-
-**Message Queue Behavior**:
-
-Each split message is:
-- Queued individually
-- Sent with 30-second intervals between messages
-- Retried up to 3 times on failure
-- Tracked for ACK delivery confirmation
+**Message queue**: each part goes through the source's outgoing queue, which waits 30 seconds between sends. Parts are queued 10 seconds apart, so on air they are at least 30 seconds apart. A DM part is retried and tracked for delivery like any other auto-reply. Split replies on one source never mix: a new split reply waits until the running one is queued.
 
 **Example**:
 
@@ -1148,7 +1160,7 @@ Welcome to our mesh bot! Available commands:
 For more info visit meshmonitor.org
 ```
 
-This would be split into approximately 3 messages, each sent 30 seconds apart.
+This reply is about 180 bytes, so it goes out as one message. A reply over 200 bytes would go out as `(1/2) …` and `(2/2) …`, 30 seconds apart.
 
 **When to Use Multiline**:
 - Help text with multiple commands
@@ -1202,7 +1214,7 @@ When using multiple responses, each message is queued individually and sent with
 **Interaction with the `multiline` trigger option**:
 
 - `multiline=true` only splits when the payload is a **single** response (plain text or `{"response": "…"}`). Each item in a `{"responses": [...]}` array is treated as already-chunked: items longer than 200 chars are **truncated**, not split. Pre-chunk your own messages when returning the array form.
-- `multiline=false` (default) truncates every response to 200 chars.
+- `multiline=false` (default) cuts every response to 200 bytes, ending in `...`.
 
 **HTTP responses that aren't MeshMonitor-shaped JSON**:
 

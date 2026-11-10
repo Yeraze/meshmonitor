@@ -26,6 +26,7 @@ import type { SendOrigin } from '../../utils/automationPacketTracker.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE } from '../../../types/meshcoreAdvert.js';
 import { tracePathScheduleService } from '../tracePathScheduleService.js';
 import { TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR } from '../../../types/tracePathSchedule.js';
+import { MESHTASTIC_MAX_TEXT_BYTES } from '../../../utils/messageSplitLimits.js';
 
 /**
  * A Meshtastic manager's per-source outgoing queue (meshtasticManager.ts:1107,
@@ -73,6 +74,14 @@ interface MeshSendManager {
   broadcastNodeInfoToChannel(channel: number, options?: { origin?: SendOrigin }): Promise<unknown>;
 }
 
+/** Meshtastic shared split sender (#6330). Absent on test doubles. */
+interface MeshtasticSplitSendManager {
+  sendAutomatedText(text: string, opts: {
+    destination?: number; channels?: number[]; split: boolean; label: string;
+    replyId?: number; maxAttempts?: number; hopLimitOverride?: number; direct?: boolean;
+  }): Promise<{ ok: boolean; totalParts: number; truncated: boolean }>;
+}
+
 /** MeshCore companion managers send via a different method signature. */
 interface MeshCoreSendManager {
   /** Cap-fitting, optionally splitting sender (#6316). Absent on test doubles. */
@@ -117,7 +126,7 @@ function mgr(sourceId: string | null): MeshSendManager {
  * `{{ trigger.text }}` (a relayed LXMF reply, a script result) went to the
  * radio and never delivered (#6202).
  */
-const MESHTASTIC_TEXT_MAX_BYTES = 200;
+const MESHTASTIC_TEXT_MAX_BYTES = MESHTASTIC_MAX_TEXT_BYTES;
 function truncateForMeshtastic(text: string): string {
   const bytes = utf8ByteLength(text);
   if (bytes <= MESHTASTIC_TEXT_MAX_BYTES) return text;
@@ -163,6 +172,25 @@ async function sendTextVia(
   if (raw && typeof raw.sendTextMessage === 'function') {
     // Meshtastic has no scope/region concept — scopeOverride is dropped.
     const dest = typeof destination === 'number' ? destination : undefined;
+    // #6330: split into up to 3 marked parts when the action asks for it,
+    // through the same shared sender as MeshCore. A queued DM (maxAttempts)
+    // keeps the queue; every other send goes direct, 10 s between parts.
+    const splitter = raw as Partial<MeshtasticSplitSendManager>;
+    if (splitLongMessages === true && typeof splitter.sendAutomatedText === 'function') {
+      const queued = maxAttempts != null && dest != null && hopLimitOverride !== 0;
+      const res = await splitter.sendAutomatedText(text, {
+        ...(dest != null ? { destination: dest } : { channels: [channel] }),
+        split: true,
+        label: 'Automation',
+        replyId,
+        hopLimitOverride,
+        ...(queued ? { maxAttempts } : { direct: true }),
+      });
+      if (!res.ok) {
+        throw new Error(`source "${sourceId}" failed to send the Meshtastic message (cannot transmit or send rejected)`);
+      }
+      return res.totalParts > 1 || res.truncated ? { ok: true, parts: res.totalParts, truncated: res.truncated } : true;
+    }
     const body = truncateForMeshtastic(text);
     // #4340 Phase 3. Opt-in ONLY: absent maxAttempts, a channel send, or a
     // MeshCore source all take the unchanged direct path below.

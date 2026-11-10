@@ -94,6 +94,6 @@ describe('MeshCoreManager.sendAutomatedText', () => {
   it('sent text equals the planned text', async () => {
     const { m, sends } = make();
     await m.sendAutomatedText('x'.repeat(300), { toPublicKey: 'aa', split: false, label: 't' });
-    expect(sends[0].text).toBe('x'.repeat(160));
+    expect(sends[0].text).toBe(`${'x'.repeat(157)}...`); // cut ends in "..." (#6330)
   });
 });

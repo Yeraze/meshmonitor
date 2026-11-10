@@ -25,6 +25,7 @@ import {
   editableTimerChannels,
 } from './timer-triggers/timerTriggerModel';
 import apiService from '../services/api';
+import { SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../utils/messageSplitLimits';
 import styles from './TimerTriggersSection.module.css';
 
 interface TimerTriggersSectionProps {
@@ -214,6 +215,16 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
       if (!response.ok) {
         if (response.status === 403) {
           showToast(t('common.permission_denied', 'Permission denied'), 'error');
+          return;
+        }
+        // A split timer that fires faster than every 5 minutes (#6330).
+        const body = await response.json().catch(() => null) as { code?: string } | null;
+        if (body?.code === 'SPLIT_TIMER_INTERVAL_TOO_SHORT') {
+          showToast(t(
+            'automation.split_long.timer_min_interval',
+            'A timer that splits long messages needs an interval of at least {{minutes}} minutes.',
+            { minutes: SPLIT_TIMER_MIN_INTERVAL_MINUTES },
+          ), 'error');
           return;
         }
         throw new Error(`Server returned ${response.status}`);

@@ -88,3 +88,16 @@ describe('newTimerTrigger (#6230)', () => {
     expect(newTimerTrigger().channels).toEqual([0]);
   });
 });
+
+describe('finalizeTimerTrigger — split long messages (#6330)', () => {
+  it('keeps multiline on a timer with mesh output', () => {
+    expect(finalizeTimerTrigger(base({ multiline: true })).multiline).toBe(true);
+  });
+  it('drops multiline for a script with no mesh output', () => {
+    const tr = base({ responseType: 'script', scriptPath: '/data/scripts/a.py', response: undefined, channels: ['none'], multiline: true });
+    expect(finalizeTimerTrigger(tr).multiline).toBeUndefined();
+  });
+  it('leaves multiline off by default', () => {
+    expect(finalizeTimerTrigger(base({})).multiline).toBeUndefined();
+  });
+});

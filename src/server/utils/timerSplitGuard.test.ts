@@ -16,4 +16,9 @@ describe('findSplitTimerTooFrequent', () => {
     expect(findSplitTimerTooFrequent([{ id: 'a', multiline: true, scheduleType: 'cron', cronExpression: '* * * * *', responseType: 'text' }])?.id).toBe('a');
     expect(findSplitTimerTooFrequent([{ id: 'a', multiline: true, scheduleType: 'cron', cronExpression: '*/10 * * * *', responseType: 'text' }])).toBeUndefined();
   });
+  it('reads a Meshtastic timer (cron, no scheduleType) as cron (#6330)', () => {
+    expect(findSplitTimerTooFrequent([{ id: 'm', multiline: true, cronExpression: '*/2 * * * *', responseType: 'text' }])).toEqual({ id: 'm', minutes: 2 });
+    expect(findSplitTimerTooFrequent([{ id: 'm', multiline: true, cronExpression: '0 * * * *', responseType: 'script' }])).toBeUndefined();
+    expect(findSplitTimerTooFrequent([{ id: 'm', cronExpression: '* * * * *', responseType: 'text' }])).toBeUndefined();
+  });
 });

@@ -130,7 +130,7 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
       await onChannel(manager);
       await vi.advanceTimersByTimeAsync(PART_DELAY_MS * 5);
       expect(sends).toHaveLength(1);
-      expect(sends[0].text).toBe('x'.repeat(127));
+      expect(sends[0].text).toBe(`${'x'.repeat(124)}...`); // cut ends in "..." (#6330)
       expect(sends[0].channel).toBe(1);
       expect(sends[0].autoRetry).toBe(true);
     });
@@ -138,14 +138,14 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
     it('treats an explicit "false" the same as an unset key', async () => {
       const { manager, sends } = makeManager({ reply: 'x'.repeat(400), split: false });
       await onChannel(manager);
-      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(127)]);
+      expect(sends.map((s) => s.text)).toEqual([`${'x'.repeat(124)}...`]);
     });
 
     it('truncates a DM reply to the DM cap (160 bytes)', async () => {
       const { manager, sends } = makeManager({ reply: 'x'.repeat(400) });
       await asDm(manager);
       expect(sends).toHaveLength(1);
-      expect(sends[0].text).toBe('x'.repeat(160));
+      expect(sends[0].text).toBe(`${'x'.repeat(157)}...`);
       expect(sends[0].dest).toBe(SENDER_KEY);
     });
 
@@ -181,10 +181,10 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
     });
 
     it('never halves a multi-byte character at the cap', async () => {
-      // 126 ASCII bytes then an emoji that straddles the 127-byte cap.
-      const { manager, sends } = makeManager({ reply: `${'x'.repeat(126)}😀 tail` });
+      // An emoji that straddles the 124-byte room left before the "..." (#6330).
+      const { manager, sends } = makeManager({ reply: `${'x'.repeat(122)}😀 tail` });
       await onChannel(manager);
-      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(126)]);
+      expect(sends.map((s) => s.text)).toEqual([`${'x'.repeat(122)}...`]);
     });
 
     it('stores the same text it put on air', async () => {
@@ -192,8 +192,8 @@ describe('MeshCoreManager — Auto-Ack long replies (#5564)', () => {
       const stored: string[] = [];
       manager.on('message', (msg: MeshCoreMessage) => stored.push(msg.text));
       await onChannel(manager);
-      expect(sends.map((s) => s.text)).toEqual(['x'.repeat(127)]);
-      expect(stored).toEqual(['x'.repeat(127)]);
+      expect(sends.map((s) => s.text)).toEqual([`${'x'.repeat(124)}...`]);
+      expect(stored).toEqual([`${'x'.repeat(124)}...`]);
     });
   });
 

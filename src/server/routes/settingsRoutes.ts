@@ -78,6 +78,8 @@ import {
 import { clampIntervalSetting, GEOFENCE_WHILE_INSIDE_MINUTES } from '../utils/schedulerInterval.js';
 import { GEOFENCE_RADIUS_KM_MAX } from '../../utils/geofenceLimits.js';
 import { keepServerRunState, parseStoredTriggers } from '../utils/timerRunState.js';
+import { findSplitTimerTooFrequent } from '../utils/timerSplitGuard.js';
+import { SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/messageSplitLimits.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -957,6 +959,14 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
           if (trigger.enabled !== undefined && typeof trigger.enabled !== 'boolean') {
             return res.status(400).json({ error: 'enabled must be a boolean' });
           }
+        }
+
+        // A timer that splits long messages must fire at most every 5 minutes
+        // (#6330, same floor as MeshCore #6316).
+        const tooFast = findSplitTimerTooFrequent(triggers);
+        if (tooFast) {
+          return fail(res, 400, 'SPLIT_TIMER_INTERVAL_TOO_SHORT',
+            `Trigger ${tooFast.id}: a timer that splits long messages needs an interval of at least ${SPLIT_TIMER_MIN_INTERVAL_MINUTES} minutes`);
         }
       } catch (error) {
         return res.status(400).json({ error: 'Invalid JSON format for timerTriggers' });
