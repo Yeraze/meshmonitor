@@ -413,5 +413,6 @@ export const deviceHealthTemplate: AutomationTemplate = {
   icon: 'notifications',
   tags: ['Notifications', 'Health'],
   params: PARAMS,
+  multi: true,
   build,
 };

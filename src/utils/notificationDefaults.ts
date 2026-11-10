@@ -45,6 +45,9 @@ export interface NotificationPreferenceDefaults {
   mutedDMs: Array<{ nodeUuid: string; muteUntil: number | null }>;
   messageTitleTemplate: string | null;
   messageBodyTemplate: string | null;
+  /** Message text length (#6278): Web Push / desktop and Apprise. null = 100. */
+  messageTextMaxPush: number | null;
+  messageTextMaxApprise: number | null;
 }
 
 /**
@@ -90,5 +93,7 @@ export function defaultNotificationPreferences(): NotificationPreferenceDefaults
     // null = the built-in message-notification template (#5593).
     messageTitleTemplate: null,
     messageBodyTemplate: null,
+    messageTextMaxPush: null,
+    messageTextMaxApprise: null,
   };
 }

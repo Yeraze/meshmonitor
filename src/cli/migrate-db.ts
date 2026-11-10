@@ -96,6 +96,9 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
     // #5593 message-notification templates — same reason as the waypoint four.
     message_title_template: 'messageTitleTemplate',
     message_body_template: 'messageBodyTemplate',
+    // #6278 message text length
+    message_text_max_push: 'messageTextMaxPush',
+    message_text_max_apprise: 'messageTextMaxApprise',
     prefix_with_node_name: 'prefixWithNodeName',
     enable_apprise: 'appriseEnabled',             // Old: enable_apprise → New: appriseEnabled
     apprise_urls: 'appriseUrls',

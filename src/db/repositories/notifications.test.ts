@@ -125,6 +125,8 @@ const POSTGRES_CREATE = `
     "mutedDMs" TEXT,
     "messageTitleTemplate" TEXT,
     "messageBodyTemplate" TEXT,
+    "messageTextMaxPush" INTEGER,
+    "messageTextMaxApprise" INTEGER,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
     UNIQUE("userId", "sourceId")
@@ -269,6 +271,8 @@ const MYSQL_CREATE = `
     mutedDMs TEXT,
     messageTitleTemplate TEXT,
     messageBodyTemplate TEXT,
+    messageTextMaxPush INT,
+    messageTextMaxApprise INT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
@@ -666,6 +670,37 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       });
     });
 
+    it('message text length (#6278) - default NULL, round-trip, cleared, and isolated per source', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+
+      await repo.saveUserPreferences(1, makeDefaultPrefs(), 'src-b');
+      expect(await repo.getUserPreferences(1, 'src-b')).toMatchObject({
+        messageTextMaxPush: null,
+        messageTextMaxApprise: null,
+      });
+
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ messageTextMaxPush: 250, messageTextMaxApprise: 1000 }), 'src-a');
+      expect(await repo.getUserPreferences(1, 'src-a')).toMatchObject({
+        messageTextMaxPush: 250,
+        messageTextMaxApprise: 1000,
+      });
+      // Source B is untouched by source A's save.
+      expect(await repo.getUserPreferences(1, 'src-b')).toMatchObject({
+        messageTextMaxPush: null,
+        messageTextMaxApprise: null,
+      });
+
+      // Clearing writes NULL back, on the update path too.
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ messageTextMaxPush: null, messageTextMaxApprise: 60 }), 'src-a');
+      expect(await repo.getUserPreferences(1, 'src-a')).toMatchObject({
+        messageTextMaxPush: null,
+        messageTextMaxApprise: 60,
+      });
+    });
+
     it('saveUserPreferences - upserts on duplicate userId', async () => {
       const backend = getBackend();
       if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
@@ -1047,6 +1082,8 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       mutedDMs: [{ nodeUuid: '!aaaa0002', muteUntil: null }],
       messageTitleTemplate: 'A {{ sender }}',
       messageBodyTemplate: 'A {{ text }}',
+      messageTextMaxPush: 250,
+      messageTextMaxApprise: null,
     };
     const ROW_B: NotificationPreferences = {
       enableWebPush: true,
@@ -1076,6 +1113,8 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       mutedDMs: [{ nodeUuid: '!bbbb0003', muteUntil: 4102444800000 }],
       messageTitleTemplate: null,
       messageBodyTemplate: 'B {{ text }}',
+      messageTextMaxPush: null,
+      messageTextMaxApprise: 500,
     };
 
     it('an empty or missing sourceId never returns a source\'s row', async () => {

@@ -166,7 +166,7 @@ class DesktopNotificationService {
 
         // Render AFTER the filter decision (#5593), with the templates of the
         // user this single desktop notification is sent for.
-        const rendered = await renderMessagePayloadForUserAsync(user.id, payload, filterContext.sourceId, filterContext.sourceName);
+        const rendered = await renderMessagePayloadForUserAsync(user.id, payload, filterContext.sourceId, filterContext.sourceName, 'desktop');
         this.send({ ...payload, title: rendered.title, body: rendered.body }, filterContext.sourceId);
         // Only send once — single desktop machine
         return { sent: 1, failed: 0, filtered };

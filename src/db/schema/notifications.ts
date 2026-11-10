@@ -83,6 +83,9 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
   // `{{ token }}` syntax; see src/utils/notificationTemplate.ts.
   messageTitleTemplate: text('message_title_template'),
   messageBodyTemplate: text('message_body_template'),
+  // Message text length per service (#6278). NULL = the default of 100.
+  messageTextMaxPush: integer('message_text_max_push'),
+  messageTextMaxApprise: integer('message_text_max_apprise'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 }, (t) => ({
@@ -121,6 +124,8 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
   mutedDMs: pgText('mutedDMs'),
   messageTitleTemplate: pgText('messageTitleTemplate'),
   messageBodyTemplate: pgText('messageBodyTemplate'),
+  messageTextMaxPush: pgInteger('messageTextMaxPush'),
+  messageTextMaxApprise: pgInteger('messageTextMaxApprise'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 }, (t) => ({
@@ -191,6 +196,8 @@ export const userNotificationPreferencesMysql = mysqlTable('user_notification_pr
   mutedDMs: myText('mutedDMs'),
   messageTitleTemplate: myText('messageTitleTemplate'),
   messageBodyTemplate: myText('messageBodyTemplate'),
+  messageTextMaxPush: myInt('messageTextMaxPush'),
+  messageTextMaxApprise: myInt('messageTextMaxApprise'),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
 }, (t) => ({
