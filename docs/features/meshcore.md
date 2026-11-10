@@ -373,7 +373,7 @@ The counter appears only once the draft is non-empty, turns **yellow at 90%** of
 
 ### Send under another name (API) {#api-sender-names}
 
-An API caller can send a channel message under a name of its own (`senderName` on the send endpoints, see the [REST API](/api/REST_API#send-under-another-name)). This is off by default and needs a source admin to set it up.
+An API caller can send a channel message under a name of its own (`senderName` on the send endpoints, see the [REST API](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/REST_API.md#send-under-another-name)). This is off by default and needs a source admin to set it up.
 
 **Setup.** Open **Device Configuration, API sender names** on a companion source. Turn on *Allow API callers to send under these names* and list up to 16 names, one per line. Saving needs `configuration:write` on the source. Each name is 1 to 31 bytes, with no `:`, no control characters and no leading `#`.
 
