@@ -5997,6 +5997,8 @@
   "meshcore.packets.statsEmpty": "No packets in this window.",
   "meshcore.packets.from": "From",
   "meshcore.packets.openContact": "Open this contact",
+  "meshcore.packets.dirTx": "Sent by this node (own TX)",
+  "meshcore.packets.dirRx": "Heard over the air (RX)",
   "packets.timeWindow.label": "Time window",
   "packets.timeWindow.1h": "Last hour",
   "packets.timeWindow.6h": "Last 6 hours",
