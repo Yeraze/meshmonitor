@@ -1,6 +1,7 @@
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { clampCoverageRetentionDays } from '../../utils/coverage.js';
+import { skipStartupPurgeAfterRestore } from './restoreBootState.js';
 
 /**
  * Retention sweep for `coverage_receptions` (Coverage Report epic #5277,
@@ -42,7 +43,7 @@ class CoverageRetentionService {
 
     this.initialSweepTimer = setTimeout(() => {
       this.initialSweepTimer = null;
-      void this.runCleanup();
+      void this.runStartupCleanup();
     }, this.INITIAL_DELAY_MS);
 
     this.intervalId = setInterval(() => {
@@ -90,6 +91,24 @@ class CoverageRetentionService {
     } catch (error) {
       logger.error('❌ Failed to run Coverage Report retention sweep:', error);
     }
+  }
+
+  /**
+   * The first sweep after boot. Skipped on a boot that restored a backup
+   * (#6354) so restored receptions older than the window survive until the
+   * next hourly sweep; the hourly sweep always runs `runCleanup()` directly.
+   */
+  async runStartupCleanup(): Promise<void> {
+    try {
+      const days = await this.getRetentionDays();
+      if (await skipStartupPurgeAfterRestore('Coverage Report reception', `${days} days`, 'in about 1 hour')) {
+        return;
+      }
+    } catch (error) {
+      logger.error('❌ Coverage retention startup check failed:', error);
+      return;
+    }
+    await this.runCleanup();
   }
 
   /**

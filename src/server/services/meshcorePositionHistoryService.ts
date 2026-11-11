@@ -1,5 +1,6 @@
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { skipStartupPurgeAfterRestore } from './restoreBootState.js';
 
 /**
  * Service for the MeshCore position-history trail (#3852).
@@ -26,7 +27,7 @@ class MeshCorePositionHistoryService {
     }
     logger.debug('🧹 Starting MeshCore position-history cleanup scheduler (runs hourly)');
     // Sweep once shortly after boot, then on the interval.
-    setTimeout(() => void this.runCleanup(), 30_000);
+    setTimeout(() => void this.runStartupCleanup(), 30_000);
     this.cleanupInterval = setInterval(() => {
       void this.runCleanup();
     }, this.CLEANUP_INTERVAL_MS);
@@ -46,6 +47,23 @@ class MeshCorePositionHistoryService {
     } catch (error) {
       logger.error('❌ Failed to cleanup MeshCore position history:', error);
     }
+  }
+
+  /**
+   * The sweep shortly after boot. Skipped on a boot that restored a backup
+   * (#6354); the hourly sweep always calls `runCleanup()` directly.
+   */
+  async runStartupCleanup(): Promise<void> {
+    try {
+      const days = await this.getRetentionDays();
+      if (await skipStartupPurgeAfterRestore('MeshCore position-history', `${days} days`, 'in about 1 hour')) {
+        return;
+      }
+    } catch (error) {
+      logger.error('❌ MeshCore position-history startup check failed:', error);
+      return;
+    }
+    await this.runCleanup();
   }
 
   async getPositionHistory(sourceId: string, publicKey: string, since?: number) {
