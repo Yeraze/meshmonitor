@@ -29,6 +29,7 @@ import { getMeshCoreObserverKeyStore } from './meshcoreObserverKeyStore.js';
 import { getMeshCoreObserverCredentialStore } from './meshcoreObserverCredentialStore.js';
 import { getSourcePkiKeyStore } from './sourcePkiKeyStore.js';
 import { getMeshCoreCredentialStore } from './meshcoreCredentialStore.js';
+import { markRestoreCheckStarted, markRestoreCheckFinished, markRestoredThisBoot } from './restoreBootState.js';
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
 
@@ -80,6 +81,7 @@ class SystemRestoreService {
    */
   markRestoreStarted(): void {
     this.restoreInProgress = true;
+    markRestoreCheckStarted();
     logger.debug('[RestoreService] Restore marked as started');
   }
 
@@ -90,6 +92,7 @@ class SystemRestoreService {
   markRestoreComplete(): void {
     this.restoreInProgress = false;
     this.restoreCompleteResolve();
+    markRestoreCheckFinished();
     logger.debug('[RestoreService] Restore marked as complete');
   }
 
@@ -234,6 +237,9 @@ class SystemRestoreService {
         logger.warn('⚠️  Failed to write restore marker file:', error);
         logger.warn('⚠️  Re-restore protection may not work properly');
       }
+
+      // #6354: the startup retention purges skip their first run on this boot.
+      markRestoredThisBoot();
 
       return {
         success: true,

@@ -33,6 +33,12 @@ vi.mock('../../services/database.js', () => {
 });
 
 import { coverageRetentionService } from './coverageRetentionService.js';
+import {
+  markRestoreCheckStarted,
+  markRestoreCheckFinished,
+  markRestoredThisBoot,
+  resetRestoreBootStateForTests,
+} from './restoreBootState.js';
 
 describe('coverageRetentionService', () => {
   beforeEach(() => {
@@ -154,6 +160,25 @@ describe('coverageRetentionService', () => {
 
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
       expect(purgeOlderThanMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('skips the first sweep on a boot that restored a backup, then sweeps hourly (#6354)', async () => {
+      vi.useFakeTimers();
+      getSettingAsyncMock.mockResolvedValue('7');
+      markRestoreCheckStarted();
+      markRestoredThisBoot();
+      markRestoreCheckFinished();
+      try {
+        coverageRetentionService.start();
+
+        await vi.advanceTimersByTimeAsync(31_000);
+        expect(purgeOlderThanMock).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+        expect(purgeOlderThanMock).toHaveBeenCalledTimes(1);
+      } finally {
+        resetRestoreBootStateForTests();
+      }
     });
 
     it('start() is idempotent — a second call does not double the timers', async () => {

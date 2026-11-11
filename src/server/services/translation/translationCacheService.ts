@@ -19,6 +19,7 @@ import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { setTranslationCache } from './translationCache.js';
 import { DbTranslationCache } from './dbTranslationCache.js';
+import { skipStartupPurgeAfterRestore } from '../restoreBootState.js';
 
 export const TRANSLATION_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const TRANSLATION_CACHE_MAX_UNPINNED = 10_000;
@@ -38,7 +39,7 @@ class TranslationCacheService {
 
     this.initialTimer = setTimeout(() => {
       this.initialTimer = null;
-      void this.runPrune();
+      void this.runStartupPrune();
     }, this.INITIAL_DELAY_MS);
 
     this.intervalId = setInterval(() => {
@@ -55,6 +56,17 @@ class TranslationCacheService {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+  }
+
+  /**
+   * The prune shortly after boot. Skipped on a boot that restored a backup
+   * (#6354); the hourly prune always calls `runPrune()` directly.
+   */
+  async runStartupPrune(): Promise<void> {
+    if (await skipStartupPurgeAfterRestore('translation cache', '30 days since last use', 'in about 1 hour')) {
+      return;
+    }
+    await this.runPrune();
   }
 
   /** One prune pass. Never throws. */

@@ -91,6 +91,7 @@ vi.mock('mysql2/promise', () => ({
 
 import { systemRestoreService, RestoreColumnFilter } from './systemRestoreService.js';
 import { logger } from '../../utils/logger.js';
+import { wasRestoredThisBoot, resetRestoreBootStateForTests } from './restoreBootState.js';
 
 // ─── TX-disabled exit criterion 2 (#4294) ─────────────────────────────────────
 // Restore is a pure DB row restore — it never touches a source manager, so it
@@ -177,6 +178,26 @@ describe('systemRestoreService state management', () => {
     const waitPromise = systemRestoreService.waitForRestoreComplete();
     systemRestoreService.markRestoreComplete();
     await expect(waitPromise).resolves.toBeUndefined();
+  });
+});
+
+// ─── Restore-this-boot signal (#6354) ─────────────────────────────────────────
+
+describe('systemRestoreService restore-this-boot signal (#6354)', () => {
+  beforeEach(() => resetRestoreBootStateForTests());
+
+  it('a successful restore marks this boot as restored', async () => {
+    fsMock.readFileSync.mockReturnValue('[]');
+    const result = await systemRestoreService.restoreFromBackup('valid-backup');
+    expect(result.success).toBe(true);
+    expect(wasRestoredThisBoot()).toBe(true);
+  });
+
+  it('a failed restore does not', async () => {
+    mockBackupService.validateBackup.mockResolvedValue({ valid: false, errors: ['nope'] });
+    const result = await systemRestoreService.restoreFromBackup('bad-backup');
+    expect(result.success).toBe(false);
+    expect(wasRestoredThisBoot()).toBe(false);
   });
 });
 
