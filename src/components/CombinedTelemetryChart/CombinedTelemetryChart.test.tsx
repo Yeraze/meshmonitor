@@ -143,4 +143,53 @@ describe('CombinedTelemetryChart', () => {
     expect(lines[1]).toContain('Roof');
     expect(lines[3]).toContain('MQTT');
   });
+
+  describe('fixed Y-axis range (#6348)', () => {
+    it('offers no range editor without a save handler', () => {
+      renderChart(temperature);
+      expect(screen.queryByRole('button', { name: 'chart_y_range.title' })).toBeNull();
+    });
+
+    it('shows stored bounds in the display unit and saves edits back in the stored unit', () => {
+      const onYRangeChange = vi.fn();
+      renderChart(temperature, { temperatureUnit: 'F', yRange: { min: 0, max: 100 }, onYRangeChange });
+      fireEvent.click(screen.getByRole('button', { name: 'chart_y_range.title' }));
+
+      const min = screen.getByLabelText('chart_y_range.min') as HTMLInputElement;
+      const max = screen.getByLabelText('chart_y_range.max') as HTMLInputElement;
+      expect(min.value).toBe('32');
+      expect(max.value).toBe('212');
+
+      fireEvent.change(min, { target: { value: '50' } });
+      fireEvent.change(max, { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: 'chart_y_range.apply' }));
+
+      expect(onYRangeChange).toHaveBeenCalledTimes(1);
+      const saved = onYRangeChange.mock.calls[0][0];
+      expect(saved.min).toBeCloseTo(10);
+      expect(saved.max).toBeUndefined();
+      // Editor closes on apply.
+      expect(screen.queryByLabelText('chart_y_range.min')).toBeNull();
+    });
+
+    it('refuses min >= max and keeps the editor open', () => {
+      const onYRangeChange = vi.fn();
+      renderChart(temperature, { onYRangeChange });
+      fireEvent.click(screen.getByRole('button', { name: 'chart_y_range.title' }));
+      fireEvent.change(screen.getByLabelText('chart_y_range.min'), { target: { value: '5' } });
+      fireEvent.change(screen.getByLabelText('chart_y_range.max'), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: 'chart_y_range.apply' }));
+
+      expect(onYRangeChange).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent('chart_y_range.order_error');
+    });
+
+    it('resets to auto', () => {
+      const onYRangeChange = vi.fn();
+      renderChart(temperature, { yRange: { min: 1 }, onYRangeChange });
+      fireEvent.click(screen.getByRole('button', { name: 'chart_y_range.title' }));
+      fireEvent.click(screen.getByRole('button', { name: 'chart_y_range.reset' }));
+      expect(onYRangeChange).toHaveBeenCalledWith(null);
+    });
+  });
 });

@@ -65,6 +65,7 @@ describe('per-source settings key allowlist invariants', () => {
       'telemetryCustomOrder',
       'dashboardWidgets',
       'dashboardSolarVisibility',
+      'dashboardChartYRange',
       'autoKeyManagementIntervalMinutes',
       'autoKeyManagementMaxExchanges',
       'autoKeyManagementAutoPurge',
