@@ -757,6 +757,24 @@ describe('ApiService BASE_URL Support', () => {
       expect(mockFetch).toHaveBeenCalledWith('/api/device-config');
     });
 
+    // #6353: /api/config must be read for the viewed source, or the node
+    // address falls back to the env default (192.168.1.100).
+    it('getConfig should scope /api/config to the given source', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ meshtasticNodeIp: '192.0.2.7' }));
+
+      await apiService.getConfig('src a');
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/config?sourceId=src%20a');
+    });
+
+    it('getConfig should read the unscoped /api/config with no source', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({}));
+
+      await apiService.getConfig(null);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/config');
+    });
+
     it('getCurrentConfig should call current config endpoint', async () => {
       mockFetch.mockResolvedValue(createMockResponse({ config: {} }));
 

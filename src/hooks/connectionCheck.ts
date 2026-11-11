@@ -36,6 +36,31 @@ export function connectionCheckDelay(unchangedChecks: number): number {
 }
 
 /**
+ * `host:port` for a node address, or '' when the host is not known. A host
+ * that already names a port is kept as is; a bare IPv6 host is bracketed. An
+ * unresolved placeholder ('Loading...') counts as unknown.
+ */
+export function formatNodeAddress(host: string | null | undefined, port: number | null | undefined): string {
+  const h = typeof host === 'string' ? host.trim() : '';
+  if (!h || h === 'Loading...') return '';
+  if (port === null || port === undefined || !Number.isFinite(port) || port <= 0) return h;
+  if (/^\[[^\]]+\]:\d+$/.test(h) || /^[^:]+:\d+$/.test(h)) return h;
+  if (h.includes(':') && !h.startsWith('[')) return `[${h}]:${port}`;
+  return `${h}:${port}`;
+}
+
+/**
+ * The banner text for a source the server says is not connected. Names the
+ * viewed source's address when it is known; leaves the address out otherwise,
+ * so a wrong one (such as the env default) never shows (#3611, #6353).
+ */
+export function cannotConnectMessage(address: string): string {
+  return address
+    ? `Cannot connect to Meshtastic node at ${address}. Please ensure the node is reachable and has HTTP API enabled.`
+    : 'Cannot connect to the Meshtastic node. Please ensure the node is reachable and has HTTP API enabled.';
+}
+
+/**
  * Read one source's link status from `GET /api/connection`, the lightweight
  * endpoint that reports what `/api/poll`'s `connection` section reports (same
  * manager lookup, same address rule), without the data sections.
