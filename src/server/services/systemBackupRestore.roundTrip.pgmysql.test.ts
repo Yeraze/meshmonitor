@@ -436,6 +436,38 @@ function defineSuite(name: string, available: boolean, open: () => Promise<Backe
       });
     });
 
+    describe('a backup with columns the schema does not have (#6350)', () => {
+      it('skips the unknown columns, warns once, and keeps the snake_case values', async () => {
+        const legacy = dir('legacy-columns');
+        const rows = rowsOf(backupDir, 'user_map_preferences').map((line) => JSON.parse(line) as SeedRow);
+        rows.sort((a, b) => Number(a.id) - Number(b.id));
+        const ids = rows.map((r) => Number(r.id));
+        rows[0] = { ...rows[0], show_accuracy_regions: true, showAccuracyRegions: false, sortDirection: 'asc', sortBy: 'name' };
+        const { show_accuracy_regions: _omitted, ...second } = rows[1];
+        rows[1] = { ...second, showMeshCoreNodes: true };
+        rows[2] = Object.fromEntries(Object.entries({ ...rows[2], show_accuracy_regions: true }).reverse());
+        fs.writeFileSync(path.join(legacy, 'user_map_preferences.json'), JSON.stringify(rows));
+
+        const { result, warned } = await captureWarnings(() => backend.restore(legacy, ['user_map_preferences']));
+        expect(result).toEqual({ tablesRestored: 1, rowsRestored: 3 });
+
+        const restored = new Map(
+          (await backend.query(
+            `SELECT ${backend.q('id')} AS id, ${backend.q('show_accuracy_regions')} AS v FROM ${backend.q('user_map_preferences')}`,
+          )).map((r) => [Number(r.id), r.v === true || Number(r.v) === 1]),
+        );
+        expect(restored.get(ids[0])).toBe(true);
+        expect(restored.get(ids[1])).toBe(false); // omitted: the column default
+        expect(restored.get(ids[2])).toBe(true);
+
+        const lines = warned.split('\n').filter((l) => l.includes('Restore of user_map_preferences'));
+        expect(lines).toHaveLength(1);
+        for (const col of ['showAccuracyRegions', 'sortDirection', 'sortBy', 'showMeshCoreNodes']) {
+          expect(lines[0]).toContain(col);
+        }
+      });
+    });
+
     describe('restore is all-or-nothing', () => {
       it('a failure in the last table leaves every earlier table as it was', async () => {
         await wipe();

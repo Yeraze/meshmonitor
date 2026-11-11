@@ -502,21 +502,6 @@ class SystemRestoreService {
   }
 
   /**
-   * The column list for a table's INSERT, taken from the first row of its
-   * file. Column names are interpolated into the statement, so anything that
-   * is not a plain SQL identifier is rejected, which rolls the restore back.
-   */
-  private insertColumns(tableName: string, row: BackupRow): string[] {
-    const columns = Object.keys(row);
-    for (const col of columns) {
-      if (!BACKUP_IDENTIFIER_PATTERN.test(col)) {
-        throw new Error(`Invalid column name in backup for table ${tableName}: ${col}`);
-      }
-    }
-    return columns;
-  }
-
-  /**
    * Restore database using SQLite (synchronous transaction)
    */
   private restoreSQLite(backupPath: string, tables: string[]): { rowsRestored: number; tablesRestored: number } {
@@ -536,24 +521,39 @@ class SystemRestoreService {
             continue;
           }
 
+          // The live table's columns (#6350): backup columns it lacks are
+          // skipped rather than failing the INSERT.
+          const live = (db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>)
+            .map(c => c.name);
+          if (live.length === 0) {
+            logger.warn(`⚠️  Skipping table not in database: ${tableName}`);
+            continue;
+          }
+          // SQLite matches column names without regard to case.
+          const filter = new RestoreColumnFilter(tableName, live, true);
+
           // Clear existing table data
           db.prepare(`DELETE FROM ${tableName}`).run();
 
-          // Insert backup data, one row at a time off the file.
-          let columns: string[] | null = null;
-          let stmt: { run: (...values: unknown[]) => unknown } | null = null;
+          // Insert backup data, one row at a time off the file. Rows that
+          // carry a different column set get their own statement.
+          const statements = new Map<string, { run: (...values: unknown[]) => unknown }>();
           let rows = 0;
           for (const row of readTableFileSync(tableFile)) {
-            if (!columns || !stmt) {
-              columns = this.insertColumns(tableName, row);
+            const columns = filter.columnsFor(row);
+            const key = columns.join(',');
+            let stmt = statements.get(key);
+            if (!stmt) {
               const placeholders = columns.map(() => '?').join(', ');
               stmt = db.prepare<unknown[]>(
                 `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`
               );
+              statements.set(key, stmt);
             }
             stmt.run(...columns.map(col => toSqliteValue(row[col])));
             rows++;
           }
+          filter.logSkipped();
 
           totalRowsRestored += rows;
           tablesRestored++;
@@ -594,32 +594,35 @@ class SystemRestoreService {
             continue;
           }
 
-          // Check if table exists in PostgreSQL
-          const tableExists = await client.query(
-            `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1)`,
+          // The live table's columns (#6350). None means the table is absent.
+          const liveResult = await client.query(
+            `SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position`,
             [tableName]
           );
-          if (!tableExists.rows[0].exists) {
+          const live = (liveResult.rows as Array<{ column_name: string }>).map(r => r.column_name);
+          if (live.length === 0) {
             logger.warn(`⚠️  Skipping table not in database: ${tableName}`);
             continue;
           }
+          // Quoted PostgreSQL identifiers are case-sensitive.
+          const filter = new RestoreColumnFilter(tableName, live, false);
 
           // Clear existing table data (quote table name for case-sensitivity)
           await client.query(`DELETE FROM "${tableName}"`);
 
           // Insert backup data in multi-row statements, streamed off the file.
-          let columns: string[] | null = null;
-          let quotedColumns = '';
+          // A batch holds rows with one column set; a row with another set
+          // flushes it first.
           let rows = 0;
-          let batchRows = MAX_INSERT_ROWS;
-          const flush = async (batch: BackupRow[]): Promise<void> => {
-            if (batch.length === 0 || !columns) return;
-            const cols = columns;
+          const flush = async (batch: BackupRow[], cols: string[]): Promise<void> => {
+            if (batch.length === 0) return;
             // PostgreSQL uses $1, $2, etc. for placeholders
             const tuples = batch
               .map((_, r) => `(${cols.map((__, c) => `$${r * cols.length + c + 1}`).join(', ')})`)
               .join(', ');
             const values = batch.flatMap(row => cols.map(col => row[col] ?? null));
+            // Quote column names to preserve case-sensitivity.
+            const quotedColumns = cols.map(c => `"${c}"`).join(', ');
             // OVERRIDING SYSTEM VALUE: several tables declare `id` as GENERATED
             // ALWAYS AS IDENTITY, which refuses an explicit id without it. The
             // clause is a no-op for every other table.
@@ -631,20 +634,22 @@ class SystemRestoreService {
           };
 
           let pending: BackupRow[] = [];
+          let pendingColumns: string[] = [];
           for (const row of readTableFileSync(tableFile)) {
-            if (!columns) {
-              columns = this.insertColumns(tableName, row);
-              // Quote column names to preserve case-sensitivity
-              quotedColumns = columns.map(c => `"${c}"`).join(', ');
-              batchRows = insertBatchRows(columns.length);
+            const columns = filter.columnsFor(row);
+            if (pending.length > 0 && columns.join(',') !== pendingColumns.join(',')) {
+              await flush(pending, pendingColumns);
+              pending = [];
             }
+            pendingColumns = columns;
             pending.push(row);
-            if (pending.length >= batchRows) {
-              await flush(pending);
+            if (pending.length >= insertBatchRows(columns.length)) {
+              await flush(pending, pendingColumns);
               pending = [];
             }
           }
-          await flush(pending);
+          await flush(pending, pendingColumns);
+          filter.logSkipped();
 
           totalRowsRestored += rows;
           tablesRestored++;
@@ -717,31 +722,32 @@ class SystemRestoreService {
             continue;
           }
 
-          // Check if table exists in MySQL
-          const [tableCheck] = await connection.query(
-            `SELECT COUNT(*) as cnt FROM information_schema.tables WHERE table_schema = ? AND table_name = ?`,
+          // The live table's columns (#6350). None means the table is absent.
+          const [liveRows] = await connection.query(
+            `SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
             [parsed.database, tableName]
           );
-          const tableExists = (tableCheck as any[])[0]?.cnt > 0;
-          if (!tableExists) {
+          const live = (liveRows as Array<{ name: string }>).map(r => r.name);
+          if (live.length === 0) {
             logger.warn(`⚠️  Skipping table not in database: ${tableName}`);
             continue;
           }
+          // MySQL matches column names without regard to case.
+          const filter = new RestoreColumnFilter(tableName, live, true);
 
           // Clear existing table data (use backticks for MySQL identifiers)
           await connection.execute(`DELETE FROM \`${tableName}\``);
 
           // Insert backup data in multi-row statements, streamed off the file.
-          let columns: string[] | null = null;
-          let quotedColumns = '';
+          // A batch holds rows with one column set; a row with another set
+          // flushes it first.
           let rows = 0;
-          let batchRows = MAX_INSERT_ROWS;
-          const flush = async (batch: BackupRow[]): Promise<void> => {
-            if (batch.length === 0 || !columns) return;
-            const cols = columns;
+          const flush = async (batch: BackupRow[], cols: string[]): Promise<void> => {
+            if (batch.length === 0) return;
             // MySQL uses ? for placeholders like SQLite
             const tuple = `(${cols.map(() => '?').join(', ')})`;
             const values = batch.flatMap(row => cols.map(col => row[col] ?? null));
+            const quotedColumns = cols.map(c => `\`${c}\``).join(', ');
             await connection.query(
               `INSERT INTO \`${tableName}\` (${quotedColumns}) VALUES ${batch.map(() => tuple).join(', ')}`,
               values
@@ -750,19 +756,22 @@ class SystemRestoreService {
           };
 
           let pendingMysql: BackupRow[] = [];
+          let pendingColumns: string[] = [];
           for (const row of readTableFileSync(tableFile)) {
-            if (!columns) {
-              columns = this.insertColumns(tableName, row);
-              quotedColumns = columns.map(c => `\`${c}\``).join(', ');
-              batchRows = insertBatchRows(columns.length);
+            const columns = filter.columnsFor(row);
+            if (pendingMysql.length > 0 && columns.join(',') !== pendingColumns.join(',')) {
+              await flush(pendingMysql, pendingColumns);
+              pendingMysql = [];
             }
+            pendingColumns = columns;
             pendingMysql.push(row);
-            if (pendingMysql.length >= batchRows) {
-              await flush(pendingMysql);
+            if (pendingMysql.length >= insertBatchRows(columns.length)) {
+              await flush(pendingMysql, pendingColumns);
               pendingMysql = [];
             }
           }
-          await flush(pendingMysql);
+          await flush(pendingMysql, pendingColumns);
+          filter.logSkipped();
 
           totalRowsRestored += rows;
           tablesRestored++;
@@ -811,6 +820,82 @@ class SystemRestoreService {
     } catch {
       return null;
     }
+  }
+}
+
+/**
+ * Picks, for each backup row, the columns its INSERT may name (#6350).
+ *
+ * A backup column the live table lacks is skipped, not inserted: an old
+ * SQLite install can carry legacy columns (camelCase `showAccuracyRegions`
+ * beside the authoritative `show_accuracy_regions`) that a fresh schema never
+ * had. `logSkipped()` warns once per table with every skipped name.
+ *
+ * Every backup column name is still checked against BACKUP_IDENTIFIER_PATTERN
+ * first, and anything else is rejected, which rolls the restore back.
+ *
+ * The choice is per row, so rows with differing key sets each insert what
+ * they carry, and a column a row omits takes the table's default. Columns
+ * come back in the live table's order, so key order in the file does not
+ * matter.
+ */
+export class RestoreColumnFilter {
+  /** Live column name (lower-cased when case-insensitive) to its position. */
+  private readonly live = new Map<string, number>();
+  private readonly decided = new Map<string, boolean>();
+  private readonly claimed = new Set<string>();
+  private readonly skipped: string[] = [];
+
+  constructor(
+    private readonly tableName: string,
+    liveColumns: string[],
+    private readonly caseInsensitive: boolean,
+  ) {
+    liveColumns.forEach((name, i) => this.live.set(this.norm(name), i));
+  }
+
+  /** The row's columns to insert, in live-table order. */
+  columnsFor(row: BackupRow): string[] {
+    const keep: string[] = [];
+    for (const key of Object.keys(row)) {
+      let ok = this.decided.get(key);
+      if (ok === undefined) {
+        ok = this.decide(key);
+        this.decided.set(key, ok);
+      }
+      if (ok) keep.push(key);
+    }
+    if (keep.length === 0) {
+      throw new Error(`Backup row for table ${this.tableName} has no column the table has`);
+    }
+    return keep.sort((a, b) => (this.live.get(this.norm(a)) ?? 0) - (this.live.get(this.norm(b)) ?? 0));
+  }
+
+  /** Warn once with every backup column this table skipped. */
+  logSkipped(): void {
+    if (this.skipped.length === 0) return;
+    logger.warn(
+      `⚠️  Restore of ${this.tableName}: skipped backup column(s) the table does not have: ${this.skipped.join(', ')}`
+    );
+  }
+
+  private decide(key: string): boolean {
+    if (!BACKUP_IDENTIFIER_PATTERN.test(key)) {
+      throw new Error(`Invalid column name in backup for table ${this.tableName}: ${key}`);
+    }
+    const norm = this.norm(key);
+    // A second spelling of a claimed column (a case variant) would name the
+    // column twice in one INSERT.
+    if (!this.live.has(norm) || this.claimed.has(norm)) {
+      this.skipped.push(key);
+      return false;
+    }
+    this.claimed.add(norm);
+    return true;
+  }
+
+  private norm(name: string): string {
+    return this.caseInsensitive ? name.toLowerCase() : name;
   }
 }
 

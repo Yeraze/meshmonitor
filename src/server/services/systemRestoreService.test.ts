@@ -89,7 +89,8 @@ vi.mock('mysql2/promise', () => ({
 
 // ─── Import service AFTER mocks ───────────────────────────────────────────────
 
-import { systemRestoreService } from './systemRestoreService.js';
+import { systemRestoreService, RestoreColumnFilter } from './systemRestoreService.js';
+import { logger } from '../../utils/logger.js';
 
 // ─── TX-disabled exit criterion 2 (#4294) ─────────────────────────────────────
 // Restore is a pure DB row restore — it never touches a source manager, so it
@@ -295,6 +296,14 @@ describe('systemRestoreService.restoreFromBackup — coverage_receptions (PG seq
       if (typeof p === 'string' && p.endsWith('coverage_receptions.json')) return JSON.stringify([row]);
       return '[]';
     });
+    // The live table's columns, read before the INSERT (#6350).
+    const liveColumns = ['id', ...Object.keys(row)].map((name) => ({ name }));
+    const stmtMock = { all: vi.fn().mockReturnValue([]), get: vi.fn().mockReturnValue(null), run: vi.fn() };
+    mockDb.db.prepare.mockImplementation((sql: string) =>
+      sql.startsWith('PRAGMA table_info(coverage_receptions)')
+        ? { ...stmtMock, all: vi.fn().mockReturnValue(liveColumns) }
+        : stmtMock,
+    );
 
     const result = await systemRestoreService.restoreFromBackup('survey-backup');
     expect(result.success).toBe(true);
@@ -326,10 +335,63 @@ describe('systemRestoreService.restoreFromBackup — coverage_receptions (PG seq
       (p: unknown) => typeof p === 'string' && p.endsWith('coverage_receptions.json')
     );
     fsMock.readFileSync.mockReturnValue('[]');
+    const stmtMock = { all: vi.fn().mockReturnValue([{ name: 'id' }]), get: vi.fn().mockReturnValue(null), run: vi.fn() };
+    mockDb.db.prepare.mockReturnValue(stmtMock);
 
     const result = await systemRestoreService.restoreFromBackup('empty-survey-backup');
     expect(result.success).toBe(true);
     expect(result.tablesRestored).toBe(1);
+  });
+});
+
+// ─── RestoreColumnFilter (#6350) ─────────────────────────────────────────────
+
+describe('RestoreColumnFilter', () => {
+  it('keeps only columns the live table has, in live-table order', () => {
+    const filter = new RestoreColumnFilter('user_map_preferences', ['id', 'user_id', 'show_paths'], false);
+    expect(filter.columnsFor({ show_paths: 0, showAccuracyRegions: 1, id: 1, user_id: 2 })).toEqual([
+      'id', 'user_id', 'show_paths',
+    ]);
+  });
+
+  it('decides per row, so rows with differing key sets each insert what they carry', () => {
+    const filter = new RestoreColumnFilter('t', ['id', 'a', 'b'], false);
+    expect(filter.columnsFor({ id: 1, a: 1 })).toEqual(['id', 'a']);
+    expect(filter.columnsFor({ id: 2, b: 1, legacy: 1 })).toEqual(['id', 'b']);
+  });
+
+  it('warns once per table with every skipped column', () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      const filter = new RestoreColumnFilter('t', ['id'], false);
+      filter.columnsFor({ id: 1, centerLat: null });
+      filter.columnsFor({ id: 2, centerLat: null, sortBy: 'name' });
+      filter.logSkipped();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('centerLat, sortBy');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('matches case-insensitively when asked, without naming a column twice', () => {
+    const filter = new RestoreColumnFilter('t', ['id', 'sourceId'], true);
+    expect(filter.columnsFor({ id: 1, sourceid: 's', SOURCEID: 'x' })).toEqual(['id', 'sourceid']);
+  });
+
+  it('is case-sensitive otherwise', () => {
+    const filter = new RestoreColumnFilter('t', ['id', 'sourceId'], false);
+    expect(filter.columnsFor({ id: 1, sourceid: 's' })).toEqual(['id']);
+  });
+
+  it('still rejects a column name that is not a plain identifier', () => {
+    const filter = new RestoreColumnFilter('t', ['id'], false);
+    expect(() => filter.columnsFor({ id: 1, 'x); DROP TABLE users; --': 1 })).toThrow(/Invalid column name/);
+  });
+
+  it('rejects a row with no column the table has', () => {
+    const filter = new RestoreColumnFilter('t', ['id'], false);
+    expect(() => filter.columnsFor({ nope: 1 })).toThrow(/no column the table has/);
   });
 });
 
