@@ -20,4 +20,4 @@ lxmf==1.1.1
 # byte-for-byte against RNS's own vendored `RNS.vendor.umsgpack` in that
 # spike. Declared explicitly (R4) rather than relying on RNS's vendored
 # copy, which is not part of RNS's public API surface.
-msgpack==1.2.1
+msgpack==1.2.3
