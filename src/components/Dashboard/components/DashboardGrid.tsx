@@ -11,6 +11,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import TelemetryChart from '../../TelemetryChart';
+import { type ChartYRange } from '../../../utils/chartYRange';
 import TransportSeriesChart from '../../TransportSeriesChart';
 import { isTransportSeriesType } from '../../../utils/transportSeries';
 import PacketRateChart, { isPacketRateType } from '../../PacketRateChart';
@@ -73,6 +74,10 @@ interface DashboardGridProps {
   solarMonitoringEnabled?: boolean;
   getSolarVisibility?: (nodeId: string, telemetryType: string) => boolean;
   onToggleSolar?: (nodeId: string, telemetryType: string, show: boolean) => void;
+
+  // Fixed Y-axis range per chart widget (#6348)
+  getYRange?: (nodeId: string, telemetryType: string) => ChartYRange | null;
+  onYRangeChange?: (nodeId: string, telemetryType: string, range: ChartYRange | null) => void;
 }
 
 const DashboardGrid: React.FC<DashboardGridProps> = ({
@@ -105,6 +110,8 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   solarMonitoringEnabled = false,
   getSolarVisibility,
   onToggleSolar,
+  getYRange,
+  onYRangeChange,
 }) => {
   const { t } = useTranslation();
 
@@ -307,6 +314,8 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                   showSolar={getSolarVisibility ? getSolarVisibility(favorite.nodeId, favorite.telemetryType) : true}
                   onToggleSolar={onToggleSolar}
                   solarMonitoringEnabled={solarMonitoringEnabled}
+                  yRange={getYRange ? getYRange(favorite.nodeId, favorite.telemetryType) : null}
+                  onYRangeChange={canEdit ? onYRangeChange : undefined}
                 />
               );
             })}
