@@ -472,6 +472,49 @@ describe('restoring a backup that lacks a column the schema now has', () => {
   });
 });
 
+describe('restoring a backup with columns the schema does not have (#6350)', () => {
+  it('skips the unknown columns, warns once, and keeps the snake_case values', async () => {
+    wipe();
+    await seedTables(adapter, ['sources', 'users', 'user_map_preferences'], 3);
+    const dirname = await systemBackupService.createBackup('manual');
+
+    // A long-lived SQLite install carried legacy camelCase columns beside the
+    // current snake_case ones. Rows differ in their key sets, too.
+    const rows = readTable(dirname, 'user_map_preferences').sort((a, b) => Number(a.id) - Number(b.id));
+    const ids = rows.map((r) => Number(r.id));
+    rows[0] = {
+      ...rows[0],
+      show_accuracy_regions: 1,
+      showAccuracyRegions: 0,
+      sortDirection: 'asc',
+      sortBy: 'name',
+    };
+    const { show_accuracy_regions: _omitted, ...second } = rows[1];
+    rows[1] = { ...second, showMeshCoreNodes: 1 };
+    rows[2] = Object.fromEntries(Object.entries({ ...rows[2], show_accuracy_regions: 1 }).reverse());
+    writeTable(dirname, 'user_map_preferences', JSON.stringify(rows));
+
+    wipe();
+    const { result, warned } = await captureWarnings(() => systemRestoreService.restoreFromBackup(dirname));
+    expect(result).toMatchObject({ success: true });
+
+    const restored = new Map(allRows('user_map_preferences').map((r) => [Number(r.id), r]));
+    expect(restored.size).toBe(3);
+    // snake_case is authoritative; the camelCase twin was dropped.
+    expect(restored.get(ids[0])!.show_accuracy_regions).toBe(1);
+    // A row that omits a column gets the column's default.
+    expect(restored.get(ids[1])!.show_accuracy_regions).toBe(0);
+    // Key order in the file does not matter.
+    expect(restored.get(ids[2])!.show_accuracy_regions).toBe(1);
+
+    const lines = warned.split('\n').filter((l) => l.includes('Restore of user_map_preferences'));
+    expect(lines).toHaveLength(1);
+    for (const col of ['showAccuracyRegions', 'sortDirection', 'sortBy', 'showMeshCoreNodes']) {
+      expect(lines[0]).toContain(col);
+    }
+  });
+});
+
 describe('a crafted metadata.json naming tables outside the allowlist (SQLite)', () => {
   const INJECTION = 'nodes; DROP TABLE users; --';
   let dirname: string;
