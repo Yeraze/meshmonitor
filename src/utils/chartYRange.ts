@@ -25,6 +25,13 @@ export const CHART_Y_RANGE_MAX_ENTRIES = 1000;
 /** Widget key length cap (`${nodeId}-${telemetryType}` is well under this). */
 const MAX_KEY_LENGTH = 200;
 
+/** Keys that would write to the object's prototype instead of an own entry. */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** True for a widget key that is safe to store as an own property. */
+export const isSafeChartYRangeKey = (key: string): boolean =>
+  !!key && key.length <= MAX_KEY_LENGTH && !UNSAFE_KEYS.has(key);
+
 const finite = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 
@@ -59,7 +66,7 @@ export function normalizeChartYRangeMap(input: unknown): Record<string, ChartYRa
   let count = 0;
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
     if (count >= CHART_Y_RANGE_MAX_ENTRIES) break;
-    if (!key || key.length > MAX_KEY_LENGTH) continue;
+    if (!isSafeChartYRangeKey(key)) continue;
     const range = normalizeChartYRange(value);
     if (range) {
       out[key] = range;
@@ -89,6 +96,7 @@ export function withChartYRange(
   range: ChartYRange | null,
 ): Record<string, ChartYRange> {
   const next = { ...map };
+  if (!isSafeChartYRangeKey(key)) return next;
   const clean = normalizeChartYRange(range);
   if (clean) next[key] = clean;
   else delete next[key];

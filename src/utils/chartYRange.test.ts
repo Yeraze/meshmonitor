@@ -59,6 +59,19 @@ describe('chartYRange (#6348)', () => {
   });
 
   describe('map persistence', () => {
+    it('drops prototype keys instead of writing to the prototype', () => {
+      const parsed = parseChartYRangeMap(
+        '{"__proto__":{"min":1,"max":2},"constructor":{"min":1,"max":2},"!a-voltage":{"min":3}}',
+      );
+      expect(Object.keys(parsed)).toEqual(['!a-voltage']);
+      expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+      expect(({} as Record<string, unknown>).min).toBeUndefined();
+
+      const next = withChartYRange({}, '__proto__', { min: 1, max: 2 });
+      expect(Object.keys(next)).toEqual([]);
+      expect(Object.getPrototypeOf(next)).toBe(Object.prototype);
+    });
+
     it('round-trips through the stored JSON', () => {
       const map = withChartYRange({}, '!a-voltage', { min: 3, max: 4.2 });
       expect(parseChartYRangeMap(JSON.stringify(map))).toEqual({ '!a-voltage': { min: 3, max: 4.2 } });
