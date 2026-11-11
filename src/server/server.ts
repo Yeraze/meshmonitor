@@ -17,7 +17,7 @@ import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { setNoIndexEnabled, parseNoIndexEnabled } from '../utils/robotsConfig.js';
-import { FAVORITE_STORAGE_DAYS_DEFAULT } from '../utils/telemetryRetention.js';
+import { startTelemetryPurgeSchedule } from './services/telemetryPurgeSchedule.js';
 import { robotsTagMiddleware } from './middleware/robotsTag.js';
 import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
@@ -527,47 +527,9 @@ setTimeout(async () => {
   }
 }, 1000);
 
-// Schedule hourly telemetry purge to keep database performant
-// Keep telemetry for 7 days (168 hours) by default
-const TELEMETRY_RETENTION_HOURS = 168; // 7 days
-// Fallback retention for FAVORITED telemetry when no namespace configures one.
-// The real window comes from each source's `favoriteTelemetryStorageDays`,
-// resolved inside purgeOldTelemetryAsync (#5080).
-const FAVORITE_TELEMETRY_DEFAULT_DAYS = FAVORITE_STORAGE_DAYS_DEFAULT;
-setInterval(async () => {
-  try {
-    // Long migrations (e.g. on big MySQL telemetry tables) can keep the DB
-    // unready well past the first tick — wait before touching repos.
-    await databaseService.waitForReady();
-    // FAVORITE_TELEMETRY_DEFAULT_DAYS is only the fallback: purgeOldTelemetryAsync
-    // resolves each source's own `favoriteTelemetryStorageDays` (#5080).
-    const purgedCount = await databaseService.purgeOldTelemetryAsync(
-      TELEMETRY_RETENTION_HOURS,
-      FAVORITE_TELEMETRY_DEFAULT_DAYS
-    );
-    if (purgedCount > 0) {
-      logger.debug(`⏰ Hourly telemetry purge completed: removed ${purgedCount} records`);
-    }
-  } catch (error) {
-    logger.error('Error during telemetry purge:', error);
-  }
-}, 60 * 60 * 1000); // Run every hour
-
-// Run initial purge on startup
-setTimeout(async () => {
-  try {
-    // Wait for DB ready: on a fresh upgrade, schema migrations (e.g. 032 dedupe
-    // on a large MySQL telemetry table) can run longer than this 5s delay,
-    // and accessing databaseService.settings before init throws.
-    await databaseService.waitForReady();
-    await databaseService.purgeOldTelemetryAsync(
-      TELEMETRY_RETENTION_HOURS,
-      FAVORITE_TELEMETRY_DEFAULT_DAYS
-    );
-  } catch (error) {
-    logger.error('Error during initial telemetry purge:', error);
-  }
-}, 5000); // Wait 5 seconds after startup
+// Telemetry retention purge: once 5s after boot, then hourly. The startup run
+// is skipped on a boot that restored a backup (#6354).
+startTelemetryPurgeSchedule(databaseService);
 
 // Coverage Report retention sweep (#5277 Phase 1 WP2): hourly purge of RF
 // receptions older than the configured coverage_retention_days. The service

@@ -738,9 +738,14 @@ class ApiService {
     this.configFetched = true;
   }
 
-  async getConfig() {
+  /**
+   * Read `/api/config`. Pass the viewed source's id so the node address and
+   * port are that source's, not the env default (#6353).
+   */
+  async getConfig(sourceId?: string | null) {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/config`);
+    const params = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const response = await fetch(`${this.baseUrl}/api/config${params}`);
     if (!response.ok) throw new Error('Failed to fetch config');
 
     // Verify we got JSON, not HTML

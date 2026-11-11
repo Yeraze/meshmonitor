@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import {
+  cannotConnectMessage,
   connectionCheckDelay,
   fetchConnectionStatus,
+  formatNodeAddress,
   mergeConnectionIntoPollCache,
   refreshPollCache,
 } from './connectionCheck';
@@ -18,6 +20,49 @@ const DOWN = { connected: false, nodeResponsive: false, configuring: false, user
 describe('connectionCheckDelay', () => {
   it('steps 5 s, 10 s, 20 s, then stays at 30 s', () => {
     expect([0, 1, 2, 3, 4, 50].map(connectionCheckDelay)).toEqual([5000, 10000, 20000, 30000, 30000, 30000]);
+  });
+});
+
+// #6353: the banner names the viewed source's host:port, or no address at all.
+describe('formatNodeAddress', () => {
+  it('joins host and port', () => {
+    expect(formatNodeAddress('192.168.5.106', 4403)).toBe('192.168.5.106:4403');
+    expect(formatNodeAddress('node.example', 4404)).toBe('node.example:4404');
+  });
+
+  it('keeps a host that already names a port', () => {
+    expect(formatNodeAddress('192.168.5.106:4403', 4403)).toBe('192.168.5.106:4403');
+    expect(formatNodeAddress('[fe80::1]:4403', 4403)).toBe('[fe80::1]:4403');
+  });
+
+  it('brackets a bare IPv6 host', () => {
+    expect(formatNodeAddress('fe80::1', 4403)).toBe('[fe80::1]:4403');
+  });
+
+  it('shows the host alone when the port is not known', () => {
+    expect(formatNodeAddress('192.168.5.106', null)).toBe('192.168.5.106');
+    expect(formatNodeAddress('192.168.5.106', undefined)).toBe('192.168.5.106');
+  });
+
+  it('is empty when the host is not known (MeshCore/MQTT, no sources:read)', () => {
+    expect(formatNodeAddress('', 4403)).toBe('');
+    expect(formatNodeAddress(undefined, 4403)).toBe('');
+    expect(formatNodeAddress(null, null)).toBe('');
+    expect(formatNodeAddress('Loading...', 4403)).toBe('');
+  });
+});
+
+describe('cannotConnectMessage', () => {
+  it('names the address when known', () => {
+    expect(cannotConnectMessage('192.168.5.106:4403')).toBe(
+      'Cannot connect to Meshtastic node at 192.168.5.106:4403. Please ensure the node is reachable and has HTTP API enabled.',
+    );
+  });
+
+  it('drops the "at <address>" phrase when the address is unknown', () => {
+    const msg = cannotConnectMessage('');
+    expect(msg).toBe('Cannot connect to the Meshtastic node. Please ensure the node is reachable and has HTTP API enabled.');
+    expect(msg).not.toContain(' at ');
   });
 });
 
