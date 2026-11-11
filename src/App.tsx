@@ -116,7 +116,13 @@ import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 import { hopLimitSettingValue } from './utils/hopLimitOverride';
 import { resolveAutoAckMaxResponses } from './utils/autoAckMaxResponses';
-import { fetchConnectionStatus, mergeConnectionIntoPollCache, refreshPollCache } from './hooks/connectionCheck';
+import {
+  cannotConnectMessage,
+  fetchConnectionStatus,
+  formatNodeAddress,
+  mergeConnectionIntoPollCache,
+  refreshPollCache,
+} from './hooks/connectionCheck';
 import { useConnectionCheckLoop } from './hooks/useConnectionCheckLoop';
 
 // Icons and helpers are now imported from utils/
@@ -762,6 +768,10 @@ function App() {
 
   // NeighborInfo request loading state
   const [neighborInfoLoading, setNeighborInfoLoading] = useState<string | null>(null);
+  // The viewed source's TCP port, from its own /api/config, for the
+  // connection error banner (#6353). A ref: checkConnectionStatus runs from
+  // timers that hold an older render's closure.
+  const nodePortRef = useRef<number | null>(null);
 
   // Telemetry request loading state
   const [telemetryRequestLoading, setTelemetryRequestLoading] = useState<string | null>(null);
@@ -962,14 +972,20 @@ function App() {
         // mounts, and is what react-router's own BrowserRouter already
         // trusts for every route in this app.
         try {
-          const config = await api.getConfig();
-          setNodeAddress(config.meshtasticNodeIp);
+          // Scoped to the viewed source, so the address is that source's own
+          // host (or empty for a MeshCore/MQTT source), never the env default
+          // (#6353).
+          const config = await api.getConfig(sourceId);
+          const host = typeof config.meshtasticNodeIp === 'string' ? config.meshtasticNodeIp : '';
+          setNodeAddress(host);
+          nodePortRef.current = host && typeof config.meshtasticTcpPort === 'number' ? config.meshtasticTcpPort : null;
         } catch (error) {
           logger.error('Failed to load config:', error);
           // Don't assert a hardcoded fallback address (#3611) — that would show
           // the wrong IP for a configured source. Leave it empty; the per-source
           // address arrives with the next poll (status.nodeIp).
           setNodeAddress('');
+          nodePortRef.current = null;
         }
 
         // Load settings from server (per-source if a sourceId is active, so
@@ -1750,16 +1766,12 @@ function App() {
           logger.debug('⚠️ Connection API returned connected=false');
           setConnectionStatus('disconnected');
           // Prefer the address the server just resolved for this source; fall
-          // back to the stored nodeAddress. Never interpolate an unresolved
-          // value (empty string / 'Loading...') — omit the address phrase
-          // entirely if it isn't known yet (#3611).
-          const resolvedAddress =
+          // back to the stored nodeAddress, which is this source's own host
+          // from its /api/config. Never interpolate an unresolved value — omit
+          // the address phrase entirely if it isn't known (#3611, #6353).
+          const resolvedHost =
             (typeof status.nodeIp === 'string' && status.nodeIp) ? status.nodeIp : nodeAddress;
-          setError(
-            resolvedAddress && resolvedAddress !== 'Loading...'
-              ? `Cannot connect to Meshtastic node at ${resolvedAddress}. Please ensure the node is reachable and has HTTP API enabled.`
-              : `Cannot connect to the Meshtastic node. Please ensure the node is reachable and has HTTP API enabled.`
-          );
+          setError(cannotConnectMessage(formatNodeAddress(resolvedHost, nodePortRef.current)));
           return 'disconnected';
         }
       } else {
