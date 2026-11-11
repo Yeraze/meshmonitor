@@ -21,11 +21,26 @@ import {
 } from '../../utils/telemetryCategory';
 import CombinedTelemetryChart, { type CombinedSeries } from '../CombinedTelemetryChart/CombinedTelemetryChart';
 import { UiIcon } from '../icons';
+import { parseChartYRangeMap, withChartYRange, type ChartYRange } from '../../utils/chartYRange';
 import styles from './UnifiedTelemetryGraphs.module.css';
 import '../../styles/unified.css';
 
 const RANGE_STORAGE_KEY = 'unifiedTelemetryHours';
 const DEFAULT_HOURS = 24;
+/**
+ * Fixed Y-axis ranges (#6348) for this cross-source view. It spans sources, so
+ * there is no one source's dashboard config to hold them; like the range
+ * choice above they live in this browser.
+ */
+const Y_RANGE_STORAGE_KEY = 'unifiedTelemetryYRanges';
+
+function loadYRanges(): Record<string, ChartYRange> {
+  try {
+    return parseChartYRangeMap(localStorage.getItem(Y_RANGE_STORAGE_KEY));
+  } catch {
+    return {};
+  }
+}
 
 function loadHours(): number {
   try {
@@ -60,6 +75,19 @@ export default function UnifiedTelemetryGraphs({ header, temperatureUnit, timeFo
   const [sourceFilter, setSourceFilter] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState(() => Date.now());
+  const [yRanges, setYRanges] = useState<Record<string, ChartYRange>>(loadYRanges);
+
+  const changeYRange = useCallback((key: string, range: ChartYRange | null) => {
+    setYRanges((prev) => {
+      const next = withChartYRange(prev, key, range);
+      try {
+        localStorage.setItem(Y_RANGE_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Storage blocked: the range lasts for this visit only.
+      }
+      return next;
+    });
+  }, []);
 
   const fetchSeries = useCallback(async () => {
     setLoading(true);
@@ -203,6 +231,8 @@ export default function UnifiedTelemetryGraphs({ header, temperatureUnit, timeFo
                     timeRange={timeRange}
                     onRemoveFavorite={canRemove ? () => void removeFavorite(s) : undefined}
                     favoriteBusy={busyKey === `${s.subjectKey}|${s.type}`}
+                    yRange={yRanges[`${s.subjectKey}|${s.type}`] ?? null}
+                    onYRangeChange={(r) => changeYRange(`${s.subjectKey}|${s.type}`, r)}
                   />
                 );
               })}

@@ -21,6 +21,8 @@ import { resolveSeriesDisplay, downloadTelemetryCsv } from '../../utils/telemetr
 import { getTelemetryLabel } from '../TelemetryChart';
 import { UiIcon } from '../icons';
 import { mergeSourceLines } from './mergeSourceLines';
+import { chartYDomain, hasFixedYBound, type ChartYRange } from '../../utils/chartYRange';
+import ChartYRangeEditor from '../ChartYRangeEditor/ChartYRangeEditor';
 import styles from './CombinedTelemetryChart.module.css';
 
 export interface CombinedSeriesLine {
@@ -54,6 +56,10 @@ interface CombinedTelemetryChartProps {
   /** Remove this series from the favorites the caller may edit. Absent: no toggle. */
   onRemoveFavorite?: () => void;
   favoriteBusy?: boolean;
+  /** Fixed Y-axis bounds in the series' stored unit (#6348); absent = auto. */
+  yRange?: ChartYRange | null;
+  /** Save a new Y range (stored unit), or null for auto. Absent: no editor. */
+  onYRangeChange?: (range: ChartYRange | null) => void;
 }
 
 /** Row key of line `i` in the merged chart data. */
@@ -71,8 +77,11 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
   timeRange,
   onRemoveFavorite,
   favoriteBusy = false,
+  yRange = null,
+  onYRangeChange,
 }) => {
   const { t } = useTranslation();
+  const [yRangeEditorOpen, setYRangeEditorOpen] = useState(false);
 
   const display = useMemo(
     () => resolveSeriesDisplay(
@@ -132,6 +141,17 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
     downloadTelemetryCsv(rows, { nodeId: series.subjectKey, telemetryType: series.type, unit, hours });
   };
 
+  // Fixed Y-axis bounds (#6348): stored in base units, shown converted.
+  const yRangeFixed = hasFixedYBound(yRange);
+  const yDomain = chartYDomain(yRange, display.toDisplay);
+  const convertRange = (r: ChartYRange | null, f: (v: number) => number): ChartYRange | null =>
+    hasFixedYBound(r)
+      ? {
+        ...(r?.min !== undefined ? { min: f(r.min) } : {}),
+        ...(r?.max !== undefined ? { max: f(r.max) } : {}),
+      }
+      : null;
+
   const mergedLabel = t('unified.telemetry.merged_label', {
     names: series.lines.map((l) => l.sourceName).join(', '),
   });
@@ -155,6 +175,18 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
               title={t('unified.telemetry.split_hint')}
             >
               {t('unified.telemetry.split_by_source')}
+            </button>
+          )}
+          {onYRangeChange && (
+            <button
+              type="button"
+              className={`${styles.iconBtn} ${yRangeFixed ? styles.yRangeActive : ''}`}
+              onClick={() => setYRangeEditorOpen((v) => !v)}
+              aria-expanded={yRangeEditorOpen}
+              aria-label={t('chart_y_range.title')}
+              title={t('chart_y_range.title')}
+            >
+              <UiIcon name="ruler" size={15} />
             </button>
           )}
           <button
@@ -182,6 +214,14 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
         </div>
       </div>
 
+      {yRangeEditorOpen && onYRangeChange && (
+        <ChartYRangeEditor
+          value={convertRange(yRange, display.toDisplay)}
+          onApply={(r) => onYRangeChange(convertRange(r, display.toStored))}
+          onClose={() => setYRangeEditorOpen(false)}
+        />
+      )}
+
       <ul className={styles.legend} aria-label={t('unified.telemetry.legend_aria')}>
         {merged ? (
           <li className={styles.legendItem}>
@@ -207,7 +247,12 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
             tick={{ fontSize: 12 }}
             tickFormatter={(ts) => formatChartAxisTimestamp(ts, timeRange, timeFormat)}
           />
-          <YAxis tick={{ fontSize: 12 }} domain={['auto', 'auto']} tickFormatter={display.formatValue} />
+          <YAxis
+            tick={{ fontSize: 12 }}
+            domain={yDomain}
+            allowDataOverflow={yRangeFixed}
+            tickFormatter={display.formatValue}
+          />
           <Tooltip
             contentStyle={{
               backgroundColor: 'var(--color-surface)',

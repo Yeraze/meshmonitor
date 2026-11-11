@@ -35,6 +35,9 @@ export const VALID_SETTINGS_KEYS = [
   'telemetryRetryCooldownMinutes',
   'dashboardWidgets',
   'dashboardSolarVisibility',
+  // Fixed Y-axis min/max per dashboard chart widget (#6348). Per-source,
+  // client-only JSON; validated and normalized in settingsRoutes on save.
+  'dashboardChartYRange',
   'autoAckEnabled',
   'autoAckRegex',
   'autoAckMessage',

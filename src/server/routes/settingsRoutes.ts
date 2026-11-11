@@ -22,6 +22,7 @@ import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.js';
 import { invalidateSignFlipContext, SIGN_FLIP_SETTING_KEYS } from '../services/signFlipCorrection.js';
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
+import { CHART_Y_RANGE_SETTING, normalizeChartYRangeMap } from '../../utils/chartYRange.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey, isValidSecurityDeadNodeDays, SECURITY_DEAD_NODE_DAYS_RANGE } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
@@ -844,6 +845,23 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (nodes.length < MIN_NEIGHBOR_UTIL_SAMPLE_COUNT || nodes.length > MAX_NEIGHBOR_UTIL_SAMPLE_COUNT) {
         return fail(res, 400, 'INVALID_AIRTIME_NEIGHBOR_NODES', `Manual mode needs automationAirtimeCutoffNeighborNodes with ${MIN_NEIGHBOR_UTIL_SAMPLE_COUNT}-${MAX_NEIGHBOR_UTIL_SAMPLE_COUNT} nodes`);
       }
+    }
+
+    // Issue #6348: per-widget fixed Y-axis range. A JSON object of
+    // widgetKey -> { min?, max? }; non-finite bounds and min >= max pairs are
+    // dropped, so the stored value is always one the charts can draw.
+    if (CHART_Y_RANGE_SETTING in filteredSettings) {
+      const raw = filteredSettings[CHART_Y_RANGE_SETTING];
+      let parsed: unknown;
+      try {
+        parsed = typeof raw === 'string' ? JSON.parse(raw === '' ? '{}' : raw) : raw;
+      } catch {
+        parsed = null;
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return fail(res, 400, 'INVALID_CHART_Y_RANGE', `${CHART_Y_RANGE_SETTING} must be a JSON object`);
+      }
+      filteredSettings[CHART_Y_RANGE_SETTING] = JSON.stringify(normalizeChartYRangeMap(parsed));
     }
 
     // Validate autoResponderTriggers JSON

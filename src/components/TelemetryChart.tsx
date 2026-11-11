@@ -13,7 +13,7 @@
  * - Better separation of concerns
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSortable } from '@dnd-kit/sortable';
@@ -37,6 +37,9 @@ import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { UiIcon } from './icons';
 import DeviceCounterNote from './DeviceCounterNote';
 import { isDeviceCounterType } from '../utils/deviceCounters';
+import { chartYDomain, hasFixedYBound, type ChartYRange } from '../utils/chartYRange';
+import ChartYRangeEditor from './ChartYRangeEditor/ChartYRangeEditor';
+import yRangeStyles from './ChartYRangeEditor/ChartYRangeEditor.module.css';
 
 interface FavoriteChart {
   nodeId: string;
@@ -58,6 +61,10 @@ interface TelemetryChartProps {
   showSolar?: boolean;
   onToggleSolar?: (nodeId: string, telemetryType: string, show: boolean) => void;
   solarMonitoringEnabled?: boolean;
+  /** Fixed Y-axis bounds in the series' stored unit (#6348); absent = auto. */
+  yRange?: ChartYRange | null;
+  /** Save a new Y range (stored unit), or null for auto. Absent: no editor. */
+  onYRangeChange?: (nodeId: string, telemetryType: string, range: ChartYRange | null) => void;
 }
 
 // Translation keys for telemetry types
@@ -432,6 +439,8 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     showSolar = true,
     onToggleSolar,
     solarMonitoringEnabled = false,
+    yRange = null,
+    onYRangeChange,
   }) => {
     const { t } = useTranslation();
     const { timeFormat } = useSettings();
@@ -487,6 +496,8 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const handleRemoveClick = useCallback(() => {
       onRemove(favorite.nodeId, favorite.telemetryType);
     }, [favorite.nodeId, favorite.telemetryType, onRemove]);
+
+    const [yRangeEditorOpen, setYRangeEditorOpen] = useState(false);
 
     const handleSolarToggle = useCallback(() => {
       if (onToggleSolar) {
@@ -670,6 +681,27 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const handleRangeChange = (r: { min: number; max: number }) =>
       setRange({ min: toStored(r.min), max: toStored(r.max) });
 
+    // Fixed Y-axis bounds (#6348) persist in the stored unit like the gauge
+    // range; the editor and the axis work in the displayed unit.
+    const yRangeFixed = hasFixedYBound(yRange);
+    const yDomain = chartYDomain(yRange, toDisplay);
+    const yRangeDisplay: ChartYRange | null = yRangeFixed
+      ? {
+          ...(yRange?.min !== undefined ? { min: toDisplay(yRange.min) } : {}),
+          ...(yRange?.max !== undefined ? { max: toDisplay(yRange.max) } : {}),
+        }
+      : null;
+    const handleYRangeApply = (r: ChartYRange | null) => {
+      if (!onYRangeChange) return;
+      const stored: ChartYRange | null = r
+        ? {
+            ...(r.min !== undefined ? { min: toStored(r.min) } : {}),
+            ...(r.max !== undefined ? { max: toStored(r.max) } : {}),
+          }
+        : null;
+      onYRangeChange(favorite.nodeId, favorite.telemetryType, stored);
+    };
+
     // Display formatter for uptime metrics: humanize seconds in the gauge,
     // the numeric label, the Y-axis ticks and the tooltip (#3261).
     const uptimeFormatter = display.formatValue;
@@ -720,6 +752,17 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 <UiIcon name={showSolar ? 'sun' : 'visibilityOff'} size={15} />
               </button>
             )}
+            {onYRangeChange && mode === 'chart' && (
+              <button
+                className={`telemetry-export-btn ${yRangeFixed ? yRangeStyles.toggleActive : ''}`}
+                onClick={() => setYRangeEditorOpen(v => !v)}
+                aria-expanded={yRangeEditorOpen}
+                aria-label={t('chart_y_range.title')}
+                title={t('chart_y_range.title')}
+              >
+                <UiIcon name="ruler" size={15} />
+              </button>
+            )}
             <button
               className="telemetry-export-btn"
               onClick={handleExportCsv}
@@ -737,6 +780,14 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               <UiIcon name="close" size={15} />            </button>
           </div>
         </div>
+
+        {yRangeEditorOpen && onYRangeChange && mode === 'chart' && (
+          <ChartYRangeEditor
+            value={yRangeDisplay}
+            onApply={handleYRangeApply}
+            onClose={() => setYRangeEditorOpen(false)}
+          />
+        )}
 
         {isDeviceCounterType(favorite.telemetryType) && (
           <DeviceCounterNote text={t('telemetry.device_counter_note')} />
@@ -784,7 +835,8 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               <YAxis
                 yAxisId="left"
                 tick={{ fontSize: 12 }}
-                domain={['auto', 'auto']}
+                domain={yDomain}
+                allowDataOverflow={yRangeFixed}
                 tickFormatter={uptimeFormatter}
               />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} domain={['auto', 'auto']} hide={true} />

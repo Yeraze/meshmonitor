@@ -14,6 +14,7 @@ import { type DashboardProps } from './types';
 import { meshtasticDashboardSource } from './dataSources';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
+import { CHART_Y_RANGE_SETTING, withChartYRange, type ChartYRange } from '../../utils/chartYRange';
 
 const Dashboard: React.FC<DashboardProps> = React.memo(
   ({
@@ -49,6 +50,8 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       setCustomWidgets,
       solarVisibility,
       setSolarVisibility,
+      chartYRanges,
+      setChartYRanges,
       loading,
       error,
     } = useDashboardData({ dataSource });
@@ -86,6 +89,27 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
         logger.error('Error saving solar visibility:', err);
       }
     }, [solarVisibility, setSolarVisibility, csrfFetch, baseUrl, sourceQuery]);
+
+    // Fixed Y-axis range per chart widget (#6348), keyed like solar visibility.
+    const getYRange = useCallback(
+      (nodeId: string, telemetryType: string): ChartYRange | null =>
+        chartYRanges[`${nodeId}-${telemetryType}`] ?? null,
+      [chartYRanges],
+    );
+
+    const handleYRangeChange = useCallback(async (nodeId: string, telemetryType: string, range: ChartYRange | null) => {
+      const next = withChartYRange(chartYRanges, `${nodeId}-${telemetryType}`, range);
+      setChartYRanges(next);
+      try {
+        await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [CHART_Y_RANGE_SETTING]: JSON.stringify(next) }),
+        });
+      } catch (err) {
+        logger.error('Error saving chart Y-axis range:', err);
+      }
+    }, [chartYRanges, setChartYRanges, csrfFetch, baseUrl, sourceQuery]);
 
     // Filters hook
     const {
@@ -312,6 +336,8 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
             solarMonitoringEnabled={solarMonitoringEnabled}
             getSolarVisibility={getSolarVisibility}
             onToggleSolar={handleToggleSolar}
+            getYRange={getYRange}
+            onYRangeChange={handleYRangeChange}
           />
         )}
 

@@ -1,0 +1,72 @@
+.editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px 8px;
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-sunken);
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.input {
+  width: 84px;
+  padding: 3px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.8rem;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.button {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-subtle);
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.primary {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.hint {
+  flex-basis: 100%;
+  color: var(--color-text-muted);
+}
+
+.error {
+  flex-basis: 100%;
+  color: var(--color-danger);
+}
+
+/* Marks the toggle button of a chart whose Y range is fixed. `button.` lifts
+   it over the global button rules the host chart uses. */
+button.toggleActive {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
