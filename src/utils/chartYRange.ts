@@ -62,18 +62,16 @@ export function normalizeChartYRange(input: unknown): ChartYRange | null {
  */
 export function normalizeChartYRangeMap(input: unknown): Record<string, ChartYRange> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
-  const out: Record<string, ChartYRange> = {};
-  let count = 0;
+  // Build from an entry list rather than `out[key] = …`, so no stored key is
+  // ever used as a property-write target (CodeQL js/remote-property-injection).
+  const entries: Array<[string, ChartYRange]> = [];
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    if (count >= CHART_Y_RANGE_MAX_ENTRIES) break;
+    if (entries.length >= CHART_Y_RANGE_MAX_ENTRIES) break;
     if (!isSafeChartYRangeKey(key)) continue;
     const range = normalizeChartYRange(value);
-    if (range) {
-      out[key] = range;
-      count++;
-    }
+    if (range) entries.push([key, range]);
   }
-  return out;
+  return Object.fromEntries(entries);
 }
 
 /** Parse the stored setting string. Bad JSON reads as "no fixed ranges". */
