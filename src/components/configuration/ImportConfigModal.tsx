@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
@@ -255,6 +255,21 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({
     setSelectedChannels(newSelected);
   };
 
+  // Escape closes the dialog (#4173 review M13). A ref keeps the listener on
+  // the latest handleClose, which itself refuses to close mid-import.
+  const handleCloseRef = useRef(handleClose);
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  });
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCloseRef.current();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -329,6 +344,29 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({
           >
             {loading ? t('import_config.decoding') : t('import_config.decode_button')}
           </button>
+          {/* Before a decode there was no way out but the backdrop (#4173 M13);
+              after one, the preview carries its own Cancel. */}
+          {!decoded && !mcDecoded && (
+            <button
+              type="button"
+              onClick={handleClose}
+              data-testid="import-config-close"
+              style={{
+                marginTop: '0.5rem',
+                marginLeft: '0.5rem',
+                background: 'var(--color-surface-hover)',
+                color: 'var(--color-text)',
+                border: '1px solid var(--color-surface-active)',
+                borderRadius: '4px',
+                padding: '0.5rem 1rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+              }}
+            >
+              {t('import_config.cancel')}
+            </button>
+          )}
         </div>
 
         {error && (

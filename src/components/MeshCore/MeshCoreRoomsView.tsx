@@ -51,10 +51,7 @@ import {
 } from './meshcoreChannelOrder';
 import styles from './MeshCoreRoomsView.module.css';
 import { MESHCORE_MAX_MESSAGE_BYTES_DM } from '../../utils/meshcoreMessageLimits';
-
-const MOBILE_BREAKPOINT = 768;
-const isMobileViewport = (): boolean =>
-  typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
+import { isMobileLayoutViewport } from '../../utils/sidebarWidth';
 
 interface MeshCoreRoomsViewProps {
   messages: MeshCoreMessage[];
@@ -155,7 +152,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
 
   useEffect(() => {
     const onResize = () => {
-      if (!isMobileViewport()) setMobileShowContent(false);
+      if (!isMobileLayoutViewport()) setMobileShowContent(false);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -444,7 +441,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   }, [actions]);
 
   const handleSelectRoom = useCallback((pubkey: string) => {
-    const mobile = isMobileViewport();
+    const mobile = isMobileLayoutViewport();
     // Desktop (#6149): a click on the already-open room de-selects it and
     // returns to the landing pane. Mobile keeps its behaviour — the list IS the
     // landing view and Back leaves `selectedRoom` set, so a tap on the same row

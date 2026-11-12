@@ -7,6 +7,9 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { UiIcon } from '../icons';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { ConfigEmptyState } from '../shared/config/ConfigEmptyState';
+import styles from './MeshCoreNodeScheduleTable.module.css';
 
 /**
  * MeshCore Time Sync overview (#6224). MeshCore configures time-sync per node
@@ -113,24 +116,22 @@ export const MeshCoreTimeSyncSection: React.FC<Props> = ({ baseUrl, sourceId }) 
 
   return (
     <NumberInputScope scope={numberScope}>
-      <section>
-        <h2 className="automation-section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <UiIcon name="time" size={18} />
-          {t('meshcore.automation.time_sync.title', 'Time Sync')}
-        </h2>
-        <p className="setting-description" style={{ marginBottom: '1rem' }}>
-          {t(
-            'meshcore.automation.time_sync.description',
-            'Repeaters with time sync enabled get a periodic clock push. Adjust the interval or turn it off here; enable a node from its detail panel. A sync needs a saved admin password for that node.',
-          )}
-        </p>
+      <ConfigSection
+        icon={<UiIcon name="time" size={18} />}
+        title={t('meshcore.automation.time_sync.title', 'Time Sync')}
+        description={t(
+          'meshcore.automation.time_sync.description',
+          'Repeaters with time sync enabled get a periodic clock push. Adjust the interval or turn it off here; enable a node from its detail panel. A sync needs a saved admin password for that node.',
+        )}
+      >
 
         {nodes.length === 0 ? (
-          <p className="setting-description">
+          <ConfigEmptyState>
             {t('meshcore.automation.time_sync.empty', 'No nodes have time sync enabled on this source.')}
-          </p>
+          </ConfigEmptyState>
         ) : (
-          <table className="data-table">
+          <div className={styles.scroll}>
+          <table className={styles.table}>
             <thead>
               <tr>
                 <th>{t('meshcore.automation.time_sync.node', 'Node')}</th>
@@ -154,11 +155,12 @@ export const MeshCoreTimeSyncSection: React.FC<Props> = ({ baseUrl, sourceId }) 
                         value={current}
                         onChange={(v) => setEdited((prev) => ({ ...prev, [n.publicKey]: v }))}
                         disabled={!canWrite || busy === n.publicKey}
-                        className="setting-input"
+                        className={`setting-input ${styles.interval}`}
                       />
                     </td>
                     <td>{n.lastSyncAt ? new Date(n.lastSyncAt).toLocaleString() : t('common.never', 'Never')}</td>
-                    <td style={{ display: 'flex', gap: '0.5rem' }}>
+                    <td>
+                      <div className={styles.actions}>
                       <button
                         type="button"
                         className="btn-primary"
@@ -175,14 +177,16 @@ export const MeshCoreTimeSyncSection: React.FC<Props> = ({ baseUrl, sourceId }) 
                       >
                         {t('common.disable', 'Disable')}
                       </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
         )}
-      </section>
+      </ConfigSection>
     </NumberInputScope>
   );
 };

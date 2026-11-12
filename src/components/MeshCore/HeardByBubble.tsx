@@ -50,6 +50,16 @@ export interface HeardByBubbleProps {
   repeaters?: ReadonlyArray<HeardByBubbleRepeater>;
   /** ANY/ALL only affects the gate; the bubble lists the same rows either way. */
   mode?: RequiredRepeaterMode;
+  /**
+   * Controlled expand state. Pass with `onToggle` and `renderList={false}`
+   * when the caller renders `<HeardByList>` itself somewhere else — the
+   * message stream keeps the antenna on the header row but opens the list
+   * below the message body (#6239, #4173 review L13).
+   */
+  open?: boolean;
+  onToggle?: () => void;
+  /** Default true. False renders only the antenna badge. */
+  renderList?: boolean;
 }
 
 function shortKey(key: string): string {
@@ -81,14 +91,12 @@ const MetaSpans: React.FC<{ entry: HeardByBubbleEntry }> = ({ entry }) => {
   );
 };
 
-export const HeardByBubble: React.FC<HeardByBubbleProps> = ({
-  heardBy,
-  requiredKeys,
-  repeaters,
-  mode = 'any',
-}) => {
-  void mode; // mode drives the gate, not the list; accepted for a stable API.
-  const { t } = useTranslation();
+/** Required rows (pinned, ✓/✗), other hearings (✓) and the green count. */
+function heardByModel(
+  heardBy: HeardByBubbleProps['heardBy'],
+  requiredKeys: HeardByBubbleProps['requiredKeys'],
+  repeaters: HeardByBubbleProps['repeaters'],
+) {
   const rows = heardBy ?? [];
   const relays = repeaters ?? [];
   const keys = requiredKeys ?? [];
@@ -106,22 +114,80 @@ export const HeardByBubble: React.FC<HeardByBubbleProps> = ({
   const others = sortHeardBy(rows.filter((e) => !matched.has(e)));
 
   // Count = green checks only (required heard + other hearings).
-  const greenCount = required.filter((r) => r.entry).length + others.length;
   const heardRequired = required.filter((r) => r.entry).length;
+  return { keys, required, others, heardRequired, greenCount: heardRequired + others.length };
+}
 
-  const [open, setOpen] = useState(false);
+/** The expanded repeater list on its own, for callers that place it. */
+export const HeardByList: React.FC<Pick<HeardByBubbleProps, 'heardBy' | 'requiredKeys' | 'repeaters'>> = ({
+  heardBy,
+  requiredKeys,
+  repeaters,
+}) => {
+  const { t } = useTranslation();
+  const { required, others } = heardByModel(heardBy, requiredKeys, repeaters);
+  return (
+    <ul className="mc-heard-by-list" data-testid="mc-heard-by-list">
+      {required.map((r) => (
+        <li
+          key={`req-${r.key}`}
+          className={`mc-heard-by-item ${styles.requiredRow}`}
+          data-heard={r.entry ? 'true' : 'false'}
+        >
+          <span className={r.entry ? styles.heardMark : styles.missMark} aria-hidden="true">
+            <UiIcon name={r.entry ? 'check' : 'close'} size={12} />
+          </span>
+          <span className="mc-heard-by-name">{r.entry?.name || r.name}</span>
+          {r.entry ? (
+            <MetaSpans entry={r.entry} />
+          ) : (
+            <span className={styles.missLabel}>
+              {' '}
+              {t('meshcore.heard_by.not_yet', 'not relayed yet')}
+            </span>
+          )}
+        </li>
+      ))}
+      {others.map((h, i) => (
+        <li key={`other-${h.hash}-${i}`} className="mc-heard-by-item">
+          <span className={styles.heardMark} aria-hidden="true">
+            <UiIcon name="check" size={12} />
+          </span>
+          <span className="mc-heard-by-name">{h.name || h.hash}</span>
+          <MetaSpans entry={h} />
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+export const HeardByBubble: React.FC<HeardByBubbleProps> = ({
+  heardBy,
+  requiredKeys,
+  repeaters,
+  mode = 'any',
+  open: openProp,
+  onToggle,
+  renderList = true,
+}) => {
+  void mode; // mode drives the gate, not the list; accepted for a stable API.
+  const { t } = useTranslation();
+  const { keys, heardRequired, greenCount } = heardByModel(heardBy, requiredKeys, repeaters);
+
+  const [openState, setOpenState] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openState;
   const containerRef = useRef<HTMLSpanElement>(null);
   const pendingScroll = useRef(false);
   const toggle = useCallback(() => {
-    setOpen((prev) => {
-      if (!prev) pendingScroll.current = true;
-      return !prev;
-    });
-  }, []);
+    if (!open) pendingScroll.current = true;
+    if (controlled) onToggle?.();
+    else setOpenState(!open);
+  }, [open, controlled, onToggle]);
 
   // Scroll the message row into view on expand only (#6124), never on collapse.
   useEffect(() => {
-    if (!pendingScroll.current) return;
+    if (!pendingScroll.current || !open) return;
     pendingScroll.current = false;
     const row = containerRef.current?.closest('[data-message-id]') as HTMLElement | null;
     if (row && typeof row.scrollIntoView === 'function') {
@@ -150,38 +216,8 @@ export const HeardByBubble: React.FC<HeardByBubbleProps> = ({
       >
         <UiIcon name="radioSignal" size={13} /> {greenCount}
       </button>
-      {open && (
-        <ul className="mc-heard-by-list">
-          {required.map((r) => (
-            <li
-              key={`req-${r.key}`}
-              className={`mc-heard-by-item ${styles.requiredRow}`}
-              data-heard={r.entry ? 'true' : 'false'}
-            >
-              <span className={r.entry ? styles.heardMark : styles.missMark} aria-hidden="true">
-                <UiIcon name={r.entry ? 'check' : 'close'} size={12} />
-              </span>
-              <span className="mc-heard-by-name">{r.entry?.name || r.name}</span>
-              {r.entry ? (
-                <MetaSpans entry={r.entry} />
-              ) : (
-                <span className={styles.missLabel}>
-                  {' '}
-                  {t('meshcore.heard_by.not_yet', 'not relayed yet')}
-                </span>
-              )}
-            </li>
-          ))}
-          {others.map((h, i) => (
-            <li key={`other-${h.hash}-${i}`} className="mc-heard-by-item">
-              <span className={styles.heardMark} aria-hidden="true">
-                <UiIcon name="check" size={12} />
-              </span>
-              <span className="mc-heard-by-name">{h.name || h.hash}</span>
-              <MetaSpans entry={h} />
-            </li>
-          ))}
-        </ul>
+      {open && renderList && (
+        <HeardByList heardBy={heardBy} requiredKeys={requiredKeys} repeaters={repeaters} />
       )}
     </span>
   );

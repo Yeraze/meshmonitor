@@ -76,6 +76,20 @@ export function isMobileLayout(viewportWidth: number, viewportHeight: number): b
 }
 
 /**
+ * `isMobileLayout()` for the live window: true when the viewport falls under
+ * `MOBILE_LAYOUT_MEDIA_QUERY` (narrow, OR a short landscape phone).
+ *
+ * The MeshCore two-pane views (Map/Nodes, Channels, DMs, Rooms) hide the
+ * content pane under that exact query, so they must decide "mobile" with the
+ * same test. A width-only check left the pane hidden for good on an 844x390
+ * landscape phone (#4173 review H4). Returns false outside a browser.
+ */
+export function isMobileLayoutViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  return isMobileLayout(window.innerWidth, window.innerHeight);
+}
+
+/**
  * Largest width the node list may be dragged to.
  *
  * @param availableWidth Width of the split-view container — NOT the viewport.

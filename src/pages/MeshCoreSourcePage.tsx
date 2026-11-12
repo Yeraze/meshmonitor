@@ -30,6 +30,7 @@ import type { ConnectionStatus } from '../components/MeshCore/hooks/useMeshCore'
 import '../components/MeshCore/MeshCoreTab.css';
 import '../components/AppHeader/AppHeader.css';
 import { UiIcon } from '../components/icons';
+import pageStyles from './MeshCoreSourcePage.module.css';
 
 function MeshCoreSourceInner() {
   const { t } = useTranslation();
@@ -73,9 +74,9 @@ function MeshCoreSourceInner() {
         {/* #4939: the back-to-sources button already anchors the header, so the
             MeshMonitor logo + wordmark are redundant on a per-source page — show
             only the source name. */}
-        <div className="dashboard-topbar-logo">
+        <div className={`dashboard-topbar-logo ${pageStyles.logo}`}>
           {sourceName && (
-            <span className="dashboard-topbar-title">{sourceName}</span>
+            <span className={`dashboard-topbar-title ${pageStyles.title}`} title={sourceName}>{sourceName}</span>
           )}
         </div>
         {localNodeLabel && (

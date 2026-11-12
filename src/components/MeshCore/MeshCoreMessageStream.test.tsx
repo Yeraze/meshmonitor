@@ -807,6 +807,14 @@ describe('MeshCoreMessageStream delivery details modal (#4816)', () => {
     expect(container.querySelector('.mc-heard-by-list')).not.toBeNull();
     expect(screen.getByText('Repeater1')).toBeTruthy();
 
+    // #4173 review L13: the antenna stays on the header row, but the list opens
+    // below the message body at full width, not in the narrow meta column.
+    const list = container.querySelector('.mc-heard-by-list')!;
+    expect(container.querySelector('.mc-message-meta .mc-heard-by-badge')).not.toBeNull();
+    expect(list.closest('.mc-message-meta')).toBeNull();
+    const text = container.querySelector('.mc-message-text')!;
+    expect(text.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
     // Toggling again collapses it — independent, self-contained state.
     fireEvent.click(container.querySelector('.mc-heard-by-badge')!);
     expect(container.querySelector('.mc-heard-by-list')).toBeNull();

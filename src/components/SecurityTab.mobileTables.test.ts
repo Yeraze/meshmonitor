@@ -57,6 +57,14 @@ describe('SecurityTab mobile table overflow (#5194)', () => {
     expect(ruleBody(css, '.security-tab')).toMatch(/min-width:\s*0/);
   });
 
+  it('fills its column-flex parent instead of shrink-wrapping to content (#4173 M14)', () => {
+    // MeshCore mounts the tab as an item of a column flex container; with
+    // `margin: 0 auto` and no width it sized to its content and was clipped.
+    expect(ruleBody(css, '.security-tab')).toMatch(/(^|[;\s])width:\s*100%/);
+    const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
+    expect(/\.status-row\s*\{([^}]*)\}/.exec(mobile)?.[1] ?? '').toMatch(/flex-wrap:\s*wrap/);
+  });
+
   it('lets the digest inputs shrink instead of panning the page', () => {
     // `flex: 1` is `1 1 0%`, but a flex item's default `min-width: auto` floors
     // it at min-content — for an <input> that is its intrinsic `size`, ~222px.

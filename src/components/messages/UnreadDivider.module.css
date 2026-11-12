@@ -18,9 +18,11 @@
   margin: 0.75rem 0 0.25rem;
   /* Never let the divider absorb a click meant for a message underneath. */
   pointer-events: none;
-  /* Scroll-margin so scrollIntoView leaves the line clear of a sticky header
-     instead of jamming it against the very top of the viewport. */
-  scroll-margin-top: 1rem;
+  /* Scroll-margin so scrollIntoView leaves the line clear of the sticky
+     "Jump to Bottom" pill (0.5rem offset + ~2.1rem tall) that every message
+     list floats over its top edge. 1rem parked the label right under the pill
+     (#4173 review L22). */
+  scroll-margin-top: 3.25rem;
 }
 
 .rule {

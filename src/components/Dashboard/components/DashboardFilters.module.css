@@ -1,0 +1,20 @@
+/*
+ * Telemetry Dashboard filter bar (#4173 review L34).
+ *
+ * The "Days to View" input carried hardcoded mocha colours inline, so it stayed
+ * near-black with white text inside a light card in the latte theme. Role
+ * tokens follow the active theme.
+ */
+.daysInput {
+  width: 80px;
+  padding: 0.5rem;
+  border: 1px solid var(--color-surface-active);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.daysInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}

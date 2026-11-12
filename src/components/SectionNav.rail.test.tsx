@@ -37,6 +37,11 @@ describe('SectionNav landscape rail CSS (#6211)', () => {
     expect(css).toMatch(/\.body\s*\{[^}]*flex:/);
   });
 
+  it('sizes the filter box to its content in the rail, not a 14rem height (#4173 M17)', () => {
+    const rail = css.slice(css.indexOf('@media (max-height: 500px)'));
+    expect(rail).toMatch(/\.shell\s+\.search\s*\{[^}]*flex:\s*0\s+0\s+auto/);
+  });
+
   it('leaves the sticky `top` to the base / pane rules (does not re-answer it)', () => {
     // The rail reshapes the nav but must not set `top`: window-scroll pages
     // keep var(--app-header-height); MeshCore pane views keep their own.
