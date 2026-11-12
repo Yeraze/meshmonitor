@@ -2280,7 +2280,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/config/power-off`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: opts?.confirm ?? true }),
+        body: JSON.stringify({ confirm: opts?.confirm === true }),
       });
       const data = await parseJsonResponse(response);
       if (!data.success) {
@@ -2299,7 +2299,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/config/reboot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: opts?.confirm ?? true }),
+        body: JSON.stringify({ confirm: opts?.confirm === true }),
       });
       const data = await parseJsonResponse(response);
       if (!data.success) {
@@ -2367,7 +2367,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/config/factory-reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: opts?.confirm ?? true }),
+        body: JSON.stringify({ confirm: opts?.confirm === true }),
       });
       const data = await parseJsonResponse(response);
       if (!data.success) {
@@ -2401,7 +2401,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/config/private-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ privateKey: hexKey, confirm: opts?.confirm ?? true }),
+        body: JSON.stringify({ privateKey: hexKey, confirm: opts?.confirm === true }),
       });
       const data = await parseJsonResponse(response);
       if (!data.success) {
