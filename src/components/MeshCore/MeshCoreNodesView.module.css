@@ -124,3 +124,9 @@
   left: auto;
   right: 0;
 }
+
+/* Import dialog: a contact-share token hit a full radio contact list (#6370). */
+.importConfirm {
+  color: var(--color-warning);
+  margin-bottom: 0.75rem;
+}

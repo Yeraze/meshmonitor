@@ -235,4 +235,81 @@ describe('MeshCoreManager — contact table (#5349)', () => {
       expect(await manager.addContactToDevice(TARGET)).toEqual({ status: 'unavailable' });
     });
   });
+
+  describe('importContactFromToken (#6370)', () => {
+    const NEW = '77'.repeat(32); // a node MeshMonitor has never seen
+    // Device IO the import may do: reads, the add itself, and the favourite
+    // re-sync of the contact refresh. Nothing that transmits.
+    const LOCAL_ONLY = new Set(['has_contact', 'device_query', 'add_contact', 'get_contacts', 'set_contacts_favorite']);
+
+    it('adds an unknown node from the token type and name, with no RF', async () => {
+      const { manager, calls } = makeHarness(DB);
+      const welcome = vi.spyOn(manager as any, 'checkAutoWelcome');
+      const alert = vi.spyOn(manager as any, 'alertNewNode');
+      const r = await manager.importContactFromToken({ publicKey: NEW, type: 3, name: 'Club Room' });
+      expect(r).toMatchObject({ status: 'added' });
+      const add = calls.find((c) => c.cmd === 'add_contact');
+      expect(add?.params).toMatchObject({ public_key: NEW, adv_type: 3, name: 'Club Room', favorite: false });
+      expect(calls.every((c) => LOCAL_ONLY.has(c.cmd))).toBe(true);
+      expect(welcome).not.toHaveBeenCalled();
+      expect(alert).not.toHaveBeenCalled();
+      expect(databaseService.meshcore.upsertNode).toHaveBeenCalledWith(
+        { publicKey: NEW, name: 'Club Room', advType: 3 },
+        'test-source',
+      );
+    });
+
+    it('lower-cases the key before matching', async () => {
+      const { manager, calls } = makeHarness(DB);
+      await manager.importContactFromToken({ publicKey: NEW.toUpperCase(), type: 1, name: 'A' });
+      expect(calls.find((c) => c.cmd === 'add_contact')?.params.public_key).toBe(NEW);
+    });
+
+    it('never renames a known node or changes its type', async () => {
+      const { manager, calls } = makeHarness(DB);
+      const r = await manager.importContactFromToken({ publicKey: TARGET, type: 1, name: 'Spoofed' });
+      expect(r.status).toBe('added');
+      // The stored type (2) and name win over the unsigned token.
+      expect(calls.find((c) => c.cmd === 'add_contact')?.params).toMatchObject({ adv_type: 2, name: 'Rpt B' });
+      const upserts = vi.mocked(databaseService.meshcore.upsertNode).mock.calls;
+      expect(upserts.some(([node]) => node.name === 'Spoofed')).toBe(false);
+    });
+
+    it('leaves a contact the radio already holds alone (no add_contact write)', async () => {
+      const { manager, calls } = makeHarness(DB);
+      const r = await manager.importContactFromToken({ publicKey: OTHER, type: 1, name: 'Chat C' });
+      expect(r).toEqual({ status: 'already_on_device' });
+      expect(calls.some((c) => c.cmd === 'add_contact')).toBe(false);
+    });
+
+    it('keeps the full-table confirm step', async () => {
+      const { manager, calls, device } = makeHarness(DB);
+      device.maxContacts = 2;
+      const r = await manager.importContactFromToken({ publicKey: NEW, type: 1, name: 'A' });
+      expect(r).toEqual({ status: 'confirm_full', count: 2, maxContacts: 2 });
+      expect(calls.some((c) => c.cmd === 'add_contact')).toBe(false);
+      expect(databaseService.meshcore.upsertNode).not.toHaveBeenCalled();
+    });
+
+    it("refuses the source's own key", async () => {
+      const { manager, calls } = makeHarness(DB);
+      expect(await manager.importContactFromToken({ publicKey: 'ee'.repeat(32), type: 1, name: 'Me' }))
+        .toEqual({ status: 'self' });
+      expect(calls).toHaveLength(0);
+    });
+
+    it('lifts a removal tombstone so the refresh after the add keeps the contact', async () => {
+      const { manager } = makeHarness(DB);
+      (manager as any).tombstoneContact(NEW);
+      await manager.importContactFromToken({ publicKey: NEW, type: 1, name: 'Back' });
+      expect(manager.getContact(NEW)?.onDevice).toBe(true);
+    });
+
+    it('returns unavailable when not a connected companion', async () => {
+      const { manager } = makeHarness(DB);
+      (manager as any).deviceType = MeshCoreDeviceType.REPEATER;
+      expect(await manager.importContactFromToken({ publicKey: NEW, type: 1, name: 'A' }))
+        .toEqual({ status: 'unavailable' });
+    });
+  });
 });

@@ -1,0 +1,179 @@
+/* MeshCore contact-share tokens (#6370): the token in a message, the import
+   modal and the Share contact picker. */
+
+/* A 70+ character token must wrap on a 390px phone instead of widening the
+   message bubble. */
+.token {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.tokenText {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.tokenButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+  padding: 0.15rem 0.3rem;
+  min-width: 1.75rem;
+  min-height: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.tokenButton:hover {
+  background: var(--color-surface-hover);
+}
+
+.tokenButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* Import modal */
+.details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.details dt {
+  color: var(--color-text-subtle);
+}
+
+.details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.knownAs {
+  color: var(--color-text-subtle);
+}
+
+.typeRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.publicKey {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.hint,
+.notice,
+.error,
+.success {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+}
+
+.hint {
+  color: var(--color-text-subtle);
+}
+
+.notice {
+  color: var(--color-warning);
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.success {
+  color: var(--color-success);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.button {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Share contact picker */
+.search {
+  width: 100%;
+  margin-bottom: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+/* Scrolls inside the modal so the picker fits a 390px-tall landscape phone. */
+.pickerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(50vh, 22rem);
+  overflow-y: auto;
+}
+
+.pickerItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.pickerItem:hover,
+.pickerItem:focus-visible {
+  background: var(--color-surface-hover);
+  outline: none;
+}
+
+.pickerName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerMeta {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}

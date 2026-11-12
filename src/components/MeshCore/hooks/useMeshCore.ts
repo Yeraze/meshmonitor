@@ -505,6 +505,11 @@ export interface MeshCoreActions {
   /** Import a contact from a signed advert blob. Refreshes contacts on
    *  success. */
   importContact: (advertBytes: number[]) => Promise<boolean>;
+  /** Import a contact from a MeshCore One contact-share token
+   *  `<PUBKEYHEX:type:name>` into the companion radio (#6370). Same response
+   *  shape as `addContactToDevice`: `CONTACT_TABLE_FULL_CONFIRM` means ask,
+   *  then retry with `confirmFull`. Refreshes contacts on success. */
+  importContactToken: (token: string, confirmFull?: boolean) => Promise<AddContactToDeviceResponse>;
   /** Sync the device's RTC to the server's current time. */
   syncDeviceTime: () => Promise<boolean>;
   /** Query the neighbour list from a remote repeater. */
@@ -2158,6 +2163,34 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, refreshContacts]);
 
+  const importContactToken = useCallback(async (
+    token: string,
+    confirmFull = false,
+  ): Promise<AddContactToDeviceResponse> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/contacts/import-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, confirmFull }),
+      });
+      const body = await parseJsonResponse(response);
+      if (!body.success) {
+        return {
+          success: false,
+          code: body.code,
+          error: body.error,
+          count: body.count,
+          maxContacts: body.maxContacts,
+        };
+      }
+      const data = (body.data ?? {}) as { status?: string; count?: number; maxContacts?: number | null; evicted?: string[] };
+      await refreshContacts();
+      return { success: true, ...data };
+    } catch (_err) {
+      return { success: false, error: 'Network error' };
+    }
+  }, [mcPrefix, csrfFetch, refreshContacts]);
+
   const syncDeviceTime = useCallback(async (): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/sync-time`, { method: 'POST' });
@@ -2968,6 +3001,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setNodePositionOverride,
       exportContact,
       importContact,
+      importContactToken,
       syncDeviceTime,
       getNeighbours,
       rebootDevice,

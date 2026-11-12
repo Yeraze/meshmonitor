@@ -1438,6 +1438,12 @@ export type AddContactToDeviceResult =
   | { status: 'failed'; error: string };
 
 /**
+ * Result of `MeshCoreManager.importContactFromToken` (#6370): the add-to-device
+ * outcomes, plus `self` when the token names this source's own node.
+ */
+export type ImportContactTokenResult = AddContactToDeviceResult | { status: 'self' };
+
+/**
  * Bulk "Push to radio" batches (#5502). Each batch reads the radio's contact
  * table twice (before + after) and writes one CMD_ADD_UPDATE_CONTACT per
  * contact, so the bridge timeout scales with the batch.
@@ -9083,20 +9089,32 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async addContactToDevice(
     publicKey: string,
-    opts: { confirmFull?: boolean } = {},
+    opts: {
+      confirmFull?: boolean;
+      /**
+       * Type and name to fall back on when MeshMonitor holds nothing for the
+       * key, or holds no type / name (contact-share token import, #6370).
+       * What MeshMonitor already knows always wins over the seed.
+       */
+      seed?: { advType: number; name: string };
+    } = {},
   ): Promise<AddContactToDeviceResult> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
       return { status: 'unavailable' };
     }
     const key = publicKey.toLowerCase();
 
-    // What we know about the node: the live contact first, else the DB row.
+    // What we know about the node: the live contact first, else the DB row,
+    // else the caller's seed.
     const live = this.contacts.get(key);
     const dbNode = await databaseService.meshcore.getNodeByPublicKeyAndSource(key, this.sourceId);
-    if (!live && !dbNode) return { status: 'not_found' };
-    const advType = live?.advType ?? (dbNode?.advType as MeshCoreDeviceType | null | undefined) ?? null;
+    if (!live && !dbNode && !opts.seed) return { status: 'not_found' };
+    const advType = live?.advType
+      ?? (dbNode?.advType as MeshCoreDeviceType | null | undefined)
+      ?? (opts.seed?.advType as MeshCoreDeviceType | undefined)
+      ?? null;
     if (advType === null || advType < 1 || advType > 4) return { status: 'unknown_type' };
-    const name = live?.advName || live?.name || dbNode?.name || '';
+    const name = live?.advName || live?.name || dbNode?.name || opts.seed?.name || '';
     const latitude = live?.latitude ?? dbNode?.latitude ?? null;
     const longitude = live?.longitude ?? dbNode?.longitude ?? null;
     const isFavorite = dbNode?.isFavorite === true;
@@ -9183,6 +9201,69 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       count: typeof response.data?.count === 'number' ? response.data.count : count + 1,
       maxContacts,
     };
+  }
+
+  /**
+   * Import a contact from a MeshCore One contact-share token (#6370):
+   * `<PUBKEYHEX:type:name>`. The token carries no advert or signature, so the
+   * contact is built from key + type + name with a flood (unknown) out-path
+   * and written with CMD_ADD_UPDATE_CONTACT through {@link addContactToDevice},
+   * which supplies the full-table confirm, favourite protection and
+   * already-on-radio handling unchanged.
+   *
+   * The token is unsigned, so it never overrides what MeshMonitor or the radio
+   * already holds: a contact already on the radio keeps its out-path, flags
+   * and name (add_contact skips it), and an existing node row keeps its name
+   * and type. Only a missing row, or a row with no name / type, takes the
+   * token's values.
+   *
+   * Mesh impact: a local serial/TCP write to the companion only. Nothing is
+   * transmitted, and no advert, path discovery, new-node alert or Auto Welcome
+   * follows from it (the bulk contact refresh never fires those).
+   */
+  async importContactFromToken(
+    token: { publicKey: string; type: number; name: string },
+    opts: { confirmFull?: boolean } = {},
+  ): Promise<ImportContactTokenResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { status: 'unavailable' };
+    }
+    const key = token.publicKey.toLowerCase();
+    const selfKey = (this.localNode?.publicKey ?? '').toLowerCase();
+    if (key === selfKey) return { status: 'self' };
+
+    // An explicit import is a user re-add: lift any removal tombstone so the
+    // contact refresh that follows the add keeps it (#3878).
+    this.clearContactTombstone(key);
+
+    const result = await this.addContactToDevice(key, {
+      confirmFull: opts.confirmFull === true,
+      seed: { advType: token.type, name: token.name },
+    });
+    if (result.status === 'added' || result.status === 'already_on_device') {
+      await this.ensureImportedNodeRow(key, token.type, token.name);
+    }
+    return result;
+  }
+
+  /**
+   * Make sure an imported contact has a `meshcore_nodes` row on this source so
+   * it shows in the lists (#6370). Fills only what is missing; never renames a
+   * known node or changes its type. Sets no Last Heard: the node was not heard.
+   */
+  private async ensureImportedNodeRow(publicKey: string, advType: number, name: string): Promise<void> {
+    try {
+      const existing = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, this.sourceId);
+      const patch: { publicKey: string; name?: string; advType?: number } = { publicKey };
+      if (!existing?.name) patch.name = name;
+      if (existing?.advType === null || existing?.advType === undefined) patch.advType = advType;
+      if (existing && patch.name === undefined && patch.advType === undefined) return;
+      await databaseService.meshcore.upsertNode(patch, this.sourceId);
+    } catch (err) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] Could not record imported contact ${publicKey.substring(0, 16)}…: ${(err as Error).message}`,
+      );
+    }
   }
 
   /** Set a contact's `onDevice` flag and broadcast it (#5349). */

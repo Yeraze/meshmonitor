@@ -3,7 +3,8 @@ import { MeshCoreVirtualList } from './MeshCoreVirtualList';
 import NodeQuickAgeFilter from '../NodeQuickAgeFilter';
 import { useNodeQuickAgeFilter } from '../../hooks/useNodeQuickAgeFilter';
 import { useTranslation } from 'react-i18next';
-import { MeshCoreNode } from './hooks/useMeshCore';
+import type { MeshCoreNode, AddContactToDeviceResponse } from './hooks/useMeshCore';
+import { parseMeshCoreContactToken } from '../../utils/meshcoreContactToken';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { AdvancedNodeFilterPopup, type NodeFilterFeature } from '../AdvancedNodeFilterPopup/AdvancedNodeFilterPopup';
 import { NodeSortControls } from '../nodes/NodeSortControls';
@@ -75,6 +76,9 @@ interface MeshCoreNodesViewProps {
   nodes: MeshCoreNode[];
   contacts: MeshCoreContact[];
   onImportContact?: (advertBytes: number[]) => Promise<boolean>;
+  /** Import a MeshCore One contact-share token `<PUBKEYHEX:type:name>` (#6370).
+   *  The Import dialog accepts one alongside the signed-advert hex. */
+  onImportContactToken?: (token: string, confirmFull?: boolean) => Promise<AddContactToDeviceResponse>;
   onNavigateToDm?: (publicKey: string) => void;
   /** Toggle the server-side favorite flag for a node (issue #3588). When
    *  provided, each row shows a star toggle and favorited nodes pin to the
@@ -114,6 +118,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   nodes,
   contacts,
   onImportContact,
+  onImportContactToken,
   onNavigateToDm,
   onToggleFavorite,
   onDiscoverNodes,
@@ -206,12 +211,66 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const [importHex, setImportHex] = useState('');
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  // Contact-share token import hit a full radio contact list: the server's
+  // message, shown until the user confirms (#6370).
+  const [importConfirmFull, setImportConfirmFull] = useState<string | null>(null);
+
+  const handleImportToken = useCallback(async (token: string) => {
+    if (!onImportContactToken) {
+      setImportError(t('meshcore.contact_token.import_unavailable', 'Importing needs a connected Companion radio and permission to edit nodes.'));
+      return;
+    }
+    setImporting(true);
+    setImportError(null);
+    try {
+      const confirmFull = importConfirmFull !== null;
+      const result = await onImportContactToken(token, confirmFull);
+      if (!result.success && result.code === 'CONTACT_TABLE_FULL_CONFIRM') {
+        setImportConfirmFull(result.error ?? t(
+          'meshcore.not_on_device.full_confirm',
+          "The radio's contact list is full. Adding may replace the oldest non-favourite contact.",
+        ));
+        return;
+      }
+      if (!result.success) {
+        setImportError(result.error || t('meshcore.contact_token.import_failed', 'Could not import the contact.'));
+        return;
+      }
+      setImportConfirmFull(null);
+      setImportDialogOpen(false);
+      setImportHex('');
+      showToast(
+        result.status === 'already_on_device'
+          ? t('meshcore.contact_token.already_on_radio', 'This contact is already in the radio. Nothing was changed.')
+          : t('meshcore.contact_token.imported', 'Imported to the radio.'),
+        'success',
+      );
+    } finally {
+      setImporting(false);
+    }
+  }, [onImportContactToken, importConfirmFull, showToast, t]);
 
   const handleImport = useCallback(async () => {
-    if (!onImportContact || importing) return;
+    if (importing) return;
+    // A contact-share token is tried first; anything else is advert hex.
+    const asToken = parseMeshCoreContactToken(importHex);
+    if (asToken) {
+      await handleImportToken(importHex.trim());
+      return;
+    }
+    if (!onImportContact) {
+      setImportError(t(
+        'meshcore.import_contact.invalid_input',
+        'Not a contact: paste a contact token <KEY:type:name>, or the full exported contact hex.',
+      ));
+      return;
+    }
     const hex = importHex.trim().replace(/^meshcore:\/\//i, '').replace(/\s+/g, '');
     if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < 2 || hex.length % 2 !== 0) {
-      setImportError(t('meshcore.import_contact.invalid_hex', 'Invalid hex — paste the full exported contact blob.'));
+      setImportError(t(
+        'meshcore.import_contact.invalid_input',
+        'Not a contact: paste a contact token <KEY:type:name>, or the full exported contact hex.',
+      ));
       return;
     }
     const bytes: number[] = [];
@@ -231,7 +290,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     } finally {
       setImporting(false);
     }
-  }, [onImportContact, importing, importHex, t]);
+  }, [onImportContact, importing, importHex, handleImportToken, t]);
 
   useEffect(() => {
     const onResize = () => {
@@ -464,11 +523,11 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           <span>{t('meshcore.nav.nodes', 'Nodes')}</span>
           <span className="pane-count">{rows.length}</span>
           <span className={styles.actions}>
-          {onImportContact && (
+          {(onImportContact || onImportContactToken) && (
             <button
               type="button"
               className={`btn-secondary ${styles.actionBtn}`}
-              onClick={() => { setImportHex(''); setImportError(null); setImportDialogOpen(true); }}
+              onClick={() => { setImportHex(''); setImportError(null); setImportConfirmFull(null); setImportDialogOpen(true); }}
             >
               {t('meshcore.import_contact.button', 'Import')}
             </button>
@@ -772,15 +831,15 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             </h3>
             <p style={{ marginBottom: '0.75rem' }}>
               {t(
-                'meshcore.import_contact.dialog_hint',
-                'Paste the hex-encoded signed advert blob or a meshcore:// URL exported from another node.',
+                'meshcore.import_contact.dialog_hint_token',
+                'Paste a contact token like <PUBLICKEY:1:Name> (as MeshCore One shares them), the hex-encoded signed advert blob, or a meshcore:// URL exported from another node.',
               )}
             </p>
             <textarea
               value={importHex}
-              onChange={(e) => setImportHex(e.target.value)}
+              onChange={(e) => { setImportHex(e.target.value); setImportConfirmFull(null); }}
               disabled={importing}
-              placeholder="e.g. 04a3b7c2d1..."
+              placeholder={t('meshcore.import_contact.placeholder', 'e.g. <04A3B7…:1:Alice> or 04a3b7c2d1…')}
               rows={4}
               style={{
                 width: '100%',
@@ -796,6 +855,12 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             {importError && (
               <div style={{ color: 'var(--color-error)', marginBottom: '0.75rem' }} role="alert">
                 {importError}
+              </div>
+            )}
+            {importConfirmFull && (
+              <div className={styles.importConfirm} role="alert">
+                {importConfirmFull}{' '}
+                {t('meshcore.not_on_device.full_confirm_question', 'Favourites are never replaced. Add anyway?')}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
@@ -815,7 +880,9 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               >
                 {importing
                   ? t('meshcore.import_contact.importing', 'Importing…')
-                  : t('meshcore.import_contact.import', 'Import')}
+                  : importConfirmFull
+                    ? t('meshcore.contact_token.import_anyway', 'Import anyway')
+                    : t('meshcore.import_contact.import', 'Import')}
               </button>
             </div>
           </div>

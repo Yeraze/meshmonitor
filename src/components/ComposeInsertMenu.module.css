@@ -1,0 +1,88 @@
+/* Composer + menu (#6370). Sits between the compose box and Send. */
+.wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.trigger {
+  background: transparent;
+  border: 1px solid var(--color-surface-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  height: 2.5rem;
+  width: 2.5rem;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trigger:hover:not(:disabled) {
+  background: var(--color-surface);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Opens upward, right-aligned to the button, so it never runs off a phone's
+   right edge; the width cap keeps it on screen at 390px. */
+.menu {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 1000;
+  min-width: 13rem;
+  max-width: min(18rem, calc(100vw - 2rem));
+  padding: 0.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.item:hover:not(:disabled),
+.item:focus-visible {
+  background: var(--color-surface-hover);
+  outline: none;
+}
+
+.item:disabled {
+  color: var(--color-text-subtle);
+  cursor: default;
+}
+
+.itemText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.itemHint {
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}

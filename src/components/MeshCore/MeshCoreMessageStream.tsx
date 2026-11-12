@@ -38,6 +38,13 @@ import { meshcoreDisplayTimeMs, meshcoreMessageClockOffsetMs } from '../../utils
 import { MeshCoreClockOffset } from './MeshCoreClockOffset';
 import { requiredRepeatersHeard, RELAY_ADV_TYPES, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
 import { HeardByBubble, HeardByList } from './HeardByBubble';
+import { splitMeshCoreContactTokens, type MeshCoreContactTokenMatch } from '../../utils/meshcoreContactToken';
+import { MeshCoreContactTokenModal } from './MeshCoreContactTokenModal';
+import { MeshCoreShareContactPicker } from './MeshCoreShareContactPicker';
+import { selfContactToken } from './meshcoreContactShare';
+import type { AddContactToDeviceResponse } from './hooks/useMeshCore';
+import type { ComposeInsertMenuItem } from '../composeInsertMenuTypes';
+import tokenStyles from './MeshCoreContactToken.module.css';
 import { isNearBottom, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX } from '../../utils/scrollNearBottom';
 
 interface MeshCoreMessageStreamProps {
@@ -127,6 +134,24 @@ interface MeshCoreMessageStreamProps {
    *  `contacts`. */
   requiredRepeaterKeys?: string[];
   requiredRepeaterMode?: RequiredRepeaterMode;
+  /**
+   * Contact-share tokens in messages (#6370). Tokens are always detected and
+   * get an import button; this says whether Import can run. Unset: the modal
+   * opens with Import disabled.
+   */
+  contactTokenImport?: {
+    onImport?: (raw: string, confirmFull: boolean) => Promise<AddContactToDeviceResponse>;
+    canImport: boolean;
+    /** Why Import is off (not a Companion, not connected, no permission). */
+    disabledReason?: string;
+  };
+  /**
+   * Show the composer's + menu with Share contact / Share my contact info
+   * (#6370). `selfNode` is this source's own node, for the self token.
+   */
+  contactShare?: {
+    selfNode: { publicKey?: string | null; name?: string | null } | null;
+  };
 }
 
 /** Scroll-to-top distance (px) that triggers a load-older request. */
@@ -140,11 +165,8 @@ function formatTime(ts: number): string {
 
 const MENTION_RE = /@\[([^\]]+)\]/g;
 
-function renderMessageText(text: string): React.ReactNode {
-  // A message that is one SPIP image code draws as the image.
-  const spip = parseSpip(text);
-  if (spip) return <SpipImage image={spip} code={text.trim()} />;
-
+/** Plain text with `@[Name]` mentions drawn as chips. `keyPrefix` keeps keys unique across segments. */
+function renderMentions(text: string, keyPrefix: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -156,7 +178,7 @@ function renderMessageText(text: string): React.ReactNode {
     const name = match[1];
     parts.push(
       <span
-        key={match.index}
+        key={`${keyPrefix}${match.index}`}
         className="mc-mention"
         title={name}
       >
@@ -167,6 +189,44 @@ function renderMessageText(text: string): React.ReactNode {
   }
   if (lastIndex < text.length) {
     parts.push(text.substring(lastIndex));
+  }
+  return parts;
+}
+
+function renderMessageText(
+  text: string,
+  onContactToken: (match: MeshCoreContactTokenMatch) => void,
+  importLabel: (name: string) => string,
+): React.ReactNode {
+  // A message that is one SPIP image code draws as the image.
+  const spip = parseSpip(text);
+  if (spip) return <SpipImage image={spip} code={text.trim()} />;
+
+  // Contact-share tokens (#6370): keep the token text, add an import button.
+  const parts: React.ReactNode[] = [];
+  let pos = 0;
+  for (const seg of splitMeshCoreContactTokens(text)) {
+    if (seg.kind === 'text') {
+      parts.push(...renderMentions(seg.text, `m${pos}-`));
+      pos += seg.text.length;
+      continue;
+    }
+    pos = seg.match.end;
+    const { match } = seg;
+    parts.push(
+      <span key={`token-${match.start}`} className={tokenStyles.token}>
+        <span className={tokenStyles.tokenText}>{match.raw}</span>
+        <button
+          type="button"
+          className={tokenStyles.tokenButton}
+          onClick={() => onContactToken(match)}
+          title={importLabel(match.token.name)}
+          aria-label={importLabel(match.token.name)}
+        >
+          <UiIcon name="identity" size={15} />
+        </button>
+      </span>,
+    );
   }
   return parts.length > 0 ? parts : text;
 }
@@ -199,6 +259,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   reactionResolutions,
   requiredRepeaterKeys,
   requiredRepeaterMode = 'any',
+  contactTokenImport,
+  contactShare,
 }) => {
   const { t } = useTranslation();
   // The user's time/date format for the relative-time tooltip, as the
@@ -232,6 +294,16 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // Message whose relay-hash chain was clicked — opens the route-detail modal
   // that expands each hash to the matching repeater name.
   const [routeDetail, setRouteDetail] = useState<MeshCoreMessage | null>(null);
+  // Contact-share token the user clicked (#6370).
+  const [tokenDetail, setTokenDetail] = useState<MeshCoreContactTokenMatch | null>(null);
+  const importTokenLabel = useCallback(
+    (name: string) => t('meshcore.contact_token.open', 'Import contact {{name}}', { name }),
+    [t],
+  );
+  // Share contact picker (#6370). The composer hands over its insert function
+  // when the menu entry is picked; the picker calls it with the token.
+  const [sharePickerOpen, setSharePickerOpen] = useState(false);
+  const shareInsertRef = useRef<((text: string) => void) | null>(null);
   // Outgoing message whose delivery-status icon was clicked — opens the
   // Delivery Details modal (#4816 Phase 1 WP3). Independent of `routeDetail`
   // above, which is the pre-existing route-detail popup.
@@ -676,6 +748,36 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // the name-based `@[Name]` this app already renders and prefills on reply
   // (#3851) — deliberately NOT the Meshtastic `@!<id>` token, which has no
   // meaning on a MeshCore mesh.
+  // Composer + menu (#6370): only when the parent asks for contact sharing.
+  const selfShareToken = contactShare ? selfContactToken(contactShare.selfNode) : null;
+  const insertMenuItems = useMemo<ComposeInsertMenuItem[] | undefined>(() => {
+    if (!contactShare) return undefined;
+    return [
+      {
+        id: 'share-contact',
+        label: t('meshcore.contact_token.share_contact', 'Share contact'),
+        icon: 'identity',
+        onSelect: (insert) => {
+          shareInsertRef.current = insert;
+          setSharePickerOpen(true);
+        },
+      },
+      {
+        id: 'share-self',
+        label: t('meshcore.contact_token.share_self', 'Share my contact info'),
+        icon: 'companion',
+        disabled: !selfShareToken,
+        disabledReason: t(
+          'meshcore.contact_token.share_self_unavailable',
+          'Needs this radio\'s public key and name. Connect the Companion first.',
+        ),
+        onSelect: (insert) => {
+          if (selfShareToken) insert(selfShareToken);
+        },
+      },
+    ];
+  }, [contactShare, selfShareToken, t]);
+
   const mentionCandidates = useMemo(
     () => (contacts ?? [])
       .map(c => ({
@@ -1000,7 +1102,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   )}
                 </span>
               </div>
-              <div className="mc-message-text">{renderMessageText(m.text)}</div>
+              <div className="mc-message-text">{renderMessageText(m.text, setTokenDetail, importTokenLabel)}</div>
               {!outgoing && typeof m.hopCount === 'number' && (
                 <div className="mc-message-route" title={t('meshcore.route_tooltip', 'How this message reached you')}>
                   {m.hopCount === 0 ? (
@@ -1120,6 +1222,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           disabledTitle={disabledReason}
           onSend={() => void handleSend()}
           sendAriaLabel={t('meshcore.send', 'Send')}
+          insertMenuItems={insertMenuItems}
           actions={canTranslate ? (
             <button
               type="button"
@@ -1146,6 +1249,32 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         />
       )}
       </>)}
+      {contactShare && (
+        <MeshCoreShareContactPicker
+          isOpen={sharePickerOpen}
+          contacts={contacts ?? []}
+          selfPublicKey={contactShare.selfNode?.publicKey ?? selfPublicKey}
+          onPick={(token) => {
+            shareInsertRef.current?.(token);
+            shareInsertRef.current = null;
+            setSharePickerOpen(false);
+          }}
+          onClose={() => {
+            shareInsertRef.current = null;
+            setSharePickerOpen(false);
+          }}
+        />
+      )}
+      <MeshCoreContactTokenModal
+        token={tokenDetail?.token ?? null}
+        raw={tokenDetail?.raw ?? ''}
+        onClose={() => setTokenDetail(null)}
+        onImport={contactTokenImport?.onImport}
+        canImport={contactTokenImport?.canImport ?? false}
+        disabledReason={contactTokenImport?.disabledReason}
+        selfPublicKey={selfPublicKey}
+        knownName={tokenDetail ? nameForKey(tokenDetail.token.publicKey) : null}
+      />
       {routeDetail && (
         <MeshCoreMessageRouteModal
           message={routeDetail}
