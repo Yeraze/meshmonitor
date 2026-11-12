@@ -80,22 +80,42 @@ interface TestDbTemplate {
   foreignKeys: number;
   legacyAlterTable: number;
 }
-let template: TestDbTemplate | null = null;
+/**
+ * Some migrations read the environment (the first-boot default sources in
+ * 050 / `_legacyDefaultSource.ts` read `MESHTASTIC_*`, `MESHCORE_*` and the
+ * Virtual Node vars). A test that changes those between `createTestDb()` calls
+ * expects the migrations to see the new values, so the template is cached per
+ * value of every such variable, not once per worker.
+ */
+const MIGRATION_ENV_PREFIXES = ['MESHTASTIC_', 'MESHCORE_', 'ENABLE_VIRTUAL_NODE', 'VIRTUAL_NODE_'];
+
+function migrationEnvKey(): string {
+  return Object.keys(process.env)
+    .filter((k) => MIGRATION_ENV_PREFIXES.some((p) => k.startsWith(p)))
+    .sort()
+    .map((k) => `${k}=${process.env[k]}`)
+    .join('\n');
+}
+
+const templates = new Map<string, TestDbTemplate>();
 
 function getTemplate(): TestDbTemplate {
-  if (template) return template;
+  const key = migrationEnvKey();
+  const cached = templates.get(key);
+  if (cached) return cached;
   const build = new Database(':memory:');
   try {
     applyAllMigrations(build);
-    template = {
+    const template: TestDbTemplate = {
       image: build.serialize(),
       foreignKeys: build.pragma('foreign_keys', { simple: true }) as number,
       legacyAlterTable: build.pragma('legacy_alter_table', { simple: true }) as number,
     };
+    templates.set(key, template);
+    return template;
   } finally {
     build.close();
   }
-  return template;
 }
 
 /**
