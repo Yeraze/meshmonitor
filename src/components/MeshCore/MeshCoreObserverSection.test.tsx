@@ -254,6 +254,15 @@ describe('MeshCoreObserverSection — [B] key status block', () => {
     expect(screen.getByText('meshcore.observer.clear_button').closest('button')).not.toBeDisabled();
   });
 
+  it('styles Clear as a danger button, not red text on the form accent (#4173 N4)', () => {
+    mockInitialStatus = makeKeyStatus({ stored: true });
+    render(<MeshCoreObserverSection sourceId={SOURCE_ID} connected={true} />);
+    const btn = screen.getByText('meshcore.observer.clear_button').closest('button') as HTMLButtonElement;
+    expect(btn.className).toMatch(/dangerButton/);
+    // The old inline colour fought the purple `.meshcore-form-view button` fill.
+    expect(btn.style.color).toBe('');
+  });
+
   it('disables Clear when no key is stored', () => {
     mockInitialStatus = makeKeyStatus({ stored: false });
     render(<MeshCoreObserverSection sourceId={SOURCE_ID} connected={true} />);

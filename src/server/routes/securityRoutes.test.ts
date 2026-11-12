@@ -21,6 +21,8 @@ vi.mock('../../services/database.js', () => ({
     nodes: { getAllNodes: vi.fn().mockResolvedValue([]), getNode: vi.fn(), upsertNode: vi.fn().mockResolvedValue(undefined) },
     settings: { getSetting: vi.fn().mockResolvedValue(null), getSettingForSource: vi.fn().mockResolvedValue(null), getLocalNodeNumForSource: vi.fn().mockResolvedValue(null) },
     getKeyRepairLogAsync: vi.fn().mockResolvedValue([]),
+    // No manager: the route tells a missing source row from an unstarted one (#4173 N5).
+    sources: { getSource: vi.fn().mockResolvedValue(null) },
     updateNodeTimeOffsetFlagsAsync: vi.fn().mockResolvedValue(undefined),
   }
 }));

@@ -14,7 +14,7 @@
  * so no probe requests fire while the surface is hidden.
  */
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { SettingsProvider } from '../contexts/SettingsContext';
@@ -44,6 +44,11 @@ function MeshCoreSourceInner() {
 
   const [showLogin, setShowLogin] = useState(false);
   const [mcStatus, setMcStatus] = useState<ConnectionStatus | null>(null);
+  const [mcLoaded, setMcLoaded] = useState(false);
+  const handleStatusChange = useCallback((status: ConnectionStatus | null, loaded: boolean) => {
+    setMcStatus(status);
+    setMcLoaded(loaded);
+  }, []);
 
   if (!sourceId) {
     return (
@@ -55,7 +60,10 @@ function MeshCoreSourceInner() {
 
   // mcStatus is null until the snapshot loads — show "Connecting…" instead of
   // "Disconnected" so the header doesn't mislead the user during the initial fetch.
-  const statusLoading = mcStatus === null;
+  // Once that first load settles with no status (no manager for the source:
+  // not connected, autoConnect off), or when MeshCorePage is not mounted at
+  // all (no connection:read), it is "Disconnected", not "Connecting" (#4173 N6).
+  const statusLoading = canReadConnection && mcStatus === null && !mcLoaded;
   const connected = mcStatus?.connected ?? false;
   const localNode = mcStatus?.localNode ?? null;
   const localNodeLabel = localNode?.name || null;
@@ -112,7 +120,7 @@ function MeshCoreSourceInner() {
       </header>
 
       {canReadConnection ? (
-        <MeshCorePage baseUrl={appBasename} sourceId={sourceId} onStatusChange={setMcStatus} />
+        <MeshCorePage baseUrl={appBasename} sourceId={sourceId} onStatusChange={handleStatusChange} />
       ) : (
         <div className="meshcore-tab">
           <h2>{t('meshcore.title')}</h2>

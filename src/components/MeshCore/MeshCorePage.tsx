@@ -71,7 +71,7 @@ interface MeshCorePageProps {
   enabled?: boolean;
   /** When provided, the parent renders the connection chip in its own header
    *  and the inline status bar suppresses its duplicate "Connected to X" text. */
-  onStatusChange?: (status: ConnectionStatus | null) => void;
+  onStatusChange?: (status: ConnectionStatus | null, loaded: boolean) => void;
 }
 
 export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, enabled, onStatusChange }) => {
@@ -184,8 +184,11 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   }, []);
 
   useEffect(() => {
-    onStatusChange?.(status);
-  }, [status, onStatusChange]);
+    // `loaded`: the first snapshot settled. A source with no manager never
+    // gets a status, so the header needs this to stop saying "Connecting"
+    // (#4173 N6).
+    onStatusChange?.(status, hasLoadedOnce);
+  }, [status, hasLoadedOnce, onStatusChange]);
 
   useEffect(() => {
     if (view !== 'dms') {
