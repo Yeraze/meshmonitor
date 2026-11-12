@@ -140,17 +140,52 @@ describe('v1 read — MeshCore source', () => {
     await get('/nodes/mc:zz').expect(404);
   });
 
-  it('channels: slot above 7 is visible with messages:read, PSK only with write', async () => {
+  it('channels: slot above 7 is visible with messages:read, no PSK without a key grant', async () => {
     await grantAll();
-    let res = await get('/channels').expect(200);
+    const res = await get('/channels').expect(200);
     expect(res.body.data.map((c: any) => c.id).sort((a: number, b: number) => a - b)).toEqual([0, 12]);
     expect(res.body.data.every((c: any) => c.protocol === 'meshcore')).toBe(true);
     expect(res.body.data.some((c: any) => c.psk !== undefined)).toBe(false);
     await get('/channels/12').expect(200);
+  });
 
-    await grantAll({ messages: ['read', 'write'] });
-    res = await get('/channels/12').expect(200);
-    expect(res.body.data.psk).toBeDefined();
+  // 4.17.3 review B1: the PSK follows the UI rule in channelRoutes.ts —
+  // admin, or channel_<id>:write for slots 0-7. `messages:write` grants
+  // visibility only and must never return a key.
+  describe('channels: PSK exposure (B1)', () => {
+    beforeEach(async () => {
+      await databaseService.channels.upsertChannel({ id: 1, name: 'Slot1', psk: 'c2xvdDE=', role: 2 } as never, MC);
+    });
+
+    const pskById = (rows: any[]) =>
+      Object.fromEntries(rows.map((c: any) => [c.id, c.psk]));
+
+    it('messages:read+write sees every slot but no psk', async () => {
+      await grantAll({ messages: ['read', 'write'] });
+      const res = await get('/channels').expect(200);
+      expect(res.body.data.map((c: any) => c.id).sort((a: number, b: number) => a - b)).toEqual([0, 1, 12]);
+      expect(res.body.data.every((c: any) => c.psk === undefined)).toBe(true);
+      for (const id of [0, 1, 12]) {
+        const one = await get(`/channels/${id}`).expect(200);
+        expect(one.body.data.psk).toBeUndefined();
+      }
+    });
+
+    it('channel_1:write gets slot 1 psk only', async () => {
+      await grantAll({ messages: ['read', 'write'], channel_1: ['read', 'write'] });
+      const res = await get('/channels').expect(200);
+      expect(pskById(res.body.data)).toEqual({ 0: undefined, 1: 'c2xvdDE=', 12: undefined });
+      expect((await get('/channels/1').expect(200)).body.data.psk).toBe('c2xvdDE=');
+      expect((await get('/channels/0').expect(200)).body.data.psk).toBeUndefined();
+      expect((await get('/channels/12').expect(200)).body.data.psk).toBeUndefined();
+    });
+
+    it('admin gets every psk, including slots above 7', async () => {
+      user = h.admin;
+      const res = await get('/channels').expect(200);
+      expect(pskById(res.body.data)).toEqual({ 0: 'AQ==', 1: 'c2xvdDE=', 12: 'c2VjcmV0' });
+      expect((await get('/channels/12').expect(200)).body.data.psk).toBe('c2VjcmV0');
+    });
   });
 
   it('channels: no grant -> 403 on the mount', async () => {
