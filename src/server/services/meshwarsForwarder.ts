@@ -59,8 +59,9 @@ export interface HeardRepeater {
   name?: string | null;
   snr?: number | null;
   /**
-   * Position on the echo's relay path (#6001): 1 = heard our transmission
-   * directly, 2+ = further along the flood. null/absent = unknown.
+   * 0-based position on the echo's relay path (#6001), as
+   * `attributeChannelEcho` records it: 0 = the first relay, which heard our
+   * transmission directly; 1+ = further along the flood. null/absent = unknown.
    */
   hops?: number | null;
 }
@@ -88,8 +89,8 @@ export interface MeshWarsStatus {
 
 /**
  * Build a MeshWars ping, or null when the radio has no position or key or
- * no repeater heard the message directly. Only repeaters with `hops === 1`
- * count: a repeater further along the flood heard a relay, not the radio, so
+ * no repeater heard the message directly. Only repeaters with `hops === 0`
+ * (the first relay on the path) count: a repeater further along the flood heard a relay, not the radio, so
  * reporting it would claim reach the player doesn't have from this square.
  * `heard_repeats` is MeshMapper's
  * "id(snr),id(snr)" string; a repeater with no SNR gets 0, since MeshWars
@@ -109,7 +110,7 @@ export function buildPing(
   const seen = new Set<string>();
   const entries: string[] = [];
   for (const r of heardBy) {
-    if (r.hops !== 1) continue;
+    if (r.hops !== 0) continue;
     const id = (r.hash || '').trim().toLowerCase();
     if (!/^[0-9a-f]+$/.test(id) || seen.has(id)) continue;
     seen.add(id);

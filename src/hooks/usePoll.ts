@@ -206,6 +206,12 @@ interface UsePollOptions {
 const WEBSOCKET_POLL_INTERVAL = 30000;
 /** Polling interval when WebSocket is disconnected (5 seconds for real-time updates) */
 const DEFAULT_POLL_INTERVAL = 5000;
+/**
+ * Retry interval while the source is not connected and the query holds no
+ * reply (or its last read failed). Without it a failed first read left the
+ * Nodes and Channels pages blank until the source came back (#6342).
+ */
+export const NOT_CONNECTED_RETRY_INTERVAL = 15000;
 
 // Poll query keys live in ./pollQueryKey (no imports) and are re-exported here.
 export { POLL_QUERY_KEY, sourcePollQueryKey };
@@ -319,6 +325,9 @@ export function usePoll({
   // own timer and on window focus as well, for data that does not change while
   // the source is down. They still read it once on mount. Outside a
   // DataProvider there is no such check, so polling is unchanged there.
+  // One exception: while the query holds no reply, or its last read failed,
+  // it keeps retrying slowly (NOT_CONNECTED_RETRY_INTERVAL) so a failed
+  // mount read does not leave the page blank. It stops once a read succeeds.
   const appConnectionStatus = useOptionalConnectionStatus();
   const sourceLinkUp = appConnectionStatus === undefined || appConnectionStatus === 'connected';
 
@@ -330,9 +339,12 @@ export function usePoll({
     // Use function form to prevent overlapping requests on slow networks
     // Returns false (skip refetch) if a request is currently in progress
     refetchInterval: (query) => {
-      if (!sourceLinkUp) return false;
       if (query.state.fetchStatus === 'fetching') {
         return false; // Skip this interval, wait for current request to complete
+      }
+      if (!sourceLinkUp) {
+        const needsData = query.state.data === undefined || query.state.status === 'error';
+        return needsData ? NOT_CONNECTED_RETRY_INTERVAL : false;
       }
       return effectiveInterval;
     },

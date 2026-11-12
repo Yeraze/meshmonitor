@@ -13,8 +13,11 @@
  *   request-telemetry                  → messages:write (both protocols)
  *
  * MeshCore sources (#6263): `traceroute` and `request-telemetry` also run on a
- * device-backed MeshCore source (destination `mc:<publicKey>` or 64-hex). They
- * share the UI's `meshcoreDeviceLimiter` bucket and its 60 s per-source TX gate.
+ * device-backed MeshCore source (destination `mc:<publicKey>` or 64-hex). Both
+ * draw from the UI's `meshcoreDeviceLimiter` bucket (per-IP request count).
+ * Only `request-telemetry` also passes the 60 s per-source TX gate (429 with
+ * Retry-After). `traceroute` has no TX gate and no single-flight: each call
+ * that clears the limiter starts a trace in the background.
  * The other actions answer 400 SOURCE_NOT_MESHTASTIC there.
  */
 

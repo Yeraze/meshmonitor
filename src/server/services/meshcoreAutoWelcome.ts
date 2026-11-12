@@ -16,6 +16,10 @@
  *   - Hourly cap: welcomes beyond maxPerHour are DROPPED, not queued, so a wave
  *     of new-node adverts cannot burst. The recent-send timestamps live in
  *     settings (meshcoreAutoWelcomeSendTimes), so the cap survives a restart.
+ *     Welcomes still waiting out the pre-send delay hold a reserved slot, so a
+ *     burst inside one delay window cannot pass the check before any send is
+ *     recorded; the decision is re-run at send time.
+ *   - Chat nodes only: Repeaters, Room Servers and Sensors are never greeted.
  *   - Hop gate: skip a node farther than maxHops. A node with no known path
  *     (pathLen null) PASSES the gate — a just-adverted node is usually near and
  *     its path is simply not cached yet — but it still counts against the cap.
@@ -44,7 +48,16 @@ export interface AutoWelcomeContact {
   name?: string;
   /** Hop count of the cached route; null/undefined = no known path (will flood). */
   pathLen?: number | null;
+  /** MeshCore advert type: 1=Companion, 2=Repeater, 3=Room Server, 4=Sensor; 0/absent = unknown. */
+  advType?: number | null;
 }
+
+/**
+ * Advert types that never show chat, so a welcome DM to them is airtime spent
+ * on nobody: Repeater (2), Room Server (3) and Sensor (4). An unknown type
+ * (0/absent) is still greeted, since the first adverts often omit it.
+ */
+const NON_CHAT_ADV_TYPES: ReadonlySet<number> = new Set([2, 3, 4]);
 
 export interface AutoWelcomeSettings {
   enabled: boolean;
@@ -101,11 +114,21 @@ export function decideAutoWelcome(opts: {
   alreadyWelcomed: boolean;
   recentSendTimes: number[];
   now: number;
+  /**
+   * Welcomes already decided but not yet sent (waiting out the pre-send
+   * delay). They count against the hourly cap so a burst of new contacts in
+   * one delay window cannot all pass the check before any send is recorded.
+   */
+  reservedSlots?: number;
 }): WelcomeDecision {
   const { settings, contact, alreadyWelcomed, recentSendTimes, now } = opts;
+  const reservedSlots = Math.max(0, opts.reservedSlots ?? 0);
   if (!settings.enabled) return { action: 'skip', reason: 'disabled' };
   if (!contact.publicKey) return { action: 'skip', reason: 'no_public_key' };
   if (alreadyWelcomed) return { action: 'skip', reason: 'already_welcomed' };
+  if (contact.advType != null && NON_CHAT_ADV_TYPES.has(contact.advType)) {
+    return { action: 'skip', reason: 'not_chat_node' };
+  }
 
   const name = contactDisplayName(contact);
   if (settings.waitForName && !name) return { action: 'skip', reason: 'waiting_for_name' };
@@ -115,7 +138,7 @@ export function decideAutoWelcome(opts: {
   // (a fresh advert is usually near, its route just isn't cached yet).
   if (hops !== null && hops > settings.maxHops) return { action: 'skip', reason: 'too_far' };
 
-  if (sendsInLastHour(recentSendTimes, now).length >= settings.maxPerHour) {
+  if (sendsInLastHour(recentSendTimes, now).length + reservedSlots >= settings.maxPerHour) {
     return { action: 'skip', reason: 'rate_capped' };
   }
 
@@ -201,12 +224,37 @@ export async function recentSendTimes(sourceId: string, now: number): Promise<nu
   return sendsInLastHour(times, now);
 }
 
+/** Per-source promise chain behind {@link withAutoWelcomeLock}. */
+const welcomeLocks = new Map<string, Promise<void>>();
+
+/**
+ * Run `fn` with this source's Auto Welcome lock held. Every read-decide-reserve
+ * step and every read-modify-write of the welcome settings runs through it, so
+ * two contacts found at once cannot both read "5 sent" and both send the 6th,
+ * and two sends finishing together cannot drop each other's entries. Not
+ * re-entrant: never call it (or {@link recordWelcomeSend}) from inside `fn`.
+ */
+export function withAutoWelcomeLock<T>(sourceId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = welcomeLocks.get(sourceId) ?? Promise.resolve();
+  const run = prev.then(fn);
+  const tail = run.then(() => undefined, () => undefined);
+  welcomeLocks.set(sourceId, tail);
+  void tail.then(() => {
+    if (welcomeLocks.get(sourceId) === tail) welcomeLocks.delete(sourceId);
+  });
+  return run;
+}
+
 /**
  * Record a successful welcome: mark the key welcomed (capped set) and append the
  * send timestamp (pruned to the last hour). Persisted so both the once-guarantee
- * and the hourly cap survive a restart.
+ * and the hourly cap survive a restart. Serialized per source.
  */
-export async function recordWelcomeSend(sourceId: string, publicKey: string, now: number): Promise<void> {
+export function recordWelcomeSend(sourceId: string, publicKey: string, now: number): Promise<void> {
+  return withAutoWelcomeLock(sourceId, () => recordWelcomeSendUnlocked(sourceId, publicKey, now));
+}
+
+async function recordWelcomeSendUnlocked(sourceId: string, publicKey: string, now: number): Promise<void> {
   const settings = databaseService.settings;
   const key = publicKey.toLowerCase();
 
@@ -239,6 +287,7 @@ export async function resolveAutoWelcome(
   sourceId: string,
   contact: AutoWelcomeContact,
   now: number = Date.now(),
+  reservedSlots: number = 0,
 ): Promise<WelcomeDecision> {
   try {
     const settings = await readAutoWelcomeSettings(sourceId);
@@ -247,7 +296,7 @@ export async function resolveAutoWelcome(
       wasWelcomed(sourceId, contact.publicKey),
       recentSendTimes(sourceId, now),
     ]);
-    return decideAutoWelcome({ settings, contact, alreadyWelcomed, recentSendTimes: recent, now });
+    return decideAutoWelcome({ settings, contact, alreadyWelcomed, recentSendTimes: recent, now, reservedSlots });
   } catch (err) {
     logger.warn(`[MeshCoreAutoWelcome:${sourceId}] resolve failed: ${(err as Error).message}`);
     return { action: 'skip', reason: 'error' };
