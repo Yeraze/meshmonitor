@@ -34,13 +34,21 @@ export class BackupHistoryRepository extends BaseRepository {
     super(db, dbType);
   }
 
-  /** Predicate matching rows with no live owner (NULL or deleted source). */
-  private unownedWhere() {
+  /**
+   * Predicate matching rows with no live owner (NULL or deleted source).
+   *
+   * The live source ids are read first and compared as literals, not through
+   * a `NOT IN (SELECT id FROM sources)` subquery: on MySQL, `backup_history`
+   * (baseline, utf8mb4_unicode_ci) and `sources` (migration 020, server
+   * default utf8mb4_0900_ai_ci) can hold different collations, and comparing
+   * the two columns fails with ER_CANT_AGGREGATE_2COLLATIONS.
+   */
+  private async unownedWhere() {
     const { backupHistory, sources } = this.tables;
-    return or(
-      isNull(backupHistory.sourceId),
-      notInArray(backupHistory.sourceId, this.db.select({ id: sources.id }).from(sources)),
-    );
+    const rows = await this.db.select({ id: sources.id }).from(sources);
+    const liveIds = rows.map((r: { id: string }) => r.id);
+    if (liveIds.length === 0) return undefined; // no live source: every row is unowned
+    return or(isNull(backupHistory.sourceId), notInArray(backupHistory.sourceId, liveIds));
   }
 
   /**
@@ -76,7 +84,8 @@ export class BackupHistoryRepository extends BaseRepository {
   /** Unowned (legacy / orphaned) rows, optionally of one protocol, newest first. */
   async listUnowned(protocol?: BackupProtocol): Promise<BackupHistory[]> {
     const { backupHistory } = this.tables;
-    const where = protocol ? and(this.unownedWhere(), eq(backupHistory.protocol, protocol)) : this.unownedWhere();
+    const unowned = await this.unownedWhere();
+    const where = protocol ? and(unowned, eq(backupHistory.protocol, protocol)) : unowned;
     const results = await this.db
       .select()
       .from(backupHistory)
@@ -102,7 +111,7 @@ export class BackupHistoryRepository extends BaseRepository {
     const results = await this.db
       .select()
       .from(backupHistory)
-      .where(and(this.unownedWhere(), eq(backupHistory.filename, filename)))
+      .where(and(await this.unownedWhere(), eq(backupHistory.filename, filename)))
       .limit(1);
     return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
   }
