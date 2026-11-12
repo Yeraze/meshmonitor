@@ -14,7 +14,10 @@ if (typeof window !== 'undefined') {
   ]);
 
   // Extends Vitest's expect method with methods from react-testing-library
-  expect.extend(matchers);
+  // The cast drops the CommonJS `default` key that a dynamic import's
+  // namespace type adds; the matchers are the same ones the static
+  // `import * as matchers` used to pass.
+  expect.extend(matchers as unknown as Parameters<typeof expect.extend>[0]);
 
   // jsdom has no WebGL, so the real probe in `vectorSupport.ts` would report
   // "no vector maps" and every suite that renders a vector tileset would
