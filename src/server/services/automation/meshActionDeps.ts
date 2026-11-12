@@ -78,14 +78,14 @@ interface MeshSendManager {
 interface MeshtasticSplitSendManager {
   sendAutomatedText(text: string, opts: {
     destination?: number; channels?: number[]; split: boolean; label: string;
-    replyId?: number; maxAttempts?: number; hopLimitOverride?: number; direct?: boolean;
+    replyId?: number; maxAttempts?: number; hopLimitOverride?: number; direct?: boolean; sequenceKey?: string;
   }): Promise<{ ok: boolean; totalParts: number; truncated: boolean }>;
 }
 
 /** MeshCore companion managers send via a different method signature. */
 interface MeshCoreSendManager {
   /** Cap-fitting, optionally splitting sender (#6316). Absent on test doubles. */
-  sendAutomatedText?(text: string, opts: { toPublicKey?: string; channelIdxs?: number[]; scopeOverride?: string | null; split: boolean; label: string }): Promise<{ ok: boolean; totalParts: number; truncated: boolean }>;
+  sendAutomatedText?(text: string, opts: { toPublicKey?: string; channelIdxs?: number[]; scopeOverride?: string | null; split: boolean; label: string; sequenceKey?: string }): Promise<{ ok: boolean; totalParts: number; truncated: boolean }>;
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss?: boolean): Promise<boolean>;
   // Request/operation senders (#3835).
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
@@ -182,6 +182,8 @@ async function sendTextVia(
         ...(dest != null ? { destination: dest } : { channels: [channel] }),
         split: true,
         label: 'Automation',
+        // M4: no automation id reaches here; the same text to the same target is a duplicate.
+        sequenceKey: `Automation:${text}`,
         replyId,
         hopLimitOverride,
         ...(queued ? { maxAttempts } : { direct: true }),
@@ -245,6 +247,8 @@ async function sendTextVia(
         scopeOverride,
         split: splitLongMessages === true,
         label: 'Automation',
+        // M4: no automation id reaches here; the same text to the same target is a duplicate.
+        sequenceKey: `Automation:${text}`,
       });
       if (!res.ok) {
         throw new Error(`source "${sourceId}" failed to send the MeshCore message (node not connected or send rejected)`);

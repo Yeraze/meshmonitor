@@ -14973,6 +14973,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       scopeOverride?: string | null;
       split: boolean;
       label: string;
+      /** Trigger identity for the split queue's duplicate drop (M4); default `label`. */
+      sequenceKey?: string;
+      /** Wait between channels within one part (M5, multi-channel timers). */
+      targetGapMs?: number;
     },
   ): Promise<AutomatedTextResult> {
     const isDm = opts.toPublicKey !== undefined;
@@ -14983,6 +14987,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return sendAutomatedTextParts(text, plan, targets, {
       lock: this.splitSequenceLock,
       gapMs: MESHCORE_SPLIT_PART_GAP_MS,
+      targetGapMs: opts.targetGapMs,
+      // Trigger + real destination (the DM target name is just "DM").
+      sequenceKey: `${opts.sequenceKey ?? opts.label}|${isDm ? `dm:${opts.toPublicKey}` : `ch:${(opts.channelIdxs ?? []).join(',')}`}`,
       canTransmit: () => this.canTransmit(),
       logPrefix: `[MeshCore:${this.sourceId}]`,
       label: opts.label,
