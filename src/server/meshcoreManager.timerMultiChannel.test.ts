@@ -63,7 +63,9 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     const p = manager.runTimerTrigger(id).finally(() => { done = true; });
     for (let i = 0; i < 200 && !done; i++) {
       await new Promise((r) => setImmediate(r));
-      await vi.advanceTimersByTimeAsync(1_000);
+      // 5 s steps: the 10 s inter-channel gap (#4173 review M5) needs only a
+      // few iterations, so a slow CI runner can't hit the per-test timeout.
+      await vi.advanceTimersByTimeAsync(5_000);
     }
     return p;
   }
@@ -96,7 +98,7 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     expect(getMaxInFlight()).toBe(1);
     // Automated sender opts into channel-send auto-retry (#3979), like auto-announce.
     expect(calls.every((c) => c.autoRetry === true)).toBe(true);
-  });
+  }, 30_000);
 
   it('back-compat: an old single-channelIndex timer sends once to that channel', async () => {
     const { manager, calls } = companion(sourceId);
