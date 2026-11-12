@@ -22,7 +22,22 @@ Batches touch separate files so they can run in parallel.
 | P2 Poll | H3, M6, L9 | `routes/pollRoutes.ts`, `hooks/usePoll.ts`, `hooks/useServerData.ts`, `App.tsx` |
 | P3 MeshCore senders | H1, H2, L2, L4, L8, L11 | `meshcoreManager.ts`, `services/meshcoreAutoWelcome.ts`, `services/meshwarsForwarder.ts`, `MeshCore/hooks/useMeshCore.ts` |
 | P4 Layout | H4, M8, M9, M11–M17, L13, L17, L22, L25, L33, L34 | MeshCore views, `ConfirmDialog.module.css`, `App.css`, SectionNav, Security tab |
+| P6 Decided policies | M3, M4, M5, M10, L3, L5, L14 | `meshcoreManager.ts` (trace notify, timers, gate retry), `utils/automatedTextSplit.ts`, `MeshCoreRoomsView.tsx`, `db/repositories/traceroutes.ts`, `securityDigestService.ts` |
 | P5 Copy and polish | L1, L16, L18, L20, L21, L23, L24, L26–L32, L35 | `public/locales/en.json`, assorted components |
+
+## Decisions (maintainer, 2026-11-11)
+
+| ID | Decision |
+|---|---|
+| M3 | New toggle "notify on automatic traces", default **off**. User-started traces keep notifying under `notifyOnTraceroute`. |
+| M4 | Drop a new split sequence when one for the same trigger + target is already waiting; drop any sequence waiting longer than 2 minutes. |
+| M5 | Multi-channel MeshCore timers: 10 s gap between channels, at most 4 channels per timer. |
+| M7 | Keep the CLI console at `configuration:write` (side door accepted). Won't fix. |
+| M10 | No auto-login on room select. Show saved posts read-only plus an explicit Login button. Scheduled auto-sync unchanged. |
+| L3 | After an unmet Required Repeaters retry, skip further gate retries on that channel for 1 hour; log a warning. |
+| L5 | A direct traceroute counts for NeighborInfo eligibility only if it is at most 7 days old. |
+| L6 | Leave as is. Won't fix. |
+| L14 | When per-source digest URLs fall back to the global URL, send one combined daily digest instead of one per source. |
 
 ## Findings
 
@@ -47,14 +62,14 @@ Batches touch separate files so they can run in parallel.
 |---|---|---|---|---|---|
 | M1 | Deleting a MeshCore source leaves its encrypted device private key (`meshcore_source_pki_keys`) | `routes/sourceRoutes.ts:1803-1807` | 0ad8489fb (#6195) | P1 | todo |
 | M2 | Gateway colouring returns every MQTT `fromNode` + gateway (48 h) to anyone with `nodes:read`, bypassing channel `viewOnMap` and `packetmonitor:read` | `services/sourceDashboardData.ts:546-560` | 63300af61 (#6175) | P1 | todo |
-| M3 | Every automatic MeshCore path discovery / trace sends a notification; `notifyOnTraceroute` defaults on (~1 alert per contact per day with auto-pathfinding) | `meshcoreManager.ts:2747, 3360, 8562` | 4402509fe (#6253) | — | decision needed |
-| M4 | Split-message lock queue has no depth cap; cooldown-0 responder can backlog stale multi-part replies for hours | `utils/automatedTextSplit.ts:46-54` | 04b6ab10b, d91584be4 | — | decision needed |
-| M5 | Multi-channel MeshCore timers send back to back, no gap, no channel cap (1 min × 4 ch ≈ 11% duty EU narrow) | `meshcoreManager.ts:13979-13994` | 51ac9644b (#6230) | — | decision needed |
+| M3 | Every automatic MeshCore path discovery / trace sends a notification; `notifyOnTraceroute` defaults on (~1 alert per contact per day with auto-pathfinding) | `meshcoreManager.ts:2747, 3360, 8562` | 4402509fe (#6253) | P6 | todo |
+| M4 | Split-message lock queue has no depth cap; cooldown-0 responder can backlog stale multi-part replies for hours | `utils/automatedTextSplit.ts:46-54` | 04b6ab10b, d91584be4 | P6 | todo |
+| M5 | Multi-channel MeshCore timers send back to back, no gap, no channel cap (1 min × 4 ch ≈ 11% duty EU narrow) | `meshcoreManager.ts:13979-13994` | 51ac9644b (#6230) | P6 | todo |
 | M6 | Not-connected source never re-polls after a failed first read → page stays blank | `hooks/usePoll.ts:333, 342`; `App.tsx:1710-1725` | a762d21d5 (4.17.2) | P2 | todo |
-| M7 | Local `/cli` console (`configuration:write`) can send `set prv.key` / `poweroff`, bypassing the admin + typed-name gate | `routes/meshcoreAdminRoutes.ts:354` | 102638f3d (#6255) | — | decision needed |
+| M7 | Local `/cli` console (`configuration:write`) can send `set prv.key` / `poweroff`, bypassing the admin + typed-name gate | `routes/meshcoreAdminRoutes.ts:354` | 102638f3d (#6255) | — | won't fix (decided) |
 | M8 | Shared `ConfirmDialog` can't scroll; Backup Restore checkbox and button off-screen on a landscape phone | `shared/automation/ConfirmDialog.module.css:3-22` | 52beaef7c (#6285) | P4 | todo |
 | M9 | MeshCore Time Sync / Remote Telemetry tables: unstyled `data-table`, no scroll wrapper; at 390 the Save/Disable buttons start off-screen | `MeshCoreRemoteTelemetrySection.tsx:110`, `MeshCoreTimeSyncSection.tsx:133` | 9f859225d | P4 | todo |
-| M10 | Selecting a MeshCore room with a saved password logs in with no click (RF send); don't-repeat latch is in memory, a reload re-arms it | `MeshCoreRoomsView.tsx:390-403` | pre-existing (#3214) | — | decision needed |
+| M10 | Selecting a MeshCore room with a saved password logs in with no click (RF send); don't-repeat latch is in memory, a reload re-arms it | `MeshCoreRoomsView.tsx:390-403` | pre-existing (#3214) | P6 | todo |
 | M11 | MeshCore header at 390: title clipped, Disconnect button past the screen edge | MeshCore page header | — | P4 | todo |
 | M12 | Legacy `.modal-overlay` starts 48 px from the left on mobile; a strip stays undimmed and tappable | `src/App.css:2138` | pre-existing | P4 | todo |
 | M13 | MeshCore "Import from URL" has no Close/Cancel before decoding; Escape does nothing | channel import dialog | 9a0ed0c08 (#6257) | P4 | todo |
@@ -69,10 +84,10 @@ Batches touch separate files so they can run in parallel.
 |---|---|---|---|---|---|
 | L1 | 8 new i18n keys missing from `en.json` (Mesh Issues rules); 2 more pre-existing | `MeshIssuesSection.tsx`, `configSections.ts:287, 370` | 1908deb9a, 52beaef7c | P5 | todo |
 | L2 | Split-timer 5-min floor bypassable via generic settings POST / restore; `armTimerTrigger` doesn't clamp | `settingsRoutes.ts:409-424, 987`; `meshcoreManager.ts:13909` | #6316 | P3 | todo |
-| L3 | Unmet Required Repeaters gate makes every automated channel send auto-retry once | `meshcoreManager.ts:7440-7463` | 80b1a719f, 0834a4348 | — | decision needed |
+| L3 | Unmet Required Repeaters gate makes every automated channel send auto-retry once | `meshcoreManager.ts:7440-7463` | 80b1a719f, 0834a4348 | P6 | todo |
 | L4 | Auto Welcome also greets Repeaters / Room Servers / sensors | `services/meshcoreAutoWelcome.ts` | c880b7729 | P3 | todo |
-| L5 | NeighborInfo eligibility trusts a direct traceroute of any age | `db/repositories/traceroutes.ts:211-235` | ca0a1043c (#6151) | — | decision needed |
-| L6 | Hung Apprise delays a message's auto-ack / auto-responder up to 30 s | `meshtasticManager.ts:8039-8042` | 91cf98fd2 | — | decision needed |
+| L5 | NeighborInfo eligibility trusts a direct traceroute of any age | `db/repositories/traceroutes.ts:211-235` | ca0a1043c (#6151) | P6 | todo |
+| L6 | Hung Apprise delays a message's auto-ack / auto-responder up to 30 s | `meshtasticManager.ts:8039-8042` | 91cf98fd2 | — | won't fix (decided) |
 | L7 | v1 MeshCore traceroute comment claims a 60 s gate the code doesn't apply; no single-flight | `routes/v1/actions.ts:13-17, 135-160` | 2b6530cf4 | P1 | todo |
 | L8 | UI device-command hooks default `confirm: true` | `MeshCore/hooks/useMeshCore.ts:2283, 2302, 2370, 2404` | 9a0ed0c08, 102638f3d | P3 | todo |
 | L9 | Poll errors invisible: `useNodes` / `useChannels` ignore `error` | `hooks/useServerData.ts` | — | P2 | todo |
@@ -80,7 +95,7 @@ Batches touch separate files so they can run in parallel.
 | L11 | Room re-sync pushes duplicate posts into the in-memory list (DB is deduped) | `meshcoreManager.ts:5688-5695` | 857e9d9b9 (#6246) | P3 | todo |
 | L12 | #6354 skip buys ~1 h; hourly purge then removes restored rows past retention | `services/telemetryPurgeSchedule.ts` | cedca6326 | — | release note |
 | L13 | Heard-by list on sent MeshCore messages opens in the header's 85 px column, not below the message | `MeshCoreMessageStream.tsx:837`, `HeardByBubble.tsx` | 51958e6d1 (#6239) | P4 | todo |
-| L14 | Security digest fans out to every source incl. MeshCore / MQTT ingest via the global Apprise URL fallback | `securityDigestService.ts:391-393` | 672849f61 (#6281) | — | decision needed |
+| L14 | Security digest fans out to every source incl. MeshCore / MQTT ingest via the global Apprise URL fallback | `securityDigestService.ts:391-393` | 672849f61 (#6281) | P6 | todo |
 | L15 | `POST /nodes/:nodeNum/clear` and `POST /digest/send` check `security:write` on any source, act on `body.sourceId` | `securityRoutes.ts:204, 713` | pre-existing / #6281 | P1 | todo |
 | L16 | Missing `en.json` key `meshcore.automation.responder.chip_split` | `MeshCoreAutoResponderSection.tsx:460` | 04b6ab10b | P5 | todo |
 | L17 | MeshCore Packet Monitor pop-out uses undefined `var(--bg-primary)` | `pages/PacketMonitorPage.tsx:41, 83` | #6262 | P4 | todo |
