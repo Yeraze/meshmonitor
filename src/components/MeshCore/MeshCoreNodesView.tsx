@@ -891,7 +891,9 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 type="button"
                 className="btn-primary"
                 onClick={handleImport}
-                disabled={importing || importHex.trim().length === 0}
+                // Input that looks like a token but does not parse can't be
+                // imported; advert hex / meshcore:// input is unaffected.
+                disabled={importing || importHex.trim().length === 0 || (importTokenPreview !== null && !importTokenPreview.token)}
               >
                 {importing
                   ? t('meshcore.import_contact.importing', 'Importing…')

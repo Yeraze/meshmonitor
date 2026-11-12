@@ -92,12 +92,29 @@ describe('MeshCoreNodesView Import dialog — contact tokens (#6370)', () => {
     expect(onImportContactToken).not.toHaveBeenCalled();
   });
 
-  it('says why a malformed token fails (type 4 is not a contact)', async () => {
-    render(<MeshCoreNodesView nodes={[]} contacts={[]} onImportContact={vi.fn()} onImportContactToken={vi.fn()} />);
+  it('disables Import while the input looks like a token but does not parse', () => {
+    const onImportContact = vi.fn();
+    const onImportContactToken = vi.fn();
+    render(
+      <MeshCoreNodesView
+        nodes={[]}
+        contacts={[]}
+        onImportContact={onImportContact}
+        onImportContactToken={onImportContactToken}
+      />,
+    );
     const dialog = openDialog();
-    fireEvent.change(dialog.querySelector('textarea')!, { target: { value: `<${KEY}:4:Sensor>` } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Import' }).at(-1)!);
-    expect((await screen.findByRole('alert')).textContent).toMatch(/Not a contact/);
+    const box = dialog.querySelector('textarea')!;
+    const importBtn = () => screen.getAllByRole('button', { name: 'Import' }).at(-1) as HTMLButtonElement;
+    fireEvent.change(box, { target: { value: `<${KEY}:4:Sensor>` } });
+    expect(importBtn().disabled).toBe(true);
+    fireEvent.click(importBtn());
+    expect(onImportContactToken).not.toHaveBeenCalled();
+    expect(onImportContact).not.toHaveBeenCalled();
+    fireEvent.change(box, { target: { value: TOKEN } });
+    expect(importBtn().disabled).toBe(false);
+    fireEvent.change(box, { target: { value: 'meshcore://0a0b' } });
+    expect(importBtn().disabled).toBe(false);
   });
 
   it('previews a pasted token on one line, and flags a malformed one', () => {
