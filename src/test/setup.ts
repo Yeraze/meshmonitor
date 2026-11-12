@@ -1,11 +1,37 @@
 import { expect, afterEach, afterAll, beforeEach, vi } from 'vitest';
-import { cleanup } from '@testing-library/react';
-import * as matchers from '@testing-library/jest-dom/matchers';
-import { resetVectorSupportForTests, setVectorRenderingForTests } from '../components/map/vectorSupport';
 import { waitForBackgroundTasks } from '../utils/backgroundTasks';
 
-// Extends Vitest's expect method with methods from react-testing-library
-expect.extend(matchers);
+// DOM-only setup loads only in DOM-environment files (`@vitest-environment
+// jsdom`). Most of the suite runs in the node environment, and importing
+// Testing Library, the jest-dom matchers and React (via vectorSupport) there
+// cost ~130 ms per file for nothing. The top-level await finishes before any
+// test in the file runs, so the matchers are registered in time.
+if (typeof window !== 'undefined') {
+  const [{ cleanup }, matchers, { resetVectorSupportForTests, setVectorRenderingForTests }] = await Promise.all([
+    import('@testing-library/react'),
+    import('@testing-library/jest-dom/matchers'),
+    import('../components/map/vectorSupport'),
+  ]);
+
+  // Extends Vitest's expect method with methods from react-testing-library
+  expect.extend(matchers);
+
+  // jsdom has no WebGL, so the real probe in `vectorSupport.ts` would report
+  // "no vector maps" and every suite that renders a vector tileset would
+  // quietly test the raster fallback in its place. Default to "available" so
+  // those suites keep exercising the vector branch (with their own MapLibre
+  // mocks). A test of the fallback calls `setVectorRenderingForTests(null)` to
+  // run the real probe, or `(false)` to force it off.
+  beforeEach(() => {
+    resetVectorSupportForTests();
+    setVectorRenderingForTests(true);
+  });
+
+  // Runs a cleanup after each test case (e.g., clearing jsdom)
+  afterEach(() => {
+    cleanup();
+  });
+}
 
 // Let fire-and-forget work (DatabaseService's startup user checks, "new node"
 // notifications) settle before Vitest tears this file down. Otherwise its
@@ -20,22 +46,6 @@ afterAll(() => waitForBackgroundTasks());
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock, keyT } = await import('./mockI18n');
   return createReactI18nextMock(keyT);
-});
-
-// jsdom has no WebGL, so the real probe in `vectorSupport.ts` would report
-// "no vector maps" and every suite that renders a vector tileset would
-// quietly test the raster fallback in its place. Default to "available" so
-// those suites keep exercising the vector branch (with their own MapLibre
-// mocks). A test of the fallback calls `setVectorRenderingForTests(null)` to
-// run the real probe, or `(false)` to force it off.
-beforeEach(() => {
-  resetVectorSupportForTests();
-  setVectorRenderingForTests(true);
-});
-
-// Runs a cleanup after each test case (e.g., clearing jsdom)
-afterEach(() => {
-  cleanup();
 });
 
 // Mock localStorage
