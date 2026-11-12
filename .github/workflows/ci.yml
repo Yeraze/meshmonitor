@@ -126,7 +126,17 @@ jobs:
       # stdout instead of via the interceptor) and failures report unchanged;
       # measured locally the log got SMALLER, 1.58M lines to ~750k.
       - name: Run tests
-        run: npm run test:run -- --disableConsoleIntercept
+        run: npm run test:run -- --disableConsoleIntercept --reporter=default --reporter=json --outputFile.json=vitest-timing-${{ matrix.node-version }}.json
+
+      # TEMPORARY (timing probe, do not merge): per-file durations for the
+      # test-suite speed-up work.
+      - name: Upload test timing
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: vitest-timing-${{ matrix.node-version }}
+          path: vitest-timing-${{ matrix.node-version }}.json
+          retention-days: 7
 
   build:
     name: Build Check
