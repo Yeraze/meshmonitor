@@ -207,8 +207,18 @@ export class TraceroutesRepository extends BaseRepository {
    * returned — this prevents history for a node pair on one source (e.g. a
    * local TCP mesh) from bleeding into a view scoped to a different source
    * (e.g. an MQTT feed) where the same nodeNums may also be present.
+   *
+   * `opts.sinceTimestamp` (ms) drops older rows; absent, every age counts.
+   * NeighborInfo eligibility uses it so only a recent direct trace counts
+   * (4.17.3 review L5).
    */
-  async getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10, sourceId?: SourceSetScope): Promise<DbTraceroute[]> {
+  async getTraceroutesByNodes(
+    fromNodeNum: number,
+    toNodeNum: number,
+    limit: number = 10,
+    sourceId?: SourceSetScope,
+    opts: { sinceTimestamp?: number } = {},
+  ): Promise<DbTraceroute[]> {
     const { traceroutes } = this.tables;
     // Search bidirectionally to capture traceroutes initiated from either direction
     // This is especially important for 3rd party traceroutes (e.g., via Virtual Node)
@@ -228,7 +238,8 @@ export class TraceroutesRepository extends BaseRepository {
               eq(traceroutes.toNodeNum, fromNodeNum)
             )
           ),
-          this.withSourceScope(traceroutes, sourceId)
+          this.withSourceScope(traceroutes, sourceId),
+          opts.sinceTimestamp !== undefined ? gte(traceroutes.timestamp, opts.sinceTimestamp) : undefined,
         )
       )
       .orderBy(desc(traceroutes.timestamp))

@@ -312,8 +312,16 @@ class NotificationService {
     toNodeId: string,
     routeText: string,
     sourceId: string,
-    sourceName: string
+    sourceName: string,
+    /**
+     * An AUTOMATIC trace (MeshCore auto-pathfinding, scheduled traces,
+     * Automation Engine) goes only to users with `notifyOnAutoTrace` on
+     * (default off, 4.17.3 review M3). User-started traces keep
+     * `notifyOnTraceroute`.
+     */
+    opts: { automatic?: boolean } = {},
   ): Promise<void> {
+    const preferenceKey = opts.automatic ? 'notifyOnAutoTrace' : 'notifyOnTraceroute';
     try {
       const payload: NotificationPayload = {
         // Source once (#5593): on the body, where a long node pair in the
@@ -325,11 +333,11 @@ class NotificationService {
         sourceName
       };
 
-      // Send to users with notifyOnTraceroute enabled, scoped to this source
+      // Send to users with the matching preference enabled, scoped to this source
       await Promise.allSettled([
-        pushNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload, undefined, sourceId),
-        appriseNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload, undefined, sourceId),
-        desktopNotificationService.broadcastToPreferenceUsers('notifyOnTraceroute', payload, sourceId)
+        pushNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, undefined, sourceId),
+        appriseNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, undefined, sourceId),
+        desktopNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, sourceId)
       ]);
 
       logger.info(`📤 Sent traceroute notification for ${fromNodeId} → ${toNodeId} on ${sourceId}`);
@@ -349,7 +357,7 @@ class NotificationService {
    * actually reached anyone, instead of firing-and-forgetting.
    */
   public async broadcastToPreferenceUsers(
-    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnLowBattery' | 'notifyOnServerEvents' | 'notifyOnWaypoint' | 'notifyOnMention',
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnLowBattery' | 'notifyOnServerEvents' | 'notifyOnWaypoint' | 'notifyOnMention' | 'notifyOnAutoTrace',
     payload: NotificationPayload,
     targetUserId?: number
   ): Promise<{ sent: number; failed: number; filtered: number }> {

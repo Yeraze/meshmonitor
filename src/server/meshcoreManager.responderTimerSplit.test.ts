@@ -88,8 +88,12 @@ describe('Timer Triggers split (#6316)', () => {
   }
 
   it('off: one truncated send per channel', async () => {
+    vi.useFakeTimers();
     const { m, calls } = await run({});
-    const r = await m.runTimerTrigger('t1');
+    const p = m.runTimerTrigger('t1');
+    // 10 s between channels (4.17.3 review M5).
+    await vi.advanceTimersByTimeAsync(GAP * 2);
+    const r = await p;
     expect(r.ok).toBe(true);
     expect(calls.map((c) => c.ch)).toEqual([0, 2]);
   });
@@ -98,7 +102,8 @@ describe('Timer Triggers split (#6316)', () => {
     vi.useFakeTimers();
     const { m, calls } = await run({ multiline: true });
     const p = m.runTimerTrigger('t1');
-    await vi.advanceTimersByTimeAsync(GAP * 3);
+    // 2 part gaps + 3 channel gaps (M5), 10 s each.
+    await vi.advanceTimersByTimeAsync(GAP * 6);
     const r = await p;
     expect(r.ok).toBe(true);
     expect(calls.map((c) => c.ch)).toEqual([0, 2, 0, 2, 0, 2]);

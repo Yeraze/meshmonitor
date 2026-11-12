@@ -296,6 +296,7 @@ const BOOLEAN_PREF_FIELDS = [
   'notifyOnLowBattery',
   'notifyOnWaypoint',
   'notifyOnMention',
+  'notifyOnAutoTrace',
   'notifyOnServerEvents',
   'prefixWithNodeName',
 ] as const;

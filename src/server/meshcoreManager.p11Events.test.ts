@@ -98,6 +98,19 @@ describe('trace notifications', () => {
     expect(text).toContain('last hop 7 dB');
   });
 
+  it('manual and API traces are user-started; scheduled and automation traces are automatic (M3)', async () => {
+    for (const origin of [undefined, 'manual', 'api'] as const) {
+      mocks.trace.mockClear();
+      await make().traceContactPathDetailed(PK, origin ? { origin } : {});
+      expect(mocks.trace.mock.calls[0][5]).toEqual({ automatic: false });
+    }
+    for (const origin of ['schedule', 'automation'] as const) {
+      mocks.trace.mockClear();
+      await make().traceContactPathDetailed(PK, { origin });
+      expect(mocks.trace.mock.calls[0][5]).toEqual({ automatic: true });
+    }
+  });
+
   it('a throwing notifier does not break the trace', async () => {
     mocks.trace.mockImplementationOnce(() => { throw new Error('x'); });
     const out = await make().traceContactPathDetailed(PK);
@@ -124,5 +137,53 @@ describe('trace notifications', () => {
     } });
     expect(mocks.trace).toHaveBeenCalledTimes(1);
     expect(mocks.trace.mock.calls[0][2]).toBe('Path discovered: out 2 hops [a3,7f], in 1 hop');
+  });
+
+  describe('path discovery origin (M3)', () => {
+    const discoveryEvent = {
+      event_type: 'path_discovery_response',
+      data: { pubkey_prefix: PK.slice(0, 12), out_path_len: 1, out_path_hex: 'a3', out_hash_size: 1, in_path_len: 1, in_path_hex: 'a3' },
+    };
+    function discoverer() {
+      const m = make({ response: { success: true, data: { suggested_timeout_ms: 5000 } } });
+      (m as any).persistContact = async () => undefined;
+      return m;
+    }
+
+    it('a user-started discovery reply is not automatic', async () => {
+      const m = discoverer();
+      await m.discoverContactPath(PK);
+      (m as any).handleBridgeEvent(discoveryEvent);
+      expect(mocks.trace.mock.calls[0][5]).toEqual({ automatic: false });
+    });
+
+    it('an auto-pathfinding discovery reply is automatic', async () => {
+      const m = discoverer();
+      await m.discoverContactPath(PK, { automatic: true });
+      (m as any).handleBridgeEvent(discoveryEvent);
+      expect(mocks.trace.mock.calls[0][5]).toEqual({ automatic: true });
+    });
+
+    it('a reply nobody is waiting for, or one past its window, counts as automatic', async () => {
+      const m = discoverer();
+      (m as any).handleBridgeEvent(discoveryEvent);
+      expect(mocks.trace.mock.calls[0][5]).toEqual({ automatic: true });
+
+      mocks.trace.mockClear();
+      const now = Date.now();
+      const spy = vi.spyOn(Date, 'now').mockReturnValue(now);
+      await m.discoverContactPath(PK);
+      spy.mockReturnValue(now + 10 * 60_000);
+      (m as any).handleBridgeEvent(discoveryEvent);
+      expect(mocks.trace.mock.calls[0][5]).toEqual({ automatic: true });
+    });
+
+    it('the entry is consumed: a second unrequested reply is automatic', async () => {
+      const m = discoverer();
+      await m.discoverContactPath(PK);
+      (m as any).handleBridgeEvent(discoveryEvent);
+      (m as any).handleBridgeEvent(discoveryEvent);
+      expect(mocks.trace.mock.calls.map((c) => c[5])).toEqual([{ automatic: false }, { automatic: true }]);
+    });
   });
 });

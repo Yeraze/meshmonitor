@@ -468,6 +468,30 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     expect(unrelated[0].fromNodeNum).toBe(5005);
   });
 
+  it('getTraceroutesByNodes - sinceTimestamp drops older rows; absent keeps every age (L5)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    await repo.insertTraceroute(makeTraceroute({
+      fromNodeNum: 1001, toNodeNum: 2002, packetId: 71,
+      timestamp: now - 30 * day, createdAt: now - 30 * day,
+    }));
+    await repo.insertTraceroute(makeTraceroute({
+      fromNodeNum: 2002, toNodeNum: 1001, packetId: 72,
+      timestamp: now - day, createdAt: now - day,
+    }));
+
+    expect(await repo.getTraceroutesByNodes(1001, 2002, 10, ALL_SOURCES)).toHaveLength(2);
+    const recent = await repo.getTraceroutesByNodes(1001, 2002, 10, ALL_SOURCES, { sinceTimestamp: now - 7 * day });
+    expect(recent).toHaveLength(1);
+    expect(Number(recent[0].timestamp)).toBe(now - day);
+  });
+
   it('getTraceroutesForSources (#5511) - listed sources only, newest first, since + limit', async () => {
     const backend = getBackend();
     if (!backend.available) {

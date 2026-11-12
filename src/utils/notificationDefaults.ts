@@ -33,6 +33,8 @@ export interface NotificationPreferenceDefaults {
   notifyOnWaypoint: boolean;
   /** MeshCore `@[Name]` mentions of the source's own node. Opt-in. */
   notifyOnMention: boolean;
+  /** Automatic MeshCore traces / path discoveries (M3). Opt-in. */
+  notifyOnAutoTrace: boolean;
   waypointRadiusKm: number;
   waypointCenterLat: number | null;
   waypointCenterLon: number | null;
@@ -77,6 +79,7 @@ export function defaultNotificationPreferences(): NotificationPreferenceDefaults
     notifyOnServerEvents: false,
     notifyOnWaypoint: false,
     notifyOnMention: false,
+    notifyOnAutoTrace: false,
     waypointRadiusKm: 10,
     waypointCenterLat: null,
     waypointCenterLon: null,

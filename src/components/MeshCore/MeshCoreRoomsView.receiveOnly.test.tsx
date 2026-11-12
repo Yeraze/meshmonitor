@@ -1,15 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * MeshCoreRoomsView — receive-only gating (#4547 Phase 2 WP3), including the
- * auto-login latch hazard (§3.4a(a)).
+ * MeshCoreRoomsView — receive-only gating (#4547 Phase 2 WP3).
  *
- * The auto-login effect sets `autoLoginAttempted.current.add(selectedRoom)`
- * (a do-not-repeat latch) BEFORE awaiting. The receiveOnly guard must sit
- * before that latch line, or turning receive-only back off would never
- * re-trigger auto-login for a room already visited once this session. The
- * "flip receiveOnly off and it fires" half of the test below is the only
- * thing that catches a guard placed after the latch.
+ * Opening a room never logs in by itself (4.17.3 review M10): a login is an RF
+ * send, so only the explicit "Log in with saved password" button sends one.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -81,7 +76,7 @@ describe('MeshCoreRoomsView receive-only mode', () => {
     );
   });
 
-  it('auto-login: silently skips while receiveOnly (no call, no error) — then fires once receiveOnly is turned off (latch not poisoned)', async () => {
+  it('selecting a room with a saved password sends no login; the explicit button does (4.17.3 review M10)', async () => {
     const actions = makeActions();
     const { rerender } = render(
       <MeshCoreRoomsView
@@ -95,17 +90,13 @@ describe('MeshCoreRoomsView receive-only mode', () => {
       />,
     );
 
-    // Let the credential-capability fetch resolve (mount effect).
     await waitFor(() => expect(actions.getRoomCredentials).toHaveBeenCalled());
     fireEvent.click(screen.getByText('Test Room'));
-
-    // Give any (incorrectly unguarded) effect a chance to fire.
     await new Promise(resolve => setTimeout(resolve, 20));
     expect(actions.loginRoomWithSaved).not.toHaveBeenCalled();
-    expect(screen.queryByText('Login failed')).not.toBeInTheDocument();
+    // Receive-only: the saved-password button is there but disabled.
+    expect(screen.getByRole('button', { name: 'Log in with saved password' })).toBeDisabled();
 
-    // Flip receive-only off without touching the selection — the effect's
-    // own dep array (receiveOnly included) must re-fire it.
     rerender(
       <MeshCoreRoomsView
         messages={[]}
@@ -117,8 +108,14 @@ describe('MeshCoreRoomsView receive-only mode', () => {
         receiveOnly={false}
       />,
     );
+    // Turning receive-only off does not log in by itself either.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(actions.loginRoomWithSaved).not.toHaveBeenCalled();
+    expect(actions.loginRoom).not.toHaveBeenCalled();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Log in with saved password' }));
     await waitFor(() => expect(actions.loginRoomWithSaved).toHaveBeenCalledWith(ROOM_PK, { requestId: expect.any(String) }));
+    expect(actions.loginRoom).not.toHaveBeenCalled();
   });
 
   it('disables the send box (with a tooltip) once logged in, when receiveOnly', async () => {
@@ -135,6 +132,7 @@ describe('MeshCoreRoomsView receive-only mode', () => {
       />,
     );
     fireEvent.click(screen.getByText('Test Room'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in with saved password' }));
     await waitFor(() => expect(actions.loginRoomWithSaved).toHaveBeenCalled());
     const input = await screen.findByPlaceholderText('Type a message…');
     expect(input).not.toBeDisabled();

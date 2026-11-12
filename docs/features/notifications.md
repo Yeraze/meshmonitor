@@ -596,6 +596,7 @@ A source you have never saved settings for uses the **built-in defaults**. The t
 | MQTT messages | On |
 | Newly found nodes | Off |
 | Successful traceroutes | Off |
+| Automatic traces (MeshCore) | Off |
 | Server events | Off |
 | Waypoint arrivals | Off, 10 km radius |
 | Mentions (MeshCore) | Off |
@@ -772,7 +773,8 @@ MeshCore sources have their own **Notifications** tab. Message notifications use
 | **Direct messages and room posts** | ✅ | — | One toggle covers both. Muting a DM or a room in its view also silences its notifications. |
 | **Channel messages** | ✅ | ✅ | Pick channels in the list; it includes slots above 7 and keyed/virtual channels. A channel muted in the Channels view stays silent. A Repeater notifies only for channels it can decrypt. |
 | **Keywords, emoji reactions, templates** | ✅ | ✅ | Same as Meshtastic. |
-| **Successful traces and path discoveries** | ✅ | — | Uses the Traceroutes toggle. Failed or timed-out traces and pings do not notify. |
+| **Successful traces and path discoveries** | ✅ | — | Uses the Traceroutes toggle for traces and discoveries you start. Failed or timed-out traces and pings do not notify. |
+| **Automatic traces and path discoveries** | ✅ | — | Off by default. Covers traces you did not start: auto-pathfinding, scheduled traces and automations. Auto-pathfinding can send about one alert per contact per day. |
 | **Low Battery** | ✅ | ✅ | MeshCore reports battery as a **voltage (mV)**, so the threshold is in millivolts (default 3300 mV) rather than a 0–100 percentage. |
 | **Inactive Node** | ✅ | ✅ | Alerts when a monitored MeshCore node hasn't been heard within the configured window. |
 | **Newly Found Nodes** | ✅ | ✅ | Sent the first time a contact advertises (display name + device type: Companion / Repeater / Room Server). A Repeater hears every advert on the mesh, so its alert is limited; see below. |

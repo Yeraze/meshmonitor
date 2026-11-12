@@ -298,6 +298,18 @@ describe('notificationService.notifyTraceroute', () => {
     );
   });
 
+  it('an automatic trace goes to the opt-in notifyOnAutoTrace preference (M3)', async () => {
+    await notificationService.notifyTraceroute('!aaa', '!bbb', 'Direct', 'src1', 'Source One', { automatic: true });
+    for (const svc of [mockPush, mockApprise]) {
+      expect(svc.broadcastToPreferenceUsers).toHaveBeenCalledWith(
+        'notifyOnAutoTrace', expect.anything(), undefined, 'src1',
+      );
+      expect(svc.broadcastToPreferenceUsers).not.toHaveBeenCalledWith(
+        'notifyOnTraceroute', expect.anything(), expect.anything(), expect.anything(),
+      );
+    }
+  });
+
   it('does not throw on broadcast error', async () => {
     mockApprise.broadcastToPreferenceUsers.mockRejectedValue(new Error('Apprise error'));
     await expect(

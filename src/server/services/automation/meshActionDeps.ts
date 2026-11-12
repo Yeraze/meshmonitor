@@ -78,18 +78,18 @@ interface MeshSendManager {
 interface MeshtasticSplitSendManager {
   sendAutomatedText(text: string, opts: {
     destination?: number; channels?: number[]; split: boolean; label: string;
-    replyId?: number; maxAttempts?: number; hopLimitOverride?: number; direct?: boolean;
-  }): Promise<{ ok: boolean; totalParts: number; truncated: boolean }>;
+    replyId?: number; maxAttempts?: number; hopLimitOverride?: number; direct?: boolean; sequenceKey?: string;
+  }): Promise<{ ok: boolean; totalParts: number; truncated: boolean; dropped?: 'duplicate' | 'stale' }>;
 }
 
 /** MeshCore companion managers send via a different method signature. */
 interface MeshCoreSendManager {
   /** Cap-fitting, optionally splitting sender (#6316). Absent on test doubles. */
-  sendAutomatedText?(text: string, opts: { toPublicKey?: string; channelIdxs?: number[]; scopeOverride?: string | null; split: boolean; label: string }): Promise<{ ok: boolean; totalParts: number; truncated: boolean }>;
+  sendAutomatedText?(text: string, opts: { toPublicKey?: string; channelIdxs?: number[]; scopeOverride?: string | null; split: boolean; label: string; sequenceKey?: string }): Promise<{ ok: boolean; totalParts: number; truncated: boolean; dropped?: 'duplicate' | 'stale' }>;
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss?: boolean): Promise<boolean>;
   // Request/operation senders (#3835).
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
-  traceContactPath(publicKey: string): Promise<unknown>;
+  traceContactPath(publicKey: string, opts?: { origin?: 'manual' | 'schedule' | 'automation' | 'api' }): Promise<unknown>;
   traceContactPathDetailed(publicKey: string, opts?: { autoReturn?: boolean; hashBytes?: 1 | 2; origin?: 'manual' | 'schedule' | 'automation' | 'api' }): Promise<{ ok: boolean; reason?: string; hops?: unknown[]; lastSnr?: number }>;
   requestNeighbors(publicKey?: string): Promise<unknown>;
   /** Floor-checked advert for automated senders (see MeshCoreManager.sendAutomatedAdvert). */
@@ -182,12 +182,16 @@ async function sendTextVia(
         ...(dest != null ? { destination: dest } : { channels: [channel] }),
         split: true,
         label: 'Automation',
+        // M4: no automation id reaches here; the same text to the same target is a duplicate.
+        sequenceKey: `Automation:${text}`,
         replyId,
         hopLimitOverride,
         ...(queued ? { maxAttempts } : { direct: true }),
       });
       if (!res.ok) {
-        throw new Error(`source "${sourceId}" failed to send the Meshtastic message (cannot transmit or send rejected)`);
+        throw new Error(res.dropped
+          ? splitDropMessage(sourceId, res.dropped)
+          : `source "${sourceId}" failed to send the Meshtastic message (cannot transmit or send rejected)`);
       }
       return res.totalParts > 1 || res.truncated ? { ok: true, parts: res.totalParts, truncated: res.truncated } : true;
     }
@@ -245,9 +249,13 @@ async function sendTextVia(
         scopeOverride,
         split: splitLongMessages === true,
         label: 'Automation',
+        // M4: no automation id reaches here; the same text to the same target is a duplicate.
+        sequenceKey: `Automation:${text}`,
       });
       if (!res.ok) {
-        throw new Error(`source "${sourceId}" failed to send the MeshCore message (node not connected or send rejected)`);
+        throw new Error(res.dropped
+          ? splitDropMessage(sourceId, res.dropped)
+          : `source "${sourceId}" failed to send the MeshCore message (node not connected or send rejected)`);
       }
       return res.totalParts > 1 || res.truncated ? { ok: true, parts: res.totalParts, truncated: res.truncated } : true;
     }
@@ -258,6 +266,13 @@ async function sendTextVia(
     return ok;
   }
   throw new Error(`source "${sourceId}" cannot send messages`);
+}
+
+/** Run-log text for a split message the per-source queue dropped (4.17.3 review M4). */
+function splitDropMessage(sourceId: string, reason: 'duplicate' | 'stale'): string {
+  return reason === 'duplicate'
+    ? `source "${sourceId}" dropped the split message: the same message to the same target is already waiting to send`
+    : `source "${sourceId}" dropped the split message: it waited over 2 minutes for earlier split messages to finish`;
 }
 
 export function createMeshActionDeps(): ActionDeps {
@@ -376,7 +391,8 @@ export function createMeshActionDeps(): ActionDeps {
           // MeshCore telemetry has no per-type selection (the contact returns its
           // available LPP records), so `telemetryType` only applies to Meshtastic.
           case 'telemetry': return raw.requestRemoteTelemetry!(key);
-          case 'traceroute': return raw.traceContactPath!(key);
+          // Automatic origin (M3): the alert goes to notifyOnAutoTrace.
+          case 'traceroute': return raw.traceContactPath!(key, { origin: 'automation' });
           case 'neighbors': return raw.requestNeighbors!(key || undefined);
           case 'advert': {
             // Absent mode = action saved before the field existed → flood (legacy).

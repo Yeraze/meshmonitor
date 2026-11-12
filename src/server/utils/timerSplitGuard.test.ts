@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findSplitTimerTooFrequent } from './timerSplitGuard.js';
+import { findSplitTimerTooFrequent, findTimerTooManyChannels } from './timerSplitGuard.js';
 
 describe('findSplitTimerTooFrequent', () => {
   it('flags a split interval timer under 5 minutes', () => {
@@ -20,5 +20,20 @@ describe('findSplitTimerTooFrequent', () => {
     expect(findSplitTimerTooFrequent([{ id: 'm', multiline: true, cronExpression: '*/2 * * * *', responseType: 'text' }])).toEqual({ id: 'm', minutes: 2 });
     expect(findSplitTimerTooFrequent([{ id: 'm', multiline: true, cronExpression: '0 * * * *', responseType: 'script' }])).toBeUndefined();
     expect(findSplitTimerTooFrequent([{ id: 'm', cronExpression: '* * * * *', responseType: 'text' }])).toBeUndefined();
+  });
+});
+
+describe('findTimerTooManyChannels (4.17.3 review M5)', () => {
+  it('flags a channel timer with more than 4 distinct channels', () => {
+    expect(findTimerTooManyChannels([{ id: 'a', channelIndexes: [0, 1, 2, 3, 4] }])).toEqual({ id: 'a', channels: 5 });
+  });
+  it('allows 4 channels, duplicates, and DM timers', () => {
+    expect(findTimerTooManyChannels([
+      { id: 'a', channelIndexes: [0, 1, 2, 3] },
+      { id: 'b', channelIndexes: [0, 0, 1, 1, 2] },
+      { id: 'c', destination: 'dm', channelIndexes: [0, 1, 2, 3, 4] },
+      { id: 'd', channelIndex: 7 },
+      null,
+    ])).toBeUndefined();
   });
 });
