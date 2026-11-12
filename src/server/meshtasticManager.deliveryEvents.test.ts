@@ -435,6 +435,70 @@ describe('MeshtasticManager - delivery-diagnostics event recording (#4816 Phase 
     });
   });
 
+  describe('message queue release on the own-radio ack (#6373)', () => {
+    const REQ_ID = 6373;
+
+    it('releases a queued channel broadcast on the local transmit ack', async () => {
+      mockGetMessageByRequestId.mockResolvedValue({
+        id: 'msg-chan-1',
+        toNodeId: '!ffffffff',
+        toNodeNum: 0xffffffff,
+        channel: 3,
+      });
+
+      const packet = { from: LOCAL, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID } };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      expect(mockUpdateMessageDeliveryState).toHaveBeenCalledWith(REQ_ID, 'delivered');
+      expect(manager.messageQueue.handleAck).toHaveBeenCalledTimes(1);
+      expect(manager.messageQueue.handleAck).toHaveBeenCalledWith(REQ_ID);
+    });
+
+    it('releases the channel queue entry even when the row was already delivered', async () => {
+      mockGetMessageByRequestId.mockResolvedValue({
+        id: 'msg-chan-2',
+        toNodeId: '!ffffffff',
+        toNodeNum: 0xffffffff,
+        channel: 0,
+      });
+      mockUpdateMessageDeliveryState.mockResolvedValue(false);
+
+      const packet = { from: LOCAL, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID } };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      expect(manager.messageQueue.handleAck).toHaveBeenCalledWith(REQ_ID);
+    });
+
+    it('keeps a DM queued on the local transmit ack (waits for the target ack)', async () => {
+      mockGetMessageByRequestId.mockResolvedValue({
+        id: 'msg-dm-1',
+        toNodeId: toNodeId(PEER),
+        toNodeNum: PEER,
+        channel: -1,
+      });
+
+      const packet = { from: LOCAL, to: PEER, rxTime: 0, decoded: { requestId: REQ_ID } };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      expect(mockUpdateMessageDeliveryState).toHaveBeenCalledWith(REQ_ID, 'delivered');
+      expect(manager.messageQueue.handleAck).not.toHaveBeenCalled();
+    });
+
+    it('releases a DM on the target node ack', async () => {
+      mockGetMessageByRequestId.mockResolvedValue({
+        id: 'msg-dm-2',
+        toNodeId: toNodeId(PEER),
+        toNodeNum: PEER,
+        channel: -1,
+      });
+
+      const packet = { from: PEER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID } };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      expect(manager.messageQueue.handleAck).toHaveBeenCalledWith(REQ_ID);
+    });
+  });
+
   describe('ack proof capture (#5279)', () => {
     const REQ_ID = 5279;
     const OTHER = 0x33333333;
