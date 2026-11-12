@@ -3,8 +3,8 @@
  *
  * The base look comes from the global `.error-panel` rules in App.css. At
  * 844x390 that layout took ~200 of the 390px height, leaving the tab under it
- * a sliver. Here the heading and buttons share one row and the message clamps
- * to two lines (the full text stays in its title tooltip). The doubled /
+ * a sliver. Here the heading and buttons share one row and the message is
+ * capped at two lines, scrolling past that. The doubled /
  * descendant selectors outrank App.css's `.error-panel` and `.error-panel p`
  * regardless of sheet order.
  */
@@ -29,10 +29,10 @@
     margin: 0;
     font-size: 0.8rem;
     line-height: 1.3;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    /* Two lines, then the message scrolls. A clamp would hide the rest of a
+       long error on a phone, where a title tooltip never opens. */
+    max-height: 2.6em;
+    overflow-y: auto;
   }
 
   .panel .actions {

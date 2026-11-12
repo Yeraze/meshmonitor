@@ -19,7 +19,7 @@ interface ConnectionErrorPanelProps {
 const ConnectionErrorPanel: React.FC<ConnectionErrorPanelProps> = ({ error, onRetry, onDismiss }) => (
   <div className={`error-panel ${styles.panel}`}>
     <h3 className={styles.title}>Connection Error</h3>
-    <p className={styles.message} title={error}>{error}</p>
+    <p className={styles.message}>{error}</p>
     <div className={`error-actions ${styles.actions}`}>
       <button onClick={onRetry} className="retry-btn">
         Retry Connection

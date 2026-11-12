@@ -144,7 +144,10 @@ describe('N10: Connection Error banner is compact in short landscape', () => {
   it('puts heading and buttons on one row and clamps the message at 844x390', () => {
     expect(css('.panel.panel', 'display', LANDSCAPE_PHONE)).toBe('flex');
     expect(css('.panel.panel', 'padding', LANDSCAPE_PHONE)).toBe('0.4rem 0.75rem');
-    expect(css('.panel .message', '-webkit-line-clamp', LANDSCAPE_PHONE)).toBe('2');
+    // Capped and scrollable, not clamped: a clamp hides the end of a long
+    // error on touch, where the title tooltip never opens.
+    expect(css('.panel .message', 'max-height', LANDSCAPE_PHONE)).toBe('2.6em');
+    expect(css('.panel .message', 'overflow-y', LANDSCAPE_PHONE)).toBe('auto');
     expect(css('.panel .message', 'flex-basis', LANDSCAPE_PHONE)).toBe('100%');
     expect(css('.panel .actions', 'margin-left', LANDSCAPE_SMALL_PHONE)).toBe('auto');
   });
