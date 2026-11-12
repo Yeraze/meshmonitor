@@ -11496,6 +11496,8 @@ class MeshtasticManager implements ISourceManager {
       direct?: boolean;
       /** Record queue ids under this fire key (see runAutomationFire). */
       backlogKey?: string;
+      /** Trigger identity for the split queue's duplicate drop (M4); default `label`. */
+      sequenceKey?: string;
     },
   ): Promise<AutomatedTextResult> {
     const isDm = opts.destination !== undefined;
@@ -11507,6 +11509,7 @@ class MeshtasticManager implements ISourceManager {
     return sendAutomatedTextParts(text, plan, targets, {
       lock: this.splitSequenceLock,
       gapMs: SPLIT_PART_GAP_MS,
+      sequenceKey: `${opts.sequenceKey ?? opts.label}|${isDm ? `dm:${opts.destination}` : `ch:${(opts.channels ?? []).join(',')}`}`,
       canTransmit: () => this.canTransmit(),
       logPrefix: `[Meshtastic:${this.sourceId}]`,
       label: opts.label,
@@ -14209,6 +14212,8 @@ class MeshtasticManager implements ISourceManager {
                 ...(isDM ? { destination: message.fromNodeNum } : { channels: [message.channel as number] }),
                 split: splitResponse,
                 label: `Auto-response ${index + 1}/${responses.length}`,
+                // M4: the label is the same for every trigger; key on the trigger.
+                sequenceKey: `auto-responder:${triggerIdx}`,
                 replyId: index === 0 ? packetId : undefined, // Reply to original message for first response
                 maxAttempts,
               });

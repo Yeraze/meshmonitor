@@ -306,7 +306,7 @@ describe('createMeshActionDeps requestData — node operations (#3835)', () => {
     expect(m.requestRemoteTelemetry).toHaveBeenCalledWith('aabbcc');
 
     await deps.requestData({ sourceId: 'mc', op: 'traceroute', target: 'aabbcc', channel: 0 });
-    expect(m.traceContactPath).toHaveBeenCalledWith('aabbcc');
+    expect(m.traceContactPath).toHaveBeenCalledWith('aabbcc', { origin: 'automation' });
 
     await deps.requestData({ sourceId: 'mc', op: 'neighbors', target: 'aabbcc', channel: 0 });
     expect(m.requestNeighbors).toHaveBeenCalledWith('aabbcc');

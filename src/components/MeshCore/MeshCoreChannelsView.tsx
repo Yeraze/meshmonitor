@@ -46,10 +46,7 @@ import { formatRelativeTime } from '../../utils/datetime';
 import styles from './MeshCoreChannelsView.module.css';
 import { meshcoreChannelMaxBytes } from '../../utils/meshcoreMessageLimits';
 import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
-
-const MOBILE_BREAKPOINT = 768;
-const isMobileViewport = (): boolean =>
-  typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
+import { isMobileLayoutViewport } from '../../utils/sidebarWidth';
 
 interface MeshCoreChannelsViewProps {
   messages: MeshCoreMessage[];
@@ -248,7 +245,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
 
   useEffect(() => {
     const onResize = () => {
-      if (!isMobileViewport()) setMobileShowContent(false);
+      if (!isMobileLayoutViewport()) setMobileShowContent(false);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -306,7 +303,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   }, [sourceId]);
 
   const handleSelectChannel = useCallback((idx: number) => {
-    if (isMobileViewport()) {
+    if (isMobileLayoutViewport()) {
       // Mobile: the list IS the landing view and Back leaves `selectedIdx` set,
       // so a tap on the same row must REOPEN the channel, never de-select it.
       setSelectedIdx(idx);
@@ -704,7 +701,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   useEffect(() => {
     // Nothing selected (#6049): never mark a channel read from the landing pane.
     if (!active) return;
-    if (isMobileViewport() && !mobileShowContent) return;
+    if (isMobileLayoutViewport() && !mobileShowContent) return;
     // Wait for this channel's backlog: until then `filtered` holds only the
     // live tail, so "newest visible" would be a guess.
     if (!historyReady) return;
@@ -740,7 +737,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const isChannelUnread = useCallback((idx: number): boolean => {
     if (isChannelMuted(idx)) return false;
     // No selection (#6049) = no active channel, so every channel can be unread.
-    if (active && idx === active.id && (!isMobileViewport() || mobileShowContent)) return false;
+    if (active && idx === active.id && (!isMobileLayoutViewport() || mobileShowContent)) return false;
     const latest = effectiveLatest[idx];
     if (!latest) return false;
     return latest > (lastRead[idx] ?? 0);

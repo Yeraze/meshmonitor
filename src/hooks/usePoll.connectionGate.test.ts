@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
-import { usePoll } from './usePoll';
+import { usePoll, NOT_CONNECTED_RETRY_INTERVAL } from './usePoll';
 import { DataProvider, useData } from '../contexts/DataContext';
 
 vi.mock('../init', () => ({ appBasename: '' }));
@@ -65,6 +65,38 @@ describe('usePoll connection gate', () => {
 
     act(() => result.current.data.setConnectionStatus('disconnected'));
     await advance(30000);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  // #6342: a failed first read used to leave the page blank until the source
+  // came back. It now retries slowly until a read succeeds, then stops.
+  it('retries a failed first read slowly while not connected, and stops once it succeeds', async () => {
+    mockFetch.mockReset();
+    mockFetch
+      .mockImplementationOnce(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response))
+      .mockImplementationOnce(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response))
+      .mockImplementation(() =>
+        Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ nodes: [] }) } as Response),
+      );
+    const { result } = renderHook(() => usePoll(), { wrapper: wrapper(true) });
+    await advance(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // No 5 s polling while disconnected...
+    await advance(5000);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(result.current.isError).toBe(true);
+    // ...but a slow retry.
+    await advance(NOT_CONNECTED_RETRY_INTERVAL - 5000);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(result.current.isError).toBe(true);
+    await advance(NOT_CONNECTED_RETRY_INTERVAL);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    await advance(10); // let the third read settle
+    expect(result.current.isSuccess).toBe(true);
+
+    // Data held: back to no polling while disconnected.
+    await advance(NOT_CONNECTED_RETRY_INTERVAL * 4);
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 

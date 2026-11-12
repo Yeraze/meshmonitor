@@ -94,6 +94,12 @@ import {
   type OutboundReactionMeta,
 } from './services/meshcoreReactionSend.js';
 import { MESHCORE_SPLIT_PART_GAP_MS } from './constants/meshcoreMessageLimits.js';
+import {
+  MESHCORE_TIMER_MAX_CHANNELS,
+  MESHCORE_TIMER_CHANNEL_GAP_MS,
+  SPLIT_TIMER_MIN_INTERVAL_MINUTES,
+} from '../utils/messageSplitLimits.js';
+import { timerMinGapMinutes } from './utils/timerSplitGuard.js';
 import { planMeshCoreTextParts } from './utils/meshcoreSplitPlan.js';
 import { SplitSequenceLock, sendAutomatedTextParts, type AutomatedTextResult } from './utils/automatedTextSplit.js';
 import { MeshCoreResendError } from './errors/meshcoreResendError.js';
@@ -148,7 +154,7 @@ import { meshcoreOwnIdentityTracker } from './services/meshcoreOwnIdentityTracke
 import { meshcoreMessageFilter, type MeshCoreClassifyResult } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MeshCoreAutoFavoriteScheduler, runAutoFavoriteSweep as runAutoFavoriteSweepService } from './services/meshcoreAutoFavorite.js';
-import { resolveAutoWelcome, recordWelcomeSend, readAutoWelcomeSettings, type AutoWelcomeContact } from './services/meshcoreAutoWelcome.js';
+import { resolveAutoWelcome, recordWelcomeSend, readAutoWelcomeSettings, withAutoWelcomeLock, type AutoWelcomeContact } from './services/meshcoreAutoWelcome.js';
 import { HeartbeatScheduler } from './services/heartbeatScheduler.js';
 import type { DbMeshCorePacket, DbMeshCoreNode, MeshCoreKeyAccessFilter } from '../db/repositories/meshcore.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
@@ -1629,6 +1635,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // events for the same node can't both schedule a greeting. Held across the
   // pre-send delay; released when the deferred send fires or is skipped.
   private welcomingNodes: Set<string> = new Set();
+  /** Auto Welcome timers still waiting out the pre-send delay, by lowercased key. */
+  private autoWelcomeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  /** Welcomes decided but not yet sent and recorded; counted against the hourly cap. */
+  private autoWelcomeReserved = 0;
+  /** Bumped by cancelPendingAutoWelcomes so in-flight decisions drop. */
+  private autoWelcomeEpoch = 0;
   // Public keys first seen WITHOUT a display name, whose "new node"
   // notification is waiting for the name to arrive (#5340). In the default
   // auto-add-contacts mode the firmware reports a newly heard node with a
@@ -2627,6 +2639,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.distanceDeleteScheduler.stop();
     // Stop the per-source auto-favorite sweep (#6224).
     this.autoFavoriteScheduler.stop();
+    // Drop Auto Welcomes still waiting out their delay (#6224).
+    this.cancelPendingAutoWelcomes();
 
     // Cancel any pending path-refresh — refreshContacts() against a torn-
     // down connection would just log an error.
@@ -2743,12 +2757,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * P11 S7: fire-and-forget traceroute notification for a MeshCore trace or
    * path-discovery result. `from` is the local radio, `to` the contact.
+   * `automatic` (auto-pathfinding, scheduled or Automation Engine traces)
+   * routes it to the opt-in `notifyOnAutoTrace` preference instead of
+   * `notifyOnTraceroute` (4.17.3 review M3).
    */
-  private notifyTraceResult(contact: MeshCoreContact | undefined, publicKey: string, routeText: string): void {
+  private notifyTraceResult(contact: MeshCoreContact | undefined, publicKey: string, routeText: string, automatic: boolean): void {
     try {
       const from = this.localNode?.name || this.sourceName;
       const to = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
-      Promise.resolve(notificationService.notifyTraceroute(from, to, routeText, this.sourceId, this.sourceName))
+      Promise.resolve(notificationService.notifyTraceroute(from, to, routeText, this.sourceId, this.sourceName, { automatic }))
         .catch((err) => logger.debug(`[MeshCore:${this.sourceId}] trace notification failed: ${(err as Error).message}`));
     } catch (err) {
       logger.debug(`[MeshCore:${this.sourceId}] trace notification failed: ${(err as Error).message}`);
@@ -3357,7 +3374,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         `[MeshCore] Path discovery response for ${contact.publicKey.substring(0, 16)}…: ` +
         `out=${outHops} hops [${outPathFormatted}], in=${inHops} hops [${formatPathHex(inPathHex, data.in_hash_size ?? 1)}]`,
       );
-      this.notifyTraceResult(contact, contact.publicKey, formatMeshCorePathDiscovery(outHops, outPathFormatted, inHops));
+      this.notifyTraceResult(
+        contact,
+        contact.publicKey,
+        formatMeshCorePathDiscovery(outHops, outPathFormatted, inHops),
+        this.takeDiscoveryWasAutomatic(contact.publicKey),
+      );
     } else if (event_type === 'node_discovered') {
       // 0x8E NODE_DISCOVER_RESP from an active discovery burst (CMD 55).
       // The native backend already registered the node on the device; here
@@ -4412,6 +4434,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * keys whose contact vanished (e.g. removed) are dropped.
    */
   private flushPendingNewNodeNotifications(): void {
+    // The connect-time contact sync holds new-node alerts (and so Auto
+    // Welcome); keys stay parked until a later refresh resolves them.
+    if (this.newNodeNotifySuppressed) return;
     for (const publicKey of Array.from(this.pendingNewNodeNotifications)) {
       const contact = this.contacts.get(publicKey);
       if (!contact) {
@@ -5689,9 +5714,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // The live pool and DB aggregate must share one clock: unread markers use
     // receivedAt, while channel-counts uses createdAt (#6013).
     message.receivedAt ??= Date.now();
-    this.messages.push(message);
-    if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
-      this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
+    // A room re-sync replays posts we already hold (#6246): the DB insert is
+    // insert-or-ignore, so the in-memory pool must not grow a second copy.
+    // Push now (callers look the message up before the insert settles), then
+    // take it back out if the insert reports the row was not new.
+    const pooled = !this.messages.some((m) => m.id === message.id);
+    if (pooled) {
+      this.messages.push(message);
+      if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
+        this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
+      }
     }
     // `mc1Hash` rides as a second argument, not on the message, so it can
     // never leak into an emitted event or the API (#5759).
@@ -5723,7 +5755,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         createdAt: message.receivedAt,
       },
       this.sourceId,
-    ).then(ok => ok !== false).catch(err => {
+    ).then(ok => {
+      const isNew = ok !== false;
+      // Not a new row: drop the copy we just pooled (a DB error keeps it, so
+      // a failing database never hides a live message).
+      // Remove by id, not identity: the pool entry may have been replaced by
+      // a patched copy meanwhile, and `pooled` means no other copy had it.
+      if (!isNew && pooled) {
+        const idx = this.messages.findIndex((m) => m.id === message.id);
+        if (idx !== -1) this.messages.splice(idx, 1);
+      }
+      return isNew;
+    }).catch(err => {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to persist message ${message.id}: ${(err as Error).message}`);
       return false;
     });
@@ -7457,9 +7500,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     if (pending.retriesLeft <= 0) return; // defensive: one-shot already spent
 
+    // L3 (4.17.3 review): a retry the gate alone asked for (some repeater WAS
+    // heard) is skipped while this channel is suppressed: an earlier gate retry
+    // on it left the gate unmet. A zero-heard miss (#3979) always retries.
+    const gateDriven = required.keys.length > 0 && heard.length > 0;
+    if (gateDriven) {
+      const until = this.gateRetrySuppressedUntil.get(pending.channelIdx) ?? 0;
+      if (Date.now() < until) {
+        logger.debug(
+          `[MeshCore:${this.sourceId}] Channel send ${messageId}: required repeater gate unmet on channel ${pending.channelIdx}, ` +
+          `but gate retries there are paused until ${new Date(until).toISOString()}; no retry`,
+        );
+        return;
+      }
+    }
+
     logger.debug(
-      `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ZERO repeaters within ` +
-      `${MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000}s; resending once (auto-retry #3979)`,
+      gateDriven
+        ? `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ${heard.length} repeater(s) but the required ` +
+          `repeater gate ('${required.mode}') is unmet; resending once (auto-retry #3979)`
+        : `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ZERO repeaters within ` +
+          `${MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000}s; resending once (auto-retry #3979)`,
     );
 
     // Delivery-diagnostics timeline (#4816 Phase 3): the one-shot #3979 channel
@@ -7488,6 +7549,52 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         messageId,
       );
     });
+    if (gateDriven) this.scheduleGateRetryCheck(messageId, pending.channelIdx);
+  }
+
+  /**
+   * Channels whose Required Repeaters gate stayed unmet after a gate-driven
+   * retry, mapped to when gate retries may resume (L3, 4.17.3 review). One
+   * manager is one source, so the key is the channel. In memory on purpose: a
+   * restart forgets it, which costs at most one more gate retry per channel
+   * before the pause is set again.
+   */
+  private gateRetrySuppressedUntil = new Map<number, number>();
+  static readonly GATE_RETRY_SUPPRESS_MS = 60 * 60 * 1000;
+
+  /**
+   * One echo window after a gate-driven resend, re-check the gate for the
+   * message (the resend's echoes are credited to it, #5512). Still unmet:
+   * pause gate retries on the channel for an hour and warn once.
+   */
+  private scheduleGateRetryCheck(messageId: string, channelIdx: number): void {
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
+          const required = await this.resolveRequiredRepeaters();
+          if (required.keys.length === 0) return;
+          const met = requiredRepeatersHeard(
+            heard.map((h) => ({ hash: h.repeaterHash })),
+            required.keys,
+            required.mode,
+            [...this.contacts.values()].map((c) => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
+          );
+          if (met) return;
+          const now = Date.now();
+          if ((this.gateRetrySuppressedUntil.get(channelIdx) ?? 0) > now) return; // already paused and warned
+          this.gateRetrySuppressedUntil.set(channelIdx, now + MeshCoreManager.GATE_RETRY_SUPPRESS_MS);
+          logger.warn(
+            `[MeshCore:${this.sourceId}] Required repeater gate ('${required.mode}') still unmet on channel ${channelIdx} ` +
+            `after an auto-retry; pausing gate-driven retries on this channel for 1 hour. ` +
+            `Check the Required Repeaters list: a repeater that is out of range, removed from contacts, or shares a hash prefix keeps the gate unmet.`,
+          );
+        } catch (err) {
+          logger.debug(`[MeshCore:${this.sourceId}] gate re-check after retry failed: ${(err as Error).message}`);
+        }
+      })();
+    }, MeshCoreManager.CHANNEL_RETRY_WINDOW_MS);
+    (timer as { unref?: () => void }).unref?.();
   }
 
   /** Max user-initiated resends per message (#5512). */
@@ -7972,7 +8079,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * update is handled asynchronously by the existing push listener —
    * this method only confirms the flood was accepted by the device.
    */
-  async discoverContactPath(publicKey: string): Promise<false | MeshCoreDiscoverPathResult> {
+  /**
+   * Who asked for each in-flight path discovery (4.17.3 review M3), keyed by
+   * contact public key. The reply arrives as a push with no request id, so
+   * this is the only link back. In-memory: a lost entry makes the reply read
+   * as automatic, the quiet direction.
+   */
+  private pendingDiscoveryOrigins = new Map<string, { automatic: boolean; expiresAt: number }>();
+  private static readonly DISCOVERY_ORIGIN_MIN_TTL_MS = 60_000;
+
+  /** True when a path-discovery reply for `publicKey` was not user-started. Consumes the entry. */
+  private takeDiscoveryWasAutomatic(publicKey: string): boolean {
+    const entry = this.pendingDiscoveryOrigins.get(publicKey);
+    this.pendingDiscoveryOrigins.delete(publicKey);
+    const now = Date.now();
+    for (const [k, v] of this.pendingDiscoveryOrigins) {
+      if (v.expiresAt < now) this.pendingDiscoveryOrigins.delete(k);
+    }
+    if (!entry || entry.expiresAt < now) return true;
+    return entry.automatic;
+  }
+
+  /** Scheduled and Automation Engine traces are automatic; manual / API ones are user-started (M3). */
+  static isAutomaticTraceOrigin(origin: MeshCoreTraceRunOrigin | undefined): boolean {
+    return origin === 'schedule' || origin === 'automation';
+  }
+
+  async discoverContactPath(publicKey: string, opts: { automatic?: boolean } = {}): Promise<false | MeshCoreDiscoverPathResult> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Discover-path requires Companion firmware');
       return false;
@@ -7990,8 +8123,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const raw = (response.data as { suggested_timeout_ms?: unknown } | undefined)?.suggested_timeout_ms;
       const suggestedTimeoutMs = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 0;
       logger.debug(`[MeshCore] Path discovery sent for ${publicKey.substring(0, 16)}… (suggested timeout ${suggestedTimeoutMs}ms)`);
+      const discoveryTimeoutMs = meshcorePathDiscoveryTimeoutMs(suggestedTimeoutMs);
+      // M3: remember who asked, so the reply's alert goes to the right preference.
+      this.pendingDiscoveryOrigins.set(publicKey, {
+        automatic: opts.automatic === true,
+        expiresAt: Date.now() + Math.max(discoveryTimeoutMs, MeshCoreManager.DISCOVERY_ORIGIN_MIN_TTL_MS),
+      });
       // #5508: the UI counts down this budget. UI-only — nothing is resent.
-      return { suggestedTimeoutMs, discoveryTimeoutMs: meshcorePathDiscoveryTimeoutMs(suggestedTimeoutMs) };
+      return { suggestedTimeoutMs, discoveryTimeoutMs };
     } catch (error) {
       logger.error('[MeshCore] discoverContactPath threw:', error);
       return false;
@@ -8423,7 +8562,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * SNR. Returns the per-hop SNR array plus the final-hop SNR, or `null`
    * on failure (no path, timeout, not Companion).
    */
-  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2 } = {}): Promise<MeshCoreTracePathResult | null> {
+  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2; origin?: MeshCoreTraceRunOrigin } = {}): Promise<MeshCoreTracePathResult | null> {
     const outcome = await this.traceContactPathDetailed(publicKey, opts);
     if (!outcome.ok) return null;
     return { hops: outcome.hops, lastSnr: outcome.lastSnr, path: outcome.path };
@@ -8563,6 +8702,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         contact,
         publicKey,
         formatMeshCoreTraceRoute(hops, tracedHops, lastSnr, [...this.contacts.values()], { autoReturn: opts.autoReturn === true }),
+        MeshCoreManager.isAutomaticTraceOrigin(opts.origin),
       );
       void this.settleTraceRun(traceTag, 'answered');
       return { ok: true, hops, lastSnr, path: tracedHops };
@@ -13378,6 +13518,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.notifyServerConnection(false);
     this.stopHeartbeat();
     this.autoPing.clearAll();
+    this.cancelPendingAutoWelcomes();
     await this.stopObserver();
     await this.stopVirtualNodeServer();
     // Release the dead backend. Without this `nativeBackend` keeps pointing at a
@@ -13409,6 +13550,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     // Auto Ping sessions (#5953) end with the link; see disconnect().
     this.autoPing.clearAll();
+    // Auto Welcomes waiting out their delay end with the link too.
+    this.cancelPendingAutoWelcomes();
 
     // Stop the Analyzer Observer publisher first (#4457 Phase 2) — same
     // rationale as the VN server below: it shouldn't keep publishing (or hold
@@ -13606,7 +13749,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const t = targets[i];
         try {
           if (t.op === 'discover_path') {
-            const ok = await this.discoverContactPath(t.key);
+            const ok = await this.discoverContactPath(t.key, { automatic: true });
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: discover_path ${t.name} → ${ok ? 'sent' : 'failed'}`);
           } else {
             // Automated, so one page (#5413). Merged unless it covers the
@@ -13890,6 +14033,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     for (const trigger of triggers) {
       if (!trigger || !trigger.id || !trigger.enabled) continue;
+      // M5: warn about a stored channel list over the cap now, not at the first fire.
+      if (trigger.destination !== 'dm') this.timerChannelIndexes(trigger);
       this.armTimerTrigger(trigger);
     }
   }
@@ -13907,11 +14052,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   private armTimerTrigger(trigger: MeshCoreTimerTrigger): void {
+    // A timer that splits long messages sends up to 3 parts per channel per
+    // fire, so the routes refuse one faster than every 5 minutes (#6316). A
+    // value stored another way (generic settings POST, restore) must not run
+    // faster either: clamp it here, where the timer is armed.
+    const splitFloorApplies = trigger.multiline === true && trigger.responseType !== 'advert';
     if (trigger.scheduleType === 'interval') {
-      const minutes = Math.max(1, Math.min(60 * 24 * 7, trigger.intervalMinutes || 0));
+      let minutes = Math.max(1, Math.min(60 * 24 * 7, trigger.intervalMinutes || 0));
       if (!Number.isFinite(minutes) || minutes <= 0) {
         logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: invalid interval, skipping`);
         return;
+      }
+      if (splitFloorApplies && minutes < SPLIT_TIMER_MIN_INTERVAL_MINUTES) {
+        logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: split timer interval ${minutes}m raised to the ${SPLIT_TIMER_MIN_INTERVAL_MINUTES}m minimum`);
+        minutes = SPLIT_TIMER_MIN_INTERVAL_MINUTES;
       }
       const handle = setInterval(() => {
         // Receive-only (#4547): first statement in the interval callback,
@@ -13932,6 +14086,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: invalid cron "${expr}", skipping`);
         return;
       }
+      // A cron expression can't be clamped, so skip any fire that lands
+      // within the floor of the last one this arm let through.
+      const cronGap = splitFloorApplies ? timerMinGapMinutes(trigger) : null;
+      const enforceFloor = cronGap !== null && cronGap < SPLIT_TIMER_MIN_INTERVAL_MINUTES;
+      if (enforceFloor) {
+        logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: split timer cron "${expr}" fires every ${cronGap}m; fires closer than ${SPLIT_TIMER_MIN_INTERVAL_MINUTES}m apart will be skipped`);
+      }
+      // Seeded at arm time: a save or reconnect re-arms the timer, and that
+      // must not count as a fire or let the next tick through early.
+      let lastFloorFireAt = Date.now();
       try {
         const job = scheduleCron(expr, () => {
           // Receive-only (#4547): first statement in the cron callback,
@@ -13939,6 +14103,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           if (!this.canTransmit()) {
             logger.debug(`⏭️ [MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: Skipping - receive-only mode`);
             return;
+          }
+          if (enforceFloor) {
+            const now = Date.now();
+            if (now - lastFloorFireAt < SPLIT_TIMER_MIN_INTERVAL_MINUTES * 60_000) {
+              logger.debug(`⏭️ [MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: Skipping - under the split timer minimum interval`);
+              return;
+            }
+            lastFloorFireAt = now;
           }
           void this.runTimerTrigger(trigger.id).catch((err: Error) => {
             logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id} run failed: ${err.message}`);
@@ -13991,6 +14163,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (channelIndexes.length === 0) return false;
       return (await this.sendAutomatedText(text, {
         channelIdxs: channelIndexes, scopeOverride, split, label,
+        // M5: 10 s between channels so floods do not step on each other.
+        targetGapMs: MESHCORE_TIMER_CHANNEL_GAP_MS,
       })).ok;
     };
 
@@ -14142,13 +14316,30 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   private timerChannelIndexes(trigger: MeshCoreTimerTrigger): number[] {
     if (Array.isArray(trigger.channelIndexes) && trigger.channelIndexes.length > 0) {
-      return trigger.channelIndexes;
+      // M5: at most 4 channels. The routes reject more; a value stored before
+      // that (or restored/imported) is clamped to its first 4 here, the one
+      // place every fire reads it.
+      const distinct = [...new Set(trigger.channelIndexes)];
+      if (distinct.length > MESHCORE_TIMER_MAX_CHANNELS) {
+        if (!this.timerChannelClampWarned.has(trigger.id)) {
+          this.timerChannelClampWarned.add(trigger.id);
+          logger.warn(
+            `[MeshCore:${this.sourceId}] Timer trigger "${trigger.name}" (${trigger.id}) lists ${distinct.length} channels; ` +
+            `sending to the first ${MESHCORE_TIMER_MAX_CHANNELS} only (${distinct.slice(0, MESHCORE_TIMER_MAX_CHANNELS).join(', ')})`,
+          );
+        }
+        return distinct.slice(0, MESHCORE_TIMER_MAX_CHANNELS);
+      }
+      return distinct;
     }
     if (typeof trigger.channelIndex === 'number') {
       return [trigger.channelIndex];
     }
     return [];
   }
+
+  /** Timer ids already warned about a channel list over the cap (M5). */
+  private timerChannelClampWarned = new Set<string>();
 
   /** Whitespace-tokenize an argv string. Quoted segments stay intact. */
   private parseScriptArgsString(s: string): string[] {
@@ -14485,10 +14676,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * Auto Welcome (#6224): greet a genuinely-new, named contact once. Called
    * fire-and-forget from the new-node-discovered hook. Takes a per-key lock so
-   * two discovery events can't both schedule a greeting, resolves the decision
-   * (enabled / once / name / hop gate / hourly cap), then sends after the
-   * configured pre-send delay so the just-adverted node is receive-ready.
-   * Sends ONCE, no retry — a DM to a pathless node floods, so a retry would too.
+   * two discovery events can't both schedule a greeting, then, under the
+   * per-source welcome lock, resolves the decision (enabled / chat node / once
+   * / name / hop gate / hourly cap) and RESERVES a cap slot, so welcomes still
+   * waiting out the pre-send delay count against the cap. Over the cap is
+   * dropped, never queued. Sends ONCE, no retry: a DM to a pathless node
+   * floods, so a retry would too.
    */
   private async checkAutoWelcome(contact: MeshCoreContact): Promise<void> {
     const key = contact.publicKey?.toLowerCase();
@@ -14497,28 +14690,43 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     let scheduled = false;
     try {
+      const epoch = this.autoWelcomeEpoch;
       const wc: AutoWelcomeContact = {
         publicKey: contact.publicKey,
         advName: contact.advName,
         name: contact.name,
         pathLen: contact.pathLen,
+        advType: contact.advType,
       };
-      const decision = await resolveAutoWelcome(this.sourceId, wc);
+      const { decision, delaySeconds } = await withAutoWelcomeLock(this.sourceId, async () => {
+        const d = await resolveAutoWelcome(this.sourceId, wc, Date.now(), this.autoWelcomeReserved);
+        if (d.action === 'skip') return { decision: d, delaySeconds: 0 };
+        const settings = await readAutoWelcomeSettings(this.sourceId);
+        this.autoWelcomeReserved++;
+        return { decision: d, delaySeconds: settings.delaySeconds };
+      });
       if (decision.action === 'skip') {
         if (decision.reason !== 'disabled' && decision.reason !== 'already_welcomed') {
           logger.debug(`[MeshCoreAutoWelcome:${this.sourceId}] skip ${key.substring(0, 12)}… (${decision.reason})`);
         }
         return;
       }
+      if (epoch !== this.autoWelcomeEpoch) {
+        // Pending welcomes were cancelled (disconnect) while we decided.
+        this.releaseAutoWelcomeSlot();
+        return;
+      }
 
-      const { delaySeconds } = await readAutoWelcomeSettings(this.sourceId);
-      scheduled = true; // the timer now owns the lock; release it when it fires
-      const fire = () => { void this.fireAutoWelcome(wc, decision); };
+      scheduled = true; // the timer now owns the key lock and the reserved slot
       if (delaySeconds > 0) {
-        const timer = setTimeout(fire, delaySeconds * 1000);
+        const timer = setTimeout(() => {
+          this.autoWelcomeTimers.delete(key);
+          void this.fireAutoWelcome(wc);
+        }, delaySeconds * 1000);
         if (typeof timer.unref === 'function') timer.unref();
+        this.autoWelcomeTimers.set(key, timer);
       } else {
-        fire();
+        void this.fireAutoWelcome(wc);
       }
     } catch (err) {
       logger.warn(`[MeshCoreAutoWelcome:${this.sourceId}] check failed: ${(err as Error).message}`);
@@ -14527,17 +14735,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
-  /** Send the resolved welcome and record it; always releases the per-key lock. */
-  private async fireAutoWelcome(
-    contact: AutoWelcomeContact,
-    decision: { action: 'send'; text: string; target: 'dm' | 'channel'; channelIdx?: number },
-  ): Promise<void> {
-    const key = contact.publicKey.toLowerCase();
+  /**
+   * Send a scheduled welcome and record it. Re-runs the decision first (the
+   * feature may have been disabled, the key welcomed elsewhere, or the cap
+   * filled during the delay), counting every OTHER reservation. Always
+   * releases this welcome's reserved slot and the per-key lock.
+   */
+  private async fireAutoWelcome(snapshot: AutoWelcomeContact): Promise<void> {
+    const key = snapshot.publicKey.toLowerCase();
     try {
+      // Re-decide on the contact as it is NOW: its advert type or path may
+      // have arrived during the delay (a Repeater must still be skipped).
+      const live = this.contacts.get(snapshot.publicKey);
+      const contact: AutoWelcomeContact = live
+        ? { publicKey: snapshot.publicKey, advName: live.advName, name: live.name, pathLen: live.pathLen, advType: live.advType }
+        : snapshot;
+      const decision = await withAutoWelcomeLock(this.sourceId, () =>
+        resolveAutoWelcome(this.sourceId, contact, Date.now(), Math.max(0, this.autoWelcomeReserved - 1)),
+      );
+      if (decision.action === 'skip') {
+        logger.debug(`[MeshCoreAutoWelcome:${this.sourceId}] dropped ${key.substring(0, 12)}… at send time (${decision.reason})`);
+        return;
+      }
       const sent = decision.target === 'dm'
         ? await this.sendMessage(decision.text, contact.publicKey)
         : await this.sendMessage(decision.text, undefined, decision.channelIdx);
       if (sent) {
+        // Recorded BEFORE the slot is released, so the cap never undercounts.
         await recordWelcomeSend(this.sourceId, contact.publicKey, Date.now());
         logger.info(`[MeshCoreAutoWelcome:${this.sourceId}] welcomed ${key.substring(0, 12)}… via ${decision.target}`);
       } else {
@@ -14546,7 +14770,32 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } catch (err) {
       logger.warn(`[MeshCoreAutoWelcome:${this.sourceId}] send failed: ${(err as Error).message}`);
     } finally {
+      this.releaseAutoWelcomeSlot();
       this.welcomingNodes.delete(key);
+    }
+  }
+
+  private releaseAutoWelcomeSlot(): void {
+    this.autoWelcomeReserved = Math.max(0, this.autoWelcomeReserved - 1);
+  }
+
+  /**
+   * Cancel every welcome still waiting out its pre-send delay and release its
+   * reserved slot. Called on disconnect / transport teardown; a welcome already
+   * past its timer finishes (or drops) on its own. Decisions in flight see the
+   * epoch change and drop instead of scheduling.
+   */
+  private cancelPendingAutoWelcomes(): void {
+    this.autoWelcomeEpoch++;
+    const count = this.autoWelcomeTimers.size;
+    for (const [key, timer] of this.autoWelcomeTimers) {
+      clearTimeout(timer);
+      this.releaseAutoWelcomeSlot();
+      this.welcomingNodes.delete(key);
+    }
+    this.autoWelcomeTimers.clear();
+    if (count > 0) {
+      logger.debug(`[MeshCoreAutoWelcome:${this.sourceId}] cancelled ${count} pending welcome(s)`);
     }
   }
 
@@ -14932,6 +15181,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       scopeOverride?: string | null;
       split: boolean;
       label: string;
+      /** Trigger identity for the split queue's duplicate drop (M4); default `label`. */
+      sequenceKey?: string;
+      /** Wait between channels within one part (M5, multi-channel timers). */
+      targetGapMs?: number;
     },
   ): Promise<AutomatedTextResult> {
     const isDm = opts.toPublicKey !== undefined;
@@ -14942,6 +15195,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return sendAutomatedTextParts(text, plan, targets, {
       lock: this.splitSequenceLock,
       gapMs: MESHCORE_SPLIT_PART_GAP_MS,
+      targetGapMs: opts.targetGapMs,
+      // Trigger + real destination (the DM target name is just "DM").
+      sequenceKey: `${opts.sequenceKey ?? opts.label}|${isDm ? `dm:${opts.toPublicKey}` : `ch:${(opts.channelIdxs ?? []).join(',')}`}`,
       canTransmit: () => this.canTransmit(),
       logPrefix: `[MeshCore:${this.sourceId}]`,
       label: opts.label,

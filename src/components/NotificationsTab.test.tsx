@@ -119,6 +119,9 @@ describe('NotificationsTab — source-type gating', () => {
     expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).toBeNull();
+    // M3: the automatic-trace opt-in shows for a Companion, and starts off.
+    const autoTrace = screen.getByTestId('notify-on-auto-trace') as HTMLInputElement;
+    expect(autoTrace.checked).toBe(false);
     // The learning-window note is Repeater only (#6306).
     expect(screen.queryByText(/notifications\.new_nodes_repeater_note/)).toBeNull();
   });
@@ -130,6 +133,7 @@ describe('NotificationsTab — source-type gating', () => {
     });
     expect(screen.queryByText(/notifications\.direct_messages/)).toBeNull();
     expect(screen.queryByText(/notifications\.traceroutes/)).toBeNull();
+    expect(screen.queryByTestId('notify-on-auto-trace')).toBeNull();
     // #6306: the new-node toggle is back for a Repeater, with the gate note.
     expect(screen.queryByText(/notifications\.new_nodes(?!_)/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.new_nodes_repeater_note/)).not.toBeNull();

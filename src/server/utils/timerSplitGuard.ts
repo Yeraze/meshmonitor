@@ -5,7 +5,7 @@
  * only, no `scheduleType`) (#6330).
  */
 import { Cron } from 'croner';
-import { SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/messageSplitLimits.js';
+import { SPLIT_TIMER_MIN_INTERVAL_MINUTES, MESHCORE_TIMER_MAX_CHANNELS } from '../../utils/messageSplitLimits.js';
 
 interface TimerLike {
   id?: unknown;
@@ -47,6 +47,21 @@ export function findSplitTimerTooFrequent(triggers: unknown[]): { id: string; mi
     if (gap !== null && gap < SPLIT_TIMER_MIN_INTERVAL_MINUTES) {
       return { id: String(t.id ?? ''), minutes: gap };
     }
+  }
+  return undefined;
+}
+
+/**
+ * First MeshCore timer that targets more than MESHCORE_TIMER_MAX_CHANNELS
+ * distinct channels, or undefined (4.17.3 review M5). Only channel timers
+ * count; a DM timer's leftover channel list is never sent to.
+ */
+export function findTimerTooManyChannels(triggers: unknown[]): { id: string; channels: number } | undefined {
+  for (const raw of triggers) {
+    const t = raw as { id?: unknown; destination?: unknown; channelIndexes?: unknown } | null;
+    if (!t || t.destination === 'dm' || !Array.isArray(t.channelIndexes)) continue;
+    const distinct = new Set(t.channelIndexes).size;
+    if (distinct > MESHCORE_TIMER_MAX_CHANNELS) return { id: String(t.id ?? ''), channels: distinct };
   }
   return undefined;
 }

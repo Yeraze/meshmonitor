@@ -7,6 +7,9 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { UiIcon } from '../icons';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { ConfigEmptyState } from '../shared/config/ConfigEmptyState';
+import styles from './MeshCoreNodeScheduleTable.module.css';
 
 /**
  * MeshCore Remote Telemetry overview (#6224). Per-node like time-sync: the
@@ -90,24 +93,22 @@ export const MeshCoreRemoteTelemetrySection: React.FC<Props> = ({ baseUrl, sourc
 
   return (
     <NumberInputScope scope={numberScope}>
-      <section>
-        <h2 className="automation-section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <UiIcon name="activity" size={18} />
-          {t('meshcore.automation.remote_telemetry.title', 'Remote Telemetry')}
-        </h2>
-        <p className="setting-description" style={{ marginBottom: '1rem' }}>
-          {t(
-            'meshcore.automation.remote_telemetry.description',
-            'Nodes with remote telemetry enabled are polled periodically for battery, signal and environment data. Adjust the interval or turn it off here; enable a node from its detail panel.',
-          )}
-        </p>
+      <ConfigSection
+        icon={<UiIcon name="activity" size={18} />}
+        title={t('meshcore.automation.remote_telemetry.title', 'Remote Telemetry')}
+        description={t(
+          'meshcore.automation.remote_telemetry.description',
+          'Nodes with remote telemetry enabled are polled periodically for battery, signal and environment data. Adjust the interval or turn it off here; enable a node from its detail panel.',
+        )}
+      >
 
         {nodes.length === 0 ? (
-          <p className="setting-description">
+          <ConfigEmptyState>
             {t('meshcore.automation.remote_telemetry.empty', 'No nodes have remote telemetry enabled on this source.')}
-          </p>
+          </ConfigEmptyState>
         ) : (
-          <table className="data-table">
+          <div className={styles.scroll}>
+          <table className={styles.table}>
             <thead>
               <tr>
                 <th>{t('meshcore.automation.remote_telemetry.node', 'Node')}</th>
@@ -131,11 +132,12 @@ export const MeshCoreRemoteTelemetrySection: React.FC<Props> = ({ baseUrl, sourc
                         value={current}
                         onChange={(v) => setEdited((prev) => ({ ...prev, [n.publicKey]: v }))}
                         disabled={!canWrite || busy === n.publicKey}
-                        className="setting-input"
+                        className={`setting-input ${styles.interval}`}
                       />
                     </td>
                     <td>{n.lastSuccessAt ? new Date(n.lastSuccessAt).toLocaleString() : t('common.never', 'Never')}</td>
-                    <td style={{ display: 'flex', gap: '0.5rem' }}>
+                    <td>
+                      <div className={styles.actions}>
                       <button
                         type="button"
                         className="btn-primary"
@@ -152,14 +154,16 @@ export const MeshCoreRemoteTelemetrySection: React.FC<Props> = ({ baseUrl, sourc
                       >
                         {t('common.disable', 'Disable')}
                       </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
         )}
-      </section>
+      </ConfigSection>
     </NumberInputScope>
   );
 };

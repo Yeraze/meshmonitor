@@ -97,6 +97,7 @@ import LoginPage from './components/LoginPage';
 import { SaveBarProvider, SaveBarGroup } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import PollErrorNotice from './components/PollErrorNotice';
 import RouteLoading from './components/RouteLoading/RouteLoading';
 
 // Pending favorite/ignored/hide-from-map toggle tracking lives in
@@ -382,7 +383,9 @@ function App() {
   // queryClient backs the optimistic toggleIgnored/toggleHideFromMap writes
   // below (setNodeFieldInCache) — the query-cache-native replacement for the
   // old DataContext setNodes(...) writes.
-  const { nodes } = useNodes();
+  // `pollError`: the poll's last read failed. Shown on the Nodes and Channels
+  // pages when their list is empty because of it (#6342).
+  const { nodes, error: pollError } = useNodes();
   const { channels } = useChannels();
   const queryClient = useQueryClient();
   // Used by checkConnectionStatus and the Retry button: /api/connection, and
@@ -3750,6 +3753,7 @@ function App() {
             path="nodes"
             element={
               <ErrorBoundary fallbackTitle="Nodes failed to load">
+                <PollErrorNotice error={pollError} empty={nodes.length === 0} />
                 <NodesTab
                   processedNodes={processedNodes}
                   agedOutAircraftNodes={agedOutAircraftNodes}
@@ -3868,6 +3872,7 @@ function App() {
             path="channels"
             element={
               <ErrorBoundary fallbackTitle="Channels failed to load">
+          <PollErrorNotice error={pollError} empty={channels.length === 0} />
           <ChannelsTab
             channels={channels}
             channelDatabaseEntries={channelDatabaseEntries}

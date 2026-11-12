@@ -37,7 +37,7 @@ import { SpipImage } from '../Spip/SpipImage';
 import { meshcoreDisplayTimeMs, meshcoreMessageClockOffsetMs } from '../../utils/meshcoreMessageTime';
 import { MeshCoreClockOffset } from './MeshCoreClockOffset';
 import { requiredRepeatersHeard, RELAY_ADV_TYPES, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
-import { HeardByBubble } from './HeardByBubble';
+import { HeardByBubble, HeardByList } from './HeardByBubble';
 import { isNearBottom, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX } from '../../utils/scrollNearBottom';
 
 interface MeshCoreMessageStreamProps {
@@ -259,8 +259,19 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }
   }, [resendConfirm, onResendMessage]);
 
-  // The heard-by (antenna) badge, its expand state, and the #6124 scroll-on-
-  // expand now live inside the shared <HeardByBubble> component.
+  // The heard-by (antenna) badge and the #6124 scroll-on-expand live inside the
+  // shared <HeardByBubble>. Its expand state lives here: the badge sits on the
+  // header row (#6239) but the list opens BELOW the message body, at full
+  // message width, not inside the narrow header meta column (#4173 review L13).
+  const [openHeardBy, setOpenHeardBy] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleHeardBy = useCallback((id: string) => {
+    setOpenHeardBy((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // MeshCore inbound messages carry `pubkey_prefix` (typically 6-byte / 12-char
   // hex) in `fromPublicKey`, while contacts are keyed by full pubkey. Match by
@@ -937,6 +948,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       requiredKeys={requiredKeys}
                       repeaters={repeaters}
                       mode={requiredRepeaterMode}
+                      open={openHeardBy.has(m.id)}
+                      onToggle={() => toggleHeardBy(m.id)}
+                      renderList={false}
                     />
                   )}
                   {reactEnabled && isReactableRow(m, selfPublicKey) && (
@@ -1061,8 +1075,12 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   <UiIcon name="user" size={13} /> {t('meshcore.sent_as', 'Sent as {{name}}', { name: m.senderNameOverride })}
                 </div>
               )}
-              {/* #6239: the heard-by antenna now renders on the header row
-                  above (was a full line here). */}
+              {/* #6239: the heard-by antenna renders on the header row above
+                  (was a full line here); its list opens here, below the body
+                  (#4173 review L13). Same gate as the antenna. */}
+              {outgoing && !m.reactionEmoji && !!m.toPublicKey && m.messageType !== 'room_post' && openHeardBy.has(m.id) && (
+                <HeardByList heardBy={m.heardBy} requiredKeys={requiredKeys} repeaters={repeaters} />
+              )}
               {m.text && <LinkPreview text={m.text} />}
               {translatedMessages[m.id] && (
                 <TranslatedMessage

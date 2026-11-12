@@ -153,3 +153,39 @@ describe('ImportConfigModal', () => {
     expect(screen.queryByTestId('meshcore-import-preview')).toBeNull();
   });
 });
+
+describe('ImportConfigModal close before decoding (#4173 review M13)', () => {
+  it.each(['meshcore', 'meshtastic'] as const)('%s: a Cancel button closes the dialog before any decode', (protocol) => {
+    const onClose = vi.fn();
+    render(<ImportConfigModal isOpen onClose={onClose} onImportSuccess={() => {}} protocol={protocol} sourceId="mc-src" />);
+    fireEvent.click(screen.getByTestId('import-config-close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the early Cancel once a decode shows the preview (it carries its own)', async () => {
+    api.decodeChannelUrl.mockResolvedValue({
+      channels: [{ name: 'Primary', psk: 'abc' }],
+      loraConfig: { modemPreset: 0, region: 1, hopLimit: 3, txPower: 20 },
+    });
+    render(<ImportConfigModal isOpen onClose={() => {}} onImportSuccess={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText('import_config.url_placeholder'), { target: { value: 'https://meshtastic.org/e/#abc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'import_config.decode_button' }));
+    await screen.findByText('import_config.lora_settings');
+    expect(screen.queryByTestId('import-config-close')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'import_config.cancel' })).toHaveLength(1);
+  });
+
+  it('Escape closes the dialog', () => {
+    const onClose = vi.fn();
+    render(<ImportConfigModal isOpen onClose={onClose} onImportSuccess={() => {}} protocol="meshcore" sourceId="mc-src" />);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape does nothing while closed', () => {
+    const onClose = vi.fn();
+    render(<ImportConfigModal isOpen={false} onClose={onClose} onImportSuccess={() => {}} protocol="meshcore" sourceId="mc-src" />);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});

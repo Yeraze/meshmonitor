@@ -18,15 +18,27 @@ import type { NodeViewAccess } from '../../utils/nodeEnhancer.js';
 type SourcedRequest = Request & { source?: { type?: string } };
 
 /**
- * MeshCore channel access on one source: the per-channel grant (slots 0-7)
- * OR the legacy `messages` grant, so slots above 7 are readable with
- * `messages:read` (the rule `canAccessMeshcoreChannel` applies, from grants
- * already loaded for the request).
+ * MeshCore channel VISIBILITY on one source: the per-channel read grant
+ * (slots 0-7) OR the legacy `messages` grant, so slots above 7 are readable
+ * with `messages:read` (the rule `canAccessMeshcoreChannel` applies, from
+ * grants already loaded for the request). Never use this to decide whether
+ * the raw key is returned — see canSeeMeshcorePsk.
  */
-function canAccessMeshcoreSlot(access: NodeViewAccess, idx: number, action: 'read' | 'write', sourceId: string): boolean {
+function canReadMeshcoreSlot(access: NodeViewAccess, idx: number, sourceId: string): boolean {
   if (access.isAdmin) return true;
-  if (idx >= 0 && idx <= 7 && access.permissions.can(`channel_${idx}` as ResourceType, action, sourceId)) return true;
-  return access.permissions.can('messages', action, sourceId);
+  if (idx >= 0 && idx <= 7 && access.permissions.can(`channel_${idx}` as ResourceType, 'read', sourceId)) return true;
+  return access.permissions.can('messages', 'read', sourceId);
+}
+
+/**
+ * Whether the raw MeshCore channel `psk` may be returned. Mirrors the UI rule
+ * in channelRoutes.ts (GET /api/channels/all and GET /api/channels): admin, or
+ * `channel_<idx>:write` on this source. Slots above 7 have no channel grant,
+ * so only admins see their key. `messages:write` never exposes a key.
+ */
+function canSeeMeshcorePsk(access: NodeViewAccess, idx: number, sourceId: string): boolean {
+  if (access.isAdmin) return true;
+  return idx >= 0 && idx <= 7 && access.permissions.can(`channel_${idx}` as ResourceType, 'write', sourceId);
 }
 
 const router = express.Router({ mergeParams: true });
@@ -45,9 +57,9 @@ router.get('/', async (req: Request, res: Response) => {
     const allChannels = await databaseService.channels.getAllChannels(sourceId);
 
     if (isAnyMeshCoreSourceType((req as SourcedRequest).source?.type)) {
-      const visible = allChannels.filter((c) => canAccessMeshcoreSlot(access, c.id, 'read', sourceId));
+      const visible = allChannels.filter((c) => canReadMeshcoreSlot(access, c.id, sourceId));
       const data = visible.map((c) => ({
-        ...transformChannel(c, { includePsk: canAccessMeshcoreSlot(access, c.id, 'write', sourceId) }),
+        ...transformChannel(c, { includePsk: canSeeMeshcorePsk(access, c.id, sourceId) }),
         protocol: 'meshcore' as const,
       }));
       return res.json({ success: true, count: data.length, data });
@@ -113,7 +125,7 @@ router.get('/:channelId', async (req: Request, res: Response) => {
 
     // The channel grant is held per source: checked on this one (admins pass).
     const canRead = isMeshCore
-      ? canAccessMeshcoreSlot(access, channelId, 'read', sourceId)
+      ? canReadMeshcoreSlot(access, channelId, sourceId)
       : access.permissions.can(channelResource, 'read', sourceId);
     if (!canRead) {
       return res.status(403).json({
@@ -135,9 +147,10 @@ router.get('/:channelId', async (req: Request, res: Response) => {
     }
 
     // Include the raw `psk` only for admins or callers with write permission
-    // to this channel on this source (issue #2951).
+    // to this channel on this source (issue #2951). MeshCore follows the same
+    // rule; the `messages` fallback grants visibility only, never the key.
     const includePsk = isMeshCore
-      ? canAccessMeshcoreSlot(access, channelId, 'write', sourceId)
+      ? canSeeMeshcorePsk(access, channelId, sourceId)
       : access.permissions.can(channelResource, 'write', sourceId);
 
     res.json({

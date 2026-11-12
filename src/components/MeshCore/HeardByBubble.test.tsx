@@ -8,7 +8,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { HeardByBubble } from './HeardByBubble';
+import { HeardByBubble, HeardByList } from './HeardByBubble';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -98,5 +98,25 @@ describe('HeardByBubble (#6193)', () => {
     expect(rows[0].getAttribute('data-heard')).toBe('false');
     // But the hearing still shows as an "other" green row below.
     expect(badge().textContent).toContain('1');
+  });
+
+  it('controlled with renderList={false}: the badge reports state and leaves the list to the caller (#4173 L13)', () => {
+    const onToggle = vi.fn();
+    const { rerender } = render(
+      <HeardByBubble heardBy={[{ hash: 'bb' }]} repeaters={relays} open={false} onToggle={onToggle} renderList={false} />,
+    );
+    fireEvent.click(badge());
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    rerender(<HeardByBubble heardBy={[{ hash: 'bb' }]} repeaters={relays} open onToggle={onToggle} renderList={false} />);
+    expect(badge().getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector('.mc-heard-by-list')).toBeNull();
+  });
+
+  it('HeardByList renders the same rows on its own', () => {
+    render(<HeardByList heardBy={[{ hash: 'bb', hops: 0 }]} requiredKeys={[OTHER]} repeaters={relays} />);
+    const rows = items();
+    expect(rows).toHaveLength(2);
+    expect(rows[0].getAttribute('data-heard')).toBe('false');
+    expect(within(rows[1] as HTMLElement).getByText('bb')).toBeTruthy();
   });
 });

@@ -2136,7 +2136,8 @@ body {
 
   /* Modal mobile responsiveness */
   .modal-overlay {
-    left: 48px !important; /* Account for mobile sidebar */
+    /* No left offset: the 48px "mobile sidebar" this used to clear is now a
+       bottom bar, and the offset left an undimmed, tappable strip (#4173 M12). */
     padding: 0.5rem !important;
     align-items: center !important;
     justify-content: center !important;
@@ -3406,6 +3407,45 @@ body {
   .channels-header h2 {
     font-size: 1rem;
     margin: 0.15rem 0;
+  }
+
+  /* #4173 review M16: at 844x390 the header ran the desktop row (inline
+     info / bell / mark-all-read + a three-line MQTT toggle), which grew it to
+     ~70px, spilled 40px past the right edge, and left the message list ~60px.
+     Use the phone treatment here too: those controls fold into the "⋯" menu,
+     which already carries info, mute, mark-all-read and the MQTT toggle.
+     These rules come after the base .channel-actions / .channel-overflow /
+     .mqtt-toggle rules, so source order is on their side. */
+  .channels-header {
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .channels-controls {
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .channels-controls .channel-actions {
+    display: none;
+  }
+
+  .channels-controls .mqtt-toggle {
+    display: none;
+  }
+
+  .channels-controls .channel-overflow {
+    display: block;
+  }
+
+  /* Trim the two nested card paddings around the message list. */
+  .channel-conversation-section {
+    padding: 0.35rem;
+  }
+
+  .channel-conversation {
+    padding: 0.5rem;
   }
 
   /* Smaller message bubbles */
