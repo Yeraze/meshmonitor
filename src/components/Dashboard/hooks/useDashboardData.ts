@@ -6,6 +6,7 @@ import { useSource } from '../../../contexts/SourceContext';
 import { type FavoriteChart, type NodeInfo, type CustomWidget } from '../types';
 import { type DashboardDataSource, meshtasticDashboardSource } from '../dataSources';
 import { parseChartYRangeMap, type ChartYRange } from '../../../utils/chartYRange';
+import { isSourceNotConnectedError } from '../../../utils/sourceNotConnected';
 
 interface UseDashboardDataOptions {
   /** Polling interval in milliseconds (default: 30000) */
@@ -43,6 +44,8 @@ interface UseDashboardDataResult {
   setChartYRanges: React.Dispatch<React.SetStateAction<Record<string, ChartYRange>>>;
   loading: boolean;
   error: string | null;
+  /** The source has no running manager (SOURCE_NOT_CONNECTED, #4173 N5). */
+  notConnected: boolean;
   refresh: () => Promise<void>;
 }
 
@@ -254,6 +257,10 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
     return null;
   }, [settingsQuery.error, nodesQuery.error]);
 
+  // A source with no running manager is an empty state, not an error (#4173 N5).
+  const notConnected =
+    isSourceNotConnectedError(settingsQuery.error) || isSourceNotConnectedError(nodesQuery.error);
+
   // Manual refresh function
   const refresh = useCallback(async () => {
     await Promise.all([
@@ -276,6 +283,7 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
     setChartYRanges,
     loading,
     error,
+    notConnected,
     refresh,
   };
 }

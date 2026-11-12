@@ -184,6 +184,35 @@ describe('MeshCoreSourcePage', () => {
     });
   });
 
+  it('#4173 N6: shows Disconnected, not Connecting, when the source has no manager', async () => {
+    authValue.hasPermission = () => true;
+    // No manager registered: every MeshCore route 404s SOURCE_NOT_CONNECTED.
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      fetchUrls.push(url);
+      if (url.includes('/meshcore/')) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'No MeshCore manager for source mc-src-1', code: 'SOURCE_NOT_CONNECTED' }),
+          { status: 404 },
+        );
+      }
+      return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText('Disconnected')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Connecting')).not.toBeInTheDocument();
+  });
+
+  it('#4173 N6: shows Disconnected, not Connecting, without connection:read', async () => {
+    authValue.hasPermission = () => false;
+    renderPage();
+    await screen.findByText('You do not have permission to view this MeshCore source.');
+    expect(screen.getByText('Disconnected')).toBeInTheDocument();
+    expect(screen.queryByText('Connecting')).not.toBeInTheDocument();
+  });
+
   it('shows Connected after snapshot returns connected=true', async () => {
     authValue.hasPermission = () => true;
     // Override snapshot to return connected=true for this test.

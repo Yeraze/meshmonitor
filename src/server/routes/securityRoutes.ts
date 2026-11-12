@@ -34,6 +34,7 @@ import { securityCapabilities } from '../../utils/securityCapabilities.js';
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import { EXCESSIVE_PACKETS_PER_HOUR, TIME_OFFSET_THRESHOLD_MINUTES } from '../constants/securityThresholds.js';
 import { logger } from '../../utils/logger.js';
+import { SOURCE_NOT_CONNECTED_CODE } from '../../utils/sourceNotConnected.js';
 
 const router = Router();
 
@@ -46,6 +47,21 @@ const nodesReadOnSource = requirePermission('nodes', 'read', { sourceIdFrom: 'qu
 /** Protocol of a source for the shared reads: MeshCore (device or MQTT) or Meshtastic. */
 function sourceProtocol(sourceId: string): 'meshcore' | 'meshtastic' {
   return isAnyMeshCoreSourceType(sourceManagerRegistry.getManager(sourceId)?.sourceType) ? 'meshcore' : 'meshtastic';
+}
+
+/**
+ * No manager is registered for `sourceId`. A source that exists but is not
+ * running (enabled, autoConnect off) answers 409 SOURCE_NOT_CONNECTED so the
+ * page can say "not connected" instead of "unknown source" (#4173 review N5);
+ * an id with no source row stays 400 SOURCE_NOT_FOUND. Every caller has
+ * already passed its permission check for this source.
+ */
+async function failNoManager(res: Response, sourceId: string): Promise<Response> {
+  const source = await databaseService.sources.getSource(sourceId);
+  if (source) {
+    return fail(res, 409, SOURCE_NOT_CONNECTED_CODE, `Source ${sourceId} is not connected`);
+  }
+  return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
 }
 
 // Get all nodes with security issues. Wire fields are unchanged; nodeKey,
@@ -105,7 +121,7 @@ router.post(
       // Require the source to be registered — no fallback to a default manager.
       const manager = sourceManagerRegistry.getManager(sourceId);
       if (!manager) {
-        return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+        return failNoManager(res, sourceId);
       }
       const isMeshCore = isAnyMeshCoreSourceType(manager.sourceType);
       if (isMeshCore ? !securityCapabilities(manager.sourceType).scanner : !isMeshtasticManager(manager)) {
@@ -272,7 +288,7 @@ router.post(
       }
       const manager = sourceManagerRegistry.getManager(sourceId);
       if (!manager) {
-        return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+        return failNoManager(res, sourceId);
       }
       const isMeshCore = isAnyMeshCoreSourceType(manager.sourceType);
       let name: string;
@@ -380,7 +396,7 @@ router.get('/dead-nodes', requireSourceId('query'), requirePermission('nodes', '
     const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
     const manager = sourceManagerRegistry.getManager(sourceId);
     if (!manager) {
-      return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+      return failNoManager(res, sourceId);
     }
     const isMeshCore = isAnyMeshCoreSourceType(manager.sourceType);
     if (!isMeshCore && !isMeshtasticManager(manager)) {
@@ -494,7 +510,7 @@ router.post(
       }
       const manager = sourceManagerRegistry.getManager(sourceId);
       if (!manager) {
-        return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+        return failNoManager(res, sourceId);
       }
       const isMeshCore = isAnyMeshCoreSourceType(manager.sourceType);
       if (!isMeshCore && !isMeshtasticManager(manager)) {
@@ -626,7 +642,7 @@ router.get('/meshcore/findings', requireSourceId('query'), requirePermission('no
     const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
     const manager = sourceManagerRegistry.getManager(sourceId);
     if (!manager) {
-      return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+      return failNoManager(res, sourceId);
     }
     if (!isAnyMeshCoreSourceType(manager.sourceType)) {
       return fail(res, 400, 'INVALID_SOURCE_TYPE', 'MeshCore findings are only available for MeshCore sources');
@@ -692,7 +708,7 @@ router.post(
       const sourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
       const manager = sourceManagerRegistry.getManager(sourceId);
       if (!manager) {
-        return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+        return failNoManager(res, sourceId);
       }
       if (!isAnyMeshCoreSourceType(manager.sourceType)) {
         return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Own-key tracking is only available for MeshCore sources');

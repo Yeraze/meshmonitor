@@ -588,8 +588,7 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
 
             <button
               type="button"
-              className="btn-secondary"
-              style={{ color: 'var(--color-error)' }}
+              className={`btn-secondary ${styles.dangerButton}`}
               onClick={() => void handleClear()}
               disabled={busy !== null || !status?.stored}
             >

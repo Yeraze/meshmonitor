@@ -6,6 +6,8 @@ import api from '../services/api';
 import { TabType } from '../types/ui';
 import { getHardwareModelName } from '../utils/hardwareModel';
 import { ApiError } from '../services/api';
+import { isSourceNotConnectedError } from '../utils/sourceNotConnected';
+import { SourceNotConnectedNotice } from './common/SourceNotConnectedNotice';
 import { securityCapabilities, type SecurityDeviceType } from '../utils/securityCapabilities';
 import { securityNotificationText } from '../utils/securityNotificationText';
 import { DeadNodesSection } from './security/DeadNodesSection';
@@ -79,6 +81,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWi
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // No manager for this source (SOURCE_NOT_CONNECTED, #4173 N5): an empty
+  // state, not an error. The poll keeps running, so it clears on connect.
+  const [notConnected, setNotConnected] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [mismatchEvents, setMismatchEvents] = useState<any[]>([]);
@@ -188,8 +193,14 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWi
         setMismatchEvents(mismatchData.events || []);
       }
       setError(null);
+      setNotConnected(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('security.failed_load'));
+      if (isSourceNotConnectedError(err)) {
+        setNotConnected(true);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : t('security.failed_load'));
+      }
     } finally {
       setLoading(false);
     }
@@ -209,6 +220,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWi
     setDeadNodesForbidden(false);
     setFindingsForbidden(false);
     setIssuesForbidden(false);
+    setNotConnected(false);
     void fetchSecurityData();
     // Refresh every 30 seconds
     const interval = setInterval(fetchSecurityData, 30000);
@@ -357,6 +369,14 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onOpenNode, onOpenDmWi
     return (
       <div className="security-tab">
         <div className="loading">{t('security.loading')}</div>
+      </div>
+    );
+  }
+
+  if (notConnected) {
+    return (
+      <div className="security-tab">
+        <SourceNotConnectedNotice />
       </div>
     );
   }

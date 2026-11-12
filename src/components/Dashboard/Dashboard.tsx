@@ -15,6 +15,7 @@ import { meshtasticDashboardSource } from './dataSources';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { CHART_Y_RANGE_SETTING, withChartYRange, type ChartYRange } from '../../utils/chartYRange';
+import { SourceNotConnectedNotice } from '../common/SourceNotConnectedNotice';
 
 const Dashboard: React.FC<DashboardProps> = React.memo(
   ({
@@ -54,6 +55,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       setChartYRanges,
       loading,
       error,
+      notConnected,
     } = useDashboardData({ dataSource });
 
     // Get solar visibility for a specific chart (uses type-based default if not set)
@@ -256,6 +258,10 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
 
     if (loading) {
       return <div className="dashboard-loading">{t('dashboard.loading')}</div>;
+    }
+
+    if (notConnected) {
+      return <SourceNotConnectedNotice />;
     }
 
     if (error) {
