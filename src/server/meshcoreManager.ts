@@ -7466,9 +7466,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     if (pending.retriesLeft <= 0) return; // defensive: one-shot already spent
 
+    // L3 (4.17.3 review): a retry the gate alone asked for (some repeater WAS
+    // heard) is skipped while this channel is suppressed: an earlier gate retry
+    // on it left the gate unmet. A zero-heard miss (#3979) always retries.
+    const gateDriven = required.keys.length > 0 && heard.length > 0;
+    if (gateDriven) {
+      const until = this.gateRetrySuppressedUntil.get(pending.channelIdx) ?? 0;
+      if (Date.now() < until) {
+        logger.debug(
+          `[MeshCore:${this.sourceId}] Channel send ${messageId}: required repeater gate unmet on channel ${pending.channelIdx}, ` +
+          `but gate retries there are paused until ${new Date(until).toISOString()}; no retry`,
+        );
+        return;
+      }
+    }
+
     logger.debug(
-      `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ZERO repeaters within ` +
-      `${MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000}s; resending once (auto-retry #3979)`,
+      gateDriven
+        ? `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ${heard.length} repeater(s) but the required ` +
+          `repeater gate ('${required.mode}') is unmet; resending once (auto-retry #3979)`
+        : `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ZERO repeaters within ` +
+          `${MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000}s; resending once (auto-retry #3979)`,
     );
 
     // Delivery-diagnostics timeline (#4816 Phase 3): the one-shot #3979 channel
@@ -7497,6 +7515,52 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         messageId,
       );
     });
+    if (gateDriven) this.scheduleGateRetryCheck(messageId, pending.channelIdx);
+  }
+
+  /**
+   * Channels whose Required Repeaters gate stayed unmet after a gate-driven
+   * retry, mapped to when gate retries may resume (L3, 4.17.3 review). One
+   * manager is one source, so the key is the channel. In memory on purpose: a
+   * restart forgets it, which costs at most one more gate retry per channel
+   * before the pause is set again.
+   */
+  private gateRetrySuppressedUntil = new Map<number, number>();
+  static readonly GATE_RETRY_SUPPRESS_MS = 60 * 60 * 1000;
+
+  /**
+   * One echo window after a gate-driven resend, re-check the gate for the
+   * message (the resend's echoes are credited to it, #5512). Still unmet:
+   * pause gate retries on the channel for an hour and warn once.
+   */
+  private scheduleGateRetryCheck(messageId: string, channelIdx: number): void {
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
+          const required = await this.resolveRequiredRepeaters();
+          if (required.keys.length === 0) return;
+          const met = requiredRepeatersHeard(
+            heard.map((h) => ({ hash: h.repeaterHash })),
+            required.keys,
+            required.mode,
+            [...this.contacts.values()].map((c) => ({ publicKey: c.publicKey, advType: c.advType ?? null })),
+          );
+          if (met) return;
+          const now = Date.now();
+          if ((this.gateRetrySuppressedUntil.get(channelIdx) ?? 0) > now) return; // already paused and warned
+          this.gateRetrySuppressedUntil.set(channelIdx, now + MeshCoreManager.GATE_RETRY_SUPPRESS_MS);
+          logger.warn(
+            `[MeshCore:${this.sourceId}] Required repeater gate ('${required.mode}') still unmet on channel ${channelIdx} ` +
+            `after an auto-retry; pausing gate-driven retries on this channel for 1 hour. ` +
+            `Check the Required Repeaters list: a repeater that is out of range, removed from contacts, or shares a hash prefix keeps the gate unmet.`,
+          );
+        } catch (err) {
+          logger.debug(`[MeshCore:${this.sourceId}] gate re-check after retry failed: ${(err as Error).message}`);
+        }
+      })();
+    }, MeshCoreManager.CHANNEL_RETRY_WINDOW_MS);
+    (timer as { unref?: () => void }).unref?.();
   }
 
   /** Max user-initiated resends per message (#5512). */
