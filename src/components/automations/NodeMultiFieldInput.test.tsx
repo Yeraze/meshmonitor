@@ -53,4 +53,16 @@ describe('NodeMultiFieldInput', () => {
     fireEvent.click(roof!);
     expect(onChange).toHaveBeenCalledWith([2]);
   });
+
+  it('shows the node id only on rows that would otherwise read the same (#4173 review L28)', () => {
+    const twins = [
+      { nodeNum: 0x863, longName: '#TFH-863', shortName: '#TFH', nodeId: '!00000863', mobile: 0 },
+      { nodeNum: 0x864, longName: '#TFH-863', shortName: '#TFH', nodeId: '!00000864', mobile: 0 },
+      { nodeNum: 2, longName: 'Roof Site', shortName: 'ROOF', nodeId: '!00000002', isMobile: false },
+    ];
+    render(<NodeMultiFieldInput value={[]} onChange={() => {}} nodes={twins} />);
+    const ids = screen.getAllByTestId('node-multi-id').map((el) => el.textContent);
+    expect(ids.sort()).toEqual(['!00000863', '!00000864']);
+  });
 });
+

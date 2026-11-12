@@ -54,8 +54,13 @@
   flex-wrap: wrap;
 }
 
-.cancel,
-.confirm {
+/* Button rules carry `.actions` so they outrank a page-wide `.x button`
+   rule: the dialog is not portaled, and inside MeshCore's
+   `.meshcore-form-view button` (0,1,1) painted Cancel and the red danger
+   confirm purple (#4173 review L27). */
+.actions .cancel,
+.actions .confirm {
+  margin: 0;
   padding: 0.6rem 1.25rem;
   border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
@@ -65,25 +70,25 @@
   cursor: pointer;
 }
 
-.cancel {
+.actions .cancel {
   background: var(--color-surface-hover);
   color: var(--color-text);
 }
 
-.confirm {
+.actions .confirm {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: var(--color-accent-text);
 }
 
-.danger {
+.actions .danger {
   background: var(--color-error);
   border-color: var(--color-error);
   color: var(--color-accent-text);
 }
 
-.cancel:disabled,
-.confirm:disabled {
+.actions .cancel:disabled,
+.actions .confirm:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

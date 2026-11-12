@@ -15,8 +15,12 @@
   gap: 0.75rem;
 }
 
-.dangerButton,
-.plainButton {
+/* `.actions` keeps these above a page-wide `.x button` rule: MeshCore's
+   `.meshcore-form-view button` (0,1,1) painted the danger buttons purple
+   (#4173 review L27). */
+.actions .dangerButton,
+.actions .plainButton {
+  margin: 0;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -27,29 +31,29 @@
   cursor: pointer;
 }
 
-.dangerButton {
+.actions .dangerButton {
   background: transparent;
   color: var(--color-error);
   border: 1px solid var(--color-error);
 }
 
-.dangerButton:hover:not(:disabled) {
+.actions .dangerButton:hover:not(:disabled) {
   background: var(--color-error);
   color: var(--color-bg);
 }
 
-.plainButton {
+.actions .plainButton {
   background: transparent;
   color: var(--color-text);
   border: 1px solid var(--color-surface-active);
 }
 
-.plainButton:hover:not(:disabled) {
+.actions .plainButton:hover:not(:disabled) {
   background: var(--color-surface-hover);
 }
 
-.dangerButton:disabled,
-.plainButton:disabled {
+.actions .dangerButton:disabled,
+.actions .plainButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

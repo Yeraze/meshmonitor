@@ -419,7 +419,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
               </button>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.5rem' }}>
-              {t('export_config.share_url_description')}
+              {isMeshCore ? t('export_config.meshcore_share_url_description') : t('export_config.share_url_description')}
             </div>
 
             <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

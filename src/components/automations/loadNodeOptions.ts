@@ -28,6 +28,9 @@ export async function loadNodeOptions(): Promise<NodeMultiOption[]> {
         // Drop broadcast / unset MeshCore stubs from the hand-picker.
         return Number.isFinite(num) && num > 0 && num !== 0xffffffff;
       })
+      // One row per nodeNum: the picker stores nodeNums, so a node heard on
+      // two sources is one choice, not two identical rows (#4173 review L28).
+      .filter((n, i, all) => all.findIndex((o) => Number(o.nodeNum) === Number(n.nodeNum)) === i)
       .map((n) => {
         const nodeNum = Number(n.nodeNum);
         const nodeId = n.nodeId || n.user?.id || `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;

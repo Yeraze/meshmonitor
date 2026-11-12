@@ -46,6 +46,9 @@ describe('ExportConfigModal', () => {
       />,
     );
     expect(screen.getByText('export_config.meshcore_title')).toBeTruthy();
+    // MeshCore copy, not "…into their Meshtastic devices" (#4173 review L26).
+    await waitFor(() => expect(screen.getByText('export_config.meshcore_share_url_description')).toBeTruthy());
+    expect(screen.queryByText('export_config.share_url_description')).toBeNull();
     expect(screen.queryByText('export_config.lora_config')).toBeNull();
     // Channels without a secret are not offered (2 of 3 rows).
     const radios = screen.getAllByRole('radio') as HTMLInputElement[];
