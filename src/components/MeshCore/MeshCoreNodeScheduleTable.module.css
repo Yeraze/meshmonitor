@@ -1,0 +1,51 @@
+/*
+ * Per-node schedule tables in the MeshCore Automations view: Time Sync and
+ * Remote Telemetry (#6224). The global `data-table` class they used has no
+ * CSS, so the table rendered unstyled and, at 390px, ran 200px past its
+ * column with Save/Disable off-screen (#4173 review M9). The wrapper scrolls
+ * the table sideways on its own instead of the whole automations view.
+ */
+
+.scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 1rem 1.75rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table th,
+.table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.table th {
+  font-weight: 600;
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+}
+
+.table .interval {
+  width: 6rem;
+}
+
+/* Flex lives on an inner div: `display: flex` on a <td> drops it out of the
+   table layout, so the cell lost its row height and border. */
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .scroll {
+    margin-left: 0;
+  }
+}

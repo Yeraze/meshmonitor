@@ -133,6 +133,14 @@
     border-radius: var(--radius-md);
   }
 
+  /* `.search { flex: 0 1 14rem }` is a WIDTH in the chip row; in this column
+     it became a 14rem HEIGHT, so a short list (Notifications) gave the filter
+     box half the rail (#4173 review M17). Size it to its content here. */
+  .shell .search {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
   /* Long labels ("External Notification") would otherwise widen the rail. */
   .shell :global(.section-nav-item) {
     text-align: left;

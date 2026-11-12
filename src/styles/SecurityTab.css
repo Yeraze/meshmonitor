@@ -10,6 +10,13 @@
    * instead of turning the document root into the scroller.
    */
   min-width: 0;
+  /*
+   * #4173 review M14: on the MeshCore page this is a flex item of a COLUMN
+   * flex parent, where `margin: 0 auto` turns off stretching and sizes the
+   * box to its content (594px at a 390px viewport, clipped by the parent).
+   * An explicit width restores the full-width box; max-width still caps it.
+   */
+  width: 100%;
 }
 
 .security-header {
@@ -859,6 +866,12 @@
 
   .header-actions {
     width: 100%;
+    flex-wrap: wrap;
+  }
+
+  /* Label + value side by side ran past a 390px card (#4173 M14). */
+  .status-row {
+    flex-wrap: wrap;
   }
 
   .export-button {

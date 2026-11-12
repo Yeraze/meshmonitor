@@ -60,7 +60,13 @@ const NAV_CLEARANCE = 16;
  */
 function stuckNavBottom(nav: HTMLElement | null): number {
   if (!nav) return 0;
-  const top = parseFloat(window.getComputedStyle(nav).top) || 0;
+  const style = window.getComputedStyle(nav);
+  const top = parseFloat(style.top) || 0;
+  // The landscape-phone rail (#6211) is a column BESIDE the content, not a row
+  // above it, so its height covers nothing. Counting it pushed a clicked section
+  // a rail-height down — on an 844x390 phone, right off the bottom of the
+  // screen, leaving the previous section in view (#4173 review L25).
+  if (style.flexDirection === 'column') return top + NAV_CLEARANCE;
   return top + nav.getBoundingClientRect().height + NAV_CLEARANCE;
 }
 

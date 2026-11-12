@@ -66,6 +66,42 @@ describe('SectionNav scrollToSection', () => {
     expect(scrollToSpy).not.toHaveBeenCalled();
   });
 
+  const paneWithSection = (id: string) => {
+    const pane = document.createElement('div');
+    pane.style.overflowY = 'auto';
+    sizeOf(pane, 2000, 500);
+    const scrollBySpy = vi.fn();
+    Object.assign(pane, { scrollBy: scrollBySpy });
+    pane.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+    const section = document.createElement('div');
+    section.id = id;
+    section.getBoundingClientRect = () => ({ top: 400 }) as DOMRect;
+    pane.appendChild(section);
+    document.body.appendChild(pane);
+    return scrollBySpy;
+  };
+
+  it('clears a tall chip row above the content by its real height', () => {
+    const scrollBySpy = paneWithSection('sec-row');
+    const { getByRole, container } = render(<SectionNav items={[{ id: 'sec-row', label: 'Row' }]} />);
+    const nav = container.querySelector('nav') as HTMLElement;
+    nav.getBoundingClientRect = () => ({ height: 200, top: 0 }) as DOMRect;
+    fireEvent.click(getByRole('button', { name: 'Row' }));
+    // 400 - (200 + 16 clearance)
+    expect(scrollBySpy).toHaveBeenCalledWith({ top: 184, behavior: 'smooth' });
+  });
+
+  it('does not count the landscape rail height: it sits beside the content (#4173 L25)', () => {
+    const scrollBySpy = paneWithSection('sec-rail');
+    const { getByRole, container } = render(<SectionNav items={[{ id: 'sec-rail', label: 'Rail' }]} />);
+    const nav = container.querySelector('nav') as HTMLElement;
+    nav.style.flexDirection = 'column';
+    nav.getBoundingClientRect = () => ({ height: 300, top: 0 }) as DOMRect;
+    fireEvent.click(getByRole('button', { name: 'Rail' }));
+    // Floor of 50 px, not 300 + 16: the section lands near the top, not off-screen.
+    expect(scrollBySpy).toHaveBeenCalledWith({ top: 350, behavior: 'smooth' });
+  });
+
   it('does nothing when the target section id is absent', () => {
     const { getByRole } = render(<SectionNav items={[{ id: 'missing', label: 'X' }]} />);
     fireEvent.click(getByRole('button', { name: 'X' }));

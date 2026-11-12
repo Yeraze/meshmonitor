@@ -1,0 +1,27 @@
+/*
+ * MeshCore source page top bar (#4173 review M11).
+ *
+ * The global `.dashboard-topbar-title` is a 1.6rem wrap-able span inside a
+ * fixed-height bar, so at 390px a source name like "MC-Sandbox" wrapped to
+ * two lines and the first line was cut off above the bar. Keep the name on
+ * one line and let it shrink with an ellipsis instead. The doubled selector
+ * outranks the global rule regardless of sheet order.
+ */
+.logo {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.logo .title {
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .logo .title {
+    font-size: 1.1rem;
+  }
+}
