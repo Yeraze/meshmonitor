@@ -33,6 +33,7 @@ import type { ReticulumStatus, ReticulumInterfaceRow } from '../types/reticulum'
 import '../components/AppHeader/AppHeader.css';
 import { UiIcon } from '../components/icons';
 import styles from './ReticulumSourcePage.module.css';
+import topbarStyles from './SourcePageTopbar.module.css';
 
 function ReticulumSourceInner() {
   const { t } = useTranslation();
@@ -86,9 +87,10 @@ function ReticulumSourceInner() {
         {/* #4939: the back-to-sources button already anchors the header, so the
             MeshMonitor logo + wordmark are redundant on a per-source page — show
             only the source name. */}
-        <div className="dashboard-topbar-logo">
+        <div className={`dashboard-topbar-logo ${topbarStyles.logo}`}>
           {sourceName && (
-            <span className="dashboard-topbar-title">{sourceName}</span>
+            // Shared one-line, ellipsised title (#4173 review N1).
+            <span className={`dashboard-topbar-title ${topbarStyles.title}`} title={sourceName}>{sourceName}</span>
           )}
         </div>
         <div className="dashboard-topbar-actions">

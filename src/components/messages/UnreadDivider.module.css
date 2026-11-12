@@ -25,6 +25,17 @@
   scroll-margin-top: 3.25rem;
 }
 
+/* When the first unread message opens a new day, its date label sits directly
+   above the divider, and 3.25rem left that label under the pill (#4173 review
+   N12). Add the label's run to the margin. Measured at 390px on the MeshCore
+   stream: the pill's bottom edge sits 52px below the list top and the label
+   top sits 42px above the divider, so 6rem left the label 1.5px clear; 7rem
+   leaves ~17px. */
+:global(.date-separator) + .divider,
+:global(.mc-date-separator) + .divider {
+  scroll-margin-top: 7rem;
+}
+
 .rule {
   flex: 1;
   height: 1px;

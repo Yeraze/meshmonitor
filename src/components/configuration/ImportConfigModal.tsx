@@ -274,20 +274,12 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({
 
   return (
     <div
+      // No inline overlay style: the shared `.modal-overlay` rule
+      // (common/Modal.css) owns position and z-index. An inline `zIndex: 1000`
+      // put this dialog under the app header (10000), which stayed undimmed
+      // and tappable on a phone (#4173 review N7).
       className="modal-overlay"
       onClick={handleClose}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000
-      }}
     >
       <div
         className="modal"

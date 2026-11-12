@@ -26,6 +26,7 @@ import { MeshCoreIngestView } from '../components/MeshCore/MeshCoreIngestView';
 import '../components/MeshCore/MeshCoreTab.css';
 import '../components/AppHeader/AppHeader.css';
 import { UiIcon } from '../components/icons';
+import topbarStyles from './SourcePageTopbar.module.css';
 
 function MeshCoreIngestInner() {
   const { t } = useTranslation();
@@ -58,8 +59,11 @@ function MeshCoreIngestInner() {
         >
           <UiIcon name="back" size={16} /> {t('unified.back_to_sources', 'Sources')}
         </button>
-        <div className="dashboard-topbar-logo">
-          {sourceName && <span className="dashboard-topbar-title">{sourceName}</span>}
+        {/* Shared one-line, ellipsised title (#4173 review N1). */}
+        <div className={`dashboard-topbar-logo ${topbarStyles.logo}`}>
+          {sourceName && (
+            <span className={`dashboard-topbar-title ${topbarStyles.title}`} title={sourceName}>{sourceName}</span>
+          )}
         </div>
         <div className="dashboard-topbar-actions">
           {isAuthenticated ? (

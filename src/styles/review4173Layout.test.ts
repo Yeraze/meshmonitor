@@ -45,7 +45,7 @@ describe('M11: MeshCore status bar buttons wrap instead of running off a phone',
   });
 
   it('source title stays on one line and ellipsises', () => {
-    const page = sheet('src/pages/MeshCoreSourcePage.module.css');
+    const page = sheet('src/pages/SourcePageTopbar.module.css');
     expect(page('.logo .title', 'white-space', PORTRAIT_PHONE)).toBe('nowrap');
     expect(page('.logo .title', 'text-overflow', PORTRAIT_PHONE)).toBe('ellipsis');
     expect(page('.logo', 'min-width', PORTRAIT_PHONE)).toBe('0');
