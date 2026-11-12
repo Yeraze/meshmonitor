@@ -78,7 +78,7 @@ Batches touch separate files so they can run in parallel.
 | M16 | Meshtastic Channels at 844x390: message pane ~60 px; MQTT/Bridge toggle clipped | Channels view | — | P4 | merged #6361 |
 | M17 | Landscape section-nav rail stretches the search box to ~160 px (`flex: 0 1 14rem` in a column) | SectionNav | 549ac1950 (#6211) | P4 | merged #6361 |
 
-| M18 | Deleting a MeshCore source leaves saved Repeater / Room Server passwords in `meshcore_nodes` (found while fixing M1; channel PSK rows were also left, fixed in PR #6359) | `routes/sourceRoutes.ts` delete; `db/repositories/meshcore.ts` | pre-existing | — | todo |
+| M18 | Deleting a MeshCore source leaves saved Repeater / Room Server passwords in `meshcore_nodes` (found while fixing M1; channel PSK rows were also left, fixed in PR #6359) | `routes/sourceRoutes.ts` delete; `db/repositories/meshcore.ts` | pre-existing | — | won't fix (decided) |
 
 ### Low
 
