@@ -137,8 +137,8 @@ Batches touch separate files so they can run in parallel.
 | N10 | MT Connection Error banner takes ~200 of 390 px in landscape | Meshtastic pages | P7a | todo |
 | N11 | Remote Telemetry Save/Disable off-screen at 390 until the table scrolls sideways | MeshCore Automations | P7a | todo |
 | N12 | Jump to Bottom pill covers the date label above the unread divider | message stream | P7a | todo |
-| N13 | Text glyphs as icons: heard-by "✓", MT channel picker emoji status icons | MeshCore heard-by, MT channel picker | P7b | heard-by not real; MT picker needs decision |
-| N14 | Room post shown three times from "Unknown sender" | MeshCore Rooms | P7b | not a bug (3 real posts, pre-#5774 corrupt keys); cleanup = decision |
+| N13 | Text glyphs as icons: heard-by "✓", MT channel picker emoji status icons | MeshCore heard-by, MT channel picker | P7b | won't fix (decided; heard-by already UiIcon, native <option> can't hold icons) |
+| N14 | Room post shown three times from "Unknown sender" | MeshCore Rooms | P7b | won't fix (decided; real posts, legacy corrupt keys) |
 
 ## Coverage gaps (re-test before tagging)
 
