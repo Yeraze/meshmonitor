@@ -13,13 +13,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import meshcoreRoutes from './meshcoreRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
-const { importMock } = vi.hoisted(() => ({ importMock: vi.fn() }));
+const { importMock, sendMock } = vi.hoisted(() => ({ importMock: vi.fn(), sendMock: vi.fn() }));
 
 vi.mock('../sourceManagerRegistry.js', () => {
   const stubFor = (sourceId: string) => ({
     sourceId,
     sourceType: 'meshcore' as const,
     importContactFromToken: importMock,
+    sendMessage: sendMock,
+    getLocalNode: () => ({ name: 'Bob' }),
     isReceiveOnly: () => false,
     canTransmit: () => true,
   });
@@ -44,6 +46,7 @@ describe('meshcoreRoutes — contact-share token import (#6370)', () => {
 
   beforeEach(async () => {
     importMock.mockReset();
+    sendMock.mockReset().mockResolvedValue(true);
     harness = await createRouteTestApp({
       mount: (app) => app.use('/sources/:id/meshcore', meshcoreRoutes),
     });
@@ -141,5 +144,15 @@ describe('meshcoreRoutes — contact-share token import (#6370)', () => {
     const res = await agent.post(urlFor(harness.sourceA)).send({ token: TOKEN });
     expect(res.status).toBe(status);
     expect(res.body).toMatchObject({ success: false, code });
+  });
+
+  it('a message carrying a token is sent to the radio unchanged (no < > rewriting)', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const text = `${TOKEN} <${'cd'.repeat(32)}:1:Al>`; // 153 bytes, under the 160-byte DM cap
+    const res = await agent
+      .post(`/sources/${harness.sourceA}/meshcore/messages/send`)
+      .send({ text, toPublicKey: 'ef'.repeat(32) });
+    expect(res.status).toBe(200);
+    expect(sendMock).toHaveBeenCalledWith(text, 'ef'.repeat(32), undefined, undefined);
   });
 });

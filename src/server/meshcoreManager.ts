@@ -9249,7 +9249,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * Make sure an imported contact has a `meshcore_nodes` row on this source so
    * it shows in the lists (#6370). Fills only what is missing; never renames a
-   * known node or changes its type. Sets no Last Heard: the node was not heard.
+   * known node or changes its type. Writes no Last Heard of its own, since the
+   * node was not heard; the contact refresh after the add copies whatever
+   * last-modified time the radio stored for it (as for add-to-device). A row
+   * with no Last Heard is hidden by the node-age filter until the node is heard.
    */
   private async ensureImportedNodeRow(publicKey: string, advType: number, name: string): Promise<void> {
     try {
