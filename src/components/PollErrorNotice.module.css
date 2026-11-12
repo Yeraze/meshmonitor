@@ -1,0 +1,29 @@
+/*
+ * Small, non-blocking notice shown when the poll failed and a list (Nodes,
+ * Channels) is empty because of it (#6342). Fixed at the bottom so it never
+ * shifts the page layout.
+ */
+.notice {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 12px;
+  border: 1px solid var(--color-warning);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  pointer-events: none;
+}
+
+.icon {
+  color: var(--color-warning);
+  flex-shrink: 0;
+}
