@@ -120,6 +120,26 @@ Batches touch separate files so they can run in parallel.
 | L34 | "Days to View" input is dark in the latte theme | Telemetry Dashboard | — | P4 | merged #6361 |
 | L35 | MeshCore Nodes public-key sort labelled "Sort: ID" (DM list says "Public key") | node list tools | ff32c285f (#6185) | P5 | merged #6362 |
 
+
+### Live re-pass findings (fix before release)
+
+| ID | Finding | Where | Batch | Status |
+|---|---|---|---|---|
+| N1 | Reticulum and MeshCore Ingest source titles clip with long names at 390 px (M11 fix only in MeshCoreSourcePage) | ReticulumSourcePage.tsx:91, MeshCoreIngestSourcePage.tsx:62 | P7a | todo |
+| N2 | MT MQTT/Bridge toggle unreachable at 844x390 until a channel is open (M16 fold hides it) | Meshtastic Channels header | P7a | todo |
+| N3 | Reticulum table at 390 scrolls sideways (743 px) with no hint; empty-state text off-screen | Reticulum source page | P7a | todo |
+| N4 | "Clear stored key" on MeshCore Device Config is red text on a purple button | MeshCore Device Config | P7b | todo |
+| N5 | Unconnected MeshCore sources show raw errors (Telemetry "No MeshCore manager…", Security "Unknown sourceId", pop-out "HTTP 404") | MeshCore Telemetry/Security/Packet Monitor | P7b | todo |
+| N6 | MeshCore header says "Connecting" for a source with no manager and autoConnect off | MeshCore source header | P7b | todo |
+| N7 | Legacy .modal-overlay at 390 leaves app header and bottom tab bar undimmed and tappable | global modal overlay | P7a | todo |
+| N8 | Sources landing "Source options" kebab is a literal ⋮ glyph, not UiIcon | Sources landing | P7b | todo |
+| N9 | MT sidebar at 1440x900: bottom nav icon partly behind the expand-arrow button | Meshtastic sidebar | P7a | todo |
+| N10 | MT Connection Error banner takes ~200 of 390 px in landscape | Meshtastic pages | P7a | todo |
+| N11 | Remote Telemetry Save/Disable off-screen at 390 until the table scrolls sideways | MeshCore Automations | P7a | todo |
+| N12 | Jump to Bottom pill covers the date label above the unread divider | message stream | P7a | todo |
+| N13 | Text glyphs as icons: heard-by "✓", MT channel picker emoji status icons | MeshCore heard-by, MT channel picker | P7b | todo |
+| N14 | Room post shown three times from "Unknown sender" | MeshCore Rooms | P7b | todo |
+
 ## Coverage gaps (re-test before tagging)
 
 - Mobile was tested by window resize only (the emulation tool failed): no touch, mobile UA, DPR or `pointer: coarse`. Check on a real phone.
