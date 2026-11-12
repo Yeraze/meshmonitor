@@ -53,11 +53,15 @@ export function formatNodeAddress(host: string | null | undefined, port: number 
  * The banner text for a source the server says is not connected. Names the
  * viewed source's address when it is known; leaves the address out otherwise,
  * so a wrong one (such as the env default) never shows (#3611, #6353).
+ *
+ * MeshMonitor reaches the node over its TCP API (port 4403 by default), not
+ * HTTP, so the advice names that (#4173 review L21).
  */
 export function cannotConnectMessage(address: string): string {
+  const advice = 'Please ensure the node is reachable and accepts TCP API connections (port 4403 by default).';
   return address
-    ? `Cannot connect to Meshtastic node at ${address}. Please ensure the node is reachable and has HTTP API enabled.`
-    : 'Cannot connect to the Meshtastic node. Please ensure the node is reachable and has HTTP API enabled.';
+    ? `Cannot connect to Meshtastic node at ${address}. ${advice}`
+    : `Cannot connect to the Meshtastic node. ${advice}`;
 }
 
 /**

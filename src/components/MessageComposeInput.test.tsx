@@ -129,6 +129,20 @@ describe('MessageComposeInput', () => {
       expect(onSend).not.toHaveBeenCalled();
     });
 
+    it('says why Send is disabled while over the limit (#4173 review L24)', () => {
+      const { box, send, container } = mount({ maxBytes: 5, blockSendOverLimit: true });
+      fireEvent.change(box, { target: { value: 'abc' } });
+      expect(container.querySelector('[role="status"]')).toBeNull();
+      fireEvent.change(box, { target: { value: 'abcdefgh' } });
+      const hint = container.querySelector('[role="status"]');
+      expect(hint).not.toBeNull();
+      expect(hint!.textContent).toContain('messages.over_limit_hint');
+      expect(send.getAttribute('aria-describedby')).toBe(hint!.id);
+      expect(send.title).toBe(hint!.textContent);
+      fireEvent.change(box, { target: { value: 'abc' } });
+      expect(container.querySelector('[role="status"]')).toBeNull();
+    });
+
     it('does not block over the limit by default', () => {
       const { box, send } = mount({ maxBytes: 5 });
       fireEvent.change(box, { target: { value: 'abcdef' } });

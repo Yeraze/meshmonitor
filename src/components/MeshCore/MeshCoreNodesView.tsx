@@ -56,7 +56,9 @@ const MESHCORE_FILTER_FEATURES: Partial<Record<NodeFilterFeature, boolean>> = {
 const SORT_OPTION_KEYS: Record<string, [string, string]> = {
   lastHeard: ['nodes.sort_updated', 'Sort: Updated'],
   longName: ['nodes.sort_name', 'Sort: Name'],
-  id: ['nodes.sort_id', 'Sort: ID'],
+  // MeshCore's "id" sort orders by public key (#6185); name it as the DM
+  // list does (#4173 review L35).
+  id: ['nodes.sort_public_key', 'Sort: Public key'],
   snr: ['nodes.sort_signal', 'Sort: Signal'],
   battery: ['nodes.sort_charge', 'Sort: Charge'],
   uptime: ['nodes.sort_uptime', 'Sort: Uptime'],

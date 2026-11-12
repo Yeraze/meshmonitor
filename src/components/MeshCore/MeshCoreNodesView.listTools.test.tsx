@@ -84,6 +84,13 @@ describe('MeshCoreNodesView list tools (#6259)', () => {
     expect(names()).toEqual(['Charlie', 'Alpha', 'Bravo']);
   });
 
+  it('labels the public-key sort "Public key", as the DM list does (#4173 review L35)', () => {
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    const select = screen.getByTitle('Sort by') as HTMLSelectElement;
+    const option = Array.from(select.options).find((o) => o.value === 'id');
+    expect(option?.textContent).toBe('Sort: Public key');
+  });
+
   it('keeps the sort after a remount', () => {
     const { unmount } = render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
     sortBy('battery');

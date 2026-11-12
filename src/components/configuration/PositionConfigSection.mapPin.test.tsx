@@ -17,7 +17,7 @@ vi.mock('react-i18next', async () => {
 });
 
 // Capture the picker's onChange so the test can stand in for a map click.
-let pickerProps: { lat: number | null; lon: number | null; onChange: (lat: number, lon: number) => void; disabled?: boolean } | null = null;
+let pickerProps: { lat: number | null; lon: number | null; onChange: (lat: number, lon: number) => void; disabled?: boolean; decimals?: number } | null = null;
 vi.mock('../map/LocationPinPicker', () => ({
   LocationPinPicker: (props: any) => {
     pickerProps = props;
@@ -94,6 +94,15 @@ describe('PositionConfigSection fixed position map pin', () => {
     expect(seen).toEqual([[35.0844, NaN], [NaN, -106.6504]]);
     expect((screen.getByLabelText(/position_config.latitude/, { selector: 'input' }) as HTMLInputElement).value).toBe('35.0844');
     expect((screen.getByLabelText(/position_config.longitude/, { selector: 'input' }) as HTMLInputElement).value).toBe('-106.6504');
+  });
+
+  it('steps the coordinate inputs at the precision the pin writes (#4173 review L32)', () => {
+    render(<Harness fixedPosition />);
+    const decimals = pickerProps!.decimals ?? NaN;
+    for (const label of [/position_config.latitude/, /position_config.longitude/]) {
+      const input = screen.getByLabelText(label, { selector: 'input' }) as HTMLInputElement;
+      expect(Number(input.getAttribute('step'))).toBeCloseTo(10 ** -decimals, 12);
+    }
   });
 
   it('locks the map without configuration write access', () => {

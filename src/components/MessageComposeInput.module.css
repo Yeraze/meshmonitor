@@ -1,0 +1,16 @@
+/* Says why Send is disabled while the draft is over the byte limit
+   (#4173 review L24). Sits just above the text box so it takes no room in
+   the compose row. */
+.overLimitHint {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 2px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  color: var(--color-error);
+  background: var(--color-bg);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}

@@ -22,12 +22,15 @@ import { meshcoreChannelKind } from '../../utils/meshcoreChannelKind';
 interface MeshCoreChannelMarkerProps {
   id: number;
   name: string | null | undefined;
+  /** The channel secret (base64) when known: it decides public vs private
+   *  over the slot number (#4173 review L18). */
+  psk?: string | null;
   size?: number;
 }
 
-export const MeshCoreChannelMarker: React.FC<MeshCoreChannelMarkerProps> = ({ id, name, size = 13 }) => {
+export const MeshCoreChannelMarker: React.FC<MeshCoreChannelMarkerProps> = ({ id, name, psk, size = 13 }) => {
   const { t } = useTranslation();
-  const kind = meshcoreChannelKind({ id, name });
+  const kind = meshcoreChannelKind({ id, name, psk });
 
   if (kind === 'public') {
     return (
