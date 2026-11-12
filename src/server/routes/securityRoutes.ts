@@ -214,7 +214,7 @@ router.post(
       const nodeNum = parseInt(req.params.nodeNum, 10);
 
       if (isNaN(nodeNum)) {
-        return res.status(400).json({ error: 'Invalid node number' });
+        return fail(res, 400, 'INVALID_NODE_NUM', 'Invalid node number');
       }
 
       // sourceId presence validated by requireSourceId('body'); scope the node
@@ -223,7 +223,7 @@ router.post(
       const clearSourceId = req.body.sourceId as string;
       const cleared = await clearMeshtasticNodeFlags(nodeNum, clearSourceId, false);
       if (!cleared) {
-        return res.status(404).json({ error: 'Node not found' });
+        return fail(res, 404, 'NOT_FOUND', 'Node not found');
       }
       const { nodeName } = cleared;
 
@@ -246,7 +246,7 @@ router.post(
       });
     } catch (error) {
       logger.error('Error clearing security issues:', error);
-      return res.status(500).json({ error: 'Failed to clear security issues' });
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to clear security issues');
     }
   },
 );
@@ -733,7 +733,7 @@ router.post(
       res.json(result);
     } catch (error) {
       logger.error('Error sending security digest:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
+      fail(res, 500, 'INTERNAL_ERROR', 'Internal server error');
     }
   },
 );
