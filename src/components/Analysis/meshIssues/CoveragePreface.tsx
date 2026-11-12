@@ -22,14 +22,6 @@ export const CoveragePreface: React.FC<{ result: MeshIssuesLastRunResult | null 
   if (!result) return null;
 
   const { corpusStats, coverage } = result;
-  const funnel = [
-    corpusStats.rawCount,
-    corpusStats.validCount,
-    corpusStats.dedupedCount,
-    corpusStats.sampledCount,
-  ]
-    .map((n) => n.toLocaleString())
-    .join(' -> ');
 
   const pills: Array<{ key: string; label: string; count: number; available: boolean }> = [
     {
@@ -61,8 +53,12 @@ export const CoveragePreface: React.FC<{ result: MeshIssuesLastRunResult | null 
   return (
     <div className={styles.coveragePreface}>
       <div className={styles.corpusFunnel}>
-        {t('analysis.mesh_issues.coverage.funnel', '{{funnel}} sampled, {{pairs}} distinct pairs{{capped}}', {
-          funnel,
+        {/* Each stage named, not "0 -> 0 -> 0 -> 0 sampled" (#4173 review L29). */}
+        {t('analysis.mesh_issues.coverage.funnel_labelled', 'Packet corpus: {{raw}} read, {{valid}} valid, {{deduped}} unique, {{sampled}} sampled, {{pairs}} distinct pairs{{capped}}', {
+          raw: corpusStats.rawCount.toLocaleString(),
+          valid: corpusStats.validCount.toLocaleString(),
+          deduped: corpusStats.dedupedCount.toLocaleString(),
+          sampled: corpusStats.sampledCount.toLocaleString(),
           pairs: corpusStats.distinctPairCount.toLocaleString(),
           capped: corpusStats.truncated ? ` ${t('analysis.mesh_issues.coverage.capped', '(capped)')}` : '',
         })}

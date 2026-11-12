@@ -333,6 +333,9 @@ describe('MeshIssuesReport', () => {
 
     await waitFor(() => expect(screen.getByText(/1,842/)).toBeInTheDocument());
     expect(screen.getByText(/318 sampled, 96 distinct pairs/)).toBeInTheDocument();
+    // Every funnel stage is named; no bare "a -> b -> c" (#4173 review L29).
+    expect(screen.getByText(/1,842 read, 1,530 valid, 1,204 unique, 318 sampled/)).toBeInTheDocument();
+    expect(screen.queryByText(/->/)).toBeNull();
   });
 
   it('adds a quiet note when lastRunResult was recovered from storage after a restart', async () => {

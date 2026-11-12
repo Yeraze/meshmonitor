@@ -156,6 +156,38 @@ describe('coverageNotes', () => {
     });
   });
 
+  // #4173 review L29: the live page listed B6 three ways and C2 twice.
+  it('lists B6 once when no packet log feeds the hop horizon', () => {
+    const notes = coverageNotes(
+      fullyAvailableCoverage({
+        hopHorizonSource: null,
+        evidence: { neighborInfo: true, traceroute: true, mqttGateway: true, packetLog: false },
+        skippedRules: [{ rule: 'B6', reason: 'no packet log enabled' }],
+      }),
+    );
+    expect(notes.filter((n) => n.rule === 'B6')).toEqual([
+      { rule: 'B6', note: 'needs a packet monitor: enable the Meshtastic packet log or the MQTT packet log', severity: 'blocked' },
+    ]);
+  });
+
+  it('joins two skip reasons for one rule into one note', () => {
+    const notes = coverageNotes(
+      fullyAvailableCoverage({
+        skippedRules: [
+          { rule: 'C2', reason: 'no position or telemetry cadence data' },
+          { rule: 'C2', reason: 'MeshCore advert cadence needs the MeshCore packet log (off)' },
+        ],
+      }),
+    );
+    expect(notes.filter((n) => n.rule === 'C2')).toEqual([
+      {
+        rule: 'C2',
+        note: 'no position or telemetry cadence data; MeshCore advert cadence needs the MeshCore packet log (off)',
+        severity: 'blocked',
+      },
+    ]);
+  });
+
   it('surfaces each skipped rule verbatim, one note per entry', () => {
     const notes = coverageNotes(
       fullyAvailableCoverage({
@@ -231,14 +263,15 @@ describe('coverageNotes', () => {
       }),
     );
     // One note per degraded condition: traceroute, B3 SNR, B6 hop-horizon,
-    // mqttGateway hint, packetLog, the B4 skip, and the sentinel-hops hint.
-    expect(notes).toHaveLength(7);
+    // mqttGateway hint, the B4 skip, and the sentinel-hops hint. With no
+    // hop-horizon source the "Meshtastic packet log is off" B6 line would
+    // repeat the B6 hop-horizon note, so it is left out (#4173 review L29).
+    expect(notes).toHaveLength(6);
     expect(notes.map((n) => n.rule)).toEqual([
       'B1, B4, B5, B7',
       'B3',
       'B6',
       'B3, B7',
-      'B6',
       'B4',
       'B1-B5',
     ]);

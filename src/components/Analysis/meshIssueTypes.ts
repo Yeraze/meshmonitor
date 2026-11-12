@@ -559,14 +559,27 @@ export function coverageNotes(coverage: MeshIssuesCoverageWire): CoverageNote[] 
       severity: 'hint',
     });
   }
-  if (!coverage.evidence.packetLog) {
+  // With no hop-horizon source at all, the B6 note above already says to
+  // enable a packet log; saying the Meshtastic one is off repeats it.
+  if (!coverage.evidence.packetLog && coverage.hopHorizonSource !== null) {
     notes.push({
       rule: 'B6',
       note: 'the Meshtastic packet log is off',
       severity: 'blocked',
     });
   }
+  // A server-side skip for a rule that a coverage note above already blocks
+  // restates the same evidence gap ("B6: no packet log enabled" under "B6:
+  // needs a packet monitor"), so it is left out (#4173 review L29).
+  const blockedRules = new Set(notes.filter((n) => n.severity === 'blocked').map((n) => n.rule));
   for (const skip of coverage.skippedRules) {
+    if (blockedRules.has(skip.rule)) continue;
+    const prior = notes.find((n) => n.rule === skip.rule && n.severity === 'blocked');
+    if (prior) {
+      // Two reasons for one rule (C2) read as one line, not the rule twice.
+      if (!prior.note.split('; ').includes(skip.reason)) prior.note = `${prior.note}; ${skip.reason}`;
+      continue;
+    }
     notes.push({ rule: skip.rule, note: skip.reason, severity: 'blocked' });
   }
   if (coverage.tracerouteSentinelHopsDropped > 0) {

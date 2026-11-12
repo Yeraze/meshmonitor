@@ -10,6 +10,15 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
 import { LocationPinPicker } from '../map/LocationPinPicker';
 
+/**
+ * Meshtastic stores a fixed position as degrees * 1e7, so the map pin keeps 7
+ * decimals. The latitude/longitude inputs step by the same amount: a 6-place
+ * step made every pin drop (and many stored values) fail the browser's step
+ * check (#4173 review L32).
+ */
+const FIXED_COORD_DECIMALS = 7;
+const FIXED_COORD_STEP = 1e-7;
+
 interface PositionConfigSectionProps {
   /** False disables every control: no configuration:write on this source (#5830). */
   canWrite?: boolean;
@@ -231,7 +240,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
             </label>
             <NumberInput
               id="fixedLatitude"
-              step={0.000001}
+              step={FIXED_COORD_STEP}
               min={-90}
               max={90}
               value={fixedLatitude}
@@ -246,7 +255,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
             </label>
             <NumberInput
               id="fixedLongitude"
-              step={0.000001}
+              step={FIXED_COORD_STEP}
               min={-180}
               max={180}
               value={fixedLongitude}
@@ -278,7 +287,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               lon={fixedLongitude}
               onChange={(la, lo) => { setFixedLatitude(la); setFixedLongitude(lo); }}
               disabled={!canWrite}
-              decimals={7}
+              decimals={FIXED_COORD_DECIMALS}
               testId="fixed-position-map"
             />
           </div>
