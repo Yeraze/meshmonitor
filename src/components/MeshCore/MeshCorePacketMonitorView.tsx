@@ -40,6 +40,8 @@ import './MeshCorePacketMonitor.css';
 import styles from './MeshCorePacketMonitorView.module.css';
 import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
+import { SourceNotConnectedNotice } from '../common/SourceNotConnectedNotice';
+import { isSourceNotConnectedError } from '../../utils/sourceNotConnected';
 
 const PacketStatsChart = React.lazy(() => import('../PacketStatsChart'));
 
@@ -232,7 +234,10 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     staleTime: 10_000,
   });
 
-  const errorText = error ?? loadError?.message ?? null;
+  // A source with no running manager gets the shared empty state, not
+  // "HTTP 404" (#4173 N5).
+  const notConnected = isSourceNotConnectedError(loadError);
+  const errorText = error ?? (notConnected ? null : loadError?.message) ?? null;
 
   const clearFilters = useCallback(() => {
     setPayloadFilter('');
@@ -426,7 +431,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         </div>
       </div>
 
-      {!enabled && (
+      {!enabled && !notConnected && (
         <div className="mcpm-disabled-banner">
           <span>
             {t('meshcore.packets.disabled', 'MeshCore packet capture is off. No new packets will be recorded until you enable it.')}
@@ -563,6 +568,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         </div>
       )}
 
+      {notConnected && <SourceNotConnectedNotice />}
       {errorText && <div className="mcpm-error">{errorText}</div>}
 
       {showStats && (
@@ -604,6 +610,9 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         </div>
       )}
 
+      {/* Not connected: the notice above replaces the empty table, whose
+          "Waiting for OTA traffic" text would mislead (#4173 N5). */}
+      {!notConnected && (
       <div className="mcpm-table-container">
         {loading ? (
           <div className="mcpm-empty">{t('common.loading', 'Loading…')}</div>
@@ -718,6 +727,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
           </div>
         )}
       </div>
+      )}
 
       {selectedPacket &&
         createPortal(

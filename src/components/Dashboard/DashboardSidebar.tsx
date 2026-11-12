@@ -331,7 +331,7 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
           setOpen((v) => !v);
         }}
       >
-        ⋮
+        <UiIcon name="more" size={16} />
       </button>
       {open && (
         <div className="dashboard-kebab-menu">

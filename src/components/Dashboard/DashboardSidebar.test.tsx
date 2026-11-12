@@ -120,6 +120,13 @@ describe('DashboardSidebar', () => {
     expect(kebabBtns).toHaveLength(3);
   });
 
+  it('draws the kebab with UiIcon, not a text glyph (#4173 N8)', () => {
+    renderSidebar({ isAdmin: true });
+    const kebab = screen.getAllByRole('button', { name: 'source.options' })[0];
+    expect(kebab.textContent).not.toContain('\u22ee');
+    expect(kebab.querySelector('[data-ui-icon="more"]')).not.toBeNull();
+  });
+
   it('does NOT show kebab menu when caller lacks sources:write on all sources', () => {
     hasPermissionMock.mockImplementation(() => false);
     renderSidebar({ isAdmin: false });
