@@ -150,3 +150,4 @@ Batches touch separate files so they can run in parallel.
 
 - Existing `trigger.telemetry` automations with no source filter now also fire on MeshCore readings (15bd77e82).
 - Restoring an old backup: startup purges skip one boot; the hourly purge then applies retention (L12).
+- `POST /api/security/digest/send` now requires a `sourceId` and `nodes:read` on that source (L15, kept as decided). A call with no `sourceId` no longer sends every source's digest; the UI "Send Now" and the daily scheduled digest are unchanged.
