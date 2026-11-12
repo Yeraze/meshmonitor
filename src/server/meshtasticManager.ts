@@ -10141,6 +10141,14 @@ class MeshtasticManager implements ISourceManager {
                 logger.debug('Failed to record delivered message event:', eventError);
               }
             }
+            // A channel broadcast never gets a target-node ACK (its toNodeId
+            // is the broadcast address), so the local transmit ACK is final.
+            // Release the queue entry now; otherwise it waits in pendingAcks
+            // until the orphan sweep reports a false "ACK timeout" (#6373).
+            // A DM still waits for the target's ACK so retries keep working.
+            if (!isDM) {
+              this.messageQueue.handleAck(requestId);
+            }
             return;
           }
 
