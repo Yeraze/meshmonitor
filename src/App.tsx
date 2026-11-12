@@ -772,6 +772,11 @@ function App() {
   // connection error banner (#6353). A ref: checkConnectionStatus runs from
   // timers that hold an older render's closure.
   const nodePortRef = useRef<number | null>(null);
+  // The viewed source's host, mirrored from nodeAddress for the same reason:
+  // the first check runs right after /api/config resolves, before the
+  // setNodeAddress render lands, so the closure's nodeAddress is still empty
+  // and the banner showed no address until a later poll (#4173 review L21).
+  const nodeHostRef = useRef<string>('');
 
   // Telemetry request loading state
   const [telemetryRequestLoading, setTelemetryRequestLoading] = useState<string | null>(null);
@@ -978,6 +983,7 @@ function App() {
           const config = await api.getConfig(sourceId);
           const host = typeof config.meshtasticNodeIp === 'string' ? config.meshtasticNodeIp : '';
           setNodeAddress(host);
+          nodeHostRef.current = host;
           nodePortRef.current = host && typeof config.meshtasticTcpPort === 'number' ? config.meshtasticTcpPort : null;
         } catch (error) {
           logger.error('Failed to load config:', error);
@@ -985,6 +991,7 @@ function App() {
           // the wrong IP for a configured source. Leave it empty; the per-source
           // address arrives with the next poll (status.nodeIp).
           setNodeAddress('');
+          nodeHostRef.current = '';
           nodePortRef.current = null;
         }
 
@@ -1240,6 +1247,7 @@ function App() {
         // Avoid asserting a hardcoded fallback address (#3611); leave empty so a
         // wrong IP never appears for a configured source.
         setNodeAddress('');
+        nodeHostRef.current = '';
         setError('Failed to load configuration');
       }
     };
@@ -1683,6 +1691,7 @@ function App() {
         // existing value untouched in that case.
         if (typeof status.nodeIp === 'string' && status.nodeIp) {
           setNodeAddress(status.nodeIp);
+          nodeHostRef.current = status.nodeIp;
         }
 
         logger.debug(
@@ -1766,11 +1775,12 @@ function App() {
           logger.debug('⚠️ Connection API returned connected=false');
           setConnectionStatus('disconnected');
           // Prefer the address the server just resolved for this source; fall
-          // back to the stored nodeAddress, which is this source's own host
-          // from its /api/config. Never interpolate an unresolved value — omit
-          // the address phrase entirely if it isn't known (#3611, #6353).
+          // back to this source's own host from its /api/config (read from a
+          // ref, not the possibly stale nodeAddress closure). Never interpolate
+          // an unresolved value — omit the address phrase entirely if it isn't
+          // known (#3611, #6353).
           const resolvedHost =
-            (typeof status.nodeIp === 'string' && status.nodeIp) ? status.nodeIp : nodeAddress;
+            (typeof status.nodeIp === 'string' && status.nodeIp) ? status.nodeIp : nodeHostRef.current;
           setError(cannotConnectMessage(formatNodeAddress(resolvedHost, nodePortRef.current)));
           return 'disconnected';
         }

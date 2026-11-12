@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMessageDateSeparator, shouldShowDateSeparator, formatRelativeTime } from '../../utils/datetime';
+import { useSettingsOptional } from '../../contexts/SettingsContext';
 import { getUtf8ByteLength } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
@@ -200,6 +201,12 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   requiredRepeaterMode = 'any',
 }) => {
   const { t } = useTranslation();
+  // The user's time/date format for the relative-time tooltip, as the
+  // Meshtastic rows use (#4173 review L23). Optional: the stream also renders
+  // outside a SettingsProvider (tests, pop-outs), where the helper defaults hold.
+  const settings = useSettingsOptional();
+  const timeFormat = settings?.timeFormat;
+  const dateFormat = settings?.dateFormat;
   // Per stream instance; not cleared when the conversation changes (as before).
   const [draftStore] = useState(() => createComposeDraftStore());
   // Seed the compose draft once per handed-over text (#6281).
@@ -837,7 +844,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 <span className="mc-message-meta">
                   <span
                     className="mc-message-time"
-                    title={formatRelativeTime(meshcoreDisplayTimeMs(m), undefined, undefined, true)}
+                    title={formatRelativeTime(meshcoreDisplayTimeMs(m), timeFormat, dateFormat, true)}
                   >
                   {formatTime(meshcoreDisplayTimeMs(m))}
                   <MeshCoreClockOffset offsetMs={meshcoreMessageClockOffsetMs(m)} />

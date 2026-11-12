@@ -105,6 +105,19 @@ export function formatDuration(seconds: number): string {
   return `${m}m`;
 }
 
+/**
+ * A plain telemetry reading rounded for display (#4173 review L20). Bucket
+ * averages come out as e.g. 3.9883333333333333; show 3.99 instead. Values of
+ * 1 or more keep two decimals, smaller ones three significant digits so a
+ * 0.0042 A reading does not collapse to 0. Trailing zeros are dropped.
+ */
+export function formatTelemetryNumber(value: number): string {
+  if (!Number.isFinite(value)) return String(value);
+  if (Number.isInteger(value)) return value.toString();
+  const rounded = Math.abs(value) >= 1 ? Number(value.toFixed(2)) : Number(value.toPrecision(3));
+  return rounded.toString();
+}
+
 /** How one telemetry series should be scaled and labelled for display. */
 export interface TelemetryDisplay {
   /** True when the series is an uptime in seconds. */

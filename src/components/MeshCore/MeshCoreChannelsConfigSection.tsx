@@ -32,6 +32,7 @@ import {
   isHashtagChannelName,
 } from '../../utils/meshcoreHelpers';
 import { pskEncryptionStatus } from '../../utils/publicChannel';
+import { meshcoreChannelKind } from '../../utils/meshcoreChannelKind';
 import { UiIcon } from '../icons';
 import { MeshCoreChannelReorderPanel } from './MeshCoreChannelReorderPanel';
 import { ConfigSection } from '../shared/config/ConfigSection';
@@ -350,9 +351,12 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
 
   const chipsFor = (row: ChannelRow): ConfigItemChip[] => {
     const chips: ConfigItemChip[] = [];
-    if (row.id === PUBLIC_SLOT) {
+    // Same classifier as the channel-list marker, so a slot holding the
+    // Public key reads as public and slot 0 with another key does not (L18).
+    const kind = meshcoreChannelKind(row);
+    if (kind === 'public') {
       chips.push({ label: <ChannelEncryptionLabel status="default" defaultLabel={t('meshcore.channels.public_key', 'Public key')} /> });
-    } else if (isHashtagChannelName(row.name)) {
+    } else if (kind === 'hashtag') {
       chips.push({
         label: <ChannelEncryptionLabel status="default" defaultLabel={t('meshcore.channels.hashtag_key', 'Hashtag key (public)')} />,
         title: t('meshcore.channels.hashtag_key_title', 'The key comes from the channel name, so anyone who knows the name can read it.'),

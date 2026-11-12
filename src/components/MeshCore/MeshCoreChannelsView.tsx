@@ -75,6 +75,9 @@ interface ChannelRow {
   name: string;
   /** Persisted per-channel region/scope (#3667). null/'' = no channel scope. */
   scope: string | null;
+  /** Channel secret (base64) when the list carries it; feeds the public /
+   *  private marker (#4173 review L18). */
+  psk?: string | null;
   /** A keyed channel (#5551): decrypted with another source's key, so this
    *  source has no slot to send on. View only. */
   readOnly?: boolean;
@@ -378,6 +381,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 id: c.id as number,
                 name: String(c.name ?? ''),
                 scope: typeof c?.scope === 'string' && c.scope ? c.scope : null,
+                psk: typeof c?.psk === 'string' ? c.psk : null,
                 readOnly: c?.readOnly === true,
                 virtual: c?.virtual === true,
               }))
@@ -940,7 +944,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         <div className="meshcore-list-pane-body">
           {reordering ? (
             <MeshCoreChannelReorderList
-              channels={baseOrderedChannels.map(c => ({ id: c.id, label: channelLabel(c), marker: <MeshCoreChannelMarker id={c.id} name={c.name} /> }))}
+              channels={baseOrderedChannels.map(c => ({ id: c.id, label: channelLabel(c), marker: <MeshCoreChannelMarker id={c.id} name={c.name} psk={c.psk} /> }))}
               onSave={handleSaveCustomOrder}
               onCancel={() => setReorderingFor(null)}
             />
@@ -972,7 +976,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                   />
                 )}
                 <div className="mc-channel-row-name">
-                  <MeshCoreChannelMarker id={c.id} name={c.name} />
+                  <MeshCoreChannelMarker id={c.id} name={c.name} psk={c.psk} />
                   {channelLabel(c)}
                   {c.virtual && (
                     <sup className={styles.virtualTag} title={t('meshcore.channels.virtual_title', 'Decrypted with a Channel Database key; not set on this radio (receive-only)')}>
@@ -1016,7 +1020,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               <UiIcon name="back" size={16} /> {t('common.back', 'Back')}
             </button>
             <span className="meshcore-mobile-back-title">
-              <MeshCoreChannelMarker id={active.id} name={active.name} />
+              <MeshCoreChannelMarker id={active.id} name={active.name} psk={active.psk} />
               {formatMeshCoreChannelName(
                 active.name,
                 t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: active.id }),
