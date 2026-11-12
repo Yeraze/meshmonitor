@@ -201,46 +201,55 @@ async function clearMeshtasticNodeFlags(
 }
 
 // Legacy alias: clear security issues for a Meshtastic node (requires write permission)
-router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), requireSourceId('body'), async (req: Request, res: Response) => {
-  try {
-    const nodeNum = parseInt(req.params.nodeNum, 10);
+// `security` is a global resource, so the per-source gate is `nodes:read` on
+// the body's source, the one the handler acts on — the same pair as
+// POST /nodes/clear. Before, a caller who could not read that source cleared
+// its node's flags (4.17.3 review L15).
+router.post(
+  '/nodes/:nodeNum/clear',
+  requirePermission('security', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req: Request, res: Response) => {
+    try {
+      const nodeNum = parseInt(req.params.nodeNum, 10);
 
-    if (isNaN(nodeNum)) {
-      return res.status(400).json({ error: 'Invalid node number' });
+      if (isNaN(nodeNum)) {
+        return res.status(400).json({ error: 'Invalid node number' });
+      }
+
+      // sourceId presence validated by requireSourceId('body'); scope the node
+      // lookup + write so we clear/rewrite the correct source's row (not a
+      // cross-source first match, and not the 'default' source).
+      const clearSourceId = req.body.sourceId as string;
+      const cleared = await clearMeshtasticNodeFlags(nodeNum, clearSourceId, false);
+      if (!cleared) {
+        return res.status(404).json({ error: 'Node not found' });
+      }
+      const { nodeName } = cleared;
+
+      // Log the action
+      void databaseService.auditLogAsync(
+        req.user!.id,
+        'security_issues_cleared',
+        'security',
+        `Cleared security issues for ${nodeName} (${nodeNum})`,
+        req.ip || null
+      );
+
+      logger.info(`🔐 Security issues cleared for ${nodeName} (${nodeNum}) by user ${req.user!.username}`);
+
+      return res.json({
+        success: true,
+        message: `Security issues cleared for ${nodeName}`,
+        nodeNum,
+        nodeName
+      });
+    } catch (error) {
+      logger.error('Error clearing security issues:', error);
+      return res.status(500).json({ error: 'Failed to clear security issues' });
     }
-
-    // sourceId presence validated by requireSourceId('body'); scope the node
-    // lookup + write so we clear/rewrite the correct source's row (not a
-    // cross-source first match, and not the 'default' source).
-    const clearSourceId = req.body.sourceId as string;
-    const cleared = await clearMeshtasticNodeFlags(nodeNum, clearSourceId, false);
-    if (!cleared) {
-      return res.status(404).json({ error: 'Node not found' });
-    }
-    const { nodeName } = cleared;
-
-    // Log the action
-    void databaseService.auditLogAsync(
-      req.user!.id,
-      'security_issues_cleared',
-      'security',
-      `Cleared security issues for ${nodeName} (${nodeNum})`,
-      req.ip || null
-    );
-
-    logger.info(`🔐 Security issues cleared for ${nodeName} (${nodeNum}) by user ${req.user!.username}`);
-
-    return res.json({
-      success: true,
-      message: `Security issues cleared for ${nodeName}`,
-      nodeNum,
-      nodeName
-    });
-  } catch (error) {
-    logger.error('Error clearing security issues:', error);
-    return res.status(500).json({ error: 'Failed to clear security issues' });
-  }
-});
+  },
+);
 
 const MT_NODE_KEY_RE = /^mt:(\d{1,10})$/;
 const MC_NODE_KEY_RE = /^mc:([0-9a-fA-F]{64})$/;
@@ -707,18 +716,26 @@ router.post(
 );
 
 /**
- * POST /api/security/digest/send
- * Manually trigger a security digest (admin only)
+ * POST /api/security/digest/send  { sourceId }
+ * Manually send the security digest for one source. Needs `security:write`
+ * (a global resource) plus `nodes:read` on the body's source, the source the
+ * digest reports on (4.17.3 review L15). A request without a sourceId is
+ * rejected rather than fanning out to every source.
  */
-router.post('/digest/send', requirePermission('security', 'write'), async (req: Request, res: Response) => {
-  try {
-    const digestSourceId = (req.body?.sourceId as string | undefined) || undefined;
-    const result = await securityDigestService.sendDigest(digestSourceId);
-    res.json(result);
-  } catch (error) {
-    logger.error('Error sending security digest:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
+router.post(
+  '/digest/send',
+  requirePermission('security', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req: Request, res: Response) => {
+    try {
+      const digestSourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
+      const result = await securityDigestService.sendDigest(digestSourceId);
+      res.json(result);
+    } catch (error) {
+      logger.error('Error sending security digest:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  },
+);
 
 export default router;

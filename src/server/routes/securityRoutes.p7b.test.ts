@@ -59,6 +59,18 @@ describe('securityRoutes — P7b', () => {
     return harness.cleanup();
   });
 
+  /**
+   * `security` is a global resource (one NULL-source row); the per-source gate
+   * is `nodes:read` on the source the request acts on (4.17.3 review L15).
+   */
+  const grantSecurityWithNodesOn = async (sourceId: string) => {
+    await databaseService.auth.createPermission({
+      userId: harness.limited.id, resource: 'security', canRead: true, canWrite: true, canViewOnMap: false,
+      sourceId: null, grantedAt: Date.now(), grantedBy: null,
+    } as never);
+    await harness.grant(harness.limited.id, 'nodes', 'read', sourceId);
+  };
+
   const seedMeshcore = async () => {
     await databaseService.meshcore.upsertNode({ publicKey: pk('1'), name: 'Chatty "Cat", the first', advType: 2, lastHeard: NOW }, mc);
     await databaseService.meshcore.upsertNode({ publicKey: pk('2'), name: 'Skewed', advType: 1, lastHeard: NOW }, mc);
@@ -255,6 +267,60 @@ describe('securityRoutes — P7b', () => {
       h.sendDigest.mockResolvedValue({ success: true, skipped: true, message: `${mc}:skipped` });
       const res = await (await harness.loginAs(harness.admin)).post('/api/security/digest/send').send({ sourceId: mc });
       expect(res.body).toMatchObject({ success: true, skipped: true });
+    });
+
+    // 4.17.3 review L15: the per-source gate is the source the send acts on.
+    it('403s security:write with nodes:read only on another source, and sends nothing', async () => {
+      await grantSecurityWithNodesOn(mt);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/api/security/digest/send').send({ sourceId: mc });
+      expect(res.status).toBe(403);
+      expect(h.sendDigest).not.toHaveBeenCalled();
+    });
+
+    it('sends for the source the caller can read', async () => {
+      await grantSecurityWithNodesOn(mc);
+      const res = await (await harness.loginAs(harness.limited)).post('/api/security/digest/send').send({ sourceId: mc });
+      expect(res.status).toBe(200);
+      expect(h.sendDigest).toHaveBeenCalledWith(mc);
+    });
+
+    it('rejects a request without a sourceId instead of fanning out to every source', async () => {
+      const res = await (await harness.loginAs(harness.admin)).post('/api/security/digest/send').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('MISSING_SOURCE_ID');
+      expect(h.sendDigest).not.toHaveBeenCalled();
+    });
+  });
+
+  // 4.17.3 review L15: the legacy Meshtastic clear checked only the global
+  // security:write, then cleared the node on the body's source.
+  describe('POST /nodes/:nodeNum/clear — source-scoped gate', () => {
+    const seedClockSkew = async () => {
+      const nodeNum = await seedMeshtastic();
+      await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, true, 7200, mt);
+      return nodeNum;
+    };
+    const skewed = async (nodeNum: number) =>
+      Boolean((await databaseService.nodes.getNode(nodeNum, mt) as { isTimeOffsetIssue?: unknown }).isTimeOffsetIssue);
+
+    it('403s when the caller cannot read the body\'s source, and leaves the flags', async () => {
+      const nodeNum = await seedClockSkew();
+      expect(await skewed(nodeNum)).toBe(true);
+      await grantSecurityWithNodesOn(mc);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post(`/api/security/nodes/${nodeNum}/clear`).send({ sourceId: mt });
+      expect(res.status).toBe(403);
+      expect(await skewed(nodeNum)).toBe(true);
+    });
+
+    it('clears when the caller can read the body\'s source', async () => {
+      const nodeNum = await seedClockSkew();
+      await grantSecurityWithNodesOn(mt);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post(`/api/security/nodes/${nodeNum}/clear`).send({ sourceId: mt });
+      expect(res.status).toBe(200);
+      expect(await skewed(nodeNum)).toBe(false);
     });
   });
 });

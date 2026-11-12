@@ -477,10 +477,11 @@ export interface SourceDashboardPayload {
   /**
    * Per-`(node, gateway)` membership for the "colour nodes by gateway" view
    * (#6175). Present only for MQTT sources (`mqtt_broker`/`mqtt_bridge`) when
-   * the viewer can read this source's nodes AND the packet-log capture is
-   * enabled; `[]`/absent otherwise. Read-only over already-ingested rows — no
-   * mesh traffic. Gated by the SAME `nodes:read` permission as `nodes`, so a
-   * viewer who can't read a source never sees its gateways.
+   * the viewer holds `nodes:read` AND `packetmonitor:read` on this source and
+   * the packet-log capture is enabled; `[]`/absent otherwise. Rows are limited
+   * to nodes already in this payload's `nodes`, so a node the viewer's node
+   * filters hide never surfaces here. Read-only over already-ingested rows —
+   * no mesh traffic.
    */
   gatewayMembership?: MqttNodeGatewayRow[];
 }
@@ -533,9 +534,11 @@ export async function buildSourceDashboard(
   // fills it in from nodes.length otherwise.
   if (nodeResult.uncutCount !== undefined) payload.nodeCount = nodeResult.uncutCount;
 
-  // Gateway membership (#6175): MQTT sources only, gated by the SAME
-  // `nodes:read` grant as the node list, so a viewer who can't read this
-  // source never learns which gateways it saw. The service itself returns []
+  // Gateway membership (#6175): MQTT sources only. The rows come from the
+  // MQTT packet log, so they need `packetmonitor:read` on this source on top
+  // of the `nodes:read` the node list needs (4.17.3 review M2), and they are
+  // cut to the nodes this payload already shows: the node list applies the
+  // per-node visibility rules, the packet-log read does not. The service itself returns []
   // when packet-log capture is off, so a disabled install degrades to no
   // gateways and the map behaves exactly as before.
   //
@@ -543,16 +546,24 @@ export async function buildSourceDashboard(
   // sink the whole bundle. Any throw (service/method unavailable, read error)
   // degrades to an empty membership and the other datasets still return 200 —
   // the same graceful posture as capture being disabled.
-  if (canReadNodes && isMqttSourceType(source.type)) {
+  const canReadPackets = canReadNodes && isMqttSourceType(source.type)
+    && (isAdmin || (user ? await hasPermission(user, 'packetmonitor', 'read', source.id) : false));
+  if (canReadPackets) {
+    const visibleNodeNums = new Set<number>();
+    for (const row of nodeResult.nodes as Array<{ nodeNum?: unknown }>) {
+      const num = Number(row?.nodeNum);
+      if (Number.isFinite(num)) visibleNodeNums.add(num);
+    }
     const hours = opts?.maxNodeAgeHours && opts.maxNodeAgeHours > 0
       ? opts.maxNodeAgeHours
       : DEFAULT_GATEWAY_MEMBERSHIP_HOURS;
     const since = Date.now() - hours * 60 * 60 * 1000;
     try {
-      payload.gatewayMembership = await mqttPacketLogService.getNodeGatewayMembership({
+      const rows = await mqttPacketLogService.getNodeGatewayMembership({
         sourceIds: [source.id],
         since,
       });
+      payload.gatewayMembership = rows.filter((r) => visibleNodeNums.has(Number(r.fromNode)));
     } catch (error) {
       logger.warn(`Gateway membership read failed for source ${source.id}; returning empty (#6175):`, error);
       payload.gatewayMembership = [];

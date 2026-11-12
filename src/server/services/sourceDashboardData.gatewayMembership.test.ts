@@ -62,6 +62,10 @@ describe('buildSourceDashboard — gateway membership (#6175)', () => {
     harness = await createRouteTestApp({ mount: () => {} });
     await harness.db.settings.setSetting('mqtt_packet_log_enabled', '1');
     mqttPacketLogService.resetEnabledCache();
+    // The membership is cut to nodes the payload shows (4.17.3 review M2):
+    // node 111 sits on channel 0, node 222 on channel 1.
+    await harness.db.nodes.upsertNode({ nodeNum: 111, nodeId: '!0000006f', longName: 'Alpha', channel: 0 } as never, harness.sourceA);
+    await harness.db.nodes.upsertNode({ nodeNum: 222, nodeId: '!000000de', longName: 'Beta', channel: 1 } as never, harness.sourceA);
     // sourceA hears node 111 via two gateways; node 222 via one.
     await harness.db.mqttPacketLog.insertPacket(makePacket(harness.sourceA, { fromNode: 111, gatewayId: '!gw000001', gatewayNodeNum: 0x1, timestamp: NOW }));
     await harness.db.mqttPacketLog.insertPacket(makePacket(harness.sourceA, { fromNode: 111, gatewayId: '!gw000002', gatewayNodeNum: 0x2, timestamp: NOW + 1000 }));
@@ -70,6 +74,7 @@ describe('buildSourceDashboard — gateway membership (#6175)', () => {
 
   afterEach(async () => {
     await harness.db.mqttPacketLog.deleteAllPackets(harness.sourceA).catch(() => {});
+    await harness.db.nodes.deleteAllNodes(harness.sourceA).catch(() => {});
     await harness.db.settings.setSetting('mqtt_packet_log_enabled', '0').catch(() => {});
     mqttPacketLogService.resetEnabledCache();
     await harness.cleanup();
@@ -110,10 +115,34 @@ describe('buildSourceDashboard — gateway membership (#6175)', () => {
     expect(payload.gatewayMembership).toBeUndefined();
   });
 
-  it('attaches gateway membership once the viewer is granted nodes:read', async () => {
+  it('omits gateway membership for a viewer with nodes:read but no packetmonitor:read', async () => {
     await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceA);
+    await harness.grant(harness.limited.id, 'channel_1', 'viewOnMap', harness.sourceA);
+    const payload = await buildSourceDashboard(mqttSource(), harness.limited as unknown as User);
+    expect(payload.nodes.length).toBe(2);
+    expect(payload.gatewayMembership).toBeUndefined();
+  });
+
+  it('attaches gateway membership once the viewer holds nodes:read and packetmonitor:read', async () => {
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'packetmonitor', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceA);
+    await harness.grant(harness.limited.id, 'channel_1', 'viewOnMap', harness.sourceA);
     const payload = await buildSourceDashboard(mqttSource(), harness.limited as unknown as User);
     expect(payload.gatewayMembership).toBeDefined();
-    expect(payload.gatewayMembership!.length).toBeGreaterThan(0);
+    expect(new Set(payload.gatewayMembership!.map((r) => r.fromNode))).toEqual(new Set([111, 222]));
+  });
+
+  it('drops rows for a node the viewer\'s channel grants hide', async () => {
+    // channel_1 has no viewOnMap, so node 222 is not in `nodes` and its
+    // gateway rows must not leak through the membership either.
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'packetmonitor', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceA);
+    const payload = await buildSourceDashboard(mqttSource(), harness.limited as unknown as User);
+    expect((payload.nodes as Array<{ nodeNum: number }>).map((n) => Number(n.nodeNum))).toEqual([111]);
+    expect(payload.gatewayMembership!.length).toBe(2);
+    expect(payload.gatewayMembership!.every((r) => r.fromNode === 111)).toBe(true);
   });
 });
