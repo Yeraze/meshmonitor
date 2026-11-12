@@ -67,6 +67,8 @@ export interface NotificationPreferences {
   notifyOnWaypoint: boolean;
   /** MeshCore `@[Name]` mentions of the source's own node. */
   notifyOnMention: boolean;
+  /** Automatic MeshCore traces / path discoveries (M3). */
+  notifyOnAutoTrace: boolean;
   waypointRadiusKm: number;
   waypointCenterLat: number | null;
   waypointCenterLon: number | null;
@@ -262,6 +264,7 @@ async function readLegacyPreferencesBlobAsync(userId: number): Promise<Notificat
       // nothing to read back — they are off until the user opts in (#4750).
       notifyOnWaypoint: boolOr(oldPrefs.notifyOnWaypoint, d.notifyOnWaypoint),
       notifyOnMention: boolOr(oldPrefs.notifyOnMention, d.notifyOnMention),
+      notifyOnAutoTrace: boolOr(oldPrefs.notifyOnAutoTrace, d.notifyOnAutoTrace),
       waypointRadiusKm: numOr(oldPrefs.waypointRadiusKm, d.waypointRadiusKm),
       waypointCenterLat: typeof oldPrefs.waypointCenterLat === 'number' ? oldPrefs.waypointCenterLat : null,
       waypointCenterLon: typeof oldPrefs.waypointCenterLon === 'number' ? oldPrefs.waypointCenterLon : null,

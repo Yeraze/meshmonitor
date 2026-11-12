@@ -4,8 +4,10 @@
  * `decideAutoWelcome`, so they are unit-tested here without a device.
  */
 import { describe, it, expect } from 'vitest';
+import databaseService from '../../services/database.js';
 import {
   decideAutoWelcome,
+  recordWelcomeSend,
   renderWelcomeMessage,
   welcomeHopCount,
   sendsInLastHour,
@@ -128,6 +130,48 @@ describe('decideAutoWelcome', () => {
     const recentSendTimes = Array.from({ length: 6 }, () => NOW - 4_000_000); // all > 1h old
     const d = decideAutoWelcome({ ...base, recentSendTimes, settings: settings({ maxPerHour: 6 }), contact: contact() });
     expect(d.action).toBe('send');
+  });
+
+  it('counts reserved (scheduled, not yet sent) welcomes against the cap', () => {
+    const recentSendTimes = [NOW - 60_000, NOW - 120_000];
+    const at = (reservedSlots: number) =>
+      decideAutoWelcome({ ...base, recentSendTimes, reservedSlots, settings: settings({ maxPerHour: 6 }), contact: contact() });
+    expect(at(3).action).toBe('send');
+    expect(at(4)).toEqual({ action: 'skip', reason: 'rate_capped' });
+  });
+
+  it.each([
+    ['Repeater', 2],
+    ['Room Server', 3],
+    ['Sensor', 4],
+  ])('never greets a %s', (_label, advType) => {
+    expect(decideAutoWelcome({ ...base, settings: settings(), contact: contact({ advType }) }))
+      .toEqual({ action: 'skip', reason: 'not_chat_node' });
+  });
+
+  it.each([
+    ['a Companion', 1],
+    ['an unknown type (0)', 0],
+    ['an absent type', undefined],
+  ])('greets %s', (_label, advType) => {
+    expect(decideAutoWelcome({ ...base, settings: settings(), contact: contact({ advType }) }).action).toBe('send');
+  });
+});
+
+describe('recordWelcomeSend', () => {
+  const SRC = 'src-autowelcome-record';
+  const read = async (key: string) => JSON.parse((await databaseService.settings.getSettingForSource(SRC, key)) || '[]');
+
+  it('keeps every entry when several sends are recorded at once', async () => {
+    await databaseService.settings.setSourceSetting(SRC, 'meshcoreAutoWelcomeWelcomed', '[]');
+    await databaseService.settings.setSourceSetting(SRC, 'meshcoreAutoWelcomeSendTimes', '[]');
+    const now = Date.now();
+    const keys = Array.from({ length: 6 }, (_, i) => `${i}`.repeat(64));
+
+    await Promise.all(keys.map((k, i) => recordWelcomeSend(SRC, k, now + i)));
+
+    expect((await read('meshcoreAutoWelcomeWelcomed')).sort()).toEqual([...keys].sort());
+    expect(await read('meshcoreAutoWelcomeSendTimes')).toHaveLength(6);
   });
 });
 

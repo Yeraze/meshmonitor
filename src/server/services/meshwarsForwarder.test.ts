@@ -31,6 +31,19 @@ import { dataEventEmitter } from './dataEventEmitter';
 
 const fetchMock = vi.fn();
 
+/**
+ * Build a heard-by list the way MeshCoreManager.attributeChannelEcho does: a
+ * repeater's `hops` is its 0-based index in the echo's relay path, and only
+ * the last hop (the repeater WE heard) carries an SNR.
+ */
+function heardByFromPath(pathHops: string[], lastHopSnr: number | null) {
+  return pathHops.map((hash, hops) => ({
+    hash,
+    snr: hops === pathHops.length - 1 ? lastHopSnr : null,
+    hops,
+  }));
+}
+
 async function enable() {
   settings.set('meshwarsEnabled', 'true');
   settings.set('meshwarsSourceId', 'mc1');
@@ -41,7 +54,7 @@ async function enable() {
 
 describe('buildPing', () => {
   it('builds a MeshMapper TX ping', () => {
-    const ping = buildPing(localNode, [{ hash: 'A3', snr: 5.25, hops: 1 }, { hash: '7f', snr: null, hops: 1 }], 1_700_000_000_500);
+    const ping = buildPing(localNode, [{ hash: 'A3', snr: 5.25, hops: 0 }, { hash: '7f', snr: null, hops: 0 }], 1_700_000_000_500);
     expect(ping).toEqual({
       type: 'TX',
       lat: 43.61,
@@ -53,7 +66,7 @@ describe('buildPing', () => {
   });
 
   it('dedupes repeaters and drops non-hex ids', () => {
-    const ping = buildPing(localNode, [{ hash: 'a3', snr: 1, hops: 1 }, { hash: 'a3', snr: 2, hops: 1 }, { hash: 'zz', hops: 1 }], 0);
+    const ping = buildPing(localNode, [{ hash: 'a3', snr: 1, hops: 0 }, { hash: 'a3', snr: 2, hops: 0 }, { hash: 'zz', hops: 0 }], 0);
     expect(ping?.heard_repeats).toBe('a3(1)');
   });
 
@@ -63,28 +76,39 @@ describe('buildPing', () => {
     ['a 0,0 position', { latitude: 0, longitude: 0, publicKey: 'abcdef01' }],
     ['no public key', { latitude: 1, longitude: 2 }],
   ])('returns null with %s', (_label, node) => {
-    expect(buildPing(node as never, [{ hash: 'a3', snr: 1, hops: 1 }], 0)).toBeNull();
+    expect(buildPing(node as never, [{ hash: 'a3', snr: 1, hops: 0 }], 0)).toBeNull();
   });
 
   it('returns null when nothing was heard', () => {
     expect(buildPing(localNode, [], 0)).toBeNull();
   });
 
-  it('reports only repeaters that heard the radio directly (hops 1)', () => {
+  it('reports only repeaters that heard the radio directly (hops 0)', () => {
     // Relayed a3 -> 7f -> 2c: only a3 heard us. 7f and 2c heard a relay, and
     // a repeater with unknown hops is not counted either.
     const ping = buildPing(localNode, [
-      { hash: 'a3', snr: null, hops: 1 },
-      { hash: '7f', snr: null, hops: 2 },
-      { hash: '2c', snr: -4.5, hops: 3 },
+      { hash: 'a3', snr: null, hops: 0 },
+      { hash: '7f', snr: null, hops: 1 },
+      { hash: '2c', snr: -4.5, hops: 2 },
       { hash: '9b', snr: 6, hops: null },
       { hash: 'd1', snr: 2 },
     ], 0);
     expect(ping?.heard_repeats).toBe('a3(0)');
   });
 
+  it('counts the first relay of an echo path (index 0) as the direct repeater', () => {
+    // Our message went a3 -> 7f -> 2c and we heard 2c's copy (SNR on 2c only).
+    const ping = buildPing(localNode, heardByFromPath(['a3', '7f', '2c'], -4.5), 0);
+    expect(ping?.heard_repeats).toBe('a3(0)');
+  });
+
+  it('a single-hop echo reports that repeater with its measured SNR', () => {
+    const ping = buildPing(localNode, heardByFromPath(['a3'], 6.25), 0);
+    expect(ping?.heard_repeats).toBe('a3(6.25)');
+  });
+
   it('returns null when only multi-hop repeaters heard the message', () => {
-    expect(buildPing(localNode, [{ hash: '7f', snr: null, hops: 2 }, { hash: '2c', snr: -1, hops: 3 }], 0)).toBeNull();
+    expect(buildPing(localNode, [{ hash: '7f', snr: null, hops: 1 }, { hash: '2c', snr: -1, hops: 2 }], 0)).toBeNull();
   });
 });
 
@@ -126,8 +150,8 @@ describe('meshwarsForwarder', () => {
 
   it('posts one ping per message after the collection window, with the latest heard set', async () => {
     await enable();
-    heard([{ hash: 'a3', snr: 4, hops: 1 }]);
-    heard([{ hash: 'a3', snr: 4, hops: 1 }, { hash: '7f', snr: -2, hops: 1 }]);
+    heard([{ hash: 'a3', snr: 4, hops: 0 }]);
+    heard([{ hash: 'a3', snr: 4, hops: 0 }, { hash: '7f', snr: -2, hops: 0 }]);
     expect(fetchMock).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
@@ -145,7 +169,7 @@ describe('meshwarsForwarder', () => {
   it('sends nothing when disabled, and starts no timer for the event', async () => {
     await meshwarsForwarder.refreshConfig();
     const timersBefore = vi.getTimerCount();
-    heard([{ hash: 'a3', snr: 4, hops: 1 }]);
+    heard([{ hash: 'a3', snr: 4, hops: 0 }]);
     expect(vi.getTimerCount()).toBe(timersBefore);
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -154,13 +178,13 @@ describe('meshwarsForwarder', () => {
   it('starts no timer for a source other than the chosen one', async () => {
     await enable();
     const timersBefore = vi.getTimerCount();
-    heard([{ hash: 'a3', snr: 4, hops: 1 }], 'msg-1', 'other');
+    heard([{ hash: 'a3', snr: 4, hops: 0 }], 'msg-1', 'other');
     expect(vi.getTimerCount()).toBe(timersBefore);
   });
 
   it('a multi-hop flood sends only the direct repeater', async () => {
     await enable();
-    heard([{ hash: 'a3', snr: null, hops: 1 }, { hash: '7f', snr: null, hops: 2 }, { hash: '2c', snr: -3, hops: 3 }]);
+    heard(heardByFromPath(['a3', '7f', '2c'], -3));
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).data[0].heard_repeats).toBe('a3(0)');
@@ -168,7 +192,7 @@ describe('meshwarsForwarder', () => {
 
   it('turning it off drops a message still collecting', async () => {
     await enable();
-    heard([{ hash: 'a3', snr: 4, hops: 1 }]);
+    heard([{ hash: 'a3', snr: 4, hops: 0 }]);
     settings.set('meshwarsEnabled', 'false');
     await meshwarsForwarder.refreshConfig();
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
@@ -181,31 +205,31 @@ describe('meshwarsForwarder', () => {
     settings.set('meshwarsSourceId', 'mc1');
     settings.set('meshwars_api_token', 'key-123');
     await vi.advanceTimersByTimeAsync(CONFIG_CACHE_MS + 1);
-    heard([{ hash: 'a3', snr: 4, hops: 1 }], 'msg-1'); // stale cache: triggers a re-read
+    heard([{ hash: 'a3', snr: 4, hops: 0 }], 'msg-1'); // stale cache: triggers a re-read
     await vi.advanceTimersByTimeAsync(0);
-    heard([{ hash: 'a3', snr: 4, hops: 1 }], 'msg-2');
+    heard([{ hash: 'a3', snr: 4, hops: 0 }], 'msg-2');
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a source other than the chosen one', async () => {
     await enable();
-    heard([{ hash: 'a3', snr: 4, hops: 1 }], 'msg-1', 'other');
+    heard([{ hash: 'a3', snr: 4, hops: 0 }], 'msg-1', 'other');
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('holds the cooldown across messages, using the persisted time', async () => {
     await enable();
-    heard([{ hash: 'a3', snr: 4, hops: 1 }], 'msg-1');
+    heard([{ hash: 'a3', snr: 4, hops: 0 }], 'msg-1');
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
-    heard([{ hash: 'a3', snr: 4, hops: 1 }], 'msg-2');
+    heard([{ hash: 'a3', snr: 4, hops: 0 }], 'msg-2');
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(settings.get('meshwarsLastForwardAt')).toBeTruthy();
 
     await vi.advanceTimersByTimeAsync(MIN_FORWARD_INTERVAL_MS);
-    heard([{ hash: 'a3', snr: 4, hops: 1 }], 'msg-3');
+    heard([{ hash: 'a3', snr: 4, hops: 0 }], 'msg-3');
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -213,7 +237,7 @@ describe('meshwarsForwarder', () => {
   it('records a failed POST and does not retry it', async () => {
     await enable();
     fetchMock.mockResolvedValue({ ok: false, status: 401 });
-    heard([{ hash: 'a3', snr: 4, hops: 1 }]);
+    heard([{ hash: 'a3', snr: 4, hops: 0 }]);
     await vi.advanceTimersByTimeAsync(COLLECT_WINDOW_MS * 4);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const status = await meshwarsForwarder.getStatus();

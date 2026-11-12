@@ -79,8 +79,8 @@ import {
 import { clampIntervalSetting, GEOFENCE_WHILE_INSIDE_MINUTES } from '../utils/schedulerInterval.js';
 import { GEOFENCE_RADIUS_KM_MAX } from '../../utils/geofenceLimits.js';
 import { keepServerRunState, parseStoredTriggers } from '../utils/timerRunState.js';
-import { findSplitTimerTooFrequent } from '../utils/timerSplitGuard.js';
-import { SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/messageSplitLimits.js';
+import { findSplitTimerTooFrequent, findTimerTooManyChannels } from '../utils/timerSplitGuard.js';
+import { SPLIT_TIMER_MIN_INTERVAL_MINUTES, MESHCORE_TIMER_MAX_CHANNELS } from '../../utils/messageSplitLimits.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -991,6 +991,18 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         }
       } catch (error) {
         return res.status(400).json({ error: 'Invalid JSON format for timerTriggers' });
+      }
+    }
+
+    // MeshCore timers through the generic route (restore, scripts): the same
+    // 4-channel cap as the timer route (4.17.3 review M5).
+    if ('meshcoreTimerTriggers' in filteredSettings) {
+      let parsed: unknown = null;
+      try { parsed = JSON.parse(filteredSettings.meshcoreTimerTriggers); } catch { parsed = null; }
+      const tooMany = Array.isArray(parsed) ? findTimerTooManyChannels(parsed) : undefined;
+      if (tooMany) {
+        return fail(res, 400, 'TIMER_TOO_MANY_CHANNELS',
+          `Trigger ${tooMany.id}: a timer can send to at most ${MESHCORE_TIMER_MAX_CHANNELS} channels (it has ${tooMany.channels})`);
       }
     }
 

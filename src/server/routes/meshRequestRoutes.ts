@@ -7,7 +7,7 @@ import { PortNum, TransportMechanism } from '../constants/meshtastic.js';
 import { fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
-import { tracerouteShowsDirectPath } from '../utils/neighborInfoEligibility.js';
+import { tracerouteShowsDirectPath, NEIGHBOR_INFO_DIRECT_TRACE_MAX_AGE_MS } from '../utils/neighborInfoEligibility.js';
 import type { ResourceType } from '../../types/permission.js';
 import type { MeshtasticManager } from '../meshtasticManager.js';
 
@@ -247,8 +247,11 @@ router.post('/neighborinfo/request', meshRequestGate('traceroute'), async (req: 
     // with no intermediate hops is fresher, stronger proof the node is 0-hop
     // right now; honor it. Still direct-only, so no added flood risk.
     if (!isLocalNode && !isDirectNode && localNodeNum != null) {
+      // Only a trace from the last 7 days counts (4.17.3 review L5): an old
+      // direct trace says nothing about a node that has since moved away.
       const traces = await databaseService.traceroutes.getTraceroutesByNodes(
         Number(localNodeNum), Number(destinationNum), 5, neighborManager.sourceId,
+        { sinceTimestamp: Date.now() - NEIGHBOR_INFO_DIRECT_TRACE_MAX_AGE_MS },
       );
       if (tracerouteShowsDirectPath(traces)) isDirectNode = true;
     }

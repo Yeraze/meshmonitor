@@ -119,6 +119,7 @@ describe('MeshCoreRoomsView unread (#6261)', () => {
     const actions = makeActions([stat(ROOM_A, 100)]);
     renderView(actions);
     fireEvent.click(screen.getByText('Alpha Room'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in with saved password' }));
     const input = await screen.findByPlaceholderText('Type a message…');
     await waitFor(() => expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')[ROOM_A]).toBeGreaterThan(0));
     const before = JSON.parse(localStorage.getItem(KEY) ?? '{}')[ROOM_A];

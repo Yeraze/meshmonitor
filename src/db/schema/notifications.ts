@@ -66,6 +66,8 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
   notifyOnWaypoint: integer('notify_on_waypoint', { mode: 'boolean' }).default(false),
   // MeshCore @[Name] mentions of the source's own node. Opt-in.
   notifyOnMention: integer('notify_on_mention', { mode: 'boolean' }).default(false),
+  // Automatic MeshCore traces / path discoveries (M3). Opt-in.
+  notifyOnAutoTrace: integer('notify_on_auto_trace', { mode: 'boolean' }).default(false),
   waypointRadiusKm: real('waypoint_radius_km').default(10),
   waypointCenterLat: real('waypoint_center_lat'),
   waypointCenterLon: real('waypoint_center_lon'),
@@ -109,6 +111,7 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
   notifyOnServerEvents: pgBoolean('notifyOnServerEvents').default(false),
   notifyOnWaypoint: pgBoolean('notifyOnWaypoint').default(false),
   notifyOnMention: pgBoolean('notifyOnMention').default(false),
+  notifyOnAutoTrace: pgBoolean('notifyOnAutoTrace').default(false),
   waypointRadiusKm: pgDouble('waypointRadiusKm').default(10),
   waypointCenterLat: pgDouble('waypointCenterLat'),
   waypointCenterLon: pgDouble('waypointCenterLon'),
@@ -181,6 +184,7 @@ export const userNotificationPreferencesMysql = mysqlTable('user_notification_pr
   notifyOnServerEvents: myBoolean('notifyOnServerEvents').default(false),
   notifyOnWaypoint: myBoolean('notifyOnWaypoint').default(false),
   notifyOnMention: myBoolean('notifyOnMention').default(false),
+  notifyOnAutoTrace: myBoolean('notifyOnAutoTrace').default(false),
   waypointRadiusKm: myDouble('waypointRadiusKm').default(10),
   waypointCenterLat: myDouble('waypointCenterLat'),
   waypointCenterLon: myDouble('waypointCenterLon'),

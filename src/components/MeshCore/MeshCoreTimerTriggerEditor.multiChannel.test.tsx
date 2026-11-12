@@ -27,7 +27,7 @@ vi.mock('./ScopeSelectField', () => ({ ScopeSelectField: () => null }));
 vi.mock('./MeshCoreAdvertModeField', () => ({ MeshCoreAdvertModeField: () => null }));
 
 import { MeshCoreTimerTriggerEditor } from './MeshCoreTimerTriggerEditor';
-import type { MeshCoreTimerTrigger } from './meshcoreTimerModel';
+import { validateMeshCoreTimer, type MeshCoreTimerTrigger } from './meshcoreTimerModel';
 
 const CHANNELS = [
   { id: 0, name: 'Primary' },
@@ -96,5 +96,28 @@ describe('MeshCoreTimerTriggerEditor multi-channel (#6230)', () => {
   it('shows the contact picker (no channel boxes) for a DM timer', () => {
     const { queryByLabelText } = renderEditor(baseTrigger({ destination: 'dm' }));
     expect(queryByLabelText('Primary')).toBeNull();
+  });
+
+  it('disables the unticked boxes once 4 channels are ticked (4.17.3 review M5)', () => {
+    const five = [...CHANNELS, { id: 3, name: 'four' }, { id: 4, name: 'five' }];
+    const onChange = vi.fn();
+    const { getByLabelText, getByText } = render(
+      <MeshCoreTimerTriggerEditor
+        trigger={baseTrigger({ channelIndexes: [0, 1, 2, 3] })}
+        onChange={onChange} errors={{}} channels={five} contacts={[]} scripts={[]} baseUrl="" sourceId="s1"
+      />,
+    );
+    expect((getByLabelText('five') as HTMLInputElement).disabled).toBe(true);
+    expect((getByLabelText('Primary') as HTMLInputElement).disabled).toBe(false);
+    expect(getByText(/Up to 4 channels/)).toBeTruthy();
+  });
+
+  it('validation flags a stored timer with more than 4 channels', () => {
+    const t = (_k: string, fallback: string, opts?: Record<string, unknown>) =>
+      fallback.replace('{{max}}', String(opts?.max ?? ''));
+    expect(validateMeshCoreTimer(baseTrigger({ channelIndexes: [0, 1, 2, 3, 4] }), false, t).channels)
+      .toBe('A timer can send to at most 4 channels.');
+    expect(validateMeshCoreTimer(baseTrigger({ channelIndexes: [0, 1, 2, 3] }), false, t).channels).toBeUndefined();
+    expect(validateMeshCoreTimer(baseTrigger({ destination: 'dm', channelIndexes: [0, 1, 2, 3, 4] }), false, t).channels).toBeUndefined();
   });
 });

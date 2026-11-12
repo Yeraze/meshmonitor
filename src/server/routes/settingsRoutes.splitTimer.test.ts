@@ -55,4 +55,13 @@ describe('Meshtastic split timer floor and announce split setting (#6330)', () =
     expect(res.status).toBe(200);
     expect(await harness.db.settings.getSettingForSource(harness.sourceA, 'autoAnnounceSplitLongMessages')).toBe('true');
   });
+
+  it('refuses meshcoreTimerTriggers with a timer over 4 channels (4.17.3 review M5)', async () => {
+    const res = await post({ meshcoreTimerTriggers: JSON.stringify([
+      { id: 'mc', name: 'x', enabled: true, scheduleType: 'interval', intervalMinutes: 60, responseType: 'text', response: 'hi', destination: 'channel', channelIndexes: [0, 1, 2, 3, 4] },
+    ]) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('TIMER_TOO_MANY_CHANNELS');
+    expect(await harness.db.settings.getSettingForSource(harness.sourceA, 'meshcoreTimerTriggers')).toBeNull();
+  });
 });

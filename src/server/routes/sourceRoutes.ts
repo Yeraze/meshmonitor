@@ -1804,6 +1804,16 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       ['Analyzer Observer key', () => databaseService.meshcoreObserverKeys.deleteBySourceId(req.params.id)],
       ['Analyzer Observer credentials', () => databaseService.meshcoreObserverCredentials.deleteBySourceId(req.params.id)],
       ['PKI DM key', () => databaseService.sourcePkiKeys.deleteBySourceId(req.params.id)],
+      // #6195: the auto-captured MeshCore Companion device identity key.
+      ['MeshCore device key', () => databaseService.meshcoreSourcePkiKeys.deleteBySourceId(req.params.id)],
+      // The source's channel slots hold their PSKs in the clear
+      // (BACKUP_SECRET_TABLES). At most a few hundred rows per source.
+      ['channel keys', async () => {
+        const slots = await databaseService.channels.getAllChannels(req.params.id);
+        for (const slot of slots) {
+          await databaseService.channels.deleteChannel(slot.id, req.params.id);
+        }
+      }],
     ];
     for (const [label, purge] of secretPurges) {
       try {

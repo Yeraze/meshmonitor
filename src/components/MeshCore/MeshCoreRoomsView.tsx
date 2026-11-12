@@ -168,7 +168,6 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   // Credential persistence state
   const [canRemember, setCanRemember] = useState(false);
   const [storedCreds, setStoredCreds] = useState<Set<string>>(new Set());
-  const autoLoginAttempted = useRef<Set<string>>(new Set());
 
   // Sync config state (for selected room)
   const [syncEnabled, setSyncEnabled] = useState(false);
@@ -384,22 +383,18 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     [loggedInRooms],
   );
 
-  // Auto-login when selecting a room with saved credentials
-  useEffect(() => {
-    if (!selectedRoom) return;
-    if (loggedInRooms.has(selectedRoom)) return;
-    if (!storedCreds.has(selectedRoom)) return;
-    // Receive-only mode: silently skip — no request, no toast, no error
-    // state. Must sit BEFORE the do-not-repeat latch below so turning
-    // receive-only back off re-triggers auto-login the next time the room is
-    // selected (#4547 Phase 2 §3.4a).
-    if (receiveOnly) return;
-    if (autoLoginAttempted.current.has(selectedRoom)) return;
-
-    autoLoginAttempted.current.add(selectedRoom);
-    void (async () => {
-      setLoginLoading(true);
-      setLoginNotice(null);
+  // Log in with the stored password. Only an explicit click does this: opening
+  // a room never logs in by itself (4.17.3 review M10), because a login is an
+  // RF send and a reload would re-arm any in-memory "already tried" latch. The
+  // room shows its saved posts read-only until then. Scheduled auto-sync
+  // (server side) is unchanged.
+  const handleLoginWithSaved = useCallback(async () => {
+    if (!selectedRoom || receiveOnly) return;
+    setLoginLoading(true);
+    setLoginError(null);
+    setLoginNoReply(false);
+    setLoginNotice(null);
+    try {
       const { value: result, cancelledByUser } = await runLogin((requestId) =>
         actions.loginRoomWithSaved(selectedRoom, { requestId }),
       );
@@ -407,20 +402,25 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
         setLoginNotice(t('meshcore.rooms.login_cancelled', 'Login cancelled'));
       } else if (result.success) {
         setLoggedInRooms(prev => new Set(prev).add(selectedRoom));
+        setSyncFailure(null);
       } else if (result.reason === 'no_reply' || result.code === 'ROOM_LOGIN_NO_REPLY') {
         setLoginNoReply(true);
       } else if (result.reason === 'rejected') {
-        // Say so rather than dropping the user on a blank login card: the
-        // saved password is the thing at fault, and the forget button below
-        // is the fix.
+        // The saved password is the thing at fault, and the forget button
+        // below is the fix.
         setLoginError(t(
           'meshcore.rooms.saved_password_refused_short',
           'The saved password was refused by this room server.',
         ));
+      } else {
+        setLoginError(t('meshcore.rooms.login_failed', 'Login failed'));
       }
+    } catch {
+      setLoginError(t('meshcore.rooms.login_failed', 'Login failed'));
+    } finally {
       setLoginLoading(false);
-    })();
-  }, [selectedRoom, loggedInRooms, storedCreds, actions, receiveOnly, runLogin, t]);
+    }
+  }, [selectedRoom, receiveOnly, actions, runLogin, t]);
 
   const loadSyncConfig = useCallback(async (pubkey: string) => {
     const config = await actions.getRoomSyncConfig(pubkey);
@@ -517,8 +517,6 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
           next.delete(selectedRoom);
           return next;
         });
-        // Let auto-login run again if a new password is saved later.
-        autoLoginAttempted.current.delete(selectedRoom);
         setSyncFailure(null);
         setSyncEnabled(false);
         setLoginError(null);
@@ -600,6 +598,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   }, [sourceId, selectedRoom, filtered, roomLatest]);
 
   const showLoginBanner = selectedRoom && !isLoggedIn(selectedRoom) && !loginLoading;
+  // M10: a room with a saved password and an empty field logs in with the saved one.
+  const useSavedLogin = !!selectedRoom && storedCreds.has(selectedRoom) && loginPassword === '';
 
   // Explains a stored password that has stopped working. Suppressed while
   // `loginError` is showing: that already carries this session's live outcome,
@@ -811,7 +811,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                 autoComplete="off"
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !loginLoading && !receiveOnly && handleLogin()}
+                onKeyDown={e => e.key === 'Enter' && !loginLoading && !receiveOnly && (useSavedLogin ? handleLoginWithSaved() : handleLogin())}
                 placeholder={t('meshcore.rooms.password_placeholder', 'Password (empty for guest)')}
                 disabled={loginLoading || receiveOnly}
                 title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
@@ -828,13 +828,15 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               )}
               <button
                 className="meshcore-room-login-btn"
-                onClick={handleLogin}
+                onClick={useSavedLogin ? handleLoginWithSaved : handleLogin}
                 disabled={loginLoading || receiveOnly}
                 title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
               >
                 {loginLoading
                   ? t('meshcore.rooms.logging_in', 'Logging in…')
-                  : t('meshcore.rooms.login_button', 'Login')}
+                  : useSavedLogin
+                    ? t('meshcore.rooms.login_with_saved_button', 'Log in with saved password')
+                    : t('meshcore.rooms.login_button', 'Login')}
               </button>
             </div>
             {loginError && (

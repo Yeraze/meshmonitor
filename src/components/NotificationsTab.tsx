@@ -55,6 +55,7 @@ interface NotificationPreferences {
   lowBatteryVoltageThreshold: number;
   notifyOnWaypoint: boolean;
   notifyOnMention: boolean;
+  notifyOnAutoTrace: boolean;
   waypointRadiusKm: number;
   waypointCenterLat: number | null;
   waypointCenterLon: number | null;
@@ -90,6 +91,7 @@ const EDITED_PREFERENCE_FIELDS: ReadonlyArray<keyof NotificationPreferences> = [
   'lowBatteryVoltageThreshold',
   'notifyOnWaypoint',
   'notifyOnMention',
+  'notifyOnAutoTrace',
   'waypointRadiusKm',
   'waypointCenterLat',
   'waypointCenterLon',
@@ -934,6 +936,35 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                   />
                   <span style={{ fontWeight: '500' }}><UiIcon name="route" /> {t(isMeshCore ? 'notifications.traceroutes_meshcore' : 'notifications.traceroutes')}</span>
                 </label>
+              </div>
+              )}
+
+              {/* Automatic traces (M3): MeshCore Companion only. Auto-pathfinding
+                  and scheduled traces alert only when this is on (default off). */}
+              {caps.autoTrace && (
+              <div className={styles.row} style={{
+                padding: '12px',
+                borderRadius: '6px',
+                marginBottom: '16px'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    data-testid="notify-on-auto-trace"
+                    checked={preferences.notifyOnAutoTrace}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnAutoTrace: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}><UiIcon name="route" /> {t('notifications.notify_on_auto_trace')}</span>
+                </label>
+                <div className={styles.muted} style={{ fontSize: '12px', marginTop: '4px' }}>
+                  {t('notifications.notify_on_auto_trace_help')}
+                </div>
               </div>
               )}
 

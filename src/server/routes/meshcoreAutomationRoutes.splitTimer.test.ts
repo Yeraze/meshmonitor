@@ -29,4 +29,18 @@ describe('meshcoreAutomationRoutes timers: split interval floor (#6316)', () => 
     expect(res.body.code).toBe('SPLIT_TIMER_INTERVAL_TOO_SHORT');
     expect(await databaseService.settings.getSettingForSource(harness.sourceA, 'meshcoreTimerTriggers')).toBeNull();
   });
+
+  it('rejects a timer with more than 4 channels and stores nothing (M5)', async () => {
+    await databaseService.auth.createPermission({
+      userId: harness.limited.id, resource: 'automation', canRead: true, canWrite: true,
+      canViewOnMap: false, sourceId: harness.sourceA, grantedAt: Date.now(), grantedBy: null,
+    });
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post(`/api/sources/${harness.sourceA}/meshcore/automation/timers`).send({
+      triggers: [{ id: 't', name: 'x', enabled: true, scheduleType: 'interval', intervalMinutes: 60, responseType: 'text', response: 'hi', destination: 'channel', channelIndexes: [0, 1, 2, 3, 4] }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ success: false, code: 'TIMER_TOO_MANY_CHANNELS' });
+    expect(await databaseService.settings.getSettingForSource(harness.sourceA, 'meshcoreTimerTriggers')).toBeNull();
+  });
 });

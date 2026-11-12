@@ -52,8 +52,23 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
+
+  /** Run a timer under fake timers so the 10 s channel gaps (M5) pass instantly. */
+  async function runWithFakeTimers(manager: MeshCoreManager, id = 't1') {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    let done = false;
+    const p = manager.runTimerTrigger(id).finally(() => { done = true; });
+    for (let i = 0; i < 200 && !done; i++) {
+      await new Promise((r) => setImmediate(r));
+      // 5 s steps: the 10 s inter-channel gap (#4173 review M5) needs only a
+      // few iterations, so a slow CI runner can't hit the per-test timeout.
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    return p;
+  }
 
   const save = (triggers: unknown[]) =>
     databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(triggers));
@@ -74,7 +89,7 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     const { manager, calls, getMaxInFlight } = companion(sourceId);
     await save([textTrigger({ channelIndexes: [0, 2] })]);
 
-    const res = await manager.runTimerTrigger('t1');
+    const res = await runWithFakeTimers(manager);
 
     expect(res.ok).toBe(true);
     expect(calls.map((c) => c.channelIdx)).toEqual([0, 2]);
@@ -83,7 +98,7 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     expect(getMaxInFlight()).toBe(1);
     // Automated sender opts into channel-send auto-retry (#3979), like auto-announce.
     expect(calls.every((c) => c.autoRetry === true)).toBe(true);
-  });
+  }, 30_000);
 
   it('back-compat: an old single-channelIndex timer sends once to that channel', async () => {
     const { manager, calls } = companion(sourceId);
@@ -116,5 +131,39 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].toPublicKey).toBe('deadbeef');
     expect(calls[0].channelIdx).toBeUndefined();
+  });
+
+  it('waits 10 s between channels (4.17.3 review M5)', async () => {
+    const { manager } = companion(sourceId);
+    const at: number[] = [];
+    const inner = (manager as any).sendMessage;
+    (manager as any).sendMessage = vi.fn(async (...args: unknown[]) => { at.push(Date.now()); return inner(...args); });
+    await save([textTrigger({ channelIndexes: [0, 1, 2] })]);
+
+    const res = await runWithFakeTimers(manager);
+
+    expect(res.ok).toBe(true);
+    expect(at.map((t) => t - at[0])).toEqual([0, 10_000, 20_000]);
+  });
+
+  it('a stored timer with more than 4 channels sends to the first 4 and warns once (M5)', async () => {
+    const { manager, calls } = companion(sourceId);
+    await save([textTrigger({ channelIndexes: [5, 1, 2, 3, 4, 0] })]);
+
+    expect((await runWithFakeTimers(manager)).ok).toBe(true);
+    expect(calls.map((c) => c.channelIdx)).toEqual([5, 1, 2, 3]);
+    await runWithFakeTimers(manager);
+    const warns = (logger.warn as any).mock.calls.filter((c: unknown[]) => String(c[0]).includes('first 4'));
+    expect(warns).toHaveLength(1);
+  });
+
+  it('warns about a stored list over 4 channels when the timer is armed, not at the first fire (M5)', async () => {
+    const { manager, calls } = companion(sourceId);
+    await save([textTrigger({ channelIndexes: [0, 1, 2, 3, 4] })]);
+    await manager.startTimerTriggers();
+    manager.stopTimerTriggers();
+    expect(calls).toHaveLength(0);
+    const warns = (logger.warn as any).mock.calls.filter((c: unknown[]) => String(c[0]).includes('first 4'));
+    expect(warns).toHaveLength(1);
   });
 });

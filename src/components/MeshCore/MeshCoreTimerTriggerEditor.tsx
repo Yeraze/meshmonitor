@@ -19,6 +19,7 @@ import {
   resolveMeshCoreAdvertMode,
 } from '../../types/meshcoreAdvert';
 import type { MeshCoreChannelRow, MeshCoreScriptMetadata } from './meshcoreResponderTypes';
+import { MESHCORE_TIMER_MAX_CHANNELS } from '../../utils/messageSplitLimits';
 import {
   DEFAULT_MESHCORE_TIMER_CRON,
   meshCoreTimerChannelIndexes,
@@ -54,6 +55,8 @@ export const MeshCoreTimerTriggerEditor: React.FC<MeshCoreTimerTriggerEditorProp
   // Multi-channel selection (#6230). Reads the new array, coercing an old
   // single-channel timer into a one-item array.
   const selectedChannels = meshCoreTimerChannelIndexes(tr);
+  // M5: at most 4 channels; further boxes are disabled once 4 are ticked.
+  const channelCapReached = new Set(selectedChannels).size >= MESHCORE_TIMER_MAX_CHANNELS;
   const toggleChannel = (id: number, on: boolean) => {
     onChange({
       channelIndexes: on
@@ -218,12 +221,21 @@ export const MeshCoreTimerTriggerEditor: React.FC<MeshCoreTimerTriggerEditorProp
                     <input
                       type="checkbox"
                       checked={selectedChannels.includes(c.id)}
+                      disabled={channelCapReached && !selectedChannels.includes(c.id)}
                       onChange={(e) => toggleChannel(c.id, e.target.checked)}
                     />
                     {c.name || `Channel ${c.id}`}
                   </label>
                 ))}
               </div>
+              <span className={styles.muted}>
+                {t(
+                  'meshcore.automation.timers.channels_cap_hint',
+                  'Up to {{max}} channels. Each channel is a separate flood, sent 10 seconds apart.',
+                  { max: MESHCORE_TIMER_MAX_CHANNELS },
+                )}
+              </span>
+              {errors.channels && <span className={styles.error} role="alert">{errors.channels}</span>}
             </fieldset>
           ) : (
             <label className={`${styles.field} ${styles.grow}`}>

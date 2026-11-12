@@ -30,6 +30,7 @@ export interface FixturePrefs {
   notifyOnNewNode?: boolean;
   notifyOnWaypoint?: boolean;
   notifyOnMention?: boolean;
+  notifyOnAutoTrace?: boolean;
   notifyOnServerEvents?: boolean;
 }
 

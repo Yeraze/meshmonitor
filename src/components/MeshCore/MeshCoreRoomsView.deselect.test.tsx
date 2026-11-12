@@ -103,7 +103,7 @@ describe('MeshCoreRoomsView — click-to-deselect (#6149)', () => {
   });
 
   it('desktop: de-select clears the login form but keeps the logged-in session', async () => {
-    // Auto-login with a saved credential succeeds, so the room is logged in.
+    // A saved-credential login succeeds, so the room is logged in.
     const actions = makeActions({
       getRoomCredentials: vi.fn().mockResolvedValue({ canRemember: true, stored: [{ publicKey: ROOM_PK }] }),
       loginRoomWithSaved: vi.fn().mockResolvedValue({ success: true }),
@@ -111,8 +111,10 @@ describe('MeshCoreRoomsView — click-to-deselect (#6149)', () => {
     renderView(actions);
     await waitFor(() => expect(actions.getRoomCredentials).toHaveBeenCalled());
 
-    // Select → auto-login → the stats header proves we are logged in.
+    // Select, then the explicit saved-password login (M10: no auto-login);
+    // the stats header proves we are logged in.
     clickRoomRow();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in with saved password' }));
     await waitFor(() => expect(document.querySelector('.meshcore-room-stats-header')).toBeTruthy());
     expect(actions.loginRoomWithSaved).toHaveBeenCalledTimes(1);
 

@@ -345,6 +345,19 @@ export function meshcoreDigestTotal(issues: CollectedSecurityIssues): number {
   return issues.total + (issues.ownKeyChange ? 1 : 0);
 }
 
+/**
+ * Drop a rendered digest's own title line (and the blank line after it), so a
+ * per-source body can sit under a source heading in the combined digest (L14).
+ */
+export function stripDigestTitle(body: string): string {
+  const lines = body.split('\n');
+  if (/^(# )?MeshMonitor Security Digest/.test(lines[0] ?? '')) {
+    lines.shift();
+    if (lines[0] === '') lines.shift();
+  }
+  return lines.join('\n');
+}
+
 class SecurityDigestService {
   private cronJob: CronJob | null = null;
   private databaseService: any = null;
@@ -397,8 +410,27 @@ class SecurityDigestService {
     }
 
     const results: Array<{ sourceId: string; success: boolean; message: string; skipped?: boolean }> = [];
-    for (const sid of targetSourceIds) {
-      results.push(await this.sendDigestForSource(sid));
+    if (sourceIdOverride) {
+      results.push(await this.sendDigestForSource(sourceIdOverride));
+    } else {
+      // L14 (4.17.3 review): sources with their own Apprise URL get their own
+      // digest. Sources that fall back to the global URL share ONE combined
+      // digest, so a global URL saved before #6281 does not turn into one
+      // message per source every day.
+      const fallbackSourceIds: string[] = [];
+      for (const sid of targetSourceIds) {
+        if (await this.hasOwnDigestUrl(sid)) {
+          results.push(await this.sendDigestForSource(sid));
+        } else {
+          fallbackSourceIds.push(sid);
+        }
+      }
+      if (fallbackSourceIds.length === 1) {
+        // One source: its digest is already the combined one; keep its title.
+        results.push(await this.sendDigestForSource(fallbackSourceIds[0]));
+      } else if (fallbackSourceIds.length > 1) {
+        results.push(...await this.sendCombinedDigest(fallbackSourceIds));
+      }
     }
 
     const anyFailure = results.some(r => !r.success);
@@ -421,6 +453,135 @@ class SecurityDigestService {
     if (own !== null && own !== undefined && own !== '') return own;
     const global = await this.databaseService.settings.getSetting?.(key);
     return global ?? own ?? null;
+  }
+
+  /** True when the source has its own (non-empty) digest Apprise URL row. */
+  private async hasOwnDigestUrl(sourceId: string): Promise<boolean> {
+    if (!this.databaseService.settings) return false;
+    const own = await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestAppriseUrl');
+    return own !== null && own !== undefined && own !== '';
+  }
+
+  /** A source's display name, or its id. */
+  private async sourceNameOf(sourceId: string): Promise<string> {
+    try {
+      const source = this.databaseService.sources
+        ? await this.databaseService.sources.getSource(sourceId)
+        : null;
+      if (source?.name) return source.name;
+    } catch {
+      // fall back to sourceId
+    }
+    return sourceId;
+  }
+
+  /**
+   * Collect one source's issues and render its digest body, or null when it
+   * has none and `suppressEmpty` is on.
+   */
+  private async renderSourceDigest(
+    sourceId: string,
+    opts: { reportType: string; suppressEmpty: boolean; format: DigestFormat; baseUrl: string },
+  ): Promise<{ body: string | null; total: number }> {
+    const protocol = isAnyMeshCoreSourceType(sourceManagerRegistry.getManager?.(sourceId)?.sourceType)
+      ? 'meshcore'
+      : 'meshtastic';
+    const collected = await collectSecurityIssues(this.databaseService, sourceId, { protocol, topBroadcasters: 10 });
+    let sections: DigestSection[];
+    let total: number;
+    if (protocol === 'meshcore') {
+      sections = meshcoreDigestSections(collected);
+      total = meshcoreDigestTotal(collected);
+    } else {
+      sections = meshtasticSections({
+        total: collected.total,
+        lowEntropyCount: collected.lowEntropyCount,
+        duplicateKeyCount: collected.duplicateKeyCount,
+        excessivePacketsCount: collected.excessivePacketsCount,
+        timeOffsetCount: collected.timeOffsetCount,
+        nodes: collected.nodes,
+        topBroadcasters: collected.topBroadcasters,
+      });
+      total = collected.total;
+    }
+    const body = opts.reportType === 'detailed'
+      ? formatDetailedSections(sections, total, opts.baseUrl, opts.suppressEmpty, opts.format)
+      : formatSummarySections(sections, total, opts.baseUrl, opts.suppressEmpty, opts.format);
+    return { body, total };
+  }
+
+  /**
+   * One digest for every source that uses the global Apprise URL (L14). Uses
+   * the global report type, format and suppress-empty settings, since one
+   * message has one format. Each source is a section; a source with no
+   * issues is left out when suppress-empty is on, and nothing is sent when
+   * every section is empty. One source failing to build does not stop the rest.
+   */
+  private async sendCombinedDigest(sourceIds: string[]): Promise<Array<{ sourceId: string; success: boolean; message: string; skipped?: boolean }>> {
+    const settings = this.databaseService.settings;
+    const globalUrl = settings ? await settings.getSetting?.('securityDigestAppriseUrl') : null;
+    if (!globalUrl) {
+      return sourceIds.map((sourceId) => ({ sourceId, success: true, skipped: true, message: 'No Apprise URL configured' }));
+    }
+    const reportType = (await settings.getSetting?.('securityDigestReportType')) || 'summary';
+    const suppressEmpty = (await settings.getSetting?.('securityDigestSuppressEmpty')) !== 'false';
+    const format = ((await settings.getSetting?.('securityDigestFormat')) || 'text') as DigestFormat;
+    const baseUrl = (await settings.getSetting('externalUrl')) || '';
+    const md = format === 'markdown';
+
+    const results: Array<{ sourceId: string; success: boolean; message: string; skipped?: boolean }> = [];
+    const included: string[] = [];
+    const blocks: string[] = [];
+    let grandTotal = 0;
+    for (const sourceId of sourceIds) {
+      try {
+        const { body, total } = await this.renderSourceDigest(sourceId, { reportType, suppressEmpty, format, baseUrl });
+        if (body === null) {
+          results.push({ sourceId, success: true, message: 'No issues found, digest suppressed' });
+          continue;
+        }
+        const name = await this.sourceNameOf(sourceId);
+        blocks.push([md ? `## ${name}` : `=== ${name} ===`, '', stripDigestTitle(body)].join('\n'));
+        included.push(sourceId);
+        grandTotal += total;
+      } catch (error) {
+        logger.error(`[${sourceId}] Error building security digest:`, error);
+        results.push({ sourceId, success: false, message: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    }
+    if (blocks.length === 0) {
+      logger.debug('Combined security digest suppressed — no issues found');
+      return results;
+    }
+
+    const date = new Date().toISOString().split('T')[0];
+    try {
+      const appriseServerUrl = await resolveAppriseServerUrl(settings, null);
+      const response = await fetch(appriseNotifyEndpoint(appriseServerUrl), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          urls: [globalUrl],
+          title: `MeshMonitor Security Digest — ${date} (${blocks.length} ${blocks.length === 1 ? 'source' : 'sources'})`,
+          body: blocks.join(md ? '\n\n---\n\n' : '\n\n'),
+          type: grandTotal > 0 ? 'warning' : 'info',
+          format: md ? 'markdown' : 'text',
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        logger.error(`Combined security digest delivery failed: ${response.status} ${text}`);
+        for (const sourceId of included) results.push({ sourceId, success: false, message: `Apprise returned ${response.status}` });
+        return results;
+      }
+      logger.info(`Combined security digest sent for ${included.length} sources (${reportType}, ${grandTotal} issues)`);
+      for (const sourceId of included) results.push({ sourceId, success: true, message: 'Sent in the combined digest' });
+    } catch (error) {
+      logger.error('Error sending combined security digest:', error);
+      for (const sourceId of included) results.push({ sourceId, success: false, message: error instanceof Error ? error.message : 'Unknown error' });
+    }
+    return results;
   }
 
   private async sendDigestForSource(sourceId: string): Promise<{ sourceId: string; success: boolean; message: string; skipped?: boolean }> {
@@ -447,48 +608,11 @@ class SecurityDigestService {
     // for every source. `getSetting` reads the global row directly.
     const baseUrl = (await this.databaseService.settings.getSetting('externalUrl')) || '';
 
-    // Resolve source name for the title/body prefix
-    let sourceName = sourceId;
-    try {
-      const source = this.databaseService.sources
-        ? await this.databaseService.sources.getSource(sourceId)
-        : null;
-      if (source?.name) sourceName = source.name;
-    } catch {
-      // fall back to sourceId
-    }
+    const sourceName = await this.sourceNameOf(sourceId);
 
     try {
-      const protocol = isAnyMeshCoreSourceType(sourceManagerRegistry.getManager?.(sourceId)?.sourceType)
-        ? 'meshcore'
-        : 'meshtastic';
-      const collected = await collectSecurityIssues(this.databaseService, sourceId, { protocol, topBroadcasters: 10 });
-
-      let sections: DigestSection[];
-      let total: number;
-      let issues: { total: number };
-      if (protocol === 'meshcore') {
-        sections = meshcoreDigestSections(collected);
-        total = meshcoreDigestTotal(collected);
-        issues = { total };
-      } else {
-        const data: SecurityIssuesData = {
-          total: collected.total,
-          lowEntropyCount: collected.lowEntropyCount,
-          duplicateKeyCount: collected.duplicateKeyCount,
-          excessivePacketsCount: collected.excessivePacketsCount,
-          timeOffsetCount: collected.timeOffsetCount,
-          nodes: collected.nodes,
-          topBroadcasters: collected.topBroadcasters,
-        };
-        sections = meshtasticSections(data);
-        total = data.total;
-        issues = data;
-      }
-
-      const rawBody = reportType === 'detailed'
-        ? formatDetailedSections(sections, total, baseUrl, suppressEmpty, format)
-        : formatSummarySections(sections, total, baseUrl, suppressEmpty, format);
+      const { body: rawBody, total } = await this.renderSourceDigest(sourceId, { reportType, suppressEmpty, format, baseUrl });
+      const issues = { total };
 
       if (rawBody === null) {
         logger.debug(`[${sourceId}] Security digest suppressed — no issues found`);
