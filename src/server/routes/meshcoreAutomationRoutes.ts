@@ -19,7 +19,8 @@ import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { findSplitTimerTooFrequent } from '../utils/timerSplitGuard.js';
+import { findSplitTimerTooFrequent, findTimerTooManyChannels } from '../utils/timerSplitGuard.js';
+import { MESHCORE_TIMER_MAX_CHANNELS } from '../../utils/messageSplitLimits.js';
 import { MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/meshcoreMessageLimits.js';
 import { parseAutoPingSettingsUpdate, readAutoPingSettings } from '../utils/autoPingSettings.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
@@ -48,7 +49,9 @@ import { keepServerRunState, parseStoredTriggers } from '../utils/timerRunState.
 // can legitimately run past the 30s default socket timeout; extend it so
 // the caller gets the real result instead of a dropped-socket 504.
 /** Manual announce send / timer run: broadcast + multi-hop settle window. */
-const MANUAL_AUTOMATION_RUN_TIMEOUT_MS = 120_000;
+// 180 s: a split 4-channel timer test takes ~110 s of gaps (M5: 10 s between
+// channels, 10 s between parts) before any lock wait.
+const MANUAL_AUTOMATION_RUN_TIMEOUT_MS = 180_000;
 
 const router = Router({ mergeParams: true });
 
@@ -1245,6 +1248,11 @@ router.post(
       const tooFast = findSplitTimerTooFrequent(body.triggers);
       if (tooFast) {
         return fail(res, 400, 'SPLIT_TIMER_INTERVAL_TOO_SHORT', `Trigger ${tooFast.id}: a timer that splits long messages needs an interval of at least ${MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES} minutes`);
+      }
+      // At most 4 channels per timer (4.17.3 review M5).
+      const tooMany = findTimerTooManyChannels(body.triggers);
+      if (tooMany) {
+        return fail(res, 400, 'TIMER_TOO_MANY_CHANNELS', `Trigger ${tooMany.id}: a timer can send to at most ${MESHCORE_TIMER_MAX_CHANNELS} channels (it has ${tooMany.channels})`);
       }
       // Run state belongs to the scheduler; keep the stored values (#5827).
       const storedJson = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreTimerTriggers');

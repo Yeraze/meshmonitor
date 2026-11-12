@@ -94,6 +94,7 @@ import {
   type OutboundReactionMeta,
 } from './services/meshcoreReactionSend.js';
 import { MESHCORE_SPLIT_PART_GAP_MS } from './constants/meshcoreMessageLimits.js';
+import { MESHCORE_TIMER_MAX_CHANNELS, MESHCORE_TIMER_CHANNEL_GAP_MS } from '../utils/messageSplitLimits.js';
 import { planMeshCoreTextParts } from './utils/meshcoreSplitPlan.js';
 import { SplitSequenceLock, sendAutomatedTextParts, type AutomatedTextResult } from './utils/automatedTextSplit.js';
 import { MeshCoreResendError } from './errors/meshcoreResendError.js';
@@ -14032,6 +14033,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (channelIndexes.length === 0) return false;
       return (await this.sendAutomatedText(text, {
         channelIdxs: channelIndexes, scopeOverride, split, label,
+        // M5: 10 s between channels so floods do not step on each other.
+        targetGapMs: MESHCORE_TIMER_CHANNEL_GAP_MS,
       })).ok;
     };
 
@@ -14183,13 +14186,30 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   private timerChannelIndexes(trigger: MeshCoreTimerTrigger): number[] {
     if (Array.isArray(trigger.channelIndexes) && trigger.channelIndexes.length > 0) {
-      return trigger.channelIndexes;
+      // M5: at most 4 channels. The routes reject more; a value stored before
+      // that (or restored/imported) is clamped to its first 4 here, the one
+      // place every fire reads it.
+      const distinct = [...new Set(trigger.channelIndexes)];
+      if (distinct.length > MESHCORE_TIMER_MAX_CHANNELS) {
+        if (!this.timerChannelClampWarned.has(trigger.id)) {
+          this.timerChannelClampWarned.add(trigger.id);
+          logger.warn(
+            `[MeshCore:${this.sourceId}] Timer trigger "${trigger.name}" (${trigger.id}) lists ${distinct.length} channels; ` +
+            `sending to the first ${MESHCORE_TIMER_MAX_CHANNELS} only (${distinct.slice(0, MESHCORE_TIMER_MAX_CHANNELS).join(', ')})`,
+          );
+        }
+        return distinct.slice(0, MESHCORE_TIMER_MAX_CHANNELS);
+      }
+      return distinct;
     }
     if (typeof trigger.channelIndex === 'number') {
       return [trigger.channelIndex];
     }
     return [];
   }
+
+  /** Timer ids already warned about a channel list over the cap (M5). */
+  private timerChannelClampWarned = new Set<string>();
 
   /** Whitespace-tokenize an argv string. Quoted segments stay intact. */
   private parseScriptArgsString(s: string): string[] {

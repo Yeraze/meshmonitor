@@ -7334,6 +7334,8 @@
   "automation.distance_delete.note_delete": "A deleted node may return if it continues to broadcast. Choose Ignore to suppress it persistently on the device.",
   "automation.distance_delete.note_ignore": "Ignored nodes are hidden and synced to the connected device (requires firmware ≥ 2.7.0).",
   "meshcore.automation.timers.channels": "Channels",
+  "meshcore.automation.timers.channels_cap_hint": "Up to {{max}} channels. Each channel is a separate flood, sent 10 seconds apart.",
+  "meshcore.automation.timers.too_many_channels": "A timer can send to at most {{max}} channels.",
   "meshcore.automation.timers.no_channels": "(no channels loaded)",
   "meshcore.automation.timers.no_channels_selected": "(no channels selected)",
   "meshcore.automation.pathfinding.filter.title": "Target Filter",

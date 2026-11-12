@@ -52,8 +52,21 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
+
+  /** Run a timer under fake timers so the 10 s channel gaps (M5) pass instantly. */
+  async function runWithFakeTimers(manager: MeshCoreManager, id = 't1') {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    let done = false;
+    const p = manager.runTimerTrigger(id).finally(() => { done = true; });
+    for (let i = 0; i < 200 && !done; i++) {
+      await new Promise((r) => setImmediate(r));
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    return p;
+  }
 
   const save = (triggers: unknown[]) =>
     databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(triggers));
@@ -74,7 +87,7 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     const { manager, calls, getMaxInFlight } = companion(sourceId);
     await save([textTrigger({ channelIndexes: [0, 2] })]);
 
-    const res = await manager.runTimerTrigger('t1');
+    const res = await runWithFakeTimers(manager);
 
     expect(res.ok).toBe(true);
     expect(calls.map((c) => c.channelIdx)).toEqual([0, 2]);
@@ -116,5 +129,29 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].toPublicKey).toBe('deadbeef');
     expect(calls[0].channelIdx).toBeUndefined();
+  });
+
+  it('waits 10 s between channels (4.17.3 review M5)', async () => {
+    const { manager } = companion(sourceId);
+    const at: number[] = [];
+    const inner = (manager as any).sendMessage;
+    (manager as any).sendMessage = vi.fn(async (...args: unknown[]) => { at.push(Date.now()); return inner(...args); });
+    await save([textTrigger({ channelIndexes: [0, 1, 2] })]);
+
+    const res = await runWithFakeTimers(manager);
+
+    expect(res.ok).toBe(true);
+    expect(at.map((t) => t - at[0])).toEqual([0, 10_000, 20_000]);
+  });
+
+  it('a stored timer with more than 4 channels sends to the first 4 and warns once (M5)', async () => {
+    const { manager, calls } = companion(sourceId);
+    await save([textTrigger({ channelIndexes: [5, 1, 2, 3, 4, 0] })]);
+
+    expect((await runWithFakeTimers(manager)).ok).toBe(true);
+    expect(calls.map((c) => c.channelIdx)).toEqual([5, 1, 2, 3]);
+    await runWithFakeTimers(manager);
+    const warns = (logger.warn as any).mock.calls.filter((c: unknown[]) => String(c[0]).includes('first 4'));
+    expect(warns).toHaveLength(1);
   });
 });

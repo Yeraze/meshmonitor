@@ -8,6 +8,7 @@
 import { isValidCron } from 'cron-validator';
 import type { ScopeMode } from './ScopeSelectField';
 import { MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES } from '../../utils/meshcoreMessageLimits';
+import { MESHCORE_TIMER_MAX_CHANNELS } from '../../utils/messageSplitLimits';
 import { newTriggerId } from '../shared/automation/triggerList';
 import {
   DEFAULT_MESHCORE_ADVERT_MODE,
@@ -98,6 +99,7 @@ export interface MeshCoreTimerErrors {
   name?: string;
   cronExpression?: string;
   intervalMinutes?: string;
+  channels?: string;
 }
 
 type TFn = (key: string, fallback: string, options?: Record<string, unknown>) => string;
@@ -128,6 +130,17 @@ export function validateMeshCoreTimer(tr: MeshCoreTimerTrigger, isNew: boolean, 
       'automation.split_long.timer_min_interval',
       'A timer that splits long messages needs an interval of at least {{minutes}} minutes.',
       { minutes: MESHCORE_SPLIT_TIMER_MIN_INTERVAL_MINUTES },
+    );
+  }
+  // At most 4 channels per timer (4.17.3 review M5); the server rejects more.
+  if (
+    (tr.destination || 'channel') === 'channel' &&
+    new Set(meshCoreTimerChannelIndexes(tr)).size > MESHCORE_TIMER_MAX_CHANNELS
+  ) {
+    errs.channels = t(
+      'meshcore.automation.timers.too_many_channels',
+      'A timer can send to at most {{max}} channels.',
+      { max: MESHCORE_TIMER_MAX_CHANNELS },
     );
   }
   return errs;
