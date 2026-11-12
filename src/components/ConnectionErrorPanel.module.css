@@ -1,0 +1,47 @@
+/*
+ * Connection Error banner, short landscape screens (#4173 review N10).
+ *
+ * The base look comes from the global `.error-panel` rules in App.css. At
+ * 844x390 that layout took ~200 of the 390px height, leaving the tab under it
+ * a sliver. Here the heading and buttons share one row and the message clamps
+ * to two lines (the full text stays in its title tooltip). The doubled /
+ * descendant selectors outrank App.css's `.error-panel` and `.error-panel p`
+ * regardless of sheet order.
+ */
+@media (max-height: 500px) and (orientation: landscape) {
+  .panel.panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    padding: 0.4rem 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .panel .title {
+    margin: 0;
+    font-size: 0.95rem;
+  }
+
+  .panel .message {
+    order: 3;
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .panel .actions {
+    margin-left: auto;
+    gap: 0.5rem;
+  }
+
+  .panel .actions button {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.85rem;
+  }
+}

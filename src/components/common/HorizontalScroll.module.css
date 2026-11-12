@@ -1,0 +1,31 @@
+/*
+ * Sideways scroll box with an edge fade (#4173 review N3).
+ *
+ * `mask-image` rather than an ::after overlay: a pseudo-element inside a
+ * scroll container scrolls away with the content, a mask stays on the box.
+ * Same cue as the mobile bottom tab bar (#4497, SourceNav.module.css). The
+ * mask colours are alpha only, not theme colours.
+ */
+.scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.scroll[data-overflow-end='true'] {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+}
+
+.scroll[data-overflow-start='true'] {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 28px);
+  mask-image: linear-gradient(to right, transparent 0, black 28px);
+}
+
+.scroll[data-overflow-start='true'][data-overflow-end='true'] {
+  -webkit-mask-image: linear-gradient(
+    to right, transparent 0, black 28px, black calc(100% - 28px), transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right, transparent 0, black 28px, black calc(100% - 28px), transparent 100%
+  );
+}

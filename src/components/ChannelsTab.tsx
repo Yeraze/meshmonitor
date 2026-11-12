@@ -706,6 +706,10 @@ export default function ChannelsTab({
     setDetailsState,
   };
 
+  // A channel is open and its per-channel actions (info, mute, mark-all-read)
+  // apply. Shared by the inline actions and the overflow menu.
+  const hasOpenChannel = shouldShowData() && availableChannels.length > 0 && selectedChannel !== -1;
+
   return (
     <div className="tab-content channels-tab-content">
       <div className="channels-header">
@@ -838,8 +842,11 @@ export default function ChannelsTab({
           {/* Mobile overflow ("⋯") menu — collapses info / notifications /
               mark-all-read / Show-MQTT into one kebab beside the selector.
               Hidden on desktop via CSS; the inline controls above are hidden on
-              mobile so only one of the two is ever visible (#3385). */}
-          {shouldShowData() && availableChannels.length > 0 && selectedChannel !== -1 && (
+              mobile so only one of the two is ever visible (#3385). The menu
+              also renders with no channel open (e.g. while disconnected) when
+              it carries the MQTT toggle, because CSS hides the inline toggle on
+              phones, portrait and landscape alike (#4173 review N2). */}
+          {(hasOpenChannel || !mqttReadOnly) && (
             <div className="channel-overflow">
               <button
                 className="btn btn-secondary channel-overflow-btn"
@@ -858,18 +865,22 @@ export default function ChannelsTab({
                     onClick={() => setShowChannelMenu(false)}
                   />
                   <div className="channel-overflow-menu">
-                    <button
-                      className="channel-overflow-item"
-                      onClick={() => { setShowChannelMenu(false); handleInfoLinkClick(selectedChannel); }}
-                    >
-                      <UiIcon name="info" /> {t('channels.info_link')}
-                    </button>
-                    <button
-                      className="channel-overflow-item"
-                      onClick={() => { setShowChannelMenu(false); void markMessagesAsRead(undefined, selectedChannel); }}
-                    >
-                      <UiIcon name="checkAll" /> {t('channels.mark_all_read_button')}
-                    </button>
+                    {hasOpenChannel && (
+                      <>
+                        <button
+                          className="channel-overflow-item"
+                          onClick={() => { setShowChannelMenu(false); handleInfoLinkClick(selectedChannel); }}
+                        >
+                          <UiIcon name="info" /> {t('channels.info_link')}
+                        </button>
+                        <button
+                          className="channel-overflow-item"
+                          onClick={() => { setShowChannelMenu(false); void markMessagesAsRead(undefined, selectedChannel); }}
+                        >
+                          <UiIcon name="checkAll" /> {t('channels.mark_all_read_button')}
+                        </button>
+                      </>
+                    )}
                     {!mqttReadOnly && (
                       <button
                         className="channel-overflow-item"
@@ -878,15 +889,19 @@ export default function ChannelsTab({
                         <UiIcon name={showMqttMessages ? 'check' : 'close'} /> {t('channels.show_mqtt_messages')}
                       </button>
                     )}
-                    <div className="channel-overflow-divider" />
-                    <MuteMenu
-                      variant="items"
-                      muted={isChannelMuted(selectedChannel)}
-                      onMute={(until) => muteChannel(selectedChannel, until)}
-                      onUnmute={() => unmuteChannel(selectedChannel)}
-                      itemClassName="channel-overflow-item"
-                            onDone={() => setShowChannelMenu(false)}
-                    />
+                    {hasOpenChannel && (
+                      <>
+                        <div className="channel-overflow-divider" />
+                        <MuteMenu
+                          variant="items"
+                          muted={isChannelMuted(selectedChannel)}
+                          onMute={(until) => muteChannel(selectedChannel, until)}
+                          onUnmute={() => unmuteChannel(selectedChannel)}
+                          itemClassName="channel-overflow-item"
+                          onDone={() => setShowChannelMenu(false)}
+                        />
+                      </>
+                    )}
                   </div>
                 </>
               )}

@@ -226,4 +226,20 @@ describe('ReticulumDestinationsView', () => {
     render(<ReticulumDestinationsView destinations={[]} onToggleFavorite={vi.fn()} />);
     expect(screen.getByText('No destinations seen yet')).toBeInTheDocument();
   });
+
+  it('renders the empty state outside the wide table (#4173 review N3)', () => {
+    // Inside a colSpan cell the text centred across the table's full width
+    // and landed off a 390px screen.
+    render(<ReticulumDestinationsView destinations={[]} onToggleFavorite={vi.fn()} />);
+    const empty = screen.getByText('No destinations seen yet');
+    expect(empty.closest('table')).toBeNull();
+    expect(empty).toHaveAttribute('role', 'status');
+  });
+
+  it('wraps rows in the edge-fading scroll box (#4173 review N3)', () => {
+    render(<ReticulumDestinationsView destinations={[makeRow({})]} onToggleFavorite={vi.fn()} />);
+    const box = document.querySelector('table')!.parentElement!;
+    expect(box).toHaveAttribute('data-overflow-end');
+    expect(box).toHaveAttribute('data-overflow-start');
+  });
 });
