@@ -7812,6 +7812,7 @@
   "meshcore.import_contact.dialog_hint_token": "Paste a contact token like <PUBLICKEY:1:Name> (as MeshCore One shares them), the hex-encoded signed advert blob, or a meshcore:// URL exported from another node.",
   "meshcore.import_contact.placeholder": "e.g. <04A3B7…:1:Alice> or 04a3b7c2d1…",
   "meshcore.import_contact.invalid_input": "Not a contact: paste a contact token <KEY:type:name>, or the full exported contact hex.",
+  "meshcore.import_contact.token_invalid": "Not a valid contact token",
   "messages.insert_menu": "Insert",
   "meshcore.contact_sync.title": "Radio contact list",
   "meshcore.contact_sync.device_list_unknown": "The radio's contact list hasn't been read since it connected, so MeshMonitor can't tell yet which nodes it holds. Push to radio still checks the radio first.",

@@ -99,4 +99,17 @@ describe('MeshCoreNodesView Import dialog — contact tokens (#6370)', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Import' }).at(-1)!);
     expect((await screen.findByRole('alert')).textContent).toMatch(/Not a contact/);
   });
+
+  it('previews a pasted token on one line, and flags a malformed one', () => {
+    render(<MeshCoreNodesView nodes={[]} contacts={[]} onImportContactToken={vi.fn()} />);
+    const dialog = openDialog();
+    const box = dialog.querySelector('textarea')!;
+    expect(screen.queryByTestId('import-token-preview')).toBeNull();
+    fireEvent.change(box, { target: { value: TOKEN } });
+    expect(screen.getByTestId('import-token-preview').textContent).toBe('Alice: mobile · Companion · 12121212…');
+    fireEvent.change(box, { target: { value: `<${KEY}:9:Bad>` } });
+    expect(screen.getByTestId('import-token-preview').textContent).toBe('Not a valid contact token');
+    fireEvent.change(box, { target: { value: '0a0b' } });
+    expect(screen.queryByTestId('import-token-preview')).toBeNull();
+  });
 });

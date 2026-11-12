@@ -123,7 +123,37 @@
 }
 
 /* Share contact picker */
+/* Share contact picker modal (#6370): header, search box and list stack in
+   a flex column of FIXED height, so the modal neither scrolls itself nor
+   re-centres (moving the search box) as the filter shortens the list.
+   Doubled class: equal weight to Modal.css's `.modal-overlay .modal-content`. */
+.pickerModal.pickerModal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Desktop: pin the height to Modal.css's 80vh cap. Phones (<=768px) already
+   get a fixed full-screen height from Modal.css. */
+@media (min-width: 769px) {
+  .pickerModal.pickerModal {
+    height: calc(80vh - var(--keyboard-inset, 0px));
+  }
+}
+
+.pickerModal :global(.modal-header) {
+  flex-shrink: 0;
+}
+
+.pickerModal :global(.modal-body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .search {
+  flex-shrink: 0;
   width: 100%;
   margin-bottom: 0.5rem;
   padding: 0.45rem 0.6rem;
@@ -134,13 +164,16 @@
   font: inherit;
 }
 
-/* Scrolls inside the modal so the picker fits a 390px-tall landscape phone. */
+/* The list takes whatever height the modal body leaves after the search box
+   and is the ONLY scroll area, at every size: no vh cap that can outgrow a
+   short landscape modal (nested scroll) or stop short of a tall phone one. */
 .pickerList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: min(50vh, 22rem);
-  overflow-y: auto;
 }
 
 .pickerItem {

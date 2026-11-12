@@ -215,6 +215,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   // message, shown until the user confirms (#6370).
   const [importConfirmFull, setImportConfirmFull] = useState<string | null>(null);
 
+  // One-line preview of a pasted contact token (#6370): only for input that
+  // looks like one (starts with '<'), so advert hex shows nothing.
+  const importTokenPreview = useMemo(() => {
+    const trimmed = importHex.trim();
+    if (!trimmed.startsWith('<')) return null;
+    return { token: parseMeshCoreContactToken(trimmed) };
+  }, [importHex]);
+
   const handleImportToken = useCallback(async (token: string) => {
     if (!onImportContactToken) {
       setImportError(t('meshcore.contact_token.import_unavailable', 'Importing needs a connected Companion radio and permission to edit nodes.'));
@@ -852,6 +860,13 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               }}
               autoFocus
             />
+            {importTokenPreview && (
+              <div className={styles.importPreview} data-testid="import-token-preview">
+                {importTokenPreview.token
+                  ? `${importTokenPreview.token.name} · ${t(meshcoreRoleLabelKey(importTokenPreview.token.type), meshcoreRoleLabel(importTokenPreview.token.type))} · ${importTokenPreview.token.publicKey.slice(0, 8).toUpperCase()}…`
+                  : t('meshcore.import_contact.token_invalid', 'Not a valid contact token')}
+              </div>
+            )}
             {importError && (
               <div style={{ color: 'var(--color-error)', marginBottom: '0.75rem' }} role="alert">
                 {importError}

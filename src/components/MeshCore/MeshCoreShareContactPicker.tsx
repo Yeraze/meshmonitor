@@ -41,7 +41,12 @@ export const MeshCoreShareContactPicker: React.FC<MeshCoreShareContactPickerProp
   };
 
   return (
-    <Modal isOpen onClose={close} title={t('meshcore.contact_token.share_title', 'Share contact')}>
+    <Modal
+      isOpen
+      onClose={close}
+      title={t('meshcore.contact_token.share_title', 'Share contact')}
+      className={styles.pickerModal}
+    >
       <input
         type="search"
         className={styles.search}

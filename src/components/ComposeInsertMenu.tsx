@@ -88,7 +88,7 @@ const ComposeInsertMenu: React.FC<ComposeInsertMenuProps> = ({ items, insert, di
             >
               {item.icon && <UiIcon name={item.icon} size={16} />}
               <span className={styles.itemText}>
-                <span>{item.label}</span>
+                <span className={styles.itemLabel}>{item.label}</span>
                 {item.disabled && item.disabledReason && (
                   <span className={styles.itemHint}>{item.disabledReason}</span>
                 )}

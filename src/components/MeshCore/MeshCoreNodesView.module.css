@@ -130,3 +130,11 @@
   color: var(--color-warning);
   margin-bottom: 0.75rem;
 }
+
+/* Import dialog: one-line preview of a pasted contact token (#6370). */
+.importPreview {
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+  overflow-wrap: anywhere;
+}

@@ -39,8 +39,11 @@
   bottom: calc(100% + 0.5rem);
   right: 0;
   z-index: 1000;
+  /* As wide as the longest label, so no entry wraps; capped to stay on a
+     390px phone. */
+  width: max-content;
   min-width: 13rem;
-  max-width: min(18rem, calc(100vw - 2rem));
+  max-width: min(20rem, calc(100vw - 2rem));
   padding: 0.25rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -80,6 +83,14 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* Entry labels stay on one line (#6370 review: "Share my contact info"
+   wrapped); a label too long for the cap ellipsises instead. */
+.itemLabel {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .itemHint {
