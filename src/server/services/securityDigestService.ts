@@ -562,7 +562,7 @@ class SecurityDigestService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           urls: [globalUrl],
-          title: `MeshMonitor Security Digest — ${date} (${blocks.length} sources)`,
+          title: `MeshMonitor Security Digest — ${date} (${blocks.length} ${blocks.length === 1 ? 'source' : 'sources'})`,
           body: blocks.join(md ? '\n\n---\n\n' : '\n\n'),
           type: grandTotal > 0 ? 'warning' : 'info',
           format: md ? 'markdown' : 'text',

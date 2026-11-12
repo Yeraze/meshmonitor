@@ -124,7 +124,7 @@ describe('MeshCoreManager Auto-Pathfinding run cancellation (#5170)', () => {
 
     await m.startAutoPathfinding();
     await vi.advanceTimersByTimeAsync(0);
-    expect(discoverContactPath).toHaveBeenCalledWith('pubkey-0');
+    expect(discoverContactPath).toHaveBeenCalledWith('pubkey-0', { automatic: true });
     expect(discoverContactPath).toHaveBeenCalledTimes(1);
 
     // Reconnect completes while the first run is still asleep between
@@ -133,7 +133,7 @@ describe('MeshCoreManager Auto-Pathfinding run cancellation (#5170)', () => {
     void m.startAutoPathfinding();
     await vi.advanceTimersByTimeAsync(0);
     // The new run has sent its own target 0 by now.
-    expect(discoverContactPath).toHaveBeenCalledWith('new-pubkey-0');
+    expect(discoverContactPath).toHaveBeenCalledWith('new-pubkey-0', { automatic: true });
 
     // Wake both runs' inter-target sleeps. Before the fix the stale run
     // would still see this.connected === true and send its target 1
@@ -141,10 +141,10 @@ describe('MeshCoreManager Auto-Pathfinding run cancellation (#5170)', () => {
     // every reconnect. After the fix it observes the generation bump and
     // stops instead.
     await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
-    expect(discoverContactPath).not.toHaveBeenCalledWith('pubkey-1');
+    expect(discoverContactPath.mock.calls.map((c: unknown[]) => c[0])).not.toContain('pubkey-1');
     // The new run is unaffected by the stale run's cancellation — it
     // continues on to its own next target.
-    expect(discoverContactPath).toHaveBeenCalledWith('new-pubkey-1');
+    expect(discoverContactPath).toHaveBeenCalledWith('new-pubkey-1', { automatic: true });
   });
 
   it('a superseded run does not start a fresh pass over targets at all', async () => {

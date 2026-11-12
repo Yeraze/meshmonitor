@@ -154,4 +154,14 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     const warns = (logger.warn as any).mock.calls.filter((c: unknown[]) => String(c[0]).includes('first 4'));
     expect(warns).toHaveLength(1);
   });
+
+  it('warns about a stored list over 4 channels when the timer is armed, not at the first fire (M5)', async () => {
+    const { manager, calls } = companion(sourceId);
+    await save([textTrigger({ channelIndexes: [0, 1, 2, 3, 4] })]);
+    await manager.startTimerTriggers();
+    manager.stopTimerTriggers();
+    expect(calls).toHaveLength(0);
+    const warns = (logger.warn as any).mock.calls.filter((c: unknown[]) => String(c[0]).includes('first 4'));
+    expect(warns).toHaveLength(1);
+  });
 });

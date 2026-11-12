@@ -13996,6 +13996,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     for (const trigger of triggers) {
       if (!trigger || !trigger.id || !trigger.enabled) continue;
+      // M5: warn about a stored channel list over the cap now, not at the first fire.
+      if (trigger.destination !== 'dm') this.timerChannelIndexes(trigger);
       this.armTimerTrigger(trigger);
     }
   }
