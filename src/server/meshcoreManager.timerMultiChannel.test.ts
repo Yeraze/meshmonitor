@@ -61,10 +61,14 @@ describe('MeshCore timer multi-channel send (#6230)', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     let done = false;
     const p = manager.runTimerTrigger(id).finally(() => { done = true; });
-    for (let i = 0; i < 200 && !done; i++) {
+    // Advance until the run settles, not for a fixed number of turns. The run
+    // awaits real I/O (readPackageVersion for the announce tokens) before it
+    // reaches the 10 s channel gaps (#4173 review M5). A fixed budget can be
+    // spent in a few ms of real time while that read is still pending; the
+    // gaps then wait on fake timers nobody advances, and the test hangs until
+    // the per-test timeout. The test timeout bounds this loop.
+    while (!done) {
       await new Promise((r) => setImmediate(r));
-      // 5 s steps: the 10 s inter-channel gap (#4173 review M5) needs only a
-      // few iterations, so a slow CI runner can't hit the per-test timeout.
       await vi.advanceTimersByTimeAsync(5_000);
     }
     return p;
