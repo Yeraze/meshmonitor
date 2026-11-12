@@ -1627,6 +1627,18 @@
     flex-wrap: wrap;
   }
 
+  /* The bar wraps, but its right group (Advert / Flood advert / Disconnect)
+     kept `flex-shrink: 0` and one row, so at 390px it ran ~15px past the
+     screen edge and cut off Disconnect (#4173 review M11). Let it shrink and
+     wrap its own buttons. */
+  .meshcore-status-bar-right {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .meshcore-status-bar .status-text {
     font-size: 0.85rem;
   }

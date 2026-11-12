@@ -46,6 +46,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { parseJsonResponse } from '../../utils/parseJsonResponse';
 import { indexNodeFields, mergeNodeFields } from '../../utils/meshcoreNodeFieldMerge';
 import { readRequiredRepeaters, mergeMeshCoreHeardBy, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
+import { isMobileLayoutViewport } from '../../utils/sidebarWidth';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -114,10 +115,6 @@ const DM_FILTER_OPTIONS: readonly DmFilter[] = ['all', 'unread', 'recent', 'favo
 // from this list (they live in the Rooms view), so they can never match here.
 type DmTypeFilter = 'all' | 1 | 2 | 4;
 const DM_TYPE_FILTER_OPTIONS: readonly (1 | 2 | 4)[] = [1, 2, 4];
-
-const MOBILE_BREAKPOINT = 768;
-const isMobileViewport = (): boolean =>
-  typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
 
 export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProps> = ({
   messages,
@@ -263,7 +260,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
 
   useEffect(() => {
     const onResize = () => {
-      if (!isMobileViewport()) setMobileShowContent(false);
+      if (!isMobileLayoutViewport()) setMobileShowContent(false);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -272,7 +269,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   useEffect(() => {
     if (initialSelectedContact) {
       setSelected(initialSelectedContact);
-      if (isMobileViewport()) setMobileShowContent(true);
+      if (isMobileLayoutViewport()) setMobileShowContent(true);
     }
   }, [initialSelectedContact]);
 
@@ -603,7 +600,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
 
   const handleSelectContact = (key: string) => {
     setSelected(key);
-    if (isMobileViewport()) setMobileShowContent(true);
+    if (isMobileLayoutViewport()) setMobileShowContent(true);
   };
 
   // Per-message delete + whole-conversation clear (#3981). Both confirm first

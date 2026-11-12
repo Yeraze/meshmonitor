@@ -4,6 +4,7 @@ import { getTelemetryLabel } from '../../TelemetryChart';
 import { type SortOption } from '../types';
 import { UiIcon } from '../../icons';
 import { NumberInput } from '../../common/NumberInput';
+import filterStyles from './DashboardFilters.module.css';
 
 interface DashboardFiltersProps {
   // Days to view
@@ -87,20 +88,12 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
           </label>
           <NumberInput
             id="daysToView"
-            className="dashboard-number-input"
+            className={`dashboard-number-input ${filterStyles.daysInput}`}
             integer
             min={1}
             max={maxDays}
             value={daysToView}
             onChange={onDaysToViewChange}
-            style={{
-              width: '80px',
-              padding: '0.5rem',
-              border: '1px solid #45475a',
-              borderRadius: '4px',
-              backgroundColor: '#1e1e2e',
-              color: '#cdd6f4',
-            }}
           />
         </div>
 

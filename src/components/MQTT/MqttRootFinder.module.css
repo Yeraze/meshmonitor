@@ -28,9 +28,33 @@
   color: var(--color-text-subtle);
 }
 
+/* Themed text input. These were browser defaults (white box, inset border,
+   19px tall) that glared in the dark themes (#4173 review L33). */
 .field input {
   width: 100%;
   box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+  border: 2px solid var(--color-surface-active);
+  border-radius: var(--radius-lg);
+  transition: border-color 0.2s;
+}
+
+.field input:hover {
+  border-color: var(--color-border-subtle);
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  background: var(--color-bg);
+}
+
+.field input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .actions {

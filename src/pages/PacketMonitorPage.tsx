@@ -38,7 +38,7 @@ const PacketMonitorContent: React.FC = () => {
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      background: 'var(--bg-primary)'
+      background: 'var(--color-bg)'
     }}>
       <PacketMonitorPanel
         standalone
@@ -80,7 +80,7 @@ const MeshCorePacketMonitorPopout: React.FC<{ sourceId: string; sourceName: stri
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          background: 'var(--bg-primary)'
+          background: 'var(--color-bg)'
         }}>
           <MeshCorePacketMonitorView
             baseUrl={appBasename}

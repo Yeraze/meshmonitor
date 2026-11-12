@@ -4,11 +4,14 @@
  * pane you are actually reading, with the map behind a toggle — at half the
  * screen, and on a narrow phone the ceiling fell below the floor.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   resolveNodeSidebarMaxWidth,
   resolveNodeSidebarRenderWidth,
   isMobileLayout,
+  isMobileLayoutViewport,
   MOBILE_BREAKPOINT_PX,
   MOBILE_LANDSCAPE_MAX_HEIGHT_PX,
   MOBILE_LAYOUT_MEDIA_QUERY,
@@ -155,5 +158,40 @@ describe('resolveNodeSidebarRenderWidth (#5316)', () => {
 
   it('never fills on desktop', () => {
     expect(resolveNodeSidebarRenderWidth(380, 400, false)).toBe('380px');
+  });
+});
+
+describe('isMobileLayoutViewport (#4173 review H4)', () => {
+  // The MeshCore two-pane views read this to decide whether tapping a row
+  // swaps the list for the content pane. Width-only, an 844x390 landscape
+  // phone kept the content pane hidden for good.
+  const setViewport = (w: number, h: number) => {
+    vi.stubGlobal('window', { innerWidth: w, innerHeight: h });
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is false outside a browser', () => {
+    expect(typeof window).toBe('undefined');
+    expect(isMobileLayoutViewport()).toBe(false);
+  });
+
+  it.each([
+    ['iPhone 13 portrait', 390, 844, true],
+    ['iPhone 13 landscape', 844, 390, true],
+    ['Pixel 7 landscape', 915, 412, true],
+    ['laptop', 1366, 768, false],
+    ['desktop', 1440, 900, false],
+  ])('reads the live window on a %s', (_name, w, h, expected) => {
+    setViewport(w as number, h as number);
+    expect(isMobileLayoutViewport()).toBe(expected);
+  });
+
+  it('matches the query MeshCorePage.css uses to hide the content pane', () => {
+    const css = readFileSync(resolve('src/components/MeshCore/MeshCorePage.css'), 'utf-8');
+    const idx = css.indexOf('.meshcore-two-pane.mobile-show-list .meshcore-main-pane');
+    expect(idx).toBeGreaterThan(-1);
+    const mediaStart = css.lastIndexOf('@media', idx);
+    const condition = css.slice(mediaStart + '@media'.length, css.indexOf('{', mediaStart)).trim();
+    expect(condition).toBe(MOBILE_LAYOUT_MEDIA_QUERY);
   });
 });

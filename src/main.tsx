@@ -238,10 +238,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               element={sharedProviders(<ReportsPage />)}
             />
 
-            {/* Automation Engine (global, #3653) */}
+            {/* Automation Engine (global, #3653). SettingsProvider applies the
+                user's theme to <html>; without it this page always rendered in
+                the dark default (#4173 review M15). */}
             <Route
               path="automations"
-              element={sharedProviders(<AutomationsPage />)}
+              element={sharedProviders(
+                <SettingsProvider>
+                  <AutomationsPage />
+                </SettingsProvider>
+              )}
             />
 
             {/* Global settings */}

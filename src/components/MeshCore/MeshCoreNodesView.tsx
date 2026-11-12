@@ -42,6 +42,7 @@ import { UiIcon } from '../icons';
 import type { SecurityFilter } from '../../types/ui';
 import { indexNodeFields, mergeNodeFields } from '../../utils/meshcoreNodeFieldMerge';
 import styles from './MeshCoreNodesView.module.css';
+import { isMobileLayoutViewport } from '../../utils/sidebarWidth';
 
 type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
@@ -61,10 +62,6 @@ const SORT_OPTION_KEYS: Record<string, [string, string]> = {
   uptime: ['nodes.sort_uptime', 'Sort: Uptime'],
   hops: ['nodes.sort_hops', 'Sort: Hops'],
 };
-
-const MOBILE_BREAKPOINT = 768;
-const isMobileViewport = (): boolean =>
-  typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
 
 /** localStorage key for the desktop list-pane collapse preference (mirrors
  *  the Meshtastic `collapse-nodes-btn` toggle, but MeshCore's is per-browser
@@ -188,14 +185,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   }, []);
   // On a phone the map shows first, with the list a tap away (#5968), as on
   // Meshtastic, whose node list starts collapsed there.
-  const [mobileShowContent, setMobileShowContent] = useState(() => isMobileViewport());
+  const [mobileShowContent, setMobileShowContent] = useState(() => isMobileLayoutViewport());
   // Desktop list-pane collapse toggle (mirrors NodesTab's `collapse-nodes-btn`
   // / MeshCoreDirectMessagesView's `meshcore-collapse-btn`). Persisted so the
   // preference survives reloads on desktop; always false on mobile — the
   // mobile layout doesn't have a "thin bar" collapsed state, it swaps the
   // whole pane via `mobileShowContent` instead (see handleToggleListCollapse).
   const [isListCollapsed, setIsListCollapsed] = useState<boolean>(() => {
-    if (isMobileViewport()) return false;
+    if (isMobileLayoutViewport()) return false;
     try {
       return localStorage.getItem(LIST_COLLAPSED_STORAGE_KEY) === 'true';
     } catch {
@@ -236,7 +233,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 
   useEffect(() => {
     const onResize = () => {
-      if (!isMobileViewport()) {
+      if (!isMobileLayoutViewport()) {
         setMobileShowContent(false);
       } else {
         // Mobile has no "thin bar" collapsed state — force the list content
@@ -253,7 +250,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   // breakpoint so the forced reset above (mobile always uncollapsed) never
   // clobbers the saved desktop preference.
   useEffect(() => {
-    if (isMobileViewport()) return;
+    if (isMobileLayoutViewport()) return;
     try {
       localStorage.setItem(LIST_COLLAPSED_STORAGE_KEY, String(isListCollapsed));
     } catch {
@@ -266,16 +263,16 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     if (!focusPublicKey) return;
     setSelected(focusPublicKey);
     setPendingPopupKey(focusPublicKey);
-    if (isMobileViewport()) setMobileShowContent(true);
+    if (isMobileLayoutViewport()) setMobileShowContent(true);
   }, [focusPublicKey]);
 
   const handleSelectNode = useCallback((key: string) => {
     setSelected(key);
-    if (isMobileViewport()) setMobileShowContent(true);
+    if (isMobileLayoutViewport()) setMobileShowContent(true);
   }, []);
 
   const handleToggleListCollapse = useCallback(() => {
-    if (isMobileViewport()) {
+    if (isMobileLayoutViewport()) {
       // No thin-bar concept on mobile — reveal the full map (all contacts,
       // no node selected) instead, matching the desktop "shrink the sidebar"
       // intent as closely as the mobile single-pane layout allows.

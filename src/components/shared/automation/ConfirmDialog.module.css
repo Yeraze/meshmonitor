@@ -14,6 +14,11 @@
 
 .panel {
   width: min(100%, 500px);
+  /* A tall body (the backup restore dialog) must scroll inside the panel, not
+     run off a landscape phone where the fixed overlay cannot scroll (#4173 M8).
+     100dvh minus the overlay's 1rem padding on each side. */
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
   padding: 1.5rem;
   background: var(--color-bg);
   color: var(--color-text);
