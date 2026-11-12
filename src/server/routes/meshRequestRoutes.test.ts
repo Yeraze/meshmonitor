@@ -269,6 +269,19 @@ describe('POST /neighborinfo/request', () => {
     expect(mockManager.sendNeighborInfoRequest).toHaveBeenCalledWith(0x00005f3c, 1);
   });
 
+  it('only asks for traceroutes from the last 7 days (4.17.3 review L5)', async () => {
+    (parseDestinationNum as any).mockResolvedValue(0x00005f3d);
+    mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
+    (databaseService.nodes.getNode as any).mockResolvedValue({ channel: 1, hopsAway: 3 });
+    const before = Date.now();
+    await request(app).post('/neighborinfo/request').send({ destination: '!00005f3d' });
+    const call = (databaseService.traceroutes.getTraceroutesByNodes as any).mock.calls.at(-1);
+    expect(call.slice(0, 2)).toEqual([1, 0x00005f3d]);
+    const since = call[4].sinceTimestamp;
+    expect(since).toBeGreaterThanOrEqual(before - 7 * 24 * 60 * 60 * 1000);
+    expect(since).toBeLessThanOrEqual(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  });
+
   it('still rejects a multi-hop node whose latest traceroute is not direct (#6151)', async () => {
     (parseDestinationNum as any).mockResolvedValue(0x00005f99);
     mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
