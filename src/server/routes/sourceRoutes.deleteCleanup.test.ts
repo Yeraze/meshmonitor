@@ -227,6 +227,7 @@ describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => 
       await databaseService.meshcoreObserverKeys.upsert(src, `envelope-${tag}`, `PUB${tag}`, 'manual');
       await databaseService.meshcoreObserverCredentials.upsert(src, `user-${tag}`, `enc-pass-${tag}`);
       await databaseService.sourcePkiKeys.upsert(src, null, `pki-envelope-${tag}`, `pkipub-${tag}`);
+      await databaseService.meshcoreSourcePkiKeys.upsert(src, `mc-envelope-${tag}`, `mcpub-${tag}`);
     }
   });
 
@@ -235,6 +236,7 @@ describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => 
       await databaseService.meshcoreObserverKeys.deleteBySourceId(src).catch(() => {});
       await databaseService.meshcoreObserverCredentials.deleteBySourceId(src).catch(() => {});
       await databaseService.sourcePkiKeys.deleteBySourceId(src).catch(() => {});
+      await databaseService.meshcoreSourcePkiKeys.deleteBySourceId(src).catch(() => {});
     }
     await harness.cleanup();
   });
@@ -269,6 +271,17 @@ describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => 
     expect(await databaseService.sourcePkiKeys.getBySourceId(harness.sourceB)).not.toBeNull();
   });
 
+  // 4.17.3 review M1: the auto-captured MeshCore device identity key (#6195)
+  // outlived its source.
+  it('removes the deleted source\'s MeshCore device key, and only that source\'s', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.delete(`/${harness.sourceA}`)).status).toBe(200);
+
+    expect(await databaseService.meshcoreSourcePkiKeys.getBySourceId(harness.sourceA)).toBeNull();
+    const keyB = await databaseService.meshcoreSourcePkiKeys.getBySourceId(harness.sourceB);
+    expect(keyB?.encryptedPrivateKey).toBe('mc-envelope-b');
+  });
+
   it('a failed key purge does not fail the delete or skip the other purges', async () => {
     const spy = vi
       .spyOn(databaseService.meshcoreObserverKeys, 'deleteBySourceId')
@@ -293,6 +306,23 @@ describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => 
     expect(await databaseService.meshcoreObserverKeys.getBySourceId(harness.sourceA)).not.toBeNull();
     expect(await databaseService.meshcoreObserverCredentials.getBySourceId(harness.sourceA)).not.toBeNull();
     expect(await databaseService.sourcePkiKeys.getBySourceId(harness.sourceA)).not.toBeNull();
+    expect(await databaseService.meshcoreSourcePkiKeys.getBySourceId(harness.sourceA)).not.toBeNull();
+  });
+
+  it('removes the deleted source\'s channel slots (clear PSKs), and only that source\'s', async () => {
+    await databaseService.channels.upsertChannel({ id: 1, name: 'A1', psk: 'c2VjcmV0', role: 2 } as never, harness.sourceA);
+    await databaseService.channels.upsertChannel({ id: 9, name: 'A9', psk: 'c2VjcmV0', role: 2 } as never, harness.sourceA);
+    await databaseService.channels.upsertChannel({ id: 1, name: 'B1', psk: 'YmJiYg==', role: 2 } as never, harness.sourceB);
+    try {
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.delete(`/${harness.sourceA}`)).status).toBe(200);
+
+      expect(await databaseService.channels.getAllChannels(harness.sourceA)).toEqual([]);
+      const b = await databaseService.channels.getAllChannels(harness.sourceB);
+      expect(b.map((c) => c.name)).toEqual(['B1']);
+    } finally {
+      await databaseService.channels.deleteChannel(1, harness.sourceB).catch(() => {});
+    }
   });
 });
 
