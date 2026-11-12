@@ -196,7 +196,11 @@ describe('TelemetryGraphs uptime humanization (#3261)', () => {
 
     const leftAxis = captured.yAxis.find(p => p.yAxisId === 'left');
     expect(leftAxis!.tickFormatter).toBeUndefined();
-    expect(captured.tooltip[0]?.formatter).toBeUndefined();
+    // The tooltip rounds plain readings (bucket averages) and leaves the
+    // solar overlay alone (#4173 review L20).
+    const fmt = captured.tooltip[0]?.formatter as (v: unknown, n: string) => unknown;
+    expect(fmt(15.512345, 'value')).toBe('15.51');
+    expect(fmt(12.3456, 'solarEstimate')).toBe(12.3456);
     expect(graphTitle()).toContain('(%)');
   });
 

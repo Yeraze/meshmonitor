@@ -568,15 +568,15 @@ export function coverageNotes(coverage: MeshIssuesCoverageWire): CoverageNote[] 
       severity: 'blocked',
     });
   }
-  // A server-side skip for a rule that a coverage note above already blocks
-  // restates the same evidence gap ("B6: no packet log enabled" under "B6:
-  // needs a packet monitor"), so it is left out (#4173 review L29).
-  const blockedRules = new Set(notes.filter((n) => n.severity === 'blocked').map((n) => n.rule));
+  // The server's B6 skip ("no packet log enabled") restates the B6 hop-horizon
+  // note above, so it is left out when that note is shown. Any other skip for
+  // a rule that already has a blocked line (two C2 reasons, a "muted in
+  // settings") joins that line instead of listing the rule twice
+  // (#4173 review L29).
   for (const skip of coverage.skippedRules) {
-    if (blockedRules.has(skip.rule)) continue;
+    if (skip.rule === 'B6' && coverage.hopHorizonSource === null && skip.reason === 'no packet log enabled') continue;
     const prior = notes.find((n) => n.rule === skip.rule && n.severity === 'blocked');
     if (prior) {
-      // Two reasons for one rule (C2) read as one line, not the rule twice.
       if (!prior.note.split('; ').includes(skip.reason)) prior.note = `${prior.note}; ${skip.reason}`;
       continue;
     }

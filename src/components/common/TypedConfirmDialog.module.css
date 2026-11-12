@@ -54,12 +54,13 @@
   flex-wrap: wrap;
 }
 
-/* Button rules carry `.actions` so they outrank a page-wide `.x button`
-   rule: the dialog is not portaled, and inside MeshCore's
-   `.meshcore-form-view button` (0,1,1) painted Cancel and the red danger
-   confirm purple (#4173 review L27). */
-.actions .cancel,
-.actions .confirm {
+/* Button rules carry `.form .actions` (three classes) so they outrank a
+   page-wide `.x button` rule in every state: the dialog is not portaled, and
+   MeshCore's `.meshcore-form-view button` (0,1,1; 0,2,1 on :hover and
+   :disabled) painted Cancel and the red danger confirm purple
+   (#4173 review L27). Hover keeps each button's own colour. */
+.form .actions .cancel,
+.form .actions .confirm {
   margin: 0;
   padding: 0.6rem 1.25rem;
   border: 1px solid var(--color-surface-active);
@@ -70,25 +71,37 @@
   cursor: pointer;
 }
 
-.actions .cancel {
+.form .actions .cancel {
   background: var(--color-surface-hover);
   color: var(--color-text);
 }
 
-.actions .confirm {
+.form .actions .confirm {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: var(--color-accent-text);
 }
 
-.actions .danger {
+.form .actions .danger {
   background: var(--color-error);
   border-color: var(--color-error);
   color: var(--color-accent-text);
 }
 
-.actions .cancel:disabled,
-.actions .confirm:disabled {
+.form .actions .cancel:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.form .actions .confirm:hover:not(:disabled) {
+  background: var(--color-accent);
+}
+
+.form .actions .danger:hover:not(:disabled) {
+  background: var(--color-error);
+}
+
+.form .actions .cancel:disabled,
+.form .actions .confirm:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

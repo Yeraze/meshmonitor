@@ -170,6 +170,22 @@ describe('coverageNotes', () => {
     ]);
   });
 
+  it('keeps a "muted in settings" skip for B6 alongside the hop-horizon note', () => {
+    const notes = coverageNotes(
+      fullyAvailableCoverage({
+        hopHorizonSource: null,
+        skippedRules: [{ rule: 'B6', reason: 'muted in settings' }],
+      }),
+    );
+    expect(notes.filter((n) => n.rule === 'B6')).toEqual([
+      {
+        rule: 'B6',
+        note: 'needs a packet monitor: enable the Meshtastic packet log or the MQTT packet log; muted in settings',
+        severity: 'blocked',
+      },
+    ]);
+  });
+
   it('joins two skip reasons for one rule into one note', () => {
     const notes = coverageNotes(
       fullyAvailableCoverage({

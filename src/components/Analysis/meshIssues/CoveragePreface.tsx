@@ -54,7 +54,7 @@ export const CoveragePreface: React.FC<{ result: MeshIssuesLastRunResult | null 
     <div className={styles.coveragePreface}>
       <div className={styles.corpusFunnel}>
         {/* Each stage named, not "0 -> 0 -> 0 -> 0 sampled" (#4173 review L29). */}
-        {t('analysis.mesh_issues.coverage.funnel_labelled', 'Packet corpus: {{raw}} read, {{valid}} valid, {{deduped}} unique, {{sampled}} sampled, {{pairs}} distinct pairs{{capped}}', {
+        {t('analysis.mesh_issues.coverage.funnel_labelled', 'Traceroute corpus: {{raw}} read, {{valid}} valid, {{deduped}} unique, {{sampled}} sampled, {{pairs}} distinct pairs{{capped}}', {
           raw: corpusStats.rawCount.toLocaleString(),
           valid: corpusStats.validCount.toLocaleString(),
           deduped: corpusStats.dedupedCount.toLocaleString(),

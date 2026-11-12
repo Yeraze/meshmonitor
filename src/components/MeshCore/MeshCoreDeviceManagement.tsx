@@ -328,8 +328,8 @@ export const MeshCoreDeviceManagement: React.FC<Props> = ({
           <FactoryResetWipeList
             items={['settings', 'channels', 'contacts', 'network', 'identity']}
             labels={{
-              settings: t('meshcore.factory_reset.wipes_settings', 'All device settings, including its name and radio settings (back to firmware defaults)'),
-              channels: t('meshcore.factory_reset.wipes_channels', 'All channels and their secrets'),
+              settings: t('meshcore.factory_reset.wipes_settings', 'All device settings: name, radio and TX power (back to firmware defaults), location and Bluetooth PIN'),
+              channels: t('meshcore.factory_reset.wipes_channels', 'All channels and their secrets, and the region scope keys'),
               identity: t('meshcore.factory_reset.wipes_identity', 'The private key that is this device\'s identity'),
             }}
           />
