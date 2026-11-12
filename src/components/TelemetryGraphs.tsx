@@ -18,6 +18,7 @@ import { useSource } from '../contexts/SourceContext';
 import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { getLatestValue } from '../utils/telemetry';
 import { telemetryDotProp } from '../utils/telemetryChartDensity';
+import { formatTelemetryNumber } from '../utils/telemetryFormat';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { getTelemetryLabel } from './TelemetryChart';
@@ -556,14 +557,12 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
                 color: chartColors.text,
               }}
               labelStyle={{ color: chartColors.text }}
-              formatter={
-                display.formatValue
-                  ? (value, name) =>
-                      // Leave the solar overlay (watt-hours) untouched.
-                      name === 'solarEstimate' || typeof value !== 'number'
-                        ? value
-                        : display.formatValue!(value)
-                  : undefined
+              formatter={(value, name) =>
+                // Leave the solar overlay (watt-hours) untouched; round the
+                // rest (bucket averages are long floats, #4173 review L20).
+                name === 'solarEstimate' || typeof value !== 'number'
+                  ? value
+                  : (display.formatValue ?? formatTelemetryNumber)(value)
               }
               labelFormatter={value => {
                 const date = new Date(value);

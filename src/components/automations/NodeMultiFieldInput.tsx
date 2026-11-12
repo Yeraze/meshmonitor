@@ -44,6 +44,16 @@ function secondaryOf(n: NodeMultiOption): string | null {
   return null;
 }
 
+/** The node id shown to tell same-named rows apart (`!a1b2c3d4`). */
+function idOf(n: NodeMultiOption): string {
+  return n.nodeId || `!${(Number(n.nodeNum) >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+/** What a row reads as without the id: label plus secondary chip. */
+function rowTextOf(n: NodeMultiOption): string {
+  return `${labelOf(n)}\u0000${secondaryOf(n) ?? ''}`.toLowerCase();
+}
+
 export default function NodeMultiFieldInput({ value, onChange, nodes }: Props) {
   const [search, setSearch] = useState('');
   const selected = useMemo(() => {
@@ -70,6 +80,14 @@ export default function NodeMultiFieldInput({ value, onChange, nodes }: Props) {
       return labelOf(a).localeCompare(labelOf(b), undefined, { sensitivity: 'base' });
     });
   }, [nodes, search]);
+
+  // Rows that would read the same (same name and short name) also show their
+  // node id, so two nodes with one name can be told apart (#4173 review L28).
+  const ambiguous = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const n of nodes) counts.set(rowTextOf(n), (counts.get(rowTextOf(n)) ?? 0) + 1);
+    return counts;
+  }, [nodes]);
 
   const toggle = (nodeNum: number, checked: boolean) => {
     onChange(checked ? [...selected, nodeNum] : selected.filter((n) => n !== nodeNum));
@@ -105,6 +123,7 @@ export default function NodeMultiFieldInput({ value, onChange, nodes }: Props) {
         {sorted.map((n) => {
           const stationary = isStationary(n);
           const secondary = secondaryOf(n);
+          const showId = (ambiguous.get(rowTextOf(n)) ?? 0) > 1 && secondary !== idOf(n);
           return (
             <label key={n.nodeNum} className="ae-switch" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
               <input
@@ -114,6 +133,7 @@ export default function NodeMultiFieldInput({ value, onChange, nodes }: Props) {
               />
               <span style={{ fontWeight: 600 }}>{labelOf(n)}</span>
               {secondary ? <span className="ae-chip">{secondary}</span> : null}
+              {showId ? <span className="ae-chip" data-testid="node-multi-id">{idOf(n)}</span> : null}
               {stationary
                 ? <span className="ae-chip" title="MeshMonitor marks this node stationary (mobile = 0)">Stationary</span>
                 : <span className="ae-chip" title="MeshMonitor marks this node mobile">Mobile</span>}

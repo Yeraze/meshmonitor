@@ -103,4 +103,25 @@ describe('MeshCoreDeviceManagement', () => {
     expect(await screen.findByText(KEY)).toBeTruthy();
     expect(actions.exportPrivateKey).toHaveBeenCalled();
   });
+
+  it('factory reset lists MeshCore wording and closes with an icon, not "×" (#4173 review L27)', async () => {
+    setup({ isCompanion: true, firmwareVer: 8, capabilities: companionCapabilities(8) });
+    fireEvent.click(screen.getByTestId('meshcore-factory-reset-button'));
+    const dialog = await screen.findByRole('dialog');
+    for (const key of [
+      'meshcore.factory_reset.wipes_settings',
+      'meshcore.factory_reset.wipes_channels',
+      'meshcore.factory_reset.wipes_identity',
+      'meshcore.factory_reset.wipes_contacts',
+    ]) {
+      expect(within(dialog).getByText(key)).toBeTruthy();
+    }
+    // The Meshtastic lines (LoRa region, admin keys, NVS) are not shown.
+    expect(within(dialog).queryByText('device_actions.reset_wipes_settings')).toBeNull();
+    expect(within(dialog).queryByText('device_actions.reset_wipes_channels')).toBeNull();
+    expect(within(dialog).queryByText('device_actions.reset_wipes_identity')).toBeNull();
+    const close = within(dialog).getByRole('button', { name: 'Close dialog' });
+    expect(close.textContent).not.toContain('×');
+    expect(close.querySelector('svg, [data-ui-icon], span')).not.toBeNull();
+  });
 });

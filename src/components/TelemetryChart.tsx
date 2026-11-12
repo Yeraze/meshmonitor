@@ -29,7 +29,7 @@ import { useWidgetRange } from '../hooks/useWidgetRange';
 import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
 import { telemetryDotProp } from '../utils/telemetryChartDensity';
-import { telemetryDisplayScale } from '../utils/telemetryFormat';
+import { telemetryDisplayScale, formatTelemetryNumber } from '../utils/telemetryFormat';
 import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetryChartCsv';
 import { downloadTextFile } from '../utils/nodeExport';
 import TelemetryGauge from './TelemetryGauge';
@@ -848,14 +848,12 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                   color: '#cdd6f4',
                 }}
                 labelStyle={{ color: '#cdd6f4' }}
-                formatter={
-                  uptimeFormatter
-                    ? (value, name) =>
-                        // Leave the solar overlay (watt-hours) untouched.
-                        name === 'solarEstimate' || typeof value !== 'number'
-                          ? value
-                          : uptimeFormatter(value)
-                    : undefined
+                formatter={(value, name) =>
+                  // Leave the solar overlay (watt-hours) untouched; round the
+                  // rest (bucket averages are long floats, #4173 review L20).
+                  name === 'solarEstimate' || typeof value !== 'number'
+                    ? value
+                    : (uptimeFormatter ?? formatTelemetryNumber)(value)
                 }
                 labelFormatter={value => {
                   const date = new Date(value);

@@ -59,6 +59,24 @@
   color: var(--color-text);
 }
 
+/* The shared Modal's close button, restated with three classes so a
+   page-wide `.x button` rule (MeshCore's `.meshcore-form-view button`,
+   0,1,1, and 0,2,1 on :hover) cannot repaint it (#4173 review L27). */
+.modal-content .modal-header .modal-close {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  background: none;
+  border: none;
+  color: var(--color-text-subtle);
+  padding: 0;
+}
+
+.modal-content .modal-header .modal-close:hover {
+  background: none;
+  color: var(--color-text);
+}
+
 .modal-body {
   padding: 1.5rem;
 }

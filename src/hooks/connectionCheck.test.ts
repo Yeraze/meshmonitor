@@ -55,14 +55,19 @@ describe('formatNodeAddress', () => {
 describe('cannotConnectMessage', () => {
   it('names the address when known', () => {
     expect(cannotConnectMessage('192.168.5.106:4403')).toBe(
-      'Cannot connect to Meshtastic node at 192.168.5.106:4403. Please ensure the node is reachable and has HTTP API enabled.',
+      'Cannot connect to Meshtastic node at 192.168.5.106:4403. Please ensure the node is reachable and accepts TCP API connections (port 4403 by default).',
     );
   });
 
   it('drops the "at <address>" phrase when the address is unknown', () => {
     const msg = cannotConnectMessage('');
-    expect(msg).toBe('Cannot connect to the Meshtastic node. Please ensure the node is reachable and has HTTP API enabled.');
+    expect(msg).toBe('Cannot connect to the Meshtastic node. Please ensure the node is reachable and accepts TCP API connections (port 4403 by default).');
     expect(msg).not.toContain(' at ');
+  });
+
+  it('names the TCP API, not HTTP, for a TCP source (#4173 review L21)', () => {
+    expect(cannotConnectMessage('10.0.0.1:4403')).not.toMatch(/HTTP/);
+    expect(cannotConnectMessage('')).toMatch(/TCP API/);
   });
 });
 

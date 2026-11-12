@@ -220,6 +220,17 @@ describe('NotificationFormatSection - message text length (#6278)', () => {
     expect(text('notification-format-preview-channel-body')).toBe(`${'z'.repeat(57)}...`);
   });
 
+  it('the {{ text }} token help follows the configured length, not a fixed 100 (#4173 review L31)', () => {
+    const tokenHelp = () =>
+      Array.from(document.querySelectorAll('li')).find((li) => li.textContent?.includes('{{ text }}'))?.textContent ?? '';
+    const { unmount } = render(<MaxHost initial={{ messageTextMaxPush: 250, messageTextMaxApprise: null }} showApprise={false} />);
+    expect(tokenHelp()).toContain('notifications.format_token_text_n');
+    expect(tokenHelp()).not.toContain('notifications.format_token_text_split');
+    unmount();
+    render(<MaxHost initial={{ messageTextMaxPush: 250, messageTextMaxApprise: 500 }} />);
+    expect(tokenHelp()).toContain('notifications.format_token_text_split');
+  });
+
   it('shows the Apprise input only when Apprise is on, and stores it separately', () => {
     const onTextMaxChange = vi.fn();
     const { unmount } = render(<MaxHost showApprise={false} />);

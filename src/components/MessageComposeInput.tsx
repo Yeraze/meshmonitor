@@ -1,4 +1,5 @@
-import React, { ReactNode, RefObject, useMemo, useSyncExternalStore } from 'react';
+import React, { ReactNode, RefObject, useId, useMemo, useSyncExternalStore } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useComposeDraftStore, type ComposeDraftStore } from '../contexts/composeDraftStore';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
@@ -8,6 +9,7 @@ import { UiIcon } from './icons';
 import { getUtf8ByteLength, formatByteCount } from '../utils/text';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import type { MentionCandidate } from '../utils/mentions';
+import styles from './MessageComposeInput.module.css';
 
 interface MessageComposeInputProps {
   /** id for the mention suggestion list (unique per composer). */
@@ -67,6 +69,8 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
   sending = false,
   allowNewlines = true,
 }) => {
+  const { t } = useTranslation();
+  const overLimitHintId = useId();
   const contextStore = useComposeDraftStore();
   const store = draftStore ?? contextStore;
   const draft = useSyncExternalStore(store.subscribe, store.get, store.get);
@@ -95,7 +99,12 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
   const overLimit = blockSendOverLimit && maxBytes !== undefined && byteLen > maxBytes;
   const inputDisabled = disabled || sending;
 
-  const title = disabled ? disabledTitle : undefined;
+  // Say why Send is off while the draft is over the limit, not just a red
+  // counter (#4173 review L24).
+  const overLimitHint = overLimit
+    ? t('messages.over_limit_hint', 'Too long to send: remove {{count}} bytes', { count: byteLen - (maxBytes ?? 0) })
+    : undefined;
+  const title = disabled ? disabledTitle : overLimitHint;
 
   return (
     <>
@@ -159,6 +168,11 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
             onSend();
           }}
         />
+        {overLimitHint && (
+          <div id={overLimitHintId} className={styles.overLimitHint} role="status">
+            {overLimitHint}
+          </div>
+        )}
         <div className={byteCountDisplay.className}>
           {byteCountDisplay.text}
         </div>
@@ -176,6 +190,7 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
         className="send-btn"
         title={title}
         aria-label={sendAriaLabel}
+        aria-describedby={overLimitHint ? overLimitHintId : undefined}
       >
         <UiIcon name="send" size={16} />
       </button>

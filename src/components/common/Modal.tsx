@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import './Modal.css';
+import { UiIcon } from '../icons';
 
 interface ModalProps {
   isOpen: boolean;
@@ -150,7 +151,7 @@ const Modal: React.FC<ModalProps> = ({
               onClick={onClose}
               aria-label="Close dialog"
             >
-              ×
+              <UiIcon name="close" size={20} />
             </button>
           )}
         </div>

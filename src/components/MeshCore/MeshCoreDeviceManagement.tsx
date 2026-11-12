@@ -323,7 +323,16 @@ export const MeshCoreDeviceManagement: React.FC<Props> = ({
               defaultValue: '{{name}} erases its own storage and restarts. This cannot be undone.',
             })}
           </p>
-          <FactoryResetWipeList items={['settings', 'channels', 'contacts', 'network', 'identity']} />
+          {/* MeshCore wording: the default lines describe a Meshtastic node
+              (LoRa region "unset", admin keys, NVS) (#4173 review L27). */}
+          <FactoryResetWipeList
+            items={['settings', 'channels', 'contacts', 'network', 'identity']}
+            labels={{
+              settings: t('meshcore.factory_reset.wipes_settings', 'All device settings: name, radio and TX power (back to firmware defaults), location and Bluetooth PIN'),
+              channels: t('meshcore.factory_reset.wipes_channels', 'All channels and their secrets, and the region scope keys'),
+              identity: t('meshcore.factory_reset.wipes_identity', 'The private key that is this device\'s identity'),
+            }}
+          />
           <p>{t('meshcore.factory_reset.identity_note', 'The device gets a new public key, so other nodes no longer know it by its old one.')}</p>
           {overNetwork && (
             <p className={styles.warnText}>

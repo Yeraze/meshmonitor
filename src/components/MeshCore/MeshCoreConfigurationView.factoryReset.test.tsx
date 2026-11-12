@@ -69,9 +69,11 @@ describe('MeshCore factory reset', () => {
     fireEvent.click(screen.getByTestId('meshcore-factory-reset-button'));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('device_actions.reset_wipes_heading')).toBeTruthy();
-    for (const k of ['settings', 'channels', 'network', 'identity']) {
-      expect(within(dialog).getByText(`device_actions.reset_wipes_${k}`)).toBeTruthy();
+    // MeshCore wording for settings/channels/identity (#4173 review L27).
+    for (const k of ['settings', 'channels', 'identity']) {
+      expect(within(dialog).getByText(`meshcore.factory_reset.wipes_${k}`)).toBeTruthy();
     }
+    expect(within(dialog).getByText('device_actions.reset_wipes_network')).toBeTruthy();
     expect(within(dialog).getByText('meshcore.factory_reset.wipes_contacts')).toBeTruthy();
     expect(within(dialog).queryByText('meshcore.factory_reset.network_warning')).toBeNull();
     const confirm = within(dialog).getByRole('button', { name: 'meshcore.factory_reset.confirm_label' }) as HTMLButtonElement;

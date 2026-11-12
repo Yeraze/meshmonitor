@@ -13,6 +13,13 @@ vi.mock('react-i18next', async () => {
   return createReactI18nextMock();
 });
 
+// The user's time/date format (#4173 review L23); undefined = no provider.
+let mockSettings: { timeFormat: '12' | '24'; dateFormat: string } | undefined;
+vi.mock('../../contexts/SettingsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../contexts/SettingsContext')>()),
+  useSettingsOptional: () => mockSettings,
+}));
+
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import type { MeshCoreMessage } from './hooks/useMeshCore';
 
@@ -32,5 +39,26 @@ describe('MeshCoreMessageStream relative-time tooltip (#6214)', () => {
     const title = span!.getAttribute('title') ?? '';
     expect(title).toMatch(/ago/);
     expect(title).toContain('(');
+  });
+
+  it('honours the 12-hour time setting (#4173 review L23)', () => {
+    mockSettings = { timeFormat: '12', dateFormat: 'MM/DD/YYYY' };
+    try {
+      const { container } = render(
+        <MeshCoreMessageStream messages={MESSAGES} selfPublicKey={SELF} onSend={async () => true} />,
+      );
+      const title = container.querySelector('.mc-message-time')!.getAttribute('title') ?? '';
+      expect(title).toMatch(/ago \(.*\b(AM|PM)\)$/);
+    } finally {
+      mockSettings = undefined;
+    }
+  });
+
+  it('keeps the 24-hour default without a settings provider', () => {
+    const { container } = render(
+      <MeshCoreMessageStream messages={MESSAGES} selfPublicKey={SELF} onSend={async () => true} />,
+    );
+    const title = container.querySelector('.mc-message-time')!.getAttribute('title') ?? '';
+    expect(title).not.toMatch(/AM|PM/);
   });
 });

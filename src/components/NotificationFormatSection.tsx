@@ -89,6 +89,16 @@ const NotificationFormatSection: React.FC<NotificationFormatSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const title = titleTemplate ?? '';
+  // `{{ text }}` help names the length actually in force, not a fixed 100
+  // (#4173 review L31, #6278).
+  const pushMax = textMaxPush ?? MESSAGE_TEXT_MAX_DEFAULT;
+  const appriseMax = textMaxApprise ?? MESSAGE_TEXT_MAX_DEFAULT;
+  const tokenHelp = (token: string): string => {
+    if (token !== 'text') return t(`notifications.format_token_${token}`);
+    return showApprise && appriseMax !== pushMax
+      ? t('notifications.format_token_text_split', 'Message text (first {{push}} characters for Web Push and desktop, {{apprise}} for Apprise)', { push: pushMax, apprise: appriseMax })
+      : t('notifications.format_token_text_n', 'Message text (first {{count}} characters)', { count: pushMax });
+  };
   const body = bodyTemplate ?? '';
 
   const samples = useMemo(() => {
@@ -181,7 +191,7 @@ const NotificationFormatSection: React.FC<NotificationFormatSectionProps> = ({
               >
                 {`{{ ${token} }}`}
               </button>
-              <span>{t(`notifications.format_token_${token}`)}</span>
+              <span>{tokenHelp(token)}</span>
             </li>
           ))}
         </ul>

@@ -5,6 +5,7 @@ import {
   isUptimeType,
   formatDuration,
   telemetryDisplayScale,
+  formatTelemetryNumber,
 } from './telemetryFormat';
 
 describe('unitScale', () => {
@@ -166,5 +167,31 @@ describe('telemetryDisplayScale', () => {
   it('handles an empty series', () => {
     const d = telemetryDisplayScale('channelUtilization', [], '%');
     expect(d).toEqual({ isUptime: false, factor: 1, unit: '%' });
+  });
+});
+
+describe('formatTelemetryNumber (#4173 review L20)', () => {
+  it('rounds bucket averages to two decimals', () => {
+    expect(formatTelemetryNumber(3.9883333333333333)).toBe('3.99');
+    expect(formatTelemetryNumber(1013.256)).toBe('1013.26');
+    expect(formatTelemetryNumber(-12.3456)).toBe('-12.35');
+  });
+
+  it('drops trailing zeros and keeps integers whole', () => {
+    expect(formatTelemetryNumber(3.75)).toBe('3.75');
+    expect(formatTelemetryNumber(3.5)).toBe('3.5');
+    expect(formatTelemetryNumber(3.999)).toBe('4');
+    expect(formatTelemetryNumber(42)).toBe('42');
+    expect(formatTelemetryNumber(0)).toBe('0');
+  });
+
+  it('keeps three significant digits below 1 so small readings survive', () => {
+    expect(formatTelemetryNumber(0.0042123)).toBe('0.00421');
+    expect(formatTelemetryNumber(0.123456)).toBe('0.123');
+  });
+
+  it('passes non-finite values through', () => {
+    expect(formatTelemetryNumber(NaN)).toBe('NaN');
+    expect(formatTelemetryNumber(Infinity)).toBe('Infinity');
   });
 });
