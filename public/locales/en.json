@@ -768,6 +768,7 @@
   "channels.cancel_reply_title": "Cancel reply",
   "channels.send_placeholder": "Send message to {{name}}...",
   "channels.select_channel_prompt": "Select a channel above to view messages and send messages",
+  "poll.load_error": "Could not load data from the server. Retrying...",
   "channels.no_configs_yet": "No channel configurations discovered yet. Waiting for mesh updates...",
   "channels.connect_to_view": "Connect to a Meshtastic node to view channel configurations",
   "channels.info_modal_title": "Channel Information",
