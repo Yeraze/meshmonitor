@@ -41,6 +41,10 @@ const POSTGRES_CREATE = `
 
 `;
 
+// The collations mirror production MySQL: backup_history comes from the
+// baseline (utf8mb4_unicode_ci) while sources (migration 020) takes the
+// server default (utf8mb4_0900_ai_ci). A sourceId-vs-sources.id comparison
+// inside SQL fails there with ER_CANT_AGGREGATE_2COLLATIONS (rc6 system test).
 const MYSQL_CREATE = `
   DROP TABLE IF EXISTS backup_history;
   CREATE TABLE backup_history (
@@ -55,9 +59,9 @@ const MYSQL_CREATE = `
     createdAt BIGINT NOT NULL,
     sourceId VARCHAR(36),
     protocol VARCHAR(16) NOT NULL DEFAULT 'meshtastic'
-  );
+  ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   DROP TABLE IF EXISTS sources;
-  CREATE TABLE sources (id VARCHAR(36) PRIMARY KEY, name VARCHAR(255) NOT NULL, type VARCHAR(32) NOT NULL, config TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, displayOrder INT NOT NULL DEFAULT 0, createdAt BIGINT NOT NULL, updatedAt BIGINT NOT NULL, createdBy INT)
+  CREATE TABLE sources (id VARCHAR(36) PRIMARY KEY, name VARCHAR(255) NOT NULL, type VARCHAR(32) NOT NULL, config TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, displayOrder INT NOT NULL DEFAULT 0, createdAt BIGINT NOT NULL, updatedAt BIGINT NOT NULL, createdBy INT) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 `;
 
 const ALL_TABLES = ['backup_history', 'sources'];
