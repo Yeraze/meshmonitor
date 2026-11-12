@@ -352,4 +352,31 @@ describe('securityRoutes — MeshCore (P7a)', () => {
       expect(res.body.code).toBe('INVALID_SOURCE_TYPE');
     });
   });
+
+  describe('no manager registered (#4173 review N5)', () => {
+    it('a source that exists but is not running answers 409 SOURCE_NOT_CONNECTED', async () => {
+      h.getManager.mockImplementation(() => undefined);
+      const agent = await harness.loginAs(harness.admin);
+      for (const path of ['/api/security/meshcore/findings', '/api/security/dead-nodes']) {
+        const res = await agent.get(`${path}?sourceId=${src}`);
+        expect(res.status).toBe(409);
+        expect(res.body).toMatchObject({ success: false, code: 'SOURCE_NOT_CONNECTED' });
+      }
+    });
+
+    it('an id with no source row stays 400 SOURCE_NOT_FOUND', async () => {
+      h.getManager.mockImplementation(() => undefined);
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get('/api/security/meshcore/findings?sourceId=no-such-source');
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('SOURCE_NOT_FOUND');
+    });
+
+    it('still checks permission first: no nodes:read on the source is 403, not a state leak', async () => {
+      h.getManager.mockImplementation(() => undefined);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get(`/api/security/meshcore/findings?sourceId=${src}`);
+      expect(res.status).toBe(403);
+    });
+  });
 });

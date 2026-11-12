@@ -26,6 +26,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { redactCliCommand } from '../utils/meshcoreCliRedact.js';
 import { fail } from '../utils/apiResponse.js';
+import { SOURCE_NOT_CONNECTED_CODE } from '../../utils/sourceNotConnected.js';
 import { TX_DISABLED_CODE, isTxDisabledError } from '../errors/txDisabledError.js';
 import { MESHCORE_RECEIVE_ONLY_MESSAGE } from '../constants/meshcoreTx.js';
 import {
@@ -54,6 +55,11 @@ export function managerFor(_req: Request, res: Response): MeshCoreManager {
  * must have a registered manager. This lets every handler call
  * `managerFor` without null-checking at each call-site.
  */
+/** 404 SOURCE_NOT_CONNECTED: no manager is registered for this source (#4173 N5). */
+function notConnected(res: Response, sourceId: string) {
+  return fail(res, 404, SOURCE_NOT_CONNECTED_CODE, `No MeshCore manager for source ${sourceId}`);
+}
+
 export function meshcoreRouteGuard(req: Request, res: Response, next: NextFunction) {
   const sourceId = (req.params as { id?: string }).id;
   if (!sourceId) {
@@ -63,14 +69,22 @@ export function meshcoreRouteGuard(req: Request, res: Response, next: NextFuncti
     });
   }
   const _guardMgr = sourceManagerRegistry.getManager(sourceId);
-  if (!_guardMgr || !isMeshCoreManager(_guardMgr)) {
+  if (!_guardMgr) {
+    // No running manager: the source is not connected (enabled with
+    // autoConnect off, or never started). The client shows a "not connected"
+    // empty state off the code (#4173 review N5). Same 404 and message as
+    // before; this guard runs ahead of the permission checks, so it does not
+    // look the source up to tell "not connected" from "no such source".
+    return notConnected(res, sourceId);
+  }
+  if (!isMeshCoreManager(_guardMgr)) {
     // A `meshcore_mqtt` source (#5040) IS MeshCore, but has no device — it
     // ingests from an analyzer broker. `isMeshCoreManager` excludes it by
     // construction, which is what we want for this whole router (it is all
     // device lifecycle, local-node status and advert). Say so specifically
     // rather than claiming no MeshCore manager exists, which would send an
     // operator hunting for a registration bug that isn't there.
-    const isMqttIngest = _guardMgr !== undefined && isMeshCoreMqttManager(_guardMgr);
+    const isMqttIngest = isMeshCoreMqttManager(_guardMgr);
     return res.status(404).json({
       success: false,
       error: isMqttIngest
@@ -111,7 +125,8 @@ export function anyMeshCoreRouteGuard(req: Request, res: Response, next: NextFun
     });
   }
   const mgr = sourceManagerRegistry.getManager(sourceId);
-  if (!mgr || !isAnyMeshCoreManager(mgr)) {
+  if (!mgr) return notConnected(res, sourceId);
+  if (!isAnyMeshCoreManager(mgr)) {
     return res.status(404).json({
       success: false,
       error: `No MeshCore manager for source ${sourceId}`,

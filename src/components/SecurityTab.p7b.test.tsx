@@ -285,3 +285,20 @@ describe('Meshtastic Security tab keeps its sections (P7b)', () => {
     expect(open).toHaveBeenLastCalledWith('mt:2', 'MeshMonitor: your node sends 50 packets/hr. Please check it.');
   });
 });
+
+describe('Security tab — source not connected (#4173 N5)', () => {
+  it('shows the not-connected state, not the raw error, on SOURCE_NOT_CONNECTED', async () => {
+    route(mcIssues([]));
+    const base = h.get.getMockImplementation()!;
+    h.get.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/security/meshcore/findings')) {
+        throw Object.assign(new h.ApiError('Source src-1 is not connected', 409), { code: 'SOURCE_NOT_CONNECTED' });
+      }
+      return base(url);
+    });
+    render(<SecurityTab sourceType="meshcore" sourceId="src-1" deviceType={1} />);
+    expect(await screen.findByTestId('source-not-connected')).toBeTruthy();
+    expect(screen.queryByText(/is not connected/)).toBeNull();
+    expect(screen.queryByText(/security\.error_loading/)).toBeNull();
+  });
+});

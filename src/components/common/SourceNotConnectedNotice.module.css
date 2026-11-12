@@ -1,0 +1,30 @@
+/* SourceNotConnectedNotice (#4173 review N5). Role tokens only. */
+.notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 1.5rem auto;
+  padding: 1.5rem 1rem;
+  max-width: 32rem;
+  text-align: center;
+  color: var(--color-text-subtle);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+}
+
+.icon {
+  color: var(--color-text-faint);
+}
+
+.title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}

@@ -16,6 +16,7 @@ import { useCsrfFetch } from './useCsrfFetch';
 import { usePagedPackets, type PagedPage, type PagedPageParam } from './usePagedPackets';
 import type { MeshCoreOtaPacketEvent } from './useWebSocket';
 import { deriveMeshCorePacketFields } from '../utils/meshcorePacketDerived';
+import { codedHttpError } from '../utils/sourceNotConnected';
 
 export type MeshCorePacketRow = MeshCoreOtaPacketEvent & {
   srcHash?: string | null;
@@ -127,7 +128,9 @@ export function useMeshCorePackets({
     const res = await csrfFetch(`${mcPrefix}/${grouped ? 'packets/grouped' : 'packets'}?${params.toString()}`);
     if (!res.ok) {
       if (res.status === 429) throw new Error('Too many requests');
-      throw new Error(`HTTP ${res.status}`);
+      // Carries the server's `code`, so a source with no manager shows the
+      // "not connected" state rather than "HTTP 404" (#4173 N5).
+      throw await codedHttpError(res);
     }
     const data = await res.json();
     setMeta(prev => ({
