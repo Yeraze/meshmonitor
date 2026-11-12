@@ -47,6 +47,9 @@ import databaseService from '../../services/database.js';
 import { deviceBackupService } from '../services/deviceBackupService.js';
 import { deviceRestoreService } from '../services/deviceRestoreService.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+// Registers the real `fallbackManager` that resolveSourceManager() returns
+// when no primary source is registered (the server loads it at startup).
+import '../meshtasticManager.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { getPermissionGate } from '../auth/authMiddleware.js';
 import { getDeviceSourceGate } from '../utils/deviceSourcePermission.js';

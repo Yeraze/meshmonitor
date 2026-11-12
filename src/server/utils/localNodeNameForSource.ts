@@ -17,7 +17,7 @@
  */
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { fallbackManager } from '../meshtasticManager.js';
+import { getFallbackManager } from '../fallbackManagerHolder.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager, isMeshCoreManager, isMeshtasticManager } from '../sourceManagerTypes.js';
 
@@ -44,7 +44,7 @@ export async function resolveLocalNodeNameForSource(sourceId?: string | null): P
       return await storedLocalNodeName(sourceId);
     }
 
-    const primary = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const primary = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? getFallbackManager();
     const live = primary.getLocalNodeInfo()?.longName;
     if (live) return live;
     return await storedLocalNodeName(primary.sourceId);

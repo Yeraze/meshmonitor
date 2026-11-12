@@ -11,6 +11,9 @@ import databaseService from '../../services/database.js';
 import { pollDeltaTracker } from '../services/pollDeltaTracker.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+// Registers the real `fallbackManager` that resolveSourceManager() returns
+// when no primary source is registered (the server loads it at startup).
+import '../meshtasticManager.js';
 
 describe('pollRoutes — section isolation (#6342)', () => {
   let harness: RouteTestHarness;

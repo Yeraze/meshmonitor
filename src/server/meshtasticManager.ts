@@ -94,6 +94,7 @@ import type { WireWaypoint } from './services/waypointGeofence.js';
 // The class is loaded lazily via dynamic import() inside startDistanceDeleteScheduler().
 import type { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MessageQueueService } from './messageQueueService.js';
+import { registerFallbackManager } from './fallbackManagerHolder.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
@@ -17118,5 +17119,9 @@ export { MeshtasticManager };
  * null-object, and only a real source row produces a connection.
  *
  * WP3: no longer registered as the primary; all tcp sources use makeMeshtastic().
+ *
+ * Also published through `fallbackManagerHolder.ts`, so helpers that need it
+ * only at call time do not have to import this module.
  */
 export const fallbackManager = new MeshtasticManager();
+registerFallbackManager(fallbackManager);
