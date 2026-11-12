@@ -74,6 +74,11 @@ describe('ReticulumPathsView', () => {
     expect(screen.getByText('No paths reported yet.')).toBeInTheDocument();
   });
 
+  it('renders the empty state outside the table (#4173 review N3)', () => {
+    renderView({ paths: [] });
+    expect(screen.getByText('No paths reported yet.').closest('table')).toBeNull();
+  });
+
   it('renders the loading state while the first poll is in flight', () => {
     renderView({ paths: [], loading: true });
     expect(screen.getByText('Loading paths…')).toBeInTheDocument();

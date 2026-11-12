@@ -25,6 +25,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
+import HorizontalScroll from '../common/HorizontalScroll';
 import styles from './ReticulumPathsView.module.css';
 
 export interface ReticulumPathsViewProps {
@@ -68,83 +69,85 @@ export const ReticulumPathsView: React.FC<ReticulumPathsViewProps> = ({
   return (
     <div className={styles.view} data-testid="reticulum-paths-view">
       <section className={styles.tableSection}>
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>{t('reticulum.paths.col_destination', 'Destination')}</th>
-                <th>{t('reticulum.paths.col_via', 'Via')}</th>
-                <th>{t('reticulum.paths.col_interface', 'Interface')}</th>
-                <th>{t('reticulum.paths.col_hops', 'Hops')}</th>
-                <th>{t('reticulum.paths.col_age', 'Age')}</th>
-                {canProbe && <th>{t('reticulum.paths.col_probe', 'Probe')}</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {paths.length === 0 ? (
+        {/* #4173 review N3: the empty message sits outside the table so it
+            stays on a phone screen; rows scroll sideways with an edge fade. */}
+        {paths.length === 0 ? (
+          <div className={styles.emptyState} role="status">
+            {loading
+              ? t('reticulum.paths.loading', 'Loading paths…')
+              : t('reticulum.paths.empty', 'No paths reported yet.')}
+          </div>
+        ) : (
+          <HorizontalScroll className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
                 <tr>
-                  <td colSpan={canProbe ? 6 : 5} className={styles.emptyState}>
-                    {loading
-                      ? t('reticulum.paths.loading', 'Loading paths…')
-                      : t('reticulum.paths.empty', 'No paths reported yet.')}
-                  </td>
+                  <th>{t('reticulum.paths.col_destination', 'Destination')}</th>
+                  <th>{t('reticulum.paths.col_via', 'Via')}</th>
+                  <th>{t('reticulum.paths.col_interface', 'Interface')}</th>
+                  <th>{t('reticulum.paths.col_hops', 'Hops')}</th>
+                  <th>{t('reticulum.paths.col_age', 'Age')}</th>
+                  {canProbe && <th>{t('reticulum.paths.col_probe', 'Probe')}</th>}
                 </tr>
-              ) : paths.map(row => {
-                const isProbing = probingHash === row.destinationHash;
-                const result = probeResult?.destinationHash === row.destinationHash ? probeResult : null;
-                return (
-                  <tr key={row.destinationHash} data-testid={`reticulum-path-row-${row.destinationHash}`}>
-                    <td>
-                      <span className={styles.hashText} title={row.destinationHash}>
-                        {truncateHash(row.destinationHash)}
-                      </span>
-                    </td>
-                    <td>
-                      {row.viaHash ? (
-                        <span className={styles.hashText} title={row.viaHash}>
-                          {truncateHash(row.viaHash)}
+              </thead>
+              <tbody>
+                {paths.map(row => {
+                  const isProbing = probingHash === row.destinationHash;
+                  const result = probeResult?.destinationHash === row.destinationHash ? probeResult : null;
+                  return (
+                    <tr key={row.destinationHash} data-testid={`reticulum-path-row-${row.destinationHash}`}>
+                      <td>
+                        <span className={styles.hashText} title={row.destinationHash}>
+                          {truncateHash(row.destinationHash)}
                         </span>
-                      ) : '—'}
-                    </td>
-                    <td>{row.interfaceName ?? '—'}</td>
-                    <td>{row.hops ?? '—'}</td>
-                    <td>{formatRelativeTime(row.updatedAt, timeFormat, dateFormat)}</td>
-                    {canProbe && (
-                      <td className={styles.probeCell}>
-                        <button
-                          type="button"
-                          className={styles.probeBtn}
-                          disabled={isProbing}
-                          onClick={() => void onProbe(row.destinationHash)}
-                          title={t('reticulum.paths.probe_action', 'Probe {{hash}}', { hash: truncateHash(row.destinationHash) })}
-                        >
-                          <UiIcon name="test" size={13} />
-                          {isProbing
-                            ? t('reticulum.paths.probing', 'Probing…')
-                            : t('reticulum.paths.probe', 'Probe')}
-                        </button>
-                        {result && (
-                          <span
-                            className={`${styles.probeResult} ${result.ok ? styles.probeResultOk : styles.probeResultFail}`}
-                            data-testid={`reticulum-path-probe-result-${row.destinationHash}`}
-                          >
-                            <UiIcon name={result.ok ? 'statusOn' : 'error'} size={11} />
-                            {result.ok
-                              ? t('reticulum.paths.probe_ok', '{{rtt}}ms · {{hops}} hops', {
-                                  rtt: result.rttMs ?? '—',
-                                  hops: result.hops ?? '—',
-                                })
-                              : t('reticulum.paths.probe_fail', '{{error}}', { error: result.error ?? t('reticulum.paths.probe_no_reply', 'No reply') })}
-                          </span>
-                        )}
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <td>
+                        {row.viaHash ? (
+                          <span className={styles.hashText} title={row.viaHash}>
+                            {truncateHash(row.viaHash)}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td>{row.interfaceName ?? '—'}</td>
+                      <td>{row.hops ?? '—'}</td>
+                      <td>{formatRelativeTime(row.updatedAt, timeFormat, dateFormat)}</td>
+                      {canProbe && (
+                        <td className={styles.probeCell}>
+                          <button
+                            type="button"
+                            className={styles.probeBtn}
+                            disabled={isProbing}
+                            onClick={() => void onProbe(row.destinationHash)}
+                            title={t('reticulum.paths.probe_action', 'Probe {{hash}}', { hash: truncateHash(row.destinationHash) })}
+                          >
+                            <UiIcon name="test" size={13} />
+                            {isProbing
+                              ? t('reticulum.paths.probing', 'Probing…')
+                              : t('reticulum.paths.probe', 'Probe')}
+                          </button>
+                          {result && (
+                            <span
+                              className={`${styles.probeResult} ${result.ok ? styles.probeResultOk : styles.probeResultFail}`}
+                              data-testid={`reticulum-path-probe-result-${row.destinationHash}`}
+                            >
+                              <UiIcon name={result.ok ? 'statusOn' : 'error'} size={11} />
+                              {result.ok
+                                ? t('reticulum.paths.probe_ok', '{{rtt}}ms · {{hops}} hops', {
+                                    rtt: result.rttMs ?? '—',
+                                    hops: result.hops ?? '—',
+                                  })
+                                : t('reticulum.paths.probe_fail', '{{error}}', { error: result.error ?? t('reticulum.paths.probe_no_reply', 'No reply') })}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </HorizontalScroll>
+        )}
       </section>
 
       <section className={styles.remotePanel} data-testid="reticulum-remote-status-panel">

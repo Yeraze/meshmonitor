@@ -15,6 +15,7 @@ import type { ReticulumDestinationRow } from '../../types/reticulum';
 import { useSettings } from '../../contexts/SettingsContext';
 import { formatTimeOrDate } from '../../utils/datetime';
 import { UiIcon } from '../icons';
+import HorizontalScroll from '../common/HorizontalScroll';
 import styles from './ReticulumDestinationsView.module.css';
 
 export interface ReticulumDestinationsViewProps {
@@ -183,80 +184,84 @@ export const ReticulumDestinationsView: React.FC<ReticulumDestinationsViewProps>
         <span className={styles.count}>{rows.length}</span>
       </div>
 
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th className={styles.favoriteCol} aria-label={t('reticulum.favorite.column', 'Favorite')} />
-              <th>{t('reticulum.destinations.col_hash', 'Hash')}</th>
-              <th>{t('reticulum.destinations.col_name', 'Name')}</th>
-              <th>{t('reticulum.destinations.col_app', 'App')}</th>
-              <th>{t('reticulum.destinations.col_aspects', 'Aspects')}</th>
-              <th>{t('reticulum.destinations.col_hops', 'Hops')}</th>
-              <th>{t('reticulum.destinations.col_rssi', 'RSSI')}</th>
-              <th>{t('reticulum.destinations.col_snr', 'SNR')}</th>
-              <th>{t('reticulum.destinations.col_quality', 'Quality')}</th>
-              <th>{t('reticulum.destinations.col_last_heard', 'Last Heard')}</th>
-              <th>{t('reticulum.destinations.col_announce_rate', 'Announce Rate')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
+      {/* #4173 review N3: with no rows the message sits outside the table.
+          Inside a colSpan cell it centred across the table's full 743px and
+          landed off a 390px screen. With rows, the table scrolls sideways in a
+          box that fades the edge still hiding columns. */}
+      {rows.length === 0 ? (
+        <div className={styles.emptyState} role="status">
+          {loading
+            ? t('reticulum.destinations.loading', 'Loading destinations…')
+            : searchQuery
+              ? t('reticulum.destinations.no_search_results', 'No destinations match your search')
+              : t('reticulum.destinations.empty', 'No destinations seen yet')}
+        </div>
+      ) : (
+        <HorizontalScroll className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
               <tr>
-                <td colSpan={11} className={styles.emptyState}>
-                  {loading
-                    ? t('reticulum.destinations.loading', 'Loading destinations…')
-                    : searchQuery
-                      ? t('reticulum.destinations.no_search_results', 'No destinations match your search')
-                      : t('reticulum.destinations.empty', 'No destinations seen yet')}
-                </td>
+                <th className={styles.favoriteCol} aria-label={t('reticulum.favorite.column', 'Favorite')} />
+                <th>{t('reticulum.destinations.col_hash', 'Hash')}</th>
+                <th>{t('reticulum.destinations.col_name', 'Name')}</th>
+                <th>{t('reticulum.destinations.col_app', 'App')}</th>
+                <th>{t('reticulum.destinations.col_aspects', 'Aspects')}</th>
+                <th>{t('reticulum.destinations.col_hops', 'Hops')}</th>
+                <th>{t('reticulum.destinations.col_rssi', 'RSSI')}</th>
+                <th>{t('reticulum.destinations.col_snr', 'SNR')}</th>
+                <th>{t('reticulum.destinations.col_quality', 'Quality')}</th>
+                <th>{t('reticulum.destinations.col_last_heard', 'Last Heard')}</th>
+                <th>{t('reticulum.destinations.col_announce_rate', 'Announce Rate')}</th>
               </tr>
-            ) : rows.map(row => (
-              <tr key={row.destinationHash} className={row.isFavorite ? styles.favoriteRow : undefined}>
-                <td className={styles.favoriteCol}>
-                  <button
-                    type="button"
-                    className={`${styles.favoriteBtn}${row.isFavorite ? ` ${styles.isFavorite}` : ''}`}
-                    title={row.isFavorite
-                      ? t('reticulum.favorite.remove', 'Remove from favorites')
-                      : t('reticulum.favorite.add', 'Add to favorites')}
-                    aria-label={row.isFavorite
-                      ? t('reticulum.favorite.remove', 'Remove from favorites')
-                      : t('reticulum.favorite.add', 'Add to favorites')}
-                    aria-pressed={row.isFavorite}
-                    onClick={() => onToggleFavorite(row.destinationHash, !row.isFavorite)}
-                  >
-                    <UiIcon name={row.isFavorite ? 'favorite' : 'favoriteOff'} size={16} />
-                  </button>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className={styles.hashBtn}
-                    title={row.destinationHash}
-                    onClick={() => void handleCopyHash(row.destinationHash)}
-                  >
-                    <span className={styles.hashText}>{truncateHash(row.destinationHash)}</span>
-                    <UiIcon name="copy" size={13} />
-                    {copiedHash === row.destinationHash && (
-                      <span className={styles.copiedBadge}>{t('common.copied', 'Copied')}</span>
-                    )}
-                  </button>
-                </td>
-                <td>{row.displayName || '—'}</td>
-                <td>{row.appName || '—'}</td>
-                <td>{row.aspects || '—'}</td>
-                <td>{renderNullable(row.hops)}</td>
-                <td>{renderNullable(row.rssi)}</td>
-                <td>{renderNullable(row.snr, 1)}</td>
-                <td>{renderNullable(row.quality)}</td>
-                <td>{formatTimeOrDate(new Date(row.lastSeen), timeFormat, dateFormat)}</td>
-                <td>{formatAnnounceRate(row)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row.destinationHash} className={row.isFavorite ? styles.favoriteRow : undefined}>
+                  <td className={styles.favoriteCol}>
+                    <button
+                      type="button"
+                      className={`${styles.favoriteBtn}${row.isFavorite ? ` ${styles.isFavorite}` : ''}`}
+                      title={row.isFavorite
+                        ? t('reticulum.favorite.remove', 'Remove from favorites')
+                        : t('reticulum.favorite.add', 'Add to favorites')}
+                      aria-label={row.isFavorite
+                        ? t('reticulum.favorite.remove', 'Remove from favorites')
+                        : t('reticulum.favorite.add', 'Add to favorites')}
+                      aria-pressed={row.isFavorite}
+                      onClick={() => onToggleFavorite(row.destinationHash, !row.isFavorite)}
+                    >
+                      <UiIcon name={row.isFavorite ? 'favorite' : 'favoriteOff'} size={16} />
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className={styles.hashBtn}
+                      title={row.destinationHash}
+                      onClick={() => void handleCopyHash(row.destinationHash)}
+                    >
+                      <span className={styles.hashText}>{truncateHash(row.destinationHash)}</span>
+                      <UiIcon name="copy" size={13} />
+                      {copiedHash === row.destinationHash && (
+                        <span className={styles.copiedBadge}>{t('common.copied', 'Copied')}</span>
+                      )}
+                    </button>
+                  </td>
+                  <td>{row.displayName || '—'}</td>
+                  <td>{row.appName || '—'}</td>
+                  <td>{row.aspects || '—'}</td>
+                  <td>{renderNullable(row.hops)}</td>
+                  <td>{renderNullable(row.rssi)}</td>
+                  <td>{renderNullable(row.snr, 1)}</td>
+                  <td>{renderNullable(row.quality)}</td>
+                  <td>{formatTimeOrDate(new Date(row.lastSeen), timeFormat, dateFormat)}</td>
+                  <td>{formatAnnounceRate(row)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </HorizontalScroll>
+      )}
     </div>
   );
 };

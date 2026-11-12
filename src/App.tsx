@@ -33,6 +33,7 @@ import { shouldShowQuickStatus } from './components/QuickStatus/quickStatusGate'
 import DeviceNotificationToaster from './components/DeviceNotificationToaster';
 import { RebootModal } from './components/RebootModal';
 import { AppBanners } from './components/AppBanners';
+import ConnectionErrorPanel from './components/ConnectionErrorPanel';
 import { AppHeader } from './components/AppHeader';
 import { PurgeDataModal } from './components/PurgeDataModal';
 import { PositionOverrideModal } from './components/PositionOverrideModal';
@@ -3594,26 +3595,16 @@ function App() {
 
       <main id="main-content" className="app-main">
         {error && (
-          <div className="error-panel">
-            <h3>Connection Error</h3>
-            <p>{error}</p>
-            <div className="error-actions">
-              <button
-                onClick={() => {
-                  // Manual retry: also re-read the full poll, which is not
-                  // read on the timer while the source is down.
-                  void refreshPollCache(queryClient, csrfFetch, appBasename, sourceId).catch(() => undefined);
-                  void checkConnectionStatus();
-                }}
-                className="retry-btn"
-              >
-                Retry Connection
-              </button>
-              <button onClick={() => setError(null)} className="dismiss-error">
-                Dismiss
-              </button>
-            </div>
-          </div>
+          <ConnectionErrorPanel
+            error={error}
+            onRetry={() => {
+              // Manual retry: also re-read the full poll, which is not
+              // read on the timer while the source is down.
+              void refreshPollCache(queryClient, csrfFetch, appBasename, sourceId).catch(() => undefined);
+              void checkConnectionStatus();
+            }}
+            onDismiss={() => setError(null)}
+          />
         )}
 
         {/*

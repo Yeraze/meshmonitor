@@ -24,7 +24,11 @@
   transition: width 0.3s ease, transform 0.3s ease;
   z-index: 10001; /* Above header (10000) so it overlays cleanly */
   padding-top: env(safe-area-inset-top); /* Account for iPhone notch/status bar */
-  padding-bottom: max(1rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
+  /* Account for iPhone home indicator. The floor was 1rem, which on a desktop
+     (no inset) spent 16px under the footer and pushed the last nav icon under
+     the scroll edge at 1440x900, where it read as hidden behind the expand
+     button (#4173 review N9). The inset still applies in full where present. */
+  padding-bottom: max(4px, env(safe-area-inset-bottom));
   padding-left: env(safe-area-inset-left); /* Account for iPhone landscape notch */
   box-sizing: border-box; /* Include padding in height calculation */
 }
@@ -78,7 +82,9 @@
   flex-direction: row;
   justify-content: flex-end;
   gap: 8px;
-  padding: 0 8px 8px 8px;
+  /* 4px bottom (was 8px): part of the #4173 review N9 trim, the footer's own
+     top padding already separates the two. */
+  padding: 0 8px 4px 8px;
   flex-shrink: 0;
 }
 

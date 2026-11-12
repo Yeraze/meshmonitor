@@ -44,6 +44,19 @@
   white-space: nowrap;
 }
 
+/* #4173 review N11: the last column (Actions) is pinned to the right edge of
+   the scroll box, so Save / Disable stay on a 390px screen while the other
+   columns scroll beneath them. The cell needs an opaque background, the same
+   --color-bg the MeshCore page paints behind this section; the inset line marks
+   the edge the other columns slide under. */
+.table th:last-child,
+.table td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--color-bg);
+  box-shadow: inset 1px 0 0 var(--color-border-subtle);
+}
+
 @media (max-width: 768px) {
   .scroll {
     margin-left: 0;

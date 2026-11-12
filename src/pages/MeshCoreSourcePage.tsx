@@ -30,7 +30,7 @@ import type { ConnectionStatus } from '../components/MeshCore/hooks/useMeshCore'
 import '../components/MeshCore/MeshCoreTab.css';
 import '../components/AppHeader/AppHeader.css';
 import { UiIcon } from '../components/icons';
-import pageStyles from './MeshCoreSourcePage.module.css';
+import pageStyles from './SourcePageTopbar.module.css';
 
 function MeshCoreSourceInner() {
   const { t } = useTranslation();

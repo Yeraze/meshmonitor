@@ -37,8 +37,11 @@
 
 /* Narrow rail (the 60px collapsed per-source sidebar): a two-column grid keeps
    the six icons in three short rows instead of six full-width ones (#4436). */
+/* Trimmed for #4173 review N9: seven icons make four rows here, and the old
+   8px padding + 3px button padding pushed the nav list past a 900px-tall
+   desktop, cutting its last icon at the scroll edge. */
 .narrow {
-  padding: 8px 4px;
+  padding: 4px 4px;
 }
 
 .narrow .icons {
@@ -48,7 +51,7 @@
 }
 
 .narrow .btn {
-  padding: 3px;
+  padding: 2px;
 }
 
 .btn {
