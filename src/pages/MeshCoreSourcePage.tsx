@@ -45,9 +45,11 @@ function MeshCoreSourceInner() {
   const [showLogin, setShowLogin] = useState(false);
   const [mcStatus, setMcStatus] = useState<ConnectionStatus | null>(null);
   const [mcLoaded, setMcLoaded] = useState(false);
-  const handleStatusChange = useCallback((status: ConnectionStatus | null, loaded: boolean) => {
+  const [mcConnecting, setMcConnecting] = useState(false);
+  const handleStatusChange = useCallback((status: ConnectionStatus | null, loaded: boolean, connecting: boolean) => {
     setMcStatus(status);
     setMcLoaded(loaded);
+    setMcConnecting(connecting);
   }, []);
 
   if (!sourceId) {
@@ -62,8 +64,9 @@ function MeshCoreSourceInner() {
   // "Disconnected" so the header doesn't mislead the user during the initial fetch.
   // Once that first load settles with no status (no manager for the source:
   // not connected, autoConnect off), or when MeshCorePage is not mounted at
-  // all (no connection:read), it is "Disconnected", not "Connecting" (#4173 N6).
-  const statusLoading = canReadConnection && mcStatus === null && !mcLoaded;
+  // all (no connection:read), it is "Disconnected", not "Connecting" — unless
+  // a connect is actually in flight (#4173 N6).
+  const statusLoading = canReadConnection && ((mcStatus === null && !mcLoaded) || mcConnecting);
   const connected = mcStatus?.connected ?? false;
   const localNode = mcStatus?.localNode ?? null;
   const localNodeLabel = localNode?.name || null;

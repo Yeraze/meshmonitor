@@ -48,6 +48,8 @@ describe('MeshCorePacketMonitorView — source not connected (#4173 N5)', () => 
     render(<MeshCorePacketMonitorView baseUrl="" sourceId="mc-1" />);
     expect(await screen.findByTestId('source-not-connected')).toBeInTheDocument();
     expect(screen.queryByText('HTTP 404')).not.toBeInTheDocument();
+    // The empty table's "waiting for traffic" line would mislead here.
+    expect(screen.queryByText(/No packets captured/)).not.toBeInTheDocument();
   });
 
   it('still shows other load errors as text', async () => {
@@ -55,5 +57,6 @@ describe('MeshCorePacketMonitorView — source not connected (#4173 N5)', () => 
     render(<MeshCorePacketMonitorView baseUrl="" sourceId="mc-1" />);
     expect(await screen.findByText('HTTP 500')).toBeInTheDocument();
     expect(screen.queryByTestId('source-not-connected')).not.toBeInTheDocument();
+    expect(screen.getByText(/No packets captured/)).toBeInTheDocument();
   });
 });
