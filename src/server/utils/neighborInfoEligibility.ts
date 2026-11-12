@@ -14,6 +14,12 @@
  * panel shows.
  */
 
+/**
+ * Oldest direct traceroute that still proves a node is 0-hop (4.17.3 review
+ * L5): 7 days. Older traces are ignored for NeighborInfo eligibility.
+ */
+export const NEIGHBOR_INFO_DIRECT_TRACE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** Parse a traceroute `route` / `routeBack` JSON column to its hop array. */
 function parseHopArray(json: string | null | undefined): number[] | null {
   if (json == null) return null;

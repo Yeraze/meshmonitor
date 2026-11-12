@@ -18,6 +18,12 @@ describe('notificationCapabilities', () => {
     const c = notificationCapabilities('meshcore', 2);
     expect(c).toMatchObject({ dm: false, traceroute: false, newNode: 'on', newNodeNote: 'repeater_learning', mention: false, channels: true, emoji: true });
   });
+  it('only a MeshCore Companion offers the automatic-trace toggle (M3)', () => {
+    expect(notificationCapabilities('meshcore', 1).autoTrace).toBe(true);
+    expect(notificationCapabilities('meshcore', 2).autoTrace).toBe(false);
+    expect(notificationCapabilities('meshcore_mqtt').autoTrace).toBe(false);
+    expect(notificationCapabilities('meshtastic_tcp').autoTrace).toBe(false);
+  });
   it('only the Repeater carries the new-node note (#6306)', () => {
     expect(notificationCapabilities('meshcore', 1).newNodeNote).toBeNull();
     expect(notificationCapabilities('meshtastic').newNodeNote).toBeNull();

@@ -40,14 +40,52 @@ export function planAutomatedTextParts(
 }
 
 /**
+ * A queued split sequence that has waited longer than this for the lock is
+ * dropped instead of sent late (4.17.3 review M4).
+ */
+export const SPLIT_SEQUENCE_MAX_WAIT_MS = 2 * 60_000;
+
+export type SplitLockOutcome<T> =
+  | { ran: true; value: T }
+  | { ran: false; reason: 'duplicate' | 'stale' };
+
+/**
  * Per-source mutex for multi-part sequences: a sequence waits until the
  * running one finishes, so two sequences never interleave their (i/N) markers.
+ *
+ * The queue is bounded (4.17.3 review M4): a new sequence is dropped when one
+ * with the same `key` (trigger + target) is already WAITING (one running plus
+ * one waiting per key is allowed), and a sequence that waited longer than
+ * `maxWaitMs` for its turn is dropped when it reaches the front. A dropped
+ * sequence never runs `fn`.
  */
 export class SplitSequenceLock {
   private tail: Promise<unknown> = Promise.resolve();
+  /** Sequences queued or running and not yet finished. */
+  private active = 0;
+  /** Waiting (queued, not started) sequences per key. */
+  private readonly waiting = new Map<string, number>();
 
-  run<T>(fn: () => Promise<T>): Promise<T> {
-    const task = this.tail.then(fn);
+  constructor(private readonly maxWaitMs: number = SPLIT_SEQUENCE_MAX_WAIT_MS) {}
+
+  run<T>(fn: () => Promise<T>, opts: { key?: string } = {}): Promise<SplitLockOutcome<T>> {
+    const { key } = opts;
+    if (key !== undefined && (this.waiting.get(key) ?? 0) > 0) {
+      return Promise.resolve({ ran: false, reason: 'duplicate' });
+    }
+    // Only a sequence queued behind another counts as waiting.
+    const waits = key !== undefined && this.active > 0;
+    if (waits) this.waiting.set(key, (this.waiting.get(key) ?? 0) + 1);
+    this.active++;
+    const queuedAt = Date.now();
+    const task = this.tail.then(async (): Promise<SplitLockOutcome<T>> => {
+      if (waits) {
+        const n = (this.waiting.get(key!) ?? 1) - 1;
+        if (n > 0) this.waiting.set(key!, n); else this.waiting.delete(key!);
+      }
+      if (Date.now() - queuedAt > this.maxWaitMs) return { ran: false, reason: 'stale' };
+      return { ran: true, value: await fn() };
+    }).finally(() => { this.active--; });
     this.tail = task.then(() => undefined, () => undefined);
     return task;
   }
@@ -59,6 +97,8 @@ export interface AutomatedTextResult {
   totalParts: number;
   truncated: boolean;
   perTarget: Array<{ target: string; sentParts: number }>;
+  /** Set when the sequence never ran: an identical one was already waiting, or it waited too long (M4). */
+  dropped?: 'duplicate' | 'stale';
 }
 
 export interface SplitSendTarget {
@@ -82,6 +122,16 @@ export async function sendAutomatedTextParts<T extends SplitSendTarget>(
   deps: {
     lock: SplitSequenceLock;
     gapMs: number;
+    /**
+     * Wait between targets within one part (M5: MeshCore multi-channel
+     * timers). Absent or 0: targets go back to back.
+     */
+    targetGapMs?: number;
+    /**
+     * Identity of this sequence for the lock's duplicate check: trigger plus
+     * the real destination (M4). Absent: no duplicate check.
+     */
+    sequenceKey?: string;
     canTransmit: () => boolean;
     /** Resolves false on a failed part. A throw propagates to the caller. */
     sendPart: (target: T, part: string, index: number) => Promise<boolean>;
@@ -115,8 +165,14 @@ export async function sendAutomatedTextParts<T extends SplitSendTarget>(
         // Fixed gap so parts do not collide with each other's repeats.
         await new Promise((resolve) => setTimeout(resolve, deps.gapMs));
       }
+      let firstInPart = true;
       for (const x of targets) {
         if (!x.alive) continue;
+        if (!firstInPart && deps.targetGapMs) {
+          // M5: space targets so a channel's flood is not stepped on by the next.
+          await new Promise((resolve) => setTimeout(resolve, deps.targetGapMs));
+        }
+        firstInPart = false;
         // Re-check before EVERY part: the gap is long enough for receive-only
         // to be switched on (#4547).
         if (!deps.canTransmit()) {
@@ -139,9 +195,32 @@ export async function sendAutomatedTextParts<T extends SplitSendTarget>(
   };
 
   if (parts.length > 1) {
-    await deps.lock.run(run);
+    const outcome = await deps.lock.run(run, { key: deps.sequenceKey });
+    if (!outcome.ran) {
+      logDrop(logPrefix, label, outcome.reason, deps.sequenceKey);
+      return { ...result(), ok: false, dropped: outcome.reason };
+    }
   } else {
     await run();
   }
   return result();
+}
+
+/** Keys whose duplicate drop was already logged at info; later ones log at debug. */
+const loggedDuplicateKeys = new Set<string>();
+
+function logDrop(logPrefix: string, label: string, reason: 'duplicate' | 'stale', key: string | undefined): void {
+  if (reason === 'stale') {
+    logger.info(`${logPrefix} ${label}: split message dropped, it waited over ${SPLIT_SEQUENCE_MAX_WAIT_MS / 60_000} min for an earlier one to finish`);
+    return;
+  }
+  const msg = `${logPrefix} ${label}: split message dropped, the same reply to the same target is already waiting`;
+  const k = `${logPrefix}|${key ?? label}`;
+  if (loggedDuplicateKeys.has(k)) {
+    logger.debug(msg);
+    return;
+  }
+  if (loggedDuplicateKeys.size > 500) loggedDuplicateKeys.clear();
+  loggedDuplicateKeys.add(k);
+  logger.info(`${msg} (further drops for it log at debug)`);
 }

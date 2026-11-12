@@ -159,4 +159,90 @@ describe('securityDigestService MeshCore dispatch (#6281)', () => {
     await securityDigestService.sendDigest('mc-1');
     expect(JSON.parse((fetchMock.mock.calls[0][1] as any).body).urls).toEqual(['discord://own']);
   });
+
+  describe('global URL fallback sends ONE combined digest (4.17.3 review L14)', () => {
+    beforeEach(() => {
+      h.getAllManagersMock.mockReturnValue([
+        { sourceId: 'mc-1', sourceType: 'meshcore' },
+        { sourceId: 'mc-2', sourceType: 'meshcore' },
+        { sourceId: 'mc-own', sourceType: 'meshcore' },
+      ]);
+      h.getManagerMock.mockImplementation((id: string) => ({ sourceId: id, sourceType: 'meshcore' }));
+    });
+
+    it('sources on the global URL share one digest; a source with its own URL gets its own', async () => {
+      const db = makeDb({
+        source: { 'mc-own': { securityDigestAppriseUrl: 'discord://own' } },
+        global: { securityDigestAppriseUrl: 'discord://global' },
+      });
+      (securityDigestService as any).databaseService = db;
+      const r = await securityDigestService.sendDigest();
+      expect(r.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const bodies = fetchMock.mock.calls.map((c) => JSON.parse((c[1] as any).body));
+      const combined = bodies.find((b) => b.urls[0] === 'discord://global')!;
+      const own = bodies.find((b) => b.urls[0] === 'discord://own')!;
+      expect(own.title).toContain('Source mc-own');
+      expect(combined.title).toContain('(2 sources)');
+      expect(combined.body).toContain('=== Source mc-1 ===');
+      expect(combined.body).toContain('=== Source mc-2 ===');
+      expect(combined.body).not.toContain('Source mc-own');
+      // The per-source title line is not repeated inside the combined body.
+      expect(combined.body).not.toContain('MeshMonitor Security Digest');
+      expect(combined.type).toBe('warning');
+    });
+
+    it('suppressEmpty: an empty source is left out, and nothing is sent when every source is empty', async () => {
+      const db = makeDb({ global: { securityDigestAppriseUrl: 'discord://global' } });
+      db.meshcore.getSecurityFlaggedNodes.mockImplementation(async (sid: string) => (sid === 'mc-1' ? flagged : []));
+      (securityDigestService as any).databaseService = db;
+      await securityDigestService.sendDigest();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body);
+      expect(body.body).toContain('Source mc-1');
+      expect(body.body).not.toContain('Source mc-2');
+
+      fetchMock.mockClear();
+      db.meshcore.getSecurityFlaggedNodes.mockResolvedValue([]);
+      const r = await securityDigestService.sendDigest();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(r.success).toBe(true);
+    });
+
+    it('suppressEmpty off: every fallback source appears, empty ones say so', async () => {
+      const db = makeDb({ global: { securityDigestAppriseUrl: 'discord://global', securityDigestSuppressEmpty: 'false' } });
+      db.meshcore.getSecurityFlaggedNodes.mockResolvedValue([]);
+      (securityDigestService as any).databaseService = db;
+      await securityDigestService.sendDigest();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body);
+      expect(body.title).toContain('(3 sources)');
+      expect(body.body.match(/No security issues detected\./g)).toHaveLength(3);
+      expect(body.type).toBe('info');
+    });
+
+    it('one source failing to build does not stop the combined digest', async () => {
+      const db = makeDb({ global: { securityDigestAppriseUrl: 'discord://global' } });
+      db.meshcore.getSecurityFlaggedNodes.mockImplementation(async (sid: string) => {
+        if (sid === 'mc-2') throw new Error('db down');
+        return flagged;
+      });
+      (securityDigestService as any).databaseService = db;
+      const r = await securityDigestService.sendDigest();
+      expect(r.success).toBe(false);
+      expect(r.message).toContain('mc-2:db down');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body);
+      expect(body.body).toContain('Source mc-1');
+      expect(body.body).toContain('Source mc-own');
+    });
+
+    it('a manual send for one source is unchanged: its own digest to the global URL', async () => {
+      const db = makeDb({ global: { securityDigestAppriseUrl: 'discord://global' } });
+      (securityDigestService as any).databaseService = db;
+      await securityDigestService.sendDigest('mc-2');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(JSON.parse((fetchMock.mock.calls[0][1] as any).body).title).toContain('Source mc-2');
+    });
+  });
 });

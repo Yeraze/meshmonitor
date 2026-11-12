@@ -47,6 +47,7 @@ const ROW_A = {
   notifyOnServerEvents: true,
   notifyOnWaypoint: true,
   notifyOnMention: true,
+  notifyOnAutoTrace: true,
   waypointRadiusKm: 42,
   waypointCenterLat: 12.5,
   waypointCenterLon: -45.25,

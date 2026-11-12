@@ -248,6 +248,7 @@ import { migration as backupHistorySourceProtocolMigration, runMigration226Postg
 import { migration as meshcoreNodeSecurityFlagsMigration, runMigration227Postgres, runMigration227Mysql } from '../server/migrations/227_add_meshcore_node_security_flags.js';
 import { migration as addNotificationTextMaxMigration, runMigration229Postgres, runMigration229Mysql } from '../server/migrations/229_add_notification_text_max.js';
 import { migration as addMeshcoreMessageSenderNameOverrideMigration, runMigration231Postgres, runMigration231Mysql } from '../server/migrations/231_add_meshcore_message_sender_name_override.js';
+import { migration as addNotifyOnAutoTraceMigration, runMigration232Postgres, runMigration232Mysql } from '../server/migrations/232_add_notify_on_auto_trace.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
@@ -3725,4 +3726,18 @@ registry.register({
   sqlite: (db) => addMeshcoreMessageSenderNameOverrideMigration.up(db),
   postgres: (client) => runMigration231Postgres(client),
   mysql: (pool) => runMigration231Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 232: notify_on_auto_trace. PER-SOURCE (user_notification_preferences
+// row). Opt-in alert for automatic MeshCore traces / path discoveries (M3).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 232,
+  name: 'add_notify_on_auto_trace',
+  settingsKey: 'migration_232_add_notify_on_auto_trace',
+  sqlite: (db) => addNotifyOnAutoTraceMigration.up(db),
+  postgres: (client) => runMigration232Postgres(client),
+  mysql: (pool) => runMigration232Mysql(pool),
 });
