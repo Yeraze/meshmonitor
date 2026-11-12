@@ -24,6 +24,11 @@ export interface NotificationCapabilities {
   emoji: boolean;
   mqtt: boolean;
   traceroute: boolean;
+  /**
+   * Separate opt-in for AUTOMATIC traces and path discoveries (auto-pathfinding,
+   * scheduled traces, Automation Engine). MeshCore Companion only (M3).
+   */
+  autoTrace: boolean;
   newNode: 'on' | 'unsupported';
   /** Extra text under the new-node toggle. */
   newNodeNote: 'repeater_learning' | null;
@@ -52,6 +57,7 @@ export function notificationCapabilities(
       emoji: true,
       mqtt: false,
       traceroute: false,
+      autoTrace: false,
       newNode: 'unsupported',
       newNodeNote: null,
       waypoint: false,
@@ -70,6 +76,7 @@ export function notificationCapabilities(
       emoji: true,
       mqtt: true,
       traceroute: true,
+      autoTrace: false,
       newNode: 'on',
       newNodeNote: null,
       waypoint: true,
@@ -89,6 +96,7 @@ export function notificationCapabilities(
     emoji: true,
     mqtt: false,
     traceroute: !repeater,
+    autoTrace: !repeater,
     newNode: 'on',
     newNodeNote: repeater ? 'repeater_learning' : null,
     waypoint: false,

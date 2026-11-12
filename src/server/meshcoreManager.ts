@@ -2743,12 +2743,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * P11 S7: fire-and-forget traceroute notification for a MeshCore trace or
    * path-discovery result. `from` is the local radio, `to` the contact.
+   * `automatic` (auto-pathfinding, scheduled or Automation Engine traces)
+   * routes it to the opt-in `notifyOnAutoTrace` preference instead of
+   * `notifyOnTraceroute` (4.17.3 review M3).
    */
-  private notifyTraceResult(contact: MeshCoreContact | undefined, publicKey: string, routeText: string): void {
+  private notifyTraceResult(contact: MeshCoreContact | undefined, publicKey: string, routeText: string, automatic: boolean): void {
     try {
       const from = this.localNode?.name || this.sourceName;
       const to = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
-      Promise.resolve(notificationService.notifyTraceroute(from, to, routeText, this.sourceId, this.sourceName))
+      Promise.resolve(notificationService.notifyTraceroute(from, to, routeText, this.sourceId, this.sourceName, { automatic }))
         .catch((err) => logger.debug(`[MeshCore:${this.sourceId}] trace notification failed: ${(err as Error).message}`));
     } catch (err) {
       logger.debug(`[MeshCore:${this.sourceId}] trace notification failed: ${(err as Error).message}`);
@@ -3357,7 +3360,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         `[MeshCore] Path discovery response for ${contact.publicKey.substring(0, 16)}…: ` +
         `out=${outHops} hops [${outPathFormatted}], in=${inHops} hops [${formatPathHex(inPathHex, data.in_hash_size ?? 1)}]`,
       );
-      this.notifyTraceResult(contact, contact.publicKey, formatMeshCorePathDiscovery(outHops, outPathFormatted, inHops));
+      this.notifyTraceResult(
+        contact,
+        contact.publicKey,
+        formatMeshCorePathDiscovery(outHops, outPathFormatted, inHops),
+        this.takeDiscoveryWasAutomatic(contact.publicKey),
+      );
     } else if (event_type === 'node_discovered') {
       // 0x8E NODE_DISCOVER_RESP from an active discovery burst (CMD 55).
       // The native backend already registered the node on the device; here
@@ -7972,7 +7980,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * update is handled asynchronously by the existing push listener —
    * this method only confirms the flood was accepted by the device.
    */
-  async discoverContactPath(publicKey: string): Promise<false | MeshCoreDiscoverPathResult> {
+  /**
+   * Who asked for each in-flight path discovery (4.17.3 review M3), keyed by
+   * contact public key. The reply arrives as a push with no request id, so
+   * this is the only link back. In-memory: a lost entry makes the reply read
+   * as automatic, the quiet direction.
+   */
+  private pendingDiscoveryOrigins = new Map<string, { automatic: boolean; expiresAt: number }>();
+  private static readonly DISCOVERY_ORIGIN_MIN_TTL_MS = 60_000;
+
+  /** True when a path-discovery reply for `publicKey` was not user-started. Consumes the entry. */
+  private takeDiscoveryWasAutomatic(publicKey: string): boolean {
+    const entry = this.pendingDiscoveryOrigins.get(publicKey);
+    this.pendingDiscoveryOrigins.delete(publicKey);
+    const now = Date.now();
+    for (const [k, v] of this.pendingDiscoveryOrigins) {
+      if (v.expiresAt < now) this.pendingDiscoveryOrigins.delete(k);
+    }
+    if (!entry || entry.expiresAt < now) return true;
+    return entry.automatic;
+  }
+
+  /** Scheduled and Automation Engine traces are automatic; manual / API ones are user-started (M3). */
+  static isAutomaticTraceOrigin(origin: MeshCoreTraceRunOrigin | undefined): boolean {
+    return origin === 'schedule' || origin === 'automation';
+  }
+
+  async discoverContactPath(publicKey: string, opts: { automatic?: boolean } = {}): Promise<false | MeshCoreDiscoverPathResult> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Discover-path requires Companion firmware');
       return false;
@@ -7990,8 +8024,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const raw = (response.data as { suggested_timeout_ms?: unknown } | undefined)?.suggested_timeout_ms;
       const suggestedTimeoutMs = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 0;
       logger.debug(`[MeshCore] Path discovery sent for ${publicKey.substring(0, 16)}… (suggested timeout ${suggestedTimeoutMs}ms)`);
+      const discoveryTimeoutMs = meshcorePathDiscoveryTimeoutMs(suggestedTimeoutMs);
+      // M3: remember who asked, so the reply's alert goes to the right preference.
+      this.pendingDiscoveryOrigins.set(publicKey, {
+        automatic: opts.automatic === true,
+        expiresAt: Date.now() + Math.max(discoveryTimeoutMs, MeshCoreManager.DISCOVERY_ORIGIN_MIN_TTL_MS),
+      });
       // #5508: the UI counts down this budget. UI-only — nothing is resent.
-      return { suggestedTimeoutMs, discoveryTimeoutMs: meshcorePathDiscoveryTimeoutMs(suggestedTimeoutMs) };
+      return { suggestedTimeoutMs, discoveryTimeoutMs };
     } catch (error) {
       logger.error('[MeshCore] discoverContactPath threw:', error);
       return false;
@@ -8423,7 +8463,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * SNR. Returns the per-hop SNR array plus the final-hop SNR, or `null`
    * on failure (no path, timeout, not Companion).
    */
-  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2 } = {}): Promise<MeshCoreTracePathResult | null> {
+  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2; origin?: MeshCoreTraceRunOrigin } = {}): Promise<MeshCoreTracePathResult | null> {
     const outcome = await this.traceContactPathDetailed(publicKey, opts);
     if (!outcome.ok) return null;
     return { hops: outcome.hops, lastSnr: outcome.lastSnr, path: outcome.path };
@@ -8563,6 +8603,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         contact,
         publicKey,
         formatMeshCoreTraceRoute(hops, tracedHops, lastSnr, [...this.contacts.values()], { autoReturn: opts.autoReturn === true }),
+        MeshCoreManager.isAutomaticTraceOrigin(opts.origin),
       );
       void this.settleTraceRun(traceTag, 'answered');
       return { ok: true, hops, lastSnr, path: tracedHops };
@@ -13606,7 +13647,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const t = targets[i];
         try {
           if (t.op === 'discover_path') {
-            const ok = await this.discoverContactPath(t.key);
+            const ok = await this.discoverContactPath(t.key, { automatic: true });
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: discover_path ${t.name} → ${ok ? 'sent' : 'failed'}`);
           } else {
             // Automated, so one page (#5413). Merged unless it covers the

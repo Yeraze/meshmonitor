@@ -89,7 +89,7 @@ interface MeshCoreSendManager {
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss?: boolean): Promise<boolean>;
   // Request/operation senders (#3835).
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
-  traceContactPath(publicKey: string): Promise<unknown>;
+  traceContactPath(publicKey: string, opts?: { origin?: 'manual' | 'schedule' | 'automation' | 'api' }): Promise<unknown>;
   traceContactPathDetailed(publicKey: string, opts?: { autoReturn?: boolean; hashBytes?: 1 | 2; origin?: 'manual' | 'schedule' | 'automation' | 'api' }): Promise<{ ok: boolean; reason?: string; hops?: unknown[]; lastSnr?: number }>;
   requestNeighbors(publicKey?: string): Promise<unknown>;
   /** Floor-checked advert for automated senders (see MeshCoreManager.sendAutomatedAdvert). */
@@ -376,7 +376,8 @@ export function createMeshActionDeps(): ActionDeps {
           // MeshCore telemetry has no per-type selection (the contact returns its
           // available LPP records), so `telemetryType` only applies to Meshtastic.
           case 'telemetry': return raw.requestRemoteTelemetry!(key);
-          case 'traceroute': return raw.traceContactPath!(key);
+          // Automatic origin (M3): the alert goes to notifyOnAutoTrace.
+          case 'traceroute': return raw.traceContactPath!(key, { origin: 'automation' });
           case 'neighbors': return raw.requestNeighbors!(key || undefined);
           case 'advert': {
             // Absent mode = action saved before the field existed → flood (legacy).

@@ -2848,6 +2848,8 @@
   "notifications.new_nodes": "Newly Found Nodes",
   "notifications.traceroutes": "Successful Traceroutes",
   "notifications.traceroutes_meshcore": "Successful traces and path discoveries",
+  "notifications.notify_on_auto_trace": "Automatic traces and path discoveries",
+  "notifications.notify_on_auto_trace_help": "Also notify for traces you did not start: auto-pathfinding, scheduled traces and automations. Auto-pathfinding can send about one alert per contact per day.",
   "notifications.notify_on_inactive_node": "Notify on Inactive Nodes",
   "notifications.notify_on_low_battery": "Notify on Low Battery",
   "notifications.low_battery_threshold_label": "Alert when battery drops below",

@@ -95,6 +95,7 @@ const USER_1_ROW_ON_A = {
   notifyOnServerEvents: true,
   notifyOnWaypoint: false,
   notifyOnMention: false,
+  notifyOnAutoTrace: false,
   waypointRadiusKm: 10,
   waypointCenterLat: null,
   waypointCenterLon: null,
