@@ -122,6 +122,14 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### AlsaMesh
+- **URL**: [telco.freeboxos.fr](https://telco.freeboxos.fr/)
+- **Network**: [AlsaMesh](https://alsamesh.org/)
+- **Location**: Alsace (eastern France), Germany and Switzerland
+- **Description**: Meshtastic network on LongFast in eastern France (Alsace), Germany and Switzerland.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
