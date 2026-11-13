@@ -312,6 +312,49 @@ One click is one DM. It does not grow with node count, has no timer and never re
 - Notification DMs to Repeaters or Room Servers.
 - Per-sender spam counts for group messages (they carry no sender).
 
+## Node name anti-spam
+
+Some people put invite links in their node names, such as `MyNode t.me/spam_channel`. Those names then show up in the node list, map popups, messages and notifications. MeshMonitor can strip the link before it stores the name.
+
+It is **off by default**. An admin turns it on in **Global Settings → Security → Node name anti-spam**.
+
+### What it does
+
+When a node name arrives, MeshMonitor replaces each link with a placeholder and keeps the rest of the name:
+
+| Name sent by the node | Name MeshMonitor stores |
+|---|---|
+| `MyNode t.me/spam_channel` | `MyNode [spammer]` |
+| `https://t.me/spam` | `[spammer]` |
+| `Bob t . me/spam` | `Bob [spammer]` |
+
+- It works for every source: Meshtastic over TCP, Meshtastic MQTT brokers and bridges, MeshCore companions and repeaters, and MeshCore MQTT.
+- It covers the long name and the short name of Meshtastic nodes and the advert name of MeshCore nodes.
+- It never changes your own node (the node each source is connected to).
+- Matching ignores common tricks: full-width letters (`ｔ.ｍｅ`), hidden zero-width characters, and spaced or bracketed dots (`t . me`, `t[.]me`).
+- Several links in a row become one placeholder, and extra spaces collapse.
+- The result stays within the Meshtastic long-name size (24 bytes on firmware 2.8, up to 39 on older firmware). If the placeholder makes the name too long, MeshMonitor shortens the rest of the name, never the placeholder.
+
+MeshMonitor does not keep the original name. If you turn the feature off, names stay cleaned until each node sends its name again (about every 3 hours on default Meshtastic firmware).
+
+### Rules
+
+- **Built-in rules** (on by default once the feature is on): any `http://` or `https://` link, plus `t.me/`, `telegram.me/`, `telegram.dog/`, `discord.gg/`, `wa.me/` and `chat.whatsapp.com/` links.
+- **Extra hosts or patterns**, one per line:
+  - A plain host such as `spam.example` matches `spam.example/anything`, with the same obfuscation handling as the built-ins.
+  - Anything else is a regular expression in [RE2 syntax](https://github.com/google/re2/wiki/Syntax), matched without regard to case. RE2 cannot hang on a bad pattern. Each pattern can be at most 256 characters, and you can store up to 50. MeshMonitor refuses to save an invalid pattern.
+- **Placeholder**: the text that replaces a link. The default is `[spammer]`, and it can be at most 24 bytes.
+
+### Cleaning names already stored
+
+New rules apply to names as they arrive. To clean names already in the database, click **Re-scan existing node names**. It runs the rules once over every stored Meshtastic and MeshCore node, on every source, and reports how many names changed. Older entries in a node's rename history are not changed.
+
+The section also shows how many names it has rewritten since the server started.
+
+### Airtime
+
+None. The feature only changes what MeshMonitor stores. It sends no packets, arms no timers and never retries anything.
+
 ## Best Practices
 
 ### For Network Administrators

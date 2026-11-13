@@ -43,6 +43,7 @@ Session lifetime, anonymous access, rate limits and similar server policy are se
 
 - **PKI direct message decryption**: the install-wide enable switch (the per-source switch is on each source's **Settings** page). See [PKI Direct Message Decryption](/features/pki-dm-decryption).
 - **Reliable PKI**: the default for every source, Off, As needed or Avoid PKI (each Meshtastic source can override it on its **Settings** page). See [Reliable PKI](/features/reliable-pki).
+- **Node name anti-spam** (admin only): off by default. Replaces links in node names with a placeholder before they are stored. See [Node name anti-spam](/features/security#node-name-anti-spam).
 
 ### Channel Database
 
