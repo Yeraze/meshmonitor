@@ -65,10 +65,18 @@ jobs:
         # Tracking: remediation epic #3962 Task 1.2.
         continue-on-error: true
 
+  # The suite runs as 3 shards per Node version. Most of a run is per-file
+  # overhead (fork + module import across ~2,650 files), not test bodies, so it
+  # splits almost evenly across runners; one runner with more workers would not
+  # help, since 4 workers already saturate a standard runner.
+  #
+  # Required checks in the "protect main" ruleset name "Test Suite (<node>)".
+  # The shard jobs carry a different name; the `test-summary` job below keeps
+  # the old names and passes only when every shard passed.
   test:
-    name: Test Suite
+    name: Test Shard (${{ matrix.node-version }}, ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
 
     services:
       postgres:
@@ -100,7 +108,10 @@ jobs:
           --health-retries 5
 
     strategy:
+      # Let the other shards finish so one failure shows the full picture.
+      fail-fast: false
       matrix:
+        shard: [1, 2, 3]
         # Node 20 dropped: nothing we ship runs it. The main image is Node 24,
         # the LXC template is NodeSource 24, and armv7 — the lowest target — is
         # Node 22 (Dockerfile.armv7 pins 22 because Node 24 has no ARMv7 build).
@@ -149,7 +160,25 @@ jobs:
       # stdout instead of via the interceptor) and failures report unchanged;
       # measured locally the log got SMALLER, 1.58M lines to ~750k.
       - name: Run tests
-        run: npm run test:run -- --disableConsoleIntercept
+        run: npm run test:run -- --disableConsoleIntercept --shard=${{ matrix.shard }}/3
+
+  # Keeps the "Test Suite (<node>)" check names that the ruleset and the
+  # Dependabot auto-merge regexp require. `needs.test.result` covers every
+  # shard of every Node version, so one failed shard fails all three.
+  test-summary:
+    name: Test Suite (${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test
+    if: always()
+    strategy:
+      matrix:
+        node-version: [22.x, 24.x, 25.x]
+    steps:
+      - name: Check shard results
+        run: |
+          echo "Shard result: ${{ needs.test.result }}"
+          test "${{ needs.test.result }}" = "success"
 
   build:
     name: Build Check
