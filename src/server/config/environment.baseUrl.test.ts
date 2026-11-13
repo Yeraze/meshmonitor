@@ -59,6 +59,16 @@ describe('BASE_URL Environment Configuration', () => {
       expect(load('/meshmonitor/').baseUrl).toBe('/meshmonitor');
     });
 
+    it.each([
+      ['//', ''],
+      ['///', ''],
+      ['/meshmonitor//', '/meshmonitor'],
+      ['/mesh/monitor///', '/mesh/monitor'],
+      ['meshmonitor//', '/meshmonitor'],
+    ])('removes every trailing slash from %s', (value, expected) => {
+      expect(load(value)).toEqual({ baseUrl: expected, provided: true });
+    });
+
     it('adds the leading slash and removes the trailing slash together', () => {
       expect(load('mesh/monitor/').baseUrl).toBe('/mesh/monitor');
     });
@@ -82,6 +92,15 @@ describe('BASE_URL Environment Configuration', () => {
       expect(load(value)).toEqual({ baseUrl: '', provided: false });
       expect(errorSpy).toHaveBeenCalled();
     });
+
+    it.each([['..'], ['/mesh/..'], ['/mesh/..//']])(
+      'rejects %s at the "/.." check, after the leading slash is added',
+      (value) => {
+        const errorSpy = vi.spyOn(logger, 'error');
+        expect(load(value)).toEqual({ baseUrl: '', provided: false });
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('path traversal detected in'));
+      },
+    );
 
     it('does not treat a dotted name as traversal', () => {
       expect(load('/v1..2').baseUrl).toBe('/v1..2');

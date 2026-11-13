@@ -67,8 +67,13 @@ const PERMISSION_KEYS = [
   'dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3',
   'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings',
   'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit',
-  'security', 'nodes_private', 'packetmonitor', 'waypoints'
+  'security', 'nodes_private', 'packetmonitor', 'waypoints', 'remote_admin'
 ] as const;
+
+// Real channel slots only (`channel_0`..`channel_7`). A bare
+// `startsWith('channel_')` also matches the global `channel_database`
+// resource, which has no viewOnMap action.
+const isChannelSlot = (resource: string): boolean => /^channel_\d+$/.test(resource);
 
 // PR-C: Global (non-sourcey) resources that surface above the per-source
 // grid. Derived from RESOURCES \ SOURCEY_RESOURCES so new globals (e.g.
@@ -203,7 +208,7 @@ const UsersTab: React.FC = () => {
       if (user.isAdmin && Object.keys(response.permissions).length === 0) {
         const allPermissions: PermissionSet = {};
         PERMISSION_KEYS.forEach(resource => {
-          if (resource.startsWith('channel_')) {
+          if (isChannelSlot(resource)) {
             allPermissions[resource] = { viewOnMap: true, read: true, write: true };
           } else {
             allPermissions[resource] = { read: true, write: true };
@@ -281,7 +286,7 @@ const UsersTab: React.FC = () => {
         // `nodes` carries viewOnMap alongside channel_* resources (#4559):
         // read makes the node/contact list available, viewOnMap additionally
         // publishes positions on the map — the same split channels already have.
-        if (resource.startsWith('channel_') || resource === 'nodes') {
+        if (isChannelSlot(resource) || resource === 'nodes') {
           validPermissions[resource] = {
             viewOnMap: permissions[resource]?.viewOnMap || false,
             read: permissions[resource]?.read || false,
@@ -665,6 +670,7 @@ const UsersTab: React.FC = () => {
     themes: 'Custom Themes',
     sources: 'Sources',
     channel_database: 'Channel Database',
+    remote_admin: t('users.remote_admin_permission', 'Remote Administration'),
   };
 
   const tooltipMap: Record<string, string> = {
@@ -686,6 +692,7 @@ const UsersTab: React.FC = () => {
     themes: 'Read: view custom color themes. Write: create and edit custom themes.',
     sources: 'Read: view per-source status. Write: create, edit, enable/disable, and delete data sources.',
     channel_database: 'Read: list global PSK library entries. Write: create/edit/delete entries used for MQTT decryption.',
+    remote_admin: 'Read: view remote MeshCore admin sessions and status. Write: log in to remote MeshCore nodes and send admin/CLI commands (reboot, configure).',
   };
 
   return (
@@ -986,7 +993,7 @@ const UsersTab: React.FC = () => {
                 if (!SOURCEY_RESOURCES.includes(r as ResourceType)) return false;
                 const scopedSource = sources.find(s => s.id === permissionScope);
                 const isMqttScope = scopedSource?.type === 'mqtt_broker' || scopedSource?.type === 'mqtt_bridge';
-                if (isMqttScope && String(r).startsWith('channel_')) return false;
+                if (isMqttScope && isChannelSlot(String(r))) return false;
                 // Only render channel_N rows for channels actually
                 // configured on the scoped source. MeshCore sources have
                 // no per-slot channels, and Meshtastic sources with fewer
@@ -1005,7 +1012,7 @@ const UsersTab: React.FC = () => {
                 // Get label from translated map or format it
                 let label = resource.charAt(0).toUpperCase() + resource.slice(1);
 
-                if (resource.startsWith('channel_')) {
+                if (isChannelSlot(resource)) {
                   const channelNum = resource.split('_')[1];
                   const chName = channelNames.get(Number(channelNum));
                   const baseLabel = channelNum === '0' ? t('users.channel_primary') : t('users.channel_n', { n: channelNum });
@@ -1014,7 +1021,7 @@ const UsersTab: React.FC = () => {
                   label = labelMap[resource] || label;
                 }
 
-                const tooltip = resource.startsWith('channel_')
+                const tooltip = isChannelSlot(resource)
                   ? 'View on Map: show nodes heard on this channel. Read: view messages. Write: send messages.'
                   : resource === 'nodes'
                   ? 'View on Map: publish node/contact positions on the map. Read: view the node list.'
@@ -1073,7 +1080,7 @@ const UsersTab: React.FC = () => {
                             {t('users.connection_control_device', 'Control device')}
                           </label>
                         </>
-                      ) : resource.startsWith('channel_') ? (
+                      ) : isChannelSlot(resource) ? (
                         // Channel permissions use three checkboxes: viewOnMap, read, write
                         <>
                           <label>
