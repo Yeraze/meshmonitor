@@ -2,7 +2,7 @@
  * Regression tests for the auto-ping ACK-matching + send-race fixes.
  *
  * These drive the REAL manager methods (handleAutoPingResponse / sendNextAutoPing),
- * unlike meshtasticManager.auto-ping.test.ts which re-implements the logic inline.
+ * unlike the removed meshtasticManager.auto-ping.test.ts, which re-implemented the logic inline.
  *
  * Bug 1: a want_ack DM yields two Routing packets with the SAME request_id, both
  * error_reason=NONE, differing only by `from` — an implicit transmit ACK from our

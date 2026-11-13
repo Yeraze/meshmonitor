@@ -2,7 +2,7 @@
  * Admin Routes Integration Tests
  *
  * All 17 handlers moved out of server.ts as part of #3502 PR2 were previously
- * covered by zero real tests (server.test.ts hand-rolls a duplicate mini-app
+ * covered by zero real tests (the removed server.test.ts hand-rolled a duplicate mini-app
  * that never imports adminRoutes.ts). This is the first real coverage of the
  * requireAdmin() gate plus one representative body-handling endpoint, via the
  * route-test harness (createRouteTestApp).

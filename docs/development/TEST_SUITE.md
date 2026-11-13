@@ -14,16 +14,11 @@ A comprehensive test suite has been implemented for MeshMonitor using Vitest as 
 - **Cleanup Operations**: Data purging functionality
 - **Favorite Operations**: Node favorite status management, sync from NodeInfo protobuf
 
-### 2. Server API Tests (`src/server/server.test.ts`)
-- **Node Endpoints**: `/api/nodes`, `/api/nodes/active`
-- **Message Endpoints**: Message sending, retrieval, and filtering
-- **Channel Endpoints**: Channel listing and management
-- **Statistics Endpoints**: System metrics and analytics
-- **Health Endpoints**: System status checks
-- **Import/Export**: Data backup and restore
-- **Cleanup Endpoints**: Data maintenance operations
-- **Telemetry Endpoints**: Telemetry data access
-- **Traceroute Endpoints**: Network analysis operations
+### 2. Server API Tests (`src/server/routes/*.test.ts`)
+Each router has its own test file that mounts the real router through the
+route-test harness (`src/server/test-helpers/routeTestApp.ts`), for example
+`nodesRoutes.test.ts`, `adminRoutes.test.ts` and `pollRoutes.test.ts`.
+`src/server/routes/sourceRoutes.permissions.test.ts` is the canonical template.
 
 ### 3. Component Tests (`src/components/TelemetryGraphs.test.tsx`)
 - UI rendering tests
