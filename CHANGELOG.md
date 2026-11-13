@@ -68,7 +68,7 @@ This release brings MeshCore close to Meshtastic across most of the app, using o
 - **The v1 API no longer returns MeshCore channel secrets** to callers without write access to that channel. Admins and users with `channel_<n>:write` on slots 0 to 7 still see `psk`. (#6359)
 - **Deleting a source removes its MeshCore device identity key and channel secrets.** (#6359)
 - **Dashboard gateway membership needs `packetmonitor:read`** as well as `nodes:read`. (#6359)
-- **A user with configuration read access on one source could download another source's device backup**, including channel keys. Backups now need `configuration:write` on the source. Backup files are written with mode 0600, and Meshtastic backups no longer store the node's private key. (#6285)
+- **A user with configuration read access on one source could download another source's device backup**, including channel keys. Creating, downloading or deleting a device backup now needs `configuration:write` on that source; listing stays at `configuration:read`. Backup files are written with mode 0600, and Meshtastic backups no longer store the node's private key. (#6285)
 - **Notifications are gated on channel key access**, so a mention cannot leak channel text decrypted with another source's key. (#6253)
 - **A Repeater secret no longer appears in the debug log**, and `set prv.key` joins the CLI danger guard. (#6255)
 - **Bridge: msgpack 1.2.3** fixes CVE-2026-114613. (#6352, #6355)
