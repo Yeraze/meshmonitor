@@ -10,6 +10,7 @@ import { UiIcon } from './icons';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
+import { insertTokenAtSelection } from '../utils/tokenInsert';
 
 interface AutoWelcomeSectionProps {
   enabled: boolean;
@@ -178,22 +179,19 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
 
   const insertToken = (token: string) => {
     const textarea = textareaRef.current;
-    if (!textarea) {
-      // Fallback: append to end if textarea ref not available
-      setLocalMessage(localMessage + token);
-      return;
-    }
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const newMessage = localMessage.substring(0, start) + token + localMessage.substring(end);
-
-    setLocalMessage(newMessage);
+    // No textarea mounted: append to the end.
+    const { text, caret } = insertTokenAtSelection(
+      localMessage,
+      token,
+      textarea ? { start: textarea.selectionStart, end: textarea.selectionEnd } : null,
+    );
+    setLocalMessage(text);
+    if (!textarea) return;
 
     // Set cursor position after the inserted token
     setTimeout(() => {
       textarea.focus();
-      textarea.setSelectionRange(start + token.length, start + token.length);
+      textarea.setSelectionRange(caret, caret);
     }, 0);
   };
 

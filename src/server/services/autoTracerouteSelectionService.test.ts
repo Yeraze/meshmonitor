@@ -267,3 +267,207 @@ describe('selectNodeNeedingTraceroute — active-node cutoff (#5376)', () => {
     expect(nowSec - cutoff).toBeLessThanOrEqual(24 * 3600 + 2);
   });
 });
+
+/**
+ * Last-heard and hop-range filters. These are always AND, applied before the
+ * combinable filters. Replaces src/services/database.traceroute-filters.test.ts,
+ * which tested a copy of these predicates (#6379).
+ */
+describe('selectNodeNeedingTraceroute — last-heard filter', () => {
+  const nowSec = () => Math.floor(Date.now() / 1000);
+  const hoursAgo = (h: number) => nowSec() - h * 3600;
+
+  const pool = () => [
+    node({ nodeNum: 1, lastHeard: hoursAgo(1), hopsAway: 1 }),
+    node({ nodeNum: 2, lastHeard: hoursAgo(30), hopsAway: 2 }),
+    node({ nodeNum: 3, lastHeard: hoursAgo(200), hopsAway: 3 }),
+    node({ nodeNum: 4, lastHeard: null as unknown as number, hopsAway: 4 }),
+  ];
+
+  it('passes every node, including one never heard, when disabled', async () => {
+    expect(await survivors(pool(), config({ filterLastHeardEnabled: false }))).toEqual([1, 2, 3, 4]);
+  });
+
+  it('drops nodes last heard before the cutoff', async () => {
+    expect(await survivors(pool(), config({
+      filterLastHeardEnabled: true,
+      filterLastHeardHours: 24,
+    }))).toEqual([1]);
+  });
+
+  it('uses the window in hours (168 h keeps a 30 h-old node, drops a 200 h-old one)', async () => {
+    expect(await survivors(pool(), config({
+      filterLastHeardEnabled: true,
+      filterLastHeardHours: 168,
+    }))).toEqual([1, 2]);
+  });
+
+  it('excludes a node with no lastHeard', async () => {
+    expect(await survivors(pool(), config({
+      filterLastHeardEnabled: true,
+      filterLastHeardHours: 100000,
+    }))).toEqual([1, 2, 3]);
+  });
+});
+
+describe('selectNodeNeedingTraceroute — hop-range filter', () => {
+  const pool = () => [
+    node({ nodeNum: 1, hopsAway: 0 }),
+    node({ nodeNum: 2, hopsAway: 2 }),
+    node({ nodeNum: 3, hopsAway: 5 }),
+    node({ nodeNum: 4, hopsAway: null as unknown as number }),
+    node({ nodeNum: 5, hopsAway: undefined }),
+  ];
+
+  it('passes every node when disabled', async () => {
+    expect(await survivors(pool(), config({
+      filterHopsEnabled: false,
+      filterHopsMin: 3,
+      filterHopsMax: 3,
+    }))).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('keeps nodes inside [min, max], both ends inclusive', async () => {
+    expect(await survivors(pool(), config({
+      filterHopsEnabled: true,
+      filterHopsMin: 2,
+      filterHopsMax: 5,
+    }))).toEqual([2, 3]);
+  });
+
+  it('treats null and undefined hopsAway as 1 (direct neighbour)', async () => {
+    expect(await survivors(pool(), config({
+      filterHopsEnabled: true,
+      filterHopsMin: 1,
+      filterHopsMax: 1,
+    }))).toEqual([4, 5]);
+  });
+
+  it('allows max 0 to select only 0-hop nodes', async () => {
+    expect(await survivors(pool(), config({
+      filterHopsEnabled: true,
+      filterHopsMin: 0,
+      filterHopsMax: 0,
+    }))).toEqual([1]);
+  });
+});
+
+describe('selectNodeNeedingTraceroute — last-heard AND hop range', () => {
+  const nowSec = () => Math.floor(Date.now() / 1000);
+  const pool = () => [
+    node({ nodeNum: 1, lastHeard: nowSec() - 3600, hopsAway: 1 }), // recent, near
+    node({ nodeNum: 2, lastHeard: nowSec() - 3600, hopsAway: 6 }), // recent, far
+    node({ nodeNum: 3, lastHeard: nowSec() - 48 * 3600, hopsAway: 1 }), // stale, near
+    node({ nodeNum: 4, lastHeard: nowSec() - 48 * 3600, hopsAway: 6 }), // stale, far
+  ];
+
+  it('requires both when both are enabled', async () => {
+    expect(await survivors(pool(), config({
+      filterLastHeardEnabled: true,
+      filterLastHeardHours: 24,
+      filterHopsEnabled: true,
+      filterHopsMin: 0,
+      filterHopsMax: 3,
+    }))).toEqual([1]);
+  });
+
+  it('applies only last-heard when hops is disabled', async () => {
+    expect(await survivors(pool(), config({
+      filterLastHeardEnabled: true,
+      filterLastHeardHours: 24,
+      filterHopsMin: 0,
+      filterHopsMax: 3,
+    }))).toEqual([1, 2]);
+  });
+
+  it('applies only hops when last-heard is disabled', async () => {
+    expect(await survivors(pool(), config({
+      filterLastHeardHours: 24,
+      filterHopsEnabled: true,
+      filterHopsMin: 0,
+      filterHopsMax: 3,
+    }))).toEqual([1, 3]);
+  });
+
+  it('applies even when the node-matching filter block is disabled', async () => {
+    expect(await survivors(pool(), config({
+      enabled: false,
+      filterLastHeardEnabled: true,
+      filterLastHeardHours: 24,
+      filterHopsEnabled: true,
+      filterHopsMin: 0,
+      filterHopsMax: 3,
+    }))).toEqual([1]);
+  });
+});
+
+describe('selectNodeNeedingTraceroute — other filter branches', () => {
+  it('admits listed node numbers under the specific-nodes filter', async () => {
+    const pool = [node({ nodeNum: 1 }), node({ nodeNum: 2 }), node({ nodeNum: 3 })];
+    expect(await survivors(pool, config({ nodeNums: [1, 3] }))).toEqual([1, 3]);
+  });
+
+  it('never matches a null role or hwModel', async () => {
+    const pool = [
+      node({ nodeNum: 1, role: ROUTER, hwModel: HELTEC }),
+      node({ nodeNum: 2, role: null as unknown as number, hwModel: null as unknown as number }),
+    ];
+    expect(await survivors(pool, config({ filterRoles: [ROUTER], filterRolesMode: 'and' }))).toEqual([1]);
+    expect(await survivors(pool, config({ filterHwModels: [HELTEC], filterHwModelsMode: 'and' }))).toEqual([1]);
+  });
+
+  it('ignores an invalid name regex instead of excluding every node', async () => {
+    const pool = [node({ nodeNum: 1 }), node({ nodeNum: 2 })];
+    expect(await survivors(pool, config({
+      filterNameRegex: '([unclosed',
+      filterRegexEnabled: true,
+      filterRegexMode: 'and',
+    }))).toEqual([1, 2]);
+  });
+
+  it('matches the regex case-insensitively, falling back to shortName then nodeId', async () => {
+    const pool = [
+      node({ nodeNum: 1, longName: 'ALPHA base' }),
+      node({ nodeNum: 2, longName: null as unknown as string, shortName: 'alph' }),
+      node({ nodeNum: 3, longName: null as unknown as string, shortName: null as unknown as string, nodeId: '!alpha003' }),
+      node({ nodeNum: 4, longName: 'Bravo' }),
+    ];
+    expect(await survivors(pool, config({
+      filterNameRegex: 'alph',
+      filterRegexEnabled: true,
+      filterRegexMode: 'and',
+      filterNodesEnabled: false,
+      filterChannelsEnabled: false,
+      filterRolesEnabled: false,
+      filterHwModelsEnabled: false,
+    }))).toEqual([1, 2, 3]);
+  });
+
+  it('with sortByHops, picks the nearest node and puts unknown hops last', async () => {
+    const pick = async (nodes: DbNode[]) => (await selectNodeNeedingTraceroute(LOCAL, 'src-a', {
+      filterCfg: config({ enabled: false }),
+      maxNodeAgeHours: 24,
+      nodesRepo: { getEligibleNodesForTraceroute: vi.fn().mockResolvedValue(nodes) } as never,
+      normalizeBigInts: (n: DbNode) => n,
+    }))?.nodeNum;
+    expect(await pick([
+      node({ nodeNum: 1, hopsAway: 3 }),
+      node({ nodeNum: 2, hopsAway: 1 }),
+      node({ nodeNum: 3, hopsAway: 2 }),
+    ])).toBe(2);
+    expect(await pick([
+      node({ nodeNum: 1, hopsAway: undefined }),
+      node({ nodeNum: 2, hopsAway: 4 }),
+    ])).toBe(2);
+  });
+
+  it('returns null when nothing survives', async () => {
+    const got = await selectNodeNeedingTraceroute(LOCAL, 'src-a', {
+      filterCfg: config({ filterHopsEnabled: true, filterHopsMin: 9, filterHopsMax: 9 }),
+      maxNodeAgeHours: 24,
+      nodesRepo: { getEligibleNodesForTraceroute: vi.fn().mockResolvedValue([node({ nodeNum: 1 })]) } as never,
+      normalizeBigInts: (n: DbNode) => n,
+    });
+    expect(got).toBeNull();
+  });
+});
