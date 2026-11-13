@@ -52,6 +52,8 @@ import { coverageRetentionService } from './services/coverageRetentionService.js
 import { translationCacheService } from './services/translation/translationCacheService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
+import nodeNameSanitizerRoutes from './routes/nodeNameSanitizerRoutes.js';
+import { installNodeNameLocalResolver, reloadNodeNameSanitizer } from './services/nodeNameSanitizerService.js';
 import { bootstrapSources } from './bootstrapSources.js';
 import { transportTrafficService } from './services/transportTrafficService.js';
 import { migrateAutoResponderTriggers } from './services/autoResponderTriggerMigration.js';
@@ -339,6 +341,12 @@ setTimeout(async () => {
     } catch (error) {
       logger.error('Failed to start transportTrafficService (continuing boot):', error);
     }
+
+    // Node-name anti-spam (#6382, default OFF): compile the rules once and
+    // teach the runtime to skip each source's own node. Loaded before any
+    // source can ingest a packet; reloaded on save.
+    installNodeNameLocalResolver(sourceManagerRegistry);
+    await reloadNodeNameSanitizer().catch((err) => logger.warn('Failed to load node-name sanitizer settings:', err));
 
     // Bootstrap all enabled sources (auto-creating a Default source from env
     // only when none exist AND MESHTASTIC_NODE_IP was explicitly set).
@@ -929,6 +937,7 @@ apiRouter.use('/tile-server', optionalAuth(), tileServerRoutes);
 
 // Settings routes (GET/POST/DELETE /settings)
 apiRouter.use('/settings', settingsRoutes);
+apiRouter.use('/node-name-sanitizer', nodeNameSanitizerRoutes);
 
 // Configuration routes (GET /config, GET /config/current, POST /config/*)
 apiRouter.use('/config', configRoutes);

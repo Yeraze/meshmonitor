@@ -325,6 +325,13 @@ export const VALID_SETTINGS_KEYS = [
   // serves a disallow-all `/robots.txt`, discouraging search engines and LLM
   // crawlers from indexing a publicly-exposed dashboard. See robotsConfig.ts.
   'noIndexEnabled',
+  // Node-name anti-spam (#6382, default OFF). Global, admin-only write. When
+  // on, invite links in node names are replaced with a placeholder before the
+  // name is stored. See src/utils/nodeNameSanitizer.ts.
+  'nodeNameSanitizeEnabled',
+  'nodeNameSanitizeBuiltins',
+  'nodeNameSanitizeCustomPatterns',
+  'nodeNameSanitizePlaceholder',
   // Global privacy disclosure links (issue #5156). A publicly-reachable
   // MeshMonitor re-serves mesh data to anonymous visitors and to tokenless
   // embed viewers; these let the operator disclose the policy that applies.
@@ -1016,6 +1023,10 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
   'discardInvalidPositions',                // :178 global ingest gate
   'noIndexEnabled',                         // :184 global robots gate (#4202)
+  'nodeNameSanitizeEnabled',                // global ingest rewrite (#6382)
+  'nodeNameSanitizeBuiltins',               // "
+  'nodeNameSanitizeCustomPatterns',         // "
+  'nodeNameSanitizePlaceholder',            // "
   'privacyPolicyUrl',                       // global disclosure link (#5156)
   'termsOfServiceUrl',                      // "
   'contactUrl',                             // "
@@ -1220,6 +1231,11 @@ export const ADMIN_ONLY_SETTINGS_KEYS = new Set<string>([
   'meshwarsSourceId',
   'meshwarsBaseUrl',
   'meshwars_api_token',
+  // #6382: rewrites every stored node name; the Settings UI is admin-only too.
+  'nodeNameSanitizeEnabled',
+  'nodeNameSanitizeBuiltins',
+  'nodeNameSanitizeCustomPatterns',
+  'nodeNameSanitizePlaceholder',
 ]);
 
 /**

@@ -46,6 +46,9 @@ import {
   readNewestAcrossSources,
 } from '../utils/sourceScopedAccess.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
+import { validateNodeNameSanitizerSettings } from '../../utils/nodeNameSanitizer.js';
+import { NODE_NAME_SANITIZE_KEYS } from '../../utils/nodeNameSanitizerConstants.js';
+import { reloadNodeNameSanitizer } from '../services/nodeNameSanitizerService.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import {
   autoEnrichmentScheduler,
@@ -466,6 +469,16 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (v !== 'true' && v !== 'false') {
         return fail(res, 400, 'INVALID_BOOLEAN_SETTING',
           `${key} must be the boolean true or false (received "${v}")`);
+      }
+    }
+
+    // Node-name anti-spam (#6382): booleans, the placeholder size, and every
+    // custom pattern (RE2, at most 256 characters) must be valid before any
+    // write, so a bad regex is a 400 rather than a silently skipped rule.
+    {
+      const sanitizerError = validateNodeNameSanitizerSettings(filteredSettings);
+      if (sanitizerError) {
+        return fail(res, 400, 'INVALID_NODE_NAME_SANITIZER_SETTING', sanitizerError);
       }
     }
 
@@ -1455,6 +1468,11 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       logger.debug(`🗺️ discardInvalidPositions set to ${enabled} — ingest gate updated`);
     }
 
+    if (NODE_NAME_SANITIZE_KEYS.some((key) => key in filteredSettings)) {
+      // Rebuild the cached rules; ingest never reads these settings per packet.
+      await reloadNodeNameSanitizer();
+    }
+
     if ('noIndexEnabled' in filteredSettings) {
       const enabled = parseNoIndexEnabled(filteredSettings.noIndexEnabled);
       callbacks.setNoIndexEnabled?.(enabled);
@@ -1788,6 +1806,8 @@ router.delete('/', requirePermission('settings', 'write'), async (req: Request, 
       await databaseService.settings.deleteGlobalAndSourceSettings(writable);
     }
     callbacks.setTracerouteInterval?.(0);
+    // #6382: the reset removed the anti-spam settings, so the filter goes off.
+    await reloadNodeNameSanitizer();
     // #5245: the reset removed the stored default, so go back to Automatic.
     applyDefaultMeshtasticSource(
       sourceManagerRegistry,

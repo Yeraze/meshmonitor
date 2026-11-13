@@ -4,12 +4,13 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, ne, asc, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
+import { eq, ne, asc, desc, sql, isNull, isNotNull, and, or, lt, gt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, ALL_SOURCES, type SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { likeContains } from './likeSearch.js';
 import { shouldDiscardPosition } from '../../utils/nullIsland.js';
 import { sanitizeMeshCoreName } from '../../utils/meshcoreName.js';
+import { applyMeshCoreNodeNameSanitizer } from '../../utils/nodeNameSanitizerRuntime.js';
 import { getDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
 import { isFutureDriftedMeshCoreTimeMs } from '../../utils/meshcoreTimestamp.js';
 import { resolveFirstHeard } from '../../utils/firstHeard.js';
@@ -794,6 +795,11 @@ export class MeshCoreRepository extends BaseRepository {
       }
     }
 
+    // #6382: opt-in node-name anti-spam. Every MeshCore name write (companion
+    // contacts and adverts, repeater syncs, MeshCore MQTT) lands here. A no-op
+    // when the feature is off or for this source's own node.
+    node = applyMeshCoreNodeNameSanitizer(node, sourceId, existing?.isLocalNode === true);
+
     // #5842: the location override has its own writer. An ingest caller that
     // spreads a stored row back in must not rewrite (or clear) it here.
     if (OVERRIDE_KEYS.some((k) => k in node)) {
@@ -942,6 +948,50 @@ export class MeshCoreRepository extends BaseRepository {
       return { inserted: true };
     }
     return { inserted: false };
+  }
+
+  /**
+   * One page of MeshCore node names across every source, ordered by
+   * (sourceId, publicKey), for the node-name anti-spam re-scan (#6382).
+   */
+  async listNodeNamesPage(
+    after: { sourceId: string; publicKey: string } | null,
+    limit: number,
+  ): Promise<Array<{ publicKey: string; sourceId: string; name: string | null; isLocalNode: boolean }>> {
+    const { meshcoreNodes } = this.tables;
+    const where = after
+      ? or(
+          gt(meshcoreNodes.sourceId, after.sourceId),
+          and(eq(meshcoreNodes.sourceId, after.sourceId), gt(meshcoreNodes.publicKey, after.publicKey)),
+        )
+      : undefined;
+    const rows = await this.db
+      .select({
+        publicKey: meshcoreNodes.publicKey,
+        sourceId: meshcoreNodes.sourceId,
+        name: meshcoreNodes.name,
+        isLocalNode: meshcoreNodes.isLocalNode,
+      })
+      .from(meshcoreNodes)
+      .where(where)
+      .orderBy(asc(meshcoreNodes.sourceId), asc(meshcoreNodes.publicKey))
+      .limit(limit);
+    return rows.map((r: { publicKey: string; sourceId: string | null; name: string | null; isLocalNode: unknown }) => ({
+      publicKey: r.publicKey,
+      sourceId: r.sourceId ?? '',
+      name: r.name ?? null,
+      isLocalNode: r.isLocalNode === true || r.isLocalNode === 1,
+    }));
+  }
+
+  /** Overwrite one row's name (#6382 re-scan). Records no rename history. */
+  async setNodeName(publicKey: string, sourceId: string, name: string): Promise<void> {
+    if (!sourceId) throw new Error('MeshCoreRepository.setNodeName requires a sourceId');
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({ name, updatedAt: this.now() })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
   }
 
   /**
