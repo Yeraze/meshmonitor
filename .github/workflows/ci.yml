@@ -18,6 +18,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Lint + type checks run once, on one Node version, in parallel with the test
+  # matrix. They used to run before the tests on every Node leg, which tripled
+  # their cost and delayed each leg's test start by several minutes; their
+  # result does not depend on the Node version.
+  static:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          submodules: recursive  # protobufs are part of the type-checked tree
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run lint ratchet
+        # BLOCKING: fails only on new violations above the checked-in baseline.
+        # Existing debt is frozen in eslint-baseline.json and burns down over time.
+        # Regenerate baseline: npm run lint:baseline. Tracking: #3962 Task 1.4.
+        run: npm run lint:ci
+
+      - name: Run type checking
+        run: npm run typecheck
+
+      # Test-file type check runs on ONE Node version (non-blocking; tracks
+      # toward a clean tsconfig.tests). Coverage generation + Codecov upload were
+      # removed (#4172): they ran on a single leg, produced no enforced signal
+      # (no token, no thresholds, no PR status check, no badge — Codecov was
+      # already fail_ci_if_error:false), and @vitest/coverage-v8 hung for 30+ min
+      # on Node 24, repeatedly blocking merges. `npm run test:coverage` remains
+      # available for ad-hoc local reports.
+      - name: Type-check tests (non-blocking)
+        run: npm run typecheck:tests
+        # NON-BLOCKING: ~283 pre-existing test-type errors (mock/signature drift).
+        # Flip to blocking (remove continue-on-error) once `npm run typecheck:tests` is clean (0 errors).
+        # Tracking: remediation epic #3962 Task 1.2.
+        continue-on-error: true
+
   test:
     name: Test Suite
     runs-on: ubuntu-latest
@@ -86,30 +133,6 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Run lint ratchet
-        # BLOCKING: fails only on new violations above the checked-in baseline.
-        # Existing debt is frozen in eslint-baseline.json and burns down over time.
-        # Regenerate baseline: npm run lint:baseline. Tracking: #3962 Task 1.4.
-        run: npm run lint:ci
-
-      - name: Run type checking
-        run: npm run typecheck
-
-      # Test-file type check runs on ONE Node version (non-blocking; tracks
-      # toward a clean tsconfig.tests). Coverage generation + Codecov upload were
-      # removed (#4172): they ran on a single leg, produced no enforced signal
-      # (no token, no thresholds, no PR status check, no badge — Codecov was
-      # already fail_ci_if_error:false), and @vitest/coverage-v8 hung for 30+ min
-      # on Node 24, repeatedly blocking merges. `npm run test:coverage` remains
-      # available for ad-hoc local reports.
-      - name: Type-check tests (non-blocking)
-        if: matrix.node-version == '24.x'
-        run: npm run typecheck:tests
-        # NON-BLOCKING: ~283 pre-existing test-type errors (mock/signature drift).
-        # Flip to blocking (remove continue-on-error) once `npm run typecheck:tests` is clean (0 errors).
-        # Tracking: remediation epic #3962 Task 1.2.
-        continue-on-error: true
-
       # `--disableConsoleIntercept` for the same reason as the release workflow's
       # coverage step: `onUserConsoleLog` is the RPC a worker uses to ship a
       # test's console output to the main process, and with ~1,265 files logging
@@ -132,7 +155,7 @@ jobs:
     name: Build Check
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: test
+    needs: [test, static]
 
     steps:
       - name: Checkout code
@@ -210,7 +233,7 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: test
+    needs: [test, static]
 
     steps:
       - name: Checkout code
@@ -417,7 +440,7 @@ jobs:
     name: PR Comment
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [test, build, docker]
+    needs: [test, static, build, docker]
     if: github.event_name == 'pull_request'
 
     steps:

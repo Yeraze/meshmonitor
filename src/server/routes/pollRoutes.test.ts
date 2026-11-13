@@ -11,6 +11,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import pollRoutes from './pollRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+// Registers the real `fallbackManager` that resolveSourceManager() returns
+// when no primary source is registered (the server loads it at startup).
+import '../meshtasticManager.js';
 
 describe('pollRoutes — GET /poll', () => {
   let harness: RouteTestHarness;

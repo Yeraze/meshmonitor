@@ -1,4 +1,8 @@
-import { fallbackManager, type MeshtasticManager } from '../meshtasticManager.js';
+// Type-only: the fallback instance comes from the holder at call time, so
+// this module does not load the manager (or close the import cycle through
+// autoDeleteByDistanceService).
+import type { MeshtasticManager } from '../meshtasticManager.js';
+import { getFallbackManager } from '../fallbackManagerHolder.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 
@@ -28,11 +32,11 @@ import { isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManag
 export function resolveSourceManager(
   sourceId: string | undefined | null
 ): MeshtasticManager {
-  if (!sourceId) return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+  if (!sourceId) return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? getFallbackManager();
   const manager = sourceManagerRegistry.getManager(sourceId);
   if (manager && isMeshtasticManager(manager)) return manager as MeshtasticManager;
   // meshcore ids deliberately fall back to the primary/fallback manager
-  return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+  return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? getFallbackManager();
 }
 
 /**
@@ -51,7 +55,7 @@ export function resolveSourceManager(
 export function resolveOwnMeshtasticManager(
   sourceId: string | undefined | null
 ): MeshtasticManager | null {
-  if (!sourceId) return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+  if (!sourceId) return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? getFallbackManager();
   const manager = sourceManagerRegistry.getManager(sourceId);
   return manager && isMeshtasticManager(manager) ? (manager as MeshtasticManager) : null;
 }

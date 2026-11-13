@@ -50,6 +50,12 @@ const COMMON_TEST = {
   pool: 'forks' as const,
   env: {
     DATABASE_PATH: ':memory:',
+    // Vitest sets NODE_ENV=test, which the logger treats as development
+    // (debug level). A full run then printed ~2M lines (about half DEBUG),
+    // which costs time in every worker and buries failures in the CI log.
+    // Warnings and errors still print. Tests that check the logger's own
+    // level handling set LOG_LEVEL themselves (see logger.test.ts).
+    LOG_LEVEL: 'warn',
   },
 };
 
