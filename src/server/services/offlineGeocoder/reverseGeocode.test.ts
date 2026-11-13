@@ -201,6 +201,13 @@ describe('determinism', () => {
   });
 });
 
+// V8 coverage instrumentation (`npm run test:coverage`, run by the release
+// pipeline) slows these hot loops several-fold: 10k lookups took 2.5 s on a
+// Node 22 runner and failed the v4.17.3 release. The budgets guard against a
+// real regression, so keep them tight for plain runs and scale them only
+// under coverage. Memory is unaffected by instrumentation.
+const TIME_SCALE = process.env.npm_lifecycle_event === 'test:coverage' ? 4 : 1;
+
 describe('cost', () => {
   it('decodes under 1 s, 10k lookups under 2 s, under 30 MB', () => {
     const g = createReverseGeocoder({ admin1: () => ADMIN1_DATA_GZ_B64, cities: () => CITIES_DATA_GZ_B64 });
@@ -218,8 +225,8 @@ describe('cost', () => {
     const lookupMs = performance.now() - t1;
     // Typed arrays live outside the V8 heap, so count arrayBuffers too.
     const deltaMb = (m1.heapUsed - m0.heapUsed + m1.arrayBuffers - m0.arrayBuffers) / 2 ** 20;
-    expect(decodeMs).toBeLessThan(1000);
-    expect(lookupMs).toBeLessThan(2000);
+    expect(decodeMs).toBeLessThan(1000 * TIME_SCALE);
+    expect(lookupMs).toBeLessThan(2000 * TIME_SCALE);
     expect(deltaMb).toBeLessThan(30);
     expect(found).toBeGreaterThan(1000);
     g.drop();
