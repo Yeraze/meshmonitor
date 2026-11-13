@@ -239,6 +239,12 @@ function validTestValue(key: string, suffix = ''): string {
     // Reliable PKI (#5691): enums, INVALID_RELIABLE_PKI_MODE otherwise.
     reliablePkiMode: 'asNeeded',
     reliablePkiSourceMode: 'off',
+    // Node-name anti-spam (#6382): strict booleans, a JSON pattern list that
+    // RE2 compiles, and a placeholder of at most 24 bytes.
+    nodeNameSanitizeEnabled: 'true',
+    nodeNameSanitizeBuiltins: 'false',
+    nodeNameSanitizeCustomPatterns: '["spam.example"]',
+    nodeNameSanitizePlaceholder: '[x]',
   };
 
   if (key in VALID_VALUES) {

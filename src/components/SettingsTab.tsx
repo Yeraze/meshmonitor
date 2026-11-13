@@ -29,6 +29,7 @@ import CoverageMqttRecordingSection from './settings/CoverageMqttRecordingSectio
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
 import PkiDmDecryptionSection from './configuration/PkiDmDecryptionSection';
 import ReliablePkiSection from './settings/ReliablePkiSection';
+import NodeNameSanitizerSection from './settings/NodeNameSanitizerSection';
 import MqttBridgeConfigurationView from './MQTT/MqttBridgeConfigurationView';
 import ReticulumRetentionSection from './settings/ReticulumRetentionSection';
 import DefaultMeshtasticSourceSection from './settings/DefaultMeshtasticSourceSection';
@@ -2968,6 +2969,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="setting-item">
             <ReliablePkiSection scope="global" />
           </div>
+          {/* Node-name anti-spam (#6382). Admin only; self-saving. */}
+          <NodeNameSanitizerSection />
         </div>}
 
         {/* PKI DM decryption (#5683 follow-up): a MeshMonitor-side switch, moved

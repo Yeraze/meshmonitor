@@ -14,6 +14,7 @@ import { NodeNameHistoryRepository, isMeshtasticRename } from './nodeNameHistory
 import type { TransportCounts } from '../../utils/transportSeries.js';
 import type { AircraftBasis } from '../../utils/aircraftClassification.js';
 import { resolveFirstHeard } from '../../utils/firstHeard.js';
+import { applyMeshtasticNodeNameSanitizer } from '../../utils/nodeNameSanitizerRuntime.js';
 
 /** Max ids per `IN (...)` in the batched node lookups below. */
 const NODE_LOOKUP_BATCH = 500;
@@ -864,9 +865,15 @@ export class NodesRepository extends BaseRepository {
     // real source row (see issue #2902).
     const effectiveSourceId = sourceId ?? (nodeData as { sourceId?: string }).sourceId ?? 'default';
 
+    // #6382: opt-in node-name anti-spam. Every Meshtastic ingest path (TCP
+    // NodeInfo, device NodeDB sync, MQTT broker/bridge) writes names here, so
+    // this is the one seam. A no-op when the feature is off or for our own node.
+    const upsertNodeNum: number = nodeData.nodeNum;
+    nodeData = applyMeshtasticNodeNameSanitizer(nodeData, effectiveSourceId);
+
     const now = this.now();
     const { nodes } = this.tables;
-    const existingNode = await this.getNode(nodeData.nodeNum, effectiveSourceId);
+    const existingNode = await this.getNode(upsertNodeNum, effectiveSourceId);
 
     if (existingNode) {
       // Treat '' (and null/undefined) as "not provided" for string identity
@@ -1141,12 +1148,60 @@ export class NodesRepository extends BaseRepository {
       await this.upsert(nodes, newNode, [nodes.nodeNum, nodes.sourceId], upsertSet);
     }
 
-    await this.syncCacheNode(nodeData.nodeNum, effectiveSourceId);
+    await this.syncCacheNode(upsertNodeNum, effectiveSourceId);
   }
 
   /**
    * Generic update for a node's fields
    */
+  /**
+   * One page of node names across every source, ordered by (sourceId, nodeNum),
+   * for the node-name anti-spam re-scan (#6382). Keyset paging: pass the last
+   * row of the previous page as `after`.
+   */
+  async listNodeNamesPage(
+    after: { sourceId: string; nodeNum: number } | null,
+    limit: number,
+  ): Promise<Array<{ nodeNum: number; nodeId: string; sourceId: string; longName: string | null; shortName: string | null }>> {
+    const { nodes } = this.tables;
+    const where = after
+      ? or(gt(nodes.sourceId, after.sourceId), and(eq(nodes.sourceId, after.sourceId), gt(nodes.nodeNum, after.nodeNum)))
+      : undefined;
+    const rows = await this.db
+      .select({ nodeNum: nodes.nodeNum, nodeId: nodes.nodeId, sourceId: nodes.sourceId, longName: nodes.longName, shortName: nodes.shortName })
+      .from(nodes)
+      .where(where)
+      .orderBy(asc(nodes.sourceId), asc(nodes.nodeNum))
+      .limit(limit);
+    return rows.map((r: { nodeNum: unknown; nodeId: string; sourceId: string | null; longName: string | null; shortName: string | null }) => ({
+      nodeNum: Number(r.nodeNum),
+      nodeId: r.nodeId,
+      sourceId: r.sourceId ?? 'default',
+      longName: r.longName ?? null,
+      shortName: r.shortName ?? null,
+    }));
+  }
+
+  /**
+   * Overwrite one row's names (#6382 re-scan). Only the given fields change;
+   * this is a clean-up, so it records no rename history.
+   */
+  async setNodeNames(
+    nodeNum: number,
+    sourceId: string,
+    names: { longName?: string; shortName?: string },
+  ): Promise<void> {
+    const { nodes } = this.tables;
+    const set: Record<string, unknown> = { updatedAt: this.now() };
+    if (names.longName !== undefined) set.longName = names.longName;
+    if (names.shortName !== undefined) set.shortName = names.shortName;
+    await this.db
+      .update(nodes)
+      .set(set)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+    await this.syncCacheNode(nodeNum, sourceId);
+  }
+
   async updateNode(nodeNum: number, updates: Partial<Omit<DbNode, 'nodeNum'>>): Promise<void> {
     const { nodes } = this.tables;
     await this.db
