@@ -19,8 +19,10 @@ const h = vi.hoisted(() => ({
   mockGetPrimaryMeshtasticManager: vi.fn(),
 }));
 
-vi.mock('../meshtasticManager.js', () => ({
-  fallbackManager: h.mockFallbackManager,
+// resolveSourceManager reads the fallback through the holder at call time
+// (it no longer imports meshtasticManager.js).
+vi.mock('../fallbackManagerHolder.js', () => ({
+  getFallbackManager: () => h.mockFallbackManager,
 }));
 
 vi.mock('../sourceManagerRegistry.js', () => ({

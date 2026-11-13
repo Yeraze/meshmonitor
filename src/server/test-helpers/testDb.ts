@@ -26,12 +26,10 @@ export interface TestDb {
 }
 
 /**
- * Create a fresh in-memory SQLite database with the full current schema applied
- * via the migration registry (migration 001 baseline + all subsequent ALTERs).
+ * Run every registered SQLite migration against `sqlite`, as production does
+ * for a fresh install.
  */
-export function createTestDb(): TestDb {
-  const sqlite = new Database(':memory:');
-
+function applyAllMigrations(sqlite: Database.Database): void {
   // The baseline migration (001) creates the real `settings` table — do NOT
   // pre-create it (a minimal stub would block the full CREATE TABLE IF NOT
   // EXISTS). These helpers are defensive for the brief window before `settings`
@@ -62,6 +60,76 @@ export function createTestDb(): TestDb {
     migration.sqlite(sqlite as any, getSetting, setSetting);
     if (migration.settingsKey) setSetting(migration.settingsKey, 'completed');
   }
+}
+
+/**
+ * The migrated database, built once per test file and copied for each call.
+ *
+ * Running all ~230 migrations costs ~150-200 ms, and many suites call
+ * `createTestDb()` in `beforeEach`. Serializing the migrated database once and
+ * opening a copy (`new Database(buffer)`, ~1 ms) gives every call the same
+ * schema and seed rows at a fraction of the cost. Each copy is its own
+ * in-memory database: writes to one never reach the template or another copy.
+ *
+ * Connection-level pragmas are not part of the serialized image, so the ones
+ * migrations touch are read from the build connection and replayed on every
+ * copy, leaving each copy in the state a freshly migrated DB would be in.
+ */
+interface TestDbTemplate {
+  image: Buffer;
+  foreignKeys: number;
+  legacyAlterTable: number;
+}
+/**
+ * Some migrations read the environment (the first-boot default sources in
+ * 050 / `_legacyDefaultSource.ts` read `MESHTASTIC_*`, `MESHCORE_*` and the
+ * Virtual Node vars). A test that changes those between `createTestDb()` calls
+ * expects the migrations to see the new values, so the template is cached per
+ * value of every such variable, not once per worker.
+ */
+const MIGRATION_ENV_PREFIXES = ['MESHTASTIC_', 'MESHCORE_', 'ENABLE_VIRTUAL_NODE', 'VIRTUAL_NODE_'];
+
+function migrationEnvKey(): string {
+  return Object.keys(process.env)
+    .filter((k) => MIGRATION_ENV_PREFIXES.some((p) => k.startsWith(p)))
+    .sort()
+    .map((k) => `${k}=${process.env[k]}`)
+    .join('\n');
+}
+
+const templates = new Map<string, TestDbTemplate>();
+
+function getTemplate(): TestDbTemplate {
+  const key = migrationEnvKey();
+  const cached = templates.get(key);
+  if (cached) return cached;
+  const build = new Database(':memory:');
+  try {
+    applyAllMigrations(build);
+    const template: TestDbTemplate = {
+      image: build.serialize(),
+      foreignKeys: build.pragma('foreign_keys', { simple: true }) as number,
+      legacyAlterTable: build.pragma('legacy_alter_table', { simple: true }) as number,
+    };
+    templates.set(key, template);
+    return template;
+  } finally {
+    build.close();
+  }
+}
+
+/**
+ * Create a fresh in-memory SQLite database with the full current schema applied
+ * via the migration registry (migration 001 baseline + all subsequent ALTERs).
+ *
+ * Every call returns an independent database copied from a per-file template
+ * (see {@link getTemplate}).
+ */
+export function createTestDb(): TestDb {
+  const { image, foreignKeys, legacyAlterTable } = getTemplate();
+  const sqlite = new Database(image);
+  sqlite.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
+  sqlite.pragma(`legacy_alter_table = ${legacyAlterTable ? 'ON' : 'OFF'}`);
 
   const db = drizzle(sqlite, { schema });
   return {

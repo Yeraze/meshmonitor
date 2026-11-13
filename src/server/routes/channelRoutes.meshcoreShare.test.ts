@@ -9,6 +9,10 @@ import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/route
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import databaseService from '../../services/database.js';
 import { decodeMeshcoreChannelUrl } from '../../utils/meshcoreChannelUrl.js';
+// Registers the real `fallbackManager`, which the default-accept gate falls
+// back to when the named source is not Meshtastic. The server loads this
+// module at startup; nothing in this file's import graph does any more.
+import '../meshtasticManager.js';
 
 const SECRET_A = '00112233445566778899aabbccddeeff';
 const SECRET_B = 'ffeeddccbbaa99887766554433221100';
