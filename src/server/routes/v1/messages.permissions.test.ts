@@ -20,7 +20,7 @@ import request from 'supertest';
 
 // Non-DB mocks stay: these modules make external node connections or require
 // hardware state that must not run in unit tests.
-vi.mock('../../meshtasticManager.js', () => ({ default: {} }));
+vi.mock('../../meshtasticManager.js', () => ({}));
 vi.mock('../../meshcoreManager.js', () => ({ default: {} }));
 vi.mock('../../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: { getManager: vi.fn() },

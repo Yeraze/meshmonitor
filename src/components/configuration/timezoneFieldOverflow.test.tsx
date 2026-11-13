@@ -1,5 +1,5 @@
 /**
- * @vitest-environment jsdom
+ * @vitest-environment node
  *
  * #5291 part 2: a long custom POSIX timezone
  * (`EST5EDT,M3.2.0/02:00:00,M11.1.0/02:00:00`) overflowed the Device Timezone
