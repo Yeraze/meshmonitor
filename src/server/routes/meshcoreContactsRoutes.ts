@@ -9,7 +9,8 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { MeshCoreDiscoverFilter, type MeshCoreDiscoverMode, type MeshCoreManager } from '../meshcoreManager.js';
+import { MeshCoreDiscoverFilter, type MeshCoreDiscoverMode, type MeshCoreManager, type ImportContactTokenResult } from '../meshcoreManager.js';
+import { parseMeshCoreContactToken } from '../../utils/meshcoreContactToken.js';
 import {
   MAX_INTERVAL_MINUTES,
   MIN_INTERVAL_BETWEEN_REQUESTS_MS,
@@ -910,6 +911,56 @@ router.delete(
 );
 
 /**
+ * Map an add-to-radio outcome onto the response envelope (#5349). Shared by
+ * add-to-device and the contact-share token import (#6370), so both answer
+ * the full-table confirm / favourites / table-full cases the same way.
+ */
+function sendAddContactResult(res: Response, result: ImportContactTokenResult): Response {
+  switch (result.status) {
+    case 'added':
+      return ok(res, result);
+    case 'already_on_device':
+      return ok(res, result);
+    case 'confirm_full':
+      return fail(
+        res,
+        409,
+        'CONTACT_TABLE_FULL_CONFIRM',
+        result.maxContacts === null
+          ? "Couldn't read how many contacts the radio can hold. If its list is full, adding may replace the oldest non-favourite contact (or the radio will refuse)."
+          : `The radio's contact list is full (${result.count}/${result.maxContacts}). Adding may replace the oldest non-favourite contact (or the radio will refuse).`,
+        { count: result.count, maxContacts: result.maxContacts },
+      );
+    case 'favorites_unprotected':
+      return fail(
+        res,
+        409,
+        'FAVORITES_NOT_PROTECTED',
+        'Not added: some favourites are not yet protected on the radio, so a full contact list could evict them. Try again once the radio has synced.',
+        { unprotected: result.unprotected },
+      );
+    case 'table_full':
+      return fail(
+        res,
+        409,
+        'CONTACT_TABLE_FULL',
+        "The radio refused: its contact list is full and it is not set to replace old contacts (or every contact is a favourite). In Settings, Radio contact list, turn on replacing the oldest non-favourite contact, or remove non-favourite contacts.",
+        { count: result.count, maxContacts: result.maxContacts },
+      );
+    case 'unknown_type':
+      return fail(res, 422, 'UNKNOWN_NODE_TYPE', 'The node type is unknown, so it cannot be added yet. Wait for it to advertise.');
+    case 'not_found':
+      return fail(res, 404, 'CONTACT_NOT_FOUND', 'Unknown node');
+    case 'self':
+      return fail(res, 400, 'CANNOT_IMPORT_SELF', "This is the radio's own contact");
+    case 'unavailable':
+      return fail(res, 409, 'COMPANION_NOT_CONNECTED', 'Adding contacts needs a connected Companion radio');
+    default:
+      return fail(res, 502, 'ADD_CONTACT_FAILED', result.error);
+  }
+}
+
+/**
  * POST /api/sources/:id/meshcore/contacts/:publicKey/add-to-device
  *
  * Add a node MeshMonitor knows about to the companion radio's own contact
@@ -945,46 +996,7 @@ router.post(
         status: result.status,
         ...(result.status === 'added' ? { evicted: result.evicted } : {}),
       });
-      switch (result.status) {
-        case 'added':
-          return ok(res, result);
-        case 'already_on_device':
-          return ok(res, result);
-        case 'confirm_full':
-          return fail(
-            res,
-            409,
-            'CONTACT_TABLE_FULL_CONFIRM',
-            result.maxContacts === null
-              ? "Couldn't read how many contacts the radio can hold. If its list is full, adding may replace the oldest non-favourite contact (or the radio will refuse)."
-              : `The radio's contact list is full (${result.count}/${result.maxContacts}). Adding may replace the oldest non-favourite contact (or the radio will refuse).`,
-            { count: result.count, maxContacts: result.maxContacts },
-          );
-        case 'favorites_unprotected':
-          return fail(
-            res,
-            409,
-            'FAVORITES_NOT_PROTECTED',
-            'Not added: some favourites are not yet protected on the radio, so a full contact list could evict them. Try again once the radio has synced.',
-            { unprotected: result.unprotected },
-          );
-        case 'table_full':
-          return fail(
-            res,
-            409,
-            'CONTACT_TABLE_FULL',
-            "The radio refused: its contact list is full and it is not set to replace old contacts (or every contact is a favourite). In Settings, Radio contact list, turn on replacing the oldest non-favourite contact, or remove non-favourite contacts.",
-            { count: result.count, maxContacts: result.maxContacts },
-          );
-        case 'unknown_type':
-          return fail(res, 422, 'UNKNOWN_NODE_TYPE', 'The node type is unknown, so it cannot be added yet. Wait for it to advertise.');
-        case 'not_found':
-          return fail(res, 404, 'CONTACT_NOT_FOUND', 'Unknown node');
-        case 'unavailable':
-          return fail(res, 409, 'COMPANION_NOT_CONNECTED', 'Adding contacts needs a connected Companion radio');
-        default:
-          return fail(res, 502, 'ADD_CONTACT_FAILED', result.error);
-      }
+      return sendAddContactResult(res, result);
     } catch (error) {
       logger.error('[API] Error adding contact to device:', error);
       return fail(res, 500, 'ADD_CONTACT_FAILED', 'Failed to add contact to the radio');
@@ -1025,6 +1037,55 @@ router.get(
     } catch (error) {
       logger.error('[API] Error exporting contact:', error);
       res.status(500).json({ success: false, error: 'Failed to export contact' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/contacts/import-token
+ *
+ * Import a contact from a MeshCore One contact-share token (#6370),
+ * `<PUBKEYHEX:type:name>`, into the companion radio's contact table and this
+ * source's node list. The token has no advert or signature, so the contact
+ * gets a flood out-path; one the radio already holds is left as it is.
+ * Same `nodes:write` scoping, limiter and full-table confirm as add-to-device.
+ *
+ * Body: { token: string, confirmFull?: boolean }
+ *
+ * Mesh impact: serial/TCP write to the companion only, no RF — so, like
+ * add-to-device, no requireMeshcoreTx() gate.
+ */
+router.post(
+  '/contacts/import-token',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const body = (req.body ?? {}) as { token?: unknown; confirmFull?: unknown };
+      const token = typeof body.token === 'string' ? parseMeshCoreContactToken(body.token) : null;
+      if (!token) {
+        return fail(
+          res,
+          400,
+          'INVALID_CONTACT_TOKEN',
+          'Expected a contact token <PUBLICKEY:type:name> with a 64-character hex key, type 1 (Companion), 2 (Repeater) or 3 (Room), and a name',
+        );
+      }
+      const confirmFull = body.confirmFull === true;
+      const result = await managerFor(req, res).importContactFromToken(token, { confirmFull });
+      auditMeshcoreEvent(req, 'meshcore_contact_import_token', 'configuration', {
+        sourceId: req.params.id,
+        publicKey: token.publicKey,
+        advType: token.type,
+        confirmFull,
+        status: result.status,
+        ...(result.status === 'added' ? { evicted: result.evicted } : {}),
+      });
+      return sendAddContactResult(res, result);
+    } catch (error) {
+      logger.error('[API] Error importing contact token:', error);
+      return fail(res, 500, 'ADD_CONTACT_FAILED', 'Failed to import the contact');
     }
   },
 );

@@ -1,10 +1,13 @@
-import React, { ReactNode, RefObject, useId, useMemo, useSyncExternalStore } from 'react';
+import React, { ReactNode, RefObject, useCallback, useId, useMemo, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useComposeDraftStore, type ComposeDraftStore } from '../contexts/composeDraftStore';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
 import MentionAutocomplete from './mentions/MentionAutocomplete';
 import { MessageEmojiButton } from './MessageEmojiButton';
+import ComposeInsertMenu from './ComposeInsertMenu';
+import type { ComposeInsertMenuItem } from './composeInsertMenuTypes';
+import { insertIntoTextarea } from '../utils/insertAtCaret';
 import { UiIcon } from './icons';
 import { getUtf8ByteLength, formatByteCount } from '../utils/text';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
@@ -41,6 +44,11 @@ interface MessageComposeInputProps {
   sending?: boolean;
   /** Default true. False: Shift+Enter adds no newline; pasted newlines become spaces. */
   allowNewlines?: boolean;
+  /**
+   * Entries for a + menu between the compose box and Send (#6370). Unset or
+   * empty: no + button. Inserted text counts toward `maxBytes` like typing.
+   */
+  insertMenuItems?: readonly ComposeInsertMenuItem[];
 }
 
 /**
@@ -68,6 +76,7 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
   buildMentionInsertion,
   sending = false,
   allowNewlines = true,
+  insertMenuItems,
 }) => {
   const { t } = useTranslation();
   const overLimitHintId = useId();
@@ -75,6 +84,12 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
   const store = draftStore ?? contextStore;
   const draft = useSyncExternalStore(store.subscribe, store.get, store.get);
   const setDraft = store.set;
+  // Reads the store at call time: a + menu entry may hold this across a
+  // picker dialog while the user keeps typing.
+  const insertText = useCallback(
+    (text: string) => insertIntoTextarea(textareaRef.current, store.get, store.set, text, { pad: true }),
+    [textareaRef, store],
+  );
 
   useAutoResizeTextarea(textareaRef, draft);
 
@@ -177,6 +192,14 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
           {byteCountDisplay.text}
         </div>
       </div>
+      {insertMenuItems && insertMenuItems.length > 0 && (
+        <ComposeInsertMenu
+          items={insertMenuItems}
+          insert={insertText}
+          disabled={inputDisabled}
+          disabledTitle={disabledTitle}
+        />
+      )}
       <MessageEmojiButton
         textareaRef={textareaRef}
         value={draft}

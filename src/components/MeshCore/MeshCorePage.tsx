@@ -275,6 +275,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             contacts={contacts}
             ignoredKeys={hiddenKeys}
             onImportContact={actions.importContact}
+            // Contact-share tokens (#6370) need a Companion's contact list.
+            onImportContactToken={status?.deviceType === DEVICE_TYPE_COMPANION ? actions.importContactToken : undefined}
             onNavigateToDm={navigateToDm}
             onToggleFavorite={actions.setNodeFavorite}
             onDiscoverNodes={actions.discoverNodes}

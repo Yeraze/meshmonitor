@@ -18,6 +18,7 @@ import { MeshCoreMessage, MeshCoreActions, ConnectionStatus, RoomSyncFailureReas
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
+import { useContactTokenImport } from './hooks/useContactTokenImport';
 import { UiIcon } from '../icons';
 import { PasswordField } from '../shared/config/PasswordField';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
@@ -111,6 +112,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const canMute = !!mute && authStatus?.authenticated === true;
   const distanceUnit = useSettingsOptional()?.distanceUnit ?? 'km';
   const canSend = hasPermission('messages', 'write');
+  // Contact-share tokens (#6370): import from messages; share in the composer.
+  const contactTokenImport = useContactTokenImport(status, actions.importContactToken);
+
   const canConfig = hasPermission('configuration', 'write');
 
   const [selectedRoom, setSelectedRoom] = useState<string | null>(initialRoom ?? null);
@@ -902,6 +906,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
             </div>
             )}
             <MeshCoreMessageStream
+              contactTokenImport={contactTokenImport}
               messages={filtered}
               contacts={contacts}
               sourceId={sourceId}
