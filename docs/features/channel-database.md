@@ -150,7 +150,8 @@ If you only have channel names and PSKs, this is the smallest valid file:
 The Channel Database also holds **MeshCore** channel keys. A MeshCore entry is a 16-byte channel secret that MeshMonitor uses to decrypt MeshCore channel messages (GRP_TXT) heard by:
 
 - a **MeshCore MQTT ingest** source, and
-- a directly attached **MeshCore repeater** running a `MESH_PACKET_LOGGING` firmware build.
+- a directly attached **MeshCore repeater** running a `MESH_PACKET_LOGGING` firmware build, and
+- a **MeshCore Companion**, for channel messages it hears over the air on channels it does not hold. A channel that opened a message shows on that Companion's **Channels** page with a **(Virtual)** tag. It is receive-only: the radio lacks the key, so the send bar is hidden. A channel set on the radio keeps its normal behaviour.
 
 The same keys open channel packets (`GRP_TXT` and `GRP_DATA`) in the MeshCore Packet Monitor's **Packet Decode** view, on any MeshCore source. See [Decoding channel packets](/features/meshcore#decoding-channel-packets).
 

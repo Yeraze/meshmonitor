@@ -97,10 +97,10 @@ The read endpoints serve MeshCore sources as well as Meshtastic ones: `nodes`, `
 | Endpoint | What a MeshCore source returns |
 | --- | --- |
 | `GET …/nodes` | Contacts, with role, name and last-heard. Positions follow `nodes:viewOnMap`. A private position override needs `nodes_private:read`. |
-| `GET …/channels` | Channel slots. Slots above 7 need `messages:read`. |
+| `GET …/channels` | Channel slots. Slots above 7 need `messages:read`. A slot's `psk` (the channel secret) shows only to admins and to users with `channel_<n>:write` on slots 0 to 7; `messages:read` shows the slot, never the secret. |
 | `GET …/messages` | Channel and direct messages. `timestamp` is the sender's clock. `since` and the sort order use arrival time (`createdAt`). |
 | `GET …/packets` | The MeshCore packet log, in snake_case (`payload_type`, `route_type`, `path_hops`, `node_key`). Takes `payload_type`, `route_type`, `since`, `limit` and `offset`. A group packet you may read carries `plaintext`. The packet monitor must be on for the source. |
-| `GET …/traceroutes` | Traces started from MeshMonitor. There is no return leg: `routeBack` and `snrBack` are `null`. `route` holds synthetic node numbers (`4294967295` when a hop did not resolve). `hops[]` lists each hop's `publicKey`, `hash` and `snr`. |
+| `GET …/traceroutes` | Traces started from MeshMonitor, as a round trip. `fromNode*` is your radio and `toNode*` is the target or the turnaround hop; `routeBack` and `snrBack` hold the return leg. `route` holds synthetic node numbers (`4294967295` when a hop did not resolve). `hops[]` lists each hop's `publicKey`, `hash` and `snr`. |
 | `GET …/network` | Node and trace counts for the source. |
 
 The Meshtastic-only packet filters `portnum`, `from_node`, `to_node`, `channel` and `encrypted` answer `400` with code `UNSUPPORTED_FILTER` on a MeshCore source.

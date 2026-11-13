@@ -40,7 +40,7 @@ Open the **Sources sidebar** on the dashboard (admin only) to:
 - **Add source** — click the **+** button next to the Sources header, choose a type, fill in connection details, save
 - **Edit** — rename, re-host, re-port, toggle Virtual Node, or change other per-source settings
 - **Enable / Disable** — pause an upstream connection without deleting it
-- **Delete** — remove the connection and its source-scoped data
+- **Delete** — remove the connection and its source-scoped data. For a MeshCore source this includes the stored device identity key and the channel slots with their secrets.
 
 ![Source options menu with Edit, Enable/Disable, and Delete actions](/images/features/sources-options-menu.png)
 
