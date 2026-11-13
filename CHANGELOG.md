@@ -6,11 +6,88 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-### Fixed
-- **MeshCore Repeater sources record hop counts.** A node learned from an advert on a packet-logging repeater now stores how many hops that advert took (the shortest copy heard), and the dashboard map shows it. Before, every MeshCore node showed as 0 hops. A node shows unknown until its next advert. (#6220)
+## [4.17.3] - 2026-11-13
+
+This release brings MeshCore close to Meshtastic across most of the app, using one shared implementation for both protocols where they overlap. It also closes a MeshCore channel-secret leak in the v1 API, fixes a cross-source backup read, and adds an opt-in node-name anti-spam filter. It covers everything since 4.17.2. Upgrading runs migrations 223 to 232 automatically. Read **Upgrade notes** at the end of this section first.
+
+### Added
+- **Node-name anti-spam**, off by default. An admin turns it on in Global Settings, Security. MeshMonitor then replaces invite links in node names (`t.me`, `discord.gg`, `wa.me` and similar) with `[spammer]` before it stores the name, on every source and protocol. You can add hosts or patterns and re-scan stored names. It sends nothing on air. (#6382, #6383)
+- **Fixed Y-axis range on dashboard telemetry charts.** A ruler button in the widget header sets a minimum, a maximum or both; a blank field stays automatic. The range saves per source. (#6348, #6349)
+- **MeshCore parity with Meshtastic**, on one shared implementation: map layers, trace on map, Map Analysis and estimated positions (#6260); Packet Monitor and contact graph (#6262); node and DM list sort, filters, grouping and export (#6259); room unread, DM and room mute, mark-all-read and translation (#6261); Settings, telemetry, purge and dimming (#6258); the v1 API, Prometheus, dashboard widgets, Mesh Issues and embed maps (#6263).
+- **MeshCore Security tab** with dead contacts, path-hash collisions, advert signature checks, own-key change, packet-rate and clock-offset checks, a scanner, a daily digest, export and a draft notification DM. (#6254, #6281)
+- **Per-source device backups for Meshtastic and MeshCore Companion**, each with its own schedule. (#6285)
+- **MeshCore notifications:** message, server-event and trace alerts with shared audio settings and click-through (#6253); a Notifications tab for MeshCore MQTT region feeds with broker-link alerts, also for Meshtastic MQTT bridges (#6307); new-node alerts for Repeater sources, behind a 48 hour learning window and a cap of 10 an hour per source (#6306); a clock-out-of-sync alert from passive advert sampling (#6273); a confirmed new-neighbour automation alert (#6274).
+- **Mesh Issues node-health rules** for stale nodes, no position, low battery and bad position, on both protocols. (#6279)
+- **MeshCore traces in the Traceroute Explorer**, with a log of each trace attempt. (#6276)
+- **MeshCore Repeater and Room Server settings.** A structured settings form for a Repeater source, with power-off and private-key restore (#6255), and the same form for remote Repeaters and Room Servers, with settings export and import (#6256). Companion gains a BLE PIN, multi-ACKs, factory reset and channel share and import (#6257).
+- **MeshCore automation sections:** Auto Welcome, Auto Favorite, Auto Delete by Distance, Time Sync and Remote Telemetry, plus an inline Script Management panel in the Auto Responder. (#6224, #6223)
+- **Multi-channel Timer Triggers** for Meshtastic and MeshCore. A MeshCore timer sends to at most 4 channels, 10 seconds apart. (#6230)
+- **Split long messages** in Auto Responder, Timer Triggers, Auto Announce and automations on MeshCore, and through the same splitter on Meshtastic. MeshCore message length caps now match firmware. (#6316, #6330, #6303, #6304)
+- **Required repeaters** for MeshCore channel resend. Pick the direct repeaters that must relay your message, with an Any or All match mode. Sent direct messages also show the repeaters heard relaying them. (#6178, #6193, #6194)
+- **MeshCore One contact tokens.** Import a `<key:type:name>` token from a message with one click, and share a contact or your own contact from the composer. Nothing sends on air. (#6370, #6375)
+- **Virtual channels on a Companion.** A Companion now decrypts channel messages it hears with a Channel Database key and lists the channel with a (Virtual) tag, receive-only. (#6183)
+- **MeshWars forwarder**, off by default and admin only. It sends heard-repeater results to the MeshWars territory game as one capped HTTPS POST. (#6005)
+- **Stored room posts show read-only** without a live login, and you can change a room's Auto-sync from the login card. (#6332, #6267)
+- **Optional `senderName` on MeshCore API channel sends**, limited by a per-source allowlist. (#6282)
+- **MeshCore device private key store**, encrypted, with server-side DM decrypt. (#6195)
+- **MQTT root topic finder.** A subscribe-only sample of a broker that suggests roots near you, with an offline geocoder for state and city, a MeshCore IATA region finder, and an admin opt-in daily refresh of the community list. The server now rejects an invalid root on save. (#6287, #6335, #6336, #6337, #6338)
+- **Fixed position by dropping a pin** on a map, for Meshtastic and MeshCore. (#6174)
+- **Colour map nodes by gateway** for MQTT sources. (#6175)
+- **Configurable message text length per notification service.** (#6278)
+- **`BIND_ADDRESS` environment variable** to choose the address the server binds to, contributed by @williavs. (#6233)
+- **Public Key sort** on MeshCore node and DM lists, distinct MeshCore channel markers for private, hashtag and public channels, and a relative-time tooltip on message timestamps. (#6185, #6228, #6214)
 
 ### Changed
-- **Unified Messages remembers the channel you last picked**, per browser, including All Channels. If that channel is gone from the list, or you never picked one, the page opens on Primary / LongFast or the first channel as before. (#5792)
+- **Selecting a MeshCore Room Server no longer logs in.** Saved posts show read-only until you press **Login**. Scheduled auto-sync is unchanged. (#6363)
+- **Automatic-trace notifications have their own toggle**, off by default. Traces you start yourself still notify under the traceroute setting. (#6363)
+- **MeshCore automated senders have tighter limits.** The Auto Welcome hourly cap holds under concurrent arrivals, a timer sends to at most 4 channels with 10 seconds between them, and duplicate split sequences drop. (#6360, #6363)
+- **Security digest.** `POST /api/security/digest/send` needs a `sourceId` and `nodes:read` on that source. Sources that share the global Apprise URL get one combined daily digest. (#6359, #6363)
+- **Security reads need `nodes:read` on the source**, on Meshtastic too, for issues, export and key mismatches. (#6285)
+- **v1 API MeshCore traceroutes are round trips.** `fromNode*` is your radio, `toNode*` is the target or turnaround hop, and `routeBack` and `snrBack` hold the return leg. (#6311)
+- **Notifications honour per-DM mutes** for push and Apprise on Meshtastic. (#6305)
+- **Unified Messages remembers the channel you last picked**, per browser, including All Channels. (#5792)
+- **The Users tab lists the Remote Administration permission.** It is per source. (#6381)
+- **Layout and mobile fixes** across MeshCore in phone landscape, dialogs, section rails, tables, themes and headers; an unconnected MeshCore source shows a "not connected" notice instead of raw errors. (#6216, #6361, #6362, #6366, #6367)
+- **Dependency updates**, including i18next 27, `@noble/curves` 2, leaflet.heat 1 and jsdom 31, and refreshed translations.
+
+### Fixed
+- **Queued channel sends no longer report a false "ACK timeout".** The local radio ACK now releases a queued channel send (timers, auto-ack, auto-responder, v1 API) at once; before, it waited for the 5 minute sweep. DMs still wait for the target's ACK. (#6373)
+- **One failing poll section no longer blanks nodes and channels**, and polling retries slowly while a source is down. (#6358)
+- **Restoring a backup:** restore skips backup columns the target table lacks (#6350), the first boot after a restore skips retention purges so an old backup keeps its telemetry (#6354), the MySQL backup list loads again (#6372), and device backups export only the backed-up source's channels (#6284).
+- **The dashboard connection banner names the viewed source's host and port**, not a placeholder address. (#6353)
+- **`BASE_URL` strips every trailing slash**, not just one. (#6381)
+- **MeshCore Repeater sources record hop counts.** A node learned from an advert on a packet-logging repeater now stores how many hops the shortest copy took, and the dashboard map shows it. A node shows unknown until its next advert. (#6220)
+- **MeshCore:** channel relay confirmations survive stale updates (#6212); DM and Room history pages per peer, so busy channels no longer hide it (#6186); room posts re-pushed on every sync are deduplicated (#6246); non-hashtag channel names lose the decorative `# ` prefix (#6170); the Packet Monitor origin column never guesses and gates names on `nodes:read` (#6265); MQTT feed channel messages file under their key (#6308).
+- **Virtual Node:** the hourly node-DB refresh no longer drops channel names in the Android app (#6161), app DMs no longer stall for 30 seconds (#6163), and replayed messages keep their hop count and MQTT origin (#6189).
+- **MQTT bridge uplinks a node's own map report** instead of dropping it on the `ok_to_mqtt` gate, and Reload Config re-reads MQTT map reporting. (#6176, #6177)
+- **Automation:** Meshtastic sends cut at 200 bytes so long bodies deliver (#6202), MeshCore remote telemetry reaches `trigger.telemetry` automations (#6237), and the Template Gallery node picker and naming work with several automations (#6271, #6272).
+- **Notifications name the node of their own source**, and the key scanner skips MeshCore MQTT sources. Apprise gets up to 30 seconds to send. (#6251, #6252, #6207)
+- **Other:** NeighborInfo eligibility honours a direct traceroute (#6151), firmware 2.8 NodeDB replays no longer skew clock offset (#6242), Reticulum prunes interfaces missing from the latest stats (#6121), and chat inputs capitalize sentences (#6217).
+
+### Security
+- **The v1 API no longer returns MeshCore channel secrets** to callers without write access to that channel. Admins and users with `channel_<n>:write` on slots 0 to 7 still see `psk`. (#6359)
+- **Deleting a source removes its MeshCore device identity key and channel secrets.** (#6359)
+- **Dashboard gateway membership needs `packetmonitor:read`** as well as `nodes:read`. (#6359)
+- **A user with configuration read access on one source could download another source's device backup**, including channel keys. Creating, downloading or deleting a device backup now needs `configuration:write` on that source; listing stays at `configuration:read`. Backup files are written with mode 0600, and Meshtastic backups no longer store the node's private key. (#6285)
+- **Notifications are gated on channel key access**, so a mention cannot leak channel text decrypted with another source's key. (#6253)
+- **A Repeater secret no longer appears in the debug log**, and `set prv.key` joins the CLI danger guard. (#6255)
+- **Bridge: msgpack 1.2.3** fixes CVE-2026-114613. (#6352, #6355)
+- **`npm audit fix`** retires the reachable high-severity advisories in ws, body-parser, socket.io-parser and ip-address. (#6198)
+
+### Upgrade notes
+- **Migrations 223 to 232** run on start on SQLite, PostgreSQL and MySQL.
+- **MeshCore Room Servers:** selecting a room no longer logs in. Press **Login** to post or fetch new posts.
+- **Device backups:** download and create need `configuration:write` on the source (was read). The old global schedule moves to the primary Meshtastic source; other sources start with backups off. Older files go to the only Meshtastic source if there is exactly one, otherwise they are admin-only. Older backup files keep the private key; delete them if that matters to you.
+- **Security digests:** digest settings now save per source with a global fallback. An install with a global Apprise URL starts to receive MeshCore security digests, one per day when there are issues. The API digest call needs a `sourceId`.
+- **Security permissions:** security issues, export and key-mismatch reads need `nodes:read` on the source.
+- **Automatic-trace notifications** default to off.
+- **MeshCore timers:** at most 4 channels per timer, 10 seconds apart. Extra channels skip with a log warning.
+- **MeshCore DM alerts:** existing MeshCore push subscribers start to receive DM and room-post alerts. Turn off **Direct messages and room posts** on the source's Notifications tab to stop them.
+- **Repeater new-node alerts:** a Repeater source whose Newly Found Nodes toggle was saved as on starts alerting after a 48 hour learning period, capped at 10 an hour.
+- **Meshtastic DM mute** now also silences push and Apprise alerts for that DM.
+- **Automations:** `trigger.telemetry` automations with no source filter also fire on MeshCore readings.
+- **MQTT root:** saving a changed root that fails validation returns HTTP 400 (`INVALID_MQTT_ROOT`). Unchanged roots and restores still save.
+- **v1 API:** MeshCore traceroute rows are round trips, as described under Changed.
 
 ## [4.17.0] - 2026-10-12
 

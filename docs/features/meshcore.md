@@ -282,6 +282,8 @@ Limits, to protect the mesh:
 
 The resend count lives in the database, so restarting MeshMonitor does not reset it. Direct messages don't get this button: they already retry on their own until the recipient acknowledges them.
 
+**Required repeaters.** By default any repeater echo clears the Resend button. In the source's **Settings**, **Required repeaters** lets you pick the direct repeaters (heard on a zero-hop path) that must relay your message. **Match mode** sets the rule: **Any** stops the resend once one of them relays, **All** waits for every one. Leave the list empty for the default. A saved repeater that is no longer direct stays on the list and shows "no longer direct". Sent direct messages show the repeaters heard relaying them in the same heard-by bubble.
+
 ### Channel order
 
 The Channels page has a **Sort channels by** dropdown with five choices: **Device order**, **Channel name**, **Last message**, **Message count** and **Custom**. **Last message** puts the most recently active channel first and shows how long ago each channel's last message arrived. **Message count** puts the busiest channel first. Channels with no messages sink to the bottom in both. Pick **Custom** and click **Sort** to drag channels (or use the arrows) into the order you want. MeshMonitor saves the sort choice and the custom order in your browser, per source. This changes only how MeshMonitor lists the channels. The slots on the device stay as they are.
@@ -370,6 +372,15 @@ Below every MeshCore composer (channel and DM) a live **`<bytes>/<limit>`** coun
 | Direct message | 160 bytes |
 
 The counter appears only once the draft is non-empty, turns **yellow at 90%** of the limit and **red when over**, and the **Send button is disabled while over the limit** (the backend rejects an over-budget send as well).
+
+### Contact tokens (MeshCore One) {#contact-tokens}
+
+MeshCore One shares a contact inside a message as a token shaped like `<PUBKEYHEX:type:name>`. MeshMonitor reads and writes the same token.
+
+- **Import.** A token in a channel message, direct message or room post gets an **Import contact** button. It opens a dialog with the name, type and public key. **Import** adds the contact to the radio. The **Nodes** view Import dialog also accepts a token. MeshMonitor sends nothing over the air for an import.
+- **Export.** The **+** menu in the composer has **Share contact** (pick a contact by name or key) and **Share my contact info**. The inserted text counts toward the byte limit.
+- **Rules.** Types 1 to 3 only (companion, repeater, room server) and a 64-character hex key. A message can hold several tokens. If MeshMonitor already knows the contact, its stored data wins over the unsigned token.
+- **Access.** Import needs a connected Companion source and `nodes:write` on it. It reuses the contact-list safeguards: the full-table confirm, favourite protection and the "already on radio" check.
 
 ### Send under another name (API) {#api-sender-names}
 
@@ -1035,9 +1046,9 @@ This is **distinct from the direct-message retry**, which is always on and follo
 
 Room servers (advType=3) are BBS-style MeshCore nodes that store posts and push-sync them to connected clients. The **Rooms** view in the MeshCore page lists discovered room servers and provides:
 
-- **Login / auto-login** — enter a password to join a room, or save credentials for automatic login on future visits. Login retries up to 3 times automatically to handle RF packet loss.
-- **Post stream** — read and send posts in the room's message board.
-- **Auto-sync** — configure periodic re-login to fetch new posts on a schedule (1h to 24h intervals). The auto-sync setting is persisted per-room and loaded when the room is selected.
+- **Explicit login** — selecting a room does not log in. MeshMonitor shows the saved posts read-only under a "Not logged in" banner. Enter a password and press **Login** (or **Log in with saved password**) to post or fetch new posts. Login retries up to 3 times automatically to handle RF packet loss. Before 4.17.3, selecting a room logged in at once.
+- **Post stream** — read and send posts in the room's message board. Stored posts stay readable with no live login; sending needs one.
+- **Auto-sync** — configure periodic re-login to fetch new posts on a schedule (1h to 24h intervals). The auto-sync setting is persisted per-room and loaded when the room is selected. You can change it from the login card without logging in. Scheduled auto-sync still logs in by itself.
 - **Credential persistence** — saved room passwords are AES-256-GCM encrypted via the same credential store used for remote admin passwords.
 
 ## Multi-Source Dashboard
