@@ -51,6 +51,8 @@ Select a user to edit their permission scope and per-channel access across every
 
 ![User detail view with permission scope dropdown and per-channel controls](/images/features/per-source-permissions.png)
 
+The permission list includes **Remote Administration** (`remote_admin`). It is per source, and it lets a user send admin commands to remote nodes and use the MeshCore remote console through that source. Before 4.17.3 the Users tab did not list it. Grant it per source like any other resource.
+
 ## Traceroute read and write
 
 The `traceroute` row on the Users page has separate **Read** and **Write** boxes:

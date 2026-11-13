@@ -1682,7 +1682,7 @@ Each timer has:
 - **Name**: Human-readable identifier for the timer
 - **Cron Expression**: Standard 5-field cron format (minute hour day month weekday)
 - **Script**: Path to the script in `/data/scripts/`
-- **Channel**: Channel index (0-7) where output is sent
+- **Channels**: One or more channels (0-7) that get the output. Meshtastic sends to each selected channel through the source's outgoing queue, spaced by the normal send gap. A MeshCore timer sends to at most **4 channels**, each a separate flood **10 seconds apart**; MeshMonitor skips extra channels and logs a warning. Pick at least one channel, or **None** for a script that handles its own output.
 - **Enabled**: Toggle to enable/disable individual timers
 - **Last Run**: Timestamp of last execution (shown in timer list)
 - **Last Result**: Success or error status of last execution

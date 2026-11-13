@@ -81,6 +81,19 @@ All mode and range preferences are stored in your browser's local storage. They 
 
 To reset a widget's mode, click the `~` (Chart) button. To reset a gauge range, type in the desired values in the min/max inputs.
 
+## Fixed Y-Axis Range {#fixed-y-axis-range}
+
+By default a chart scales its Y axis to the data. A fixed range keeps the scale steady, so two charts compare at a glance or one spike does not flatten the rest.
+
+1. Switch the widget to **Chart** mode.
+2. Click the ruler button in the widget header (**Y-axis range**).
+3. Enter **Y min**, **Y max** or both. Leave a field blank to auto-scale that end.
+4. Click **Apply**. Click **Reset to auto** to remove the range.
+
+Y min must be less than Y max. Values outside the range are clipped. Enter values in the unit the chart shows; MeshMonitor stores them in the base unit (for example Celsius), so a unit change does not move your range. The ruler button gets an accent colour while a range is active.
+
+Unlike gauge ranges, Y-axis ranges save on the server per source (the `dashboardChartYRange` setting), so every viewer of that dashboard sees them. Only users who can edit the dashboard see the ruler button.
+
 ## Clean Telemetry Outliers
 
 A faulty sensor can log a spike that flattens the rest of a chart. **Clean outliers** removes those readings and keeps the rest of the history. Only admins see it.

@@ -75,7 +75,7 @@ node(s) in **Dashboard → Sources**.
 | `NODE_ENV` | Environment mode (`development` or `production`) | `development` |
 | `DATABASE_PATH` | SQLite database file path | `/data/meshmonitor.db` |
 | `TRACEROUTE_HISTORY_LIMIT` | Traceroute history rows to keep per node pair | `50` |
-| `BASE_URL` | Base path if serving from subfolder (e.g., `/meshmonitor`) | `/` (root) |
+| `BASE_URL` | Base path if serving from subfolder (e.g., `/meshmonitor`). Trailing slashes are stripped, so `/meshmonitor//` works like `/meshmonitor`. | `/` (root) |
 | `TZ` | Timezone for log timestamps and scheduled tasks | `America/New_York` |
 | `PUID` / `PGID` | Docker: uid/gid of the unprivileged `node` user every process runs as. See [Docker Security](/configuration/production#docker-security) | `1000` / `1000` |
 
