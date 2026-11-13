@@ -137,6 +137,33 @@ describe('UsersTab — save permissions payload', () => {
     expect(body.permissions.themes).toEqual({ read: true, write: false });
   });
 
+  it('sends remote_admin (a per-source resource once missing from the grid)', async () => {
+    setupApi({ permissions: { remote_admin: { read: true, write: true } } });
+    const { body } = await openAliceAndSave();
+    expect(body.permissions.remote_admin).toEqual({ read: true, write: true });
+    expect(body.sourceId).toBe('src-a');
+  });
+
+  it('renders a remote_admin row in the per-source grid', async () => {
+    setupApi({ permissions: {} });
+    render(<UsersTab />);
+    fireEvent.click(await screen.findByText(/Alice/));
+    const label = await screen.findByTitle(/remote MeshCore nodes/);
+    expect(label.className).toBe('permission-label');
+  });
+
+  it('does not add viewOnMap to channel_database (only real channel_N slots get it)', async () => {
+    setupApi({
+      permissions: {
+        channel_database: { read: true, write: false },
+        channel_1: { read: true, viewOnMap: true },
+      },
+    });
+    const { body } = await openAliceAndSave();
+    expect(body.permissions.channel_database).toEqual({ read: true, write: false });
+    expect(body.permissions.channel_1).toEqual({ viewOnMap: true, read: true, write: false });
+  });
+
   it('omits resources the user has no entry for, and drops unknown resource keys', async () => {
     setupApi({
       permissions: {

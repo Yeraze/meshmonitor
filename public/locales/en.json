@@ -3144,6 +3144,7 @@
   "users.connection_view_status": "View status",
   "users.connection_control_device": "Control device",
   "users.traceroute_permission": "Traceroute",
+  "users.remote_admin_permission": "Remote Administration",
   "users.read": "Read",
   "users.write": "Write",
   "users.view_on_map": "View on Map",

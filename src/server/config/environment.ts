@@ -410,26 +410,18 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     baseUrlProvided = false;
   }
 
-  // Remove trailing slashes
-  if (baseUrl.endsWith('/')) {
-    baseUrl = baseUrl.slice(0, -1);
-  }
+  // Remove all trailing slashes (`/foo//` -> `/foo`, `//` -> '')
+  baseUrl = baseUrl.replace(/\/+$/, '');
 
   // Validate URL path segments
   if (baseUrl) {
     const segments = baseUrl.split('/').filter(Boolean);
     const validSegment = /^[a-zA-Z0-9-_]+$/;
 
-    // Check each segment for path traversal or invalid characters
+    // Check each segment for invalid characters. A `..` segment cannot reach
+    // this point: baseUrl starts with '/' by now, so every `..` segment is
+    // preceded by '/' and the `/..` traversal check above already rejected it.
     for (const segment of segments) {
-      // Reject segments that are exactly '..'
-      if (segment === '..') {
-        logger.error(`Invalid BASE_URL: path traversal segment detected. Using default.`);
-        baseUrl = '';
-        baseUrlProvided = false;
-        break;
-      }
-
       if (!validSegment.test(segment)) {
         logger.warn(`BASE_URL contains invalid characters in segment: ${segment}. Only alphanumeric, hyphens, and underscores are allowed.`);
       }
