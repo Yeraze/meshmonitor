@@ -18,6 +18,7 @@ import { isTxDisabledBody } from '../../utils/txDisabled';
 import { SplitLongMessagesField } from '../shared/automation/SplitLongMessagesField';
 import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
 import { DEFAULT_MESHCORE_ADVERT_MODE, isMeshCoreAdvertMode, type MeshCoreAdvertMode } from '../../types/meshcoreAdvert';
+import { insertTokenAtSelection } from '../../utils/tokenInsert';
 
 interface MeshCoreAutoAnnounceSectionProps {
   baseUrl: string;
@@ -282,19 +283,17 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
 
   const insertToken = (token: string) => {
     const ta = textareaRef.current;
-    if (!ta) {
-      update('message', settings.message + token);
-      return;
-    }
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const next = settings.message.substring(0, start) + token + settings.message.substring(end);
-    update('message', next);
+    const { text, caret } = insertTokenAtSelection(
+      settings.message,
+      token,
+      ta ? { start: ta.selectionStart, end: ta.selectionEnd } : null,
+    );
+    update('message', text);
+    if (!ta) return;
     // Restore caret after the inserted token on next paint
     requestAnimationFrame(() => {
       ta.focus();
-      const pos = start + token.length;
-      ta.setSelectionRange(pos, pos);
+      ta.setSelectionRange(caret, caret);
     });
   };
 

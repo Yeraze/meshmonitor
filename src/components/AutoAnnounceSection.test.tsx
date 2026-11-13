@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import enTranslations from '../../public/locales/en.json';
 import AutoAnnounceSection from './AutoAnnounceSection';
 import { Channel } from '../types/device';
@@ -138,5 +138,41 @@ describe('AutoAnnounceSection — TX-disabled and permission gating (#5807)', ()
     const textboxes = screen.getAllByRole('textbox');
     expect(textboxes.length).toBeGreaterThan(0);
     textboxes.forEach(box => expect(box).toBeDisabled());
+  });
+});
+
+describe('AutoAnnounceSection — token insert buttons', () => {
+  const props = {
+    enabled: true,
+    intervalHours: 6,
+    message: 'Hello XXX world',
+    channelIndexes: [0],
+    announceOnStart: false,
+    useSchedule: false,
+    schedule: '0 */6 * * *',
+    channels: [] as Channel[],
+    baseUrl: '',
+    onEnabledChange: vi.fn(),
+    onIntervalChange: vi.fn(),
+    onMessageChange: vi.fn(),
+    onChannelIndexesChange: vi.fn(),
+    onAnnounceOnStartChange: vi.fn(),
+    onUseScheduleChange: vi.fn(),
+    onScheduleChange: vi.fn(),
+  };
+
+  beforeEach(() => {
+    (global.fetch as any) = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ lastAnnouncementTime: Date.now() }),
+    });
+  });
+
+  it('replaces the textarea selection with the clicked token', () => {
+    const { container } = render(<AutoAnnounceSection {...props} />);
+    const textarea = container.querySelector('#announceMessage') as HTMLTextAreaElement;
+    textarea.setSelectionRange(6, 9);
+    fireEvent.click(screen.getByRole('button', { name: '+ {VERSION}' }));
+    expect(textarea.value).toBe('Hello {VERSION} world');
   });
 });
