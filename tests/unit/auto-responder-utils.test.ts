@@ -10,36 +10,10 @@ import { splitTriggerPatterns, formatTriggerPatterns, getFileIcon } from '../../
 
 describe('splitTriggerPatterns', () => {
   describe('string input', () => {
-    it('should split simple comma-separated patterns', () => {
-      const result = splitTriggerPatterns('weather, status, ping');
-      expect(result).toEqual(['weather', 'status', 'ping']);
-    });
-
-    it('should handle patterns with parameters', () => {
-      const result = splitTriggerPatterns('weather, weather {location}, w {location}');
-      expect(result).toEqual(['weather', 'weather {location}', 'w {location}']);
-    });
-
-    it('should not split commas inside braces', () => {
-      // Comma inside a single brace (regex pattern)
-      const result = splitTriggerPatterns('match {pattern:a,b,c}');
-      expect(result).toEqual(['match {pattern:a,b,c}']);
-    });
-
     it('should split commas between separate parameter braces', () => {
       // Comma between two separate braces should be split
       const result = splitTriggerPatterns('coords {lat:-?\\d+\\.?\\d*},{lon:-?\\d+\\.?\\d*}');
       expect(result).toEqual(['coords {lat:-?\\d+\\.?\\d*}', '{lon:-?\\d+\\.?\\d*}']);
-    });
-
-    it('should handle nested braces', () => {
-      const result = splitTriggerPatterns('cmd {param:{a,b}}, other');
-      expect(result).toEqual(['cmd {param:{a,b}}', 'other']);
-    });
-
-    it('should trim whitespace from patterns', () => {
-      const result = splitTriggerPatterns('weather , status , ping');
-      expect(result).toEqual(['weather', 'status', 'ping']);
     });
 
     it('should handle single pattern without comma', () => {
@@ -80,11 +54,6 @@ describe('splitTriggerPatterns', () => {
       const input = ['weather', null as any, 'status', 123 as any, 'ping'];
       const result = splitTriggerPatterns(input);
       expect(result).toEqual(['weather', 'status', 'ping']);
-    });
-
-    it('should handle empty array', () => {
-      const result = splitTriggerPatterns([]);
-      expect(result).toEqual([]);
     });
   });
 

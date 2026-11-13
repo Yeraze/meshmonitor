@@ -18,7 +18,7 @@ vi.mock('../../sourceManagerRegistry.js', () => ({
     getAllManagers: () => [...registry.managers.values()],
   },
 }));
-vi.mock('../../meshtasticManager.js', () => ({ default: {}, fallbackManager: {} }));
+vi.mock('../../meshtasticManager.js', () => ({ fallbackManager: {} }));
 vi.mock('../../messageQueueService.js', () => ({ messageQueueService: {} }));
 
 import databaseService from '../../../services/database.js';

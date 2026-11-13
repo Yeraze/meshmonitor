@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 
-vi.mock('../../meshtasticManager.js', () => ({ default: {} }));
+vi.mock('../../meshtasticManager.js', () => ({}));
 vi.mock('../../meshcoreManager.js', () => ({ default: {} }));
 vi.mock('../../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: { getManager: vi.fn() } }));
 vi.mock('../../messageQueueService.js', () => ({ messageQueueService: {} }));

@@ -21,7 +21,7 @@ vi.mock('../../sourceManagerRegistry.js', () => ({
     getAllManagers: () => [...registry.managers.values()],
   },
 }));
-vi.mock('../../meshtasticManager.js', () => ({ default: {}, fallbackManager: {} }));
+vi.mock('../../meshtasticManager.js', () => ({ fallbackManager: {} }));
 vi.mock('../../messageQueueService.js', () => ({ messageQueueService: {} }));
 vi.mock('../../middleware/rateLimiters.js', async (orig) => {
   const actual = await orig<typeof import('../../middleware/rateLimiters.js')>();

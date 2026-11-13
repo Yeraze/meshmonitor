@@ -3,7 +3,7 @@
  *
  * The 20 `/nodes*` + `/auto-favorite/status` handlers (plus
  * `/auto-ping/stop/:nodeNum`) moved out of server.ts as part of #3502 PR3
- * were previously covered only by server.test.ts's hand-rolled mini-app
+ * were previously covered only by the removed server.test.ts's hand-rolled mini-app
  * duplicate (which never imports nodesRoutes.ts). This is the first real
  * coverage of the actual router via the route-test harness
  * (createRouteTestApp): a permissioned write, an optionalAuth read, and the
