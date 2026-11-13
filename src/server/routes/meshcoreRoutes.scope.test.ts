@@ -539,6 +539,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'DELETE /contacts/:publicKey': 'write',
     'POST /contacts/:publicKey/add-to-device': 'write',
     'GET /contacts/:publicKey/export': 'read-signed-in',
+    // #6370: import a MeshCore One contact-share token into the companion.
+    'POST /contacts/import-token': 'write',
     'POST /contacts/import': 'write',
     'GET /contacts/:publicKey/neighbours': 'read-signed-in',
     'GET /nodes/:publicKey/telemetry-config': 'read',

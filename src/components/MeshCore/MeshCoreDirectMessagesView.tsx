@@ -17,6 +17,7 @@ import { MeshCoreNodeNeighboursConfig } from './MeshCoreNodeNeighboursConfig';
 import { MeshCoreNodeTimeSyncConfig } from './MeshCoreNodeTimeSyncConfig';
 import TelemetryGraphs from '../TelemetryGraphs';
 import { useAuth } from '../../contexts/AuthContext';
+import { useContactTokenImport } from './hooks/useContactTokenImport';
 import { useSettings, useOptionalMuteSettings } from '../../contexts/SettingsContext';
 import { MuteMenu, MutedIndicator } from '../notifications/MuteMenu';
 import { MarkAllReadButton } from '../messages/MarkAllReadButton';
@@ -143,6 +144,10 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   // MeshCore Telemetry dashboard (#3659).
   const { temperatureUnit, telemetryVisualizationHours, tapbackEmojis } = useSettings();
   const canSend = hasPermission('messages', 'write');
+  // Contact-share tokens (#6370): import from messages; share in the composer.
+  const contactTokenImport = useContactTokenImport(status, actions.importContactToken);
+  const contactShare = useMemo(() => ({ selfNode: status?.localNode ?? null }), [status?.localNode]);
+
   const canWriteNodes = hasPermission('nodes', 'write');
   const canTraceroute = hasPermission('traceroute', 'write');
   const canRemoteAdmin = hasPermission('remote_admin', 'write');
@@ -841,6 +846,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   </div>
                 )}
                 <MeshCoreMessageStream
+                  contactTokenImport={contactTokenImport}
+                  contactShare={contactShare}
                   messages={filtered}
                   reactionResolutions={reactionResolutions}
                   contacts={contacts}

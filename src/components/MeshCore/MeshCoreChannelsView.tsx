@@ -24,6 +24,7 @@ import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcore
 import { MeshCoreChannelMarker } from './MeshCoreChannelMarker';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
+import { useContactTokenImport } from './hooks/useContactTokenImport';
 import { useOptionalChannelMuteSettings, useSettingsOptional } from '../../contexts/SettingsContext';
 import { loadChannelLastRead, markChannelRead as persistChannelRead, markManyRead } from './meshcoreUnreadStore';
 import { slotMoveMap, subscribeChannelsReordered } from './meshcoreChannelReorderEvents';
@@ -143,6 +144,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const csrfFetch = useCsrfFetch();
   const { hasPermission, authStatus } = useAuth();
   const canSend = hasPermission('messages', 'write');
+  // Contact-share tokens (#6370): import from messages; share in the composer.
+  const contactTokenImport = useContactTokenImport(status, actions.importContactToken);
+  const contactShare = useMemo(() => ({ selfNode: status?.localNode ?? null }), [status?.localNode]);
+
   // Channel mute (#5487): a per-user preference on this source's notification
   // row, keyed by MeshCore channel index. For MeshCore it hides the
   // unread dot/badge and also suppresses push for that channel (P11).
@@ -1117,6 +1122,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         )}
         <MeshCoreMessageStream
           messages={filtered}
+          contactTokenImport={contactTokenImport}
+          contactShare={contactShare}
           reactionResolutions={reactionResolutions}
           contacts={contacts}
           sourceId={sourceId}
