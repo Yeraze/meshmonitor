@@ -30,6 +30,9 @@ import { meshcoreClockOffsetMs } from '../../utils/meshcoreMessageTime';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMeshCoreViewAccess } from './meshCoreViewAccess';
 import { usePushNotificationNavigation } from '../../hooks/usePushNotificationNavigation';
+import { useSource } from '../../contexts/SourceContext';
+import { isMeshCoreMqttBrokerSourceType } from '../../utils/meshcoreSourceTypes';
+import { MeshCoreBrokerDiagnostics } from './MeshCoreBrokerDiagnostics';
 
 // Same shared tab the device page mounts; loaded on demand (it is large).
 const NotificationsTab = lazy(() => import('../NotificationsTab'));
@@ -115,6 +118,10 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
   const [nodes, setNodes] = useState<IngestNode[]>([]);
   const [messages, setMessages] = useState<IngestMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The embedded broker source (#6197) reuses this page and adds its
+  // per-connection diagnostics to the Overview tab.
+  const { sourceType } = useSource();
+  const isBroker = isMeshCoreMqttBrokerSourceType(sourceType);
 
   // Notifications tab (#6307): the shared NotificationsTab, shown by the same
   // rule as the device page (signed in).
@@ -251,6 +258,8 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
       </nav>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {tab === 'overview' && isBroker && <MeshCoreBrokerDiagnostics sourceId={sourceId} />}
 
       {tab === 'overview' && (
         <section className={styles.panel}>

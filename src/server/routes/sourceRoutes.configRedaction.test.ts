@@ -63,7 +63,7 @@ const PRIV = 'PRIVSENTINEL';
 const EP = 'EPSENTINEL';
 
 /** Ports are numbers, so they get distinctive values instead of a prefix. */
-const ENDPOINT_PORTS = [47101, 47102, 47103, 47104, 47105, 47106];
+const ENDPOINT_PORTS = [47101, 47102, 47103, 47104, 47105, 47106, 47107];
 
 const url = (scheme: string, tag: string) =>
   `${scheme}://${SEC}-user-${tag}:${SEC}-urlpw-${tag}@${EP}-${tag}.example:8883/path?token=${SEC}-query-${tag}#${SEC}-frag-${tag}`;
@@ -132,6 +132,37 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     autoConnect: false,
     [UNCLASSIFIED]: `${SEC}-future-ingest`,
   },
+  meshcore_mqtt_broker: {
+    listener: { port: ENDPOINT_PORTS[6], host: `${EP}-mcb-host` },
+    auth: {
+      tokenAudience: `${PRIV}-mcb-aud`,
+      allowedObservers: [`${PRIV}-mcb-observer`],
+      username: `${PRIV}-mcb-user`,
+      password: `${PW}-mcb`,
+    },
+    regions: ['SEA'],
+    limits: { maxClients: 7, note: `${PRIV}-mcb-limits` },
+    forwarding: {
+      ownIdentityName: `${PRIV}-mcb-name`,
+      targets: [
+        {
+          id: 'mcb-t1',
+          label: `${PRIV}-mcb-label`,
+          enabled: true,
+          url: url('mqtts', 'mcb-fwd'),
+          identityMode: 'passthrough',
+          username: `${PRIV}-mcb-fwd-user`,
+          password: `${PW}-mcb-fwd`,
+          tokenAudience: `${PRIV}-mcb-fwd-aud`,
+          observers: [`${PRIV}-mcb-fwd-obs`],
+          iataFilter: ['SEA'],
+          rejectUnauthorized: false,
+        },
+      ],
+    },
+    autoConnect: false,
+    [UNCLASSIFIED]: `${SEC}-future-mcb`,
+  },
   mqtt_bridge: {
     brokerSourceId: 'cfgred-mqtt_broker',
     upstream: {
@@ -196,6 +227,7 @@ const DELIBERATELY_UNCLASSIFIED: Record<Source['type'], string[]> = {
   // Key material: removed for every caller before the allowlist is consulted.
   meshcore: [UNCLASSIFIED, 'observer.privateKey', 'observer.brokers.password'],
   meshcore_mqtt: [UNCLASSIFIED],
+  meshcore_mqtt_broker: [UNCLASSIFIED],
   mqtt_bridge: [UNCLASSIFIED],
   mqtt_broker: [UNCLASSIFIED, 'password', 'apiKey'],
   reticulum: [UNCLASSIFIED],
@@ -457,6 +489,7 @@ describe('source config redaction', () => {
           observer: { enabled: true, brokerCount: 1 },
         });
         expect(rows.meshcore_mqtt.config).toEqual({ autoConnect: false, region: 'MCO' });
+        expect(rows.meshcore_mqtt_broker.config).toEqual({ autoConnect: false, regions: ['SEA'] });
         expect(rows.mqtt_bridge.config).toEqual({ autoConnect: false, brokerSourceId: 'cfgred-mqtt_broker' });
         expect(rows.mqtt_broker.config).toEqual({ autoConnect: false });
         expect(rows.reticulum.config).toEqual({ autoConnect: false });
@@ -509,6 +542,12 @@ describe('source config redaction', () => {
         autoConnect: false,
         listener: { port: ENDPOINT_PORTS[4], host: `${EP}-listener-host` },
         rootTopic: `${EP}-root-topic`,
+      });
+      // Forwarding targets have no viewer projection at all.
+      expect(rows.meshcore_mqtt_broker.config).toEqual({
+        autoConnect: false,
+        regions: ['SEA'],
+        listener: { port: ENDPOINT_PORTS[6], host: `${EP}-mcb-host` },
       });
       expect(rows.reticulum.config).toEqual({
         autoConnect: false,
@@ -574,6 +613,21 @@ describe('source config redaction', () => {
       });
       expect(rows.mqtt_broker.maskedConfigFields).toEqual(['auth.password']);
 
+      const mcb = FIXTURES.meshcore_mqtt_broker as Record<string, any>;
+      expect(rows.meshcore_mqtt_broker.config).toEqual({
+        ...without(mcb, UNCLASSIFIED),
+        auth: without(mcb.auth, 'password'),
+        forwarding: {
+          ownIdentityName: mcb.forwarding.ownIdentityName,
+          targets: [{ ...without(mcb.forwarding.targets[0], 'password'), url: editorUrl('mqtts', 'mcb-fwd') }],
+        },
+      });
+      expect(rows.meshcore_mqtt_broker.maskedConfigFields!.sort()).toEqual([
+        'auth.password',
+        'forwarding.targets.0.password',
+        'forwarding.targets.0.url',
+      ]);
+
       expect(rows.reticulum.config).toEqual({
         ...without(FIXTURES.reticulum, UNCLASSIFIED, 'token'),
         bridgeUrl: editorUrl('ws', 'rns-bridge'),
@@ -607,6 +661,11 @@ describe('source config redaction', () => {
       expect(credentialFields('meshcore_mqtt')).toEqual(['brokerUrl:url', 'password:secret']);
       expect(credentialFields('mqtt_bridge')).toEqual(['upstream.password:secret', 'upstream.url:url']);
       expect(credentialFields('mqtt_broker')).toEqual(['auth.password:secret']);
+      expect(credentialFields('meshcore_mqtt_broker')).toEqual([
+        'auth.password:secret',
+        'forwarding.targets.password:secret',
+        'forwarding.targets.url:url',
+      ]);
       expect(credentialFields('reticulum')).toEqual(['bridgeUrl:url', 'token:secret']);
     });
 
@@ -658,6 +717,14 @@ describe('source config redaction', () => {
         observer.brokers = observer.brokers.map(({ password: _password, ...rest }: Record<string, unknown>) => rest);
         const withoutKeys = { ...FIXTURES.meshcore, observer };
         expect(mergeSourceConfigOnSave(type, withoutKeys, loaded, 'editor')).toEqual(withoutKeys);
+        return;
+      }
+
+      if (type === 'meshcore_mqtt_broker') {
+        // Sentinel observer keys are not 64-hex, so the route's validation
+        // refuses the save; check the merge directly. Both passwords survive
+        // (the target URL comes back masked and is restored from storage).
+        expect(mergeSourceConfigOnSave(type, FIXTURES[type], loaded, 'editor')).toEqual(FIXTURES[type]);
         return;
       }
 

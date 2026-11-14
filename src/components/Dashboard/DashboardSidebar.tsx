@@ -789,6 +789,16 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   </span>
                 ) : null;
               })()}
+              {!isUnified && source.type === 'meshcore_mqtt_broker' && typeof status?.clientCount === 'number' && (
+                // Embedded MeshCore broker (#6197): observers connected now.
+                // Per-connection diagnostics live on the source's Overview tab.
+                <span
+                  className="dashboard-source-card-badge"
+                  title={t('meshcore.broker.card_badge_title', 'Observers connected to this broker')}
+                >
+                  {t('meshcore.broker.card_badge', '{{count}} obs', { count: status.clientCount })}
+                </span>
+              )}
               {!isUnified && source.type === 'meshcore' && (() => {
                 // Compact Analyzer Observer indicator (#5014 Phase 2 WP3 §4.9).
                 // Zero new requests: `status.observer` rides the already-polled

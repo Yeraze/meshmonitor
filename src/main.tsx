@@ -42,6 +42,7 @@ import { WebSocketProvider } from './contexts/WebSocketContext';
 import { SourceProvider } from './contexts/SourceContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { installKeyboardInsetsObserver } from './utils/keyboardInsets';
+import { isMeshCoreMqttFedSourceType } from './utils/meshcoreSourceTypes.js';
 
 // Every page is its own lazy chunk, so a visit loads only the page it lands
 // on rather than the whole app in one ~4 MB `main` bundle. Chunks reference
@@ -128,7 +129,7 @@ function SourceAppDispatch() {
   // ~20 device endpoints the route guard refuses for it) and rather than
   // falling through to the Meshtastic <App /> shell below, which is what it did
   // before #5096 and why it showed Meshtastic tabs for a MeshCore source.
-  if (source?.type === 'meshcore_mqtt') {
+  if (isMeshCoreMqttFedSourceType(source?.type)) {
     return (
       <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
         <WebSocketProvider>

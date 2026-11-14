@@ -1,0 +1,99 @@
+/*
+ * Embedded MeshCore MQTT broker diagnostics (#6197).
+ * CSS module per the containment rule; theme tokens only, no fallbacks.
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.error {
+  display: block;
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.tableScroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th,
+.table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.topic {
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+
+.reject {
+  color: var(--color-warning);
+}
+
+.sub {
+  display: block;
+  color: var(--color-text-faint);
+  font-size: 11px;
+}
+
+.recent {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.time {
+  color: var(--color-text-faint);
+}

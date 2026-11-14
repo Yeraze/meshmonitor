@@ -51,6 +51,7 @@ import {
   decodeObserverStatusMessage,
   observerKeyFromTopic,
   type IngestedObserverPacket,
+  type IngestedObserverStatus,
 } from './services/meshcoreMqttIngestPacket.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './services/meshcoreTelemetryPoller.js';
@@ -205,9 +206,13 @@ export { advertLastHeardMs, pskToHex };
 
 export class MeshCoreMqttManager extends EventEmitter implements ISourceManager {
   readonly sourceId: string;
-  readonly sourceType = 'meshcore_mqtt' as const;
+  /**
+   * Widened so the embedded broker source (#6197), which reuses this ingest
+   * pipeline as a subclass, can carry its own discriminant.
+   */
+  readonly sourceType: 'meshcore_mqtt' | 'meshcore_mqtt_broker' = 'meshcore_mqtt';
 
-  private readonly sourceName: string;
+  protected readonly sourceName: string;
   private readonly config: MeshCoreMqttSourceConfig;
   private client: MqttBrokerClient | null = null;
   /** Debounced broker-link alerts (#6307). Disposed silently on stop / auth stop. */
@@ -225,7 +230,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    */
   private authStopped = false;
 
-  private readonly stats: MeshCoreMqttIngestStats = {
+  protected readonly stats: MeshCoreMqttIngestStats = {
     received: 0,
     accepted: 0,
     rejected: 0,
@@ -281,7 +286,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     // Ignore / Block lists (#5408) are classified synchronously on ingest.
     await meshcoreMessageFilter.loadSource(this.sourceId);
     try {
-      await this.openBroker();
+      await this.openTransport();
     } catch (err) {
       // Roll back so a later start() can retry. Leaving `started` true after a
       // failed connect would strand the source: never connected, and never
@@ -295,7 +300,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   }
 
   /** Open and subscribe. Separated so start() can roll back cleanly on failure. */
-  private async openBroker(): Promise<void> {
+  protected async openTransport(): Promise<void> {
 
     const packetsTopic = observerPacketsSubscription(this.config.region);
     const statusTopic = observerStatusSubscription(this.config.region);
@@ -414,7 +419,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    * observer's identity must all be dropped without disturbing the stream. A
    * single bad message on a busy region feed can never throw.
    */
-  private handleMessage(topic: string, payload: Buffer): void {
+  protected handleMessage(topic: string, payload: Buffer): void {
     // Status heartbeats ride the same region prefix as packets but are a
     // different shape. Split on the topic suffix BEFORE any parsing or
     // counting: the packet counters must not drift by one per observer per
@@ -448,6 +453,21 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
         return;
       }
 
+      this.ingestDecodedPacket(decoded);
+    } catch (err) {
+      this.stats.rejected++;
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle message:`, err);
+    }
+  }
+
+  /**
+   * Store and fan out one packet that already passed validation (decode and
+   * topic/body key cross-check). Counts it as accepted. Shared with the
+   * embedded broker source (#6197), which validates on its own so it can
+   * report a reason per connection.
+   */
+  protected ingestDecodedPacket(decoded: IngestedObserverPacket): void {
+    try {
       this.stats.accepted++;
       this.stats.lastPacketAt = Date.now();
       if (
@@ -864,10 +884,23 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    * would make an observer with a dead radio look mesh-alive.
    */
   private async handleStatus(payload: Buffer): Promise<void> {
+    let status: IngestedObserverStatus | null;
     try {
-      const status = decodeObserverStatusMessage(JSON.parse(payload.toString('utf8')));
-      if (!status) return;
+      status = decodeObserverStatusMessage(JSON.parse(payload.toString('utf8')));
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to parse status:`, err);
+      return;
+    }
+    if (!status) return;
+    await this.ingestDecodedStatus(status);
+  }
 
+  /**
+   * Record one decoded `/status` heartbeat. Shared with the embedded broker
+   * source (#6197), which decodes and cross-checks the topic key itself.
+   */
+  protected async ingestDecodedStatus(status: IngestedObserverStatus): Promise<void> {
+    try {
       this.stats.statusMessages++;
 
       // Read the prior snapshot BEFORE the delete/set below overwrites it. Its

@@ -46,6 +46,7 @@ import {
   purgeLegacyNodeDisplayLocal,
 } from '../utils/nodeDisplayStorage';
 import type { MapStyle } from '../server/services/mapStyleService.js';
+import { isMeshCoreMqttFedSourceType } from '../utils/meshcoreSourceTypes.js';
 
 // #4412 Phase 3 (WP2): one-time purge of the legacy un-namespaced Node
 // Display localStorage keys, so a stale global value from before the
@@ -1283,7 +1284,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // a non-Meshtastic source; this check stays as a second guard for a view
   // whose source type the server could not resolve.
   const muteScopeIsMeshtastic = sourceType !== 'meshcore'
-    && sourceType !== 'meshcore_mqtt'
+    && !isMeshCoreMqttFedSourceType(sourceType)
     && sourceType !== 'reticulum';
 
   const fetchNotificationPrefs = useCallback(async (): Promise<Record<string, unknown>> => {

@@ -1,0 +1,128 @@
+/*
+ * Embedded MeshCore MQTT broker source form (#6197).
+ * CSS module per the containment rule; theme tokens only, no fallbacks.
+ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.intro {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0 4px;
+  color: var(--color-text);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.keys {
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--color-warning);
+  background: var(--color-bg-sunken);
+  color: var(--color-warning);
+  font-size: 12px;
+}
+
+.target {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-raised);
+}
+
+.targetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.keyPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.keyRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.keyText {
+  overflow-wrap: anywhere;
+}
+
+.keyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

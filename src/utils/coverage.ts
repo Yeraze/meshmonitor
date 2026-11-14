@@ -13,6 +13,8 @@
  * D1-D5) for the full rationale.
  */
 
+import { isMeshCoreMqttFedSourceType } from './meshcoreSourceTypes.js';
+
 // ---------------------------------------------------------------------------
 // Retention
 // ---------------------------------------------------------------------------
@@ -340,7 +342,7 @@ export function isMeshCoreReceptionRow(row: { protocol: string }): boolean {
  * the server finds these sources with the typed manager predicates.
  */
 export function isCoverageMqttSourceType(sourceType: string | null | undefined): boolean {
-  return sourceType === 'mqtt_bridge' || sourceType === 'mqtt_broker' || sourceType === 'meshcore_mqtt';
+  return sourceType === 'mqtt_bridge' || sourceType === 'mqtt_broker' || isMeshCoreMqttFedSourceType(sourceType);
 }
 
 // ---------------------------------------------------------------------------

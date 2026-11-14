@@ -34,6 +34,7 @@ import { buildMeshCorePositionFilter, loadMeshCoreNodesBySource } from '../utils
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { CROSS_SOURCE_HOP_RESOLUTION_SETTING } from './meshcoreFrameIngest.js';
 import type { CrossSourceHopCandidate, CrossSourceHopPool } from '../../utils/meshcorePath.js';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 /** One node on another source whose key starts with a requested hop hash. */
 export type HopCandidate = CrossSourceHopCandidate;
@@ -97,8 +98,8 @@ export async function buildHopCandidatePool(
   // Device-backed sources first, so their copy of a shared node names it.
   const others = allSources
     .filter((s) => s.id !== requestingSourceId && permitted.has(s.id))
-    .filter((s) => s.type === 'meshcore' || s.type === 'meshcore_mqtt')
-    .sort((a, b) => Number(a.type === 'meshcore_mqtt') - Number(b.type === 'meshcore_mqtt'));
+    .filter((s) => s.type === 'meshcore' || isMeshCoreMqttFedSourceType(s.type))
+    .sort((a, b) => Number(isMeshCoreMqttFedSourceType(a.type)) - Number(isMeshCoreMqttFedSourceType(b.type)));
   if (others.length === 0) return pool;
 
   const otherIds = others.map((s) => s.id);
@@ -108,7 +109,7 @@ export async function buildHopCandidatePool(
   for (const prefix of prefixes) {
     const byKey = new Map<string, HopCandidate>();
     for (const src of others) {
-      const isMqtt = src.type === 'meshcore_mqtt';
+      const isMqtt = isMeshCoreMqttFedSourceType(src.type);
       for (const n of nodesBySource.get(src.id) ?? []) {
         const key = n.publicKey.toLowerCase();
         if (!key.startsWith(prefix)) continue;
