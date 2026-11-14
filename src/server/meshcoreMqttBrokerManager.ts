@@ -136,7 +136,8 @@ function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a, 'utf8');
   const bb = Buffer.from(b, 'utf8');
   if (ab.length !== bb.length) {
-    crypto.timingSafeEqual(ab, ab); // keep the timing flat
+    // Same-length dummy compare against the stored value keeps the timing flat.
+    crypto.timingSafeEqual(Buffer.alloc(bb.length), bb);
     return false;
   }
   return crypto.timingSafeEqual(ab, bb);
@@ -498,11 +499,16 @@ export class MeshCoreMqttBrokerManager extends MeshCoreMqttManager {
 
   private rememberForwarded(payload: Buffer): void {
     const now = Date.now();
-    this.forwardedDigests.set(payloadDigest(payload), now + LOOP_MEMORY_MS);
-    // Insertion order is expiry order: trim expired entries from the front.
-    for (const [digest, expires] of this.forwardedDigests) {
+    const digest = payloadDigest(payload);
+    // Delete first: Map.set on an existing key keeps its old position, which
+    // would break "insertion order is expiry order" for a re-forwarded payload.
+    this.forwardedDigests.delete(digest);
+    this.forwardedDigests.set(digest, now + LOOP_MEMORY_MS);
+    // Insertion order is expiry order: trim expired (or over-cap) entries from
+    // the front. The entry just added is last, so it is never trimmed here.
+    for (const [key, expires] of this.forwardedDigests) {
       if (expires > now && this.forwardedDigests.size <= LOOP_MEMORY_MAX) break;
-      this.forwardedDigests.delete(digest);
+      this.forwardedDigests.delete(key);
     }
   }
 
