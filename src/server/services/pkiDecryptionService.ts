@@ -70,17 +70,21 @@ export function derivePkiAesKey(localPrivate32: Buffer, remotePublic32: Buffer):
 }
 
 /**
- * Build the 13-byte AES-CCM nonce. The firmware lays it out in a 16-byte buffer
- * ([packetId u64 LE][fromNode u32 LE][extraNonce u32 LE]) and hands CCM the
- * first 13 bytes — so only the LOW byte of extraNonce participates. Exposed for
- * testing.
+ * Build the 13-byte AES-CCM nonce exactly as firmware `CryptoEngine::initNonce`
+ * does (src/mesh/CryptoEngine.cpp): packetId as u64 LE into bytes 0-7, fromNode
+ * u32 LE into bytes 8-11, then a non-zero extraNonce u32 LE copied to bytes
+ * 4-7, OVERWRITING the high half of the packet id. CCM uses the first 13
+ * bytes: [id LE32][extraNonce LE32][fromNode LE32][0x00]. (Before #4305 this
+ * put extraNonce at bytes 12-15, so only its low byte reached the nonce and
+ * the real high-half bytes were zeros: no firmware PKI DM could open.)
+ * Exposed for testing.
  */
 export function buildPkiNonce(packetId: number, fromNode: number, extraNonce: number): Buffer {
   const buf = Buffer.alloc(16);
   buf.writeUInt32LE(packetId >>> 0, 0);
   buf.writeUInt32LE(0, 4); // packetId high 32 bits are always 0 (fixed32 on the wire)
   buf.writeUInt32LE(fromNode >>> 0, 8);
-  buf.writeUInt32LE(extraNonce >>> 0, 12);
+  if (extraNonce >>> 0) buf.writeUInt32LE(extraNonce >>> 0, 4);
   return buf.subarray(0, 13);
 }
 

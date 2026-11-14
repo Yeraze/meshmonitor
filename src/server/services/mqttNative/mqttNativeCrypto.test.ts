@@ -130,6 +130,28 @@ describe('PKI DM encryption round-trips through pkiDecryptionService', () => {
     expect(Buffer.from(r.payload!).toString('utf8')).toBe('secret dm');
   });
 
+  it('uses the firmware CCM nonce layout [id][extraNonce][from][0] (CryptoEngine::initNonce)', async () => {
+    const { derivePkiAesKey } = await import('../pkiDecryptionService.js');
+    const us = generateMqttNativeIdentity();
+    const them = generateMqttNativeIdentity();
+    const id = 0x11223344;
+    const extra = 0xa1b2c3d4;
+    const data = encodeDataMessage({ portnum: PortNum.TEXT_MESSAGE_APP, payload: Buffer.from('kat') });
+    const blob = encryptPkiPayload(data, {
+      localPrivateKey: us.privateKey, remotePublicKey: them.publicKey, packetId: id, fromNode: us.nodeNum, extraNonce: extra,
+    });
+    expect(blob.readUInt32LE(blob.length - 4)).toBe(extra);
+    // Rebuild the nonce by hand, independently of buildPkiNonce.
+    const nonce = Buffer.alloc(13);
+    nonce.writeUInt32LE(id, 0);
+    nonce.writeUInt32LE(extra, 4);
+    nonce.writeUInt32LE(us.nodeNum, 8);
+    const decipher = crypto.createDecipheriv('aes-256-ccm', derivePkiAesKey(them.privateKey, us.publicKey), nonce, { authTagLength: 8 });
+    decipher.setAuthTag(blob.subarray(blob.length - 12, blob.length - 4));
+    const plain = Buffer.concat([decipher.update(blob.subarray(0, blob.length - 12)), decipher.final()]);
+    expect(plain.equals(Buffer.from(data))).toBe(true);
+  });
+
   it('a third party cannot open it', () => {
     const us = generateMqttNativeIdentity();
     const them = generateMqttNativeIdentity();
