@@ -50,9 +50,26 @@ export interface MqttConsentHiddenSet {
    * carry one) the node is hidden if any source hides it.
    */
   hides(sourceId: string | null | undefined, nodeNum: number | bigint | string | null | undefined): boolean;
+  /**
+   * True when every node of `sourceId` is hidden: the set could not be built
+   * for that source, so it fails closed. With no source: true when any source
+   * is blocked. Callers that aggregate in SQL return nothing for such a source.
+   */
+  blocksAll(sourceId?: string | null): boolean;
+  /**
+   * The hidden node numbers on `sourceId` (or on every source when omitted),
+   * for repository queries that must exclude them. Meaningless when
+   * `blocksAll` is true for that source; check that first.
+   */
+  nodeNumsFor(sourceId?: string | null): number[];
 }
 
-export const NO_HIDDEN_NODES: MqttConsentHiddenSet = { active: false, hides: () => false };
+export const NO_HIDDEN_NODES: MqttConsentHiddenSet = {
+  active: false,
+  hides: () => false,
+  blocksAll: () => false,
+  nodeNumsFor: () => [],
+};
 
 function toNodeNum(value: number | bigint | string | null | undefined): number | null {
   if (value == null) return null;
@@ -65,22 +82,44 @@ function toNodeNum(value: number | bigint | string | null | undefined): number |
   return Number.isFinite(n) ? n >>> 0 : null;
 }
 
-/** Build a set from explicit data. Exported for tests and for callers that already hold the rows. */
-export function makeMqttConsentHiddenSet(bySource: Map<string, Set<number>>): MqttConsentHiddenSet {
-  let any = false;
+/**
+ * Build a set from explicit data. Exported for tests and for callers that
+ * already hold the rows. `blocked` lists sources whose every node is hidden
+ * (fail closed); `'all'` blocks every source.
+ */
+export function makeMqttConsentHiddenSet(
+  bySource: Map<string, Set<number>>,
+  blocked: ReadonlySet<string> | 'all' = new Set(),
+): MqttConsentHiddenSet {
+  const blockAll = blocked === 'all';
+  const blockedSet: ReadonlySet<string> = blocked === 'all' ? new Set() : blocked;
+  let any = blockAll || blockedSet.size > 0;
   for (const set of bySource.values()) if (set.size > 0) any = true;
   if (!any) return NO_HIDDEN_NODES;
+  const isBlocked = (sourceId: string | null | undefined): boolean =>
+    blockAll || (sourceId ? blockedSet.has(sourceId) : blockedSet.size > 0);
   return {
     active: true,
     hides(sourceId, nodeNum) {
       const n = toNodeNum(nodeNum);
       if (n === null) return false;
+      if (isBlocked(sourceId)) return true;
       if (sourceId) return bySource.get(sourceId)?.has(n) ?? false;
       for (const set of bySource.values()) if (set.has(n)) return true;
       return false;
     },
+    blocksAll: isBlocked,
+    nodeNumsFor(sourceId) {
+      if (sourceId) return [...(bySource.get(sourceId) ?? [])];
+      const all = new Set<number>();
+      for (const set of bySource.values()) for (const n of set) all.add(n);
+      return [...all];
+    },
   };
 }
+
+/** Every node of every source hidden: the fail-closed answer when the flags cannot be read. */
+export const HIDE_ALL_NODES: MqttConsentHiddenSet = makeMqttConsentHiddenSet(new Map(), 'all');
 
 /**
  * The hidden set for `user`. Not anonymous → nothing hidden, no query. For an
@@ -88,30 +127,41 @@ export function makeMqttConsentHiddenSet(bySource: Map<string, Set<number>>): Mq
  * node query per source that has the flag on. `sourceIds` limits the work to
  * the sources the request can return; omit it for every source.
  *
- * Fail-open on a read error (logs, hides nothing): the setting is a privacy
- * opt-in layered on top of the permission system, which still applies.
+ * FAILS CLOSED (#5156 review): a failed sources or settings read means we
+ * cannot tell which sources have the flag on, so every source is treated as
+ * flagged and every node is hidden for this request. A failed node read on a
+ * flagged source hides every node of that source. Each logs a warning. An
+ * empty anonymous view is the price of an error; a leak is not acceptable.
  */
 export async function loadMqttConsentHiddenSet(
   user: { username?: string | null } | null | undefined,
   sourceIds?: readonly string[],
 ): Promise<MqttConsentHiddenSet> {
   if (!isAnonymousViewer(user)) return NO_HIDDEN_NODES;
+  let enabled: string[];
   try {
     const ids = sourceIds
       ? [...new Set(sourceIds)]
       : (await databaseService.sources.getAllSources()).map((s: { id: string }) => s.id);
     if (ids.length === 0) return NO_HIDDEN_NODES;
     const flags = await databaseService.settings.getSettingForSources(ids, ANON_HIDE_MQTT_NO_CONSENT_SETTING);
-    const enabled = ids.filter((id) => isAnonHideFlagOn(flags.get(id)));
-    if (enabled.length === 0) return NO_HIDDEN_NODES;
-    const entries = await Promise.all(
-      enabled.map(async (id) => [id, new Set(await databaseService.nodes.getMqttConsentWithheldNodeNums(id))] as const),
-    );
-    return makeMqttConsentHiddenSet(new Map(entries));
+    enabled = ids.filter((id) => isAnonHideFlagOn(flags.get(id)));
   } catch (err) {
-    logger.warn('MQTT-consent anonymous filter: could not load hidden nodes, showing all:', err);
-    return NO_HIDDEN_NODES;
+    logger.warn('MQTT-consent anonymous filter: could not read which sources are flagged; hiding every node from this anonymous request:', err);
+    return HIDE_ALL_NODES;
   }
+  if (enabled.length === 0) return NO_HIDDEN_NODES;
+  const bySource = new Map<string, Set<number>>();
+  const blocked = new Set<string>();
+  await Promise.all(enabled.map(async (id) => {
+    try {
+      bySource.set(id, new Set(await databaseService.nodes.getMqttConsentWithheldNodeNums(id)));
+    } catch (err) {
+      logger.warn(`MQTT-consent anonymous filter: could not read hidden nodes of source ${id}; hiding all of its nodes from this anonymous request:`, err);
+      blocked.add(id);
+    }
+  }));
+  return makeMqttConsentHiddenSet(bySource, blocked);
 }
 
 /** Parse a traceroute `route` / `routeBack` column (JSON array of node numbers). */

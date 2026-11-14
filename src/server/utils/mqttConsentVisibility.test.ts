@@ -2,7 +2,7 @@
  * #5156: the hide predicate and the per-viewer hidden set, against the real
  * `:memory:` SQLite singleton (migration 234 columns included).
  */
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import databaseService from '../../services/database.js';
 import {
   isMqttConsentWithheld,
@@ -12,6 +12,7 @@ import {
   tracerouteNamesHiddenNode,
   dropMessagesNamingHiddenNodes,
   NO_HIDDEN_NODES,
+  HIDE_ALL_NODES,
   ANON_HIDE_MQTT_NO_CONSENT_SETTING,
 } from './mqttConsentVisibility.js';
 import { loadNodeViewAccess } from './nodeEnhancer.js';
@@ -146,5 +147,53 @@ describe('loadMqttConsentHiddenSet (real DB)', () => {
     const access = await loadNodeViewAccess(anon as never);
     expect(access.hiddenByMqttConsent.hides(SRC_A, DECLINED)).toBe(true);
     expect(access.canViewNode(SRC_A, 0, DECLINED)).toBe(false);
+  });
+});
+
+describe('makeMqttConsentHiddenSet: SQL helpers', () => {
+  it('reports per-source node numbers and blocked sources', () => {
+    const set = makeMqttConsentHiddenSet(new Map([['a', new Set([DECLINED])], ['b', new Set([RF_HEARD])]]), new Set(['c']));
+    expect(set.nodeNumsFor('a')).toEqual([DECLINED]);
+    expect(set.nodeNumsFor().sort()).toEqual([DECLINED, RF_HEARD].sort());
+    expect(set.blocksAll('a')).toBe(false);
+    expect(set.blocksAll('c')).toBe(true);
+    expect(set.hides('c', 12345)).toBe(true);
+    expect(HIDE_ALL_NODES.blocksAll('anything')).toBe(true);
+    expect(HIDE_ALL_NODES.hides('anything', 1)).toBe(true);
+  });
+});
+
+describe('loadMqttConsentHiddenSet fails closed (#5156 review)', () => {
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await databaseService.settings.setSourceSetting(SRC_A, ANON_HIDE_MQTT_NO_CONSENT_SETTING, '0');
+  });
+
+  it('a failed settings read hides every node on every source', async () => {
+    vi.spyOn(databaseService.settings, 'getSettingForSources').mockRejectedValue(new Error('settings down'));
+    const set = await loadMqttConsentHiddenSet(ANON, [SRC_A, SRC_B]);
+    expect(set.hides(SRC_A, UNKNOWN)).toBe(true);
+    expect(set.hides(SRC_B, CONSENTED)).toBe(true);
+    expect(set.blocksAll(SRC_B)).toBe(true);
+  });
+
+  it('a failed sources read hides every node', async () => {
+    vi.spyOn(databaseService.sources, 'getAllSources').mockRejectedValue(new Error('sources down'));
+    const set = await loadMqttConsentHiddenSet(ANON);
+    expect(set.hides(SRC_A, UNKNOWN)).toBe(true);
+  });
+
+  it('a failed node read hides every node of that flagged source only', async () => {
+    await databaseService.settings.setSourceSetting(SRC_A, ANON_HIDE_MQTT_NO_CONSENT_SETTING, '1');
+    vi.spyOn(databaseService.nodes, 'getMqttConsentWithheldNodeNums').mockRejectedValue(new Error('nodes down'));
+    const set = await loadMqttConsentHiddenSet(ANON, [SRC_A, SRC_B]);
+    expect(set.hides(SRC_A, CONSENTED)).toBe(true);
+    expect(set.blocksAll(SRC_A)).toBe(true);
+    expect(set.hides(SRC_B, DECLINED)).toBe(false);
+  });
+
+  it('a signed-in viewer is unaffected by a failure', async () => {
+    vi.spyOn(databaseService.settings, 'getSettingForSources').mockRejectedValue(new Error('settings down'));
+    expect(await loadMqttConsentHiddenSet(SIGNED_IN, [SRC_A])).toBe(NO_HIDDEN_NODES);
   });
 });
