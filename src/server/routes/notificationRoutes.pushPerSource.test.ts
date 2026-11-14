@@ -28,6 +28,7 @@ vi.mock('../meshtasticManager.js', () => ({
 }));
 
 const ENDPOINT = 'https://push.example.com/send/browser-5493';
+const MESH = '__mesh__';
 
 describe('pushRouter — per-source subscriptions (#5493)', () => {
   let harness: RouteTestHarness;
@@ -57,16 +58,51 @@ describe('pushRouter — per-source subscriptions (#5493)', () => {
     await harness.cleanup();
   });
 
-  it('POST /unsubscribe removes only the given source and returns remainingSources', async () => {
-    await seedRow(harness.sourceA);
-    await seedRow(harness.sourceB);
+  // #5729: one subscription per browser for the whole mesh. Which sources
+  // notify is the user's Web Push source list, not a row per source.
+  it('POST /subscribe stores ONE mesh-wide row per browser, whichever source it came from', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const subscription = { endpoint: ENDPOINT, keys: { p256dh: 'p256dh', auth: 'auth' } };
+
+    await agent.post('/push/subscribe').send({ subscription, sourceId: harness.sourceA }).expect(200);
+    await agent.post('/push/subscribe').send({ subscription, sourceId: harness.sourceB }).expect(200);
+
+    const rows = await harness.db.notificationsRepo!.getSubscriptionsByEndpoint(ENDPOINT);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sourceId).toBe(MESH);
+    expect(rows[0].userId).toBe(harness.limited.id);
+  });
+
+  it('POST /subscribe adds the source to a narrowed Web Push source list', async () => {
+    await harness.db.notifications.setPushSourceIds(harness.limited.id, [harness.sourceA]);
+    const agent = await harness.loginAs(harness.limited);
+
+    await agent.post('/push/subscribe')
+      .send({ subscription: { endpoint: ENDPOINT, keys: { p256dh: 'p256dh', auth: 'auth' } }, sourceId: harness.sourceB })
+      .expect(200);
+
+    const mesh = await harness.db.notifications.getMeshPreferences(harness.limited.id);
+    expect(mesh?.pushSourceIds).toEqual([harness.sourceA, harness.sourceB].sort());
+    expect(mesh?.saved).toBe(false);
+  });
+
+  it('POST /subscribe is refused on a source the user cannot read, and stores nothing', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post('/push/subscribe')
+      .send({ subscription: { endpoint: ENDPOINT, keys: { p256dh: 'p256dh', auth: 'auth' } }, sourceId: 'rt-not-granted' });
+    expect(res.status).toBe(403);
+    expect(await sourcesFor()).toEqual([]);
+  });
+
+  it('POST /unsubscribe stops Web Push on this browser for the whole mesh', async () => {
+    await seedRow(MESH);
     const agent = await harness.loginAs(harness.limited);
 
     const res = await agent.post('/push/unsubscribe').send({ endpoint: ENDPOINT, sourceId: harness.sourceA });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ success: true, remainingSources: 1 });
-    expect(await sourcesFor()).toEqual([harness.sourceB]);
+    expect(res.body).toEqual({ success: true, remainingSources: 0 });
+    expect(await sourcesFor()).toEqual([]);
   });
 
   it('POST /unsubscribe reports remainingSources 0 once the last source goes', async () => {
@@ -87,8 +123,8 @@ describe('pushRouter — per-source subscriptions (#5493)', () => {
     expect(res.body.code).toBe('MISSING_ENDPOINT');
   });
 
-  it('POST /subscription-status answers per source', async () => {
-    await seedRow(harness.sourceA);
+  it('POST /subscription-status: one subscription covers every source', async () => {
+    await seedRow(MESH);
     const agent = await harness.loginAs(harness.limited);
 
     const onA = await agent.post('/push/subscription-status').send({ endpoint: ENDPOINT, sourceId: harness.sourceA });
@@ -97,7 +133,7 @@ describe('pushRouter — per-source subscriptions (#5493)', () => {
 
     const onB = await agent.post('/push/subscription-status').send({ endpoint: ENDPOINT, sourceId: harness.sourceB });
     expect(onB.status).toBe(200);
-    expect(onB.body).toEqual({ success: true, subscribed: false, otherSources: 1 });
+    expect(onB.body).toEqual({ success: true, subscribed: true, otherSources: 0 });
   });
 
   it('POST /unsubscribe-all removes the endpoint from every source and leaves other endpoints', async () => {

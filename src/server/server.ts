@@ -51,6 +51,7 @@ import { versionCheckService } from './services/versionCheckService.js';
 import { coverageRetentionService } from './services/coverageRetentionService.js';
 import { directRfContactsRetentionService } from './services/directRfContactsRetentionService.js';
 import { flushDirectRfContacts } from './services/directRfContactRecorder.js';
+import { notificationHold } from './services/notificationDedup.js';
 import { translationCacheService } from './services/translation/translationCacheService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
@@ -1326,6 +1327,17 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
       ]);
     } catch (error) {
       logger.warn('Error flushing Direct RF Contacts:', error);
+    }
+
+    // #5729: send Apprise / desktop notifications still inside their 5 s
+    // collect hold, so a clean restart loses none. Bounded like the flushes above.
+    try {
+      await Promise.race([
+        notificationHold.flushAll(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch (error) {
+      logger.warn('Error flushing held notifications:', error);
     }
 
     // #5101 P3 WP3: give the transport-traffic writer's final checkpoint up

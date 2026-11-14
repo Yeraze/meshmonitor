@@ -4,7 +4,7 @@ import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { HourlyLogLimiter } from '../utils/hourlyLogLimiter.js';
-import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows } from '../utils/notificationCheckHelpers.js';
+import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows, nodeIdentityKey, meshcoreKeyPrefixFromNodeId } from '../utils/notificationCheckHelpers.js';
 import { getInactiveNodeConfig } from './nodeDisplaySettings.js';
 
 interface InactiveNodeCheck {
@@ -54,7 +54,10 @@ class InactiveNodeNotificationService {
   private running = false;
   /** sourceId -> epoch ms of next eligible run for that source. */
   private nextRunAt: Map<string, number> = new Map();
-  private lastNotifiedNodes: Map<string, number> = new Map(); // "userId:sourceId:nodeId" -> last notification timestamp
+  // "userId:<node identity>" -> last notification timestamp. Keyed by NODE,
+  // not source (#5729): one physical node raises one alert per user however
+  // many sources stop hearing it. In memory, as it was when keyed by source.
+  private lastNotifiedNodes: Map<string, number> = new Map();
   // Diagnostics: at most once per key per hour — see HourlyLogLimiter/#4020.
   private readonly hourlyLog = new HourlyLogLimiter();
 
@@ -213,6 +216,9 @@ class InactiveNodeNotificationService {
         `🔍 Checking inactive nodes for ${rowsByUser.size} user(s) (${rows.length} preference row(s)) across ${due.length} due source(s)`
       );
 
+      // (userId, sourceId) -> may read nodes there; one lookup per pair per tick.
+      const readCache = new Map<string, boolean>();
+
       // Source-outer / user-inner: per-source due-ness (checked above) forces
       // this inversion from the historical user-outer / source-inner loop.
       for (const manager of due) {
@@ -273,13 +279,23 @@ class InactiveNodeNotificationService {
             logger.debug(`🔍 Found ${alerts.length} inactive monitored node(s) for user ${userId} on source ${sourceId}`);
 
             for (const alert of alerts) {
-              // Source-scoped cooldown key prevents collisions across sources
-              const notificationKey = `${userId}:${sourceId}:${alert.nodeId}`;
+              // Node-level cooldown (#5729): the same node seen inactive on a
+              // second source is the same fact, not a second alert.
+              const notificationKey = `${userId}:${nodeIdentityKey(alert.nodeId, alert.nodeNum)}`;
               const lastNotification = this.lastNotifiedNodes.get(notificationKey);
 
               if (lastNotification && now - lastNotification < cooldownMs) {
                 logger.debug(
                   `⏭️  Skipping notification for user ${userId}, node ${alert.nodeId} on ${sourceId} (already notified recently)`
+                );
+                continue;
+              }
+
+              // Inactive only when NO source this user can read still hears
+              // the node (#5729, decision 4).
+              if (await this.heardOnAnotherReadableSource(userId, sourceId, alert, managers, readCache, cfg.thresholdHours, now)) {
+                logger.debug(
+                  `⏭️  Node ${alert.nodeId} is quiet on ${sourceId} but another source user ${userId} can read still hears it`
                 );
                 continue;
               }
@@ -306,6 +322,45 @@ class InactiveNodeNotificationService {
     } catch (error) {
       logger.error('❌ Error checking inactive nodes:', error);
     }
+  }
+
+  /**
+   * Does another source this user may read (`nodes:read`) still hear the
+   * node, within the same threshold? Only sources of the same protocol are
+   * asked: a Meshtastic node number means nothing on MeshCore. Fails toward
+   * "heard" (no alert) on a read error.
+   */
+  private async heardOnAnotherReadableSource(
+    userId: number,
+    sourceId: string,
+    alert: { nodeId: string; nodeNum: number },
+    managers: ReadonlyArray<{ sourceId: string; sourceType: string }>,
+    readCache: Map<string, boolean>,
+    thresholdHours: number,
+    now: number,
+  ): Promise<boolean> {
+    const isMeshCore = alert.nodeId.startsWith('mc:');
+    const readable: string[] = [];
+    for (const m of managers) {
+      if (m.sourceId === sourceId || isAnyMeshCoreSourceType(m.sourceType) !== isMeshCore) continue;
+      const cacheKey = `${userId}:${m.sourceId}`;
+      let allowed = readCache.get(cacheKey);
+      if (allowed === undefined) {
+        try {
+          allowed = await databaseService.checkPermissionAsync(userId, 'nodes', 'read', m.sourceId);
+        } catch (err) {
+          logger.error(`Permission check failed for user ${userId} on source ${m.sourceId}:`, err);
+          allowed = false;
+        }
+        readCache.set(cacheKey, allowed);
+      }
+      if (allowed) readable.push(m.sourceId);
+    }
+    if (readable.length === 0) return false;
+    const sinceMs = now - thresholdHours * 60 * 60 * 1000;
+    return isMeshCore
+      ? databaseService.meshcore.heardOnAnySourceByKeyPrefix(meshcoreKeyPrefixFromNodeId(alert.nodeId), readable, sinceMs)
+      : databaseService.nodes.heardOnAnySource(alert.nodeNum, readable, Math.floor(sinceMs / 1000));
   }
 
   /**

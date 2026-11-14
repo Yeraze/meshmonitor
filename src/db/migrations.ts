@@ -251,6 +251,7 @@ import { migration as addMeshcoreMessageSenderNameOverrideMigration, runMigratio
 import { migration as addNotifyOnAutoTraceMigration, runMigration232Postgres, runMigration232Mysql } from '../server/migrations/232_add_notify_on_auto_trace.js';
 import { migration as createDirectRfContactsMigration, runMigration233Postgres, runMigration233Mysql } from '../server/migrations/233_create_direct_rf_contacts.js';
 import { migration as addNodeMqttConsentMigration, runMigration234Postgres, runMigration234Mysql } from '../server/migrations/234_add_node_mqtt_consent.js';
+import { migration as unifiedNotificationScopeMigration, runMigration235Postgres, runMigration235Mysql } from '../server/migrations/235_unified_notification_scope.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
@@ -3770,4 +3771,19 @@ registry.register({
   sqlite: (db) => addNodeMqttConsentMigration.up(db),
   postgres: (client) => runMigration234Postgres(client),
   mysql: (pool) => runMigration234Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 235: mesh-wide notification settings (#5729). Adds the mesh-wide
+// row's push source list, and collapses push subscriptions to one row per
+// (user, browser endpoint). Per-source preference rows stay as overrides.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 235,
+  name: 'unified_notification_scope',
+  settingsKey: 'migration_235_unified_notification_scope',
+  sqlite: (db) => unifiedNotificationScopeMigration.up(db),
+  postgres: (client) => runMigration235Postgres(client),
+  mysql: (pool) => runMigration235Mysql(pool),
 });

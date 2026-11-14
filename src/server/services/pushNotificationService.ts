@@ -4,7 +4,8 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import type { DbPushSubscription } from '../../db/types.js';
 import { fitWebPushPayload } from '../utils/pushPayloadSize.js';
-import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, renderMessagePayloadForUserAsync, messageReadableByUserAsync, payloadBlockedForUserAsync, type NotificationMuteVenue } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, renderMessagePayloadForUserAsync, messageReadableByUserAsync, payloadBlockedForUserAsync, pushSourceAllowedAsync, userReadsAnySourceAsync, type NotificationMuteVenue } from '../utils/notificationFiltering.js';
+import { MESH_PREFERENCES_SOURCE_ID } from '../../utils/notificationDefaults.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import { resolveLocalNodeNameForSource } from '../utils/localNodeNameForSource.js';
 import { notificationDedup, dedupTag, joinSourceNames, type DedupClaim, type NotificationDedupSpec } from './notificationDedup.js';
@@ -47,6 +48,13 @@ export interface PushNotificationPayload {
    * it is skipped. Server-side input; never sent on the wire.
    */
   muteVenue?: NotificationMuteVenue;
+  /**
+   * New-node alert (#5729, decision 5): sources where this node was already
+   * known before this source announced it. A recipient who can read any of
+   * them heard of the node from there first and is skipped. Server-side
+   * input; never sent on the wire.
+   */
+  knownOnSourceIds?: string[];
 }
 
 /**
@@ -58,6 +66,22 @@ export interface PushNotificationPayload {
  */
 function pushDedupRecipient(subscription: DbPushSubscription): string {
   return `push:${subscription.userId ?? 'anon'}:${subscription.endpoint}`;
+}
+
+/**
+ * The anonymous account's id, for a subscription row with no user. One
+ * subscription now covers the whole mesh (#5729), so such a row is gated per
+ * source by what the anonymous account may read. Null = no active anonymous
+ * account: the row gets nothing.
+ */
+async function resolveAnonymousUserIdAsync(): Promise<number | null> {
+  try {
+    const anon = await databaseService.findUserByUsernameAsync('anonymous');
+    return anon && anon.isActive ? anon.id : null;
+  } catch (error) {
+    logger.error('Failed to resolve the anonymous account for push gating:', error);
+    return null;
+  }
 }
 
 class PushNotificationService {
@@ -224,9 +248,12 @@ class PushNotificationService {
         throw new Error('Notifications repository not initialized');
       }
 
+      // One subscription per browser for the whole mesh (#5729): `sourceId`
+      // only proved the caller may read a source; the row is mesh-wide and
+      // the user's preferences decide which sources notify.
       await databaseService.notificationsRepo.saveSubscription({
         userId: userId ?? null,
-        sourceId,
+        sourceId: MESH_PREFERENCES_SOURCE_ID,
         endpoint: subscription.endpoint,
         p256dhKey: keys.p256dh,
         authKey: keys.auth,
@@ -395,6 +422,7 @@ class PushNotificationService {
       delete wirePayload.dedup;
       delete wirePayload.keyFingerprint;
       delete wirePayload.muteVenue;
+      delete wirePayload.knownOnSourceIds;
 
       await webpush.sendNotification(
         pushSubscription,
@@ -514,8 +542,11 @@ class PushNotificationService {
       sourceName: string;
     }
   ): Promise<{ sent: number; failed: number; filtered: number }> {
-    // Phase B: only subscriptions bound to this source
-    const subscriptions = await this.getAllSubscriptionsAsync(filterContext.sourceId);
+    // One subscription per browser for the whole mesh (#5729): every row is a
+    // candidate, and each is gated below on this source's permission, the
+    // user's preferences and their push source list.
+    const subscriptions = await this.getAllSubscriptionsAsync();
+    const anonymousUserId = subscriptions.some(sub => !sub.userId) ? await resolveAnonymousUserIdAsync() : null;
     let sent = 0;
     let failed = 0;
     let filtered = 0;
@@ -530,7 +561,7 @@ class PushNotificationService {
       const userId = subscription.userId;
 
       // Skip if user should be filtered
-      if (await this.shouldFilterNotificationAsync(userId, filterContext)) {
+      if (await this.shouldFilterNotificationAsync(userId, filterContext, anonymousUserId)) {
         logger.debug(`🔇 Filtered notification for user ${userId || 'anonymous'}: ${filterContext.messageText.substring(0, 30)}...`);
         filtered++;
         continue;
@@ -549,6 +580,7 @@ class PushNotificationService {
         claim = notificationDedup.claim(recipient, payload.dedup.key, {
           sourceId: filterContext.sourceId,
           sourceName: filterContext.sourceName,
+          navData: payload.data,
         });
         if (claim.outcome === 'duplicate') {
           filtered++;
@@ -583,6 +615,11 @@ class PushNotificationService {
         notificationPayload.tag = dedupTag(payload.dedup.key);
         notificationPayload.renotify = false;
         if (isUpdate) notificationPayload.silent = true;
+        // A click opens the source that heard it FIRST (#5729, decision 3),
+        // not whichever source's copy last updated the notification.
+        if (isUpdate && claim && claim.sources[0].navData !== undefined) {
+          notificationPayload.data = claim.sources[0].navData;
+        }
       }
 
       const success = await this.sendToSubscription(subscription, notificationPayload);
@@ -611,7 +648,7 @@ class PushNotificationService {
    * 4. Users can unsubscribe at any time or set up authentication + preferences
    */
   private async shouldFilterNotificationAsync(
-    userId: number | null | undefined,
+    subscriptionUserId: number | null | undefined,
     filterContext: {
       messageText: string;
       channelId: number;
@@ -625,19 +662,29 @@ class PushNotificationService {
       nodeUuid?: string;
       sourceId: string;
       sourceName: string;
-    }
+    },
+    anonymousUserId: number | null,
   ): Promise<boolean> {
-    // Anonymous users get all notifications (no filtering) - they've opted in by subscribing
-    // A keyed MeshCore message is the one exception: an anonymous subscriber
-    // has no key access, so it never receives one.
-    if (!userId) {
+    // A row with no user (subscribed before the anonymous account existed)
+    // gets no preference filtering — it opted in by subscribing — but one row
+    // now covers the whole mesh (#5729), so it is gated per source on what
+    // the anonymous account may read. A keyed MeshCore message never reaches
+    // it: it has no key access.
+    if (!subscriptionUserId) {
       if (filterContext.keyFingerprint) {
         logger.debug('Anonymous user - keyed message filtered');
         return true;
       }
-      logger.debug('Anonymous user - no filtering applied (user opted in by subscribing)');
-      return false;
+      if (anonymousUserId === null) return true;
+      try {
+        const allowed = await databaseService.checkPermissionAsync(anonymousUserId, 'messages', 'read', filterContext.sourceId);
+        return !allowed;
+      } catch (error) {
+        logger.error(`Anonymous permission check failed on source ${filterContext.sourceId}:`, error);
+        return true;
+      }
     }
+    const userId = subscriptionUserId;
 
     // Phase B: permission check — user must have messages:read on this source
     // and, for a keyed MeshCore message, access to its channel key.
@@ -651,6 +698,13 @@ class PushNotificationService {
     if (prefs && !prefs.enableWebPush) {
       logger.debug(`🔇 Web Push disabled for user ${userId} on source ${filterContext.sourceId}`);
       return true; // Filter - user has disabled web push
+    }
+
+    // The user's push source list (#5729): the filter that used to be "which
+    // sources this browser subscribed on".
+    if (!(await pushSourceAllowedAsync(userId, filterContext.sourceId))) {
+      logger.debug(`🔇 Source ${filterContext.sourceId} not in user ${userId}'s Web Push sources`);
+      return true;
     }
 
     // Use shared filtering utility (will re-check permission, prefs per source)
@@ -683,9 +737,10 @@ class PushNotificationService {
     // A targeted alert (low battery, inactive node, waypoint) keeps every
     // subscription of that user: the check service already decided this user
     // must hear about it, wherever they set up delivery (#4020).
-    const subscriptions = targetUserId === undefined && effectiveSourceId
-      ? await this.getAllSubscriptionsAsync(effectiveSourceId)
-      : await this.getAllSubscriptionsAsync();
+    //
+    // #5729: a subscription now covers the whole mesh, so "subscribed on that
+    // source" is the user's push source list, checked per row below.
+    const subscriptions = await this.getAllSubscriptionsAsync();
     let sent = 0;
     let failed = 0;
     let filtered = 0;
@@ -732,6 +787,12 @@ class PushNotificationService {
         continue;
       }
 
+      // New node already known on a source this user reads (#5729).
+      if (await userReadsAnySourceAsync(userId, payload.knownOnSourceIds)) {
+        filtered++;
+        continue;
+      }
+
       // #4020: the targeted alert pipeline (low-battery, inactive-node) already
       // decided this user should be notified — the check service is the sole
       // authority on intent, so we must not re-gate on prefs[preferenceKey]
@@ -753,6 +814,10 @@ class PushNotificationService {
         // original single-row, single-source gate.
         const prefs = await getUserNotificationPreferencesAsync(userId, effectiveSourceId);
         if (!prefs || !prefs.enableWebPush || !prefs[preferenceKey]) {
+          filtered++;
+          continue;
+        }
+        if (effectiveSourceId && !(await pushSourceAllowedAsync(userId, effectiveSourceId))) {
           filtered++;
           continue;
         }
@@ -792,7 +857,7 @@ class PushNotificationService {
         : base;
       // Server-side gate inputs stay off the wire (sendToSubscription strips
       // them too; this keeps the payload clean at the call boundary).
-      const { keyFingerprint: _kf, muteVenue: _mv, ...notificationPayload } = prefixed;
+      const { keyFingerprint: _kf, muteVenue: _mv, knownOnSourceIds: _ko, ...notificationPayload } = prefixed;
 
       const success = await this.sendToSubscription(subscription, notificationPayload);
       if (success) {

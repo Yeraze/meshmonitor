@@ -31,9 +31,11 @@ vi.mock('../../services/database.js', () => ({
     },
     nodes: {
       getInactiveMonitoredNodes: mockGetInactiveMonitoredNodesAsync,
+      heardOnAnySource: async () => false,
     },
     meshcore: {
       getInactiveMeshcoreNodes: mockGetInactiveMeshcoreNodes,
+      heardOnAnySourceByKeyPrefix: async () => false,
     },
     sources: {
       getSource: mockGetSource,

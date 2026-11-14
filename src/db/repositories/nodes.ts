@@ -494,6 +494,29 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * One node's identity fields on every source that holds it (#5729). The
+   * new-node alert uses it to tell whether a user already heard of the node
+   * from another source they can read. Unscoped by design: the caller filters
+   * by the user's permitted sources and never shows the list.
+   */
+  async getNodeIdentityAcrossSources(
+    nodeNum: number,
+  ): Promise<Array<{ sourceId: string; longName: string | null; shortName: string | null; hwModel: number | null }>> {
+    if (!isValidNodeNum(nodeNum)) return [];
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({ sourceId: nodes.sourceId, longName: nodes.longName, shortName: nodes.shortName, hwModel: nodes.hwModel })
+      .from(nodes)
+      .where(eq(nodes.nodeNum, nodeNum));
+    return rows.map((row: { sourceId: string; longName: string | null; shortName: string | null; hwModel: number | null }) => ({
+      sourceId: row.sourceId,
+      longName: row.longName ?? null,
+      shortName: row.shortName ?? null,
+      hwModel: row.hwModel == null ? null : Number(row.hwModel),
+    }));
+  }
+
+  /**
    * For a batch of nodeNums, the source ids that hold a row for each (#5354).
    *
    * Unscoped by design, like `getSourcesForNode`: global tables keyed by
@@ -2474,6 +2497,34 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get inactive monitored nodes — nodes in the given nodeId list whose lastHeard is before the cutoff
    */
+  /**
+   * Was node `nodeNum` heard at or after `sinceSeconds` on ANY of `sourceIds`?
+   * The inactive-node alert asks this across the sources a user can read
+   * before it calls a node inactive (#5729): a node one source stopped
+   * hearing is not inactive while another source still hears it.
+   */
+  async heardOnAnySource(nodeNum: number, sourceIds: string[], sinceSeconds: number): Promise<boolean> {
+    if (sourceIds.length === 0) return false;
+    try {
+      const { nodes } = this.tables;
+      const rows = await this.db
+        .select({ nodeNum: nodes.nodeNum })
+        .from(nodes)
+        .where(and(
+          eq(nodes.nodeNum, nodeNum),
+          inArray(nodes.sourceId, sourceIds),
+          isNotNull(nodes.lastHeard),
+          gte(nodes.lastHeard, sinceSeconds),
+        ))
+        .limit(1);
+      return rows.length > 0;
+    } catch (error) {
+      // Fail toward "heard": a failed read must not raise a false alert.
+      logger.error('Failed to query node last-heard across sources:', error);
+      return true;
+    }
+  }
+
   async getInactiveMonitoredNodes(
     nodeIds: string[],
     cutoffSeconds: number,

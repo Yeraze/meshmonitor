@@ -535,8 +535,15 @@ class DatabaseService {
   private cacheInitialized = false;
 
   // Track nodes that have already had their "new node" notification sent
-  // to avoid duplicate notifications when node data is updated incrementally
-  private newNodeNotifiedSet: Set<number> = new Set();
+  // to avoid duplicate notifications when node data is updated incrementally.
+  // nodeNum -> the sources that announced it, in announcement order (#5729):
+  // each source announces once, and the notification layer decides PER USER
+  // which source's announcement reaches them (the first they can read).
+  private newNodeAnnouncements: Map<number, string[]> = new Map();
+
+  private newNodeAnnounced(nodeNum: number, sourceId: string | undefined): boolean {
+    return this.newNodeAnnouncements.get(nodeNum)?.includes(sourceId ?? 'default') ?? false;
+  }
 
   // Ghost node suppression: nodeNum → expiresAt timestamp
   // Prevents resurrection of ghost nodes after reboot detection
@@ -1745,7 +1752,8 @@ class DatabaseService {
   ): void {
     const nodeNum = nodeData.nodeNum;
     if (nodeNum === undefined || nodeNum === null || nodeNum === 4294967295) return;
-    if (this.newNodeNotifiedSet.has(nodeNum)) return;
+    const newNodeSourceId: string = sourceId ?? (nodeData as any).sourceId ?? (existingNode as any)?.sourceId ?? 'default';
+    if (this.newNodeAnnounced(nodeNum, newNodeSourceId)) return;
 
     // Only notify on the incomplete -> complete transition, never for a node
     // that was already complete before this upsert.
@@ -1760,14 +1768,34 @@ class DatabaseService {
     };
     if (!isNodeComplete(mergedNode)) return;
 
-    this.newNodeNotifiedSet.add(nodeNum);
-    const newNodeSourceId = sourceId ?? (nodeData as any).sourceId ?? (existingNode as any)?.sourceId ?? 'default';
+    // Record synchronously, before any await, so two sources completing the
+    // same node at once still get a definite order.
+    const announced = this.newNodeAnnouncements.get(nodeNum) ?? [];
+    const earlier = [...announced];
+    announced.push(newNodeSourceId);
+    this.newNodeAnnouncements.set(nodeNum, announced);
     trackBackgroundTask(import('../server/services/notificationService.js').then(async ({ notificationService }) => {
       let sourceName = newNodeSourceId;
       try {
         const src = await this.sources.getSource(newNodeSourceId);
         if (src?.name) sourceName = src.name;
       } catch { /* fall back to id */ }
+      // Sources where this node was already known before THIS announcement
+      // (#5729, decision 5): those that announced earlier in this run, plus
+      // those whose row was already complete before this run started (a
+      // completion in this run would have announced). A source that
+      // announces after us is not one: it defers to us, not we to it.
+      let knownOnSourceIds: string[] = earlier;
+      try {
+        const announcedNow = this.newNodeAnnouncements.get(nodeNum) ?? [];
+        const rows = await this.nodes.getNodeIdentityAcrossSources(nodeNum);
+        const preExisting = rows
+          .filter(r => r.sourceId !== newNodeSourceId && !announcedNow.includes(r.sourceId) && isNodeComplete(r))
+          .map(r => r.sourceId);
+        knownOnSourceIds = [...new Set([...earlier, ...preExisting])];
+      } catch (err) {
+        logger.debug('Could not read the node on other sources for the new-node alert:', err);
+      }
       await notificationService.notifyNewNode(
         mergedNode.nodeId!,
         mergedNode.longName!,
@@ -1775,7 +1803,8 @@ class DatabaseService {
         mergedNode.hwModel ?? undefined,
         (nodeData.hopsAway ?? existingNode?.hopsAway) ?? undefined,
         newNodeSourceId,
-        sourceName
+        sourceName,
+        { nodeNum, knownOnSourceIds },
       );
     }).catch(err => logger.error('Failed to send new node notification:', err)));
   }
@@ -1797,7 +1826,7 @@ class DatabaseService {
     // notification (not yet notified, not the broadcast address). Once a node
     // has been notified this short-circuits to a single Set lookup.
     const needsCheck = nodeNum !== undefined && nodeNum !== null &&
-      nodeNum !== 4294967295 && !this.newNodeNotifiedSet.has(nodeNum);
+      nodeNum !== 4294967295 && !this.newNodeAnnounced(nodeNum, sid);
     const existingNode = needsCheck ? await this.nodes.getNode(nodeNum!, sid) as unknown as DbNode | null : null;
 
     await this.nodes.upsertNode(nodeData, sid);

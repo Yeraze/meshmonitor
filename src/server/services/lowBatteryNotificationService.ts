@@ -4,7 +4,8 @@ import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import { HourlyLogLimiter } from '../utils/hourlyLogLimiter.js';
-import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows } from '../utils/notificationCheckHelpers.js';
+import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows, nodeIdentityKey } from '../utils/notificationCheckHelpers.js';
+import { MESH_PREFERENCES_SOURCE_ID } from '../../utils/notificationDefaults.js';
 
 interface LowBatteryNodeCheck {
   nodeId: string;
@@ -17,6 +18,11 @@ interface LowBatteryNodeCheck {
   thresholdLabel: string;
   sourceId: string;
   sourceName: string;
+  /**
+   * Every source this user can read that reports the node low (#5729), in
+   * scan order. `sourceId`/`sourceName` are the first of them.
+   */
+  sources: Array<{ sourceId: string; sourceName: string }>;
 }
 
 /** One flagged (userId, sourceId) preferences row as returned by the repository. */
@@ -57,7 +63,10 @@ interface LowBatteryPrefRow {
 class LowBatteryNotificationService {
   private checkInterval: NodeJS.Timeout | null = null;
   private initialCheckTimeout: NodeJS.Timeout | null = null;
-  private lastNotifiedNodes: Map<string, number> = new Map(); // "userId:sourceId:nodeId" -> last notification timestamp
+  // "userId:<node identity>" -> last notification timestamp. Keyed by NODE,
+  // not source (#5729): one alert per node per user, listing every source
+  // that reports it. In memory, as it was when keyed by source.
+  private lastNotifiedNodes: Map<string, number> = new Map();
   private currentCooldownHours: number = 24;
   private readonly DEFAULT_CHECK_INTERVAL_MINUTES = 60; // Check every hour
   private readonly DEFAULT_THRESHOLD_PERCENT = 20; // Used when a user has no explicit threshold
@@ -182,11 +191,15 @@ class LowBatteryNotificationService {
           continue;
         }
 
-        // Rule A: threshold precedence — exact-source row, then '' row, then first row.
+        // Rule A: threshold precedence — exact-source row, then the saved
+        // mesh-wide default (#5729), then '' row, then first row.
         const rowsBySource = new Map<string, LowBatteryPrefRow>();
         for (const row of userRows) {
           if (!rowsBySource.has(row.sourceId)) rowsBySource.set(row.sourceId, row);
         }
+
+        // Node identity -> the alert and every source reporting it (#5729).
+        const pending = new Map<string, LowBatteryNodeCheck>();
 
         for (const manager of managers) {
           const sourceId = manager.sourceId;
@@ -208,7 +221,7 @@ class LowBatteryNotificationService {
             continue;
           }
 
-          const thresholdRow = rowsBySource.get(sourceId) ?? rowsBySource.get('') ?? userRows[0];
+          const thresholdRow = rowsBySource.get(sourceId) ?? rowsBySource.get(MESH_PREFERENCES_SOURCE_ID) ?? rowsBySource.get('') ?? userRows[0];
 
           // MeshCore nodes report voltage (mV); Meshtastic nodes report a 0-100
           // percentage. Build a protocol-appropriate list of alerts with the
@@ -222,22 +235,31 @@ class LowBatteryNotificationService {
           logger.debug(`🔍 Found ${alerts.length} low-battery monitored node(s) for user ${userId} on source ${sourceId}`);
 
           for (const alert of alerts) {
-            // Source-scoped cooldown key prevents collisions across sources
-            const notificationKey = `${userId}:${sourceId}:${alert.nodeId}`;
-            const lastNotification = this.lastNotifiedNodes.get(notificationKey);
-            const cooldownMs = cooldownHours * 60 * 60 * 1000;
-
-            if (lastNotification && now - lastNotification < cooldownMs) {
-              logger.debug(
-                `⏭️  Skipping low battery notification for user ${userId}, node ${alert.nodeId} on ${sourceId} (already notified recently)`
-              );
-              continue;
+            const identity = nodeIdentityKey(alert.nodeId, alert.nodeNum);
+            const existing = pending.get(identity);
+            if (existing) {
+              existing.sources.push({ sourceId, sourceName });
+            } else {
+              pending.set(identity, { ...alert, sourceId, sourceName, sources: [{ sourceId, sourceName }] });
             }
-
-            await this.sendLowBatteryNotification(userId, { ...alert, sourceId, sourceName });
-
-            this.lastNotifiedNodes.set(notificationKey, now);
           }
+        }
+
+        // One alert per node (#5729, decision 4), naming every source above.
+        const cooldownMs = cooldownHours * 60 * 60 * 1000;
+        for (const [identity, alert] of pending) {
+          const notificationKey = `${userId}:${identity}`;
+          const lastNotification = this.lastNotifiedNodes.get(notificationKey);
+          if (lastNotification && now - lastNotification < cooldownMs) {
+            logger.debug(
+              `⏭️  Skipping low battery notification for user ${userId}, node ${alert.nodeId} (already notified recently)`
+            );
+            continue;
+          }
+
+          await this.sendLowBatteryNotification(userId, alert);
+
+          this.lastNotifiedNodes.set(notificationKey, now);
         }
       }
 
@@ -290,7 +312,7 @@ class LowBatteryNotificationService {
     thresholdRow: { lowBatteryThreshold: number | null },
     monitoredNodeIds: string[],
     sourceId: string
-  ): Promise<Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName'>>> {
+  ): Promise<Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName' | 'sources'>>> {
     const threshold =
       thresholdRow.lowBatteryThreshold != null && thresholdRow.lowBatteryThreshold >= 0 && thresholdRow.lowBatteryThreshold <= 100
         ? thresholdRow.lowBatteryThreshold
@@ -302,7 +324,7 @@ class LowBatteryNotificationService {
       sourceId
     );
 
-    const alerts: Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName'>> = [];
+    const alerts: Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName' | 'sources'>> = [];
     for (const node of lowBatteryNodes) {
       if (node.batteryLevel == null) continue;
       alerts.push({
@@ -328,7 +350,7 @@ class LowBatteryNotificationService {
     thresholdRow: { lowBatteryVoltageThreshold: number | null },
     monitoredNodeIds: string[],
     sourceId: string
-  ): Promise<Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName'>>> {
+  ): Promise<Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName' | 'sources'>>> {
     const voltageThreshold =
       thresholdRow.lowBatteryVoltageThreshold != null && thresholdRow.lowBatteryVoltageThreshold > 0
         ? thresholdRow.lowBatteryVoltageThreshold
@@ -337,7 +359,7 @@ class LowBatteryNotificationService {
     const monitoredSet = new Set(monitoredNodeIds);
     const lowNodes = await databaseService.meshcore.getLowVoltageNodes(sourceId, voltageThreshold);
 
-    const alerts: Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName'>> = [];
+    const alerts: Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName' | 'sources'>> = [];
     for (const node of lowNodes) {
       if (node.batteryMv == null) continue;
       const pubKey = node.publicKey || '';
@@ -371,7 +393,9 @@ class LowBatteryNotificationService {
       const payload = {
         // Source once (#5593): on the body; the title leads with the node.
         title: `🔋 Low Battery: ${node.longName}`,
-        body: `[${node.sourceName}] ${node.shortName} (${node.nodeId}) battery at ${node.valueLabel} (threshold: ${node.thresholdLabel})`,
+        // Every source this user can read that reports it (only those that
+        // passed this user's nodes:read check above).
+        body: `[${node.sources.map(src => src.sourceName).join(', ')}] ${node.shortName} (${node.nodeId}) battery at ${node.valueLabel} (threshold: ${node.thresholdLabel})`,
         type: 'warning' as const,
         sourceId: node.sourceId,
         sourceName: node.sourceName,

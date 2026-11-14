@@ -1931,6 +1931,33 @@ export class MeshCoreRepository extends BaseRepository {
    *
    * See https://github.com/Yeraze/meshmonitor/issues/3331
    */
+  /**
+   * Was a MeshCore node whose public key starts with `publicKeyPrefix` heard
+   * at or after `sinceMs` on ANY of `sourceIds`? The inactive-node alert asks
+   * this across the sources a user can read before it calls a node inactive
+   * (#5729). The public key is the node's identity on every source.
+   */
+  async heardOnAnySourceByKeyPrefix(publicKeyPrefix: string, sourceIds: string[], sinceMs: number): Promise<boolean> {
+    if (sourceIds.length === 0 || !publicKeyPrefix) return false;
+    try {
+      const { meshcoreNodes } = this.tables;
+      const rows = await this.db
+        .select({ publicKey: meshcoreNodes.publicKey })
+        .from(meshcoreNodes)
+        .where(and(
+          inArray(meshcoreNodes.sourceId, sourceIds),
+          isNotNull(meshcoreNodes.lastHeard),
+          gte(meshcoreNodes.lastHeard, sinceMs),
+          likeContains([sql`${meshcoreNodes.publicKey}`], publicKeyPrefix, this.isPostgres(), 'prefix'),
+        ))
+        .limit(1);
+      return rows.length > 0;
+    } catch {
+      // Fail toward "heard": a failed read must not raise a false alert.
+      return true;
+    }
+  }
+
   async getInactiveMeshcoreNodes(sourceId: string, cutoffMs: number): Promise<DbMeshCoreNode[]> {
     const { meshcoreNodes } = this.tables;
     const result = await this.db

@@ -74,6 +74,8 @@ vi.mock('../../services/database.js', () => ({
     },
     notifications: {
       getUserPreferences: vi.fn(),
+      getMeshPreferences: vi.fn(async () => null),
+      setPushSourceIds: vi.fn(async () => undefined),
     },
   },
 }));
@@ -209,6 +211,8 @@ describe('notificationRoutes - push', () => {
       whitelist: ['Hi', 'Help'],
       usingDefaults: true,
       sourceFallback: false,
+      isOverride: false,
+      usingMeshDefault: false,
     });
   });
 
@@ -221,7 +225,7 @@ describe('notificationRoutes - push', () => {
 
     const res = await request(app).get('/push/preferences?sourceId=src-x');
 
-    expect(res.body).toEqual({ enableWebPush: false, usingDefaults: false, sourceFallback: false });
+    expect(res.body).toEqual({ enableWebPush: false, usingDefaults: false, sourceFallback: false, isOverride: true, usingMeshDefault: false });
     expect(mockNotif.resolveNotificationPreferencesAsync).toHaveBeenLastCalledWith(expect.any(Number), 'src-x');
   });
 

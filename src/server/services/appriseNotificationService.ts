@@ -1,9 +1,9 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, messageReadableByUserAsync, payloadBlockedForUserAsync, type NotificationMuteVenue, resolveAppriseTargetAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, messageReadableByUserAsync, payloadBlockedForUserAsync, userReadsAnySourceAsync, type NotificationMuteVenue, resolveAppriseTargetAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import { resolveLocalNodeNameForSource } from '../utils/localNodeNameForSource.js';
-import { notificationDedup, type NotificationDedupSpec } from './notificationDedup.js';
+import { notificationDedup, notificationHold, joinSourceNames, type DedupSource, type NotificationDedupSpec } from './notificationDedup.js';
 import { assertSafeUrl } from '../utils/ssrfGuard.js';
 
 /**
@@ -53,6 +53,8 @@ export interface AppriseNotificationPayload {
    * it is skipped. Server-side input; never sent to Apprise.
    */
   muteVenue?: NotificationMuteVenue;
+  /** New-node alert (#5729): skip a recipient who can read any of these sources. Server-side input. */
+  knownOnSourceIds?: string[];
 }
 
 /**
@@ -466,44 +468,51 @@ class AppriseNotificationService {
         continue;
       }
 
+      // Render AFTER the filter decision (#5593): the user's templates shape
+      // the text only, never whether a notification is sent. `sources` names
+      // every source that heard it; the first source's templates, prefix and
+      // URLs are used.
+      const urls = prefs.appriseUrls;
+      const sendFor = async (sources: DedupSource[]): Promise<boolean> => {
+        const shownName = joinSourceNames(sources);
+        const renderInput = payload.message
+          ? { ...payload, message: { ...payload.message, sourceName: shownName } }
+          : payload;
+        const rendered = await renderMessagePayloadForUserAsync(userId, renderInput, filterContext.sourceId, shownName, 'apprise');
+        // Apply node name prefix if user has it enabled (per-source prefs)
+        const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, filterContext.sourceId);
+        const notificationPayload: AppriseNotificationPayload = { ...payload, title: rendered.title, body };
+        return this.sendNotificationToUrls(notificationPayload, urls);
+      };
+
       // Cross-source dedup (#5729), AFTER this source's permission, filter and
-      // URL checks passed for this user. Apprise cannot change a notification
-      // it has already delivered, so only the first copy is sent; it names the
-      // source that heard the packet first.
-      const recipient = appriseDedupRecipient(userId);
+      // URL checks passed for this user. Apprise cannot change a message once
+      // delivered, so the first copy starts a 5 s hold and later copies inside
+      // it only add their source; then ONE message lists every source.
+      const source: DedupSource = { sourceId: filterContext.sourceId, sourceName: filterContext.sourceName };
       if (payload.dedup) {
-        const claim = notificationDedup.claim(recipient, payload.dedup.key, {
-          sourceId: filterContext.sourceId,
-          sourceName: filterContext.sourceName,
-        });
-        if (claim.outcome !== 'first') {
+        const recipient = appriseDedupRecipient(userId);
+        const claim = notificationDedup.claim(recipient, payload.dedup.key, source);
+        if (claim.outcome === 'first') {
+          notificationHold.start(recipient, payload.dedup.key, source, sendFor);
+          sent++;
+        } else {
+          if (claim.outcome === 'additional') notificationHold.join(recipient, payload.dedup.key, source);
           filtered++;
-          continue;
         }
+        continue;
       }
 
-      // Render AFTER the filter decision (#5593): the user's templates shape
-      // the text only, never whether a notification is sent.
-      const rendered = await renderMessagePayloadForUserAsync(userId, payload, filterContext.sourceId, filterContext.sourceName, 'apprise');
-
-      // Apply node name prefix if user has it enabled (per-source prefs)
-      const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, filterContext.sourceId);
-      const notificationPayload: AppriseNotificationPayload = { ...payload, title: rendered.title, body };
-
       // Send to user's specific URLs
-      const success = await this.sendNotificationToUrls(notificationPayload, prefs.appriseUrls);
+      const success = await sendFor([source]);
       if (success) {
         sent++;
       } else {
         failed++;
-        // A first copy that never arrived must not block another source's copy.
-        if (payload.dedup) {
-          notificationDedup.release(recipient, payload.dedup.key, filterContext.sourceId);
-        }
       }
     }
 
-    logger.info(`📢 Apprise broadcast: ${sent} sent, ${failed} failed, ${filtered} filtered`);
+    logger.info(`📢 Apprise broadcast: ${sent} sent or held, ${failed} failed, ${filtered} filtered`);
     return { sent, failed, filtered };
   }
 
@@ -613,6 +622,12 @@ class AppriseNotificationService {
         continue;
       }
 
+      // New node already known on a source this user reads (#5729).
+      if (await userReadsAnySourceAsync(userId, payload.knownOnSourceIds)) {
+        filtered++;
+        continue;
+      }
+
       let urls: string[];
       let prefixWithNodeName: boolean;
 
@@ -661,18 +676,30 @@ class AppriseNotificationService {
         : payload;
 
       // Cross-source dedup (#5729), after every gate above passed for this
-      // user: Apprise sends the first copy only.
-      const recipient = appriseDedupRecipient(userId);
-      const dedupSourceId = effectiveSourceId ?? '';
+      // user: the first copy starts a 5 s hold, later copies add their source,
+      // then one message goes out. An event with a `merged` text names every
+      // source; without one it keeps the first copy's text.
       if (payload.dedup) {
-        const claim = notificationDedup.claim(recipient, payload.dedup.key, {
-          sourceId: dedupSourceId,
-          sourceName: payload.sourceName ?? dedupSourceId,
-        });
-        if (claim.outcome !== 'first') {
+        const dedup = payload.dedup;
+        const recipient = appriseDedupRecipient(userId);
+        const dedupSourceId = effectiveSourceId ?? '';
+        const source: DedupSource = { sourceId: dedupSourceId, sourceName: payload.sourceName ?? dedupSourceId };
+        const claim = notificationDedup.claim(recipient, dedup.key, source);
+        if (claim.outcome === 'first') {
+          notificationHold.start(recipient, dedup.key, source, async (sources) => {
+            if (sources.length < 2 || !dedup.merged) {
+              return this.sendNotificationToUrls(notificationPayload, urls);
+            }
+            const merged = dedup.merged(sources.map(s => s.sourceName));
+            const mergedBody = prefixWithNodeName && localNodeName ? `[${localNodeName}] ${merged.body}` : merged.body;
+            return this.sendNotificationToUrls({ ...notificationPayload, title: merged.title, body: mergedBody }, urls);
+          });
+          sent++;
+        } else {
+          if (claim.outcome === 'additional') notificationHold.join(recipient, dedup.key, source);
           filtered++;
-          continue;
         }
+        continue;
       }
 
       // Send to user's specific URLs
@@ -681,9 +708,6 @@ class AppriseNotificationService {
         sent++;
       } else {
         failed++;
-        if (payload.dedup) {
-          notificationDedup.release(recipient, payload.dedup.key, dedupSourceId);
-        }
       }
     }
 

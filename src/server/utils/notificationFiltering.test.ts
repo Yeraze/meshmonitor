@@ -20,6 +20,8 @@ vi.mock('../../services/database.js', () => ({
       saveUserPreferences: vi.fn(),
       getUsersWithServiceEnabled: vi.fn(),
       getUserPreferenceRows: vi.fn(),
+      // No mesh-wide row unless a test sets one (#5729).
+      getMeshPreferences: vi.fn(async () => null),
     },
     sources: { getSource: vi.fn() },
     getSettingAsync: vi.fn(),
@@ -55,6 +57,7 @@ beforeEach(() => {
   mockDb.notifications.saveUserPreferences.mockResolvedValue(true);
   mockDb.notifications.getUsersWithServiceEnabled.mockReturnValue([1, 2, 3]);
   mockDb.notifications.getUserPreferenceRows.mockResolvedValue([]);
+  mockDb.notifications.getMeshPreferences.mockResolvedValue(null);
   mockDb.getSettingAsync.mockResolvedValue(null);
   mockDb.checkPermissionAsync.mockResolvedValue(true);
   mockDb.sources.getSource.mockResolvedValue({ id: 'any', type: 'meshtastic_tcp' });
