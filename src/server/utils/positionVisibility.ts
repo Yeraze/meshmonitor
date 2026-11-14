@@ -33,6 +33,7 @@
 import databaseService from '../../services/database.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { loadSourcePermissions, type SourcePermissions } from './sourcePermissions.js';
+import { loadMqttConsentHiddenSet } from './mqttConsentVisibility.js';
 import type { ResourceType } from '../../types/permission.js';
 import type { DbNode } from '../../db/types.js';
 import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
@@ -125,6 +126,9 @@ export async function buildPositionFilter(
   const channelDbPerms: Record<number, { viewOnMap: boolean } | undefined> = userId !== null
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(userId)
     : {};
+  // #5156: nodes an anonymous caller may not see because they declined
+  // ok_to_mqtt. Empty (no query) for signed-in callers.
+  const hiddenByConsent = await loadMqttConsentHiddenSet(user, sourceIds);
 
   return (pos: VisibilityRow): boolean => {
     const info = nodeInfoByKey.get(`${pos.sourceId}:${pos.nodeNum}`);
@@ -136,6 +140,9 @@ export async function buildPositionFilter(
 
     // #4162/#4163: hidden nodes have no marker, so contribute no density.
     if (info.hideFromMap) return false;
+
+    // #5156: a node the MQTT-consent filter hides from this caller.
+    if (hiddenByConsent.hides(pos.sourceId, pos.nodeNum)) return false;
 
     // Block private-position nodes unless the user holds nodes_private:read
     // on the source that holds this row.

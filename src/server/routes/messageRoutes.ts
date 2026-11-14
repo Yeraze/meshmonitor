@@ -37,6 +37,7 @@ import { PortNum } from '../constants/meshtastic.js';
 import { parseMessageSearchQuery, searchReadableMessages } from '../utils/messageSearch.js';
 import messageExportRoutes from './messageExportRoutes.js';
 import { getUserNotificationPreferencesAsync } from '../utils/notificationFiltering.js';
+import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = express.Router();
 
@@ -828,6 +829,8 @@ router.get('/', optionalAuth(), async (req, res) => {
 
     const limit = parseInt(req.query.limit as string) || 100;
     const defaultMgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    // #5156: an anonymous caller loses messages from/to consent-hidden nodes.
+    const hidden = await loadMqttConsentHiddenSet(req.user);
 
     // No sourceId and not an admin: the union check above only says the caller
     // may read something somewhere. Read each source on its own and filter it
@@ -839,7 +842,7 @@ router.get('/', optionalAuth(), async (req, res) => {
         const sourceAccess = await resolveMessageReadAccess(req.user, source.id);
         if (!sourceAccess.canReadAny) continue;
         const rows = await defaultMgr.getRecentMessages(limit, source.id);
-        perSource.push(...rows.filter(msg => sourceAccess.canReadChannel(msg.channel)));
+        perSource.push(...dropMessagesNamingHiddenNodes(rows, hidden, source.id).filter(msg => sourceAccess.canReadChannel(msg.channel)));
       }
       perSource.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
       res.json(perSource.slice(0, limit));
@@ -848,7 +851,7 @@ router.get('/', optionalAuth(), async (req, res) => {
 
     let messages = await defaultMgr.getRecentMessages(limit, messagesSourceId);
 
-    messages = messages.filter(msg => access.canReadChannel(msg.channel));
+    messages = dropMessagesNamingHiddenNodes(messages, hidden, messagesSourceId).filter(msg => access.canReadChannel(msg.channel));
 
     res.json(messages);
   } catch (error) {
@@ -932,6 +935,9 @@ router.get('/channel/:channel', optionalAuth(), async (req, res) => {
         offset,
       );
     }
+    // #5156: an anonymous caller loses messages from consent-hidden nodes.
+    // Filtered after the page read, so a page can come back short.
+    dbMessages = dropMessagesNamingHiddenNodes(dbMessages, await loadMqttConsentHiddenSet(req.user), sourceIdParam);
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -959,7 +965,7 @@ router.get('/direct/:nodeId1/:nodeId2', requireSourcePermission('messages', 'rea
     // `messages:read` on; another source's DMs are never returned.
     const { sourceIds } = getSourceTarget(req);
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = sourceIds === 'all'
+    const dbMessagesRaw = sourceIds === 'all'
       ? await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset, ALL_SOURCES) as DbMessage[] // intentional cross-source: admin, no sourceId
       : await readNewestAcrossSources(
           sourceIds,
@@ -968,6 +974,8 @@ router.get('/direct/:nodeId1/:nodeId2', requireSourcePermission('messages', 'rea
           limit + 1,
           offset,
         );
+    // #5156: an anonymous caller loses DMs with a consent-hidden node.
+    const dbMessages = dropMessagesNamingHiddenNodes(dbMessagesRaw, await loadMqttConsentHiddenSet(req.user));
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -1259,7 +1267,7 @@ async function visibleDmSenders(
   const rows = await databaseService.nodes.getNodeChannelsByNodeIds(senderIds, sourceId ?? ALL_SOURCES); // cross-source only for an admin with no sourceId
   const visible = viewer.isAdmin
     ? rows
-    : rows.filter((row) => viewer.nodes.canViewNode(sourceId, row.channel));
+    : rows.filter((row) => viewer.nodes.canViewNode(sourceId, row.channel, row.nodeId));
   return new Set(visible.map((row) => row.nodeId));
 }
 

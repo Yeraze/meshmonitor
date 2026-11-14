@@ -60,7 +60,7 @@ async function nodeTelemetrySources(nodeId: string, user: User | null | undefine
     loadNodeViewAccess(user),
     databaseService.nodes.getNodeVisibilityAcrossSources(nodeNum),
   ]);
-  const sources = rows.filter((row) => access.canViewNode(row.sourceId, row.channel)).map((row) => row.sourceId);
+  const sources = rows.filter((row) => access.canViewNode(row.sourceId, row.channel, nodeNum)).map((row) => row.sourceId);
   return sources.length > 0 ? sources : null;
 }
 
@@ -418,7 +418,7 @@ router.get('/telemetry/available/nodes', requirePermission('info', 'read'), asyn
       const seen = new Set<string>();
       nodes = candidates.filter((node) => {
         const rowSource = (node as { sourceId?: string | null }).sourceId;
-        if (!rowSource || !access.canViewNode(rowSource, node.channel)) return false;
+        if (!rowSource || !access.canViewNode(rowSource, node.channel, node.nodeNum)) return false;
         seen.add(rowSource);
         return true;
       });

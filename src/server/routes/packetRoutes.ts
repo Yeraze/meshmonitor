@@ -17,6 +17,7 @@ import { meshcoreNodeKey } from '../utils/protocolRows.js';
 import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import { runTrafficReplay, TrafficReplayUnavailableError } from '../services/trafficManagementReplayService.js';
+import { loadMqttConsentHiddenSet, dropPacketsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
 function normalizeSinceToMs(value: string): number {
@@ -146,7 +147,12 @@ router.get('/', requirePacketPermissions, async (req, res) => {
     });
 
     // Filter packets by channel and message permissions
-    const packets = filterPacketsByPermissions(rawPackets, allowedChannels, isAdmin, canReadMessages);
+    // #5156: an anonymous caller loses packets from/to consent-hidden nodes.
+    const packets = dropPacketsNamingHiddenNodes(
+      filterPacketsByPermissions(rawPackets, allowedChannels, isAdmin, canReadMessages),
+      await loadMqttConsentHiddenSet(req.user, sourceId ? [sourceId] : undefined),
+      sourceId,
+    );
 
     const total = await packetLogService.getPacketCountAsync({
       portnum,
@@ -587,7 +593,12 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
     });
 
     // Filter packets by channel and message permissions
-    const packets = filterPacketsByPermissions(rawPackets, allowedChannels, isAdmin, canReadMessages);
+    // #5156: an anonymous caller loses packets from/to consent-hidden nodes.
+    const packets = dropPacketsNamingHiddenNodes(
+      filterPacketsByPermissions(rawPackets, allowedChannels, isAdmin, canReadMessages),
+      await loadMqttConsentHiddenSet(req.user, sourceId ? [sourceId] : undefined),
+      sourceId,
+    );
 
     // Generate filename with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
@@ -640,7 +651,11 @@ router.get('/:id', requirePacketPermissions, async (req, res) => {
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;
     const canReadMessages = (req as any).canReadMessages as boolean;
-    const filtered = filterPacketsByPermissions([packet], allowedChannels, isAdmin, canReadMessages);
+    // #5156: a packet from/to a consent-hidden node reads as not permitted.
+    const filtered = dropPacketsNamingHiddenNodes(
+      filterPacketsByPermissions([packet], allowedChannels, isAdmin, canReadMessages),
+      await loadMqttConsentHiddenSet(req.user),
+    );
     if (filtered.length === 0) {
       return res.status(403).json({ error: 'You do not have permission to view this packet' });
     }

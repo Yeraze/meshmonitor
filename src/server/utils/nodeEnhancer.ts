@@ -1,4 +1,11 @@
 import { hasPermission } from '../auth/authMiddleware.js';
+import {
+  loadMqttConsentHiddenSet,
+  isAnonymousViewer,
+  tracerouteNamesHiddenNode,
+  NO_HIDDEN_NODES,
+  type MqttConsentHiddenSet,
+} from './mqttConsentVisibility.js';
 import type { DeviceInfo } from '../meshtasticManager.js';
 import type { User } from '../../types/auth.js';
 import type { ResourceType, PermissionSet } from '../../types/permission.js';
@@ -193,8 +200,22 @@ export interface NodeViewAccess {
   readonly isAdmin: boolean;
   /** The grants this was built from, for a per-source check on another resource. */
   readonly permissions: SourcePermissions;
-  /** May the caller see a node last heard on `channel` of `sourceId`? */
-  canViewNode(sourceId: string | null | undefined, channel: number | null | undefined): boolean;
+  /**
+   * May the caller see a node last heard on `channel` of `sourceId`? Pass the
+   * node's number whenever the row names one: an anonymous caller is also
+   * refused a node the source's MQTT-consent filter hides (#5156).
+   */
+  canViewNode(
+    sourceId: string | null | undefined,
+    channel: number | null | undefined,
+    nodeNum?: number | bigint | string | null,
+  ): boolean;
+  /**
+   * #5156: the nodes this caller may not see because they declined
+   * ok_to_mqtt (anonymous callers on sources with the filter on). Empty for
+   * everyone else. Use it for rows that name a node outside `canViewNode`.
+   */
+  readonly hiddenByMqttConsent: MqttConsentHiddenSet;
   /** May the caller see a private position override held on `sourceId`? */
   canViewPrivate(sourceId: string | null | undefined): boolean;
   /**
@@ -214,23 +235,41 @@ export async function loadNodeViewAccess(user: User | null | undefined): Promise
   if (user?.isAdmin) {
     // Everything, on every source.
     const permissions = await loadSourcePermissions(user);
-    return { isAdmin: true, permissions, canViewNode: () => true, canViewPrivate: () => true, sources: 'all' };
+    return {
+      isAdmin: true,
+      permissions,
+      canViewNode: () => true,
+      canViewPrivate: () => true,
+      sources: 'all',
+      hiddenByMqttConsent: NO_HIDDEN_NODES,
+    };
   }
   if (!user) {
     // No user at all: nothing, on any source.
     const permissions = await loadSourcePermissions(null);
-    return { isAdmin: false, permissions, canViewNode: () => false, canViewPrivate: () => false, sources: [] };
+    return {
+      isAdmin: false,
+      permissions,
+      canViewNode: () => false,
+      canViewPrivate: () => false,
+      sources: [],
+      hiddenByMqttConsent: NO_HIDDEN_NODES,
+    };
   }
-  const [permissions, channelDbPermissions] = await Promise.all([
+  const [permissions, channelDbPermissions, hiddenByMqttConsent] = await Promise.all([
     loadSourcePermissions(user),
     // Global by design: see filterNodesByChannelPermission below.
     databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id),
+    // #5156: empty (no query) unless this is the anonymous account.
+    loadMqttConsentHiddenSet(user),
   ]);
   const hasVirtualGrant = Object.values(channelDbPermissions).some((grant) => grant?.viewOnMap === true);
   return {
     isAdmin: false,
     permissions,
-    canViewNode(sourceId, channel) {
+    hiddenByMqttConsent,
+    canViewNode(sourceId, channel, nodeNum) {
+      if (nodeNum != null && hiddenByMqttConsent.hides(sourceId, nodeNum)) return false;
       const channelNum = channel ?? 0;
       if (channelNum >= CHANNEL_DB_OFFSET) {
         return channelDbPermissions[channelNum - CHANNEL_DB_OFFSET]?.viewOnMap === true;
@@ -286,8 +325,13 @@ export async function filterNodesByChannelPermission<T>(
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
     : {};
 
+  // #5156: anonymous callers also lose nodes the MQTT-consent filter hides.
+  const hidden = await loadMqttConsentHiddenSet(user, sourceId ? [sourceId] : undefined);
+
   // Filter nodes by channel viewOnMap permission for map visibility
   return nodes.filter(node => {
+    const keyed = node as { nodeNum?: number | null; sourceId?: string | null };
+    if (hidden.active && hidden.hides(keyed.sourceId ?? sourceId, keyed.nodeNum)) return false;
     // Access channel property dynamically since different node types have different shapes
     const nodeWithChannel = node as { channel?: number };
     const channelNum = nodeWithChannel.channel ?? 0;
@@ -410,11 +454,12 @@ export function scopeNodeRowsForViewer<T>(nodes: T[], access: NodeViewAccess, so
   const out: T[] = [];
   for (const node of nodes) {
     const row = node as {
+      nodeNum?: number | null;
       channel?: number | null;
       positionChannel?: number | null;
       positionOverrideIsPrivate?: boolean | number | null;
     };
-    if (!access.canViewNode(sourceId, row.channel)) continue;
+    if (!access.canViewNode(sourceId, row.channel, row.nodeNum)) continue;
     let shown = node;
     if (row.positionChannel != null && !access.canViewNode(sourceId, row.positionChannel)) {
       shown = stripNodeLocation(shown);
@@ -465,8 +510,12 @@ export async function maskTelemetryByChannel<T>(
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
     : {};
 
+  // #5156: anonymous callers also lose rows of nodes the MQTT-consent filter hides.
+  const hidden = await loadMqttConsentHiddenSet(user, sourceId ? [sourceId] : undefined);
+
   return records.filter(record => {
-    const r = record as { channel?: number | null };
+    const r = record as { channel?: number | null; nodeNum?: number | null; sourceId?: string | null };
+    if (hidden.active && hidden.hides(r.sourceId ?? sourceId, r.nodeNum)) return false;
     const ch = r.channel;
 
     // No channel recorded — no channel restriction
@@ -511,8 +560,13 @@ export async function maskTraceroutesByChannel<T>(
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
     : {};
 
+  // #5156: anonymous callers also lose traceroutes that name (as an end or a
+  // hop) a node the MQTT-consent filter hides.
+  const hidden = await loadMqttConsentHiddenSet(user, sourceId ? [sourceId] : undefined);
+
   return records.filter(record => {
-    const r = record as { channel?: number | null };
+    const r = record as { channel?: number | null; sourceId?: string | null };
+    if (tracerouteNamesHiddenNode(hidden, r.sourceId ?? sourceId, record as Record<string, unknown>)) return false;
     const ch = r.channel;
 
     // No channel recorded — no channel restriction
@@ -571,6 +625,13 @@ export async function checkNodeChannelAccess(
   // channel drives this permission check (#3745).
   const node = await databaseService.nodes.getNode(nodeNum, sourceId);
   const channelNum = node?.channel ?? 0;
+
+  // #5156: an anonymous caller is refused a node the MQTT-consent filter
+  // hides on this source (or, with no source named, on any source).
+  if (isAnonymousViewer(user) && Number.isFinite(nodeNum)) {
+    const hidden = await loadMqttConsentHiddenSet(user, sourceId ? [sourceId] : undefined);
+    if (hidden.hides(sourceId, nodeNum)) return false;
+  }
 
   // Get user's device channel permission set
   const permissions: PermissionSet = user
@@ -638,13 +699,13 @@ export async function resolveNodePositionScope(
 
   if (named) {
     const node = await databaseService.nodes.getNode(nodeNum, named);
-    if (!access.canViewNode(named, node?.channel ?? 0)) return { allowed: false };
+    if (!access.canViewNode(named, node?.channel ?? 0, nodeNum)) return { allowed: false };
     if (node?.positionOverrideIsPrivate && !access.canViewPrivate(named)) return { allowed: true, sources: [] };
     return { allowed: true, sources: named };
   }
 
   const rows = await databaseService.nodes.getNodeVisibilityAcrossSources(nodeNum);
-  const visible = rows.filter((row) => access.canViewNode(row.sourceId, row.channel));
+  const visible = rows.filter((row) => access.canViewNode(row.sourceId, row.channel, nodeNum));
   if (visible.length === 0) return { allowed: false };
   return {
     allowed: true,

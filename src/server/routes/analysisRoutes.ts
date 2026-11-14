@@ -54,6 +54,7 @@ import {
   combineBrokerClasses,
   type BrokerAddressClass,
 } from '../utils/privateBrokerAddress.js';
+import { loadMqttConsentHiddenSet, tracerouteNamesHiddenNode, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 router.use(optionalAuth());
@@ -368,6 +369,11 @@ router.get('/traceroutes', async (req: Request, res: Response) => {
       pageSize: clampPageSize(req.query.pageSize),
       cursor: typeof req.query.cursor === 'string' ? req.query.cursor : null,
     });
+    // #5156: an anonymous caller loses routes naming a consent-hidden node.
+    const hidden = await loadMqttConsentHiddenSet(req.user, sourceIds);
+    if (hidden.active) {
+      result.items = result.items.filter((tr) => !tracerouteNamesHiddenNode(hidden, tr.sourceId, tr));
+    }
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/traceroutes:', error);
@@ -386,6 +392,13 @@ router.get('/neighbors', async (req: Request, res: Response) => {
       sourceIds,
       sinceMs: parseSinceMs(req.query.since),
     });
+    // #5156: an anonymous caller loses edges touching a consent-hidden node.
+    result.items = dropRowsNamingHiddenNodes(
+      result.items,
+      await loadMqttConsentHiddenSet(req.user, sourceIds),
+      (row) => row.sourceId,
+      (row) => [row.nodeNum, row.neighborNum],
+    );
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/neighbors:', error);
@@ -708,6 +721,13 @@ router.get('/hop-counts', async (req: Request, res: Response) => {
     const localNodeNums = await resolveLocalNodeNums(sourceIds);
     const meshcoreSourceIds = await meshCoreSourceIdsAmong(sourceIds);
     const result = await databaseService.analysis.getHopCounts({ sourceIds, localNodeNums, meshcoreSourceIds });
+    // #5156: an anonymous caller loses consent-hidden nodes (Meshtastic rows only).
+    result.entries = dropRowsNamingHiddenNodes(
+      result.entries,
+      await loadMqttConsentHiddenSet(req.user, sourceIds),
+      (row) => row.sourceId,
+      (row) => (row.publicKey ? [] : [row.nodeNum]),
+    );
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/hop-counts:', error);

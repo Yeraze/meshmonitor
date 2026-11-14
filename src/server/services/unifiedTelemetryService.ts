@@ -70,7 +70,7 @@ async function visibleSubjects(source: SourceRow, access: NodeViewAccess): Promi
   }
   const canViewPrivate = access.canViewPrivate(source.id);
   for (const n of await databaseService.nodes.getAllNodes(source.id)) {
-    if (!access.canViewNode(source.id, n.channel)) continue;
+    if (!access.canViewNode(source.id, n.channel, n.nodeNum)) continue;
     out.set(n.nodeId, {
       telemetryNodeId: n.nodeId,
       longName: n.longName ?? null,

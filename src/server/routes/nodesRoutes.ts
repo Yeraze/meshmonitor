@@ -113,7 +113,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
       const allNodes = await mgr.getAllNodesAsync(nodesSourceId);
       filteredNodes = access.isAdmin
         ? allNodes
-        : allNodes.filter((node) => access.canViewNode(nodesSourceId, (node as { channel?: number }).channel));
+        : allNodes.filter((node) => access.canViewNode(nodesSourceId, (node as { channel?: number }).channel, node.nodeNum));
       canViewPrivate = access.canViewPrivate(nodesSourceId);
       uptimeSources = nodesSourceId;
     } else {
@@ -125,7 +125,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
         access.sources === 'all' ? ALL_SOURCES : access.sources,
         (row) => {
           const rowSource = rowSourceId(row);
-          if (!rowSource || !access.canViewNode(rowSource, row.channel)) return null;
+          if (!rowSource || !access.canViewNode(rowSource, row.channel, row.nodeNum)) return null;
           seen.add(rowSource);
           if (row.positionOverrideIsPrivate && !access.canViewPrivate(rowSource)) {
             return {
@@ -260,7 +260,7 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
     const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeScope);
     const dbNodes = access.isAdmin
       ? allDbNodes
-      : allDbNodes.filter((node) => access.canViewNode(rowSourceId(node), node.channel));
+      : allDbNodes.filter((node) => access.canViewNode(rowSourceId(node), node.channel, node.nodeNum));
 
     const assets = await databaseService.getAssetNodesMapAsync();
 

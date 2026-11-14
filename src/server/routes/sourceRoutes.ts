@@ -53,6 +53,7 @@ import {
   resolveSourceConfigAudience,
   type SourceConfigAudience,
 } from '../utils/sourceConfigRedaction.js';
+import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 
@@ -2282,7 +2283,12 @@ router.get('/:id/messages', requirePermission('messages', 'read', { sourceIdFrom
     // filters them out anyway (they render from the `traceroutes` table);
     // letting them occupy slots in the capped window evicts real DMs
     // (issue #2741).
-    const messages = await databaseService.messages.getMessages(limit, offset, source.id, [PortNum.TRACEROUTE_APP]);
+    // #5156: an anonymous caller loses messages from/to consent-hidden nodes.
+    const messages = dropMessagesNamingHiddenNodes(
+      await databaseService.messages.getMessages(limit, offset, source.id, [PortNum.TRACEROUTE_APP]),
+      await loadMqttConsentHiddenSet(req.user, [source.id]),
+      source.id,
+    );
     res.json(messages);
   } catch (error) {
     logger.error('Error fetching messages for source:', error);

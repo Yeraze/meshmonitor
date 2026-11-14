@@ -43,6 +43,7 @@ import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
 import type { SourcePermissions } from '../utils/sourcePermissions.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import type { PermissionSet } from '../../types/permission.js';
+import { loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 
@@ -121,9 +122,14 @@ async function visibleEmbedNodes(profile: EmbedProfile): Promise<EmbedNode[]> {
   const profileChannels = new Set(profile.channels);
   // #5363: display-only sign-flip correction, per row's own source.
   const signFlip = await loadSignFlipContexts(allNodes.map(rowSourceId));
+  // #5156: embed viewers are anonymous, so a source's MQTT-consent filter
+  // applies. The neighbor-info and traceroute embeds draw only between nodes
+  // returned here, so their edges follow.
+  const hidden = await loadMqttConsentHiddenSet(null, profile.sourceId ? [profile.sourceId] : undefined);
   const visible: EmbedNode[] = [];
   for (const node of allNodes) {
     if (node.hideFromMap) continue;
+    if (hidden.hides(rowSourceId(node), node.nodeNum)) continue;
     if (node.positionOverrideIsPrivate) continue;
     if (!channelInProfile(profileChannels, node.channel)) continue;
     if (!profile.showMqttNodes && node.viaMqtt) continue;
