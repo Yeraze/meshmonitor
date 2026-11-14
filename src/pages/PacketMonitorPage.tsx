@@ -14,6 +14,7 @@ import { useDashboardSources } from '../hooks/useDashboardData';
 import { appBasename } from '../init';
 import api from '../services/api';
 import '../App.css';
+import { isMeshCoreMqttFedSourceType } from '../utils/meshcoreSourceTypes.js';
 
 const PacketMonitorContent: React.FC = () => {
   const { setDeviceInfo } = useData();
@@ -104,7 +105,7 @@ const PacketMonitorDispatch: React.FC = () => {
   if (isLoading && !sources) return null;
 
   const source = sources?.find(s => s.id === requestedSourceId);
-  if (source && (source.type === 'meshcore' || source.type === 'meshcore_mqtt')) {
+  if (source && (source.type === 'meshcore' || isMeshCoreMqttFedSourceType(source.type))) {
     return <MeshCorePacketMonitorPopout sourceId={source.id} sourceName={source.name} sourceType={source.type} />;
   }
   return <PacketMonitorContent />;

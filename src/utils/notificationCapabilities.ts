@@ -11,6 +11,7 @@
  */
 import api from '../services/api.js';
 import type { Channel } from '../types/device.js';
+import { isMeshCoreMqttFedSourceType } from './meshcoreSourceTypes.js';
 
 /** MeshCore device type codes (match `status.deviceType`). */
 export const MESHCORE_DEVICE_TYPE_COMPANION = 1;
@@ -47,7 +48,7 @@ export function notificationCapabilities(
   sourceType: string | null | undefined,
   meshcoreDeviceType?: number | null,
 ): NotificationCapabilities {
-  if (sourceType === 'meshcore_mqtt') {
+  if (isMeshCoreMqttFedSourceType(sourceType)) {
     // A region feed has no radio: channel traffic only. Every message arrives
     // over MQTT, so the MQTT toggle could only mean "off" and stays hidden.
     return {
@@ -118,7 +119,7 @@ export async function loadNotificationChannels(
   sourceId: string | null | undefined,
   sourceType: string | null | undefined,
 ): Promise<Channel[]> {
-  if (sourceType === 'meshcore_mqtt' && sourceId) {
+  if (isMeshCoreMqttFedSourceType(sourceType) && sourceId) {
     // #6307: an ingest source has no slot rows, so /api/channels/all would miss
     // the slot channels that carry most of its traffic. The ingest route lists
     // slots with messages plus keyed channels the viewer may read.

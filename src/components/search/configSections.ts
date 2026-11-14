@@ -25,6 +25,7 @@ import type { NavItem } from '../SectionNav';
 import { isCoverageMqttSourceType } from '../../utils/coverage';
 import { DEVICE_CONFIGURATION_NAV_ENTRY, GLOBAL_SETTINGS_NAV_ENTRY, SOURCE_SETTINGS_NAV_ENTRY } from '../nav/sourceNavEntries';
 import { isMqttConsentFilterSourceType } from '../../utils/mqttConsentFilter';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 /**
  * i18next's `t`, exactly as the tabs already hold it.
@@ -167,7 +168,7 @@ export interface SettingsNavOptions {
  */
 export function hasDeviceConfigurationPage(sourceType: string | null | undefined): boolean {
   if (!sourceType) return false;
-  return !['mqtt_bridge', 'mqtt_broker', 'meshcore', 'meshcore_mqtt', 'reticulum'].includes(sourceType);
+  return !['mqtt_bridge', 'mqtt_broker', 'meshcore', 'reticulum'].includes(sourceType) && !isMeshCoreMqttFedSourceType(sourceType);
 }
 
 /**

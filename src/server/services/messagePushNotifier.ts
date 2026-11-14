@@ -66,7 +66,8 @@ export interface MessagePushInput {
 export function serviceLabelFromSourceType(type: string | undefined): string {
   switch (type) {
     case 'meshcore':
-    case 'meshcore_mqtt': return 'MeshCore';
+    case 'meshcore_mqtt':
+    case 'meshcore_mqtt_broker': return 'MeshCore';
     case 'meshtastic_tcp': return 'Meshtastic';
     case 'mqtt_bridge':
     case 'mqtt_broker': return 'MQTT';

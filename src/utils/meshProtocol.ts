@@ -11,6 +11,8 @@
  * result of anything in this file.
  */
 
+import { isMeshCoreMqttFedSourceType } from './meshcoreSourceTypes.js';
+
 export type MeshProtocol = 'meshtastic' | 'meshcore' | 'reticulum';
 
 export const MESH_PROTOCOLS: MeshProtocol[] = ['meshtastic', 'meshcore', 'reticulum'];
@@ -25,7 +27,7 @@ export const MESH_PROTOCOLS: MeshProtocol[] = ['meshtastic', 'meshcore', 'reticu
  *   missing type (`null` in the legacy single-source view).
  */
 export function sourceTypeMeshProtocol(type: string | undefined | null): MeshProtocol {
-  if (type === 'meshcore' || type === 'meshcore_mqtt') return 'meshcore';
+  if (type === 'meshcore' || isMeshCoreMqttFedSourceType(type)) return 'meshcore';
   if (type === 'reticulum') return 'reticulum';
   return 'meshtastic';
 }

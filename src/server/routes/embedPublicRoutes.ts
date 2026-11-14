@@ -44,6 +44,7 @@ import type { SourcePermissions } from '../utils/sourcePermissions.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import type { PermissionSet } from '../../types/permission.js';
 import { loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 const router = Router();
 
@@ -189,7 +190,7 @@ async function embedMeshCoreSources(profile: EmbedProfile): Promise<{ sourceIds:
     ? [await databaseService.sources.getSource(profile.sourceId)].filter((s): s is NonNullable<typeof s> => !!s)
     : await databaseService.sources.getAllSources(); // intentional cross-source: profile without a sourceId spans all sources
   const mcSources = sources.filter((s) => isAnyMeshCoreSourceType(s.type));
-  const mqttSourceIds = new Set(mcSources.filter((s) => s.type === 'meshcore_mqtt').map((s) => s.id));
+  const mqttSourceIds = new Set(mcSources.filter((s) => isMeshCoreMqttFedSourceType(s.type)).map((s) => s.id));
   const sourceIds = mcSources
     .map((s) => s.id)
     .filter((id) => profile.showMqttNodes || !mqttSourceIds.has(id));

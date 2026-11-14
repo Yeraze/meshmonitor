@@ -12,6 +12,7 @@ import { logger } from '../../utils/logger.js';
 import type { DbMeshCorePacket, MeshCorePacketQuery } from '../../db/repositories/meshcore.js';
 import meshcorePacketLogService from './meshcorePacketLogService.js';
 import { decodeGroupPacketForViewer, type PacketDecodeViewer } from '../utils/meshcorePacketPlaintext.js';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 export const MESHCORE_PACKET_MAX_LIMIT = 1000;
 
@@ -22,7 +23,7 @@ export const MESHCORE_PACKET_MAX_LIMIT = 1000;
 export async function isMeshCoreIngestSource(sourceId: string): Promise<boolean> {
   try {
     const src = await databaseService.sources?.getSource?.(sourceId);
-    return src?.type === 'meshcore_mqtt';
+    return isMeshCoreMqttFedSourceType(src?.type);
   } catch (err) {
     logger.debug(`isMeshCoreIngestSource lookup failed for ${sourceId}:`, err);
     return false;

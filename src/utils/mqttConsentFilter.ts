@@ -4,6 +4,8 @@
  * src/components/settings/AnonMqttConsentSection.tsx.
  */
 
+import { isMeshCoreMqttFedSourceType } from './meshcoreSourceTypes.js';
+
 /** Per-source setting key. Default off (no row). */
 export const ANON_HIDE_MQTT_NO_CONSENT_SETTING = 'anonHideMqttNoConsent';
 
@@ -18,5 +20,5 @@ export function isAnonHideFlagOn(raw: string | null | undefined): boolean {
  */
 export function isMqttConsentFilterSourceType(sourceType: string | null | undefined): boolean {
   if (!sourceType) return false;
-  return !['meshcore', 'meshcore_mqtt', 'reticulum'].includes(sourceType);
+  return !['meshcore', 'reticulum'].includes(sourceType) && !isMeshCoreMqttFedSourceType(sourceType);
 }

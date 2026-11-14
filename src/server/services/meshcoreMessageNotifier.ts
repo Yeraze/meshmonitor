@@ -28,6 +28,7 @@ import { isOwnMeshCoreName, isOwnPublicKey } from '../utils/ownNodes.js';
 import { meshcoreChannelIndexOf } from '../utils/meshcoreMessageMerge.js';
 import { resolveMeshCoreChannelName } from '../utils/meshcoreKeyedChannels.js';
 import type { MeshCoreMessage } from '../meshcoreManager.js';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 export type MeshCoreNotifyOutcome =
   | 'sent'
@@ -85,7 +86,7 @@ export async function sendMeshCoreMessageNotification(
   if (!text) return 'skipped:empty';
 
   const source = await databaseService.sources.getSource(sourceId).catch(() => null);
-  const viaMqtt = source?.type === 'meshcore_mqtt';
+  const viaMqtt = isMeshCoreMqttFedSourceType(source?.type);
 
   try {
     if (isChannel) {

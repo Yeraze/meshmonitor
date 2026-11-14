@@ -9,6 +9,7 @@ import { UiIcon } from '../icons';
 import Modal from '../common/Modal';
 import { COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn } from '../../utils/coverage';
 import styles from './CoverageMqttRecordingSection.module.css';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 /**
  * Splits a confirm message into paragraphs on blank lines, dropping a
@@ -77,7 +78,7 @@ export const CoverageMqttRecordingSection: React.FC<CoverageMqttRecordingSection
   // MeshCore Observer feeds (#5277 P3 WP4) get their own copy — the row
   // volume there is unmeasured, so the warning must never quote the P2
   // MQTT-gateway numbers.
-  const isObserver = sourceType === 'meshcore_mqtt';
+  const isObserver = isMeshCoreMqttFedSourceType(sourceType);
 
   // null = not yet loaded. Fail closed on a read error: recording nothing is
   // the safe side, matching the server-side cache (coverageMqttSettings.ts).
