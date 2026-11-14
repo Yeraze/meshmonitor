@@ -106,7 +106,7 @@ describe('notification preferences never cross sources', () => {
 
       const res = await agent.get(`/push/preferences?sourceId=${harness.sourceB}`).expect(200);
 
-      expect(res.body).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false });
+      expect(res.body).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false, isOverride: false, usingMeshDefault: false });
       // Field by field, so a failure names the field that crossed.
       for (const field of Object.keys(ROW_A) as Array<keyof typeof ROW_A>) {
         expect(res.body[field], field).not.toEqual(ROW_A[field]);
@@ -120,7 +120,7 @@ describe('notification preferences never cross sources', () => {
       await agent.post('/push/preferences').send({ sourceId: harness.sourceA, ...ROW_A }).expect(200);
 
       const res = await agent.get(`/push/preferences?sourceId=${harness.sourceA}`).expect(200);
-      expect(res.body).toEqual({ ...ROW_A, usingDefaults: false, sourceFallback: false });
+      expect(res.body).toEqual({ ...ROW_A, usingDefaults: false, sourceFallback: false, isOverride: true, usingMeshDefault: false });
     });
 
     it('a read with no sourceId returns the defaults, not a source\'s row', async () => {
@@ -128,14 +128,14 @@ describe('notification preferences never cross sources', () => {
       await agent.post('/push/preferences').send({ sourceId: harness.sourceA, ...ROW_A }).expect(200);
 
       const res = await agent.get('/push/preferences').expect(200);
-      expect(res.body).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false });
+      expect(res.body).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false, isOverride: false, usingMeshDefault: false });
     });
 
     it('a brand-new user gets the same defaults on every source', async () => {
       const agent = await harness.loginAs(harness.limited);
       for (const sourceId of [harness.sourceA, harness.sourceB, MESHCORE_SOURCE]) {
         const res = await agent.get(`/push/preferences?sourceId=${sourceId}`).expect(200);
-        expect(res.body, sourceId).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false });
+        expect(res.body, sourceId).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false, isOverride: false, usingMeshDefault: false });
       }
     });
 
@@ -145,7 +145,7 @@ describe('notification preferences never cross sources', () => {
 
       const admin = await harness.loginAs(harness.admin);
       const res = await admin.get(`/push/preferences?sourceId=${harness.sourceA}`).expect(200);
-      expect(res.body).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false });
+      expect(res.body).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false, isOverride: false, usingMeshDefault: false });
     });
   });
 
@@ -169,6 +169,8 @@ describe('notification preferences never cross sources', () => {
         mutedDMs: [{ nodeUuid: '!legacy01', muteUntil: null }],
         usingDefaults: true,
         sourceFallback: true,
+        isOverride: false,
+        usingMeshDefault: false,
       });
     });
 
@@ -177,7 +179,7 @@ describe('notification preferences never cross sources', () => {
       await agent.post('/push/preferences').send(LEGACY).expect(200);
 
       const res = await agent.get(`/push/preferences?sourceId=${MESHCORE_SOURCE}`).expect(200);
-      expect(res.body).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false });
+      expect(res.body).toEqual({ ...DEFAULTS, usingDefaults: true, sourceFallback: false, isOverride: false, usingMeshDefault: false });
     });
 
     it('is still what a read with no sourceId returns', async () => {
@@ -185,7 +187,7 @@ describe('notification preferences never cross sources', () => {
       await agent.post('/push/preferences').send(LEGACY).expect(200);
 
       const res = await agent.get('/push/preferences').expect(200);
-      expect(res.body).toEqual({ ...LEGACY, usingDefaults: false, sourceFallback: false });
+      expect(res.body).toEqual({ ...LEGACY, usingDefaults: false, sourceFallback: false, isOverride: true, usingMeshDefault: false });
     });
 
     it('does not override a source that has its own row', async () => {
@@ -225,6 +227,8 @@ describe('notification preferences never cross sources', () => {
         notifyOnNewNode: true,
         usingDefaults: false,
         sourceFallback: false,
+        isOverride: true,
+        usingMeshDefault: false,
       });
     });
 

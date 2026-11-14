@@ -732,7 +732,8 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
 
     await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
     expect(mockNotifyNewNode).toHaveBeenCalledWith(
-      '!1111aaaa', 'Rover One', 'RV1', 31, undefined, 'src1', expect.any(String)
+      '!1111aaaa', 'Rover One', 'RV1', 31, undefined, 'src1', expect.any(String),
+      expect.objectContaining({ nodeNum: 0x1111aaaa, knownOnSourceIds: [] }),
     );
   });
 
@@ -793,18 +794,27 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     expect(mockNotifyNewNode).not.toHaveBeenCalled();
   });
 
-  it('dedupes across sources — a node notified on src1 does not re-notify on src2 (nodeNum-keyed)', async () => {
-    // newNodeNotifiedSet is keyed by nodeNum only, so the same physical node
-    // seen on a second source in the same process run notifies just once.
+  it('each source announces once, naming the sources that knew the node first (#5729)', async () => {
+    // A user who reads only src2 must still hear of the node, so src2
+    // announces too; the notification layer then skips every user who can
+    // read src1 (they heard it from there). Each source still announces once.
     vi.mocked(isNodeComplete).mockReturnValue(true);
     const node = { nodeNum: 0x6666ffff, nodeId: '!6666ffff', longName: 'Multi Source', shortName: 'MS', hwModel: 7 };
 
     await databaseService.upsertNodeAsync(node, 'src1');
     await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+    expect(mockNotifyNewNode.mock.calls[0][7]).toEqual({ nodeNum: 0x6666ffff, knownOnSourceIds: [] });
 
     await databaseService.upsertNodeAsync(node, 'src2');
+    await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(2));
+    expect(mockNotifyNewNode.mock.calls[1][5]).toBe('src2');
+    expect(mockNotifyNewNode.mock.calls[1][7]).toEqual({ nodeNum: 0x6666ffff, knownOnSourceIds: ['src1'] });
+
+    // A third upsert on either source announces nothing more.
+    await databaseService.upsertNodeAsync(node, 'src2');
+    await databaseService.upsertNodeAsync(node, 'src1');
     await settle();
-    expect(mockNotifyNewNode).toHaveBeenCalledTimes(1);
+    expect(mockNotifyNewNode).toHaveBeenCalledTimes(2);
   });
 
   it('waitForBackgroundTasks resolves only after an in-flight notification settles', async () => {

@@ -88,6 +88,14 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
   // Message text length per service (#6278). NULL = the default of 100.
   messageTextMaxPush: integer('message_text_max_push'),
   messageTextMaxApprise: integer('message_text_max_apprise'),
+  // Mesh-wide default row only (sourceId MESH_PREFERENCES_SOURCE_ID, #5729).
+  // JSON array of the source ids Web Push may notify from; NULL = every
+  // source the user can read.
+  pushSourceIds: text('push_source_ids'),
+  // Mesh-wide default row only: false until the user saves mesh-wide
+  // settings. A row made by migration 235 only to hold `pushSourceIds` has
+  // false here, and its other columns are then ignored.
+  meshDefaultsSaved: integer('mesh_defaults_saved', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 }, (t) => ({
@@ -129,6 +137,8 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
   messageBodyTemplate: pgText('messageBodyTemplate'),
   messageTextMaxPush: pgInteger('messageTextMaxPush'),
   messageTextMaxApprise: pgInteger('messageTextMaxApprise'),
+  pushSourceIds: pgText('pushSourceIds'),
+  meshDefaultsSaved: pgBoolean('meshDefaultsSaved').default(false),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 }, (t) => ({
@@ -202,6 +212,8 @@ export const userNotificationPreferencesMysql = mysqlTable('user_notification_pr
   messageBodyTemplate: myText('messageBodyTemplate'),
   messageTextMaxPush: myInt('messageTextMaxPush'),
   messageTextMaxApprise: myInt('messageTextMaxApprise'),
+  pushSourceIds: myText('pushSourceIds'),
+  meshDefaultsSaved: myBoolean('meshDefaultsSaved').default(false),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
 }, (t) => ({

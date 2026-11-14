@@ -128,6 +128,8 @@ const POSTGRES_CREATE = `
     "messageBodyTemplate" TEXT,
     "messageTextMaxPush" INTEGER,
     "messageTextMaxApprise" INTEGER,
+    "pushSourceIds" TEXT,
+    "meshDefaultsSaved" BOOLEAN DEFAULT FALSE,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
     UNIQUE("userId", "sourceId")
@@ -275,6 +277,8 @@ const MYSQL_CREATE = `
     messageBodyTemplate TEXT,
     messageTextMaxPush INT,
     messageTextMaxApprise INT,
+    pushSourceIds TEXT,
+    meshDefaultsSaved BOOLEAN DEFAULT FALSE,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
@@ -410,6 +414,59 @@ function runNotificationsTests(getBackend: () => TestBackend) {
     // Insert test nodes for message foreign keys
     await backend.exec(insertNodeSql(backend, 1));
     await backend.exec(insertNodeSql(backend, 2));
+  });
+
+  // ============ MESH-WIDE ROW (#5729) ============
+
+  describe('Mesh-wide row (#5729)', () => {
+    it('setPushSourceIds writes an unsaved row that no "who has X on" read counts', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+      await backend.exec(insertUserSql(backend, 1, 'meshuser'));
+
+      await repo.setPushSourceIds(1, ['src-b', 'src-a', 'src-a']);
+
+      expect(await repo.getMeshPreferences(1)).toMatchObject({ saved: false, pushSourceIds: ['src-a', 'src-b'] });
+      expect(await repo.getUserPreferenceRows(1)).toEqual([]);
+      expect(await repo.getUsersWithServiceEnabled('web_push')).toEqual([]);
+      expect(await repo.getUsersWithServiceEnabled('apprise')).toEqual([]);
+      expect(await repo.getUsersWithInactiveNodeNotifications()).toEqual([]);
+      expect(await repo.getOverrideSourceIds(1)).toEqual([]);
+
+      await repo.setPushSourceIds(1, null);
+      expect((await repo.getMeshPreferences(1))?.pushSourceIds).toBeNull();
+    });
+
+    it('a mesh-wide save marks the row saved and keeps the push list unless given', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+      await backend.exec(insertUserSql(backend, 1, 'meshuser'));
+      await repo.setPushSourceIds(1, ['src-a']);
+
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ notifyOnNewNode: true, enableApprise: true }), '__mesh__', { meshDefaultsSaved: true });
+
+      const mesh = await repo.getMeshPreferences(1);
+      expect(mesh).toMatchObject({ saved: true, pushSourceIds: ['src-a'] });
+      expect(mesh?.prefs.notifyOnNewNode).toBe(true);
+      expect(await repo.getUserPreferenceRows(1)).toHaveLength(1);
+      expect(await repo.getUsersWithServiceEnabled('apprise')).toEqual([1]);
+    });
+
+    it('deleteUserPreferences drops one source row; getOverrideSourceIds lists real sources only', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+      await backend.exec(insertUserSql(backend, 1, 'meshuser'));
+      await repo.saveUserPreferences(1, makeDefaultPrefs(), 'src-a');
+      await repo.saveUserPreferences(1, makeDefaultPrefs(), 'src-b');
+      await repo.saveUserPreferences(1, makeDefaultPrefs(), '');
+      await repo.setPushSourceIds(1, null);
+
+      expect((await repo.getOverrideSourceIds(1)).sort()).toEqual(['src-a', 'src-b']);
+      expect(await repo.deleteUserPreferences(1, 'src-a')).toBe(true);
+      expect(await repo.deleteUserPreferences(1, 'src-a')).toBe(false);
+      expect(await repo.getOverrideSourceIds(1)).toEqual(['src-b']);
+      expect(await repo.getMeshPreferences(1)).not.toBeNull();
+    });
   });
 
   // ============ PUSH SUBSCRIPTIONS ============

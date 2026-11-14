@@ -28,6 +28,7 @@
  * Airtime cost: zero. Nothing here transmits — it reacts to a packet already
  * received.
  */
+import { MESH_PREFERENCES_SOURCE_ID } from '../../utils/notificationDefaults.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { calculateDistance } from '../../utils/distance.js';
@@ -58,8 +59,9 @@ interface ResolvedUserSettings {
 /**
  * Pick, per user, the waypoint settings in force for `sourceId`.
  *
- * Only the row saved for EXACTLY this source counts. A user who turned
- * waypoint alerts on for source A and never configured source B gets the
+ * The row saved for EXACTLY this source counts, else the user's saved
+ * mesh-wide default (#5729). A user who turned waypoint alerts on for source
+ * A only (no mesh-wide default) and never configured source B gets the
  * built-in default on B, which is off — so a waypoint on B does not alert
  * them, and A's radius and centre never measure B's waypoints. (This used to
  * be "any row true", with the radius taken from the exact row, else the ''
@@ -80,13 +82,22 @@ export function resolveUserSettings(
   }>,
   sourceId: string,
 ): ResolvedUserSettings[] {
+  // #5729: the row for THIS source (an override) wins; a user with no row
+  // for it falls back to their saved mesh-wide default. An override with
+  // waypoint alerts off stays off. Never another source's row. Delivery still
+  // checks the user may read the source.
+  const byUser = new Map<number, { exact?: (typeof rows)[number]; mesh?: (typeof rows)[number] }>();
+  for (const row of rows) {
+    if (row.sourceId !== sourceId && row.sourceId !== MESH_PREFERENCES_SOURCE_ID) continue;
+    const entry = byUser.get(row.userId) ?? {};
+    if (row.sourceId === sourceId) entry.exact ??= row;
+    else entry.mesh ??= row;
+    byUser.set(row.userId, entry);
+  }
   const resolved: ResolvedUserSettings[] = [];
-  const seen = new Set<number>();
-  for (const preferred of rows) {
-    if (preferred.sourceId !== sourceId || !preferred.notifyOnWaypoint) continue;
-    if (seen.has(preferred.userId)) continue;
-    seen.add(preferred.userId);
-    const userId = preferred.userId;
+  for (const [userId, entry] of byUser) {
+    const preferred = entry.exact ?? entry.mesh;
+    if (!preferred || !preferred.notifyOnWaypoint) continue;
 
     const radiusKm =
       preferred.waypointRadiusKm != null && preferred.waypointRadiusKm > 0

@@ -18,6 +18,7 @@ import {
 } from './monitoredNodes';
 import { UiIcon } from './icons';
 import NotificationFormatSection from './NotificationFormatSection';
+import NotificationScopePanel from './NotificationScopePanel';
 import styles from './NotificationsTab.module.css';
 import { defaultNotificationPreferences } from '../utils/notificationDefaults';
 import { notificationCapabilities, loadNotificationChannels } from '../utils/notificationCapabilities';
@@ -156,6 +157,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
   // Nothing is saved for this source yet: the values shown are the built-in
   // defaults, not another source's settings. The first save creates the row.
   const [usingDefaults, setUsingDefaults] = useState(false);
+  // This source has its own settings, overriding the mesh-wide default (#5729).
+  const [isOverride, setIsOverride] = useState(false);
   // A region feed lists only channels it has seen, so a saved id can be missing
   // from the list. Show it too, so the user can untick it and a save never drops
   // it unseen (#6307).
@@ -353,10 +356,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
   const loadPreferences = async () => {
     try {
       const qs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
-      const { usingDefaults: responseUsingDefaults, ...response } =
-        await api.get<NotificationPreferences & { usingDefaults?: boolean }>(`/api/push/preferences${qs}`);
+      const { usingDefaults: responseUsingDefaults, isOverride: responseIsOverride, usingMeshDefault: _usingMesh, ...response } =
+        await api.get<NotificationPreferences & { usingDefaults?: boolean; isOverride?: boolean; usingMeshDefault?: boolean }>(`/api/push/preferences${qs}`);
 
       setUsingDefaults(responseUsingDefaults === true);
+      setIsOverride(responseIsOverride === true);
       setPreferences(prev => ({ ...prev, ...response }));
       setWhitelistText(response.whitelist.join('\n'));
       setBlacklistText(response.blacklist.join('\n'));
@@ -421,6 +425,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
       });
       setPreferences(prefs);
       setUsingDefaults(false);
+      // A save on a source creates (or updates) its override (#5729).
+      if (currentSourceId) setIsOverride(true);
       logger.info('Notification preferences saved');
       showToast(t('notifications.preferences_saved'), 'success');
     } catch (error) {
@@ -710,6 +716,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
         items={notificationsNavItems(t)}
       />
       <div className={sectionNavLayout.body}>
+
+      {/* Mesh-wide default + this source's override state (#5729). */}
+      <NotificationScopePanel
+        sourceId={currentSourceId ?? null}
+        isOverride={isOverride}
+        onChanged={() => { void loadPreferences(); }}
+      />
 
       {usingDefaults && currentSourceId && (
         <p
