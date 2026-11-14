@@ -47,6 +47,12 @@ import {
 import { getSourceColor, resolveSourceColor } from '../../utils/sourceColors';
 import { nodeSourceRingColor, nodeGatewayRingColor, applyNodeSourceRing } from './nodeSourceRing';
 import type { NodeGatewayRef } from '../../hooks/useDashboardData';
+import {
+  GatewayNameContext,
+  buildGatewayNameIndex,
+  resolveGatewayLabel,
+  gatewayLegendText,
+} from '../map/popups/gatewayLabel';
 import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter, isMqttOnlySourceType } from '../../utils/nodeTransport';
 import {
@@ -503,6 +509,14 @@ export default function DashboardMap({
     }
     return Array.from(ids).sort();
   }, [nodes]);
+
+  // #6386: nodeNum → known names, so the gateway legend and popup chips can
+  // show a name instead of the raw id. Display-only — `gatewayIds` (the colour
+  // domain) stays keyed on the raw id. Unified-only: only it carries gateways.
+  const gatewayNameIndex = useMemo(
+    () => (isUnified ? buildGatewayNameIndex(nodes) : null),
+    [nodes, isUnified],
+  );
 
   // #4835: live packet traffic resolves each flight against the markers this
   // map draws. Built only while the layer is on. The Unified map colours a
@@ -1000,6 +1014,7 @@ export default function DashboardMap({
     : [];
 
   return (
+    <GatewayNameContext.Provider value={gatewayNameIndex}>
     <div className="dashboard-map-container" style={{ position: 'relative' }}>
       {effective3D ? (
         <>
@@ -1224,7 +1239,9 @@ export default function DashboardMap({
                 className="dashboard-polar-grid-legend__swatch"
                 style={{ background: getSourceColor(gid, gatewayIds) }}
               />
-              <span className="dashboard-polar-grid-legend__name">{gid}</span>
+              <span className="dashboard-polar-grid-legend__name" title={gid}>
+                {gatewayLegendText(resolveGatewayLabel(gid, null, gatewayNameIndex))}
+              </span>
             </div>
           ))}
         </div>
@@ -1594,5 +1611,6 @@ export default function DashboardMap({
         </div>
       )}
     </div>
+    </GatewayNameContext.Provider>
   );
 }
