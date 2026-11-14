@@ -250,6 +250,7 @@ import { migration as addNotificationTextMaxMigration, runMigration229Postgres, 
 import { migration as addMeshcoreMessageSenderNameOverrideMigration, runMigration231Postgres, runMigration231Mysql } from '../server/migrations/231_add_meshcore_message_sender_name_override.js';
 import { migration as addNotifyOnAutoTraceMigration, runMigration232Postgres, runMigration232Mysql } from '../server/migrations/232_add_notify_on_auto_trace.js';
 import { migration as createDirectRfContactsMigration, runMigration233Postgres, runMigration233Mysql } from '../server/migrations/233_create_direct_rf_contacts.js';
+import { migration as addNodeMqttConsentMigration, runMigration234Postgres, runMigration234Mysql } from '../server/migrations/234_add_node_mqtt_consent.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
@@ -3755,4 +3756,18 @@ registry.register({
   sqlite: (db) => createDirectRfContactsMigration.up(db),
   postgres: (client) => runMigration233Postgres(client),
   mysql: (pool) => runMigration233Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 234: MQTT consent columns on `nodes` (#5156). PER-SOURCE (nodes
+// is keyed by nodeNum + sourceId). Feeds the opt-in anonymous-viewer filter.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 234,
+  name: 'add_node_mqtt_consent',
+  settingsKey: 'migration_234_add_node_mqtt_consent',
+  sqlite: (db) => addNodeMqttConsentMigration.up(db),
+  postgres: (client) => runMigration234Postgres(client),
+  mysql: (pool) => runMigration234Mysql(pool),
 });

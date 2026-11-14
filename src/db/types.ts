@@ -48,6 +48,12 @@ export interface DbNode {
   transportLastRf?: number | null;
   transportLastMqtt?: number | null;
   transportLastUdp?: number | null;
+  /** #5156: ok_to_mqtt bit of the latest MQTT-delivered packet we could read; null = unknown. */
+  mqttOkToMqtt?: boolean | null;
+  /** #5156: unix seconds when mqttOkToMqtt was read. */
+  mqttOkToMqttAt?: number | null;
+  /** #5156: unix seconds last heard over LoRa with via_mqtt clear. */
+  rfDirectLastHeard?: number | null;
   isStoreForwardServer?: boolean | null;
   macaddr?: string | null;
   latitude?: number | null;

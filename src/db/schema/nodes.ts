@@ -29,6 +29,14 @@ export const nodesSqlite = sqliteTable('nodes', {
   transportLastRf: integer('transportLastRf'),
   transportLastMqtt: integer('transportLastMqtt'),
   transportLastUdp: integer('transportLastUdp'),
+  /** #5156: the ok_to_mqtt bit (Data.bitfield bit 0) of the latest
+   *  MQTT-delivered packet whose bitfield we could read. NULL = unknown. */
+  mqttOkToMqtt: integer('mqttOkToMqtt', { mode: 'boolean' }),
+  /** #5156: unix seconds when mqttOkToMqtt was read. */
+  mqttOkToMqttAt: integer('mqttOkToMqttAt'),
+  /** #5156: unix seconds of the last packet heard over LoRa with via_mqtt
+   *  clear (real RF, not an MQTT downlink). NULL = never. */
+  rfDirectLastHeard: integer('rfDirectLastHeard'),
   isStoreForwardServer: integer('isStoreForwardServer', { mode: 'boolean' }),
   macaddr: text('macaddr'),
   latitude: real('latitude'),
@@ -155,6 +163,10 @@ export const nodesPostgres = pgTable('nodes', {
   transportLastRf: pgBigint('transportLastRf', { mode: 'number' }),
   transportLastMqtt: pgBigint('transportLastMqtt', { mode: 'number' }),
   transportLastUdp: pgBigint('transportLastUdp', { mode: 'number' }),
+  /** #5156: MQTT consent — see the SQLite definition. */
+  mqttOkToMqtt: pgBoolean('mqttOkToMqtt'),
+  mqttOkToMqttAt: pgBigint('mqttOkToMqttAt', { mode: 'number' }),
+  rfDirectLastHeard: pgBigint('rfDirectLastHeard', { mode: 'number' }),
   isStoreForwardServer: pgBoolean('isStoreForwardServer'),
   macaddr: pgText('macaddr'),
   // Using doublePrecision for coordinates (REAL only has ~7 significant digits, causes position jumps)
@@ -275,6 +287,10 @@ export const nodesMysql = mysqlTable('nodes', {
   transportLastRf: myBigint('transportLastRf', { mode: 'number' }),
   transportLastMqtt: myBigint('transportLastMqtt', { mode: 'number' }),
   transportLastUdp: myBigint('transportLastUdp', { mode: 'number' }),
+  /** #5156: MQTT consent — see the SQLite definition. */
+  mqttOkToMqtt: myBoolean('mqttOkToMqtt'),
+  mqttOkToMqttAt: myBigint('mqttOkToMqttAt', { mode: 'number' }),
+  rfDirectLastHeard: myBigint('rfDirectLastHeard', { mode: 'number' }),
   isStoreForwardServer: myBoolean('isStoreForwardServer'),
   macaddr: myVarchar('macaddr', { length: 32 }),
   latitude: myDouble('latitude'),
