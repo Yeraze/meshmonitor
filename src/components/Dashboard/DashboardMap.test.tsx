@@ -3,7 +3,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import DashboardMap from './DashboardMap';
 import { darkOverlayColors } from '../../config/overlayColors';
 // D3's most-permissive cross-source rule (#4412 Phase 3): DashboardMap itself
@@ -48,6 +48,7 @@ const mocks = vi.hoisted(() => ({
     // #5364/#5365 Phase 3 flight trails.
     aircraftDisplayMode: 'mark' as string,
     showAircraftTrails: false,
+    colorNodesByGateway: false,
     // #5561 cross-source "heard here" edges.
     showCrossSourceLinks: false,
     // #5580 traceroute-confirmed sub-toggle (default on in the real context).
@@ -214,6 +215,8 @@ vi.mock('../../contexts/MapContext', () => ({
     aircraftDisplayMode: mocks.mapContext.aircraftDisplayMode,
     setAircraftDisplayMode: vi.fn(),
     showAircraftTrails: mocks.mapContext.showAircraftTrails,
+    colorNodesByGateway: mocks.mapContext.colorNodesByGateway,
+    setColorNodesByGateway: vi.fn(),
     setShowAircraftTrails: vi.fn(),
     aircraftTrailHours: 6,
     setAircraftTrailHours: vi.fn(),
@@ -513,6 +516,7 @@ describe('DashboardMap', () => {
       showAgedOutAircraft: false,
       aircraftDisplayMode: 'mark',
       showAircraftTrails: false,
+      colorNodesByGateway: false,
       showCrossSourceLinks: false,
       showTracerouteConfirmedLinks: true,
       showDucting: false,
@@ -1595,4 +1599,25 @@ describe('DashboardMap — Map age filter names the Settings window (#5344)', ()
     expect(slider).toHaveAttribute('aria-valuetext', 'map.ageAllUnlimited');
   });
 
+  // #6386: the gateway legend shows a known name, keeping the raw id in parens
+  // and in the tooltip; an unknown gateway falls back to its raw id.
+  it('#6386: gateway legend shows the gateway name with its id, or the raw id when unknown', () => {
+    mocks.mapContext.colorNodesByGateway = true;
+    const gateways = [
+      { sourceId: 'mqtt', gatewayId: '!04e36b84', gatewayNodeNum: 0x04e36b84, receptionCount: 1, lastHeard: recent },
+      { sourceId: 'mqtt', gatewayId: '!0000beef', gatewayNodeNum: null, receptionCount: 1, lastHeard: recent },
+    ];
+    const relayed = { ...nodeWithPosition, nodeNum: 1, gateways };
+    const gatewayNode = {
+      nodeNum: 0x04e36b84,
+      user: { id: '!04e36b84', shortName: 'GW1', longName: 'Hilltop Gateway' },
+      position: null,
+      lastHeard: recent,
+    };
+    render(<DashboardMap {...defaultProps} sourceId="__unified__" nodes={[relayed, gatewayNode]} />);
+    const legend = screen.getByRole('note', { name: 'Node gateway colours' });
+    const named = within(legend).getByText('Hilltop Gateway (!04e36b84)');
+    expect(named).toHaveAttribute('title', '!04e36b84');
+    expect(within(legend).getByText('!0000beef')).toBeInTheDocument();
+  });
 });
