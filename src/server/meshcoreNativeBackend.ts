@@ -46,6 +46,7 @@ import {
   MESHCORE_ERR_CODE_NOT_FOUND,
   MESHCORE_ERR_CODE_TABLE_FULL,
 } from './meshcoreDeviceContactErrors.js';
+import { parseCayenneLpp } from './utils/meshcoreCayenneLpp.js';
 
 /**
  * Error message thrown when a remote answers a login attempt with an explicit
@@ -108,7 +109,6 @@ interface MeshCoreJsModule {
     AdvType: { None: number; Chat: number; Repeater: number; Room: number };
     TxtTypes: { Plain: number; CliData: number; SignedPlain: number };
   };
-  CayenneLpp: { parse: (bytes: Uint8Array | number[]) => Array<{ channel: number; type: number; value: any }> };
   /** OTA packet parser used to recover relay-hash chains from LogRxData. */
   Packet: {
     PAYLOAD_TYPE_TXT_MSG: number;
@@ -3229,8 +3229,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
           () => c.sendBinaryRequest(publicKey, [reqType]),
           'request_telemetry',
         );
-        const mod = await loadMeshCoreJs();
-        const records = mod.CayenneLpp.parse(responseData);
+        // Decode locally rather than with meshcore.js's CayenneLpp.parse(),
+        // which stops at the first type it does not know (e.g. altitude) and
+        // drops every sensor after it (#6389).
+        const records = parseCayenneLpp(responseData);
         // `raw` is the undecoded Cayenne-LPP payload. The Virtual Node relays it
         // verbatim in a TelemetryResponse(0x8B) push so the connecting app can
         // decode it itself, without us round-tripping through `records` (#3904).
