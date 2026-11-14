@@ -538,6 +538,28 @@ export function resolveHopLimit(configured: number | undefined | null): number {
  */
 export const MAX_NODE_NUM = 0xFFFFFFFF; // 4,294,967,295
 
+/** `MeshPacket.to` for a broadcast. */
+export const BROADCAST_NODE_NUM = 0xFFFFFFFF;
+
+/**
+ * `meshtastic.HardwareModel.PRIVATE_HW`: what a software-only node reports in
+ * its NodeInfo. The MQTT-native identity (#4305) has no radio, so it says so.
+ */
+export const HW_MODEL_PRIVATE_HW = 255;
+
+/** `meshtastic.Config.DeviceConfig.Role.CLIENT_MUTE`: a node that never relays. */
+export const DEVICE_ROLE_CLIENT_MUTE = 1;
+
+/**
+ * `ServiceEnvelope.channel_id` and topic segment firmware uses for
+ * PKI-encrypted DMs on MQTT (`{root}/2/e/PKI/{gatewayId}`). Firmware gateways
+ * subscribe to `{root}/2/e/PKI/+` when they downlink any channel.
+ */
+export const MQTT_PKI_CHANNEL_ID = 'PKI';
+
+/** `Data.bitfield` bit 0: the originator allows its packet to be uplinked to MQTT. */
+export const DATA_BITFIELD_OK_TO_MQTT = 0x01;
+
 /**
  * Returns true if `n` is a safe-integer in the 32-bit unsigned `nodeNum` range.
  *

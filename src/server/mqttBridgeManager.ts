@@ -53,6 +53,8 @@ import { allowsUplink, isOwnMapReport, resolveOkToMqttForEnvelope } from './util
 import { automationPacketTracker } from './utils/automationPacketTracker.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { mqttGeoSweepService, type GeoSweepStats } from './services/mqttGeoSweepService.js';
+import { deriveRootTopicFromSubscriptions } from './services/mqttNative/mqttNativePacket.js';
+import type { MqttNativeReadiness } from './services/mqttNative/mqttNativeSendService.js';
 
 /**
  * Direction the bridge is permitted to operate in against the upstream
@@ -981,6 +983,27 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
    */
   getSecurityKeys(): { publicKey: string | null; privateKey: string | null } {
     return { publicKey: null, privateKey: null };
+  }
+
+  /**
+   * Whether MQTT-native send (#4305) may publish through this bridge right
+   * now. `subscribe_only` is read-only and always refuses; a stopped or
+   * disconnected upstream client refuses too, because `publish()` would drop
+   * the packet silently after a login stop and a user would see "sent".
+   */
+  getNativePublishReadiness(): MqttNativeReadiness {
+    if (this.getMode() === 'subscribe_only') {
+      return { ok: false, code: 'READ_ONLY', reason: 'This MQTT bridge is subscribe-only, so it never publishes.' };
+    }
+    if (this.subscriberAuthStopped || this.subscriberEvictionStopped || !this.client || !this.client.isConnected()) {
+      return { ok: false, code: 'NOT_CONNECTED', reason: 'This MQTT bridge is not connected to its upstream broker.' };
+    }
+    return { ok: true };
+  }
+
+  /** Root topic MQTT-native send uses when none is configured (#4305). */
+  getNativeRootTopicHint(): string | null {
+    return deriveRootTopicFromSubscriptions(this.config.subscriptions);
   }
 
   /**

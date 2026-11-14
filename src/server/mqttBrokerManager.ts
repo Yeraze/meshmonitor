@@ -30,6 +30,7 @@ import {
   type StoredHopLimitPolicy,
 } from './mqttHopLimitPolicy.js';
 import { logger } from '../utils/logger.js';
+import type { MqttNativeReadiness } from './services/mqttNative/mqttNativeSendService.js';
 
 export interface MqttBrokerSourceConfig {
   listener: { port: number; host?: string };
@@ -301,6 +302,24 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
    */
   getSecurityKeys(): { publicKey: string | null; privateKey: string | null } {
     return { publicKey: null, privateKey: null };
+  }
+
+  /**
+   * Whether MQTT-native send (#4305) may publish into this embedded broker.
+   * Its connected gateways downlink what they receive. Only a stopped broker
+   * refuses.
+   */
+  getNativePublishReadiness(): MqttNativeReadiness {
+    if (!this.broker) return { ok: false, code: 'NOT_CONNECTED', reason: 'This MQTT broker is not running.' };
+    return { ok: true };
+  }
+
+  /**
+   * No hint: `rootTopic` here is only the prefix filter (usually `msh`), not
+   * the region root the gateways use, so the admin sets it (#4305).
+   */
+  getNativeRootTopicHint(): string | null {
+    return null;
   }
 
   /** Publish a raw payload to a topic on this broker. */
