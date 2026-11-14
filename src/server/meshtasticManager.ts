@@ -156,6 +156,7 @@ import {
 } from './services/mqttProxyBridge.js';
 import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport, isRfTransport, isNodeDbReplayForPacketLog } from './services/packetLogDedup.js';
 import { maybeRecordMeshtasticLink } from './services/crossSourceLinkRecorder.js';
+import { maybeRecordMeshtasticDirectRf } from './services/directRfContactRecorder.js';
 import { buildMeshtasticFlight, emitPacketFlight } from './services/packetFlights.js';
 import {
   isStaleCoverageRxTime,
@@ -7317,6 +7318,16 @@ class MeshtasticManager implements ISourceManager {
     // OTHER sources' radios. Outside the packet_log gate for the same reason
     // as above. Non-blocking, never throws, sends nothing, emits nothing.
     void maybeRecordMeshtasticLink({
+      sourceId: this.sourceId,
+      localNodeNum: this.localNodeInfo?.nodeNum ?? null,
+      packet: meshPacket,
+      replayed: context?.viaStoreForward === true || context?.virtualNodeRequestId != null,
+    });
+
+    // Direct RF Contacts (#6210): this radio hearing a node at zero hops over
+    // RF (not via MQTT, not a NodeDB replay). Every portnum counts. Outside
+    // the packet_log gate; coalesced in memory, never throws, sends nothing.
+    maybeRecordMeshtasticDirectRf({
       sourceId: this.sourceId,
       localNodeNum: this.localNodeInfo?.nodeNum ?? null,
       packet: meshPacket,
