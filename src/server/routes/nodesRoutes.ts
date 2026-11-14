@@ -19,6 +19,7 @@
  * `send-key-warning` is gated on `messages:write` (it sends a DM).
  */
 import express from 'express';
+import { loadMqttConsentHiddenSet, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { fallbackManager } from '../meshtasticManager.js';
@@ -113,7 +114,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
       const allNodes = await mgr.getAllNodesAsync(nodesSourceId);
       filteredNodes = access.isAdmin
         ? allNodes
-        : allNodes.filter((node) => access.canViewNode(nodesSourceId, (node as { channel?: number }).channel));
+        : allNodes.filter((node) => access.canViewNode(nodesSourceId, (node as { channel?: number }).channel, node.nodeNum));
       canViewPrivate = access.canViewPrivate(nodesSourceId);
       uptimeSources = nodesSourceId;
     } else {
@@ -125,7 +126,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
         access.sources === 'all' ? ALL_SOURCES : access.sources,
         (row) => {
           const rowSource = rowSourceId(row);
-          if (!rowSource || !access.canViewNode(rowSource, row.channel)) return null;
+          if (!rowSource || !access.canViewNode(rowSource, row.channel, row.nodeNum)) return null;
           seen.add(rowSource);
           if (row.positionOverrideIsPrivate && !access.canViewPrivate(rowSource)) {
             return {
@@ -260,7 +261,7 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
     const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeScope);
     const dbNodes = access.isAdmin
       ? allDbNodes
-      : allDbNodes.filter((node) => access.canViewNode(rowSourceId(node), node.channel));
+      : allDbNodes.filter((node) => access.canViewNode(rowSourceId(node), node.channel, node.nodeNum));
 
     const assets = await databaseService.getAssetNodesMapAsync();
 
@@ -321,6 +322,13 @@ router.get(
     try {
       const sourceId = req.query.sourceId as string;
       const report = await detectIdentityChanges(sourceId);
+      // #5156: an anonymous caller loses detections naming a consent-hidden node.
+      const hidden = await loadMqttConsentHiddenSet(req.user, [sourceId]);
+      if (hidden.active) {
+        report.detections = report.detections.filter(
+          (d) => !hidden.hides(sourceId, d.successor.nodeNum) && !hidden.hides(sourceId, d.predecessor.nodeNum),
+        );
+      }
       return ok(res, report);
     } catch (error) {
       logger.error('Error detecting node identity changes:', error);
@@ -454,7 +462,13 @@ router.get(
   async (req, res) => {
     try {
       const sourceId = req.query.sourceId as string;
-      const merges = await listNodeIdentityMerges(sourceId);
+      // #5156: an anonymous caller loses merges naming a consent-hidden node.
+      const merges = dropRowsNamingHiddenNodes(
+        await listNodeIdentityMerges(sourceId),
+        await loadMqttConsentHiddenSet(req.user, [sourceId]),
+        () => sourceId,
+        (m) => [m.fromNodeNum, m.toNodeNum],
+      );
       return ok(res, { merges });
     } catch (error) {
       return handleMergeError(res, error, 'Failed to list node identity merges');
@@ -628,9 +642,12 @@ router.get('/nodes/:nodeNum/sources', requireSourcePermission('nodes', 'read', {
       databaseService.nodes.getSourcesForNode(nodeNum),
       databaseService.sources.getAllSources(),
     ]);
-    const nodeRows = sourceIds === 'all'
+    // #5156: an anonymous caller does not learn which sources hold a node they hide.
+    const hidden = await loadMqttConsentHiddenSet(req.user, sourceIds === 'all' ? undefined : sourceIds);
+    const nodeRows = (sourceIds === 'all'
       ? allNodeRows
-      : allNodeRows.filter((r) => sourceIds.includes(r.sourceId));
+      : allNodeRows.filter((r) => sourceIds.includes(r.sourceId)))
+      .filter((r) => !hidden.hides(r.sourceId, nodeNum));
 
     const sourceNameById = new Map(sources.map((s) => [s.id, s.name] as const));
 
@@ -676,10 +693,14 @@ router.get('/nodes/:nodeNum/copy-candidates', requireSourcePermission('nodes', '
       getNodeInfoSnapshot(nodeNum, sourceId),
       listPermittedSourceIds(req.user, 'nodes', 'read'),
     ]);
-    const candidates = readable === 'all'
+    // #5156: an anonymous caller sees no copy of a node a source hides from them.
+    const hidden = await loadMqttConsentHiddenSet(req.user);
+    const candidates = (readable === 'all'
       ? allCandidates
-      : allCandidates.filter((c) => readable.includes(c.sourceId));
-    res.json({ success: true, data: { candidates, target } });
+      : allCandidates.filter((c) => readable.includes(c.sourceId)))
+      .filter((c) => !hidden.hides(c.sourceId, nodeNum));
+    const visibleTarget = hidden.hides(sourceId, nodeNum) ? null : target;
+    res.json({ success: true, data: { candidates, target: visibleTarget } });
   } catch (error) {
     logger.error('Error getting copy candidates:', error);
     fail(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve copy candidates');
@@ -1164,7 +1185,10 @@ router.get('/auto-favorite/status', requireSourcePermission('nodes', 'read', { w
     // Read the per-source tracking list (manager writes via setSourceSetting on
     // the same key — global getSetting would return stale/empty data here).
     const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(afManager.sourceId, 'autoFavoriteNodes') || '[]';
-    const autoFavoriteNodeNums: number[] = JSON.parse(autoFavoriteNodesJson);
+    // #5156: an anonymous caller loses consent-hidden nodes from the list.
+    const afHidden = await loadMqttConsentHiddenSet(req.user, [afManager.sourceId]);
+    const autoFavoriteNodeNums: number[] = (JSON.parse(autoFavoriteNodesJson) as number[])
+      .filter((n) => !afHidden.hides(afManager.sourceId, n));
 
     // Get node details for each auto-favorited node (scoped to this source)
     const autoFavoriteNodes = (await Promise.all(autoFavoriteNodeNums

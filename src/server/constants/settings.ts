@@ -176,6 +176,10 @@ export const VALID_SETTINGS_KEYS = [
   // getSettingForSource, never the bare key (#5080) — see
   // src/server/services/coverageMqttSettings.ts.
   'coverage_mqtt_enabled',
+  // #5156: per-source, default off. Hide nodes that declined ok_to_mqtt (and
+  // were never heard over direct RF) from anonymous viewers. Read via
+  // getSettingForSource only — see src/server/utils/mqttConsentVisibility.ts.
+  'anonHideMqttNoConsent',
   'solarMonitoringEnabled',
   'solarMonitoringLatitude',
   'solarMonitoringLongitude',
@@ -952,6 +956,9 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // Coverage Report MQTT gateway-reception recording (#5277 P2). Per-source,
   // MQTT sources only, default off. Read via coverageMqttSettings.ts.
   'coverage_mqtt_enabled',
+  // #5156: anonymous-viewer filter for nodes that declined ok_to_mqtt.
+  // Per-source, POSTable, default off. Read via mqttConsentVisibility.ts.
+  'anonHideMqttNoConsent',
 ] as const;
 
 export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];

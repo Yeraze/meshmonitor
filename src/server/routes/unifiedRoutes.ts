@@ -65,6 +65,7 @@ import {
   prepareMeshCoreReception,
   type CrossSourceTags,
 } from '../services/crossSourceCorrelation.js';
+import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes, dropPacketsNamingHiddenNodes, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 
@@ -743,6 +744,9 @@ router.get('/messages', async (req: Request, res: Response) => {
           }
         }
 
+        // #5156: an anonymous caller loses messages from/to consent-hidden nodes.
+        msgs = dropMessagesNamingHiddenNodes(msgs, await loadMqttConsentHiddenSet(req.user, [source.id]), source.id);
+
         // Sender names for this page only, not every node on the source: the
         // whole-source load cost ~250 ms per 10 s poll on a 17k-node install.
         // A failed lookup leaves names blank; the messages still come through.
@@ -1208,7 +1212,12 @@ router.get('/packets', async (req: Request, res: Response) => {
           isAdmin,
           source.id
         );
-        const visible = filterPacketsByPermissions(raw, allowedChannels, isAdmin, canReadMessages);
+        // #5156: an anonymous caller loses packets from/to consent-hidden nodes.
+        const visible = dropPacketsNamingHiddenNodes(
+          filterPacketsByPermissions(raw, allowedChannels, isAdmin, canReadMessages),
+          await loadMqttConsentHiddenSet(user, [source.id]),
+          source.id,
+        );
         const tagged = visible.map((r) => withCrossSourceFields(
           { ...r, sourceId: source.id, sourceName: source.name },
           classifyMeshtasticReception(crossIndex, {
@@ -1333,10 +1342,16 @@ router.get('/packets/distribution', async (req: Request, res: Response) => {
           const dist = await meshcorePacketLogService.getDistribution({ sourceId: source.id, since });
           return { source, protocol: 'meshcore' as const, mc: dist, byDevice: [] as any[], byType: [] as any[] };
         }
-        const [byDevice, byType] = await Promise.all([
-          packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, sourceId: source.id }),
+        // #5156: an anonymous caller's top senders leave out consent-hidden
+        // nodes. Read enough extra rows that the top 10 are the top 10 visible.
+        const hidden = await loadMqttConsentHiddenSet(user, [source.id]);
+        const [byDeviceRaw, byType] = await Promise.all([
+          hidden.blocksAll(source.id)
+            ? Promise.resolve([])
+            : packetLogService.getPacketCountsByNodeAsync({ since, limit: 10 + hidden.nodeNumsFor(source.id).length, sourceId: source.id }),
           packetLogService.getPacketCountsByPortnumAsync({ since, sourceId: source.id }),
         ]);
+        const byDevice = dropRowsNamingHiddenNodes(byDeviceRaw, hidden, () => source.id, (row) => [row.from_node]).slice(0, 10);
         return { source, protocol: 'meshtastic' as const, mc: null, byDevice: byDevice as any[], byType: byType as any[] };
       })
     );

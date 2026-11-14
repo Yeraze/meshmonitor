@@ -4974,8 +4974,8 @@ class DatabaseService {
     return 0;
   }
 
-  async getDistinctRelayNodesAsync(sourceId?: string): Promise<DbDistinctRelayNode[]> {
-    return this.packetLog.getDistinctRelayNodes(sourceId);
+  async getDistinctRelayNodesAsync(sourceId?: string, exclude?: number[] | 'all'): Promise<DbDistinctRelayNode[]> {
+    return this.packetLog.getDistinctRelayNodes(sourceId, exclude);
   }
 
   async updatePacketLogDecryptionAsync(

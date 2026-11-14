@@ -20,6 +20,7 @@ import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import mqttPacketLogService from '../services/mqttPacketLogService.js';
+import { loadMqttConsentHiddenSet, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router({ mergeParams: true });
 
@@ -94,7 +95,15 @@ router.get(
         mqttPacketLogService.getMaxAgeHours(),
       ]);
 
-      ok(res, { packets, total, offset, limit, enabled, maxCount, maxAgeHours });
+      // #5156: an anonymous caller loses packets from/to consent-hidden nodes.
+      // `total` stays the stored count.
+      const visiblePackets = dropRowsNamingHiddenNodes(
+        packets,
+        await loadMqttConsentHiddenSet(req.user, [sourceId]),
+        () => sourceId,
+        (row) => [row.fromNode, row.toNode],
+      );
+      ok(res, { packets: visiblePackets, total, offset, limit, enabled, maxCount, maxAgeHours });
     } catch (error) {
       logger.error('[API] Error fetching MQTT packets:', error);
       fail(res, 500, 'MQTT_PACKETS_FETCH_FAILED', 'Failed to fetch packets');
@@ -142,7 +151,11 @@ router.get(
         fail(res, 400, 'MISSING_PACKET_KEY', 'packetId and fromNode are required');
         return;
       }
-      const receptions = await mqttPacketLogService.getReceptions(sourceId, packetId, fromNode);
+      // #5156: nothing for a consent-hidden sender, to an anonymous caller.
+      const hidden = await loadMqttConsentHiddenSet(req.user, [sourceId]);
+      const receptions = hidden.hides(sourceId, fromNode)
+        ? []
+        : await mqttPacketLogService.getReceptions(sourceId, packetId, fromNode);
       ok(res, { receptions });
     } catch (error) {
       logger.error('[API] Error fetching MQTT receptions:', error);

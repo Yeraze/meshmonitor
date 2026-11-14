@@ -25,6 +25,7 @@ import {
   assetTrackCacheKey,
   clearAssetTrackCache,
 } from '../services/assetTrackService.js';
+import { loadMqttConsentHiddenSet, NO_HIDDEN_NODES, type MqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 // The api router mounts this without auth; resolve req.user here, as the
@@ -41,13 +42,20 @@ function parseNodeNum(raw: string): number | null {
   return n;
 }
 
-/** nodeNums with a node row on at least one of `sourceIds`. */
-async function visibleNodeNums(nodeNums: number[], sourceIds: string[]): Promise<Set<number>> {
+/**
+ * nodeNums with a node row on at least one of `sourceIds` where the
+ * anonymous MQTT-consent filter (#5156) does not hide it.
+ */
+async function visibleNodeNums(
+  nodeNums: number[],
+  sourceIds: string[],
+  hidden: MqttConsentHiddenSet = NO_HIDDEN_NODES,
+): Promise<Set<number>> {
   const permitted = new Set(sourceIds);
   const bySource = await databaseService.nodes.getSourceIdsForNodeNums(nodeNums);
   const visible = new Set<number>();
   for (const [num, sources] of bySource) {
-    if (sources.some((s) => permitted.has(s))) visible.add(num);
+    if (sources.some((s) => permitted.has(s) && !hidden.hides(s, num))) visible.add(num);
   }
   return visible;
 }
@@ -62,7 +70,8 @@ router.get('/', async (req: Request, res: Response) => {
     const all = await databaseService.assetNodes.getAllAsync();
     if (all.length === 0) return ok(res, []);
     const permitted = await resolvePermittedSourceIds(req);
-    const visible = await visibleNodeNums(all.map((a) => a.nodeNum), permitted);
+    const hidden = await loadMqttConsentHiddenSet(req.user, permitted);
+    const visible = await visibleNodeNums(all.map((a) => a.nodeNum), permitted, hidden);
     return ok(
       res,
       all
@@ -102,7 +111,10 @@ router.get('/:nodeNum/estimate', async (req: Request, res: Response) => {
       const asset = await databaseService.assetNodes.getAsync(nodeNum);
       retentionDays = asset?.retentionDays ?? null;
     }
-    const permitted = await resolvePermittedSourceIds(req);
+    // #5156: an anonymous caller counts nothing from a source that hides the node.
+    const permittedAll = await resolvePermittedSourceIds(req);
+    const hidden = await loadMqttConsentHiddenSet(req.user, permittedAll);
+    const permitted = permittedAll.filter((s) => !hidden.hides(s, nodeNum));
     const rowsLast24h = await databaseService.telemetry.countTelemetryForNodeNumSince(
       nodeNum, Date.now() - DAY_MS, permitted,
     );
@@ -186,7 +198,10 @@ router.get('/:nodeNum/track', async (req: Request, res: Response) => {
   }
   try {
     const asset = await databaseService.assetNodes.getAsync(nodeNum);
-    const permitted = await resolvePermittedSourceIds(req);
+    // #5156: a source that hides the node from an anonymous caller adds no track.
+    const permittedAll = await resolvePermittedSourceIds(req);
+    const hidden = await loadMqttConsentHiddenSet(req.user, permittedAll);
+    const permitted = permittedAll.filter((s) => !hidden.hides(s, nodeNum));
     if (!asset || !(await visibleNodeNums([nodeNum], permitted)).has(nodeNum)) {
       return fail(res, 404, 'NOT_AN_ASSET', 'Node is not a tracked asset');
     }

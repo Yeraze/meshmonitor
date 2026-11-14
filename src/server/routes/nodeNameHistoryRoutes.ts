@@ -57,7 +57,7 @@ router.get('/nodes/:nodeId/name-history', optionalAuth(), async (req: Request, r
         loadNodeViewAccess(req.user),
         databaseService.nodes.getNodeVisibilityAcrossSources(nodeNum),
       ]);
-      sourceIds = rows.filter(r => access.canViewNode(r.sourceId, r.channel)).map(r => r.sourceId);
+      sourceIds = rows.filter(r => access.canViewNode(r.sourceId, r.channel, nodeNum)).map(r => r.sourceId);
     }
 
     const rows = await databaseService.nodeNameHistory.listForNode(protocol, nodeKey, sourceIds);

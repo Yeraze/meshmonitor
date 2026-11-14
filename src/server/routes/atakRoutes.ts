@@ -19,6 +19,7 @@ import { logger } from '../../utils/logger.js';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { ATAK_CONTACT_STALE_MS } from '../services/atakContactService.js';
+import { loadMqttConsentHiddenSet, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router({ mergeParams: true });
 
@@ -35,7 +36,13 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const sourceId = (req.params as { id?: string }).id!;
-      const rows = await databaseService.atakContacts.getContacts(sourceId);
+      // #5156: an anonymous caller loses contacts relayed by a consent-hidden node.
+      const rows = dropRowsNamingHiddenNodes(
+        await databaseService.atakContacts.getContacts(sourceId),
+        await loadMqttConsentHiddenSet(req.user, [sourceId]),
+        () => sourceId,
+        (row) => [(row as { nodeNum?: number | null }).nodeNum],
+      );
       const now = Date.now();
       const contacts = rows.map((row) => ({
         ...row,

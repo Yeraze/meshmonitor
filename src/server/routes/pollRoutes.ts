@@ -37,6 +37,7 @@ import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 import { holdsAnyGrantOn } from '../utils/sourcePermissions.js';
 import { pollDeltaTracker, serializePollReply } from '../services/pollDeltaTracker.js';
 import { fail } from '../utils/apiResponse.js';
+import { tracerouteNamesHiddenNode, dropMessagesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -173,7 +174,7 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         const allMemoryNodes = mayHoldNodes ? await activeManager.getAllNodesAsync(pollSourceId) : [];
         visibleNodes = isAdmin
           ? allMemoryNodes
-          : allMemoryNodes.filter((node) => access.canViewNode(pollSourceId, (node as { channel?: number }).channel));
+          : allMemoryNodes.filter((node) => access.canViewNode(pollSourceId, (node as { channel?: number }).channel, node.nodeNum));
         canViewPrivate = access.canViewPrivate(pollSourceId);
       } else {
         // Rows the caller may not see are dropped, and a private override they
@@ -183,7 +184,7 @@ router.get('/poll', optionalAuth(), async (req, res) => {
           access.sources === 'all' ? ALL_SOURCES : access.sources,
           (row) => {
             const rowSource = rowSourceId(row);
-            if (!rowSource || !access.canViewNode(rowSource, row.channel)) return null;
+            if (!rowSource || !access.canViewNode(rowSource, row.channel, row.nodeNum)) return null;
             if (!visibleIdsBySource.has(rowSource)) {
               visibleIdsBySource.set(rowSource, new Set());
               visibleNumsBySource.set(rowSource, new Set());
@@ -293,7 +294,12 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         // them out of message lists (they render from the `traceroutes`
         // table), so including them only wastes slots in the fixed-size
         // window and evicts real DMs (issue #2741).
-        const dbMessagesRaw = await databaseService.messages.getMessages(100, 0, pollSourceId, [PortNum.TRACEROUTE_APP]);
+        // #5156: an anonymous caller loses messages from/to consent-hidden nodes.
+        const dbMessagesRaw = dropMessagesNamingHiddenNodes(
+          await databaseService.messages.getMessages(100, 0, pollSourceId, [PortNum.TRACEROUTE_APP]),
+          access.hiddenByMqttConsent,
+          pollSourceId,
+        );
 
         let messages: MeshMessage[] = dbMessagesRaw.map(
           msg => transformDbMessageToMeshMessage(msg as any as DbMessage)
@@ -468,7 +474,7 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         const allDbNodes = mayHoldNodes ? await databaseService.nodes.getAllNodes(nodeScope) : [];
         const dbNodes = isAdmin
           ? allDbNodes
-          : allDbNodes.filter((node) => access.canViewNode(rowSourceId(node) ?? pollSourceId, node.channel));
+          : allDbNodes.filter((node) => access.canViewNode(rowSourceId(node) ?? pollSourceId, node.channel, node.nodeNum));
         // Telemetry is read from the sources of the rows kept, so a node seen
         // on source A is not marked from telemetry only source B holds.
         const telemetrySources = [...new Set(dbNodes.map((node) => rowSourceId(node)).filter((id): id is string => !!id))];
@@ -659,6 +665,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         // `traceroute:read` on the row's source is already decided: the query
         // read only the sources the caller holds it on.
         const trSource = rowSourceId(tr) ?? pollSourceId;
+        // #5156: an anonymous caller loses routes naming a consent-hidden node.
+        if (tracerouteNamesHiddenNode(access.hiddenByMqttConsent, trSource, tr)) return false;
         // Channel-gate the way nodes are gated, so a route heard on a channel
         // the caller cannot view is not drawn (#3092). A row with no channel
         // recorded has no channel restriction.

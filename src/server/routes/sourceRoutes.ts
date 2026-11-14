@@ -53,6 +53,7 @@ import {
   resolveSourceConfigAudience,
   type SourceConfigAudience,
 } from '../utils/sourceConfigRedaction.js';
+import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 
@@ -2282,7 +2283,12 @@ router.get('/:id/messages', requirePermission('messages', 'read', { sourceIdFrom
     // filters them out anyway (they render from the `traceroutes` table);
     // letting them occupy slots in the capped window evicts real DMs
     // (issue #2741).
-    const messages = await databaseService.messages.getMessages(limit, offset, source.id, [PortNum.TRACEROUTE_APP]);
+    // #5156: an anonymous caller loses messages from/to consent-hidden nodes.
+    const messages = dropMessagesNamingHiddenNodes(
+      await databaseService.messages.getMessages(limit, offset, source.id, [PortNum.TRACEROUTE_APP]),
+      await loadMqttConsentHiddenSet(req.user, [source.id]),
+      source.id,
+    );
     res.json(messages);
   } catch (error) {
     logger.error('Error fetching messages for source:', error);
@@ -2316,14 +2322,17 @@ router.get('/:id/messages/:messageId/events', optionalAuth(), requirePermission(
 router.get('/:id/messages/:messageId/heard-by', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
     const sourceId = req.params.id;
-    const [rows, nodes] = await Promise.all([
+    const [rows, nodes, hidden] = await Promise.all([
       databaseService.meshtasticHeardRepeaters.getHeardRepeatersForMessage(req.params.messageId, sourceId),
       databaseService.nodes.getAllNodes(sourceId),
+      // #5156: an anonymous caller gets no consent-hidden node as a candidate.
+      loadMqttConsentHiddenSet(req.user, [sourceId]),
     ]);
 
     const heardBy = rows.map((row) => {
       const candidates = nodes
         .filter((node) => (Number(node.nodeNum) & 0xFF) === row.relayByte)
+        .filter((node) => !hidden.hides(sourceId, node.nodeNum))
         .map((node) => ({
           nodeNum: Number(node.nodeNum),
           longName: node.longName ?? undefined,

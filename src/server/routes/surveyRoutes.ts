@@ -15,6 +15,7 @@ import { logger } from '../../utils/logger.js';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { buildNetworkSurvey, clampWindowHours } from '../services/networkSurveyService.js';
+import { loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 
 const router = Router({ mergeParams: true });
 
@@ -32,7 +33,12 @@ router.get(
     try {
       const sourceId = (req.params as { id?: string }).id!;
       const windowHours = clampWindowHours(req.query.hours);
-      ok(res, await buildNetworkSurvey(sourceId, windowHours));
+      const survey = await buildNetworkSurvey(sourceId, windowHours);
+      // #5156: an anonymous caller loses consent-hidden nodes from the named
+      // neighbour list. The node and hop totals are counts and stay as built.
+      const hidden = await loadMqttConsentHiddenSet(req.user, [sourceId]);
+      survey.directNeighbours = survey.directNeighbours.filter((n) => !hidden.hides(sourceId, n.nodeNum));
+      ok(res, survey);
     } catch (error) {
       logger.error('[API] Error building network survey:', error);
       fail(res, 500, 'NETWORK_SURVEY_FAILED', 'Failed to build network survey');

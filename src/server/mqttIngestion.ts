@@ -11,6 +11,7 @@
  * Other port numbers are skipped.
  */
 
+import { mqttConsentStamp } from './utils/mqttConsentCapture.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { dataEventEmitter, type TelemetryEventMeta } from './services/dataEventEmitter.js';
@@ -856,8 +857,33 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
  * inner run, server-decrypted copies correctly record `decryptedBy:'server'`
  * and their resolved portnum/preview.
  */
+/**
+ * #5156: record the `ok_to_mqtt` bit of one ingested envelope on the sender's
+ * node row. Runs after ingest so the server-side decrypt above has already
+ * put the originator's bitfield on `packet.decoded`. UPDATE-only: if the node
+ * row is not written yet (fire-and-forget upserts), the next packet records it.
+ */
+async function recordEnvelopeMqttConsent(input: MqttIngestionInput): Promise<void> {
+  const packet = input.envelope.packet;
+  if (!packet || typeof packet.from !== 'number') return;
+  const stamp = mqttConsentStamp({
+    transportMechanism: TransportMechanism.MQTT,
+    arrivedViaMqtt: true,
+    bitfield: packet.decoded?.bitfield,
+    heardSec: resolveLastHeardSec(packet.rxTime, Date.now()),
+  });
+  if (stamp.mqttOkToMqtt === undefined || stamp.mqttOkToMqttAt === undefined) return;
+  await databaseService.nodes.recordMqttConsent(packet.from >>> 0, input.sourceId, stamp.mqttOkToMqtt, stamp.mqttOkToMqttAt);
+}
+
 export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<MqttIngestionResult> {
   const result = await ingestServiceEnvelopeInner(input);
+  // #5156: remember the sender's ok_to_mqtt bit on this source, for the opt-in
+  // anonymous-viewer filter. Only for packets the node table took; an
+  // unreadable bitfield records nothing (unknown consent stays unknown).
+  if (result.ingested) {
+    void recordEnvelopeMqttConsent(input).catch(err => logger.debug('MQTT consent record failed:', err));
+  }
   void mqttPacketLogService.logEnvelope(
     input.sourceId,
     input.envelope,

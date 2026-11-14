@@ -5,13 +5,19 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { loadSignFlipContext, getDisplayDbNodePosition } from '../services/signFlipCorrection.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
+import { loadMqttConsentHiddenSet, dropNeighborEdgesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 
 router.get('/', requirePermission('info', 'read'), async (req: Request, res: Response) => {
   try {
     const neighborInfoSourceId = req.query.sourceId as string | undefined;
-    const neighborInfo = await databaseService.getLatestNeighborInfoPerNodeScopedAsync(neighborInfoSourceId);
+    // #5156: an anonymous caller loses edges that touch a consent-hidden node.
+    const neighborInfo = dropNeighborEdgesNamingHiddenNodes(
+      await databaseService.getLatestNeighborInfoPerNodeScopedAsync(neighborInfoSourceId),
+      await loadMqttConsentHiddenSet(req.user, neighborInfoSourceId ? [neighborInfoSourceId] : undefined),
+      neighborInfoSourceId,
+    );
 
     // `'maxNodeAge'` is not in VALID_SETTINGS_KEYS, so this always read null and
     // silently pinned the window at the hardcoded 24h fallback regardless of the
@@ -75,7 +81,12 @@ router.get('/:nodeNum', requirePermission('info', 'read'), requireSourceId('quer
     const nodeNum = parseInt(req.params.nodeNum);
     // sourceId presence validated by requireSourceId('query')
     const neighborSourceId = req.query.sourceId as string;
-    const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum, neighborSourceId);
+    // #5156: an anonymous caller loses edges that touch a consent-hidden node.
+    const neighborInfo = dropNeighborEdgesNamingHiddenNodes(
+      await databaseService.getNeighborsForNodeAsync(nodeNum, neighborSourceId),
+      await loadMqttConsentHiddenSet(req.user, [neighborSourceId]),
+      neighborSourceId,
+    );
     const signFlipCtx = await loadSignFlipContext(neighborSourceId); // #5363
 
     const enrichedNeighborInfo = await Promise.all(neighborInfo.map(async ni => {

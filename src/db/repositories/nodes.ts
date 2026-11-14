@@ -910,6 +910,11 @@ export class NodesRepository extends BaseRepository {
           transportLastRf: nodeData.transportLastRf ?? existingNode.transportLastRf,
           transportLastMqtt: nodeData.transportLastMqtt ?? existingNode.transportLastMqtt,
           transportLastUdp: nodeData.transportLastUdp ?? existingNode.transportLastUdp,
+          // #5156: MQTT consent + direct-RF stamp. Carried forward, so a packet
+          // whose bitfield we could not read never erases the last known bit.
+          mqttOkToMqtt: nodeData.mqttOkToMqtt ?? existingNode.mqttOkToMqtt,
+          mqttOkToMqttAt: this.coerceBigintField(nodeData.mqttOkToMqttAt ?? existingNode.mqttOkToMqttAt),
+          rfDirectLastHeard: this.coerceBigintField(nodeData.rfDirectLastHeard ?? existingNode.rfDirectLastHeard),
           isStoreForwardServer: nodeData.isStoreForwardServer ?? existingNode.isStoreForwardServer,
           macaddr: macOrExisting(nodeData.macaddr, existingNode.macaddr),
           latitude: nodeData.latitude ?? existingNode.latitude,
@@ -1014,6 +1019,9 @@ export class NodesRepository extends BaseRepository {
         transportLastRf: this.coerceBigintField(nodeData.transportLastRf),
         transportLastMqtt: this.coerceBigintField(nodeData.transportLastMqtt),
         transportLastUdp: this.coerceBigintField(nodeData.transportLastUdp),
+        mqttOkToMqtt: nodeData.mqttOkToMqtt ?? null,
+        mqttOkToMqttAt: this.coerceBigintField(nodeData.mqttOkToMqttAt),
+        rfDirectLastHeard: this.coerceBigintField(nodeData.rfDirectLastHeard),
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
         // #5231: see the conflict-path note below — zero MACs store as null.
         macaddr: isBlankMacAddr(nodeData.macaddr) ? null : nodeData.macaddr,
@@ -1094,6 +1102,9 @@ export class NodesRepository extends BaseRepository {
         transportLastRf: this.coerceBigintField(nodeData.transportLastRf),
         transportLastMqtt: this.coerceBigintField(nodeData.transportLastMqtt),
         transportLastUdp: this.coerceBigintField(nodeData.transportLastUdp),
+        mqttOkToMqtt: nodeData.mqttOkToMqtt ?? null,
+        mqttOkToMqttAt: this.coerceBigintField(nodeData.mqttOkToMqttAt),
+        rfDirectLastHeard: this.coerceBigintField(nodeData.rfDirectLastHeard),
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
         // #5231: an all-zero MAC joins '' as "not reported" — firmware
         // deprecated `User.macaddr` in 2.1.x and many nodes send six zero bytes.
@@ -1241,6 +1252,40 @@ export class NodesRepository extends BaseRepository {
     }
 
     return affected;
+  }
+
+  /**
+   * #5156: record the `ok_to_mqtt` bit read from an MQTT-delivered packet of
+   * `nodeNum` on `sourceId`. UPDATE only: a node row this source does not hold
+   * yet is left alone (its next packet records it). Skips the node cache on
+   * purpose: this runs per MQTT packet, and the anonymous-viewer filter reads
+   * the columns straight from the table (`getMqttConsentWithheldNodeNums`).
+   */
+  async recordMqttConsent(nodeNum: number, sourceId: string, okToMqtt: boolean, atSec: number): Promise<void> {
+    const { nodes } = this.tables;
+    await this.db
+      .update(nodes)
+      .set({ mqttOkToMqtt: okToMqtt, mqttOkToMqttAt: this.coerceBigintField(atSec) })
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+  }
+
+  /**
+   * #5156: node numbers on `sourceId` whose latest readable MQTT consent bit is
+   * FALSE and that this source has never heard over direct RF. These are the
+   * nodes the opt-in anonymous-viewer filter hides. Unknown consent (NULL)
+   * never matches.
+   */
+  async getMqttConsentWithheldNodeNums(sourceId: string): Promise<number[]> {
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({ nodeNum: nodes.nodeNum })
+      .from(nodes)
+      .where(and(
+        eq(nodes.sourceId, sourceId),
+        eq(nodes.mqttOkToMqtt, false),
+        isNull(nodes.rfDirectLastHeard),
+      ));
+    return (rows as Array<{ nodeNum: number | bigint }>).map((r) => Number(r.nodeNum));
   }
 
   /**

@@ -29,6 +29,7 @@ import { buildPositionFilter, loadNodesBySource } from './positionVisibility.js'
 import { listPermittedSourceIds } from './sourceScopedAccess.js';
 import { anchorPositionKey } from '../services/positionEstimationService.js';
 import databaseService from '../../services/database.js';
+import { loadMqttConsentHiddenSet } from './mqttConsentVisibility.js';
 
 /** Names for an anchor, from a row the caller may see. */
 export interface AnchorLabel {
@@ -78,6 +79,9 @@ export async function loadPositionEstimateAccess(
   }
   const nodesBySource = await loadNodesBySource(sourceIds);
   const visible = await buildPositionFilter(user, sourceIds, nodesBySource);
+  // #5156: a node the anonymous MQTT-consent filter hides on a source does
+  // not count as seen there.
+  const hiddenByConsent = await loadMqttConsentHiddenSet(user, sourceIds);
 
   let canSeeTarget = false;
   // `${nodeNum}:${positionKey}` -> label, for every visible positioned row.
@@ -85,7 +89,7 @@ export async function loadPositionEstimateAccess(
   for (const [sourceId, nodes] of nodesBySource) {
     for (const n of nodes) {
       const num = Number(n.nodeNum);
-      if (num === targetNodeNum) canSeeTarget = true;
+      if (num === targetNodeNum && !hiddenByConsent.hides(sourceId, num)) canSeeTarget = true;
       if (!visible({ sourceId, nodeNum: num })) continue;
       const eff = getEffectiveDbNodePosition(n);
       if (eff.latitude == null || eff.longitude == null) continue;

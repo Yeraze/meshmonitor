@@ -46,6 +46,7 @@ import {
   TIME_SYNC_MINUTES,
 } from './utils/schedulerInterval.js';
 import { transportColumnForPacket, classifyNodeTransport } from '../utils/nodeTransport.js';
+import { mqttConsentStamp } from './utils/mqttConsentCapture.js';
 import { segmentTransportMechanism } from '../utils/tracerouteTransport.js';
 import { replyPacketToRequesterFirst } from '../utils/tracerouteOrientation.js';
 import {
@@ -7426,6 +7427,19 @@ class MeshtasticManager implements ISourceManager {
         // "last heard" cannot disagree (incl. the replay-guard omission case,
         // where an undefined lastHeard leaves the stamp untouched too).
         [txColumn]: heardSec,
+        // #5156: the ok_to_mqtt bit of an MQTT-delivered packet (incl. LORA +
+        // via_mqtt downlinks), or the direct-RF stamp. Feeds the opt-in
+        // anonymous-viewer filter; see utils/mqttConsentCapture.ts.
+        ...mqttConsentStamp({
+          transportMechanism: txMech,
+          viaMqtt: meshPacket.viaMqtt,
+          arrivedViaMqtt: context?.fromMqttProxy === true,
+          bitfield: meshPacket.decoded?.bitfield,
+          heardSec,
+          replayed: context?.viaStoreForward === true
+            || context?.virtualNodeRequestId != null
+            || isFirmwareReplayPacket(fromNum, meshPacket.id, meshPacket.rxTime != null ? Number(meshPacket.rxTime) : null),
+        }),
       };
 
       // #5101 P3: per-transport RX counter. Starts from the same gate as the

@@ -54,6 +54,7 @@ import {
   combineBrokerClasses,
   type BrokerAddressClass,
 } from '../utils/privateBrokerAddress.js';
+import { loadMqttConsentHiddenSet, tracerouteNamesHiddenNode, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 router.use(optionalAuth());
@@ -368,6 +369,11 @@ router.get('/traceroutes', async (req: Request, res: Response) => {
       pageSize: clampPageSize(req.query.pageSize),
       cursor: typeof req.query.cursor === 'string' ? req.query.cursor : null,
     });
+    // #5156: an anonymous caller loses routes naming a consent-hidden node.
+    const hidden = await loadMqttConsentHiddenSet(req.user, sourceIds);
+    if (hidden.active) {
+      result.items = result.items.filter((tr) => !tracerouteNamesHiddenNode(hidden, tr.sourceId, tr));
+    }
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/traceroutes:', error);
@@ -386,6 +392,13 @@ router.get('/neighbors', async (req: Request, res: Response) => {
       sourceIds,
       sinceMs: parseSinceMs(req.query.since),
     });
+    // #5156: an anonymous caller loses edges touching a consent-hidden node.
+    result.items = dropRowsNamingHiddenNodes(
+      result.items,
+      await loadMqttConsentHiddenSet(req.user, sourceIds),
+      (row) => row.sourceId,
+      (row) => [row.nodeNum, row.neighborNum],
+    );
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/neighbors:', error);
@@ -525,8 +538,11 @@ router.get('/solar-nodes', async (req: Request, res: Response) => {
       sourceIds.length > 0 ? sourceIds : undefined,
     );
 
+    // #5156: an anonymous caller loses consent-hidden nodes' telemetry.
+    const hidden = await loadMqttConsentHiddenSet(req.user, sourceIds);
     const rows: SolarTelemetryRow[] = telemetryRows
       .filter((r: any) => typeof r.value === 'number' && r.value !== null)
+      .filter((r: any) => !hidden.hides(r.sourceId ?? null, r.nodeNum))
       .map((r: any) => ({
         nodeNum: Number(r.nodeNum),
         telemetryType: String(r.telemetryType),
@@ -546,7 +562,10 @@ router.get('/solar-nodes', async (req: Request, res: Response) => {
     rows.push(...mc.rows);
     nodeLookup.push(...meshCoreNameLookups(mc.nodes, nodeLookup));
     const overrides = await visibleSolarOverrides(
-      [...allNodes, ...mc.nodes.map((n) => ({ nodeNum: nodeNumFromPubkey(n.publicKey), sourceId: n.sourceId }))],
+      [
+        ...allNodes.filter((n) => !hidden.hides((n as { sourceId?: string | null }).sourceId, n.nodeNum)),
+        ...mc.nodes.map((n) => ({ nodeNum: nodeNumFromPubkey(n.publicKey), sourceId: n.sourceId })),
+      ],
       sourceIds,
     );
     const result = identifySolarNodes(rows, nodeLookup, lookbackDays, overrides);
@@ -616,8 +635,11 @@ router.get('/solar-forecast', async (req: Request, res: Response) => {
       sourceIds.length > 0 ? sourceIds : undefined,
     );
 
+    // #5156: an anonymous caller loses consent-hidden nodes' telemetry.
+    const hidden = await loadMqttConsentHiddenSet(req.user, sourceIds);
     const rows: SolarTelemetryRow[] = telemetryRows
       .filter((r: any) => typeof r.value === 'number' && r.value !== null)
+      .filter((r: any) => !hidden.hides(r.sourceId ?? null, r.nodeNum))
       .map((r: any) => ({
         nodeNum: Number(r.nodeNum),
         telemetryType: String(r.telemetryType),
@@ -637,7 +659,10 @@ router.get('/solar-forecast', async (req: Request, res: Response) => {
     rows.push(...mc.rows);
     nodeLookup.push(...meshCoreNameLookups(mc.nodes, nodeLookup));
     const overrides = await visibleSolarOverrides(
-      [...allNodes, ...mc.nodes.map((n) => ({ nodeNum: nodeNumFromPubkey(n.publicKey), sourceId: n.sourceId }))],
+      [
+        ...allNodes.filter((n) => !hidden.hides((n as { sourceId?: string | null }).sourceId, n.nodeNum)),
+        ...mc.nodes.map((n) => ({ nodeNum: nodeNumFromPubkey(n.publicKey), sourceId: n.sourceId })),
+      ],
       sourceIds,
     );
     const analysis = identifySolarNodes(rows, nodeLookup, lookbackDays, overrides);
@@ -708,6 +733,13 @@ router.get('/hop-counts', async (req: Request, res: Response) => {
     const localNodeNums = await resolveLocalNodeNums(sourceIds);
     const meshcoreSourceIds = await meshCoreSourceIdsAmong(sourceIds);
     const result = await databaseService.analysis.getHopCounts({ sourceIds, localNodeNums, meshcoreSourceIds });
+    // #5156: an anonymous caller loses consent-hidden nodes (Meshtastic rows only).
+    result.entries = dropRowsNamingHiddenNodes(
+      result.entries,
+      await loadMqttConsentHiddenSet(req.user, sourceIds),
+      (row) => row.sourceId,
+      (row) => (row.publicKey ? [] : [row.nodeNum]),
+    );
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/hop-counts:', error);
@@ -823,7 +855,10 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       const gateways = await attachNodeNames(gatewayPage, sourceIds);
 
       ok(res, {
-        gateways,
+        // #5156: an anonymous caller loses gateways that are consent-hidden nodes.
+        gateways: dropRowsNamingHiddenNodes(
+          gateways, await loadMqttConsentHiddenSet(req.user, sourceIds), () => null, (g) => [g.gatewayNodeNum],
+        ),
         total,
         limit,
         offset,
@@ -961,7 +996,10 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
     const capApplied = confirmedRows.length >= API_SCAN_CAP;
 
     ok(res, {
-      gateways,
+      // #5156: an anonymous caller loses gateways that are consent-hidden nodes.
+      gateways: dropRowsNamingHiddenNodes(
+        gateways, await loadMqttConsentHiddenSet(req.user, sourceIds), () => null, (g) => [g.gatewayNodeNum],
+      ),
       total,
       limit,
       offset,
@@ -1066,7 +1104,10 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
       );
 
       ok(res, {
-        violations,
+        // #5156: an anonymous caller loses violations naming a consent-hidden node.
+        violations: dropRowsNamingHiddenNodes(
+          violations, await loadMqttConsentHiddenSet(req.user, sourceIds), (v) => v.sourceId, (v) => [v.fromNode, v.gatewayNodeNum],
+        ),
         total,
         limit,
         offset,
@@ -1134,7 +1175,10 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
     const capApplied = confirmedRows.length >= API_SCAN_CAP || suspectedRows.length >= API_SCAN_CAP;
 
     ok(res, {
-      violations,
+      // #5156: an anonymous caller loses violations naming a consent-hidden node.
+      violations: dropRowsNamingHiddenNodes(
+        violations, await loadMqttConsentHiddenSet(req.user, sourceIds), (v) => v.sourceId, (v) => [v.fromNode, v.gatewayNodeNum],
+      ),
       total,
       limit,
       offset,
