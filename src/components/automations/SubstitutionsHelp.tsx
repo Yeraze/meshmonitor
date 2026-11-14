@@ -74,7 +74,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     ['replyToHash', 'Reticulum only: the LXMF hash this message replies to (empty when it is not a reply)'],
     ['threadHash', 'Reticulum only: the LXMF conversation/thread hash (empty when none)'],
   ],
-  'trigger.telemetry': [['nodeNum', 'Node number'], ['telemetryType', 'Metric name'], ['value', 'Reading value'], ['unit', 'Unit']],
+  'trigger.telemetry': [['nodeNum', 'Node number'], ['telemetryType', 'Metric name'], ['value', 'Reading value'], ['unit', 'Unit'], ['name', 'MeshCore only: node name'], ['publicKey', 'MeshCore only: public key'], ['roleName', 'MeshCore only: Companion / Repeater / Room Server / Sensor']],
   'trigger.nodeUpdated': [
     ['nodeNum', 'Node number (Meshtastic)'], ['changed', 'Changed field names (list). MeshCore: name, latitude, longitude, advType, outPath, pathLen'],
     ...NODE_EVENT_MESHCORE_TOKENS,

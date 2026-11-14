@@ -1278,7 +1278,7 @@ export async function pollMeshCoreNodeTelemetry(opts: {
 
   const result = await scheduler.requestTelemetryForNode(
     manager,
-    { publicKey, advType: node?.advType ?? null },
+    { publicKey, advType: node?.advType ?? null, name: node?.name ?? null },
     { includeStatus: type === 'status', includeLpp: type === 'lpp' },
   );
   return { kind: 'polled', written: result.written, sources: result.sources };

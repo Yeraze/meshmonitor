@@ -38,6 +38,7 @@ import {
   buildNodeContext,
   buildMeshCoreNodeContext,
   buildTelemetryContext,
+  type MeshCoreTelemetrySubject,
   buildMeshBeaconContext,
   buildSystemContext,
   buildGeofenceContext,
@@ -1320,7 +1321,12 @@ export class AutomationEngineService {
     value: number,
     unit: string | undefined,
     sourceId: string | null,
-    opts: { answersOwnRequest?: boolean; localStats?: boolean } = {},
+    opts: {
+      answersOwnRequest?: boolean;
+      localStats?: boolean;
+      /** MeshCore readings (#6397): the contact the reading came from. */
+      meshcore?: MeshCoreTelemetrySubject;
+    } = {},
   ): Promise<number> {
     // Loop guard: a reading that answers a telemetry request WE sent never
     // fires. Otherwise "telemetry → request telemetry from that node" repeats
@@ -1334,8 +1340,10 @@ export class AutomationEngineService {
     // uptime, packet counters). Only our own node produces those, so the guard
     // would drop every one. No action can make the radio emit LocalStats, so
     // exempting them opens no loop.
-    if (!opts.localStats && await this.isSelfMeshtastic(sourceId, nodeNum)) return 0;
-    const ctx = buildTelemetryContext(nodeNum, telemetryType, value, unit, sourceId, this.now());
+    if (opts.meshcore) {
+      if (await this.isSelfMeshCore(sourceId, opts.meshcore.publicKey)) return 0;
+    } else if (!opts.localStats && await this.isSelfMeshtastic(sourceId, nodeNum)) return 0;
+    const ctx = buildTelemetryContext(nodeNum, telemetryType, value, unit, sourceId, this.now(), opts.meshcore);
     return this.runTrigger(
       ctx,
       (a) => {
