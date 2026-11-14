@@ -644,7 +644,8 @@ export async function shouldFilterNotificationAsync(
  * on a different (userId, sourceId) row than the one that triggered the
  * eligibility check (e.g. the flag was saved on the '' row, the URLs on a
  * per-source row). Visits rows in priority order — exact sourceId first,
- * then '' (default), then any remaining rows (already sourceId ASC) — and
+ * then the saved mesh-wide default (#5729), then any remaining rows
+ * including the legacy '' row (already sourceId ASC) — and
  * returns the first row with both Apprise enabled and at least one URL.
  * Returns null when no row has a usable channel.
  *

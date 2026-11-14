@@ -48,7 +48,7 @@ vi.mock('../meshtasticManager.js', () => ({ fallbackManager: { getLocalNodeInfo:
 vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
 vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => undefined }));
 
-import { resolveNotificationPreferencesAsync, resolveMeshPreferencesAsync, renderMessagePayloadForUserAsync } from './notificationFiltering.js';
+import { resolveNotificationPreferencesAsync, resolveMeshPreferencesAsync, renderMessagePayloadForUserAsync, pushSourceAllowedAsync } from './notificationFiltering.js';
 import { pushNotificationService } from '../services/pushNotificationService.js';
 import { defaultNotificationPreferences, MESH_PREFERENCES_SOURCE_ID } from '../../utils/notificationDefaults.js';
 
@@ -76,6 +76,23 @@ describe('mesh-wide default and per-source overrides (#5729)', () => {
     h.sqlite.exec(`DELETE FROM user_notification_preferences; DELETE FROM push_subscriptions;`);
     h.denied.clear();
     h.blob = null;
+  });
+
+  describe('pushSourceAllowedAsync', () => {
+    it('no mesh row: every source is allowed', async () => {
+      expect(await pushSourceAllowedAsync(USER, A)).toBe(true);
+    });
+
+    it('a null list means every source', async () => {
+      await saveMesh({}, null);
+      expect(await pushSourceAllowedAsync(USER, B)).toBe(true);
+    });
+
+    it('a list allows only the sources it names', async () => {
+      await saveMesh({}, [A]);
+      expect(await pushSourceAllowedAsync(USER, A)).toBe(true);
+      expect(await pushSourceAllowedAsync(USER, B)).toBe(false);
+    });
   });
 
   describe('resolution', () => {
