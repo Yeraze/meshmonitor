@@ -26,6 +26,8 @@ import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import ScriptsSection from './settings/ScriptsSection';
 import CoverageMqttRecordingSection from './settings/CoverageMqttRecordingSection';
+import AnonMqttConsentSection from './settings/AnonMqttConsentSection';
+import { isMqttConsentFilterSourceType } from '../utils/mqttConsentFilter';
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
 import PkiDmDecryptionSection from './configuration/PkiDmDecryptionSection';
 import ReliablePkiSection from './settings/ReliablePkiSection';
@@ -3173,6 +3175,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             canWrite={canWriteSettings}
             sourceType={sourceType}
           />
+        )}
+
+        {show('settings-anon-mqtt-consent') && canWriteSettings && isMqttConsentFilterSourceType(sourceType) && purgeSourceId && (
+          <AnonMqttConsentSection baseUrl={baseUrl} sourceId={purgeSourceId} canWrite={canWriteSettings} />
         )}
 
         {show('settings-default-source') && isAdmin && mode === 'global' && <DefaultMeshtasticSourceSection />}
