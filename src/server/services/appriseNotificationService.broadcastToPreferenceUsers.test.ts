@@ -67,6 +67,7 @@ vi.mock('../utils/notificationFiltering.js', () => ({
   shouldFilterNotificationAsync: h.shouldFilterNotificationAsyncMock,
   applyNodeNamePrefixAsync: h.applyNodeNamePrefixAsyncMock,
   resolveAppriseTargetAsync: h.resolveAppriseTargetAsyncMock,
+  userReadsAnySourceAsync: vi.fn(async () => false),
 }));
 
 const fetchMock = vi.fn();

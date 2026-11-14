@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { defaultNotificationPreferences } from '../../utils/notificationDefaults.js';
+import { defaultNotificationPreferences, MESH_PREFERENCES_SOURCE_ID } from '../../utils/notificationDefaults.js';
 import { isEmoji } from '../../utils/text.js';
 import {
   renderMessageNotification,
@@ -164,6 +164,24 @@ export async function messageReadableByUserAsync(
 }
 
 /**
+ * New-node gate (#5729, decision 5): true when the user may read any of
+ * `sourceIds` (`messages:read`, the same check the new-node broadcast makes
+ * for its own source), so they already heard of the node from there. Fails
+ * open (false): a failed check must not cost a user their only alert.
+ */
+export async function userReadsAnySourceAsync(userId: number, sourceIds: string[] | undefined): Promise<boolean> {
+  if (!sourceIds || sourceIds.length === 0) return false;
+  for (const sourceId of sourceIds) {
+    try {
+      if (await databaseService.checkPermissionAsync(userId, 'messages', 'read', sourceId)) return true;
+    } catch (error) {
+      logger.error(`Permission check failed for user ${userId} on source ${sourceId}:`, error);
+    }
+  }
+  return false;
+}
+
+/**
  * Event-broadcast gate (`broadcastToPreferenceUsers`): the payload's key
  * fingerprint and venue mute, if it carries them. A mute wins over a mention.
  * `prefs` is the recipient's row for the source when the caller has it.
@@ -214,11 +232,12 @@ export function getDefaultNotificationPreferences(): NotificationPreferences {
 export interface ResolvedNotificationPreferences {
   prefs: NotificationPreferences;
   /**
-   * - `row`: the user's saved row for exactly this source.
+   * - `row`: the user's saved row for exactly this source (an override).
+   * - `mesh`: the user's saved mesh-wide default (#5729).
    * - `legacyBlob`: the pre-4.0 `push_prefs_<userId>` settings blob.
    * - `default`: nothing saved; the built-in defaults.
    */
-  origin: 'row' | 'legacyBlob' | 'default';
+  origin: 'row' | 'mesh' | 'legacyBlob' | 'default';
   /** The mute lists include rules carried from the user's legacy '' row. */
   legacyMutes: boolean;
 }
@@ -337,9 +356,14 @@ async function readLegacyMutesAsync(
  * came from.
  *
  * Order:
- * 1. The saved row for EXACTLY this source.
- * 2. The pre-4.0 per-user settings blob, if the user still has one.
- * 3. The built-in defaults.
+ * 1. The saved row for EXACTLY this source (a per-source override).
+ * 2. The user's saved mesh-wide default (#5729), for a real source only.
+ * 3. The pre-4.0 per-user settings blob, if the user still has one.
+ * 4. The built-in defaults.
+ *
+ * The mesh-wide default is a set of preferences, not a grant: every delivery
+ * path still checks the user may read the source before it uses them, so the
+ * default only ever reaches sources the user can read.
  *
  * A source the user never configured does NOT borrow another source's row.
  * Until this change it did: a miss fell back to `getUserPreferences(userId, '')`
@@ -347,7 +371,7 @@ async function readLegacyMutesAsync(
  * filter and returned the user's first row of any source. Source B then used
  * the channel numbers, keyword lists and toggles saved for source A.
  *
- * For steps 2 and 3 only, a Meshtastic source also takes the active mute rules
+ * For steps 2 to 4 only, a Meshtastic source also takes the active mute rules
  * from the user's legacy '' row (see `readLegacyMutesAsync`).
  *
  * `sourceId` omitted or '' (a caller with no source in hand, or the unsourced
@@ -372,11 +396,11 @@ export async function resolveNotificationPreferencesAsync(
       return { prefs: row, origin: 'row', legacyMutes: false };
     }
 
-    const blob = await readLegacyPreferencesBlobAsync(userId);
-    const base: NotificationPreferences = blob ?? defaultNotificationPreferences();
-    const origin = blob ? 'legacyBlob' : 'default';
+    const fallback = await resolveFallbackPreferencesAsync(userId, scopedSourceId);
+    const base = fallback.prefs;
+    const origin = fallback.origin;
 
-    if (scopedSourceId === '') {
+    if (scopedSourceId === '' || scopedSourceId === MESH_PREFERENCES_SOURCE_ID) {
       return { prefs: base, origin, legacyMutes: false };
     }
 
@@ -401,8 +425,75 @@ export async function resolveNotificationPreferencesAsync(
 }
 
 /**
+ * What a source with no row of its own resolves to: the saved mesh-wide
+ * default (real sources only), else the pre-4.0 blob, else the built-in
+ * defaults. Never another source's row.
+ */
+async function resolveFallbackPreferencesAsync(
+  userId: number,
+  scopedSourceId: string,
+): Promise<{ prefs: NotificationPreferences; origin: 'mesh' | 'legacyBlob' | 'default' }> {
+  if (scopedSourceId !== '' && scopedSourceId !== MESH_PREFERENCES_SOURCE_ID) {
+    const mesh = await databaseService.notifications.getMeshPreferences(userId);
+    if (mesh?.saved) return { prefs: mesh.prefs, origin: 'mesh' };
+  }
+  const blob = await readLegacyPreferencesBlobAsync(userId);
+  return blob
+    ? { prefs: blob, origin: 'legacyBlob' }
+    : { prefs: defaultNotificationPreferences(), origin: 'default' };
+}
+
+/** The mesh-wide settings a user sees and edits (#5729). */
+export interface ResolvedMeshPreferences {
+  prefs: NotificationPreferences;
+  /** False until the user saves mesh-wide settings; `prefs` is then the fallback. */
+  saved: boolean;
+  /** Sources Web Push may notify from; null = every source the user can read. */
+  pushSourceIds: string[] | null;
+}
+
+/**
+ * The user's mesh-wide default: the saved mesh row, else what a source with
+ * no row resolves to today (pre-4.0 blob, else the built-in defaults). The
+ * push source list is read even from an unsaved row. Returns null only for an
+ * invalid userId. `rethrow` is for read-modify-write callers.
+ */
+export async function resolveMeshPreferencesAsync(
+  userId: number,
+  opts?: { rethrow?: boolean },
+): Promise<ResolvedMeshPreferences | null> {
+  if (!Number.isInteger(userId) || userId <= 0) return null;
+  const mesh = await databaseService.notifications.getMeshPreferences(userId, opts);
+  if (mesh?.saved) return { prefs: mesh.prefs, saved: true, pushSourceIds: mesh.pushSourceIds };
+  const blob = await readLegacyPreferencesBlobAsync(userId);
+  return {
+    prefs: blob ?? defaultNotificationPreferences(),
+    saved: false,
+    pushSourceIds: mesh?.pushSourceIds ?? null,
+  };
+}
+
+/**
+ * Web Push source filter (#5729): may this user's browsers get a push about
+ * `sourceId`? One subscription covers the whole mesh, so the user's mesh-wide
+ * `pushSourceIds` list is the filter; no list means every source. This is not
+ * a permission check: the caller still checks the user may read the source.
+ * Fails closed on a read error.
+ */
+export async function pushSourceAllowedAsync(userId: number, sourceId: string): Promise<boolean> {
+  try {
+    const mesh = await databaseService.notifications.getMeshPreferences(userId, { rethrow: true });
+    const list = mesh?.pushSourceIds ?? null;
+    return list === null || list.includes(sourceId);
+  } catch (error) {
+    logger.error(`Failed to read push source list for user ${userId}:`, error);
+    return false;
+  }
+}
+
+/**
  * The preferences in force for (userId, sourceId): the saved row for that
- * source, else the built-in defaults. Never another source's row. See
+ * source, else the mesh-wide default, else the built-in defaults. Never another source's row. See
  * `resolveNotificationPreferencesAsync` for the full order.
  *
  * Returns null only for an invalid userId.
@@ -571,14 +662,10 @@ export async function resolveAppriseTargetAsync(
   const rows = await databaseService.notifications.getUserPreferenceRows(userId);
   if (rows.length === 0) return null;
 
-  const ordered = [...rows];
-  if (sourceId) {
-    const idx = ordered.findIndex((r) => r.sourceId === sourceId);
-    if (idx > 0) {
-      const [exact] = ordered.splice(idx, 1);
-      ordered.unshift(exact);
-    }
-  }
+  // Exact source first, then the saved mesh-wide default (#5729), then the rest.
+  const rank = (id: string): number =>
+    sourceId && id === sourceId ? 0 : id === MESH_PREFERENCES_SOURCE_ID ? 1 : 2;
+  const ordered = [...rows].sort((a, b) => rank(a.sourceId) - rank(b.sourceId));
 
   for (const row of ordered) {
     if (row.prefs.enableApprise && row.prefs.appriseUrls && row.prefs.appriseUrls.length > 0) {
@@ -600,8 +687,9 @@ export async function resolveAppriseTargetAsync(
  *   source name is wherever the template puts it; no `[sourceName]` prefix is
  *   added, so the default shows it exactly once.
  *
- *   Templates come from the EXACT (userId, sourceId) row only: a template
- *   saved for source A never shapes a notification from source B.
+ *   Templates come from the EXACT (userId, sourceId) row, else the user's
+ *   saved mesh-wide default (#5729): a template saved for source A never
+ *   shapes a notification from source B.
  * - `message` absent (a caller that built its own strings): keep the legacy
  *   `[sourceName] title`, which is that caller's only mention of the source.
  *
@@ -626,6 +714,12 @@ export async function renderMessagePayloadForUserAsync(
   if (userId && sourceId) {
     try {
       prefs = await databaseService.notifications.getUserPreferences(userId, sourceId);
+      // No override for this source: the saved mesh-wide default's templates
+      // apply (#5729). Never another source's row.
+      if (!prefs) {
+        const mesh = await databaseService.notifications.getMeshPreferences(userId);
+        if (mesh?.saved) prefs = mesh.prefs;
+      }
     } catch (error) {
       // A failed read must not cost the user the notification: use the default.
       logger.error(`Failed to load message templates for user ${userId} on source ${sourceId}:`, error);

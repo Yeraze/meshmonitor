@@ -45,6 +45,13 @@ export interface NotificationPayload {
    * it is skipped. Server-side input; never sent on the wire.
    */
   muteVenue?: NotificationMuteVenue;
+  /**
+   * New-node alert (#5729, decision 5): sources where this node was already
+   * known before this source announced it. A recipient who can read any of
+   * them heard of the node from there first and is skipped. Server-side
+   * input; never sent on the wire.
+   */
+  knownOnSourceIds?: string[];
 }
 
 export interface NotificationFilterContext {
@@ -218,18 +225,34 @@ class NotificationService {
     hwModel: number | undefined,
     hopsAway: number | undefined,
     sourceId: string,
-    sourceName: string
+    sourceName: string,
+    /**
+     * #5729, decision 5: each source announces a node once; a user gets the
+     * alert from the first source THEY can read that heard it. `knownOnSourceIds`
+     * lists the sources that knew the node before this one.
+     */
+    opts: { nodeNum?: number; knownOnSourceIds?: string[] } = {},
   ): Promise<void> {
     try {
       const hopsText = hopsAway !== undefined ? ` (${hopsAway} ${hopsAway === 1 ? 'hop' : 'hops'} away)` : '';
       const hwModelText = hwModel !== undefined ? ` - ${getHardwareModelName(hwModel) || 'Unknown'}` : '';
       // #4845: title carries the service, body says which instance detected it.
+      const title = `New Meshtastic Node Detected`;
       const payload: NotificationPayload = {
-        title: `New Meshtastic Node Detected`,
+        title,
         body: `${longName} (${shortName}) detected by ${sourceName}${hwModelText}${hopsText}`,
         type: 'info',
         sourceId,
-        sourceName
+        sourceName,
+        ...(opts.knownOnSourceIds && opts.knownOnSourceIds.length > 0 ? { knownOnSourceIds: opts.knownOnSourceIds } : {}),
+        // Two sources completing the node at the same moment: one alert per
+        // recipient, naming both (the 5 s hold / silent push update).
+        ...(opts.nodeNum !== undefined ? {
+          dedup: {
+            key: `meshtastic-new-node:${opts.nodeNum >>> 0}`,
+            merged: (names: string[]) => ({ title, body: `${longName} (${shortName}) detected by ${names.join(', ')}${hwModelText}${hopsText}` }),
+          },
+        } : {}),
       };
 
       // Send to users with notifyOnNewNode enabled, scoped to this source

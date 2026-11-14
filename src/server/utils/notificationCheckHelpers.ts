@@ -11,6 +11,26 @@ import type { NotificationPreferences } from './notificationFiltering.js';
  */
 
 /**
+ * One key per physical node, whichever source reports it (#5729), so the
+ * inactive-node and low-battery alerts dedup by node across sources.
+ *
+ * Meshtastic: the node number. MeshCore: the public-key prefix from the
+ * `mc:<sourceId>:<pubkey12>` id the Nodes view uses, since the same device has
+ * a different id on every MeshCore source.
+ */
+export function nodeIdentityKey(nodeId: string, nodeNum: number): string {
+  if (nodeId.startsWith('mc:')) {
+    return `mc:${meshcoreKeyPrefixFromNodeId(nodeId)}`;
+  }
+  return `mt:${nodeNum >>> 0}`;
+}
+
+/** The public-key prefix at the end of a `mc:<sourceId>:<pubkey12>` id. */
+export function meshcoreKeyPrefixFromNodeId(nodeId: string): string {
+  return nodeId.substring(nodeId.lastIndexOf(':') + 1).toLowerCase();
+}
+
+/**
  * Parse and dedup-union the monitoredNodes JSON across all of a user's
  * preference rows. A malformed row is logged and contributes nothing
  * (rather than aborting the whole union), matching the per-row parse

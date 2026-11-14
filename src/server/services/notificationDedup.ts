@@ -13,7 +13,10 @@
  *      before. Only a copy that would have been sent then calls `claim`.
  *   3. `claim` answers `first` (send it), `additional` (a new source joined;
  *      Web Push may update the shown notification silently) or `duplicate`
- *      (send nothing).
+ *      (send nothing). Apprise and the desktop app cannot update a sent
+ *      message, so a `first` claim there starts a 5 s hold
+ *      (`NotificationHoldStore`, below) and `additional` copies join it; one
+ *      message then lists every source.
  *
  * State is per (recipient, key), never per key alone. The source list a
  * recipient sees therefore holds only sources whose copy passed THAT
@@ -40,6 +43,12 @@ export const NOTIFICATION_DEDUP_MAX_ENTRIES = 10_000;
 export interface DedupSource {
   sourceId: string;
   sourceName: string;
+  /**
+   * Web Push only: the click target of this source's copy. Kept for the first
+   * source so a silent update still opens the source that heard it first
+   * (#5729, decision 3).
+   */
+  navData?: unknown;
 }
 
 /**
@@ -99,7 +108,7 @@ export class NotificationDedupStore {
       if (existing.sources.some(s => s.sourceId === source.sourceId)) {
         return { outcome: 'duplicate', sources: [...existing.sources] };
       }
-      existing.sources.push({ sourceId: source.sourceId, sourceName: source.sourceName });
+      existing.sources.push({ ...source });
       return { outcome: 'additional', sources: [...existing.sources] };
     }
 
@@ -113,7 +122,7 @@ export class NotificationDedupStore {
     }
     const entry: DedupEntry = {
       firstAt: now,
-      sources: [{ sourceId: source.sourceId, sourceName: source.sourceName }],
+      sources: [{ ...source }],
     };
     this.entries.set(mapKey, entry);
     return { outcome: 'first', sources: [...entry.sources] };
@@ -131,6 +140,16 @@ export class NotificationDedupStore {
     if (existing && existing.sources.length === 1 && existing.sources[0].sourceId === sourceId) {
       this.entries.delete(mapKey);
     }
+  }
+
+  /**
+   * Drop the entry outright, whatever sources joined it. Used when a HELD
+   * message (Apprise / desktop) that collected several sources fails to send:
+   * nothing reached the recipient, so the next copy must be free to try. Not
+   * a retry; nothing is sent until a real copy arrives.
+   */
+  forget(recipient: string, key: string): void {
+    this.entries.delete(NotificationDedupStore.entryKey(recipient, key));
   }
 
   /** Drop expired entries from the front; stops at the first live one. */
@@ -190,3 +209,133 @@ export function joinSourceNames(sources: DedupSource[]): string {
 export function dedupTag(key: string): string {
   return `mm-${key}`;
 }
+
+/**
+ * How long Apprise and the desktop app wait after the FIRST copy of an event
+ * before sending, to collect every source that heard it (#5729, decision 2).
+ * Neither can change a message once sent, so they send one message that
+ * lists every source instead of naming only the first.
+ */
+export const NOTIFICATION_COLLECT_HOLD_MS = 5_000;
+
+/** Sends a held notification. `sources` is in arrival order. True = delivered. */
+export type HoldFlush = (sources: DedupSource[]) => Promise<boolean>;
+
+interface HoldEntry {
+  recipient: string;
+  key: string;
+  sources: DedupSource[];
+  flush: HoldFlush;
+  timer: ReturnType<typeof setTimeout>;
+  /** Whatever the caller needs to decide whether a later copy may join. */
+  meta?: unknown;
+}
+
+/**
+ * Collect-then-send for channels that cannot update a sent message (#5729).
+ *
+ * The first copy of an event (a `first` dedup claim) starts a hold with a
+ * FIXED deadline: `holdMs` after that copy. Later copies inside the hold only
+ * add their source; they never move the deadline, so a stream of copies
+ * cannot delay the message, and nothing here can send more than once per
+ * hold. After the deadline the one message goes out and the hold is gone; a
+ * copy that arrives later still meets the dedup entry and is dropped.
+ *
+ * Nothing reads settings, so a settings save cannot reset or re-arm a hold. A
+ * restart drops pending holds; `flushAll` (called on graceful shutdown) sends
+ * them first, so a clean restart loses nothing. The hold lives in memory like
+ * the dedup window it extends, so a crash can lose at most the events of the
+ * last 5 seconds, and it can never cause a second send.
+ */
+export class NotificationHoldStore {
+  private readonly holds = new Map<string, HoldEntry>();
+
+  constructor(
+    private readonly holdMs: number = NOTIFICATION_COLLECT_HOLD_MS,
+    private readonly onFailed: (recipient: string, key: string) => void =
+      (recipient, key) => notificationDedup.forget(recipient, key),
+  ) {}
+
+  private static mapKey(recipient: string, key: string): string {
+    return `${recipient}\n${key}`;
+  }
+
+  /**
+   * Start a hold for a `first` claim. A second `start` for the same
+   * (recipient, key) while one is live only joins it: it can never arm a
+   * second timer.
+   */
+  start(recipient: string, key: string, source: DedupSource, flush: HoldFlush, meta?: unknown): void {
+    const mapKey = NotificationHoldStore.mapKey(recipient, key);
+    if (this.holds.has(mapKey)) {
+      this.join(recipient, key, source);
+      return;
+    }
+    const entry: HoldEntry = {
+      recipient,
+      key,
+      sources: [{ ...source }],
+      flush,
+      meta,
+      timer: setTimeout(() => { void this.fire(mapKey); }, this.holdMs),
+    };
+    // A pending hold must not keep a shutting-down process alive.
+    entry.timer.unref?.();
+    this.holds.set(mapKey, entry);
+  }
+
+  /**
+   * Add a source to a live hold. False when no hold is live (it has already
+   * been sent, or there never was one): the caller then drops the copy.
+   */
+  join(recipient: string, key: string, source: DedupSource): boolean {
+    const entry = this.holds.get(NotificationHoldStore.mapKey(recipient, key));
+    if (!entry) return false;
+    if (!entry.sources.some(s => s.sourceId === source.sourceId)) {
+      entry.sources.push({ ...source });
+    }
+    return true;
+  }
+
+  /** The caller's `meta` for a live hold, or undefined. */
+  getMeta(recipient: string, key: string): unknown {
+    return this.holds.get(NotificationHoldStore.mapKey(recipient, key))?.meta;
+  }
+
+  isHeld(recipient: string, key: string): boolean {
+    return this.holds.has(NotificationHoldStore.mapKey(recipient, key));
+  }
+
+  private async fire(mapKey: string): Promise<void> {
+    const entry = this.holds.get(mapKey);
+    if (!entry) return;
+    // Remove BEFORE sending: a copy arriving during the send is dropped by the
+    // dedup entry, never added to a message already on its way.
+    this.holds.delete(mapKey);
+    clearTimeout(entry.timer);
+    const delivered = await entry.flush([...entry.sources]).catch(() => false);
+    if (!delivered) {
+      // Same as an immediate send that failed: a later copy may still reach
+      // the recipient. Not a retry; nothing is sent until a real copy arrives.
+      this.onFailed(entry.recipient, entry.key);
+    }
+  }
+
+  /** Send every pending hold now (graceful shutdown). */
+  async flushAll(): Promise<void> {
+    await Promise.allSettled([...this.holds.keys()].map(k => this.fire(k)));
+  }
+
+  /** Drop every pending hold WITHOUT sending (tests only). */
+  clear(): void {
+    for (const entry of this.holds.values()) clearTimeout(entry.timer);
+    this.holds.clear();
+  }
+
+  get size(): number {
+    return this.holds.size;
+  }
+}
+
+/** Shared by Apprise and the desktop app; recipients never collide (`apprise:` / `desktop`). */
+export const notificationHold = new NotificationHoldStore();

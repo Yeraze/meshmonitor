@@ -67,7 +67,7 @@ import { appriseNotificationService } from './appriseNotificationService.js';
 import { notificationService } from './notificationService.js';
 import { serverEventNotificationService } from './serverEventNotificationService.js';
 import { sendMessagePushNotification } from './messagePushNotifier.js';
-import { notificationDedup, NOTIFICATION_DEDUP_WINDOW_MS, dedupTag, packetDedupKey } from './notificationDedup.js';
+import { notificationDedup, notificationHold, NOTIFICATION_DEDUP_WINDOW_MS, dedupTag, packetDedupKey } from './notificationDedup.js';
 
 const FROM = 305419896;
 const TEXT = 'meet at the trailhead';
@@ -106,19 +106,34 @@ function appriseTo(userId: number): AppriseCall[] {
 function desktops(): Array<{ title: string; message: string }> {
   return h.notify.mock.calls.map((c) => c[0] as { title: string; message: string });
 }
+/**
+ * Apprise and the desktop app hold each deduped event for 5 s, then send ONE
+ * message listing every source that heard it (#5729). Sending the holds now
+ * stands in for those 5 s passing, without moving the clock the 60 s window
+ * tests read.
+ */
+async function flushHolds(): Promise<void> {
+  await notificationHold.flushAll();
+}
+
 /** Every string any channel sent, for "this name must appear nowhere" checks. */
 function everythingSentTo(userId: number): string {
   return JSON.stringify([pushesTo(userId), appriseTo(userId)]);
 }
 
-/** A user with a saved row and a push subscription on each listed source. */
+/**
+ * A user with a saved row on each listed source, and ONE browser subscription
+ * for the whole mesh whose Web Push source list is those sources (#5729: what
+ * migration 235 leaves for a browser that was subscribed on each of them).
+ */
 function addUser(userId: number, sources: Record<string, Partial<FixturePrefs>>) {
   h.state.users.push({ id: userId, isActive: true });
   h.state.appriseUsers.push(userId);
   for (const [sourceId, prefs] of Object.entries(sources)) {
     h.state.prefs.set(`${userId}|${sourceId}`, fixturePrefs({ appriseUrls: [`json://example.invalid/u${userId}`], ...prefs }));
-    h.state.subscriptions.push(subscriptionFor(userId, sourceId));
   }
+  h.state.subscriptions.push(subscriptionFor(userId, '__mesh__'));
+  h.state.mesh?.set(userId, { saved: false, pushSourceIds: Object.keys(sources) });
 }
 
 /** One source hearing a text packet, through the real notifier. */
@@ -150,10 +165,12 @@ describe('cross-source notification dedup (#5729)', () => {
     (pushNotificationService as unknown as { isConfigured: boolean }).isConfigured = true;
 
     notificationDedup.clear();
+    notificationHold.clear();
     h.state.prefs.clear();
     h.state.deniedUsers.clear();
     h.state.deniedPairs = new Set();
     h.state.subscriptions = [];
+    h.state.mesh = new Map();
     h.state.appriseUsers = [];
     h.state.users = [];
     h.notify.mockClear();
@@ -188,11 +205,15 @@ describe('cross-source notification dedup (#5729)', () => {
       expect(push.map((p) => p.tag)).toEqual([tag, tag]);
       expect(push.map((p) => p.renotify)).toEqual([false, false]);
 
-      // Apprise and desktop cannot update: the first copy only.
+      // Apprise and desktop cannot update: they hold the event for 5 s, then
+      // send ONE message that lists both sources (#5729).
+      expect(appriseTo(1)).toHaveLength(0);
+      expect(desktops()).toHaveLength(0);
+      await flushHolds();
       expect(appriseTo(1)).toHaveLength(1);
-      expect(appriseTo(1)[0].title).toBe('LongFast · Hilltop');
+      expect(appriseTo(1)[0].title).toBe('LongFast · Hilltop, Valley');
       expect(desktops()).toHaveLength(1);
-      expect(desktops()[0].title).toBe('LongFast · Hilltop');
+      expect(desktops()[0].title).toBe('LongFast · Hilltop, Valley');
     });
 
     it('the three channels agree: each alerts the user exactly once', async () => {
@@ -201,6 +222,7 @@ describe('cross-source notification dedup (#5729)', () => {
       await hear('src-b');
       await hear('src-a'); // the same source again
       await hear('src-b');
+      await flushHolds();
 
       const alerting = pushesTo(1).filter((p) => p.silent !== true);
       expect(alerting).toHaveLength(1);
@@ -209,11 +231,14 @@ describe('cross-source notification dedup (#5729)', () => {
       expect(desktops()).toHaveLength(1);
     });
 
-    it('does not wait for the second source: the first copy goes out at once', async () => {
+    it('Web Push goes out at once; Apprise and desktop wait for the hold', async () => {
       addUser(1, { 'src-a': {}, 'src-b': {} });
       await hear('src-a');
       expect(pushesTo(1)).toHaveLength(1);
-      expect(appriseTo(1)).toHaveLength(1);
+      expect(appriseTo(1)).toHaveLength(0);
+      expect(desktops()).toHaveLength(0);
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Hilltop']);
       expect(desktops()).toHaveLength(1);
     });
 
@@ -237,7 +262,8 @@ describe('cross-source notification dedup (#5729)', () => {
         'LongFast · Valley, Broker',
         'LongFast · Valley, Broker, Hilltop',
       ]);
-      expect(appriseTo(1)).toHaveLength(1);
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Valley, Broker, Hilltop']);
     });
 
     it('the update keeps the first source\'s template', async () => {
@@ -261,7 +287,8 @@ describe('cross-source notification dedup (#5729)', () => {
 
       expect(pushesTo(1)).toHaveLength(1);
       expect(pushesTo(1)[0].title).toBe('LongFast · Hilltop');
-      expect(appriseTo(1)).toHaveLength(1);
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Hilltop']);
       expect(everythingSentTo(1)).not.toContain('Valley');
       expect(everythingSentTo(1)).not.toContain('src-b');
     });
@@ -278,7 +305,8 @@ describe('cross-source notification dedup (#5729)', () => {
       expect(pushesTo(1)).toHaveLength(1);
       expect(pushesTo(1)[0].title).toBe('LongFast · Valley');
       expect(pushesTo(1)[0].silent).toBeUndefined();
-      expect(appriseTo(1)).toHaveLength(1);
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Valley']);
       expect(everythingSentTo(1)).not.toContain('Hilltop');
     });
 
@@ -292,9 +320,25 @@ describe('cross-source notification dedup (#5729)', () => {
 
       expect(pushesTo(1).map((p) => p.title)).toEqual(['LongFast · Hilltop', 'LongFast · Hilltop, Valley']);
       expect(pushesTo(2).map((p) => p.title)).toEqual(['LongFast · Valley']);
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Hilltop, Valley']);
       expect(appriseTo(2).map((c) => c.title)).toEqual(['LongFast · Valley']);
       expect(everythingSentTo(2)).not.toContain('Hilltop');
       expect(everythingSentTo(2)).not.toContain('src-a');
+    });
+  });
+
+  describe('desktop: one machine, the hold belongs to the first user', () => {
+    it('never lists a source the hold\'s user cannot read', async () => {
+      addUser(1, { 'src-a': {}, 'src-b': {} });
+      addUser(2, { 'src-a': {}, 'src-b': {} });
+      h.state.deniedPairs?.add('1|src-b'); // user 1 (first) reads only Hilltop
+
+      await hear('src-a');
+      await hear('src-b');
+      await flushHolds();
+
+      expect(desktops().map((d) => d.title)).toEqual(['LongFast · Hilltop']);
     });
   });
 
@@ -309,6 +353,7 @@ describe('cross-source notification dedup (#5729)', () => {
 
       await hear('src-b');
       expect(pushesTo(1).map((p) => p.title)).toEqual(['LongFast · Valley']);
+      await flushHolds();
       expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Valley']);
       expect(desktops().map((d) => d.title)).toEqual(['LongFast · Valley']);
     });
@@ -317,6 +362,7 @@ describe('cross-source notification dedup (#5729)', () => {
       addUser(1, { 'src-a': { blacklist: ['trailhead'] }, 'src-b': { mutedChannels: [{ channelId: 0, muteUntil: null }] } });
       await hear('src-a');
       await hear('src-b');
+      await flushHolds();
       expect(pushesTo(1)).toHaveLength(0);
       expect(appriseTo(1)).toHaveLength(0);
       expect(desktops()).toHaveLength(0);
@@ -328,13 +374,14 @@ describe('cross-source notification dedup (#5729)', () => {
       await hear('src-b');
       // Push: A's copy never counted, so B's is the first and names only B.
       expect(pushesTo(1).map((p) => p.title)).toEqual(['LongFast · Valley']);
-      // Apprise: A's copy was sent; B's is the duplicate.
-      expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Hilltop']);
+      // Apprise: both copies passed, so its one message lists both.
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Hilltop, Valley']);
     });
 
-    it('a browser subscribed on one source is not told about the other', async () => {
+    it('a source outside the user\'s Web Push source list is not pushed', async () => {
       addUser(1, { 'src-a': {}, 'src-b': {} });
-      h.state.subscriptions = h.state.subscriptions.filter((s) => s.sourceId !== 'src-b');
+      h.state.mesh = new Map([[1, { saved: false, pushSourceIds: ['src-a'] }]]);
       await hear('src-a');
       await hear('src-b');
       expect(pushesTo(1).map((p) => p.title)).toEqual(['LongFast · Hilltop']);
@@ -348,6 +395,7 @@ describe('cross-source notification dedup (#5729)', () => {
       await hear('src-b', { packetId: 43 });
       expect(pushesTo(1).map((p) => p.silent)).toEqual([undefined, undefined]);
       expect(new Set(pushesTo(1).map((p) => p.tag)).size).toBe(2);
+      await flushHolds();
       expect(appriseTo(1)).toHaveLength(2);
       expect(desktops()).toHaveLength(2);
     });
@@ -357,6 +405,7 @@ describe('cross-source notification dedup (#5729)', () => {
       await hear('src-a', { portnum: 1 }); // TEXT_MESSAGE_APP
       await hear('src-b', { portnum: 72 }); // ATAK_PLUGIN
       expect(pushesTo(1).filter((p) => p.silent !== true)).toHaveLength(2);
+      await flushHolds();
       expect(appriseTo(1)).toHaveLength(2);
       expect(desktops()).toHaveLength(2);
     });
@@ -365,14 +414,17 @@ describe('cross-source notification dedup (#5729)', () => {
       addUser(1, { 'src-a': {}, 'src-b': {} });
       await hear('src-a', { from: 1000 });
       await hear('src-b', { from: 1001 });
+      await flushHolds();
       expect(appriseTo(1)).toHaveLength(2);
     });
 
     it('a copy after the window is a separate notification', async () => {
       addUser(1, { 'src-a': {}, 'src-b': {} });
       await hear('src-a');
+      await flushHolds(); // its 5 s hold ended long before the window did
       vi.setSystemTime(T0 + NOTIFICATION_DEDUP_WINDOW_MS + 1);
       await hear('src-b');
+      await flushHolds();
 
       expect(pushesTo(1).map((p) => p.title)).toEqual(['LongFast · Hilltop', 'LongFast · Valley']);
       expect(pushesTo(1).map((p) => p.silent)).toEqual([undefined, undefined]);
@@ -383,9 +435,12 @@ describe('cross-source notification dedup (#5729)', () => {
     it('a copy just inside the window is collapsed', async () => {
       addUser(1, { 'src-a': {}, 'src-b': {} });
       await hear('src-a');
+      await flushHolds(); // sent after its 5 s hold
       vi.setSystemTime(T0 + NOTIFICATION_DEDUP_WINDOW_MS - 1);
       await hear('src-b');
-      expect(appriseTo(1)).toHaveLength(1);
+      await flushHolds();
+      // Too late to join the sent message, still inside the window: dropped.
+      expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Hilltop']);
       expect(desktops()).toHaveLength(1);
     });
 
@@ -400,6 +455,7 @@ describe('cross-source notification dedup (#5729)', () => {
         message: { id: `src-b_${FROM}_${T0}`, fromNodeNum: FROM, channel: 0, portnum: 1 },
         messageText: TEXT, isDirectMessage: false, sourceId: 'src-b', localNodeNum: null,
       });
+      await flushHolds();
       expect(appriseTo(1)).toHaveLength(2);
       expect(pushesTo(1).every((p) => p.tag === undefined)).toBe(true);
     });
@@ -412,8 +468,9 @@ describe('cross-source notification dedup (#5729)', () => {
       await hear('src-mqtt', { viaMqtt: true });
 
       expect(pushesTo(1).filter((p) => p.silent !== true)).toHaveLength(1);
+      await flushHolds();
       expect(appriseTo(1)).toHaveLength(1);
-      expect(appriseTo(1)[0].title).toBe('LongFast · Hilltop');
+      expect(appriseTo(1)[0].title).toBe('LongFast · Hilltop, Broker');
       expect(desktops()).toHaveLength(1);
     });
 
@@ -421,8 +478,9 @@ describe('cross-source notification dedup (#5729)', () => {
       addUser(1, { 'src-a': {}, 'src-mqtt': {} });
       await hear('src-mqtt', { viaMqtt: true });
       await hear('src-a');
+      await flushHolds();
       expect(appriseTo(1)).toHaveLength(1);
-      expect(appriseTo(1)[0].title).toBe('LongFast · Broker');
+      expect(appriseTo(1)[0].title).toBe('LongFast · Broker, Hilltop');
       expect(desktops()).toHaveLength(1);
     });
 
@@ -431,6 +489,7 @@ describe('cross-source notification dedup (#5729)', () => {
       await hear('src-mqtt', { viaMqtt: true });
       expect(appriseTo(1)).toHaveLength(0);
       await hear('src-a');
+      await flushHolds();
       expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Hilltop']);
       expect(pushesTo(1).map((p) => p.title)).toEqual(['LongFast · Hilltop']);
     });
@@ -439,6 +498,7 @@ describe('cross-source notification dedup (#5729)', () => {
       addUser(1, { 'src-a': {} });
       await hear('src-a');
       await hear('src-a', { viaMqtt: true });
+      await flushHolds();
       expect(pushesTo(1)).toHaveLength(1);
       expect(appriseTo(1)).toHaveLength(1);
       expect(desktops()).toHaveLength(1);
@@ -461,7 +521,9 @@ describe('cross-source notification dedup (#5729)', () => {
       addUser(1, { 'src-a': {}, 'src-b': {} });
       h.notify.mockImplementationOnce(() => { throw new Error('no notifier'); });
       await hear('src-a');
+      await flushHolds(); // the held message fails
       await hear('src-b');
+      await flushHolds();
       expect(desktops().map((d) => d.title)).toEqual(['LongFast · Hilltop', 'LongFast · Valley']);
     });
 
@@ -469,7 +531,9 @@ describe('cross-source notification dedup (#5729)', () => {
       addUser(1, { 'src-a': {}, 'src-b': {} });
       fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ error: 'down' }), text: async () => 'down' });
       await hear('src-a');
+      await flushHolds(); // the held message fails
       await hear('src-b');
+      await flushHolds();
       expect(appriseTo(1).map((c) => c.title)).toEqual(['LongFast · Hilltop', 'LongFast · Valley']);
     });
   });
@@ -514,8 +578,9 @@ describe('cross-source notification dedup (#5729)', () => {
         'Ridge Repeater detected by Hilltop, Valley - Repeater',
       ]);
       expect(pushesTo(1).map((p) => p.silent)).toEqual([undefined, true]);
-      expect(appriseTo(1).map((c) => c.body)).toEqual(['Ridge Repeater detected by Hilltop - Repeater']);
-      expect(desktops()).toHaveLength(1);
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.body)).toEqual(['Ridge Repeater detected by Hilltop, Valley - Repeater']);
+      expect(desktops().map((d) => d.message)).toEqual(['Ridge Repeater detected by Hilltop, Valley - Repeater']);
     });
 
     it('MeshCore new device: a user with the alert on for one source is told about that source only', async () => {
@@ -531,6 +596,7 @@ describe('cross-source notification dedup (#5729)', () => {
       addUser(1, { 'src-a': { notifyOnNewNode: true } });
       await notificationService.notifyNewMeshCoreNode('11'.repeat(32), 'One', undefined, 'src-a', 'Hilltop');
       await notificationService.notifyNewMeshCoreNode('22'.repeat(32), 'Two', undefined, 'src-a', 'Hilltop');
+      await flushHolds();
       expect(appriseTo(1)).toHaveLength(2);
     });
 
@@ -554,7 +620,8 @@ describe('cross-source notification dedup (#5729)', () => {
       // rows are one browser, so it is alerted once and updated once.
       expect(pushesTo(1).map((p) => p.body)).toEqual(['[Hilltop] water here', '[Hilltop, Valley] water here']);
       expect(pushesTo(1).map((p) => p.silent)).toEqual([undefined, true]);
-      expect(appriseTo(1).map((c) => c.body)).toEqual(['[Hilltop] water here']);
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.body)).toEqual(['[Hilltop, Valley] water here']);
     });
 
     it('an event with no merged text sends the first copy and drops the rest', async () => {
@@ -565,7 +632,40 @@ describe('cross-source notification dedup (#5729)', () => {
       await notificationService.broadcastToPreferenceUsers('notifyOnNewNode', p('src-a', 'Hilltop'));
       await notificationService.broadcastToPreferenceUsers('notifyOnNewNode', p('src-b', 'Valley'));
       expect(pushesTo(1).map((x) => x.body)).toEqual(['seen by Hilltop']);
-      expect(appriseTo(1)).toHaveLength(1);
+      await flushHolds();
+      expect(appriseTo(1).map((c) => c.body)).toEqual(['seen by Hilltop']);
+    });
+  });
+
+  describe('new Meshtastic node: per user, from the first source THEY can read (#5729, decision 5)', () => {
+    const announce = (sourceId: string, sourceName: string, knownOnSourceIds: string[]) =>
+      notificationService.notifyNewNode('!0000beef', 'Ridge Node', 'RDG', 9, 2, sourceId, sourceName, { nodeNum: 0xbeef, knownOnSourceIds });
+
+    it('a user who reads only the later source still hears of it; a user who reads both hears once', async () => {
+      addUser(1, { 'src-a': { notifyOnNewNode: true }, 'src-b': { notifyOnNewNode: true } });
+      addUser(2, { 'src-b': { notifyOnNewNode: true } });
+      h.state.deniedPairs?.add('2|src-a');
+
+      await announce('src-a', 'Hilltop', []);
+      // Much later (outside the dedup window), B completes the same node.
+      vi.setSystemTime(T0 + NOTIFICATION_DEDUP_WINDOW_MS * 10);
+      await announce('src-b', 'Valley', ['src-a']);
+      await flushHolds();
+
+      expect(pushesTo(1).map((p) => p.body)).toEqual([expect.stringContaining('detected by Hilltop')]);
+      expect(pushesTo(2).map((p) => p.body)).toEqual([expect.stringContaining('detected by Valley')]);
+      expect(appriseTo(1).map((c) => c.body)).toEqual([expect.stringContaining('detected by Hilltop')]);
+      expect(appriseTo(2).map((c) => c.body)).toEqual([expect.stringContaining('detected by Valley')]);
+      expect(everythingSentTo(2)).not.toContain('Hilltop');
+    });
+
+    it('two sources completing it at once: one alert per user, naming both', async () => {
+      addUser(1, { 'src-a': { notifyOnNewNode: true }, 'src-b': { notifyOnNewNode: true } });
+      await announce('src-a', 'Hilltop', []);
+      await announce('src-b', 'Valley', []);
+      await flushHolds();
+      expect(pushesTo(1).filter((p) => p.silent !== true)).toHaveLength(1);
+      expect(appriseTo(1).map((c) => c.body)).toEqual([expect.stringContaining('detected by Hilltop, Valley')]);
     });
   });
 
