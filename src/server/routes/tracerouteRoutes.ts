@@ -19,6 +19,7 @@ import type { MeshCoreHopSnrRow } from '../../db/repositories/meshcoreHopSnr.js'
 import type { MeshCoreTraceRunRow } from '../../db/repositories/meshcoreTraceRuns.js';
 import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { tracerouteNamesHiddenNode, loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 
@@ -61,6 +62,8 @@ router.get('/recent', optionalAuth(), async (req: Request, res: Response) => {
     const recentTraceroutes = allTraceroutes.filter((tr) => {
       if (tr.timestamp < cutoffTime) return false;
       if (isAdmin) return true;
+      // #5156: an anonymous caller loses routes naming a consent-hidden node.
+      if (tracerouteNamesHiddenNode(access.hiddenByMqttConsent, rowSourceId(tr) ?? recentSourceId, tr)) return false;
       // A route heard on a channel the caller cannot view is not shown
       // (#3092). A row with no channel recorded has no channel restriction.
       const channel = (tr as { channel?: number | null }).channel;
@@ -117,7 +120,10 @@ router.get('/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', '
     // source for an admin). The gate above passes on a grant for ANY source
     // when none is named, so it alone does not scope this read (#5898).
     const scope = await permittedReadScope(req.user, 'traceroute', historySourceId || undefined);
-    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, scope);
+    // #5156: an anonymous caller loses routes naming a consent-hidden node.
+    const hidden = await loadMqttConsentHiddenSet(req.user, historySourceId ? [historySourceId] : undefined);
+    const traceroutes = (await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, scope))
+      .filter((tr) => !tracerouteNamesHiddenNode(hidden, rowSourceId(tr) ?? historySourceId, tr));
 
     const traceroutesWithHops = traceroutes.map(tr => {
       let hopCount = 999;

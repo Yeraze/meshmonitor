@@ -23,6 +23,7 @@ import {
 import { listPermittedSourceIds, loadSourcePermissions } from '../utils/sourceScopedAccess.js';
 import type { SourceSetScope } from '../../db/repositories/index.js';
 import type { User } from '../../types/auth.js';
+import { loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 
 /**
  * `info` and `dashboard`, which gate this router, are install-wide grants: they
@@ -60,7 +61,7 @@ async function nodeTelemetrySources(nodeId: string, user: User | null | undefine
     loadNodeViewAccess(user),
     databaseService.nodes.getNodeVisibilityAcrossSources(nodeNum),
   ]);
-  const sources = rows.filter((row) => access.canViewNode(row.sourceId, row.channel)).map((row) => row.sourceId);
+  const sources = rows.filter((row) => access.canViewNode(row.sourceId, row.channel, nodeNum)).map((row) => row.sourceId);
   return sources.length > 0 ? sources : null;
 }
 
@@ -91,6 +92,17 @@ router.get('/direct-neighbors', requirePermission('info', 'read'), async (req: R
       scope = permitted;
     }
     const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack, scope);
+    // #5156: rows are keyed by node number, merged across the scope's sources.
+    // An anonymous caller loses a node hidden on the named source, or, with
+    // several sources merged, on any of them.
+    const scopeIds = typeof scope === 'string' ? [scope] : Array.isArray(scope) ? [...scope] : undefined;
+    const hidden = await loadMqttConsentHiddenSet(req.user, scopeIds);
+    if (hidden.active) {
+      const rowSource = typeof scope === 'string' ? scope : null;
+      for (const key of Object.keys(stats)) {
+        if (hidden.hides(rowSource, Number(key))) delete stats[Number(key)];
+      }
+    }
 
     res.json({
       success: true,
@@ -418,7 +430,7 @@ router.get('/telemetry/available/nodes', requirePermission('info', 'read'), asyn
       const seen = new Set<string>();
       nodes = candidates.filter((node) => {
         const rowSource = (node as { sourceId?: string | null }).sourceId;
-        if (!rowSource || !access.canViewNode(rowSource, node.channel)) return false;
+        if (!rowSource || !access.canViewNode(rowSource, node.channel, node.nodeNum)) return false;
         seen.add(rowSource);
         return true;
       });

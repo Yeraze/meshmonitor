@@ -224,6 +224,21 @@ function runVisibilityTests(getBackend: () => TestBackend) {
     await seed(repo);
     expect(await counts(repo, { allowedChannels: [], canReadMessages: false })).toEqual({ total: 2, byNode: 2, byType: 2 });
   });
+
+  it('#5156: excludeNodes drops packets from or to those nodes; excludeAll matches nothing', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new PacketLogRepository(backend.drizzleDb, backend.dbType);
+    await seed(repo);
+    const HIDDEN = 4242420001;
+    await repo.insertPacketLog({ ...pkt({ channel: 0 }), from_node: HIDDEN }, SOURCE);
+    await repo.insertPacketLog({ ...pkt({ channel: 0 }), to_node: HIDDEN }, SOURCE);
+    const v = { allowedChannels: [0], canReadMessages: false };
+    // 4 visible from the seed, plus the two rows naming the node.
+    expect(await counts(repo, v)).toEqual({ total: 6, byNode: 6, byType: 6 });
+    expect(await counts(repo, { ...v, excludeNodes: [HIDDEN] })).toEqual({ total: 4, byNode: 4, byType: 4 });
+    expect(await counts(repo, { ...v, excludeAll: true })).toEqual({ total: 0, byNode: 0, byType: 0 });
+  });
 }
 
 describe('PacketLogRepository packet visibility - SQLite Backend', () => {

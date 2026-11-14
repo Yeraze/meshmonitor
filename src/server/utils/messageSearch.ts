@@ -19,6 +19,7 @@ import {
   resolveReadableMeshcoreScope,
   intersectChannels,
 } from './messageSourceAccess.js';
+import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes } from './mqttConsentVisibility.js';
 
 export type MessageSearchScope = 'all' | 'channels' | 'dms' | 'meshcore';
 
@@ -132,7 +133,10 @@ export async function searchReadableMessages(
       offset: params.offset,
     });
 
-    results.push(...searchResult.messages.map(m => ({ ...m, source: 'standard' as const })));
+    // #5156: an anonymous caller loses hits from/to consent-hidden nodes. The
+    // total is left as the repository counted it (a count, not content).
+    const hidden = await loadMqttConsentHiddenSet(user, targetSources.map(src => src.id));
+    results.push(...dropMessagesNamingHiddenNodes(searchResult.messages, hidden).map(m => ({ ...m, source: 'standard' as const })));
     standardTotal = searchResult.total;
     total += searchResult.total;
   }

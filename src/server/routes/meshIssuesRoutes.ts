@@ -36,6 +36,7 @@ import type {
 } from '../services/meshIssues/types.js';
 import type { DbMeshIssue } from '../../db/repositories/meshIssues.js';
 import type { DbNode } from '../../db/types.js';
+import { loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 
 /**
  * `getAllNodes(ALL_SOURCES)` rows carry a real `sourceId` column at runtime,
@@ -786,6 +787,14 @@ router.get('/', async (req: Request, res: Response) => {
       const wire = toWireIssue(row, permitted, nodeNames);
       if (wire) fullSet.push(wire);
     }
+    // #5156: an anonymous caller loses findings about a consent-hidden node.
+    const hidden = await loadMqttConsentHiddenSet(req.user, permitted);
+    if (hidden.active) {
+      for (let i = fullSet.length - 1; i >= 0; i--) {
+        const issue = fullSet[i];
+        if (issue.nodeNum != null && issue.sourceIds.some((src) => hidden.hides(src, issue.nodeNum))) fullSet.splice(i, 1);
+      }
+    }
 
     const filteredSet = fullSet.filter((issue) => matchesFilters(issue, filters));
     const counts = computeCounts(filteredSet);
@@ -840,6 +849,14 @@ router.get('/summary', async (req: Request, res: Response) => {
     for (const row of rows) {
       const wire = toWireIssue(row, permitted, nodeNames);
       if (wire) fullSet.push(wire);
+    }
+    // #5156: an anonymous caller loses findings about a consent-hidden node.
+    const hidden = await loadMqttConsentHiddenSet(req.user, permitted);
+    if (hidden.active) {
+      for (let i = fullSet.length - 1; i >= 0; i--) {
+        const issue = fullSet[i];
+        if (issue.nodeNum != null && issue.sourceIds.some((src) => hidden.hides(src, issue.nodeNum))) fullSet.splice(i, 1);
+      }
     }
     const filteredSet = fullSet.filter((issue) => matchesFilters(issue, filters));
 

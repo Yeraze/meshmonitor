@@ -125,7 +125,7 @@ export async function runTrafficReplay(args: {
   for (const node of nodeRows) {
     const nodeNum = Number(node.nodeNum);
     if (node.role !== null && node.role !== undefined) senderRoles.set(nodeNum, Number(node.role));
-    if (nodeAccess.canViewNode(sourceId, node.channel)) {
+    if (nodeAccess.canViewNode(sourceId, node.channel, nodeNum)) {
       visibleNodes.set(nodeNum, { nodeId: node.nodeId, shortName: node.shortName, longName: node.longName });
     }
   }

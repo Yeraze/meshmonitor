@@ -24,6 +24,7 @@ import type { TFunction } from 'i18next';
 import type { NavItem } from '../SectionNav';
 import { isCoverageMqttSourceType } from '../../utils/coverage';
 import { DEVICE_CONFIGURATION_NAV_ENTRY, GLOBAL_SETTINGS_NAV_ENTRY, SOURCE_SETTINGS_NAV_ENTRY } from '../nav/sourceNavEntries';
+import { isMqttConsentFilterSourceType } from '../../utils/mqttConsentFilter';
 
 /**
  * i18next's `t`, exactly as the tabs already hold it.
@@ -118,6 +119,8 @@ export const SOURCE_SETTINGS_SECTIONS = new Set([
   // isCoverageMqttSourceType filter below), so it lives in the source, not
   // global, section set.
   'settings-coverage-mqtt',
+  // Anonymous-viewer MQTT-consent filter (#5156): per-source, Meshtastic only.
+  'settings-anon-mqtt-consent',
   'settings-management', 'settings-danger',
 ]);
 
@@ -217,6 +220,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-auto-enrichment', label: t('automation.auto_enrichment.title', 'Auto-Enrichment'), keywords: ['nodeinfo', 'enrichment', 'fix all', 'schedule', 'cron'] },
     { id: 'settings-coverage', label: t('settings.coverage_section', 'Coverage Report'), keywords: ['coverage', 'range test', 'retention', 'survey', 'direct rf', 'zero hop'] },
     { id: 'settings-coverage-mqtt', label: t('settings.coverage_mqtt_section', 'Coverage recording'), keywords: ['coverage', 'gateway', 'mqtt', 'survey', 'range test', 'observer', 'meshcore'] },
+    { id: 'settings-anon-mqtt-consent', label: t('settings.anon_mqtt_consent.title', 'Anonymous viewers'), keywords: ['anonymous', 'privacy', 'mqtt', 'ok to mqtt', 'consent', 'public', 'gdpr', 'hide'] },
     { id: 'settings-management', label: t('settings.settings_management'), keywords: ['export', 'import', 'reset'] },
     { id: 'settings-danger', label: t('settings.danger_zone'), keywords: ['delete', 'purge', 'wipe', 'reset'] },
     { id: 'settings-system', label: t('settings.system_section', 'Restart / Shutdown'), keywords: ['restart', 'shutdown', 'reboot', 'container', 'docker', 'power'] },
@@ -227,7 +231,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-mqtt-root-directory', 'settings-ducting', 'settings-adsb', 'settings-meshwars',
     'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics', 'settings-system',
   ]);
-  const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt']);
+  const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt', 'settings-anon-mqtt-consent']);
 
   return items.filter((item) => {
     if (!inMode(item.id)) return false;
@@ -241,6 +245,8 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     // (mqtt_broker/mqtt_bridge/meshcore_mqtt) — see isCoverageMqttSourceType
     // (#5277 P2 WP3, widened P3 WP4).
     if (item.id === 'settings-coverage-mqtt' && !isCoverageMqttSourceType(sourceType)) return false;
+    // The MQTT-consent filter needs an ok_to_mqtt bit: Meshtastic sources only (#5156).
+    if (item.id === 'settings-anon-mqtt-consent' && !isMqttConsentFilterSourceType(sourceType)) return false;
     return true;
   });
 }
