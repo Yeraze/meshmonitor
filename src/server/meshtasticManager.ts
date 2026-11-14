@@ -11861,35 +11861,14 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
-      // Check if the local node has a valid position source
-      // GpsMode enum: 0 = DISABLED, 1 = ENABLED, 2 = NOT_PRESENT
-      const positionConfig = this.actualDeviceConfig?.position;
-      const hasFixedPosition = positionConfig?.fixedPosition === true;
-      const hasGpsEnabled = positionConfig?.gpsMode === 1; // GpsMode.ENABLED
-      const hasValidPositionSource = hasFixedPosition || hasGpsEnabled;
-
-      let localPosition: { latitude: number; longitude: number; altitude?: number | null } | undefined;
-
-      // Only include position data if the node has a valid position source
-      if (hasValidPositionSource) {
-        const localNode = await databaseService.nodes.getNode(this.localNodeInfo.nodeNum);
-        localPosition = (localNode?.latitude && localNode?.longitude) ? {
-          latitude: localNode.latitude,
-          longitude: localNode.longitude,
-          altitude: localNode.altitude
-        } : undefined;
-      }
-
-      logger.debug(`📍 Position exchange: fixedPosition=${hasFixedPosition}, gpsMode=${positionConfig?.gpsMode}, hasValidPositionSource=${hasValidPositionSource}, willSendPosition=${!!localPosition}`);
-
+      // Always an empty request; never attach our coordinates (#6047).
       const { data: positionRequestData, packetId, requestId } = meshtasticProtobufService.createPositionRequestMessage(
         destination,
         channel,
-        localPosition,
         this.getConfiguredHopLimit()
       );
 
-      logger.debug(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
+      logger.debug(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
 
       this.recordAutomationPacket(packetId, options?.origin);
       await this.transport.send(positionRequestData);

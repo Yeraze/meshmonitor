@@ -16,7 +16,7 @@ function hopLimitOf(data: Uint8Array): number {
 }
 
 const builders: Array<[string, (hop?: number) => Uint8Array]> = [
-  ['position', (hop) => meshtasticProtobufService.createPositionRequestMessage(DEST, 0, undefined, hop).data],
+  ['position', (hop) => meshtasticProtobufService.createPositionRequestMessage(DEST, 0, hop).data],
   ['nodeinfo', (hop) => meshtasticProtobufService.createNodeInfoRequestMessage(DEST, 0, undefined, hop).data],
   ['neighborinfo', (hop) => meshtasticProtobufService.createNeighborInfoRequestMessage(DEST, 0, hop).data],
   ['telemetry', (hop) => meshtasticProtobufService.createTelemetryRequestMessage(DEST, 0, 'device', hop).data],
