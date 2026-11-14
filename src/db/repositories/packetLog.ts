@@ -44,6 +44,13 @@ export const HOP_ARRIVAL_MAX_ROWS = 20_000;
 export interface PacketVisibility {
   allowedChannels: number[];
   canReadMessages: boolean;
+  /**
+   * #5156: node numbers whose packets (sent by or addressed to them) the
+   * caller may not see, from the anonymous MQTT-consent filter.
+   */
+  excludeNodes?: number[];
+  /** #5156: the consent filter failed closed for this source: match nothing. */
+  excludeAll?: boolean;
 }
 
 
@@ -106,7 +113,11 @@ export class PacketLogRepository extends BaseRepository {
       ? sql`(${c('channel')} IS NULL OR ${c('channel')} IN (${sql.join(v.allowedChannels.map((n) => sql`${n}`), sql`, `)}))`
       : sql`${c('channel')} IS NULL`;
     const dmBranch = v.canReadMessages ? sql`${isDm}` : sql`1=0`;
-    return sql`(${encrypted} OR ${dmBranch} OR (NOT ${isDm} AND ${channels}))`;
+    const base = sql`(${encrypted} OR ${dmBranch} OR (NOT ${isDm} AND ${channels}))`;
+    if (v.excludeAll) return sql`1=0`;
+    if (!v.excludeNodes || v.excludeNodes.length === 0) return base;
+    const list = sql.join(v.excludeNodes.map((n) => sql`${n}`), sql`, `);
+    return sql`(${base} AND (${c('from_node')} IS NULL OR ${c('from_node')} NOT IN (${list})) AND (${c('to_node')} IS NULL OR ${c('to_node')} NOT IN (${list})))`;
   }
 
   /**
@@ -456,7 +467,11 @@ export class PacketLogRepository extends BaseRepository {
    * relay_node is only the last byte of the node ID per the Meshtastic protobuf spec.
    * We match by (nodeNum & 0xFF) to find candidate node names.
    */
-  async getDistinctRelayNodes(sourceId?: string): Promise<DbDistinctRelayNode[]> {
+  /**
+   * `exclude` (#5156): node numbers the caller may not see; they are left out
+   * of each relay byte's candidate list. `'all'` leaves every list empty.
+   */
+  async getDistinctRelayNodes(sourceId?: string, exclude?: number[] | 'all'): Promise<DbDistinctRelayNode[]> {
     const longName = this.col('longName');
     const shortName = this.col('shortName');
     const nodeNum = this.col('nodeNum');
@@ -473,12 +488,13 @@ export class PacketLogRepository extends BaseRepository {
       for (const rv of relayValues) {
         // Only include nodes that could plausibly be relays:
         // direct neighbors (hopsAway <= 1) or unknown hop distance (NULL)
-        const matchRows = await this.executeQuery(
-          sql`SELECT ${longName}, ${shortName} FROM nodes WHERE (${nodeNum} & 255) = ${rv} AND (${hopsAway} IS NULL OR ${hopsAway} <= 1)`
+        const matchRows = exclude === 'all' ? [] : await this.executeQuery(
+          sql`SELECT ${nodeNum}, ${longName}, ${shortName} FROM nodes WHERE (${nodeNum} & 255) = ${rv} AND (${hopsAway} IS NULL OR ${hopsAway} <= 1)`
         );
+        const excluded = new Set(Array.isArray(exclude) ? exclude : []);
         results.push({
           relay_node: rv,
-          matching_nodes: (matchRows as any[]).map((r: any) => ({
+          matching_nodes: (matchRows as any[]).filter((r: { nodeNum?: unknown }) => !excluded.has(Number(r.nodeNum))).map((r: any) => ({
             longName: r.longName ?? null,
             shortName: r.shortName ?? null,
           })),

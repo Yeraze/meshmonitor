@@ -18,6 +18,7 @@ import { nodeNumFromPubkey } from '../../utils/meshcoreNodeNum.js';
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import { runTrafficReplay, TrafficReplayUnavailableError } from '../services/trafficManagementReplayService.js';
 import { loadMqttConsentHiddenSet, dropPacketsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
+import type { PacketVisibility } from '../../db/repositories/packetLog.js';
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
 function normalizeSinceToMs(value: string): number {
@@ -31,6 +32,22 @@ const router = express.Router();
  * Permission middleware - require packetmonitor:read permission
  * Also attaches allowed channels and admin status to request for downstream filtering
  */
+/**
+ * #5156: add the anonymous MQTT-consent exclusion to an aggregate's packet
+ * visibility, so per-node rows and counts leave out consent-hidden nodes (and
+ * match nothing on a source whose hidden set failed closed).
+ */
+async function withConsentExclusion(
+  visibility: PacketVisibility,
+  user: Parameters<typeof loadMqttConsentHiddenSet>[0],
+  sourceId: string | undefined,
+): Promise<PacketVisibility> {
+  const hidden = await loadMqttConsentHiddenSet(user, sourceId ? [sourceId] : undefined);
+  if (!hidden.active) return visibility;
+  if (hidden.blocksAll(sourceId)) return { ...visibility, excludeAll: true };
+  return { ...visibility, excludeNodes: hidden.nodeNumsFor(sourceId) };
+}
+
 const requirePacketPermissions: RequestHandler = async (req, res, next) => {
   try {
     const user = (req as any).user;
@@ -249,10 +266,10 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
     const permReq = req as typeof req & { isAdmin?: boolean; allowedChannels?: Set<number>; canReadMessages?: boolean };
     const visibility = permReq.isAdmin
       ? undefined
-      : {
+      : await withConsentExclusion({
           allowedChannels: [...(permReq.allowedChannels ?? [])],
           canReadMessages: permReq.canReadMessages === true,
-        };
+        }, req.user, sourceId);
 
     // Fetch distribution data - limit to top 10 devices
     const [byDevice, byType, total] = await Promise.all([
@@ -418,10 +435,10 @@ router.get('/stats/node-activity', requirePacketPermissions, async (req, res) =>
     const permReq = req as typeof req & { isAdmin?: boolean; allowedChannels?: Set<number>; canReadMessages?: boolean };
     const visibility = permReq.isAdmin
       ? undefined
-      : {
+      : await withConsentExclusion({
           allowedChannels: [...(permReq.allowedChannels ?? [])],
           canReadMessages: permReq.canReadMessages === true,
-        };
+        }, req.user, sourceId);
 
     // getLocalNodeInfo() is on ISourceManager, so this is safe for any source
     // type. packet_log only holds Meshtastic rows, so a MeshCore or missing
@@ -547,7 +564,12 @@ router.get(
 router.get('/relay-nodes', requirePacketPermissions, async (req, res) => {
   try {
     const sourceId = (req as any).scopedSourceId as string | undefined;
-    const relayNodes = await packetLogService.getDistinctRelayNodesAsync(sourceId);
+    // #5156: an anonymous caller's candidate names leave out consent-hidden nodes.
+    const hidden = await loadMqttConsentHiddenSet(req.user, sourceId ? [sourceId] : undefined);
+    const relayNodes = await packetLogService.getDistinctRelayNodesAsync(
+      sourceId,
+      hidden.blocksAll(sourceId) ? 'all' : hidden.nodeNumsFor(sourceId),
+    );
     res.json({ relayNodes });
   } catch (error) {
     logger.error('❌ Error fetching relay nodes:', error);

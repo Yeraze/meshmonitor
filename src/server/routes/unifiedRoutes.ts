@@ -65,7 +65,7 @@ import {
   prepareMeshCoreReception,
   type CrossSourceTags,
 } from '../services/crossSourceCorrelation.js';
-import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes, dropPacketsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
+import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes, dropPacketsNamingHiddenNodes, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const router = Router();
 
@@ -1342,10 +1342,16 @@ router.get('/packets/distribution', async (req: Request, res: Response) => {
           const dist = await meshcorePacketLogService.getDistribution({ sourceId: source.id, since });
           return { source, protocol: 'meshcore' as const, mc: dist, byDevice: [] as any[], byType: [] as any[] };
         }
-        const [byDevice, byType] = await Promise.all([
-          packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, sourceId: source.id }),
+        // #5156: an anonymous caller's top senders leave out consent-hidden
+        // nodes. Read enough extra rows that the top 10 are the top 10 visible.
+        const hidden = await loadMqttConsentHiddenSet(user, [source.id]);
+        const [byDeviceRaw, byType] = await Promise.all([
+          hidden.blocksAll(source.id)
+            ? Promise.resolve([])
+            : packetLogService.getPacketCountsByNodeAsync({ since, limit: 10 + hidden.nodeNumsFor(source.id).length, sourceId: source.id }),
           packetLogService.getPacketCountsByPortnumAsync({ since, sourceId: source.id }),
         ]);
+        const byDevice = dropRowsNamingHiddenNodes(byDeviceRaw, hidden, () => source.id, (row) => [row.from_node]).slice(0, 10);
         return { source, protocol: 'meshtastic' as const, mc: null, byDevice: byDevice as any[], byType: byType as any[] };
       })
     );

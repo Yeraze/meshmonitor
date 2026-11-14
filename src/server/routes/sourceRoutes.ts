@@ -2322,14 +2322,17 @@ router.get('/:id/messages/:messageId/events', optionalAuth(), requirePermission(
 router.get('/:id/messages/:messageId/heard-by', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
     const sourceId = req.params.id;
-    const [rows, nodes] = await Promise.all([
+    const [rows, nodes, hidden] = await Promise.all([
       databaseService.meshtasticHeardRepeaters.getHeardRepeatersForMessage(req.params.messageId, sourceId),
       databaseService.nodes.getAllNodes(sourceId),
+      // #5156: an anonymous caller gets no consent-hidden node as a candidate.
+      loadMqttConsentHiddenSet(req.user, [sourceId]),
     ]);
 
     const heardBy = rows.map((row) => {
       const candidates = nodes
         .filter((node) => (Number(node.nodeNum) & 0xFF) === row.relayByte)
+        .filter((node) => !hidden.hides(sourceId, node.nodeNum))
         .map((node) => ({
           nodeNum: Number(node.nodeNum),
           longName: node.longName ?? undefined,

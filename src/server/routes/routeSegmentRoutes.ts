@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import type { SourceSetScope } from '../../db/repositories/index.js';
+import type { RouteSegmentExclusion } from '../../db/repositories/traceroutes.js';
+import { isAnonymousViewer, loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { classifyNodeTransport, type NodeTransportClass } from '../../utils/nodeTransport.js';
 import type { DbRouteSegment } from '../../db/types.js';
@@ -54,6 +56,23 @@ async function enrichSegment(
 }
 
 /**
+ * #5156: the segments an anonymous caller may not see, per source in scope,
+ * pushed into the repository query so the record shown is the best visible
+ * one. Undefined for signed-in callers and when nothing is hidden.
+ */
+async function consentExclusion(
+  user: User | null | undefined,
+  scope: SourceSetScope,
+): Promise<RouteSegmentExclusion[] | undefined> {
+  if (!isAnonymousViewer(user)) return undefined;
+  const ids = typeof scope === 'string' ? [scope] : Array.isArray(scope) ? [...scope] : undefined;
+  const hidden = await loadMqttConsentHiddenSet(user, ids);
+  if (!hidden.active) return undefined;
+  const sources = ids ?? (await databaseService.sources.getAllSources()).map((s) => s.id);
+  return sources.map((id) => ({ sourceId: id, nodeNums: hidden.blocksAll(id) ? 'all' as const : hidden.nodeNumsFor(id) }));
+}
+
+/**
  * Fetch and enrich one record per transport class in parallel, then build
  * the response body per §4.5 of the Phase 2 spec: the legacy top-level
  * fields equal the entry with the largest `distanceKm` (the three classes
@@ -63,13 +82,18 @@ async function enrichSegment(
 async function buildRecords(
   user: User | null | undefined,
   sourceId: string | undefined,
-  fetchOne: (scope: SourceSetScope, cls: NodeTransportClass) => Promise<DbRouteSegment | null>,
+  fetchOne: (
+    scope: SourceSetScope,
+    cls: NodeTransportClass,
+    exclude: RouteSegmentExclusion[] | undefined,
+  ) => Promise<DbRouteSegment | null>,
 ): Promise<RouteSegmentRecords | null> {
   // With no sourceId, the sources the caller holds traceroute:read on (every
   // source for an admin). The route gate passes on a grant for ANY source when
   // none is named, so it alone does not scope this read (#5898).
   const scope = await permittedReadScope(user, 'traceroute', sourceId);
-  const raw = await Promise.all(TRANSPORT_CLASSES.map((cls) => fetchOne(scope, cls)));
+  const exclude = await consentExclusion(user, scope);
+  const raw = await Promise.all(TRANSPORT_CLASSES.map((cls) => fetchOne(scope, cls, exclude)));
 
   const present = TRANSPORT_CLASSES.filter((_cls, i) => raw[i] !== null);
   if (present.length === 0) return null;
@@ -102,8 +126,8 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const sourceId = (req.query.sourceId as string | undefined) || undefined;
-      const records = await buildRecords(req.user, sourceId, (scope, cls) =>
-        databaseService.traceroutes.getLongestActiveRouteSegment(scope, cls),
+      const records = await buildRecords(req.user, sourceId, (scope, cls, exclude) =>
+        databaseService.traceroutes.getLongestActiveRouteSegment(scope, cls, exclude),
       );
       res.json(records);
     } catch (error) {
@@ -119,8 +143,8 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const sourceId = (req.query.sourceId as string | undefined) || undefined;
-      const records = await buildRecords(req.user, sourceId, (scope, cls) =>
-        databaseService.traceroutes.getRecordHolderRouteSegment(scope, cls),
+      const records = await buildRecords(req.user, sourceId, (scope, cls, exclude) =>
+        databaseService.traceroutes.getRecordHolderRouteSegment(scope, cls, exclude),
       );
       res.json(records);
     } catch (error) {

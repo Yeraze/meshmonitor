@@ -190,8 +190,8 @@ class PacketLogService {
   /**
    * Get distinct relay nodes for filter dropdowns
    */
-  async getDistinctRelayNodesAsync(sourceId?: string): Promise<DbDistinctRelayNode[]> {
-    return databaseService.getDistinctRelayNodesAsync(sourceId);
+  async getDistinctRelayNodesAsync(sourceId?: string, exclude?: number[] | 'all'): Promise<DbDistinctRelayNode[]> {
+    return databaseService.getDistinctRelayNodesAsync(sourceId, exclude);
   }
 
   /**
