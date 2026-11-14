@@ -156,6 +156,8 @@ export type {
 export { CoverageSurveysRepository } from './coverageSurveys.js';
 export { CrossSourceLinksRepository } from './crossSourceLinks.js';
 export type { DbCrossSourceLink, RecordCrossSourceHearingParams } from './crossSourceLinks.js';
+export { DirectRfContactsRepository, directRfDayBucket, DIRECT_RF_DAY_MS } from './directRfContacts.js';
+export type { DirectRfContactDelta, DirectRfContactSummary, DirectRfContactDailyPoint, DirectRfProtocol } from './directRfContacts.js';
 export type {
   DbCoverageSurvey,
   CreateCoverageSurveyParams,

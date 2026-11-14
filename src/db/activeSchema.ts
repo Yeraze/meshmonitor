@@ -162,6 +162,9 @@ import {
   crossSourceLinksSqlite, crossSourceLinksPostgres, crossSourceLinksMysql,
 } from './schema/crossSourceLinks.js';
 import {
+  directRfContactsSqlite, directRfContactsPostgres, directRfContactsMysql,
+} from './schema/directRfContacts.js';
+import {
   translationCacheSqlite, translationCachePostgres, translationCacheMysql,
   messageTranslationsSqlite, messageTranslationsPostgres, messageTranslationsMysql,
 } from './schema/translations.js';
@@ -405,6 +408,10 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5561 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   crossSourceLinks: any;
 
+  // Direct RF Contacts daily rollup, per-source (#6210)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6210 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  directRfContacts: any;
+
   // Translation cache (global) + per-source message links (#5520)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5520 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   translationCache: any;
@@ -573,6 +580,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
     crossSourceLinks: crossSourceLinksSqlite,
+    directRfContacts: directRfContactsSqlite,
     translationCache: translationCacheSqlite,
     messageTranslations: messageTranslationsSqlite,
     aircraftFlightMatches: aircraftFlightMatchesSqlite,
@@ -670,6 +678,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
     crossSourceLinks: crossSourceLinksPostgres,
+    directRfContacts: directRfContactsPostgres,
     translationCache: translationCachePostgres,
     messageTranslations: messageTranslationsPostgres,
     aircraftFlightMatches: aircraftFlightMatchesPostgres,
@@ -767,6 +776,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
     crossSourceLinks: crossSourceLinksMysql,
+    directRfContacts: directRfContactsMysql,
     translationCache: translationCacheMysql,
     messageTranslations: messageTranslationsMysql,
     aircraftFlightMatches: aircraftFlightMatchesMysql,
