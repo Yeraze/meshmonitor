@@ -24,6 +24,7 @@ import type { TimeFormat, DateFormat } from '../../../contexts/SettingsContext';
 import { useNodeListStyle } from '../../../contexts/SettingsContext';
 import { nodeColorStyle } from '../../../utils/nodeColor';
 import type { NodeCardModel, NodeSourceRef, NodeGatewayRef } from './nodeCardModel';
+import { useGatewayNameIndex, resolveGatewayLabel, gatewayChipText } from './gatewayLabel';
 import { UiIcon, batteryIconName, type UiIconName } from '../../icons';
 import { formatAircraftSummary } from '../../../utils/aircraftClassification';
 import { SignFlipNotice } from '../../SignFlipNotice';
@@ -386,6 +387,8 @@ export interface SourcesListProps {
 /** "Seen by N sources" clickable rows, Dashboard/MapAnalysis (unified) only. */
 export const SourcesList: React.FC<SourcesListProps> = ({ sources, gateways, nodeId, onSourceSelect }) => {
   const { t } = useTranslation();
+  // #6386: show the gateway's short name on its chip when the viewer knows it.
+  const gatewayNames = useGatewayNameIndex();
   if (!sources || sources.length === 0) return null;
 
   const label = t('node_popup.sources_seen_by', {
@@ -431,11 +434,19 @@ export const SourcesList: React.FC<SourcesListProps> = ({ sources, gateways, nod
                     defaultValue: `via ${sourceGateways.length} gateway${sourceGateways.length !== 1 ? 's' : ''}`,
                   })}
                 </span>
-                {sourceGateways.map((g) => (
-                  <span key={`${g.sourceId}:${g.gatewayId}`} className="node-popup-gateway-chip" title={g.gatewayId}>
-                    {g.gatewayId}
-                  </span>
-                ))}
+                {sourceGateways.map((g) => {
+                  const gw = resolveGatewayLabel(g.gatewayId, g.gatewayNodeNum, gatewayNames);
+                  const named = gw.longName ?? gw.shortName;
+                  return (
+                    <span
+                      key={`${g.sourceId}:${g.gatewayId}`}
+                      className="node-popup-gateway-chip"
+                      title={named ? `${named} (${g.gatewayId})` : g.gatewayId}
+                    >
+                      {gatewayChipText(gw)}
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>
