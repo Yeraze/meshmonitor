@@ -478,6 +478,7 @@ export interface ActiveSchema {
   sourcePkiKeys: any;
 
   // Per-source MQTT-native send identities (issue #4305)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4305 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   mqttNativeIdentities: any;
 
   // Per-source MeshCore Analyzer Observer signing keys (epic #4457)
