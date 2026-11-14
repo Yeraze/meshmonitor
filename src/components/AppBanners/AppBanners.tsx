@@ -27,6 +27,11 @@ interface AppBannersProps {
    * Phase 2 WP5). Does not affect `showTxBanner` or any offset arithmetic.
    */
   isMeshCore?: boolean;
+  /**
+   * #6181: the Meshtastic node has LoRaConfig.transparent_mode on, so it hands
+   * up raw encrypted frames and MeshMonitor decodes and sends nothing.
+   */
+  isTransparentMode?: boolean;
   configIssues: ConfigIssue[];
   updateAvailable: boolean;
   latestVersion: string;
@@ -46,6 +51,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
   isTxDisabled,
   isUdpRelay = false,
   isMeshCore = false,
+  isTransparentMode = false,
   configIssues,
   updateAvailable,
   latestVersion,
@@ -110,6 +116,12 @@ export const AppBanners: React.FC<AppBannersProps> = ({
   // but UDP Broadcast relays them (#4394). Both occupy the same slot, so the
   // offsets below count them as one.
   const showTxBanner = isTxDisabled || isUdpRelay;
+  // Banners stacked above the config-issue and update banners.
+  const fixedBannersAbove = [showTxBanner, isTransparentMode].filter(Boolean).length;
+  const offsetFor = (bannersAbove: number) =>
+    bannersAbove === 0
+      ? 'var(--app-header-height)'
+      : `calc(var(--app-header-height) + (var(--banner-height) * ${bannersAbove}))`;
 
   return (
     <>
@@ -126,14 +138,22 @@ export const AppBanners: React.FC<AppBannersProps> = ({
         </div>
       )}
 
+      {/* LoRa transparent mode Warning Banner (#6181) */}
+      {isTransparentMode && (
+        <div
+          className="warning-banner"
+          role="alert"
+          data-testid="transparent-mode-banner"
+          style={{ top: offsetFor(showTxBanner ? 1 : 0) }}
+        >
+          <UiIcon name="alert" /> {t('banners.transparent_mode')}
+        </div>
+      )}
+
       {/* Configuration Issue Warning Banners */}
       {configIssues.map((issue, index) => {
         // Calculate how many banners are above this one
-        const bannersAbove = [showTxBanner].filter(Boolean).length + index;
-        const topOffset =
-          bannersAbove === 0
-            ? 'var(--app-header-height)'
-            : `calc(var(--app-header-height) + (var(--banner-height) * ${bannersAbove}))`;
+        const topOffset = offsetFor(fixedBannersAbove + index);
 
         return (
           <div key={issue.type} className="warning-banner" style={{ top: topOffset }}>
@@ -154,11 +174,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
       {showUpdateBanner &&
         (() => {
           // Calculate total warning banners above the update banner
-          const warningBannersCount = [showTxBanner].filter(Boolean).length + configIssues.length;
-          const topOffset =
-            warningBannersCount === 0
-              ? 'var(--app-header-height)'
-              : `calc(var(--app-header-height) + (var(--banner-height) * ${warningBannersCount}))`;
+          const topOffset = offsetFor(fixedBannersAbove + configIssues.length);
 
           return (
             <div className="update-banner" style={{ top: topOffset }}>

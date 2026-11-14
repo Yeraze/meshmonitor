@@ -71,6 +71,11 @@ interface LoRaConfigSectionProps {
   setTxEnabled: (value: boolean) => void;
   setOverrideDutyCycle: (value: boolean) => void;
   setPaFanDisabled: (value: boolean) => void;
+  /**
+   * #6181: LoRaConfig.transparent_mode as the device reports it. Read-only:
+   * MeshMonitor cannot turn it on, and a save keeps the device's value.
+   */
+  transparentMode?: boolean;
   isSaving: boolean;
   /** Resolves true when the node accepted the save. */
   onSave: () => Promise<boolean>;
@@ -119,6 +124,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   setTxEnabled,
   setOverrideDutyCycle,
   setPaFanDisabled,
+  transparentMode = false,
   isSaving,
   onSave
 }) => {
@@ -645,6 +651,28 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             </span>
           </div>
         </label>
+      </div>
+      <div className="setting-item">
+        <label htmlFor="transparentMode" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+          <input
+            id="transparentMode"
+            type="checkbox"
+            checked={transparentMode}
+            disabled
+            readOnly
+            style={{ marginTop: '0.2rem', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1 }}>
+            <div>{t('lora_config.transparent_mode')}</div>
+            <span className="setting-description">{t('lora_config.transparent_mode_description')}</span>
+          </div>
+        </label>
+        {transparentMode && (
+          <div role="alert" className={styles.presetWarning} data-testid="lora-transparent-mode-warning">
+            <UiIcon name="alert" />
+            <span>{t('banners.transparent_mode')}</span>
+          </div>
+        )}
       </div>
       <div className="setting-item">
         <label htmlFor="overrideDutyCycle" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>

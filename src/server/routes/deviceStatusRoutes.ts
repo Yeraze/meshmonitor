@@ -63,7 +63,10 @@ router.get('/device/tx-status', optionalAuth(), async (req: Request, res: Respon
     const udpRelayEnabled = typeof txManager.isUdpBroadcastRelayEnabled === 'function'
       ? txManager.isUdpBroadcastRelayEnabled()
       : false;
-    res.json({ txEnabled, udpRelayEnabled, canTransmit: txEnabled || udpRelayEnabled });
+    // #6181: LoRaConfig.transparent_mode — the node passes raw encrypted frames
+    // through and decodes/relays nothing, so the UI warns on this source.
+    const transparentMode = deviceConfig?.lora?.transparentMode === true;
+    res.json({ txEnabled, udpRelayEnabled, canTransmit: txEnabled || udpRelayEnabled, transparentMode });
   } catch (error) {
     logger.error('Error getting TX status:', error);
     res.status(500).json({ error: 'Failed to get TX status' });

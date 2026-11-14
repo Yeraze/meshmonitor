@@ -1469,10 +1469,14 @@ router.post('/import-config', requireAdmin(), requireMeshtasticDeviceSource('bod
           // #4294's export fix; older exported URLs may still carry the old
           // forced `true`), and finally true (fail-open).
           let remoteTxEnabled: boolean | undefined;
+          // #6181: transparent_mode is never taken from the URL; keep what the
+          // remote node reports (live, else cached, else false).
+          let remoteTransparentMode: boolean | undefined;
           try {
             const liveRemoteLora = await aicManager.requestRemoteConfig(destinationNodeNum, 5, false); // LORA_CONFIG = 5
             if (liveRemoteLora) {
               remoteTxEnabled = liveRemoteLora.txEnabled !== false;
+              remoteTransparentMode = liveRemoteLora.transparentMode === true;
             }
           } catch (error) {
             logger.warn(`⚠️ Could not fetch live remote LoRa config for txEnabled preserve on node ${destinationNodeNum}; falling back to cached/URL value:`, error);
@@ -1488,9 +1492,14 @@ router.post('/import-config', requireAdmin(), requireMeshtasticDeviceSource('bod
               ? cachedRemoteLora.txEnabled !== false
               : (decoded.loraConfig.txEnabled ?? true);
           }
+          if (remoteTransparentMode === undefined) {
+            remoteTransparentMode =
+              aicManager.getRemoteNodeConfig(destinationNodeNum)?.deviceConfig?.lora?.transparentMode === true;
+          }
           const loraConfigToImport = {
             ...decoded.loraConfig,
             txEnabled: remoteTxEnabled,
+            transparentMode: remoteTransparentMode,
           };
           const adminMessage = protobufService.createSetLoRaConfigMessage(loraConfigToImport, sessionPasskey);
           await aicManager.sendAdminCommand(adminMessage, destinationNodeNum);
@@ -2073,12 +2082,21 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
         }
         buildAdminMessage = (passkey) => protobufService.createSetDeviceConfigMessage(params.config, passkey);
         break;
-      case 'setLoRaConfig':
+      case 'setLoRaConfig': {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setLoRaConfig' });
         }
-        buildAdminMessage = (passkey) => protobufService.createSetLoRaConfigMessage(params.config, passkey);
+        // #6181: set_config replaces the whole LoRaConfig, so transparent_mode
+        // must ride along or the save turns it off. MeshMonitor never chooses
+        // it: send what the node last reported (local: live config; remote:
+        // the cached /load-config snapshot, else false as before).
+        const reportedTransparentMode = isLocalNode
+          ? acManager.isTransparentMode()
+          : acManager.getRemoteNodeConfig(destinationNodeNum)?.deviceConfig?.lora?.transparentMode === true;
+        const loraConfig = { ...params.config, transparentMode: reportedTransparentMode };
+        buildAdminMessage = (passkey) => protobufService.createSetLoRaConfigMessage(loraConfig, passkey);
         break;
+      }
       case 'setPositionConfig': {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setPositionConfig' });

@@ -1243,6 +1243,10 @@ class MeshtasticManager implements ISourceManager {
     // ("AA:BB:CC:DD:EE:FF"). Firmware-develop only today; empty/absent on
     // current releases, left undefined then so the UI shows nothing.
     bleAddress?: string;
+    // #6321: DeviceMetadata.bootloader_version — nRF52 bootloader version packed
+    // as major << 16 | minor << 8 | patch. 0 means not reported (non-nRF52 or
+    // older firmware); left undefined then so the UI shows nothing.
+    bootloaderVersion?: number;
     // #3684: User capability flags from the local node's NodeInfo, surfaced to the
     // frontend Config tab via getCurrentConfig().localNodeInfo.
     isUnmessagable?: boolean;
@@ -6106,7 +6110,7 @@ class MeshtasticManager implements ISourceManager {
     // Note: Local node's public key is extracted from security config when received
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean; hasXeddsa?: boolean; canShutdown?: boolean; bleAddress?: string } | null {
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean; hasXeddsa?: boolean; canShutdown?: boolean; bleAddress?: string; bootloaderVersion?: number } | null {
     return this.localNodeInfo;
   }
 
@@ -6775,6 +6779,12 @@ class MeshtasticManager implements ISourceManager {
     if (bleAddress) {
       logger.debug(`📱 Device reports BLE address: ${bleAddress}`);
     }
+    // #6321: DeviceMetadata.bootloader_version (protobufjs camelCases it).
+    // 0 means not reported — treat it as absent.
+    const bootloaderVersion = typeof metadata.bootloaderVersion === 'number' && metadata.bootloaderVersion > 0
+      ? metadata.bootloaderVersion
+      : undefined;
+    localNodeInfo.bootloaderVersion = bootloaderVersion;
     if (this.isLocalNodeBridged()) {
       logger.debug('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
     }
@@ -11148,6 +11158,17 @@ class MeshtasticManager implements ISourceManager {
    */
   isTxEnabled(): boolean {
     return this.actualDeviceConfig?.lora?.txEnabled !== false;
+  }
+
+  /**
+   * #6181: LoRaConfig.transparent_mode as the local radio last reported it.
+   * True means the node runs as a "dumb LoRa modem": it hands every frame up
+   * still encrypted and does no decoding, relaying, ACKs or MQTT, so this
+   * source shows no decoded traffic and its sends fail. False when off, or
+   * when LoRa config has not arrived (proto3 elides false).
+   */
+  isTransparentMode(): boolean {
+    return this.actualDeviceConfig?.lora?.transparentMode === true;
   }
 
   /**

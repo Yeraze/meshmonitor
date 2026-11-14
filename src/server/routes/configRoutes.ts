@@ -80,12 +80,16 @@ router.get('/', optionalAuth(), async (req, res) => {
         // #6157: DeviceMetadata.ble_address lives only in the live manager's
         // in-memory local-node state (it is not persisted to the nodes row), so
         // read it from the resolved source manager. Omitted when empty/absent.
-        const bleAddress = resolveOwnMeshtasticManager(configSourceId ?? null)
-          ?.getLocalNodeInfo()?.bleAddress;
+        // #6321: DeviceMetadata.bootloader_version follows the same path.
+        const managerNodeInfo = resolveOwnMeshtasticManager(configSourceId ?? null)
+          ?.getLocalNodeInfo();
+        const bleAddress = managerNodeInfo?.bleAddress;
+        const bootloaderVersion = managerNodeInfo?.bootloaderVersion;
         deviceMetadata = {
           firmwareVersion: currentNode.firmwareVersion,
           rebootCount: currentNode.rebootCount,
           ...(bleAddress ? { bleAddress } : {}),
+          ...(bootloaderVersion ? { bootloaderVersion } : {}),
         };
 
         localNodeInfo = {

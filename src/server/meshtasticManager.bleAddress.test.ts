@@ -74,3 +74,23 @@ describe('MeshtasticManager — DeviceMetadata.ble_address (#6157)', () => {
     expect((mgr as any).localNodeInfo.bleAddress).toBeUndefined();
   });
 });
+
+describe('MeshtasticManager — DeviceMetadata.bootloader_version (#6321)', () => {
+  it('stores bootloaderVersion from DeviceMetadata when non-zero', async () => {
+    const mgr = makeManager('2.8.2');
+    await (mgr as any).processDeviceMetadata({ firmwareVersion: '2.8.2', bootloaderVersion: 0x020600 });
+    expect(mgr.getLocalNodeInfo()?.bootloaderVersion).toBe(0x020600);
+  });
+
+  it('leaves bootloaderVersion undefined when the field is 0 (non-nRF52)', async () => {
+    const mgr = makeManager('2.8.2');
+    await (mgr as any).processDeviceMetadata({ firmwareVersion: '2.8.2', bootloaderVersion: 0 });
+    expect(mgr.getLocalNodeInfo()?.bootloaderVersion).toBeUndefined();
+  });
+
+  it('leaves bootloaderVersion undefined on firmware that omits the field', async () => {
+    const mgr = makeManager('2.7.0');
+    await (mgr as any).processDeviceMetadata({ firmwareVersion: '2.7.0' });
+    expect(mgr.getLocalNodeInfo()?.bootloaderVersion).toBeUndefined();
+  });
+});
