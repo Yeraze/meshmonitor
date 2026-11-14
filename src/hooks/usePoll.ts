@@ -90,6 +90,9 @@ export interface PollConfig {
     // #6157: DeviceMetadata.ble_address — the BLE MAC the node advertises.
     // Present only when non-empty (firmware-develop only today).
     bleAddress?: string;
+    // #6321: DeviceMetadata.bootloader_version, packed major<<16|minor<<8|patch.
+    // Present only when non-zero (nRF52 only).
+    bootloaderVersion?: number;
   };
   localNodeInfo?: LocalNodeInfo;
 }

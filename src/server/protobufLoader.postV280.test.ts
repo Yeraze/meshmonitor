@@ -70,4 +70,25 @@ describe('protobufs past v2.8.0', () => {
     for (let tag = 42; tag <= 56; tag++) expect(env.isReservedId(tag)).toBe(true);
     expect(root.lookupType('meshtastic.Telemetry').fields.soilWaterMetrics.id).toBe(11);
   });
+
+  // #6321 bump (protobufs 0adaccd): `sensitive` options on fields in files that
+  // newly import field_metadata.proto, and DeviceMetadata.bootloader_version.
+  it('parses the new field_metadata `sensitive` option', () => {
+    const psk = root.lookupType('meshtastic.ChannelSettings').fields.psk;
+    expect(psk.options?.['(meshtastic.field_metadata).sensitive']).toBe(true);
+  });
+
+  it('round-trips DeviceMetadata.bootloader_version (tag 19, #6321)', () => {
+    const DM = root.lookupType('meshtastic.DeviceMetadata');
+    expect(DM.fields.bootloaderVersion.id).toBe(19);
+    const decoded = DM.decode(DM.encode(DM.create({ bootloaderVersion: 0x020600 })).finish()) as unknown as { bootloaderVersion: number };
+    expect(decoded.bootloaderVersion).toBe(0x020600);
+  });
+
+  it('decodes LoRaConfig.transparent_mode (tag 108, #6181)', () => {
+    const Lora = root.lookupType('meshtastic.Config.LoRaConfig');
+    expect(Lora.fields.transparentMode.id).toBe(108);
+    const decoded = Lora.decode(Lora.encode(Lora.create({ transparentMode: true })).finish()) as unknown as { transparentMode: boolean };
+    expect(decoded.transparentMode).toBe(true);
+  });
 });

@@ -2582,6 +2582,7 @@
   "info.uses_tls": "Uses TLS:",
   "info.reboot_count": "Reboot Count:",
   "info.ble_address": "BLE Address:",
+  "info.bootloader_version": "Bootloader Version:",
   "info.not_available": "Not available",
   "info.lora_config": "LoRa Radio Configuration",
   "info.device_role": "Device Role:",

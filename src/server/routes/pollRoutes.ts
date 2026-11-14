@@ -563,6 +563,9 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         // #6157: DeviceMetadata.ble_address — included only when the node
         // reports a non-empty address (firmware-develop only today).
         ...(managerNodeInfo.bleAddress ? { bleAddress: managerNodeInfo.bleAddress } : {}),
+        // #6321: DeviceMetadata.bootloader_version (packed) — nRF52 only;
+        // included only when non-zero.
+        ...(managerNodeInfo.bootloaderVersion ? { bootloaderVersion: managerNodeInfo.bootloaderVersion } : {}),
       } : undefined;
 
       const pollLocalNodeInfo = managerNodeInfo ? {

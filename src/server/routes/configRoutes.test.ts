@@ -106,7 +106,8 @@ describe('configRoutes', () => {
     // #6157: DeviceMetadata.ble_address lives only in the live manager's
     // in-memory state (not the nodes row), so the handler reads it from the
     // resolved source manager and includes it only when non-empty.
-    it('includes the manager\'s bleAddress when the node advertises one, omits it otherwise', async () => {
+    // #6321: bootloaderVersion rides the same path (0/absent omitted).
+    it('includes the manager\'s bleAddress/bootloaderVersion when the node advertises them, omits them otherwise', async () => {
       await harness.db.nodes.upsertNode(
         {
           nodeNum: 2732916558,
@@ -122,7 +123,7 @@ describe('configRoutes', () => {
       const writerKey = new MeshtasticManager(harness.sourceA).localNodeSettingKey('localNodeNum');
       await harness.db.settings.setSetting(writerKey, '2732916558');
 
-      const makeManager = (bleAddress: string | undefined): ISourceManager =>
+      const makeManager = (bleAddress: string | undefined, bootloaderVersion?: number): ISourceManager =>
         ({
           sourceId: harness.sourceA,
           sourceType: 'meshtastic_tcp',
@@ -131,7 +132,7 @@ describe('configRoutes', () => {
           getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'A', sourceType: 'meshtastic_tcp', connected: true }),
           getLocalNodeInfo: vi.fn().mockReturnValue({
             nodeNum: 2732916558, nodeId: '!a2e175ba', longName: 'BLE Node', shortName: 'BLE',
-            firmwareVersion: '2.8.0', bleAddress,
+            firmwareVersion: '2.8.0', bleAddress, bootloaderVersion,
           }),
           isLocalNodeBridged: vi.fn().mockReturnValue(false),
         }) as unknown as ISourceManager;
@@ -139,16 +140,18 @@ describe('configRoutes', () => {
       try {
         const agent = await harness.loginAs(harness.admin);
 
-        await sourceManagerRegistry.addManager(makeManager('AA:BB:CC:DD:EE:FF'));
+        await sourceManagerRegistry.addManager(makeManager('AA:BB:CC:DD:EE:FF', 0x020600));
         const present = await agent.get('/').query({ sourceId: harness.sourceA });
         expect(present.status).toBe(200);
         expect(present.body.deviceMetadata.bleAddress).toBe('AA:BB:CC:DD:EE:FF');
+        expect(present.body.deviceMetadata.bootloaderVersion).toBe(0x020600);
         await sourceManagerRegistry.removeManager(harness.sourceA);
 
         await sourceManagerRegistry.addManager(makeManager(undefined));
         const absent = await agent.get('/').query({ sourceId: harness.sourceA });
         expect(absent.status).toBe(200);
         expect(absent.body.deviceMetadata).not.toHaveProperty('bleAddress');
+        expect(absent.body.deviceMetadata).not.toHaveProperty('bootloaderVersion');
       } finally {
         await sourceManagerRegistry.removeManager(harness.sourceA);
         await harness.db.settings.deleteSetting(writerKey);
