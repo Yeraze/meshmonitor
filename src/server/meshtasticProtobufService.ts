@@ -143,13 +143,17 @@ export class MeshtasticProtobufService {
   }
 
   /**
-   * Create a position request ToRadio using proper protobuf encoding
-   * This sends a position packet with wantResponse=true to request the destination node's position
+   * Create a position request ToRadio: an EMPTY Position with wantResponse=true.
+   *
+   * The request never carries our own coordinates (#6047). A request with
+   * lat/lon goes through Traffic Management position dedup on relays, which
+   * can drop it silently (no NAK), while an empty request is never deduped.
+   * The target's reply does not depend on the request's contents, and our
+   * own position still reaches the mesh through normal position broadcasts.
    */
   createPositionRequestMessage(
     destination: number,
     channel?: number,
-    position?: { latitude: number; longitude: number; altitude?: number | null },
     hopLimit: number = DEFAULT_HOP_LIMIT
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
@@ -163,26 +167,9 @@ export class MeshtasticProtobufService {
       const packetId = Math.floor(Math.random() * 0xffffffff);
       const requestId = Math.floor(Math.random() * 0xffffffff);
 
-      // Create Position message for position exchange
-      // According to Meshtastic protocol: send your position with wantResponse=true to exchange positions
+      // Empty Position payload: a pure request (#6047).
       const Position = root.lookupType('meshtastic.Position');
-      const positionData: any = {};
-
-      if (position) {
-        // Send actual position for position exchange
-        positionData.latitudeI = Math.round(position.latitude * 1e7);  // Convert to fixed-point
-        positionData.longitudeI = Math.round(position.longitude * 1e7); // Convert to fixed-point
-        if (position.altitude !== null && position.altitude !== undefined) {
-          positionData.altitude = Math.round(position.altitude);
-        }
-        positionData.time = Math.floor(Date.now() / 1000); // Unix timestamp
-      }
-      // If no position provided, send empty position (fallback behavior)
-
-      const positionMessage = Position.create(positionData);
-
-      // Encode the Position as payload
-      const payload = Position.encode(positionMessage).finish();
+      const payload = Position.encode(Position.create({})).finish();
 
       // For broadcast (0xFFFFFFFF), don't request response or ACK — just broadcast position
       const isBroadcast = destination === 0xFFFFFFFF;
