@@ -23,7 +23,7 @@ Use it when you want a private, local observer network. To read a public region 
 | Listener port | TCP port observers connect to. Default `1884`. Must not clash with another broker source. Expose it from the container (`-p 1884:1884`). |
 | Allowed regions | Optional IATA codes. Blank accepts any well-formed code. |
 | Token audience | The audience observers sign their token for. Blank turns token logins off. |
-| Allowed observer public keys | One 64-hex key per line. A token login needs a valid token **and** a key on this list. |
+| Allowed observer public keys | One 64-hex key per line. Binds every login: a token login needs a key on this list, and a static login may only publish under keys on it. |
 | Static username / password | Optional fixed login, for observers that use one. |
 | Limits | Max observers (default 50), messages per second per connection (default 20), max payload (default 64 KB). |
 | Upstream forwarding | Optional. Off by default. See below. |
@@ -37,9 +37,9 @@ WebSocket listeners are not in v1. Observers must use plain MQTT over TCP.
 Two ways in:
 
 1. **Observer token.** Username `v1_{PUBKEY}` (the observer's 64-hex public key), password the Ed25519 token the observer mints. MeshMonitor verifies the signature, the expiry, and that the token's audience matches the one you set. The key must be on the allowlist.
-2. **Static login.** The username and password you set. Any observer that knows them can connect.
+2. **Static login.** The username and password you set. Any observer that knows them can connect, but it may only publish under keys on the allowlist.
 
-A token login may only publish under its own key: the `{PUBKEY}` in the topic must match the key it logged in with. A static login may publish under any key, so treat that password like an allowlist of one.
+A token login may only publish under its own key: the `{PUBKEY}` in the topic must match the key it logged in with. A static login may publish under any allowlisted key; a frame under any other key is dropped and counted, and the session stays open.
 
 ## Topics
 
@@ -111,6 +111,7 @@ Reject reasons you will see:
 | Login refused (observer limit reached) | Max observers reached. |
 | Dropped (over the message rate) | More than the per-connection msg/s limit. The observer stays connected. |
 | Dropped (payload too large) | Over the payload cap. A connection that announces a packet far over the cap is cut. |
+| Dropped (key not on the allowlist) | A static login published under a key you have not allowed. |
 | Dropped (region not allowed) | IATA segment malformed or not on the allowed list. |
 | Dropped (key in topic, token and origin_id differ) | Topic key differs from the login key or from `origin_id`. |
 | Dropped (raw is missing) / (type is not PACKET) / (origin_id is not 64 hex characters) / (raw is not a MeshCore frame) | Body problems. |

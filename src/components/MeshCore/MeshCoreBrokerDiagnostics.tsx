@@ -80,6 +80,7 @@ function useRejectReasonLabel(): (reason: string | null) => string {
       key_mismatch: t('meshcore.broker.reason_key_mismatch', 'Dropped (key in topic, token and origin_id differ)'),
       bad_json: t('meshcore.broker.reason_bad_json', 'Dropped (body is not JSON)'),
       bad_status: t('meshcore.broker.reason_bad_status', 'Dropped (status body malformed)'),
+      not_allowlisted: t('meshcore.broker.reason_not_allowlisted', 'Dropped (key not on the allowlist)'),
       loop: t('meshcore.broker.reason_loop', 'Dropped (our own forwarded frame came back)'),
       not_object: t('meshcore.broker.reason_not_object', 'Dropped (body is not a JSON object)'),
       non_packet_type: t('meshcore.broker.reason_non_packet_type', 'Dropped (type is not PACKET)'),

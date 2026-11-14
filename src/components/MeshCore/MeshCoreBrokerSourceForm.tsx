@@ -180,7 +180,7 @@ export const MeshCoreBrokerSourceForm: React.FC<Props> = ({ value, onChange, sou
           <span className="dashboard-form-help">
             {t(
               'source.form.mcb_allowlist_help',
-              'One 64-character hex key per line. A token login needs a valid token AND a key on this list.',
+              'One 64-character hex key per line. Binds every login: a token login needs a key on this list, and a static login may only publish under keys on it.',
             )}
           </span>
         </label>
@@ -204,7 +204,7 @@ export const MeshCoreBrokerSourceForm: React.FC<Props> = ({ value, onChange, sou
             placeholder={secretPlaceholder('auth.password')}
           />
           <span className="dashboard-form-help">
-            {t('source.form.mcb_static_help', 'For observers that use a fixed login. Anonymous logins are always refused.')}
+            {t('source.form.mcb_static_help', 'For observers that use a fixed login. They may still publish only under allowlisted keys. Anonymous logins are always refused.')}
           </span>
         </label>
       </fieldset>

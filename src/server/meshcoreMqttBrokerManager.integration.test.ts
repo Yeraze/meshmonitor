@@ -226,6 +226,21 @@ describe('MeshCoreMqttBrokerManager: auth', () => {
     await waitFor(() => ingestPacket.mock.calls.length === 1);
   });
 
+  it('binds a static login to the allowlist: other keys are dropped, the session stays', async () => {
+    const { mgr, port } = await startManager(
+      baseConfig({ auth: { allowedObservers: [OBS_PUB], username: 'local', password: 'static-secret' } }),
+    );
+    const c = await connectObserver(port, 'local', 'static-secret');
+    clients.push(c);
+    await c.publishAsync(`meshcore/SEA/${OTHER_PUB}/packets`, packetBody(OTHER_PUB));
+    await waitFor(() => mgr.getDiagnostics().connections[0]?.rejected === 1);
+    expect(mgr.getDiagnostics().connections[0].lastRejectReason).toBe('not_allowlisted');
+    expect(ingestPacket).not.toHaveBeenCalled();
+    expect(c.connected).toBe(true);
+    await c.publishAsync(`meshcore/SEA/${OBS_PUB}/packets`, packetBody(OBS_PUB));
+    await waitFor(() => ingestPacket.mock.calls.length === 1);
+  });
+
   it('refuses a connection past the client cap', async () => {
     const { port } = await startManager(baseConfig({ limits: { maxClients: 1 } }));
     const c = await connectObserver(port, 'local', 'static-secret');

@@ -8633,7 +8633,7 @@
   "meshcore.broker.totals": "{{accepted}} accepted, {{rejected}} dropped, {{rate}} over rate",
   "source.form.mc_mqtt_reject_unauthorized": "Verify TLS certificate",
   "source.form.mcb_allowlist": "Allowed observer public keys",
-  "source.form.mcb_allowlist_help": "One 64-character hex key per line. A token login needs a valid token AND a key on this list.",
+  "source.form.mcb_allowlist_help": "One 64-character hex key per line. Binds every login: a token login needs a key on this list, and a static login may only publish under keys on it.",
   "source.form.mcb_auth": "Who may connect",
   "source.form.mcb_auto_start": "Start listening automatically on startup",
   "source.form.mcb_error_limits": "Limits: up to 1000 observers, 200 messages per second, 1024 KB",
@@ -8668,7 +8668,7 @@
   "source.form.mcb_port": "Listener port (TCP)",
   "source.form.mcb_regions": "Allowed regions (optional)",
   "source.form.mcb_regions_help": "IATA codes, comma separated. Leave blank to accept any region.",
-  "source.form.mcb_static_help": "For observers that use a fixed login. Anonymous logins are always refused.",
+  "source.form.mcb_static_help": "For observers that use a fixed login. They may still publish only under allowlisted keys. Anonymous logins are always refused.",
   "source.form.mcb_target_add": "Add forwarding target",
   "source.form.mcb_target_audience": "Upstream token audience",
   "source.form.mcb_target_enabled": "Forward to this broker",
@@ -8687,5 +8687,6 @@
   "source.form.mcb_username": "Static username (optional)",
   "source.form.type_meshcore_mqtt_broker": "MeshCore MQTT broker (observers connect here, no radio)",
   "meshcore.broker.card_badge": "{{count}} obs",
-  "meshcore.broker.card_badge_title": "Observers connected to this broker"
+  "meshcore.broker.card_badge_title": "Observers connected to this broker",
+  "meshcore.broker.reason_not_allowlisted": "Dropped (key not on the allowlist)"
 }

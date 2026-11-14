@@ -16,6 +16,8 @@
  * 1. Its own source type; read gates use predicates, not string widening.
  * 2. Auth: a valid Ed25519 token (audience must match) from an allowlisted
  *    observer key, or the static username/password. Anonymous is refused.
+ *    The allowlist binds every login: a static login may only publish under
+ *    an allowlisted key.
  * 3. A token login may only publish under its own key in the topic.
  * 4. Limits: max clients, msg/s per connection (excess dropped and counted),
  *    max payload.
@@ -68,6 +70,7 @@ export type BrokerRejectReason =
   | 'bad_json'
   | 'bad_status'
   | 'loop'
+  | 'not_allowlisted'
   | ObserverPacketRejectReason;
 
 export interface BrokerConnectionDiagnostics {
@@ -451,7 +454,11 @@ export class MeshCoreMqttBrokerManager extends MeshCoreMqttManager {
     }
     // A token login publishes only under its own key (binding decision 3).
     if (st.authMode === 'token' && st.observerKey !== topicKey) return this.reject(st, 'key_mismatch', isPacket);
-    if (st.authMode === 'static') st.observerKey = topicKey;
+    if (st.authMode === 'static') {
+      st.observerKey = topicKey;
+      // The allowlist binds every login, not only token logins.
+      if (!this.brokerConfig.allowedObservers.has(topicKey)) return this.reject(st, 'not_allowlisted', isPacket);
+    }
     if (this.ownKey && topicKey === this.ownKey.publicKey) return this.reject(st, 'loop', isPacket);
     if (this.isRecentlyForwarded(payload)) return this.reject(st, 'loop', isPacket);
 
