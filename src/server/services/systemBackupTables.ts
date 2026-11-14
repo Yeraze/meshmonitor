@@ -135,6 +135,8 @@ export const BACKUP_TABLES: string[] = [
   // #5841: WebAuthn passkeys. FK to users (cascade).
   'user_passkeys',
   'source_pki_keys',
+  // #4305: MQTT-native send identity (sealed X25519 private key).
+  'mqtt_native_identities',
   'meshcore_observer_credentials',
 
   // ── History, logs and derived data ───────────────────────────────────────
@@ -237,6 +239,10 @@ export const BACKUP_SECRET_TABLES: Readonly<Record<string, { protection: string;
   mesh_beacon_offers: { protection: 'NONE — offered channel PSKs in the clear', sessionSecret: false },
   mqtt_broker_presets: { protection: 'NONE — saved MQTT broker passwords in the clear, as in sources.config', sessionSecret: false },
   source_pki_keys: { protection: 'AES-256-GCM envelope keyed from SESSION_SECRET', sessionSecret: true },
+  mqtt_native_identities: {
+    protection: 'X25519 private key as an AES-256-GCM envelope keyed from SESSION_SECRET (#4305); public key and node number in the clear',
+    sessionSecret: true,
+  },
   meshcore_observer_keys: { protection: 'AES-256-GCM envelope keyed from SESSION_SECRET', sessionSecret: true },
   meshcore_observer_credentials: { protection: 'AES-256-GCM envelope keyed from SESSION_SECRET', sessionSecret: true },
   meshcore_nodes: {

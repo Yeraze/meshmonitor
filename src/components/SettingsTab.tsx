@@ -26,6 +26,7 @@ import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import ScriptsSection from './settings/ScriptsSection';
 import CoverageMqttRecordingSection from './settings/CoverageMqttRecordingSection';
+import MqttNativeSendSection from './settings/MqttNativeSendSection';
 import AnonMqttConsentSection from './settings/AnonMqttConsentSection';
 import { isMqttConsentFilterSourceType } from '../utils/mqttConsentFilter';
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
@@ -3179,6 +3180,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         {show('settings-anon-mqtt-consent') && canWriteSettings && isMqttConsentFilterSourceType(sourceType) && purgeSourceId && (
           <AnonMqttConsentSection baseUrl={baseUrl} sourceId={purgeSourceId} canWrite={canWriteSettings} />
+        )}
+
+        {show('settings-mqtt-native-send') && (sourceType === 'mqtt_bridge' || sourceType === 'mqtt_broker') && canReadSources && purgeSourceId && (
+          <MqttNativeSendSection baseUrl={baseUrl} sourceId={purgeSourceId} canWrite={hasPermission('sources', 'write')} />
         )}
 
         {show('settings-default-source') && isAdmin && mode === 'global' && <DefaultMeshtasticSourceSection />}

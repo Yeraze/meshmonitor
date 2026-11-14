@@ -121,6 +121,8 @@ export const SOURCE_SETTINGS_SECTIONS = new Set([
   'settings-coverage-mqtt',
   // Anonymous-viewer MQTT-consent filter (#5156): per-source, Meshtastic only.
   'settings-anon-mqtt-consent',
+  // MQTT-native send (#4305): per-source, mqtt_broker/mqtt_bridge only.
+  'settings-mqtt-native-send',
   'settings-management', 'settings-danger',
 ]);
 
@@ -221,6 +223,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-coverage', label: t('settings.coverage_section', 'Coverage Report'), keywords: ['coverage', 'range test', 'retention', 'survey', 'direct rf', 'zero hop'] },
     { id: 'settings-coverage-mqtt', label: t('settings.coverage_mqtt_section', 'Coverage recording'), keywords: ['coverage', 'gateway', 'mqtt', 'survey', 'range test', 'observer', 'meshcore'] },
     { id: 'settings-anon-mqtt-consent', label: t('settings.anon_mqtt_consent.title', 'Anonymous viewers'), keywords: ['anonymous', 'privacy', 'mqtt', 'ok to mqtt', 'consent', 'public', 'gdpr', 'hide'] },
+    { id: 'settings-mqtt-native-send', label: t('settings.mqtt_native.title', 'Send over MQTT (no radio)'), keywords: ['mqtt', 'send', 'nodeless', 'transmit', 'downlink', 'node id', 'native'] },
     { id: 'settings-management', label: t('settings.settings_management'), keywords: ['export', 'import', 'reset'] },
     { id: 'settings-danger', label: t('settings.danger_zone'), keywords: ['delete', 'purge', 'wipe', 'reset'] },
     { id: 'settings-system', label: t('settings.system_section', 'Restart / Shutdown'), keywords: ['restart', 'shutdown', 'reboot', 'container', 'docker', 'power'] },
@@ -247,6 +250,9 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     if (item.id === 'settings-coverage-mqtt' && !isCoverageMqttSourceType(sourceType)) return false;
     // The MQTT-consent filter needs an ok_to_mqtt bit: Meshtastic sources only (#5156).
     if (item.id === 'settings-anon-mqtt-consent' && !isMqttConsentFilterSourceType(sourceType)) return false;
+    // MQTT-native send (#4305): MQTT broker/bridge sources, for viewers who
+    // can read the source setup (the section saves with sources:write).
+    if (item.id === 'settings-mqtt-native-send' && !((sourceType === 'mqtt_bridge' || sourceType === 'mqtt_broker') && canReadSources)) return false;
     return true;
   });
 }

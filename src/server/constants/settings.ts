@@ -959,6 +959,17 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // #5156: anonymous-viewer filter for nodes that declined ok_to_mqtt.
   // Per-source, POSTable, default off. Read via mqttConsentVisibility.ts.
   'anonHideMqttNoConsent',
+  // #4305: MQTT-native send. Per-source, MQTT sources only, default off.
+  // Written only by PUT /api/sources/:id/mqtt/native (see
+  // PER_SOURCE_KEYS_NOT_POSTABLE); read via services/mqttNative/mqttNativeConfig.ts.
+  'mqttNativeSendEnabled',
+  'mqttNativeHopLimit',
+  'mqttNativeMaxPerMinute',
+  'mqttNativeMaxPerHour',
+  'mqttNativeLongName',
+  'mqttNativeShortName',
+  'mqttNativeRootTopic',
+  'mqttNativeAnnounceChannelId',
 ] as const;
 
 export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];
@@ -1178,6 +1189,18 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   // PUT /api/sources/:id/meshcore/config/sender-names (#6282): the per-source
   // sender-name allowlist. A generic POST must not be able to widen it.
   'meshcoreSenderNameOverride',
+  // PUT /api/sources/:id/mqtt/native (mqttNativeRoutes.ts, #4305) — gated on
+  // `sources:write`. The route clamps hop limit to 0-7 and the send caps to
+  // at most 6/min and 60/h; a generic POST must not be able to raise them or
+  // turn the transmit path on.
+  'mqttNativeSendEnabled',
+  'mqttNativeHopLimit',
+  'mqttNativeMaxPerMinute',
+  'mqttNativeMaxPerHour',
+  'mqttNativeLongName',
+  'mqttNativeShortName',
+  'mqttNativeRootTopic',
+  'mqttNativeAnnounceChannelId',
 ]);
 
 /**

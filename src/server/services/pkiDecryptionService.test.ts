@@ -126,9 +126,14 @@ describe('pkiDecryptionService', () => {
   it('builds a 13-byte CCM nonce with the documented layout', () => {
     const nonce = buildPkiNonce(0x04030201, 0x08070605, 0x0c0b0a09);
     expect(nonce.length).toBe(13);
-    // packetId LE (4) + zero high (4) + fromNode LE (4) + low byte of extraNonce (1)
+    // Firmware CryptoEngine::initNonce: packetId LE (4) + extraNonce LE (4,
+    // overwriting the id's high half) + fromNode LE (4) + zero (1).
     expect([...nonce]).toEqual([
-      0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00, 0x05, 0x06, 0x07, 0x08, 0x09,
+      0x01, 0x02, 0x03, 0x04, 0x09, 0x0a, 0x0b, 0x0c, 0x05, 0x06, 0x07, 0x08, 0x00,
+    ]);
+    // extraNonce 0 leaves the id's (zero) high half in place.
+    expect([...buildPkiNonce(0x04030201, 0x08070605, 0)]).toEqual([
+      0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00, 0x05, 0x06, 0x07, 0x08, 0x00,
     ]);
   });
 });

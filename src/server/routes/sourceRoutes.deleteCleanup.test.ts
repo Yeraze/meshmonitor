@@ -228,6 +228,10 @@ describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => 
       await databaseService.meshcoreObserverCredentials.upsert(src, `user-${tag}`, `enc-pass-${tag}`);
       await databaseService.sourcePkiKeys.upsert(src, null, `pki-envelope-${tag}`, `pkipub-${tag}`);
       await databaseService.meshcoreSourcePkiKeys.upsert(src, `mc-envelope-${tag}`, `mcpub-${tag}`);
+      await databaseService.mqttNativeIdentities.deleteBySourceId(src);
+      await databaseService.mqttNativeIdentities.create({
+        sourceId: src, nodeNum: tag === 'a' ? 0x4305000a : 0x4305000b, publicKey: `npub-${tag}`, encryptedPrivateKey: `n-envelope-${tag}`,
+      });
     }
   });
 
@@ -237,6 +241,7 @@ describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => 
       await databaseService.meshcoreObserverCredentials.deleteBySourceId(src).catch(() => {});
       await databaseService.sourcePkiKeys.deleteBySourceId(src).catch(() => {});
       await databaseService.meshcoreSourcePkiKeys.deleteBySourceId(src).catch(() => {});
+      await databaseService.mqttNativeIdentities.deleteBySourceId(src).catch(() => {});
     }
     await harness.cleanup();
   });
@@ -280,6 +285,16 @@ describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => 
     expect(await databaseService.meshcoreSourcePkiKeys.getBySourceId(harness.sourceA)).toBeNull();
     const keyB = await databaseService.meshcoreSourcePkiKeys.getBySourceId(harness.sourceB);
     expect(keyB?.encryptedPrivateKey).toBe('mc-envelope-b');
+  });
+
+  // #4305: the MQTT-native send identity (sealed private key) goes with its source.
+  it('removes the deleted source\'s MQTT-native identity, and only that source\'s', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.delete(`/${harness.sourceA}`)).status).toBe(200);
+
+    expect(await databaseService.mqttNativeIdentities.getBySourceId(harness.sourceA)).toBeNull();
+    const keyB = await databaseService.mqttNativeIdentities.getBySourceId(harness.sourceB);
+    expect(keyB?.encryptedPrivateKey).toBe('n-envelope-b');
   });
 
   it('a failed key purge does not fail the delete or skip the other purges', async () => {

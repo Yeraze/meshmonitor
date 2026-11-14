@@ -317,6 +317,7 @@ function mapOutcome(result: MqttIngestionResult): MqttIngestOutcome {
     case 'encrypted':
       return 'encrypted';
     case 'ignored':
+    case 'own-echo':
       return 'ignored';
     case 'geo-ignored':
       return 'geo-ignored';

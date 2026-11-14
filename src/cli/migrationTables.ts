@@ -177,6 +177,9 @@ export const TABLE_ORDER = [
   // Companion sources, used for server-side DM decryption (#6194 echo match).
   // Same one-row-per-source shape as meshcore_observer_keys above.
   'meshcore_source_pki_keys',
+  // 4305: per-source generated Meshtastic identity (sealed X25519 key) and
+  // persisted send state for MQTT-native send. One row per source.
+  'mqtt_native_identities',
   // per-source async message store (Dead Drop / Mailbox)
   'dead_drop_messages',
   // 3653: global Automation Engine tables. No sourceId / no FK to users; the

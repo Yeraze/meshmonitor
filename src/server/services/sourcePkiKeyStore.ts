@@ -77,9 +77,22 @@ export class SourcePkiKeyStore {
     if (!this._capability.canStore) {
       throw new Error('Cannot persist source PKI key: SESSION_SECRET is auto-generated');
     }
+    await databaseService.sourcePkiKeys.upsert(sourceId, nodeNum, this.seal(privateKey), publicKeyB64);
+  }
+
+  /**
+   * Seal raw secret bytes into the JSON envelope this store persists. Shared
+   * with other per-source key tables that want the same SESSION_SECRET
+   * protection (e.g. the MQTT-native identity store, #4305). Throws when
+   * SESSION_SECRET is auto-generated.
+   */
+  seal(secret: Buffer): string {
+    if (!this._capability.canStore) {
+      throw new Error('Cannot seal a key: SESSION_SECRET is auto-generated');
+    }
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', this.aeadKey, iv);
-    const ct = Buffer.concat([cipher.update(privateKey), cipher.final()]);
+    const ct = Buffer.concat([cipher.update(secret), cipher.final()]);
     const tag = cipher.getAuthTag();
     const envelope: StoredEnvelope = {
       v: KDF_VERSION,
@@ -88,7 +101,12 @@ export class SourcePkiKeyStore {
       ct: ct.toString('hex'),
       tag: tag.toString('hex'),
     };
-    await databaseService.sourcePkiKeys.upsert(sourceId, nodeNum, JSON.stringify(envelope), publicKeyB64);
+    return JSON.stringify(envelope);
+  }
+
+  /** Open an envelope produced by {@link seal}. */
+  open(envelopeJson: string): PkiKeyLoadResult {
+    return this.decodeRow({ encryptedPrivateKey: envelopeJson });
   }
 
   /** Load + decrypt the stored private key for a source. */
@@ -140,8 +158,17 @@ export class SourcePkiKeyStore {
   async isKeyRotated(sourceId: string): Promise<boolean> {
     const row = await databaseService.sourcePkiKeys.getBySourceId(sourceId);
     if (!row) return false;
+    return this.isEnvelopeRotated(row.encryptedPrivateKey);
+  }
+
+  /**
+   * True when an envelope from {@link seal} was sealed under a different
+   * SESSION_SECRET (or is malformed). Version and fingerprint only; never
+   * decrypts.
+   */
+  isEnvelopeRotated(envelopeJson: string): boolean {
     try {
-      const env = JSON.parse(row.encryptedPrivateKey) as StoredEnvelope;
+      const env = JSON.parse(envelopeJson) as StoredEnvelope;
       return env.v !== KDF_VERSION || env.kid !== this.currentKid;
     } catch {
       return true;

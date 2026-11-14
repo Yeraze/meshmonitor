@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import databaseService from '../../services/database.js';
+import { forgetMqttNativeIdentity } from '../services/mqttNative/mqttNativeState.js';
 import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from '../meshcoreMqttManager.js';
 import { logger } from '../../utils/logger.js';
@@ -1805,6 +1806,11 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       ['Analyzer Observer key', () => databaseService.meshcoreObserverKeys.deleteBySourceId(req.params.id)],
       ['Analyzer Observer credentials', () => databaseService.meshcoreObserverCredentials.deleteBySourceId(req.params.id)],
       ['PKI DM key', () => databaseService.sourcePkiKeys.deleteBySourceId(req.params.id)],
+      // #4305: the MQTT-native send identity (sealed private key + send state).
+      ['MQTT-native identity', async () => {
+        await databaseService.mqttNativeIdentities.deleteBySourceId(req.params.id);
+        forgetMqttNativeIdentity(req.params.id);
+      }],
       // #6195: the auto-captured MeshCore Companion device identity key.
       ['MeshCore device key', () => databaseService.meshcoreSourcePkiKeys.deleteBySourceId(req.params.id)],
       // The source's channel slots hold their PSKs in the clear
