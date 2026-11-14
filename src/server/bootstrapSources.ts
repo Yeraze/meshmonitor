@@ -35,6 +35,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from './meshcoreMqttManager.js';
+import { startMeshCoreMqttBrokerManager } from './meshcoreMqttBrokerSource.js';
 import { logger } from '../utils/logger.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 import { warnOnDuplicateTcpEndpoints } from './utils/tcpEndpointDuplicates.js';
@@ -307,6 +308,27 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
         logger.info(`Started MeshCore MQTT source ${source.id} (${source.name})`);
       } catch (err) {
         logger.error(`Failed to start MeshCore MQTT source ${source.id} (${source.name}); continuing with other sources:`, err);
+      }
+      continue;
+    }
+
+    if (source.type === 'meshcore_mqtt_broker') {
+      // Embedded MeshCore MQTT broker (#6197): listens for observers, never
+      // transmits on RF. A listen failure leaves the manager registered and
+      // idle so the source card can say why.
+      const cfg = source.config as { autoConnect?: boolean };
+      if (cfg?.autoConnect === false) {
+        logger.info(`Skipping auto-start for MeshCore MQTT broker ${source.id} (${source.name}) — autoConnect disabled`);
+        continue;
+      }
+      try {
+        if (await startMeshCoreMqttBrokerManager(source, deps.registry)) {
+          logger.info(`Started MeshCore MQTT broker ${source.id} (${source.name})`);
+        } else {
+          logger.warn(`MeshCore MQTT broker ${source.id} (${source.name}) has an unusable config; skipping`);
+        }
+      } catch (err) {
+        logger.error(`Failed to start MeshCore MQTT broker ${source.id} (${source.name}); continuing with other sources:`, err);
       }
       continue;
     }
