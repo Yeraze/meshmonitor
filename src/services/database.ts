@@ -4272,13 +4272,11 @@ class DatabaseService {
 
 
   /**
-   * Async version of getLatestNeighborInfoPerNodeScoped — queries the repository
-   * for the latest neighbor info per node, then filters by sourceId when scoped.
+   * Latest neighbor info per (nodeNum, neighborNodeNum) pair. With `sourceId`,
+   * scoped to that source before the latest-per-pair pick.
    */
   async getLatestNeighborInfoPerNodeScopedAsync(sourceId?: string): Promise<DbNeighborInfo[]> {
-    const all = await this.neighbors.getLatestNeighborInfoPerNode();
-    if (!sourceId) return all as unknown as DbNeighborInfo[];
-    return (all as any[]).filter((ni: any) => ni.sourceId === sourceId) as unknown as DbNeighborInfo[];
+    return (await this.neighbors.getLatestNeighborInfoPerNode(sourceId)) as unknown as DbNeighborInfo[];
   }
 
   /**
