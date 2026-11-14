@@ -164,23 +164,48 @@ function safeEnumName(lookup: () => string): string | null {
  * attribution, which the N-rows-deduped-at-query-time design depends on).
  */
 export function decodeObserverPacketMessage(body: unknown): IngestedObserverPacket | null {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const result = decodeObserverPacketMessageDetailed(body);
+  return result.ok ? result.packet : null;
+}
+
+/**
+ * Why {@link decodeObserverPacketMessageDetailed} refused a message. Shown as
+ * the "last reject reason" on the embedded broker's diagnostics (#6197), so an
+ * operator can see which field a silent observer gets wrong.
+ */
+export type ObserverPacketRejectReason =
+  | 'not_object'
+  | 'non_packet_type'
+  | 'missing_raw'
+  | 'bad_origin_id'
+  | 'bad_frame';
+
+export type ObserverPacketDecodeResult =
+  | { ok: true; packet: IngestedObserverPacket }
+  | { ok: false; reason: ObserverPacketRejectReason };
+
+/**
+ * {@link decodeObserverPacketMessage} with the reason for a refusal. Same
+ * checks, same order; the plain variant is a thin wrapper over this one.
+ */
+export function decodeObserverPacketMessageDetailed(body: unknown): ObserverPacketDecodeResult {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { ok: false, reason: 'not_object' };
   const msg = body as Record<string, unknown>;
 
   // Status messages share the topic prefix but not this shape; skip them
   // quietly rather than logging a parse failure per heartbeat.
-  if (msg.type !== undefined && msg.type !== 'PACKET') return null;
+  if (msg.type !== undefined && msg.type !== 'PACKET') return { ok: false, reason: 'non_packet_type' };
 
   const rawHex = readString(msg.raw);
-  if (!rawHex) return null;
+  if (!rawHex) return { ok: false, reason: 'missing_raw' };
 
   const originId = readString(msg.origin_id);
-  if (!originId || !ORIGIN_ID_RE.test(originId)) return null;
+  if (!originId || !ORIGIN_ID_RE.test(originId)) return { ok: false, reason: 'bad_origin_id' };
 
   // Re-derive every structural field from `raw` — see the header note on why
   // the wire's own len/payload_len/path are not trusted.
   const frame = parseObserverFrame(rawHex);
-  if (!frame.ok) return null;
+  if (!frame.ok) return { ok: false, reason: 'bad_frame' };
 
   const event: MeshCoreBridgeOtaPacket = {
     payload_type: frame.payloadType,
@@ -203,10 +228,13 @@ export function decodeObserverPacketMessage(body: unknown): IngestedObserverPack
   };
 
   return {
-    origin: readString(msg.origin) ?? '',
-    originId: originId.toUpperCase(),
-    timestamp: readString(msg.timestamp),
-    event,
+    ok: true,
+    packet: {
+      origin: readString(msg.origin) ?? '',
+      originId: originId.toUpperCase(),
+      timestamp: readString(msg.timestamp),
+      event,
+    },
   };
 }
 
