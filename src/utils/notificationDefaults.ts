@@ -100,3 +100,13 @@ export function defaultNotificationPreferences(): NotificationPreferenceDefaults
     messageTextMaxApprise: null,
   };
 }
+
+/**
+ * `sourceId` of a user's mesh-wide notification row (#5729).
+ *
+ * In `user_notification_preferences` it marks the mesh-wide DEFAULT: the
+ * settings for every source the user can read that has no row of its own (a
+ * per-source row is an override). In `push_subscriptions` it marks the one
+ * subscription a browser holds for the whole mesh. Never a real source id.
+ */
+export const MESH_PREFERENCES_SOURCE_ID = '__mesh__';
