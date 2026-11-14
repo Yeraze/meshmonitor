@@ -6,6 +6,7 @@ import {
   renderMessageNotification,
   type MessageTemplateContext,
 } from '../../utils/notificationTemplate.js';
+import { MESHCORE_MQTT_FED_SOURCE_TYPES } from '../../utils/meshcoreSourceTypes.js';
 
 export interface NotificationFilterContext {
   messageText: string;
@@ -217,7 +218,7 @@ function isEmojiOnlyMessage(text: string): boolean {
  * Mute lists on the legacy '' row were set from the Meshtastic Channels tab,
  * so they never carry to a source of one of these types (#5487).
  */
-export const NON_MESHTASTIC_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+export const NON_MESHTASTIC_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', ...MESHCORE_MQTT_FED_SOURCE_TYPES, 'reticulum']);
 
 /**
  * The built-in preferences: what a (user, source) pair gets until the user

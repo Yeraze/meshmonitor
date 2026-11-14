@@ -10,6 +10,8 @@ A `meshcore_mqtt` source **reads** a MeshCore-Analyzer-compatible broker. Where 
 
 That is the whole point: your radio hears its own earshot, while a region feed carries the coverage of every node publishing to that broker.
 
+To have observers publish straight to MeshMonitor instead of to an external broker, use the [MeshCore MQTT Broker](/features/meshcore-mqtt-broker) source. It feeds the same pipeline.
+
 **This source has no radio.** It cannot transmit, and that is structural rather than a policy — its `sourceType` excludes it from every code path that drives a device, so there is nothing to accidentally re-enable.
 
 ## What you get, and what you don't

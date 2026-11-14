@@ -52,6 +52,10 @@ import type {
   MeshCoreObserverBrokerConfig,
 } from '../meshcoreConfig.js';
 import type { MeshCoreMqttSourceConfig } from '../meshcoreMqttManager.js';
+import type {
+  MeshCoreMqttBrokerForwardTarget,
+  MeshCoreMqttBrokerSourceConfig,
+} from '../services/meshcoreMqttBrokerConfig.js';
 import type { MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import type { MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import type { ReticulumSourceConfig } from '../reticulumConfig.js';
@@ -493,6 +497,52 @@ const MESHCORE_MQTT: Spec<MeshCoreMqttSourceConfig> = {
   autoConnect: open(),
 };
 
+/**
+ * Embedded MeshCore MQTT broker (#6197). The listener port is an endpoint
+ * (granted); the observer allowlist, limits and forwarding targets are
+ * settings an editor sees but a viewer does not; every password is a secret.
+ * A target's password is tied to its URL, so an editor who repoints a target
+ * cannot keep sending the old password to the new host.
+ */
+const MESHCORE_BROKER_TARGET: Spec<MeshCoreMqttBrokerForwardTarget> = {
+  id: withheld,
+  label: withheld,
+  enabled: withheld,
+  url: { edit: 'url' },
+  identityMode: withheld,
+  username: withheld,
+  password: secret({ endpoint: 'url' }),
+  tokenAudience: withheld,
+  observers: withheld,
+  iataFilter: withheld,
+  rejectUnauthorized: withheld,
+};
+
+const MESHCORE_MQTT_BROKER: Spec<MeshCoreMqttBrokerSourceConfig> = {
+  listener: nested<MeshCoreMqttBrokerSourceConfig['listener']>({
+    port: granted(),
+    host: granted(),
+  }),
+  auth: nested<MeshCoreMqttBrokerSourceConfig['auth']>({
+    tokenAudience: withheld,
+    allowedObservers: withheld,
+    username: withheld,
+    password: secret(),
+  }),
+  regions: open(stringList),
+  limits: withheld,
+  forwarding: nested<NonNullable<MeshCoreMqttBrokerSourceConfig['forwarding']>>({
+    ownIdentityName: withheld,
+    // No viewer projection: a viewer never sees where observer data is sent.
+    targets: {
+      fields: MESHCORE_BROKER_TARGET as Record<string, FieldRule>,
+      edit: 'list',
+      identity: (entry) => (typeof entry.id === 'string' && entry.id !== '' ? entry.id : null),
+    },
+  }),
+  autoConnect: open(),
+};
+
 const MQTT_BRIDGE: Spec<MqttBridgeSourceConfig> = {
   // The parent broker's source id — already visible in the list.
   brokerSourceId: open(),
@@ -573,6 +623,7 @@ export const SOURCE_CONFIG_SPECS: Record<Source['type'], Record<string, FieldRul
   meshtastic_tcp: MESHTASTIC_TCP,
   meshcore: MESHCORE,
   meshcore_mqtt: MESHCORE_MQTT,
+  meshcore_mqtt_broker: MESHCORE_MQTT_BROKER,
   mqtt_bridge: MQTT_BRIDGE,
   mqtt_broker: MQTT_BROKER,
   reticulum: RETICULUM,

@@ -24,11 +24,13 @@
 import type { ISourceManager, SourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { MeshCoreManager } from './meshcoreManager.js';
 import type { MeshCoreMqttManager } from './meshcoreMqttManager.js';
+import type { MeshCoreMqttBrokerManager } from './meshcoreMqttBrokerManager.js';
 import type { MeshtasticManager } from './meshtasticManager.js';
 import type { MqttBridgeManager } from './mqttBridgeManager.js';
 import type { MqttBrokerManager } from './mqttBrokerManager.js';
 import type { ReticulumManager } from './reticulumManager.js';
 import { isMqttSourceType } from '../db/repositories/sources.js';
+import { isMeshCoreMqttFedSourceType } from '../utils/meshcoreSourceTypes.js';
 
 /**
  * Narrows an ISourceManager to a **device-backed** MeshCoreManager.
@@ -52,13 +54,21 @@ export function isMeshCoreManager(m: ISourceManager): m is MeshCoreManager {
 }
 
 /**
- * Narrows an ISourceManager to the MQTT-fed MeshCore ingest manager (#5040).
+ * Narrows an ISourceManager to an MQTT-fed MeshCore ingest manager: the
+ * `meshcore_mqtt` client (#5040) or the embedded `meshcore_mqtt_broker`
+ * (#6197), which is a subclass of the same ingest manager.
  *
- * This source has no device: it subscribes to an analyzer broker and replays
- * what other observers heard. It can never transmit.
+ * Neither has a device: they replay what other observers heard and can never
+ * transmit. Use {@link isMeshCoreMqttBrokerManager} for broker-only surfaces
+ * (listener diagnostics, own observer key).
  */
 export function isMeshCoreMqttManager(m: ISourceManager): m is MeshCoreMqttManager {
-  return m.sourceType === 'meshcore_mqtt';
+  return isMeshCoreMqttFedSourceType(m.sourceType);
+}
+
+/** Narrows an ISourceManager to the embedded MeshCore MQTT broker (#6197). */
+export function isMeshCoreMqttBrokerManager(m: ISourceManager): m is MeshCoreMqttBrokerManager {
+  return m.sourceType === 'meshcore_mqtt_broker';
 }
 
 /**

@@ -55,6 +55,7 @@ import {
   type BrokerAddressClass,
 } from '../utils/privateBrokerAddress.js';
 import { loadMqttConsentHiddenSet, tracerouteNamesHiddenNode, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
+import { MESHCORE_MQTT_FED_SOURCE_TYPES } from '../../utils/meshcoreSourceTypes.js';
 
 const router = Router();
 router.use(optionalAuth());
@@ -293,7 +294,7 @@ function gatewayBrokerClass(
 }
 
 /** Source types whose rows live in the `meshcore_*` tables. */
-const MESHCORE_SOURCE_TYPES = new Set(['meshcore', 'meshcore_mqtt']);
+const MESHCORE_SOURCE_TYPES = new Set<string>(['meshcore', ...MESHCORE_MQTT_FED_SOURCE_TYPES]);
 
 /** The subset of `sourceIds` that are MeshCore sources. */
 async function meshCoreSourceIdsAmong(sourceIds: string[]): Promise<string[]> {

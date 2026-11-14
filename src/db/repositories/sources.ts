@@ -14,11 +14,20 @@ export interface Source {
   name: string;
   /**
    * `meshcore` is a device-backed MeshCore source (Companion/Repeater);
-   * `meshcore_mqtt` (#5040) subscribes to an analyzer broker and has no radio.
+   * `meshcore_mqtt` (#5040) subscribes to an analyzer broker and has no radio;
+   * `meshcore_mqtt_broker` (#6197) is an embedded broker observers publish to,
+   * also radio-less.
    * Narrow managers with the predicates in `sourceManagerTypes.ts` rather than
    * comparing this field by hand.
    */
-  type: 'meshtastic_tcp' | 'mqtt_broker' | 'mqtt_bridge' | 'meshcore' | 'meshcore_mqtt' | 'reticulum';
+  type:
+    | 'meshtastic_tcp'
+    | 'mqtt_broker'
+    | 'mqtt_bridge'
+    | 'meshcore'
+    | 'meshcore_mqtt'
+    | 'meshcore_mqtt_broker'
+    | 'reticulum';
   config: Record<string, unknown>;
   enabled: boolean;
   /** User-controlled sort rank for the source list (issue #3338). Lower first. */

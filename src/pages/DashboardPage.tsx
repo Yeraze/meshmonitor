@@ -52,6 +52,13 @@ import {
 } from '../components/MQTT/hopLimitPolicyForm';
 import { observerErrorMessageKey, observerConfigForSourceSave } from '../components/MeshCore/observerConfig';
 import { MqttDocsLinks } from '../components/MQTT/MqttDocsLinks';
+import { MeshCoreBrokerSourceForm } from '../components/MeshCore/MeshCoreBrokerSourceForm';
+import {
+  brokerFormFromConfig,
+  brokerFormToConfig,
+  emptyBrokerForm,
+  type BrokerFormState,
+} from '../components/MeshCore/meshcoreBrokerForm';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { NewsPopup } from '../components/NewsPopup';
@@ -156,8 +163,11 @@ function DashboardInner() {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [formType, setFormType] = useState<
-    'meshtastic_tcp' | 'meshcore' | 'meshcore_mqtt' | 'mqtt_broker' | 'mqtt_bridge' | 'reticulum'
+    'meshtastic_tcp' | 'meshcore' | 'meshcore_mqtt' | 'meshcore_mqtt_broker' | 'mqtt_broker' | 'mqtt_bridge' | 'reticulum'
   >('meshtastic_tcp');
+  // Embedded MeshCore MQTT broker (#6197): one state object, saved through
+  // brokerFormToConfig.
+  const [formMcBroker, setFormMcBroker] = useState<BrokerFormState>(emptyBrokerForm);
   // MeshCore MQTT ingest source (#5040). One broker per source, deliberately:
   // it keeps "which broker did this come from" collapsed to "which source".
   const [formMcMqttBrokerUrl, setFormMcMqttBrokerUrl] = useState('');
@@ -420,6 +430,7 @@ function DashboardInner() {
   const onAddSource = () => {
     setEditingSourceId(null);
     setFormType('meshtastic_tcp');
+    setFormMcBroker(emptyBrokerForm());
     setFormName('');
     setFormHost('');
     setFormPort('4403');
@@ -481,6 +492,14 @@ function DashboardInner() {
     if (!source) return;
     const cfg = source.config as Record<string, any> | undefined;
     setEditingSourceId(id);
+    if (source.type === 'meshcore_mqtt_broker') {
+      setFormType('meshcore_mqtt_broker');
+      setFormName(source.name);
+      setFormMcBroker(brokerFormFromConfig(cfg));
+      setFormError('');
+      setShowSourceModal(true);
+      return;
+    }
     if (source.type === 'meshcore_mqtt') {
       setFormType('meshcore_mqtt');
       setFormName(source.name);
@@ -750,6 +769,13 @@ function DashboardInner() {
       // does not drop it (the server stores the config it is sent).
       const observer = observerConfigForSourceSave(formObserverStored, formMcDeviceType === 'repeater');
       if (observer) cfg.observer = observer;
+    } else if (formType === 'meshcore_mqtt_broker') {
+      const built = brokerFormToConfig(formMcBroker, hasStoredSecret(editingSource, 'auth.password'));
+      if (!built.ok) {
+        setFormError(t(built.errorKey, built.fallback));
+        return;
+      }
+      cfg = built.config;
     } else if (formType === 'meshcore_mqtt') {
       // Mirrors the server-side validation in sourceRoutes.ts: both fields are
       // structural. The subscribe topic is built from the region, so a source
@@ -1325,6 +1351,7 @@ function DashboardInner() {
                         | 'meshtastic_tcp'
                         | 'meshcore'
                         | 'meshcore_mqtt'
+                        | 'meshcore_mqtt_broker'
                         | 'mqtt_broker'
                         | 'mqtt_bridge'
                         | 'reticulum',
@@ -1334,6 +1361,7 @@ function DashboardInner() {
                   <option value="meshtastic_tcp">{t('source.form.type_meshtastic', 'Meshtastic (TCP)')}</option>
                   <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore')}</option>
                   <option value="meshcore_mqtt">{t('source.form.type_meshcore_mqtt', 'MeshCore MQTT ingest (read a region feed, no radio)')}</option>
+                  <option value="meshcore_mqtt_broker">{t('source.form.type_meshcore_mqtt_broker', 'MeshCore MQTT broker (observers connect here, no radio)')}</option>
                   <option value="mqtt_broker">{t('source.form.type_mqtt_broker', 'Embedded MQTT Broker (devices connect here)')}</option>
                   <option value="mqtt_bridge">{t('source.form.type_mqtt_bridge', 'MQTT Bridge (forward to/from an upstream broker)')}</option>
                   <option value="reticulum">{t('source.form.type_reticulum', 'Reticulum')}</option>
@@ -1829,6 +1857,13 @@ function DashboardInner() {
                   </div>
                 </fieldset>
               </>
+            ) : formType === 'meshcore_mqtt_broker' ? (
+              <MeshCoreBrokerSourceForm
+                value={formMcBroker}
+                onChange={setFormMcBroker}
+                sourceId={editingSourceId}
+                secretPlaceholder={secretPlaceholder}
+              />
             ) : formType === 'meshcore_mqtt' ? (
               <>
                 <div className="dashboard-form-help" style={{ marginBottom: '0.75rem' }}>

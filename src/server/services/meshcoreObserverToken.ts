@@ -23,6 +23,7 @@
  * replaced with fixed, sanitized text so no key material escapes into a log
  * line or a thrown error's message.
  */
+import crypto from 'node:crypto';
 import { createAuthToken, Utils } from '@michaelhart/meshcore-decoder';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
@@ -186,4 +187,17 @@ export async function mintObserverTokenForSourceDetailed(
 export async function mintObserverTokenForSource(sourceId: string): Promise<ObserverToken | null> {
   const r = await mintObserverTokenForSourceDetailed(sourceId);
   return r.kind === 'ok' ? r.token : null;
+}
+
+/**
+ * A fresh Ed25519 signing key in the orlp/ed25519 64-byte form the MeshCore
+ * tooling uses: SHA-512 of a random seed, with the scalar half clamped. Used
+ * for the embedded broker's own forwarding identity (#6197).
+ */
+export function generateObserverPrivateKey(): string {
+  const h = crypto.createHash('sha512').update(crypto.randomBytes(32)).digest();
+  h[0] &= 248;
+  h[31] &= 63;
+  h[31] |= 64;
+  return h.toString('hex');
 }

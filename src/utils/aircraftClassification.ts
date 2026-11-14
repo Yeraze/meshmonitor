@@ -9,6 +9,7 @@
  * the server compile set (tsconfig.server.json).
  */
 import type { TFunction } from 'i18next';
+import { MESHCORE_MQTT_FED_SOURCE_TYPES } from './meshcoreSourceTypes.js';
 
 export type AircraftBasis = 'agl' | 'msl' | 'unknown';
 export type AircraftDisplayMode = 'show' | 'mark' | 'hide';
@@ -25,7 +26,7 @@ export const AIRCRAFT_MANUAL_MARKS: readonly AircraftManualMark[] = ['not_aircra
  * report no Meshtastic-style altitude. Shared so the server gates and the
  * Node Details menu agree.
  */
-export const AIRCRAFT_EXCLUDED_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+export const AIRCRAFT_EXCLUDED_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', ...MESHCORE_MQTT_FED_SOURCE_TYPES, 'reticulum']);
 
 /**
  * Which manual-mark actions Node Details offers for a node (#5715). Pure, so

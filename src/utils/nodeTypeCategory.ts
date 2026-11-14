@@ -26,6 +26,7 @@
 
 import { DEVICE_ROLES } from './deviceRole.js';
 import { isInfrastructureRole, markerRoleBadge, type MarkerRoleKind } from './nodeRoleMarker.js';
+import { isMeshCoreMqttFedSourceType } from './meshcoreSourceTypes.js';
 
 /** MeshCore advert-type categories (issue #3546). */
 export type MeshCoreCategory =
@@ -315,7 +316,7 @@ export function sourceTypeProtocol(type: string | undefined | null): 'meshcore' 
  * narrowing to `'meshcore'` exactly.
  */
 export function isAnyMeshCoreSourceType(type: string | undefined | null): boolean {
-  return type === 'meshcore' || type === 'meshcore_mqtt';
+  return type === 'meshcore' || isMeshCoreMqttFedSourceType(type);
 }
 
 /**

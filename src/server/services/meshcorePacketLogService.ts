@@ -2,6 +2,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { deriveMeshCorePacketFields } from '../../utils/meshcorePacketDerived.js';
 import type { DbMeshCorePacket, MeshCorePacketQuery, MeshCoreGroupedPacket, MeshCorePacketDistribution } from '../../db/repositories/meshcore.js';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 /**
  * Service for the MeshCore Packet Monitor — the OTA-packet analogue of
@@ -60,7 +61,7 @@ class MeshCorePacketLogService {
       const ingestMaxCount = await this.getIngestMaxCount();
       const ingestSourceIds = new Set(
         (await databaseService.sources.getAllSources())
-          .filter((src) => src.type === 'meshcore_mqtt')
+          .filter((src) => isMeshCoreMqttFedSourceType(src.type))
           .map((src) => src.id),
       );
       const sourceIds = await databaseService.meshcore.getPacketLogSourceIds();

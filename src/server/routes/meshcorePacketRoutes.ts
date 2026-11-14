@@ -16,6 +16,7 @@ import { auditMeshcoreEvent } from './meshcoreRouteShared.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { listMeshCorePacketsForViewer, isMeshCoreIngestSource, MESHCORE_PACKET_MAX_LIMIT } from '../services/meshcorePacketList.js';
 import { decodeGroupPacketForViewer, type PacketDecodeViewer } from '../utils/meshcorePacketPlaintext.js';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 const router = Router({ mergeParams: true });
 
@@ -166,7 +167,7 @@ router.get(
       // The cap that applies to THIS source: retention is per-source-kind
       // (#5040 Phase 2), so a region feed reports its own, far larger cap.
       const src = await databaseService.sources.getSource(sourceId);
-      const isIngestSource = src?.type === 'meshcore_mqtt';
+      const isIngestSource = isMeshCoreMqttFedSourceType(src?.type);
       const [packets, total, enabled, maxAgeHours] = await Promise.all([
         meshcorePacketLogService.getGroupedPackets(query),
         // Group count, not row count — paging is over groups here.

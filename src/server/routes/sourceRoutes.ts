@@ -10,7 +10,13 @@ import { MeshtasticManager } from '../meshtasticManager.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshcoreConfig.js';
 import { MeshCoreManager } from '../meshcoreManager.js';
 import { reticulumConfigFromSource, ensureReticulumManagerStarted, preserveReticulumManagedConfig } from '../reticulumConfig.js';
-import { isMeshCoreManager, isMeshCoreMqttManager, isMeshtasticManager, isMqttBridgeManager, isReticulumManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshCoreMqttBrokerManager, isMeshCoreMqttManager, isMeshtasticManager, isMqttBridgeManager, isReticulumManager } from '../sourceManagerTypes.js';
+import {
+  findBrokerPortConflict,
+  restartMeshCoreMqttBrokerManager,
+  startMeshCoreMqttBrokerManager,
+} from '../meshcoreMqttBrokerSource.js';
+import { validateMeshCoreBrokerConfig } from '../services/meshcoreMqttBrokerConfig.js';
 import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
 import { isMqttProxyLinkMisconfigured } from '../../utils/mqttProxyLink.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
@@ -18,6 +24,7 @@ import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
 import { MqttBridgeManager, normalizeBridgeClientId, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
+import meshcoreBrokerRoutes from './meshcoreBrokerRoutes.js';
 import aircraftFlightMatchRoutes from './aircraftFlightMatchRoutes.js';
 import pkiExchangeStateRoutes from './pkiExchangeStateRoutes.js';
 import mapMarkerRoutes from './mapMarkerRoutes.js';
@@ -958,8 +965,15 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'name is required and must be a string' });
     }
-    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore', 'meshcore_mqtt', 'reticulum'].includes(type)) {
-      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, meshcore, meshcore_mqtt, or reticulum' });
+    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore', 'meshcore_mqtt', 'meshcore_mqtt_broker', 'reticulum'].includes(type)) {
+      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, meshcore, meshcore_mqtt, meshcore_mqtt_broker, or reticulum' });
+    }
+
+    // Embedded MeshCore MQTT broker (#6197): listener, auth and limits are all
+    // structural, so a bad config is refused before anything is stored.
+    if (type === 'meshcore_mqtt_broker') {
+      const brokerErr = await validateMeshCoreBrokerSave(config, undefined);
+      if (brokerErr) return fail(res, brokerErr.status, brokerErr.code, brokerErr.message);
     }
 
     // meshcore_mqtt (#5040) ingests from an Analyzer Observer broker and has no
@@ -1160,6 +1174,12 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       } catch (err) {
         logger.warn(`Could not start MeshCore MQTT manager for new source ${source.id}:`, err);
       }
+    } else if (source.enabled && source.type === 'meshcore_mqtt_broker' && cfgForStart?.autoConnect !== false) {
+      try {
+        await startMeshCoreMqttBrokerManager(source);
+      } catch (err) {
+        logger.warn(`Could not start MeshCore MQTT broker for new source ${source.id}:`, err);
+      }
     } else if (source.enabled && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge')) {
       try {
         const manager = buildMqttManagerForSource(
@@ -1206,6 +1226,37 @@ function sameStoredConfig(a: unknown, b: unknown): boolean {
  * in at construction, and a new manager is also what clears an auth stop (five
  * rejected logins in a row). Returns false when the config is incomplete.
  */
+/**
+ * Validate a `meshcore_mqtt_broker` config on create or save (#6197): shape and
+ * limits, a free listener port, and (MySQL only) the varchar(4096) config
+ * column, which a long observer allowlist can outgrow. Refusing beats the
+ * silent truncation the column would otherwise apply.
+ */
+async function validateMeshCoreBrokerSave(
+  config: unknown,
+  sourceId: string | undefined,
+): Promise<{ status: number; code: string; message: string } | null> {
+  const err = validateMeshCoreBrokerConfig(config);
+  if (err) return { status: 400, code: 'INVALID_BROKER_CONFIG', message: err };
+  const port = (config as { listener: { port: number } }).listener.port;
+  const conflict = await findBrokerPortConflict(port, sourceId);
+  if (conflict) {
+    return {
+      status: 409,
+      code: 'PORT_IN_USE',
+      message: `Port ${port} is already used by the broker source "${conflict.name}"`,
+    };
+  }
+  if (databaseService.drizzleDbType === 'mysql' && Buffer.byteLength(JSON.stringify(config), 'utf8') > 4096) {
+    return {
+      status: 400,
+      code: 'CONFIG_TOO_LARGE',
+      message: 'This broker config is too large to store on MySQL (4096 bytes). Shorten the observer allowlists or remove a forwarding target.',
+    };
+  }
+  return null;
+}
+
 async function restartMeshCoreMqttManager(
   source: { id: string; name: string; config: unknown },
 ): Promise<boolean> {
@@ -1306,6 +1357,11 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       const observerErr = validateObserverConfig(existing.type, config);
       if (observerErr) {
         return fail(res, observerErr.status, observerErr.code, observerErr.error);
+      }
+
+      if (existing.type === 'meshcore_mqtt_broker') {
+        const brokerErr = await validateMeshCoreBrokerSave(config, existing.id);
+        if (brokerErr) return fail(res, brokerErr.status, brokerErr.code, brokerErr.message);
       }
 
       // Validate mqtt_bridge topic rewrites (#3166) against the post-save
@@ -1447,6 +1503,19 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     } else if (wasEnabled && !isNowEnabled) {
       // Newly disabled: stop manager in the unified registry (no-op when not registered).
       await sourceManagerRegistry.removeManager(source.id);
+    } else if (isNowEnabled && source.type === 'meshcore_mqtt_broker' && (!wasEnabled || config !== undefined)) {
+      // Embedded MeshCore MQTT broker (#6197). A save rebuilds the listener;
+      // nothing here is a safety timer (it never transmits), so a restart
+      // re-arms nothing.
+      try {
+        if (!newAutoConnect) {
+          await sourceManagerRegistry.removeManager(source.id);
+        } else if (!(await restartMeshCoreMqttBrokerManager(source))) {
+          logger.warn(`MeshCore MQTT broker ${source.id} saved with an unusable config; not listening`);
+        }
+      } catch (err) {
+        logger.warn(`Could not restart MeshCore MQTT broker ${source.id}:`, err);
+      }
     } else if (isNowEnabled && source.type === 'meshcore_mqtt' && (!wasEnabled || config !== undefined)) {
       // MeshCore MQTT ingest (#5596): newly enabled, or config saved while
       // enabled. Before this branch a save changed the stored config and left
@@ -2459,13 +2528,14 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       source.type !== 'meshcore' &&
       source.type !== 'reticulum' &&
       source.type !== 'meshcore_mqtt' &&
+      source.type !== 'meshcore_mqtt_broker' &&
       source.type !== 'mqtt_bridge'
     ) {
       return fail(
         res,
         400,
         'CONNECT_NOT_SUPPORTED',
-        'Manual connect is only supported for meshtastic_tcp, meshcore, meshcore_mqtt, mqtt_bridge, and reticulum sources',
+        'Manual connect is only supported for meshtastic_tcp, meshcore, meshcore_mqtt, meshcore_mqtt_broker, mqtt_bridge, and reticulum sources',
       );
     }
     if (source.type === 'mqtt_bridge') {
@@ -2487,6 +2557,17 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       }
       const bridge = buildMqttManagerForSource(source.id, source.name, 'mqtt_bridge', source.config);
       await sourceManagerRegistry.addManager(bridge);
+      return res.json({ success: true });
+    }
+    if (source.type === 'meshcore_mqtt_broker') {
+      // Embedded MeshCore MQTT broker (#6197): a listening broker is left alone.
+      const existingMgr = sourceManagerRegistry.getManager(source.id);
+      if (existingMgr && isMeshCoreMqttBrokerManager(existingMgr) && existingMgr.isConnected()) {
+        return res.json({ success: true, alreadyRunning: true });
+      }
+      if (!(await restartMeshCoreMqttBrokerManager(source))) {
+        return fail(res, 400, 'INCOMPLETE_CONFIG', 'MeshCore MQTT broker source has an unusable config');
+      }
       return res.json({ success: true });
     }
     if (source.type === 'meshcore_mqtt') {
@@ -2733,5 +2814,6 @@ router.use('/:id/nodes/:nodeNum/pki-exchange', pkiExchangeStateRoutes);
 // #5686: local map markers (planning notes; never transmitted).
 router.use('/:id/markers', mapMarkerRoutes);
 router.use('/:id/observer', observerRoutes);
+router.use('/:id/meshcore-broker', meshcoreBrokerRoutes);
 
 export default router;

@@ -54,6 +54,7 @@ import {
 } from '../../utils/meshcoreChannelUrl.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
 import { safeJson } from '../utils/redactSecrets.js';
+import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 
 const router: Router = Router();
 
@@ -180,7 +181,7 @@ router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
     if (allChannelsSourceId) {
       try {
         const source = await databaseService.sources.getSource(allChannelsSourceId);
-        if (source?.type === 'meshcore' || source?.type === 'meshcore_mqtt') {
+        if (source?.type === 'meshcore' || isMeshCoreMqttFedSourceType(source?.type)) {
           const keyed = await listKeyedChannelsForViewer(req.user, allChannelsSourceId);
           const slotIds = new Set(projected.map((c) => Number(c.id)));
           for (const k of keyed) {
@@ -543,7 +544,7 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
     // own. Without this it fell through to the Meshtastic branch (#5826).
     // Checked after the permission gate so a caller without write access gets
     // 403 and learns nothing about the source's type.
-    if (sourceType === 'meshcore_mqtt') {
+    if (isMeshCoreMqttFedSourceType(sourceType)) {
       return refuseIngestSourceChannelWrite(res, chanSourceId);
     }
 
@@ -792,7 +793,7 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
     // Same as PUT, and after the permission gate for the same reason: an
     // ingest source has no slots to delete, and the Meshtastic branch below
     // would purge its messages (#5826).
-    if (sourceType === 'meshcore_mqtt') {
+    if (isMeshCoreMqttFedSourceType(sourceType)) {
       return refuseIngestSourceChannelWrite(res, deleteChannelSourceId);
     }
 
