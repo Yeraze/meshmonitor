@@ -247,7 +247,7 @@ function App() {
   // `isTxDisabled` already accounts for the UDP-broadcast relay path: a radio
   // with TX off but UDP Broadcast on can still send, and reports isUdpRelay
   // instead so the banner stays honest about how packets leave (#4394).
-  const { isTxDisabled, isUdpRelay } = useTxStatus({ baseUrl, sourceId });
+  const { isTxDisabled, isUdpRelay, isTransparentMode } = useTxStatus({ baseUrl, sourceId });
   // MQTT-bridge sources are never gated (different transport, not affected by radio TX state)
   // MQTT broker/bridge sources have no local radio, so every send is gated.
   // The server refuses them with SOURCE_NOT_MESHTASTIC rather than sending
@@ -3462,6 +3462,7 @@ function App() {
         // radio at all, so the disabled controls' tooltip explains it instead.
         isTxDisabled={isTxDisabled && !isMqtt}
         isUdpRelay={isUdpRelay}
+        isTransparentMode={isTransparentMode && !isMqtt && !isMeshCoreSource}
         isMeshCore={isMeshCoreSource}
         configIssues={configIssues}
         updateAvailable={updateAvailable}

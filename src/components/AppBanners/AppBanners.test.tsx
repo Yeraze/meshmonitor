@@ -162,3 +162,40 @@ describe('AppBanners — warning banners', () => {
     expect(link).toHaveAttribute('href', 'https://example.com/docs');
   });
 });
+
+describe('AppBanners — LoRa transparent mode banner (#6181)', () => {
+  it('renders the warning when isTransparentMode is true', () => {
+    render(<AppBanners {...baseProps} updateAvailable={false} isTransparentMode deploymentMethod="docker" />);
+    const banner = screen.getByTestId('transparent-mode-banner');
+    expect(banner).toHaveTextContent('banners.transparent_mode');
+    expect(banner.getAttribute('style')).not.toContain('--banner-height');
+  });
+
+  it('renders nothing when isTransparentMode is false or omitted', () => {
+    const { unmount } = render(
+      <AppBanners {...baseProps} updateAvailable={false} isTransparentMode={false} deploymentMethod="docker" />
+    );
+    expect(screen.queryByTestId('transparent-mode-banner')).not.toBeInTheDocument();
+    unmount();
+    render(<AppBanners {...baseProps} updateAvailable={false} deploymentMethod="docker" />);
+    expect(screen.queryByTestId('transparent-mode-banner')).not.toBeInTheDocument();
+  });
+
+  it('stacks below the TX banner and pushes the config issue banners down', () => {
+    render(
+      <AppBanners
+        {...baseProps}
+        updateAvailable={false}
+        isTxDisabled
+        isTransparentMode
+        deploymentMethod="docker"
+        configIssues={[
+          { type: 'cookie_secure', severity: 'error', message: 'Cookie is insecure', docsUrl: 'https://example.com/docs' },
+        ]}
+      />
+    );
+    expect(screen.getByTestId('transparent-mode-banner').getAttribute('style')).toContain('var(--banner-height) * 1');
+    const issue = screen.getByText(/Cookie is insecure/).closest('.warning-banner') as HTMLElement;
+    expect(issue.getAttribute('style')).toContain('var(--banner-height) * 2');
+  });
+});

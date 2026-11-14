@@ -147,7 +147,30 @@ describe('DeviceAdminService', () => {
       const svc = new DeviceAdminService(mgr as any);
       await svc.setLoRaConfig({ region: 1 });
       expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(1);
-      expect(mgr.updateCachedDeviceConfig).toHaveBeenCalledWith('lora', { region: 1 }, 'replace');
+      expect(mgr.updateCachedDeviceConfig).toHaveBeenCalledWith('lora', { region: 1, transparentMode: false }, 'replace');
+    });
+
+    // #6181: set_config replaces the whole LoRaConfig, so the device's own
+    // transparent_mode must ride along, and no caller may change it.
+    it('setLoRaConfig keeps the device-reported transparentMode, ignoring the caller', async () => {
+      const mgr = makeFakeManager({ actualDeviceConfig: { lora: { region: 1, transparentMode: true } } });
+      const svc = new DeviceAdminService(mgr as any);
+      await svc.setLoRaConfig({ region: 1, hopLimit: 4 });
+      expect(createSetLoRaConfigMessage).toHaveBeenCalledWith(
+        { region: 1, hopLimit: 4, transparentMode: true }, expect.any(Uint8Array),
+      );
+      expect(mgr.state.actualDeviceConfig.lora.transparentMode).toBe(true);
+
+      createSetLoRaConfigMessage.mockClear();
+      await svc.setLoRaConfig({ region: 1, transparentMode: false });
+      expect(createSetLoRaConfigMessage.mock.calls[0][0]).toMatchObject({ transparentMode: true });
+    });
+
+    it('setLoRaConfig never turns transparentMode on when the device has it off', async () => {
+      const mgr = makeFakeManager({ actualDeviceConfig: { lora: { region: 1 } } });
+      const svc = new DeviceAdminService(mgr as any);
+      await svc.setLoRaConfig({ region: 1, transparentMode: true });
+      expect(createSetLoRaConfigMessage.mock.calls[0][0]).toMatchObject({ transparentMode: false });
     });
 
     it('setChannelConfig rejects an out-of-range channel index without sending', async () => {
@@ -272,16 +295,18 @@ describe('DeviceAdminService', () => {
       const svc = new DeviceAdminService(mgr as any);
       const sent = { enabled: true, someInterval: 300 };
       await run(svc, sent);
+      // setLoRaConfig always adds the device's own transparentMode (#6181).
+      const expected = key === 'lora' ? { ...sent, transparentMode: false } : sent;
 
       const own = bucket === 'device' ? mgr.updateCachedDeviceConfig : mgr.updateCachedModuleConfig;
       const other = bucket === 'device' ? mgr.updateCachedModuleConfig : mgr.updateCachedDeviceConfig;
       expect(own).toHaveBeenCalledTimes(1);
-      expect(own).toHaveBeenCalledWith(key, sent, 'replace');
+      expect(own).toHaveBeenCalledWith(key, expected, 'replace');
       expect(other).not.toHaveBeenCalled();
 
       // The read-back shows exactly what was sent; the field the save left out is gone.
       const cache = bucket === 'device' ? mgr.state.actualDeviceConfig : mgr.state.actualModuleConfig;
-      expect(cache[key]).toEqual(sent);
+      expect(cache[key]).toEqual(expected);
     });
 
     it('a failed send leaves the cache alone', async () => {

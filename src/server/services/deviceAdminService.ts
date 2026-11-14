@@ -130,6 +130,11 @@ export class DeviceAdminService {
     }
 
     try {
+      // #6181: set_config is a whole-struct replace, so transparent_mode must
+      // ride along or the save turns it off. MeshMonitor never chooses it:
+      // whatever the caller sent is replaced by what the device last reported,
+      // so no save path (Config tab, import, restore) can turn it on or off.
+      config = { ...config, transparentMode: this.mgr.getActualDeviceConfig()?.lora?.transparentMode === true };
       logger.debug('⚙️ Sending LoRa config:', safeJson(config));
       const setConfigMsg = protobufService.createSetLoRaConfigMessage(config, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);

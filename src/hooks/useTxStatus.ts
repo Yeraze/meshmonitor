@@ -26,6 +26,11 @@ export interface TxStatusData {
    * Absent on older servers — callers fall back to `txEnabled`.
    */
   canTransmit?: boolean;
+  /**
+   * #6181: LoRaConfig.transparent_mode. The node passes every frame through
+   * still encrypted and decodes, relays and ACKs nothing. Absent on older servers.
+   */
+  transparentMode?: boolean;
 }
 
 /**
@@ -113,5 +118,7 @@ export function useTxStatus({
      * "cannot send".
      */
     isUdpRelay: data ? data.txEnabled === false && data.udpRelayEnabled === true : false,
+    /** #6181: the node runs in LoRa transparent ("dumb modem") mode. */
+    isTransparentMode: data?.transparentMode === true,
   };
 }

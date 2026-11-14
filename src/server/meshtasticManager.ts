@@ -11161,6 +11161,17 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * #6181: LoRaConfig.transparent_mode as the local radio last reported it.
+   * True means the node runs as a "dumb LoRa modem": it hands every frame up
+   * still encrypted and does no decoding, relaying, ACKs or MQTT, so this
+   * source shows no decoded traffic and its sends fail. False when off, or
+   * when LoRa config has not arrived (proto3 elides false).
+   */
+  isTransparentMode(): boolean {
+    return this.actualDeviceConfig?.lora?.transparentMode === true;
+  }
+
+  /**
    * The modem preset the local radio last reported, as a wire enum number, or
    * undefined when LoRa config has not arrived. Used to backfill a LoRa save
    * that omits modemPreset: setLoRaConfig is a whole-struct replace, so an
