@@ -192,8 +192,12 @@ export class NeighborsRepository extends BaseRepository {
   /**
    * Get the latest neighbor info record per unique (nodeNum, neighborNodeNum) pair.
    * Returns one row per edge — the row with the highest timestamp for each pair.
+   *
+   * With `sourceId`, the source filter runs BEFORE the latest-per-pair pick.
+   * Filtering afterwards (the old behaviour) dropped a pair from source A
+   * whenever source B held a newer row for the same pair.
    */
-  async getLatestNeighborInfoPerNode(): Promise<DbNeighborInfo[]> {
+  async getLatestNeighborInfoPerNode(sourceId?: string): Promise<DbNeighborInfo[]> {
     const { neighborInfo } = this.tables;
 
     if (this.dbType === 'postgres') {
@@ -201,6 +205,7 @@ export class NeighborsRepository extends BaseRepository {
       const result = await this.db.execute(sql`
         SELECT DISTINCT ON ("nodeNum", "neighborNodeNum") *
         FROM neighbor_info
+        ${sourceId ? sql`WHERE "sourceId" = ${sourceId}` : sql``}
         ORDER BY "nodeNum", "neighborNodeNum", timestamp DESC
       `);
       // PG driver returns BIGINT as strings — coerce explicitly
@@ -224,11 +229,13 @@ export class NeighborsRepository extends BaseRepository {
         INNER JOIN (
           SELECT nodeNum, neighborNodeNum, MAX(timestamp) AS maxTimestamp
           FROM neighbor_info
+          ${sourceId ? sql`WHERE sourceId = ${sourceId}` : sql``}
           GROUP BY nodeNum, neighborNodeNum
         ) latest
         ON ni.nodeNum = latest.nodeNum
           AND ni.neighborNodeNum = latest.neighborNodeNum
           AND ni.timestamp = latest.maxTimestamp
+        ${sourceId ? sql`WHERE ni.sourceId = ${sourceId}` : sql``}
       `);
       // MySQL driver returns BIGINT as strings — coerce explicitly
       return ((result as any)[0] as any[]).map(r => ({
@@ -251,6 +258,7 @@ export class NeighborsRepository extends BaseRepository {
         maxTimestamp: max(neighborInfo.timestamp).as('maxTimestamp'),
       })
       .from(neighborInfo)
+      .where(sourceId ? eq(neighborInfo.sourceId, sourceId) : undefined)
       .groupBy(neighborInfo.nodeNum, neighborInfo.neighborNodeNum)
       .as('latest');
 
@@ -264,7 +272,8 @@ export class NeighborsRepository extends BaseRepository {
           eq(neighborInfo.neighborNodeNum, subquery.neighborNodeNum),
           eq(neighborInfo.timestamp, subquery.maxTimestamp)
         )
-      );
+      )
+      .where(sourceId ? eq(neighborInfo.sourceId, sourceId) : undefined);
 
     return this.normalizeBigInts(result.map((r: { ni: typeof neighborInfo.$inferSelect }) => r.ni)) as DbNeighborInfo[];
   }

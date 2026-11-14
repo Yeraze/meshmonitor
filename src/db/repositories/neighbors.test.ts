@@ -435,6 +435,30 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     expect(pair!.timestamp).toBe(now);
   });
 
+  it('getLatestNeighborInfoPerNode(sourceId) - scopes before picking the latest per pair', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    // Same pair on two sources; source B's row is newer.
+    await repo.insertNeighborInfo(makeNeighbor({ nodeNum: 100, neighborNodeNum: 200, timestamp: now - 5000 }), 'src-a');
+    await repo.insertNeighborInfo(makeNeighbor({ nodeNum: 100, neighborNodeNum: 200, timestamp: now }), 'src-b');
+
+    const onA = await repo.getLatestNeighborInfoPerNode('src-a');
+    expect(onA).toHaveLength(1);
+    expect(onA[0].sourceId).toBe('src-a');
+    expect(onA[0].timestamp).toBe(now - 5000);
+
+    const onB = await repo.getLatestNeighborInfoPerNode('src-b');
+    expect(onB).toHaveLength(1);
+    expect(onB[0].sourceId).toBe('src-b');
+
+    expect(await repo.getLatestNeighborInfoPerNode('src-c')).toHaveLength(0);
+  });
+
   it('getLatestNeighborInfoPerNode - returns empty array when no data', async () => {
     const backend = getBackend();
     if (!backend.available) {
