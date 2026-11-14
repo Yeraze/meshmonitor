@@ -580,15 +580,27 @@ Users can enable or disable notification services independently:
 
 Both services can be enabled simultaneously, and they share the same filtering preferences.
 
-### Settings Are Saved Per Source
+### Mesh-Wide Default and Per-Source Settings
 
-Every setting on the **Notifications** tab is saved for the source you are looking at, and only that source: the Web Push and Apprise switches, Apprise URLs, enabled channels, keyword lists, the direct message, emoji, MQTT, new-node, traceroute, server-event and waypoint toggles, and the message format. Channel numbers and node IDs mean different things on each source, so one source never uses another's settings.
+One set of notification settings covers the whole mesh. Open **Mesh-wide default** at the top of the **Notifications** tab to set the switches every source shares (Web Push, Apprise and its URLs, direct messages, emoji, MQTT, new nodes, traceroutes, inactive node, low battery, server events, waypoints, mentions, node-name prefix) and which sources Web Push may notify you about. The default applies to every source you can read that has no settings of its own. It never reaches a source you cannot read: every notification still checks your permission on the source it came from.
 
-A source you have never saved settings for uses the **built-in defaults**. The tab shows a note saying so, and the first **Save** creates that source's own settings.
+Channel choices and channel mutes are never mesh-wide, because channel numbers mean a different channel on each source. Set them on the source.
+
+The rest of the tab edits the source you are looking at. Saving there gives that source **its own settings**, which replace the mesh-wide default for that source only. The tab says which one a source uses; **Use mesh-wide default** drops the source's own settings again.
+
+::: info Upgrading to the mesh-wide default
+Settings you saved for a source before this change become that source's own settings, unchanged, so nothing you receive changes until you edit. Until you save a mesh-wide default, a source with no settings of its own uses the built-in defaults below, as before.
+:::
+
+### Settings Saved for a Source
+
+Every setting below the mesh-wide panel is saved for the source you are looking at, and only that source: the Web Push and Apprise switches, Apprise URLs, enabled channels, keyword lists, the direct message, emoji, MQTT, new-node, traceroute, server-event and waypoint toggles, and the message format. Channel numbers and node IDs mean different things on each source, so one source never uses another's settings.
+
+A source you have never saved settings for uses your mesh-wide default, or, until you save one, the **built-in defaults**. The tab shows a note saying so, and the first **Save** creates that source's own settings.
 
 | Setting | Built-in default |
 | --- | --- |
-| Web Push | On (you still have to subscribe the browser on that source) |
+| Web Push | On (you still have to subscribe this browser) |
 | Apprise | Off, no URLs |
 | Enabled channels | None |
 | Direct messages | On |
@@ -605,7 +617,7 @@ A source you have never saved settings for uses the **built-in defaults**. The t
 | Blacklist | Empty |
 | Message format | The default template |
 
-So on a source you have not set up, you are notified of direct messages only, over Web Push, if this browser is subscribed on that source. Channel messages, new-node alerts and traceroute alerts are off until you turn them on and save.
+So on a source you have not set up, with no mesh-wide default, you are notified of direct messages only, over Web Push, if this browser is subscribed. Channel messages, new-node alerts and traceroute alerts are off until you turn them on and save.
 
 ::: warning Changed in 4.17
 A source with no saved settings used to borrow the settings you saved for another source: its channel ticks, keywords, toggles and Apprise URLs. It now uses the defaults above. If you run several sources and only ever saved settings on one, open the **Notifications** tab on each of the others and save what you want there. In particular, Apprise is off on a source until you turn it on and add URLs for that source, and channel, new-node and traceroute alerts are off until you turn them on. The defaults also changed: new-node and traceroute alerts used to default to on, and the keyword lists used to start with `Hi`, `Help` and `Test`, `Copy`. Settings you already saved are not changed.
@@ -614,8 +626,8 @@ A source with no saved settings used to borrow the settings you saved for anothe
 Three things are not per source:
 
 - **Channel and DM mutes** set before per-source mutes existed still apply on a Meshtastic source that has no settings of its own. They are copied into that source's settings on its first save.
-- **Inactive node and low battery alerts** use one watch list per user: the nodes you picked on any source's tab are watched wherever they appear, and the alert goes out through whichever of your sources has Web Push or Apprise set up.
-- **Web Push for new nodes, traceroutes and server events** goes only to browsers subscribed on the source the event came from, the same as message notifications.
+- **Inactive node and low battery alerts** use one watch list per user: the nodes you picked on any source's tab are watched wherever they appear, and the alert goes out through whichever of your sources has Web Push or Apprise set up. They are about the node, not the source: an inactive alert fires only when no source you can read still hears the node, and a low-battery alert fires once and lists every source that reports it.
+- **Web Push subscriptions** are one per browser for the whole mesh. Which sources may push to you is the **Web Push from** list in the mesh-wide default (every source you can read, or only the ones you tick). Subscribing from a source adds it to that list if you narrowed it. When you upgrade, each browser keeps one subscription, and the sources it was subscribed on become your list, so no browser starts or stops getting a source.
 
 ### Filtering Preferences
 
@@ -826,7 +838,7 @@ The counters are stored per source, so a restart cannot reopen a full hour. Mesh
 Earlier versions showed the **Newly Found Nodes** toggle on Repeater sources, then hid it. A Repeater source whose toggle was saved as on starts alerting once its learning period ends. Turn it off on that source's Notifications tab if you don't want these alerts.
 :::
 
-Preferences are saved per source, so a MeshCore source and a Meshtastic source can have independent thresholds. The monitored-node watch list is the exception: nodes picked on any source's tab are watched together (see [Settings Are Saved Per Source](#settings-are-saved-per-source)).
+Preferences are saved per source, so a MeshCore source and a Meshtastic source can have independent thresholds. The monitored-node watch list is the exception: nodes picked on any source's tab are watched together (see [Settings Saved for a Source](#settings-saved-for-a-source)).
 
 #### MeshCore Mentions
 
@@ -871,11 +883,11 @@ Notification permissions are controlled by the browser. If denied, you must rese
 
 With two or more sources on the same mesh, each source that hears a packet used to raise its own notification. MeshMonitor now sends **one** notification per packet to each recipient, however many sources heard it.
 
-**What counts as the same packet:** the same sender, packet id and port number, heard again within **60 seconds** of the first copy. The window is fixed; it is not a setting yet. A copy that arrives later than that is a new notification. So is a packet with a different id or port, so a node's text, position and node info stay apart.
+**What counts as the same packet:** the same sender, packet id and port number, heard again within **60 seconds** of the first copy. The window is fixed; it is not a setting. A copy that arrives later than that is a new notification. So is a packet with a different id or port, so a node's text, position and node info stay apart.
 
 This also covers MQTT: if a radio source and an MQTT source both deliver a packet, or a source hears its own packet come back through MQTT, you are alerted once.
 
-**Your per-source settings still decide.** Nothing about the settings changed. Each source's copy is checked against your settings and permissions for *that* source, exactly as before. A copy that would not have notified you (channel off, muted, blacklisted, MQTT alerts off, no read permission, browser not subscribed on that source) does not count and never uses up the notification. The first copy that passes is the one you get.
+**Your settings for each source still decide.** Each source's copy is checked against your settings for *that* source (its own, or your mesh-wide default) and your permission on it. A copy that would not have notified you (channel off, muted, blacklisted, MQTT alerts off, no read permission, source not in your Web Push list) does not count and never uses up the notification. The first copy that passes is the one you get.
 
 **Which sources are named:** only sources whose copy passed your own checks. You never see the name of a source you cannot read.
 
@@ -883,11 +895,11 @@ This also covers MQTT: if a radio source and an MQTT source both deliver a packe
 
 | Method | First copy | Later copies inside 60 s |
 |--------|-----------|--------------------------|
-| **Web Push** | Sent at once, naming the source that heard it first | The notification on screen is replaced, without a new sound or vibration, by one that lists every source: `LongFast · Hilltop, Valley` |
-| **Apprise** | Sent at once, naming the source that heard it first | Not sent. Apprise cannot change a message it has delivered |
-| **Desktop app** | Shown at once, naming the source that heard it first | Not shown. A native notification cannot be changed once shown |
+| **Web Push** | Sent at once, naming the source that heard it first | The notification on screen is replaced, without a new sound or vibration, by one that lists every source: `LongFast · Hilltop, Valley`. A click opens the source that heard it first |
+| **Apprise** | Held for **5 seconds** to collect the sources | Copies inside those 5 seconds add their source; then **one** message lists them all. A copy after that is not sent |
+| **Desktop app** | Held for **5 seconds**, like Apprise | Same as Apprise. The list only names sources the user the notification is shown for can read |
 
-The first notification is never held back to wait for other sources.
+The 5-second hold starts at the first copy and never moves, so a stream of copies cannot delay or repeat the message. Saving settings does not touch it. On a clean shutdown, held messages are sent before the server stops.
 
 **Which events are covered:**
 
@@ -896,14 +908,14 @@ The first notification is never held back to wait for other sources.
 | Channel messages and direct messages (Meshtastic radio and MQTT) | Yes, by sender + packet id + port |
 | New MeshCore device | Yes, by the device's public key |
 | Waypoint alerts | Yes, by waypoint id |
-| New Meshtastic node | Already one alert per node (first source to complete it), unchanged |
+| New Meshtastic node | Yes. You get it from the first source **you** can read that heard the node, once |
 | Server events (start, node connect / disconnect) | **No.** These are about a source, so you get one per source |
-| Inactive node, low battery | No. These are periodic checks per source, with their own cooldown |
+| Inactive node, low battery | Yes, by node: see [Settings Saved for a Source](#settings-saved-for-a-source) |
 | Traceroute results | No. A traceroute belongs to the source that ran it |
 | Security digest, automation notifications | No. A report and an explicit rule; neither is a packet |
 
 ::: info After a restart
-The 60-second memory lives in the server's memory only. If the server restarts between two copies of one packet, you may get one extra notification for that packet.
+The 60-second memory and the 5-second hold live in the server's memory only. If the server restarts between two copies of one packet, you may get one extra notification for that packet. A crash (not a clean shutdown) can lose Apprise or desktop messages still inside their 5-second hold.
 :::
 
 ::: tip Custom templates

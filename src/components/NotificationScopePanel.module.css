@@ -1,0 +1,92 @@
+/*
+ * Mesh-wide notification default and per-source override controls (#5729).
+ * Role tokens only, with no fallback (src/styles/semanticTokens.test.ts).
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-bg-raised);
+  color: var(--color-text);
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.statusText {
+  flex: 1 1 200px;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.muted {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.toggleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 4px;
+  padding: 6px;
+}
+
+.fieldset {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.sourceList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 0 24px;
+}
