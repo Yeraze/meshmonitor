@@ -164,6 +164,7 @@ export default function NetworkSurveyPanel({
               {t('survey.no_neighbours')}
             </p>
           ) : (
+            <div className={styles.surveyTableWrap}>
             <table className={styles.surveyTable}>
               <thead>
                 <tr>
@@ -186,6 +187,7 @@ export default function NetworkSurveyPanel({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
 
           <h4>{t('survey.reach')}</h4>
