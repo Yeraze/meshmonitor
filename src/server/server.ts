@@ -49,6 +49,8 @@ import { cotFeedService } from './services/cotFeedService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { versionCheckService } from './services/versionCheckService.js';
 import { coverageRetentionService } from './services/coverageRetentionService.js';
+import { directRfContactsRetentionService } from './services/directRfContactsRetentionService.js';
+import { flushDirectRfContacts } from './services/directRfContactRecorder.js';
 import { translationCacheService } from './services/translation/translationCacheService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
@@ -552,6 +554,12 @@ setTimeout(async () => {
   } catch (error) {
     logger.error('Error starting Coverage Report retention sweep:', error);
   }
+  // Direct RF Contacts (#6210): same shape, own setting (default 30 days).
+  try {
+    directRfContactsRetentionService.start();
+  } catch (error) {
+    logger.error('Error starting Direct RF Contacts retention sweep:', error);
+  }
 }, 5000);
 
 // Translation cache (#5520): installs the DB-backed text cache once the DB is
@@ -731,6 +739,7 @@ import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
 import forwardingRoutes from './routes/forwardingRoutes.js';
 import atakRoutes from './routes/atakRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
+import directRfContactsRoutes from './routes/directRfContactsRoutes.js';
 import beaconOfferRoutes from './routes/beaconOfferRoutes.js';
 import reticulumRoutes from './routes/reticulumRoutes.js';
 // meshcoreConfigFromSource / ensureMeshCoreManagerStarted moved to bootstrapSources.ts
@@ -912,6 +921,7 @@ apiRouter.use('/sources/:id/beacon-offers', beaconOfferRoutes);
 // Network survey (#4726) — nested under `/api/sources/:id/survey`. Read-only
 // synthesis of already-collected data; emits no radio traffic.
 apiRouter.use('/sources/:id/survey', surveyRoutes);
+apiRouter.use('/sources/:id/direct-rf-contacts', directRfContactsRoutes);
 
 // Predictive RF coverage (#4727) — terrain-modelled, read-only, and NOT
 // per-source: the origin and radio parameters come from the request, so this
@@ -1306,6 +1316,16 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
       ]);
     } catch (error) {
       logger.warn('Error flushing MeshCore filter hit counts:', error);
+    }
+
+    // #6210: write coalesced Direct RF Contacts counts before the DB closes.
+    try {
+      await Promise.race([
+        flushDirectRfContacts(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch (error) {
+      logger.warn('Error flushing Direct RF Contacts:', error);
     }
 
     // #5101 P3 WP3: give the transport-traffic writer's final checkpoint up
