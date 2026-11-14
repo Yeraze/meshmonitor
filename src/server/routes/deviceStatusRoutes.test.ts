@@ -67,6 +67,18 @@ describe('GET /device/tx-status', () => {
     expect(res.body.canTransmit).toBe(true);
   });
 
+  // #6181: LoRaConfig.transparent_mode drives the per-source warning banner.
+  it('reports transparentMode true only when the LoRa config sets it', async () => {
+    mockManager.getDeviceConfig.mockResolvedValue({ lora: { transparentMode: true } });
+    expect((await request(app).get('/device/tx-status')).body.transparentMode).toBe(true);
+
+    mockManager.getDeviceConfig.mockResolvedValue({ lora: { transparentMode: false } });
+    expect((await request(app).get('/device/tx-status')).body.transparentMode).toBe(false);
+
+    mockManager.getDeviceConfig.mockResolvedValue({ lora: {} });
+    expect((await request(app).get('/device/tx-status')).body.transparentMode).toBe(false);
+  });
+
   // #4547 Phase 1 WP5: an explicit MeshCore ?sourceId= reports THAT source's
   // receive-only state, not the Meshtastic resolveSourceManager() fallback's.
   describe('MeshCore source (#4547)', () => {

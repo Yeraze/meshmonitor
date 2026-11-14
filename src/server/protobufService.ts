@@ -1120,6 +1120,10 @@ class ProtobufService {
       // firmware that doesn't know field 106. Both local config-set and remote admin set
       // funnel through here, so this covers Device Config and Remote Admin save paths.
       if (config.femLnaMode !== undefined) loraConfigData.femLnaMode = config.femLnaMode;
+      // #6181: transparent_mode (tag 108). Only the local save path sets it,
+      // from the device's own reported value (DeviceAdminService.setLoRaConfig),
+      // so a save keeps it as-is. Remote admin callers strip it before this.
+      if (config.transparentMode !== undefined) loraConfigData.transparentMode = config.transparentMode === true;
 
       logger.debug('LoRa config data being sent to device:', safeJson(loraConfigData, 2));
 

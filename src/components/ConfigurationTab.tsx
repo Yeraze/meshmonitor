@@ -164,6 +164,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
   const [txEnabled, setTxEnabled] = useState<boolean>(true);
   const [overrideDutyCycle, setOverrideDutyCycle] = useState<boolean>(false);
   const [paFanDisabled, setPaFanDisabled] = useState<boolean>(false);
+  // #6181: LoRaConfig.transparent_mode, shown read-only. MeshMonitor never
+  // writes it; the server keeps the device's own value on every LoRa save.
+  const [transparentMode, setTransparentMode] = useState<boolean>(false);
 
   // Position Config State
   const [positionBroadcastSecs, setPositionBroadcastSecs] = useState(900);
@@ -553,6 +556,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
           if (config.deviceConfig.lora.paFanDisabled !== undefined) {
             setPaFanDisabled(config.deviceConfig.lora.paFanDisabled);
           }
+          setTransparentMode(config.deviceConfig.lora.transparentMode === true);
         }
 
         // Populate position config
@@ -1957,6 +1961,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         if (lora.configOkToMqtt !== undefined) setConfigOkToMqtt(lora.configOkToMqtt);
         if (lora.overrideDutyCycle !== undefined) setOverrideDutyCycle(lora.overrideDutyCycle);
         if (lora.paFanDisabled !== undefined) setPaFanDisabled(lora.paFanDisabled);
+        setTransparentMode(lora.transparentMode === true);
       }
 
       // Update Position Config
@@ -2429,6 +2434,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
             setOverrideDutyCycle={setOverrideDutyCycle}
             paFanDisabled={paFanDisabled}
             setPaFanDisabled={setPaFanDisabled}
+            transparentMode={transparentMode}
             isSaving={isSaving}
             onSave={handleSaveLoRaConfig}
           />
