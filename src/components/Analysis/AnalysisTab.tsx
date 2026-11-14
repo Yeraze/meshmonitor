@@ -23,6 +23,7 @@ import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
 import MqttViolationsReport from './MqttViolationsReport';
 import MeshIssuesReport from './MeshIssuesReport';
 import CoverageReport from './CoverageReport';
+import DirectRfContactsReport from './DirectRfContactsReport';
 import TracerouteExplorerReport from './tracerouteExplorer/TracerouteExplorerReport';
 import { parseCoverageDeepLink } from '../../utils/coverageDeepLink';
 import { UiIcon, type UiIconName } from '../icons';
@@ -33,6 +34,7 @@ type AnalysisType =
   | 'mqtt-oktomqtt-violations'
   | 'mesh-issues'
   | 'coverage'
+  | 'direct-rf-contacts'
   | 'traceroute-explorer'
   | null;
 
@@ -98,6 +100,15 @@ const AnalysisTab: React.FC = () => {
         'Map RF receptions of position packets — how far your mesh actually reaches, and how well each receiver hears it. Built from a survey node driving your coverage area, not sent by MeshMonitor.',
       ),
       icon: 'radioSignal',
+    },
+    {
+      id: 'direct-rf-contacts',
+      title: t('analysis.direct_rf.title', 'Direct RF Contacts'),
+      description: t(
+        'analysis.direct_rf.description',
+        'Every node your radio heard directly over RF (zero hops, not via MQTT) in a time window: first and last heard, reception count, signal, and distance. Meshtastic and MeshCore.',
+      ),
+      icon: 'radio',
     },
     {
       id: 'traceroute-explorer',
@@ -166,6 +177,21 @@ const AnalysisTab: React.FC = () => {
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <MeshIssuesReport />
+      </div>
+    );
+  }
+
+  if (selected === 'direct-rf-contacts') {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <DirectRfContactsReport />
       </div>
     );
   }
