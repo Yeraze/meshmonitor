@@ -173,6 +173,7 @@ import {
 } from './services/meshcoreFrameIngest.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
+import { maybeRecordMeshCoreDirectRf } from './services/directRfContactRecorder.js';
 import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops, hopByteForKey } from '../utils/meshcorePath.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, channelEchoKey, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
@@ -3527,6 +3528,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // anything on the mesh.
       if (data?.payload_type === MESHCORE_PAYLOAD_ADVERT) {
         this.recordRecentAdvertHash(data?.raw_hex);
+        // Direct RF Contacts (#6210): a signed zero-hop advert this companion
+        // heard. Adverts are the only frames that name their sender in full.
+        // Receive-only; coalesced in memory; never throws into this path.
+        void maybeRecordMeshCoreDirectRf({
+          sourceId: this.sourceId,
+          localPubKey: this.localNode?.publicKey ?? null,
+          event: data,
+        });
         void maybeRecordMeshCoreCoverageReception({
           sourceId: this.sourceId,
           receiverKind: 'local',

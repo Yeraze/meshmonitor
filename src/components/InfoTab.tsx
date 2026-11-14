@@ -617,7 +617,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             reach. Lives in Info because it describes the local network rather
             than acting on it. */}
         <div className="info-section">
-          <NetworkSurveyPanel sourceId={activeSourceId} />
+          <NetworkSurveyPanel sourceId={activeSourceId} timeFormat={timeFormat} dateFormat={dateFormat} />
         </div>
 
         <div className="info-section">

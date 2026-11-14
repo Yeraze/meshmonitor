@@ -80,6 +80,7 @@ import { useDashboardSources } from '../hooks/useDashboardData';
 import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
 import { ADSB_FEEDS, ADSB_FEED_IDS, DEFAULT_ADSB_FEED, isAdsbFeed } from '../utils/adsbFeeds';
 import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS, isCoverageMqttSourceType } from '../utils/coverage';
+import { clampDirectRfRetentionDays, DIRECT_RF_RETENTION_DEFAULT_DAYS, DIRECT_RF_RETENTION_MAX_DAYS, DIRECT_RF_RETENTION_MIN_DAYS } from '../utils/directRfContacts';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import {
@@ -221,6 +222,9 @@ interface SettingsDraft {
   // Coverage Report retention window, in days (#5277 P1 WP2). Global, no
   // SettingsContext prop home — same Category C pattern as the two above.
   coverageRetentionDays: number;
+  // Direct RF Contacts retention window, in days (#6210). Global, same
+  // Category C pattern as coverageRetentionDays.
+  directRfRetentionDays: number;
   analyticsProvider: string;
   analyticsConfig: Record<string, string>;
   appriseApiServerUrl: string;
@@ -588,6 +592,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     meshcoreCrossSourceHopResolution: false,
     adminRetryAttempts: 1,
     coverageRetentionDays: COVERAGE_RETENTION_DEFAULT_DAYS,
+    directRfRetentionDays: DIRECT_RF_RETENTION_DEFAULT_DAYS,
     analyticsProvider: 'none',
     analyticsConfig: {},
     appriseApiServerUrl: '',
@@ -636,6 +641,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAdminRetryAttempts, setInitialAdminRetryAttempts] = useState(1);
   // Coverage Report retention window (#5277 P1 WP2). Same Category C pattern.
   const [initialCoverageRetentionDays, setInitialCoverageRetentionDays] = useState(COVERAGE_RETENTION_DEFAULT_DAYS);
+  // Direct RF Contacts retention window (#6210). Same Category C pattern.
+  const [initialDirectRfRetentionDays, setInitialDirectRfRetentionDays] = useState(DIRECT_RF_RETENTION_DEFAULT_DAYS);
   const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
   const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
   const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
@@ -810,6 +817,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const coverageRetention = clampCoverageRetentionDays(settings.coverage_retention_days);
           updateField('coverageRetentionDays', coverageRetention);
           setInitialCoverageRetentionDays(coverageRetention);
+          // Direct RF Contacts retention (#6210): default 30, clamped 1-365.
+          const directRfRetention = clampDirectRfRetentionDays(settings.direct_rf_contacts_retention_days);
+          updateField('directRfRetentionDays', directRfRetention);
+          setInitialDirectRfRetentionDays(directRfRetention);
 
           // Load node dimming initial values from server (#4412 Phase 3 WP4(c):
           // the trio now lands on the draft via updateField, like every other
@@ -1105,6 +1116,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       meshcoreCrossSourceHopResolution: initialMeshcoreCrossSourceHopResolution,
       adminRetryAttempts: initialAdminRetryAttempts,
       coverageRetentionDays: initialCoverageRetentionDays,
+      directRfRetentionDays: initialDirectRfRetentionDays,
       analyticsProvider: initialAnalyticsProvider,
       analyticsConfig: parsedAnalyticsConfig,
       appriseApiServerUrl: initialAppriseApiServerUrl,
@@ -1145,7 +1157,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialTxTargetMaxAgeHoursWhenUnlimited,
       initialMeshcoreCliTimeoutSeconds, initialMeshcoreCrossSourceHopResolution, initialAdminRetryAttempts,
-      initialCoverageRetentionDays,
+      initialCoverageRetentionDays, initialDirectRfRetentionDays,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
@@ -1350,6 +1362,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialMeshcoreCrossSourceHopResolution(d.meshcoreCrossSourceHopResolution);
     setInitialAdminRetryAttempts(d.adminRetryAttempts);
     setInitialCoverageRetentionDays(d.coverageRetentionDays);
+    setInitialDirectRfRetentionDays(d.directRfRetentionDays);
     setInitialAnalyticsProvider(d.analyticsProvider);
     setInitialAnalyticsConfig(JSON.stringify(d.analyticsConfig));
     setInitialAppriseApiServerUrl(d.appriseApiServerUrl.trim());
@@ -1445,6 +1458,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         meshcoreCrossSourceHopResolution: draft.meshcoreCrossSourceHopResolution ? '1' : '0',
         adminRetryAttempts: draft.adminRetryAttempts.toString(),
         coverage_retention_days: String(clampCoverageRetentionDays(draft.coverageRetentionDays)),
+        direct_rf_contacts_retention_days: String(clampDirectRfRetentionDays(draft.directRfRetentionDays)),
         nodeHopsCalculation: draft.nodeHopsCalculation,
         nodeDimmingEnabled: draft.nodeDimmingEnabled ? '1' : '0',
         nodeDimmingStartHours: draft.nodeDimmingStartHours.toString(),
@@ -1756,6 +1770,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       updateField('discardInvalidPositions', true);
       updateField('meshcoreChannelRetryEnabled', false);
       updateField('coverageRetentionDays', COVERAGE_RETENTION_DEFAULT_DAYS);
+      updateField('directRfRetentionDays', DIRECT_RF_RETENTION_DEFAULT_DAYS);
 
       // Update parent component with defaults
       onMaxNodeAgeChange(NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours);
@@ -1789,6 +1804,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       // Update initial packet monitor settings
       setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
       setInitialCoverageRetentionDays(COVERAGE_RETENTION_DEFAULT_DAYS);
+      setInitialDirectRfRetentionDays(DIRECT_RF_RETENTION_DEFAULT_DAYS);
 
       showToast(t('settings.reset_success'), 'success');
     } catch (error) {
@@ -3198,6 +3214,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               integer
               value={draft.coverageRetentionDays}
               onChange={(n) => updateField('coverageRetentionDays', n)}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="directRfRetentionDays">
+              {t('settings.direct_rf_retention_days', 'Direct RF Contacts retention (days)')}
+              <span className="setting-description">
+                {t('settings.direct_rf_retention_help', 'How long the Direct RF Contacts history (nodes your radio heard at zero hops over RF) is kept before the hourly sweep deletes it. Lowering this value permanently deletes older days on the next sweep. Range 1-365; default 30.')}
+              </span>
+            </label>
+            <NumberInput
+              id="directRfRetentionDays"
+              min={DIRECT_RF_RETENTION_MIN_DAYS}
+              max={DIRECT_RF_RETENTION_MAX_DAYS}
+              integer
+              value={draft.directRfRetentionDays}
+              onChange={(n) => updateField('directRfRetentionDays', n)}
               className="setting-input"
             />
           </div>

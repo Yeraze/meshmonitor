@@ -27,6 +27,7 @@ import { shouldDiscardPosition } from '../../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 import { isHiddenByPositionlessAdvert, readHidePositionlessAdverts } from '../../utils/meshcoreAdvertPosition';
 import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
+import { DirectRfSection } from '../DirectRfSection';
 import { SignFlipNotice } from '../SignFlipNotice';
 import { MeshCoreNeighboursFetchProgress } from './MeshCoreNeighboursFetchProgress';
 import { MeshCoreTracePathMap } from './MeshCoreTracePathMap';
@@ -1680,6 +1681,10 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       {/* #5765: the same data as full-size charts, one per link direction. */}
       <MeshCoreTraceSnrCharts sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey}
         reloadKey={traceSnrReloadKey} />
+
+      {/* Direct RF (#6210): signed zero-hop adverts this companion heard.
+          Renders nothing without a source or on an error. Sends nothing. */}
+      <DirectRfSection sourceId={sourceId} nodeKey={publicKey} timeFormat={timeFormat} dateFormat={dateFormat} />
 
       {/* Link history (#6262): the shared Meshtastic graph components, fed by the
           MeshCore read-side adapter in the same telemetry endpoints. */}

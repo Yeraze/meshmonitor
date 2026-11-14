@@ -167,6 +167,10 @@ export const VALID_SETTINGS_KEYS = [
   // Report RF-reception log (#5277 P1 WP2). Global, default 7, clamped 1-90
   // (see clampCoverageRetentionDays in src/utils/coverage.ts).
   'coverage_retention_days',
+  // Rolling retention window (days) for direct_rf_contacts, the Direct RF
+  // Contacts daily rollup (#6210). Global, default 30, clamped 1-365 (see
+  // clampDirectRfRetentionDays in src/utils/directRfContacts.ts).
+  'direct_rf_contacts_retention_days',
   // Opt-in MQTT gateway-reception recording for the Coverage Report (#5277
   // P2, per-source, MQTT sources only, default off). Read via
   // getSettingForSource, never the bare key (#5080) — see
@@ -1062,6 +1066,9 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   // Global retention sweep (#5277), read via getSettingAsync by
   // coverageRetentionService — no per-source variant to read.
   'coverage_retention_days',
+  // Global retention sweep (#6210), read via getSettingAsync by
+  // directRfContactsRetentionService.
+  'direct_rf_contacts_retention_days',
   // User-interface preferences (#5558). SettingsTab saves them only on the
   // unscoped POST (they live in GLOBAL_SETTINGS_SECTIONS: appearance, units,
   // sorting) and the server reads them only via getSetting. A source copy used

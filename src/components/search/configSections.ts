@@ -215,7 +215,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-position-estimation', label: t('automation.position_estimation.title', 'Position Estimation'), keywords: ['gps', 'location', 'estimate', 'triangulation'] },
     { id: 'settings-mesh-issues', label: t('automation.mesh_issues.title', 'Mesh Issues Analysis'), keywords: ['diagnostics', 'health', 'problems'] },
     { id: 'settings-auto-enrichment', label: t('automation.auto_enrichment.title', 'Auto-Enrichment'), keywords: ['nodeinfo', 'enrichment', 'fix all', 'schedule', 'cron'] },
-    { id: 'settings-coverage', label: t('settings.coverage_section', 'Coverage Report'), keywords: ['coverage', 'range test', 'retention', 'survey'] },
+    { id: 'settings-coverage', label: t('settings.coverage_section', 'Coverage Report'), keywords: ['coverage', 'range test', 'retention', 'survey', 'direct rf', 'zero hop'] },
     { id: 'settings-coverage-mqtt', label: t('settings.coverage_mqtt_section', 'Coverage recording'), keywords: ['coverage', 'gateway', 'mqtt', 'survey', 'range test', 'observer', 'meshcore'] },
     { id: 'settings-management', label: t('settings.settings_management'), keywords: ['export', 'import', 'reset'] },
     { id: 'settings-danger', label: t('settings.danger_zone'), keywords: ['delete', 'purge', 'wipe', 'reset'] },

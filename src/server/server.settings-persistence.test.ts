@@ -589,6 +589,10 @@ describe('Settings Persistence', () => {
         // adminRetryAttempts above. Read server-side only by
         // coverageRetentionService via the bare-key getSettingAsync.
         'coverage_retention_days',
+        // Direct RF Contacts retention window (#6210) — same pattern as
+        // coverage_retention_days above; read server-side only by
+        // directRfContactsRetentionService.
+        'direct_rf_contacts_retention_days',
         // Likely-aircraft detection (#5364/#5365 Phase 1 WP5) — loaded
         // directly by SettingsTab into its own initial* snapshot (per-source,
         // no SettingsContext hook), same Category C pattern as

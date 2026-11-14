@@ -9,14 +9,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getAllNodes = vi.fn();
-const getDirectNeighborRssiAsync = vi.fn();
+const getContacts = vi.fn();
 const getHopCounts = vi.fn();
 const getSetting = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
     get nodes() { return { getAllNodes }; },
-    get neighbors() { return { getDirectNeighborRssiAsync }; },
+    get directRfContacts() { return { getContacts }; },
     get analysis() { return { getHopCounts }; },
     get settings() {
       return { getSetting, getLocalNodeNumForSource: (id: string) => getSetting(`localNodeNum_${id}`) };
@@ -26,11 +26,29 @@ vi.mock('../../services/database.js', () => ({
 
 import { buildNetworkSurvey, bucketHops, clampWindowHours } from './networkSurveyService.js';
 
+/** A Direct RF Contacts summary row (#6210) as the repository returns it. */
+function contact(nodeNum: number | null, avgRssi: number | null, receptionCount: number, lastHeardAt: number, extra: Record<string, unknown> = {}) {
+  return {
+    nodeKey: nodeNum == null ? 'ab'.repeat(32) : `!${nodeNum.toString(16).padStart(8, '0')}`,
+    nodeNum,
+    protocol: nodeNum == null ? 'meshcore' : 'meshtastic',
+    firstHeardAt: lastHeardAt - 1000,
+    lastHeardAt,
+    receptionCount,
+    bestSnr: null,
+    bestRssi: null,
+    avgSnr: null,
+    avgRssi,
+    daysHeard: 1,
+    ...extra,
+  };
+}
+
 const SRC = 'src-a';
 
 beforeEach(() => {
   getAllNodes.mockReset().mockResolvedValue([]);
-  getDirectNeighborRssiAsync.mockReset().mockResolvedValue(new Map());
+  getContacts.mockReset().mockResolvedValue([]);
   getHopCounts.mockReset().mockResolvedValue({ entries: [] });
   getSetting.mockReset().mockImplementation(async (key: string) => (key === `localNodeNum_${SRC}` ? '1' : null));
 });
@@ -101,11 +119,15 @@ describe('bucketHops', () => {
 });
 
 describe('buildNetworkSurvey', () => {
-  it('scopes the direct-neighbour query to the source', async () => {
-    // The whole point of the repository change: without this the survey
-    // reports packets heard by OTHER radios as this radio's neighbours.
+  it('scopes the direct-neighbour query to the source and the window', async () => {
+    // Without the source scope the survey reports packets heard by OTHER
+    // radios as this radio's neighbours.
+    const before = Date.now();
     await buildNetworkSurvey(SRC, 12);
-    expect(getDirectNeighborRssiAsync).toHaveBeenCalledWith(12, SRC);
+    const arg = getContacts.mock.calls[0][0];
+    expect(arg.sourceId).toBe(SRC);
+    expect(arg.toMs - arg.fromMs).toBe(12 * 3_600_000);
+    expect(arg.toMs).toBeGreaterThanOrEqual(before);
     expect(getHopCounts).toHaveBeenCalledWith({
       sourceIds: [SRC],
       localNodeNums: new Map([[SRC, 1]]),
@@ -154,9 +176,7 @@ describe('buildNetworkSurvey', () => {
     // Review catch on #4737: the longName -> shortName -> null chain had only
     // its first and last links exercised.
     getAllNodes.mockResolvedValue([{ nodeNum: 5, shortName: 'HLTP' }]);
-    getDirectNeighborRssiAsync.mockResolvedValue(new Map([
-      [5, { nodeNum: 5, avgRssi: -80, packetCount: 1, lastHeard: 1 }],
-    ]));
+    getContacts.mockResolvedValue([contact(5, -80, 1, 1000)]);
     expect((await buildNetworkSurvey(SRC)).directNeighbours[0].name).toBe('HLTP');
   });
 
@@ -169,10 +189,7 @@ describe('buildNetworkSurvey', () => {
 
   it('orders direct neighbours strongest-first and resolves names', async () => {
     getAllNodes.mockResolvedValue([{ nodeNum: 7, longName: 'Hilltop' }]);
-    getDirectNeighborRssiAsync.mockResolvedValue(new Map([
-      [7, { nodeNum: 7, avgRssi: -120.44, packetCount: 3, lastHeard: 1 }],
-      [8, { nodeNum: 8, avgRssi: -70.16, packetCount: 9, lastHeard: 2 }],
-    ]));
+    getContacts.mockResolvedValue([contact(7, -120.44, 3, 1000), contact(8, -70.16, 9, 2000)]);
 
     const { directNeighbours } = await buildNetworkSurvey(SRC);
     expect(directNeighbours.map((n) => n.nodeNum)).toEqual([8, 7]);
@@ -184,12 +201,20 @@ describe('buildNetworkSurvey', () => {
   it('sorts a null-RSSI neighbour last rather than to the top', async () => {
     // `(a.avgRssi ?? 0)` would rank an unknown signal above every real one,
     // since real RSSI is negative.
-    getDirectNeighborRssiAsync.mockResolvedValue(new Map([
-      [1, { nodeNum: 1, avgRssi: NaN, packetCount: 1, lastHeard: 1 }],
-      [2, { nodeNum: 2, avgRssi: -95, packetCount: 1, lastHeard: 1 }],
-    ]));
+    getContacts.mockResolvedValue([contact(1, null, 1, 1000), contact(2, -95, 1, 1000)]);
     const { directNeighbours } = await buildNetworkSurvey(SRC);
     expect(directNeighbours.map((n) => n.nodeNum)).toEqual([2, 1]);
+  });
+
+  it('carries first/last heard and the reception count from the rollup (#6210)', async () => {
+    getContacts.mockResolvedValue([contact(9, -88, 42, 5000, { firstHeardAt: 1234 })]);
+    const [n] = (await buildNetworkSurvey(SRC)).directNeighbours;
+    expect(n).toMatchObject({ nodeNum: 9, packetCount: 42, firstHeard: 1234, lastHeard: 5000, avgRssi: -88 });
+  });
+
+  it('leaves MeshCore rows (no nodeNum) out of this Meshtastic survey', async () => {
+    getContacts.mockResolvedValue([contact(null, -70, 3, 1000), contact(4, -90, 1, 1000)]);
+    expect((await buildNetworkSurvey(SRC)).directNeighbours.map((n) => n.nodeNum)).toEqual([4]);
   });
 
   it('reports maxHops from the distribution, null when nothing is answered', async () => {
@@ -213,7 +238,7 @@ describe('buildNetworkSurvey', () => {
 
   it('survives every query failing', async () => {
     getAllNodes.mockRejectedValue(new Error('x'));
-    getDirectNeighborRssiAsync.mockRejectedValue(new Error('y'));
+    getContacts.mockRejectedValue(new Error('y'));
     getHopCounts.mockRejectedValue(new Error('z'));
 
     const survey = await buildNetworkSurvey(SRC);
