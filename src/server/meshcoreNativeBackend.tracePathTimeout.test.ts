@@ -47,7 +47,6 @@ function installMockModule(): void {
       BinaryRequestTypes: { GetTelemetryData: 0x03 },
       TxtTypes: { Plain: 0, CliData: 1, SignedPlain: 2 },
     } as any,
-    CayenneLpp: { parse: () => [] } as any,
     Packet: {} as any,
   });
 }

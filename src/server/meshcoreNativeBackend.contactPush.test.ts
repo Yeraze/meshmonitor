@@ -80,7 +80,6 @@ function installMockModule(): void {
     NodeJSSerialConnection: MockConnection as any,
     TCPConnection: MockConnection as any,
     Constants: { ResponseCodes, PushCodes, AdvType, TxtTypes } as any,
-    CayenneLpp: { parse: () => [] } as any,
     Packet: {} as any,
   });
 }

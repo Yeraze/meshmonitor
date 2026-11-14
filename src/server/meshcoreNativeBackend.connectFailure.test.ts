@@ -80,7 +80,6 @@ function installMockModule(ConnCtor: new () => EventEmitter): void {
       ResponseCodes, PushCodes, StatsTypes, SelfAdvertTypes,
       BinaryRequestTypes, AdvType, TxtTypes,
     },
-    CayenneLpp: { parse: () => [] },
     Packet: {},
   };
   // The real meshcore.js module is untyped; cast through `unknown` (not `any`,

@@ -333,13 +333,6 @@ function installMockModule(MockConn: typeof MockConnection): MockConnection {
       TxtTypes,
       CommandCodes: { SetFloodScope: 54 },
     } as any,
-    CayenneLpp: {
-      parse: (bytes: Uint8Array | number[]) => {
-        // Simple stub: return a single record matching our test fixture.
-        const arr = bytes instanceof Uint8Array ? Array.from(bytes) : bytes;
-        return [{ channel: arr[0], type: arr[1], value: 4.1 }];
-      },
-    } as any,
   });
   // Force the first new(...) to populate lastInstance — but we instead expose
   // a getter so the test can grab whichever was actually constructed.
@@ -1368,7 +1361,7 @@ describe('MeshCoreNativeBackend', () => {
     expect(selfResp.data?.longitude).toBeCloseTo(-74.005974, 5);
   });
 
-  it('decodes request_telemetry response via CayenneLpp.parse', async () => {
+  it('decodes request_telemetry response with the local Cayenne-LPP decoder', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',
       serialPort: '/dev/ttyUSB0',

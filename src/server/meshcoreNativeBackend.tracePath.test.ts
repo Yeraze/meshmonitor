@@ -57,7 +57,6 @@ function installMockModule(): void {
       ResponseCodes, PushCodes, CommandCodes, StatsTypes, SelfAdvertTypes,
       BinaryRequestTypes, AdvType, TxtTypes,
     } as any,
-    CayenneLpp: { parse: () => [] } as any,
     Packet: {} as any,
   });
 }
