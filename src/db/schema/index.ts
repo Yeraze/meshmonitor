@@ -117,6 +117,9 @@ export * from './autoFavoriteTargets.js';
 // Per-source PKI private keys for server-side DM decryption (issue #3441)
 export * from './sourcePkiKeys.js';
 
+// Per-source MQTT-native send identities (issue #4305)
+export * from './mqttNativeIdentities.js';
+
 // Per-source MeshCore Analyzer Observer signing keys (epic #4457)
 export * from './meshcoreObserverKeys.js';
 export * from './meshcoreObserverCredentials.js';

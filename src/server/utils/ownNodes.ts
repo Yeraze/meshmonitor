@@ -23,10 +23,13 @@
 
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager, isReticulumManager } from '../sourceManagerTypes.js';
+import { getMqttNativeNodeNums } from '../services/mqttNative/mqttNativeState.js';
 
 /**
  * Every local node number MeshMonitor currently owns, across all registered
- * sources. Sources with no local identity (MQTT bridges) contribute nothing.
+ * sources. Sources with no local identity (MQTT bridges) contribute nothing,
+ * except the generated node an MQTT source sends as when MQTT-native send has
+ * given it one (#4305).
  */
 export function getOwnNodeNums(): number[] {
   const nums: number[] = [];
@@ -40,6 +43,10 @@ export function getOwnNodeNums(): number[] {
     if (nodeNum == null) continue;
     const n = Number(nodeNum);
     if (Number.isFinite(n) && !nums.includes(n)) nums.push(n);
+  }
+  // #4305: an MQTT source that sends with no radio owns a generated node.
+  for (const n of getMqttNativeNodeNums()) {
+    if (!nums.includes(n)) nums.push(n);
   }
   return nums;
 }

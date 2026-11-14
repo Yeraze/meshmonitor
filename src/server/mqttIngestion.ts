@@ -22,6 +22,8 @@ import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceServ
 import { aircraftAgeOutService } from './services/aircraftAgeOutService.js';
 import databaseService from '../services/database.js';
 import { isBlankMacAddr } from '../utils/nodeFieldBlanks.js';
+import { isMqttNativeEcho } from './services/mqttNative/mqttNativeState.js';
+import { decryptPkiDmToMqttNativeIdentity, isPkiDmToMqttNativeIdentity } from './services/mqttNative/mqttNativeReceive.js';
 
 /**
  * Public Meshtastic channels that ship with the default key. Used to
@@ -203,7 +205,8 @@ export interface MqttIngestionInput {
 
 export interface MqttIngestionResult {
   ingested: boolean;
-  reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'ignored' | 'geo-ignored' | 'distance' | 'decode-error';
+  /** `own-echo`: our own MQTT-native publish coming back on the same source (#4305). */
+  reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'ignored' | 'geo-ignored' | 'distance' | 'decode-error' | 'own-echo';
   portnum?: number;
 }
 
@@ -277,6 +280,21 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
   const { sourceId, envelope, filter } = input;
   const packet = envelope.packet;
   if (!packet) return { ingested: false, reason: 'no-packet' };
+
+  // #4305: a PKI DM addressed to this source's own MQTT-native node (a reply
+  // to a DM we sent). Opened with our private key before channel decrypt.
+  if (!packet.decoded && isPkiDmToMqttNativeIdentity(sourceId, packet)) {
+    const dm = await decryptPkiDmToMqttNativeIdentity(sourceId, packet);
+    if (dm) {
+      (packet as { decoded?: Record<string, unknown> }).decoded = {
+        portnum: dm.portnum,
+        payload: dm.payload,
+        emoji: dm.emoji,
+        replyId: dm.replyId,
+        bitfield: dm.bitfield,
+      };
+    }
+  }
 
   // Server-side channel decryption — mirror the TCP path in
   // `meshtasticManager.processMeshPacket`. Public MQTT brokers republish
@@ -877,6 +895,16 @@ async function recordEnvelopeMqttConsent(input: MqttIngestionInput): Promise<voi
 }
 
 export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<MqttIngestionResult> {
+  // #4305 feedback-loop guard: a packet this same source just published as its
+  // MQTT-native identity, coming back from the broker. It is already stored
+  // (as a sent message) and must not be stored again or re-enter the event
+  // bus. Logged to the packet monitor, nothing else.
+  const echoPacket = input.envelope.packet;
+  if (echoPacket && isMqttNativeEcho(input.sourceId, echoPacket.from, echoPacket.id)) {
+    const echo: MqttIngestionResult = { ingested: false, reason: 'own-echo' };
+    void mqttPacketLogService.logEnvelope(input.sourceId, input.envelope, echo, input.topic, input.localGatewayNodeNum);
+    return echo;
+  }
   const result = await ingestServiceEnvelopeInner(input);
   // #5156: remember the sender's ok_to_mqtt bit on this source, for the opt-in
   // anonymous-viewer filter. Only for packets the node table took; an

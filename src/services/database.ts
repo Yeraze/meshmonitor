@@ -65,6 +65,7 @@ import {
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
   SourcePkiKeysRepository,
+  MqttNativeIdentitiesRepository,
   MeshCoreObserverKeysRepository,
   MeshCoreObserverCredentialsRepository,
   MeshCoreSourcePkiKeysRepository,
@@ -655,6 +656,7 @@ class DatabaseService {
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
   public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
+  public mqttNativeIdentitiesRepo: MqttNativeIdentitiesRepository | null = null;
   public meshcoreObserverKeysRepo: MeshCoreObserverKeysRepository | null = null;
   public meshcoreObserverCredentialsRepo: MeshCoreObserverCredentialsRepository | null = null;
   public meshcoreSourcePkiKeysRepo: MeshCoreSourcePkiKeysRepository | null = null;
@@ -743,6 +745,11 @@ class DatabaseService {
   get sourcePkiKeys(): SourcePkiKeysRepository {
     if (!this.sourcePkiKeysRepo) throw new Error('Database not initialized');
     return this.sourcePkiKeysRepo;
+  }
+
+  get mqttNativeIdentities(): MqttNativeIdentitiesRepository {
+    if (!this.mqttNativeIdentitiesRepo) throw new Error('Database not initialized');
+    return this.mqttNativeIdentitiesRepo;
   }
 
   get meshcoreObserverKeys(): MeshCoreObserverKeysRepository {
@@ -1302,6 +1309,7 @@ class DatabaseService {
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);
       this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
+      this.mqttNativeIdentitiesRepo = new MqttNativeIdentitiesRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreObserverKeysRepo = new MeshCoreObserverKeysRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreObserverCredentialsRepo = new MeshCoreObserverCredentialsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreSourcePkiKeysRepo = new MeshCoreSourcePkiKeysRepository(drizzleDb, this.drizzleDbType);

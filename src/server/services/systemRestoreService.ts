@@ -47,6 +47,8 @@ const MAX_INSERT_ROWS = 500;
 export interface UnreadableSecrets {
   unreadableObserverKeys: string[];
   unreadablePkiKeys: string[];
+  /** #4305: MQTT-native send identities whose private key cannot be opened. */
+  unreadableMqttNativeKeys: string[];
   unreadableObserverCredentials: string[];
   unreadableMeshcoreNodeCredentials: string[];
 }
@@ -338,6 +340,20 @@ class SystemRestoreService {
       );
     }
 
+    const unreadableMqttNativeKeys = await check('mqtt_native_identities', 'MQTT-native send keys', async () => {
+      const store = getSourcePkiKeyStore();
+      return (await databaseService.mqttNativeIdentities.listAll())
+        .filter((row) => store.isEnvelopeRotated(row.encryptedPrivateKey))
+        .map((row) => row.sourceId);
+    });
+    if (unreadableMqttNativeKeys.length > 0) {
+      logger.warn(
+        `⚠️  Restored ${unreadableMqttNativeKeys.length} MQTT-native send key(s) that the current SESSION_SECRET ` +
+          `cannot decrypt (sources: ${unreadableMqttNativeKeys.join(', ')}). The rows were kept. Set ` +
+          'SESSION_SECRET to the value the backup was made under; until then those sources cannot send over MQTT.'
+      );
+    }
+
     const unreadableObserverCredentials = await check(
       'meshcore_observer_credentials',
       'Analyzer Observer broker credentials',
@@ -379,6 +395,7 @@ class SystemRestoreService {
     return {
       unreadableObserverKeys,
       unreadablePkiKeys,
+      unreadableMqttNativeKeys,
       unreadableObserverCredentials,
       unreadableMeshcoreNodeCredentials,
     };

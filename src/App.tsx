@@ -126,6 +126,7 @@ import {
   refreshPollCache,
 } from './hooks/connectionCheck';
 import { useConnectionCheckLoop } from './hooks/useConnectionCheckLoop';
+import { useMqttNativeSendStatus } from './hooks/useMqttNativeSendStatus';
 
 // Icons and helpers are now imported from utils/
 
@@ -379,6 +380,23 @@ function App() {
     nodeAddress,
     setNodeAddress,
   } = useData();
+
+  // MQTT-native send (#4305): an MQTT source with the feature on may send with
+  // no radio, as its own generated node. It then gets the normal composer, its
+  // sends go to the MQTT-native route, and its node id is "our" node id so DM
+  // conversations line up.
+  const mqttNative = useMqttNativeSendStatus(sourceId, isMqtt);
+  const mqttNativeEnabled = isMqtt && !!mqttNative?.enabled;
+  const mqttNativeNodeId = mqttNativeEnabled ? mqttNative?.identity?.nodeId ?? null : null;
+  useEffect(() => {
+    if (!mqttNativeNodeId) return;
+    localNodeIdRef.current = mqttNativeNodeId;
+    setCurrentNodeId(mqttNativeNodeId);
+  }, [mqttNativeNodeId, setCurrentNodeId]);
+  // Endpoint for a text send: the MQTT-native route on an MQTT source, else the radio route.
+  const textSendEndpoint = isMqtt && sourceId
+    ? `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/mqtt/native/send`
+    : `${baseUrl}/api/messages/send`;
 
   // nodes/channels sourced from the poll query cache (#3962 5.4 PR8).
   // queryClient backs the optimistic toggleIgnored/toggleHideFromMap writes
@@ -2357,7 +2375,7 @@ function App() {
     setReplyingTo(null);
 
     try {
-      const response = await authFetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(textSendEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2442,7 +2460,7 @@ function App() {
         };
       }
 
-      const response = await authFetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(textSendEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2801,7 +2819,7 @@ function App() {
     setReplyingTo(null);
 
     try {
-      const response = await authFetch(`${baseUrl}/api/messages/send`, {
+      const response = await authFetch(textSendEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3007,7 +3025,7 @@ function App() {
     try {
       // Use the same endpoint for both DMs and channel messages
       // DMs include a destination parameter, channel messages include a channel parameter
-      const endpoint = `${baseUrl}/api/messages/send`;
+      const endpoint = textSendEndpoint;
       const body = isDM
         ? { text: message.text, destination: destinationNodeId, sourceId: sourceId || undefined }
         : { text: message.text, channel: messageChannel, sourceId: sourceId || undefined };
@@ -3444,7 +3462,7 @@ function App() {
         onNodeClick={isMqtt ? undefined : handleNodeClick}
         sourceName={sourceName}
         onBackToSources={sourceId ? () => navigate('/', { state: { showList: true } }) : undefined}
-        mqttReadOnly={isMqttBridge}
+        mqttReadOnly={isMqttBridge && !mqttNativeEnabled}
         // Quick-status pill (#5616): Meshtastic device sources only, for a
         // signed-in user who may write that source's configuration, while the
         // node is connected.
@@ -3590,7 +3608,7 @@ function App() {
         onSearchClick={() => setIsSearchOpen(true)}
         onConfigSearchClick={() => openConfigSearchRef.current?.()}
         hasReadableVirtualChannels={channelDatabaseEntries.length > 0}
-        mqttReadOnly={isMqttBridge}
+        mqttReadOnly={isMqttBridge && !mqttNativeEnabled}
         hideDeviceConfig={isMqtt}
       />
 
@@ -3906,7 +3924,7 @@ function App() {
             channelMessagesContainerRef={channelMessagesContainerRef}
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
-            mqttReadOnly={isMqttBridge}
+            mqttReadOnly={isMqttBridge && !mqttNativeEnabled}
             txDisabled={txGated}
             txDisabledTooltip={txDisabledTooltip}
           />
@@ -3978,7 +3996,7 @@ function App() {
             dmMessagesContainerRef={dmMessagesContainerRef}
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
-            mqttReadOnly={isMqttBridge}
+            mqttReadOnly={isMqttBridge && !mqttNativeEnabled}
             txDisabled={txGated}
             txDisabledTooltip={txDisabledTooltip}
             toggleIgnored={toggleIgnored}
