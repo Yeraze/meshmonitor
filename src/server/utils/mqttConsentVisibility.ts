@@ -22,7 +22,7 @@
  */
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { ANON_HIDE_MQTT_NO_CONSENT_SETTING, isAnonHideFlagOn } from '../../utils/mqttConsentFilter.js';
+import { ANON_HIDE_MQTT_NO_CONSENT_SETTING, isAnonHideFlagOn, isMqttConsentFilterSourceType } from '../../utils/mqttConsentFilter.js';
 
 export { ANON_HIDE_MQTT_NO_CONSENT_SETTING, isAnonHideFlagOn };
 
@@ -140,9 +140,13 @@ export async function loadMqttConsentHiddenSet(
   if (!isAnonymousViewer(user)) return NO_HIDDEN_NODES;
   let enabled: string[];
   try {
-    const ids = sourceIds
-      ? [...new Set(sourceIds)]
-      : (await databaseService.sources.getAllSources()).map((s: { id: string }) => s.id);
+    // Only Meshtastic-family sources carry ok_to_mqtt; the flag on any other
+    // source type (set directly through the API) is ignored server-side too.
+    const all: Array<{ id: string; type?: string | null }> = await databaseService.sources.getAllSources();
+    const wanted = sourceIds ? new Set(sourceIds) : null;
+    const ids = all
+      .filter((s) => (!wanted || wanted.has(s.id)) && isMqttConsentFilterSourceType(s.type))
+      .map((s) => s.id);
     if (ids.length === 0) return NO_HIDDEN_NODES;
     const flags = await databaseService.settings.getSettingForSources(ids, ANON_HIDE_MQTT_NO_CONSENT_SETTING);
     enabled = ids.filter((id) => isAnonHideFlagOn(flags.get(id)));

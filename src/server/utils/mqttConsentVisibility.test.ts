@@ -135,6 +135,22 @@ describe('loadMqttConsentHiddenSet (real DB)', () => {
     expect(await loadMqttConsentHiddenSet(SIGNED_IN, [SRC_A])).toBe(NO_HIDDEN_NODES);
   });
 
+  it('ignores the flag on a non-Meshtastic source, even when its node read fails', async () => {
+    const MC = 'mqtt-consent-mc-src';
+    await databaseService.sources.deleteSource(MC).catch(() => {});
+    await databaseService.sources.createSource({ id: MC, name: MC, type: 'meshcore', config: {}, enabled: true });
+    await databaseService.settings.setSourceSetting(MC, ANON_HIDE_MQTT_NO_CONSENT_SETTING, '1');
+    const spy = vi.spyOn(databaseService.nodes, 'getMqttConsentWithheldNodeNums').mockRejectedValue(new Error('down'));
+    try {
+      const set = await loadMqttConsentHiddenSet(ANON, [MC]);
+      expect(set).toBe(NO_HIDDEN_NODES);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+      await databaseService.sources.deleteSource(MC).catch(() => {});
+    }
+  });
+
   it('loadNodeViewAccess carries the set: canViewNode refuses the node only with its number', async () => {
     await databaseService.settings.setSourceSetting(SRC_A, ANON_HIDE_MQTT_NO_CONSENT_SETTING, '1');
     // The anonymous row is seeded fire-and-forget at startup; wait for it.
