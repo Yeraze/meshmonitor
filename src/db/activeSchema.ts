@@ -247,6 +247,9 @@ import {
   sourcePkiKeysSqlite, sourcePkiKeysPostgres, sourcePkiKeysMysql,
 } from './schema/sourcePkiKeys.js';
 import {
+  mqttNativeIdentitiesSqlite, mqttNativeIdentitiesPostgres, mqttNativeIdentitiesMysql,
+} from './schema/mqttNativeIdentities.js';
+import {
   meshcoreObserverKeysSqlite, meshcoreObserverKeysPostgres, meshcoreObserverKeysMysql,
 } from './schema/meshcoreObserverKeys.js';
 import {
@@ -474,6 +477,9 @@ export interface ActiveSchema {
   // Per-source PKI private keys for DM decryption (issue #3441)
   sourcePkiKeys: any;
 
+  // Per-source MQTT-native send identities (issue #4305)
+  mqttNativeIdentities: any;
+
   // Per-source MeshCore Analyzer Observer signing keys (epic #4457)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4457 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   meshcoreObserverKeys: any;
@@ -605,6 +611,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsSqlite,
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
     sourcePkiKeys: sourcePkiKeysSqlite,
+    mqttNativeIdentities: mqttNativeIdentitiesSqlite,
     meshcoreObserverKeys: meshcoreObserverKeysSqlite,
     meshcoreSourcePkiKeys: meshcoreSourcePkiKeysSqlite,
     meshcoreObserverCredentials: meshcoreObserverCredentialsSqlite,
@@ -703,6 +710,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsPostgres,
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
     sourcePkiKeys: sourcePkiKeysPostgres,
+    mqttNativeIdentities: mqttNativeIdentitiesPostgres,
     meshcoreObserverKeys: meshcoreObserverKeysPostgres,
     meshcoreSourcePkiKeys: meshcoreSourcePkiKeysPostgres,
     meshcoreObserverCredentials: meshcoreObserverCredentialsPostgres,
@@ -801,6 +809,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsMysql,
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
     sourcePkiKeys: sourcePkiKeysMysql,
+    mqttNativeIdentities: mqttNativeIdentitiesMysql,
     meshcoreObserverKeys: meshcoreObserverKeysMysql,
     meshcoreSourcePkiKeys: meshcoreSourcePkiKeysMysql,
     meshcoreObserverCredentials: meshcoreObserverCredentialsMysql,

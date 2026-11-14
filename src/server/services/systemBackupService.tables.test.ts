@@ -194,6 +194,7 @@ describe('tables that hold secrets are named, with what protects them', () => {
       'meshcore_nodes',
       'meshcore_observer_credentials',
       'meshcore_observer_keys',
+      'mqtt_native_identities',
       'source_pki_keys',
     ]);
   });

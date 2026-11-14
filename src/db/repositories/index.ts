@@ -102,6 +102,8 @@ export { AutoFavoriteTargetsRepository } from './autoFavoriteTargets.js';
 export type { AutoFavoriteTargetInput } from './autoFavoriteTargets.js';
 export { SourcePkiKeysRepository } from './sourcePkiKeys.js';
 export type { DbSourcePkiKey } from './sourcePkiKeys.js';
+export { MqttNativeIdentitiesRepository } from './mqttNativeIdentities.js';
+export type { DbMqttNativeIdentity } from './mqttNativeIdentities.js';
 export { MeshCoreObserverKeysRepository } from './meshcoreObserverKeys.js';
 export type { DbMeshCoreObserverKey } from './meshcoreObserverKeys.js';
 export { MeshCoreObserverCredentialsRepository } from './meshcoreObserverCredentials.js';

@@ -252,6 +252,7 @@ import { migration as addNotifyOnAutoTraceMigration, runMigration232Postgres, ru
 import { migration as createDirectRfContactsMigration, runMigration233Postgres, runMigration233Mysql } from '../server/migrations/233_create_direct_rf_contacts.js';
 import { migration as addNodeMqttConsentMigration, runMigration234Postgres, runMigration234Mysql } from '../server/migrations/234_add_node_mqtt_consent.js';
 import { migration as unifiedNotificationScopeMigration, runMigration235Postgres, runMigration235Mysql } from '../server/migrations/235_unified_notification_scope.js';
+import { migration as createMqttNativeIdentitiesMigration, runMigration236Postgres, runMigration236Mysql } from '../server/migrations/236_create_mqtt_native_identities.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
@@ -3786,4 +3787,19 @@ registry.register({
   sqlite: (db) => unifiedNotificationScopeMigration.up(db),
   postgres: (client) => runMigration235Postgres(client),
   mysql: (pool) => runMigration235Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 236: `mqtt_native_identities` (#4305). PER-SOURCE. The generated
+// Meshtastic identity (node num + X25519 keypair, private key sealed) of an
+// MQTT source that sends with no radio, plus its persisted send state.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 236,
+  name: 'create_mqtt_native_identities',
+  settingsKey: 'migration_236_create_mqtt_native_identities',
+  sqlite: (db) => createMqttNativeIdentitiesMigration.up(db),
+  postgres: (client) => runMigration236Postgres(client),
+  mysql: (pool) => runMigration236Mysql(pool),
 });
