@@ -73,6 +73,8 @@ export interface SourceStatus {
    * connect clears it.
    */
   authStopped?: boolean;
+  /** Embedded MeshCore MQTT broker (#6197): observers connected right now. */
+  clientCount?: number;
   /**
    * MQTT bridge only: how many per-gateway publishers gave up the same way.
    * The bridge itself can still be connected.

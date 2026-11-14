@@ -8685,5 +8685,7 @@
   "source.form.mcb_token_audience": "Token audience",
   "source.form.mcb_token_audience_help": "The audience observers sign their token for. Leave blank to turn token logins off.",
   "source.form.mcb_username": "Static username (optional)",
-  "source.form.type_meshcore_mqtt_broker": "MeshCore MQTT broker (observers connect here, no radio)"
+  "source.form.type_meshcore_mqtt_broker": "MeshCore MQTT broker (observers connect here, no radio)",
+  "meshcore.broker.card_badge": "{{count}} obs",
+  "meshcore.broker.card_badge_title": "Observers connected to this broker"
 }
