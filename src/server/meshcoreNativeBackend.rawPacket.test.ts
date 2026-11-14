@@ -40,7 +40,6 @@ async function connected(fwVer = 14) {
     NodeJSSerialConnection: MockConnection as any,
     TCPConnection: MockConnection as any,
     Constants: { ResponseCodes, PushCodes: {}, AdvType: {}, TxtTypes: {} } as any,
-    CayenneLpp: { parse: () => [] } as any,
     Packet: {} as any,
   });
   const backend = new MeshCoreNativeBackend('src-raw', { connectionType: 'serial', serialPort: '/dev/ttyUSB0' });

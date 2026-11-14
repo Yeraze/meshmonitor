@@ -165,7 +165,8 @@ const LPP_TYPE_NAMES: Record<number, { type: string; unit?: string }> = {
   125: { type: 'concentration', unit: 'ppm' },
   128: { type: 'power', unit: 'W' },
   130: { type: 'distance', unit: 'm' },
-  131: { type: 'energy', unit: 'Wh' },
+  // LPP energy is u32 in 0.001 kWh steps; parseCayenneLpp divides by 1000, so kWh.
+  131: { type: 'energy', unit: 'kWh' },
   133: { type: 'time', unit: 's' },
 };
 

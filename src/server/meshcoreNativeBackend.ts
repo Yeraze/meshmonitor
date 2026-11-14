@@ -109,7 +109,6 @@ interface MeshCoreJsModule {
     AdvType: { None: number; Chat: number; Repeater: number; Room: number };
     TxtTypes: { Plain: number; CliData: number; SignedPlain: number };
   };
-  CayenneLpp: { parse: (bytes: Uint8Array | number[]) => Array<{ channel: number; type: number; value: any }> };
   /** OTA packet parser used to recover relay-hash chains from LogRxData. */
   Packet: {
     PAYLOAD_TYPE_TXT_MSG: number;

@@ -50,7 +50,6 @@ function installMockModule(): void {
       BinaryRequestTypes: { GetTelemetryData: 0x03 },
       AdvType: { None: 0, Chat: 1, Repeater: 2, Room: 3 },
     } as any,
-    CayenneLpp: { parse: () => [] } as any,
     Packet: Packet as any,
   });
 }
