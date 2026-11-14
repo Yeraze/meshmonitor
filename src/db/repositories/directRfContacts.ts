@@ -166,7 +166,10 @@ export class DirectRfContactsRepository extends BaseRepository {
       if (this.getAffectedRows(result) > 0) return;
       // Lost a race to another writer's insert: merge into its row instead.
       existing = await findExisting();
-      if (!existing) return; // insert failed for a reason other than a duplicate; drop this batch
+      // A lost race always finds the winner's row above and merges into it.
+      // Reaching here means the insert failed with no row present (not a
+      // duplicate), so there is nothing to merge into; drop this batch.
+      if (!existing) return;
     }
 
     await this.db.update(t).set({
@@ -280,6 +283,7 @@ export class DirectRfContactsRepository extends BaseRepository {
     return this.getAffectedRows(result);
   }
 
+  /** Unscoped on purpose: only the admin global purge (`purgeAllNodesAsync` with no sourceId) calls this. */
   async deleteAll(): Promise<number> {
     const { directRfContacts: t } = this.tables;
     const result = await this.db.delete(t);

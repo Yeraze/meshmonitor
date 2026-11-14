@@ -92,6 +92,30 @@ describe('GET /api/sources/:id/direct-rf-contacts', () => {
     expect(res.body.data.contacts[0].distanceKm).toBeNull();
   });
 
+  it('names MeshCore contacts and computes distance from the local companion', async () => {
+    const MC_LOCAL = 'a1'.repeat(32);
+    const MC_PEER = 'b2'.repeat(32);
+    await databaseService.meshcore.upsertNode(
+      { publicKey: MC_LOCAL, name: 'MC Local', isLocalNode: true, latitude: 30.0, longitude: -95.0 },
+      harness.sourceA,
+    );
+    await databaseService.meshcore.upsertNode(
+      { publicKey: MC_PEER, name: 'MC Peer', latitude: 30.1, longitude: -95.0 },
+      harness.sourceA,
+    );
+    await databaseService.directRfContacts.applyDelta(
+      delta(harness.sourceA, 0, { protocol: 'meshcore', nodeKey: MC_PEER, nodeNum: null }),
+    );
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get(url(harness.sourceA));
+    expect(res.status).toBe(200);
+    const [row] = res.body.data.contacts;
+    expect(row).toMatchObject({ protocol: 'meshcore', nodeKey: MC_PEER, nodeNum: null, name: 'MC Peer' });
+    expect(row.distanceKm).toBeGreaterThan(10);
+    expect(row.distanceKm).toBeLessThan(12);
+  });
+
   it('reads only its own source', async () => {
     await databaseService.directRfContacts.applyDelta(delta(harness.sourceA, NODE_A));
     await databaseService.directRfContacts.applyDelta(delta(harness.sourceB, NODE_A, { count: 9 }));

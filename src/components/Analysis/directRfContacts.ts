@@ -70,6 +70,8 @@ export function resolveWindow(
 ): { from: number; to: number } | null {
   if (preset !== 'custom') return { from: nowMs - PRESET_MS[preset], to: nowMs };
   if (!customFrom || !customTo) return null;
+  // Local midnight on purpose: users pick dates in their own timezone. Rows
+  // are UTC-day buckets, so an edge day may count in full.
   const from = new Date(`${customFrom}T00:00:00`).getTime();
   const to = new Date(`${customTo}T23:59:59.999`).getTime();
   if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) return null;
