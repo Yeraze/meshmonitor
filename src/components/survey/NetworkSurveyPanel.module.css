@@ -76,6 +76,12 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
+/* #6210: keep short cells on one line in the narrow Info card; only the
+   date/time cells may break, and only between date and time. */
+.noWrap {
+  white-space: nowrap;
+}
+
 .surveyHops {
   list-style: none;
   margin: 0;

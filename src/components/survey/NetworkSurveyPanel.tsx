@@ -167,9 +167,9 @@ export default function NetworkSurveyPanel({
             <table className={styles.surveyTable}>
               <thead>
                 <tr>
-                  <th>{t('survey.node')}</th>
-                  <th>{t('survey.rssi')}</th>
-                  <th>{t('survey.packets')}</th>
+                  <th className={styles.noWrap}>{t('survey.node')}</th>
+                  <th className={styles.noWrap}>{t('survey.rssi')}</th>
+                  <th className={styles.noWrap}>{t('survey.packets')}</th>
                   <th>{t('survey.first_heard')}</th>
                   <th>{t('survey.last_heard')}</th>
                 </tr>
@@ -177,9 +177,9 @@ export default function NetworkSurveyPanel({
               <tbody>
                 {survey.directNeighbours.map((n) => (
                   <tr key={n.nodeNum} data-testid={`survey-neighbour-${n.nodeNum}`}>
-                    <td>{nodeLabel(n)}</td>
-                    <td>{n.avgRssi == null ? '—' : `${n.avgRssi} dBm`}</td>
-                    <td>{n.packetCount}</td>
+                    <td className={styles.noWrap}>{nodeLabel(n)}</td>
+                    <td className={styles.noWrap}>{n.avgRssi == null ? '—' : `${n.avgRssi} dBm`}</td>
+                    <td className={styles.noWrap}>{n.packetCount}</td>
                     <td data-testid={`survey-neighbour-${n.nodeNum}-first`}>{when(n.firstHeard)}</td>
                     <td data-testid={`survey-neighbour-${n.nodeNum}-last`}>{when(n.lastHeard)}</td>
                   </tr>
