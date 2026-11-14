@@ -18,6 +18,7 @@ import { MeshtasticContactShare } from './MeshtasticContactShare';
 import { NodeSkyView } from './gnss/NodeSkyView';
 import { Firmware28SilenceNotice } from './Firmware28SilenceNotice';
 import { ShowCoverageLink } from './Analysis/ShowCoverageLink';
+import { DirectRfSection } from './DirectRfSection';
 import { RemoteAdminLink } from './RemoteAdminLink';
 import { formatAircraftSummary } from '../utils/aircraftClassification';
 import { SignFlipNotice } from './SignFlipNotice';
@@ -846,6 +847,10 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             dateFormat={dateFormat}
           />
         )}
+
+        {/* Direct RF (#6210): zero-hop RF receptions by this source's radio.
+            Renders nothing without a source or on an error. Sends nothing. */}
+        <DirectRfSection sourceId={sourceId} nodeKey={node.user?.id ?? null} timeFormat={timeFormat} dateFormat={dateFormat} />
 
         {/* Name history (#5862) — renders nothing until the node is renamed. */}
         <NodeNameHistory

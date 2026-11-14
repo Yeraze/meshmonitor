@@ -1,0 +1,61 @@
+/* Direct RF section on the node detail pages (#6210). Scoped module. */
+
+.section {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-bg-raised);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.4rem 0.75rem;
+  margin: 0;
+}
+
+.stats dt {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.stats dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.9rem;
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 0.5rem;
+}
+
+.bar {
+  fill: var(--color-accent);
+}
+
+.barEmpty {
+  fill: var(--color-border-subtle);
+}
+
+.sparkCaption {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  color: var(--color-text-faint);
+}

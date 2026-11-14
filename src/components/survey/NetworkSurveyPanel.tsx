@@ -15,6 +15,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { UiIcon } from '../icons/UiIcon';
+import { formatDateTime } from '../../utils/datetime';
+import type { TimeFormat, DateFormat } from '../../contexts/SettingsContext';
 import { nodeLabel } from './nodeLabel';
 import styles from './NetworkSurveyPanel.module.css';
 
@@ -23,6 +25,8 @@ export interface DirectNeighbour {
   name: string | null;
   avgRssi: number | null;
   packetCount: number;
+  /** ms; absent on a response from before #6210. */
+  firstHeard?: number;
   lastHeard: number;
 }
 
@@ -56,6 +60,8 @@ export interface NetworkSurveyPanelProps {
   sourceId?: string | null;
   /** Window options offered to the user, in hours. */
   windowOptions?: number[];
+  timeFormat?: TimeFormat;
+  dateFormat?: DateFormat;
 }
 
 const DEFAULT_WINDOWS = [1, 6, 24, 24 * 7];
@@ -63,8 +69,11 @@ const DEFAULT_WINDOWS = [1, 6, 24, 24 * 7];
 export default function NetworkSurveyPanel({
   sourceId,
   windowOptions = DEFAULT_WINDOWS,
+  timeFormat = '24',
+  dateFormat = 'MM/DD/YYYY',
 }: NetworkSurveyPanelProps) {
   const { t } = useTranslation();
+  const when = (ms: number | undefined) => (ms ? formatDateTime(new Date(ms), timeFormat, dateFormat) : '—');
   const [survey, setSurvey] = useState<NetworkSurvey | null>(null);
   const [hours, setHours] = useState(24);
   const [loading, setLoading] = useState(false);
@@ -155,24 +164,30 @@ export default function NetworkSurveyPanel({
               {t('survey.no_neighbours')}
             </p>
           ) : (
+            <div className={styles.surveyTableWrap}>
             <table className={styles.surveyTable}>
               <thead>
                 <tr>
-                  <th>{t('survey.node')}</th>
-                  <th>{t('survey.rssi')}</th>
-                  <th>{t('survey.packets')}</th>
+                  <th className={styles.noWrap}>{t('survey.node')}</th>
+                  <th className={styles.noWrap}>{t('survey.rssi')}</th>
+                  <th className={styles.noWrap}>{t('survey.packets')}</th>
+                  <th>{t('survey.first_heard')}</th>
+                  <th>{t('survey.last_heard')}</th>
                 </tr>
               </thead>
               <tbody>
                 {survey.directNeighbours.map((n) => (
                   <tr key={n.nodeNum} data-testid={`survey-neighbour-${n.nodeNum}`}>
-                    <td>{nodeLabel(n)}</td>
-                    <td>{n.avgRssi == null ? '—' : `${n.avgRssi} dBm`}</td>
-                    <td>{n.packetCount}</td>
+                    <td className={styles.noWrap}>{nodeLabel(n)}</td>
+                    <td className={styles.noWrap}>{n.avgRssi == null ? '—' : `${n.avgRssi} dBm`}</td>
+                    <td className={styles.noWrap}>{n.packetCount}</td>
+                    <td data-testid={`survey-neighbour-${n.nodeNum}-first`}>{when(n.firstHeard)}</td>
+                    <td data-testid={`survey-neighbour-${n.nodeNum}-last`}>{when(n.lastHeard)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           )}
 
           <h4>{t('survey.reach')}</h4>

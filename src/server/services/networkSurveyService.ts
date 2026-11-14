@@ -2,7 +2,8 @@
  * Network survey (#4726) — "what can this radio actually reach?"
  *
  * **Passive by design.** Every figure below is synthesized from data the app
- * has already collected: `packet_log` for what was heard directly, traceroutes
+ * has already collected: the `direct_rf_contacts` daily rollup (#6210) for
+ * what was heard directly (it outlives the Packet Monitor log), traceroutes
  * for how far the mesh extends, `nodes` for who exists. The survey generates
  * **no radio traffic at all**.
  *
@@ -32,6 +33,9 @@ export interface DirectNeighbourSummary {
   name: string | null;
   avgRssi: number | null;
   packetCount: number;
+  /** ms: first direct reception in the window (#6210). */
+  firstHeard: number;
+  /** ms: last direct reception in the window. */
   lastHeard: number;
 }
 
@@ -165,14 +169,25 @@ export async function buildNetworkSurvey(
   }
 
   try {
-    const stats = await databaseService.neighbors.getDirectNeighborRssiAsync(windowHours, sourceId);
-    survey.directNeighbours = Array.from(stats.values())
-      .map((s) => ({
-        nodeNum: s.nodeNum,
-        name: nameFor.get(s.nodeNum) ?? null,
-        avgRssi: Number.isFinite(s.avgRssi) ? Math.round(s.avgRssi * 10) / 10 : null,
-        packetCount: Number(s.packetCount),
-        lastHeard: Number(s.lastHeard),
+    // The Direct RF Contacts rollup (#6210), not packet_log: it keeps 30 days
+    // by default whether or not the Packet Monitor is on, and counts only
+    // live zero-hop RF receptions (via_mqtt excluded). It is a daily rollup,
+    // so a window edge that cuts a UTC day counts that whole day. Meshtastic
+    // rows only (they carry a nodeNum): this survey is Meshtastic-scoped.
+    const contacts = await databaseService.directRfContacts.getContacts({
+      sourceId,
+      fromMs: cutoff,
+      toMs: generatedAt,
+    });
+    survey.directNeighbours = contacts
+      .filter((c): c is typeof c & { nodeNum: number } => c.protocol === 'meshtastic' && c.nodeNum != null)
+      .map((c) => ({
+        nodeNum: c.nodeNum,
+        name: nameFor.get(c.nodeNum) ?? null,
+        avgRssi: c.avgRssi != null && Number.isFinite(c.avgRssi) ? Math.round(c.avgRssi * 10) / 10 : null,
+        packetCount: c.receptionCount,
+        firstHeard: c.firstHeardAt,
+        lastHeard: c.lastHeardAt,
       }))
       // Strongest first. RSSI is negative, so a larger value is better; nulls
       // sort last rather than to the top, which `??  0` would do.

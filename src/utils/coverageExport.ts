@@ -72,7 +72,7 @@ const CSV_COLUMNS: ExportColumn[] = [
  */
 const FORMULA_TRIGGER_RE = /^[=+\-@\t\r]/;
 
-function guardFormulaInjection(value: string): string {
+export function guardFormulaInjection(value: string): string {
   return FORMULA_TRIGGER_RE.test(value) ? `'${value}` : value;
 }
 

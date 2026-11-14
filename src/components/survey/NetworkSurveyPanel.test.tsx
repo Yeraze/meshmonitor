@@ -184,6 +184,21 @@ describe('NetworkSurveyPanel', () => {
     expect(row.textContent).not.toContain('0 dBm');
   });
 
+  it('shows first and last heard from the Direct RF rollup (#6210)', async () => {
+    const first = new Date(2026, 0, 2, 3, 4).getTime();
+    const last = new Date(2026, 0, 5, 6, 7).getTime();
+    renderPanel(survey({
+      directNeighbours: [{ nodeNum: 0xaabbccdd, name: 'Hilltop', avgRssi: -72.5, packetCount: 40, firstHeard: first, lastHeard: last }],
+    }));
+    expect((await screen.findByTestId('survey-neighbour-2864434397-first')).textContent).toContain('01/02/2026');
+    expect(screen.getByTestId('survey-neighbour-2864434397-last').textContent).toContain('01/05/2026');
+  });
+
+  it('shows an em dash for first heard on a response from before #6210', async () => {
+    renderPanel(survey());
+    expect((await screen.findByTestId('survey-neighbour-2864434397-first')).textContent).toBe('—');
+  });
+
   it('distinguishes a failed query from an empty mesh', async () => {
     pendingFailures = Number.MAX_SAFE_INTEGER; // every attempt fails
     render(<NetworkSurveyPanel sourceId="src-a" />);

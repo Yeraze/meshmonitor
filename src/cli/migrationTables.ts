@@ -85,6 +85,9 @@ export const TABLE_ORDER = [
   // rxSourceId, no single sourceId, no FKs). Regenerable, but migrated like
   // coverage_receptions so a backend move keeps the map edges.
   'cross_source_links',
+  // 6210: daily per-source direct RF contact rollup (sourceId, no FKs).
+  // Long-retention history the report reads, so migrate it with the data.
+  'direct_rf_contacts',
   // 4114: durable ok_to_mqtt violation history (sourceId, no FKs). Deliberately
   // migrated — unlike the transient packet logs above, this table is long-retention
   // history (90d) that the Analysis report reads, so dropping it on a backend

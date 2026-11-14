@@ -170,6 +170,8 @@ export const BACKUP_TABLES: string[] = [
   'meshcore_hop_snr',
   // #6276: attempt log of MeshCore traces sent (answered, timeout, failed).
   'meshcore_trace_runs',
+  // #6210: daily rollup of nodes heard directly over RF (reception history).
+  'direct_rf_contacts',
   // #5862: node rename history (names the nodes broadcast).
   'node_name_history',
   // #5794: saved MQTT broker presets (admin-curated; holds broker logins).

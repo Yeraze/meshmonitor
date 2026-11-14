@@ -81,6 +81,7 @@ import {
   PasskeysRepository,
   CoverageReceptionsRepository,
   CrossSourceLinksRepository,
+  DirectRfContactsRepository,
   CoverageSurveysRepository,
   TranslationsRepository,
   AircraftFlightMatchesRepository,
@@ -664,6 +665,7 @@ class DatabaseService {
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
   public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
+  public directRfContactsRepo: DirectRfContactsRepository | null = null;
   public translationsRepo: TranslationsRepository | null = null;
   public aircraftFlightMatchesRepo: AircraftFlightMatchesRepository | null = null;
   public meshcoreFiltersRepo: MeshCoreFiltersRepository | null = null;
@@ -815,6 +817,11 @@ class DatabaseService {
   get crossSourceLinks(): CrossSourceLinksRepository {
     if (!this.crossSourceLinksRepo) throw new Error('Database not initialized');
     return this.crossSourceLinksRepo;
+  }
+
+  get directRfContacts(): DirectRfContactsRepository {
+    if (!this.directRfContactsRepo) throw new Error('Database not initialized');
+    return this.directRfContactsRepo;
   }
 
   get coverageSurveys(): CoverageSurveysRepository {
@@ -1305,6 +1312,7 @@ class DatabaseService {
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
       this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);
+      this.directRfContactsRepo = new DirectRfContactsRepository(drizzleDb, this.drizzleDbType);
       this.translationsRepo = new TranslationsRepository(drizzleDb, this.drizzleDbType);
       this.aircraftFlightMatchesRepo = new AircraftFlightMatchesRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreFiltersRepo = new MeshCoreFiltersRepository(drizzleDb, this.drizzleDbType);
@@ -4071,6 +4079,20 @@ class DatabaseService {
           }
         } catch (err) {
           logger.error('Failed to purge cross-source links during purge:', err);
+        }
+      }
+
+      // Direct RF Contacts (#6210): per-source reception history, cleared on
+      // a purge or a source delete like the coverage receptions above.
+      if (this.directRfContactsRepo) {
+        try {
+          if (sourceId) {
+            await this.directRfContactsRepo.deleteForSource(sourceId);
+          } else {
+            await this.directRfContactsRepo.deleteAll();
+          }
+        } catch (err) {
+          logger.error('Failed to purge direct RF contacts during purge:', err);
         }
       }
 
