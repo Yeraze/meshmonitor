@@ -177,7 +177,9 @@ describe('per-source settings key allowlist invariants', () => {
     // retry/cooldown state, server-written per-source JSON blob).
     // #6306 added newNodeAlertLearnUntil + newNodeAlertRate (new-node alert gate).
     // #6282 added meshcoreSenderNameOverride (per-source sender-name allowlist).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(38);
+    // #4305 added the 8 mqttNative* keys (MQTT-native send; written only by
+    // PUT /api/sources/:id/mqtt/native, which clamps the limits).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(46);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is

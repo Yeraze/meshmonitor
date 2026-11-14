@@ -351,6 +351,10 @@ setTimeout(async () => {
     installNodeNameLocalResolver(sourceManagerRegistry);
     await reloadNodeNameSanitizer().catch((err) => logger.warn('Failed to load node-name sanitizer settings:', err));
 
+    // MQTT-native send (#4305): learn our generated node ids before any source
+    // ingests a packet, so the self-origin guard knows them from the start.
+    await primeMqttNativeIdentityCache();
+
     // Bootstrap all enabled sources (auto-creating a Default source from env
     // only when none exist AND MESHTASTIC_NODE_IP was explicitly set).
     // Extracted into bootstrapSources() for testability — see WP1 of issue
@@ -400,6 +404,11 @@ setTimeout(async () => {
     // Initialize database maintenance service
     databaseMaintenanceService.initialize();
     logger.debug('Database maintenance service initialized');
+
+    // MQTT-native send (#4305): arm the NodeInfo cadence. The scheduler's first check runs
+    // a full minute after start and is due-based on the persisted last-sent
+    // time, so a restart is never a trigger.
+    startMqttNativeNodeInfoScheduler();
 
     // Initialize position estimation scheduler (global, batch — issue #3271)
     positionEstimationScheduler.initialize();
@@ -737,6 +746,9 @@ import meshtasticAdminRoutes from './routes/meshtasticAdminRoutes.js';
 import { unifiedCliHistoryRouter } from './routes/meshcoreCliHistoryRoutes.js';
 import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
+import mqttNativeRoutes from './routes/mqttNativeRoutes.js';
+import { primeMqttNativeIdentityCache } from './services/mqttNative/mqttNativeIdentity.js';
+import { startMqttNativeNodeInfoScheduler, stopMqttNativeNodeInfoScheduler } from './services/mqttNative/mqttNativeNodeInfoScheduler.js';
 import forwardingRoutes from './routes/forwardingRoutes.js';
 import atakRoutes from './routes/atakRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
@@ -904,6 +916,9 @@ apiRouter.use('/sources/:id/meshtastic', meshtasticAdminRoutes);
 // a source is disconnected or reconfigured. See
 // docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md §2.11/§2.12.
 apiRouter.use('/sources/:id/mqtt/packets', mqttPacketRoutes);
+
+// MQTT-native ("nodeless") send (#4305) — per-source, MQTT sources only.
+apiRouter.use('/sources/:id/mqtt/native', mqttNativeRoutes);
 
 // Message Forwarding rules (#5446) — per-source, Meshtastic + MeshCore.
 apiRouter.use('/sources/:id/forwarding', forwardingRoutes);
@@ -1299,6 +1314,7 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
 
     aircraftAgeOutScheduler.shutdown();
     translationCacheService.stop();
+    stopMqttNativeNodeInfoScheduler();
 
     // Disconnect from Meshtastic
     try {
