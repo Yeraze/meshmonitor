@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -68,5 +68,18 @@ describe.each([
     // ConfigSection keeps the global class on the header bar, not on the <h2>.
     expect(heading.classList.contains('automation-section-header')).toBe(false);
     expect(container.querySelector('.automation-section-header')).not.toBeNull();
+  });
+
+  // #6399: the server registers these per-node config routes as PATCH; a POST
+  // got Express's 404 page and every save showed "Failed to update".
+  it('Disable sends PATCH to the per-node config route', async () => {
+    render(<Section baseUrl="" sourceId="src-1" />);
+    await waitFor(() => expect(screen.getByText('Repeater One')).toBeTruthy());
+    fetchMock.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/meshcore\/nodes\/[^/]+\/(time-sync|telemetry)-config$/);
+    expect(init.method).toBe('PATCH');
   });
 });
