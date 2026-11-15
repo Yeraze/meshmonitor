@@ -136,6 +136,17 @@ describe('MeshtasticManager — re-apply ignore to local node (#2601)', () => {
     expect(persisted.isIgnored).toBe(true);
   });
 
+  it('caches the radio NodeDB flags the Virtual Node replays (#5921)', async () => {
+    const mgr = seedManager();
+
+    await mgr.processNodeInfoProtobuf({ num: NODE, hasXeddsaSigned: true, heardOnCurrentLora: true, isKeyManuallyVerified: true });
+
+    expect(mgr.getDeviceNodeFlags(NODE)).toEqual({
+      isKeyManuallyVerified: true, isMuted: false, hasXeddsaSigned: true, heardOnCurrentLora: true,
+    });
+    expect(mgr.getDeviceNodeFlags(NODE + 1)).toBeUndefined();
+  });
+
   it('does not push for a node that is not on the blocklist', async () => {
     const mgr = seedManager();
 

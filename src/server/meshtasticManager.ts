@@ -575,6 +575,14 @@ type TextMessage = {
 /**
  * Auto-responder trigger configuration
  */
+/** NodeInfo flags the radio reports that MeshMonitor does not persist (#5921). */
+export interface DeviceNodeFlags {
+  isKeyManuallyVerified: boolean;
+  isMuted: boolean;
+  hasXeddsaSigned: boolean;
+  heardOnCurrentLora: boolean;
+}
+
 interface AutoResponderTrigger {
   trigger: string | string[];
   /**
@@ -1354,6 +1362,13 @@ class MeshtasticManager implements ISourceManager {
   // favoritesService.ts's header comment for the full rationale.
   private autoFavoritingNodes = new Set<number>();  // Track nodes currently being auto-favorited
   private deviceNodeNums: Set<number> = new Set();  // Nodes in the connected radio's local database
+  /**
+   * Per-node flags from the radio's own NodeDB replay (#5921). MeshMonitor does
+   * not store them, but the Virtual Node must pass them on: Android 2.8.x draws
+   * its lock from `hasXeddsaSigned` and, against firmware >= 2.8.1, an orange
+   * "unheard" badge on every node whose `heardOnCurrentLora` is unset.
+   */
+  private deviceNodeFlags = new Map<number, DeviceNodeFlags>();
   /**
    * Nodes we have positive evidence the radio already holds a PUBLIC KEY for
    * (issue #4368). Deliberately distinct from `deviceNodeNums`, which only says
@@ -2399,6 +2414,7 @@ class MeshtasticManager implements ISourceManager {
       this.initConfigCache = [];
       this.startConfigCapture();
       this.deviceNodeNums.clear();
+      this.deviceNodeFlags.clear();
       // Key evidence is per-connection: a different radio (or one whose NodeDB
       // was wiped while we were away) may not hold the keys the last one did.
       this.deviceContactKeyNums.clear();
@@ -10643,6 +10659,12 @@ class MeshtasticManager implements ISourceManager {
 
       // Track that this node exists in the radio's local database
       this.deviceNodeNums.add(nodeNum);
+      this.deviceNodeFlags.set(nodeNum, {
+        isKeyManuallyVerified: nodeInfo.isKeyManuallyVerified === true,
+        isMuted: nodeInfo.isMuted === true,
+        hasXeddsaSigned: nodeInfo.hasXeddsaSigned === true,
+        heardOnCurrentLora: nodeInfo.heardOnCurrentLora === true,
+      });
 
       // Check if node already exists to determine if we should set isFavorite
       const existingNode = await databaseService.nodes.getNode(nodeNum);
@@ -16513,6 +16535,11 @@ class MeshtasticManager implements ISourceManager {
     } finally {
       this.preConfigChannelSnapshot = [];
     }
+  }
+
+  /** The radio's NodeDB flags for a node, or undefined when the radio did not list it (#5921). */
+  getDeviceNodeFlags(nodeNum: number): DeviceNodeFlags | undefined {
+    return this.deviceNodeFlags.get(nodeNum);
   }
 
   // Check if a node exists in the connected radio's local database
