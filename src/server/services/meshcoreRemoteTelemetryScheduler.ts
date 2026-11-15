@@ -565,7 +565,7 @@ export class MeshCoreRemoteTelemetryScheduler {
    */
   async requestTelemetryForNode(
     manager: MeshCoreManager,
-    target: Pick<DbMeshCoreNode, 'publicKey'> & { advType?: number | null },
+    target: Pick<DbMeshCoreNode, 'publicKey'> & { advType?: number | null; name?: string | null },
     opts: { includeStatus: boolean; includeLpp: boolean },
   ): Promise<{ written: number; sources: string[] }> {
     const isRepeaterLike =
@@ -767,7 +767,13 @@ export class MeshCoreRemoteTelemetryScheduler {
       for (const row of rows) {
         const telemetryType =
           row.telemetryType === `${MC_TELEMETRY_PREFIX}status_battery_volts` ? 'voltage' : row.telemetryType;
-        dataEventEmitter.emitTelemetry(Number(row.nodeNum), { ...row, telemetryType }, manager.sourceId, {});
+        // #6397: the row's nodeNum is a hash of the key, so carry the contact's
+        // identity too, or the automation cannot say which node it fired for.
+        dataEventEmitter.emitTelemetry(Number(row.nodeNum), { ...row, telemetryType }, manager.sourceId, {
+          meshcorePublicKey: target.publicKey,
+          meshcoreName: target.name ?? null,
+          meshcoreAdvType: target.advType ?? null,
+        });
       }
       logger.debug(
         `[MeshCoreRemoteTelem:${manager.sourceId}] Wrote ${rows.length} telemetry rows for ${keyShort}… (${sources.join(', ')})`,

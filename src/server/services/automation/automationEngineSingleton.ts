@@ -261,6 +261,9 @@ export async function routeEventToEngine(e: AutomationEngineService, event: Data
           await e.onTelemetry(nodeNum, r.telemetryType, r.value, r.unit, sourceId, {
             answersOwnRequest: r.answersOwnRequest === true,
             localStats: r.localStats === true,
+            ...(r.meshcorePublicKey
+              ? { meshcore: { publicKey: r.meshcorePublicKey, name: r.meshcoreName ?? null, advType: r.meshcoreAdvType ?? null } }
+              : {}),
           });
         }
       }

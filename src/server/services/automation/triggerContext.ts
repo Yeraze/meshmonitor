@@ -888,7 +888,22 @@ export function buildBatteryTrendContext(
   };
 }
 
-/** Build the trigger context for a single telemetry reading (engine fans the batch out). */
+/** The MeshCore contact a telemetry reading came from (#6397). */
+export interface MeshCoreTelemetrySubject {
+  publicKey: string;
+  name?: string | null;
+  advType?: number | null;
+}
+
+/**
+ * Build the trigger context for a single telemetry reading (engine fans the batch out).
+ *
+ * MeshCore readings (#6397) pass `meshcore`: their `nodeNum` is a hash of the
+ * public key, so no `{{ node.* }}` row exists for it. They add the same
+ * identity tokens the other MeshCore triggers carry: `trigger.publicKey`,
+ * `trigger.name` and `trigger.roleName`. `subjectNodeNum` stays the hashed
+ * number so the persisted per-node cooldown keeps its key across the upgrade.
+ */
 export function buildTelemetryContext(
   nodeNum: number,
   telemetryType: string,
@@ -896,13 +911,28 @@ export function buildTelemetryContext(
   unit: string | undefined,
   sourceId: string | null,
   timestamp: number,
+  meshcore?: MeshCoreTelemetrySubject,
 ): TriggerContext {
   return {
     triggerType: 'trigger.telemetry',
     sourceId,
     subjectNodeNum: Number(nodeNum),
     timestamp,
-    fields: { nodeNum: Number(nodeNum), telemetryType, value, unit, sourceId, timestamp },
+    fields: {
+      nodeNum: Number(nodeNum),
+      telemetryType,
+      value,
+      unit,
+      sourceId,
+      timestamp,
+      ...(meshcore
+        ? {
+            publicKey: meshcore.publicKey,
+            name: meshcore.name || undefined,
+            roleName: meshCoreRoleName(meshcore.advType),
+          }
+        : {}),
+    },
   };
 }
 

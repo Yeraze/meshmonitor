@@ -301,6 +301,16 @@ export interface TelemetryEventMeta {
    * self-origin guard would drop every one; telemetry triggers exempt them.
    */
   localStats?: boolean;
+  /**
+   * MeshCore readings only (#6397): who the reading came from. MeshCore has
+   * no node number (the row's `nodeNum` is a hash of the key), so without
+   * these a telemetry automation could not name the node it fired for.
+   */
+  meshcorePublicKey?: string;
+  /** The contact's display name, when known. */
+  meshcoreName?: string | null;
+  /** The contact's advert type (1 companion, 2 repeater, 3 room, 4 sensor). */
+  meshcoreAdvType?: number | null;
 }
 
 /** A stored telemetry row plus its {@link TelemetryEventMeta}. */

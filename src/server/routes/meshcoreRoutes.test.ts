@@ -1820,7 +1820,7 @@ describe('MeshCore Routes', () => {
       expect(res.body.data).toMatchObject({ type: 'status', written: 16 });
       expect(requestTelemetryForNode).toHaveBeenCalledWith(
         meshcoreManager,
-        { publicKey: POLL_PUBKEY, advType: 2 },
+        { publicKey: POLL_PUBKEY, advType: 2, name: null },
         { includeStatus: true, includeLpp: false },
       );
       expect(meshcoreManager.recordMeshTx).toHaveBeenCalledTimes(1);
@@ -1849,7 +1849,7 @@ describe('MeshCore Routes', () => {
       expect(res.status).toBe(200);
       expect(requestTelemetryForNode).toHaveBeenCalledWith(
         meshcoreManager,
-        { publicKey: POLL_PUBKEY, advType: null },
+        { publicKey: POLL_PUBKEY, advType: null, name: null },
         { includeStatus: false, includeLpp: true },
       );
     });
