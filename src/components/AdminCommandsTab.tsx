@@ -50,6 +50,7 @@ import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type Node
 import { createEmptyChannelSlot, createChannelFromResponse, countLoadedChannels } from './admin-commands/channelLoadingUtils';
 import { UiIcon } from './icons';
 import { NumberInput } from './common/NumberInput';
+import { VerifyJobsPanel } from './admin-commands/VerifyJobsPanel';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
 
@@ -127,6 +128,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   // setting; a number overrides it for commands sent from this tab, for the one
   // stubborn node rather than a global change.
   const [retryAttemptsOverride, setRetryAttemptsOverride] = useState<number | null>(null);
+  // Verified saves (#4487): remote config saves are read back until they stick.
+  const [verifySaves, setVerifySaves] = useState(false);
+  const [verifyJobsRefresh, setVerifyJobsRefresh] = useState(0);
   const [isExecuting, setIsExecuting] = useState(false);
   const [nodeOptions, setNodeOptions] = useState<NodeOption[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -977,20 +981,30 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       throw new Error('TX_DISABLED_REMOTE_ADMIN_BLOCKED');
     }
 
+    // Security is refused server-side: its keys never read back.
+    const verify = verifySaves && isManagingRemoteNode
+      && /^set\w+Config$/.test(command) && command !== 'setSecurityConfig';
+
     setIsExecuting(true);
     try {
       // Remote commands come back as a 202 + operation id that ApiService
       // polls to completion (#4482), so this await can still take mesh time —
       // it just no longer holds an HTTP request open for it.
-      const result = await apiService.sendAdminCommand<{ success: boolean; message: string; ack?: AdminCommandAck }>({
+      const result = await apiService.sendAdminCommand<{ success: boolean; message: string; ack?: AdminCommandAck; verifyJobId?: string }>({
         command,
         nodeNum: selectedNodeNum,
         ...(sourceId ? { sourceId } : {}),
         // Omitted unless explicitly set, so the server falls back to the
         // adminRetryAttempts setting rather than this tab pinning a value.
         ...(retryAttemptsOverride != null ? { retryAttempts: retryAttemptsOverride } : {}),
+        ...(verify ? { verify: true } : {}),
         ...params
       });
+      if (result.verifyJobId) {
+        setVerifyJobsRefresh((n) => n + 1);
+        showToast(t('admin_commands.verify_started', 'Sent. Verifying in the background; see Verified saves.'), 'success');
+        return result;
+      }
       // The device actions (#5614, #5615) answer in the `{ success, data }`
       // envelope, so their message sits one level down.
       const message = result.message || (result as { data?: { message?: string } }).data?.message;
@@ -1010,7 +1024,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     } finally {
       setIsExecuting(false);
     }
-  }, [selectedNodeNum, sourceId, remoteAdminBlocked, retryAttemptsOverride, showToast, t]);
+  }, [selectedNodeNum, sourceId, remoteAdminBlocked, retryAttemptsOverride, verifySaves, isManagingRemoteNode, showToast, t]);
 
   const handleReboot = useCallback(async () => {
     if (!confirm(t('admin_commands.reboot_confirmation', { seconds: rebootSeconds }))) {
@@ -2140,6 +2154,27 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             onValidityChange={(valid) => { if (!valid) setRetryAttemptsOverride(null); }}
           />
         </div>
+        {isManagingRemoteNode && (
+          <div className="setting-item">
+            <label htmlFor="adminVerifySaves">
+              <input
+                id="adminVerifySaves"
+                type="checkbox"
+                checked={verifySaves}
+                disabled={isExecuting}
+                onChange={(e) => setVerifySaves(e.target.checked)}
+              />{' '}
+              {t('admin_commands.verify_saves_label', 'Verify config saves')}
+              <span className="setting-description">
+                {t('admin_commands.verify_saves_description', 'Reads each config save back from the node until it sticks, in the background for up to 2 hours. Checks every 5 minutes; resends only when the node answers with the old value, at most 5 sends. Load the section first. Security settings cannot be verified.')}
+              </span>
+            </label>
+          </div>
+        )}
+        <VerifyJobsPanel
+          refreshKey={verifyJobsRefresh}
+          nodeName={(num) => nodeOptions.find((n) => n.nodeNum === num)?.longName ?? `!${num.toString(16).padStart(8, '0')}`}
+        />
         <div className="setting-item">
           <label>
             {t('admin_commands.select_node_description')}

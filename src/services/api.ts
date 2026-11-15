@@ -393,8 +393,35 @@ interface AdminCommandAccepted extends AdminCommandResult {
   success: boolean;
   /** Present only when the server opened a background operation. */
   operationId?: string;
+  /** Present when the save started a verify job (`verify: true`, #4487). */
+  verifyJobId?: string;
   status?: string;
 }
+
+/** Mirrors VerifyJob in src/server/services/adminVerifyJobService.ts. */
+export interface AdminVerifyJob {
+  id: string;
+  sourceId: string;
+  destinationNodeNum: number;
+  command: string;
+  section: string;
+  status: 'waiting' | 'checking' | 'resending' | 'verified' | 'differs' | 'refused' | 'gave_up' | 'cancelled' | 'failed';
+  createdAt: number;
+  completedAt: number | null;
+  deadline: number;
+  sends: number;
+  maxSends: number;
+  checks: number;
+  nextCheckAt: number | null;
+  lastCheckOutcome: 'no_reply' | 'not_applied' | 'applied' | 'differs' | null;
+  pendingFields: string[];
+  differingFields: string[];
+  error: { code: string; message: string } | null;
+}
+
+export const VERIFY_JOB_TERMINAL: ReadonlySet<AdminVerifyJob['status']> = new Set([
+  'verified', 'differs', 'refused', 'gave_up', 'cancelled', 'failed',
+]);
 
 /** A snapshot of a background admin operation, as returned by the poll endpoint. */
 interface AdminOperationSnapshot {
@@ -2241,6 +2268,17 @@ class ApiService {
   ): Promise<T> {
     const accepted = await this.post<AdminCommandAccepted>('/api/admin/commands', body);
     return this.followAdminOperation<T>(accepted, options);
+  }
+
+  /** Verified-save jobs (#4487): every admin sees every job. */
+  async getVerifyJobs(): Promise<AdminVerifyJob[]> {
+    const res = await this.get<{ success: boolean; data: AdminVerifyJob[] }>('/api/admin/verify-jobs');
+    return res.data ?? [];
+  }
+
+  async cancelVerifyJob(id: string): Promise<AdminVerifyJob> {
+    const res = await this.post<{ success: boolean; data: AdminVerifyJob }>(`/api/admin/verify-jobs/${encodeURIComponent(id)}/cancel`);
+    return res.data;
   }
 
   /**

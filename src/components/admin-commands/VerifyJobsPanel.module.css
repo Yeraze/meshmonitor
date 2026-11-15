@@ -1,0 +1,42 @@
+/* Verified-save job list (#4487). */
+
+.panel {
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+
+.heading {
+  margin: 0 0 0.5rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table th,
+.table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.detail {
+  color: var(--color-text-muted);
+}
+
+.status_verified {
+  color: var(--color-success);
+}
+
+.status_differs,
+.status_refused,
+.status_gave_up {
+  color: var(--color-warning);
+}
+
+.status_failed {
+  color: var(--color-error);
+}
