@@ -31,6 +31,8 @@ export interface AutoResponderTrigger {
   channel?: number | 'dm' | 'none';
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
   cooldownSeconds?: number; // Per-node cooldown in seconds (0 = disabled, default)
+  /** Per-trigger switch (#6405). Only an explicit `false` turns it off; absent = enabled, so stored triggers keep working. */
+  enabled?: boolean;
 }
 
 export type TimerResponseType = 'script' | 'text';

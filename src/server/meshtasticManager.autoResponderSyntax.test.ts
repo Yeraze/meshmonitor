@@ -87,4 +87,21 @@ describe('Meshtastic Auto-Responder syntax (#5924)', () => {
     await run('ping two');
     expect(sent()).toEqual(['pong']);
   });
+
+  it('skips a trigger saved with enabled:false, and treats a missing flag as on (#6405)', async () => {
+    wire([
+      { id: 'off', enabled: false, trigger: 'ping', responseType: 'text', response: 'from off', channels: ['dm'] },
+      { id: 'legacy', trigger: 'ping', responseType: 'text', response: 'from legacy', channels: ['dm'] },
+      { id: 'on', enabled: true, trigger: 'pong', responseType: 'text', response: 'from on', channels: ['dm'] },
+    ]);
+    await run('ping');
+    await run('pong');
+    expect(sent()).toEqual(['from legacy', 'from on']);
+  });
+
+  it('a lone disabled trigger never replies (#6405)', async () => {
+    wire([{ id: 'off', enabled: false, trigger: 'ping', responseType: 'text', response: 'pong', channels: ['dm'] }]);
+    await run('ping');
+    expect(sent()).toEqual([]);
+  });
 });

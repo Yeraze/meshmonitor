@@ -268,4 +268,44 @@ describe('AutoResponderSection hybrid workflow (#5808)', () => {
     const line = screen.getAllByTestId('pattern-test-line')[0];
     expect(within(line).getByText('hi there')).toBeInTheDocument();
   });
+
+  describe('per-trigger enable (#6405)', () => {
+    const toggles = () => screen.getAllByLabelText(/auto_responder\.enable_trigger/) as HTMLInputElement[];
+
+    it('a trigger with no enabled field shows as on; enabled:false shows as off', async () => {
+      renderSection([...SAVED.slice(0, 2), { ...SAVED[2], enabled: false }]);
+      await settle();
+      expect(toggles().map((x) => x.checked)).toEqual([true, true, false]);
+    });
+
+    it('flipping the toggle saves only the flag, without normalising the trigger', async () => {
+      const user = userEvent.setup();
+      renderSection();
+      await settle();
+      await user.click(toggles()[0]);
+      expect(toggles()[0].checked).toBe(false);
+      await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(true));
+      await save();
+      const expected = [{ ...SAVED[0], enabled: false }, SAVED[1], SAVED[2]];
+      expect(savedTriggersJson()).toBe(JSON.stringify(expected));
+    });
+
+    it('the toggle is locked while the section is off', async () => {
+      renderSection(SAVED, false);
+      await settle();
+      expect(toggles().every((x) => x.disabled)).toBe(true);
+    });
+
+    it('the test box skips a disabled trigger', async () => {
+      const user = userEvent.setup();
+      renderSection([{ ...SAVED[0], enabled: false }]);
+      await settle();
+      const box = screen.getByLabelText(/auto_responder\.test_pattern_matching/);
+      await user.clear(box);
+      await user.type(box, 'hello');
+      const line = screen.getAllByTestId('pattern-test-line')[0];
+      expect(within(line).queryByText('hi there')).toBeNull();
+      expect(line.textContent).toContain('auto_responder.no_matching_trigger');
+    });
+  });
 });

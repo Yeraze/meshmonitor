@@ -110,16 +110,21 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setErrorsById({});
   }, [enabled, triggers, skipIncompleteNodes]);
 
-  // A trigger counts as edited when it differs from its saved copy. Only
-  // edited (or new) triggers are validated and normalised, so a save never
-  // rewrites a trigger the user did not touch.
-  const savedJsonById = useMemo(
-    () => new Map(triggers.map((tr) => [tr.id, JSON.stringify(tr)])),
+  // A trigger counts as edited when it differs from its saved copy in
+  // anything but the enable flag (#6405). Only edited (or new) triggers are
+  // validated and normalised, so a save never rewrites a trigger the user did
+  // not touch, and flipping the card toggle alone saves it as it was.
+  const savedById = useMemo(
+    () => new Map(triggers.map((tr) => [tr.id, tr])),
     [triggers],
   );
   const isEdited = useCallback(
-    (tr: AutoResponderTrigger) => savedJsonById.get(tr.id) !== JSON.stringify(tr),
-    [savedJsonById],
+    (tr: AutoResponderTrigger) => {
+      const orig = savedById.get(tr.id);
+      if (!orig) return true;
+      return JSON.stringify({ ...tr, enabled: orig.enabled }) !== JSON.stringify(orig);
+    },
+    [savedById],
   );
 
   // Once a trigger shows errors, re-check it as the user types so they clear.
@@ -457,8 +462,10 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   };
 
   // Mirrors the server: patterns tried in order, the first matching trigger
-  // replies. Channel filters are not applied (the test message has no channel).
+  // replies; disabled triggers are skipped (#6405). Channel filters are not
+  // applied (the test message has no channel).
   const matchForTest = (tr: AutoResponderTrigger, text: string): PatternTestResult => {
+    if (tr.enabled === false) return { matched: false };
     const m = matchAutoResponderTrigger(tr, text);
     if (!m) return { matched: false };
     const params = Object.entries(m.params);
@@ -566,6 +573,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   : <span className={styles.untitled}>{t('auto_responder.new_trigger')}</span>}
                 summary={triggerSummary(tr)}
                 chips={triggerChips(tr)}
+                enabled={tr.enabled !== false}
+                onEnabledChange={(on) => updateTrigger(tr.id, { enabled: on })}
+                enableLabel={t('auto_responder.enable_trigger', 'Enable {{name}}', {
+                  name: formatTriggerPatterns(tr.trigger) || t('auto_responder.new_trigger'),
+                })}
                 expanded={expandedId === tr.id}
                 onEdit={() => startEditing(tr.id)}
                 onDone={() => finishEditing(tr.id)}
