@@ -51,6 +51,7 @@ import {
   type OrderableItem,
 } from './meshcoreChannelOrder';
 import styles from './MeshCoreRoomsView.module.css';
+import { MeshCoreRoomGuestHint } from './MeshCoreRoomGuestHint';
 import { MESHCORE_MAX_MESSAGE_BYTES_DM } from '../../utils/meshcoreMessageLimits';
 import { isMobileLayoutViewport } from '../../utils/sidebarWidth';
 
@@ -816,7 +817,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !loginLoading && !receiveOnly && (useSavedLogin ? handleLoginWithSaved() : handleLogin())}
-                placeholder={t('meshcore.rooms.password_placeholder', 'Password (empty for guest)')}
+                placeholder={t('meshcore.rooms.password_placeholder', 'Password')}
                 disabled={loginLoading || receiveOnly}
                 title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
               />
@@ -843,6 +844,12 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                     : t('meshcore.rooms.login_button', 'Login')}
               </button>
             </div>
+            {!useSavedLogin && (
+              <MeshCoreRoomGuestHint
+                onUseDefault={setLoginPassword}
+                disabled={loginLoading || receiveOnly}
+              />
+            )}
             {loginError && (
               <div className="meshcore-room-login-error">{loginError}</div>
             )}

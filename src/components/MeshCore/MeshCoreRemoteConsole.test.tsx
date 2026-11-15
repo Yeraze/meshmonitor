@@ -127,6 +127,29 @@ describe('MeshCoreRemoteConsole credential handling', () => {
   });
 });
 
+describe('MeshCoreRemoteConsole guest password hint (#6407)', () => {
+  const noSaved = () =>
+    makeActions({
+      getRemoteAdminCapability: vi.fn().mockResolvedValue({ canRemember: true, rotatedCount: 0, rotated: [], stored: [] }),
+    });
+  const openLogin = async () => fireEvent.click(await screen.findByRole('button', { name: /^Log in to/ }));
+
+  it('room servers get the stock "hello" hint and a button that fills it in', async () => {
+    render(<MeshCoreRemoteConsole publicKey={PK} contactName="Room" actions={noSaved() as any} />);
+    await openLogin();
+    expect(screen.getByText(/Stock room servers use the guest password/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Use "hello"' }));
+    expect((document.querySelector('.mrc-modal input') as HTMLInputElement).value).toBe('hello');
+  });
+
+  it('repeaters keep the blank-for-guest wording and get no "hello" button', async () => {
+    render(<MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={noSaved() as any} isRepeater />);
+    await openLogin();
+    expect(screen.getByText(/Leave blank for guest access/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use "hello"' })).not.toBeInTheDocument();
+  });
+});
+
 describe('MeshCoreRemoteConsole receive-only mode (#4547 Phase 2 WP3)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
