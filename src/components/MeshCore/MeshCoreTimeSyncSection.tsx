@@ -74,7 +74,7 @@ export const MeshCoreTimeSyncSection: React.FC<Props> = ({ baseUrl, sourceId }) 
     setBusy(publicKey);
     try {
       const res = await csrfFetch(nodeUrl(publicKey), {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intervalMinutes }),
       });
@@ -95,7 +95,7 @@ export const MeshCoreTimeSyncSection: React.FC<Props> = ({ baseUrl, sourceId }) 
     setBusy(publicKey);
     try {
       const res = await csrfFetch(nodeUrl(publicKey), {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: false }),
       });
