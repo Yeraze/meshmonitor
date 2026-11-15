@@ -1,0 +1,20 @@
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-faint);
+}
+
+.useDefault {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.useDefault:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

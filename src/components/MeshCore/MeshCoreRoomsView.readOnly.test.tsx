@@ -65,7 +65,7 @@ describe('MeshCoreRoomsView read-only stored posts (#6332)', () => {
     expect(await screen.findByText('saved post body')).toBeTruthy();
     expect(screen.getByText(/Not logged in/)).toBeTruthy();
     expect(screen.getByText('Login')).toBeTruthy();
-    expect(screen.getByPlaceholderText('Password (empty for guest)')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Password')).toBeTruthy();
     expect(screen.queryByPlaceholderText('Type a message…')).toBeNull();
     expect(screen.queryByText('posts')).toBeNull(); // stats header is login-only
   });

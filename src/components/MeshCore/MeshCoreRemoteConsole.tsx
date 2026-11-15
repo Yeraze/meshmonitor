@@ -36,6 +36,7 @@ import styles from './MeshCoreRemoteConsole.module.css';
 import { UiIcon } from '../icons';
 import { PasswordField } from '../shared/config/PasswordField';
 import { MeshCoreRemoteSettingsSection } from './MeshCoreRemoteSettingsSection';
+import { MeshCoreRoomGuestHint } from './MeshCoreRoomGuestHint';
 import type { LoraParams } from '../../utils/loraAirtime';
 
 /**
@@ -566,12 +567,28 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
                 className="mrc-input"
               />
             </label>
-            <p className="mrc-modal-hint">
-              {t(
-                'meshcore.remoteConsole.password_hint',
-                'Leave blank for guest access. Admin commands require the node’s configured admin password.',
-              )}
-            </p>
+            {isRepeater ? (
+              <p className="mrc-modal-hint">
+                {t(
+                  'meshcore.remoteConsole.password_hint',
+                  'Leave blank for guest access. Admin commands require the node’s configured admin password.',
+                )}
+              </p>
+            ) : (
+              <>
+                <MeshCoreRoomGuestHint
+                  className="mrc-modal-hint"
+                  onUseDefault={setLoginPassword}
+                  disabled={loginBusy}
+                />
+                <p className="mrc-modal-hint">
+                  {t(
+                    'meshcore.remoteConsole.admin_password_hint',
+                    'Admin commands require the node’s configured admin password.',
+                  )}
+                </p>
+              </>
+            )}
             <label
               className={`mrc-modal-checkbox${capability && !capability.canRemember ? ' mrc-disabled' : ''}`}
               title={capability && !capability.canRemember ? capability.reason : undefined}
