@@ -1010,6 +1010,8 @@ Auto-Acknowledge and Auto-Responder templates can quote the path the triggering 
 
 A hop MeshMonitor cannot resolve stays as raw hex. When several repeaters share a hash prefix, MeshMonitor picks the one closest to the neighbouring hops' positions — a best guess, not a certainty. The same resolution backs the clickable route line on a received message (see [Message route line](#message-route-line)).
 
+Auto-Responder **scripts** get the same values as environment variables: `HOPS`, `ROUTE`, `ROUTE_NAMES`, `HASH_SIZE` and `SCOPE`. Each holds exactly what the matching `{TOKEN}` would render, including `—` when the value is unknown (for example, `HASH_SIZE` on a direct message, which carries no relay hops).
+
 ## Forwarding
 
 Forwarding copies matching incoming DMs or channel messages to one contact or another channel on the same MeshCore source, with an on/off checkbox per rule. It uses the same rules and fixed limits as Meshtastic forwarding (5 forwards per rule per minute, 200 characters, no loops) and stays read-only in receive-only mode. A master switch in the section header, and the FWD pill on the source's sidebar card, turn all forwarding on that source on or off at once. See [Forwarding](/features/automation#forwarding) for details.

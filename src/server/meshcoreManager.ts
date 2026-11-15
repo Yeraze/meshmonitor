@@ -14335,7 +14335,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     isDM: boolean,
     channelIdx: number | undefined,
     trigger: MeshCoreAutoResponderTrigger,
+    hops: number | null,
+    route: string | null,
   ): Record<string, string> {
+    const routing = this.routeTokenValues(hops, route, message.scopeName, message.scopeCode);
     const env: Record<string, string> = {
       MESSAGE: message.text || '',
       FROM_NODE: message.fromPublicKey || '',
@@ -14348,6 +14351,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
                           : this.deviceType === MeshCoreDeviceType.REPEATER ? 'repeater'
                           : this.deviceType === MeshCoreDeviceType.ROOM_SERVER ? 'room_server'
                           : 'unknown',
+      // Same values the {HOPS}/{ROUTE}/{ROUTE_NAMES}/{HASH_SIZE}/{SCOPE}
+      // reply tokens render, "—" included (#6402).
+      HOPS: routing.hopsStr,
+      ROUTE: routing.routeStr,
+      ROUTE_NAMES: routing.routeNamesStr,
+      HASH_SIZE: routing.hashSizeStr,
+      SCOPE: routing.scopeStr,
     };
     if (message.snr !== undefined && message.snr !== null) {
       env.SNR = String(message.snr);
@@ -14616,7 +14626,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             logger.warn(`[MeshCore:${this.sourceId}] Auto-responder ${trigger.id}: script trigger missing scriptPath`);
             continue;
           }
-          const env = this.buildMeshCoreResponderScriptEnv(message, isDM, channelIdx, trigger);
+          const env = this.buildMeshCoreResponderScriptEnv(message, isDM, channelIdx, trigger, hops, route);
           // Captured params reach the script as PARAM_<name>, as on Meshtastic.
           for (const [key, value] of Object.entries(match.params)) env[`PARAM_${key}`] = value;
           await this.runMeshCoreScript(trigger.scriptPath, trigger.scriptArgs, env, dispatch, `Auto-responder ${trigger.id}`);
@@ -14978,24 +14988,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return compileAutoAckRegex(pattern).regex;
   }
 
-  private replaceAutoAckTokens(
-    template: string,
-    senderPubKey: string,
-    senderName: string | undefined,
-    snr: number | undefined,
-    timestamp: number,
+  /**
+   * Per-message routing values shared by the reply tokens ({HOPS}/{ROUTE}/
+   * {ROUTE_NAMES}/{HASH_SIZE}/{SCOPE}) and the responder script env (#6402),
+   * so a script sees exactly what a text template would render.
+   */
+  private routeTokenValues(
     hops: number | null,
     route: string | null,
     scopeName?: string | null,
     scopeCode?: number | null,
-  ): string {
-    const date = new Date(timestamp);
-    const longName = senderName || `${senderPubKey.substring(0, 8)}…`;
-    const shortName = senderName ? senderName.substring(0, 4) : senderPubKey.substring(0, 4);
-    const nodeId = `!${senderPubKey.substring(0, 8)}`;
-    const snrStr = snr !== undefined && snr !== null ? snr.toFixed(1) : '—';
-    const dateStr = date.toLocaleDateString('en-US');
-    const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  ): { hopsStr: string; routeStr: string; routeNamesStr: string; hashSizeStr: string; scopeStr: string } {
     const hopsStr = hops !== null ? String(hops) : '—';
     // {ROUTE} expands the cached hop-hash chain into a compact
     // arrow-separated list (e.g. "a3→7f→02"). Arrows have no surrounding
@@ -15034,6 +15037,29 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } else {
       scopeStr = '—';
     }
+    return { hopsStr, routeStr, routeNamesStr, hashSizeStr, scopeStr };
+  }
+
+  private replaceAutoAckTokens(
+    template: string,
+    senderPubKey: string,
+    senderName: string | undefined,
+    snr: number | undefined,
+    timestamp: number,
+    hops: number | null,
+    route: string | null,
+    scopeName?: string | null,
+    scopeCode?: number | null,
+  ): string {
+    const date = new Date(timestamp);
+    const longName = senderName || `${senderPubKey.substring(0, 8)}…`;
+    const shortName = senderName ? senderName.substring(0, 4) : senderPubKey.substring(0, 4);
+    const nodeId = `!${senderPubKey.substring(0, 8)}`;
+    const snrStr = snr !== undefined && snr !== null ? snr.toFixed(1) : '—';
+    const dateStr = date.toLocaleDateString('en-US');
+    const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const { hopsStr, routeStr, routeNamesStr, hashSizeStr, scopeStr } =
+      this.routeTokenValues(hops, route, scopeName, scopeCode);
 
     return template
       .replace(/\{NODE_ID\}/g, nodeId)
