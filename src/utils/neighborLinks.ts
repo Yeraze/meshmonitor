@@ -76,3 +76,98 @@ export function bearingBetween(from: [number, number], to: [number, number]): nu
     (180 / Math.PI)
   );
 }
+
+/**
+ * One directed MeshCore neighbour-table record: `publicKey` (the reporting
+ * repeater) lists `neighborPublicKey` with `snr`, last heard `lastHeardSecs`
+ * before the fetch at `timestamp` (ms).
+ */
+export interface DirectedNeighborRecord {
+  publicKey: string;
+  neighborPublicKey: string;
+  snr: number | null;
+  lastHeardSecs?: number | null;
+  timestamp?: number | null;
+}
+
+/**
+ * Wall-clock ms at which the reporter last heard its neighbour
+ * (`timestamp - lastHeardSecs * 1000`), or `null` when either part is missing.
+ */
+export function neighborHeardAtMs(r: DirectedNeighborRecord): number | null {
+  const ts = r.timestamp == null ? NaN : Number(r.timestamp);
+  const secs = r.lastHeardSecs == null ? NaN : Number(r.lastHeardSecs);
+  if (!Number.isFinite(ts) || !Number.isFinite(secs)) return null;
+  return ts - secs * 1000;
+}
+
+/** True when `a` is a fresher observation than `b` (known age beats unknown). */
+function isFresher(a: DirectedNeighborRecord, b: DirectedNeighborRecord): boolean {
+  const ha = neighborHeardAtMs(a);
+  const hb = neighborHeardAtMs(b);
+  if (ha !== null && hb !== null && ha !== hb) return ha > hb;
+  if (ha !== null && hb === null) return true;
+  if (ha === null && hb !== null) return false;
+  const ta = Number(a.timestamp ?? 0);
+  const tb = Number(b.timestamp ?? 0);
+  if (ta !== tb) return ta > tb;
+  // Full tie: order by direction so the pick never depends on row order.
+  return a.publicKey < b.publicKey;
+}
+
+/**
+ * Both directions of one unordered MeshCore neighbour pair (#6403).
+ * `primary` is the freshest observation (smallest effective age), `reverse`
+ * the opposite direction when the other repeater also reported the link.
+ */
+export interface NeighborPair<T extends DirectedNeighborRecord> {
+  pairKey: string;
+  primary: T;
+  reverse: T | null;
+}
+
+/**
+ * Group directed MeshCore neighbour records by unordered pair. Unlike
+ * `dedupByUnorderedPair` (first row wins), the result is independent of input
+ * order: per direction the freshest record is kept, the fresher direction
+ * becomes `primary`, and the other one `reverse` — so a stale 12-hour-old
+ * entry no longer replaces the current one on every refresh.
+ */
+export function pairNeighborRecords<T extends DirectedNeighborRecord>(items: T[]): NeighborPair<T>[] {
+  const byDirection = new Map<string, T>();
+  for (const item of items) {
+    const key = `${item.publicKey}>${item.neighborPublicKey}`;
+    const cur = byDirection.get(key);
+    if (!cur || isFresher(item, cur)) byDirection.set(key, item);
+  }
+  const byPair = new Map<string, T[]>();
+  for (const item of byDirection.values()) {
+    const a = item.publicKey;
+    const b = item.neighborPublicKey;
+    const pairKey = a < b ? `${a}~${b}` : `${b}~${a}`;
+    const list = byPair.get(pairKey);
+    if (list) list.push(item);
+    else byPair.set(pairKey, [item]);
+  }
+  const out: NeighborPair<T>[] = [];
+  for (const [pairKey, list] of byPair) {
+    if (list.length === 1) {
+      out.push({ pairKey, primary: list[0], reverse: null });
+      continue;
+    }
+    const [x, y] = list;
+    const primary = isFresher(x, y) ? x : y;
+    out.push({ pairKey, primary, reverse: primary === x ? y : x });
+  }
+  return out;
+}
+
+/** Compact age, e.g. `45 s`, `4 min`, `12 h`, `3 d`. */
+export function formatNeighborAge(secs: number | null | undefined): string | null {
+  if (secs == null || !Number.isFinite(Number(secs))) return null;
+  const s = Math.max(0, Math.round(Number(secs)));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  if (s < 86400) return `${Math.round(s / 3600)} h`;
+  return `${Math.round(s / 86400)} d`;
+}

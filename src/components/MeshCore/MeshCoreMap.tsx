@@ -60,6 +60,7 @@ import { NodeCard } from '../map/popups/NodeCard';
 import { toNodeCardModel } from '../map/popups/nodeCardModel';
 import { MeshCoreDetails, LastHeardFooter, NodeActions, type NodeActionSpec } from '../map/popups/sections';
 import { hopCountLabel } from '../../utils/hopLabel';
+import { pairNeighborRecords, neighborHeardAtMs, formatNeighborAge } from '../../utils/neighborLinks';
 
 const MESHCORE_COLOR = '#cba6f7';
 const NEIGHBOR_COLOR = '#06b6d4';
@@ -100,6 +101,8 @@ interface NeighborEdge {
   nodeName: string | null;
   neighborName: string | null;
   snr: number | null;
+  lastHeardSecs?: number | null;
+  timestamp?: number | null;
 }
 
 interface MeshCoreMapProps {
@@ -722,13 +725,25 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
     for (const c of positioned) {
       posByKey.set(c.publicKey, [c.latitude!, c.longitude!]);
     }
-    return neighborEdges
-      .map((e) => {
-        const a = posByKey.get(e.publicKey);
-        const b = posByKey.get(e.neighborPublicKey);
+    // #6403: both repeaters of a pair usually report each other. Group the two
+    // directions (freshest first, independent of row order) and show both in
+    // one tooltip, so a stale entry can no longer hide the current one.
+    const now = Date.now();
+    const describe = (e: NeighborEdge): string => {
+      const reporter = e.nodeName || e.publicKey.substring(0, 8);
+      const heard = e.neighborName || e.neighborPublicKey.substring(0, 8);
+      const snr = e.snr != null ? `${e.snr.toFixed(1)} dB` : '? dB';
+      const heardAt = neighborHeardAtMs(e);
+      const age = formatNeighborAge(heardAt !== null ? (now - heardAt) / 1000 : e.lastHeardSecs);
+      return `${reporter} hears ${heard}: ${snr}${age ? ` (${age} ago)` : ''}`;
+    };
+    return pairNeighborRecords(neighborEdges)
+      .map(({ pairKey, primary, reverse }) => {
+        const a = posByKey.get(primary.publicKey);
+        const b = posByKey.get(primary.neighborPublicKey);
         if (!a || !b) return null;
-        const label = `${e.nodeName || e.publicKey.substring(0, 8)} ↔ ${e.neighborName || e.neighborPublicKey.substring(0, 8)}${e.snr != null ? ` (${e.snr.toFixed(1)} dB)` : ''}`;
-        return { key: `nb-${e.publicKey}-${e.neighborPublicKey}`, from: a, to: b, label };
+        const label = reverse ? `${describe(primary)} · ${describe(reverse)}` : describe(primary);
+        return { key: `nb-${pairKey}`, from: a, to: b, label };
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
   }, [showNeighbors, neighborEdges, positioned]);
