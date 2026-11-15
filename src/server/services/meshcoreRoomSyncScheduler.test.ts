@@ -12,6 +12,8 @@ import {
   MeshCoreRoomSyncScheduler,
   isRoomSyncEligible,
   pickMostOverdueRoom,
+  isStartupRejoinEligible,
+  STARTUP_REJOIN_QUIET_MS,
 } from './meshcoreRoomSyncScheduler.js';
 import type { MeshCoreManager, MeshCoreLoginOutcome } from '../meshcoreManager.js';
 import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -317,5 +319,276 @@ describe('MeshCoreRoomSyncScheduler.tickOneManager — failure handling', () => 
     await (makeScheduler(manager) as any).tickOneManager(manager.sourceId, manager);
 
     expect(db.setRoomSyncConfig).toHaveBeenCalledWith('src-a', 'pk-a', { roomSyncEnabled: false });
+  });
+});
+
+// ============ Blank-password ACL re-join (#6408) ============
+//
+// A room server lets a key already in its ACL back in with a blank password.
+// The scheduler may use that only for rooms this source has joined
+// (`lastRoomLoginOkAt` set), and re-joins each such room once per connection,
+// never within an hour of the last persisted login.
+
+describe('isStartupRejoinEligible', () => {
+  const now = 100_000_000;
+
+  it('rejects a room never joined from this source', () => {
+    expect(isStartupRejoinEligible(makeNode({ lastRoomSyncAt: null }), now)).toBe(false);
+  });
+
+  it('rejects a room with Room Sync off', () => {
+    expect(isStartupRejoinEligible(
+      { ...makeNode({ roomSyncEnabled: false }), lastRoomLoginOkAt: now - 2 * 60 * 60_000 },
+      now,
+    )).toBe(false);
+  });
+
+  it('rejects a joined room logged in to within the last hour (success)', () => {
+    expect(isStartupRejoinEligible({ ...makeNode({}), lastRoomLoginOkAt: now - 30 * 60_000 }, now)).toBe(false);
+  });
+
+  it('rejects a joined room attempted within the last hour (failed attempt)', () => {
+    const node = { ...makeNode({ lastRoomSyncAt: now - 59 * 60_000 }), lastRoomLoginOkAt: now - 5 * 60 * 60_000 };
+    expect(isStartupRejoinEligible(node, now)).toBe(false);
+  });
+
+  it('accepts a joined room quiet for an hour or more', () => {
+    expect(isStartupRejoinEligible({ ...makeNode({}), lastRoomLoginOkAt: now - STARTUP_REJOIN_QUIET_MS }, now)).toBe(true);
+  });
+});
+
+describe('isRoomSyncEligible — interactive logins count (#6408)', () => {
+  it('waits a full interval after a successful interactive login', () => {
+    const now = 100_000_000;
+    const node = { ...makeNode({ roomSyncIntervalMinutes: 60, lastRoomSyncAt: null }), lastRoomLoginOkAt: now - 10 * 60_000 };
+    expect(isRoomSyncEligible(node, now)).toBe(false);
+  });
+});
+
+describe('MeshCoreRoomSyncScheduler — blank-password re-join (#6408)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const NOW = 50_000_000;
+  const HOUR = 60 * 60_000;
+
+  function mockDb(rooms: Array<Record<string, unknown>>) {
+    vi.spyOn(databaseService.meshcore, 'getRoomSyncEnabledNodes').mockResolvedValue(
+      rooms.map(r => ({ advType: 3, roomSyncIntervalMinutes: 60, lastRoomSyncAt: null, lastRoomLoginOkAt: null, ...r })) as any,
+    );
+    return {
+      updateLastRoomSyncAt: vi.spyOn(databaseService.meshcore, 'updateLastRoomSyncAt').mockResolvedValue(undefined),
+      clearRoomSyncFailure: vi.spyOn(databaseService.meshcore, 'clearRoomSyncFailure').mockResolvedValue(undefined),
+      recordRoomSyncFailure: vi.spyOn(databaseService.meshcore, 'recordRoomSyncFailure').mockResolvedValue(1),
+      setRoomSyncConfig: vi.spyOn(databaseService.meshcore, 'setRoomSyncConfig').mockResolvedValue(undefined),
+    };
+  }
+
+  function noCredStore(): MeshCoreCredentialStore {
+    return {
+      loadRoom: vi.fn().mockResolvedValue({ kind: 'none' }),
+    } as unknown as MeshCoreCredentialStore;
+  }
+
+  function trackPasswords(manager: MeshCoreManager, outcome: MeshCoreLoginOutcome = 'ok') {
+    const calls: Array<{ publicKey: string; password: string }> = [];
+    (manager as any).loginToRoomWithOutcome = async (publicKey: string, password: string) => {
+      calls.push({ publicKey, password });
+      return outcome;
+    };
+    return calls;
+  }
+
+  function makeScheduler(manager: MeshCoreManager, credentialStore = noCredStore(), now = () => NOW) {
+    return new MeshCoreRoomSyncScheduler({ registry: makeRegistry([manager]), credentialStore, now });
+  }
+
+  it('falls back to a blank-password login for a joined room with no saved password', async () => {
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    const db = mockDb([{ publicKey: 'pk-a', lastRoomSyncAt: NOW - 2 * HOUR, lastRoomLoginOkAt: NOW - 2 * HOUR }]);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([{ publicKey: 'pk-a', password: '' }]);
+    expect(db.updateLastRoomSyncAt).toHaveBeenCalledWith('src-a', 'pk-a');
+  });
+
+  it('never sends a login for a room with no saved password that was never joined', async () => {
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([{ publicKey: 'pk-a', lastRoomSyncAt: null, lastRoomLoginOkAt: null }]);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([]);
+  });
+
+  it('a never-joined room without a password does not block a joined room behind it', async () => {
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([
+      // Most overdue, but unusable.
+      { publicKey: 'pk-a', lastRoomSyncAt: null, lastRoomLoginOkAt: null },
+      { publicKey: 'pk-b', lastRoomSyncAt: NOW - 2 * HOUR, lastRoomLoginOkAt: NOW - 2 * HOUR },
+    ]);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([{ publicKey: 'pk-b', password: '' }]);
+  });
+
+  it('still prefers a saved password over the blank fallback', async () => {
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([{ publicKey: 'pk-a', lastRoomSyncAt: NOW - 2 * HOUR, lastRoomLoginOkAt: NOW - 2 * HOUR }]);
+
+    await (makeScheduler(manager, makeCredentialStore()) as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([{ publicKey: 'pk-a', password: 'secret' }]);
+  });
+
+  it('re-joins on connect before the interval is up, once the last login is an hour old', async () => {
+    // 4h interval, last login 90 min ago: not due on the interval, but the
+    // source just connected and the room is joined, so it gets one re-join.
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([{
+      publicKey: 'pk-a', roomSyncIntervalMinutes: 240,
+      lastRoomSyncAt: NOW - 90 * 60_000, lastRoomLoginOkAt: NOW - 90 * 60_000,
+    }]);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([{ publicKey: 'pk-a', password: '' }]);
+  });
+
+  it('skips the re-join when the last persisted login was within 60 minutes (restart is not a trigger)', async () => {
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([{
+      publicKey: 'pk-a', roomSyncIntervalMinutes: 240,
+      lastRoomSyncAt: NOW - 20 * 60_000, lastRoomLoginOkAt: NOW - 20 * 60_000,
+    }]);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([]);
+  });
+
+  it('a fresh scheduler (process restart) does not re-join a room a FAILED attempt touched within the hour', async () => {
+    // The failed attempt stamped lastRoomSyncAt in the DB; the new process
+    // has no memory of it, but must still hold off.
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([{
+      publicKey: 'pk-a', roomSyncIntervalMinutes: 240,
+      lastRoomSyncAt: NOW - 10 * 60_000, lastRoomLoginOkAt: NOW - 5 * HOUR,
+    }]);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([]);
+  });
+
+  it('a room skipped as recent at connect is not re-joined later in the same connection', async () => {
+    let now = NOW;
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([{
+      publicKey: 'pk-a', roomSyncIntervalMinutes: 240,
+      lastRoomSyncAt: NOW - 20 * 60_000, lastRoomLoginOkAt: NOW - 20 * 60_000,
+    }]);
+    const scheduler = makeScheduler(manager, noCredStore(), () => now);
+
+    await (scheduler as any).tickOneManager('src-a', manager);
+    now = NOW + HOUR; // past the quiet window, still inside the 4h interval
+    await (scheduler as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([]);
+  });
+
+  it('tries each room once per connection, one login per source per minute', async () => {
+    let now = NOW;
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([
+      { publicKey: 'pk-a', roomSyncIntervalMinutes: 240, lastRoomSyncAt: NOW - 2 * HOUR, lastRoomLoginOkAt: NOW - 2 * HOUR },
+      { publicKey: 'pk-b', roomSyncIntervalMinutes: 240, lastRoomSyncAt: NOW - 3 * HOUR, lastRoomLoginOkAt: NOW - 3 * HOUR },
+    ]);
+    (manager as any).recordMeshTx = () => { (manager as any)._state.lastMeshTxAt = now; };
+    const scheduler = makeScheduler(manager, noCredStore(), () => now);
+
+    await (scheduler as any).tickOneManager('src-a', manager);
+    expect(calls.map(c => c.publicKey)).toEqual(['pk-b']);
+
+    // Inside the 60s floor: nothing.
+    now += 30_000;
+    await (scheduler as any).tickOneManager('src-a', manager);
+    expect(calls.map(c => c.publicKey)).toEqual(['pk-b']);
+
+    // Past the floor: the second room. (The DB mock still reports the old
+    // timestamps; the in-memory "settled" set alone stops a second try.)
+    now += 31_000;
+    await (scheduler as any).tickOneManager('src-a', manager);
+    expect(calls.map(c => c.publicKey)).toEqual(['pk-b', 'pk-a']);
+
+    // Both settled: no third login this connection on the startup rule.
+    now += 61_000;
+    await (scheduler as any).tickOneManager('src-a', manager);
+    expect(calls.map(c => c.publicKey)).toEqual(['pk-b', 'pk-a']);
+  });
+
+  it('a reconnect earns one more re-join', async () => {
+    let now = NOW;
+    const manager = makeFakeManager({});
+    const calls = trackPasswords(manager);
+    mockDb([{ publicKey: 'pk-a', roomSyncIntervalMinutes: 240, lastRoomSyncAt: NOW - 2 * HOUR, lastRoomLoginOkAt: NOW - 2 * HOUR }]);
+    (manager as any).recordMeshTx = () => { (manager as any)._state.lastMeshTxAt = now; };
+    const scheduler = makeScheduler(manager, noCredStore(), () => now);
+
+    await scheduler.tick();
+    expect(calls).toHaveLength(1);
+
+    (manager as any)._state.connected = false;
+    now += 2 * 60_000;
+    await scheduler.tick();
+    (manager as any)._state.connected = true;
+    now += 2 * 60_000;
+    await scheduler.tick();
+    expect(calls).toHaveLength(2);
+  });
+
+  it('disables auto-sync at once when the room refuses the blank re-join', async () => {
+    const manager = makeFakeManager({});
+    trackPasswords(manager, 'rejected');
+    const db = mockDb([{ publicKey: 'pk-a', lastRoomSyncAt: NOW - 2 * HOUR, lastRoomLoginOkAt: NOW - 2 * HOUR }]);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(db.recordRoomSyncFailure).toHaveBeenCalledWith('src-a', 'pk-a', 'rejected', { disable: true });
+  });
+
+  it('counts an unanswered blank re-join toward the auto-disable threshold', async () => {
+    const manager = makeFakeManager({});
+    trackPasswords(manager, 'no_reply');
+    const db = mockDb([{ publicKey: 'pk-a', lastRoomSyncAt: NOW - 2 * HOUR, lastRoomLoginOkAt: NOW - 2 * HOUR }]);
+    db.recordRoomSyncFailure.mockResolvedValue(3);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(db.recordRoomSyncFailure).toHaveBeenCalledWith('src-a', 'pk-a', 'no_reply', { disable: false });
+    expect(db.setRoomSyncConfig).toHaveBeenCalledWith('src-a', 'pk-a', { roomSyncEnabled: false });
+  });
+
+  it('a receive-only source never sends the re-join', async () => {
+    const manager = makeFakeManager({ receiveOnly: true });
+    const calls = trackPasswords(manager);
+    mockDb([{ publicKey: 'pk-a', lastRoomSyncAt: NOW - 2 * HOUR, lastRoomLoginOkAt: NOW - 2 * HOUR }]);
+
+    await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
+
+    expect(calls).toEqual([]);
   });
 });

@@ -623,6 +623,23 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     );
   }, [loginError, syncFailure, t]);
 
+  // No saved password: auto-sync re-joins with a blank-password ACL login
+  // (#6408). When that stops working the user must log in with the password.
+  const rejoinWarning = useMemo(() => {
+    if (loginError || !syncFailure) return null;
+    if (syncFailure.reason === 'rejected') {
+      return t(
+        'meshcore.rooms.rejoin_refused',
+        'This room server no longer lets this radio back in without a password, so auto-sync has been turned off. Log in again with the password.',
+      );
+    }
+    return t(
+      'meshcore.rooms.rejoin_unanswered',
+      'The last {{count}} scheduled logins went unanswered. If auto-sync has turned itself off, log in again with the password.',
+      { count: syncFailure.count },
+    );
+  }, [loginError, syncFailure, t]);
+
   // Shared by the logged-in stats header and the login card (#6267): saving goes
   // through the sessionless sync-config endpoint, so it needs no login. Callers
   // gate on `canConfig`.
@@ -657,9 +674,11 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
       {syncFailure && (
         <span
           className="meshcore-room-sync-warning"
-          title={syncFailure.reason === 'rejected'
-            ? t('meshcore.rooms.sync_failed_rejected', 'The room server refused the saved password, so auto-sync was turned off.')
-            : t('meshcore.rooms.sync_failed_no_reply', 'The last {{count}} scheduled logins went unanswered.', { count: syncFailure.count })}
+          title={syncFailure.reason !== 'rejected'
+            ? t('meshcore.rooms.sync_failed_no_reply', 'The last {{count}} scheduled logins went unanswered.', { count: syncFailure.count })
+            : selectedRoom && !storedCreds.has(selectedRoom)
+              ? t('meshcore.rooms.rejoin_refused_short', 'The room server refused the re-join without a password, so auto-sync was turned off.')
+              : t('meshcore.rooms.sync_failed_rejected', 'The room server refused the saved password, so auto-sync was turned off.')}
         >
           <UiIcon name="alert" size={12} />
         </span>
@@ -859,6 +878,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
             )}
             {selectedRoom && canConfig && storedCreds.has(selectedRoom) && (
               <div className={styles.loginSync}>{syncConfigControls}</div>
+            )}
+            {selectedRoom && !storedCreds.has(selectedRoom) && rejoinWarning && (
+              <p className="meshcore-room-saved-cred-warning">{rejoinWarning}</p>
             )}
             {selectedRoom && storedCreds.has(selectedRoom) && (
               <div className="meshcore-room-saved-cred">

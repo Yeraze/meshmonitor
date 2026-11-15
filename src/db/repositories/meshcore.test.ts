@@ -314,6 +314,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastRoomPostAt INTEGER,
         roomSyncFailureCount INTEGER DEFAULT 0,
         roomSyncLastError TEXT,
+        lastRoomLoginOkAt INTEGER,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -604,6 +605,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastRoomPostAt INTEGER,
         roomSyncFailureCount INTEGER DEFAULT 0,
         roomSyncLastError TEXT,
+        lastRoomLoginOkAt INTEGER,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -895,6 +897,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastRoomPostAt INTEGER,
         roomSyncFailureCount INTEGER DEFAULT 0,
         roomSyncLastError TEXT,
+        lastRoomLoginOkAt INTEGER,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -994,6 +997,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastRoomPostAt INTEGER,
         roomSyncFailureCount INTEGER DEFAULT 0,
         roomSyncLastError TEXT,
+        lastRoomLoginOkAt INTEGER,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -1361,6 +1365,21 @@ describe('MeshCoreRepository — room sync failure tracking', () => {
       `SELECT lastRoomSyncAt FROM meshcore_nodes WHERE publicKey = 'room-a' AND sourceId = 'src-a'`,
     ).get() as { lastRoomSyncAt: number | null };
     expect(row.lastRoomSyncAt).toBeGreaterThan(0);
+  });
+
+  it('recordRoomLoginOk stamps "joined" for this source only, and a failure never does (#6408)', async () => {
+    await repo.upsertNode({ publicKey: 'room-a', advType: 3 }, 'src-b');
+    const read = (src: string) => (db.prepare(
+      `SELECT lastRoomLoginOkAt FROM meshcore_nodes WHERE publicKey = 'room-a' AND sourceId = ?`,
+    ).get(src) as { lastRoomLoginOkAt: number | null }).lastRoomLoginOkAt;
+
+    await repo.recordRoomSyncFailure('src-a', 'room-a', 'no_reply');
+    expect(read('src-a')).toBeNull();
+
+    await repo.recordRoomLoginOk('src-a', 'room-a');
+    expect(read('src-a')).toBeGreaterThan(0);
+    expect(read('src-b')).toBeNull();
+    await expect(repo.recordRoomLoginOk('', 'room-a')).rejects.toThrow(/sourceId/);
   });
 
   it('leaves auto-sync on unless explicitly asked to disable it', async () => {

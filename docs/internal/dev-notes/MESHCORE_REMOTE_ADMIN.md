@@ -375,6 +375,15 @@ rather than remote admin. Two things about them are load-bearing:
   disables auto-sync at once, and three unanswered attempts in a row disable it
   too. The failure counter is persisted (`roomSyncFailureCount`,
   `roomSyncLastError`, migration 157) precisely so a restart cannot reset it.
+- **Room Sync can re-join without a saved password (#6408).** A room server
+  keeps an ACL, and a blank-password login from a key in it gets back in with
+  its old permission. Every successful login that passes through
+  `loginToNodeWithRetry` to a room stamps `meshcore_nodes.lastRoomLoginOkAt`
+  (migration 237; no secret). For rooms with Room Sync on and that stamp set,
+  the scheduler logs in with a blank password when nothing is saved, and gives
+  each room one re-join after the source connects, unless a login (persisted
+  `lastRoomSyncAt` / `lastRoomLoginOkAt`) happened in the last hour. Same
+  failure rules and per-source 60s floor as above.
 
 `rejected` versus `no_reply` comes from `MESHCORE_LOGIN_REJECTED`, which
 `meshcoreNativeBackend` raises when it sees a LoginFail push (0x86) for the

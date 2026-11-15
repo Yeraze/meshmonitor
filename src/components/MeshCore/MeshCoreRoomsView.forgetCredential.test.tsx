@@ -155,6 +155,20 @@ describe('MeshCoreRoomsView — forget saved password', () => {
     expect(await screen.findByText(/went unanswered/i)).toBeInTheDocument();
     expect(screen.queryByText(/refused by this room server/i)).not.toBeInTheDocument();
   });
+
+  // #6408: with no saved password, auto-sync re-joins with a blank-password
+  // ACL login. When the room refuses that, tell the user to log in again.
+  it('asks for the password again when a blank-password re-join was refused', async () => {
+    const actions = makeActions({
+      getRoomCredentials: vi.fn().mockResolvedValue({ canRemember: true, stored: [] }),
+    });
+    renderView(actions);
+    await waitFor(() => expect(actions.getRoomCredentials).toHaveBeenCalled());
+    fireEvent.click(screen.getByText('Test Room'));
+
+    expect(await screen.findByText(/back in without a password/i)).toBeInTheDocument();
+    expect(screen.queryByText(/refused by this room server/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('MeshCoreRoomsView — auto-sync without a login (#6267)', () => {

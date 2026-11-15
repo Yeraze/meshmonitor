@@ -253,6 +253,7 @@ import { migration as createDirectRfContactsMigration, runMigration233Postgres, 
 import { migration as addNodeMqttConsentMigration, runMigration234Postgres, runMigration234Mysql } from '../server/migrations/234_add_node_mqtt_consent.js';
 import { migration as unifiedNotificationScopeMigration, runMigration235Postgres, runMigration235Mysql } from '../server/migrations/235_unified_notification_scope.js';
 import { migration as createMqttNativeIdentitiesMigration, runMigration236Postgres, runMigration236Mysql } from '../server/migrations/236_create_mqtt_native_identities.js';
+import { migration as meshcoreRoomLoginOkAtMigration, runMigration237Postgres, runMigration237Mysql } from '../server/migrations/237_add_meshcore_room_login_ok_at.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
@@ -3802,4 +3803,19 @@ registry.register({
   sqlite: (db) => createMqttNativeIdentitiesMigration.up(db),
   postgres: (client) => runMigration236Postgres(client),
   mysql: (pool) => runMigration236Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 237: `meshcore_nodes.lastRoomLoginOkAt` (#6408). Epoch ms of the
+// last SUCCESSFUL room login from this source. Non-NULL means "joined", which
+// lets Room Sync re-join with a blank-password ACL login. Stores no secret.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 237,
+  name: 'add_meshcore_room_login_ok_at',
+  settingsKey: 'migration_237_add_meshcore_room_login_ok_at',
+  sqlite: (db) => meshcoreRoomLoginOkAtMigration.up(db),
+  postgres: (client) => runMigration237Postgres(client),
+  mysql: (pool) => runMigration237Mysql(pool),
 });
