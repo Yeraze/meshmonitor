@@ -197,6 +197,55 @@ describe('trigger.telemetry in the engine', () => {
     expect(calls[0].args.body).toBe(`${LOCAL} noiseFloor=-90`);
   });
 
+  it('MeshCore readings carry the node name, public key and role (#6397)', async () => {
+    vi.useFakeTimers();
+    const { calls, deps } = recorder();
+    const KEY = 'ab'.repeat(32);
+    const MC_NUM = 0x0abcdef0;
+    await createEnabled({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.telemetry', params: { telemetryType: 'voltage' } },
+        { id: 'n', type: 'action.notify', params: { title: 't', body: '{{ trigger.name }}|{{ trigger.publicKey }}|{{ trigger.roleName }}|{{ trigger.value }}' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+
+    const events: DataEvent[] = [];
+    const listener = (e: DataEvent) => { if (e.type === 'telemetry:batch') events.push(e); };
+    dataEventEmitter.on('data', listener);
+    try {
+      dataEventEmitter.emitTelemetry(
+        MC_NUM,
+        { nodeId: KEY, nodeNum: MC_NUM, telemetryType: 'voltage', timestamp: 1, value: 3.71, unit: 'V', createdAt: 1 },
+        'mc-src',
+        { meshcorePublicKey: KEY, meshcoreName: 'Hilltop RPT', meshcoreAdvType: 2 },
+      );
+      await vi.advanceTimersByTimeAsync(1_100);
+    } finally {
+      dataEventEmitter.off('data', listener);
+    }
+    expect(events).toHaveLength(1);
+    await routeEventToEngine(engine, events[0]);
+    expect(calls.map((c) => c.fn)).toEqual(['notify']);
+    expect(calls[0].args.body).toBe(`Hilltop RPT|${KEY}|Repeater|3.71`);
+  });
+
+  it('drops a MeshCore reading from our own MeshCore node (#3914)', async () => {
+    const { calls, deps } = recorder();
+    const KEY = 'cd'.repeat(32);
+    await createEnabled(telemetryGraph());
+    const engine = new AutomationEngineService({
+      automationsRepo: autos, varResolver: resolver, deps, now: () => clock,
+      data: { ...data, getSelfPublicKey: async () => KEY },
+    });
+    await engine.load();
+    expect(await engine.onTelemetry(0x0abcdef0, 'voltage', 3.7, 'V', 'mc-src', { meshcore: { publicKey: KEY } })).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
   it('still drops our own non-LocalStats telemetry (#3914)', async () => {
     const { calls, deps } = recorder();
     await createEnabled(telemetryGraph());
