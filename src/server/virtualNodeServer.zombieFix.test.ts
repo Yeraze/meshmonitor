@@ -101,6 +101,7 @@ function makeFakeManager(sourceId: string = 'src-1', localNodeNum: number = 0x11
       nodeId: `!${localNodeNum.toString(16).padStart(8, '0')}`,
     }),
     processIncomingData: vi.fn().mockResolvedValue(undefined),
+    getDeviceNodeFlags: vi.fn().mockReturnValue(undefined),
   } as any;
 }
 
@@ -531,5 +532,37 @@ describe('VirtualNodeServer — addContact ack-and-drop (issue #6163)', () => {
     });
 
     expect(createFakeRoutingAckMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('VirtualNodeServer.sendNodeInfosFromDb — radio NodeDB flags (#5921)', () => {
+  const now = Math.floor(Date.now() / 1000);
+  const node = (nodeNum: number, extra: Record<string, unknown> = {}) => ({
+    nodeNum, nodeId: `!${nodeNum.toString(16).padStart(8, '0')}`, longName: 'N', shortName: 'N', hwModel: 1, lastHeard: now, ...extra,
+  });
+
+  beforeEach(() => {
+    getActiveNodesMock.mockReset();
+    getSettingForSourceMock.mockReset();
+    getSettingForSourceMock.mockResolvedValue('24');
+    createNodeInfoMock.mockReset();
+    createNodeInfoMock.mockResolvedValue(new Uint8Array([10, 20, 30]));
+  });
+
+  it('passes the radio flags on, and treats an unlisted RF node as heard on LoRa', async () => {
+    getActiveNodesMock.mockResolvedValue([node(1), node(2), node(3, { viaMqtt: true })]);
+    const mgr = makeFakeManager();
+    mgr.getDeviceNodeFlags.mockImplementation((n: number) => n === 1
+      ? { isKeyManuallyVerified: false, isMuted: false, hasXeddsaSigned: true, heardOnCurrentLora: false }
+      : undefined);
+    const vn = new VirtualNodeServer({ port: 4503, meshtasticManager: mgr });
+    attachFakeClient(vn);
+
+    await (vn as any).sendNodeInfosFromDb('client-1');
+
+    const [listed, unlisted, mqtt] = createNodeInfoMock.mock.calls.map((c) => c[0]);
+    expect(listed).toMatchObject({ hasXeddsaSigned: true, heardOnCurrentLora: false });
+    expect(unlisted).toMatchObject({ hasXeddsaSigned: undefined, heardOnCurrentLora: true });
+    expect(mqtt.heardOnCurrentLora).toBe(false);
   });
 });

@@ -943,6 +943,10 @@ export class VirtualNodeServer extends EventEmitter {
       // clients see the user-set custom location instead of stale device GPS
       // (issue #2847).
       const effPos = getEffectiveDbNodePosition(node);
+      // Flags only the radio knows (#5921). A node the radio did not list was
+      // still heard by this source, so it counts as heard on LoRa unless MQTT
+      // brought it; absent, Android 2.8.x badges it "unheard".
+      const flags = this.config.meshtasticManager.getDeviceNodeFlags(node.nodeNum);
       const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
         nodeNum: node.nodeNum,
         user: {
@@ -971,6 +975,10 @@ export class VirtualNodeServer extends EventEmitter {
         hopsAway: node.hopsAway ?? undefined,
         viaMqtt: node.viaMqtt ? true : false,
         isFavorite: node.isFavorite ? true : false,
+        isKeyManuallyVerified: flags?.isKeyManuallyVerified,
+        isMuted: flags?.isMuted,
+        hasXeddsaSigned: flags?.hasXeddsaSigned,
+        heardOnCurrentLora: flags?.heardOnCurrentLora ?? !node.viaMqtt,
       });
 
       if (nodeInfoMessage) {
