@@ -55,4 +55,16 @@ describe('POST /api/settings — auto-responder trigger syntax (#5924)', () => {
     expect(res.body.error).toMatch(msg);
     expect(await stored()).toBeNull();
   });
+
+  it('keeps the per-trigger enabled flag, and rejects a non-boolean one (#6405)', async () => {
+    const triggers = [trigger({ id: 'off', enabled: false }), trigger({ id: 'on', enabled: true }), trigger({ id: 'legacy' })];
+    const ok = await post(triggers);
+    expect(ok.status).toBe(200);
+    expect(JSON.parse((await stored())!)).toEqual(triggers);
+
+    const bad = await post([trigger({ id: 'bad', enabled: 'no' })]);
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe('INVALID_INPUT');
+    expect(JSON.parse((await stored())!)).toEqual(triggers);
+  });
 });
