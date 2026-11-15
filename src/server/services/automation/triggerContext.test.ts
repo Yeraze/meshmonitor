@@ -546,6 +546,25 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     expect(ctx.fields.hopEmoji).toBe('2️⃣'); // #4340
   });
 
+  it('maps our OWN outgoing channel post as a channel message, not a DM (#6409)', () => {
+    // An outgoing row keeps our pubkey in fromPublicKey and the channel slot in toPublicKey.
+    const ctx = buildMeshCoreMessageContext(
+      mcMsg({ fromPublicKey: 'selfkey', toPublicKey: 'channel-2', fromName: 'MyNode', text: 'hi' }),
+      'default',
+      1,
+    );
+    expect(ctx.fields.channel).toBe(2);
+    expect(ctx.fields.isDM).toBe(false);
+    expect(ctx.fields.isBroadcast).toBe(true);
+    expect(ctx.subjectNodeKey).toBeNull();
+  });
+
+  it('a received DM stays a DM (toPublicKey is our real key, not a channel slot)', () => {
+    const ctx = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'aabbcc', toPublicKey: 'selfkey' }), 'default', 1);
+    expect(ctx.fields.isDM).toBe(true);
+    expect(ctx.fields.channel).toBeUndefined();
+  });
+
   it('hopEmoji is undefined when msg.hopCount is absent (#4340)', () => {
     const ctx = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'aabbcc' }), 'default', 1);
     expect(ctx.fields.hops).toBeUndefined();
@@ -745,6 +764,12 @@ describe('meshCoreMessageMatchesFilter (#3833)', () => {
   it('matches channel name case-insensitively against the resolved name', () => {
     expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channelName: 'gauntlet' }, 'Gauntlet')).toBe(true);
     expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channelName: 'gauntlet' }, 'Primary')).toBe(false);
+  });
+  it('matches our own outgoing channel post by its toPublicKey channel slot (#6409)', () => {
+    const own = mcMsg({ fromPublicKey: 'selfkey', toPublicKey: 'channel-2' });
+    expect(meshCoreMessageMatchesFilter(own, { channel: 2 })).toBe(true);
+    expect(meshCoreMessageMatchesFilter(own, { channel: 5 })).toBe(false);
+    expect(meshCoreMessageMatchesFilter(own, { channels: [{ name: 'Public' }] }, 'Public')).toBe(true);
   });
   it('Meshtastic-only params force a non-match (no pubkey↔nodeNum coercion)', () => {
     expect(meshCoreMessageMatchesFilter(mcMsg(), { from: 111 })).toBe(false);
