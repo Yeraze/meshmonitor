@@ -28,6 +28,18 @@
  * The counter lives in the database, not on this instance: an in-memory one is
  * cleared by every restart, so a container that restarts hourly would never
  * reach the threshold (CLAUDE.md, "Does a save reset a safety timer?").
+ *
+ * Blank-password re-join (#6408). A room server keeps an ACL of clients that
+ * logged in before, and a blank-password login from a key in that ACL gets
+ * back in with its old permission. So once a room login from this source has
+ * succeeded (`lastRoomLoginOkAt`, migration 237 — no secret stored):
+ *   - With no saved password, the scheduler logs in with a blank one.
+ *   - After the source connects (startup or reconnect), each such room gets
+ *     ONE re-join on the normal tick, still at most one login per source per
+ *     60s — unless something logged in to it within the last hour, judged
+ *     from the persisted timestamps, so a restart is never itself a trigger.
+ *   - Failures follow the rules above: a refusal disables auto-sync, silence
+ *     counts towards MAX_CONSECUTIVE_FAILURES.
  */
 import { logger } from '../../utils/logger.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
@@ -47,32 +59,80 @@ const DEFAULT_TICK_MS = 60_000;
  */
 const MAX_CONSECUTIVE_FAILURES = 3;
 
+/**
+ * Re-join on connect (#6408): a room is not re-joined on startup / source
+ * connect when the last login to it — attempt or success, both PERSISTED —
+ * was within this window. That is what keeps a restart from ever being a
+ * trigger on its own: a container that restarts every few minutes sends at
+ * most one re-join per room per hour, because every attempt stamps
+ * `lastRoomSyncAt` in the database.
+ */
+export const STARTUP_REJOIN_QUIET_MS = 60 * 60_000;
+
 interface RoomSyncNode {
   publicKey: string;
   sourceId: string;
   roomSyncEnabled: boolean;
   roomSyncIntervalMinutes: number;
   lastRoomSyncAt: number | null;
+  /** Last SUCCESSFUL login from this source (#6408). Non-null = joined: the
+   *  room's ACL holds our key, so a blank-password login gets back in. */
+  lastRoomLoginOkAt?: number | null;
+}
+
+/** Most recent persisted login to the room: a scheduled attempt or any success. */
+function lastLoginAt(node: RoomSyncNode): number {
+  return Math.max(node.lastRoomSyncAt ?? 0, node.lastRoomLoginOkAt ?? 0);
 }
 
 export function isRoomSyncEligible(node: RoomSyncNode, now: number): boolean {
   if (!node.roomSyncEnabled) return false;
   const interval = node.roomSyncIntervalMinutes;
   if (interval === null || interval === undefined || interval < 60) return false;
-  const last = node.lastRoomSyncAt ?? 0;
-  return (now - last) >= interval * 60_000;
+  // An interactive login counts too: re-logging in minutes after the user did
+  // only spends airtime.
+  return (now - lastLoginAt(node)) >= interval * 60_000;
 }
 
-export function pickMostOverdueRoom(nodes: RoomSyncNode[], now: number): RoomSyncNode | undefined {
-  const eligible = nodes.filter(n => isRoomSyncEligible(n, now));
-  if (eligible.length === 0) return undefined;
+/**
+ * May this room be re-joined now that the source has (re)connected? Only
+ * rooms this source has joined before, and only when nothing logged in to it
+ * within STARTUP_REJOIN_QUIET_MS.
+ */
+export function isStartupRejoinEligible(node: RoomSyncNode, now: number): boolean {
+  if (!node.roomSyncEnabled) return false;
+  if (node.lastRoomLoginOkAt === null || node.lastRoomLoginOkAt === undefined) return false;
+  return (now - lastLoginAt(node)) >= STARTUP_REJOIN_QUIET_MS;
+}
+
+/**
+ * Rooms due for a login, most overdue first. `startupPending` holds the keys
+ * still owed their one re-join since the source connected; those are due on
+ * the startup rule as well as their interval.
+ */
+export function rankRoomsForSync(
+  nodes: RoomSyncNode[],
+  now: number,
+  startupPending?: ReadonlySet<string>,
+): RoomSyncNode[] {
+  const eligible = nodes.filter(n =>
+    isRoomSyncEligible(n, now) ||
+    (startupPending?.has(n.publicKey) === true && isStartupRejoinEligible(n, now)));
   eligible.sort((a, b) => {
-    const aOver = now - (a.lastRoomSyncAt ?? 0);
-    const bOver = now - (b.lastRoomSyncAt ?? 0);
+    const aOver = now - lastLoginAt(a);
+    const bOver = now - lastLoginAt(b);
     if (aOver !== bOver) return bOver - aOver;
     return a.publicKey.localeCompare(b.publicKey);
   });
-  return eligible[0];
+  return eligible;
+}
+
+export function pickMostOverdueRoom(
+  nodes: RoomSyncNode[],
+  now: number,
+  startupPending?: ReadonlySet<string>,
+): RoomSyncNode | undefined {
+  return rankRoomsForSync(nodes, now, startupPending)[0];
 }
 
 export interface RoomSyncSchedulerOptions {
@@ -89,6 +149,14 @@ export class MeshCoreRoomSyncScheduler {
   private readonly now: () => number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
+  /**
+   * Per source: room keys whose one re-join since the source connected is
+   * settled — tried, or ruled out (not joined, or logged in within the last
+   * hour). Cleared when the source is seen disconnected, so a reconnect earns
+   * one more try. Being in-memory is safe: whether a try is ALLOWED comes from
+   * the persisted timestamps (STARTUP_REJOIN_QUIET_MS), never from this set.
+   */
+  private readonly rejoinSettled = new Map<string, Set<string>>();
 
   constructor(opts: RoomSyncSchedulerOptions) {
     this.registry = opts.registry;
@@ -117,7 +185,10 @@ export class MeshCoreRoomSyncScheduler {
     try {
       const managers = this.registry.getAllManagers().filter(isMeshCoreManager);
       for (const manager of managers) {
-        if (!manager.isConnected()) continue;
+        if (!manager.isConnected()) {
+          this.rejoinSettled.delete(manager.sourceId);
+          continue;
+        }
         try {
           await this.tickOneManager(manager.sourceId, manager);
         } catch (err) {
@@ -155,25 +226,59 @@ export class MeshCoreRoomSyncScheduler {
         roomSyncEnabled: true,
         roomSyncIntervalMinutes: n.roomSyncIntervalMinutes ?? 60,
         lastRoomSyncAt: n.lastRoomSyncAt ?? null,
+        lastRoomLoginOkAt: n.lastRoomLoginOkAt ?? null,
       }));
 
-    const target = pickMostOverdueRoom(roomNodes, now);
-    if (!target) return;
-
-    // Load saved credential for this room.
-    const cred = await this.credentialStore.loadRoom(sourceId, target.publicKey);
-    if (cred.kind !== 'ok') {
-      logger.debug(
-        `[RoomSyncScheduler] No usable credential for room ${target.publicKey.substring(0, 12)}… (${cred.kind}), skipping`,
-      );
-      return;
+    // Re-join on connect (#6408): each room gets ONE try per connection, and
+    // only when the persisted timestamps allow it. A room ruled out now (not
+    // joined, or logged in within the hour) is settled for this connection,
+    // so the restart itself never becomes the trigger later on.
+    let settled = this.rejoinSettled.get(sourceId);
+    if (!settled) {
+      settled = new Set();
+      this.rejoinSettled.set(sourceId, settled);
+    }
+    const startupPending = new Set<string>();
+    for (const room of roomNodes) {
+      if (settled.has(room.publicKey)) continue;
+      if (isStartupRejoinEligible(room, now)) startupPending.add(room.publicKey);
+      else settled.add(room.publicKey);
     }
 
+    // The most overdue room we can actually log in to: a saved password, or a
+    // blank-password ACL login for a room this source has joined (#6408). A
+    // room with neither is skipped rather than allowed to block the rest.
+    let target: RoomSyncNode | undefined;
+    let password = '';
+    for (const room of rankRoomsForSync(roomNodes, now, startupPending)) {
+      const cred = await this.credentialStore.loadRoom(sourceId, room.publicKey);
+      if (cred.kind === 'ok') {
+        target = room;
+        password = cred.password;
+        break;
+      }
+      if (room.lastRoomLoginOkAt !== null && room.lastRoomLoginOkAt !== undefined) {
+        target = room;
+        password = '';
+        break;
+      }
+      logger.debug(
+        `[RoomSyncScheduler] No usable credential for room ${room.publicKey.substring(0, 12)}… (${cred.kind}) ` +
+        'and never joined from this source, skipping',
+      );
+    }
+    if (!target) return;
+    settled.add(target.publicKey);
+    const blank = password === '';
+
     const shortKey = `${target.publicKey.substring(0, 12)}…`;
-    logger.debug(`[RoomSyncScheduler] Syncing room ${shortKey} on source ${sourceId}`);
+    logger.debug(
+      `[RoomSyncScheduler] Syncing room ${shortKey} on source ${sourceId}` +
+      (blank ? ' (blank-password ACL re-join)' : ''),
+    );
 
     try {
-      const outcome = await manager.loginToRoomWithOutcome(target.publicKey, cred.password);
+      const outcome = await manager.loginToRoomWithOutcome(target.publicKey, password);
 
       // We transmitted either way — up to three login sends, each of which
       // floods when the room's path is unknown. Record it so the per-source
@@ -220,8 +325,11 @@ export class MeshCoreRoomSyncScheduler {
 
       if (disable) {
         logger.warn(
-          `[RoomSyncScheduler] Room ${shortKey} refused the saved password — auto-sync disabled. ` +
-          'Forget the saved password (or log in again with the right one) to re-enable it.',
+          blank
+            ? `[RoomSyncScheduler] Room ${shortKey} refused the blank-password re-join (it may have cleared ` +
+              'its member list or changed its password) — auto-sync disabled. Log in again with the password to re-enable it.'
+            : `[RoomSyncScheduler] Room ${shortKey} refused the saved password — auto-sync disabled. ` +
+              'Forget the saved password (or log in again with the right one) to re-enable it.',
         );
         return;
       }

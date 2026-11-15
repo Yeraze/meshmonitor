@@ -1803,6 +1803,24 @@ export class MeshCoreRepository extends BaseRepository {
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
   }
 
+  /**
+   * Stamp a SUCCESSFUL login to a room server from this source (#6408). A
+   * non-NULL value means "joined": the room's ACL holds this source's
+   * companion key, so a later blank-password login gets back in. Stores no
+   * secret. Unlike `lastRoomSyncAt`, failed attempts never write it.
+   */
+  async recordRoomLoginOk(sourceId: string, publicKey: string): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.recordRoomLoginOk requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+    await this.db
+      .update(meshcoreNodes)
+      .set({ lastRoomLoginOkAt: now, updatedAt: now })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
   async updateLastRoomPostAt(sourceId: string, publicKey: string, timestamp: number): Promise<void> {
     const { meshcoreNodes } = this.tables;
     const now = this.now();
