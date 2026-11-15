@@ -1246,6 +1246,10 @@ export class MeshtasticProtobufService {
     viaMqtt?: boolean;
     isFavorite?: boolean;
     isIgnored?: boolean;
+    isKeyManuallyVerified?: boolean;
+    isMuted?: boolean;
+    hasXeddsaSigned?: boolean;
+    heardOnCurrentLora?: boolean;
   }): Promise<Uint8Array | null> {
     const root = getProtobufRoot();
     if (!root) {
@@ -1318,6 +1322,10 @@ export class MeshtasticProtobufService {
         viaMqtt: info.viaMqtt,
         isFavorite: info.isFavorite,
         isIgnored: info.isIgnored,
+        isKeyManuallyVerified: info.isKeyManuallyVerified,
+        isMuted: info.isMuted,
+        hasXeddsaSigned: info.hasXeddsaSigned,
+        heardOnCurrentLora: info.heardOnCurrentLora,
       });
 
       const fromRadio = FromRadio.create({

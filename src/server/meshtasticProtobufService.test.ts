@@ -327,6 +327,23 @@ describe('MeshtasticProtobufService', () => {
       expect(decoded.nodeInfo.isFavorite).toBe(true);
     });
 
+    it('encodes the radio NodeDB flags Android 2.8 reads (#5921)', async () => {
+      if (!requireProtobufs()) return;
+      const result = await service.createNodeInfo({
+        nodeNum: 987654321,
+        user: { id: '!3ade68b1', longName: 'Signed', shortName: 'SIG', hwModel: 43 },
+        isKeyManuallyVerified: true,
+        isMuted: true,
+        hasXeddsaSigned: true,
+        heardOnCurrentLora: true,
+      });
+      const decoded = decodeFromRadio(result!);
+      expect(decoded.nodeInfo.isKeyManuallyVerified).toBe(true);
+      expect(decoded.nodeInfo.isMuted).toBe(true);
+      expect(decoded.nodeInfo.hasXeddsaSigned).toBe(true);
+      expect(decoded.nodeInfo.heardOnCurrentLora).toBe(true);
+    });
+
     it('should create NodeInfo without viaMqtt when not provided', async () => {
       if (!requireProtobufs()) return;
       const result = await service.createNodeInfo({
