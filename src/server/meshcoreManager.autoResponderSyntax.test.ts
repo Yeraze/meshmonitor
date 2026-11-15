@@ -81,6 +81,22 @@ describe('MeshCore Auto-Responder syntax (#5924)', () => {
     expect(runScript.mock.calls[0][2]).toMatchObject({ PARAM_z: '33076' });
   });
 
+  it('script responses get the routing values the reply tokens render (#6402)', async () => {
+    const { m } = makeManager([{ ...base, id: 's', name: 's', responseType: 'script', scriptPath: 'x.py', pattern: 'ping', response: '' }]);
+    const runScript = vi.fn().mockResolvedValue({ success: true, wouldSendMessages: [] });
+    m.runMeshCoreScript = runScript;
+    m.getContacts = () => [];
+    const msg = { id: 'm', fromPublicKey: 'deadbeefcafebabe0011223344556677', text: 'ping', timestamp: Date.now(), scopeCode: 0 };
+    await m.checkAutoResponder(msg, true, undefined, 2, 'a3b4,7f80');
+    await m.checkAutoResponder(msg, true, undefined, 0, null);
+    expect(runScript.mock.calls[0][2]).toMatchObject({
+      HOPS: '2', ROUTE: 'a3b4→7f80', ROUTE_NAMES: 'a3b4→7f80', HASH_SIZE: '2', SCOPE: '(unscoped)',
+    });
+    expect(runScript.mock.calls[1][2]).toMatchObject({
+      HOPS: '0', ROUTE: 'direct', ROUTE_NAMES: 'direct', HASH_SIZE: '—',
+    });
+  });
+
   it('the per-sender cooldown still applies in pattern mode', async () => {
     const { run, sent } = makeManager([{ ...base, id: 'c', name: 'c', syntax: 'pattern', pattern: 'ping', response: 'pong', cooldownSeconds: 60 }]);
     await run('ping');
