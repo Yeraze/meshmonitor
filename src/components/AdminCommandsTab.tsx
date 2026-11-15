@@ -2156,18 +2156,24 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         </div>
         {isManagingRemoteNode && (
           <div className="setting-item">
-            <label htmlFor="adminVerifySaves">
+            <label
+              htmlFor="adminVerifySaves"
+              style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}
+            >
               <input
                 id="adminVerifySaves"
                 type="checkbox"
                 checked={verifySaves}
                 disabled={isExecuting}
                 onChange={(e) => setVerifySaves(e.target.checked)}
-              />{' '}
-              {t('admin_commands.verify_saves_label', 'Verify config saves')}
-              <span className="setting-description">
-                {t('admin_commands.verify_saves_description', 'Reads each config save back from the node until it sticks, in the background for up to 2 hours. Checks every 5 minutes; resends only when the node answers with the old value, at most 5 sends. Load the section first. Security settings cannot be verified.')}
-              </span>
+                style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>{t('admin_commands.verify_saves_label', 'Verify config saves')}</div>
+                <span className="setting-description">
+                  {t('admin_commands.verify_saves_description', 'Reads each config save back from the node until it sticks, in the background for up to 2 hours. Checks every 5 minutes; resends only when the node answers with the old value, at most 5 sends. Load the section first. Security settings cannot be verified.')}
+                </span>
+              </div>
             </label>
           </div>
         )}
