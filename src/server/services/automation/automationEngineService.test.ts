@@ -533,6 +533,46 @@ describe('AutomationEngineService', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('#6409: our own outgoing MeshCore channel post reaches an includeSelf channel rule (MT↔MC bridge)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('bridge-like', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { includeSelf: true, channels: [{ name: 'Public', protocol: 'meshcore' }] } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'relayed' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const channelIdxs: number[] = [];
+    const selfData = {
+      ...data,
+      getSelfPublicKey: async () => 'ABCD',
+      getChannelName: async (_s: string | null, idx: number) => { channelIdxs.push(idx); return idx === 1 ? 'Public' : null; },
+    };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    // Outgoing row shape: our key as sender, the channel slot as recipient.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'abcd', toPublicKey: 'channel-1', text: 'hello' }), 'default')).toBe(1);
+    expect(calls).toHaveLength(1);
+    expect(channelIdxs).toContain(1);
+  });
+
+  it('#6409: an own send stored with the \'local\' placeholder key is still self-origin', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('mc-ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+    await engine.load();
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'local', toPublicKey: 'channel-0', text: 'ping' }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
   it('self-origin (#3914): ignores our own node telemetry', async () => {
     const { deps } = recorder();
     await createEnabled('batt', {

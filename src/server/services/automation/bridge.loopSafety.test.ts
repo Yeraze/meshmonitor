@@ -129,13 +129,16 @@ describe('bridgeTemplate loop safety (round-trip)', () => {
    */
   async function simMeshCore(graph: AutomationGraph, opts: {
     sourceId: string; channelName: string; text: string; fromName?: string;
+    /** Store it as OUR outgoing post: own key as sender, slot as recipient (#6409). */
+    outgoing?: boolean;
   }): Promise<MinimalSimResult> {
     const now = Date.now();
     const msg: MeshCoreMessage = {
       id: 'mc-1',
       // A channel post's synthetic sender key (parseMeshCoreChannelIdx) — see
       // triggerContext.ts's buildMeshCoreMessageContext header comment.
-      fromPublicKey: 'channel-0',
+      fromPublicKey: opts.outgoing ? 'ab'.repeat(32) : 'channel-0',
+      ...(opts.outgoing ? { toPublicKey: 'channel-0' } : {}),
       fromName: opts.fromName,
       text: opts.text,
       timestamp: now,
@@ -185,6 +188,25 @@ describe('bridgeTemplate loop safety (round-trip)', () => {
     expect(second.matched).toBe(true);
     expect(second.conditionResults).toMatchObject({ c2: false }); // the notContains 'MT@' guard
     expect(second.actions).toHaveLength(0);
+  });
+
+  it('#6409: the MT→MC relay stored as our own outgoing MeshCore post is still stopped by the loop guard', async () => {
+    const first = await simMeshtastic(mtToMc.config, { sourceId: 'mt1', channelName: 'General', text: 'hello', fromName: 'Alice' });
+    const relayedText = (first.actions[0].resolvedParams as { text: string }).text;
+    // Our own channel posts now resolve their channel from toPublicKey, so the
+    // bridge's includeSelf trigger sees the relay it just sent. Only the text
+    // guard stands between that and an echo back to Meshtastic.
+    const second = await simMeshCore(mcToMt.config, { sourceId: 'mc1', channelName: 'General', text: relayedText, outgoing: true });
+    expect(second.matched).toBe(true);
+    expect(second.conditionResults).toMatchObject({ c2: false });
+    expect(second.actions).toHaveLength(0);
+  });
+
+  it('#6409: an operator-typed MeshCore channel post (outgoing shape) relays to Meshtastic', async () => {
+    const r = await simMeshCore(mcToMt.config, { sourceId: 'mc1', channelName: 'General', text: 'hi', fromName: 'Me', outgoing: true });
+    expect(r.matched).toBe(true);
+    expect(r.actions).toHaveLength(1);
+    expect((r.actions[0].resolvedParams as { text?: string }).text).toMatch(/^MC@.*: hi$/);
   });
 
   it('MC→MT: a fresh MeshCore channel message matches, relays exactly once to mt1, tagged MC@', async () => {
