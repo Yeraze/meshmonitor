@@ -45,7 +45,7 @@ export const VerifyJobsPanel: React.FC<Props> = ({ nodeName, refreshKey = 0 }) =
 
   const detail = (job: AdminVerifyJob): string => {
     if (job.error) return job.error.message;
-    if (job.status === 'waiting') {
+    if (job.status === 'waiting' && job.nextCheckAt != null) {
       const mins = minutesUntil(job.nextCheckAt);
       return t('admin_commands.verify_jobs.next_check', 'Next check in {{mins}} min', { mins });
     }

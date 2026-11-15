@@ -200,7 +200,7 @@ export class VerifyJobLimitError extends Error {
 
 export class AdminVerifyJobService {
   private readonly jobs = new Map<string, VerifyJob>();
-  private readonly wakers = new Map<string, () => void>();
+  private readonly wakers = new WeakMap<VerifyJob, () => void>();
 
   list(): VerifyJob[] {
     this.sweep();
@@ -266,7 +266,7 @@ export class AdminVerifyJobService {
     const job = this.jobs.get(id);
     if (!job || TERMINAL.has(job.status)) return job;
     this.finish(job, 'cancelled');
-    this.wakers.get(id)?.();
+    this.wakers.get(job)?.();
     return job;
   }
 
@@ -285,11 +285,11 @@ export class AdminVerifyJobService {
     return new Promise((resolve) => {
       const done = () => {
         clearTimeout(timer);
-        this.wakers.delete(job.id);
+        this.wakers.delete(job);
         resolve();
       };
       const timer = setTimeout(done, ms);
-      this.wakers.set(job.id, done);
+      this.wakers.set(job, done);
     });
   }
 
