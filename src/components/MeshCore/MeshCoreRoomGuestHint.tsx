@@ -10,7 +10,7 @@
 import { useTranslation } from 'react-i18next';
 import styles from './MeshCoreRoomGuestHint.module.css';
 
-export const STOCK_ROOM_GUEST_PASSWORD = 'hello';
+export const STOCK_ROOM_GUEST_DEFAULT = 'hello';
 
 interface Props {
   onUseDefault: (password: string) => void;
@@ -29,7 +29,7 @@ export function MeshCoreRoomGuestHint({ onUseDefault, disabled, className }: Pro
       <button
         type="button"
         className={styles.useDefault}
-        onClick={() => onUseDefault(STOCK_ROOM_GUEST_PASSWORD)}
+        onClick={() => onUseDefault(STOCK_ROOM_GUEST_DEFAULT)}
         disabled={disabled}
       >
         {t('meshcore.rooms.use_guest_password', 'Use "hello"')}

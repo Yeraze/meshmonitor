@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
+import { STOCK_ROOM_GUEST_DEFAULT } from './MeshCoreRoomGuestHint';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -139,7 +140,7 @@ describe('MeshCoreRemoteConsole guest password hint (#6407)', () => {
     await openLogin();
     expect(screen.getByText(/Stock room servers use the guest password/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Use "hello"' }));
-    expect((document.querySelector('.mrc-modal input') as HTMLInputElement).value).toBe('hello');
+    expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(STOCK_ROOM_GUEST_DEFAULT);
   });
 
   it('repeaters keep the blank-for-guest wording and get no "hello" button', async () => {
