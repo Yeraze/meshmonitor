@@ -903,6 +903,11 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
             return res.status(400).json({ error: 'Trigger must be a string or array of strings' });
           }
 
+          // Per-trigger switch (#6405). Optional; when present it must be a boolean.
+          if (trigger.enabled !== undefined && typeof trigger.enabled !== 'boolean') {
+            return fail(res, 400, 'INVALID_INPUT', 'enabled must be a boolean');
+          }
+
           // Trigger syntax (#5924). Missing = 'pattern' (the DSL). A regex-mode
           // trigger gets the same store-time checks as a MeshCore one; pattern
           // mode is left as it was, so older triggers still save.

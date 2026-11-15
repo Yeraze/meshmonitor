@@ -589,6 +589,8 @@ interface AutoResponderTrigger {
   multiline?: boolean;
   scriptArgs?: string; // Optional CLI arguments for script execution (supports token expansion)
   cooldownSeconds?: number; // Per-node cooldown in seconds (0 = disabled, default)
+  /** Per-trigger switch (#6405). Only an explicit `false` turns it off; absent = enabled. */
+  enabled?: boolean;
 }
 
 /**
@@ -13715,6 +13717,12 @@ class MeshtasticManager implements ISourceManager {
       // Try to match message against triggers
       for (let triggerIdx = 0; triggerIdx < triggers.length; triggerIdx++) {
         const trigger = triggers[triggerIdx];
+        // Per-trigger switch (#6405): only an explicit false turns a trigger
+        // off, so triggers saved before the field existed keep working.
+        if (trigger.enabled === false) {
+          logger.debug(`⏭️  Skipping trigger "${trigger.trigger}" - disabled`);
+          continue;
+        }
         // Normalize trigger channels (handles legacy single channel and new multi-channel array format)
         const triggerChannels = normalizeTriggerChannels(trigger);
 
