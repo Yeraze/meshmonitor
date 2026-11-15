@@ -437,4 +437,41 @@ describe('MeshCoreManager.loginToRoomWithOutcome', () => {
 
     expect(await manager.loginToRoom('bb'.repeat(32), 'wrong')).toBe(false);
   });
+
+  // #6408: a successful room login records "joined" (no secret), so Room
+  // Sync may later re-join with a blank-password ACL login.
+  it('records the room as joined on a successful login', async () => {
+    const roomPubkey = 'bb'.repeat(32);
+    const record = vi.spyOn(databaseService.meshcore, 'recordRoomLoginOk').mockResolvedValue(undefined);
+    const { manager } = makeLoginManager(() => ({ success: true, data: {} }));
+    (manager as any).contacts.set(roomPubkey, { publicKey: roomPubkey, advType: 3 });
+
+    expect(await manager.loginToRoomWithOutcome(roomPubkey, 'right')).toBe('ok');
+    expect(record).toHaveBeenCalledWith('test-source', roomPubkey);
+  });
+
+  it('does not record joined when the login fails', async () => {
+    const record = vi.spyOn(databaseService.meshcore, 'recordRoomLoginOk').mockResolvedValue(undefined);
+    const { manager } = makeLoginManager(() => ({ success: false, error: 'MESHCORE_LOGIN_REJECTED' }));
+
+    await manager.loginToRoomWithOutcome('bb'.repeat(32), 'wrong');
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('does not record joined for a contact known not to be a room', async () => {
+    const repeaterKey = 'cc'.repeat(32);
+    const record = vi.spyOn(databaseService.meshcore, 'recordRoomLoginOk').mockResolvedValue(undefined);
+    const { manager } = makeLoginManager(() => ({ success: true, data: {} }));
+    (manager as any).contacts.set(repeaterKey, { publicKey: repeaterKey, advType: 2 });
+
+    await manager.loginToNodeWithRetry(repeaterKey, 'admin');
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('a failed joined-write never breaks the login', async () => {
+    vi.spyOn(databaseService.meshcore, 'recordRoomLoginOk').mockRejectedValue(new Error('db down'));
+    const { manager } = makeLoginManager(() => ({ success: true, data: {} }));
+
+    expect(await manager.loginToRoomWithOutcome('bb'.repeat(32), 'right')).toBe('ok');
+  });
 });

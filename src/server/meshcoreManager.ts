@@ -10682,6 +10682,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // A success that raced a cancel is still a cancel: the user asked us
       // to stop, so the UI must not flip to "logged in" behind their back.
       if (signal?.aborted) return { result: null, outcome: 'cancelled', attempts: attempt };
+      if (outcome === 'ok') await this.recordRoomJoined(publicKey);
       if (outcome !== 'no_reply') return { result, outcome, attempts: attempt };
       // Not a Companion: nothing went on the air, and retrying cannot help.
       if (this.deviceType !== MeshCoreDeviceType.COMPANION) return { result, outcome, attempts: attempt };
@@ -10695,6 +10696,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     logger.warn(`[MeshCore:${this.sourceId}] Login to ${short} got no reply after ${maxAttempts} attempts`);
     return { result: null, outcome: 'no_reply', attempts: maxAttempts };
+  }
+
+  /**
+   * Record "joined" after a successful login to a room server (#6408). Every
+   * login path (Rooms UI, remote console, Room Sync) passes through
+   * `loginToNodeWithRetry`, so this one hook covers them all. The room's ACL
+   * now holds our companion key, so Room Sync may later re-join with a blank
+   * password. Stores no secret. Skips contacts known NOT to be rooms; a
+   * contact missing from the map is stamped anyway (harmless on a non-room
+   * row, since only room rows are ever read). Best-effort: never throws.
+   */
+  private async recordRoomJoined(publicKey: string): Promise<void> {
+    const contact = this.contacts.get(publicKey);
+    if (contact && contact.advType !== 3) return;
+    try {
+      await databaseService.meshcore.recordRoomLoginOk(this.sourceId, publicKey);
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] could not record room join for ${publicKey.substring(0, 8)}…: ${(err as Error).message}`);
+    }
   }
 
   /**
