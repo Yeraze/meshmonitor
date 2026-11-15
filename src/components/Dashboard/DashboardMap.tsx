@@ -96,7 +96,7 @@ import DuctingLayer from '../map/layers/DuctingLayer';
 import { DuctingControl } from '../map/DuctingControl';
 import subToggleStyles from '../map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
-import { snrToNeighborOpacity, dedupByUnorderedPair } from '../../utils/neighborLinks';
+import { snrToNeighborOpacity, pairNeighborRecords } from '../../utils/neighborLinks';
 import { UiIcon } from '../icons';
 import {
   parseSnapshotRoutePositions,
@@ -667,8 +667,8 @@ export default function DashboardMap({
   // to a currently-visible MeshCore node. Gated by the "Show Neighbors" toggle.
   // Endpoints are filtered through the same node pipeline above, so links to a
   // hidden node (stale / ignored / RF off) naturally drop out. Deduped by the
-  // unordered {publicKey, neighborPublicKey} pair (shared `dedupByUnorderedPair`,
-  // #4047 Phase 7 WP7) so the same link reported by multiple sources (Unified
+  // unordered {publicKey, neighborPublicKey} pair (shared `pairNeighborRecords`,
+  // #6403; freshest direction wins) so the same link reported by multiple sources (Unified
   // view) draws once. Emits descriptors for the shared `NeighborLinksLayer` —
   // fixed cyan/dashed look preserved verbatim, no `children` (no popup).
   //
@@ -690,6 +690,8 @@ export default function DashboardMap({
       a: [number, number];
       b: [number, number];
       snr: number | null;
+      lastHeardSecs: number | null;
+      timestamp: number | null;
     }[] = [];
     for (const e of (meshcoreNeighbors ?? [])) {
       const pk = e?.publicKey;
@@ -698,15 +700,20 @@ export default function DashboardMap({
       const a = positionByPublicKey.get(pk);
       const b = positionByPublicKey.get(npk);
       if (!a || !b) continue;
-      withPositions.push({ publicKey: pk, neighborPublicKey: npk, a, b, snr: e?.snr ?? null });
+      withPositions.push({
+        publicKey: pk,
+        neighborPublicKey: npk,
+        a,
+        b,
+        snr: e?.snr ?? null,
+        lastHeardSecs: e?.lastHeardSecs ?? null,
+        timestamp: e?.timestamp ?? null,
+      });
     }
-    const deduped = dedupByUnorderedPair(
-      withPositions,
-      (x) => x.publicKey,
-      (x) => x.neighborPublicKey,
-    );
-    return deduped.map(({ publicKey: pk, neighborPublicKey: npk, a, b, snr }) => {
-      const pairKey = pk < npk ? `${pk}~${npk}` : `${npk}~${pk}`;
+    // #6403: pick the freshest direction per pair (not the first row), so the
+    // link's opacity no longer flips between a stale and a current SNR.
+    return pairNeighborRecords(withPositions).map(({ pairKey, primary }) => {
+      const { a, b, snr } = primary;
       const positions: [[number, number], [number, number]] = [a, b];
       return {
         key: `mc-neighbor-${pairKey}`,
