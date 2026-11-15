@@ -72,7 +72,7 @@ export const MeshCoreRemoteTelemetrySection: React.FC<Props> = ({ baseUrl, sourc
     setBusy(publicKey);
     try {
       const res = await csrfFetch(nodeUrl(publicKey), {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
