@@ -220,6 +220,22 @@ export function parseMeshCoreChannelIdx(fromPublicKey: string | undefined): numb
 }
 
 /**
+ * Channel slot of a MeshCore message row, whichever direction it travelled.
+ * A RECEIVED channel post keeps `channel-<idx>` in `fromPublicKey` (above), but
+ * an OUTGOING one (the operator's own send, stored by `sendMessage` /
+ * `sendChannelMessageAs`) keeps our own pubkey in `fromPublicKey` and the
+ * `channel-<idx>` slot in `toPublicKey`. Reading only `fromPublicKey` made our
+ * own channel posts look like DMs, so the MT↔MC bridge (which opts into
+ * self-origin events via `includeSelf`) never relayed them (#6409).
+ */
+export function meshCoreMessageChannelIdx(
+  msg: { fromPublicKey?: string | null; toPublicKey?: string | null },
+): number | undefined {
+  return parseMeshCoreChannelIdx(msg.fromPublicKey ?? undefined)
+    ?? parseMeshCoreChannelIdx(msg.toPublicKey ?? undefined);
+}
+
+/**
  * Build the trigger context for a MeshCore `meshcore:message` event (#3833).
  *
  * MeshCore identity is a public-key string — there is no Meshtastic `nodeNum`,
@@ -239,7 +255,7 @@ export function buildMeshCoreMessageContext(
   },
 ): TriggerContext {
   const isTapback = !!msg.reactionEmoji;
-  const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
+  const channelIdx = meshCoreMessageChannelIdx(msg);
   const isChannel = channelIdx !== undefined;
   const isRoom = msg.messageType === 'room_post';
   // DM = addressed to us (recipient pubkey set) and not a channel/room post.
@@ -1149,7 +1165,7 @@ export function meshCoreMessageMatchesFilter(
 ): boolean {
   if (params.portnum != null || params.from != null || params.to != null) return false;
   if (msg.reactionEmoji && !messageFilterIncludesMeshCoreReactions(params)) return false;
-  const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
+  const channelIdx = meshCoreMessageChannelIdx(msg);
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
     if (channelName == null) return false;
@@ -1230,7 +1246,7 @@ export function describeMeshCoreFilterMiss(
   if (msg.reactionEmoji && !messageFilterIncludesMeshCoreReactions(params)) {
     return 'MeshCore reaction: the rule does not have "Also fire on MeshCore reactions" on';
   }
-  const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
+  const channelIdx = meshCoreMessageChannelIdx(msg);
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
     const resolved = channelName == null ? null : channelName.toLowerCase();

@@ -59,7 +59,7 @@ import {
   describeMessageFilterMiss,
   describeMeshCoreFilterMiss,
   describeReticulumFilterMiss,
-  parseMeshCoreChannelIdx,
+  meshCoreMessageChannelIdx,
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
@@ -1219,13 +1219,15 @@ export class AutomationEngineService {
     // `selfOrigin` (#5551) marks a repeater-decrypted channel message whose
     // sender is one of our own nodes — channel traffic has no sender key to
     // match, so the ingest path flags it instead.
-    const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
+    const channelIdx = meshCoreMessageChannelIdx(msg);
     const isReaction = !!msg.reactionEmoji;
     // A reaction is also ours when stored as 'local', or when its channel
     // reactor name is a local MeshCore node name on any source (#5763).
+    // An own send stored before the local node's key was known carries the
+    // 'local' placeholder as its sender (meshcoreManager sendMessage).
     const isSelf = msg.selfOrigin === true
+      || msg.fromPublicKey === 'local'
       || await this.isSelfMeshCore(sourceId, msg.fromPublicKey)
-      || (isReaction && msg.fromPublicKey === 'local')
       || (isReaction && channelIdx !== undefined && !!msg.fromName
         && !!this.data.isOwnMeshCoreName && await this.data.isOwnMeshCoreName(msg.fromName));
     // Same reconciliation as onMessage: resolve the channel name when any message
