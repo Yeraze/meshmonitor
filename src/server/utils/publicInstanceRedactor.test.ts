@@ -39,7 +39,7 @@ describe('class A positions', () => {
     expect(run({ airtimeLong: 0.1234567, channelLoadLong: 3.3333333 })).toEqual({ airtimeLong: 0.1234567, channelLoadLong: 3.3333333 });
   });
   it('passes exact 0, null and strings unchanged', () => {
-    expect(run({ latitude: 0, longitude: 0, lat: null, lon: '40.5' })).toEqual({ latitude: 0, longitude: 0, lat: null, lon: '40.5' });
+    expect(run({ latitude: 0, longitude: 0, lat: null, lon: 'abc' })).toEqual({ latitude: 0, longitude: 0, lat: null, lon: 'abc' });
   });
   it('inherits precision bits from a parent (dbNodeMapper shape)', () => {
     const o = run({ positionPrecisionBits: 13, deviceInfo: { position: { latitude: 40.1234567, longitude: -105.7654321 } } });
@@ -254,7 +254,7 @@ describe('class G derived geometry', () => {
     expect(run({ telemetryType: 'altitude', value: 1623 }).value).toBe(1600);
   });
   it('passes 0, null, strings and non-finite through', () => {
-    expect(run({ distance: 0, bearing: 0, altitude: 0, distanceKm: null, alt: '150', heading: null })).toEqual({ distance: 0, bearing: 0, altitude: 0, distanceKm: null, alt: '150', heading: null });
+    expect(run({ distance: 0, bearing: 0, altitude: 0, distanceKm: null, alt: 'n/a', heading: null })).toEqual({ distance: 0, bearing: 0, altitude: 0, distanceKm: null, alt: 'n/a', heading: null });
   });
   it('leaves lookalikes alone', () => {
     const b = { hopDistance: 3.3, distanceUnit: 'km', range: 7, ranges: [1, 2], azimuthCount: 5, altitudeMode: 2, headingCount: 4 };
@@ -262,6 +262,45 @@ describe('class G derived geometry', () => {
   });
   it('applies with every toggle off', () => {
     expect(run({ distanceKm: 4.4 }, only({})).distanceKm).toBe(4.5);
+  });
+});
+
+describe('numeric strings (PG/MySQL BIGINT, BigInt JSON)', () => {
+  it('rounds 13-digit ms and 10-digit seconds strings, keeping the string form', () => {
+    const o = run({ createdAt: '1700000123456', rxTime: '1700000123', lastHeard: '1700000123.9', time: '12', timestamp: '0' });
+    expect(o.createdAt).toBe(String(Math.floor(1_700_000_123_456 / 3_600_000) * 3_600_000));
+    expect(o.rxTime).toBe(String(Math.floor(1_700_000_123 / 3600) * 3600));
+    expect(o.lastHeard).toBe(String(Math.floor(1_700_000_123.9 / 3600) * 3600));
+    expect(o.time).toBe('12');
+    expect(o.timestamp).toBe('0');
+  });
+  it('snaps coordinate strings, integer-units strings and zero', () => {
+    const o = run({ latitude: '40.1234567', longitudeI: '-1057654321', lat: '0', lon: '0.0', pos: ['40.1234567', '-105.7654321'] });
+    expect(typeof o.latitude).toBe('string');
+    expect(Number(o.latitude)).not.toBe(40.1234567);
+    const i = -1_057_654_321;
+    expect(o.longitudeI).toBe(String(Math.floor(i / 2 ** 18) * 2 ** 18 + 2 ** 17));
+    expect(o.lat).toBe('0');
+    expect(o.lon).toBe('0.0');
+    expect(o.pos[0]).toBe(o.latitude);
+  });
+  it('leaves string coordinates alone when bits are 1..13', () => {
+    expect(run({ latitude: '40.1234567', precisionBits: 13 }).latitude).toBe('40.1234567');
+  });
+  it('rounds distance, bearing and altitude strings', () => {
+    const o = run({ distanceKm: '4.4', distanceMeters: '2300', bearing: '94', altitude: '1623', alt: '0', telemetryType: 'x' });
+    expect(o.distanceKm).toBe('4.5');
+    expect(o.distanceMeters).toBe('3000');
+    expect(o.bearing).toBe('90');
+    expect(o.altitude).toBe('1600');
+    expect(o.alt).toBe('0');
+  });
+  it('snaps and rounds telemetry rows given as strings', () => {
+    expect(Number(run({ telemetryType: 'latitude', value: '40.1234567' }).value)).not.toBe(40.1234567);
+    expect(run({ telemetryType: 'altitude', value: '1623' }).value).toBe('1600');
+  });
+  it('leaves non-geometry numeric strings alone', () => {
+    expect(run({ nodeNum: '1234567890', count: '5' })).toEqual({ nodeNum: '1234567890', count: '5' });
   });
 });
 

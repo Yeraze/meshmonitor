@@ -219,19 +219,38 @@ const truncateHexRuns = (s: string): string => s.replace(HEX64_RUN, (m) => m.sli
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
+function roundTimestampNumber(v: number): number {
+  if (!Number.isFinite(v)) return v;
+  if (v >= 1e11) return Math.floor(v / HOUR_MS) * HOUR_MS;
+  if (v >= 1e9) return Math.floor(v / HOUR_S) * HOUR_S;
+  return v;
+}
+
 function roundTimestamp(v: unknown): unknown {
-  if (typeof v === 'number') {
-    if (!Number.isFinite(v)) return v;
-    if (v >= 1e11) return Math.floor(v / HOUR_MS) * HOUR_MS;
-    if (v >= 1e9) return Math.floor(v / HOUR_S) * HOUR_S;
-    return v;
-  }
+  if (isNumeric(v)) return mapNumeric(v, roundTimestampNumber);
   if (typeof v === 'string' && ISO_DATE.test(v)) {
     const ms = Date.parse(v);
     if (Number.isNaN(ms)) return v;
     return new Date(Math.floor(ms / HOUR_MS) * HOUR_MS).toISOString();
   }
   return v;
+}
+
+const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
+
+/** A finite number, or a numeric string (PG/MySQL BIGINT and BigInt JSON arrive as strings). */
+const isNumeric = (v: unknown): v is number | string =>
+  typeof v === 'number' || (typeof v === 'string' && NUMERIC_STRING.test(v));
+
+/**
+ * Apply a numeric redaction to a number or a numeric string. A string comes back
+ * as a string; a zero or non-finite string is returned unchanged.
+ */
+function mapNumeric(v: number | string, fn: (n: number) => number): number | string {
+  if (typeof v === 'number') return fn(v);
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return v;
+  return String(fn(n));
 }
 
 const roundTo = (v: number, step: number): number => Math.round(v / step) * step || 0;
@@ -277,8 +296,8 @@ function snapNumber(v: number, ctx: Ctx, intUnits: boolean): number {
 }
 
 function walk(value: unknown, ctx: Ctx, cfg: RedactionConfig): unknown {
+  if (ctx.coord && isNumeric(value)) return mapNumeric(value, (n) => snapNumber(n, ctx, false));
   if (typeof value === 'string') return cfg.hidePublicKeys ? truncateHexRuns(value) : value;
-  if (typeof value === 'number') return ctx.coord ? snapNumber(value, ctx, false) : value;
   if (Array.isArray(value)) return value.map((item) => walk(item, ctx, cfg));
   if (isRecord(value)) return walkObject(value, ctx, cfg);
   return value;
@@ -311,14 +330,15 @@ function walkObject(obj: Record<string, unknown>, parent: Ctx, cfg: RedactionCon
     if (f.drop || (f.dropIfString && typeof v === 'string')) continue;
     const outKey = cfg.hidePublicKeys ? truncateHexRuns(key) : key;
 
-    if (f.axis && typeof v === 'number') {
-      out[outKey] = snapNumber(v, ctx, f.intUnits);
-    } else if (telemetryPos && key === 'value' && typeof v === 'number') {
-      out[outKey] = snapNumber(v, ctx, false);
-    } else if (f.geom && typeof v === 'number') {
-      out[outKey] = roundGeometry(v, f.geom);
-    } else if (telemetryAlt && key === 'value' && typeof v === 'number') {
-      out[outKey] = roundGeometry(v, 'altitude');
+    if (f.axis && isNumeric(v)) {
+      out[outKey] = mapNumeric(v, (n) => snapNumber(n, ctx, f.intUnits));
+    } else if (telemetryPos && key === 'value' && isNumeric(v)) {
+      out[outKey] = mapNumeric(v, (n) => snapNumber(n, ctx, false));
+    } else if (f.geom && isNumeric(v)) {
+      const kind = f.geom;
+      out[outKey] = mapNumeric(v, (n) => roundGeometry(n, kind));
+    } else if (telemetryAlt && key === 'value' && isNumeric(v)) {
+      out[outKey] = mapNumeric(v, (n) => roundGeometry(n, 'altitude'));
     } else if (f.precision) {
       out[outKey] = typeof v === 'number' && snapActive(ctx.bits) ? PUBLIC_INSTANCE_PRECISION_BITS : v;
     } else if (cfg.hidePublicKeys && f.pk) {
