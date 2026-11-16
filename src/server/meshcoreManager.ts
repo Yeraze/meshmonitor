@@ -1753,7 +1753,37 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   // Heartbeat / auto-reconnect state (Companion native backend, and the
   // Repeater serial stall probe, #5563).
-  private connectionState: MeshCoreConnectionState = 'disconnected';
+  private _connectionState: MeshCoreConnectionState = 'disconnected';
+  /**
+   * Last `connected` value sent on the `connection:status` data event, so the
+   * automation system events `source-connected` / `source-disconnected` fire
+   * once per transition (#6437), not once per reconnect attempt.
+   */
+  private lastEmittedConnected = false;
+
+  /**
+   * Single choke point for every connection-state change. Edge-triggered:
+   * entering `connected` raises one connected event, leaving it raises one
+   * disconnected event. A reconnect loop (reconnecting -> connecting ->
+   * reconnecting ...) never re-raises, because it stays out of `connected`.
+   */
+  private get connectionState(): MeshCoreConnectionState {
+    return this._connectionState;
+  }
+  private set connectionState(next: MeshCoreConnectionState) {
+    const prev = this._connectionState;
+    this._connectionState = next;
+    const nowConnected = next === 'connected';
+    if (nowConnected === this.lastEmittedConnected) return;
+    this.lastEmittedConnected = nowConnected;
+    dataEventEmitter.emitConnectionStatus(
+      {
+        connected: nowConnected,
+        reason: nowConnected ? 'MeshCore connection established' : `MeshCore connection lost (${prev} -> ${next})`,
+      },
+      this.sourceId,
+    );
+  }
   private heartbeatScheduler: HeartbeatScheduler | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatConsecutiveFailures: number = 0;

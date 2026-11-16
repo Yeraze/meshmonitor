@@ -148,7 +148,7 @@ For a headless MeshCore install, these vars create a **"Default MeshCore"** sour
 | `MESHCORE_VIRTUAL_NODE_PORT` | Port for that Virtual Node, `1`–`65535`. Does nothing without `MESHCORE_ENABLE_VIRTUAL_NODE` | `5000` |
 
 - Set `MESHCORE_TCP_HOST` **or** `MESHCORE_SERIAL_PORT`. If you set both, MeshMonitor logs a warning and uses TCP. Set neither and no MeshCore source is created.
-- The source is created enabled, with **Auto-connect** on and the same settings the Add Source form would save (Heartbeat 30 s for a Companion, off for a Repeater). It sends nothing over the radio that the same source added in the UI would not.
+- The source is created enabled, with **Auto-connect** on and the same settings the Add Source form would save (Heartbeat 60 s for a Companion, off for a Repeater). It sends nothing over the radio that the same source added in the UI would not.
 - The Virtual Node keeps **Allow admin commands**, **Allow PKI export** and **Allow PKI import** off. There are no env vars for them. If its port equals the Meshtastic Virtual Node port, MeshMonitor logs a warning and skips the MeshCore Virtual Node.
 - With the MeshCore vars set and `MESHTASTIC_NODE_IP` unset, the disabled Meshtastic placeholder is not created.
 

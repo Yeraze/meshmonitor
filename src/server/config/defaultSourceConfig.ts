@@ -111,7 +111,7 @@ export const DEFAULT_MESHCORE_SOURCE_NAME = 'Default MeshCore';
  * (off), because its serial probe is opt-in (#5563), and the form then omits
  * the field.
  */
-const COMPANION_HEARTBEAT_SECONDS = 30;
+const COMPANION_HEARTBEAT_SECONDS = 60;
 
 // A type alias (not an interface) so it fits `Record<string, unknown>`.
 export type DefaultMeshCoreSourceConfig = {
