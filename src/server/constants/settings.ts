@@ -333,6 +333,12 @@ export const VALID_SETTINGS_KEYS = [
   // serves a disallow-all `/robots.txt`, discouraging search engines and LLM
   // crawlers from indexing a publicly-exposed dashboard. See robotsConfig.ts.
   'noIndexEnabled',
+  // Public-instance mode (#5156): redacts API responses for signed-out viewers.
+  'publicInstanceModeEnabled',
+  'publicInstanceHideLongNames',
+  'publicInstanceHidePublicKeys',
+  'publicInstanceRoundTimestamps',
+  'publicInstanceHideMessageText',
   // Node-name anti-spam (#6382, default OFF). Global, admin-only write. When
   // on, invite links in node names are replaced with a placeholder before the
   // name is stored. See src/utils/nodeNameSanitizer.ts.
@@ -1045,6 +1051,11 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
   'discardInvalidPositions',                // :178 global ingest gate
   'noIndexEnabled',                         // :184 global robots gate (#4202)
+  'publicInstanceModeEnabled',              // global public-instance mode (#5156)
+  'publicInstanceHideLongNames',            // global public-instance mode (#5156)
+  'publicInstanceHidePublicKeys',           // global public-instance mode (#5156)
+  'publicInstanceRoundTimestamps',          // global public-instance mode (#5156)
+  'publicInstanceHideMessageText',          // global public-instance mode (#5156)
   'nodeNameSanitizeEnabled',                // global ingest rewrite (#6382)
   'nodeNameSanitizeBuiltins',               // "
   'nodeNameSanitizeCustomPatterns',         // "

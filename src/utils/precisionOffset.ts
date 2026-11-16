@@ -55,6 +55,21 @@ export function precisionCellSizeDegrees(bits: number): number {
 }
 
 /**
+ * Snap a coordinate to the center of its precision cell, matching firmware
+ * integer math in 1e-7 units: `floor(i / 2^(32-b)) * 2^(32-b) + 2^(31-b)`.
+ * `intUnits` true means `value` is already a 1e-7 integer and an integer is
+ * returned; false means degrees. Bits outside 1..31 return the value unchanged.
+ */
+export function snapToPrecisionCell(value: number, bits: number, intUnits: boolean): number {
+  if (!Number.isFinite(value) || !Number.isInteger(bits) || bits < 1 || bits > 31) return value;
+  const cell = Math.pow(2, 32 - bits);
+  const half = Math.pow(2, 31 - bits);
+  const i = intUnits ? Math.round(value) : Math.round(value * 1e7);
+  const snapped = Math.floor(i / cell) * cell + half;
+  return intUnits ? snapped : snapped / 1e7;
+}
+
+/**
  * Whether a node has a meaningful accuracy cell to draw a rectangle for: a
  * defined, non-full precision (1..31 bits) that isn't a user override. Broader
  * than {@link shouldOffsetForPrecision} — the marker is only *offset* for large

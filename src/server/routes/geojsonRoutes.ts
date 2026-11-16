@@ -10,6 +10,7 @@ import { GeoJsonService, LayerStyle } from '../services/geojsonService.js';
 import { logger } from '../../utils/logger.js';
 import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { fail } from '../utils/apiResponse.js';
+import { markPublicInstanceExempt } from '../middleware/publicInstanceRedaction.js';
 
 /** True when the request is unauthenticated (the optionalAuth anonymous fallback). */
 function isAnonymousRequest(req: Request): boolean {
@@ -151,6 +152,7 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
         ? service.getPublicLayerData(id)
         : service.getLayerData(id);
       res.setHeader('Content-Type', 'application/geo+json');
+      markPublicInstanceExempt(res);
       return res.send(data);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

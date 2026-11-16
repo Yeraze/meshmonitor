@@ -54,7 +54,7 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   // props/context were already wired up there.
   'settings-sorting',
   'settings-appearance', 'settings-link-previews',
-  'settings-privacy', 'settings-meshcore-messaging', 'settings-map',
+  'settings-privacy', 'settings-public-instance', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
   // Default Meshtastic source (#5245): one install-wide choice.
   'settings-default-source',
@@ -190,6 +190,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-appearance', label: t('settings.appearance'), keywords: ['theme', 'dark', 'light', 'colors', 'icons', 'font'] },
     { id: 'settings-link-previews', label: t('settings.link_previews', 'Link Previews'), keywords: ['url', 'unfurl'] },
     { id: 'settings-privacy', label: t('settings.privacy', 'Privacy'), keywords: ['terms', 'policy', 'gdpr', 'contact'] },
+    { id: 'settings-public-instance', label: t('settings.public_instance_enabled', 'Public-instance mode'), keywords: ['public', 'anonymous', 'redact', 'privacy', 'embed'] },
     { id: 'settings-meshcore-messaging', label: t('settings.meshcore_messaging', 'MeshCore Messaging'), keywords: ['meshcore', 'chat'] },
     { id: 'settings-map', label: t('settings.map'), keywords: ['tiles', 'tileset', 'basemap', 'markers', 'pins', 'zoom'] },
     { id: 'settings-mqtt-bridge', label: t('mqtt_bridge_config.title', 'MQTT Bridge Configuration'), keywords: ['bridge', 'broker', 'upstream', 'url', 'username', 'password', 'forwarding', 'subscribe', 'publish', 'topics', 'geo', 'filter', 'rewrite', 'uplink', 'downlink'] },
