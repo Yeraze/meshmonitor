@@ -670,6 +670,17 @@ export class VirtualNodeServer extends EventEmitter {
               virtualNodeRequestId: toRadio.packet.id // Preserve for ACK matching
             });
             logger.debug(`Virtual node: Stored outgoing message in database with requestId: ${toRadio.packet.id}`);
+
+            // Issue #6436: mirror an outgoing text message to the OTHER connected
+            // clients, the same way a message sent from the web UI is relayed to
+            // every client. Without this, a message typed in one app never shows
+            // up in the other apps sharing this virtual node. The sender is
+            // excluded so its own app does not show the message twice. This is a
+            // local TCP write only: nothing extra goes over the air, and the
+            // receiving apps only display the packet (they do not resend it).
+            if (normalizedPortNum === 1) { // TEXT_MESSAGE_APP (replies and reactions included)
+              await this.broadcastToClients(fromRadioMessage, clientId);
+            }
           }
         } catch (error) {
           logger.error(`Virtual node: Failed to process outgoing message locally:`, error);
@@ -1203,13 +1214,15 @@ export class VirtualNodeServer extends EventEmitter {
   }
 
   /**
-   * Broadcast a message to all connected clients
+   * Broadcast a message to all connected clients, optionally skipping one
+   * (the client the message came from, #6436).
    */
-  public async broadcastToClients(data: Uint8Array): Promise<void> {
+  public async broadcastToClients(data: Uint8Array, excludeClientId?: string): Promise<void> {
     const frame = this.createFrame(data);
     const promises: Promise<void>[] = [];
 
     for (const [clientId, client] of this.clients.entries()) {
+      if (clientId === excludeClientId) continue;
       // Skip clients with destroyed sockets
       if (client.socket.destroyed || !client.socket.writable) {
         logger.debug(`Virtual node: Skipping broadcast to ${clientId} (socket not writable)`);
