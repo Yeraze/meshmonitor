@@ -137,7 +137,7 @@ describe('buildDefaultMeshCoreSourceConfig', () => {
       tcpPort: 5000,
       deviceType: 'companion',
       autoConnect: true,
-      heartbeatIntervalSeconds: 30,
+      heartbeatIntervalSeconds: 60,
     });
   });
 
@@ -147,7 +147,7 @@ describe('buildDefaultMeshCoreSourceConfig', () => {
       port: '/dev/ttyUSB0',
       deviceType: 'companion',
       autoConnect: true,
-      heartbeatIntervalSeconds: 30,
+      heartbeatIntervalSeconds: 60,
     });
     expect(cfg({ MESHCORE_SERIAL_PORT: '/dev/ttyUSB0', MESHCORE_BAUD_RATE: '57600' }).config?.baudRate).toBe(57600);
   });
