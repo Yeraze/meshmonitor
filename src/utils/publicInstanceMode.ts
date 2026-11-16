@@ -64,3 +64,12 @@ export function viewerPrecisionBits(
   if (!coarse) return bits;
   return typeof bits === 'number' && bits >= 1 && bits <= 13 ? bits : PUBLIC_INSTANCE_PRECISION_BITS;
 }
+
+/**
+ * True for a MeshCore key the server cut to its public prefix (#5156). Such a
+ * key cannot address a node, so a request built from it only returns a 400.
+ * Meshtastic ids (`!aabbccdd`, decimal nodeNums of at most 10 digits) never match.
+ */
+export function isTruncatedPublicKey(key: string | null | undefined): boolean {
+  return typeof key === 'string' && key.length === MESHCORE_ID_PREFIX_HEX && /^[0-9a-fA-F]+$/.test(key);
+}

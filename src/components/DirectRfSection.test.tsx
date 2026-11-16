@@ -3,6 +3,8 @@
  *
  * Node detail "Direct RF" section (#6210).
  */
+import React from 'react';
+import { AuthContext } from '../contexts/authContextObject';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 
@@ -36,6 +38,14 @@ beforeEach(() => {
   get.mockReset();
   failNext = false;
 });
+
+const publicWrapper = ({ children }: { children: React.ReactNode }) => (
+  <AuthContext.Provider
+    value={{ authStatus: { authenticated: false, publicInstance: { enabled: true, hideLongNames: false, hidePublicKeys: true, roundTimestamps: false, hideMessageText: false } } } as never}
+  >
+    {children}
+  </AuthContext.Provider>
+);
 
 describe('DirectRfSection', () => {
   it('renders nothing without a source or a node key, and makes no request', () => {
@@ -84,6 +94,13 @@ describe('DirectRfSection', () => {
     failNext = true;
     const { container } = render(<DirectRfSection sourceId="src-a" nodeKey="!aaaaaaaa" />);
     await waitFor(() => expect(get).toHaveBeenCalled());
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('makes no request for a truncated key on a public instance', async () => {
+    const { container } = render(<DirectRfSection sourceId="src-a" nodeKey="abcdef012345" />, { wrapper: publicWrapper });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(get).not.toHaveBeenCalled();
     expect(container.innerHTML).toBe('');
   });
 });
