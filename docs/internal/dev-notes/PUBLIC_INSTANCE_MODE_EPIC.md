@@ -47,7 +47,7 @@ or bytes) encode exact positions and text and must be dropped.
   responses for the sentinels. Fix every leak it finds in the redactor's field
   catalogue (not per route). Exit: the audit is green, and a new GET route that
   leaks a sentinel fails CI.
-- [ ] **Phase 3 — UI and docs.** The frontend copes with redacted values:
+- [x] **Phase 3 — UI and docs.** The frontend copes with redacted values:
   missing long name falls back to short name, a message-body placeholder,
   coarse-position styling where needed, the CoT warning. User docs and
   dev-notes. A component test renders the node list, node detail and messages
@@ -121,3 +121,24 @@ bypasses it), and every non-GET route.
 `config.longName`, the operator's own node identity. Kept redacted, consistent
 with hiding long names.
 
+
+## Phase 3 notes (2026-11-16)
+
+- The frontend learns it is redacted from `/api/auth/status`: anonymous replies
+  carry `publicInstance` (the five booleans); signed-in replies omit it.
+  `usePublicInstanceView()` reads it and is inactive without an AuthContext provider.
+- Display code falls back long name → short name → node id (`getUserDisplayName`).
+  Hidden message text renders as `HiddenMessageText`; hour-floored relative times
+  under an hour read "within the last hour".
+- Precision gap closed client-side: for a redacted viewer, positions with no or
+  ≥14 precision bits (and overrides) are drawn at 14 bits (`viewerPrecisionBits`)
+  on both map surfaces; MeshCore markers in the same cell are spread.
+- Server export buttons are hidden for redacted viewers; a CoT warning shows in
+  Settings when the CoT feed and the mode are both on.
+- Browser validation found a login blocker from Phase 1: the 64-hex CSRF token was
+  truncated as a MeshCore key, so nobody could sign in with the mode on. Fixed by
+  skipping `/csrf-token` and `/auth/*` in the middleware and an `opaqueTokens`
+  catalogue class; an end-to-end login test with the mode on guards it. Never
+  shipped in a release.
+- Deferred: telling embeds about the mode (embeds only got the name fallback);
+  the stacked layout of other `.setting-item` checkboxes (pre-existing).
