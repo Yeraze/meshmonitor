@@ -19,6 +19,9 @@ import api from '../services/api';
 import { usePrivacyLinks, privacyLinkHref } from '../hooks/usePrivacyLinks';
 import { PRIVACY_LINK_FALLBACK_LABEL } from '../types/privacy';
 import { appBasename } from '../init';
+import { applyPrecisionCellOffsets } from '../utils/precisionOffset';
+import { viewerPrecisionBits, type RedactionConfig } from '../utils/publicInstanceMode';
+import { formatRelativeTime } from '../utils/datetime';
 
 interface EmbedConfig {
   id: string;
@@ -36,6 +39,8 @@ interface EmbedConfig {
   showNeighborInfo: boolean;
   showMqttNodes: boolean;
   pollIntervalSeconds: number;
+  /** Redaction flags (#5156). Absent on an older server. Embeds are always redacted. */
+  publicInstance?: RedactionConfig;
 }
 
 interface EmbedNode {
@@ -113,8 +118,9 @@ interface EmbedMapProps {
   profileId: string;
 }
 
-function formatLastHeard(lastHeard?: number): string {
+function formatLastHeard(lastHeard?: number, coarseHour = false): string {
   if (!lastHeard) return 'Unknown';
+  if (coarseHour) return formatRelativeTime(lastHeard * 1000, '24', 'MM/DD/YYYY', false, { coarseHour: true });
   const seconds = Math.floor(Date.now() / 1000) - lastHeard;
   if (seconds < 60) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
@@ -288,6 +294,28 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredNodes.map(n => `${embedNodeKey(n)}-${n.hopsAway}-${n.role}-${n.advType}-${n.user?.shortName}`).join(',')]);
+
+  // Public-instance mode (#5156): positions arrive snapped to a coarse cell, so
+  // spread same-cell markers inside it as the app's maps do, and show ages as
+  // coarse as the hour-floored times they come from.
+  const publicOn = config?.publicInstance?.enabled === true;
+  const coarseTime = publicOn && config?.publicInstance?.roundTimestamps === true;
+  const markerPositions = useMemo(() => {
+    const map = new Map<string, [number, number]>();
+    const placed = applyPrecisionCellOffsets(
+      filteredNodes.map((node) => ({
+        item: node,
+        id: embedNodeKey(node),
+        latLng: [node.position!.latitude!, node.position!.longitude!] as [number, number],
+        bits: viewerPrecisionBits(undefined, publicOn),
+        isOverride: false,
+      })),
+      { enabled: publicOn },
+    );
+    for (const { item, latLng } of placed) map.set(embedNodeKey(item), latLng);
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on a position signature so polling does not re-place unchanged markers
+  }, [publicOn, filteredNodes.map(n => `${embedNodeKey(n)}@${n.position?.latitude},${n.position?.longitude}`).join(',')]);
 
   // Traceroute palette (#4047 P6 §3.1) — the embed bundle has no
   // SettingsProvider, so the SNR palette is derived directly from the
@@ -496,7 +524,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
           return (
             <Marker
               key={markerKey}
-              position={[node.position!.latitude!, node.position!.longitude!]}
+              position={markerPositions.get(markerKey) ?? [node.position!.latitude!, node.position!.longitude!]}
               icon={icon}
             >
               {config.showTooltips && (
@@ -580,7 +608,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                     <div className="embed-popup-footer">
                       <span className="embed-popup-icon"><UiIcon name="time" size={16} /></span>
                       <span>{formatTimestamp(node.lastHeard)}</span>
-                      <span className="embed-popup-ago">({formatLastHeard(node.lastHeard)})</span>
+                      <span className="embed-popup-ago">({formatLastHeard(node.lastHeard, coarseTime)})</span>
                     </div>
 
                     {/* MQTT badge */}

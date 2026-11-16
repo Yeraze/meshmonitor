@@ -33,12 +33,13 @@ interface MockChildProps {
 }
 
 interface MockMarkerProps extends MockChildProps {
+  position?: [number, number];
   icon?: { options?: { html?: string } };
 }
 
 vi.mock('react-leaflet', () => ({
   Marker: (props: MockMarkerProps) => (
-    <div data-testid="marker" data-html={props.icon?.options?.html ?? ''}>{props.children}</div>
+    <div data-testid="marker" data-html={props.icon?.options?.html ?? ''} data-position={String(props.position ?? '')}>{props.children}</div>
   ),
   Tooltip: (props: MockChildProps) => <div data-testid="tooltip">{props.children}</div>,
   Popup: (props: MockChildProps) => <div data-testid="popup">{props.children}</div>,
@@ -513,5 +514,38 @@ describe('EmbedMap Meshtastic role markers (#6008)', () => {
     expect(base).toContain('<rect x="21" y="32" width="6" height="10" fill="white" />');
     expect(base).not.toContain('data-role-badge');
     expect(tracker).toContain('data-role-badge="tracker"');
+  });
+});
+
+describe('EmbedMap public-instance mode (#5156)', () => {
+  const publicInstance = {
+    enabled: true, hideLongNames: true, hidePublicKeys: true, roundTimestamps: true, hideMessageText: true,
+  };
+  // Two nodes in one coarse cell, heard 10 minutes ago.
+  const heard = Math.floor(Date.now() / 1000) - 600;
+  const pair = [
+    { nodeNum: 1, nodeId: '!00000001', user: { shortName: 'A' }, position: { latitude: 40, longitude: -105 }, lastHeard: heard },
+    { nodeNum: 2, nodeId: '!00000002', user: { shortName: 'B' }, position: { latitude: 40, longitude: -105 }, lastHeard: heard },
+  ];
+  const positions = () => (screen.getAllByTestId('marker') as HTMLElement[]).map((m) => m.dataset.position);
+
+  it('shows coarse ages and spreads same-cell markers when the mode is on', async () => {
+    mockFetchSequence({ config: baseConfig({ publicInstance }), nodes: pair });
+    await renderEmbedMap();
+    await waitFor(() => expect(screen.getAllByTestId('marker')).toHaveLength(2));
+    expect(screen.getAllByText('(within the last hour)').length).toBe(2);
+    const [a, b] = positions();
+    expect(a).not.toBe(b);
+  });
+
+  it('changes nothing when the mode is off or the server does not report it', async () => {
+    for (const cfg of [baseConfig({ publicInstance: { ...publicInstance, enabled: false } }), baseConfig()]) {
+      mockFetchSequence({ config: cfg, nodes: pair });
+      await renderEmbedMap();
+      await waitFor(() => expect(screen.getAllByTestId('marker')).toHaveLength(2));
+      expect(screen.getAllByText('(10m ago)').length).toBe(2);
+      expect(new Set(positions())).toEqual(new Set(['40,-105']));
+      cleanup();
+    }
   });
 });
