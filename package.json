@@ -107,7 +107,7 @@
     "swagger-ui-express": "^5.0.1",
     "ts-overlapping-marker-spiderfier-leaflet": "^1.0.5",
     "uuid": "^14.0.3",
-    "web-push": "^3.6.7",
+    "web-push": "^4.0.0",
     "yamljs": "^0.3.0",
     "zstd-napi": "^0.0.13"
   },
