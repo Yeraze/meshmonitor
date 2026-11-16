@@ -132,13 +132,15 @@ function formatTimestamp(
  * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
  * @param dateFormat - 'MM/DD/YYYY', 'DD/MM/YYYY', or 'YYYY-MM-DD' (ISO 8601)
  * @param showAbsolute - Whether to include absolute time in parentheses
+ * @param opts.coarseHour - Report anything under an hour as "within the last hour"
  * @returns Formatted relative time string
  */
 export function formatRelativeTime(
   timestamp: number,
   timeFormat: TimeFormat = '24',
   dateFormat: DateFormat = 'MM/DD/YYYY',
-  showAbsolute: boolean = false
+  showAbsolute: boolean = false,
+  opts?: { coarseHour?: boolean }
 ): string {
   const now = Date.now();
   const diffMs = now - timestamp;
@@ -148,7 +150,10 @@ export function formatRelativeTime(
   const diffDay = Math.floor(diffHour / 24);
 
   let relative: string;
-  if (diffSec < 60) {
+  if (opts?.coarseHour && diffSec < 3600) {
+    // Times are floored to the hour, so a finer age would be false precision.
+    relative = 'within the last hour';
+  } else if (diffSec < 60) {
     relative = 'just now';
   } else if (diffMin < 60) {
     relative = `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;

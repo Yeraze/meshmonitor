@@ -4,6 +4,7 @@
  * Manages user authentication state, login/logout, and permissions
  */
 
+import type { RedactionConfig } from '../utils/publicInstanceMode.js';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api from '../services/api';
 import { signInWithPasskey, recoverWithCode as postRecoveryCode } from '../services/passkeyClient';
@@ -56,6 +57,11 @@ export interface AuthStatus {
    * choose a new password. Only sent when authenticated.
    */
   passwordChangeRequired?: boolean;
+  /**
+   * Public-instance mode (#5156) config. Only sent to signed-out viewers; the
+   * UI uses it to tolerate redacted fields. Absent when signed in.
+   */
+  publicInstance?: RedactionConfig;
 }
 
 export interface LoginResult {
@@ -166,6 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         anonymousDisabled: false,
         customTitle: null,
         customLogoUrl: null,
+        publicInstance: undefined,
       });
     } finally {
       setLoading(false);

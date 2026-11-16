@@ -28,6 +28,7 @@ import { getEnvironmentConfig } from '../config/environment.js';
 import { notifyAccessChange } from '../../db/accessChanges.js';
 import { stripUserSecrets } from '../utils/userSecrets.js';
 import { regenerateSession } from '../auth/regenerateSession.js';
+import { getPublicInstanceConfig } from '../services/publicInstanceConfig.js';
 
 const router = Router();
 
@@ -78,6 +79,8 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
         oidcEnabled: isOIDCEnabled(),
         localAuthDisabled,
         anonymousDisabled,
+        // Anonymous viewers only (#5156): tells the UI which details are redacted.
+        publicInstance: { ...getPublicInstanceConfig() },
         ...branding,
       });
     }
@@ -104,6 +107,8 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
         oidcEnabled: isOIDCEnabled(),
         localAuthDisabled,
         anonymousDisabled,
+        // Anonymous viewers only (#5156): tells the UI which details are redacted.
+        publicInstance: { ...getPublicInstanceConfig() },
         ...branding,
       });
     }

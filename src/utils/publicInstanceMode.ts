@@ -46,3 +46,21 @@ export function parsePublicInstanceConfig(raw: RawSettings | null | undefined): 
     hideMessageText: notOff(r[k.hideMessageText]),
   };
 }
+
+/** True when `s` is exactly the placeholder the server puts in hidden text. */
+export function isPublicHiddenText(s: unknown): boolean {
+  return s === PUBLIC_INSTANCE_HIDDEN_TEXT;
+}
+
+/**
+ * Position precision a viewer should use. A redacted viewer gets the stored
+ * bits when they are already coarse (1..13), else the public cap (14), so a
+ * node with missing or full precision still gets an accuracy cell and offset.
+ */
+export function viewerPrecisionBits(
+  bits: number | null | undefined,
+  coarse: boolean
+): number | null | undefined {
+  if (!coarse) return bits;
+  return typeof bits === 'number' && bits >= 1 && bits <= 13 ? bits : PUBLIC_INSTANCE_PRECISION_BITS;
+}

@@ -105,6 +105,19 @@ describe('datetime utilities', () => {
     });
   });
 
+  describe('formatRelativeTime coarseHour', () => {
+    it('reports anything under an hour as within the last hour', () => {
+      const now = Date.now();
+      expect(formatRelativeTime(now - 5 * 60_000, '24', 'MM/DD/YYYY', false, { coarseHour: true })).toBe('within the last hour');
+      expect(formatRelativeTime(now - 10_000, '24', 'MM/DD/YYYY', false, { coarseHour: true })).toBe('within the last hour');
+    });
+    it('is unchanged at an hour or more, and without the option', () => {
+      const now = Date.now();
+      expect(formatRelativeTime(now - 2 * 3600_000, '24', 'MM/DD/YYYY', false, { coarseHour: true })).toBe('2 hours ago');
+      expect(formatRelativeTime(now - 5 * 60_000)).toBe('5 minutes ago');
+    });
+  });
+
   describe('formatRelativeTime', () => {
     beforeEach(() => {
       vi.useFakeTimers();
