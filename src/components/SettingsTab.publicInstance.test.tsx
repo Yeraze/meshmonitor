@@ -312,6 +312,14 @@ describe('SettingsTab — Public-instance mode section (#5156)', () => {
     }
   });
 
+  it('lays the toggles out inline with the shared checkbox-row class', async () => {
+    renderSettings();
+    await waitFor(() => expect(el('publicInstanceModeEnabled')).not.toBeNull());
+    for (const id of ['publicInstanceModeEnabled', ...SUBS]) {
+      expect(el(id).closest('label')?.className).toMatch(/checkboxRow/);
+    }
+  });
+
   it('enables the sub-toggles when the master is on', async () => {
     serverSettings = { publicInstanceModeEnabled: '1' };
     renderSettings();
