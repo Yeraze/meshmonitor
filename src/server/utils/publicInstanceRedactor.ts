@@ -263,8 +263,7 @@ function roundGeometry(v: number, kind: GeomKind): number {
     case 'm': return roundTo(v, 1500);
     case 'altitude': return roundTo(v, 100);
     case 'bearing': {
-      const r = roundTo(v, 10);
-      return v >= 0 && r >= 360 ? r - 360 : r;
+      return ((roundTo(v, 10) % 360) + 360) % 360;
     }
   }
 }
@@ -316,7 +315,7 @@ function walkObject(obj: Record<string, unknown>, parent: Ctx, cfg: RedactionCon
   for (const pk of PRECISION_KEYS) {
     if (pk in obj) {
       const v = obj[pk];
-      bits = typeof v === 'number' ? v : null;
+      bits = isNumeric(v) ? Number(v) : null;
       break;
     }
   }
@@ -343,7 +342,10 @@ function walkObject(obj: Record<string, unknown>, parent: Ctx, cfg: RedactionCon
     } else if (telemetryAlt && key === 'value' && isNumeric(v)) {
       out[outKey] = mapNumeric(v, (n) => roundGeometry(n, 'altitude'));
     } else if (f.precision) {
-      out[outKey] = typeof v === 'number' && snapActive(ctx.bits) ? PUBLIC_INSTANCE_PRECISION_BITS : v;
+      // A string stays a string ('13' stays '13'; '32' becomes '14').
+      out[outKey] = isNumeric(v) && snapActive(ctx.bits)
+        ? (typeof v === 'string' ? String(PUBLIC_INSTANCE_PRECISION_BITS) : PUBLIC_INSTANCE_PRECISION_BITS)
+        : v;
     } else if (cfg.hidePublicKeys && f.pk) {
       out[outKey] = redactPublicKeyValue(v);
     } else if (cfg.hideLongNames && (f.name || (f.nameGate && hasSibling(f.nameGate)))) {

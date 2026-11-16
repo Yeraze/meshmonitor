@@ -74,6 +74,11 @@ export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {
       if (active !== undefined) return active;
       // Decide anonymity first: a signed-in viewer is never redacted, so a
       // config failure only matters (fail closed) for an anonymous one.
+      // `isAnonymousViewer(req.user)` alone is not enough: req.user is only set by
+      // per-route auth middleware, and a route with none leaves it empty even for a
+      // signed-in session. `!req.session?.userId` catches that case. This decision
+      // runs at send time, after route auth, which only works while this middleware
+      // stays the FIRST apiRouter handler (it wraps res.* before any route runs).
       const anonymous = opts.forceAnonymous === true || (isAnonymousViewer(req.user) && !req.session?.userId);
       let enabled: boolean;
       try {

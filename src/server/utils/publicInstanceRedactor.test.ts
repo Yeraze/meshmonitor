@@ -57,6 +57,14 @@ describe('class A positions', () => {
     expect(b.position_precision_bits).toBe(14);
     expect(b.latitude).not.toBe(40.1234567);
   });
+  it('honours precision bits given as numeric strings', () => {
+    const s13 = snapToPrecisionCell(40.1234567, 13, false);
+    const a = run({ latitude: 40.1234567, precisionBits: '13' });
+    expect(a).toEqual({ latitude: s13, precisionBits: '13' });
+    const b = run({ latitude: 40.1234567, precisionBits: '32' });
+    expect(b.precisionBits).toBe('14');
+    expect(b.latitude).toBe(snapToPrecisionCell(40.1234567, 14, false));
+  });
   it('snaps with bits 0, null or absent; never adds a precision key', () => {
     expect(run({ latitude: 40.1234567, precision_bits: 0 }).precision_bits).toBe(14);
     expect(run({ latitude: 40.1234567, precisionBits: null }).precisionBits).toBeNull();
@@ -243,6 +251,14 @@ describe('class G derived geometry', () => {
     expect(o.bearingDeg).toBe(130);
     expect(o.initialBearing).toBe(10);
     expect(o.groundHeading).toBe(200);
+  });
+  it('normalises bearings into [0,360), negatives included', () => {
+    const o = run({ a: { bearing: -5 }, b: { bearing: -355 }, c: { bearing: 355 }, d: { bearing: 365 } });
+    expect(o.a.bearing).toBe(0);
+    expect(o.b.bearing).toBe(10);
+    expect(o.c.bearing).toBe(0);
+    expect(o.d.bearing).toBe(10);
+    expect(run({ bearing: -94 }).bearing).toBe(270);
   });
   it('rounds altitudes to 100 m', () => {
     const o = run({ altitude: 1623, alt: 149, altitudeM: 251, altitude_hae: 98, fixedAltitude: 1650, altitudeOverride: 12, gpsAltitude: 5149 });
