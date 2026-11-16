@@ -156,6 +156,8 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
   const nodeNum = typeof node.nodeNum === 'number' ? node.nodeNum : undefined;
 
   const longName = pick<string>(node, 'longName', 'longName')
+    ?? pick<string>(node, 'shortName', 'shortName')
+    ?? pick<string>(node, 'nodeId', 'id')
     ?? opts?.nodeFallbackLabel
     ?? (nodeNum !== undefined ? `Node ${nodeNum}` : 'Unknown');
   const shortName = pick<string>(node, 'shortName', 'shortName');
@@ -265,7 +267,7 @@ function toMeshCoreModel(raw: unknown): NodeCardModel {
       : null;
 
   return {
-    longName: advName || name || 'MeshCore',
+    longName: advName || name || (publicKey ? `${publicKey.slice(0, 12)}…` : 'MeshCore'),
     nodeId: publicKey || undefined,
     lastHeard: lastSeen !== undefined ? Math.floor(lastSeen / 1000) : null,
     firstHeard: firstHeardMs !== undefined ? Math.floor(firstHeardMs / 1000) : null,

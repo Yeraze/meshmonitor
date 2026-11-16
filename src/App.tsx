@@ -127,6 +127,7 @@ import {
 } from './hooks/connectionCheck';
 import { useConnectionCheckLoop } from './hooks/useConnectionCheckLoop';
 import { useMqttNativeSendStatus } from './hooks/useMqttNativeSendStatus';
+import { getUserDisplayName } from './utils/nodeHelpers';
 
 // Icons and helpers are now imported from utils/
 
@@ -851,11 +852,11 @@ function App() {
 
     // If currentNodeId isn't available, use localNodeInfo from /api/config
     if (!localNode && deviceInfo?.localNodeInfo) {
-      return deviceInfo.localNodeInfo.longName;
+      return deviceInfo.localNodeInfo.longName || deviceInfo.localNodeInfo.shortName || undefined;
     }
 
     if (localNode && localNode.user) {
-      return localNode.user.longName;
+      return localNode.user.longName || localNode.user.shortName || undefined;
     }
 
     return undefined;
@@ -4105,7 +4106,7 @@ function App() {
           .map(ch => ({ id: ch.id, name: ch.name }))}
         nodes={nodes.map(n => ({
           nodeId: n.user?.id || String(n.nodeNum),
-          longName: n.user?.longName || `!${n.nodeNum.toString(16)}`,
+          longName: getUserDisplayName(n.user, n.nodeNum),
           shortName: n.user?.shortName || '????',
         }))}
         canSearchDms={hasPermission('messages', 'read')}

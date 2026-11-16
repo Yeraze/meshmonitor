@@ -9,6 +9,7 @@ import './AppHeader.css';
 import { UiIcon } from '../icons';
 import { CyclingConnectionStatus } from './CyclingConnectionStatus';
 import { QuickStatusPill } from '../QuickStatus/QuickStatusPill';
+import { formatSenderLabel } from '../../utils/nodeHelpers';
 
 interface DeviceInfoProp {
   localNodeInfo?: LocalNodeInfo;
@@ -114,7 +115,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           style={{ cursor: isClickable ? 'pointer' : 'default' }}
           onClick={isClickable ? onNodeClick : undefined}
         >
-          {longName} ({shortName}) - {nodeId}
+          {formatSenderLabel(longName, shortName, nodeId)} - {nodeId}
         </span>
       );
     }
@@ -127,7 +128,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           style={{ cursor: isClickable ? 'pointer' : 'default' }}
           onClick={isClickable ? onNodeClick : undefined}
         >
-          {localNode.user.longName} ({localNode.user.shortName}) - {localNode.user.id}
+          {formatSenderLabel(localNode.user.longName, localNode.user.shortName, localNode.user.id)} - {localNode.user.id}
         </span>
       );
     }

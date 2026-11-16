@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MeshCoreVirtualList } from './MeshCoreVirtualList';
 import NodeQuickAgeFilter from '../NodeQuickAgeFilter';
+import { usePublicInstanceView } from '../../hooks/usePublicInstanceView';
 import { useNodeQuickAgeFilter } from '../../hooks/useNodeQuickAgeFilter';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreNode, AddContactToDeviceResponse } from './hooks/useMeshCore';
@@ -376,7 +377,15 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     }
   }, [onDiscoverNodes, discovering, receiveOnly, showToast, t]);
 
-  const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts, ignoredKeys), [nodes, contacts, ignoredKeys]);
+  const publicView = usePublicInstanceView();
+  const hideNames = publicView.hideLongNames;
+  const merged = useMemo(() => {
+    const rows = mergeNodesAndContacts(nodes, contacts, ignoredKeys);
+    // Public instance (#5156): names arrive blank. Label rows by key prefix so
+    // they are not all "Unknown" and the incomplete-node filter keeps them.
+    if (!hideNames) return rows;
+    return rows.map(r => (r.hasName ? r : { ...r, name: r.publicKey.slice(0, 12), hasName: true }));
+  }, [nodes, contacts, ignoredKeys, hideNames]);
 
   /** Favorites and the operator's own node are never hidden by the age cutoff
    *  (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec §2 D6). Uses

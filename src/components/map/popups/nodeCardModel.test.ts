@@ -68,6 +68,11 @@ describe('toNodeCardModel — meshtastic', () => {
     expect(model.longName).toBe('Flat Name');
   });
 
+  it('falls back to the short name, then the node id, when the long name is hidden', () => {
+    expect(toNodeCardModel({ nodeNum: 5, longName: null, shortName: 'SNA', nodeId: '!00000005' }, 'meshtastic').longName).toBe('SNA');
+    expect(toNodeCardModel({ nodeNum: 5, user: { id: '!00000005', longName: null } }, 'meshtastic').longName).toBe('!00000005');
+  });
+
   it('falls back to a plain "Node {nodeNum}" longName when unnamed', () => {
     const model = toNodeCardModel({ nodeNum: 99 }, 'meshtastic');
     expect(model.longName).toBe('Node 99');
@@ -184,7 +189,9 @@ describe('toNodeCardModel — meshcore', () => {
 
   it('falls back to `name` when `advName` is absent, and "MeshCore" when both are', () => {
     expect(toNodeCardModel({ publicKey: 'k', name: 'Bob' }, 'meshcore').longName).toBe('Bob');
-    expect(toNodeCardModel({ publicKey: 'k' }, 'meshcore').longName).toBe('MeshCore');
+    expect(toNodeCardModel({ publicKey: 'k' }, 'meshcore').longName).toBe('k…');
+    expect(toNodeCardModel({}, 'meshcore').longName).toBe('MeshCore');
+    expect(toNodeCardModel({ publicKey: 'abcdef0123456789abcdef' }, 'meshcore').longName).toBe('abcdef012345…');
   });
 
   it('leaves meshcore sub-fields undefined and lastHeard null when absent (missing-data behavior)', () => {

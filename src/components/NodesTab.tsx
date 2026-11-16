@@ -25,7 +25,7 @@ import { AssetPlaybackBar } from './map/AssetPlaybackBar';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
-import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, resolveMarkerCenterTarget, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
+import { getUserDisplayName, getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, resolveMarkerCenterTarget, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
 import { applyPrecisionCellOffsets, hasAccuracyCell, precisionCellBounds } from '../utils/precisionOffset';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 import MapLegend from './MapLegend';
@@ -2528,7 +2528,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </span>
                       <div className="node-name-text">
                         <div className="node-longname">
-                          {node.user?.longName || `Node ${node.nodeNum}`}
+                          {getUserDisplayName(node.user, node.nodeNum)}
                           {/* #5317: imported from a contact link and not yet heard.
                               Drops away on its own once real traffic arrives, since
                               that sets lastHeard. */}
