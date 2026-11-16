@@ -1313,6 +1313,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     <div className="nodes-split-view messages-split-view">
       {/* Left Sidebar - Node List */}
       <div className={`nodes-sidebar messages-sidebar ${isMessagesNodeListCollapsed ? 'collapsed' : ''}`}>
+        {/* Own full-width row: inside the header it squeezed the buttons into a column. */}
+        {!isMessagesNodeListCollapsed && <PublicInstanceNotice />}
         <div className="sidebar-header">
           <button
             className="collapse-nodes-btn"
@@ -1332,7 +1334,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               />
             </div>
           )}
-          {!isMessagesNodeListCollapsed && <PublicInstanceNotice />}
           {!isMessagesNodeListCollapsed && (
             <div className="node-controls">
               <div className="filter-input-wrapper">
