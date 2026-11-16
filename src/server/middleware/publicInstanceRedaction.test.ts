@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
@@ -8,6 +8,18 @@ import {
   __setPublicInstanceConfigForTest,
   __resetPublicInstanceConfigForTest,
 } from '../services/publicInstanceConfig.js';
+
+const cfgState = vi.hoisted(() => ({ throwOnRead: false }));
+vi.mock('../services/publicInstanceConfig.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../services/publicInstanceConfig.js')>();
+  return {
+    ...orig,
+    getPublicInstanceConfig: () => {
+      if (cfgState.throwOnRead) throw new Error('config read failed');
+      return orig.getPublicInstanceConfig();
+    },
+  };
+});
 
 const SENTINEL = 'SENTINEL_LONG_NAME_XYZ';
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02]);
@@ -77,6 +89,7 @@ describe('publicInstanceRedaction middleware', () => {
   });
 
   afterEach(async () => {
+    cfgState.throwOnRead = false;
     __resetPublicInstanceConfigForTest();
     await harness.cleanup();
   });
@@ -199,5 +212,24 @@ describe('publicInstanceRedaction middleware', () => {
   it('keeps sendStatus(404) as 404', async () => {
     const res = await request(harness.app).get('/api/missing');
     expect(res.status).toBe(404);
+  });
+
+  it('fails closed (503) for an anonymous viewer when the config read throws', async () => {
+    cfgState.throwOnRead = true;
+    const res = await request(harness.app).get('/api/json');
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe('PUBLIC_REDACTION_FAILED');
+    expect(res.text).not.toContain(SENTINEL);
+    const csv = await request(harness.app).get('/api/ndjson');
+    expect(csv.status).toBe(503);
+    expect(csv.text).not.toContain(SENTINEL);
+  });
+
+  it('still passes a signed-in viewer through when the config read throws', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    cfgState.throwOnRead = true;
+    const res = await agent.get('/api/json');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain(SENTINEL);
   });
 });

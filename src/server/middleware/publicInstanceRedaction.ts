@@ -68,10 +68,23 @@ export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {
     let blocked = false;
     let streamChecked = false;
 
+    let configError = false;
+
     const isActive = (): boolean => {
       if (active !== undefined) return active;
-      const cfg = getPublicInstanceConfig();
-      if (!cfg.enabled) {
+      // Decide anonymity first: a signed-in viewer is never redacted, so a
+      // config failure only matters (fail closed) for an anonymous one.
+      const anonymous = opts.forceAnonymous === true || (isAnonymousViewer(req.user) && !req.session?.userId);
+      let enabled: boolean;
+      try {
+        enabled = getPublicInstanceConfig().enabled;
+      } catch {
+        logger.error(`[PublicInstance] config unavailable for ${req.method} ${req.baseUrl}${req.path}`);
+        configError = anonymous;
+        active = anonymous;
+        return active;
+      }
+      if (!enabled) {
         active = false;
         return false;
       }
@@ -79,7 +92,7 @@ export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {
         res.vary('Cookie');
         res.vary('Authorization');
       }
-      active = opts.forceAnonymous === true || (isAnonymousViewer(req.user) && !req.session?.userId);
+      active = anonymous;
       return active;
     };
 
@@ -116,6 +129,10 @@ export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {
 
     res.json = ((body?: unknown) => {
       if (passthrough || blocked || !isActive()) return passthrough || !blocked ? origJson(body) : res;
+      if (configError) {
+        failRedaction();
+        return res;
+      }
       let redacted: unknown;
       try {
         redacted = redactPublicPayload(body, getPublicInstanceConfig());
@@ -133,6 +150,10 @@ export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {
       const stringy = typeof body === 'string' || Buffer.isBuffer(body);
       // Objects route through res.json (redacted there); nothing to inspect here.
       if (!stringy || res.statusCode >= 300 || !hasData(body)) return origSend(body);
+      if (configError) {
+        failRedaction();
+        return res;
+      }
       const exempt = res.locals.publicInstanceExempt === true;
       const verdict = classify(String(res.get('Content-Type') ?? ''), exempt);
       if (verdict === 'block') {
@@ -158,6 +179,10 @@ export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {
       if (streamChecked || !isActive()) return true;
       if (!hasData(chunk) || res.statusCode >= 300) return true;
       streamChecked = true;
+      if (configError) {
+        failRedaction();
+        return false;
+      }
       const exempt = res.locals.publicInstanceExempt === true;
       // Streamed JSON cannot be redacted, so only an exempt one passes.
       if (classify(String(res.get('Content-Type') ?? ''), exempt) === 'pass') return true;
