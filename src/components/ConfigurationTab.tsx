@@ -2000,9 +2000,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       // Update MQTT Config
       if (config.moduleConfig?.mqtt) {
         const mqtt = config.moduleConfig.mqtt;
-        if (mqtt.enabled !== undefined && mqtt.enabled !== mqttEnabled) {
-          changes.push({ field: 'MQTT: Enabled', oldValue: formatValue(mqttEnabled), newValue: formatValue(mqtt.enabled) });
-          setMqttEnabled(mqtt.enabled);
+        // proto3 elides `false`, so an absent `enabled` means off (#6439, #5028 class).
+        const newMqttEnabled = mqtt.enabled === true;
+        if (newMqttEnabled !== mqttEnabled) {
+          changes.push({ field: 'MQTT: Enabled', oldValue: formatValue(mqttEnabled), newValue: formatValue(newMqttEnabled) });
+          setMqttEnabled(newMqttEnabled);
         }
         if (mqtt.address !== undefined && mqtt.address !== mqttAddress) {
           changes.push({ field: 'MQTT: Address', oldValue: formatValue(mqttAddress), newValue: formatValue(mqtt.address) });
@@ -2014,16 +2016,17 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
           changes.push({ field: 'MQTT: Encryption Enabled', oldValue: formatValue(mqttEncryptionEnabled), newValue: formatValue(newMqttEncryptionEnabled) });
           setMqttEncryptionEnabled(newMqttEncryptionEnabled);
         }
-        if (mqtt.tlsEnabled !== undefined && mqtt.tlsEnabled !== mqttTlsEnabled) {
-          changes.push({ field: 'MQTT: TLS Enabled', oldValue: formatValue(mqttTlsEnabled), newValue: formatValue(mqtt.tlsEnabled) });
-          setMqttTlsEnabled(mqtt.tlsEnabled);
+        const newMqttTlsEnabled = mqtt.tlsEnabled === true;
+        if (newMqttTlsEnabled !== mqttTlsEnabled) {
+          changes.push({ field: 'MQTT: TLS Enabled', oldValue: formatValue(mqttTlsEnabled), newValue: formatValue(newMqttTlsEnabled) });
+          setMqttTlsEnabled(newMqttTlsEnabled);
         }
         // Update remaining MQTT fields
         if (mqtt.username !== undefined) setMqttUsername(mqtt.username);
         if (mqtt.password !== undefined) setMqttPassword(mqtt.password);
-        if (mqtt.jsonEnabled !== undefined) setMqttJsonEnabled(mqtt.jsonEnabled);
+        setMqttJsonEnabled(mqtt.jsonEnabled === true);
         if (mqtt.root !== undefined) setMqttRoot(mqtt.root);
-        if (mqtt.proxyToClientEnabled !== undefined) setMqttProxyToClientEnabled(mqtt.proxyToClientEnabled);
+        setMqttProxyToClientEnabled(mqtt.proxyToClientEnabled === true);
         // Map reporting: read like the initial load. proto3 elides `false`, so
         // an absent flag is off; skipping it on `undefined` left a box ticked
         // after it was turned off on the radio. Report Location was never

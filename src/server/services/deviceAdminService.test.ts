@@ -100,6 +100,7 @@ function makeFakeManager(overrides: Partial<{
     isDeviceConnected: vi.fn(() => state.deviceConnected),
     getLocalNodeInfo: vi.fn(() => state.localNodeInfo),
     sendLocalAdminPacket: vi.fn().mockResolvedValue(undefined),
+    sendLocalAdminAwaitRejection: vi.fn<(payload: Uint8Array, timeoutMs?: number) => Promise<{ rejected: number | null }>>().mockResolvedValue({ rejected: null }),
     updateCachedDeviceConfig: vi.fn((section: string, values: Record<string, any>, mode: 'merge' | 'replace' = 'merge') => {
       const next = mode === 'replace' ? { ...values } : { ...state.actualDeviceConfig?.[section], ...values };
       state.actualDeviceConfig = { ...state.actualDeviceConfig, [section]: next };
@@ -259,6 +260,26 @@ describe('DeviceAdminService', () => {
       expect(createSetMQTTConfigMessage).toHaveBeenCalledWith(mqtt, expect.any(Uint8Array));
       expect(mgr.updateCachedModuleConfig).toHaveBeenCalledWith('mqtt', mqtt, 'replace');
       expect(mgr.updateCachedDeviceConfig).not.toHaveBeenCalled();
+    });
+
+    it('setMQTTConfig throws AdminConfigRejectedError and leaves the cache alone when the node refuses (#6439)', async () => {
+      const mgr = makeFakeManager();
+      mgr.sendLocalAdminAwaitRejection.mockResolvedValue({ rejected: 32 });
+      const svc = new DeviceAdminService(mgr as any);
+      await expect(svc.setMQTTConfig({ enabled: true })).rejects.toMatchObject({
+        isAdminConfigRejectedError: true,
+        errorCode: 32,
+        errorName: 'BAD_REQUEST',
+      });
+      expect(mgr.updateCachedModuleConfig).not.toHaveBeenCalled();
+    });
+
+    it('setMQTTConfig waits up to 5 s for a refusal, and caches on silence (#6439)', async () => {
+      const mgr = makeFakeManager();
+      const svc = new DeviceAdminService(mgr as any);
+      await svc.setMQTTConfig({ enabled: true });
+      expect(mgr.sendLocalAdminAwaitRejection).toHaveBeenCalledWith(expect.any(Uint8Array), 5000);
+      expect(mgr.updateCachedModuleConfig).toHaveBeenCalledWith('mqtt', { enabled: true }, 'replace');
     });
 
     // Each local save caches what it sent in the bucket the protobuf puts it

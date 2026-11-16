@@ -213,4 +213,28 @@ export class AdminTransactionService {
     }
     return { packetId, acked: errorReason === 0, errorReason, timedOut: false };
   }
+
+  /**
+   * Send an admin command to our OWN node and report whether it refused.
+   *
+   * A local admin set is silent on success (the node sends no ACK to itself),
+   * so silence for `timeoutMs` counts as accepted. A refusal (for example
+   * BAD_REQUEST from firmware built without the module) arrives as a Routing
+   * reply whose request_id is our packet id. The waiter is keyed by that id, so
+   * an unrelated routing reply cannot settle it, and it is removed on every
+   * exit path (reply, timeout, send failure).
+   *
+   * @returns `rejected`: the routing error code, or null when the node accepted
+   */
+  async sendLocalAdminAwaitRejection(
+    adminMessagePayload: Uint8Array,
+    timeoutMs: number = 5000
+  ): Promise<{ rejected: number | null }> {
+    const localNodeNum = this.mgr.getLocalNodeInfo()?.nodeNum;
+    if (!localNodeNum) {
+      throw new Error('Local node information not available');
+    }
+    const { errorReason } = await this.sendAdminCommandAwaitAck(adminMessagePayload, localNodeNum, timeoutMs);
+    return { rejected: errorReason !== null && errorReason !== 0 ? errorReason : null };
+  }
 }

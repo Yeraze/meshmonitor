@@ -46,6 +46,7 @@ vi.mock('./configuration/PositionConfigSection', () => ({ default: () => null })
 vi.mock('./configuration/MQTTConfigSection', () => ({
   default: (p: Record<string, unknown> & {
     mapPositionPrecision: number;
+    mqttEnabled: boolean;
     mapShouldReportLocation: boolean;
     mapReportingEnabled: boolean;
     setMapShouldReportLocation: (v: boolean) => void;
@@ -56,6 +57,7 @@ vi.mock('./configuration/MQTTConfigSection', () => ({
       <span data-testid="mqtt-precision">{String(p.mapPositionPrecision)}</span>
       <span data-testid="mqtt-consent">{String(p.mapShouldReportLocation)}</span>
       <span data-testid="mqtt-map">{String(p.mapReportingEnabled)}</span>
+      <span data-testid="mqtt-enabled">{String(p.mqttEnabled)}</span>
       <button data-testid="mqtt-consent-off" onClick={() => p.setMapShouldReportLocation(false)}>off</button>
       <button data-testid="mqtt-consent-on" onClick={() => p.setMapShouldReportLocation(true)}>on</button>
       <button data-testid="mqtt-map-off" onClick={() => p.setMapReportingEnabled(false)}>map off</button>
@@ -235,5 +237,31 @@ describe('ConfigurationTab: Reload Config re-reads map reporting', () => {
     await reloadWith({ ...rest, mapReportSettings: { publishIntervalSecs: 7200, positionPrecision: 12 } });
     await waitFor(() => expect(screen.getByTestId('mqtt-consent').textContent).toBe('false'), { timeout: 5000 });
     expect(screen.getByTestId('mqtt-map').textContent).toBe('false');
+  });
+
+  it('a reload that omits enabled (proto3 false) turns the checkbox off (#6439)', async () => {
+    await renderLoaded(FULL_MQTT);
+    await waitFor(() => expect(screen.getByTestId('mqtt-enabled').textContent).toBe('true'));
+
+    const { enabled: _enabled, ...withoutEnabled } = FULL_MQTT;
+    h.getCurrentConfig.mockResolvedValue(nodeWith(withoutEnabled));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fireEvent.click(screen.getByText('config.reload_config').closest('button') as HTMLButtonElement);
+      await vi.advanceTimersByTimeAsync(2500);
+    } finally {
+      vi.useRealTimers();
+    }
+    await waitFor(() => expect(screen.getByTestId('mqtt-enabled').textContent).toBe('false'));
+  });
+
+  it('a refused save shows the server message and does not expect a reboot (#6439)', async () => {
+    h.setMQTTConfig.mockRejectedValue(new Error('The node refused this MQTT configuration.'));
+    await renderLoaded(FULL_MQTT);
+    await waitFor(() => expect(screen.getByTestId('mqtt-consent').textContent).toBe('true'));
+    fireEvent.click(screen.getByTestId('mqtt-save'));
+    await waitFor(() => expect(h.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('The node refused this MQTT configuration.'), 'error'));
+    expect(h.showToast).not.toHaveBeenCalledWith(expect.anything(), 'success');
   });
 });
