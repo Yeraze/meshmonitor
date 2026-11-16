@@ -49,6 +49,8 @@ import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { validateNodeNameSanitizerSettings } from '../../utils/nodeNameSanitizer.js';
 import { NODE_NAME_SANITIZE_KEYS } from '../../utils/nodeNameSanitizerConstants.js';
 import { reloadNodeNameSanitizer } from '../services/nodeNameSanitizerService.js';
+import { reloadPublicInstanceConfig } from '../services/publicInstanceConfig.js';
+import { PUBLIC_INSTANCE_SETTING_KEYS } from '../../utils/publicInstanceMode.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import {
   autoEnrichmentScheduler,
@@ -1478,6 +1480,10 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       await reloadNodeNameSanitizer();
     }
 
+    if (Object.values(PUBLIC_INSTANCE_SETTING_KEYS).some((key) => key in filteredSettings)) {
+      await reloadPublicInstanceConfig();
+    }
+
     if ('noIndexEnabled' in filteredSettings) {
       const enabled = parseNoIndexEnabled(filteredSettings.noIndexEnabled);
       callbacks.setNoIndexEnabled?.(enabled);
@@ -1813,6 +1819,8 @@ router.delete('/', requirePermission('settings', 'write'), async (req: Request, 
     callbacks.setTracerouteInterval?.(0);
     // #6382: the reset removed the anti-spam settings, so the filter goes off.
     await reloadNodeNameSanitizer();
+    // #5156: the reset removed the public-instance settings, so the mode goes off.
+    await reloadPublicInstanceConfig();
     // #5245: the reset removed the stored default, so go back to Automatic.
     applyDefaultMeshtasticSource(
       sourceManagerRegistry,

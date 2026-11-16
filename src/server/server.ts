@@ -18,6 +18,7 @@ import { logger } from '../utils/logger.js';
 import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { setNoIndexEnabled, parseNoIndexEnabled } from '../utils/robotsConfig.js';
 import { startTelemetryPurgeSchedule } from './services/telemetryPurgeSchedule.js';
+import { reloadPublicInstanceConfig } from './services/publicInstanceConfig.js';
 import { robotsTagMiddleware } from './middleware/robotsTag.js';
 import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
@@ -1431,6 +1432,10 @@ void (async () => {
 
   // Eagerly populate embed origins cache so first CORS check works
   refreshEmbedOriginsCache();
+
+  // Load the public-instance config before listening so no request can be
+  // served unredacted while the cache is still empty (#5156).
+  await reloadPublicInstanceConfig();
 
   // host undefined -> net.Server binds every interface, as before
   server = app.listen({ port: PORT, host: env.bindAddress }, () => {
