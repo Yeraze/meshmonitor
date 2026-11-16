@@ -10,12 +10,13 @@
  * style of embedProfileRoutes.test.ts (minus the auth/session wiring).
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import express, { Express } from 'express';
 import request from 'supertest';
 import embedPublicRoutes from './embedPublicRoutes.js';
 import databaseService from '../../services/database.js';
 import type { DbTraceroute } from '../../db/types.js';
+import { __setPublicInstanceConfigForTest, __resetPublicInstanceConfigForTest } from '../services/publicInstanceConfig.js';
 
 const createApp = (): Express => {
   const app = express();
@@ -426,5 +427,35 @@ describe('GET /api/embed/:profileId/config — Carto API key (#4934)', () => {
     const res = await request(app).get(`/api/embed/${profileId}/config`);
     expect(res.status).toBe(200);
     expect(res.body.cartoApiKey).toBeNull();
+  });
+});
+
+describe('GET /api/embed/:profileId/config — public-instance flags (#5156)', () => {
+  let app: Express;
+
+  beforeAll(() => {
+    app = createApp();
+  });
+
+  afterEach(() => {
+    __resetPublicInstanceConfigForTest();
+  });
+
+  it('reports the public-instance flags as booleans', async () => {
+    const profileId = `cfg-pi-${seq}`;
+    await createProfile({ id: profileId, sourceId: nextSourceId() });
+    __setPublicInstanceConfigForTest({ enabled: true, roundTimestamps: false });
+    const res = await request(app).get(`/api/embed/${profileId}/config`);
+    expect(res.status).toBe(200);
+    expect(res.body.publicInstance).toMatchObject({ enabled: true, roundTimestamps: false });
+    for (const v of Object.values(res.body.publicInstance)) expect(typeof v).toBe('boolean');
+  });
+
+  it('reports enabled: false when the mode is off', async () => {
+    const profileId = `cfg-pi-off-${seq}`;
+    await createProfile({ id: profileId, sourceId: nextSourceId() });
+    __setPublicInstanceConfigForTest({ enabled: false });
+    const res = await request(app).get(`/api/embed/${profileId}/config`);
+    expect(res.body.publicInstance.enabled).toBe(false);
   });
 });
