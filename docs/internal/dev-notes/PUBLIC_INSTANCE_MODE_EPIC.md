@@ -42,7 +42,7 @@ or bytes) encode exact positions and text and must be dropped.
   unit tests cover every field class; an integration test on real routes
   (`/api/nodes`, `/api/poll`) shows the same seeded node exact for a signed-in
   user and trimmed for an anonymous one; typecheck, lint:ci and the suite are green.
-- [ ] **Phase 2 — Sentinel audit.** A route-walk test over every mount in
+- [x] **Phase 2 — Sentinel audit.** A route-walk test over every mount in
   `server.ts` plus the embed router, run as anonymous with all grants, scanning
   responses for the sentinels. Fix every leak it finds in the redactor's field
   catalogue (not per route). Exit: the audit is green, and a new GET route that
@@ -65,3 +65,59 @@ or bytes) encode exact positions and text and must be dropped.
   pre-serialised `send()` honours the exempt marker.
 - Bare `distance` is treated as km; setting-like `*Distance` keys are rounded
   too (accepted over-redaction).
+
+## Phase 2 notes (2026-11-16)
+
+Audit: `src/server/routes/publicInstance.sentinelAudit.test.ts` (helpers in
+`test-helpers/publicInstanceAudit.ts` and `routerWalker.ts`, exceptions in
+`publicInstance.sentinelAudit.table.ts`). It walks the real `/api` router
+(built by `createApiRouter`) and `/api/embed`, calls every GET as an anonymous
+viewer with all grants and every toggle on, and scans bodies and headers for
+seeded sentinels (coordinates, names, keys, text, raw payloads, timestamps,
+geometry) in Meshtastic, MeshCore, Reticulum, MQTT and embed data. It then
+replays each raw body with one toggle at a time, and prints an over-redaction
+report. About 83 routes reach data; floors in the table file only go up.
+
+**Adding a route.** Nothing to do: the walker finds it and the audit calls and
+scans it. Touch the table file only when needed: `ROUTE_OVERRIDES` for params the
+defaults cannot fill (or a required query), `EXPECT_ERROR` for a 5xx the fakes
+cause by design, `SKIP` for a route that cannot run (filesystem, stream). A key
+that matches no route fails the audit. A new field that leaks is fixed in the
+redactor catalogue, with a unit test, never per route.
+
+**Out of the audit.** `/api/privacy` (operator policy documents),
+`/api/scripts` (script filenames), `/api/v1` (token API; the middleware
+bypasses it), and every non-GET route.
+
+**Leaks found and how each was fixed (all in the catalogue or walker):**
+- Names under keys the catalogue missed (`from_node_longName`, `fromNodeName`,
+  `toNodeName`, `localName`, `node_name`): added to `longNames`
+  (`/_longName$/` pattern). The Reticulum `remote-status` hit came from a fake
+  with an invented `displayName`; the real reply has none, so the fake was fixed.
+- `keySecurityIssueDetails` (8-char key fragment): `publicKeys.exact`, nulled;
+  the boolean flags stay.
+- `uncertaintyKm`, `positionEstimateUncertaintyKm`, and the
+  `estimatedUncertainty` map keyed by node id: km class (nearest 1.5). New
+  `valueMaps` rule: a classified parent key whose value is a plain object applies
+  the class to that object's numeric leaves (one level, keys are ids).
+- `/messages/first-unread` `channels` / `directMessages` maps and `seqCursor`:
+  the two map keys are too generic alone, so `timestamps.gatedValueMaps`
+  matches each only beside the other. `seqCursor` is the newest message
+  timestamp, so it is a timestamp.
+- Waypoints come from mesh users (WAYPOINT_APP), so their `name` and
+  `description` are user content: `messageText.gated` on the `waypointId`
+  sibling. Map markers are created by the operator in the UI (`createdByUserId`,
+  no mesh path), the same as geojson layers and embed profile text, and stay
+  visible; their audit seed is not a sentinel.
+- MeshCore sender name inside channel text: confirmed in
+  `meshcoreManager` (`plain.senderName ? plain.text : mc1ChannelBody(plain.text)`:
+  without a sender name the stored text is the wire `Name: body`). New value
+  rule `EMBEDDED_SENDER_NAME`: with hideLongNames on and hideMessageText off,
+  strip a leading `^[^:\n]{1,32}: ` from `text` on a channel-shaped object
+  (`messageType` channel, or a `channel-` id in `fromPublicKey`, `toPublicKey`
+  or `fromNodeId`) that has no name field of its own.
+
+**Over-redaction report.** One candidate: `/sources/:id/mqtt/native`
+`config.longName`, the operator's own node identity. Kept redacted, consistent
+with hiding long names.
+
