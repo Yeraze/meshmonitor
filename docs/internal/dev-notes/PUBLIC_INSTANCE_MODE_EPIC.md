@@ -140,5 +140,5 @@ with hiding long names.
   skipping `/csrf-token` and `/auth/*` in the middleware and an `opaqueTokens`
   catalogue class; an end-to-end login test with the mode on guards it. Never
   shipped in a release.
-- Deferred: telling embeds about the mode (embeds only got the name fallback);
-  the stacked layout of other `.setting-item` checkboxes (pre-existing).
+- Done (#5156): the embed config reports the mode, so embeds spread same-cell
+  markers and show coarse ages. Deferred: the stacked layout of other `.setting-item` checkboxes (pre-existing).

@@ -16,7 +16,7 @@ Embed Maps let you share a live, read-only view of your mesh network on any webs
 
 You can create multiple profiles to serve different audiences — for example, one public-facing profile showing all channels and another restricted to a single channel for a community group.
 
-Embeds always count as signed-out viewers. When [public-instance mode](./public-instance-mode) is on, embed maps show coarsened positions and hide the data it hides.
+Embeds always count as signed-out viewers. When [public-instance mode](./public-instance-mode) is on, embed maps show coarsened positions, spread markers that share a coarse cell so they do not stack, show ages as "within the last hour" when times are rounded, and hide the data it hides.
 
 ## Creating an Embed Profile
 

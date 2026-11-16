@@ -46,6 +46,7 @@ import type { PermissionSet } from '../../types/permission.js';
 import { loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
 import { markPublicInstanceExempt } from '../middleware/publicInstanceRedaction.js';
+import { getPublicInstanceConfig } from '../services/publicInstanceConfig.js';
 
 const router = Router();
 
@@ -324,6 +325,9 @@ router.get('/:profileId/config', createEmbedCspMiddleware(), (req: Request, res:
     showTraceroutes: profile.showTraceroutes,
     showMqttNodes: profile.showMqttNodes,
     pollIntervalSeconds: profile.pollIntervalSeconds,
+    // Embeds are always served redacted (#5156). Booleans only, so the viewer
+    // can draw positions as approximate and ages as coarse.
+    publicInstance: { ...getPublicInstanceConfig() },
   });
 });
 
