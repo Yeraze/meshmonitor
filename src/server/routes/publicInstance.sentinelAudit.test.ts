@@ -82,9 +82,41 @@ const serverSource = readFileSync(fileURLToPath(new URL('../server.ts', import.m
 const BINARY = /^(image|font|video|audio)\//;
 const REQUEST_TIMEOUT_MS = 8000;
 
+const ALLOWED_API_MOUNTS = new Set(['/api/scripts', '/api/privacy', '/api/embed', '/api'].flatMap((p) => [p, `$BASE${p}`]));
+
+/**
+ * First argument of every `app.<verb>(` call, up to its first top-level comma.
+ * Returns the ones that mention `api` (any case) but are not an allow-listed mount.
+ */
+function offendingApiMounts(source: string): string[] {
+  const out: string[] = [];
+  for (const m of source.matchAll(/\bapp\.(?:use|get|post|put|patch|delete|all)\(/g)) {
+    let depth = 0;
+    let quote = '';
+    let arg = '';
+    for (let i = m.index + m[0].length; i < source.length; i++) {
+      const c = source[i];
+      if (quote) {
+        if (c === '\\') { arg += c + source[++i]; continue; }
+        if (c === quote) quote = '';
+      } else if (c === "'" || c === '"' || c === '`') quote = c;
+      else if ('([{'.includes(c)) depth++;
+      else if (')]}'.includes(c)) { if (depth === 0) break; depth--; }
+      else if (c === ',' && depth === 0) break;
+      arg += c;
+    }
+    const text = arg.trim();
+    if (!/api/i.test(text)) continue;
+    const literal = /^[`'"](.*)[`'"]$/s.exec(text)?.[1]?.replace('${BASE_URL}', '$BASE');
+    if (literal === undefined || !ALLOWED_API_MOUNTS.has(literal)) out.push(text);
+  }
+  return out;
+}
+
 describe('public instance mode: sentinel audit', () => {
   let harness: RouteTestHarness;
   let tmpRoot: string;
+  let originalDataDir: string | undefined;
   let walked: WalkedRoute[] = [];
   let getRoutes: WalkedRoute[] = [];
   let results: RouteResult[] = [];
@@ -104,6 +136,7 @@ describe('public instance mode: sentinel audit', () => {
   beforeAll(async () => {
     vi.stubGlobal('fetch', () => Promise.reject(new Error('outbound fetch blocked by the audit')));
     tmpRoot = mkdtempSync(join(tmpdir(), 'mm-audit-'));
+    originalDataDir = process.env.DATA_DIR;
     process.env.DATA_DIR = tmpRoot;
     mkdirSync(join(tmpRoot, 'geojson'));
     mkdirSync(join(tmpRoot, 'styles'));
@@ -218,6 +251,8 @@ describe('public instance mode: sentinel audit', () => {
     vi.unstubAllGlobals();
     for (const id of Object.values(SOURCES)) await sourceManagerRegistry.removeManager(id).catch(() => {});
     await harness?.cleanup();
+    if (originalDataDir === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = originalDataDir;
     if (tmpRoot) rmSync(tmpRoot, { recursive: true, force: true });
   });
 
@@ -228,9 +263,15 @@ describe('public instance mode: sentinel audit', () => {
     });
 
     it('the only /api mounts on the app are the audited ones', () => {
-      const mounts = [...serverSource.matchAll(/\bapp\.(?:use|get)\(\s*[`'"]([^`'"]*\/api[^`'"]*)[`'"]/g)].map((m) => m[1].replace('${BASE_URL}', '$BASE'));
-      const allowed = ['/api/scripts', '/api/privacy', '/api/embed', '/api'].flatMap((p) => [p, `$BASE${p}`]);
-      expect([...new Set(mounts)].sort()).toEqual(allowed.sort());
+      expect(offendingApiMounts(serverSource)).toEqual([]);
+    });
+
+    it('the mount scan catches concatenated and variable paths', () => {
+      expect(offendingApiMounts("app.use(BASE_URL + '/api', apiRouter);")).toHaveLength(1);
+      expect(offendingApiMounts("app.use(apiBase, apiRouter);")).toHaveLength(1);
+      expect(offendingApiMounts("app.post(`${BASE_URL}/api/x`, h);")).toHaveLength(1);
+      expect(offendingApiMounts("app.use('/api/embed', publicInstanceRedaction(), r);")).toEqual([]);
+      expect(offendingApiMounts("app.use(`${BASE_URL}/api`, apiLimiter, apiRouter);")).toEqual([]);
     });
 
     it('the embed mount runs the redaction middleware in forced-anonymous mode', () => {
@@ -335,6 +376,7 @@ describe('public instance mode: sentinel audit', () => {
     const allOnKeys = new Set(allLeakKeys);
     for (const r of results) {
       for (const v of r.variants) {
+        expect(v.raws.length, `${r.key} ${v.variant}: raws and redacteds out of step`).toBe(v.redacteds.length);
         for (const raw of v.raws) {
           const parsed: unknown = JSON.parse(raw);
           for (const toggle of TOGGLES) {
@@ -401,7 +443,8 @@ describe('public instance mode: sentinel audit', () => {
       const report = `over-redaction candidates (${rows.length}):\n${rows.join('\n')}`;
       if (process.env.AUDIT_OVERREDACT) writeFileSync(process.env.AUDIT_OVERREDACT, report);
       console.log(report.split('\n').slice(0, 40).join('\n'));
-      expect(rows).toBeDefined();
+      // Report only: this test prints candidates for a human and never fails on them.
+      expect(Array.isArray(rows)).toBe(true);
     });
   });
 });

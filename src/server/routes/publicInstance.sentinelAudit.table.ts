@@ -6,7 +6,12 @@
  * deleting a route forces its entry out. Keys are `METHOD /full/path`.
  */
 
-/** Routes the audit does not call, with the reason. */
+/**
+ * Routes the audit does not call, with the reason. Intentionally empty today:
+ * every walked GET runs under the fakes (filesystem params use harmless missing
+ * names via ROUTE_OVERRIDES). Add an entry only for a route that cannot run at
+ * all, such as one that streams without end.
+ */
 export const SKIP: Record<string, string> = {};
 
 /** Routes that answer 5xx under the fakes by design, with the reason. */

@@ -15,6 +15,10 @@ describe('createApiRouter', () => {
     expect(isPublicInstanceRedaction(router.stack[0].handle)).toBe(true);
   });
 
+  it('keeps its mount blocks (a dropped block would shrink the stack)', () => {
+    expect(createApiRouter(deps(false)).stack.length).toBeGreaterThanOrEqual(80);
+  });
+
   it('only mounts /debug/ip when debug routes are enabled', () => {
     const has = (r: Router) =>
       r.stack.some((l: { route?: { path?: string } }) => l.route?.path === '/debug/ip');
