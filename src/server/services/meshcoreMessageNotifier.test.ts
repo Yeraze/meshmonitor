@@ -86,11 +86,9 @@ vi.mock('../sourceManagerTypes.js', () => ({
   isReticulumManager: () => false,
 }));
 vi.mock('web-push', () => ({
-  default: {
-    sendNotification: h.webPushSend,
-    generateVAPIDKeys: () => ({ publicKey: 'pub', privateKey: 'priv' }),
-    setVapidDetails: () => undefined,
-  },
+  sendNotification: h.webPushSend,
+  generateVAPIDKeys: () => ({ publicKey: 'pub', privateKey: 'priv' }),
+  setVapidDetails: () => undefined,
 }));
 vi.mock('../utils/meshcoreKeyAccess.js', () => ({
   resolveMeshcoreKeyAccess: async (user: { id: number }) => h.keys.get(user.id) ?? [],

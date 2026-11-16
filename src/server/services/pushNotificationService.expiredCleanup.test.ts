@@ -14,11 +14,9 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock('web-push', () => ({
-  default: {
-    sendNotification: h.sendNotification,
-    setVapidDetails: vi.fn(),
-    generateVAPIDKeys: vi.fn(() => ({ publicKey: 'pub', privateKey: 'priv' })),
-  },
+  sendNotification: h.sendNotification,
+  setVapidDetails: vi.fn(),
+  generateVAPIDKeys: vi.fn(() => ({ publicKey: 'pub', privateKey: 'priv' })),
 }));
 
 vi.mock('../../services/database.js', () => ({

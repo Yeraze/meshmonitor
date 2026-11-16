@@ -48,11 +48,9 @@ vi.mock('node-notifier', () => ({ default: { notify: h.notify } }));
 // real I/O, which fake timers cannot advance).
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]) }));
 vi.mock('web-push', () => ({
-  default: {
-    sendNotification: h.webPushSend,
-    generateVAPIDKeys: () => ({ publicKey: 'pub', privateKey: 'priv' }),
-    setVapidDetails: () => undefined,
-  },
+  sendNotification: h.webPushSend,
+  generateVAPIDKeys: () => ({ publicKey: 'pub', privateKey: 'priv' }),
+  setVapidDetails: () => undefined,
 }));
 
 import { pushNotificationService } from './pushNotificationService.js';
