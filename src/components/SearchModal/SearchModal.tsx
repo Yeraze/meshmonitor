@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api.js';
 import './SearchModal.css';
+import { formatSenderLabel } from '../../utils/nodeHelpers';
 
 // Note (#3960 Phase 1b WP6): `source` below is a message-protocol
 // discriminator ('standard' Meshtastic vs 'meshcore'), not the `sources.type`
@@ -152,7 +153,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     }
     if (result.toNodeId) {
       const node = nodes.find(n => n.nodeId === result.toNodeId);
-      return t('search.dm_label', { name: node?.longName ?? result.toNodeId });
+      return t('search.dm_label', { name: node?.longName || node?.shortName || result.toNodeId });
     }
     return '';
   };
@@ -160,7 +161,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const getSenderName = (result: SearchResult): string => {
     if (result.fromNodeId) {
       const node = nodes.find(n => n.nodeId === result.fromNodeId);
-      if (node) return `${node.longName} (${node.shortName})`;
+      if (node) return formatSenderLabel(node.longName, node.shortName, node.nodeId);
       return result.fromNodeId;
     }
     return '';
@@ -277,7 +278,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 <option value="">{t('search.scope_all')}</option>
                 {nodes.map(node => (
                   <option key={node.nodeId} value={node.nodeId}>
-                    {node.longName} ({node.shortName})
+                    {formatSenderLabel(node.longName, node.shortName, node.nodeId)}
                   </option>
                 ))}
               </select>

@@ -68,3 +68,7 @@ intact instead of quietly losing them.
 - **It does not write your policy.** The documents say whatever you put in them.
 - **It is not `noIndexEnabled` or `linkPreviewsEnabled`.** Those ask crawlers to skip your
   dashboard and control outbound link previews. If you run a public instance, weigh all three.
+
+## See also
+
+[Public-Instance Mode](./public-instance-mode) hides names, exact positions, keys, and message text from signed-out viewers.

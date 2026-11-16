@@ -14,6 +14,8 @@ import apiService from '../services/api';
 import type { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { formatDateTime } from '../utils/datetime';
 import { UiIcon } from './icons';
+import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
+import { isTruncatedPublicKey } from '../utils/publicInstanceMode';
 import { buildDailySlots, DIRECT_RF_SECTION_DAYS, type DirectRfNodeResponse } from './Analysis/directRfContacts';
 import styles from './DirectRfSection.module.css';
 
@@ -33,7 +35,9 @@ export const DirectRfSection: React.FC<DirectRfSectionProps> = ({
   const { t } = useTranslation();
   const [data, setData] = useState<DirectRfNodeResponse | null>(null);
 
-  const key = nodeKey ? nodeKey.toLowerCase() : null;
+  const { hidePublicKeys } = usePublicInstanceView();
+  // A public instance cuts MeshCore keys to a prefix; the endpoint rejects those with a 400.
+  const key = nodeKey && !(hidePublicKeys && isTruncatedPublicKey(nodeKey)) ? nodeKey.toLowerCase() : null;
 
   useEffect(() => {
     setData(null);

@@ -61,9 +61,26 @@ function hasData(chunk: unknown): boolean {
   return true;
 }
 
+/**
+ * Auth/session plumbing an anonymous browser calls before it can sign in. Their
+ * bodies carry tokens, challenges and nonces (a 64-hex CSRF token would be
+ * truncated as a MeshCore key, breaking login) and no mesh data. Paths are
+ * relative to the `/api` mount. Keep this list explicit; do not widen it ad hoc.
+ *  - /csrf-token: the CSRF token every POST needs.
+ *  - /auth/*: login, MFA, logout, status, OIDC redirect (state/nonce in authUrl),
+ *    and passkey login/recover (WebAuthn challenge, credential ids).
+ */
+const AUTH_PLUMBING_EXACT = new Set(['/csrf-token']);
+const AUTH_PLUMBING_PREFIXES = ['/auth/'];
+
+function isAuthPlumbing(path: string): boolean {
+  return AUTH_PLUMBING_EXACT.has(path) || path === '/auth' || AUTH_PLUMBING_PREFIXES.some((p) => path.startsWith(p));
+}
+
 export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {}): RequestHandler {
   const handler = (req: Request, res: Response, next: NextFunction) => {
     if (req.path === '/v1' || req.path.startsWith('/v1/')) return next();
+    if (!opts.forceAnonymous && isAuthPlumbing(req.path)) return next();
 
     const origJson = res.json.bind(res);
     const origSend = res.send.bind(res);

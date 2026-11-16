@@ -930,6 +930,14 @@ Looking for the icon-based traceroute strip instead? That's a different surface 
 
 **Persistence**: Widget configurations (including selected nodes and order) are automatically saved and restored when you return to the dashboard.
 
+## Public-Instance Mode {#settings-public-instance}
+
+Limits what signed-out visitors and embed maps can see. Signed-in users are not affected.
+The master switch starts off; four toggles (hide long names, hide public keys, round times
+down to the hour, hide message text) start on. Positions always snap to about 1.5 km, and raw
+packet data and file exports are blocked for signed-out viewers. If the CoT feed is also on,
+Settings warns you: the feed is not redacted. See [Public-Instance Mode](./public-instance-mode).
+
 ## Settings Management
 
 ### Save Settings

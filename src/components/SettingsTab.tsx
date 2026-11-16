@@ -2483,7 +2483,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             {t('settings.public_instance_description', 'Limits what signed-out visitors and embed maps can see. Signed-in users are not affected. Positions are always shown only to about 1.5 km. Raw packet data and file exports are blocked for signed-out visitors.')}
           </p>
           <div className="setting-item">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 id="publicInstanceHideLongNames"
                 type="checkbox"
@@ -2496,7 +2496,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
           </div>
           <div className="setting-item">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 id="publicInstanceHidePublicKeys"
                 type="checkbox"
@@ -2509,7 +2509,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
           </div>
           <div className="setting-item">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 id="publicInstanceRoundTimestamps"
                 type="checkbox"
@@ -2522,7 +2522,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
           </div>
           <div className="setting-item">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 id="publicInstanceHideMessageText"
                 type="checkbox"
@@ -2534,6 +2534,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span>{t('settings.public_instance_hide_message_text', 'Hide message text')}</span>
             </label>
           </div>
+          {draft.publicInstanceModeEnabled && draft.cotFeedEnabled && (
+            <p className={settingsStyles.txWarning} data-testid="public-instance-cot-warning">
+              <UiIcon name="alert" />
+              {t('settings.public_instance_cot_warning')}
+            </p>
+          )}
         </div>}
 
         {show('settings-meshcore-messaging') && <div id="settings-meshcore-messaging" className="settings-section">

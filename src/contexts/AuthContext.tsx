@@ -4,8 +4,10 @@
  * Manages user authentication state, login/logout, and permissions
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import type { RedactionConfig } from '../utils/publicInstanceMode.js';
+import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api from '../services/api';
+import { AuthContext } from './authContextObject';
 import { signInWithPasskey, recoverWithCode as postRecoveryCode } from '../services/passkeyClient';
 import { logger } from '../utils/logger';
 import type { PermissionSet, SourcedPermissionSet } from '../types/permission';
@@ -56,6 +58,11 @@ export interface AuthStatus {
    * choose a new password. Only sent when authenticated.
    */
   passwordChangeRequired?: boolean;
+  /**
+   * Public-instance mode (#5156) config. Only sent to signed-out viewers; the
+   * UI uses it to tolerate redacted fields. Absent when signed in.
+   */
+  publicInstance?: RedactionConfig;
 }
 
 export interface LoginResult {
@@ -63,7 +70,7 @@ export interface LoginResult {
   success?: boolean;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   authStatus: AuthStatus | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
@@ -101,7 +108,7 @@ interface AuthContextType {
   hasChannelDbPermission: (channelDbId: number, action: 'viewOnMap' | 'read') => boolean;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export { AuthContext };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
@@ -166,6 +173,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         anonymousDisabled: false,
         customTitle: null,
         customLogoUrl: null,
+        publicInstance: undefined,
       });
     } finally {
       setLoading(false);

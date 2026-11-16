@@ -42,6 +42,7 @@ import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
 import { SourceNotConnectedNotice } from '../common/SourceNotConnectedNotice';
 import { isSourceNotConnectedError } from '../../utils/sourceNotConnected';
+import { usePublicInstanceView } from '../../hooks/usePublicInstanceView';
 
 const PacketStatsChart = React.lazy(() => import('../PacketStatsChart'));
 
@@ -116,6 +117,7 @@ function formatTime(ts: number): string {
 }
 
 export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps> = ({ baseUrl, sourceId, isRepeaterSource = false, contacts, standalone = false, onNodeClick }) => {
+  const publicView = usePublicInstanceView();
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { state: wsState } = useWebSocketContext();
@@ -410,9 +412,11 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
           <button className="mcpm-btn" onClick={() => void refresh()} title={t('common.refresh', 'Refresh')}>
             <RefreshCw size={14} />
           </button>
-          <button className="mcpm-btn" onClick={() => void handleExport()} title={t('common.export', 'Export')}>
-            <Download size={14} />
-          </button>
+          {!publicView.active && (
+            <button className="mcpm-btn" onClick={() => void handleExport()} title={t('common.export', 'Export')}>
+              <Download size={14} />
+            </button>
+          )}
           {!standalone && (
             <button
               className="mcpm-btn"

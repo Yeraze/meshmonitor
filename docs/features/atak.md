@@ -122,6 +122,10 @@ at MeshMonitor's IP and port, and it sees every ATAK contact and every
 positioned mesh node as a map contact, with no REST polling or app plugin
 required.
 
+::: warning Public instances
+The CoT feed sends exact positions and names to anyone who connects. [Public-instance mode](./public-instance-mode) does not redact it. Settings shows a warning when both are on.
+:::
+
 ### What's in the feed
 
 - **ATAK contacts** — every contact from the Phase 2 `atak_contacts` table,

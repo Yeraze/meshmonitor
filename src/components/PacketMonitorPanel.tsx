@@ -31,6 +31,8 @@ import './PacketMonitorPanel.css';
 import { UiIcon } from './icons';
 import PacketHiddenChip from './PacketHiddenChip';
 import { formatAckProofStatus } from '../utils/ackProof';
+import { getUserDisplayName } from '../utils/nodeHelpers';
+import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
 
 interface PacketMonitorPanelProps {
   onClose: () => void;
@@ -63,6 +65,7 @@ const safeJsonParse = <T,>(value: string | null, fallback: T): T => {
 const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNodeClick, standalone }) => {
   const { t } = useTranslation();
   const { hasPermission, authStatus } = useAuth();
+  const publicView = usePublicInstanceView();
   const { timeFormat, dateFormat } = useSettings();
   const { sourceId } = useSource();
   // `packet_log_enabled` is a global (not per-source) setting, gated by
@@ -326,7 +329,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     return {
       nodeNum: node.nodeNum,
       nodeId: node.user?.id || `!${node.nodeNum.toString(16).padStart(8, '0')}`,
-      longName: node.user?.longName || `Node ${node.nodeNum}`,
+      longName: getUserDisplayName(node.user, node.nodeNum),
       shortName: node.user?.shortName || node.nodeNum.toString(16).padStart(8, '0').slice(-4),
       hopsAway: node.hopsAway,
       role: typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role,
@@ -490,6 +493,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             <button className="control-btn" onClick={() => setShowFilters(!showFilters)} title={t('packet_monitor.toggle_filters')} aria-label={t('packet_monitor.toggle_filters')}>
               <Filter size={14} />
             </button>
+            {!publicView.active && (
             <button
               className="control-btn"
               onClick={handleExport}
@@ -499,6 +503,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             >
               <Download size={14} />
             </button>
+            )}
             {authStatus?.user?.isAdmin && (
               <button className="control-btn" onClick={handleClear} title={t('packet_monitor.clear_all')} aria-label={t('packet_monitor.clear_all')}>
                 <Trash2 size={14} />

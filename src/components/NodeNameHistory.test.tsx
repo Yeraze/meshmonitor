@@ -5,6 +5,8 @@
  * first, collapsed past five entries, and marks a rename seen on several
  * sources.
  */
+import React from 'react';
+import { AuthContext } from '../contexts/authContextObject';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import NodeNameHistory from './NodeNameHistory';
@@ -36,6 +38,14 @@ const entry = (i: number, over: Partial<NodeNameHistoryEntry> = {}): NodeNameHis
   sourceIds: ['a'],
   ...over,
 });
+
+const publicWrapper = ({ children }: { children: React.ReactNode }) => (
+  <AuthContext.Provider
+    value={{ authStatus: { authenticated: false, publicInstance: { enabled: true, hideLongNames: false, hidePublicKeys: true, roundTimestamps: false, hideMessageText: false } } } as never}
+  >
+    {children}
+  </AuthContext.Provider>
+);
 
 describe('NodeNameHistory (#5862)', () => {
   beforeEach(() => getNodeNameHistory.mockReset());
@@ -73,5 +83,12 @@ describe('NodeNameHistory (#5862)', () => {
   it('skips the request with no node id', () => {
     render(<NodeNameHistory nodeId={null} />);
     expect(getNodeNameHistory).not.toHaveBeenCalled();
+  });
+
+  it('makes no request for a truncated key on a public instance', async () => {
+    const { container } = render(<NodeNameHistory nodeId="abcdef012345" />, { wrapper: publicWrapper });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(getNodeNameHistory).not.toHaveBeenCalled();
+    expect(container.innerHTML).toBe('');
   });
 });

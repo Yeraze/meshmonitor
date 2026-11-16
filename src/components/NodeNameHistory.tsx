@@ -12,6 +12,8 @@ import apiService, { type NodeNameHistoryEntry } from '../services/api';
 import { formatDateTime } from '../utils/datetime';
 import type { TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { UiIcon } from './icons';
+import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
+import { isTruncatedPublicKey } from '../utils/publicInstanceMode';
 import styles from './NodeNameHistory.module.css';
 
 /** Entries shown before "Show all". */
@@ -35,9 +37,12 @@ export function NodeNameHistory({ nodeId, currentName, timeFormat, dateFormat }:
   const { t } = useTranslation();
   const [entries, setEntries] = useState<NodeNameHistoryEntry[]>([]);
   const [expanded, setExpanded] = useState(false);
+  const { hidePublicKeys } = usePublicInstanceView();
+  // A public instance cuts MeshCore keys to a prefix; the endpoint rejects those with a 400.
+  const unavailable = hidePublicKeys && isTruncatedPublicKey(nodeId);
 
   useEffect(() => {
-    if (!nodeId) {
+    if (!nodeId || unavailable) {
       setEntries([]);
       return;
     }
@@ -46,7 +51,7 @@ export function NodeNameHistory({ nodeId, currentName, timeFormat, dateFormat }:
       .then(result => { if (!cancelled) setEntries(result); })
       .catch(() => { if (!cancelled) setEntries([]); });
     return () => { cancelled = true; };
-  }, [nodeId, currentName]);
+  }, [nodeId, currentName, unavailable]);
 
   useEffect(() => { setExpanded(false); }, [nodeId]);
 

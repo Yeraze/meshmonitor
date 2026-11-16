@@ -57,6 +57,9 @@ import {
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
 import { NodeCard } from '../map/popups/NodeCard';
+import { usePublicInstanceView } from '../../hooks/usePublicInstanceView';
+import { viewerPrecisionBits } from '../../utils/publicInstanceMode';
+import { applyPrecisionCellOffsets } from '../../utils/precisionOffset';
 import { toNodeCardModel } from '../map/popups/nodeCardModel';
 import { MeshCoreDetails, LastHeardFooter, NodeActions, type NodeActionSpec } from '../map/popups/sections';
 import { hopCountLabel } from '../../utils/hopLabel';
@@ -552,13 +555,32 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
     );
   }, [onNavigateToDm, timeFormat, dateFormat, t]);
 
+  // Public instance (#5156): positions are already snapped to a ~1.4 km cell,
+  // so spread markers that share a cell, as the Meshtastic maps do.
+  const publicView = usePublicInstanceView();
+  const markerLatLng = useMemo(() => {
+    const out = new Map<string, [number, number]>();
+    const bits = viewerPrecisionBits(null, publicView.active);
+    for (const { item, latLng } of applyPrecisionCellOffsets(
+      visibleContacts.map(c => ({
+        item: c,
+        id: c.publicKey,
+        latLng: [c.latitude!, c.longitude!] as [number, number],
+        bits,
+        isOverride: false,
+      })),
+      { enabled: publicView.active },
+    )) out.set(item.publicKey, latLng);
+    return out;
+  }, [visibleContacts, publicView.active]);
+
   const markers: NodeMarkerDescriptor[] = useMemo(
     () => visibleContacts.map(c => {
       const name = c.advName || c.name || 'MeshCore';
       const category = getNodeTypeCategory({ advType: c.advType });
       return {
         key: c.publicKey,
-        position: [c.latitude!, c.longitude!] as [number, number],
+        position: markerLatLng.get(c.publicKey) ?? ([c.latitude!, c.longitude!] as [number, number]),
         iconSig: `${name}|${category}`,
         opacity: markerOpacityByKey?.get(c.publicKey) ?? 1,
         buildIcon: () =>
@@ -582,7 +604,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
         ),
       };
     }),
-    [visibleContacts, renderContactPopup, openPendingPopup, markerOpacityByKey],
+    [visibleContacts, markerLatLng, renderContactPopup, openPendingPopup, markerOpacityByKey],
   );
 
   const localPos = useMemo((): [number, number] | null => {

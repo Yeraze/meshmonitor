@@ -105,6 +105,8 @@ import {
   decomposeTraceroute,
   type TracerouteRenderSegment,
 } from '../../utils/tracerouteSegments';
+import { usePublicInstanceView } from '../../hooks/usePublicInstanceView';
+import { viewerPrecisionBits } from '../../utils/publicInstanceMode';
 
 export interface DashboardMapProps {
   nodes: any[];
@@ -368,6 +370,7 @@ export default function DashboardMap({
     aircraftTrailHours,
     setAircraftTrailHours,
   } = useMapContext();
+  const publicView = usePublicInstanceView();
   const showRfNodes = isMqttOnlySource ? true : rawShowRfNodes;
   const showUdpNodes = isMqttOnlySource ? true : rawShowUdpNodes;
   const showMqttNodes = isMqttOnlySource ? true : rawShowMqttNodes;
@@ -471,8 +474,8 @@ export default function DashboardMap({
         item: node,
         id: unifiedNodeKey(node) ?? String(node.nodeNum),
         latLng: [truePos.lat, truePos.lng] as [number, number],
-        bits: node.positionPrecisionBits,
-        isOverride: node.positionIsOverride,
+        bits: viewerPrecisionBits(node.positionPrecisionBits, publicView.active),
+        isOverride: !publicView.active && node.positionIsOverride,
       })),
       // #5177: "Spread Nodes" off pins every marker on its reported point.
       { enabled: spreadNodes },
@@ -481,7 +484,7 @@ export default function DashboardMap({
     return { nodesWithPosition: positionedNodes, nowMs: referenceNowMs, cutoffTime: ageCutoffTime, aircraftCountOnMap: aircraftCount, agedOutCountOnMap: agedOutCount };
   // `spreadNodes` (#5177) changes every resolved position without changing any
   // node, so it has to be a dependency or toggling it leaves the markers put.
-  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes, aircraftDisplayMode, showAgedOutAircraft]);
+  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes, aircraftDisplayMode, showAgedOutAircraft, publicView.active]);
 
   // #5578: nodes that get a MARKER. A MeshCore node whose latest advert had no
   // position loses its marker (and measure/3D point) when the toggle is on;
@@ -946,13 +949,13 @@ export default function DashboardMap({
   // style.
   const accuracyRegions: AccuracyRegionDescriptor[] = showAccuracyRegions
     ? nodesWithPosition
-        .filter(({ node }) => hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride))
+        .filter(({ node }) => hasAccuracyCell(viewerPrecisionBits(node.positionPrecisionBits, publicView.active), !publicView.active && node.positionIsOverride))
         .map(({ node }) => {
           // Center on the node's TRUE reported position, not the offset marker
           // pos, so the offset marker reads as sitting inside its cell (#4016).
           const center = getNodeLatLng(node);
           if (!center) return null;
-          const bounds = precisionCellBounds(center.lat, center.lng, node.positionPrecisionBits as number);
+          const bounds = precisionCellBounds(center.lat, center.lng, viewerPrecisionBits(node.positionPrecisionBits, publicView.active) as number);
           return {
             key: `accuracy-${node.nodeNum ?? node.nodeId ?? node.user?.id}`,
             bounds,

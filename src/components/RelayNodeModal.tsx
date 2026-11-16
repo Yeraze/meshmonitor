@@ -6,6 +6,7 @@ import { getPortnumName } from '../utils/packetFormat';
 import type { MeshMessage } from '../types/message';
 import './RelayNodeModal.css';
 import { UiIcon } from './icons';
+import { formatSenderLabel } from '../utils/nodeHelpers';
 
 interface Node {
   nodeNum: number;
@@ -356,7 +357,7 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
                               <UiIcon name="check" size={14} />
                             </span>
                           )}
-                          {node.longName} ({node.shortName})
+                          {formatSenderLabel(node.longName, node.shortName, node.nodeId)}
                           {isRelayRole(node.role) && (
                             <span className="relay-indicator" title={t('relay_modal.likely_relay')}>
                               <UiIcon name="repeater" size={14} />

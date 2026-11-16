@@ -46,3 +46,30 @@ export function parsePublicInstanceConfig(raw: RawSettings | null | undefined): 
     hideMessageText: notOff(r[k.hideMessageText]),
   };
 }
+
+/** True when `s` is exactly the placeholder the server puts in hidden text. */
+export function isPublicHiddenText(s: unknown): boolean {
+  return s === PUBLIC_INSTANCE_HIDDEN_TEXT;
+}
+
+/**
+ * Position precision a viewer should use. A redacted viewer gets the stored
+ * bits when they are already coarse (1..13), else the public cap (14), so a
+ * node with missing or full precision still gets an accuracy cell and offset.
+ */
+export function viewerPrecisionBits(
+  bits: number | null | undefined,
+  coarse: boolean
+): number | null | undefined {
+  if (!coarse) return bits;
+  return typeof bits === 'number' && bits >= 1 && bits <= 13 ? bits : PUBLIC_INSTANCE_PRECISION_BITS;
+}
+
+/**
+ * True for a MeshCore key the server cut to its public prefix (#5156). Such a
+ * key cannot address a node, so a request built from it only returns a 400.
+ * Meshtastic ids (`!aabbccdd`, decimal nodeNums of at most 10 digits) never match.
+ */
+export function isTruncatedPublicKey(key: string | null | undefined): boolean {
+  return typeof key === 'string' && key.length === MESHCORE_ID_PREFIX_HEX && /^[0-9a-fA-F]+$/.test(key);
+}

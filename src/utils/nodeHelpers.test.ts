@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, formatSenderLabel, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint, formatLocationSource, parseNodeNumInput } from './nodeHelpers';
+import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getUserDisplayName, getNodeShortName, formatSenderLabel, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint, formatLocationSource, parseNodeNumInput } from './nodeHelpers';
 import { setDiscardInvalidPositionsDisplay } from './positionDisplayConfig';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import type { DeviceInfo } from '../types/device';
@@ -166,6 +166,15 @@ describe('Node Helpers', () => {
 
     it('should handle empty nodes array', () => {
       expect(getNodeName([], '!abc12345')).toBe('!abc12345');
+    });
+
+    it('falls back to short name when long name is empty or null', () => {
+      const nodes = [
+        { nodeNum: 1, user: { id: '!00000001', longName: '', shortName: 'SNA', hwModel: 9 } },
+        { nodeNum: 2, user: { id: '!00000002', longName: null, shortName: 'SNB', hwModel: 9 } },
+      ] as unknown as DeviceInfo[];
+      expect(getNodeName(nodes, '!00000001')).toBe('SNA');
+      expect(getNodeName(nodes, '!00000002')).toBe('SNB');
     });
 
     it('should handle nodes without user data', () => {
@@ -761,5 +770,15 @@ describe('parseNodeNumInput (#4826)', () => {
     expect(parseNodeNumInput('0')).toEqual({ ok: false, value: null });
     expect(parseNodeNumInput('!ffffffff')).toEqual({ ok: true, value: 0xffffffff });
     expect(parseNodeNumInput('4294967296')).toEqual({ ok: false, value: null });
+  });
+});
+
+describe('getUserDisplayName', () => {
+  it('prefers long name, then short name, then id, then hex node number', () => {
+    expect(getUserDisplayName({ longName: 'Long', shortName: 'S', id: '!0000002a' }, 42)).toBe('Long');
+    expect(getUserDisplayName({ longName: null, shortName: 'S', id: '!0000002a' }, 42)).toBe('S');
+    expect(getUserDisplayName({ longName: '', shortName: null, id: '!0000002a' }, 42)).toBe('!0000002a');
+    expect(getUserDisplayName({ longName: null, shortName: null, id: null }, 42)).toBe('!0000002a');
+    expect(getUserDisplayName(undefined, 0xdeadbeef)).toBe('!deadbeef');
   });
 });
