@@ -1404,11 +1404,11 @@ export class VirtualNodeServer extends EventEmitter {
     }, this.REPLAY_SETTLE_MS);
   }
 
-  /** Stored text messages only (portnum 1, reactions/replies included); skip
+  /** Stored text messages only (TEXT_MESSAGE_APP, reactions/replies included); skip
    *  MeshMonitor's own notes and the app's own sends; DMs only when they
    *  involve the local node. */
   private isReplayableMessage(m: DbMessage, localNodeNum: number): boolean {
-    if (Number(m.portnum) !== 1) { // TEXT_MESSAGE_APP (reactions and replies included)
+    if (Number(m.portnum) !== PortNum.TEXT_MESSAGE_APP) { // reactions and replies included
       return false;
     }
     if (!String(m.id).includes('_')) {

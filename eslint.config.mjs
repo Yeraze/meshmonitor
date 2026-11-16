@@ -52,6 +52,10 @@ const PORTNUM_SELECTORS = [
     `Identifier[name=${PORTNUM_NAME}]`,
     `MemberExpression[property.name=${PORTNUM_NAME}]`,
     `ChainExpression[expression.property.name=${PORTNUM_NAME}]`,
+    // Number(m.portnum) !== 1
+    `CallExpression[callee.name='Number'][arguments.0.name=${PORTNUM_NAME}]`,
+    `CallExpression[callee.name='Number'][arguments.0.property.name=${PORTNUM_NAME}]`,
+    `CallExpression[callee.name='Number'][arguments.0.expression.property.name=${PORTNUM_NAME}]`,
   ].map((operand) => ({
     selector: `BinaryExpression[operator=/^[!=]==?$/]:has(> Literal[value=type(number)]):has(> ${operand})`,
     message: PORTNUM_MESSAGE,
@@ -63,6 +67,11 @@ const PORTNUM_SELECTORS = [
   },
   {
     selector: `SwitchStatement[discriminant.property.name=${PORTNUM_NAME}] > SwitchCase[test.value=type(number)]`,
+    message: PORTNUM_MESSAGE,
+  },
+  {
+    // switch (msg?.portnum)
+    selector: `SwitchStatement[discriminant.expression.property.name=${PORTNUM_NAME}] > SwitchCase[test.value=type(number)]`,
     message: PORTNUM_MESSAGE,
   },
   // { portnum: 1 }
