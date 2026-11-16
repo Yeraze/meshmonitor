@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { redactPublicPayload, PUBLIC_INSTANCE_FIELD_CATALOGUE } from './publicInstanceRedactor.js';
 import { parsePublicInstanceConfig, PUBLIC_INSTANCE_HIDDEN_TEXT, type RedactionConfig } from '../../utils/publicInstanceMode.js';
 import './jsonBigIntReplacer.js'; // installs the global BigInt-safe JSON.stringify, as server.ts does
-import { precisionCellSizeDegrees } from '../../utils/precisionOffset.js';
+import { precisionCellSizeDegrees, snapToPrecisionCell } from '../../utils/precisionOffset.js';
 
 const ON: RedactionConfig = { ...parsePublicInstanceConfig({ publicInstanceModeEnabled: '1' }) };
 const only = (o: Partial<RedactionConfig>): RedactionConfig => ({
@@ -43,12 +43,16 @@ describe('class A positions', () => {
   });
   it('inherits precision bits from a parent (dbNodeMapper shape)', () => {
     const o = run({ positionPrecisionBits: 13, deviceInfo: { position: { latitude: 40.1234567, longitude: -105.7654321 } } });
-    expect(o.deviceInfo.position.latitude).toBe(40.1234567);
+    const snapped13 = snapToPrecisionCell(40.1234567, 13, false);
+    expect(o.deviceInfo.position.latitude).toBe(snapped13);
     expect(o.positionPrecisionBits).toBe(13);
   });
-  it('leaves bits 13 unchanged and rewrites 32 to 14', () => {
-    const a = run({ latitude: 40.1234567, precisionBits: 13 });
-    expect(a).toEqual({ latitude: 40.1234567, precisionBits: 13 });
+  it('snaps to the declared 13-bit cell, keeps snapped values, rewrites 32 to 14', () => {
+    const a = run({ latitude: 40.1234567, latitudeOverride: 40.1234567, precisionBits: 13 });
+    const s13 = snapToPrecisionCell(40.1234567, 13, false);
+    expect(a).toEqual({ latitude: s13, latitudeOverride: s13, precisionBits: 13 });
+    expect(a.latitude).not.toBe(40.1234567);
+    expect(run({ latitude: s13, precisionBits: 13 }).latitude).toBe(s13);
     const b = run({ latitude: 40.1234567, position_precision_bits: 32 });
     expect(b.position_precision_bits).toBe(14);
     expect(b.latitude).not.toBe(40.1234567);
@@ -284,8 +288,8 @@ describe('numeric strings (PG/MySQL BIGINT, BigInt JSON)', () => {
     expect(o.lon).toBe('0.0');
     expect(o.pos[0]).toBe(o.latitude);
   });
-  it('leaves string coordinates alone when bits are 1..13', () => {
-    expect(run({ latitude: '40.1234567', precisionBits: 13 }).latitude).toBe('40.1234567');
+  it('snaps string coordinates to the declared 1..13 bit cell', () => {
+    expect(run({ latitude: '40.1234567', precisionBits: 13 }).latitude).toBe(String(snapToPrecisionCell(40.1234567, 13, false)));
   });
   it('rounds distance, bearing and altitude strings', () => {
     const o = run({ distanceKm: '4.4', distanceMeters: '2300', bearing: '94', altitude: '1623', alt: '0', telemetryType: 'x' });

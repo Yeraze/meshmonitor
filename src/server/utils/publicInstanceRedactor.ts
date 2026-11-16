@@ -291,8 +291,11 @@ const snapActive = (bits: number | null | undefined): boolean =>
   !(typeof bits === 'number' && bits >= 1 && bits < PUBLIC_INSTANCE_PRECISION_BITS);
 
 function snapNumber(v: number, ctx: Ctx, intUnits: boolean): number {
-  if (!Number.isFinite(v) || v === 0 || !snapActive(ctx.bits)) return v;
-  return snapToPrecisionCell(v, PUBLIC_INSTANCE_PRECISION_BITS, intUnits);
+  if (!Number.isFinite(v) || v === 0) return v;
+  // Always snap (fail closed): a coarse declared precision can sit beside an exact
+  // override. Snapping is idempotent for positions already on the declared grid.
+  const bits = snapActive(ctx.bits) ? PUBLIC_INSTANCE_PRECISION_BITS : (ctx.bits as number);
+  return snapToPrecisionCell(v, bits, intUnits);
 }
 
 function walk(value: unknown, ctx: Ctx, cfg: RedactionConfig): unknown {
