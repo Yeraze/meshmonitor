@@ -23,14 +23,14 @@ Transform your Meshtastic node into an AI-powered assistant. Users on the mesh c
 
 ## REST API Clients
 
-### [CardMesh](https://github.com/maxhayim/cardmeshformeshmonitor)
-A keyboard-first pocket client for the [M5Stack CardputerZero](https://shop.m5stack.com/), turning it into a handheld console for your mesh. CardMesh talks to MeshMonitor's REST API rather than to a radio directly, so MeshMonitor keeps handling the connections, storage, and history while the CardputerZero is a compact field terminal.
+### [CardMesh](https://github.com/maxhayim/CardMesh)
+A keyboard-first pocket client for the [M5Stack CardputerZero](https://shop.m5stack.com/), turning it into a handheld console for your mesh. Today CardMesh talks to MeshMonitor's REST API rather than to a radio directly, so MeshMonitor keeps handling the connections, storage, and history while the CardputerZero is a compact field terminal. (Note: the project was renamed from "CardMesh for MeshMonitor" to "CardMesh," and has planned, not-yet-implemented work to also speak directly to Meshtastic and MeshCore over the CardputerZero's onboard LoRa hat.)
 
 ::: tip Early preview
 CardMesh is at **v0.1.0** and under active development. The dashboard is implemented; messaging, node browsing, and the remaining screens are still in progress. Treat it as a preview rather than a finished client.
 :::
 
-**By [maxhayim](https://github.com/maxhayim/cardmeshformeshmonitor)**
+**By [maxhayim](https://github.com/maxhayim/CardMesh)**
 
 ### [Mesh Screensaver](https://github.com/maxhayim/screensaver-mesh)
 A screen saver that draws your mesh from live MeshMonitor data. Active nodes drift across the screen, and new messages travel between them as packets. It reads MeshMonitor's REST API and never talks to a radio. It shows no message text, node names, or node IDs. Builds exist for macOS, Windows, and Linux (XScreenSaver), plus a WebAssembly build for web pages. MIT licensed.
