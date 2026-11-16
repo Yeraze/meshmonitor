@@ -31,6 +31,7 @@ import {
   POSITION_BROADCAST_FLOOR_SECS,
 } from '../../utils/broadcastIntervalFloor.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
+import { isAdminConfigRejectedError } from '../errors/adminConfigRejectedError.js';
 import { isModuleConfigNotAppliedError, isModuleConfigUnverifiedError } from '../errors/moduleConfigVerifyError.js';
 import { safeJson } from '../utils/redactSecrets.js';
 import { fillDeviceMqttFromPreset } from '../services/mqttBrokerPresetFill.js';
@@ -262,6 +263,11 @@ router.post('/mqtt', requireDeviceSourcePermission('configuration', 'write', 'bo
     await cfgMqttManager.setMQTTConfig(config);
     res.json({ success: true, message: 'MQTT configuration sent' });
   } catch (error) {
+    if (isAdminConfigRejectedError(error)) {
+      logger.warn(`Node refused the MQTT config (${error.errorName})`);
+      return fail(res, 422, 'MQTT_CONFIG_REJECTED',
+        'The node refused this MQTT configuration. Its firmware may not include MQTT, or a setting is invalid.');
+    }
     logger.error('Error setting MQTT config:', error);
     fail(res, 500, 'MQTT_CONFIG_FAILED', 'Failed to set MQTT configuration');
   }

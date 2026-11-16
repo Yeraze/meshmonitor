@@ -44,6 +44,8 @@ import type { MeshtasticManager } from '../meshtasticManager.js';
 import databaseService from '../../services/database.js';
 import protobufService from '../protobufService.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID } from '../constants/configTypes.js';
+import { AdminConfigRejectedError } from '../errors/adminConfigRejectedError.js';
+import { getRoutingErrorName } from '../constants/meshtastic.js';
 import { ModuleConfigNotAppliedError, ModuleConfigUnverifiedError } from '../errors/moduleConfigVerifyError.js';
 import { calculateLoRaFrequency, modemPresetDisplayName, resolveBandwidthKHz } from '../../utils/loraFrequency.js';
 import { STATUS_MESSAGE_LAST_VERIFIED_KEY } from './statusMessageReapply.js';
@@ -58,6 +60,9 @@ export interface SetModuleConfigOptions {
    */
   verify?: boolean;
 }
+
+/** How long a local admin set waits for a refusal before it counts as accepted (#6439). */
+export const LOCAL_REJECTION_WAIT_MS = 5000;
 
 /** How long one read-back may take. A BLE bridge is slow; the local link is not. */
 export const MODULE_READ_BACK_TIMEOUT_MS = 5000;
@@ -285,9 +290,14 @@ export class DeviceAdminService {
     try {
       logger.debug('⚙️ Sending MQTT config:', safeJson(config));
       const setConfigMsg = protobufService.createSetMQTTConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
-      await this.mgr.sendLocalAdminPacket(adminPacket);
+      // Wait up to 5 s for a refusal: firmware built without MQTT answers
+      // BAD_REQUEST, while an accepted local set is silent (#6439).
+      const { rejected } = await this.mgr.sendLocalAdminAwaitRejection(setConfigMsg, LOCAL_REJECTION_WAIT_MS);
+      if (rejected !== null) {
+        // Leave the cache alone: the node did not take this value.
+        throw new AdminConfigRejectedError('mqtt', rejected, getRoutingErrorName(rejected));
+      }
       // MQTT is a module config, and firmware replaces the whole struct (#5045).
       this.mgr.updateCachedModuleConfig('mqtt', config, 'replace');
       logger.debug('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
