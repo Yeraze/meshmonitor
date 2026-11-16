@@ -61,6 +61,7 @@ import { messageRowPropsEqual } from '../components/messages/messageRowSupport';
 import type { ReactionChip } from '../components/MeshCore/meshcoreReactionGroups';
 import MessageExportDialog from '../components/MessageExportDialog/MessageExportDialog';
 import type { TranslateFn } from '../types/translate';
+import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
 
 type TFn = TranslateFn;
 
@@ -331,6 +332,7 @@ export default function UnifiedMessagesPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { authStatus, hasPermission } = useAuth();
+  const publicView = usePublicInstanceView();
   const isAuthenticated = authStatus?.authenticated ?? false;
   // Unified Messages is cross-source: allow whenever the user (including
   // anonymous) has read on messages or any channel on ANY source.
@@ -681,7 +683,7 @@ export default function UnifiedMessagesPage() {
             ))}
           </select>
 
-          {canReadAnyMessages && (
+          {canReadAnyMessages && !publicView.active && (
             <button
               type="button"
               className="unified-header__back"

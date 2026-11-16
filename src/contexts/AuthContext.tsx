@@ -5,8 +5,9 @@
  */
 
 import type { RedactionConfig } from '../utils/publicInstanceMode.js';
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api from '../services/api';
+import { AuthContext } from './authContextObject';
 import { signInWithPasskey, recoverWithCode as postRecoveryCode } from '../services/passkeyClient';
 import { logger } from '../utils/logger';
 import type { PermissionSet, SourcedPermissionSet } from '../types/permission';
@@ -69,7 +70,7 @@ export interface LoginResult {
   success?: boolean;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   authStatus: AuthStatus | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
@@ -107,7 +108,7 @@ interface AuthContextType {
   hasChannelDbPermission: (channelDbId: number, action: 'viewOnMap' | 'read') => boolean;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export { AuthContext };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);

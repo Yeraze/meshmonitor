@@ -2,7 +2,8 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { AuthContext, type AuthStatus } from '../contexts/AuthContext';
+import type { AuthStatus } from '../contexts/AuthContext';
+import { AuthContext } from '../contexts/authContextObject';
 import { usePublicInstanceView } from './usePublicInstanceView';
 
 const cfg = { enabled: true, hideLongNames: true, hidePublicKeys: false, roundTimestamps: true, hideMessageText: false };

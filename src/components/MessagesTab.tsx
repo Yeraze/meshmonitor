@@ -83,6 +83,7 @@ import {
   useNodeNamesToken,
 } from './messages/messageRowSupport';
 import type { TranslatedMessageState } from './translation/TranslatedMessage';
+import { PublicInstanceNotice } from './PublicInstanceNotice';
 
 /** The latest handlers behind the stable row callbacks (see `rowActions`). */
 interface RowLatest {
@@ -1331,6 +1332,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               />
             </div>
           )}
+          {!isMessagesNodeListCollapsed && <PublicInstanceNotice />}
           {!isMessagesNodeListCollapsed && (
             <div className="node-controls">
               <div className="filter-input-wrapper">

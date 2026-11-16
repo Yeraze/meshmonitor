@@ -1,5 +1,5 @@
 import { useContext } from 'react';
-import { AuthContext } from '../contexts/AuthContext.js';
+import { AuthContext } from '../contexts/authContextObject.js';
 
 export interface PublicInstanceView {
   /** True for a signed-out viewer of an instance with public-instance mode on. */

@@ -25,12 +25,12 @@ import { AssetPlaybackBar } from './map/AssetPlaybackBar';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
-import { getUserDisplayName, getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, resolveMarkerCenterTarget, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
+import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, resolveMarkerCenterTarget, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
 import { applyPrecisionCellOffsets, hasAccuracyCell, precisionCellBounds } from '../utils/precisionOffset';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 import MapLegend from './MapLegend';
 import { MapSidebar } from './map/MapSidebar';
-import { formatTime, formatDateTime } from '../utils/datetime';
+import { formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops, getMapHoverTooltipMeta } from '../utils/nodeHops';
@@ -74,7 +74,7 @@ import GeoJsonOverlay from './GeoJsonOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from './map/layers/NodeMarkersLayer';
 import { NodeMarkerCluster } from './map/layers/NodeMarkerCluster';
 import { ImportContactUrlModal } from './nodes/ImportContactUrlModal';
-import importContactStyles from './nodes/ImportContactUrlModal.module.css';
+import { NodeListName, NodeListTime } from './nodes/NodeListRowText';
 import MeasureDistanceController from './MeasureDistanceController';
 import type { MeasurePoint } from '../utils/measureDistance';
 import { MapCenterController } from './MapCenterController';
@@ -121,6 +121,7 @@ import { logger } from '../utils/logger';
 import { calculateNodeOpacity } from '../utils/nodeDimming';
 import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
 import { viewerPrecisionBits } from '../utils/publicInstanceMode';
+import { PublicInstanceNotice } from './PublicInstanceNotice';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -168,14 +169,6 @@ interface NodesTabProps {
   /** Handler for purging a node from device and local database */
   onPurgeNodeFromDevice?: (nodeNum: number) => void;
 }
-
-// Helper function to check if a date is today
-const isToday = (date: Date): boolean => {
-  const today = new Date();
-  return date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear();
-};
 
 const MESHTASTIC_SORT_OPTIONS: { value: SortField; labelKey: string }[] = [
   { value: 'longName', labelKey: 'nodes.sort_name' },
@@ -2420,6 +2413,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         </div>
         {!isNodeListCollapsed && (
         <>
+        <PublicInstanceNotice />
         {groupNodesByRole && roleDistribution && roleDistribution.length > 0 && (
           <RoleDistributionSummary distribution={roleDistribution} />
         )}
@@ -2530,20 +2524,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         )}
                       </span>
                       <div className="node-name-text">
-                        <div className="node-longname">
-                          {getUserDisplayName(node.user, node.nodeNum)}
-                          {/* #5317: imported from a contact link and not yet heard.
-                              Drops away on its own once real traffic arrives, since
-                              that sets lastHeard. */}
-                          {node.importedAt && !node.lastHeard && (
-                            <span
-                              className={importContactStyles.importedBadge}
-                              title={t('nodes.imported_badge_title', 'Added from a contact link; not heard on the mesh yet')}
-                            >
-                              {t('nodes.imported_badge', 'Imported')}
-                            </span>
-                          )}
-                        </div>
+                        <NodeListName node={node} />
                         {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
                           <div className="node-role" title={t('nodes.node_role')}>{getRoleName(node.user.role)}</div>
                         )}
@@ -2708,14 +2689,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </NodeStatChips>
                     </div>
 
-                    <div className="node-time">
-                      {node.lastHeard ? (() => {
-                        const date = new Date(node.lastHeard * 1000);
-                        return isToday(date)
-                          ? formatTime(date, timeFormat)
-                          : formatDateTime(date, timeFormat, dateFormat);
-                      })() : t('time.never')}
-                    </div>
+                    <NodeListTime lastHeard={node.lastHeard} timeFormat={timeFormat} dateFormat={dateFormat} />
                   </div>
 
                 </div>

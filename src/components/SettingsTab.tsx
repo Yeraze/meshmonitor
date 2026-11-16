@@ -2534,6 +2534,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span>{t('settings.public_instance_hide_message_text', 'Hide message text')}</span>
             </label>
           </div>
+          {draft.publicInstanceModeEnabled && draft.cotFeedEnabled && (
+            <p className={settingsStyles.txWarning} data-testid="public-instance-cot-warning">
+              <UiIcon name="alert" />
+              {t('settings.public_instance_cot_warning')}
+            </p>
+          )}
         </div>}
 
         {show('settings-meshcore-messaging') && <div id="settings-meshcore-messaging" className="settings-section">
