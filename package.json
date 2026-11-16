@@ -154,7 +154,7 @@
     "eslint": "^10.13.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
-    "globals": "^17.13.0",
+    "globals": "^17.14.0",
     "gray-matter": "^4.0.3",
     "jsdom": "^31.0.0",
     "prismjs": "^1.30.0",
