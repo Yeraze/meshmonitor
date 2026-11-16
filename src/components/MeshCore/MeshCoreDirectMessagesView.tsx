@@ -39,6 +39,8 @@ import { MESHCORE_MAX_MESSAGE_BYTES_DM } from '../../utils/meshcoreMessageLimits
 import { usePersistedListSort } from '../../hooks/usePersistedListSort';
 import { passesDmFilter } from '../../utils/dmListFilter';
 import { formatMessagePreview } from '../../utils/messagePreview';
+import { HiddenMessageText } from '../messages/HiddenMessageText';
+import { isPublicHiddenText } from '../../utils/publicInstanceMode';
 import type { DmFilter } from '../../types/ui';
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
@@ -789,7 +791,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   </div>
                   <div className="mc-node-row-key">{key.substring(0, 20)}…</div>
                   <div className="last-message-preview">
-                    {previewText ?? (hasKnownMessage ? '' : t('messages.no_messages_preview'))}
+                    {isPublicHiddenText(previewText)
+                      ? <HiddenMessageText />
+                      : previewText ?? (hasKnownMessage ? '' : t('messages.no_messages_preview'))}
                   </div>
                   <div className="node-stats">
                     <NodeStatChips snr={c?.snr} hops={c?.pathLen} />

@@ -26,6 +26,7 @@ import {
 } from '../../hooks/useMeshCoreFilters';
 import { useReadStateSync } from './hooks/useReadStateSync';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
+import { PublicInstanceNotice } from '../PublicInstanceNotice';
 import { MeshCoreSubToolbar } from './MeshCoreSubToolbar';
 import { resolveMeshCoreView, useMeshCoreViewAccess, type MeshCoreView } from './meshCoreViewAccess';
 import { readSidebarPinned, useSidebarPin } from '../nav/useSidebarPin';
@@ -251,6 +252,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           </button>
         </div>
       )}
+
+      {(view === 'channels' || view === 'dms' || view === 'rooms') && <PublicInstanceNotice />}
 
       {/* Shared with ReticulumPage: SourceNavLayout owns the nav + content
           row, including the phone flip that docks the nav as a bottom bar. */}

@@ -84,6 +84,8 @@ import {
 } from './messages/messageRowSupport';
 import type { TranslatedMessageState } from './translation/TranslatedMessage';
 import { PublicInstanceNotice } from './PublicInstanceNotice';
+import { HiddenMessageText } from './messages/HiddenMessageText';
+import { isPublicHiddenText } from '../utils/publicInstanceMode';
 
 /** The latest handlers behind the stable row callbacks (see `rowActions`). */
 interface RowLatest {
@@ -1475,7 +1477,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               minWidth: 0,
                             }}
                           >
-                            {node.lastMessageText || t('messages.no_messages_preview')}
+                            {isPublicHiddenText(node.lastMessageText)
+                              ? <HiddenMessageText />
+                              : node.lastMessageText || t('messages.no_messages_preview')}
                           </div>
 
                           <div
