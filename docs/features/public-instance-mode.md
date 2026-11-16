@@ -75,8 +75,9 @@ can see a source, channel, or page at all.
 
 - **Anonymous-user permissions.** To hide data entirely, take read access away from the
   anonymous user. Public-instance mode then has nothing left to redact for that data.
-- **`ok_to_mqtt` filter.** The per-source `ok_to_mqtt` filter (#6393) controls which MQTT
-  packets MeshMonitor accepts. It does not redact what you store or show.
+- **`ok_to_mqtt` filter.** A separate per-source setting (#6393) hides a node, and its data,
+  from signed-out viewers when the node reached you over MQTT with `ok_to_mqtt` off and was
+  never heard directly over RF on that source. It works with or without public-instance mode.
 - **Embed maps.** [Embed maps](./embed-maps) always count as signed-out, even if a signed-in
   user opens the page that hosts them.
 
