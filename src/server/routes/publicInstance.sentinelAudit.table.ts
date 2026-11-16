@@ -64,8 +64,3 @@ export const DATA_FLOOR = 80;
 /** `data` routes per store. Raise only. */
 export const PROTOCOL_FLOORS = { MT: 45, MC: 25, RNS: 8, MQTT: 3, embed: 3 } as const;
 
-/**
- * Leaks found by the first audit run, fixed in WP3. Key: `route|variant|class|path`.
- * A key that no longer leaks fails the audit, so WP3 deletes each entry as it fixes it.
- */
-export const KNOWN_LEAKS: Record<string, string> = {};

@@ -35,7 +35,7 @@ import { __setPublicInstanceConfigForTest, __resetPublicInstanceConfigForTest } 
 import { PUBLIC_INSTANCE_HIDDEN_TEXT } from '../../utils/publicInstanceMode.js';
 import type { RedactionConfig } from '../../utils/publicInstanceMode.js';
 import {
-  SKIP, EXPECT_ERROR, ROUTE_OVERRIDES, DATA_FLOOR, PROTOCOL_FLOORS, KNOWN_LEAKS,
+  SKIP, EXPECT_ERROR, ROUTE_OVERRIDES, DATA_FLOOR, PROTOCOL_FLOORS,
 } from './publicInstance.sentinelAudit.table.js';
 
 // Capture each (raw, redacted) pair the middleware produces. The real redactor still runs.
@@ -318,8 +318,8 @@ describe('public instance mode: sentinel audit', () => {
 
   // ── Leaks ─────────────────────────────────────────────────────────────────
   describe('leaks', () => {
-    it('with every toggle on, no sentinel reaches an anonymous response (beyond the known list)', () => {
-      const found = [...allLeakKeys].filter((k) => !(k in KNOWN_LEAKS));
+    it('with every toggle on, no sentinel reaches an anonymous response ', () => {
+      const found = [...allLeakKeys];
       const lines = found.flatMap((k) => leakLines.get(k) ?? [k]);
       if (process.env.AUDIT_LEAKS) writeFileSync(process.env.AUDIT_LEAKS, JSON.stringify(Object.fromEntries([...leakLines]), null, 1));
       expect(lines, `route | variant | class | sentinel | JSON path | store\n${lines.join('\n')}`).toEqual([]);
@@ -349,7 +349,7 @@ describe('public instance mode: sentinel audit', () => {
               if (!existing.includes(line)) existing.push(line);
               leakLines.set(key, existing);
               allLeakKeys.add(key);
-              if (!(key in KNOWN_LEAKS)) lines.push(line);
+              lines.push(line);
             }
           }
         }
@@ -364,15 +364,6 @@ describe('public instance mode: sentinel audit', () => {
     it("with one toggle on, that toggle's class and the always-on classes stay out of every raw body", () => {
       const unique = runReplay();
       expect(unique, `route | variant | class | sentinel | JSON path | store\n${unique.join('\n')}`).toEqual([]);
-    });
-  });
-
-  // ── Known leaks ───────────────────────────────────────────────────────────
-  describe('known leaks', () => {
-    it('lists only leaks that still happen', () => {
-      runReplay();
-      const stale = Object.keys(KNOWN_LEAKS).filter((k) => !allLeakKeys.has(k));
-      expect(stale, 'KNOWN_LEAKS entries that no longer leak: delete them').toEqual([]);
     });
   });
 
