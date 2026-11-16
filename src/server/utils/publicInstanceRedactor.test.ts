@@ -424,3 +424,13 @@ describe('phase 2 audit fixes (#5156)', () => {
     });
   });
 });
+
+describe('opaqueTokens catalogue', () => {
+  it('leaves a 64-hex value under a token-like key intact', () => {
+    const o = run({ csrfToken: HEX, challenge: HEX, nonce: HEX, other: HEX });
+    expect(o.csrfToken).toBe(HEX);
+    expect(o.challenge).toBe(HEX);
+    expect(o.nonce).toBe(HEX);
+    expect(o.other).toBe(HEX.slice(0, 12));
+  });
+});
