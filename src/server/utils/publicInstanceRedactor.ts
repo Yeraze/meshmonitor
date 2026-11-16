@@ -36,6 +36,28 @@ export interface FieldClassSpec {
   readonly whenNumberArray?: readonly string[];
   /** Keys that never match, even if an exact or pattern rule would. */
   readonly exclude?: readonly RegExp[];
+  /**
+   * Keys whose value is a plain object keyed by id (node id, channel) with one
+   * number per key. The class applies to those numbers (one level). A key in
+   * `gated` matches only when a listed sibling key exists.
+   */
+  readonly valueMaps?: readonly string[];
+  /** Like `valueMaps`, but each key matches only when one of its listed siblings exists. */
+  readonly gatedValueMaps?: Readonly<Record<string, readonly string[]>>;
+}
+
+/** Which objects carry a sender name in front of their text. */
+export interface NamePrefixSpec {
+  /** Keys holding the text. */
+  readonly keys: readonly string[];
+  /** Leading `Name: ` to strip. */
+  readonly pattern: RegExp;
+  /** The object must have one of these `messageType` values, or an id field starting with `idPrefix`. */
+  readonly messageTypes: readonly string[];
+  readonly idFields: readonly string[];
+  readonly idPrefix: string;
+  /** If any of these is a non-empty string the text carries no prefix (the name has its own field). */
+  readonly nameFields: readonly string[];
 }
 
 export const PUBLIC_INSTANCE_FIELD_CATALOGUE = {
@@ -74,8 +96,9 @@ export const PUBLIC_INSTANCE_FIELD_CATALOGUE = {
       'longName', 'long_name', 'advName', 'adv_name', 'advertName',
       'senderName', 'senderNameOverride', 'fromName', 'toName',
       'nodeName', 'neighborName', 'targetName', 'receiverName',
+      'fromNodeName', 'toNodeName', 'localName', 'node_name',
     ],
-    patterns: [/LongName$/],
+    patterns: [/LongName$/, /_longName$/],
     gated: {
       name: ['publicKey', 'pk', 'nodeNum', 'nodeId', 'advType', 'pos'],
       displayName: ['destinationHash', 'identityHash'],
@@ -83,19 +106,28 @@ export const PUBLIC_INSTANCE_FIELD_CATALOGUE = {
   },
   /** Class C (hidePublicKeys). Values: 64-hex keeps a prefix, anything else is nulled. */
   publicKeys: {
-    exact: ['pk'],
+    // keySecurityIssueDetails carries an 8-char key fragment ("node broadcast key AbCd1234..."); the boolean flags stay.
+    exact: ['pk', 'keySecurityIssueDetails'],
     patterns: [/(publicKey|PublicKey|pubKey|PubKey|pubkey|public_key)$/],
   },
   /** Class D (roundTimestamps). */
   timestamps: {
-    exact: ['timestamp', 'time', 'rxTime', 'lastHeard', 'firstHeard', 'lastSeen', 'firstSeen'],
+    // seqCursor is the newest message timestamp (clients use it to dedupe).
+    exact: ['timestamp', 'time', 'rxTime', 'lastHeard', 'firstHeard', 'lastSeen', 'firstSeen', 'seqCursor'],
     patterns: [/(At|_at|Time|_time|Timestamp|_timestamp|Heard|Seen|Ts)$/],
+    // /messages/first-unread: { channels: { "0": ms }, directMessages: { "!id": ms } }. Both keys are too
+    // generic to classify alone, so each matches only beside the other.
+    gatedValueMaps: { channels: ['directMessages'], directMessages: ['channels'] },
   },
   /** Class E (hideMessageText). */
   messageText: {
     exact: ['text', 'messageText', 'lastMessageText', 'translatedText', 'decodedText', 'reactionRawText', 'replyText'],
     patterns: [],
     gated: {
+      // Waypoints arrive from mesh users (WAYPOINT_APP): user content. Operator map markers
+      // (label/description, no waypointId) are operator content and stay visible.
+      name: ['waypointId'],
+      description: ['waypointId'],
       message: ['fromNodeNum', 'fromNodeId', 'fromPublicKey', 'senderPublicKey', 'channel', 'rxTime', 'packetId'],
       body: ['fromNodeNum', 'fromNodeId', 'fromPublicKey', 'senderPublicKey', 'channel', 'rxTime', 'packetId'],
       content: ['fromHash', 'toHash', 'threadHash'],
@@ -111,8 +143,10 @@ export const PUBLIC_INSTANCE_FIELD_CATALOGUE = {
    * broadcastSmartMinimumDistance (unit unknown, rounded as km).
    */
   distanceKm: {
-    exact: ['distance', 'distanceKm', 'distance_km', 'rangeKm', 'range_km', 'maxDistanceKm', 'reachKm', 'reach_km'],
-    patterns: [/[a-z0-9]Distance(Km)?$/, /_distance(_km)?$/],
+    exact: ['distance', 'distanceKm', 'distance_km', 'rangeKm', 'range_km', 'maxDistanceKm', 'reachKm', 'reach_km', 'uncertaintyKm', 'uncertainty_km'],
+    patterns: [/[a-z0-9]Distance(Km)?$/, /_distance(_km)?$/, /[a-z0-9]UncertaintyKm$/],
+    // estimatedUncertainty: { "!nodeId": km } on /telemetry/available/nodes.
+    valueMaps: ['estimatedUncertainty'],
     exclude: [/^hop/i],
   },
   /** Class G: distance in metres, nearest 1500. */
@@ -144,6 +178,21 @@ export const PUBLIC_INSTANCE_FIELD_CATALOGUE = {
   },
 } as const satisfies Record<string, FieldClassSpec>;
 
+/**
+ * Class B, value rule. A MeshCore channel message whose sender has no name
+ * field carries `Name: body` as its text (the wire format; `mc1ChannelBody`
+ * splits it the same way). With hideLongNames on and hideMessageText off the
+ * name must not stay in the text.
+ */
+export const EMBEDDED_SENDER_NAME: NamePrefixSpec = {
+  keys: ['text'],
+  pattern: /^[^:\n]{1,32}: /,
+  messageTypes: ['channel'],
+  idFields: ['fromPublicKey', 'toPublicKey', 'fromNodeId'],
+  idPrefix: 'channel-',
+  nameFields: ['fromName', 'senderName', 'senderNameOverride'],
+};
+
 const CAT = PUBLIC_INSTANCE_FIELD_CATALOGUE;
 
 /** Plain-object view of the catalogue's gated map (avoids literal-key typing). */
@@ -166,6 +215,9 @@ interface KeyFlags {
   textGate?: readonly string[];
   coordArray: boolean;
   coordArrayIfNumbers: boolean;
+  kmMap: boolean;
+  tsMapGate?: readonly string[];
+  namePrefixKey: boolean;
 }
 
 const matches = (spec: FieldClassSpec, key: string): boolean =>
@@ -201,6 +253,9 @@ function classifyKey(key: string): KeyFlags {
     textGate: gatedSiblings(CAT.messageText, key),
     coordArray: CAT.coordinateArrays.exact.includes(key as never),
     coordArrayIfNumbers: (CAT.coordinateArrays.whenNumberArray as readonly string[]).includes(key),
+    kmMap: (CAT.distanceKm.valueMaps as readonly string[]).includes(key),
+    tsMapGate: CAT.timestamps.gatedValueMaps[key as keyof typeof CAT.timestamps.gatedValueMaps],
+    namePrefixKey: EMBEDDED_SENDER_NAME.keys.includes(key),
   };
   if (keyCache.size >= KEY_CACHE_MAX) keyCache.clear();
   keyCache.set(key, flags);
@@ -307,6 +362,30 @@ function walk(value: unknown, ctx: Ctx, cfg: RedactionConfig): unknown {
 
 const PRECISION_KEYS = CAT.precision.exact;
 
+/** Apply `fn` to each number in a plain object keyed by id (one level); walk anything else. */
+function mapValues(
+  map: Record<string, unknown>,
+  fn: (n: number) => number,
+  ctx: Ctx,
+  cfg: RedactionConfig,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(map)) {
+    out[cfg.hidePublicKeys ? truncateHexRuns(k) : k] = isNumeric(v) ? mapNumeric(v, fn) : walk(v, ctx, cfg);
+  }
+  return out;
+}
+
+/** True for a MeshCore channel message whose text starts with the sender's name. */
+function hasEmbeddedSenderName(obj: Record<string, unknown>): boolean {
+  const spec = EMBEDDED_SENDER_NAME;
+  const channelShaped =
+    (typeof obj.messageType === 'string' && spec.messageTypes.includes(obj.messageType)) ||
+    spec.idFields.some((f) => typeof obj[f] === 'string' && (obj[f] as string).startsWith(spec.idPrefix));
+  if (!channelShaped) return false;
+  return !spec.nameFields.some((f) => typeof obj[f] === 'string' && (obj[f] as string).length > 0);
+}
+
 function walkObject(obj: Record<string, unknown>, parent: Ctx, cfg: RedactionConfig): unknown {
   if (isBufferShape(obj)) return null;
 
@@ -358,6 +437,14 @@ function walkObject(obj: Record<string, unknown>, parent: Ctx, cfg: RedactionCon
       (f.text || (f.textGate && hasSibling(f.textGate)))
     ) {
       out[outKey] = PUBLIC_INSTANCE_HIDDEN_TEXT;
+    } else if (f.kmMap && isRecord(v)) {
+      out[outKey] = mapValues(v, (n) => roundGeometry(n, 'km'), ctx, cfg);
+    } else if (cfg.roundTimestamps && f.tsMapGate && hasSibling(f.tsMapGate) && isRecord(v)) {
+      out[outKey] = mapValues(v, roundTimestampNumber, ctx, cfg);
+    } else if (
+      cfg.hideLongNames && f.namePrefixKey && typeof v === 'string' && hasEmbeddedSenderName(obj)
+    ) {
+      out[outKey] = v.replace(EMBEDDED_SENDER_NAME.pattern, '');
     } else {
       const coord = f.coordArray || (f.coordArrayIfNumbers && Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'number'));
       out[outKey] = walk(v, coord ? { bits: ctx.bits, coord: true } : ctx, cfg);

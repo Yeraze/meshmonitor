@@ -120,7 +120,7 @@ export const TEXTS = {
   mtReply: 'sntl text MT reply q7x',
   mtPreview: 'sntl preview MT q7x',
   mtWaypoint: 'sntl text MT waypoint q7x',
-  mtMarker: 'sntl text MT marker q7x',
+  mtWaypointName: 'sntl text MT waypoint name q7x',
   mcChannel: 'sntl text MC q7x',
   mcDm: 'sntl text MC dm q7x',
   mcPrefixed: 'sntl text MC prefixed q7x',
@@ -497,10 +497,11 @@ export async function seedMeshtastic(db: Db): Promise<void> {
 
   await db.waypoints.upsertAsync({
     sourceId: sid, waypointId: 4004, ownerNodeNum: MT_NUM, latitude: COORDS['MT-waypoint'].lat, longitude: COORDS['MT-waypoint'].lon,
-    name: NAMES.mtLong, description: TEXTS.mtWaypoint, channel: 0, expireAt: Math.floor(Date.now() / 1000) + 86_400,
+    name: TEXTS.mtWaypointName, description: TEXTS.mtWaypoint, channel: 0, expireAt: Math.floor(Date.now() / 1000) + 86_400,
   });
   await db.mapMarkers.create(sid, {
-    label: NAMES.mtLong, description: TEXTS.mtMarker, latitude: COORDS['MT-marker'].lat, longitude: COORDS['MT-marker'].lon,
+    // Operator-authored (UI only, no mesh origin): shown as is, so not a sentinel.
+    label: 'Audit marker', description: 'audit marker note', latitude: COORDS['MT-marker'].lat, longitude: COORDS['MT-marker'].lon,
     altitude: GEOM.altMT, icon: 'pin', color: 'accent',
   }, null);
 
@@ -518,7 +519,7 @@ export async function seedMeshtastic(db: Db): Promise<void> {
     snr: 6, rssi: -90, hopStart: 3, hopLimit: 3, hopsAway: 0, channel: 0, rxTime: t, receivedAt: tm,
   });
   await db.coverageSurveys.createSurvey({
-    name: NAMES.mtLong, senderId: nodeIdOf(MT_LOCAL_NUM), startAt: tm - 3_600_000, endAt: tm, receivers: null, notes: TEXTS.mtMarker,
+    name: NAMES.mtLong, senderId: nodeIdOf(MT_LOCAL_NUM), startAt: tm - 3_600_000, endAt: tm, receivers: null, notes: 'audit survey note',
   });
   await db.directRfContacts.applyDelta({
     sourceId: sid, protocol: 'meshtastic', nodeKey: MT_ID, nodeNum: MT_NUM, dayBucket: Math.floor(tm / 86_400_000),
@@ -563,7 +564,7 @@ export async function seedMeshCore(db: Db, sid: string = SOURCES.mc): Promise<vo
   await msg('audit-mc-dm', { toPublicKey: MC_KEYS.local, text: TEXTS.mcDm, messageType: 'direct' });
   await msg('audit-mc-ch', { toPublicKey: 'channel-0', text: TEXTS.mcChannel, senderNameOverride: NAMES.mcSender });
   // A channel message whose stored text carries the sender name in front, with no senderName column.
-  await msg('audit-mc-prefixed', { fromName: null, toPublicKey: 'channel-0', text: `${NAMES.mcSender}: ${TEXTS.mcPrefixed}` });
+  await msg('audit-mc-prefixed', { fromName: null, fromPublicKey: 'channel-0', toPublicKey: null, text: `${NAMES.mcSender}: ${TEXTS.mcPrefixed}` });
 
   await db.meshcore.insertPacket({
     sourceId: sid, timestamp: tm, payloadType: 4, payloadTypeName: 'ADVERT', routeType: 1, routeTypeName: 'FLOOD',
@@ -702,7 +703,7 @@ export async function buildFakeManagers(db: Db): Promise<Record<keyof typeof SOU
     getRecentMessages: () => [
       { id: 'dm', fromPublicKey: MC_KEYS.contact, toPublicKey: MC_LOCAL_KEY, text: TEXTS.mcDm, timestamp: tsMs(2) },
       { id: 'ch0', fromPublicKey: MC_KEYS.contact, senderName: NAMES.mcSender, toPublicKey: 'channel-0', text: TEXTS.mcChannel, timestamp: tsMs(2) },
-      { id: 'pre', fromPublicKey: MC_KEYS.contact, toPublicKey: 'channel-0', text: `${NAMES.mcSender}: ${TEXTS.mcPrefixed}`, timestamp: tsMs(2) },
+      { id: 'pre', fromPublicKey: 'channel-0', toPublicKey: null, text: `${NAMES.mcSender}: ${TEXTS.mcPrefixed}`, timestamp: tsMs(2) },
     ],
     getChannelMessages: async (idx: number, limit: number, offset: number, keyAccess?: unknown) =>
       (await db.meshcore.getChannelMessages(idx, limit, SOURCES.mc, offset, keyAccess as never)).reverse().map(toMessage),
@@ -745,7 +746,7 @@ export async function buildFakeManagers(db: Db): Promise<Record<keyof typeof SOU
     getIdentity: async () => ({ destinationHash: RNS_HASHES.dest, displayName: NAMES.rns }),
     getRadioConfig: async () => ({ frequency: 868_000_000, bandwidth: 125_000, spreadingFactor: 8, codingRate: 5, txPower: 14 }),
     getDeviceInfo: async () => ({ displayName: NAMES.rns, destinationHash: RNS_HASHES.dest }),
-    getRemoteStatus: async () => ({ displayName: NAMES.rns }),
+    getRemoteStatus: async () => ({ type: 'remote_status', destinationHash: RNS_HASHES.peer, ok: true, status: null, path: null, error: null }),
   });
   const mqtt = recordingManager(SOURCES.mqtt, { ...baseReads(SOURCES.mqtt, 'mqtt_bridge') });
   return { mt, mc, mci, rns, mqtt };

@@ -280,6 +280,11 @@ describe('public instance mode: sentinel audit', () => {
     const count = (o: Outcome): number => results.filter((r) => r.outcome === o).length;
 
     it('prints the coverage report', () => {
+      if (process.env.AUDIT_RAW_FOR) {
+        const re = new RegExp(process.env.AUDIT_RAW_FOR);
+        const dump = results.filter((r) => re.test(r.key)).map((r) => ({ key: r.key, raw: r.variants[0]?.raws[0] ?? null }));
+        writeFileSync('/tmp/aud/raw.json', JSON.stringify(dump, null, 1));
+      }
       const unreached = new Set(SENTINELS.map((d) => d.label));
       for (const r of results) for (const v of r.variants) for (const l of v.labelsInRaw) unreached.delete(l);
       const byProto: Record<string, number> = {};
