@@ -1,4 +1,4 @@
-import webpush from 'web-push';
+import * as webpush from 'web-push';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';

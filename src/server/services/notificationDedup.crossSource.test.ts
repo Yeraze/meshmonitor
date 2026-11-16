@@ -55,11 +55,9 @@ vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => 
 vi.mock('../utils/ownNodes.js', () => ({ isOwnNodeNum: () => false, getOwnNodeNums: () => [] }));
 vi.mock('node-notifier', () => ({ default: { notify: h.notify } }));
 vi.mock('web-push', () => ({
-  default: {
-    sendNotification: h.webPushSend,
-    generateVAPIDKeys: () => ({ publicKey: 'pub', privateKey: 'priv' }),
-    setVapidDetails: () => undefined,
-  },
+  sendNotification: h.webPushSend,
+  generateVAPIDKeys: () => ({ publicKey: 'pub', privateKey: 'priv' }),
+  setVapidDetails: () => undefined,
 }));
 
 import { pushNotificationService } from './pushNotificationService.js';
