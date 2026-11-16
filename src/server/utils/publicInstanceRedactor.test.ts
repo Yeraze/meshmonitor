@@ -358,3 +358,69 @@ describe('walker behaviour', () => {
     }
   });
 });
+
+describe('phase 2 audit fixes (#5156)', () => {
+  it('hides snake_case and node-pair name keys', () => {
+    const o = run({ from_node_longName: 'A', to_node_longName: 'B', fromNodeName: 'C', toNodeName: 'D', localName: 'E', node_name: 'F', node_num: 1 });
+    expect(o).toEqual({ from_node_longName: null, to_node_longName: null, fromNodeName: null, toNodeName: null, localName: null, node_name: null, node_num: 1 });
+  });
+
+  it('nulls keySecurityIssueDetails and leaves the boolean flags', () => {
+    const o = run({ keyMismatchDetected: true, keySecurityIssueDetails: 'Key mismatch: node broadcast key AbCd1234...' });
+    expect(o).toEqual({ keyMismatchDetected: true, keySecurityIssueDetails: null });
+  });
+
+  it('keeps keySecurityIssueDetails when hidePublicKeys is off', () => {
+    expect(run({ keySecurityIssueDetails: 'x' }, only({ hideLongNames: true }))).toEqual({ keySecurityIssueDetails: 'x' });
+  });
+
+  it('rounds uncertainty km, also when it sits in a map keyed by node id', () => {
+    expect(run({ uncertaintyKm: 13.37, positionEstimateUncertaintyKm: 13.37 })).toEqual({ uncertaintyKm: 13.5, positionEstimateUncertaintyKm: 13.5 });
+    expect(run({ estimatedUncertainty: { '!5e17a1e5': 13.37, '!5e17a1e6': '2.9' }, other: { a: 13.37 } })).toEqual({
+      estimatedUncertainty: { '!5e17a1e5': 13.5, '!5e17a1e6': '3' },
+      other: { a: 13.37 },
+    });
+  });
+
+  it('rounds the first-unread timestamp maps only beside their sibling', () => {
+    const ms = 1_794_845_262_137;
+    const o = run({ channels: { 0: ms }, directMessages: { '!5e17a1e1': ms } });
+    expect(o.channels[0]).toBe(Math.floor(ms / 3_600_000) * 3_600_000);
+    expect(o.directMessages['!5e17a1e1']).toBe(Math.floor(ms / 3_600_000) * 3_600_000);
+    expect(run({ channels: { 0: ms } }).channels[0]).toBe(ms); // `channels` alone is something else
+    expect(run({ channels: { 0: ms }, directMessages: {} }, only({ hideLongNames: true })).channels[0]).toBe(ms);
+  });
+
+  it('rounds seqCursor like any timestamp', () => {
+    expect(run({ seqCursor: 1_794_845_262_137 }).seqCursor).toBe(Math.floor(1_794_845_262_137 / 3_600_000) * 3_600_000);
+  });
+
+  it('hides waypoint name and description under hideMessageText, but not operator markers', () => {
+    const wp = run({ waypointId: 4, name: 'Camp', description: 'Water here', latitude: 1, longitude: 1 });
+    expect(wp.name).toBe(PUBLIC_INSTANCE_HIDDEN_TEXT);
+    expect(wp.description).toBe(PUBLIC_INSTANCE_HIDDEN_TEXT);
+    const marker = run({ id: 1, label: 'Repeater site', description: 'Roof mount', latitude: 1, longitude: 1 });
+    expect(marker.label).toBe('Repeater site');
+    expect(marker.description).toBe('Roof mount');
+    expect(run({ waypointId: 4, name: 'Camp' }, only({ hideLongNames: true })).name).toBe('Camp');
+  });
+
+  describe('MeshCore sender name inside channel text', () => {
+    const names = only({ hideLongNames: true });
+    it('strips a leading "Name: " when only hideLongNames is on', () => {
+      expect(run({ messageType: 'channel', fromName: null, text: 'Alice: hello: world' }, names).text).toBe('hello: world');
+      expect(run({ fromPublicKey: 'channel-2', text: 'Bob: hi' }, names).text).toBe('hi');
+      expect(run({ fromNodeId: 'channel-0', text: 'Bob: hi' }, names).text).toBe('hi');
+    });
+    it('leaves text alone when the message has its own name field, is not a channel message, or the prefix is long', () => {
+      expect(run({ messageType: 'channel', fromName: 'Alice', text: 'note: x' }, names).text).toBe('note: x');
+      expect(run({ messageType: 'channel', senderNameOverride: 'Al', text: 'note: x' }, names).text).toBe('note: x');
+      expect(run({ messageType: 'direct', text: 'Alice: hi' }, names).text).toBe('Alice: hi');
+      expect(run({ messageType: 'channel', text: `${'x'.repeat(40)}: hi` }, names).text).toBe(`${'x'.repeat(40)}: hi`);
+    });
+    it('does nothing when hideLongNames is off, and hides the whole text when hideMessageText is on', () => {
+      expect(run({ messageType: 'channel', text: 'Alice: hi' }, only({ hidePublicKeys: true })).text).toBe('Alice: hi');
+      expect(run({ messageType: 'channel', text: 'Alice: hi' }, ON).text).toBe(PUBLIC_INSTANCE_HIDDEN_TEXT);
+    });
+  });
+});
