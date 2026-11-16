@@ -105,7 +105,7 @@ describe('fresh install default sources — SQLite (full registry)', () => {
       tcpPort: 5000,
       deviceType: 'companion',
       autoConnect: true,
-      heartbeatIntervalSeconds: 30,
+      heartbeatIntervalSeconds: 60,
       virtualNode: { enabled: true, port: 5000, allowAdminCommands: false, allowPkiExport: false, allowPkiImport: false },
     });
   });
