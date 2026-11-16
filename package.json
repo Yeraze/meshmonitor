@@ -101,7 +101,7 @@
     "recharts": "^3.9.2",
     "remark-gfm": "^4.0.1",
     "rotating-file-stream": "^3.2.10",
-    "satellite.js": "^7.1.0",
+    "satellite.js": "^7.2.0",
     "socket.io": "^4.8.4",
     "socket.io-client": "^4.8.4",
     "swagger-ui-express": "^5.0.1",
