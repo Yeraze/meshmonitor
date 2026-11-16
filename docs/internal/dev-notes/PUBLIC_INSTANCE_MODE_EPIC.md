@@ -39,7 +39,9 @@ or bytes) encode exact positions and text and must be dropped.
   (`VALID_SETTINGS_KEYS`), Settings UI section, a pure redactor module with
   unit tests, and middleware mounted on the API and embed routers. Exit: the
   mode is off by default with no behaviour change; when on, the redactor's
-  unit tests cover every field class; typecheck, lint:ci and the suite are green.
+  unit tests cover every field class; an integration test on real routes
+  (`/api/nodes`, `/api/poll`) shows the same seeded node exact for a signed-in
+  user and trimmed for an anonymous one; typecheck, lint:ci and the suite are green.
 - [ ] **Phase 2 — Sentinel audit.** A route-walk test over every mount in
   `server.ts` plus the embed router, run as anonymous with all grants, scanning
   responses for the sentinels. Fix every leak it finds in the redactor's field
@@ -48,4 +50,7 @@ or bytes) encode exact positions and text and must be dropped.
 - [ ] **Phase 3 — UI and docs.** The frontend copes with redacted values:
   missing long name falls back to short name, a message-body placeholder,
   coarse-position styling where needed, the CoT warning. User docs and
-  dev-notes. Exit: browser-checked as a signed-out viewer, screenshots in the PR.
+  dev-notes. A component test renders the node list, node detail and messages
+  from a signed-in and an anonymous payload and asserts exact vs trimmed values
+  on screen (user request 2026-11-16). Exit: browser-checked signed in and
+  signed out, side-by-side screenshots in the PR.
