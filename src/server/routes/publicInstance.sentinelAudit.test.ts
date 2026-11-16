@@ -18,7 +18,7 @@ import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import express, { type Router } from 'express';
+import type { Router } from 'express';
 import request from 'supertest';
 
 import databaseService from '../../services/database.js';
@@ -26,7 +26,7 @@ import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/route
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { installRouterUseRecorder, walkRoutes, routeKey, type WalkedRoute } from '../test-helpers/routerWalker.js';
 import {
-  SENTINELS, CLASS_TOGGLE, selfCheckSentinels, scanJson, scanText, scanHeaders, defsForToggle,
+  SENTINELS, selfCheckSentinels, scanJson, scanText, scanHeaders, defsForToggle,
   seedAll, grantAnonymousEverything, buildFakeManagers, recordedManagerCalls, resolveRoutePath, routeProtocol, queryVariants,
   SOURCES, type LeakHit, type ToggleName,
 } from '../test-helpers/publicInstanceAudit.js';
@@ -165,7 +165,7 @@ describe('public instance mode: sentinel audit', () => {
           const url = `${base}${variant}`;
           captured.current = [];
           let status = 0;
-          let outcome: Outcome = 'error';
+          let outcome: Outcome;
           let note: string | undefined;
           let hits: LeakHit[] = [];
           try {
@@ -289,6 +289,7 @@ describe('public instance mode: sentinel audit', () => {
         `routes walked ${walked.length}, GET ${getRoutes.length}`,
         `data ${count('data')}  ok ${count('ok')}  blocked ${count('blocked')}  denied ${count('denied')}  404/400 ${count('notfound')}  error ${count('error')}  skip ${count('skip')}  unresolved ${count('unresolved')}`,
         `data by route family: ${JSON.stringify(byProto)}`,
+        `data by sentinel store: ${JSON.stringify(Object.fromEntries(['MT', 'MC', 'RNS', 'MQTT'].map((st) => [st, results.filter((r) => r.outcome === 'data' && r.variants.some((v) => v.storesInRaw.has(st))).length])))}`,
         `manager calls recorded (never sent): ${[...new Set(recordedManagerCalls)].sort().join(', ') || 'none'}`,
         `sentinels never seen in any raw response (${unreached.size}): ${[...unreached].sort().join(', ')}`,
         `routes without data:\n${noData.join('\n')}`,
@@ -303,9 +304,6 @@ describe('public instance mode: sentinel audit', () => {
       expect(dataRoutes.length).toBeGreaterThanOrEqual(DATA_FLOOR);
       const per = (store: string): number => dataRoutes.filter((r) => r.variants.some((v) => v.storesInRaw.has(store))).length;
       const embed = dataRoutes.filter((r) => routeProtocol(r.route.path) === 'embed').length;
-      expect({ MT: per('MT'), MC: per('MC'), RNS: per('RNS'), MQTT: per('MQTT'), embed }).toEqual(
-        expect.objectContaining(Object.fromEntries(Object.entries(PROTOCOL_FLOORS).map(([k, floor]) => [k, expect.any(Number)]))),
-      );
       for (const [store, floor] of Object.entries(PROTOCOL_FLOORS)) {
         const actual = store === 'embed' ? embed : per(store);
         expect(actual, `${store} data routes`).toBeGreaterThanOrEqual(floor);

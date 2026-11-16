@@ -59,10 +59,10 @@ export const ROUTE_OVERRIDES: Record<string, string | string[]> = {
 };
 
 /** `data` routes overall. Raise only. */
-export const DATA_FLOOR = 1;
+export const DATA_FLOOR = 80;
 
 /** `data` routes per store. Raise only. */
-export const PROTOCOL_FLOORS = { MT: 1, MC: 1, RNS: 1, MQTT: 1, embed: 1 } as const;
+export const PROTOCOL_FLOORS = { MT: 45, MC: 25, RNS: 8, MQTT: 3, embed: 3 } as const;
 
 /**
  * Leaks found by the first audit run, fixed in WP3. Key: `route|variant|class|path`.
