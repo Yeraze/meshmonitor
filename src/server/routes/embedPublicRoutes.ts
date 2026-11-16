@@ -45,6 +45,7 @@ import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import type { PermissionSet } from '../../types/permission.js';
 import { loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
 import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js';
+import { markPublicInstanceExempt } from '../middleware/publicInstanceRedaction.js';
 
 const router = Router();
 
@@ -642,6 +643,7 @@ router.get('/:profileId/geojson/layers/:id/data', createEmbedCspMiddleware(), (r
   try {
     const data = geojsonService.getPublicLayerData(req.params.id);
     res.setHeader('Content-Type', 'application/geo+json');
+    markPublicInstanceExempt(res);
     return res.send(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
