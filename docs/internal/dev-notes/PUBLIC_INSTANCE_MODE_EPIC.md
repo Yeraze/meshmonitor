@@ -15,6 +15,7 @@ entirely already works through the anonymous account's permissions.
 |---|---|
 | Scope | One global setting, default **off**. Not per source. |
 | Positions | Always coarsened when the mode is on: snap to a ~1.5 km grid (Meshtastic `precision_bits` 14). A position that is already coarser passes unchanged. |
+| Derived geometry | Always coarsened when the mode is on, so coarse positions cannot be trilaterated: distances to the nearest 1.5 km, bearings/headings to 10°, altitudes to 100 m (exact 0 and null pass). User decision 2026-11-16. |
 | Field toggles | Each toggle is set by the admin in Settings, default **on** once the mode is on: hide long names (short name + id stay), hide public keys (Meshtastic PKI keys; MeshCore keys beyond the id prefix), round timestamps, hide message text. |
 | Timestamps | Round down to **1 hour**. |
 | Message text | Rows stay listed; the body becomes a placeholder. |
