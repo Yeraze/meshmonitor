@@ -13,6 +13,7 @@ import { mergeNodeUpdate } from './mergeNodeUpdate';
 import type { DeviceInfo, Channel } from '../types/device';
 import { appBasename } from '../init';
 import { useSource } from '../contexts/SourceContext';
+import { PortNum } from '../server/constants/meshtastic.js';
 
 /**
  * WebSocket connection state
@@ -254,7 +255,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     // become messages[0]; the next poll then evicts them, which makes the
     // newest-message-id tracker in App.tsx think the previously-seen text
     // message at the new messages[0] is "new" and play the chime. (#2867)
-    if (message.portnum === 70 /* TRACEROUTE_APP */) {
+    if (message.portnum === PortNum.TRACEROUTE_APP) {
       return;
     }
 

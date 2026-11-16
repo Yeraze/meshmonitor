@@ -10,6 +10,7 @@ import type { DbMessage } from '../db/types.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { MODEM_PRESET_CHANNEL_NAMES } from '../utils/loraFrequency.js';
 import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
+import { PortNum } from './constants/meshtastic.js';
 import { safeJson } from './utils/redactSecrets.js';
 
 const require = createRequire(import.meta.url);
@@ -122,9 +123,11 @@ export class VirtualNodeServer extends EventEmitter {
   private readonly CLEANUP_INTERVAL_MS = 60000; // Check for inactive clients every minute
 
   // Admin portnums to block (security)
-  private readonly BLOCKED_PORTNUMS = [
-    6,   // ADMIN_APP
-    8,   // NODEINFO_APP (can trigger config changes)
+  private readonly BLOCKED_PORTNUMS: readonly number[] = [
+    PortNum.ADMIN_APP,
+    // NOTE: value 8 is WAYPOINT_APP; the old comment called it NODEINFO_APP (which is 4).
+    // Kept as 8 so behaviour does not change.
+    PortNum.WAYPOINT_APP, // (can trigger config changes)
   ];
 
   // ── Message replay (#6160) ──────────────────────────────────────────────
@@ -477,7 +480,7 @@ export class VirtualNodeServer extends EventEmitter {
         // the app doesn't hang, and drop them silently. This applies
         // *regardless* of allowAdminCommands — the global guidance from
         // #2602 is "deletion is a MeshMonitor-only operation."
-        if (normalizedPortNum === 6) { // ADMIN_APP
+        if (normalizedPortNum === PortNum.ADMIN_APP) {
           const earlyAdminPayload = toRadio.packet.decoded?.payload;
           if (earlyAdminPayload) {
             try {
@@ -524,7 +527,7 @@ export class VirtualNodeServer extends EventEmitter {
         if (!this.allowAdminCommands && normalizedPortNum && this.BLOCKED_PORTNUMS.includes(normalizedPortNum)) {
           // Universal check: block addContact from ALL clients (including localhost)
           // addContact can corrupt the physical node's PKI key store (fixes #1487)
-          if (normalizedPortNum === 6) { // ADMIN_APP
+          if (normalizedPortNum === PortNum.ADMIN_APP) {
             const adminPayloadForContactCheck = toRadio.packet.decoded?.payload;
             if (adminPayloadForContactCheck) {
               try {
@@ -565,7 +568,7 @@ export class VirtualNodeServer extends EventEmitter {
             // Check if this is a favorite/unfavorite command - these should be intercepted
             // and processed locally to update the database (fixes #1000)
             const adminPayload = toRadio.packet.decoded?.payload;
-            if (adminPayload && normalizedPortNum === 6) { // ADMIN_APP
+            if (adminPayload && normalizedPortNum === PortNum.ADMIN_APP) {
               try {
                 const adminMsg = protobufService.decodeAdminMessage(
                   adminPayload instanceof Uint8Array ? adminPayload : new Uint8Array(adminPayload)
@@ -678,7 +681,7 @@ export class VirtualNodeServer extends EventEmitter {
             // excluded so its own app does not show the message twice. This is a
             // local TCP write only: nothing extra goes over the air, and the
             // receiving apps only display the packet (they do not resend it).
-            if (normalizedPortNum === 1) { // TEXT_MESSAGE_APP (replies and reactions included)
+            if (normalizedPortNum === PortNum.TEXT_MESSAGE_APP) { // (replies and reactions included)
               await this.broadcastToClients(fromRadioMessage, clientId);
             }
           }
@@ -1401,11 +1404,11 @@ export class VirtualNodeServer extends EventEmitter {
     }, this.REPLAY_SETTLE_MS);
   }
 
-  /** Stored text messages only (portnum 1, reactions/replies included); skip
+  /** Stored text messages only (TEXT_MESSAGE_APP, reactions/replies included); skip
    *  MeshMonitor's own notes and the app's own sends; DMs only when they
    *  involve the local node. */
   private isReplayableMessage(m: DbMessage, localNodeNum: number): boolean {
-    if (Number(m.portnum) !== 1) { // TEXT_MESSAGE_APP (reactions and replies included)
+    if (Number(m.portnum) !== PortNum.TEXT_MESSAGE_APP) { // reactions and replies included
       return false;
     }
     if (!String(m.id).includes('_')) {

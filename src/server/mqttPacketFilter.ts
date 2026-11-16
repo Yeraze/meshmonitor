@@ -81,6 +81,7 @@ export class MqttPacketFilter {
     topic: 0,
     channel: 0,
     node: 0,
+    // eslint-disable-next-line no-restricted-syntax -- drop counter initial value, not a Meshtastic port number
     portnum: 0,
     geo: 0,
   };

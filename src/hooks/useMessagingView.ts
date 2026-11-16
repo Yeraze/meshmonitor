@@ -55,6 +55,7 @@ import { isNearBottom, DEFAULT_NEAR_BOTTOM_THRESHOLD_PX } from '../utils/scrollN
 import { logger } from '../utils/logger';
 import { useMessageSound } from './useMessageSound';
 import type { PollData, RawMessage } from './usePoll';
+import { PortNum } from '../server/constants/meshtastic.js';
 
 /**
  * Land the one-time entry scroll on the unread divider when the conversation
@@ -656,7 +657,7 @@ export function useMessagingView() {
 
         if (newestMessageId.current && currentNewestId !== newestMessageId.current) {
           const isFromOther = currentNewestMessage.fromNodeId !== localNodeId;
-          const isTextMessage = currentNewestMessage.portnum === 1;
+          const isTextMessage = currentNewestMessage.portnum === PortNum.TEXT_MESSAGE_APP;
 
           if (isFromOther && isTextMessage) {
             logger.debug('New message arrived from other user:', currentNewestMessage.fromNodeId);

@@ -86,6 +86,7 @@ import type { TranslatedMessageState } from './translation/TranslatedMessage';
 import { PublicInstanceNotice } from './PublicInstanceNotice';
 import { HiddenMessageText } from './messages/HiddenMessageText';
 import { isPublicHiddenText } from '../utils/publicInstanceMode';
+import { PortNum } from '../server/constants/meshtastic.js';
 
 /** The latest handlers behind the stable row callbacks (see `rowActions`). */
 interface RowLatest {
@@ -791,7 +792,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           (msg.from === nodeId || msg.to === nodeId) &&
           msg.to !== '!ffffffff' &&
           msg.channel === -1 &&
-          msg.portnum === 1
+          msg.portnum === PortNum.TEXT_MESSAGE_APP
       );
     },
     [messages]
