@@ -8795,5 +8795,14 @@
     "source.form.type_meshcore_mqtt_broker": "Broker MQTT MeshCore (połączenia obserwatorów, bez radia)",
     "meshcore.broker.card_badge": "Obserwatorzy: {{count}}",
     "meshcore.broker.card_badge_title": "Obserwatorzy połączeni z tym brokerem",
-    "meshcore.broker.reason_not_allowlisted": "Odrzucono (klucz spoza listy dozwolonych)"
+    "meshcore.broker.reason_not_allowlisted": "Odrzucono (klucz spoza listy dozwolonych)",
+    "settings.public_instance_enabled": "Tryb instancji publicznej",
+    "settings.public_instance_description": "Ogranicza zakres informacji widocznych dla niezalogowanych użytkowników oraz na osadzonych mapach. Ograniczenia nie dotyczą zalogowanych użytkowników. Pozycje są zawsze wyświetlane z dokładnością ograniczoną do około 1,5 km. Niezalogowani użytkownicy nie mają dostępu do surowych danych pakietów ani możliwości eksportowania plików.",
+    "settings.public_instance_hide_long_names": "Ukryj pełne nazwy węzłów (krótkie nazwy i identyfikatory węzłów pozostaną widoczne)",
+    "settings.public_instance_hide_public_keys": "Ukryj klucze publiczne",
+    "settings.public_instance_round_timestamps": "Zaokrąglaj znaczniki czasu w dół do pełnej godziny",
+    "settings.public_instance_hide_message_text": "Ukryj treść wiadomości",
+    "settings.public_instance_cot_warning": "Strumień danych CoT/TAK jest włączony. Dane nie są anonimizowane — klienci TAK otrzymują dokładne pozycje i nazwy węzłów.",
+    "public_instance.hidden_message": "Ukryto w tej instancji publicznej",
+    "public_instance.notice": "Widok publiczny: lokalizacje węzłów są przybliżone, a niektóre szczegóły zostały ukryte. Zaloguj się, aby zobaczyć więcej informacji."
 }
