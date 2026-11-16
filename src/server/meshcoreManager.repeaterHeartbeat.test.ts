@@ -416,10 +416,15 @@ describe('Repeater serial link health (#5563)', () => {
       const { m, a } = setup();
       fake.device.replies['get name'] = ['  -> Unknown command'];
 
-      await connectOk(m, config());
+      // refreshLocalNode() waits 2 s and asks `get name` once more before it
+      // falls back to the placeholder, so step past that pause.
+      const p = m.connect(config());
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(await p).toBe(true);
 
       expect(state(a)).toBe('connected');
       expect(a.localNode.name).toBe('Unknown Repeater');
+      expect(fake.ports[0].writes.filter((w: string) => w === 'get name')).toHaveLength(2);
     });
   });
 

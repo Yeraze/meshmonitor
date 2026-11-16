@@ -176,6 +176,7 @@ import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { maybeRecordMeshCoreDirectRf } from './services/directRfContactRecorder.js';
 import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops, hopByteForKey } from '../utils/meshcorePath.js';
+import { parseRepeaterNameResponse } from '../utils/meshcoreRepeaterName.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, channelEchoKey, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { getMeshCoreSourcePkiKeyStore } from './services/meshcoreSourcePkiKeyStore.js';
 import { deriveMeshCoreDmSecret, tryDecodeDmTextPayload } from './utils/meshcoreDmCrypto.js';
@@ -6203,13 +6204,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         logger.debug(`[MeshCore] Name response: ${safeJson(nameResponse)}`);
         logger.debug(`[MeshCore] Radio response: ${safeJson(radioResponse)}`);
 
-        // Repeater CLI returns "  -> > DeviceName" format
-        const nameMatch = nameResponse.match(/->\s*>\s*(.+)/);
+        // A repeater answers `get name` through its interactive console, so the
+        // reply shape varies ("  -> > Name", "  -> Name") and a console that is
+        // still booting answers "Unknown command". Parse those shapes and ask
+        // once more after a short pause when nothing usable came back, instead
+        // of showing "Unknown Repeater" for a device that has a name.
+        let repeaterName = parseRepeaterNameResponse(nameResponse);
+        if (repeaterName === null) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          try {
+            repeaterName = parseRepeaterNameResponse(await this.sendRepeaterCommand('get name'));
+          } catch (retryError) {
+            logger.debug(`[MeshCore] get name retry failed: ${(retryError as Error)?.message}`);
+          }
+        }
         const radioMatch = radioResponse.match(/(\d+\.?\d*),\s*(\d+\.?\d*),\s*(\d+),\s*(\d+)/);
 
         this.localNode = {
           publicKey: 'repeater',
-          name: nameMatch ? nameMatch[1].trim() : 'Unknown Repeater',
+          name: repeaterName ?? 'Unknown Repeater',
           advType: MeshCoreDeviceType.REPEATER,
           txPower: parseRepeaterNumber(txResponse, 'int'),
           latitude: parseRepeaterNumber(latResponse, 'float'),
