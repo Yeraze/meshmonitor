@@ -86,7 +86,7 @@ import {
   type ParsedCommand,
   type SendBinaryReqCmd,
 } from './meshcoreCompanionCodec.js';
-import { OUT_PATH_UNKNOWN } from './meshcoreNativeBackend.js';
+import { OUT_PATH_UNKNOWN, encodeOutPathLen } from './meshcoreNativeBackend.js';
 
 /**
  * Minimal surface the virtual node server needs from a MeshCoreManager. Kept as
@@ -105,6 +105,14 @@ export interface MeshCoreVirtualNodeManager {
    * the 9 TX-causing companion commands while this is true.
    */
   isReceiveOnly(): boolean;
+  /**
+   * Hop-hash width (1-3 bytes) the node stamps on its own floods, or null while
+   * unknown (#6441). Lets a channel message MeshMonitor sent go to the app as
+   * "0 hops at this width" instead of the 0xFF fallback the app reads as
+   * "63 hops, 4-byte". Optional so test fakes and older managers need not
+   * implement it; absent behaves as unknown.
+   */
+  getSendPathHashSize?(): 1 | 2 | 3 | null;
   /** Send a text message to the real node: channel (by index) or DM (full key). */
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean>;
   /**
@@ -2149,11 +2157,20 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     // shows the actual hop count instead of always "direct" (#3871). The value
     // is the raw byte the device reported; the app decodes the hop count the
     // same way MeshMonitor does. Falls back to 0xff (direct) when unknown.
-    const wirePathLen = msg.pathLen ?? 0xff;
+    let wirePathLen = msg.pathLen ?? 0xff;
     // The `channel-N` marker lands in toPublicKey for messages we sent and in
     // fromPublicKey for messages we received — check both.
+    const sentChannelIdx = this.sentChannelIndex(msg);
     const channelMatch =
       /^channel-(\d+)$/.exec(msg.toPublicKey ?? '') ?? /^channel-(\d+)$/.exec(msg.fromPublicKey ?? '');
+    // A channel message we sent was never received, so it has no pathLen. The
+    // 0xFF fallback is read by the app as width bits `11` + 63 hops ("63 hops,
+    // 4-byte", #6441). Send "0 hops" at the width the node floods with instead;
+    // keep 0xFF only while that width is unknown.
+    if (sentChannelIdx !== undefined && (msg.pathLen === null || msg.pathLen === undefined)) {
+      const size = this.options.manager.getSendPathHashSize?.() ?? null;
+      if (size !== null) wirePathLen = encodeOutPathLen(0, size);
+    }
     if (channelMatch) {
       // Channel packets carry the sender's name inline; reconstruct it so the
       // app renders the originator the way the firmware would deliver it.

@@ -1837,6 +1837,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /** Cached per-source `meshcoreReceiveOnly`. Sync-readable; refreshed on connect and on settings write. */
   private receiveOnly = false;
 
+  /**
+   * Hop-hash width (1-3 bytes) the node stamps on its own floods, or null while
+   * unknown (#6441). Cleared at the start of each connect; set by
+   * {@link applyDefaultPathHashSize}. The Virtual Node reads it to label the
+   * channel messages MeshMonitor sends.
+   */
+  private sendPathHashSize: 1 | 2 | 3 | null = null;
+
   // Shared state
   private localNode: MeshCoreNode | null = null;
 
@@ -2214,6 +2222,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     this.config = config;
     this.pendingConfig = config; // keep staging field in sync with direct connect() calls
+    this.sendPathHashSize = null;
 
     // Ignore / Block lists (#5408) must be cached before the first message
     // arrives: ingest classifies synchronously.
@@ -2397,8 +2406,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
       // Push the configured default path hash size to the companion's persistent
       // NodePrefs (#4945). Best-effort and Companion-only; a reconnect re-asserts
-      // it so the device always matches the MeshMonitor setting.
-      void this.applyDefaultPathHashSize();
+      // it so the device always matches the MeshMonitor setting. Awaited so the
+      // send width is known before the Virtual Node relays its first message (#6441).
+      await this.applyDefaultPathHashSize();
 
       // Start the Virtual Node server (opt-in) now that the local node identity
       // is known — the server synthesizes SelfInfo from it. Non-fatal on error.
@@ -8442,11 +8452,44 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.nativeBackend) return;
     const width = size ?? await this.getDefaultPathHashSize();
     try {
-      const resp = await this.sendBridgeCommand('set_path_hash_mode', { size: width });
+      // Local serial command, no RF. Short timeout: a device that never answers
+      // must not hold up connect (this is awaited before the Virtual Node starts).
+      const resp = await this.sendBridgeCommand('set_path_hash_mode', { size: width }, 5000);
       if (!resp.success) throw new Error(resp.error || 'set_path_hash_mode failed');
+      this.sendPathHashSize = width;
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] Could not apply default path hash size ${width}: ${(err as Error).message}`);
+      // The device kept its own mode: learn it so the Virtual Node can still
+      // label our sends (#6441).
+      this.sendPathHashSize = await this.readDevicePathHashSize();
     }
+  }
+
+  /**
+   * The hop-hash width the device floods with, read from DeviceInfo (#6441).
+   * `path_hash_mode` 0-2 maps to 1-3 bytes. Firmware older than protocol v10
+   * does not report it and only sends 1-byte hashes. Null when unknown.
+   */
+  private async readDevicePathHashSize(): Promise<1 | 2 | 3 | null> {
+    try {
+      const info = await this.deviceQuery();
+      if (!info) return null;
+      const mode = info.pathHashMode;
+      if (mode === 0 || mode === 1 || mode === 2) return (mode + 1) as 1 | 2 | 3;
+      if (mode === undefined && typeof info.firmwareVer === 'number' && info.firmwareVer < 10) return 1;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Hop-hash width (1-3 bytes) the node stamps on its own floods, or null while
+   * unknown (#6441). Used by the Virtual Node to encode MeshMonitor's own
+   * channel sends as "0 hops" at this width.
+   */
+  getSendPathHashSize(): 1 | 2 | 3 | null {
+    return this.sendPathHashSize;
   }
 
   /**

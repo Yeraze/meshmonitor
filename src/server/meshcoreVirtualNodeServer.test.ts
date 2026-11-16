@@ -735,6 +735,31 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     } as MeshCoreMessage);
     expect(frame[2]).toBe(0xff);
   });
+
+  it('sends a channel message MeshMonitor sent as 0 hops at the node\'s path hash size, not 0xff (#6441)', () => {
+    const encode = (srv: MeshCoreVirtualNodeServer) =>
+      (srv as unknown as { encodeIncomingMessage(m: MeshCoreMessage): Buffer }).encodeIncomingMessage({
+        id: 'm3', fromPublicKey: LOCAL_NODE.publicKey, toPublicKey: 'channel-1', fromName: 'Me', text: 'out', timestamp: Date.now(),
+      } as MeshCoreMessage);
+    for (const [size, byte] of [[1, 0x00], [2, 0x40], [3, 0x80]] as const) {
+      const srv = new MeshCoreVirtualNodeServer({ port: 0, manager: makeManager({ getSendPathHashSize: () => size }) });
+      const frame = encode(srv);
+      expect(frame[0]).toBe(ResponseCodes.ChannelMsgRecv);
+      expect(frame[1]).toBe(1);
+      expect(frame[2]).toBe(byte);
+    }
+    // Width unknown → keep the 0xff fallback.
+    const unknown = new MeshCoreVirtualNodeServer({ port: 0, manager: makeManager({ getSendPathHashSize: () => null }) });
+    expect(encode(unknown)[2]).toBe(0xff);
+  });
+
+  it('leaves a received channel message with no pathLen at 0xff even when the send width is known (#6441)', () => {
+    const srv = new MeshCoreVirtualNodeServer({ port: 0, manager: makeManager({ getSendPathHashSize: () => 2 }) });
+    const frame = (srv as unknown as { encodeIncomingMessage(m: MeshCoreMessage): Buffer }).encodeIncomingMessage({
+      id: 'm4', fromPublicKey: 'channel-0', text: 'x', timestamp: Date.now(),
+    } as MeshCoreMessage);
+    expect(frame[2]).toBe(0xff);
+  });
 });
 
 describe('MeshCoreVirtualNodeServer — local node not ready', () => {
