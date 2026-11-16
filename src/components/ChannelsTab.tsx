@@ -50,6 +50,7 @@ import {
 } from './messages/messageRowSupport';
 import type { TranslatedMessageState } from './translation/TranslatedMessage';
 import { getUserDisplayName } from '../utils/nodeHelpers';
+import { PortNum } from '../server/constants/meshtastic.js';
 
 /** The latest handlers behind the stable row callbacks (see `rowActions`). */
 interface RowLatest {
@@ -1129,7 +1130,7 @@ export default function ChannelsTab({
 
                       // Filter traceroutes from Primary channel (channel 0)
                       if (messageChannel === 0) {
-                        messagesForChannel = messagesForChannel.filter(msg => msg.portnum !== 70);
+                        messagesForChannel = messagesForChannel.filter(msg => msg.portnum !== PortNum.TRACEROUTE_APP);
                       }
 
                       // Sort messages by server-side receipt time (#3187)

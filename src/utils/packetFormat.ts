@@ -7,6 +7,8 @@
  * "Today" label) so the functions stay testable and reusable.
  */
 
+import { PortNum } from '../server/constants/meshtastic.js';
+
 // Transport mechanism display names (matches protobufs/meshtastic/mesh.proto
 // TransportMechanism enum).
 export const TRANSPORT_MECHANISM_NAMES: Record<number, { short: string; full: string }> = {
@@ -87,41 +89,41 @@ export const getPortnumName = (portnum: number | undefined | null): string => {
 /** Color for a PortNum, used to tint the Type column. */
 export const getPortnumColor = (portnum: number): string => {
   switch (portnum) {
-    case 1:
+    case PortNum.TEXT_MESSAGE_APP:
       return '#4a9eff'; // TEXT_MESSAGE - blue
-    case 3:
+    case PortNum.POSITION_APP:
       return '#4caf50'; // POSITION - green
-    case 4:
+    case PortNum.NODEINFO_APP:
       return '#00bcd4'; // NODEINFO - cyan
-    case 67:
+    case PortNum.TELEMETRY_APP:
       return '#ff9800'; // TELEMETRY - orange
-    case 70:
+    case PortNum.TRACEROUTE_APP:
       return '#9c27b0'; // TRACEROUTE - purple
-    case 71:
+    case PortNum.NEIGHBORINFO_APP:
       return '#673ab7'; // NEIGHBORINFO - deep purple
-    case 5:
+    case PortNum.ROUTING_APP:
       return '#f44336'; // ROUTING - red
-    case 6:
+    case PortNum.ADMIN_APP:
       return '#e91e63'; // ADMIN - pink
-    case 8:
+    case PortNum.WAYPOINT_APP:
       return '#4caf50'; // WAYPOINT - green
-    case 11:
+    case PortNum.ALERT_APP:
       return '#ff5722'; // ALERT - deep orange
-    case 32:
+    case PortNum.REPLY_APP:
       return '#2196f3'; // REPLY - light blue
-    case 37:
+    case PortNum.MESH_BEACON_APP:
       return '#3f51b5'; // MESH_BEACON_APP - indigo
-    case 64: // SERIAL - brown
-    case 65: // STORE_FORWARD - brown
-    case 66:
+    case PortNum.SERIAL_APP: // SERIAL - brown
+    case PortNum.STORE_FORWARD_APP: // STORE_FORWARD - brown
+    case PortNum.RANGE_TEST_APP:
       return '#795548'; // RANGE_TEST - brown
-    case 72: // ATAK_PLUGIN - teal
-    case 73:
+    case PortNum.ATAK_PLUGIN: // ATAK_PLUGIN - teal
+    case PortNum.MAP_REPORT_APP:
       return '#009688'; // MAP_REPORT - teal
-    case 78:
+    case PortNum.ATAK_PLUGIN_V2:
       return '#26a69a'; // ATAK_PLUGIN_V2 - lighter teal
-    case 256: // PRIVATE_APP - gray
-    case 257:
+    case PortNum.PRIVATE_APP: // PRIVATE_APP - gray
+    case PortNum.ATAK_FORWARDER:
       return '#757575'; // ATAK_FORWARDER - gray
     default:
       return '#9e9e9e'; // UNKNOWN - gray

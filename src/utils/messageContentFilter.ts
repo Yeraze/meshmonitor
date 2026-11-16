@@ -1,4 +1,5 @@
 import type { MeshMessage } from '../types/message.js';
+import { PortNum } from '../server/constants/meshtastic.js';
 
 /**
  * Build the set of node IDs whose direct-message history contains a given
@@ -39,7 +40,7 @@ export function getMessageContentMatchNodeIds(
 
   for (const msg of messages) {
     // Direct text messages only — mirror getDMMessages()'s predicate.
-    if (msg.channel !== -1 || msg.portnum !== 1) continue;
+    if (msg.channel !== -1 || msg.portnum !== PortNum.TEXT_MESSAGE_APP) continue;
     if (msg.to === '!ffffffff') continue;
     if (!msg.text) continue;
     if (!msg.text.toLowerCase().includes(term)) continue;

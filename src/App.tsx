@@ -128,6 +128,7 @@ import {
 import { useConnectionCheckLoop } from './hooks/useConnectionCheckLoop';
 import { useMqttNativeSendStatus } from './hooks/useMqttNativeSendStatus';
 import { getUserDisplayName } from './utils/nodeHelpers';
+import { PortNum } from './server/constants/meshtastic.js';
 
 // Icons and helpers are now imported from utils/
 
@@ -2349,7 +2350,7 @@ function App() {
       timestamp: new Date(),
       isLocalMessage: true,
       acknowledged: false,
-      portnum: 1, // Text message
+      portnum: PortNum.TEXT_MESSAGE_APP,
       replyId: replyId,
     };
 
