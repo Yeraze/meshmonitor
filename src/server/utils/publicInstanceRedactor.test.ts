@@ -84,7 +84,7 @@ describe('class A positions', () => {
   it('snaps telemetry position rows honouring their precisionBits', () => {
     const rows = run({ rows: [{ telemetryType: 'latitude', value: 40.1234567 }, { telemetryType: 'longitude', value: -105.7654321, precisionBits: 10 }, { telemetryType: 'voltage', value: 40.1234567 }] }).rows;
     expect(rows[0].value).not.toBe(40.1234567);
-    expect(rows[1].value).toBe(-105.7654321);
+    expect(rows[1].value).toBe(snapToPrecisionCell(-105.7654321, 10, false));
     expect(rows[2].value).toBe(40.1234567);
   });
   it('applies even when every toggle is off', () => {
