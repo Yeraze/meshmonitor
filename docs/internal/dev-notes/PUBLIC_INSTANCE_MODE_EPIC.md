@@ -35,7 +35,7 @@ or bytes) encode exact positions and text and must be dropped.
 
 ## Phases
 
-- [ ] **Phase 1 — Settings, redactor, middleware.** Five settings keys
+- [x] **Phase 1 — Settings, redactor, middleware.** Five settings keys
   (`VALID_SETTINGS_KEYS`), Settings UI section, a pure redactor module with
   unit tests, and middleware mounted on the API and embed routers. Exit: the
   mode is off by default with no behaviour change; when on, the redactor's
@@ -54,3 +54,14 @@ or bytes) encode exact positions and text and must be dropped.
   from a signed-in and an anonymous payload and asserts exact vs trimmed values
   on screen (user request 2026-11-16). Exit: browser-checked signed in and
   signed out, side-by-side screenshots in the PR.
+
+## Phase 1 notes (2026-11-16)
+
+- Coordinates always snap: to the declared precision when it is 1–13 bits,
+  else to 14. An exact override beside a coarse precision field cannot leak.
+- Numeric strings (PG/MySQL BIGINT, BigInt JSON) are redacted like numbers.
+- A config read failure answers 503 to anonymous viewers; signed-in users pass.
+- `json()` always redacts for anonymous viewers, even on exempt routes; only a
+  pre-serialised `send()` honours the exempt marker.
+- Bare `distance` is treated as km; setting-like `*Distance` keys are rounded
+  too (accepted over-redaction).
