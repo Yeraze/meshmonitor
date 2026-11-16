@@ -45,6 +45,12 @@ import {
   type AdminOperationStatus,
   type AdminOperationResult,
 } from '../services/adminOperationService.js';
+import {
+  adminVerifyJobService,
+  resolveVerifyTarget,
+  VerifyJobLimitError,
+  type VerifyTarget,
+} from '../services/adminVerifyJobService.js';
 import { isValidMeshtasticKey } from '../utils/meshtasticKeys.js';
 import {
   buildSecurityConfigWrite,
@@ -2537,6 +2543,54 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
       return res.json({ success: true, ...result });
     }
 
+    // Verified save (#4487): send once, then read the section back until it
+    // proves the change landed. Opt-in; runs as a background job.
+    if (params.verify === true) {
+      // Decode the packet the job will send, so the comparison sees exactly
+      // what goes on the wire (server-side defaults included). Security's
+      // builder depends on its preSend read, so it is refused before building.
+      let target: VerifyTarget | null = null;
+      if (!oneShot && command !== 'setSecurityConfig') {
+        try {
+          target = resolveVerifyTarget(protobufService.decodeAdminMessage(buildAdminMessage()));
+        } catch (error) {
+          logger.debug(`Could not decode '${command}' for verification: ${(error as Error)?.message}`);
+        }
+      }
+      if (!target) {
+        return fail(res, 400, 'VERIFY_UNSUPPORTED', `'${command}' cannot be verified by reading the config back`);
+      }
+      const cached = acManager.getRemoteNodeConfig(destinationNodeNum);
+      const baseline = (target.kind === 'module' ? cached?.moduleConfig : cached?.deviceConfig)?.[target.section];
+      if (!baseline) {
+        return fail(res, 409, 'VERIFY_NEEDS_BASELINE', 'Load this config from the node first, so the save can be compared against it');
+      }
+      try {
+        const job = adminVerifyJobService.start(
+          {
+            sourceId: acManager.sourceId,
+            destinationNodeNum,
+            command,
+            userId: req.session?.userId ?? null,
+            target,
+            baseline: structuredClone(baseline),
+          },
+          {
+            send: async () => {
+              await execute();
+            },
+            readBack: () => acManager.requestRemoteConfig(destinationNodeNum, target.adminType, target.kind === 'module'),
+            isFatal: (error) =>
+              isTxDisabledError(error) ? { code: 'TX_DISABLED', message: 'Transmit is disabled on this source' } : null,
+          },
+        );
+        return res.status(202).json({ success: true, verifyJobId: job.id, status: job.status });
+      } catch (error) {
+        if (error instanceof VerifyJobLimitError) return fail(res, 429, error.code, error.message);
+        throw error;
+      }
+    }
+
     // Remote node: accept now, finish on the mesh's schedule (#4482). Holding
     // the socket open for up to 75s is what produced upstream 502s.
     const operation = adminOperationService.create({
@@ -2647,6 +2701,20 @@ router.get('/operations/:id', requireAdmin(), async (req, res) => {
     result: operation.result,
     error: operation.error,
   });
+});
+
+/**
+ * Verified-save jobs (#4487). Every admin sees every job: they act on shared
+ * radios, and anyone may need to cancel one that is still sending.
+ */
+router.get('/verify-jobs', requireAdmin(), (_req, res) => {
+  return ok(res, adminVerifyJobService.list());
+});
+
+router.post('/verify-jobs/:id/cancel', requireAdmin(), (req, res) => {
+  const job = adminVerifyJobService.cancel(req.params.id);
+  if (!job) return fail(res, 404, 'VERIFY_JOB_NOT_FOUND', 'Unknown or expired verify job');
+  return ok(res, job);
 });
 
 
