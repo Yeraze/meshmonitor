@@ -191,7 +191,7 @@ function DashboardInner() {
   // Configuration page since #5831; this form only carries the stored block
   // through a save unchanged, so editing the source never drops it.
   const [formObserverStored, setFormObserverStored] = useState<unknown>(undefined);
-  const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
+  const [formHeartbeat, setFormHeartbeat] = useState('60'); // seconds, 0 = disabled (issue 2609)
   // True once the user types in the heartbeat field, or when the form holds a
   // saved source. Until then, picking a MeshCore device type sets the default:
   // Repeater = 0, because its serial probe is opt-in (#5563).
@@ -440,7 +440,7 @@ function DashboardInner() {
     setFormVnAllowPkiExport(false);
     setFormVnAllowPkiImport(false);
     setFormObserverStored(undefined);
-    setFormHeartbeat('30');
+    setFormHeartbeat('60');
     setFormHeartbeatTouched(false);
     setFormAutoConnect(true);
     setFormPassiveMode(false);
@@ -742,7 +742,9 @@ function DashboardInner() {
         setFormError(t('source.form.error_heartbeat_range'));
         return;
       }
-      if (mcHeartbeat > 0) cfg.heartbeatIntervalSeconds = mcHeartbeat;
+      // A Companion saves an explicit 0 so a deliberate "off" stays distinct from
+      // an unset field; a Repeater keeps omitting it (its probe is opt-in).
+      if (mcHeartbeat > 0 || formMcDeviceType !== 'repeater') cfg.heartbeatIntervalSeconds = mcHeartbeat;
 
       // Virtual Node server (opt-in): expose this MeshCore node to the MeshCore
       // mobile app over WiFi/TCP (#3535). Shares the formVn* state with the
@@ -1733,7 +1735,7 @@ function DashboardInner() {
                       // New source, field untouched: the Repeater probe stays
                       // off until the user sets it (#5563).
                       if (!editingSourceId && !formHeartbeatTouched) {
-                        setFormHeartbeat(next === 'repeater' ? '0' : '30');
+                        setFormHeartbeat(next === 'repeater' ? '0' : '60');
                       }
                     }}
                   >
@@ -1754,7 +1756,7 @@ function DashboardInner() {
                     placeholder="0"
                   />
                   <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
-                    {t('meshcore.form.heartbeat_help', 'Seconds between health probes (0 = disabled). After three failed probes the source reconnects on its own, with backoff. Works for Companion and Repeater devices. The probe stays on the local link and sends nothing over the radio.')}
+                    {t('meshcore.form.heartbeat_help', 'Seconds between health probes (0 = disabled). New Companion sources start at 60. After three failed probes the source reconnects on its own, with backoff. Works for Companion and Repeater devices. The probe stays on the local link and sends nothing over the radio.')}
                   </p>
                 </label>
 

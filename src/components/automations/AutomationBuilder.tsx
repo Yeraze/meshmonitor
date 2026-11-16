@@ -581,6 +581,9 @@ interface StepOutputInfo {
   duplicates: ReadonlySet<string>;
 }
 
+/** System events that can repeat when a link flaps (#6437). */
+const CONNECTION_EVENTS: ReadonlySet<string> = new Set(['source-connected', 'source-disconnected']);
+
 function BlockFields({ block, triggerType, variables, sources, channels, scripts, regions, nodes, automations, onParams, steps, duplicateOutputNames }: {
   block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; automations: AutomationOption[]; onParams: (p: Record<string, unknown>) => void;
   steps: StepTokenScope; duplicateOutputNames: ReadonlySet<string>;
@@ -615,6 +618,17 @@ function BlockFields({ block, triggerType, variables, sources, channels, scripts
           params={block.params} onPatch={patch} steps={steps} duplicateOutputNames={duplicateOutputNames}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;
       })}
+      {block.type === 'trigger.system' && CONNECTION_EVENTS.has(String(block.params.event ?? '')) && (
+        <div className="ae-field-warn" role="note" data-testid="connection-event-cooldown-note">
+          <UiIcon name="alert" size={14} />
+          <span>
+            {t(
+              'automation.connection_event_cooldown_note',
+              'Connection events can repeat if a link flaps. A cooldown of 10 minutes or more is recommended for rules that power-cycle or restart things.',
+            )}
+          </span>
+        </div>
+      )}
       {empty && (
         <div className="ae-field-warn ae-empty-send" role="note" data-testid="empty-send-warning">
           <UiIcon name="alert" size={14} />

@@ -212,7 +212,7 @@ describe('MeshCore heartbeat default by device type (#5563)', () => {
   it('keeps 30 for a new Companion source', async () => {
     await openNewMeshCoreForm();
     expect((await deviceTypeSelect()).value).toBe('companion');
-    expect((await heartbeatInput()).value).toBe('30');
+    expect((await heartbeatInput()).value).toBe('60');
   });
 
   it('shows 0 when Repeater is picked on a new source', async () => {
@@ -225,7 +225,7 @@ describe('MeshCore heartbeat default by device type (#5563)', () => {
     await openNewMeshCoreForm();
     fireEvent.change(await deviceTypeSelect(), { target: { value: 'repeater' } });
     fireEvent.change(await deviceTypeSelect(), { target: { value: 'companion' } });
-    expect((await heartbeatInput()).value).toBe('30');
+    expect((await heartbeatInput()).value).toBe('60');
   });
 
   it('leaves a value the user typed alone', async () => {
@@ -260,7 +260,7 @@ describe('MeshCore heartbeat default by device type (#5563)', () => {
     fireEvent.change(await screen.findByDisplayValue('source.form.type_meshtastic'), {
       target: { value: 'meshcore' },
     });
-    expect((await heartbeatInput()).value).toBe('30');
+    expect((await heartbeatInput()).value).toBe('60');
     fireEvent.change(await deviceTypeSelect(), { target: { value: 'repeater' } });
     expect((await heartbeatInput()).value).toBe('0');
   });
