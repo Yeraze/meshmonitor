@@ -122,13 +122,9 @@ export class VirtualNodeServer extends EventEmitter {
   private readonly CLIENT_TIMEOUT_MS = 300000; // 5 minutes of inactivity before disconnect
   private readonly CLEANUP_INTERVAL_MS = 60000; // Check for inactive clients every minute
 
-  // Admin portnums to block (security)
-  private readonly BLOCKED_PORTNUMS: readonly number[] = [
-    PortNum.ADMIN_APP,
-    // NOTE: value 8 is WAYPOINT_APP; the old comment called it NODEINFO_APP (which is 4).
-    // Kept as 8 so behaviour does not change.
-    PortNum.WAYPOINT_APP, // (can trigger config changes)
-  ];
+  // Admin portnums to block (security). Waypoints and NodeInfo are user
+  // traffic and pass through.
+  private readonly BLOCKED_PORTNUMS: readonly number[] = [PortNum.ADMIN_APP];
 
   // ── Message replay (#6160) ──────────────────────────────────────────────
   // Android freezes the Meshtastic app and MeshMonitor drops idle VN clients
@@ -568,7 +564,7 @@ export class VirtualNodeServer extends EventEmitter {
             // Check if this is a favorite/unfavorite command - these should be intercepted
             // and processed locally to update the database (fixes #1000)
             const adminPayload = toRadio.packet.decoded?.payload;
-            if (adminPayload && normalizedPortNum === PortNum.ADMIN_APP) {
+            if (adminPayload) {
               try {
                 const adminMsg = protobufService.decodeAdminMessage(
                   adminPayload instanceof Uint8Array ? adminPayload : new Uint8Array(adminPayload)
@@ -623,7 +619,7 @@ export class VirtualNodeServer extends EventEmitter {
                 return;
               }
             } else {
-              // Non-admin blocked portnum (like NODEINFO_APP) - block it
+              // Admin packet with no payload - block it
               logger.warn(`Virtual node: Blocked admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
               logger.warn(`Virtual node: Blocked packet details:`, safeJson({
                 from: toRadio.packet.from,
