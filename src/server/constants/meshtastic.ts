@@ -576,10 +576,17 @@ export function isValidNodeNum(n: unknown): n is number {
  * Meshtastic default channel encryption key.
  * This is the well-known key used when PSK is set to shorthand value 1 (AQ== in base64).
  */
-export const MESHTASTIC_DEFAULT_KEY = Buffer.from([
+const MESHTASTIC_DEFAULT_KEY_BYTES = [
   0xd4, 0xf1, 0xbb, 0x3a, 0x20, 0x29, 0x07, 0x59,
   0xf0, 0xbc, 0xff, 0xab, 0xcf, 0x4e, 0x69, 0x01
-]);
+];
+// This module is also bundled into the browser (PortNum and other constants),
+// where `Buffer` does not exist. Anything evaluated at module load must not
+// touch it, or the whole app fails to start. The key is only used server-side,
+// where it is always a real Buffer; the browser gets a Uint8Array it never uses.
+export const MESHTASTIC_DEFAULT_KEY: Buffer = (typeof Buffer !== 'undefined'
+  ? Buffer.from(MESHTASTIC_DEFAULT_KEY_BYTES)
+  : Uint8Array.from(MESHTASTIC_DEFAULT_KEY_BYTES)) as Buffer;
 
 /**
  * Expand a Meshtastic shorthand PSK (1 byte) to a full 16-byte key.
