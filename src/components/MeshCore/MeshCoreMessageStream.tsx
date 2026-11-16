@@ -14,6 +14,8 @@ import LinkPreview from '../LinkPreview';
 import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
 import MessageDetailsModal from '../diagnostics/MessageDetailsModal';
 import { UiIcon } from '../icons';
+import { HiddenMessageText } from '../messages/HiddenMessageText';
+import { isPublicHiddenText } from '../../utils/publicInstanceMode';
 import UnreadDivider from '../messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unreadAnchor';
 import { resolveAuthorContact, isUsableSenderKey } from '../../utils/meshcoreKeyMatch';
@@ -198,6 +200,9 @@ function renderMessageText(
   onContactToken: (match: MeshCoreContactTokenMatch) => void,
   importLabel: (name: string) => string,
 ): React.ReactNode {
+  // Hidden on a public instance (#5156).
+  if (isPublicHiddenText(text)) return <HiddenMessageText />;
+
   // A message that is one SPIP image code draws as the image.
   const spip = parseSpip(text);
   if (spip) return <SpipImage image={spip} code={text.trim()} />;

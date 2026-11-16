@@ -51,7 +51,8 @@ const featuresSidebar = [
       { text: 'Global Settings', link: '/features/global-settings' },
       { text: 'Configuration Search', link: '/features/configuration-search' },
       { text: 'Multi-Source', link: '/features/multi-source' },
-      { text: 'Privacy Disclosures', link: '/features/privacy-disclosures' }
+      { text: 'Privacy Disclosures', link: '/features/privacy-disclosures' },
+      { text: 'Public-Instance Mode', link: '/features/public-instance-mode' }
     ]
   },
   {

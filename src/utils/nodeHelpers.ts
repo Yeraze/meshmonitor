@@ -363,8 +363,19 @@ export const getHardwareModelName = (hwModel: number | undefined): string | null
 export const getNodeName = (nodes: DeviceInfo[], nodeId: string): string => {
   if (!nodeId) return 'Unknown';
   const node = nodes.find(n => n.user?.id === nodeId);
-  return node?.user?.longName || nodeId;
+  return node?.user?.longName || node?.user?.shortName || nodeId;
 };
+
+/**
+ * Display name for a node's `user` record. Tolerates a missing long name
+ * (hidden on public instances, #5156): long name, short name, id, then
+ * `!` plus the hex node number.
+ */
+export const getUserDisplayName = (
+  user: { longName?: string | null; shortName?: string | null; id?: string | null } | null | undefined,
+  nodeNum: number
+): string =>
+  user?.longName || user?.shortName || user?.id || `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
 
 /**
  * Format a per-message sender label as "Long Name (SHRT)" — the same

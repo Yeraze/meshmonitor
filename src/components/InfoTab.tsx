@@ -1090,7 +1090,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             nodes.length > 0 ?
             nodes.reduce((prev, current) =>
               (prev.lastHeard || 0) > (current.lastHeard || 0) ? prev : current
-            ).user?.longName || t('info.unknown') : t('common.none')
+            ).user?.longName || nodes.reduce((prev, current) =>
+              (prev.lastHeard || 0) > (current.lastHeard || 0) ? prev : current
+            ).user?.shortName || t('info.unknown') : t('common.none')
           }</p>
         </div>
 

@@ -1,0 +1,7 @@
+.hidden {
+  font-style: italic;
+  /* Inherit the row's text colour so the placeholder stays readable on
+     selected/highlighted rows; dim it to read as a placeholder. */
+  color: inherit;
+  opacity: 0.75;
+}

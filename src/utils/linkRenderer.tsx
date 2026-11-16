@@ -2,6 +2,8 @@ import React from 'react';
 import api from '../services/api.js';
 import { mentionTokenRegex } from './mentions.js';
 import { parseSpip } from './spip.js';
+import { isPublicHiddenText } from './publicInstanceMode.js';
+import { HiddenMessageText } from '../components/messages/HiddenMessageText.js';
 import { SpipImage } from '../components/Spip/SpipImage.js';
 
 // URL detection regex - matches http://, https://, and www. URLs
@@ -93,6 +95,9 @@ export function renderMessageWithLinks(
   mentions?: MentionRenderOptions
 ): React.ReactNode[] {
   if (!text) return [];
+
+  // Hidden on a public instance (#5156): a placeholder, never linkified.
+  if (isPublicHiddenText(text)) return [<HiddenMessageText key="hidden" />];
 
   // A message that is one SPIP image code draws as the image.
   const spip = parseSpip(text);

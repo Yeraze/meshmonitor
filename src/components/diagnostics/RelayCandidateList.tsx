@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { DeviceRole, isRelayRole } from '../../constants';
 import { UiIcon } from '../icons';
 import styles from './RelayCandidateList.module.css';
+import { formatSenderLabel } from '../../utils/nodeHelpers';
 
 export interface RelayCandidateNode {
   nodeNum: number;
@@ -130,7 +131,7 @@ const RelayCandidateList: React.FC<Props> = ({
                       <UiIcon name="check" size={14} />
                     </span>
                   )}
-                  {node.longName} ({node.shortName})
+                  {formatSenderLabel(node.longName, node.shortName, node.nodeId)}
                   {isRelayRole(node.role) && (
                     <span className={styles.relayIndicator} title={t('relay_modal.likely_relay')}>
                       <UiIcon name="repeater" size={14} />

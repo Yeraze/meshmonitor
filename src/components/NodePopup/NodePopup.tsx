@@ -38,6 +38,7 @@ import { UiIcon } from '../icons';
 import { formatDateTime, formatRelativeTime } from '../../utils/datetime';
 import { computePopupPlacement, POPUP_ANCHOR_GAP, type PopupPlacement } from './popupPlacement';
 import styles from './NodePopup.module.css';
+import { usePublicInstanceView } from '../../hooks/usePublicInstanceView';
 
 /** A node unheard for longer than this gets a dimmed last-heard line. */
 const STALE_AFTER_SECONDS = 24 * 60 * 60;
@@ -209,6 +210,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
   txDisabledTooltip,
 }) => {
   const { t } = useTranslation();
+  const publicView = usePublicInstanceView();
 
   const node = nodePopup ? nodes.find(n => n.user?.id === nodePopup.nodeId) : undefined;
 
@@ -310,7 +312,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
                 title={formatDateTime(new Date(lastHeardMs), timeFormat, dateFormat)}
               >
                 <span className="node-popup-icon"><UiIcon name="time" /></span>
-                {formatRelativeTime(lastHeardMs, timeFormat, dateFormat)}
+                {formatRelativeTime(lastHeardMs, timeFormat, dateFormat, false, { coarseHour: publicView.coarseTime })}
               </div>
             )}
             {lastHeardMs != null && model.firstHeard != null && (

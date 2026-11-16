@@ -165,6 +165,16 @@ export const PUBLIC_INSTANCE_FIELD_CATALOGUE = {
     exact: ['altitude', 'alt', 'altitudeM', 'altitude_m', 'altitude_hae', 'altitudeHae', 'altitudeOverride'],
     patterns: [/[a-z0-9]Altitude(M|Hae|Override)?$/, /_altitude(_m|_hae)?$/],
   },
+  /**
+   * Auth/session plumbing: string values under these keys pass through untouched,
+   * ahead of every other rule. A 64-hex CSRF token looks like a MeshCore key, and
+   * truncating it breaks sign-in. The middleware also skips the auth routes; this
+   * is defence in depth for any route that echoes such a value.
+   */
+  opaqueTokens: {
+    exact: ['csrfToken', 'csrf_token', 'token', 'challenge', 'nonce', 'sessionId', 'session_id'],
+    patterns: [],
+  },
   /** Class F: raw payloads, always removed. */
   rawPayloads: {
     exact: [
@@ -202,6 +212,7 @@ type GeomKind = 'km' | 'm' | 'bearing' | 'altitude';
 
 interface KeyFlags {
   drop: boolean;
+  opaque: boolean;
   dropIfString: boolean;
   axis: 'lat' | 'lon' | null;
   intUnits: boolean;
@@ -232,6 +243,7 @@ function classifyKey(key: string): KeyFlags {
   const axis = matches(CAT.latitude, key) ? 'lat' : matches(CAT.longitude, key) ? 'lon' : null;
   const flags: KeyFlags = {
     drop: CAT.rawPayloads.exact.includes(key as never),
+    opaque: CAT.opaqueTokens.exact.includes(key as never),
     dropIfString: (CAT.rawPayloads.whenString as readonly string[]).includes(key),
     axis,
     intUnits: axis !== null && /(I|_i)$/.test(key),
@@ -409,6 +421,10 @@ function walkObject(obj: Record<string, unknown>, parent: Ctx, cfg: RedactionCon
     const v = obj[key];
     const f = classifyKey(key);
     if (f.drop || (f.dropIfString && typeof v === 'string')) continue;
+    if (f.opaque && typeof v === 'string') {
+      out[key] = v;
+      continue;
+    }
     const outKey = cfg.hidePublicKeys ? truncateHexRuns(key) : key;
 
     if (f.axis && isNumeric(v)) {

@@ -30,7 +30,7 @@ import { applyPrecisionCellOffsets, hasAccuracyCell, precisionCellBounds } from 
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 import MapLegend from './MapLegend';
 import { MapSidebar } from './map/MapSidebar';
-import { formatTime, formatDateTime } from '../utils/datetime';
+import { formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops, getMapHoverTooltipMeta } from '../utils/nodeHops';
@@ -74,7 +74,7 @@ import GeoJsonOverlay from './GeoJsonOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from './map/layers/NodeMarkersLayer';
 import { NodeMarkerCluster } from './map/layers/NodeMarkerCluster';
 import { ImportContactUrlModal } from './nodes/ImportContactUrlModal';
-import importContactStyles from './nodes/ImportContactUrlModal.module.css';
+import { NodeListName, NodeListTime } from './nodes/NodeListRowText';
 import MeasureDistanceController from './MeasureDistanceController';
 import type { MeasurePoint } from '../utils/measureDistance';
 import { MapCenterController } from './MapCenterController';
@@ -119,6 +119,9 @@ import { UiIcon } from './icons';
 import { useToast } from './ToastContainer';
 import { logger } from '../utils/logger';
 import { calculateNodeOpacity } from '../utils/nodeDimming';
+import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
+import { viewerPrecisionBits } from '../utils/publicInstanceMode';
+import { PublicInstanceNotice } from './PublicInstanceNotice';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -166,14 +169,6 @@ interface NodesTabProps {
   /** Handler for purging a node from device and local database */
   onPurgeNodeFromDevice?: (nodeNum: number) => void;
 }
-
-// Helper function to check if a date is today
-const isToday = (date: Date): boolean => {
-  const today = new Date();
-  return date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear();
-};
 
 const MESHTASTIC_SORT_OPTIONS: { value: SortField; labelKey: string }[] = [
   { value: 'longName', labelKey: 'nodes.sort_name' },
@@ -548,6 +543,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mapMaxAgeHours,
     setMapMaxAgeHours,
   } = useMapContext();
+  const publicView = usePublicInstanceView();
   const mapViewStore = useMapViewStore();
 
   const { currentNodeId } = useDeviceConfig();
@@ -1648,8 +1644,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           item: node,
           id: unifiedNodeKey(node) ?? String(node.nodeNum),
           latLng: [eff.latitude as number, eff.longitude as number] as [number, number],
-          bits: node.positionPrecisionBits,
-          isOverride: node.positionIsOverride,
+          bits: viewerPrecisionBits(node.positionPrecisionBits, publicView.active),
+          isOverride: !publicView.active && node.positionIsOverride,
         })),
       // #5177: "Spread Nodes" off pins every marker on its reported point.
       { enabled: spreadNodes },
@@ -1663,7 +1659,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   }, [nodesWithPosition.map(n => {
     const pos = getEffectivePosition(n);
     return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.positionPrecisionBits ?? ''}`;
-  }).join(','), spreadNodes]);
+  }).join(','), spreadNodes, publicView.active]);
 
   // #4015: the Leaflet auto-open-on-click strip is now owned by the shared
   // `NodeMarkersLayer` (#4047 Phase 4 WP6) — it runs the same every-render,
@@ -2063,7 +2059,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const accuracyRegions: AccuracyRegionDescriptor[] = showAccuracyRegions
     ? nodesWithPosition
         .filter(node => {
-          if (!hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride)) return false;
+          if (!hasAccuracyCell(viewerPrecisionBits(node.positionPrecisionBits, publicView.active), !publicView.active && node.positionIsOverride)) return false;
           if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
           if (!showIncompleteNodes && !isNodeComplete(node)) return false;
           // When traceroute is active, only show regions for nodes in the traceroute
@@ -2074,7 +2070,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           const bounds = precisionCellBounds(
             node.position!.latitude,
             node.position!.longitude,
-            node.positionPrecisionBits as number,
+            viewerPrecisionBits(node.positionPrecisionBits, publicView.active) as number,
           );
           const isLocalNode = node.user?.id === currentNodeId;
           const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
@@ -2417,6 +2413,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         </div>
         {!isNodeListCollapsed && (
         <>
+        <PublicInstanceNotice />
         {groupNodesByRole && roleDistribution && roleDistribution.length > 0 && (
           <RoleDistributionSummary distribution={roleDistribution} />
         )}
@@ -2527,20 +2524,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         )}
                       </span>
                       <div className="node-name-text">
-                        <div className="node-longname">
-                          {node.user?.longName || `Node ${node.nodeNum}`}
-                          {/* #5317: imported from a contact link and not yet heard.
-                              Drops away on its own once real traffic arrives, since
-                              that sets lastHeard. */}
-                          {node.importedAt && !node.lastHeard && (
-                            <span
-                              className={importContactStyles.importedBadge}
-                              title={t('nodes.imported_badge_title', 'Added from a contact link; not heard on the mesh yet')}
-                            >
-                              {t('nodes.imported_badge', 'Imported')}
-                            </span>
-                          )}
-                        </div>
+                        <NodeListName node={node} />
                         {node.user?.role !== undefined && node.user?.role !== null && getRoleName(node.user.role) && (
                           <div className="node-role" title={t('nodes.node_role')}>{getRoleName(node.user.role)}</div>
                         )}
@@ -2705,14 +2689,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </NodeStatChips>
                     </div>
 
-                    <div className="node-time">
-                      {node.lastHeard ? (() => {
-                        const date = new Date(node.lastHeard * 1000);
-                        return isToday(date)
-                          ? formatTime(date, timeFormat)
-                          : formatDateTime(date, timeFormat, dateFormat);
-                      })() : t('time.never')}
-                    </div>
+                    <NodeListTime lastHeard={node.lastHeard} timeFormat={timeFormat} dateFormat={dateFormat} />
                   </div>
 
                 </div>

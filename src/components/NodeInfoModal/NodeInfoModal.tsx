@@ -126,7 +126,7 @@ export const NodeInfoModal: React.FC<NodeInfoModalProps> = ({
           <div className="node-info-section">
             <div className="node-info-row">
               <span className="node-info-label">{t('node_info.node_name')}</span>
-              <span className="node-info-value">{nodeInfo?.longName || '-'}</span>
+              <span className="node-info-value">{nodeInfo?.longName || nodeInfo?.shortName || '-'}</span>
             </div>
             <div className="node-info-row">
               <span className="node-info-label">{t('node_info.short_name')}</span>

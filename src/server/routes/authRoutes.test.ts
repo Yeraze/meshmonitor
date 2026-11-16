@@ -19,11 +19,12 @@ import { migration as baselineMigration } from '../migrations/001_v37_baseline.j
 import { migration as sourceIdPermsMigration } from '../migrations/022_add_source_id_to_permissions.js';
 import { migration as passkeysMigration } from '../migrations/207_create_user_passkeys.js';
 import authRoutes from './authRoutes.js';
+import { __setPublicInstanceConfigForTest, __resetPublicInstanceConfigForTest } from '../services/publicInstanceConfig.js';
 import { resetEnvironmentConfig } from '../config/environment.js';
 
 // Mock the DatabaseService to prevent auto-initialization
 vi.mock('../../services/database.js', () => ({
-  default: {}
+  default: { getSetting: () => null }
 }));
 
 import DatabaseService from '../../services/database.js';
@@ -223,6 +224,30 @@ describe('Authentication Routes', () => {
 
       expect(response.body.authenticated).toBe(false);
       expect(response.body.user).toBeNull();
+    });
+
+    it('includes the public-instance config for anonymous viewers only', async () => {
+      __setPublicInstanceConfigForTest({ enabled: true, hideLongNames: false });
+      try {
+        const anon = await agent.get('/api/auth/status').expect(200);
+        expect(anon.body.publicInstance).toEqual({
+          enabled: true, hideLongNames: false, hidePublicKeys: true, roundTimestamps: true, hideMessageText: true,
+        });
+      } finally {
+        __resetPublicInstanceConfigForTest();
+      }
+    });
+
+    it('omits the public-instance config when signed in', async () => {
+      __setPublicInstanceConfigForTest({ enabled: true });
+      try {
+        await agent.post('/api/auth/login').send({ username: 'testuser', password: 'password123' }).expect(200);
+        const res = await agent.get('/api/auth/status').expect(200);
+        expect(res.body.authenticated).toBe(true);
+        expect(res.body.publicInstance).toBeUndefined();
+      } finally {
+        __resetPublicInstanceConfigForTest();
+      }
     });
 
     it('should return authenticated status when logged in', async () => {

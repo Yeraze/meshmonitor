@@ -510,7 +510,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                     {/* Header */}
                     <div className="embed-popup-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <div className="embed-popup-title">
-                        {node.user?.longName || (node.isMeshCore ? node.nodeId : `Node ${node.nodeNum}`)}
+                        {node.user?.longName || node.user?.shortName || (node.isMeshCore ? node.nodeId : `Node ${node.nodeNum}`)}
                       </div>
                       {node.user?.shortName && (
                         <div className="embed-popup-subtitle">{node.user.shortName}</div>
