@@ -5,7 +5,6 @@
  * SettingsTab.elevation.test.tsx (mocked contexts and child sections,
  * mode="global").
  */
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SettingsTab from './SettingsTab';
