@@ -19,6 +19,13 @@ import { isAnonymousViewer } from '../utils/mqttConsentVisibility.js';
 import { fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 
+const PUBLIC_INSTANCE_REDACTION = Symbol.for('meshmonitor.publicInstanceRedaction');
+
+/** True when `handle` was built by `publicInstanceRedaction()`. */
+export function isPublicInstanceRedaction(handle: unknown): boolean {
+  return (handle as { [PUBLIC_INSTANCE_REDACTION]?: true } | null | undefined)?.[PUBLIC_INSTANCE_REDACTION] === true;
+}
+
 export interface PublicInstanceRedactionOptions {
   /** Treat every request as anonymous (the embed router). */
   forceAnonymous?: boolean;
@@ -55,7 +62,7 @@ function hasData(chunk: unknown): boolean {
 }
 
 export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {}): RequestHandler {
-  return (req: Request, res: Response, next: NextFunction) => {
+  const handler = (req: Request, res: Response, next: NextFunction) => {
     if (req.path === '/v1' || req.path.startsWith('/v1/')) return next();
 
     const origJson = res.json.bind(res);
@@ -208,4 +215,6 @@ export function publicInstanceRedaction(opts: PublicInstanceRedactionOptions = {
 
     next();
   };
+  (handler as unknown as { [PUBLIC_INSTANCE_REDACTION]: true })[PUBLIC_INSTANCE_REDACTION] = true;
+  return handler;
 }
