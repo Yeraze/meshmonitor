@@ -11,6 +11,80 @@ import { noHardcodedUiGlyph } from './scripts/eslint-rules/no-hardcoded-ui-glyph
 import { requireRelativeImportExtension } from './scripts/eslint-rules/require-relative-import-extension.mjs';
 import { stableI18nMock } from './scripts/eslint-rules/stable-i18n-mock.mjs';
 
+const SQL_BAN_SELECTORS = [
+    {
+      selector: "CallExpression[callee.object.property.name='db'][callee.property.name='prepare']",
+      message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+    },
+    {
+      selector: "CallExpression[callee.object.property.name='db'][callee.property.name='exec']",
+      message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+    },
+    {
+      // Catches `const db = databaseService.db; db.prepare(...)` — the
+      // local-variable escape hatch around the two selectors above.
+      selector: "CallExpression[callee.object.name='db'][callee.property.name='prepare']",
+      message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+    },
+    {
+      selector: "CallExpression[callee.object.name='db'][callee.property.name='exec']",
+      message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+    },
+    {
+      selector: "CallExpression[callee.object.property.name='postgresPool'][callee.property.name='query']",
+      message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+    },
+    {
+      selector: "CallExpression[callee.object.property.name='mysqlPool'][callee.property.name='query']",
+      message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+    },
+];
+
+// Bare Meshtastic port numbers. Use PortNum from src/server/constants/meshtastic.ts.
+// Name pattern: portnum / portNum / port_num prefix, or a ...PortNum suffix
+// (normalizedPortNum). esquery regex literals take the `i` flag.
+const PORTNUM_NAME = '/(^port_?num|port_?num$)/i';
+const PORTNUM_MESSAGE =
+  'Use PortNum.<NAME> from src/server/constants/meshtastic.ts instead of a bare port number.';
+const PORTNUM_SELECTORS = [
+  // x === 1, 1 !== x.portnum, x?.portnum == 1 ...
+  ...[
+    `Identifier[name=${PORTNUM_NAME}]`,
+    `MemberExpression[property.name=${PORTNUM_NAME}]`,
+    `ChainExpression[expression.property.name=${PORTNUM_NAME}]`,
+    // Number(m.portnum) !== 1
+    `CallExpression[callee.name='Number'][arguments.0.name=${PORTNUM_NAME}]`,
+    `CallExpression[callee.name='Number'][arguments.0.property.name=${PORTNUM_NAME}]`,
+    `CallExpression[callee.name='Number'][arguments.0.expression.property.name=${PORTNUM_NAME}]`,
+  ].map((operand) => ({
+    selector: `BinaryExpression[operator=/^[!=]==?$/]:has(> Literal[value=type(number)]):has(> ${operand})`,
+    message: PORTNUM_MESSAGE,
+  })),
+  // switch (portnum) { case 1: ... }
+  {
+    selector: `SwitchStatement[discriminant.name=${PORTNUM_NAME}] > SwitchCase[test.value=type(number)]`,
+    message: PORTNUM_MESSAGE,
+  },
+  {
+    selector: `SwitchStatement[discriminant.property.name=${PORTNUM_NAME}] > SwitchCase[test.value=type(number)]`,
+    message: PORTNUM_MESSAGE,
+  },
+  {
+    // switch (msg?.portnum)
+    selector: `SwitchStatement[discriminant.expression.property.name=${PORTNUM_NAME}] > SwitchCase[test.value=type(number)]`,
+    message: PORTNUM_MESSAGE,
+  },
+  // { portnum: 1 }
+  {
+    selector: 'Property[key.name=/^port_?num$/i][value.value=type(number)]',
+    message: PORTNUM_MESSAGE,
+  },
+  {
+    selector: 'Property[key.value=/^port_?num$/i][value.value=type(number)]',
+    message: PORTNUM_MESSAGE,
+  },
+];
+
 export default [
   {
     ignores: [
@@ -84,35 +158,7 @@ export default [
       ],
       'no-control-regex': 'off',
       'prefer-const': 'error',                          // was 'warn' — auto-fixed in WP2
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "CallExpression[callee.object.property.name='db'][callee.property.name='prepare']",
-          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
-        },
-        {
-          selector: "CallExpression[callee.object.property.name='db'][callee.property.name='exec']",
-          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
-        },
-        {
-          // Catches `const db = databaseService.db; db.prepare(...)` — the
-          // local-variable escape hatch around the two selectors above.
-          selector: "CallExpression[callee.object.name='db'][callee.property.name='prepare']",
-          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
-        },
-        {
-          selector: "CallExpression[callee.object.name='db'][callee.property.name='exec']",
-          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
-        },
-        {
-          selector: "CallExpression[callee.object.property.name='postgresPool'][callee.property.name='query']",
-          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
-        },
-        {
-          selector: "CallExpression[callee.object.property.name='mysqlPool'][callee.property.name='query']",
-          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
-        },
-      ],
+      'no-restricted-syntax': ['error', ...SQL_BAN_SELECTORS, ...PORTNUM_SELECTORS],
     },
   },
   {
@@ -128,6 +174,13 @@ export default [
     ],
     rules: {
       'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    // Test support code keeps the raw-SQL ban but may use bare port numbers.
+    files: ['src/test/**', '**/test-helpers/**'],
+    rules: {
+      'no-restricted-syntax': ['error', ...SQL_BAN_SELECTORS],
     },
   },
   {
@@ -177,6 +230,7 @@ export default [
           selector: "CallExpression[callee.object.name='globalThis'][callee.property.name='fetch']",
           message: "Raw globalThis.fetch() is banned in components/pages. Use ApiService or a query hook.",
         },
+        ...PORTNUM_SELECTORS,
       ],
     },
   },
