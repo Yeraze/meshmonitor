@@ -31,6 +31,7 @@ import { SignFlipNotice } from '../../SignFlipNotice';
 import FlightMatchLine from '../../FlightMatchLine';
 import { useSource } from '../../../contexts/SourceContext';
 import { hopCountLabel } from '../../../utils/hopLabel';
+import { usePublicInstanceView } from '../../../hooks/usePublicInstanceView';
 
 /* ------------------------------------------------------------------ */
 /* Header                                                              */
@@ -305,6 +306,7 @@ export const PositionItem: React.FC<PositionItemProps> = ({
   dateFormat = 'MM/DD/YYYY',
 }) => {
   const { t } = useTranslation();
+  const publicView = usePublicInstanceView();
   return (
     <div className="node-popup-item node-popup-item-full">
       <span className="node-popup-icon"><UiIcon name="location" /></span>
@@ -317,7 +319,7 @@ export const PositionItem: React.FC<PositionItemProps> = ({
           >
             {' · '}
             {t('node_popup.position_updated', 'Updated {{when}}', {
-              when: formatRelativeTime(positionTimestamp, timeFormat, dateFormat, false),
+              when: formatRelativeTime(positionTimestamp, timeFormat, dateFormat, false, { coarseHour: publicView.coarseTime }),
             })}
           </span>
         )}
@@ -352,9 +354,10 @@ export const LastHeardFooter: React.FC<LastHeardFooterProps> = ({
   dateFormat,
 }) => {
   const { t } = useTranslation();
+  const publicView = usePublicInstanceView();
   if (lastHeard == null) return null;
   const format = (secs: number) => mode === 'relative'
-    ? formatRelativeTime(secs * 1000, timeFormat, dateFormat, true)
+    ? formatRelativeTime(secs * 1000, timeFormat, dateFormat, true, { coarseHour: publicView.coarseTime })
     : formatDateTime(new Date(secs * 1000), timeFormat, dateFormat);
   return (
     <>

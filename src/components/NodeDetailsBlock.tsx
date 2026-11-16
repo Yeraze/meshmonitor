@@ -29,6 +29,7 @@ import AssetTrackingSection from './AssetTrackingSection';
 import NodeNameHistory from './NodeNameHistory';
 import PositionEstimateRationaleBox from './PositionEstimateRationaleBox';
 import NodeChannelEditor from './NodeChannelEditor';
+import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -74,6 +75,7 @@ const MAX_NODE_NOTES_LENGTH = 2000;
 
 const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes, canEditChannel = false, onSaveChannel, sourceId, assetTracking, canOpenRemoteAdmin = false }) => {
   const { t } = useTranslation();
+  const publicView = usePublicInstanceView();
   const { channels } = useChannels();
   const { currentNodeId } = useDeviceConfig();
   const { nodeHopsCalculation, distanceUnit } = useSettings();
@@ -312,7 +314,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
    */
   const formatLastHeard = (lastHeard: number | undefined): string => {
     if (lastHeard === undefined || lastHeard === null) return 'N/A';
-    return formatRelativeTime(lastHeard * 1000, timeFormat, dateFormat, false);
+    return formatRelativeTime(lastHeard * 1000, timeFormat, dateFormat, false, { coarseHour: publicView.coarseTime });
   };
 
   /**
@@ -522,7 +524,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
                   title={t('node_details.position_updated_tooltip', 'When this node last reported its position (server receive time)')}
                 >
                   {t('node_details.position_updated', 'Updated {{when}}', {
-                    when: formatRelativeTime(node.positionTimestamp, timeFormat, dateFormat, false),
+                    when: formatRelativeTime(node.positionTimestamp, timeFormat, dateFormat, false, { coarseHour: publicView.coarseTime }),
                   })}
                 </span>
               )}

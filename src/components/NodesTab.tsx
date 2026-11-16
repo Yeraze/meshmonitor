@@ -119,6 +119,8 @@ import { UiIcon } from './icons';
 import { useToast } from './ToastContainer';
 import { logger } from '../utils/logger';
 import { calculateNodeOpacity } from '../utils/nodeDimming';
+import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
+import { viewerPrecisionBits } from '../utils/publicInstanceMode';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -548,6 +550,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mapMaxAgeHours,
     setMapMaxAgeHours,
   } = useMapContext();
+  const publicView = usePublicInstanceView();
   const mapViewStore = useMapViewStore();
 
   const { currentNodeId } = useDeviceConfig();
@@ -1648,8 +1651,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           item: node,
           id: unifiedNodeKey(node) ?? String(node.nodeNum),
           latLng: [eff.latitude as number, eff.longitude as number] as [number, number],
-          bits: node.positionPrecisionBits,
-          isOverride: node.positionIsOverride,
+          bits: viewerPrecisionBits(node.positionPrecisionBits, publicView.active),
+          isOverride: !publicView.active && node.positionIsOverride,
         })),
       // #5177: "Spread Nodes" off pins every marker on its reported point.
       { enabled: spreadNodes },
@@ -1663,7 +1666,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   }, [nodesWithPosition.map(n => {
     const pos = getEffectivePosition(n);
     return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.positionPrecisionBits ?? ''}`;
-  }).join(','), spreadNodes]);
+  }).join(','), spreadNodes, publicView.active]);
 
   // #4015: the Leaflet auto-open-on-click strip is now owned by the shared
   // `NodeMarkersLayer` (#4047 Phase 4 WP6) — it runs the same every-render,
@@ -2063,7 +2066,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const accuracyRegions: AccuracyRegionDescriptor[] = showAccuracyRegions
     ? nodesWithPosition
         .filter(node => {
-          if (!hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride)) return false;
+          if (!hasAccuracyCell(viewerPrecisionBits(node.positionPrecisionBits, publicView.active), !publicView.active && node.positionIsOverride)) return false;
           if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
           if (!showIncompleteNodes && !isNodeComplete(node)) return false;
           // When traceroute is active, only show regions for nodes in the traceroute
@@ -2074,7 +2077,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           const bounds = precisionCellBounds(
             node.position!.latitude,
             node.position!.longitude,
-            node.positionPrecisionBits as number,
+            viewerPrecisionBits(node.positionPrecisionBits, publicView.active) as number,
           );
           const isLocalNode = node.user?.id === currentNodeId;
           const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
