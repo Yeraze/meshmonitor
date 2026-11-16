@@ -258,4 +258,54 @@ describe('AdminTransactionService', () => {
       await expect(p2).resolves.toEqual({ packetId: 701, acked: false, errorReason: 7, timedOut: false });
     });
   });
+
+  describe('sendLocalAdminAwaitRejection (#6439)', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    function setup() {
+      const mgr = makeFakeManager();
+      const svc = new AdminTransactionService(mgr as any);
+      createAdminPacketWithId.mockReturnValue({ data: new Uint8Array([1]), packetId: 777 });
+      return { mgr, svc };
+    }
+
+    it('reports the routing error when the node refuses', async () => {
+      const { svc } = setup();
+      const p = svc.sendLocalAdminAwaitRejection(new Uint8Array([9]), 5000);
+      await Promise.resolve();
+      expect(svc.hasPending(777)).toBe(true);
+      svc.resolveByRequestId(777, 111, 32);
+      await expect(p).resolves.toEqual({ rejected: 32 });
+      expect(svc.hasPending(777)).toBe(false);
+    });
+
+    it('treats silence as accepted and cleans up the waiter', async () => {
+      vi.useFakeTimers();
+      const { svc } = setup();
+      const p = svc.sendLocalAdminAwaitRejection(new Uint8Array([9]), 5000);
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(svc.hasPending(777)).toBe(true);
+      await vi.advanceTimersByTimeAsync(2);
+      await expect(p).resolves.toEqual({ rejected: null });
+      expect(svc.hasPending(777)).toBe(false);
+    });
+
+    it('ignores a routing reply for another packet id', async () => {
+      vi.useFakeTimers();
+      const { svc } = setup();
+      const p = svc.sendLocalAdminAwaitRejection(new Uint8Array([9]), 5000);
+      await Promise.resolve();
+      expect(svc.resolveByRequestId(123, 111, 32)).toBe(false);
+      expect(svc.hasPending(777)).toBe(true);
+      await vi.advanceTimersByTimeAsync(5001);
+      await expect(p).resolves.toEqual({ rejected: null });
+    });
+
+    it('removes the waiter when the send fails', async () => {
+      const { mgr, svc } = setup();
+      mgr.sendLocalAdminPacket.mockRejectedValue(new Error('socket closed'));
+      await expect(svc.sendLocalAdminAwaitRejection(new Uint8Array([9]), 5000)).rejects.toThrow('socket closed');
+      expect(svc.hasPending(777)).toBe(false);
+    });
+  });
 });

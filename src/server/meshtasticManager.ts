@@ -16243,6 +16243,17 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Send an admin command to our own node and report a refusal (routing error
+   * code), or null when the node stayed silent, which means it accepted.
+   */
+  async sendLocalAdminAwaitRejection(
+    adminMessagePayload: Uint8Array,
+    timeoutMs: number = 5000
+  ): Promise<{ rejected: number | null }> {
+    return this.adminTransactionService.sendLocalAdminAwaitRejection(adminMessagePayload, timeoutMs);
+  }
+
+  /**
    * Send a set_favorite_node admin command and wait for its ACK. Handles the
    * remote session-passkey handshake exactly like sendFavoriteNode.
    */
