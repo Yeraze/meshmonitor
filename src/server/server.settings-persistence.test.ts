@@ -245,6 +245,12 @@ function validTestValue(key: string, suffix = ''): string {
     nodeNameSanitizeBuiltins: 'false',
     nodeNameSanitizeCustomPatterns: '["spam.example"]',
     nodeNameSanitizePlaceholder: '[x]',
+    // Public-instance mode (#5156): booleans stored as '1'/'0'.
+    publicInstanceModeEnabled: '1',
+    publicInstanceHideLongNames: '0',
+    publicInstanceHidePublicKeys: '0',
+    publicInstanceRoundTimestamps: '0',
+    publicInstanceHideMessageText: '0',
   };
 
   if (key in VALID_VALUES) {
@@ -583,6 +589,12 @@ describe('Settings Persistence', () => {
         // at runtime by the public GET /api/privacy/links endpoint rather than
         // through SettingsContext.
         'privacyPolicyUrl', 'termsOfServiceUrl', 'contactUrl',
+        // Public-instance mode (#5156 Phase 1) — loaded directly by SettingsTab
+        // into its own initial* snapshots (admin-only fields, no global hook).
+        // Read server-side by publicInstanceConfig.
+        'publicInstanceModeEnabled', 'publicInstanceHideLongNames',
+        'publicInstanceHidePublicKeys', 'publicInstanceRoundTimestamps',
+        'publicInstanceHideMessageText',
         // Coverage Report retention window (#5277 P1 WP2) — loaded directly by
         // SettingsTab into its own initial* snapshot (GLOBAL_ONLY_SETTINGS_KEYS,
         // settings:write-gated field, no SettingsContext hook), same pattern as

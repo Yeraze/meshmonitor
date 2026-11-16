@@ -259,6 +259,12 @@ interface SettingsDraft {
   // server, not per-source — mirrors the elevation fields above.
   cotFeedEnabled: boolean;
   cotFeedPort: number;
+  // Public-instance mode (#5156). Global; master default OFF, sub-toggles default ON.
+  publicInstanceModeEnabled: boolean;
+  publicInstanceHideLongNames: boolean;
+  publicInstanceHidePublicKeys: boolean;
+  publicInstanceRoundTimestamps: boolean;
+  publicInstanceHideMessageText: boolean;
   // Virtual Node message replay (#6160). Global, opt-in (default off). Same
   // Category C pattern as the fields above — no SettingsContext home; read
   // server-side by VirtualNodeServer. Exclude list is a CSV of IPs.
@@ -615,6 +621,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     cartoApiKey: '',
     cotFeedEnabled: false,
     cotFeedPort: 8088,
+    publicInstanceModeEnabled: false,
+    publicInstanceHideLongNames: true,
+    publicInstanceHidePublicKeys: true,
+    publicInstanceRoundTimestamps: true,
+    publicInstanceHideMessageText: true,
     virtualNodeReplayEnabled: false,
     virtualNodeReplayExcludeIps: '',
     translationEnabled: false,
@@ -700,6 +711,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // global singleton, no context/prop home, default OFF / port 8088.
   const [initialCotFeedEnabled, setInitialCotFeedEnabled] = useState(false);
   const [initialCotFeedPort, setInitialCotFeedPort] = useState(8088);
+  // Public-instance mode (#5156): master default OFF, sub-toggles default ON.
+  const [initialPublicInstanceModeEnabled, setInitialPublicInstanceModeEnabled] = useState(false);
+  const [initialPublicInstanceHideLongNames, setInitialPublicInstanceHideLongNames] = useState(true);
+  const [initialPublicInstanceHidePublicKeys, setInitialPublicInstanceHidePublicKeys] = useState(true);
+  const [initialPublicInstanceRoundTimestamps, setInitialPublicInstanceRoundTimestamps] = useState(true);
+  const [initialPublicInstanceHideMessageText, setInitialPublicInstanceHideMessageText] = useState(true);
   // Virtual Node message replay (#6160). Same Category C pattern as cotFeed above.
   const [initialVirtualNodeReplayEnabled, setInitialVirtualNodeReplayEnabled] = useState(false);
   const [initialVirtualNodeReplayExcludeIps, setInitialVirtualNodeReplayExcludeIps] = useState('');
@@ -978,6 +995,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('cartoApiKey', cartoApiKey);
           setInitialCartoApiKey(cartoApiKey);
 
+          // Public-instance mode (#5156). Master opts in; sub-toggles opt out.
+          const publicInstanceMasterOn = settings.publicInstanceModeEnabled === '1' || settings.publicInstanceModeEnabled === 'true';
+          updateField('publicInstanceModeEnabled', publicInstanceMasterOn);
+          setInitialPublicInstanceModeEnabled(publicInstanceMasterOn);
+          const publicInstanceHideLongNamesOn = !(settings.publicInstanceHideLongNames === '0' || settings.publicInstanceHideLongNames === 'false');
+          updateField('publicInstanceHideLongNames', publicInstanceHideLongNamesOn);
+          setInitialPublicInstanceHideLongNames(publicInstanceHideLongNamesOn);
+          const publicInstanceHidePublicKeysOn = !(settings.publicInstanceHidePublicKeys === '0' || settings.publicInstanceHidePublicKeys === 'false');
+          updateField('publicInstanceHidePublicKeys', publicInstanceHidePublicKeysOn);
+          setInitialPublicInstanceHidePublicKeys(publicInstanceHidePublicKeysOn);
+          const publicInstanceRoundTimestampsOn = !(settings.publicInstanceRoundTimestamps === '0' || settings.publicInstanceRoundTimestamps === 'false');
+          updateField('publicInstanceRoundTimestamps', publicInstanceRoundTimestampsOn);
+          setInitialPublicInstanceRoundTimestamps(publicInstanceRoundTimestampsOn);
+          const publicInstanceHideMessageTextOn = !(settings.publicInstanceHideMessageText === '0' || settings.publicInstanceHideMessageText === 'false');
+          updateField('publicInstanceHideMessageText', publicInstanceHideMessageTextOn);
+          setInitialPublicInstanceHideMessageText(publicInstanceHideMessageTextOn);
+
           // Load ATAK/CoT feed settings (#3691 Phase 3). Default OFF; absent
           // port key => 8088.
           const cotFeedEnabledOn = settings.cotFeedEnabled === '1' || settings.cotFeedEnabled === 'true';
@@ -1139,6 +1173,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       cartoApiKey: initialCartoApiKey,
       cotFeedEnabled: initialCotFeedEnabled,
       cotFeedPort: initialCotFeedPort,
+      publicInstanceModeEnabled: initialPublicInstanceModeEnabled,
+      publicInstanceHideLongNames: initialPublicInstanceHideLongNames,
+      publicInstanceHidePublicKeys: initialPublicInstanceHidePublicKeys,
+      publicInstanceRoundTimestamps: initialPublicInstanceRoundTimestamps,
+      publicInstanceHideMessageText: initialPublicInstanceHideMessageText,
       virtualNodeReplayEnabled: initialVirtualNodeReplayEnabled,
       virtualNodeReplayExcludeIps: initialVirtualNodeReplayExcludeIps,
       translationEnabled: initialTranslationEnabled,
@@ -1164,6 +1203,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
+      initialPublicInstanceModeEnabled, initialPublicInstanceHideLongNames, initialPublicInstanceHidePublicKeys, initialPublicInstanceRoundTimestamps, initialPublicInstanceHideMessageText,
       initialVirtualNodeReplayEnabled, initialVirtualNodeReplayExcludeIps,
       initialDuctingOverlayEnabled, initialMqttRootDirectoryRefreshEnabled,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
@@ -1385,6 +1425,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialCartoApiKey(d.cartoApiKey.trim());
     setInitialCotFeedEnabled(d.cotFeedEnabled);
     setInitialCotFeedPort(d.cotFeedPort);
+    setInitialPublicInstanceModeEnabled(d.publicInstanceModeEnabled);
+    setInitialPublicInstanceHideLongNames(d.publicInstanceHideLongNames);
+    setInitialPublicInstanceHidePublicKeys(d.publicInstanceHidePublicKeys);
+    setInitialPublicInstanceRoundTimestamps(d.publicInstanceRoundTimestamps);
+    setInitialPublicInstanceHideMessageText(d.publicInstanceHideMessageText);
     setInitialVirtualNodeReplayEnabled(d.virtualNodeReplayEnabled);
     setInitialVirtualNodeReplayExcludeIps(d.virtualNodeReplayExcludeIps.trim());
     setInitialTranslationEnabled(d.translationEnabled);
@@ -1505,6 +1550,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         cartoApiKey: draft.cartoApiKey.trim(),
         cotFeedEnabled: draft.cotFeedEnabled ? '1' : '0',
         cotFeedPort: String(draft.cotFeedPort),
+        publicInstanceModeEnabled: draft.publicInstanceModeEnabled ? '1' : '0',
+        publicInstanceHideLongNames: draft.publicInstanceHideLongNames ? '1' : '0',
+        publicInstanceHidePublicKeys: draft.publicInstanceHidePublicKeys ? '1' : '0',
+        publicInstanceRoundTimestamps: draft.publicInstanceRoundTimestamps ? '1' : '0',
+        publicInstanceHideMessageText: draft.publicInstanceHideMessageText ? '1' : '0',
         // Virtual Node message replay (#6160). Opt-in; exclude list trimmed.
         virtualNodeReplayEnabled: draft.virtualNodeReplayEnabled ? '1' : '0',
         virtualNodeReplayExcludeIps: draft.virtualNodeReplayExcludeIps.trim(),
@@ -2414,6 +2464,76 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             )}
           </p>
           <PrivacyDocumentsSection canEdit={canWriteSettings} />
+        </div>}
+
+        {show('settings-public-instance') && <div id="settings-public-instance" className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                id="publicInstanceModeEnabled"
+                type="checkbox"
+                checked={draft.publicInstanceModeEnabled}
+                onChange={(e) => updateField('publicInstanceModeEnabled', e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.public_instance_enabled', 'Public-instance mode')}</span>
+            </label>
+          </h3>
+          <p className="setting-description">
+            {t('settings.public_instance_description', 'Limits what signed-out visitors and embed maps can see. Signed-in users are not affected. Positions are always shown only to about 1.5 km. Raw packet data and file exports are blocked for signed-out visitors.')}
+          </p>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="publicInstanceHideLongNames"
+                type="checkbox"
+                checked={draft.publicInstanceHideLongNames}
+                onChange={(e) => updateField('publicInstanceHideLongNames', e.target.checked)}
+                disabled={!draft.publicInstanceModeEnabled}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.public_instance_hide_long_names', 'Hide long names (short name and node ID stay)')}</span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="publicInstanceHidePublicKeys"
+                type="checkbox"
+                checked={draft.publicInstanceHidePublicKeys}
+                onChange={(e) => updateField('publicInstanceHidePublicKeys', e.target.checked)}
+                disabled={!draft.publicInstanceModeEnabled}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.public_instance_hide_public_keys', 'Hide public keys')}</span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="publicInstanceRoundTimestamps"
+                type="checkbox"
+                checked={draft.publicInstanceRoundTimestamps}
+                onChange={(e) => updateField('publicInstanceRoundTimestamps', e.target.checked)}
+                disabled={!draft.publicInstanceModeEnabled}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.public_instance_round_timestamps', 'Round times down to the hour')}</span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="publicInstanceHideMessageText"
+                type="checkbox"
+                checked={draft.publicInstanceHideMessageText}
+                onChange={(e) => updateField('publicInstanceHideMessageText', e.target.checked)}
+                disabled={!draft.publicInstanceModeEnabled}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.public_instance_hide_message_text', 'Hide message text')}</span>
+            </label>
+          </div>
         </div>}
 
         {show('settings-meshcore-messaging') && <div id="settings-meshcore-messaging" className="settings-section">

@@ -18,6 +18,7 @@ import { logger } from '../utils/logger.js';
 import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { setNoIndexEnabled, parseNoIndexEnabled } from '../utils/robotsConfig.js';
 import { startTelemetryPurgeSchedule } from './services/telemetryPurgeSchedule.js';
+import { reloadPublicInstanceConfig } from './services/publicInstanceConfig.js';
 import { robotsTagMiddleware } from './middleware/robotsTag.js';
 import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
@@ -828,6 +829,10 @@ import mqttBrokerPresetRoutes from './routes/mqttBrokerPresetRoutes.js';
 import mqttRootFinderRoutes from './routes/mqttRootFinderRoutes.js';
 import ductingRoutes from './routes/ductingRoutes.js';
 import translationRoutes from './routes/translationRoutes.js';
+import { publicInstanceRedaction } from './middleware/publicInstanceRedaction.js';
+
+// Public-instance redaction: decides at send time, so it must be the first handler (#5156)
+apiRouter.use(publicInstanceRedaction());
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -1244,9 +1249,9 @@ app.use('/api/privacy', privacyPublicRouter);
 // Public embed config API (must come BEFORE apiRouter to avoid rate limiter and CSRF)
 // CSP middleware is applied per-route inside the router (needs req.params.profileId)
 if (BASE_URL) {
-  app.use(`${BASE_URL}/api/embed`, embedPublicRoutes);
+  app.use(`${BASE_URL}/api/embed`, publicInstanceRedaction({ forceAnonymous: true }), embedPublicRoutes);
 }
-app.use('/api/embed', embedPublicRoutes);
+app.use('/api/embed', publicInstanceRedaction({ forceAnonymous: true }), embedPublicRoutes);
 
 // Mount API router - this must come before static file serving
 // Apply rate limiting and CSRF protection to all API routes (except csrf-token endpoint)
@@ -1431,6 +1436,10 @@ void (async () => {
 
   // Eagerly populate embed origins cache so first CORS check works
   refreshEmbedOriginsCache();
+
+  // Load the public-instance config before listening so no request can be
+  // served unredacted while the cache is still empty (#5156).
+  await reloadPublicInstanceConfig();
 
   // host undefined -> net.Server binds every interface, as before
   server = app.listen({ port: PORT, host: env.bindAddress }, () => {

@@ -11,6 +11,7 @@ import { logger } from '../../utils/logger.js';
 import { requirePermission } from '../auth/authMiddleware.js';
 import { generateStyleFromTileJson, type TileJsonResponse } from '../utils/tileStyleGenerator.js';
 import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
+import { markPublicInstanceExempt } from '../middleware/publicInstanceRedaction.js';
 
 export function createMapStyleRouter(service: MapStyleService): Router {
   const router = Router();
@@ -179,6 +180,7 @@ export function createMapStyleRouter(service: MapStyleService): Router {
       const { id } = req.params;
       const data = service.getStyleData(id);
       res.setHeader('Content-Type', 'application/json');
+      markPublicInstanceExempt(res);
       return res.send(data);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
