@@ -194,6 +194,9 @@ export function buildMessageContext(
     rssi: msg.rxRssi,
     viaMqtt: msg.viaMqtt,
     decryptedBy: msg.decryptedBy,
+    // #6449: the sender set Data.bitfield bit 2 (sent by a bot/script). False
+    // when the bit is clear or the bitfield was absent.
+    isAutomation: msg.isAutomation === true,
     protocol: 'meshtastic',
     protocolShort: 'MT',
     sourceId,
@@ -1130,6 +1133,35 @@ export function messageFilterUsesChannelName(params: Record<string, unknown> = {
 }
 
 /**
+ * Sender filter on `trigger.message` (#6449): who sent the message, by the
+ * Meshtastic `is_automation` bit (Data.bitfield bit 2). `'any'` (the default for
+ * an absent or unknown value, so existing rules are unchanged) does not
+ * constrain; `'human'` drops messages that carry the bit; `'automation'` keeps
+ * only those. The bit is self-reported, so a message without it — including
+ * every MeshCore / Reticulum message, which have no such flag — counts as human.
+ */
+export type MessageSenderKind = 'any' | 'human' | 'automation';
+
+export function messageFilterSenderKind(params: Record<string, unknown> = {}): MessageSenderKind {
+  const v = params.senderKind;
+  return v === 'human' || v === 'automation' ? v : 'any';
+}
+
+/** True when a message with this `isAutomation` flag passes the sender filter. */
+export function senderKindMatches(kind: MessageSenderKind, isAutomation: boolean | null | undefined): boolean {
+  if (kind === 'any') return true;
+  const automated = isAutomation === true;
+  return kind === 'automation' ? automated : !automated;
+}
+
+function describeSenderKindMiss(kind: MessageSenderKind, isAutomation: boolean | null | undefined): string | undefined {
+  if (senderKindMatches(kind, isAutomation)) return undefined;
+  return kind === 'human'
+    ? 'sender flagged the message as sent by an automation; the rule only fires on human messages'
+    : 'message is not flagged as sent by an automation; the rule only fires on automated messages';
+}
+
+/**
  * @param channelName Pre-resolved name of `msg.channel` for its source (the engine
  *   resolves the per-source slot→name once before filtering). Required for the
  *   `params.channelName`/`params.channels` checks to match; when absent, a name
@@ -1139,6 +1171,7 @@ export function messageMatchesFilter(msg: DbMessage, params: Record<string, unkn
   if (params.portnum != null && Number(msg.portnum) !== Number(params.portnum)) return false;
   if (params.from != null && Number(msg.fromNodeNum) !== Number(params.from)) return false;
   if (params.to != null && Number(msg.toNodeNum) !== Number(params.to)) return false;
+  if (!senderKindMatches(messageFilterSenderKind(params), msg.isAutomation)) return false;
   // Multi-channel OR-list (#3974) takes precedence over the legacy scalar
   // channel/channelName fields: fire if the resolved name matches ANY entry.
   // A resolved name of '' (Primary's unnamed slot-0) is a legitimate match
@@ -1195,6 +1228,8 @@ export function meshCoreMessageMatchesFilter(
 ): boolean {
   if (params.portnum != null || params.from != null || params.to != null) return false;
   if (msg.reactionEmoji && !messageFilterIncludesMeshCoreReactions(params)) return false;
+  // MeshCore has no is_automation flag: every message counts as human (#6449).
+  if (!senderKindMatches(messageFilterSenderKind(params), undefined)) return false;
   const channelIdx = meshCoreMessageChannelIdx(msg);
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
@@ -1238,6 +1273,8 @@ export function describeMessageFilterMiss(
   if (params.portnum != null && Number(msg.portnum) !== Number(params.portnum)) return `portnum ${msg.portnum} ≠ ${params.portnum}`;
   if (params.from != null && Number(msg.fromNodeNum) !== Number(params.from)) return `sender #${msg.fromNodeNum} ≠ from #${params.from}`;
   if (params.to != null && Number(msg.toNodeNum) !== Number(params.to)) return `recipient #${msg.toNodeNum} ≠ to #${params.to}`;
+  const senderMiss = describeSenderKindMiss(messageFilterSenderKind(params), msg.isAutomation);
+  if (senderMiss) return senderMiss;
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
     const resolved = channelName == null ? null : channelName.toLowerCase();
@@ -1276,6 +1313,8 @@ export function describeMeshCoreFilterMiss(
   if (msg.reactionEmoji && !messageFilterIncludesMeshCoreReactions(params)) {
     return 'MeshCore reaction: the rule does not have "Also fire on MeshCore reactions" on';
   }
+  const mcSenderMiss = describeSenderKindMiss(messageFilterSenderKind(params), undefined);
+  if (mcSenderMiss) return mcSenderMiss;
   const channelIdx = meshCoreMessageChannelIdx(msg);
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
@@ -1317,6 +1356,8 @@ export function reticulumMessageMatchesFilter(msg: ReticulumMessageRow, params: 
   if (params.channel != null) return false;
   if (typeof params.channelName === 'string' && params.channelName.length > 0) return false;
   if (messageFilterChannelNames(params).length > 0) return false;
+  // LXMF has no is_automation flag: every message counts as human (#6449).
+  if (!senderKindMatches(messageFilterSenderKind(params), undefined)) return false;
 
   const text = msg.content ?? '';
   if (typeof params.textContains === 'string' && params.textContains.length > 0) {
@@ -1342,6 +1383,8 @@ export function describeReticulumFilterMiss(msg: ReticulumMessageRow, params: Re
   if (params.channel != null || (typeof params.channelName === 'string' && params.channelName.length > 0) || messageFilterChannelNames(params).length > 0) {
     return 'rule filters by channel — Reticulum/LXMF messages have no channel concept, never matches';
   }
+  const rnsSenderMiss = describeSenderKindMiss(messageFilterSenderKind(params), undefined);
+  if (rnsSenderMiss) return rnsSenderMiss;
   const text = msg.content ?? '';
   if (typeof params.textContains === 'string' && params.textContains.length > 0) {
     if (!text.toLowerCase().includes(params.textContains.toLowerCase())) return `text does not contain "${params.textContains}"`;

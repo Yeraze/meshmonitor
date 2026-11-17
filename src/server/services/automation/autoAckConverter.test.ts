@@ -427,6 +427,20 @@ describe('buildAutoAckAutomations', () => {
     expect(offRule.conditions.some((c) => c.type === 'condition.string' && c.params.field === 'node.completeness')).toBe(false);
   });
 
+  // #6449: Auto-Acknowledge skips messages flagged as automated unless the
+  // operator opted in, so the converted trigger filters on senderKind.
+  it('respondToAutomation maps to trigger.message senderKind: off/absent → human, on → any', () => {
+    const matrix = matrixWith('directZeroHop', { reply: true });
+    const off = buildAutoAckAutomations(baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrix }) }));
+    expect(off.automations[0].form.trigger.params.senderKind).toBe('human');
+
+    const on = buildAutoAckAutomations(baseInput({
+      settings: baseSettings({ respondToAutomation: true, rawMatrixAndLegacy: matrix }),
+    }));
+    expect(on.automations[0].form.trigger.params.senderKind).toBe('any');
+    expect(on.report.converted.some((e) => e.key === 'autoAckRespondToAutomation')).toBe(true);
+  });
+
   // ─── (l) ───────────────────────────────────────────────────────────────────
   it('(l) pre-send delay 0 emits no action.delay; 45 emits it first in every rule', () => {
     const matrix = matrixWith('directZeroHop', { reply: true, tapback: true });

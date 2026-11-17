@@ -79,6 +79,8 @@ export interface SimEventInput {
   snr?: number;
   rssi?: number;
   viaMqtt?: boolean;
+  /** Sender set the Meshtastic is_automation bit (#6449). */
+  isAutomation?: boolean;
   // node
   nodeNum?: number;
   changed?: string[];
@@ -317,6 +319,7 @@ function synthMessage(ev: SimEventInput, sourceId: string | null): DbMessage {
     rxSnr: ev.snr,
     rxRssi: ev.rssi,
     viaMqtt: ev.viaMqtt,
+    isAutomation: ev.isAutomation === true ? true : undefined,
     timestamp: 0,
     createdAt: 0,
   } as unknown as DbMessage;
