@@ -186,6 +186,8 @@ export class PacketLogRepository extends BaseRepository {
       // Booleans arrive as 0/1 on SQLite/MySQL and true/false on PG — coerce,
       // but preserve NULL (= unknown, pre-2.8) rather than folding it to false. (#3923)
       xeddsa_signed: row.xeddsa_signed == null ? null : Boolean(row.xeddsa_signed),
+      // Same NULL-preserving coercion for the is_automation bit (#6449).
+      is_automation: row.is_automation == null ? null : Boolean(row.is_automation),
       // PostgreSQL lowercases unquoted aliases — normalize for frontend
       from_node_longName: row.from_node_longName ?? row.from_node_longname ?? null,
       to_node_longName: row.to_node_longName ?? row.to_node_longname ?? null,
@@ -224,6 +226,7 @@ export class PacketLogRepository extends BaseRepository {
         created_at: Date.now(),
         transport_mechanism: packet.transport_mechanism ?? null,
         xeddsa_signed: packet.xeddsa_signed ?? null,
+        is_automation: packet.is_automation ?? null,
         decrypted_by: packet.decrypted_by ?? null,
         decrypted_channel_id: packet.decrypted_channel_id ?? null,
       };

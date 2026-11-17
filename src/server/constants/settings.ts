@@ -69,6 +69,9 @@ export const VALID_SETTINGS_KEYS = [
   // have answered the same message. 0 = no cap; default 2; 0-10 enforced on
   // save (settingsRoutes) and clamped on read (autoAckResponseCap.ts).
   'autoAckMaxResponses',
+  // #6449: also answer messages whose sender set the Meshtastic is_automation
+  // bit. Off (absent) by default: Auto-Acknowledge skips automated messages.
+  'autoAckRespondToAutomation',
   // #5890: operator-chosen 0-hop / MQTT tapback glyphs (blank = built-in).
   'hopEmojiZeroHop',
   'hopEmojiMqtt',
@@ -129,6 +132,8 @@ export const VALID_SETTINGS_KEYS = [
   'autoResponderEnabled',
   'autoResponderTriggers',
   'autoResponderSkipIncompleteNodes',
+  // #6449: same opt-in as autoAckRespondToAutomation, for the Auto-Responder.
+  'autoResponderRespondToAutomation',
   'timerTriggers',
   'iconStyle',
   'preferredSortField',
@@ -626,6 +631,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoAckMaxAttempts',
   'autoAckHopLimit',
   'autoAckMaxResponses',
+  'autoAckRespondToAutomation',
   'hopEmojiZeroHop',
   'hopEmojiMqtt',
   'autoAckDirectEnabled',
@@ -744,6 +750,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // Auto-responder (the feature the screenshots in #2839 call "Automations")
   'autoResponderEnabled',
   'autoResponderSkipIncompleteNodes',
+  'autoResponderRespondToAutomation',
   'autoResponderTriggers',
   // Auto-time-sync
   'autoTimeSyncEnabled',

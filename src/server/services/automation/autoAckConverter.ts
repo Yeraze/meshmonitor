@@ -89,6 +89,13 @@ export interface ResolvedAutoAck {
    */
   hopLimitRaw?: string;
   /**
+   * `autoAckRespondToAutomation === 'true'` (#6449). Optional so callers built
+   * before it existed keep compiling; absent/false means Auto-Acknowledge skips
+   * messages whose sender set the is_automation bit, which converts to
+   * trigger.message `senderKind: 'human'`. True converts to `'any'`.
+   */
+  respondToAutomation?: boolean;
+  /**
    * Every raw value whose key participates in the 2×2 matrix (the 12
    * `autoAck{Cell}{Reply,Tapback,ReplyDm}Enabled` keys) or the pre-093 legacy
    * scheme (migration 093's `LEGACY_SUFFIXES`, minus `autoAckEnabled` — which
@@ -355,6 +362,15 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
     detail: settings.cooldownSecondsRaw
       ? `Emitted as trigger.message's cooldownSeconds (${cooldownSeconds}s), with cooldownScope: 'node' (AutoAck cools down per sender node).`
       : `Blank — emitted Auto-Acknowledge's own default (${AUTOACK_DEFAULT_COOLDOWN_SECONDS}s); the engine's own default is 0 (no throttle).`,
+  });
+
+  const senderKind = settings.respondToAutomation ? 'any' : 'human';
+  converted.push({
+    key: 'autoAckRespondToAutomation',
+    label: 'Respond to automated messages',
+    detail: settings.respondToAutomation
+      ? "On — emitted as trigger.message's senderKind 'any' (automated messages also fire)."
+      : "Off — emitted as trigger.message's senderKind 'human' (messages flagged as sent by an automation never fire).",
   });
 
   if (settings.skipIncompleteNodes) {
@@ -627,7 +643,7 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
           label: 'Channel allowlist',
           detail: `Resolved to: ${channelsOut.map((c) => c.name).join(', ')}.`,
         });
-        triggerParams = { regex, cooldownSeconds, cooldownScope: 'node', channels: channelsOut };
+        triggerParams = { regex, senderKind, cooldownSeconds, cooldownScope: 'node', channels: channelsOut };
       } else if (survivingUnnamed.length === 1) {
         // Branch 3 — the one that makes the default primary-channel config convertible:
         // exactly one survivor and it's unnamed → fall back to the trigger's raw index
@@ -638,7 +654,7 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
           label: `Channel #${idx}`,
           detail: `Channel #${idx} has no name, so the automation matches it by index instead. Index-based matching is per-radio — if you later add this automation to another source, check the channel order there.`,
         });
-        triggerParams = { regex, cooldownSeconds, cooldownScope: 'node', channel: idx };
+        triggerParams = { regex, senderKind, cooldownSeconds, cooldownScope: 'node', channel: idx };
       } else {
         // Branch 4: nothing survived, or multiple survivors and ALL are unnamed. `channel`
         // takes only one index and `channels` would override it, so this genuinely can't
@@ -668,7 +684,7 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
   }
 
   if (directRules.length > 0) {
-    const triggerParams: Record<string, unknown> = { regex, cooldownSeconds, cooldownScope: 'node' };
+    const triggerParams: Record<string, unknown> = { regex, senderKind, cooldownSeconds, cooldownScope: 'node' };
     const form: WorkflowForm = { trigger: { type: 'trigger.message', params: triggerParams }, rules: directRules, combine: null };
     automations.push({
       key: 'direct',

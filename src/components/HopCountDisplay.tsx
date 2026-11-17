@@ -16,6 +16,8 @@ interface HopCountDisplayProps {
   viaMqtt?: boolean;
   viaStoreForward?: boolean;
   xeddsaSigned?: boolean;
+  /** Sender set Data.bitfield bit 2: sent by a bot/script (#6449). */
+  isAutomation?: boolean;
   onClick?: () => void;
 }
 
@@ -34,6 +36,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
   viaMqtt,
   viaStoreForward,
   xeddsaSigned,
+  isAutomation,
   onClick,
 }) => {
   const { t } = useTranslation();
@@ -49,6 +52,19 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
       role="img"
     >
       <UiIcon name="securityCheck" size={14} />
+    </span>
+  ) : null;
+
+  // is_automation indicator (#6449): the sender flagged the packet as sent by
+  // a bot or script rather than typed by a person. Self-reported.
+  const AutomationIndicator = isAutomation ? (
+    <span
+      style={{ marginLeft: '4px', opacity: 0.8 }}
+      title={t('messages.sent_by_automation', 'Sent by an automation')}
+      aria-label={t('messages.sent_by_automation', 'Sent by an automation')}
+      role="img"
+    >
+      <UiIcon name="bot" size={14} />
     </span>
   ) : null;
 
@@ -78,14 +94,14 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
 
   // Return null if either hop value is missing (but show indicators if present)
   if (hopStart === undefined || hopLimit === undefined) {
-    return <>{SignedIndicator}{StoreForwardIndicator}{MqttIndicator}</>;
+    return <>{SignedIndicator}{AutomationIndicator}{StoreForwardIndicator}{MqttIndicator}</>;
   }
 
   const hopCount = hopStart - hopLimit;
 
   // Guard against malformed data (negative hop counts)
   if (hopCount < 0) {
-    return <>{SignedIndicator}{StoreForwardIndicator}{MqttIndicator}</>;
+    return <>{SignedIndicator}{AutomationIndicator}{StoreForwardIndicator}{MqttIndicator}</>;
   }
 
   // The hop count opens a packet-detail view for the message (#4657), so it is
@@ -123,6 +139,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
           ({parts.join(' / ')})
         </span>
         {SignedIndicator}
+        {AutomationIndicator}
         {StoreForwardIndicator}
         {MqttIndicator}
       </>
@@ -139,6 +156,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
         ({t('messages.hops', { count: hopCount, hopStart: hopStart })})
       </span>
       {SignedIndicator}
+      {AutomationIndicator}
       {StoreForwardIndicator}
       {MqttIndicator}
     </>

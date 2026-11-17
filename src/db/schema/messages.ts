@@ -29,6 +29,7 @@ export const messagesSqlite = sqliteTable('messages', {
   viaStoreForward: integer('viaStoreForward', { mode: 'boolean' }),
   // XEdDSA packet signing (firmware 2.8+): broadcast had a verified signature.
   xeddsaSigned: integer('xeddsaSigned', { mode: 'boolean' }),
+  isAutomation: integer('isAutomation', { mode: 'boolean' }), // Data.bitfield bit 2 (#6449); NULL = bitfield absent
   // Ack proof verdict (firmware 2.8.1+, #5279): MeshPacket.AckProofStatus number
   // from the ack/nak that settled this outbound DM. NULL = no status reported.
   ackProofStatus: integer('ackProofStatus'),
@@ -81,6 +82,7 @@ export const messagesPostgres = pgTable('messages', {
   viaMqtt: pgBoolean('viaMqtt'),
   viaStoreForward: pgBoolean('viaStoreForward'),
   xeddsaSigned: pgBoolean('xeddsaSigned'),
+  isAutomation: pgBoolean('isAutomation'), // Data.bitfield bit 2 (#6449); NULL = bitfield absent
   // Ack proof verdict (#5279). See SQLite definition.
   ackProofStatus: pgSmallint('ackProofStatus'),
   // meshtastic.MeshPacket.TransportMechanism the message arrived on (#5101). See SQLite definition.
@@ -126,6 +128,7 @@ export const messagesMysql = mysqlTable('messages', {
   viaMqtt: myBoolean('viaMqtt'),
   viaStoreForward: myBoolean('viaStoreForward'),
   xeddsaSigned: myBoolean('xeddsaSigned'),
+  isAutomation: myBoolean('isAutomation'), // Data.bitfield bit 2 (#6449); NULL = bitfield absent
   // Ack proof verdict (#5279). See SQLite definition.
   ackProofStatus: mySmallint('ackProofStatus'),
   // meshtastic.MeshPacket.TransportMechanism the message arrived on (#5101). See SQLite definition.

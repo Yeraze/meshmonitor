@@ -561,6 +561,24 @@ export const MQTT_PKI_CHANNEL_ID = 'PKI';
 export const DATA_BITFIELD_OK_TO_MQTT = 0x01;
 
 /**
+ * `Data.bitfield` bit 2 (meshtastic/protobufs#1134): `is_automation`. The
+ * sender says a bot or script sent the packet, not a person. Self-reported and
+ * advisory. Firmware ORs its own bits in with `|=`, so a client-set bit
+ * survives; older firmware ignores it (#6449).
+ */
+export const DATA_BITFIELD_IS_AUTOMATION = 0x04;
+
+/**
+ * Read the `is_automation` bit from a decoded `Data.bitfield`. Returns null
+ * when the bitfield is absent on the wire (unknown), so callers can store
+ * NULL rather than a false "human" verdict.
+ */
+export function readIsAutomationBit(bitfield: number | null | undefined): boolean | null {
+  if (typeof bitfield !== 'number') return null;
+  return (bitfield & DATA_BITFIELD_IS_AUTOMATION) !== 0;
+}
+
+/**
  * Returns true if `n` is a safe-integer in the 32-bit unsigned `nodeNum` range.
  *
  * Rejects NaN, Infinity, negatives, non-integers (the floating-point values

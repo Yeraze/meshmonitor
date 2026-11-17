@@ -192,6 +192,24 @@ export const TRIGGERS: BlockDef[] = [
         help: 'A regular expression matched against the message text. '
           + 'Case-sensitive, unlike "Text contains" above — prefix with (?i) to ignore case, e.g. (?i)^(test|ping).',
       },
+      // #6449: Meshtastic `is_automation` bit (Data.bitfield bit 2). 'human' MUST
+      // be first: defaultParams() seeds it, so a NEW rule ignores bot traffic by
+      // default (a bot-to-bot loop guard). A rule saved before this field existed
+      // has no param and the engine treats it as 'any' (absentValue).
+      {
+        name: 'senderKind', label: 'Sent by', kind: 'select',
+        options: [
+          { value: 'human', label: 'People only (skip automated messages)' },
+          { value: 'any', label: 'Anyone' },
+          { value: 'automation', label: 'Automations only' },
+        ],
+        absentValue: 'any',
+        warningByValue: {
+          any: 'A rule that replies to automated messages can answer another bot, which answers back. Set a cooldown.',
+          automation: 'A rule that replies to automated messages can answer another bot, which answers back. Set a cooldown.',
+        },
+        help: 'Meshtastic senders can flag a message as sent by a bot or script. The flag is self-reported; a message without it, and every MeshCore or Reticulum message, counts as sent by a person.',
+      },
       { name: 'channels', label: 'On channels', kind: 'channelMulti', advanced: true, help: 'Match messages that arrive on ANY of these channels (unified by name across your sources). An OR-list — leave none to match any channel. When set, this overrides the single-channel fields below.' },
       { name: 'channelName', label: 'On channel (name)', kind: 'text', placeholder: 'any', advanced: true, help: 'Match by channel name (case-insensitive) — portable across sources where the same channel sits in a different slot. Preferred over the channel # below. Ignored when "On channels" above is set.' },
       { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'any', advanced: true, help: 'Match by raw channel index. Note: the same channel can be a different index on different sources — use the name above for cross-source automations. Ignored when "On channels" above is set.' },
@@ -461,6 +479,8 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     // `viaMqtt` above, which is the packet's own upstream relay flag and is
     // routinely 1 on messages our radio did receive over RF.
     { value: 'viaMqttSource', label: 'Came in via an MQTT source (1 = yes, 0 = over RF)' },
+    // #6449: the sender's Meshtastic is_automation bit.
+    { value: 'isAutomation', label: 'Sent by an automation (1 = yes, 0 = person or unknown)' },
   ],
   'trigger.telemetry': [{ value: 'value', label: 'Reading value' }, { value: 'nodeNum', label: 'Node #' }],
   'trigger.meshBeacon': [

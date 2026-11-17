@@ -58,6 +58,9 @@ interface AutoAcknowledgeSectionProps {
   onMessageDirectChange: (message: string) => void;
   onChannelsChange: (channels: number[]) => void;
   onSkipIncompleteNodesChange: (enabled: boolean) => void;
+  /** #6449: also answer messages the sender flagged as automated. Default false (skip them). */
+  respondToAutomation?: boolean;
+  onRespondToAutomationChange?: (enabled: boolean) => void;
   onIgnoredNodesChange: (ignoredNodes: string) => void;
   onMatrixChange: (m: AutoAckMatrix) => void;
   cooldownSeconds: number;
@@ -106,6 +109,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onMessageDirectChange,
   onChannelsChange,
   onSkipIncompleteNodesChange,
+  respondToAutomation = false,
+  onRespondToAutomationChange,
   onIgnoredNodesChange,
   onMatrixChange,
   cooldownSeconds,
@@ -139,6 +144,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localMessageDirect, setLocalMessageDirect] = useState(messageDirect || DEFAULT_MESSAGE_DIRECT);
   const [localEnabledChannels, setLocalEnabledChannels] = useState<number[]>(enabledChannels);
   const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
+  const [localRespondToAutomation, setLocalRespondToAutomation] = useState(respondToAutomation);
   const [localIgnoredNodes, setLocalIgnoredNodes] = useState(ignoredNodes || '');
   const [localMatrix, setLocalMatrix] = useState<AutoAckMatrix>(matrix);
   const [localCooldownSeconds, setLocalCooldownSeconds] = useState(cooldownSeconds);
@@ -163,6 +169,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMessageDirect(messageDirect || DEFAULT_MESSAGE_DIRECT);
     setLocalEnabledChannels(enabledChannels);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
+    setLocalRespondToAutomation(respondToAutomation);
     setLocalIgnoredNodes(ignoredNodes || '');
     setLocalMatrix(matrix);
     setLocalCooldownSeconds(cooldownSeconds);
@@ -175,7 +182,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, respondToAutomation, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
 
   // Check if any settings have changed.
   // Compare each local value against the SAME normalized baseline the local
@@ -193,9 +200,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     const maxAttemptsChanged = localMaxAttempts !== maxAttempts;
     const hopLimitChanged = localHopLimit !== hopLimit;
     const matrixChanged = JSON.stringify(localMatrix) !== JSON.stringify(matrix);
-    const changed = localEnabled !== enabled || localRegex !== (regex || '^(test|ping)') || localMessage !== (message || DEFAULT_MESSAGE) || localMessageDirect !== (messageDirect || DEFAULT_MESSAGE_DIRECT) || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || hopLimitChanged || localMaxResponses !== maxResponses || localHopEmojiZeroHop !== hopEmojiZeroHop || localHopEmojiMqtt !== hopEmojiMqtt || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const changed = localEnabled !== enabled || localRegex !== (regex || '^(test|ping)') || localMessage !== (message || DEFAULT_MESSAGE) || localMessageDirect !== (messageDirect || DEFAULT_MESSAGE_DIRECT) || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localRespondToAutomation !== respondToAutomation || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || hopLimitChanged || localMaxResponses !== maxResponses || localHopEmojiZeroHop !== hopEmojiZeroHop || localHopEmojiMqtt !== hopEmojiMqtt || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, localHopEmojiZeroHop, localHopEmojiMqtt, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localRespondToAutomation, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, localHopEmojiZeroHop, localHopEmojiMqtt, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, respondToAutomation, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -205,6 +212,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMessageDirect(messageDirect || DEFAULT_MESSAGE_DIRECT);
     setLocalEnabledChannels(enabledChannels);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
+    setLocalRespondToAutomation(respondToAutomation);
     setLocalIgnoredNodes(ignoredNodes || '');
     setLocalMatrix(matrix);
     setLocalCooldownSeconds(cooldownSeconds);
@@ -215,7 +223,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalHopEmojiZeroHop(hopEmojiZeroHop);
     setLocalHopEmojiMqtt(hopEmojiMqtt);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, respondToAutomation, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -336,6 +344,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckMessageDirect: localMessageDirect,
           autoAckChannels: localEnabledChannels.join(','),
           autoAckSkipIncompleteNodes: String(localSkipIncompleteNodes),
+          autoAckRespondToAutomation: String(localRespondToAutomation),
           autoAckIgnoredNodes: localIgnoredNodes,
           ...matrixToSettings(localMatrix),
           autoAckCooldownSeconds: String(localCooldownSeconds),
@@ -375,6 +384,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onMessageDirectChange(localMessageDirect);
       onChannelsChange(localEnabledChannels);
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
+      onRespondToAutomationChange?.(localRespondToAutomation);
       onIgnoredNodesChange(localIgnoredNodes);
       onMatrixChange(localMatrix);
       onCooldownSecondsChange(localCooldownSeconds);
@@ -394,7 +404,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, localHopEmojiZeroHop, localHopEmojiMqtt, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onHopLimitChange, onMaxResponsesChange, onHopEmojiZeroHopChange, onHopEmojiMqttChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localRespondToAutomation, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, localHopEmojiZeroHop, localHopEmojiMqtt, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onRespondToAutomationChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onHopLimitChange, onMaxResponsesChange, onHopEmojiZeroHopChange, onHopEmojiMqttChange, onTestMessagesChange]);
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();
@@ -549,6 +559,27 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
             {t('automation.auto_ack.skip_incomplete_description')}
           </div>
+
+          {!isMeshCoreSource && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
+                <input
+                  type="checkbox"
+                  id="autoAckRespondToAutomation"
+                  checked={localRespondToAutomation}
+                  onChange={(e) => setLocalRespondToAutomation(e.target.checked)}
+                  disabled={!localEnabled}
+                  style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                />
+                <label htmlFor="autoAckRespondToAutomation" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                  {t('automation.respond_to_automation')}
+                </label>
+              </div>
+              <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
+                {t('automation.respond_to_automation_description')}
+              </div>
+            </>
+          )}
 
           <div style={{ marginTop: '1rem' }}>
             <label htmlFor="autoAckIgnoredNodes" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>

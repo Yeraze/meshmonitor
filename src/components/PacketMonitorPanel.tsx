@@ -836,6 +836,17 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                                 {' '}<UiIcon name="securityCheck" size={14} />
                               </span>
                             )}
+                            {/* Data.bitfield bit 2: sender flagged it as an automation send (#6449) */}
+                            {packet.is_automation && (
+                              <span
+                                className="automation-badge"
+                                title={t('packet_monitor.is_automation', 'Automation packet: the sender flagged it as sent by a bot or script')}
+                                aria-label={t('packet_monitor.is_automation', 'Automation packet: the sender flagged it as sent by a bot or script')}
+                                role="img"
+                              >
+                                {' '}<UiIcon name="bot" size={14} />
+                              </span>
+                            )}
                           </td>
                           <td className="channel" style={{ width: '110px' }} title={packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `Encrypted channel (hash: ${packet.channel})` : undefined}>
                             {packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `?? (ch: ${packet.channel})` : (packet.channel ?? t('common.na'))}
@@ -986,6 +997,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     // when known (pre-2.8 packets have no value either way).
                     ...(selectedPacket.xeddsa_signed != null
                       ? { xeddsa_signed: selectedPacket.xeddsa_signed }
+                      : {}),
+                    // is_automation bit (#6449); shown only when the bitfield
+                    // was present on the wire.
+                    ...(selectedPacket.is_automation != null
+                      ? { is_automation: selectedPacket.is_automation }
                       : {}),
                     payload_preview: selectedPacket.payload_preview,
                   };

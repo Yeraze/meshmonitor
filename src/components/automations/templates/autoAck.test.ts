@@ -30,7 +30,8 @@ describe('autoAckTemplate', () => {
   it('defaults to ackStyle=hop with no source/channel filter', () => {
     const { config } = buildOne({});
     expect(config.nodes.map((n) => n.type)).toEqual(['trigger.message', 'condition.numeric', 'action.tapback']);
-    expect(node(config, 't').params).toEqual({ rateLimit: { maxActions: 30, windowSeconds: 60 } });
+    // senderKind 'human' (#6449): a new auto-ack rule ignores messages flagged as automated.
+    expect(node(config, 't').params).toEqual({ rateLimit: { maxActions: 30, windowSeconds: 60 }, senderKind: 'human' });
     expect(node(config, 'c0').params).toEqual({ field: 'zeroHop', op: '==', value: '1' });
     expect(node(config, 'a0').params).toEqual({ emojiMode: 'hopCount' });
     expect(config.edges).toEqual([{ from: 't', to: 'c0' }, { from: 'c0', to: 'a0' }]);
@@ -91,6 +92,7 @@ describe('autoAckTemplate', () => {
     const { config } = buildOne({ channelFilter: [{ name: 'general' }, { name: 'gauntlet', protocol: 'meshcore' }] });
     expect(node(config, 't').params).toEqual({
       rateLimit: { maxActions: 30, windowSeconds: 60 },
+      senderKind: 'human',
       channels: [{ name: 'general' }, { name: 'gauntlet', protocol: 'meshcore' }],
     });
     // No sourceFilter inserted just because a channel filter was set.

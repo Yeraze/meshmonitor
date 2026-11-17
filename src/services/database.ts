@@ -267,6 +267,8 @@ export interface DbMessage {
   viaMqtt?: boolean;
   /** Broadcast carried a verified XEdDSA signature (firmware 2.8+). */
   xeddsaSigned?: boolean;
+  /** Data.bitfield bit 2 (#6449): sender flagged this as sent by an automation. */
+  isAutomation?: boolean;
   /** `meshtastic.MeshPacket.AckProofStatus` number (#5279) from the settling ack/nak. */
   ackProofStatus?: number;
   /**
@@ -2060,6 +2062,7 @@ class DatabaseService {
       emoji: msg.emoji ?? undefined,
       viaMqtt: msg.viaMqtt ?? undefined,
       xeddsaSigned: msg.xeddsaSigned ?? undefined,
+      isAutomation: msg.isAutomation ?? undefined,
       ackProofStatus: msg.ackProofStatus ?? undefined,
       rxSnr: msg.rxSnr ?? undefined,
       rxRssi: msg.rxRssi ?? undefined,
@@ -5488,6 +5491,7 @@ class DatabaseService {
         emoji: result.emoji ?? undefined,
         viaMqtt: result.viaMqtt ?? undefined,
         xeddsaSigned: result.xeddsaSigned ?? undefined,
+        isAutomation: result.isAutomation ?? undefined,
         ackProofStatus: result.ackProofStatus ?? undefined,
         rxSnr: result.rxSnr ?? undefined,
         rxRssi: result.rxRssi ?? undefined,

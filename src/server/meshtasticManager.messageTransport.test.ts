@@ -373,4 +373,33 @@ describe('MeshtasticManager — per-message transport stamp (#5101)', () => {
       );
     });
   });
+
+  // #6449: Meshtastic is_automation bit (Data.bitfield bit 2).
+  describe('is_automation flag', () => {
+    it.each([
+      [0x04, true],
+      [0x01, false],
+      [0, false],
+      [undefined, null],
+    ])('a received packet with bitfield %s stores isAutomation %s', async (bitfield, expected) => {
+      mockInsertMessage.mockReturnValue(true);
+      const packet = makeMeshPacket(0x11223344, 0xffffffff, {
+        decoded: { portnum: 1, ...(bitfield === undefined ? {} : { bitfield }) },
+      });
+      await (manager as any).processTextMessageProtobuf(packet, 'hi');
+      expect(mockInsertMessage.mock.calls[0][0].isAutomation ?? null).toBe(expected);
+    });
+
+    it('an automation send asks the builder for the bit and tags the stored row', async () => {
+      await manager.sendTextMessage('bot says hi', 0, PEER, undefined, undefined, undefined, undefined, { origin: 'automation' });
+      expect(mockCreateTextMessage.mock.calls[0][7]).toBe(true);
+      expect(mockInsertMessage.mock.calls[0][0].isAutomation).toBe(true);
+    });
+
+    it('a manual send leaves the bit off and the stored flag unset', async () => {
+      await manager.sendTextMessage('typed by hand', 0, PEER);
+      expect(mockCreateTextMessage.mock.calls[0][7]).toBe(false);
+      expect(mockInsertMessage.mock.calls[0][0].isAutomation ?? null).toBeNull();
+    });
+  });
 });
