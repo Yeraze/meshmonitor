@@ -183,6 +183,11 @@ const featuresSidebar = [
     collapsed: false,
     items: [
       { text: 'MeshCore Overview', link: '/features/meshcore' },
+      { text: 'Set Up a Source', link: '/features/meshcore-setup' },
+      { text: 'Using the MeshCore Page', link: '/features/meshcore-using' },
+      { text: 'Configuration', link: '/features/meshcore-configuration' },
+      { text: 'Paths, Discovery & Regions', link: '/features/meshcore-paths' },
+      { text: 'Repeaters & Remote Admin', link: '/features/meshcore-remote-admin' },
       { text: 'MeshCore Receive-Only', link: '/features/meshcore-receive-only' },
       { text: 'Analyzer Observer', link: '/features/meshcore-analyzer-observer' },
       { text: 'MQTT Ingest', link: '/features/meshcore-mqtt-ingest' },
