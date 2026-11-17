@@ -14,7 +14,7 @@ import { isTxDisabledError } from '../utils/txDisabled';
 import { parseAdminDeepLink } from '../utils/adminDeepLink';
 import { floorKeepingZero, NODE_INFO_BROADCAST_FLOOR_SECS, POSITION_BROADCAST_FLOOR_SECS } from '../utils/broadcastIntervalFloor';
 import { appBasename } from '../init';
-import { REGION_OPTIONS, FEM_LNA_MODE_OPTIONS, getLegalPresetOptions } from './configuration/constants';
+import { REGION_OPTIONS, femLnaModeOptionsFor, getLegalPresetOptions } from './configuration/constants';
 import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
@@ -2576,7 +2576,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         <div className="setting-item">
           <label htmlFor="adminFemLnaMode">
             FEM LNA Mode
-            <span className="setting-description">Front-End Module (FEM) Low Noise Amplifier (LNA) mode for amplified boards with an external LNA. Requires firmware v2.7.20 or later.</span>
+            <span className="setting-description">Front-End Module (FEM) Low Noise Amplifier (LNA) mode for amplified boards with an external LNA. Requires firmware v2.7.20 or later. AUTO lets the firmware switch the LNA by noise floor, on firmware that supports it.</span>
           </label>
           <select
             id="adminFemLnaMode"
@@ -2586,7 +2586,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             className="setting-input"
             style={{ width: '400px', maxWidth: '100%' }}
           >
-            {FEM_LNA_MODE_OPTIONS.map(option => (
+            {femLnaModeOptionsFor(configState.lora.femLnaMode).map(option => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

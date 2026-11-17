@@ -577,8 +577,22 @@ export function getRecipeIllegalReason(
 export const FEM_LNA_MODE_OPTIONS: RegionOption[] = [
   { value: 0, label: 'DISABLED - FEM LNA present but disabled' },
   { value: 1, label: 'ENABLED - FEM LNA present and enabled' },
-  { value: 2, label: 'NOT_PRESENT - No FEM LNA on this device' }
+  { value: 2, label: 'NOT_PRESENT - No FEM LNA on this device' },
+  // protobufs#1175 / firmware#12380: the firmware picks the LNA state from the
+  // measured noise floor. Default on new installs of boards with a switchable LNA.
+  { value: 3, label: 'AUTO - Firmware switches the FEM LNA by noise floor' }
 ];
+
+/**
+ * The FEM LNA dropdown's options for a node's current value. A value newer than
+ * this list (a future enum entry) gets its own "Unknown (N)" option, so the
+ * select shows it and a save sends it back unchanged instead of the first
+ * option the browser would otherwise display (#6452).
+ */
+export function femLnaModeOptionsFor(current: number): RegionOption[] {
+  if (FEM_LNA_MODE_OPTIONS.some((o) => o.value === current)) return FEM_LNA_MODE_OPTIONS;
+  return [...FEM_LNA_MODE_OPTIONS, { value: current, label: `Unknown (${current}) - keep the node's current value` }];
+}
 
 // Mapping from string role names to numeric values
 export const ROLE_MAP: Record<string, number> = {

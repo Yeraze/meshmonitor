@@ -4673,7 +4673,7 @@
   "lora_config.channel_num": "Channel Number",
   "lora_config.channel_num_description": "Frequency slot to transmit on, 1-based. 0 (the default) derives the slot from the channel name hash. The valid maximum depends on the region and bandwidth; firmware rejects any slot above the region's frequency-slot count.",
   "lora_config.fem_lna_mode": "FEM LNA Mode",
-  "lora_config.fem_lna_mode_description": "Front-End Module (FEM) Low Noise Amplifier (LNA) mode for amplified boards with an external LNA (e.g. certain RAK modules). Requires firmware v2.7.20 or later; leave DISABLED on hardware without an external LNA.",
+  "lora_config.fem_lna_mode_description": "Front-End Module (FEM) Low Noise Amplifier (LNA) mode for amplified boards with an external LNA (e.g. certain RAK modules). Requires firmware v2.7.20 or later; leave DISABLED on hardware without an external LNA. AUTO lets the firmware switch the LNA by noise floor, on firmware that supports it.",
   "lora_config.rx_boosted_gain": "RX Boosted Gain (SX126x)",
   "lora_config.rx_boosted_gain_description": "Enable boosted receive gain for SX126x radios (improves sensitivity but increases power consumption)",
   "lora_config.ignore_mqtt": "Ignore MQTT",
