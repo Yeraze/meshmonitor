@@ -754,4 +754,26 @@ router.post(
   },
 );
 
+/**
+ * POST /api/security/digest/preview  { sourceId }
+ * The title and body "Send now" would send for one source, built from the
+ * saved settings by the same code, without sending anything (#6453). Same
+ * permissions as /digest/send. Never returns the Apprise URL.
+ */
+router.post(
+  '/digest/preview',
+  requirePermission('security', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req: Request, res: Response) => {
+    try {
+      const digestSourceId = (req as unknown as { scopedSourceId: string }).scopedSourceId;
+      const preview = await securityDigestService.previewDigest(digestSourceId);
+      return ok(res, preview);
+    } catch (error) {
+      logger.error('Error building security digest preview:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to build digest preview');
+    }
+  },
+);
+
 export default router;
