@@ -158,6 +158,11 @@ function transformMessageForClient(msg: DbMessage): unknown {
     relayNode: msg.relayNode,
     replyId: msg.replyId,
     emoji: msg.emoji,
+    // Hop-display badges, shaped as the poll does (transformDbMessage.ts), so a
+    // live row shows them at once instead of on the next poll (#6449).
+    viaMqtt: Boolean(row.viaMqtt),
+    xeddsaSigned: msg.xeddsaSigned ? true : undefined,
+    isAutomation: msg.isAutomation ? true : undefined,
     rxSnr: msg.rxSnr,
     rxRssi: msg.rxRssi,
     requestId: row.requestId,
