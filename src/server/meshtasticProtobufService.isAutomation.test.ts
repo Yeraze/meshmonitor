@@ -72,3 +72,29 @@ describe('readIsAutomationBit', () => {
     expect(readIsAutomationBit(0x07)).toBe(true);
   });
 });
+
+describe('createFromRadioTextMessage carries is_automation to Virtual Node clients (#6449)', () => {
+  beforeAll(async () => {
+    await loadProtobufDefinitions();
+  });
+
+  async function replayBitfield(isAutomation: boolean | null | undefined): Promise<number | null> {
+    const bytes = await meshtasticProtobufService.createFromRadioTextMessage({
+      fromNodeNum: DEST, toNodeNum: 0xffffffff, text: 'hi', channel: 0, timestamp: Date.now(), isAutomation,
+    });
+    const FromRadio = getProtobufRoot()!.lookupType('meshtastic.FromRadio');
+    const decoded = FromRadio.decode(bytes!) as unknown as { packet: { decoded: { bitfield?: number | null } } };
+    const bf = decoded.packet.decoded.bitfield;
+    return typeof bf === 'number' ? bf : null;
+  }
+
+  it('sets bit 2 for a stored automation message', async () => {
+    expect(await replayBitfield(true)).toBe(DATA_BITFIELD_IS_AUTOMATION);
+  });
+
+  it('leaves the bitfield absent for human or unknown messages', async () => {
+    expect(await replayBitfield(false)).toBeNull();
+    expect(await replayBitfield(null)).toBeNull();
+    expect(await replayBitfield(undefined)).toBeNull();
+  });
+});

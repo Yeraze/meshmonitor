@@ -11846,6 +11846,7 @@ class MeshtasticManager implements ISourceManager {
             replyId: replyId || null,
             emoji: emoji || null,
             pkiEncrypted: !!destination && pkiEncrypted,
+            isAutomation: options?.origin === 'automation',
           });
           if (fromRadioData) {
             await virtualNodeServer.broadcastToClients(fromRadioData);

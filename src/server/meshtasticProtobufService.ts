@@ -1665,6 +1665,8 @@ export class MeshtasticProtobufService {
     emoji?: number | null;
     /** Mark the packet pki_encrypted so clients (Android) file the DM under the PKC channel, not channel 0 */
     pkiEncrypted?: boolean;
+    /** Sender set Data.bitfield is_automation (#6449); carried through so the app sees it too */
+    isAutomation?: boolean | null;
   }): Promise<Uint8Array | null> {
     const root = getProtobufRoot();
     if (!root) {
@@ -1686,6 +1688,7 @@ export class MeshtasticProtobufService {
       const dataFields: Record<string, unknown> = {
         portnum: PortNum.TEXT_MESSAGE_APP,
         payload: textBytes,
+        ...automationBitfield(message.isAutomation === true),
       };
 
       // Add replyId if present (links this message/reaction to another message)

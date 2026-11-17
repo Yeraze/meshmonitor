@@ -1513,6 +1513,7 @@ export class VirtualNodeServer extends EventEmitter {
           replyId: m.replyId ?? null,
           emoji: m.emoji ?? null,
           pkiEncrypted,
+          isAutomation: m.isAutomation ?? null,
         });
         if (data) {
           await this.sendToClient(clientId, data);

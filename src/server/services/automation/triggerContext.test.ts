@@ -737,6 +737,11 @@ describe('reticulumMessageMatchesFilter (#3960 Phase 2 WP3)', () => {
   it('an empty/absent params object matches everything', () => {
     expect(reticulumMessageMatchesFilter(retMsg())).toBe(true);
   });
+  it('senderKind (#6449): LXMF carries no automation flag, so every message counts as human', () => {
+    expect(reticulumMessageMatchesFilter(retMsg(), { senderKind: 'human' })).toBe(true);
+    expect(reticulumMessageMatchesFilter(retMsg(), { senderKind: 'any' })).toBe(true);
+    expect(reticulumMessageMatchesFilter(retMsg(), { senderKind: 'automation' })).toBe(false);
+  });
 });
 
 describe('describeReticulumFilterMiss (live-trace reasons)', () => {
