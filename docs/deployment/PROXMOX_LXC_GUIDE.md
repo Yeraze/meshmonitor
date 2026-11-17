@@ -65,7 +65,7 @@ bash /opt/meshmonitor/lxc/proxmox/post-install.sh
 # 5. Access web UI — URL is printed by post-install.sh
 # Open browser to: http://CONTAINER-IP:3001
 # Default login: admin / changeme (change immediately)
-# Configure your Meshtastic node via Settings -> Node Connection
+# Add your node from the dashboard's Sources sidebar (+ button)
 ```
 
 ## Detailed Installation
@@ -191,9 +191,9 @@ This script:
    - **Password**: `changeme`
    - Change your password immediately after first login
 
-3. Configure your Meshtastic node:
-   - Go to **Settings → Node Connection**
-   - Enter your node's IP address and save
+3. Add your node:
+   - On the dashboard, click **+** next to the **Sources** header
+   - Pick the source type, enter your node's IP address and port, and save
 
 ## Configuration
 
@@ -411,7 +411,7 @@ You should see an entry for `eth0` with either `dhcp` or a static IP. If `/etc/n
 
 #### Cannot Connect to Meshtastic Node
 
-Configure your node via the web UI: **Settings → Node Connection**.
+Check the source's host and port in the web UI: open the **Sources** sidebar on the dashboard and edit the source.
 
 **Test network connectivity**:
 ```bash

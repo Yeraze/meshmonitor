@@ -9,20 +9,17 @@ The desktop application:
 - Sits in your system tray for easy access
 - Opens the web UI in your default browser
 - Persists data locally on your computer
-- Starts automatically when your computer boots (optional)
 
 ## Requirements
 
 ### Windows
 - **Operating System**: Windows 10 or later (64-bit)
-- **Meshtastic Device**: A Meshtastic node with TCP API enabled
-- **Network**: Your Meshtastic node must be accessible via TCP (WiFi or Ethernet connected)
+- **Radio**: A Meshtastic node on your network (WiFi or Ethernet, TCP API on) or a MeshCore node. You add it after launch.
 
 ### macOS
 - **Operating System**: macOS 11 (Big Sur) or later
 - **Architecture**: Apple Silicon (M1/M2/M3) and Intel (x64) builds available
-- **Meshtastic Device**: A Meshtastic node with TCP API enabled
-- **Network**: Your Meshtastic node must be accessible via TCP (WiFi or Ethernet connected)
+- **Radio**: A Meshtastic node on your network (WiFi or Ethernet, TCP API on) or a MeshCore node. You add it after launch.
 
 ## Installation
 
@@ -49,14 +46,14 @@ Download the DMG matching your Mac's processor. To check: Apple menu > About Thi
 
 ## First-Run Setup
 
-When you first launch MeshMonitor Desktop, a setup window will appear asking for your Meshtastic node configuration:
+On first launch, a setup window opens. It does not ask for a node: MeshMonitor starts with no sources.
 
-1. **Meshtastic Node IP Address**: Enter the IP address of your Meshtastic device (e.g., `192.168.1.100`)
-2. **Advanced Options** (optional):
-   - **Meshtastic Port**: TCP port for Meshtastic API (default: 4403)
+1. Optionally open **Advanced Options**:
    - **Web UI Port**: Local port for the web interface (default: 8080)
-
-3. Click "Start MeshMonitor" to save the configuration and launch the backend
+   - **Allowed Origins (CORS)**: Extra URLs that may open the web UI, such as `http://192.168.1.50:8080`. Localhost is always allowed.
+   - **Autostart on Login**: Saved, but not wired up yet. MeshMonitor does not launch at login.
+2. Click **Start MeshMonitor** to save and launch the backend.
+3. In the web UI, open the **Sources** sidebar on the dashboard, click **+**, and add your Meshtastic or MeshCore node.
 
 ## Using MeshMonitor Desktop
 
@@ -68,7 +65,8 @@ Once running, MeshMonitor appears as an icon in your system tray (Windows) or me
 
 **Right-click** (Windows) or **Click** (macOS) for the menu:
 - **Open MeshMonitor**: Opens the web UI in your browser
-- **Settings**: Opens the configuration window
+- **Settings...**: Opens the settings window
+- **View Logs**: Opens the logs folder
 - **Open Data Folder**: Opens the folder containing your database and logs
 - **Quit**: Stops MeshMonitor and exits the application
 
@@ -96,7 +94,7 @@ If you changed the port during setup, use that port instead.
 
 **Data directory (database & logs):**
 ```
-%LOCALAPPDATA%\MeshMonitor\
+%APPDATA%\MeshMonitor\
 ```
 
 @tab macOS
@@ -119,70 +117,49 @@ The configuration file (`config.json`) contains your basic settings:
 
 ```json
 {
-  "meshtastic_ip": "192.168.1.100",
+  "meshtastic_ip": "",
   "meshtastic_port": 4403,
   "web_port": 8080,
   "auto_start": false,
   "session_secret": "auto-generated-secret",
-  "setup_completed": true
+  "setup_completed": true,
+  "allowed_origins": "http://192.168.1.50:8080"
 }
 ```
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `meshtastic_ip` | IP address of your Meshtastic node | `192.168.1.100` |
-| `meshtastic_port` | TCP port for Meshtastic API | `4403` |
 | `web_port` | Local port for web UI | `8080` |
-| `auto_start` | Start with Windows/macOS | `false` |
+| `allowed_origins` | Extra comma-separated origins; localhost is always added | none |
+| `auto_start` | Saved from the settings window, but not used yet | `false` |
 | `session_secret` | Secret key for session cookies | Auto-generated |
 | `setup_completed` | Whether initial setup is done | `true` after setup |
+| `meshtastic_ip` | Legacy. If set, MeshMonitor creates a Meshtastic TCP source from it at startup. Add sources in the web UI instead. | empty |
+| `meshtastic_port` | Legacy. Port for `meshtastic_ip` | `4403` |
 
 ### Changing Configuration
 
 1. Right-click (Windows) or click (macOS) the tray/menu bar icon
-2. Select "Settings"
-3. Update the configuration
-4. Click "Save" - the backend will automatically restart
+2. Select **Settings...**
+3. Change the settings under **Advanced Options**
+4. Click **Start MeshMonitor**. The backend restarts with the new settings.
 
 ## Advanced Configuration
 
-For advanced use cases, you can configure additional options by editing the configuration file directly or setting environment variables before launching.
+### Remote Access (Allowed Origins)
 
-### Remote Access (ALLOWED_ORIGINS)
-
-By default, MeshMonitor Desktop only accepts connections from `localhost`. To enable access from other devices on your network:
+By default, the web UI loads only from `localhost`. To open it from other devices on your network:
 
 ::: warning Security Notice
-Enabling remote access exposes MeshMonitor to your local network. Ensure you're on a trusted network and consider enabling authentication in MeshMonitor settings.
+Remote access exposes MeshMonitor to your local network. Use it only on a trusted network, and change the default admin password.
 :::
 
-1. Stop MeshMonitor (Quit from tray/menu bar)
-2. Edit `config.json` and add an `allowed_origins` field (this requires a custom launcher script)
-3. Or, create a launcher script that sets environment variables:
+1. Open **Settings...** from the tray/menu bar icon
+2. Open **Advanced Options**
+3. In **Allowed Origins (CORS)**, enter the URL other devices will use, such as `http://192.168.1.50:8080`. Separate several URLs with commas.
+4. Click **Start MeshMonitor**
 
-::: tabs
-
-@tab Windows (PowerShell)
-
-Create a file called `start-meshmonitor.ps1`:
-```powershell
-$env:ALLOWED_ORIGINS = "http://localhost:8080,http://192.168.1.50:8080"
-Start-Process "C:\Program Files\MeshMonitor\MeshMonitor.exe"
-```
-
-@tab macOS (Shell)
-
-Create a file called `start-meshmonitor.sh`:
-```bash
-#!/bin/bash
-export ALLOWED_ORIGINS="http://localhost:8080,http://192.168.1.50:8080"
-open -a MeshMonitor
-```
-Make it executable: `chmod +x start-meshmonitor.sh`
-
-:::
-
-Replace `192.168.1.50` with your computer's local IP address.
+Replace `192.168.1.50` with your computer's local IP address. Your firewall must also allow the web UI port.
 
 ### Authentication & Cookies
 
@@ -191,7 +168,7 @@ MeshMonitor Desktop uses secure session cookies for authentication. The session 
 **To reset your session secret:**
 1. Stop MeshMonitor
 2. Edit `config.json`
-3. Delete the `session_secret` line (a new one will be generated)
+3. Replace the `session_secret` value with a new random string, such as the output of `openssl rand -hex 32`. Don't delete the line: a `config.json` without it fails to load, and the app falls back to defaults for every setting.
 4. Restart MeshMonitor
 
 ::: tip
@@ -208,16 +185,19 @@ The desktop application runs HTTP only (no HTTPS). This is generally fine for lo
 
 ### Environment Variables
 
-You can set these environment variables before launching MeshMonitor to override default behavior:
+The desktop app sets these variables itself when it starts the backend, so a value you set in your shell has no effect:
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `PORT` | Web server port | `8081` |
-| `MESHTASTIC_NODE_IP` | Meshtastic device IP | `192.168.1.100` |
-| `MESHTASTIC_TCP_PORT` | Meshtastic TCP port | `4403` |
-| `ALLOWED_ORIGINS` | Comma-separated allowed origins | `http://localhost:8080` |
-| `DATABASE_PATH` | Custom database location | `/path/to/meshmonitor.db` |
-| `SESSION_SECRET` | Custom session secret | `your-secret-key` |
+| Variable | Set from |
+|----------|----------|
+| `NODE_ENV` | Always `production` |
+| `PORT` | **Web UI Port** setting |
+| `ALLOWED_ORIGINS` | `http://localhost:<port>` plus the **Allowed Origins** setting |
+| `DATABASE_PATH`, `DATA_DIR` | The data directory above |
+| `SESSION_SECRET` | `session_secret` in `config.json` |
+
+When the legacy `meshtastic_ip` is set, the app also sets `MESHTASTIC_NODE_IP` and `MESHTASTIC_TCP_PORT` from it.
+
+Other [environment variables](/configuration/index), such as `TZ` or `LOG_LEVEL`, pass through from the environment MeshMonitor is launched from.
 
 > **4.0 note:** Virtual Node is now configured per source through the Dashboard UI. `ENABLE_VIRTUAL_NODE` / `VIRTUAL_NODE_PORT` only seed the Default source on first boot (see [Headless installs](/configuration/virtual-node#headless-installs-first-boot-env-vars)); `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` has been removed.
 
@@ -282,11 +262,9 @@ To completely reset MeshMonitor:
 
 ### MeshMonitor won't start
 
-1. Check that your Meshtastic node is powered on and connected to your network
-2. Verify the IP address is correct
-3. Ensure TCP API is enabled on your Meshtastic device
-4. Check the logs:
-   - Windows: `%LOCALAPPDATA%\MeshMonitor\logs\`
+1. Check that the **Web UI Port** is free (see [Port 8080 is in use](#port-8080-is-in-use))
+2. Check the logs:
+   - Windows: `%APPDATA%\MeshMonitor\logs\`
    - macOS: `~/Library/Application Support/MeshMonitor/logs/`
 
 ### Can't connect to Meshtastic node
@@ -326,7 +304,7 @@ If Windows Firewall blocks MeshMonitor:
 | Multi-user | Local only | Yes |
 | PWA/Mobile | Local only | Yes |
 | Resource usage | ~50MB RAM | ~100MB RAM |
-| Auto-upgrade | Manual updates | Automatic |
+| Updates | Install the new release | Pull the new image (or use [Watchtower](/configuration/updating#unattended-updates-with-watchtower)) |
 | Serial/BLE support | No | Yes (with bridges) |
 
 ::: tip When to use Desktop vs Docker
@@ -339,7 +317,7 @@ If Windows Firewall blocks MeshMonitor:
 - Need 24/7 monitoring
 - Want remote access from mobile devices
 - Need HTTPS/SSL support
-- Want automatic updates
+- Want unattended updates
 :::
 
 ## Uninstalling
@@ -352,7 +330,6 @@ If Windows Firewall blocks MeshMonitor:
 
 To also remove your data:
 1. Delete `%APPDATA%\MeshMonitor\`
-2. Delete `%LOCALAPPDATA%\MeshMonitor\`
 
 ### macOS
 
