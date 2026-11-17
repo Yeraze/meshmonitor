@@ -192,3 +192,40 @@ describe('mqttIngestion — bitfield survives server-side decrypt (#4114 §2(b))
     expect(row.bitfield).toBe(1);
   });
 });
+
+describe('mqttIngestion — is_automation bit lands on the message row (#6449)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetMqttIngestCachesForTest();
+    for (const key of Object.keys(settingsStore)) delete settingsStore[key];
+    mqttPacketLogService.resetEnabledCache();
+    mqttPacketLogService.resetViolationEnabledCache();
+  });
+
+  async function ingestWithBitfield(bitfield: number | undefined) {
+    tryDecryptMock.mockResolvedValue({
+      success: true,
+      portnum: 1,
+      payload: new TextEncoder().encode('hello'),
+      ...(bitfield === undefined ? {} : { bitfield }),
+      channelDatabaseId: 1,
+    });
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: encryptedEnvelope() });
+    expect(result.ingested).toBe(true);
+    const calls = (databaseService.messages.insertMessage as any).mock.calls;
+    expect(calls.length).toBe(1);
+    return calls[0][0];
+  }
+
+  it('bit 2 set → isAutomation true', async () => {
+    expect((await ingestWithBitfield(0x05)).isAutomation).toBe(true);
+  });
+
+  it('bitfield present with bit 2 clear → isAutomation false', async () => {
+    expect((await ingestWithBitfield(0)).isAutomation).toBe(false);
+  });
+
+  it('bitfield absent → isAutomation unset (stored NULL)', async () => {
+    expect((await ingestWithBitfield(undefined)).isAutomation ?? null).toBeNull();
+  });
+});

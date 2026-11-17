@@ -737,6 +737,11 @@ describe('reticulumMessageMatchesFilter (#3960 Phase 2 WP3)', () => {
   it('an empty/absent params object matches everything', () => {
     expect(reticulumMessageMatchesFilter(retMsg())).toBe(true);
   });
+  it('senderKind (#6449): LXMF carries no automation flag, so every message counts as human', () => {
+    expect(reticulumMessageMatchesFilter(retMsg(), { senderKind: 'human' })).toBe(true);
+    expect(reticulumMessageMatchesFilter(retMsg(), { senderKind: 'any' })).toBe(true);
+    expect(reticulumMessageMatchesFilter(retMsg(), { senderKind: 'automation' })).toBe(false);
+  });
 });
 
 describe('describeReticulumFilterMiss (live-trace reasons)', () => {
@@ -864,5 +869,51 @@ describe('MeshCore reaction trigger fields (#5763)', () => {
   it('Meshtastic exposes isTapback', () => {
     expect(buildMessageContext(msg({ emoji: 1, replyId: 5 }), 'default', 1).fields.isTapback).toBe(true);
     expect(buildMessageContext(msg(), 'default', 1).fields.isTapback).toBe(false);
+  });
+});
+
+// #6449: trigger.message `senderKind` filter on the Meshtastic is_automation bit.
+describe('senderKind filter (#6449)', () => {
+  const bot = msg({ isAutomation: true });
+  const human = msg({ isAutomation: false });
+  const unknown = msg();
+
+  it("absent or unknown param means 'any': existing rules are unchanged", () => {
+    for (const m of [bot, human, unknown]) {
+      expect(messageMatchesFilter(m, {})).toBe(true);
+      expect(messageMatchesFilter(m, { senderKind: 'bogus' })).toBe(true);
+      expect(messageMatchesFilter(m, { senderKind: 'any' })).toBe(true);
+    }
+  });
+
+  it("'human' drops flagged messages and keeps unflagged / unknown ones", () => {
+    expect(messageMatchesFilter(bot, { senderKind: 'human' })).toBe(false);
+    expect(messageMatchesFilter(human, { senderKind: 'human' })).toBe(true);
+    expect(messageMatchesFilter(unknown, { senderKind: 'human' })).toBe(true);
+  });
+
+  it("'automation' keeps only flagged messages", () => {
+    expect(messageMatchesFilter(bot, { senderKind: 'automation' })).toBe(true);
+    expect(messageMatchesFilter(human, { senderKind: 'automation' })).toBe(false);
+    expect(messageMatchesFilter(unknown, { senderKind: 'automation' })).toBe(false);
+  });
+
+  it('explains the miss in the live trace', () => {
+    expect(describeMessageFilterMiss(bot, { senderKind: 'human' })).toMatch(/automation/);
+    expect(describeMessageFilterMiss(human, { senderKind: 'automation' })).toMatch(/not flagged/);
+  });
+
+  it("MeshCore and Reticulum messages have no flag: 'human' passes, 'automation' never matches", () => {
+    expect(meshCoreMessageMatchesFilter(mcMsg(), { senderKind: 'human' })).toBe(true);
+    expect(meshCoreMessageMatchesFilter(mcMsg(), { senderKind: 'automation' })).toBe(false);
+    expect(describeMeshCoreFilterMiss(mcMsg(), { senderKind: 'automation' })).toMatch(/not flagged/);
+    expect(reticulumMessageMatchesFilter(retMsg(), { senderKind: 'human' })).toBe(true);
+    expect(reticulumMessageMatchesFilter(retMsg(), { senderKind: 'automation' })).toBe(false);
+    expect(describeReticulumFilterMiss(retMsg(), { senderKind: 'automation' })).toMatch(/not flagged/);
+  });
+
+  it('exposes trigger.isAutomation as a boolean', () => {
+    expect(buildMessageContext(bot, 's', 0).fields.isAutomation).toBe(true);
+    expect(buildMessageContext(unknown, 's', 0).fields.isAutomation).toBe(false);
   });
 });

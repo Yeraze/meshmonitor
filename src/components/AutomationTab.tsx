@@ -82,6 +82,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
     autoAckMessageDirect, setAutoAckMessageDirect,
     autoAckChannels, setAutoAckChannels,
     autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+    autoAckRespondToAutomation, setAutoAckRespondToAutomation,
     autoAckIgnoredNodes, setAutoAckIgnoredNodes,
     autoAckMatrix, setAutoAckMatrix,
     autoAckCooldownSeconds, setAutoAckCooldownSeconds,
@@ -113,6 +114,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
     autoResponderEnabled, setAutoResponderEnabled,
     autoResponderTriggers, setAutoResponderTriggers,
     autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
+    autoResponderRespondToAutomation, setAutoResponderRespondToAutomation,
     autoKeyManagementEnabled, setAutoKeyManagementEnabled,
     autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
     autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
@@ -228,6 +230,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               channels={channels}
               enabledChannels={autoAckChannels}
               skipIncompleteNodes={autoAckSkipIncompleteNodes}
+              respondToAutomation={autoAckRespondToAutomation}
               ignoredNodes={autoAckIgnoredNodes}
               matrix={autoAckMatrix}
               testMessages={autoAckTestMessages}
@@ -252,6 +255,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               onMessageDirectChange={setAutoAckMessageDirect}
               onChannelsChange={setAutoAckChannels}
               onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
+              onRespondToAutomationChange={setAutoAckRespondToAutomation}
               onIgnoredNodesChange={setAutoAckIgnoredNodes}
               onMatrixChange={setAutoAckMatrix}
               onTestMessagesChange={setAutoAckTestMessages}
@@ -297,10 +301,12 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               triggers={autoResponderTriggers}
               channels={channels}
               skipIncompleteNodes={autoResponderSkipIncompleteNodes}
+              respondToAutomation={autoResponderRespondToAutomation}
               baseUrl={baseUrl}
               onEnabledChange={setAutoResponderEnabled}
               onTriggersChange={setAutoResponderTriggers}
               onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
+              onRespondToAutomationChange={setAutoResponderRespondToAutomation}
               canWrite={canWrite}
               receiveOnly={txDisabled}
             />

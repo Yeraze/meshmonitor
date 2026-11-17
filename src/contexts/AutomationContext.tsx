@@ -18,7 +18,9 @@ interface AutomationContextType {
   autoAckChannels: number[];
   setAutoAckChannels: React.Dispatch<React.SetStateAction<number[]>>;
   autoAckSkipIncompleteNodes: boolean;
+  autoAckRespondToAutomation: boolean;
   setAutoAckSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
+  setAutoAckRespondToAutomation: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckIgnoredNodes: string;
   setAutoAckIgnoredNodes: React.Dispatch<React.SetStateAction<string>>;
   autoAckMatrix: AutoAckMatrix;
@@ -84,7 +86,9 @@ interface AutomationContextType {
   autoResponderTriggers: AutoResponderTrigger[];
   setAutoResponderTriggers: React.Dispatch<React.SetStateAction<AutoResponderTrigger[]>>;
   autoResponderSkipIncompleteNodes: boolean;
+  autoResponderRespondToAutomation: boolean;
   setAutoResponderSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
+  setAutoResponderRespondToAutomation: React.Dispatch<React.SetStateAction<boolean>>;
   autoKeyManagementEnabled: boolean;
   setAutoKeyManagementEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoKeyManagementIntervalMinutes: number;
@@ -130,6 +134,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckMessageDirect, setAutoAckMessageDirect] = useState<string>('🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}');
   const [autoAckChannels, setAutoAckChannels] = useState<number[]>([]);
   const [autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes] = useState<boolean>(false);
+  const [autoAckRespondToAutomation, setAutoAckRespondToAutomation] = useState<boolean>(false);
   const [autoAckIgnoredNodes, setAutoAckIgnoredNodes] = useState<string>('');
   const [autoAckMatrix, setAutoAckMatrix] = useState<AutoAckMatrix>(DEFAULT_AUTOACK_MATRIX);
   const [autoAckCooldownSeconds, setAutoAckCooldownSeconds] = useState<number>(60);
@@ -161,6 +166,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoResponderEnabled, setAutoResponderEnabled] = useState<boolean>(false);
   const [autoResponderTriggers, setAutoResponderTriggers] = useState<AutoResponderTrigger[]>([]);
   const [autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes] = useState<boolean>(false);
+  const [autoResponderRespondToAutomation, setAutoResponderRespondToAutomation] = useState<boolean>(false);
   const [autoKeyManagementEnabled, setAutoKeyManagementEnabled] = useState<boolean>(false);
   const [autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes] = useState<number>(5);
   const [autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges] = useState<number>(3);
@@ -221,6 +227,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         if (s.autoAckMessageDirect !== undefined) setAutoAckMessageDirect(s.autoAckMessageDirect);
         if (s.autoAckChannels !== undefined) setAutoAckChannels(jsonArr<number>('autoAckChannels', []));
         if (s.autoAckSkipIncompleteNodes !== undefined) setAutoAckSkipIncompleteNodes(bool('autoAckSkipIncompleteNodes'));
+        if (s.autoAckRespondToAutomation !== undefined) setAutoAckRespondToAutomation(bool('autoAckRespondToAutomation'));
         if (s.autoAckIgnoredNodes !== undefined) setAutoAckIgnoredNodes(s.autoAckIgnoredNodes);
         setAutoAckMatrix(settingsToMatrix(s));
         if (s.autoAckCooldownSeconds !== undefined) setAutoAckCooldownSeconds(num('autoAckCooldownSeconds', 60));
@@ -259,6 +266,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         if (s.autoResponderEnabled !== undefined) setAutoResponderEnabled(bool('autoResponderEnabled'));
         if (s.autoResponderTriggers !== undefined) setAutoResponderTriggers(jsonArr<AutoResponderTrigger>('autoResponderTriggers', []));
         if (s.autoResponderSkipIncompleteNodes !== undefined) setAutoResponderSkipIncompleteNodes(bool('autoResponderSkipIncompleteNodes'));
+        if (s.autoResponderRespondToAutomation !== undefined) setAutoResponderRespondToAutomation(bool('autoResponderRespondToAutomation'));
 
         if (s.autoKeyManagementEnabled !== undefined) setAutoKeyManagementEnabled(bool('autoKeyManagementEnabled'));
         if (s.autoKeyManagementIntervalMinutes !== undefined) setAutoKeyManagementIntervalMinutes(num('autoKeyManagementIntervalMinutes', 5));
@@ -290,6 +298,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAckMessageDirect, setAutoAckMessageDirect,
     autoAckChannels, setAutoAckChannels,
     autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+    autoAckRespondToAutomation, setAutoAckRespondToAutomation,
     autoAckIgnoredNodes, setAutoAckIgnoredNodes,
     autoAckMatrix, setAutoAckMatrix,
     autoAckCooldownSeconds, setAutoAckCooldownSeconds,
@@ -321,6 +330,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoResponderEnabled, setAutoResponderEnabled,
     autoResponderTriggers, setAutoResponderTriggers,
     autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
+    autoResponderRespondToAutomation, setAutoResponderRespondToAutomation,
     autoKeyManagementEnabled, setAutoKeyManagementEnabled,
     autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
     autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
@@ -341,6 +351,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAckMessageDirect, setAutoAckMessageDirect,
     autoAckChannels, setAutoAckChannels,
     autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+    autoAckRespondToAutomation, setAutoAckRespondToAutomation,
     autoAckIgnoredNodes, setAutoAckIgnoredNodes,
     autoAckMatrix, setAutoAckMatrix,
     autoAckCooldownSeconds, setAutoAckCooldownSeconds,
@@ -372,6 +383,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoResponderEnabled, setAutoResponderEnabled,
     autoResponderTriggers, setAutoResponderTriggers,
     autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
+    autoResponderRespondToAutomation, setAutoResponderRespondToAutomation,
     autoKeyManagementEnabled, setAutoKeyManagementEnabled,
     autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
     autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,

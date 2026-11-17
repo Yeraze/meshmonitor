@@ -96,6 +96,7 @@ import {
   getStoreForwardRequestResponseName,
   CHANNEL_DB_OFFSET,
   TransportMechanism,
+  readIsAutomationBit,
 } from './constants/meshtastic.js';
 import { calculateDistance } from '../utils/distance.js';
 import { buildRoutePositionsSnapshot } from './utils/tracerouteSnapshot.js';
@@ -724,6 +725,8 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         replyId,
         createdAt: nowMs,
         sourcePath: 'mqtt_bridge',
+        // Data.bitfield bit 2 (#6449); NULL when the bitfield is absent.
+        isAutomation: readIsAutomationBit(decodedAny.bitfield as number | null | undefined) ?? undefined,
       } as DbMessage;
       (msg as any).sourceId = sourceId;
       // Use the repo's per-source insert — the `databaseService.insertMessage`

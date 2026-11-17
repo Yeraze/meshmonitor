@@ -372,6 +372,12 @@ router.get('/messages', async (req: Request, res: Response) => {
        * client shows the sender's clock offset from it. Absent on room posts.
        */
       senderTimestamp?: number | null;
+      /**
+       * Meshtastic Data.bitfield bit 2 (#6449): the sender flagged this packet
+       * as sent by an automation. True when any reception carried the bit.
+       * Absent on MeshCore entries (no such flag).
+       */
+      isAutomation?: boolean;
     };
 
     const merged = new Map<string, Merged>();
@@ -808,6 +814,9 @@ router.get('/messages', async (req: Request, res: Response) => {
             if (canonical < existing.timestamp) existing.timestamp = canonical;
             // createdAt = earliest DB arrival across all receptions (#3122)
             if (m.createdAt < existing.createdAt) existing.createdAt = m.createdAt;
+            // The bit is set by the sender, so any reception that saw it
+            // speaks for the whole packet (#6449).
+            if (m.isAutomation) existing.isAutomation = true;
             // Upgrade sender display names if a later source knows the node
             // and the first-seen entry didn't. Common when one source's
             // nodes.getAllNodes failed or simply hasn't learned the sender yet.
@@ -862,6 +871,7 @@ router.get('/messages', async (req: Request, res: Response) => {
               timestamp: canonical,
               createdAt: m.createdAt,
               receptions: [reception],
+              ...(m.isAutomation ? { isAutomation: true } : {}),
             });
           }
         }

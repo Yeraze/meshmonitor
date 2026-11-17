@@ -43,6 +43,7 @@ const BASE_KEYS = [
   'autoAckPreSendDelaySeconds',
   'autoAckMaxAttempts',
   'autoAckHopLimit',
+  'autoAckRespondToAutomation',
 ] as const;
 
 /** The 12 `autoAck{Cell}{Reply,Tapback,ReplyDm}Enabled` matrix keys, derived (not hand-typed). */
@@ -82,7 +83,7 @@ export async function resolveAutoAckSettings(sourceId: string): Promise<Resolved
   const [
     enabledRaw, regex, message, messageDirect, channelsRaw,
     skipIncompleteNodesRaw, ignoredNodesRaw, cooldownSecondsRaw,
-    preSendDelaySecondsRaw, maxAttemptsRaw, hopLimitRaw,
+    preSendDelaySecondsRaw, maxAttemptsRaw, hopLimitRaw, respondToAutomationRaw,
   ] = await Promise.all(BASE_KEYS.map(get));
 
   const matrixAndLegacyKeys = [...MATRIX_KEYS, ...LEGACY_KEYS];
@@ -104,6 +105,7 @@ export async function resolveAutoAckSettings(sourceId: string): Promise<Resolved
     preSendDelaySecondsRaw: preSendDelaySecondsRaw ?? undefined,
     maxAttemptsRaw: maxAttemptsRaw ?? undefined,
     hopLimitRaw: hopLimitRaw ?? undefined,
+    respondToAutomation: respondToAutomationRaw === 'true',
     rawMatrixAndLegacy,
   };
 }

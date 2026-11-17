@@ -50,6 +50,7 @@ const SQLITE_CREATE = `
     decrypted_channel_id INTEGER,
     transport_mechanism INTEGER,
     xeddsa_signed INTEGER,
+    is_automation INTEGER,
     sourceId TEXT,
     spoof_suspected INTEGER
   );
@@ -86,6 +87,7 @@ const POSTGRES_CREATE = `
     decrypted_channel_id INTEGER,
     transport_mechanism INTEGER,
     xeddsa_signed BOOLEAN,
+    is_automation BOOLEAN,
     "sourceId" TEXT,
     spoof_suspected BOOLEAN
   );
@@ -122,6 +124,7 @@ const MYSQL_CREATE = `
     decrypted_channel_id INT,
     transport_mechanism INT,
     xeddsa_signed BOOLEAN,
+    is_automation BOOLEAN,
     sourceId VARCHAR(36),
     spoof_suspected BOOLEAN,
     INDEX idx_packet_log_source_timestamp (sourceId, timestamp)

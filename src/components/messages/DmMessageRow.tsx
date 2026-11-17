@@ -130,6 +130,7 @@ function DmMessageRowImpl({
                 viaMqtt={msg.viaMqtt}
                 viaStoreForward={msg.viaStoreForward}
                 xeddsaSigned={msg.xeddsaSigned}
+                isAutomation={msg.isAutomation}
                 onClick={() => actions.relayClick(msg)}
               />
             </span>
@@ -255,6 +256,7 @@ function DmMessageRowImpl({
                     viaMqtt={msg.viaMqtt}
                     viaStoreForward={msg.viaStoreForward}
                     xeddsaSigned={msg.xeddsaSigned}
+                    isAutomation={msg.isAutomation}
                     onClick={() => actions.relayClick(msg)}
                   />
                 </span>

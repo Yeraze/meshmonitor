@@ -33,6 +33,8 @@ export interface PacketLog {
   transport_mechanism?: number;
   /** Firmware 2.8 XEdDSA signature verified (#3923). Absent/null = unknown (pre-2.8). */
   xeddsa_signed?: boolean | null;
+  /** Data.bitfield bit 2 (#6449): sender flagged this as sent by an automation. */
+  is_automation?: boolean | null;
   /** Impersonation flag (#2584): claims from == our local node but arrived over RF. */
   spoof_suspected?: boolean;
   /** Present on cross-source (unified) packet rows — the source that received it. */

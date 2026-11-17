@@ -47,6 +47,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   onEnabledChange,
   onTriggersChange,
   onSkipIncompleteNodesChange,
+  respondToAutomation = false,
+  onRespondToAutomationChange,
   canWrite = true,
   receiveOnly = false,
 }) => {
@@ -57,6 +59,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localTriggers, setLocalTriggers] = useState<AutoResponderTrigger[]>(triggers);
   const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
+  const [localRespondToAutomation, setLocalRespondToAutomation] = useState(respondToAutomation);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   // #5649 / #5808: every trigger editor's number fields report here (through
@@ -83,8 +86,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   // key rather than the array's identity. The first run matches the key the
   // state was initialised from, so mount does not re-seed.
   const savedKey = useMemo(
-    () => JSON.stringify([enabled, triggers, skipIncompleteNodes]),
-    [enabled, triggers, skipIncompleteNodes],
+    () => JSON.stringify([enabled, triggers, skipIncompleteNodes, respondToAutomation]),
+    [enabled, triggers, skipIncompleteNodes, respondToAutomation],
   );
   const seededKeyRef = useRef(savedKey);
   useEffect(() => {
@@ -93,22 +96,24 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setLocalEnabled(enabled);
     setLocalTriggers(triggers);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
-  }, [savedKey, enabled, triggers, skipIncompleteNodes]);
+    setLocalRespondToAutomation(respondToAutomation);
+  }, [savedKey, enabled, triggers, skipIncompleteNodes, respondToAutomation]);
 
   // Check if any settings have changed
   useEffect(() => {
-    const changed = localEnabled !== enabled || JSON.stringify(localTriggers) !== JSON.stringify(triggers) || localSkipIncompleteNodes !== skipIncompleteNodes;
+    const changed = localEnabled !== enabled || JSON.stringify(localTriggers) !== JSON.stringify(triggers) || localSkipIncompleteNodes !== skipIncompleteNodes || localRespondToAutomation !== respondToAutomation;
     setHasChanges(changed);
-  }, [localEnabled, localTriggers, localSkipIncompleteNodes, enabled, triggers, skipIncompleteNodes]);
+  }, [localEnabled, localTriggers, localSkipIncompleteNodes, localRespondToAutomation, enabled, triggers, skipIncompleteNodes, respondToAutomation]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
     setLocalEnabled(enabled);
     setLocalTriggers(triggers);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
+    setLocalRespondToAutomation(respondToAutomation);
     setExpandedId(null);
     setErrorsById({});
-  }, [enabled, triggers, skipIncompleteNodes]);
+  }, [enabled, triggers, skipIncompleteNodes, respondToAutomation]);
 
   // A trigger counts as edited when it differs from its saved copy in
   // anything but the enable flag (#6405). Only edited (or new) triggers are
@@ -388,7 +393,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         body: JSON.stringify({
           autoResponderEnabled: String(localEnabled),
           autoResponderTriggers: JSON.stringify(prepared),
-          autoResponderSkipIncompleteNodes: String(localSkipIncompleteNodes)
+          autoResponderSkipIncompleteNodes: String(localSkipIncompleteNodes),
+          autoResponderRespondToAutomation: String(localRespondToAutomation)
         })
       });
 
@@ -407,6 +413,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       onEnabledChange(localEnabled);
       onTriggersChange(prepared);
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
+      onRespondToAutomationChange?.(localRespondToAutomation);
 
       setHasChanges(false);
       showToast(t('auto_responder.settings_saved'), 'success');
@@ -416,7 +423,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localTriggers, localSkipIncompleteNodes, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onTriggersChange, onSkipIncompleteNodesChange, isEdited]);
+  }, [localEnabled, localTriggers, localSkipIncompleteNodes, localRespondToAutomation, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onTriggersChange, onSkipIncompleteNodesChange, onRespondToAutomationChange, isEdited]);
 
   // Register with SaveBar
   useSaveBar({
@@ -520,6 +527,22 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           </div>
           <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
             {t('auto_responder.skip_incomplete_description')}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
+            <input
+              type="checkbox"
+              id="autoResponderRespondToAutomation"
+              checked={localRespondToAutomation}
+              onChange={(e) => setLocalRespondToAutomation(e.target.checked)}
+              disabled={!localEnabled}
+              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+            />
+            <label htmlFor="autoResponderRespondToAutomation" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+              {t('automation.respond_to_automation')}
+            </label>
+          </div>
+          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
+            {t('automation.respond_to_automation_description')}
           </div>
         </div>
 

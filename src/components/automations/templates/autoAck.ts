@@ -94,6 +94,9 @@ function build(values: Record<string, unknown>): BuiltAutomation {
     // Flood guard: caps this automation at 30 fires/minute regardless of subject —
     // see RATE_LIMIT_MAX_ACTIONS_MIN/MAX in src/types/automation.ts.
     rateLimit: { maxActions: 30, windowSeconds: 60 },
+    // #6449: never ack a message whose sender flagged it as automated, so two
+    // auto-ack bots cannot answer each other forever.
+    senderKind: 'human',
   };
   if (channelFilter.length > 0) triggerParams.channels = channelFilter;
 

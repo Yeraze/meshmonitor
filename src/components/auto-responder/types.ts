@@ -106,6 +106,9 @@ export interface AutoResponderSectionProps {
   onEnabledChange: (enabled: boolean) => void;
   onTriggersChange: (triggers: AutoResponderTrigger[]) => void;
   onSkipIncompleteNodesChange: (enabled: boolean) => void;
+  /** #6449: also answer messages the sender flagged as automated. Default false (skip them). */
+  respondToAutomation?: boolean;
+  onRespondToAutomationChange?: (enabled: boolean) => void;
   /** False disables every control (no automation write permission). Default true. */
   canWrite?: boolean;
   /** True when the source cannot transmit; shows the paused note. */

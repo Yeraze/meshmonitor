@@ -112,6 +112,12 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
     perSource: true, status: 'phase3',
     engine: ['type:condition.string', 'field:fromId', 'op:notIn'],
   },
+  // #6449 — legacy skips messages whose sender set the is_automation bit unless
+  // this is on. Converts to trigger.message senderKind 'human' (off) / 'any' (on).
+  autoAckRespondToAutomation: {
+    perSource: true, status: 'exists',
+    engine: ['type:trigger.message', 'param:trigger.message.senderKind'],
+  },
   // 10 — global-only (NOT in PER_SOURCE_SETTINGS_KEYS); deprecated.
   autoAckTapbackEnabled: { perSource: false, status: 'deprecated', engine: [] },
   // 11 — global-only; deprecated.
@@ -290,7 +296,7 @@ describe('autoAckParity (#4340 Phase 3 exit criterion)', () => {
     // ...and a new autoAck* key added to VALID_SETTINGS_KEYS without a row here.
     const extraInTable = tableKeys.filter((k) => !settingsAutoAckKeys.includes(k));
     expect(extraInTable, `keys in AUTOACK_PARITY but not in VALID_SETTINGS_KEYS: ${extraInTable.join(', ')}`).toEqual([]);
-    expect(tableKeys.length).toBe(41);
+    expect(tableKeys.length).toBe(42); // +autoAckRespondToAutomation (#6449)
   });
 
   it('perSource flag matches PER_SOURCE_SETTINGS_KEYS membership for every row', () => {

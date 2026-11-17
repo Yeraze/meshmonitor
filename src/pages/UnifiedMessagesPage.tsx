@@ -111,6 +111,8 @@ interface UnifiedMessage {
   /** MeshCore DM / channel entry: wire sender second, for the clock offset (#5973).
    *  Its `timestamp` is then the earliest receipt time. */
   senderTimestamp?: number | null;
+  /** Meshtastic Data.bitfield bit 2 (#6449): sender flagged it as sent by an automation. */
+  isAutomation?: boolean;
 }
 
 interface UnifiedChannel {
@@ -239,6 +241,16 @@ const UnifiedMessageRow = memo(function UnifiedMessageRow({
             </span>
           )}
           <span className="unified-msg-card__sender">{senderLabel(msg)}</span>
+          {msg.isAutomation && (
+            <span
+              className="unified-msg-card__automation"
+              title={t('messages.sent_by_automation', 'Sent by an automation')}
+              aria-label={t('messages.sent_by_automation', 'Sent by an automation')}
+              role="img"
+            >
+              <UiIcon name="bot" size={14} />
+            </span>
+          )}
           <span className="unified-msg-card__time">
             {formatTime(msg.timestamp)}
             {msg.senderTimestamp !== undefined && (

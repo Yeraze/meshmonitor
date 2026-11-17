@@ -52,6 +52,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     // not UI iconography — UiIcon does not apply. See CLAUDE.md "App-owned interface icons".
     ['hopEmoji', `Hop count as an emoji — ${HOP_COUNT_EMOJIS[0]} direct, ${HOP_COUNT_EMOJIS[1]}–${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} (${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} = 7 or more); ${MQTT_SOURCE_EMOJI} when the message came in through an MQTT source, whatever its hop count; blank when the hop count is unknown`],
     ['viaMqttSource', `true if the message came in through an MQTT source (bridge or broker) rather than over RF — the ${MQTT_SOURCE_EMOJI} case above`],
+    ['isAutomation', 'true if the Meshtastic sender flagged the message as sent by a bot or script (self-reported); false otherwise'],
     ['snr', 'Receive SNR — RF-received messages only'], ['rssi', 'Receive RSSI dBm — RF only'],
     ['isBroadcast', 'true if broadcast (alias of isChannel)'],
     ['wantAck', 'Sender requested an ack'], ['replyId', 'Replied-to packet id'],

@@ -83,7 +83,8 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
         return { ...base, text: ev.text ?? '', from: numOrUndef(ev.from), channel: numOrUndef(ev.channel),
           channelName: ev.channelName || undefined,
           hopStart: numOrUndef(ev.hopStart), hopLimit: numOrUndef(ev.hopLimit), packetId: numOrUndef(ev.packetId) ?? 1,
-          snr: numOrUndef(ev.snr), rssi: numOrUndef(ev.rssi), viaMqtt: ev.viaMqtt === 'true' ? true : undefined };
+          snr: numOrUndef(ev.snr), rssi: numOrUndef(ev.rssi), viaMqtt: ev.viaMqtt === 'true' ? true : undefined,
+          isAutomation: ev.isAutomation === 'true' ? true : undefined };
       case 'telemetry':
         return { ...base, nodeNum: numOrUndef(ev.nodeNum), telemetryType: ev.telemetryType || 'batteryLevel', value: numOrUndef(ev.value) };
       case 'meshBeacon':
@@ -329,6 +330,12 @@ function renderEventInputs(
           <label className="ae-field-label">Via MQTT</label>
           <label className="ae-switch" style={{ paddingTop: '0.35rem' }}>
             <input type="checkbox" checked={ev.viaMqtt === 'true'} onChange={(e) => set('viaMqtt', e.target.checked ? 'true' : '')} /> received over MQTT
+          </label>
+        </div>
+        <div className="ae-field">
+          <label className="ae-field-label">Sent by an automation</label>
+          <label className="ae-switch" style={{ paddingTop: '0.35rem' }}>
+            <input type="checkbox" checked={ev.isAutomation === 'true'} onChange={(e) => set('isAutomation', e.target.checked ? 'true' : '')} /> sender set the is_automation flag
           </label>
         </div>
       </>;
