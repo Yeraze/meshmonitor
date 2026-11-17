@@ -409,8 +409,9 @@ spec:
 # Stop MeshMonitor
 docker compose down
 
-# Restore database
-gunzip -c /backups/meshmonitor-20241012.db.gz > data/meshmonitor.db
+# Restore database into the data volume (drop stale WAL files too)
+docker compose run --rm --no-deps -v /backups:/backups --entrypoint sh meshmonitor -c \
+  'gunzip -c /backups/meshmonitor-20241012.db.gz > /data/meshmonitor.db && rm -f /data/meshmonitor.db-wal /data/meshmonitor.db-shm'
 
 # Start MeshMonitor
 docker compose up -d
@@ -585,11 +586,7 @@ resources:
 
 ### Database Optimization
 
-Enable WAL mode for better performance:
-
-```bash
-sqlite3 data/meshmonitor.db "PRAGMA journal_mode=WAL;"
-```
+MeshMonitor turns on SQLite WAL mode and a busy timeout itself; there is nothing to set. For large meshes or many users, consider PostgreSQL or MySQL: set `DATABASE_URL` to a `postgres://` or `mysql://` URL.
 
 ### Caching
 
@@ -702,15 +699,7 @@ docker exec meshmonitor top
 
 ### Database Locked
 
-SQLite database locked errors:
-
-```bash
-# Enable WAL mode
-sqlite3 data/meshmonitor.db "PRAGMA journal_mode=WAL;"
-
-# Increase busy timeout
-sqlite3 data/meshmonitor.db "PRAGMA busy_timeout=30000;"
-```
+SQLite "database is locked" errors mean another process holds the file. Make sure only one MeshMonitor instance uses the database (see [High Availability](#high-availability)), and that no backup tool or `sqlite3` shell has it open.
 
 ### Out of Memory
 
