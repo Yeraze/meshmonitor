@@ -52,6 +52,10 @@ features:
     title: Automation & Triggers
     details: Built-in auto-responders, scheduled messages, auto-traceroute, and geofences, plus the visual Automation Engine for your own when-this-do-that rules. Extend with Python, JavaScript, or shell scripts. Automated sends are flagged so bots don't reply to each other.
 
+  - icon: 📬
+    title: Store & Forward
+    details: Flag S&F servers on the map and record the history they replay, tagged so you can tell it from live traffic.
+
   - icon: 🩺
     title: Mesh Diagnostics
     details: Coverage reports, a traceroute explorer, mesh issue checks, and a packet monitor show where your mesh is weak and why.

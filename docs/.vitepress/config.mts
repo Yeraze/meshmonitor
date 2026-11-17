@@ -178,11 +178,11 @@ const featuresSidebar = [
     text: 'Appearance & Community',
     collapsed: true,
     items: [
-      { text: 'Custom Themes', link: '/features/custom-themes' },
-      { text: 'Theme Gallery', link: '/THEME_GALLERY' },
-      { text: 'Translations', link: '/features/translations' },
-      { text: 'Site Gallery', link: '/site-gallery' },
-      { text: 'User Scripts', link: '/user-scripts' }
+      { text: '\u{1F3A8} Custom Themes', link: '/features/custom-themes' },
+      { text: '\u{1F3A8} Theme Gallery', link: '/THEME_GALLERY' },
+      { text: '\u{1F30D} Translations', link: '/features/translations' },
+      { text: '\u{1F310} Site Gallery', link: '/site-gallery' },
+      { text: '\u{1F4DC} User Scripts', link: '/user-scripts' }
     ]
   }
 ]
@@ -193,8 +193,8 @@ const configurationSidebar = [
       collapsed: false,
       items: [
         { text: 'Overview', link: '/configuration/' },
-        { text: 'Docker Compose Configurator', link: '/configurator' },
-        { text: 'Desktop App', link: '/configuration/desktop' }
+        { text: '⚡ Docker Compose Configurator', link: '/configurator' },
+        { text: '🖥️ Desktop App', link: '/configuration/desktop' }
       ]
     },
     {
@@ -205,7 +205,7 @@ const configurationSidebar = [
         { text: 'Serial Bridge (USB)', link: '/configuration/serial-bridge' },
         { text: 'Virtual Node Server', link: '/configuration/virtual-node' },
         { text: 'Using meshtasticd', link: '/configuration/meshtasticd' },
-        { text: 'Tested Hardware', link: '/configuration/tested-hardware' }
+        { text: '🧪 Tested Hardware', link: '/configuration/tested-hardware' }
       ]
     },
     {
@@ -231,9 +231,9 @@ const configurationSidebar = [
       collapsed: false,
       items: [
         { text: 'Production Deployment', link: '/configuration/production' },
-        { text: 'Updating MeshMonitor', link: '/configuration/updating' },
+        { text: '🔄 Updating MeshMonitor', link: '/configuration/updating' },
         { text: 'Reducing Node Load', link: '/configuration/node-load' },
-        { text: 'Custom Tile Servers', link: '/configuration/custom-tile-servers' }
+        { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' }
       ]
     },
     {
@@ -241,9 +241,9 @@ const configurationSidebar = [
       collapsed: true,
       items: [
         { text: 'Deployment Guide', link: '/deployment/DEPLOYMENT_GUIDE' },
-        { text: 'Kubernetes / Helm', link: '/deployment/HELM_GUIDE' },
-        { text: 'Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' },
-        { text: 'Reticulum Bridge', link: '/deployment/RETICULUM_BRIDGE_GUIDE' }
+        { text: '☸️ Kubernetes / Helm', link: '/deployment/HELM_GUIDE' },
+        { text: '📦 Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' },
+        { text: '📡 Reticulum Bridge', link: '/deployment/RETICULUM_BRIDGE_GUIDE' }
       ]
     }
   ]
@@ -312,11 +312,11 @@ export default defineConfig({
           { text: 'Add-ons', link: '/add-ons/' },
           { text: 'Development', link: '/development/' },
           { text: 'Blog', link: '/blog/' },
-          { text: 'Site Gallery', link: '/site-gallery' },
-          { text: 'User Scripts', link: '/user-scripts' }
+          { text: '\u{1F310} Site Gallery', link: '/site-gallery' },
+          { text: '\u{1F4DC} User Scripts', link: '/user-scripts' }
         ]
       },
-      { text: 'Releases', link: 'https://github.com/yeraze/meshmonitor/releases' }
+      { text: '📦 Releases', link: 'https://github.com/yeraze/meshmonitor/releases' }
     ],
 
     sidebar: {
