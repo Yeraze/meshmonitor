@@ -33,6 +33,7 @@ export function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     emoji: msg.emoji ?? undefined,
     viaMqtt: Boolean((msg as any).viaMqtt),
     xeddsaSigned: msg.xeddsaSigned ? true : undefined,
+    isAutomation: msg.isAutomation ? true : undefined,
     ackProofStatus: normalizeAckProofStatus(msg.ackProofStatus),
     rxSnr: msg.rxSnr ?? undefined,
     rxRssi: msg.rxRssi ?? undefined,

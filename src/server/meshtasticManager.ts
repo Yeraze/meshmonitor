@@ -134,7 +134,7 @@ import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } fr
 import { automationPacketTracker, randomPacketId, type SendOrigin } from './utils/automationPacketTracker.js';
 import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy, WANT_CONFIG_NONCE_FULL, WANT_CONFIG_NONCE_ONLY_CONFIG, modemPresetChannelName, MAX_MESSAGE_BYTES } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy, WANT_CONFIG_NONCE_FULL, WANT_CONFIG_NONCE_ONLY_CONFIG, modemPresetChannelName, MAX_MESSAGE_BYTES, readIsAutomationBit } from './constants/meshtastic.js';
 import { SPLIT_PART_GAP_MS } from '../utils/messageSplitLimits.js';
 import {
   SplitSequenceLock,
@@ -565,6 +565,7 @@ type TextMessage = {
   decryptedBy?: 'node' | 'server' | null; // Decryption source - 'server' means read-only
   viaStoreForward?: boolean; // Message received via Store & Forward replay
   xeddsaSigned?: boolean; // Broadcast had a cryptographically verified XEdDSA signature (firmware 2.8+)
+  isAutomation?: boolean | null; // Data.bitfield bit 2 (#6449); null = bitfield absent
   ackProofStatus?: number; // #5279 — MeshPacket.AckProofStatus from the settling ack/nak (outbound DMs)
   sourceIp?: string | null; // Per-message ingress attribution (client IP for HTTP injects)
   sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
@@ -2883,7 +2884,9 @@ class MeshtasticManager implements ISourceManager {
     destination: number,
     channel: number,
     payloadPreview: string,
-    metadata: Record<string, unknown> = {}
+    metadata: Record<string, unknown> = {},
+    /** Send origin (#6449): an automation send carries the is_automation bit. */
+    origin?: SendOrigin
   ): Promise<void> {
     if (!await packetLogService.isEnabled()) return;
 
@@ -2909,6 +2912,9 @@ class MeshtasticManager implements ISourceManager {
       metadata: JSON.stringify({ ...metadata, direction: 'tx' }),
       direction: 'tx',
       transport_mechanism: TransportMechanism.INTERNAL,  // Outgoing packets are sent via direct connection
+      // Mirrors the wire: only an automation send sets the bit; a manual send
+      // leaves the bitfield absent, which reads as NULL (#6449).
+      is_automation: origin === 'automation' ? true : undefined,
       sourceId: this.sourceId,
     });
   }
@@ -7313,6 +7319,8 @@ class MeshtasticManager implements ISourceManager {
           // Firmware 2.8 XEdDSA signature-verified flag (#3923); undefined
           // (pre-2.8 firmware) stays NULL = unknown.
           xeddsa_signed: meshPacket.xeddsaSigned ?? undefined,
+          // Data.bitfield bit 2 (#6449); absent bitfield stays NULL.
+          is_automation: readIsAutomationBit(meshPacket.decoded?.bitfield),
           // 'tx' ONLY for genuine local transmissions (internal, fresh, no RX
           // metadata). A spoofed packet claiming our node number is a reception.
           direction: spoof.isGenuineLocalTx ? 'tx' : 'rx',
@@ -8025,6 +8033,9 @@ class MeshtasticManager implements ISourceManager {
           // cryptographically verified this broadcast's signature. Read the same
           // way the Packet Monitor path does (see metadata.xeddsa_signed above).
           xeddsaSigned: meshPacket.xeddsaSigned === true ? true : undefined,
+          // is_automation (Data.bitfield bit 2, #6449): NULL when the bitfield
+          // is absent on the wire, so "unknown" never reads as "human".
+          isAutomation: readIsAutomationBit(meshPacket.decoded?.bitfield),
           // Inbound radio path — message arrived from a meshtastic node over TCP.
           // MQTT-bridged inbound packets are flagged via viaMqtt above; we still
           // attribute the row's ingress to 'tcp_radio' because it arrived via
@@ -10478,6 +10489,7 @@ class MeshtasticManager implements ISourceManager {
         destination: options.destination,
         channel: options.channel,
         hopLimit,
+        isAutomation: options.origin === 'automation',
       });
       if (data.length === 0) return 0;
 
@@ -10504,6 +10516,7 @@ class MeshtasticManager implements ISourceManager {
         channel,
         `Waypoint id=${waypoint.id} ${waypoint.name ?? ''}`.trim(),
         { destination, packetId, waypointId: waypoint.id, expire: waypoint.expire },
+        options.origin,
       );
 
       logger.debug(`📍 Waypoint broadcast id=${waypoint.id} (${waypoint.name ?? ''}) packetId=${packetId}`);
@@ -11690,7 +11703,7 @@ class MeshtasticManager implements ISourceManager {
       const hopLimit = clampHopLimitOverride(options?.hopLimitOverride, this.getConfiguredHopLimit());
       const zeroHop = hopLimit === 0;
 
-      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji, pkiEncrypted, hopLimit);
+      const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji, pkiEncrypted, hopLimit, options?.origin === 'automation');
 
       // Remember our own packet id so that if this message is overheard
       // rebroadcast, echoed by MQTT, or replayed by store-and-forward, it isn't
@@ -11720,7 +11733,8 @@ class MeshtasticManager implements ISourceManager {
         destination || 0xffffffff,
         channel,
         `"${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`,
-        { messageId, replyId, emoji }
+        { messageId, replyId, emoji },
+        options?.origin
       );
 
       // Save sent message to database for UI display
@@ -11781,6 +11795,8 @@ class MeshtasticManager implements ISourceManager {
           sourcePath: attribution?.sourcePath ?? 'system',
           // #5101: every outbound Meshtastic message write stamps INTERNAL.
           transportMechanism: TransportMechanism.INTERNAL,
+          // Mirrors the wire (#6449): only an automation send sets the bit.
+          isAutomation: options?.origin === 'automation' ? true : undefined,
         };
 
         await databaseService.messages.insertMessage(message, this.sourceId);
@@ -11867,7 +11883,7 @@ class MeshtasticManager implements ISourceManager {
       // Traceroutes normally let the firmware pick the packet id. An automated
       // one needs a known id so the MQTT bridge can recognise it (#5414).
       const automationId = options?.origin === 'automation' ? randomPacketId() : undefined;
-      const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel, hopLimit, automationId);
+      const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel, hopLimit, automationId, options?.origin === 'automation');
       if (automationId !== undefined) this.recordAutomationPacket(automationId, options?.origin);
 
       logger.debug(`🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, hopLimit=${hopLimit}`);
@@ -11894,7 +11910,8 @@ class MeshtasticManager implements ISourceManager {
         destination,
         channel,
         `Traceroute request to !${destination.toString(16).padStart(8, '0')}`,
-        { destination }
+        { destination },
+        options?.origin
       );
     } catch (error) {
       logger.error('Error sending traceroute:', error);
@@ -11924,7 +11941,8 @@ class MeshtasticManager implements ISourceManager {
       const { data: positionRequestData, packetId, requestId } = meshtasticProtobufService.createPositionRequestMessage(
         destination,
         channel,
-        this.getConfiguredHopLimit()
+        this.getConfiguredHopLimit(),
+        options?.origin === 'automation'
       );
 
       logger.debug(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
@@ -11951,7 +11969,8 @@ class MeshtasticManager implements ISourceManager {
         destination,
         channel,
         `Position exchange with !${destination.toString(16).padStart(8, '0')}`,
-        { destination, packetId, requestId }
+        { destination, packetId, requestId },
+        options?.origin
       );
 
       return { packetId, requestId };
@@ -12002,7 +12021,8 @@ class MeshtasticManager implements ISourceManager {
         destination,
         channel,
         localUserInfo,
-        this.getConfiguredHopLimit()
+        this.getConfiguredHopLimit(),
+        options?.origin === 'automation'
       );
 
       logger.debug(`📇 NodeInfo exchange packet created: ${nodeInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, userInfo=${localUserInfo ? localUserInfo.longName : 'none'}`);
@@ -12029,7 +12049,8 @@ class MeshtasticManager implements ISourceManager {
         destination,
         channel,
         `NodeInfo exchange with !${destination.toString(16).padStart(8, '0')}`,
-        { destination, packetId, requestId }
+        { destination, packetId, requestId },
+        options?.origin
       );
 
       return { packetId, requestId };
@@ -12067,7 +12088,8 @@ class MeshtasticManager implements ISourceManager {
       const { data: neighborInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNeighborInfoRequestMessage(
         destination,
         channel,
-        this.getConfiguredHopLimit()
+        this.getConfiguredHopLimit(),
+        options?.origin === 'automation'
       );
 
       logger.debug(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
@@ -12099,7 +12121,8 @@ class MeshtasticManager implements ISourceManager {
         destination,
         channel,
         `NeighborInfo request to !${destination.toString(16).padStart(8, '0')}`,
-        { destination, packetId, requestId }
+        { destination, packetId, requestId },
+        options?.origin
       );
 
       return { packetId, requestId };
@@ -12313,7 +12336,8 @@ class MeshtasticManager implements ISourceManager {
         destination,
         channel,
         telemetryType,
-        this.getConfiguredHopLimit()
+        this.getConfiguredHopLimit(),
+        options?.origin === 'automation'
       );
       recordOwnTelemetryRequest(packetId); // loop guard: its reply must not fire trigger.telemetry
 
@@ -12349,7 +12373,8 @@ class MeshtasticManager implements ISourceManager {
         destination,
         channel,
         `Telemetry request (${typeLabel}) to !${destination.toString(16).padStart(8, '0')}`,
-        { destination, telemetryType: typeLabel, packetId, requestId }
+        { destination, telemetryType: typeLabel, packetId, requestId },
+        options?.origin
       );
 
       // Track this outstanding request so the firmware NeighborInfo-hijack
@@ -12498,7 +12523,8 @@ class MeshtasticManager implements ISourceManager {
         destination,
         channel,
         'localStats',
-        hopLimit
+        hopLimit,
+        options?.origin === 'automation'
       );
     recordOwnTelemetryRequest(packetId); // loop guard: its reply must not fire trigger.telemetry
 
@@ -12675,6 +12701,15 @@ class MeshtasticManager implements ISourceManager {
       // Skip if auto-acknowledge is disabled
       if (autoAckEnabled !== 'true') {
         if (afterWait) logger.debug(`⏭️ Dropping delayed auto-acknowledge for packet ${packetId} on ${sourceId}: Auto-Acknowledge was turned off`);
+        return;
+      }
+
+      // #6449: the sender flagged this as sent by an automation (Data.bitfield
+      // bit 2). Skip it unless the operator opted in, so two bots cannot
+      // acknowledge each other forever. Absent/unknown flag counts as human.
+      if (message?.isAutomation === true
+        && await settings.getSettingForSource(sourceId, 'autoAckRespondToAutomation') !== 'true') {
+        logger.debug(`⏭️ Skipping auto-acknowledge for packet ${packetId}: sender flagged it as automated`);
         return;
       }
 
@@ -13682,6 +13717,14 @@ class MeshtasticManager implements ISourceManager {
 
       // Skip if auto-responder is disabled
       if (autoResponderEnabled !== 'true') {
+        return;
+      }
+
+      // #6449: skip messages the sender flagged as automated (Data.bitfield
+      // bit 2) unless the operator opted in — a bot-to-bot loop guard.
+      if (message.isAutomation === true
+        && await settings.getSettingForSource(sourceId, 'autoResponderRespondToAutomation') !== 'true') {
+        logger.debug(`⏭️ Skipping auto-responder for packet ${packetId}: sender flagged it as automated`);
         return;
       }
 
@@ -16741,6 +16784,7 @@ class MeshtasticManager implements ISourceManager {
       emoji: msg.emoji ?? undefined,
       viaMqtt: Boolean(msg.viaMqtt),
       xeddsaSigned: msg.xeddsaSigned ? true : undefined,
+      isAutomation: msg.isAutomation ? true : undefined,
       ackProofStatus: normalizeAckProofStatus(msg.ackProofStatus),
       rxSnr: msg.rxSnr ?? undefined,
       rxRssi: msg.rxRssi ?? undefined,
