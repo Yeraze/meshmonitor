@@ -68,10 +68,6 @@
   color: var(--color-text);
 }
 
-.warning code {
-  font-family: var(--font-mono, monospace);
-}
-
 .block {
   margin: 0.5rem 0 0;
   max-height: 24rem;
