@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MODEM_PRESET_OPTIONS, FEM_LNA_MODE_OPTIONS, AMATEUR_RADIO_REGIONS, isAmateurRadioRegion, REGION_MAP, REGION_COMPLIANCE_RULES, getRegionComplianceWarning, isPresetLegalForRegion } from './constants';
+import { MODEM_PRESET_OPTIONS, FEM_LNA_MODE_OPTIONS, femLnaModeOptionsFor, AMATEUR_RADIO_REGIONS, isAmateurRadioRegion, REGION_MAP, REGION_COMPLIANCE_RULES, getRegionComplianceWarning, isPresetLegalForRegion } from './constants';
 
 /**
  * LoRaConfigSection Tests
@@ -123,8 +123,23 @@ describe('LoRaConfigSection', () => {
   });
 
   describe('FEM LNA Mode Constants', () => {
-    it('exposes the three FEM_LNA_Mode enum values in order', () => {
-      expect(FEM_LNA_MODE_OPTIONS.map(o => o.value)).toEqual([0, 1, 2]);
+    it('exposes the four FEM_LNA_Mode enum values in order', () => {
+      expect(FEM_LNA_MODE_OPTIONS.map(o => o.value)).toEqual([0, 1, 2, 3]);
+    });
+
+    it('labels AUTO (3, firmware #12380)', () => {
+      expect(FEM_LNA_MODE_OPTIONS[3].value).toBe(3);
+      expect(FEM_LNA_MODE_OPTIONS[3].label).toMatch(/AUTO/);
+    });
+
+    it('femLnaModeOptionsFor keeps the list for a known value', () => {
+      expect(femLnaModeOptionsFor(3)).toBe(FEM_LNA_MODE_OPTIONS);
+    });
+
+    it('femLnaModeOptionsFor adds an Unknown option for a value newer than the list (#6452)', () => {
+      const opts = femLnaModeOptionsFor(7);
+      expect(opts.map(o => o.value)).toEqual([0, 1, 2, 3, 7]);
+      expect(opts[4].label).toMatch(/Unknown \(7\)/);
     });
 
     it('uses DISABLED (0) as the proto3 zero/default option', () => {

@@ -304,6 +304,8 @@ export const FemLnaMode = {
   ENABLED: 1,
   /** FEM_LNA is not present on the device */
   NOT_PRESENT: 2,
+  /** FEM_LNA is present; the firmware switches it from the measured noise floor (protobufs#1175, firmware#12380) */
+  AUTO: 3,
 } as const;
 
 export type FemLnaModeType = typeof FemLnaMode[keyof typeof FemLnaMode];

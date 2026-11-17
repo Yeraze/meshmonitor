@@ -5,6 +5,7 @@ vi.mock('../services/database.js', () => ({
 }));
 
 import protobufService from './protobufService.js';
+import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { loadProtobufDefinitions, getProtobufRoot } from './protobufLoader.js';
 import { FemLnaMode } from './constants/meshtastic.js';
 
@@ -67,6 +68,16 @@ describe('createSetLoRaConfigMessage femLnaMode round-trip', () => {
     expect(decodedMode).toBe(0);
   });
 
+  it('encodes femLnaMode AUTO (3, firmware #12380) and it survives the round-trip', () => {
+    const msg = decode(protobufService.createSetLoRaConfigMessage({ femLnaMode: FemLnaMode.AUTO }));
+    expect(msg.setConfig.lora.femLnaMode).toBe(3);
+  });
+
+  it('passes an enum value newer than our schema through unchanged (#6452)', () => {
+    const msg = decode(protobufService.createSetLoRaConfigMessage({ femLnaMode: 7 }));
+    expect(msg.setConfig.lora.femLnaMode).toBe(7);
+  });
+
   it('does not set femLnaMode when the field is absent from the config payload', () => {
     const encoded = protobufService.createSetLoRaConfigMessage({
       usePreset: true,
@@ -76,5 +87,20 @@ describe('createSetLoRaConfigMessage femLnaMode round-trip', () => {
     const raw = AdminMessage.toObject(AdminMessage.decode(encoded)) as any;
     // Absent in payload => elided on the wire (decodes to undefined / proto3 default 0).
     expect(raw.setConfig?.lora?.femLnaMode ?? 0).toBe(0);
+  });
+});
+
+describe('incoming LoRa config keeps femLnaMode AUTO (3) as a number (#6452)', () => {
+  beforeAll(async () => {
+    await loadProtobufDefinitions();
+  });
+
+  it('parseIncomingData yields femLnaMode 3, not a name, undefined or 0', () => {
+    const root = getProtobufRoot()!;
+    const FromRadio = root.lookupType('meshtastic.FromRadio');
+    const bytes = FromRadio.encode(FromRadio.create({ config: { lora: { femLnaMode: 3, region: 1 } } })).finish();
+    const parsed = meshtasticProtobufService.parseIncomingData(bytes) as any;
+    expect(parsed.type).toBe('config');
+    expect(parsed.data.lora.femLnaMode).toBe(3);
   });
 });
