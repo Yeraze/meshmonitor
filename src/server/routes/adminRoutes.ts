@@ -2480,7 +2480,22 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
         if (params.favoriteNodeNum === undefined) {
           return res.status(400).json({ error: 'favoriteNodeNum is required for setFavoriteNode' });
         }
-        buildAdminMessage = (passkey) => protobufService.createSetFavoriteNodeMessage(params.favoriteNodeNum, passkey);
+        {
+          const favoriteNodeNum = Number(params.favoriteNodeNum);
+          // #6153: send add_contact first, as FavoritesService does for every
+          // other favorite path. set_favorite_node only flags an existing NodeDB
+          // entry, so without this it does nothing on a radio that doesn't hold
+          // the node yet. A failed add_contact still lets set_favorite_node go.
+          preSend = async (passkey) => {
+            try {
+              const contactMsg = await acManager.buildFavoritedContactMessage(favoriteNodeNum, passkey ?? new Uint8Array());
+              if (contactMsg) await acManager.sendAdminCommand(contactMsg, destinationNodeNum);
+            } catch (error) {
+              logger.warn(`⚠️ add_contact for ${favoriteNodeNum} failed; sending set_favorite_node anyway:`, error);
+            }
+          };
+          buildAdminMessage = (passkey) => protobufService.createSetFavoriteNodeMessage(favoriteNodeNum, passkey);
+        }
         break;
       case 'removeFavoriteNode':
         // Use favoriteNodeNum to avoid collision with destination nodeNum

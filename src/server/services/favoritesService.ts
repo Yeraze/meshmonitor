@@ -134,7 +134,7 @@ export class FavoritesService {
    * `addFromContact` requires `has_user`, so the payload always carries a user
    * block; `buildSharedContactPayload` omits the fields we pass as null/empty.
    */
-  private async buildFavoritedContactMessage(
+  async buildFavoritedContactMessage(
     nodeNum: number,
     sessionPasskey: Uint8Array,
   ): Promise<Uint8Array | null> {
