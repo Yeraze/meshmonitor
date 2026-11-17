@@ -110,4 +110,22 @@ describe('MessagesRepository.insertMessage duplicate detection', () => {
     const readBack = rows.find((r) => r.id === 'msg-signed');
     expect(readBack?.xeddsaSigned).toBe(true);
   });
+
+  it('round-trips the isAutomation flag, keeping false distinct from NULL (#6449)', async () => {
+    await repo.insertMessage({ ...makeMessage('msg-bot'), isAutomation: true } as any, 'default');
+    await repo.insertMessage({ ...makeMessage('msg-human'), isAutomation: false } as any, 'default');
+    await repo.insertMessage({ ...makeMessage('msg-unknown') } as any, 'default');
+
+    const raw = (id: string) => (db
+      .prepare('SELECT isAutomation FROM messages WHERE id = ?')
+      .get(id) as { isAutomation: number | null }).isAutomation;
+    expect(raw('msg-bot')).toBe(1);
+    expect(raw('msg-human')).toBe(0);
+    expect(raw('msg-unknown')).toBeNull();
+
+    const rows = await repo.getMessages(50, 0, 'default');
+    expect(rows.find((r) => r.id === 'msg-bot')?.isAutomation).toBe(true);
+    expect(rows.find((r) => r.id === 'msg-human')?.isAutomation).toBe(false);
+    expect(rows.find((r) => r.id === 'msg-unknown')?.isAutomation ?? null).toBeNull();
+  });
 });

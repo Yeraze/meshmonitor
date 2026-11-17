@@ -86,6 +86,30 @@ describe('PacketLogRepository - Packet Log Queries', () => {
     });
   });
 
+  // #6449 — Meshtastic is_automation bit (Data.bitfield bit 2) round-trips;
+  // a packet without a bitfield stays NULL, never false.
+  describe('is_automation persistence (#6449)', () => {
+    const insert = (packetId: number, isAutomation: boolean | undefined) => repo.insertPacketLog({
+      packet_id: packetId,
+      timestamp: Date.now(),
+      from_node: 100,
+      portnum: 1,
+      portnum_name: 'TEXT_MESSAGE_APP',
+      encrypted: false,
+      direction: 'rx',
+      is_automation: isAutomation,
+    } as any, 'default');
+
+    it('reads back true, false and NULL distinctly', async () => {
+      await insert(97, true);
+      await insert(96, false);
+      const packets = await repo.getPacketLogs({});
+      expect(packets.find(p => p.packet_id === 97)!.is_automation).toBe(true);
+      expect(packets.find(p => p.packet_id === 96)!.is_automation).toBe(false);
+      expect(packets.find(p => p.packet_id === 1)!.is_automation ?? null).toBeNull();
+    });
+  });
+
   describe('getPacketLogs', () => {
     it('returns packets with joined node names', async () => {
       const packets = await repo.getPacketLogs({});

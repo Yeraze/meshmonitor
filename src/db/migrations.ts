@@ -255,6 +255,7 @@ import { migration as unifiedNotificationScopeMigration, runMigration235Postgres
 import { migration as createMqttNativeIdentitiesMigration, runMigration236Postgres, runMigration236Mysql } from '../server/migrations/236_create_mqtt_native_identities.js';
 import { migration as meshcoreRoomLoginOkAtMigration, runMigration237Postgres, runMigration237Mysql } from '../server/migrations/237_add_meshcore_room_login_ok_at.js';
 import { migration as meshcoreCompanionDefaultHeartbeatMigration, runMigration238Postgres, runMigration238Mysql } from '../server/migrations/238_meshcore_companion_default_heartbeat.js';
+import { migration as isAutomationFlagMigration, runMigration239Postgres, runMigration239Mysql } from '../server/migrations/239_add_is_automation_flag.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
@@ -3834,4 +3835,19 @@ registry.register({
   sqlite: (db) => meshcoreCompanionDefaultHeartbeatMigration.up(db),
   postgres: (client) => runMigration238Postgres(client),
   mysql: (pool) => runMigration238Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 239: Meshtastic `is_automation` flag (Data.bitfield bit 2, #6449)
+// on `messages.isAutomation` and `packet_log.is_automation`. Nullable; NULL
+// means the bitfield was absent on the wire. Existing rows keep NULL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 239,
+  name: 'add_is_automation_flag',
+  settingsKey: 'migration_239_add_is_automation_flag',
+  sqlite: (db) => isAutomationFlagMigration.up(db),
+  postgres: (client) => runMigration239Postgres(client),
+  mysql: (pool) => runMigration239Mysql(pool),
 });

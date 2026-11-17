@@ -185,6 +185,8 @@ export interface DbMessage {
   viaStoreForward?: boolean | null;
   /** Broadcast carried a verified XEdDSA signature (firmware 2.8+). NULL for pre-migration rows / unsigned traffic. */
   xeddsaSigned?: boolean | null;
+  /** Data.bitfield bit 2 (#6449): sender flagged this as sent by an automation. NULL = bitfield absent / unknown. */
+  isAutomation?: boolean | null;
   /**
    * `meshtastic.MeshPacket.AckProofStatus` number (#5279) from the ack/nak that
    * settled this outbound DM. NULL = no status reported.
@@ -431,6 +433,8 @@ export interface DbPacketLog {
   transport_mechanism?: number | null;
   /** Firmware 2.8 XEdDSA signature verified (#3923). NULL/undefined = unknown (pre-2.8 packet or feature). */
   xeddsa_signed?: boolean | null;
+  /** Data.bitfield bit 2 (#6449): sender flagged this as sent by an automation. NULL = bitfield absent / unknown. */
+  is_automation?: boolean | null;
   sourceId?: string | null;
   /** Impersonation flag (#2584): packet claims from == our local node but arrived over RF and wasn't sent by us. */
   spoof_suspected?: boolean | null;
