@@ -6,7 +6,7 @@ MeshMonitor ships a Helm chart for deploying to any Kubernetes 1.19+ cluster. Th
 
 - Kubernetes 1.19+
 - Helm 3.0+
-- A Meshtastic node reachable from the cluster (WiFi/Ethernet, or a Serial/BLE bridge exposing TCP)
+- A node to connect: a Meshtastic node reachable from the cluster (WiFi/Ethernet, or a Serial/BLE bridge exposing TCP), a MeshCore node, or an MQTT feed. You can add it after install.
 - Optional: an ingress controller (nginx, Traefik, etc.) and cert-manager if you want TLS
 
 ## Quick Start
@@ -20,13 +20,17 @@ MeshMonitor ships a Helm chart for deploying to any Kubernetes 1.19+ cluster. Th
 
    `helm search repo meshmonitor` lists the available chart versions. (Prefer to work from a checkout? `git clone --recurse-submodules https://github.com/Yeraze/meshmonitor.git` and use `./helm/meshmonitor` as the chart path in step 3.)
 
-2. **Create `custom-values.yaml`** with the required node settings:
+2. **Create `custom-values.yaml`**:
 
    ```yaml
    env:
-     meshtasticNodeIp: "192.168.1.100"   # REQUIRED — your Meshtastic node IP
-     meshtasticUseTls: "false"           # REQUIRED — "true" for HTTPS to the node
+     # Optional: seeds the first source on first boot. The chart default is
+     # 192.168.1.100, so set your node's IP here, or "" to add sources later
+     # from the Sources sidebar in the UI.
+     meshtasticNodeIp: "192.168.1.100"
    ```
+
+   After the first boot, add and edit sources in the dashboard's **Sources** sidebar. Changing `meshtasticNodeIp` later does not change an existing source.
 
 3. **Install the chart**:
 
@@ -49,7 +53,6 @@ MeshMonitor ships a Helm chart for deploying to any Kubernetes 1.19+ cluster. Th
 ```yaml
 env:
   meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "false"
 
 ingress:
   enabled: true
@@ -63,6 +66,28 @@ ingress:
     - secretName: meshmonitor-tls
       hosts:
         - meshmonitor.example.com
+
+# Behind HTTPS, these are needed or the page loads blank / logins fail.
+# See /configuration/reverse-proxy.
+extraEnv:
+  - name: ALLOWED_ORIGINS
+    value: "https://meshmonitor.example.com"
+  - name: TRUST_PROXY
+    value: "true"
+  - name: COOKIE_SECURE
+    value: "true"
+  - name: SESSION_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: meshmonitor-secrets
+        key: session-secret
+```
+
+Create the secret before you install:
+
+```bash
+kubectl create secret generic meshmonitor-secrets \
+  --from-literal=session-secret="$(openssl rand -hex 32)"
 ```
 
 ### Subfolder Deployment
@@ -72,7 +97,6 @@ To serve MeshMonitor at `https://example.com/meshmonitor/`:
 ```yaml
 env:
   meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "false"
   baseUrl: "/meshmonitor"
 
 ingress:

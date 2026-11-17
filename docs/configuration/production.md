@@ -76,65 +76,53 @@ MeshMonitor includes Helm charts for Kubernetes deployment.
 #### Install with Helm
 
 ```bash
-# Add repository (if published)
 helm repo add meshmonitor https://meshmonitor.org/charts
 helm repo update
-
-# Install
-helm install meshmonitor meshmonitor/meshmonitor \
-  --namespace meshmonitor \
-  --create-namespace \
-  --set meshmonitor.nodeIp=192.168.1.100 \
-  --set ingress.enabled=true \
-  --set ingress.host=meshmonitor.example.com \
-  --set oidc.enabled=true \
-  --set oidc.issuer=https://your-idp.com \
-  --set oidc.clientId=your-client-id \
-  --set oidc.clientSecret=your-client-secret
 ```
+
+Write a `values.yaml` like the one below, then install it as shown under [Additional Environment Variables](#additional-environment-variables).
 
 #### Custom values.yaml
 
 ```yaml
 # values.yaml
-meshmonitor:
-  nodeIp: "192.168.1.100"
-  sessionSecret: "generate-secure-random-string"
+env:
+  # Optional: seeds the first source on first boot. The chart default is
+  # 192.168.1.100, so set your node's IP, or "" to add sources in the UI.
+  meshtasticNodeIp: ""
 
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
-
-  replicas: 2  # For high availability
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
 
 persistence:
   enabled: true
   size: 10Gi
   storageClass: "standard"
 
-oidc:
-  enabled: true
-  issuer: "https://your-idp.com"
-  clientId: "your-client-id"
-  clientSecret: "your-client-secret"
-  redirectUri: "https://meshmonitor.example.com/api/auth/oidc/callback"
-
 ingress:
   enabled: true
   className: "nginx"
-  host: "meshmonitor.example.com"
-  tls:
-    enabled: true
-    secretName: "meshmonitor-tls"
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  hosts:
+    - host: meshmonitor.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: meshmonitor-tls
+      hosts:
+        - meshmonitor.example.com
 ```
+
+Keep `replicaCount` at 1; see [High Availability](#high-availability). The chart has no OIDC or session-secret fields: pass `SESSION_SECRET`, `ALLOWED_ORIGINS`, `TRUST_PROXY`, `COOKIE_SECURE` and the `OIDC_*` variables ([SSO](/configuration/sso)) through `extraEnv`, below.
 
 #### Additional Environment Variables
 
@@ -164,7 +152,7 @@ This accepts standard [Kubernetes env var syntax](https://kubernetes.io/docs/tas
 Deploy:
 
 ```bash
-helm install meshmonitor ./helm/meshmonitor -f values.yaml
+helm install meshmonitor meshmonitor/meshmonitor -f values.yaml
 ```
 
 ## High Availability

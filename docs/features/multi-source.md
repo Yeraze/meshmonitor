@@ -13,7 +13,7 @@ A **source** is one upstream connection MeshMonitor speaks to. Each source has:
 - A **type**: `meshtastic_tcp`, `meshcore`, `meshcore_mqtt` (reads a MeshCore region feed, no radio; see [MeshCore MQTT Ingest](/features/meshcore-mqtt-ingest)), `meshcore_mqtt_broker` (embedded broker MeshCore observers publish to, no radio; see [MeshCore MQTT Broker](/features/meshcore-mqtt-broker)), `mqtt_broker` (embedded MQTT broker hosting locally-connected clients), `mqtt_bridge` (MQTT client to one upstream broker, optionally attached to a sibling `mqtt_broker` for fan-out; see [Embedded MQTT Broker & Bridge](/features/mqtt-broker)), or `reticulum`. Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB or TCP through the UI. No sidecar either way.
 - Its own **connection settings** (host, port, device path, credentials)
 - Its own **scheduler** (auto-responder, auto-announce, auto-traceroute, auto-ack)
-- Its own **Virtual Node** endpoint (TCP sources only)
+- Its own **Virtual Node** endpoint (`meshtastic_tcp` and `meshcore` sources)
 - Its own **permissions** — which users can see/write to it
 
 Sources are stored in the database and managed through the UI, not environment variables.
@@ -94,18 +94,18 @@ Your picker choice persists per view and per user.
 
 ## Virtual Node
 
-Virtual Node is a MeshMonitor feature that lets mobile Meshtastic apps connect *through* MeshMonitor instead of directly to the node. In 4.0 it is **per-source**.
+Virtual Node is a MeshMonitor feature that lets mobile Meshtastic and MeshCore apps connect *through* MeshMonitor instead of directly to the node. In 4.0 it is **per-source**.
 
-- Only `meshtastic_tcp` sources support Virtual Node — MeshCore and MQTT sources ignore VN settings
+- `meshtastic_tcp` sources serve the Meshtastic apps. `meshcore` sources (since 4.11) serve the MeshCore app; see [MeshCore Virtual Node](/configuration/virtual-node#meshcore-virtual-node). MQTT sources have no Virtual Node.
 - Each source can expose its own VN endpoint on its own port
 - Ports must be unique across sources — the API rejects collisions with HTTP 409
 
 ### Enabling on a source
 
-1. Open **Dashboard → Edit Source** on the TCP source you want to expose
+1. Open **Dashboard → Edit Source** on the source you want to expose
 2. Expand the **Virtual Node** section
 3. Toggle it on
-4. Choose a port (the previous global default was `4404`)
+4. Choose a port (Meshtastic default `4404`, MeshCore `5000`)
 5. Decide whether to allow admin commands through the VN (reduces security — leave off unless you know you need it)
 6. Save
 
