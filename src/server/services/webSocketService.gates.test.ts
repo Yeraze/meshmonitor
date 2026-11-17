@@ -309,6 +309,21 @@ describe('WebSocket event gates', () => {
       expect(has(user, 'DM')).toBe(false);
     });
 
+    it('carries the hop-display badge flags, so a live row matches the poll (#6449)', async () => {
+      await harness.grantRow(harness.limited.id, 'channel_0', { read: true }, A);
+      const user = await harness.connectAs(harness.limited, { join: A });
+      emit('message:new', A, '', { ...message('FLAGGED', 0), isAutomation: true, xeddsaSigned: true, viaMqtt: true });
+      emit('message:new', A, '', message('PLAIN', 0));
+      await user.settle();
+      const rows = user.payloads('message:new') as Array<Record<string, unknown>>;
+      const flagged = rows.find((r) => r.id === 'FLAGGED');
+      const plain = rows.find((r) => r.id === 'PLAIN');
+      expect(flagged).toMatchObject({ isAutomation: true, xeddsaSigned: true, viaMqtt: true });
+      expect(plain?.isAutomation).toBeUndefined();
+      expect(plain?.xeddsaSigned).toBeUndefined();
+      expect(plain?.viaMqtt).toBe(false);
+    });
+
     it('channel_N:read without channel_0:read reads no channel message (the poll rule)', async () => {
       await harness.grantRow(harness.limited.id, 'channel_2', { read: true }, A);
       const user = await harness.connectAs(harness.limited, { join: A });
