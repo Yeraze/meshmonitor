@@ -95,19 +95,18 @@ docker run -d \
 
 ## Configuring MeshMonitor
 
-### Point to localhost
+### Point MeshMonitor at meshtasticd
 
-When using `meshtasticd`, set the node IP to localhost:
+Add a Meshtastic TCP source in the **Sources** sidebar, or set `MESHTASTIC_NODE_IP` in your compose file before the first start. The host depends on where MeshMonitor runs:
 
-```bash
-export MESHTASTIC_NODE_IP=localhost
-```
+| MeshMonitor runs | Host to use |
+|------------------|-------------|
+| Directly on the same machine (bare metal, Desktop) | `localhost` |
+| In Docker, with meshtasticd's port published on the host | The host's LAN IP |
+| In the same Compose file as meshtasticd | The service name, e.g. `meshtasticd` (see below) |
+| With `network_mode: host` | `localhost` (see [Using Docker Host Network](#using-docker-host-network)) |
 
-Or in your `.env` file:
-
-```env
-MESHTASTIC_NODE_IP=localhost
-```
+Inside a container on the default bridge network, `localhost` is the container itself, not the host.
 
 ### Docker Compose Setup
 

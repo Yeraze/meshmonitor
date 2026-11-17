@@ -89,8 +89,7 @@ cd meshmonitor
 
 cat > custom-values.yaml << 'EOF'
 env:
-  meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "false"
+  meshtasticNodeIp: "192.168.1.100"   # optional; "" to add sources in the UI
 EOF
 
 helm install meshmonitor ./helm/meshmonitor -f custom-values.yaml
@@ -144,38 +143,37 @@ brew install node git python3
 
 Verify your Node.js version:
 ```bash
-node --version  # Should be v20.x or higher
+node --version  # Should be v22.x or higher
 npm --version
 ```
 
-### 3. Application Setup
+### 3. Create Directories
+
+MeshMonitor lives in `/var/lib/meshmonitor`: the code in `meshmonitor/`, the database and other data in `data/`. Own it yourself for the build; step 7 hands it to a service user.
 
 ```bash
-# Clone the repository
-git clone https://github.com/yeraze/meshmonitor.git
-cd meshmonitor
+sudo mkdir -p /var/lib/meshmonitor/data
+sudo chown -R $(whoami):$(whoami) /var/lib/meshmonitor
+```
+
+### 4. Application Setup
+
+```bash
+# Clone the repository to the path the systemd unit expects
+git clone https://github.com/yeraze/meshmonitor.git /var/lib/meshmonitor/meshmonitor
+cd /var/lib/meshmonitor/meshmonitor
 
 # Initialize the protobuf submodule (required for Meshtastic protocol support)
 git submodule update --init --recursive
 
-# Install dependencies
-# --legacy-peer-deps is required to resolve peer dependency conflicts
-npm install --legacy-peer-deps
+# Install dependencies (.npmrc already sets legacy-peer-deps)
+npm install
 
 # Build the frontend (React application)
 npm run build
 
 # Build the backend (Express server)
 npm run build:server
-```
-
-### 4. Create Data Directory
-
-MeshMonitor stores its SQLite database and other data files in a configurable directory:
-
-```bash
-sudo mkdir -p /var/lib/meshmonitor/data
-sudo chown -R $(whoami):$(whoami) /var/lib/meshmonitor
 ```
 
 ### 5. Configuration
@@ -189,7 +187,7 @@ cp .env.example /var/lib/meshmonitor/.env
 Edit `/var/lib/meshmonitor/.env` with the essential settings:
 
 ```bash
-# Meshtastic node connection
+# Meshtastic node connection (optional: seeds the first source; you can add sources in the UI instead)
 MESHTASTIC_NODE_IP=192.168.1.100
 MESHTASTIC_TCP_PORT=4403
 
@@ -302,6 +300,8 @@ python3 -m venv /opt/apprise-venv
 
 To update a bare metal installation:
 
+The `meshmonitor` service user owns the files after step 7, so run the update as that user:
+
 ```bash
 cd /var/lib/meshmonitor/meshmonitor
 
@@ -309,13 +309,13 @@ cd /var/lib/meshmonitor/meshmonitor
 sudo systemctl stop meshmonitor
 
 # Pull latest changes
-git pull
-git submodule update --init --recursive
+sudo -u meshmonitor -H git pull
+sudo -u meshmonitor -H git submodule update --init --recursive
 
 # Reinstall dependencies and rebuild
-npm install --legacy-peer-deps
-npm run build
-npm run build:server
+sudo -u meshmonitor -H npm install
+sudo -u meshmonitor -H npm run build
+sudo -u meshmonitor -H npm run build:server
 
 # Restart the service
 sudo systemctl start meshmonitor

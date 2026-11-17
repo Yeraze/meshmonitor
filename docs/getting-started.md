@@ -17,7 +17,7 @@ MeshMonitor supports multiple deployment options to fit your infrastructure.
 | 🐳 [Docker Compose](#quick-start-with-docker-compose) | Any | `docker compose pull && up -d`, or [Watchtower](/configuration/updating#unattended-updates-with-watchtower) | Low | Official |
 | 🚢 [Portainer Stack](#deploy-with-portainer) | Any | Re-pull image + redeploy the stack | Low | Official |
 | 🖥️ [Desktop App](/configuration/desktop) | Windows / macOS | ❌ Manual | Very Low | Official |
-| ☸️ [Kubernetes / Helm](/deployment/DEPLOYMENT_GUIDE) | Any | ✅ Yes (image pull) | High | Official |
+| ☸️ [Kubernetes / Helm](/deployment/HELM_GUIDE) | Any | ✅ Yes (image pull) | High | Official |
 | 📦 [Proxmox LXC](/deployment/PROXMOX_LXC_GUIDE) | Proxmox VE | `meshmonitor-update` | Low | Community |
 | ❄️ [NixOS Flake](https://github.com/benjajaja/nixos-rk3588/blob/main/configuration.nix#L580) | NixOS | ✅ Declarative rebuild | Medium | Community |
 | 🔧 [Bare Metal](/deployment/DEPLOYMENT_GUIDE) | Linux / macOS | ❌ Manual | Medium | Community |
@@ -54,7 +54,7 @@ and an unattended-updates recipe using Watchtower.
 
 - **☸️ Kubernetes/Helm** - Production-grade orchestration
   - Available in our [GitHub repository](https://github.com/yeraze/meshmonitor)
-  - See [Deployment Guide](/deployment/DEPLOYMENT_GUIDE) for details
+  - See the [Helm Guide](/deployment/HELM_GUIDE) for details
 
 - **🚢 Portainer Stack** - Docker Compose deployed through Portainer's web UI
   - Generate the stack YAML from the [Configurator](/configurator) (Export format → Portainer Stack)
@@ -144,13 +144,19 @@ services:
     volumes:
       - meshmonitor-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100  # Seeds the first source on first boot; add more nodes from Dashboard → Sources
-      - ALLOWED_ORIGINS=http://localhost:8080  # Required for CORS
+      # Optional: your Meshtastic node's IP. Delete this line to add nodes later from the Sources sidebar.
+      - MESHTASTIC_NODE_IP=192.168.1.100
+      # List every URL you open MeshMonitor from, comma-separated
+      - ALLOWED_ORIGINS=http://localhost:8080
 
 volumes:
   meshmonitor-data:
     driver: local
 ```
+
+::: warning Opening MeshMonitor from another machine?
+If you browse to the server's LAN address, such as `http://192.168.1.50:8080`, add that URL to `ALLOWED_ORIGINS`. Without it the page loads blank. See [Accessing from Different Devices](#accessing-from-different-devices-ips).
+:::
 
 ::: tip Choosing an image tag
 | Tag | Track | Cadence | When to use |
@@ -160,10 +166,10 @@ volumes:
 | `:<major>.<minor>` e.g. `:4.13` | Stable line | Each stable in that series | Rolling upgrades pinned to a minor version |
 | `:<version>` e.g. `:4.13.0` | Pinned | Never (immutable) | Full control over exactly which version runs |
 
-`:dev` can briefly lag behind `:latest` right after a stable release ships, until the next RC is published. See the [FAQ](/faq#how-often-does-meshmonitor-release) for more details.
+`:dev` moves on every release, stable ones included, so it never falls behind `:latest`. See the [FAQ](/faq#how-often-does-meshmonitor-release) for more details.
 :::
 
-**That's it!** No need for SESSION_SECRET, COOKIE_SECURE, or other complex settings for basic usage.
+**That's it!** You don't need SESSION_SECRET, COOKIE_SECURE, or other settings for basic use. Without SESSION_SECRET, MeshMonitor makes a new one at each start, so a restart signs everyone out.
 
 ### 2. Start MeshMonitor
 
@@ -196,10 +202,12 @@ To pick these yourself, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` (8+ characters
 
 ### 5. Manage Sources (new in 4.0)
 
-The `MESHTASTIC_NODE_IP` / `MESHTASTIC_TCP_PORT` values bootstrap MeshMonitor's **first source** on first boot. Everything after that — adding nodes, renaming sources, enabling Virtual Node, or switching connection type — happens in **Dashboard → Sources**.
+Add and manage nodes in the **Sources** sidebar on the dashboard. Click **+** next to the Sources header, pick a type, and enter the connection details. The same sidebar handles renaming, editing, Virtual Node, and enabling or disabling a source.
+
+If you set `MESHTASTIC_NODE_IP`, MeshMonitor creates the first source from it on first boot. If you leave it out, you start with no live source and add one from the sidebar.
 
 ::: tip Multi-Source
-MeshMonitor 4.0 can talk to multiple nodes at once (TCP, Serial, BLE, MQTT, MeshCore). Each source has its own Virtual Node, auto-responder, scheduler, and permissions. See [Multi-Source](/features/multi-source).
+MeshMonitor 4.0 can talk to multiple nodes at once: Meshtastic over TCP (Serial and BLE nodes through a bridge sidecar), MQTT, and MeshCore. Each source has its own Virtual Node, auto-responder, scheduler, and permissions. See [Multi-Source](/features/multi-source).
 :::
 
 ## What Just Happened?
@@ -224,14 +232,14 @@ This configuration is ideal for:
 
 ### Change the Bootstrap Source Address
 
-`MESHTASTIC_NODE_IP` only seeds the **first** source on initial install. To change where that first source points _before_ the database is initialized, set a different IP:
+`MESHTASTIC_NODE_IP` only seeds the **first** source on a fresh install. Before the first start, edit the value in `docker-compose.yml`:
 
-```bash
-export MESHTASTIC_NODE_IP=192.168.5.25
-docker compose up -d
+```yaml
+environment:
+  - MESHTASTIC_NODE_IP=192.168.5.25
 ```
 
-After first boot, edit the source from **Dashboard → Sources → Edit** instead. Changing the env var post-bootstrap has no effect on an existing source.
+After the first start, edit the source in the **Sources** sidebar instead. Changing the variable then has no effect on the existing source.
 
 ### Custom Timezone
 
@@ -299,7 +307,6 @@ ALLOWED_ORIGINS=https://meshmonitor.example.com # REQUIRED!
 - **`TRUST_PROXY=true`**: Required when behind reverse proxy (nginx, Traefik, Caddy)
 - **`COOKIE_SECURE=true`**: Required for HTTPS
 - **`ALLOWED_ORIGINS`**: **CRITICAL** - Must match your HTTPS domain, or frontend won't load
-- **Rate limiting**: Stricter (1000 requests/15min vs 10,000)
 
 ## Using with Virtual or Physical Devices
 
@@ -316,10 +323,9 @@ docker run -d --name meshtasticd \
   -p 4403:4403 \
   meshtastic/meshtasticd:latest meshtasticd -s
 
-# Then set the IP to localhost
-export MESHTASTIC_NODE_IP=localhost
-docker compose up -d
 ```
+
+Then add a Meshtastic TCP source in the **Sources** sidebar that points at your Docker host's LAN IP, port `4403`. Don't use `localhost`: inside the MeshMonitor container, `localhost` is the container itself.
 
 See the [meshtasticd configuration guide](/configuration/meshtasticd) for config.yaml examples and more details.
 
@@ -349,7 +355,7 @@ For common issues and solutions, see the **[FAQ](/faq)** which covers:
 - 🚨 **Blank white screen** - CORS and ALLOWED_ORIGINS issues
 - 🔐 **Can't login / Session logs out** - Cookie security and TRUST_PROXY configuration
 - 📡 **Cannot connect to node** - Network connectivity troubleshooting
-- 🔄 **Multiple nodes** - How to run multiple MeshMonitor instances
+- 🔄 **Multiple nodes** - Connecting several nodes to one instance
 - 💾 **Database issues** - How to reset and back up your data
 - 👤 **Password reset** - Admin and user password management
 
@@ -364,10 +370,16 @@ ping 192.168.1.100
 telnet 192.168.1.100 4403
 ```
 
-**Database errors:**
+**Database errors (last resort):**
+
+::: danger This deletes all your data
+Removing the volume wipes every node, message, setting, and user account. Take a [System Backup](/features/system-backup) first if the app still runs.
+:::
+
 ```bash
 docker compose down
-docker volume rm meshmonitor-meshmonitor-data
+docker volume ls | grep meshmonitor-data    # find the exact name
+docker volume rm meshmonitor_meshmonitor-data   # Compose names it <project>_meshmonitor-data
 docker compose up -d
 ```
 
