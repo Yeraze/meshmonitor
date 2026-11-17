@@ -160,6 +160,26 @@ source, for example) takes its name from that Channel Database entry. So `LongFa
 Saved automations that used the old single-channel fields keep working unchanged — no migration
 is needed.
 
+#### Sent by {#sent-by}
+
+**Sent by** filters on the Meshtastic [`is_automation` flag](/features/automation#is-automation),
+which a sender sets when a bot or script sent the message:
+
+| Value | Fires on |
+|---|---|
+| **People only (skip automated messages)** | Messages without the flag. The default for every new rule. |
+| **Anyone** | Every message. Rules saved before this filter existed behave this way. |
+| **Automations only** | Only flagged messages. |
+
+MeshCore and Reticulum messages have no such flag, so they count as sent by people: *People only*
+matches them and *Automations only* never does.
+
+A rule that answers automated messages can answer another bot, which answers back. Set a
+cooldown or rate limit on any rule that uses *Anyone* or *Automations only*.
+
+`{{ trigger.isAutomation }}` gives the flag as `true` or `false`, for use in conditions and
+message text. Every message this engine sends carries the flag itself.
+
 ### Schedule trigger (live cron)
 
 The schedule trigger fires on a standard **5-field cron** expression (e.g. `0 * * * *` = top of
