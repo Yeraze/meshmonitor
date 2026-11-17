@@ -232,6 +232,7 @@ const configurationSidebar = [
       items: [
         { text: 'Production Deployment', link: '/configuration/production' },
         { text: '🔄 Updating MeshMonitor', link: '/configuration/updating' },
+        { text: '🗄️ Choosing a Database', link: '/configuration/database' },
         { text: 'Reducing Node Load', link: '/configuration/node-load' },
         { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' }
       ]
