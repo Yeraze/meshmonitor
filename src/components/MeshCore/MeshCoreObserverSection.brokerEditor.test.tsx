@@ -280,3 +280,59 @@ describe('Analyzer Observer broker list in MeshCore Configuration (#5831)', () =
     expect(saveButton()).toBeNull();
   });
 });
+
+describe('Observer owner claims (#6454)', () => {
+  const COMPANION_KEY = 'ab'.repeat(32);
+
+  function renderWithCompanion(companionPublicKey?: string) {
+    return render(
+      <SaveBarProvider>
+        <MeshCoreObserverSection sourceId={SOURCE_ID} connected={true} companionPublicKey={companionPublicKey} />
+        <SaveBar />
+      </SaveBarProvider>,
+    );
+  }
+
+  it("'Use this companion's key' fills the owner key, uppercased, and saves it", async () => {
+    renderWithCompanion(COMPANION_KEY);
+    const input = screen.getByTestId('observer-owner-key') as HTMLInputElement;
+    expect(input.value).toBe('');
+    fireEvent.click(screen.getByTestId('observer-owner-use-companion'));
+    expect(input.value).toBe(COMPANION_KEY.toUpperCase());
+    expect(screen.queryByTestId('observer-owner-key-error')).toBeNull();
+
+    fireEvent.click(saveButton()!);
+    await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
+    const body = putMock.mock.calls[0][1] as { config: { observer: Record<string, unknown> } };
+    expect(body.config.observer.ownerPublicKey).toBe(COMPANION_KEY.toUpperCase());
+    expect(body.config.observer).not.toHaveProperty('ownerEmail');
+  });
+
+  it('disables the companion button when no companion key is known', () => {
+    renderWithCompanion(undefined);
+    expect((screen.getByTestId('observer-owner-use-companion') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('shows the validation message for an invalid key or email, and refuses to save', async () => {
+    renderWithCompanion(COMPANION_KEY);
+    fireEvent.change(screen.getByTestId('observer-owner-key'), { target: { value: 'abc' } });
+    expect(screen.getByTestId('observer-owner-key-error').textContent).toBe('meshcore.observer.owner_key_invalid');
+    fireEvent.change(screen.getByTestId('observer-owner-email'), { target: { value: 'not-an-email' } });
+    expect(screen.getByTestId('observer-owner-email-error').textContent).toBe('meshcore.observer.owner_email_invalid');
+
+    fireEvent.click(saveButton()!);
+    await waitFor(() => expect(screen.getByTestId('observer-config-error')).toBeTruthy());
+    expect(putMock).not.toHaveBeenCalled();
+  });
+
+  it('shows per-broker overrides only on token-mode brokers, with the inherit placeholder', () => {
+    renderWithCompanion(COMPANION_KEY);
+    const row = screen.getByTestId('observer-broker-row-1');
+    const override = within(row).getByLabelText('meshcore.observer.broker_owner_email') as HTMLInputElement;
+    expect(override.placeholder).toBe('meshcore.observer.owner_inherits');
+
+    fireEvent.change(within(row).getByLabelText('meshcore.form.observer_auth_mode'), { target: { value: 'password' } });
+    expect(within(row).queryByLabelText('meshcore.observer.broker_owner_email')).toBeNull();
+    expect(within(row).queryByLabelText('meshcore.observer.broker_owner_key')).toBeNull();
+  });
+});

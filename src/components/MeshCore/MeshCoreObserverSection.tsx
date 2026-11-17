@@ -49,6 +49,9 @@ interface MeshCoreObserverSectionProps {
    *  the mount site (MeshCoreConfigurationView); kept on the props contract
    *  per spec §6 even though this component does not branch on it directly. */
   deviceType?: number;
+  /** The connected companion's own public key (status.localNode.publicKey),
+   *  for the owner-claim "Use this companion's key" button (#6454). */
+  companionPublicKey?: string | null;
 }
 
 /** Deliberately a narrow, LOCAL slice — not an import of a server-side type —
@@ -164,7 +167,11 @@ function isPlausibleHexKey(raw: string): boolean {
   return /^[0-9a-fA-F]{128}$/.test(raw.trim().replace(/^0x/i, ''));
 }
 
-export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = ({ sourceId, connected }) => {
+export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = ({
+  sourceId,
+  connected,
+  companionPublicKey,
+}) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const canRead = hasPermission('configuration', 'read', { sourceId });
@@ -449,6 +456,9 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
               form={observerDraft.draft}
               canEdit={canEditBrokers}
               onIataCodeChange={observerDraft.setIataCode}
+              onOwnerPublicKeyChange={observerDraft.setOwnerPublicKey}
+              onOwnerEmailChange={observerDraft.setOwnerEmail}
+              companionPublicKey={companionPublicKey}
               onAddBroker={observerDraft.addBroker}
               onUpdateBroker={observerDraft.updateBroker}
               onRemoveBroker={observerDraft.removeBroker}

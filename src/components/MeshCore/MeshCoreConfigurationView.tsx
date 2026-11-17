@@ -921,7 +921,12 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           display, and disconnected sources still need key management. The
           component does its own configuration:read / configuration:write gating. */}
       {showObserver && sourceId && (
-        <MeshCoreObserverSection sourceId={sourceId} connected={connected} deviceType={local?.advType} />
+        <MeshCoreObserverSection
+          sourceId={sourceId}
+          connected={connected}
+          deviceType={local?.advType}
+          companionPublicKey={local?.publicKey}
+        />
       )}
 
       {/* Purge non-favourite nodes from MeshMonitor's DB (#6041). A DB-only
