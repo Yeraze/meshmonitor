@@ -1,12 +1,18 @@
 import protobuf from 'protobufjs';
 import path from 'path';
 import { getProtobufRoot, resolveProtoImport } from './protobufLoader.js';
-import { buildSharedContactPayload } from './services/sharedContactService.js';
+import { buildSharedContactPayload, type SharedContactIdentity } from './services/sharedContactService.js';
 import { logger } from '../utils/logger.js';
 import { PortNum, resolveHopLimit } from './constants/meshtastic.js';
 import { MODULE_FIELD_BY_ID } from './constants/configTypes.js';
 import { safeJson } from './utils/redactSecrets.js';
 import { channelPskToBytes } from './utils/channelPsk.js';
+
+/** The user fields add_contact sends; a DbNode row fits as is. */
+export type AddContactUser = Pick<
+  SharedContactIdentity,
+  'nodeNum' | 'nodeId' | 'longName' | 'shortName' | 'publicKey' | 'hwModel' | 'role' | 'isLicensed' | 'isUnmessagable'
+>;
 
 export interface MeshtasticPosition {
   latitude_i: number;
@@ -773,7 +779,14 @@ class ProtobufService {
     }
   }
 
-  createAddContactMessage(nodeNum: number, nodeId: string, longName: string, shortName: string, publicKeyBase64: string, hwModel?: number, sessionPasskey?: Uint8Array): Uint8Array {
+  /**
+   * Build an AdminMessage.add_contact. Firmware `NodeDB::addFromContact`
+   * replaces the target's whole stored user record with `contact`, so every
+   * field left out arrives as zero: a missing role becomes CLIENT (which
+   * turns off zero-hop for a favorite router) and, before firmware 2.8, a
+   * missing key erases the stored one.
+   */
+  createAddContactMessage(contact: AddContactUser, sessionPasskey?: Uint8Array): Uint8Array {
     try {
       const root = getProtobufRoot();
       const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
@@ -784,12 +797,15 @@ class ProtobufService {
       const adminMsgData: Record<string, unknown> = {
         addContact: buildSharedContactPayload(
           {
-            nodeNum,
-            nodeId,
-            longName,
-            shortName,
-            publicKey: publicKeyBase64,
-            hwModel,
+            nodeNum: contact.nodeNum,
+            nodeId: contact.nodeId,
+            longName: contact.longName,
+            shortName: contact.shortName,
+            publicKey: contact.publicKey,
+            hwModel: contact.hwModel,
+            role: contact.role,
+            isLicensed: contact.isLicensed,
+            isUnmessagable: contact.isUnmessagable,
           },
           // Preserve the existing AdminMessage helper's permissive pass-through
           // behavior. Contact URLs retain strict identity and PKI validation.
@@ -811,7 +827,7 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      logger.debug(`⚙️ Created AddContact admin message for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+      logger.debug(`⚙️ Created AddContact admin message for node ${contact.nodeNum} (!${contact.nodeNum.toString(16).padStart(8, '0')})`);
       return encoded;
     } catch (error) {
       logger.error('Failed to create AddContact message:', error);

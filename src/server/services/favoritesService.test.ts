@@ -264,7 +264,7 @@ describe('FavoritesService — add_contact before set_favorite_node (#6153)', ()
   function setupNodes(opts: { favoritedUser?: Record<string, unknown> | null; destRole?: number | null } = {}) {
     const favorited = opts.favoritedUser === null
       ? null
-      : { nodeId: '!00000005', longName: 'Favd', shortName: 'FV', publicKey: 'AA==', hwModel: 9, ...(opts.favoritedUser ?? {}) };
+      : { nodeId: '!00000005', longName: 'Favd', shortName: 'FV', publicKey: 'AA==', hwModel: 9, role: ROUTER, ...(opts.favoritedUser ?? {}) };
     getNode.mockImplementation(async (num: number) => {
       if (num === 5) return favorited;
       if (num === 222) return { nodeId: '!000000de', role: opts.destRole ?? null };
@@ -280,7 +280,12 @@ describe('FavoritesService — add_contact before set_favorite_node (#6153)', ()
 
     await svc.sendFavoriteNode(5, 222);
 
-    expect(createAddContactMessage).toHaveBeenCalledWith(5, '!00000005', 'Favd', 'FV', 'AA==', 9, PASSKEY);
+    expect(createAddContactMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeNum: 5, nodeId: '!00000005', longName: 'Favd', shortName: 'FV', publicKey: 'AA==', hwModel: 9, role: ROUTER,
+      }),
+      PASSKEY,
+    );
     expect(createSetFavoriteNodeMessage).not.toHaveBeenCalled();
     expect(adminTx.sendAdminCommand).toHaveBeenCalledTimes(1);
     expect(adminTx.sendAdminCommand).toHaveBeenCalledWith(new Uint8Array([3]), 222);
@@ -317,6 +322,21 @@ describe('FavoritesService — add_contact before set_favorite_node (#6153)', ()
     const adminTx = makeFakeAdminTx();
     const svc = new FavoritesService(mgr as any, adminTx as any);
     setupNodes({ favoritedUser: { longName: null, shortName: null, publicKey: null } });
+
+    await svc.sendFavoriteNode(5, 222);
+
+    expect(createAddContactMessage).not.toHaveBeenCalled();
+    expect(createSetFavoriteNodeMessage).toHaveBeenCalledWith(5, PASSKEY);
+    expect(adminTx.sendAdminCommand).toHaveBeenCalledTimes(1);
+  });
+
+  // Firmware before 2.8 copies an empty key over the stored one, so a
+  // key-less add_contact would break PKI DMs with the node.
+  it('(d1) names but no public key: skips add_contact, still sends set_favorite_node', async () => {
+    const mgr = makeFakeManager({ sessionPasskey: PASSKEY });
+    const adminTx = makeFakeAdminTx();
+    const svc = new FavoritesService(mgr as any, adminTx as any);
+    setupNodes({ favoritedUser: { publicKey: null }, destRole: ROUTER });
 
     await svc.sendFavoriteNode(5, 222);
 
