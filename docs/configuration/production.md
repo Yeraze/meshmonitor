@@ -303,30 +303,15 @@ group on the host with a udev rule instead.
 
 ### Kubernetes Security
 
-Pod Security Policy:
+PodSecurityPolicy was removed in Kubernetes 1.25. Use [Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/) labels on the namespace instead:
 
-```yaml
-apiVersion: policy/v1beta1
-kind:PodSecurityPolicy
-metadata:
-  name: meshmonitor-psp
-spec:
-  privileged: false
-  allowPrivilegeEscalation: false
-  requiredDropCapabilities:
-    - ALL
-  runAsUser:
-    rule: 'MustRunAsNonRoot'
-  seLinux:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-  volumes:
-    - 'configMap'
-    - 'emptyDir'
-    - 'persistentVolumeClaim'
-    - 'secret'
+```bash
+kubectl label namespace meshmonitor \
+  pod-security.kubernetes.io/enforce=baseline \
+  pod-security.kubernetes.io/warn=restricted
 ```
+
+The default image starts as root to fix `/data` ownership, then drops to the `node` user, so `baseline` is the level that works out of the box. To meet `restricted`, run the container fully unprivileged as shown in [Starting fully unprivileged](#starting-fully-unprivileged).
 
 ## Backups
 

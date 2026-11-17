@@ -16,7 +16,7 @@ Meshtastic's Store &amp; Forward module lets a powered node (usually a mains-pow
 - **Preserves S&amp;F metadata across upgrades** — two new database fields (`is_store_forward_server`, `via_store_forward`) were added in migrations 034 and 035
 
 ::: info Passive client only
-MeshMonitor does not actively request history from S&amp;F servers — it reacts to replays the server decides to push. Enabling S&amp;F history requests (a `CLIENT_HISTORY` message) is on the roadmap.
+MeshMonitor does not actively request history from S&amp;F servers — it reacts to replays the server decides to push.
 :::
 
 ## When it helps
