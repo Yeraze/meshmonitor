@@ -4,7 +4,7 @@ import { UiIcon } from '../icons';
 import {
   MODEM_PRESET_OPTIONS,
   REGION_OPTIONS,
-  FEM_LNA_MODE_OPTIONS,
+  femLnaModeOptionsFor,
   isAmateurRadioRegion,
   getLegalPresetOptions,
   getPresetIllegalReason,
@@ -580,7 +580,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           onChange={(e) => setFemLnaMode(parseInt(e.target.value))}
           className="setting-input"
         >
-          {FEM_LNA_MODE_OPTIONS.map(option => (
+          {femLnaModeOptionsFor(femLnaMode).map(option => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
