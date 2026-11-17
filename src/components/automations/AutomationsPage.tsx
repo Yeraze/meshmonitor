@@ -63,7 +63,7 @@ const VARIABLE_SCOPES: { value: Variable['scope']; label: string }[] = [
 ];
 
 const DEFAULT_FORM: WorkflowForm = {
-  trigger: { type: 'trigger.message', params: { textContains: 'ping' } },
+  trigger: { type: 'trigger.message', params: { textContains: 'ping', senderKind: 'human' } },
   rules: [{ conditions: [], actions: [{ type: 'action.tapback', params: { emoji: '👍' } }] }],
   combine: null,
 };
