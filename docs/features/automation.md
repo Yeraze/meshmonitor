@@ -18,7 +18,7 @@ The **built-in automations** are the older, fixed features on each source's **Au
 | Reply to keywords, call a web API, run a bot | Partial: **A message is received** trigger | [Auto Responder](/features/automation-messages#auto-responder) |
 | Greet new nodes | Partial: **A new node is discovered** trigger | [Auto Welcome](/features/automation-messages#auto-welcome) |
 | Forward my DMs to my phone | Partial: **A message is received** trigger with **Send a message** | [Forwarding](/features/automation-messages#forwarding) |
-| Trace routes, poll stats, ping, sync clocks, repair keys, prune nodes | Partial, one node at a time | [Mesh upkeep](/features/automation-upkeep) |
+| Trace routes, poll stats, ping, sync clocks, repair keys, prune nodes | Partial for some; see [the table](/features/automation-upkeep) | [Mesh upkeep](/features/automation-upkeep) |
 
 ## Built-in automations {#built-in}
 

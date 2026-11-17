@@ -187,7 +187,7 @@ notification.
 Defines a geographic region and fires when a node **enters**, **leaves**, or **dwells (moves while
 inside)** it. The region is drawn directly on a Leaflet map — either a **circle** (center + radius)
 or a **polygon** — using the shared geofence map editor. Evaluation is shape-aware (point-in-circle
-or polygon ray-cast). See also the dedicated [Geofence Triggers](/features/geofence-triggers) page.
+or polygon ray-cast). For the per-source built-in version, see [Geofence Triggers](/features/automation-triggers#geofence-triggers).
 
 ### Cooldown applies to
 

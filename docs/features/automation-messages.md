@@ -19,7 +19,7 @@ MeshCore sources have their own versions of several of these; see [MeshCore](/fe
 ## Auto Acknowledge {#auto-acknowledge}
 
 ::: tip Use the Automation Engine instead
-The Engine's **Auto-Ack** template does the same job across every source, with conditions and tapbacks. To move your current setup, use [Convert to an Automation…](#converting-to-an-automation).
+The Engine's **Auto-Ack** template answers direct, zero-hop messages across every source, with conditions and tapbacks. To move your current setup, use [Convert to an Automation…](#converting-to-an-automation). A few settings do not carry over, such as **Maximum Number of Responses**; see [what doesn't convert](/features/automation-engine-recipes#what-doesn-t-convert).
 :::
 
 Automatically responds to messages matching a specific pattern with a customizable confirmation message.

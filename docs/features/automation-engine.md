@@ -4,7 +4,7 @@
      prints the double-brace tokens as text instead of evaluating them as Vue (which breaks the build). -->
 <div v-pre>
 
-The Automation Engine is MeshMonitor's rule builder: **when this happens, do that**. It is the recommended way to automate MeshMonitor, and where new automation features land. One rule can watch every source, check conditions, keep variables, send messages, run scripts and send notifications.
+The Automation Engine is MeshMonitor's rule builder: **when this happens, do that**. It is the recommended way to automate MeshMonitor. One rule can watch every source, check conditions, keep variables, send messages, run scripts and send notifications.
 
 Open it from **Automation Engine** in the dashboard sidebar. You need the global `automations` permission to see it.
 
@@ -52,11 +52,11 @@ Key properties:
 
 - **Global by design.** An automation evaluates events from **all** connected sources at once
   (like Map Analysis), rather than being tied to a single radio. Use a **Source filter** condition
-  (below) to scope a workflow to a subset of sources when you want.
+  ([Conditions](/features/automation-engine-reference#conditions)) to scope a workflow to a subset of sources when you want.
 - **Permission-gated.** The page and its API need the global `automations`
   permission, separate from the per-source `automation` permission the built-in automations use.
 - **Cooldown / rate-limit** per automation, or **per node / per source+node** via the trigger's
-  *Cooldown applies to* (below), prevents mesh spam, plus a per-run action cap and a loop guard
+  [*Cooldown applies to*](/features/automation-engine-reference#cooldown-applies-to), prevents mesh spam, plus a per-run action cap and a loop guard
   so an automation can't runaway-recurse.
 - **Variables** — a separate management area for user-defined values (constants and runtime
   flags/counters) referenced anywhere as `{{ var.name }}`.
@@ -81,7 +81,7 @@ The gallery ships with these templates today:
   a fixed feature toggle.
 - **MT↔MC Bridge** — relays channel text both ways between a Meshtastic channel and a MeshCore
   channel, tagged with its protocol of origin. See [Recipe — Meshtastic ↔ MeshCore
-  bridge](#recipe-mt-mc-bridge) below for the full walkthrough, including the
+  bridge](/features/automation-engine-recipes#recipe-mt-mc-bridge) for the full walkthrough, including the
   flood-safety guidance you should read before enabling it.
 - **Device Health** — a one-click starter for node-health alerts: low battery or voltage, high
   temperature, channel utilization or noise floor, a node gone silent or heard again, a reboot, lost
@@ -200,7 +200,7 @@ showing **why it did or didn't run**:
 - **cooldown** — the rule matched but was suppressed by its cooldown window. The reason names the
   key that was cooling down, e.g. `cooldown active — 40s remaining (node 111)` or
   `cooldown active — 12s remaining (automation-wide (this event has no subject node))` (see
-  [Cooldown applies to](#cooldown-applies-to)).
+  [Cooldown applies to](/features/automation-engine-reference#cooldown-applies-to)).
 
 The panel keeps the most recent entries in a rolling buffer and **auto-stops after 5 minutes** (and
 on close or disconnect), so a trace never runs unbounded.

@@ -1208,6 +1208,7 @@ Complete example scripts are available in the MeshMonitor repository:
 - `weather.py` - Python weather lookup template
 - `PirateWeather.py` - Complete Pirate Weather API integration with Nominatim geocoding
 - `info.sh` - Shell system information script
+- `lorem.js`, `lorem.py`, `lorem.sh` - Return three messages at once, to show the `responses` array
 - `README.md` - Detailed examples and usage
 
 ## Timer Trigger Scripts {#timer-trigger-scripts}

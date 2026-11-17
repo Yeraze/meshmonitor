@@ -6,7 +6,7 @@ Timer Triggers send a message or run a script on a cron schedule. Geofence Trigg
 The [Automation Engine](/features/automation-engine) does both, across every source, with conditions and notifications:
 
 - **On a schedule** trigger: live cron, start and end times, and a time zone. See [Schedule trigger](/features/automation-engine-reference#schedule-trigger-live-cron). The **Timed Announcement** template sets one up for you.
-- **A node enters/leaves a region** trigger: the same circle or polygon fences, plus Apprise notifications. See [Geofence trigger](/features/automation-engine-reference#geofence-trigger).
+- **A node enters/leaves a region** trigger: draw a circle or polygon, or anchor a circle to a waypoint, and send Apprise notifications. See [Geofence trigger](/features/automation-engine-reference#geofence-trigger).
 
 There is no converter for existing timers or geofences; rebuild them in the Engine by hand.
 :::
@@ -169,7 +169,7 @@ Sends a weekly summary every Sunday at 6 PM.
 ## Geofence Triggers {#geofence-triggers}
 
 ::: tip Use the Automation Engine instead
-The Engine's **A node enters/leaves a region** trigger uses the same fences and can send Apprise notifications. See [Geofence trigger](/features/automation-engine-reference#geofence-trigger).
+The Engine's **A node enters/leaves a region** trigger draws circle or polygon fences on the same map editor, or anchors one to a waypoint, and can send Apprise notifications. See [Geofence trigger](/features/automation-engine-reference#geofence-trigger).
 :::
 
 Trigger automated actions when nodes enter, exit, or remain inside defined geographic areas. This powerful feature enables location-based automation such as arrival notifications, area monitoring, or proximity alerts.
