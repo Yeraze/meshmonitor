@@ -95,7 +95,7 @@ MeshMonitor records **First Heard** for each node on each source. It sets the va
 - Filtering out nodes that may have overheard traffic but aren't on your encrypted channel
 - Reducing clutter from unconfigured or unknown devices
 
-**Related Settings**: See Skip Incomplete Nodes for [Auto Acknowledge](/features/automation#skip-incomplete-nodes-ack) and [Auto Responder](/features/automation#skip-incomplete-nodes-responder) to prevent either from responding to incomplete nodes.
+**Related Settings**: See Skip Incomplete Nodes for [Auto Acknowledge](/features/automation-messages#skip-incomplete-nodes-ack) and [Auto Responder](/features/automation-messages#skip-incomplete-nodes-responder) to prevent either from responding to incomplete nodes.
 
 ### Unknown Nodes Filter
 
@@ -231,7 +231,7 @@ MeshMonitor records **First Heard** for each node on each source. It sets the va
 
 ### Likely-Aircraft Detection
 
-**Description**: Flags a node as a likely aircraft (plane, balloon, drone) when its reported altitude sits far above the ground at its position. Flagged nodes get a badge on the map (see [Map Features](/features/maps#map-features)) and can be excluded from Auto-Favorite (see [Automation → Auto Favorite](/features/automation#auto-favorite)).
+**Description**: Flags a node as a likely aircraft (plane, balloon, drone) when its reported altitude sits far above the ground at its position. Flagged nodes get a badge on the map (see [Map Features](/features/maps#map-features)) and can be excluded from Auto-Favorite (see [Automation → Auto Favorite](/features/automation-upkeep#auto-favorite)).
 
 **Location**: Settings → Node Display, per source. Meshtastic sources only (including MQTT bridge/broker sources) — MeshCore does not report altitude the same way and is not classified.
 
@@ -254,7 +254,7 @@ Aircraft pass through and do not come back, so their nodes pile up. Age-out clea
 - **Age out likely aircraft** — off by default. Needs detection on.
 - **Age out after (hours)** — a flagged node not heard for this long is aged out. Default **24**, range 6–168.
 - **Action** — **Ignore** (default) or **Delete**.
-  - **Ignore** puts the node on the [Ignored Nodes](/features/automation#ignored-nodes) list with the reason **Aged-out aircraft**. This happens in MeshMonitor's database only: nothing is sent to any radio. You can un-ignore it there, or with **Un-ignore Node** on its Node Details page. An aircraft you un-ignore by hand is not aged out again until it has been heard and then gone quiet once more.
+  - **Ignore** puts the node on the [Ignored Nodes](/features/automation-upkeep#ignored-nodes) list with the reason **Aged-out aircraft**. This happens in MeshMonitor's database only: nothing is sent to any radio. You can un-ignore it there, or with **Un-ignore Node** on its Node Details page. An aircraft you un-ignore by hand is not aged out again until it has been heard and then gone quiet once more.
   - **Delete** removes the node and all its history, including positions. It cannot be undone.
 - **Last run** — when the sweep last ran on this source, and how many nodes it aged out, reclassified as fixed, and returned.
 

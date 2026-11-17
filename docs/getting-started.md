@@ -343,7 +343,7 @@ Now that you have MeshMonitor running:
 
 - **[FAQ](/faq)** - Common issues and solutions
 - **[Features Guide](/features/settings)** - Explore all available features
-- **[Automatic Responses](/features/automation)** - Set up auto-acknowledge and auto-announce
+- **[Automation](/features/automation)** - Build rules in the Automation Engine, or turn on auto-acknowledge and auto-announce
 - **[Device Configuration](/features/device)** - Configure your Meshtastic node from the UI
 - **[Production Deployment](/configuration/production)** - Deploy securely for public access
 - **[Development Setup](/development/setup)** - Set up a local development environment

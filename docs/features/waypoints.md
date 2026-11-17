@@ -142,7 +142,7 @@ Migrations **054** / **055** seed the new `waypoints:read` / `waypoints:write` p
 
 Migration **130** adds the `channel` column that records which slot a waypoint is broadcast on. Rows created before it read back as `NULL`, which every send site treats as slot 0 — the same channel they always used.
 
-Migration **183** adds `hop_limit` (`NULL` = the node's configured hop limit, which every earlier row gets), plus `automation_key` and `broadcast_fingerprint`, used by the Automation Engine's [Broadcast a waypoint](/features/automation-engine#broadcast-a-waypoint) action.
+Migration **183** adds `hop_limit` (`NULL` = the node's configured hop limit, which every earlier row gets), plus `automation_key` and `broadcast_fingerprint`, used by the Automation Engine's [Broadcast a waypoint](/features/automation-engine-reference#broadcast-a-waypoint) action.
 
 Migration **216** adds the geofence columns (`geofence_radius_m`, `bbox_west`, `bbox_south`, `bbox_east`, `bbox_north`, `notify_on_enter`, `notify_on_exit`, `notify_favorites_only`). Existing rows have no geofence and every flag off.
 
@@ -159,7 +159,7 @@ Migration **165** adds the four preference columns (`notify_on_waypoint`, `waypo
 ## Limitations and follow-ups
 
 - **Rebroadcast scheduler is not yet wired**. The `rebroadcast_interval_s` column is persisted and accepted by the API, but no timer fires it. Waypoints you create are broadcast once on save; resends rely on the stock Meshtastic firmware behaviour at this time.
-- **No trigger fires on a waypoint.** Auto-Responders and automation triggers do not match on waypoint events. An automation can send one, with the [Broadcast a waypoint](/features/automation-engine#broadcast-a-waypoint) action.
+- **No trigger fires on a waypoint.** Auto-Responders and automation triggers do not match on waypoint events. An automation can send one, with the [Broadcast a waypoint](/features/automation-engine-reference#broadcast-a-waypoint) action.
 
 Both are tracked as follow-ups; see [#2936](https://github.com/Yeraze/meshmonitor/issues/2936) for the umbrella issue.
 
