@@ -122,11 +122,27 @@ const featuresSidebar = [
     text: 'Automation & Alerts',
     collapsed: false,
     items: [
-      { text: 'Automatic Responses', link: '/features/automation' },
-      { text: 'Automation Engine', link: '/features/automation-engine' },
-      { text: 'Geofence Triggers', link: '/features/geofence-triggers' },
-      { text: 'Push Notifications', link: '/features/notifications' },
-      { text: 'Auto Heap Management', link: '/features/auto-heap-management' }
+      { text: 'Automation Overview', link: '/features/automation' },
+      {
+        text: 'Automation Engine',
+        link: '/features/automation-engine',
+        collapsed: true,
+        items: [
+          { text: 'Reference', link: '/features/automation-engine-reference' },
+          { text: 'Recipes', link: '/features/automation-engine-recipes' }
+        ]
+      },
+      {
+        text: 'Built-in Automations',
+        collapsed: true,
+        items: [
+          { text: 'Message Automations', link: '/features/automation-messages' },
+          { text: 'Timer & Geofence Triggers', link: '/features/automation-triggers' },
+          { text: 'Mesh Upkeep', link: '/features/automation-upkeep' },
+          { text: 'Auto Heap Management', link: '/features/auto-heap-management' }
+        ]
+      },
+      { text: 'Push Notifications', link: '/features/notifications' }
     ]
   },
   {
