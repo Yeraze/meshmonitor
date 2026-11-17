@@ -289,6 +289,12 @@ If you previously ran the `docker-compose.upgrade.yml` overlay or set
    docker rm -f meshmonitor-upgrader
    ```
 
+   If `docker compose up -d` then fails with `The container name "/meshmonitor"
+   is already in use`, an old sidecar built that container outside Compose.
+   Remove it with `docker rm -f meshmonitor` and run `docker compose up -d`
+   again. Your data lives in the volume, so removing the container loses
+   nothing.
+
 3. **Remove `AUTO_UPGRADE_ENABLED` from your environment.** It no longer does
    anything as of v4.13 — delete the line from your `docker-compose.yml`
    environment block (or `.env` file) and redeploy.
