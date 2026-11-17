@@ -1807,6 +1807,6 @@ Create backup templates for different use cases:
 ## Related Documentation
 
 - [Settings](/features/settings) - Learn about MeshMonitor settings and backup automation
-- [Automatic Responses](/features/automation) - Configure the standing automation behaviours
+- [Automation](/features/automation) - Automation Engine and built-in automations
 - [Meshtastic Official Documentation](https://meshtastic.org/docs/)
 - [Meshtastic CLI Documentation](https://meshtastic.org/docs/software/python/cli/)
