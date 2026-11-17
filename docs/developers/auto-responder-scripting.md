@@ -914,6 +914,7 @@ EOF
 import os
 import json
 import sqlite3
+from datetime import datetime, timezone
 
 node_id = os.environ.get('PARAM_nodeid', 'Unknown')
 
@@ -922,7 +923,7 @@ try:
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT longName, lastSeen FROM nodes WHERE nodeId = ?",
+        "SELECT longName, lastHeard FROM nodes WHERE nodeId = ?",
         (node_id,)
     )
 
@@ -931,7 +932,7 @@ try:
 
     if result:
         output = {
-            "response": f"{result[0]} last seen {result[1]}"
+            "response": f"{result[0]} last heard {datetime.fromtimestamp(result[1], timezone.utc):%Y-%m-%d %H:%M} UTC" if result[1] else f"{result[0]} not heard yet"
         }
     else:
         output = {"response": f"Node {node_id} not found"}

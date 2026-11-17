@@ -294,7 +294,7 @@ const developmentSidebar = [
       text: 'Advanced Topics',
       collapsed: true,
       items: [
-        { text: 'Auto Responder Scripting', link: '/developers/auto-responder-scripting' },
+        { text: 'Writing Automation Scripts', link: '/developers/auto-responder-scripting' },
         { text: 'BLE Bridge Migration', link: '/development/BLE_BRIDGE_MIGRATION' }
       ]
     }
