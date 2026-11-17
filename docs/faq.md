@@ -2,7 +2,7 @@
 
 This page covers common issues and questions from MeshMonitor users. For developer-specific questions, see the [Development Documentation](/development/).
 
-## 🚨 Common Issues
+## Common Issues
 
 ### I see a blank white screen when accessing MeshMonitor
 
@@ -35,7 +35,9 @@ environment:
    - ALLOWED_ORIGINS=http://192.168.1.50:8080,http://meshmonitor.local:8080,https://meshmonitor.example.com
    ```
 
-**Note:** `http://localhost` works by default and doesn't need to be added.
+**Note:** Only `http://localhost:8080` and `http://localhost:3001` are allowed by default. Any other origin, including localhost on another port, must be listed.
+
+If the login page warns about secure cookies, or you can log in but get sent straight back, see [I can't login / Session immediately logs out](#i-can-t-login-session-immediately-logs-out).
 
 **How to diagnose:**
 1. Open your browser's Developer Tools (F12)
@@ -55,53 +57,38 @@ docker compose up -d
 
 **Problem:** You enter your username and password, the login appears to succeed, but you're immediately logged out or redirected back to the login page.
 
-**Cause:** This is a **cookie security** issue. MeshMonitor can't set session cookies due to security settings.
+**Cause:** The browser drops the session cookie. With `COOKIE_SECURE=true`, MeshMonitor marks the cookie secure and only sends it on a request it sees as HTTPS. That fails in two cases:
 
-**Solution:** The fix depends on your deployment:
+- You reach MeshMonitor over plain HTTP.
+- A reverse proxy handles HTTPS, but `TRUST_PROXY` is not set, so MeshMonitor sees the proxy's plain HTTP request and ignores its `X-Forwarded-Proto` header.
 
-#### Scenario A: Behind HTTPS Reverse Proxy (Recommended)
+`COOKIE_SECURE` defaults to `false`, so a plain HTTP install with no proxy works without it. MeshMonitor does not serve HTTPS itself; for HTTPS, put a reverse proxy in front.
 
-If you're using nginx, Caddy, or Traefik with HTTPS:
+**Solution:** The fix depends on your deployment.
+
+#### Behind an HTTPS reverse proxy (recommended)
+
+For nginx, Caddy, Traefik or similar with HTTPS:
 
 ```yaml
 environment:
   - NODE_ENV=production
-  - TRUST_PROXY=true              # Required!
+  - TRUST_PROXY=1                 # one proxy hop; required
+  - COOKIE_SECURE=true            # required over HTTPS
   - SESSION_SECRET=your-secret-here
   - ALLOWED_ORIGINS=https://meshmonitor.example.com
 ```
 
-**Why:** When a reverse proxy terminates HTTPS, MeshMonitor sees the connection as HTTP. Setting `TRUST_PROXY=true` tells MeshMonitor to trust the `X-Forwarded-Proto` header from your proxy.
+See [Reverse Proxy Configuration](/configuration/reverse-proxy) for proxy setups and [HTTP vs HTTPS](/configuration/http-vs-https) for the trade-offs.
 
-#### Scenario B: Direct HTTP Access (Development/Testing Only)
+#### Plain HTTP (no proxy)
 
-If you're accessing MeshMonitor directly over HTTP (no reverse proxy):
-
-```yaml
-environment:
-  - NODE_ENV=production
-  - COOKIE_SECURE=false          # Only for HTTP!
-  - SESSION_SECRET=your-secret-here
-```
-
-**⚠️ Warning:** This reduces security. Use HTTPS for production deployments.
-
-#### Scenario C: Direct HTTPS Access
-
-If MeshMonitor itself handles HTTPS (with TLS certificates):
-
-```yaml
-environment:
-  - NODE_ENV=production
-  - SESSION_SECRET=your-secret-here
-```
+Remove `COOKIE_SECURE=true` if you set it, or set it to `false`. Use this on a trusted LAN only; anyone on the network can read a cookie sent over HTTP.
 
 **How to diagnose:**
-1. Open browser Developer Tools (F12)
-2. Go to Application tab → Cookies
-3. Check if `meshmonitor.sid` cookie exists after login
-4. If missing, it's a cookie security issue
-5. Check Docker logs for warnings about SESSION_SECRET or COOKIE_SECURE
+1. Check the startup log. MeshMonitor prints `Cookie secure: true` or `false` under `Session configuration`.
+2. Open browser Developer Tools (F12), go to **Application → Cookies**, and log in.
+3. If no `meshmonitor.sid` cookie appears (or the name you set in `SESSION_COOKIE_NAME`), the cookie was dropped. Match `COOKIE_SECURE` to how you reach MeshMonitor, and set `TRUST_PROXY` behind a proxy.
 
 **After fixing:**
 ```bash
@@ -111,39 +98,7 @@ docker compose up -d
 
 ---
 
-### Emoji appear as blank squares in offline/air-gapped deployments
-
-**Problem:** Icons in the sidebar and throughout the UI appear as blank white squares (☐) instead of emoji like 🗺️ 💬 ✉️.
-
-**Cause:** MeshMonitor uses native **Unicode emoji** which are rendered by your operating system's emoji font. In offline or air-gapped environments, the system may not have an emoji font installed.
-
-**Solution:** Install an emoji font on the system running the browser (or the Docker host if using a local browser):
-
-| Operating System | Command |
-|-----------------|---------|
-| **Debian/Ubuntu** | `sudo apt install fonts-noto-color-emoji` |
-| **Fedora/RHEL** | `sudo dnf install google-noto-emoji-color-fonts` |
-| **Arch Linux** | `sudo pacman -S noto-fonts-emoji` |
-| **Alpine Linux** | `apk add font-noto-emoji` |
-| **Windows** | Segoe UI Emoji (included by default) |
-| **macOS** | Apple Color Emoji (included by default) |
-
-**After installing:**
-
-1. Refresh the font cache (Linux only):
-   ```bash
-   fc-cache -fv
-   ```
-
-2. Restart your browser
-
-3. Reload MeshMonitor
-
-**Note:** This is a client-side issue - the emoji font needs to be installed on the machine running the web browser, not necessarily on the MeshMonitor server (unless they're the same machine).
-
----
-
-## 📡 Node Management
+## Node Management
 
 ### Can I monitor multiple nodes (or multiple mesh protocols) with one MeshMonitor instance?
 
@@ -253,7 +208,7 @@ Meshtastic firmware 2.8 reorganizes how a device stores its node database, but *
 Two things you might notice:
 
 - **Lower "nodes" count on the device, not in MeshMonitor.** On nRF52 hardware, 2.8 keeps full detail for ~120 recent nodes (down from 150); older ones become compact records on the device. The device's own app may show fewer nodes, but **MeshMonitor's counts are unaffected** — and can be higher than the device's, because MeshMonitor remembers nodes the device has compacted.
-- **A blocked node is blocked, not gone.** Under 2.8 a device protects blocked nodes from being dropped and may stop listing them in full node queries. MeshMonitor stores its block list per source and re-applies it automatically, so a blocked node stays blocked even if it disappears from the device's node list. To review or un-block, use **Settings → Ignored Nodes**.
+- **A blocked node is blocked, not gone.** Under 2.8 a device protects blocked nodes from being dropped and may stop listing them in full node queries. MeshMonitor stores its block list per source and re-applies it automatically, so a blocked node stays blocked even if it disappears from the device's node list. To review or un-block, open the **Automation** tab and go to **Ignored Nodes**.
 
 ---
 
@@ -269,9 +224,11 @@ What you see:
 
 MeshMonitor detects the likely pairing and marks **both** entries with an identity badge in the node list — the new one says which node it used to be, the silent one says what it continued as. Open **Node Details** on either for the full explanation, including what the pairing was based on.
 
-MeshMonitor **does not merge the two automatically**, and there is no button to do it. When the pairing rests on a name match it is a guess, and a wrong merge would splice two unrelated nodes' histories together irreversibly.
+MeshMonitor **never merges the two on its own**. When the pairing rests on a name match it is a guess, and a wrong merge would splice two unrelated nodes' histories together.
 
-For most people the right action is none: let the old entry age out and let new history accumulate. If you had favourited the node, or referenced it in an automation or notification rule, update those to the new node number — they are keyed on the number and will otherwise keep pointing at the silent old entry.
+If you are sure the pair is right, an admin can open **Node Details** on either entry and choose **Merge history…**. The dialog first shows a dry run of what will move, runs the merge in one transaction on that source only, and records an undo (unless the merge is too large to journal, which the dialog warns about). See [Merging the history](/features/node-identity-changes#merging-the-history).
+
+You can also do nothing: let the old entry age out and let new history build up. Either way, if you referenced the node in an automation, a notification rule, or an auto-traceroute or auto-favourite list, update those to the new node number. A merge does not move them, and they will otherwise keep pointing at the silent old entry.
 
 Full details, including how the pairing is worked out and why a duplicate-key security warning may appear briefly: [Node Number Changes (Meshtastic 2.8)](/features/node-identity-changes).
 
@@ -281,8 +238,8 @@ Full details, including how the pairing is worked out and why a duplicate-key se
 
 Firmware 2.8 makes position and telemetry broadcast **opt-in**. If a node goes quiet on the map or stops reporting telemetry after the upgrade, this is **expected firmware behavior, not a MeshMonitor bug** — the device is no longer broadcasting that data by default.
 
-::: info Not released yet
-Firmware 2.8 is **not released yet** (the latest is v2.7.26). This applies only once you upgrade to 2.8.
+::: info 2.8 is a pre-release
+Firmware 2.8.x is out as public alpha pre-releases; the latest stable release is still 2.7.x. This applies only once you upgrade to 2.8.
 :::
 
 What 2.8 changes:
@@ -303,11 +260,11 @@ MeshMonitor **keeps all previously collected history** — nothing you already g
 
 ### What is MeshMonitor's "firmware 2.8 early preview" decode support? {#firmware-2-8-early-preview}
 
-::: info Not released yet
-As above, firmware 2.8 is **not officially released** (latest stable is v2.7.26). MeshMonitor has started decoding a few 2.8-only wire formats ahead of release so nothing breaks the day it ships, but these are necessarily built against pre-release protobuf definitions and may still change.
+::: info 2.8 is a pre-release
+As above, firmware 2.8.x ships only as public alpha pre-releases so far (the latest stable is 2.7.x). MeshMonitor decodes a few 2.8-only wire formats now, built against pre-release protobuf definitions that may still change.
 :::
 
-A few things you may notice if you're running a 2.8 development build:
+A few things you may notice on a 2.8 pre-release:
 
 - **Signed-packet shield.** Firmware 2.8 introduces an **XEdDSA** packet-signing scheme. When the connected node reports a packet as signature-verified, MeshMonitor shows a small shield icon next to it, in the [Packet Monitor](/features/packet-monitor), and alongside the existing MQTT and store-and-forward indicators on messages. MeshMonitor doesn't verify the signature itself; it only surfaces what the node already checked.
 - **MeshBeacon.** 2.8 adds a periodic `MESH_BEACON_APP` broadcast that a node can use to advertise a joinable channel (name, region, and modem preset). The Packet Monitor decodes and previews these as `[MeshBeacon: "..."]`. You can also:
@@ -317,32 +274,21 @@ A few things you may notice if you're running a 2.8 development build:
   Beacons are **not** stored as messages, they appear in the Packet Monitor and can drive automations.
 - **MEDIUM_TURBO modem preset.** A new 500 kHz "medium range, turbo" preset appears alongside the existing presets in configuration screens that list modem presets. See [Modem Preset](/features/device#modem-preset).
 
-Apart from the MeshBeacon module settings, none of this needs any action from you, it's decode support so MeshMonitor stays useful against nodes running early 2.8 builds. Expect this section to be replaced with normal release documentation once 2.8 ships.
+Apart from the MeshBeacon module settings, none of this needs any action from you, it's decode support so MeshMonitor stays useful against nodes running 2.8 pre-releases. Expect this section to be replaced with normal release documentation once a stable 2.8 ships.
 
 ---
 
-## 🔐 User Management
+## User Management
 
 ### How do I reset a user's password as an admin?
 
-1. **Login as admin** (or any user with admin permissions)
+1. Log in with an admin account.
+2. Open **Users** in the Admin section of the sidebar.
+3. Select the user and click **Set Password**.
+4. Enter a new password (at least 8 characters) twice and save.
+5. Give the user the password and ask them to change it after they log in.
 
-2. **Navigate to User Management:**
-   - Click your username in the top right corner
-   - Select "Admin Panel" from the dropdown
-   - Click "User Management"
-
-3. **Find the user:**
-   - Locate the user in the user list
-   - Click the "Reset Password" button next to their name
-
-4. **Set new password:**
-   - Enter a temporary password
-   - Click "Save"
-   - Provide this temporary password to the user
-   - Instruct them to change it immediately after login
-
-**Note:** Admin users can reset passwords for any user except other admins (unless you're a super admin).
+Any admin can set any local user's password, including another admin's, unless the account's password is locked. SSO users sign in through their provider and have no MeshMonitor password. Setting a password also turns password sign-in back on for a user who had it disabled. See [Users page](/features/per-source-permissions#users-page).
 
 ---
 
@@ -408,47 +354,43 @@ The application must have been started at least once before running this script,
 
 ### I need to completely reset MeshMonitor - how do I wipe the database?
 
-**⚠️ Warning:** This deletes ALL data including messages, nodes, user accounts, and settings. Only do this as a last resort.
+::: warning
+This deletes ALL data, including messages, nodes, user accounts and settings. Take a [System Backup](/features/system-backup) first, and copy it off the host: on Docker the backups live in the same `/data` volume you are about to delete.
+:::
 
-#### For Docker Deployments:
+#### For Docker Deployments (SQLite, the default)
 
 ```bash
-# Stop MeshMonitor
-docker compose down
+# Stop MeshMonitor and delete its named volumes (this deletes ALL data!)
+docker compose down -v
 
-# Remove the data volume (this deletes ALL data!)
-docker volume rm meshmonitor-meshmonitor-data
-
-# Or if you named your volume differently:
-docker volume ls  # Find your volume name
-docker volume rm <your-volume-name>
-
-# Start MeshMonitor
+# Start MeshMonitor with an empty database
 docker compose up -d
 ```
 
-#### For Bare Metal Deployments:
+`down -v` removes every named volume in that compose file, so you don't need to know the volume's name.
+
+#### For Bare Metal Deployments (SQLite)
+
+Stop MeshMonitor, then delete the database file and its WAL side files. The path is `$DATABASE_PATH` if set, else `$DATA_DIR/meshmonitor.db`, else `/data/meshmonitor.db`:
 
 ```bash
-# Stop MeshMonitor
-# (use Ctrl+C or your process manager)
-
-# Delete the database
-rm -f data/meshmonitor.db
-
-# Start MeshMonitor
-npm start
+rm -f /data/meshmonitor.db /data/meshmonitor.db-wal /data/meshmonitor.db-shm
 ```
 
+Then start MeshMonitor again.
+
+#### PostgreSQL or MySQL
+
+The data lives in your database server, not in the MeshMonitor volume. Drop and recreate the MeshMonitor database there, then restart MeshMonitor.
+
 **After wiping:**
-- MeshMonitor will create a new database
-- Default admin account will be recreated:
-  - Username: `admin`
-  - Password: `changeme`
+- MeshMonitor creates a new database.
+- It recreates the admin account: username `admin`, password `changeme` (or the value of `ADMIN_PASSWORD`, if set, on that first boot).
 
 ---
 
-## 🔄 Updates & Maintenance
+## Updates & Maintenance
 
 ### How often does MeshMonitor release? What's the difference between :dev and :latest? {#how-often-does-meshmonitor-release}
 
@@ -473,127 +415,34 @@ To switch tracks on a Docker Compose deployment, update the `image:` tag in your
 
 ### How do I update MeshMonitor to the latest version?
 
-#### For Docker Deployments:
+#### For Docker Deployments
 
 ```bash
-# Pull the latest image
 docker compose pull
-
-# Restart with new image
-docker compose down
 docker compose up -d
-
-# Verify version
-docker compose logs meshmonitor | grep "Version:"
 ```
 
----
+Check the new version under **Info** in the app. MeshMonitor also shows a banner when a new version is out.
 
-### I get "container name is already in use" error after auto-upgrade
-
-::: tip Auto-Upgrade is retired
-The auto-upgrade watchdog sidecar was removed in v4.13. This entry is kept
-for anyone still cleaning up after the old sidecar; see
-[Migrating from the old Auto-Upgrade sidecar](/configuration/updating#migrating-from-the-old-auto-upgrade-sidecar)
-for the full cleanup checklist.
-:::
-
-**Problem:** After using the (now-retired) built-in auto-upgrade feature, manual `docker compose pull && docker compose up` commands fail with:
-
-```
-Error response from daemon: Conflict. The container name "/meshmonitor" is already in use by container "xxxxx".
-You have to remove (or rename) that container to be able to reuse that name.
-```
-
-**Cause:** This happens when the auto-upgrade watchdog successfully upgraded your container, but the container wasn't properly managed by Docker Compose afterward.
-
-**Solution:** Remove the existing container and recreate it with Docker Compose:
-
-```bash
-# Stop and remove the existing container
-docker stop meshmonitor
-docker rm meshmonitor
-
-# Restart using Docker Compose (this properly manages the container)
-docker compose up -d
-
-# Verify it's running
-docker compose ps
-```
-
-**Prevention:** This issue is fixed in MeshMonitor v2.18.5 and later. The upgrade watchdog now uses Docker Compose to recreate containers, ensuring compatibility with manual `docker compose` commands.
-
-**How it works:**
-- **Before v2.18.5:** The watchdog used `docker run` commands, creating containers outside Docker Compose management
-- **After v2.18.5:** The watchdog uses `docker compose up -d --force-recreate`, maintaining Docker Compose compatibility
-
-**If you see this frequently:** Upgrade to the latest version of MeshMonitor to get the improved upgrade process.
-
-#### For Bare Metal Deployments:
-
-```bash
-# Stop MeshMonitor
-# (use Ctrl+C or your process manager)
-
-# Pull latest code
-git pull origin main
-
-# Update dependencies
-npm install
-
-# Rebuild
-npm run build
-npm run build:server
-
-# Start MeshMonitor
-npm start
-```
-
-**Check for updates:** MeshMonitor displays a banner when a new version is available (requires internet connection).
+For bare metal, LXC/Proxmox, Helm, unattended updates with Watchtower, and cleanup after the retired auto-upgrade sidecar, see [Updating MeshMonitor](/configuration/updating).
 
 ---
 
 ### How do I back up my MeshMonitor data?
 
-#### For Docker Deployments:
+Use the built-in **System Backup**. Go to **Settings → System Backup** and click **Create Backup Now**, or turn on **Automated Backups** for a daily backup. It works on SQLite, PostgreSQL and MySQL, and you can restore on startup with `RESTORE_FROM_BACKUP`. See [System Backup & Restore](/features/system-backup).
 
-```bash
-# Create backup directory
-mkdir -p ~/meshmonitor-backups
+Backups are written to `/data/system-backups/`, inside the same volume as the database. Download them, or copy that folder off the host, so a lost disk or a deleted volume does not take them too.
 
-# Backup the volume
-docker run --rm \
-  -v meshmonitor-meshmonitor-data:/data \
-  -v ~/meshmonitor-backups:/backup \
-  alpine tar czf /backup/meshmonitor-backup-$(date +%Y%m%d).tar.gz -C /data .
+A backup holds channel keys in the clear, so store it like a password file.
 
-# Restore from backup (if needed)
-docker run --rm \
-  -v meshmonitor-meshmonitor-data:/data \
-  -v ~/meshmonitor-backups:/backup \
-  alpine tar xzf /backup/meshmonitor-backup-YYYYMMDD.tar.gz -C /data
-```
+**Not in a backup:** your environment variables and `docker-compose.yml`. Keep a copy of those yourself, above all `SESSION_SECRET`: some rows in the backup are encrypted with it.
 
-#### For Bare Metal Deployments:
-
-```bash
-# The database is in the data directory
-cp data/meshmonitor.db ~/meshmonitor-backup-$(date +%Y%m%d).db
-```
-
-**What's backed up:**
-- SQLite database (messages, nodes, users, settings)
-- Session data
-- All configuration stored in the database
-
-**What's NOT backed up:**
-- Environment variables (docker-compose.yml)
-- Application code
-- Docker images
+**Copying the SQLite file by hand:** don't copy or `tar` the database while MeshMonitor runs. It uses WAL mode, so a live copy can miss recent writes or come out corrupt. Stop MeshMonitor first, then copy `meshmonitor.db` along with any `meshmonitor.db-wal` and `meshmonitor.db-shm` files. The default path is `/data/meshmonitor.db` (or `$DATABASE_PATH`, or `$DATA_DIR/meshmonitor.db`). For scripted database dumps, see [Production: Backups](/configuration/production#backups).
 
 ---
 
-## 🌐 Network & Connectivity
+## Network & Connectivity
 
 ### MeshMonitor can't connect to my Meshtastic node
 
@@ -697,7 +546,7 @@ docker compose -f docker-compose.yml -f docker-compose.ble.yml up -d
 
 The BLE bridge connects to your Bluetooth Meshtastic device and exposes it on TCP port 4403 for MeshMonitor.
 
-See the [BLE Bridge repository](https://github.com/Yeraze/meshtastic-ble-bridge) for detailed setup instructions.
+See [BLE Bridge](/configuration/ble-bridge) for setup, or the [BLE Bridge repository](https://github.com/Yeraze/meshtastic-ble-bridge).
 
 #### For Serial/USB Devices
 
@@ -733,7 +582,7 @@ See the [Serial Bridge configuration guide](/configuration/serial-bridge) for de
 
 ---
 
-## 🎨 Interface & Features
+## Interface & Features
 
 ### I used to run MeshManager — are its features in MeshMonitor?
 
@@ -746,7 +595,7 @@ You do not need a running MeshManager instance for any of this.
 
 ### What do the icons in the Node List mean?
 
-When viewing nodes in the **Nodes** tab, you'll see various icons next to each node that indicate different statuses and capabilities:
+In the node list on the **Map** tab, you'll see various icons next to each node that indicate different statuses and capabilities:
 
 #### Connection & Network Icons
 
@@ -784,7 +633,7 @@ When viewing nodes in the **Nodes** tab, you'll see various icons next to each n
 - **🪪 Identity (Node number changed)** - This node is likely the same physical node as another entry, whose number changed on the firmware 2.8 upgrade
   - Appears on **both** halves of the pair: the new entry and the silent old one
   - Hover for the paired node's name, or open Node Details for the full explanation
-  - Informational only — nothing is merged. See [Node Number Changes (2.8)](/features/node-identity-changes)
+  - The badge itself merges nothing; an admin can merge the two from Node Details with **Merge history…**. See [Node Number Changes (2.8)](/features/node-identity-changes#merging-the-history)
 
 - **📶 Signal Strength** - Shows SNR (Signal-to-Noise Ratio) in dB
 - **🔋 Battery Level** - Current battery percentage
@@ -825,7 +674,7 @@ When you send a message, a status icon appears next to it showing the delivery s
 
 1. **Nodes don't have GPS coordinates:**
    - Check if nodes have reported position data
-   - Go to Nodes tab to see which nodes have coordinates
+   - Check the node list on the **Map** tab to see which nodes have coordinates
    - Nodes without GPS won't appear on the map
 
 2. **Browser location permissions:**
@@ -842,89 +691,72 @@ When you send a message, a status icon appears next to it showing the delivery s
 
 **Problem:** When accessing MeshMonitor without logging in, the map appears empty even though logged-in users can see nodes.
 
-**Cause:** Node visibility in MeshMonitor is controlled by **channel permissions**. Each node is associated with the channel it was last heard on, and users (including anonymous users) can only see nodes on channels they have the appropriate permissions for. By default, anonymous users have no channel permissions.
+**Cause:** **Channel permissions** control which nodes a user sees. Each node belongs to the channel it was last heard on, and a user (including the anonymous user) sees only nodes on channels they may view on the map. Grants are **per source**: a grant on one source opens nothing on another. By default, the anonymous user has no channel permissions.
 
-**Solution:** Configure channel permissions for the anonymous user:
+**Solution:** Grant channel permissions to the anonymous user:
 
-1. **Login as admin**
+1. Log in as an admin and open **Users** in the Admin section of the sidebar.
+2. Select the user named **anonymous**.
+3. Choose the source in the permission scope selector.
+4. For each channel you want visitors to see, tick **View on Map**. Tick **Read Messages** too if they should see that channel's messages.
+5. Save, then repeat steps 3-4 for every other source you want to open.
 
-2. **Navigate to User Management:**
-   - Go to **Settings > Users**
-   - Or click your username in the top right corner and select "Settings"
+To hide exact positions, names or keys from visitors while still showing the map, turn on [Public-Instance Mode](/features/public-instance-mode).
 
-3. **Find the anonymous user:**
-   - Look for the user named **"anonymous"** in the user list
-   - Click on it to edit permissions
-
-4. **Grant channel permissions:**
-   - In the permissions section, find the channel permissions (e.g., `channel_0`, `channel_1`, etc.)
-   - Enable **View Map** permission for each channel you want anonymous users to see on the map
-   - Optionally enable **Read** permission if you also want them to see messages
-   - Click **Save**
-
-See [Understanding Channel Permissions](#understanding-channel-permissions) below for more details on the permission types.
+See [Understanding Channel Permissions](#understanding-channel-permissions) below for what each permission does.
 
 ---
 
 ### Understanding Channel Permissions
 
-As of **v3.1.0**, MeshMonitor uses a **tri-state permission system** for channels, giving administrators fine-grained control over what users can see and do:
+Each channel on each source has three permissions:
 
 | Permission | Description |
 |------------|-------------|
-| **View Map** | User can see node positions on the map for nodes heard on this channel |
-| **Read** | User can read messages from this channel (in the Messages tab) |
-| **Write** | User can send messages to this channel (implies Read access) |
+| **View on Map** | See nodes heard on this channel on the map |
+| **Read Messages** | Read this channel's messages in the **Channels** tab |
+| **Send Messages** | Send messages to this channel |
 
-**How permissions work:**
-
-- Each node is associated with the channel it was last heard on
-- **View Map** controls whether nodes appear on the map - this is the most common permission needed for public dashboards
-- **Read** controls access to the Messages tab for that channel
-- **Write** allows sending messages and automatically includes Read access
+Each node belongs to the channel it was last heard on, and **View on Map** works on its own, without **Read Messages**. That makes it the one most public dashboards need.
 
 **Example configurations:**
 
-| Use Case | View Map | Read | Write |
-|----------|----------|------|-------|
-| Public map-only dashboard | ✅ | ❌ | ❌ |
-| Read-only access (map + messages) | ✅ | ✅ | ❌ |
-| Full access | ✅ | ✅ | ✅ |
-| Hidden channel (logged-in users only) | ❌ | ❌ | ❌ |
+| Use Case | View on Map | Read Messages | Send Messages |
+|----------|-------------|---------------|---------------|
+| Public map-only dashboard | Yes | No | No |
+| Read-only access (map + messages) | Yes | Yes | No |
+| Full access | Yes | Yes | Yes |
+| Hidden channel (logged-in users only) | No | No | No |
 
-**Configuring the Anonymous user:**
+**Configuring the anonymous user:**
 
-The **anonymous** user controls what unauthenticated visitors can see. Common setups:
+The **anonymous** user controls what signed-out visitors can see. Common setups:
 
-- **Public dashboard:** Enable `View Map` on `channel_0` (primary channel) for anonymous
-- **Private network:** Leave all permissions disabled - visitors must log in
-- **Selective exposure:** Enable `View Map` only on specific public channels
+- **Public dashboard:** tick **View on Map** on Channel 0 (Primary) for anonymous, on each source you want public.
+- **Private network:** leave everything off; visitors must log in.
+- **Selective exposure:** tick **View on Map** only on chosen public channels.
 
 **Important notes:**
 
-- Changes take effect immediately - no restart required
-- API token users follow the same permission filtering based on their associated user account
-- The V1 API respects these permissions for all node and message queries
+- Grants are per source. A user with access to one source sees nothing from another until you grant it there too.
+- Changes take effect at once; no restart or new login needed.
+- API tokens follow the permissions of the user they belong to, including in the V1 API.
+
+For the full permission model, see [Per-Source Permissions](/features/per-source-permissions).
 
 ---
 
 ### How do I send messages to a specific channel?
 
-1. **Go to Messages tab**
+1. Open the **Channels** tab.
+2. Pick the channel.
+3. Type your message and press Enter or click Send.
 
-2. **Select channel from dropdown:**
-   - Click the channel selector at the top
-   - Choose your target channel (e.g., "LongFast", "Private")
-
-3. **Type and send:**
-   - Type your message
-   - Click Send or press Enter
-
-**Note:** You can only send to channels configured on your connected node.
+You can only send on channels configured on your connected node, and only with **Send Messages** permission on that channel. Virtual channels that the server decrypts are read-only.
 
 ---
 
-## 🔔 Notifications
+## Notifications
 
 ### I see pop-up toasts with messages from my node (duty cycle, config errors, etc.)
 
@@ -1014,16 +846,14 @@ If Web Push continues to be unreliable, use **Apprise notifications** instead:
 
 ---
 
-## 📊 Performance & Troubleshooting
+## Performance & Troubleshooting
 
 ### MeshMonitor is running slowly
 
 **Common causes:**
 
 1. **Large message database:**
-   - Go to Settings → Database
-   - Use "Cleanup Old Messages" to remove old data
-   - Consider setting up automatic cleanup
+   - Turn on [Database Maintenance](/features/settings#database-maintenance) under **Settings → Database Maintenance**. It is off by default; once on, it deletes old data each night and then runs `VACUUM`.
 
 2. **Low server resources:**
    - Check available memory: `docker stats` (Docker) or `free -h` (Linux)
@@ -1063,7 +893,7 @@ Logs are printed to stdout/stderr where you ran `npm start` or `npm run dev:full
 
 ---
 
-## 🔧 Advanced Configuration
+## Advanced Configuration
 
 ### Can I run MeshMonitor on a different port?
 
@@ -1096,7 +926,7 @@ Then configure your reverse proxy to route `/meshmonitor` to MeshMonitor. See th
 
 ---
 
-## 🆘 Getting Help
+## Getting Help
 
 If your issue isn't covered here:
 
@@ -1118,6 +948,3 @@ If your issue isn't covered here:
    - Check the Meshtastic Discord server
    - Post in relevant Meshtastic forums
 
----
-
-**Last updated:** 2026-07-18
