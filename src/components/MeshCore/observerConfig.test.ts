@@ -64,7 +64,7 @@ function nineRows(): ObserverBrokerForm[] {
 
 describe('emptyObserverForm', () => {
   it('returns all-empty disabled form', () => {
-    expect(emptyObserverForm()).toEqual({ enabled: false, iataCode: '', brokers: [] });
+    expect(emptyObserverForm()).toEqual({ enabled: false, iataCode: '', brokers: [], ownerPublicKey: '', ownerEmail: '' });
   });
 });
 
@@ -387,7 +387,9 @@ describe('observerFormFromConfig', () => {
     expect(withoutIds(result)).toEqual({
       enabled: true,
       iataCode: 'MCO',
-      brokers: [{ url: 'wss://legacy.example:443', authMode: 'token', tokenAudience: 'legacy-aud', label: '', verifyTls: true }],
+      ownerPublicKey: '',
+      ownerEmail: '',
+      brokers: [{ url: 'wss://legacy.example:443', authMode: 'token', tokenAudience: 'legacy-aud', label: '', verifyTls: true, ownerPublicKey: '', ownerEmail: '' }],
     });
   });
 
@@ -397,7 +399,9 @@ describe('observerFormFromConfig', () => {
     expect(withoutIds(result)).toEqual({
       enabled: true,
       iataCode: '',
-      brokers: [{ url: 'wss://legacy.example:443', authMode: 'password', tokenAudience: '', label: '', verifyTls: true }],
+      ownerPublicKey: '',
+      ownerEmail: '',
+      brokers: [{ url: 'wss://legacy.example:443', authMode: 'password', tokenAudience: '', label: '', verifyTls: true, ownerPublicKey: '', ownerEmail: '' }],
     });
   });
 
@@ -458,9 +462,11 @@ describe('observerFormFromConfig', () => {
     expect(withoutIds(result)).toEqual({
       enabled: true,
       iataCode: 'MCO',
+      ownerPublicKey: '',
+      ownerEmail: '',
       brokers: [
-        { url: 'wss://a.example:443', authMode: 'token', tokenAudience: 'aud-a', label: 'A', verifyTls: true },
-        { url: 'wss://b.example:443', authMode: 'password', tokenAudience: '', label: '', verifyTls: true },
+        { url: 'wss://a.example:443', authMode: 'token', tokenAudience: 'aud-a', label: 'A', verifyTls: true, ownerPublicKey: '', ownerEmail: '' },
+        { url: 'wss://b.example:443', authMode: 'password', tokenAudience: '', label: '', verifyTls: true, ownerPublicKey: '', ownerEmail: '' },
       ],
     });
   });
@@ -707,5 +713,76 @@ describe('verifyTls (#6250)', () => {
     );
     expect(result.config?.brokers[0].rejectUnauthorized).toBe(false);
     expect('rejectUnauthorized' in result.config!.brokers[1]).toBe(false);
+  });
+});
+
+describe('owner claims (#6454)', () => {
+  const KEY = 'ab'.repeat(32);
+  const tokenRow = (extra: Partial<ObserverBrokerForm> = {}): ObserverBrokerForm => ({
+    id: 'r1',
+    url: 'wss://a.example:443',
+    authMode: 'token',
+    tokenAudience: 'aud',
+    label: '',
+    verifyTls: true,
+    ownerPublicKey: '',
+    ownerEmail: '',
+    ...extra,
+  });
+  const form = (extra: Partial<ObserverForm> = {}): ObserverForm => ({
+    enabled: true,
+    iataCode: 'MCO',
+    brokers: [tokenRow()],
+    ownerPublicKey: '',
+    ownerEmail: '',
+    ...extra,
+  });
+
+  it('reads the block default and per-broker overrides from config', () => {
+    const result = observerFormFromConfig({
+      enabled: true,
+      ownerPublicKey: KEY,
+      ownerEmail: 'me@example.com',
+      brokers: [{ url: 'wss://a.example:443', tokenAudience: 'aud', ownerEmail: 'alias@example.com' }],
+    });
+    expect(result.ownerPublicKey).toBe(KEY);
+    expect(result.ownerEmail).toBe('me@example.com');
+    expect(result.brokers[0].ownerEmail).toBe('alias@example.com');
+    expect(result.brokers[0].ownerPublicKey).toBe('');
+  });
+
+  it('writes trimmed values, and omits blanks', () => {
+    const built = buildObserverConfig(
+      form({ ownerPublicKey: ` ${KEY} `, brokers: [tokenRow({ ownerEmail: ' alias@example.com ' })] }),
+    );
+    expect(built.config!.ownerPublicKey).toBe(KEY);
+    expect(built.config).not.toHaveProperty('ownerEmail');
+    expect(built.config!.brokers[0].ownerEmail).toBe('alias@example.com');
+    expect(built.config!.brokers[0]).not.toHaveProperty('ownerPublicKey');
+  });
+
+  it('a password-mode row drops its overrides', () => {
+    const built = buildObserverConfig(
+      form({ brokers: [tokenRow({ authMode: 'password', ownerPublicKey: 'junk', ownerEmail: 'junk' })] }),
+    );
+    expect(built.error).toBeUndefined();
+    expect(built.config!.brokers[0]).not.toHaveProperty('ownerPublicKey');
+    expect(built.config!.brokers[0]).not.toHaveProperty('ownerEmail');
+  });
+
+  it('rejects an invalid default, even with the observer disabled', () => {
+    expect(buildObserverConfig(form({ enabled: false, ownerPublicKey: 'abc' })).error?.key).toBe(
+      'meshcore.observer.owner_key_invalid',
+    );
+    expect(buildObserverConfig(form({ ownerEmail: 'nope' })).error?.key).toBe('meshcore.observer.owner_email_invalid');
+  });
+
+  it('rejects an invalid per-broker override with the broker index', () => {
+    const built = buildObserverConfig(form({ brokers: [tokenRow({ ownerPublicKey: 'zz'.repeat(32) })] }));
+    expect(built.error).toEqual({
+      key: 'meshcore.observer.broker_owner_key_invalid',
+      fallback: 'Broker {{index}}: owner public key must be 64 hex characters',
+      params: { index: 1 },
+    });
   });
 });

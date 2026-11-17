@@ -109,12 +109,16 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
       brokerUrl: url('mqtts', 'obs-legacy'),
       iataCode: `${EP}-iata`,
       tokenAudience: `${PRIV}-audience`,
+      ownerPublicKey: `${PRIV}-owner-key`,
+      ownerEmail: `${PRIV}-owner@example.com`,
       privateKey: `${KEY}-observer-private`,
       brokers: [
         {
           url: url('wss', 'obs-broker'),
           authMode: 'password',
           tokenAudience: `${PRIV}-broker-audience`,
+          ownerPublicKey: `${PRIV}-broker-owner-key`,
+          ownerEmail: `${PRIV}-broker-owner@example.com`,
           label: `${EP}-broker-label`,
           rejectUnauthorized: false,
           password: `${KEY}-broker-password`,

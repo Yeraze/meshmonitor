@@ -18,7 +18,12 @@
  * read (see `observerFormFromConfig`, mirroring `normalizeObserverBrokers` in
  * src/server/meshcoreConfig.ts), but never written — the first save from the
  * Configuration page's broker editor migrates it to `brokers[0]`.
+ *
+ * #6454 added optional owner claims (`ownerPublicKey` / `ownerEmail`): a
+ * source-level default plus a per-broker override, token-mode brokers only.
+ * Their rules live in src/utils/observerOwnerClaims.ts, shared with the server.
  */
+import { isValidOwnerEmailInput, isValidOwnerPublicKeyInput } from '../../utils/observerOwnerClaims';
 
 /**
  * How MeshMonitor authenticates to a broker (#4595).
@@ -46,6 +51,10 @@ export interface ObserverBrokerForm {
    * self-signed TLS broker connect, at the cost of man-in-the-middle safety.
    */
   verifyTls: boolean;
+  /** Per-broker owner key override (#6454). Blank = inherit the source default. */
+  ownerPublicKey: string;
+  /** Per-broker owner email override (#6454). Blank = inherit the source default. */
+  ownerEmail: string;
 }
 
 /**
@@ -57,6 +66,10 @@ export interface ObserverForm {
   enabled: boolean;
   iataCode: string;
   brokers: ObserverBrokerForm[];
+  /** Source-level default `owner` claim (#6454). Blank = no claim. */
+  ownerPublicKey: string;
+  /** Source-level default `email` claim (#6454). Blank = no claim. */
+  ownerEmail: string;
 }
 
 /** One broker as persisted inside `sources.config.observer.brokers[]`. */
@@ -72,6 +85,10 @@ export interface ObserverBrokerWire {
    * off for this broker (#6250). Omitted means "verify", the default.
    */
   rejectUnauthorized?: false;
+  /** Token mode only, omitted when blank (#6454). */
+  ownerPublicKey?: string;
+  /** Token mode only, omitted when blank (#6454). */
+  ownerEmail?: string;
 }
 
 /**
@@ -85,10 +102,14 @@ export interface ObserverConfigWire {
   authMode: ObserverAuthMode;
   iataCode: string;
   brokers: ObserverBrokerWire[];
+  /** Omitted when blank (#6454). */
+  ownerPublicKey?: string;
+  /** Omitted when blank (#6454). */
+  ownerEmail?: string;
 }
 
 export function emptyObserverForm(): ObserverForm {
-  return { enabled: false, iataCode: '', brokers: [] };
+  return { enabled: false, iataCode: '', brokers: [], ownerPublicKey: '', ownerEmail: '' };
 }
 
 /**
@@ -246,12 +267,23 @@ export function observerBrokerFormFromPreset(preset: ObserverBrokerPreset): Obse
     tokenAudience: preset.tokenAudience,
     label: preset.label,
     verifyTls: true,
+    ownerPublicKey: '',
+    ownerEmail: '',
   };
 }
 
 /** Blank token-mode row with a generated `id`. */
 export function emptyObserverBrokerForm(): ObserverBrokerForm {
-  return { id: newRowId(), url: '', authMode: 'token', tokenAudience: '', label: '', verifyTls: true };
+  return {
+    id: newRowId(),
+    url: '',
+    authMode: 'token',
+    tokenAudience: '',
+    label: '',
+    verifyTls: true,
+    ownerPublicKey: '',
+    ownerEmail: '',
+  };
 }
 
 /**
@@ -298,6 +330,8 @@ export function observerFormFromConfig(config: unknown): ObserverForm {
         tokenAudience: typeof entry.tokenAudience === 'string' ? entry.tokenAudience : '',
         label: typeof entry.label === 'string' ? entry.label : '',
         verifyTls: entry.rejectUnauthorized !== false,
+        ownerPublicKey: typeof entry.ownerPublicKey === 'string' ? entry.ownerPublicKey : '',
+        ownerEmail: typeof entry.ownerEmail === 'string' ? entry.ownerEmail : '',
       };
     });
   } else if (typeof c.brokerUrl === 'string' && c.brokerUrl.trim() !== '') {
@@ -311,6 +345,8 @@ export function observerFormFromConfig(config: unknown): ObserverForm {
         tokenAudience: typeof c.tokenAudience === 'string' ? c.tokenAudience : '',
         label: '',
         verifyTls: true,
+        ownerPublicKey: '',
+        ownerEmail: '',
       },
     ];
   } else {
@@ -321,22 +357,81 @@ export function observerFormFromConfig(config: unknown): ObserverForm {
     enabled: c.enabled === true,
     iataCode: typeof c.iataCode === 'string' ? c.iataCode : '',
     brokers,
+    ownerPublicKey: typeof c.ownerPublicKey === 'string' ? c.ownerPublicKey : '',
+    ownerEmail: typeof c.ownerEmail === 'string' ? c.ownerEmail : '',
   };
 }
 
 const ALLOWED_SCHEMES = new Set(['ws', 'wss', 'mqtt', 'mqtts']);
 
+/** Owner fields may be absent on a form built before #6454; treat that as blank. */
+function trimmed(v: string | undefined): string {
+  return (v ?? '').trim();
+}
+
 function toWire(row: ObserverBrokerForm): ObserverBrokerWire {
+  const isToken = row.authMode === 'token';
   return {
     url: row.url.trim(),
     authMode: row.authMode,
     // Password-mode rows drop tokenAudience entirely rather than carrying a
     // stale value — the existing #4595 rule, now per row.
-    ...(row.authMode === 'token' ? { tokenAudience: row.tokenAudience.trim() } : {}),
+    ...(isToken ? { tokenAudience: row.tokenAudience.trim() } : {}),
     ...(row.label.trim() ? { label: row.label.trim() } : {}),
     ...(row.verifyTls === false ? { rejectUnauthorized: false as const } : {}),
+    // Owner claims ride only in a token, so a password row drops them (#6454).
+    ...(isToken && trimmed(row.ownerPublicKey) ? { ownerPublicKey: trimmed(row.ownerPublicKey) } : {}),
+    ...(isToken && trimmed(row.ownerEmail) ? { ownerEmail: trimmed(row.ownerEmail) } : {}),
   };
 }
+
+/** The block-level owner claims, omitted when blank (#6454). */
+function ownerWire(form: ObserverForm): Pick<ObserverConfigWire, 'ownerPublicKey' | 'ownerEmail'> {
+  return {
+    ...(trimmed(form.ownerPublicKey) ? { ownerPublicKey: trimmed(form.ownerPublicKey) } : {}),
+    ...(trimmed(form.ownerEmail) ? { ownerEmail: trimmed(form.ownerEmail) } : {}),
+  };
+}
+
+type ObserverBuildError = { key: string; fallback: string; params?: Record<string, string | number> };
+
+/**
+ * Owner-claim checks (#6454): the source default, then each token row's
+ * override. Run whether or not the observer is enabled, so a bad value is
+ * never stored. Same rules as the server (src/utils/observerOwnerClaims.ts).
+ */
+function ownerClaimError(form: ObserverForm, rows: ObserverBrokerForm[]): ObserverBuildError | null {
+  if (!isValidOwnerPublicKeyInput(form.ownerPublicKey)) {
+    return { key: 'meshcore.observer.owner_key_invalid', fallback: OWNER_KEY_INVALID_FALLBACK };
+  }
+  if (!isValidOwnerEmailInput(form.ownerEmail)) {
+    return { key: 'meshcore.observer.owner_email_invalid', fallback: OWNER_EMAIL_INVALID_FALLBACK };
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.authMode !== 'token') continue;
+    const index = i + 1;
+    if (!isValidOwnerPublicKeyInput(row.ownerPublicKey)) {
+      return {
+        key: 'meshcore.observer.broker_owner_key_invalid',
+        fallback: 'Broker {{index}}: owner public key must be 64 hex characters',
+        params: { index },
+      };
+    }
+    if (!isValidOwnerEmailInput(row.ownerEmail)) {
+      return {
+        key: 'meshcore.observer.broker_owner_email_invalid',
+        fallback: 'Broker {{index}}: owner email is not a valid address',
+        params: { index },
+      };
+    }
+  }
+  return null;
+}
+
+/** Inline messages, shared by the editor and the save-time check. */
+export const OWNER_KEY_INVALID_FALLBACK = 'Owner public key must be 64 hex characters';
+export const OWNER_EMAIL_INVALID_FALLBACK = 'Owner email is not a valid address';
 
 /**
  * Validate + build. Returns `{ config }` on success, or
@@ -348,14 +443,19 @@ function toWire(row: ObserverBrokerForm): ObserverBrokerWire {
  */
 export function buildObserverConfig(form: ObserverForm): {
   config?: ObserverConfigWire;
-  error?: { key: string; fallback: string; params?: Record<string, string | number> };
+  error?: ObserverBuildError;
 } {
   // Row sanitisation, run first regardless of enabled/disabled: drop rows
   // whose url/label/tokenAudience are ALL blank (an untouched blank row the
   // user added and abandoned). A row with a blank URL but other content is
   // kept, so it fails the URL-required check loudly instead of vanishing.
   const rows = form.brokers.filter((row) => {
-    const allBlank = row.url.trim() === '' && row.label.trim() === '' && row.tokenAudience.trim() === '';
+    const allBlank =
+      row.url.trim() === '' &&
+      row.label.trim() === '' &&
+      row.tokenAudience.trim() === '' &&
+      trimmed(row.ownerPublicKey) === '' &&
+      trimmed(row.ownerEmail) === '';
     return !allBlank;
   });
 
@@ -373,6 +473,9 @@ export function buildObserverConfig(form: ObserverForm): {
     };
   }
 
+  const ownerError = ownerClaimError(form, rows);
+  if (ownerError) return { error: ownerError };
+
   // Disabled — no further validation. Preserve the operator's work (rows +
   // iataCode) so a disable -> re-enable round-trip does not wipe the broker
   // list. Safe because the server's `enabled !== true` early return precedes
@@ -384,6 +487,7 @@ export function buildObserverConfig(form: ObserverForm): {
         authMode: rows[0]?.authMode ?? 'token',
         iataCode: form.iataCode.trim().toUpperCase(),
         brokers: rows.map(toWire),
+        ...ownerWire(form),
       },
     };
   }
@@ -508,6 +612,7 @@ export function buildObserverConfig(form: ObserverForm): {
       authMode: rows[0].authMode,
       iataCode: rawIata.toUpperCase(),
       brokers: rows.map(toWire),
+      ...ownerWire(form),
     },
   };
 }

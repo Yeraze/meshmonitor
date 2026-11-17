@@ -17,7 +17,8 @@
  * - `token` (default): the original scheme — mint an Ed25519-signed token
  *   from the companion's signing key, username `v1_{PUBLIC_KEY}`, renewed on
  *   a timer. Minting is deduped BY AUDIENCE, not by broker: two brokers that
- *   share a `tokenAudience` share one WASM signature and one token.
+ *   share a `tokenAudience` share one WASM signature and one token — unless
+ *   their owner / email claims differ (#6454), which needs its own token.
  * - `password`: a STATIC MQTT username/password loaded from the encrypted
  *   credential store, for regional brokers (e.g. meshcoretel.ru) that verify
  *   no signature. Nothing expires, so there is NO renewal timer, and the
@@ -60,6 +61,7 @@ import { logger } from '../../utils/logger.js';
 import type { OtaPacketEvent } from '../meshcoreVirtualNodeServer.js';
 import type { MeshCoreConfig } from '../meshcoreManager.js';
 import type { NormalizedObserverBroker } from '../meshcoreConfig.js';
+import type { ObserverOwnerClaims } from '../../utils/observerOwnerClaims.js';
 import {
   buildObserverPacketPayload,
   buildObserverStatusPayload,
@@ -172,9 +174,11 @@ export interface MeshCoreObserverPublisherOptions {
   /**
    * Injection seam for tests (#5014: WIDENED — audience is now explicit,
    * because brokers differ). Defaults to
-   * `(id, aud) => mintObserverTokenForSourceDetailed(id, aud)`.
+   * `(id, aud, claims) => mintObserverTokenForSourceDetailed(id, aud, claims)`.
+   * `claims` (#6454) is passed only when the broker carries an owner or
+   * email claim.
    */
-  mintToken?: (sourceId: string, audience: string) => Promise<ObserverTokenResult>;
+  mintToken?: (sourceId: string, audience: string, claims?: ObserverOwnerClaims) => Promise<ObserverTokenResult>;
   /**
    * Injection seam for tests (#4595; #5014: WIDENED to a per-broker key plus
    * the legacy-fallback flag). Only called in `password` auth mode. Defaults
@@ -560,7 +564,11 @@ class ObserverBrokerConnection {
 
 export class MeshCoreObserverPublisher {
   private readonly options: MeshCoreObserverPublisherOptions;
-  private readonly mintTokenFn: (sourceId: string, audience: string) => Promise<ObserverTokenResult>;
+  private readonly mintTokenFn: (
+    sourceId: string,
+    audience: string,
+    claims?: ObserverOwnerClaims,
+  ) => Promise<ObserverTokenResult>;
   private readonly loadCredentialsFn: (
     sourceId: string,
     brokerKey: string,
@@ -572,7 +580,11 @@ export class MeshCoreObserverPublisher {
    *  well-defined even before `start()` is ever called (mirrors the pre-#5014 single-broker
    *  publisher, whose `configured` was always computable from the constructor alone). */
   private readonly connections: ObserverBrokerConnection[];
-  /** audience -> current token. Only audiences with at least one successfully-minted token. */
+  /**
+   * token group -> current token. A group is one audience plus one set of
+   * owner claims (#6454); with no claims the group key IS the audience.
+   * Only groups with a successfully-minted token.
+   */
   private tokensByAudience = new Map<string, ObserverToken>();
   /** Connection keys that have hard-stopped on repeated auth failure since the last `start()`. */
   private readonly hardStoppedKeys = new Set<string>();
@@ -585,7 +597,9 @@ export class MeshCoreObserverPublisher {
 
   constructor(options: MeshCoreObserverPublisherOptions) {
     this.options = options;
-    this.mintTokenFn = options.mintToken ?? ((sourceId, audience) => mintObserverTokenForSourceDetailed(sourceId, audience));
+    this.mintTokenFn =
+      options.mintToken ??
+      ((sourceId, audience, claims) => mintObserverTokenForSourceDetailed(sourceId, audience, claims));
     this.loadCredentialsFn =
       options.loadCredentials ?? ((sourceId, brokerKey, legacy) => resolveBrokerCredential(sourceId, brokerKey, legacy));
     this.createClientFn = options.createClient ?? ((opts) => new MqttBrokerClient(opts));
@@ -728,8 +742,8 @@ export class MeshCoreObserverPublisher {
   }
 
   /**
-   * Mint (or reuse) one token per DISTINCT audience among the token-mode
-   * connections, then fan the result out to every connection on that
+   * Mint (or reuse) one token per DISTINCT audience (plus owner claims,
+   * #6454) among the token-mode connections, then fan the result out to every connection on that
    * audience (#5014 §3.3/§3.4). A failed mint marks every connection on that
    * audience with the mapped `LAST_ERROR` message and `keyStored: false`.
    */
@@ -740,9 +754,9 @@ export class MeshCoreObserverPublisher {
       return;
     }
 
-    const audiences = Array.from(new Set(tokenConnections.map((c) => c.broker.tokenAudience!)));
+    const groups = Array.from(new Set(tokenConnections.map((c) => tokenGroupKey(c.broker))));
     const settled = await Promise.allSettled(
-      audiences.map(async (aud) => ({ aud, result: await this.mintTokenFn(this.options.sourceId, aud) })),
+      groups.map(async (aud) => ({ aud, result: await this.mintForGroup(aud) })),
     );
 
     const tokenByAudience = new Map<string, ObserverToken>();
@@ -762,7 +776,7 @@ export class MeshCoreObserverPublisher {
     this.tokensByAudience = tokenByAudience;
 
     for (const c of tokenConnections) {
-      const aud = c.broker.tokenAudience!;
+      const aud = tokenGroupKey(c.broker);
       const token = tokenByAudience.get(aud);
       if (token) {
         credByKey.set(c.key, {
@@ -940,12 +954,12 @@ export class MeshCoreObserverPublisher {
     const affected = this.connections.filter(
       (c) =>
         c.broker.authMode === 'token' &&
-        c.broker.tokenAudience === audience &&
+        tokenGroupKey(c.broker) === audience &&
         !this.hardStoppedKeys.has(c.key),
     );
     if (affected.length === 0) return;
 
-    const result = await this.mintTokenFn(this.options.sourceId, audience);
+    const result = await this.mintForGroup(audience);
     if (result.kind !== 'ok') {
       // Old sockets untouched — a transient mint failure must not tear down
       // a working connection. Retried automatically on the next tick.
@@ -955,6 +969,21 @@ export class MeshCoreObserverPublisher {
     }
     this.tokensByAudience.set(audience, result.token);
     await Promise.allSettled(affected.map((c) => c.rebuildWithToken(result.token)));
+  }
+
+  /**
+   * Mint the token for one group. Claims are passed only when the group's
+   * brokers carry one, so a claim-free mint keeps the pre-#6454 call shape.
+   */
+  private mintForGroup(groupKey: string): Promise<ObserverTokenResult> {
+    const broker = this.connections.find(
+      (c) => c.broker.authMode === 'token' && tokenGroupKey(c.broker) === groupKey,
+    )?.broker;
+    const audience = broker?.tokenAudience ?? groupKey;
+    const claims = broker ? brokerOwnerClaims(broker) : undefined;
+    return claims
+      ? this.mintTokenFn(this.options.sourceId, audience, claims)
+      : this.mintTokenFn(this.options.sourceId, audience);
   }
 
   private onConnectionAuthHardStop(key: string): void {
@@ -967,6 +996,25 @@ export class MeshCoreObserverPublisher {
       this.running = false;
     }
   }
+}
+
+/** A token-mode broker's owner claims (#6454), or undefined when it has none. */
+function brokerOwnerClaims(broker: NormalizedObserverBroker): ObserverOwnerClaims | undefined {
+  if (!broker.owner && !broker.email) return undefined;
+  return {
+    ...(broker.owner ? { owner: broker.owner } : {}),
+    ...(broker.email ? { email: broker.email } : {}),
+  };
+}
+
+/**
+ * Brokers share one token only when they share the audience AND the owner
+ * claims (#6454). With no claims the key is the bare audience, as before.
+ */
+function tokenGroupKey(broker: NormalizedObserverBroker): string {
+  const aud = broker.tokenAudience!;
+  const claims = brokerOwnerClaims(broker);
+  return claims ? `${aud}\u0000${claims.owner ?? ''}\u0000${claims.email ?? ''}` : aud;
 }
 
 /** Reduce a list of nullable numbers, ignoring nulls; null if every value is null. */
