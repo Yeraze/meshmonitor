@@ -343,6 +343,8 @@ See the [Production Deployment guide](/configuration/production) for complete He
 
 MeshMonitor uses SQLite for data storage by default. The database file is stored in the `data/` directory.
 
+To use PostgreSQL or MySQL instead, or to move existing data to one, see [Choosing a Database](/configuration/database).
+
 ### Database Location
 
 - **Docker**: `/data/meshmonitor.db` (mounted as a volume)
