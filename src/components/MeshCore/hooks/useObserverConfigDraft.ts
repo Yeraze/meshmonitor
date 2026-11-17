@@ -1,7 +1,8 @@
 /**
  * The Analyzer Observer's broker list as a SaveBar draft (#5831, part of #5797).
  *
- * The editable part of `sources.config.observer` (enable, region, brokers[])
+ * The editable part of `sources.config.observer` (enable, region, owner
+ * claims, brokers[])
  * used to live in the Dashboard source modal. It is edited here now, on the
  * MeshCore Configuration page, and saved through the same route the modal
  * used: PUT /api/sources/:id with the source's whole config and a rebuilt
@@ -39,6 +40,8 @@ function comparable(form: ObserverForm): string {
   return JSON.stringify({
     enabled: form.enabled,
     iataCode: form.iataCode,
+    ownerPublicKey: form.ownerPublicKey,
+    ownerEmail: form.ownerEmail,
     brokers: form.brokers.map(({ id: _id, ...rest }) => rest),
   });
 }
@@ -60,6 +63,9 @@ export interface ObserverConfigDraft {
   error: string | null;
   setEnabled: (enabled: boolean) => void;
   setIataCode: (iataCode: string) => void;
+  /** Source-level owner claims (#6454). */
+  setOwnerPublicKey: (ownerPublicKey: string) => void;
+  setOwnerEmail: (ownerEmail: string) => void;
   /** Add a row from a preset id (`custom` adds a blank row). No-op at the cap. */
   addBroker: (presetId: string) => void;
   updateBroker: (rowId: string, patch: Partial<ObserverBrokerForm>) => void;
@@ -153,6 +159,8 @@ export function useObserverConfigDraft(
     error,
     setEnabled: (enabled) => update((f) => ({ ...f, enabled })),
     setIataCode: (iataCode) => update((f) => ({ ...f, iataCode })),
+    setOwnerPublicKey: (ownerPublicKey) => update((f) => ({ ...f, ownerPublicKey })),
+    setOwnerEmail: (ownerEmail) => update((f) => ({ ...f, ownerEmail })),
     addBroker: (presetId) =>
       update((f) => {
         if (f.brokers.length >= MAX_OBSERVER_BROKERS) return f;

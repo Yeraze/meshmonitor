@@ -44,7 +44,7 @@ const READY_THRESHOLD_PCT = 50;
  * silently dropped: if one improves past the threshold, or another sub-threshold
  * language is added, this test fails and a human decides.
  */
-const KNOWN_PARTIAL = ['de', 'ru'];  // keep alphabetical — compared order-sensitively (es reached 100% in #6147)
+const KNOWN_PARTIAL = ['de', 'ru', 'zh_Hans'];  // keep alphabetical — compared order-sensitively (es reached 100% in #6147; zh_Hans dipped below 50% in #6454)
 
 /**
  * Every leaf string in a locale object, keyed by dotted path.

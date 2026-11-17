@@ -5,7 +5,8 @@
  * Covers docs/internal/dev-notes/MESHMAPPER_OBSERVER_PHASE1_SPEC.md §6.1,
  * tests 1-9. No DB, no mocks needed — these functions are pure.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { logger } from '../utils/logger.js';
 import {
   normalizeObserverBrokers,
   observerBrokerKey,
@@ -247,5 +248,109 @@ describe('normalizeObserverBrokers', () => {
   it('returns [] for a null/undefined observer block', () => {
     expect(normalizeObserverBrokers(undefined)).toEqual([]);
     expect(normalizeObserverBrokers(null)).toEqual([]);
+  });
+});
+
+describe('normalizeObserverBrokers owner claims (#6454)', () => {
+  const KEY_A = 'ab'.repeat(32);
+  const KEY_B = 'cd'.repeat(32);
+  const base = (extra: Partial<MeshCoreObserverConfig> = {}): MeshCoreObserverConfig => ({
+    enabled: true,
+    iataCode: 'MCO',
+    ...extra,
+  });
+
+  it('inherits the block default and normalizes case', () => {
+    const [b] = normalizeObserverBrokers(
+      base({
+        ownerPublicKey: ` ${KEY_A} `,
+        ownerEmail: ' Me@Example.COM ',
+        brokers: [{ url: 'wss://a.test:443', tokenAudience: 'a.test' }],
+      }),
+    );
+    expect(b.owner).toBe(KEY_A.toUpperCase());
+    expect(b.email).toBe('me@example.com');
+  });
+
+  it('a per-broker override wins over the default; a blank override inherits', () => {
+    const brokers = normalizeObserverBrokers(
+      base({
+        ownerPublicKey: KEY_A,
+        ownerEmail: 'default@example.com',
+        brokers: [
+          { url: 'wss://a.test:443', tokenAudience: 'a.test', ownerPublicKey: KEY_B, ownerEmail: 'alias@example.com' },
+          { url: 'wss://b.test:443', tokenAudience: 'b.test', ownerPublicKey: '  ', ownerEmail: '' },
+        ],
+      }),
+    );
+    expect(brokers[0].owner).toBe(KEY_B.toUpperCase());
+    expect(brokers[0].email).toBe('alias@example.com');
+    expect(brokers[1].owner).toBe(KEY_A.toUpperCase());
+    expect(brokers[1].email).toBe('default@example.com');
+  });
+
+  it('password-mode brokers carry no claims', () => {
+    const [b] = normalizeObserverBrokers(
+      base({
+        ownerPublicKey: KEY_A,
+        ownerEmail: 'me@example.com',
+        brokers: [
+          { url: 'wss://p.test:443', authMode: 'password', ownerPublicKey: KEY_B, ownerEmail: 'alias@example.com' },
+        ],
+      }),
+    );
+    expect(b.authMode).toBe('password');
+    expect(b).not.toHaveProperty('owner');
+    expect(b).not.toHaveProperty('email');
+  });
+
+  it('drops invalid values, and an invalid override does not fall back to the default', () => {
+    const brokers = normalizeObserverBrokers(
+      base({
+        ownerPublicKey: 'not-hex',
+        ownerEmail: 'default@example.com',
+        brokers: [
+          { url: 'wss://a.test:443', tokenAudience: 'a.test' },
+          { url: 'wss://b.test:443', tokenAudience: 'b.test', ownerEmail: 'broken' },
+        ],
+      }),
+    );
+    expect(brokers[0]).not.toHaveProperty('owner');
+    expect(brokers[0].email).toBe('default@example.com');
+    expect(brokers[1]).not.toHaveProperty('owner');
+    expect(brokers[1]).not.toHaveProperty('email');
+  });
+
+  it('warns about an invalid value without logging the value', () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      normalizeObserverBrokers(
+        base({
+          ownerPublicKey: 'secret-ish-key',
+          ownerEmail: 'private.person@nowhere',
+          brokers: [{ url: 'wss://a.test:443', tokenAudience: 'a.test' }],
+        }),
+      );
+      const text = warn.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(text).toContain('ownerPublicKey');
+      expect(text).toContain('ownerEmail');
+      expect(text).not.toContain('secret-ish-key');
+      expect(text).not.toContain('private.person');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('no owner fields leaves the entry shape unchanged', () => {
+    const [b] = normalizeObserverBrokers(base({ brokers: [{ url: 'wss://a.test:443', tokenAudience: 'a.test' }] }));
+    expect(Object.keys(b).sort()).toEqual(['authMode', 'key', 'legacy', 'tokenAudience', 'url']);
+  });
+
+  it('observerConfigFromSource carries the claims on each broker', () => {
+    const cfg: MeshCoreSourceConfig = {
+      observer: base({ ownerEmail: 'me@example.com', brokers: [{ url: 'wss://a.test:443', tokenAudience: 'a.test' }] }),
+    };
+    const out = observerConfigFromSource(cfg)!;
+    expect(out.brokers![0].email).toBe('me@example.com');
   });
 });

@@ -462,6 +462,53 @@ describe('saving a source as a non-admin editor', () => {
     });
   });
 
+  describe('Observer owner claims (#6454)', () => {
+    const OWNER = 'ab'.repeat(32);
+    const withOwner = async () => {
+      const observer = STORED.mc.config.observer as Record<string, any>;
+      await harness.db.sources.updateSource(IDS.mc, {
+        config: {
+          ...STORED.mc.config,
+          observer: {
+            ...observer,
+            ownerPublicKey: OWNER,
+            ownerEmail: 'me@example.com',
+            brokers: [{ ...observer.brokers[0], ownerEmail: 'alias@example.com' }, observer.brokers[1]],
+          },
+        },
+      });
+    };
+
+    it('shows an editor the owner fields and keeps them across an unrelated save', async () => {
+      await withOwner();
+      const agent = await editor();
+      const loaded = (await agent.get(`/${IDS.mc}`)).body.config as Record<string, any>;
+      expect(loaded.observer.ownerPublicKey).toBe(OWNER);
+      expect(loaded.observer.ownerEmail).toBe('me@example.com');
+      expect(loaded.observer.brokers[0].ownerEmail).toBe('alias@example.com');
+
+      const res = await editAs(agent, IDS.mc, (c) => ({ ...c, observer: { ...c.observer, iataCode: 'TPA' } }));
+      expect(res.status).toBe(200);
+      const saved = (await stored(IDS.mc)).observer;
+      expect(saved.iataCode).toBe('TPA');
+      expect(saved.ownerPublicKey).toBe(OWNER);
+      expect(saved.ownerEmail).toBe('me@example.com');
+      expect(saved.brokers[0].ownerEmail).toBe('alias@example.com');
+    });
+
+    it('withholds the owner fields from a read-only viewer', async () => {
+      await withOwner();
+      await harness.revokeAll(harness.limited.id);
+      await harness.grant(harness.limited.id, 'sources', 'read');
+      const body = (await (await editor()).get(`/${IDS.mc}`)).body;
+      const text = JSON.stringify(body);
+      expect(text).not.toContain(OWNER);
+      expect(text).not.toContain('example.com"');
+      expect(text).not.toContain('ownerEmail');
+      expect(text).not.toContain('ownerPublicKey');
+    });
+  });
+
   describe('the Observer\'s stored broker login', () => {
     // The single (pre-#5014) login is used for whichever broker
     // `observer.brokerUrl` names, so it must not follow an editor's change.

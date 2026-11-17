@@ -160,6 +160,21 @@ Where the secret lives, precisely:
 A static-credential broker on `mqtt://…:1883` has no TLS, so your username and password cross the network in the clear. Use a password you don't use anywhere else — with these shared regional logins (`meshcore`/`meshcore`), assume it's public.
 :::
 
+### Claiming your observer (LetsMesh / MeshMapper)
+
+LetsMesh (**My Nodes**) and MeshMapper link an observer to your account through the signed auth token. Because the node's own key signs that token, the link is proven by the node itself. Two optional fields under **Brokers** add the claims they read:
+
+- **Owner public key (optional)** — sent as the `owner` claim. 64 hex characters; MeshMonitor sends it in upper case. **Use this companion's key** fills in the connected Companion's own public key; paste another key instead if your account is tied to a different node.
+- **Owner email (optional)** — sent as the `email` claim, in lower case. Use the email of your account on that analyzer.
+
+Both are blank by default, and a blank field sends no claim at all, so the token stays exactly as it was. They apply only to **signed-token** brokers; a username/password broker never mints a token, so nothing is sent there.
+
+The two fields at the top are the source default. Each signed-token broker card has its own pair too: leave them blank to inherit the default, or fill them in to send a different key or address (an alias, say) to that one broker. A value that is not 64 hex characters, or not an email address, is refused when you save; the server checks the same rules again and drops a bad value rather than send it.
+
+The new claims take effect when you save: the brokers reconnect once with fresh tokens.
+
+Only users who can edit the source see these two fields. Viewers and anonymous visitors never receive them.
+
 ### If SESSION_SECRET changes
 
 If `SESSION_SECRET` changes after a credential is stored, that credential can no longer be decrypted. The Configuration page shows a **rotated** warning for the affected broker in that case — re-import/re-paste the signing key, or re-enter that broker's password, to recover. **Remove unreadable credentials** deletes broker logins that can no longer be decrypted, which you need when no new password can be stored. In signed-token mode the public key stays correct and visible throughout, for every broker.
@@ -221,6 +236,8 @@ Per heard packet, MeshMonitor publishes to each configured broker:
 - SNR, RSSI, and packet length
 - A packet hash
 - The raw hex of the OTA frame
+
+If you set an owner key or email (see [Claiming your observer](#claiming-your-observer-letsmesh-meshmapper)), each signed-token broker also receives them inside its auth token on every connect. The email is personal data: it goes to that broker's operator, so they can link the observer to your account. Leave the fields blank to send neither.
 
 It also publishes a retained online/offline status message carrying your device name, model, firmware version, and radio parameters, plus live stats read off the attached Companion — battery voltage, uptime, noise floor, error and queue counters, and airtime. The status is republished every five minutes on each broker so those values stay current on that broker's analyzer. Anything your firmware doesn't report is left out rather than sent as a placeholder.
 

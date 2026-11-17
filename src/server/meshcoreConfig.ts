@@ -14,6 +14,7 @@ import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { isMeshCoreManager } from './sourceManagerTypes.js';
 import { logger } from '../utils/logger.js';
 import { normalizeBrokerUrl } from './transports/mqttBrokerClient.js';
+import { normalizeOwnerEmail, normalizeOwnerPublicKey } from '../utils/observerOwnerClaims.js';
 
 export interface MeshCoreSourceConfig {
   transport?: 'usb' | 'serial' | 'tcp';
@@ -114,6 +115,17 @@ export interface MeshCoreObserverConfig {
    * double-publishing the same broker under two spellings).
    */
   brokers?: MeshCoreObserverBrokerConfig[];
+  /**
+   * Owner public key sent as the `owner` claim in every token-mode broker's
+   * auth token, unless the broker sets its own (#6454). Lets LetsMesh /
+   * MeshMapper link the observer to an account. 64 hex chars; empty = no claim.
+   */
+  ownerPublicKey?: string;
+  /**
+   * Owner email sent as the `email` claim, with the same inheritance as
+   * `ownerPublicKey` (#6454). PII: withheld from non-editors on read.
+   */
+  ownerEmail?: string;
 }
 
 /** One Analyzer broker this source publishes to (#5014 Phase 1). */
@@ -138,6 +150,10 @@ export interface MeshCoreObserverBrokerConfig {
    * man-in-the-middle protection, so the UI warns next to the toggle.
    */
   rejectUnauthorized?: boolean;
+  /** Per-broker override of the block-level `ownerPublicKey` (#6454). Token mode only. */
+  ownerPublicKey?: string;
+  /** Per-broker override of the block-level `ownerEmail` (#6454). Token mode only. */
+  ownerEmail?: string;
 }
 
 /**
@@ -155,6 +171,13 @@ export interface NormalizedObserverBroker {
   label?: string;
   /** Present (and false) only when TLS certificate checks are off (#6250). */
   rejectUnauthorized?: false;
+  /**
+   * `owner` claim for this broker's token (#6454): 64 hex, uppercased. Set
+   * only on token-mode entries — a password-mode broker never mints a token.
+   */
+  owner?: string;
+  /** `email` claim for this broker's token (#6454): lowercased. Token mode only. */
+  email?: string;
   /**
    * True iff this entry corresponds to the block-level legacy `brokerUrl`.
    * The publisher uses it, and only it, to fall back to the pre-#5014
@@ -218,6 +241,11 @@ export function observerBrokerKey(url: string): string {
  *     OR when `o.brokerUrl` is present and its key matches this entry's key
  *     (keeps the pre-#5014 stored credential reachable after the Phase 2 UI
  *     moves that broker into `brokers[]`).
+ *  8. Owner claims (#6454), token-mode entries only: the entry's own
+ *     `ownerPublicKey` / `ownerEmail` when non-blank, else the block's.
+ *     An invalid value is dropped with a warning that omits the value; an
+ *     invalid per-broker override does NOT fall back to the block default
+ *     (the operator chose a different identity for that broker).
  */
 export function normalizeObserverBrokers(
   o: MeshCoreObserverConfig | undefined | null,
@@ -280,11 +308,15 @@ export function normalizeObserverBrokers(
       }
     }
 
+    const claims = authMode === 'token' ? resolveOwnerClaims(o, raw, i) : {};
+
     seen.set(key, {
       key,
       url,
       authMode,
       ...(tokenAudience ? { tokenAudience } : {}),
+      ...(claims.owner ? { owner: claims.owner } : {}),
+      ...(claims.email ? { email: claims.email } : {}),
       ...(raw.label ? { label: raw.label } : {}),
       ...(raw.rejectUnauthorized === false ? { rejectUnauthorized: false as const } : {}),
       legacy,
@@ -293,6 +325,43 @@ export function normalizeObserverBrokers(
   }
 
   return order.map((k) => seen.get(k)!);
+}
+
+function isBlank(v: unknown): boolean {
+  return v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+}
+
+/**
+ * Resolve one token-mode broker's owner claims (#6454): the broker's own
+ * value when non-blank, else the block default. Invalid values are dropped;
+ * the warning names the field and broker index, never the value (PII).
+ */
+function resolveOwnerClaims(
+  o: MeshCoreObserverConfig,
+  raw: MeshCoreObserverBrokerConfig,
+  index: number,
+): { owner?: string; email?: string } {
+  const out: { owner?: string; email?: string } = {};
+
+  const ownerFromBroker = !isBlank(raw.ownerPublicKey);
+  const owner = normalizeOwnerPublicKey(ownerFromBroker ? raw.ownerPublicKey : o.ownerPublicKey);
+  if (owner === null) {
+    const where = ownerFromBroker ? `brokers[${index}].ownerPublicKey` : 'ownerPublicKey';
+    logger.warn(`[MeshCoreConfig] observer.${where} is not 64 hex characters; owner claim dropped`);
+  } else if (owner) {
+    out.owner = owner;
+  }
+
+  const emailFromBroker = !isBlank(raw.ownerEmail);
+  const email = normalizeOwnerEmail(emailFromBroker ? raw.ownerEmail : o.ownerEmail);
+  if (email === null) {
+    const where = emailFromBroker ? `brokers[${index}].ownerEmail` : 'ownerEmail';
+    logger.warn(`[MeshCoreConfig] observer.${where} is not a valid email address; email claim dropped`);
+  } else if (email) {
+    out.email = email;
+  }
+
+  return out;
 }
 
 /** Default TCP port the Virtual Node server listens on when none is given. */

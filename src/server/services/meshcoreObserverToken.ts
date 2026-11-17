@@ -29,6 +29,11 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { observerConfigFromSource, type MeshCoreSourceConfig } from '../meshcoreConfig.js';
 import { getMeshCoreObserverKeyStore } from './meshcoreObserverKeyStore.js';
+import {
+  normalizeOwnerEmail,
+  normalizeOwnerPublicKey,
+  type ObserverOwnerClaims,
+} from '../../utils/observerOwnerClaims.js';
 
 /** Default token lifetime. Matches the broker README's 24h example. */
 export const OBSERVER_TOKEN_TTL_SECONDS = 86_400;
@@ -79,22 +84,40 @@ export async function isValidObserverPrivateKey(privateKeyHex: string): Promise<
 /**
  * Mint a token from raw material. Pure w.r.t. the DB — used directly by unit
  * tests and by `mintObserverTokenForSource` below.
+ *
+ * `opts.claims` (#6454): optional `owner` / `email` claims that let LetsMesh /
+ * MeshMapper link the observer to an account. Each is re-checked here (the
+ * same rules as config normalization) and left out when empty or invalid, so
+ * with no usable claims the payload is exactly `{ publicKey, aud, iat, exp }`.
  */
 export async function mintObserverToken(
   privateKeyHex: string,
   audience: string,
-  opts?: { ttlSeconds?: number; nowSeconds?: number },
+  opts?: { ttlSeconds?: number; nowSeconds?: number; claims?: ObserverOwnerClaims },
 ): Promise<ObserverToken> {
   const iat = opts?.nowSeconds ?? Math.floor(Date.now() / 1000);
   const exp = iat + (opts?.ttlSeconds ?? OBSERVER_TOKEN_TTL_SECONDS);
   const publicKey = await deriveObserverPublicKey(privateKeyHex);
+  const owner = normalizeOwnerPublicKey(opts?.claims?.owner);
+  const email = normalizeOwnerEmail(opts?.claims?.email);
 
   // `createAuthToken` mutates the payload object passed to it (uppercases
   // `publicKey`, defaults `iat`) — always construct a fresh object literal
   // per call so no caller-visible state is mutated.
   let token: string;
   try {
-    token = await createAuthToken({ publicKey, aud: audience, iat, exp }, privateKeyHex, publicKey);
+    token = await createAuthToken(
+      {
+        publicKey,
+        aud: audience,
+        iat,
+        exp,
+        ...(owner ? { owner } : {}),
+        ...(email ? { email } : {}),
+      },
+      privateKeyHex,
+      publicKey,
+    );
   } catch {
     throw new Error('Failed to mint Analyzer Observer auth token');
   }
@@ -137,11 +160,15 @@ export type ObserverTokenResult =
  * mirror value. With no override, behaviour is byte-identical to before
  * `audienceOverride` existed.
  *
+ * `claims` (#6454): the broker's normalized owner / email claims, passed
+ * through to {@link mintObserverToken}. Omitted = no claims.
+ *
  * Not exposed via any route — this is the publisher's (Phase 2) seam.
  */
 export async function mintObserverTokenForSourceDetailed(
   sourceId: string,
   audienceOverride?: string,
+  claims?: ObserverOwnerClaims,
 ): Promise<ObserverTokenResult> {
   const source = await databaseService.sources.getSource(sourceId);
   if (!source || source.type !== 'meshcore') return { kind: 'not_configured' };
@@ -163,7 +190,7 @@ export async function mintObserverTokenForSourceDetailed(
   if (keyResult.kind === 'key_rotated') return { kind: 'key_rotated' };
 
   try {
-    const token = await mintObserverToken(keyResult.privateKeyHex, audience);
+    const token = await mintObserverToken(keyResult.privateKeyHex, audience, claims ? { claims } : undefined);
     return { kind: 'ok', token };
   } catch (err) {
     // Never let a thrown error carry key material into the log at anything
