@@ -15917,6 +15917,15 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * The add_contact packet that precedes set_favorite_node (#6153), or null
+   * when it must not be sent. Shared with the Admin Commands route so every
+   * favorite path builds it the same way.
+   */
+  async buildFavoritedContactMessage(nodeNum: number, sessionPasskey: Uint8Array): Promise<Uint8Array | null> {
+    return this.favoritesService.buildFavoritedContactMessage(nodeNum, sessionPasskey);
+  }
+
+  /**
    * Send admin message to remove a node from favorites on the device
    */
   async sendRemoveFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
