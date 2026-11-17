@@ -123,7 +123,7 @@ Auth mode is set per broker row, so a source can publish to a signed-token broke
 Every mode is Companion-only. The Observer publishes only from the Companion backend. A Repeater source on a packet-logging firmware build fills its own Packet Monitor, but MeshMonitor does not publish those packets to a broker. The enable checkbox is disabled with an explanation when the source's device type is Repeater.
 :::
 
-## Step 2 — Provide broker credentials
+## Step 2 — Provide broker credentials {#step-2-provide-broker-credentials}
 
 Go to the source's **MeshCore → Configuration** page and open **Analyzer Observer**. The status panel there lists one card per configured broker; what you need to enter depends on each broker's mode.
 
@@ -185,7 +185,7 @@ A system backup includes the signing key, as the same encrypted envelope that is
 
 Restore it under a different `SESSION_SECRET` and the key row is kept but cannot be decrypted: the restore log names the affected sources, the page shows the **rotated** warning above, and the Observer does not publish for that source until you set `SESSION_SECRET` back to the original value or re-import the key. Stored broker passwords are not part of a system backup; re-enter them after a restore.
 
-## Step 3 — Verify
+## Step 3 — Verify {#step-3-verify}
 
 Back on the Configuration page, the **Analyzer Observer** section shows an aggregate status block, followed by a **Brokers** panel with one card per configured broker:
 

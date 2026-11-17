@@ -274,7 +274,7 @@ services:
       - "traefik.http.routers.meshmonitor.rule=Host(`meshmonitor.example.com`)"
       - "traefik.http.routers.meshmonitor.entrypoints=websecure"
       - "traefik.http.routers.meshmonitor.tls.certresolver=letsencrypt"
-      - "traefik.http.services.meshmonitor.loadbalancer.server.port=8080"
+      - "traefik.http.services.meshmonitor.loadbalancer.server.port=3001"
       - "traefik.http.routers.meshmonitor-http.rule=Host(`meshmonitor.example.com`)"
       - "traefik.http.routers.meshmonitor-http.entrypoints=web"
       - "traefik.http.routers.meshmonitor-http.middlewares=redirect-to-https"

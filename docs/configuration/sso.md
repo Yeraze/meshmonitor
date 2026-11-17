@@ -55,7 +55,7 @@ Optional variables:
 ```yaml
 services:
   meshmonitor:
-    image: meshmonitor:latest
+    image: ghcr.io/yeraze/meshmonitor:latest
     environment:
       - MESHTASTIC_NODE_IP=192.168.1.100
       - OIDC_ISSUER=https://your-domain.auth0.com
@@ -63,7 +63,7 @@ services:
       - OIDC_CLIENT_SECRET=your_client_secret_here
       - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
     ports:
-      - "8080:8080"
+      - "8080:3001"
 ```
 
 #### Environment File (.env)
@@ -76,7 +76,7 @@ OIDC_CLIENT_SECRET=your_client_secret_here
 OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
 ```
 
-## Group → Role Mapping
+## Group → Role Mapping {#group-role-mapping}
 
 By default, every OIDC user is created as a regular user, and the **first** OIDC
 login is bootstrapped to admin so the deployment isn't locked out; subsequent

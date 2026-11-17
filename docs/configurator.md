@@ -73,7 +73,7 @@ The services, ports, and volumes are identical between the two. Only how the sec
 For more complex deployments, check out these resources:
 
 - [Kubernetes/Helm Deployment](/configuration/production#kubernetes-with-helm-enterprise-scale)
-- [High Availability Setup](/configuration/production#high-availability)
+- [Uptime and High Availability](/configuration/production#high-availability)
 - [SSO/OIDC Authentication](/configuration/sso)
 - [Custom SSL Certificates](/configuration/reverse-proxy)
 - [Database Optimization](/configuration/production#database-optimization)
