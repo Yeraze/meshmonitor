@@ -106,6 +106,7 @@ MeshMonitor automatically detects the device type on connection:
 | **Companion** | Full-featured device with binary protocol support | Native JS backend (meshcore.js, serial or TCP) |
 | **Repeater** | Lightweight relay with text CLI interface | Direct serial |
 | **Room Server** | Chat room server for group messaging | Native JS backend (meshcore.js) |
+
 ## Virtual Node
 
 A Companion source can share its radio with the MeshCore phone app. Tick **Expose this node to the MeshCore app over WiFi** in the source form and pick a port (default `5000`), then point the app at the MeshMonitor host and that port. **Allow admin commands**, **Allow PKI export** and **Allow PKI import** stay off unless you trust every client that can reach the port: it has no login. See [Virtual Node → MeshCore Virtual Node](/configuration/virtual-node#meshcore-virtual-node).
