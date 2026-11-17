@@ -147,6 +147,8 @@ extraEnv:
         key: database-url
 ```
 
+For `DATABASE_URL` formats and PostgreSQL/MySQL setup, see [Choosing a Database](/configuration/database).
+
 This accepts standard [Kubernetes env var syntax](https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/), including `valueFrom` for referencing Secrets and ConfigMaps. See the [Environment Variables](/configuration/index) page for the full list of supported variables.
 
 Deploy:
