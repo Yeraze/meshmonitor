@@ -6,6 +6,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.18.0] - 2026-11-17
+
+This release adds support for the Meshtastic `is_automation` bit. MeshMonitor's automation sends now set bit 2 of `Data.bitfield`; messages that carry it show a bot icon, Packet Monitor shows the flag, and Auto-Ack, Auto-Responder and new Automation Engine rules ignore bots unless you tell them not to. It also adds public-instance mode, which trims what signed-out viewers see; an embedded MeshCore MQTT broker; Meshtastic sends over MQTT with no radio; mesh-wide notification defaults; Direct RF Contacts history; verified remote config saves; a security digest preview; and owner and email claims in the Analyzer Observer token. Fixes cover MeshCore telemetry, maps and repeater names, the Virtual Node, the MT↔MC bridge, MQTT config saves and server-side PKI DM decryption. It covers everything since 4.17.3. Upgrading runs migrations 233 to 239 automatically. Read **Upgrade notes** at the end of this section first.
+
+### Added
+- **Meshtastic `is_automation` bit.** Every automation send sets bit 2 (`0x04`) of `Data.bitfield`; manual sends are unchanged. Messages with the bit show a bot icon in channels, DMs and Unified Messages, and Packet Monitor has an `is_automation` column. The Automation Engine message trigger gains a **Sent by** filter (any, people only, automations only) and a `trigger.isAutomation` token; new rules start at people only. Auto-Ack and Auto-Responder skip automated messages unless you tick their new **Respond to automated messages** box. Live messages carry the flag, so the icon shows at once. (#6449, #6450, #6455)
+- **Public-instance mode**, off by default. When an admin turns it on, signed-out viewers and embeds see positions snapped to a ~1.5 km grid, rounded distance, bearing and altitude, and no raw payloads. Four toggles, each on by default, also hide long names, hide public keys, round times down to the hour and hide message text. CSV and NDJSON exports are blocked for signed-out viewers. A test calls every route signed out and fails on any leak. Embed maps spread nodes that share a cell. Signed-in users and the v1 API see full data. (#5156, #6433, #6434, #6435, #6445)
+- **Hide nodes that declined MQTT** from signed-out viewers, a per-source setting, off by default. A node whose last MQTT packet set `ok_to_mqtt` to false, and that this source never heard directly over RF, is hidden with all its data. (#5156, #6393)
+- **Embedded MeshCore MQTT broker**, a new source type that MeshCore observers publish to directly. Logins need a signed token or a static password, and every login is bound to an allowlist of observer keys. Caps limit observers, message rate and payload size; the Overview tab shows each connection and the last refused logins. Opt-in upstream forwarding sends allowlisted observers on as-is or under MeshMonitor's own observer key. The default port is 1884. (#6197, #6400)
+- **Send Meshtastic messages over MQTT with no radio**, off by default per source. Each source gets its own generated node and can send channel text on Channel Database channels, PKI DMs to nodes with a trusted key, and a NodeInfo every 3 hours. Sends cap at 6 a minute and 60 an hour per source, use hop limit 3, and never come from automations. The toggle warns about downlink airtime. It needs `SESSION_SECRET`. (#4305, #6395)
+- **Mesh-wide notification defaults** with per-source overrides. Apprise and desktop alerts hold an event for 5 seconds and send once, naming every source that saw it. Inactive and low-battery alerts dedup by node across sources, and a browser keeps one Web Push subscription, filtered per source. (#5729, #6394)
+- **Direct RF Contacts** for Meshtastic and MeshCore: a daily history of the nodes each source hears directly over RF. It adds a report on the Analysis tab with CSV export, a Direct RF section on node detail, and a Network survey "Heard directly" table that no longer empties when the packet log rolls over. History keeps 30 days by default (1 to 365) and starts at upgrade. (#6210, #6388)
+- **Verified remote config saves.** A **Verify config saves** box on the Admin Commands tab runs each remote save as a job: send, wait 90 seconds, read the section back, and resend only when a changed field still holds its old value. A missed reply never triggers a resend. A **Verified saves** panel lists jobs and can cancel them. (#4487, #6417)
+- **Security digest Preview.** A Preview button beside Send now shows the digest's title and body with a character count, and warns over Discord's 2,000-character limit. It sends nothing. (#6453, #6456)
+- **Owner and email claims in the Analyzer Observer token**, so LetsMesh and MeshMapper can link an observer to an account. Set them per source or per broker; only token-mode brokers carry them. (#6454, #6458)
+- **Room Sync re-joins rooms without a saved password.** A room this radio logged in to before gets a blank-password login, which a room server's ACL accepts, after each connect and on its normal interval. A refusal turns auto-sync off for that room. (#6408, #6415)
+- **Per-trigger enable and disable** for the Meshtastic Auto-Responder, as on MeshCore. (#6405, #6413)
+- **MeshCore Auto-Responder scripts get `HOPS`, `ROUTE`, `ROUTE_NAMES`, `HASH_SIZE` and `SCOPE`.** (#6402, #6412)
+- **Gateway names** in the "Colour nodes by gateway" legend and in popup gateway chips, in place of hex ids. (#6386, #6387)
+- **LoRa transparent mode warning.** A banner and a read-only box on the LoRa config page show when a node runs in transparent mode. The Info tab shows the nRF52 bootloader version. (#6181, #6321, #6392)
+- **Room login hint** for the stock MeshCore guest password `hello`, with a button that fills it in. (#6407, #6414)
+
+### Changed
+- **MeshCore Companion heartbeat is on by default, every 60 seconds.** The probe is a local request that sends nothing over the radio. Three failed probes start a reconnect, so a hung companion is caught in about 3 minutes. (#6437, #6446)
+- **Position requests carry an empty Position.** Exchange Position no longer sends your node's own position, so relays that drop duplicate positions no longer drop the request. The far node still learns your position from your normal broadcasts. (#6047, #6391)
+- **Virtual Node apps can send waypoints.** Only admin packets stay blocked when admin commands are off. (#6442)
+- **Settings checkboxes sit inline** with their labels. (#6444)
+- **Port numbers use the shared `PortNum` constants**, and lint rejects bare ones. (#6440)
+- **Docs:** CardMesh links follow its GitHub rename, contributed by @maxhayim. (#6419)
+- **Dependency updates**, including rotating-file-stream 4, web-push 4, maplibre-gl 6.18 and satellite.js 7.2. (#6420 to #6430)
+- **Translations** refreshed from Hosted Weblate. (#6340, #6432)
+
+### Fixed
+- **Server-side PKI DM decryption** built its nonce in the wrong byte order, so it could never open a real firmware DM. It now matches firmware. (#6395)
+- **MQTT config saves report a refusal.** When the node refuses the save, for example on firmware built without MQTT, the save returns an error and the cached config stays as it was. MQTT checkboxes no longer stay ticked after a reload when the node reports them off. (#6439, #6448)
+- **MeshCore remote telemetry keeps every sensor.** A local Cayenne-LPP decoder reads the records after an altitude reading, such as INA3221 voltage, current and power. (#6389, #6390)
+- **MeshCore repeater sources over serial show their name** instead of `Unknown Repeater`. Contributed by @vitska, in their first MeshMonitor PR. (#6431)
+- **MeshCore maps draw one neighbour line per pair**, and the tooltip shows both directions with their age. Before, the shown SNR flipped between stale and current values. (#6403, #6404)
+- **Automation:** `source-connected` and `source-disconnected` fire for MeshCore sources, once per change (#6437, #6446); MeshCore telemetry triggers carry the node name, key and role (#6397, #6398); the MT↔MC bridge relays the operator's own MeshCore channel posts (#6409, #6410); the Remote Telemetry and Time Sync automation sections save again (#6399, #6411).
+- **Virtual Node:** a text message from one app reaches the other connected apps (#6436, #6438); NodeInfo carries the radio's lock and LoRa-heard flags, so Android 2.8 shows the right lock and no "unheard" badge (#5921, #6416); MeshMonitor's own MeshCore channel sends show 0 hops, not "63 hops, 4-byte" (#6441, #6443).
+- **Neighbour info scopes by source** before it picks the latest row per pair, so a source no longer loses links another source holds. (#6396)
+
+### Upgrade notes
+- **Migrations 233 to 239** run on start on SQLite, PostgreSQL and MySQL.
+- **Auto-Ack and Auto-Responder skip automated messages by default.** A message flagged `is_automation` gets no reply unless you tick **Respond to automated messages**. A MeshMonitor bot that answered another bot will stop.
+- **Automation sends set the `is_automation` bit.** There is no setting to turn it off.
+- **New Automation Engine message rules** default to **People only**. Existing rules are unchanged.
+- **MeshCore Companion heartbeat:** existing Companion sources with no stored heartbeat get 60 seconds. That includes sources where you turned it off under the old form, which stored nothing for off. Set it to 0 to turn it off again.
+- **Notifications:** push subscriptions collapse to one per browser. Per-source settings keep working until you edit them. Push rows with no user, and the anonymous account, get every source the anonymous account can read. Apprise and desktop alerts arrive up to 5 seconds later.
+- **Public-instance mode, hide-declined-MQTT nodes, MQTT sends with no radio and broker forwarding are all off by default.** With public-instance mode on, the CoT/TAK feed is not trimmed; Settings warns about it.
+- **The MeshCore MQTT broker** listens on 1884 by default. Docker and Helm do not expose it; map the port yourself.
+- **MQTT config saves** wait up to 5 seconds for a refusal. A refused MQTT restore now fails instead of passing.
+- **Exchange Position** no longer sends your position to the far node.
+- **Room Sync:** rooms with auto-sync on that this radio logged in to before get one blank-password login after each connect, at most one per source per minute, skipped when a login ran in the last hour.
+
 ## [4.17.3] - 2026-11-13
 
 This release brings MeshCore close to Meshtastic across most of the app, using one shared implementation for both protocols where they overlap. It also closes a MeshCore channel-secret leak in the v1 API, fixes a cross-source backup read, and adds an opt-in node-name anti-spam filter. It covers everything since 4.17.2. Upgrading runs migrations 223 to 232 automatically. Read **Upgrade notes** at the end of this section first.
