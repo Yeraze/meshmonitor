@@ -174,6 +174,64 @@ describe('Security digest card (P7b)', () => {
   });
 });
 
+describe('Security digest preview (#6453)', () => {
+  const preview = (over: Record<string, unknown> = {}) => ({
+    success: true,
+    data: {
+      title: '[Mesh] MeshMonitor Security Digest',
+      body: '# Digest\n\n| Issue Type | Count |',
+      format: 'markdown', reportType: 'summary', length: 70, combined: false, configured: true, ...over,
+    },
+  });
+  const openPreview = async () => {
+    render(<SecurityTab sourceType="meshcore" sourceId="src-1" deviceType={1} />);
+    fireEvent.click(await screen.findByText('Preview'));
+    await waitFor(() => expect(h.post).toHaveBeenCalledWith('/api/security/digest/preview', { sourceId: 'src-1' }));
+  };
+
+  it('shows the title, raw body and character count, and closes', async () => {
+    route(mcIssues([]), { settings: { securityDigestAppriseUrl: 'discord://x' } });
+    h.post.mockResolvedValue(preview());
+    await openPreview();
+    const block = (await screen.findByTestId('digest-preview')).querySelector('pre')!;
+    expect(block.textContent).toBe('[Mesh] MeshMonitor Security Digest\n\n# Digest\n\n| Issue Type | Count |');
+    expect(screen.getByText('70 characters')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Preview shows saved settings/)).toBeNull();
+    fireEvent.click(screen.getByText('Close preview'));
+    expect(screen.queryByTestId('digest-preview')).toBeNull();
+  });
+
+  it('warns about the Discord limit over 2,000 characters', async () => {
+    route(mcIssues([]), { settings: { securityDigestAppriseUrl: 'discord://x' } });
+    h.post.mockResolvedValue(preview({ length: 2001, reportType: 'detailed' }));
+    await openPreview();
+    expect((await screen.findByRole('alert')).textContent).toContain('Discord rejects messages over 2,000 characters');
+    expect(screen.getByRole('alert').textContent).toContain('?overflow=split');
+    expect(screen.getByText('2001 characters')).toBeTruthy();
+  });
+
+  it('notes a suppressed digest and a missing Apprise URL', async () => {
+    route(mcIssues([]), { settings: {} });
+    h.post.mockResolvedValue(preview({ body: null, length: 0, configured: false }));
+    await openPreview();
+    expect(await screen.findByText(/The digest is suppressed/)).toBeTruthy();
+    expect(screen.getByText(/No Apprise URL is set for this source/)).toBeTruthy();
+    expect(screen.getByTestId('digest-preview').querySelector('pre')).toBeNull();
+  });
+
+  it('says the preview uses saved settings while the form has edits', async () => {
+    route(mcIssues([]), { settings: { securityDigestAppriseUrl: 'discord://x' } });
+    h.post.mockResolvedValue(preview());
+    render(<SecurityTab sourceType="meshcore" sourceId="src-1" deviceType={1} />);
+    const url = await screen.findByPlaceholderText('discord://webhook_id/webhook_token');
+    await waitFor(() => expect((url as HTMLInputElement).value).toBe('discord://x'));
+    fireEvent.change(url, { target: { value: 'discord://y' } });
+    fireEvent.click(screen.getByText('Preview'));
+    expect(await screen.findByText(/Preview shows saved settings/)).toBeTruthy();
+  });
+});
+
 describe('notification DM button (P7b)', () => {
   const open = vi.fn();
   beforeEach(() => open.mockReset());
