@@ -292,7 +292,7 @@ When the result comes back as a **plain circle** rather than a terrain-shaped ri
 
 Both are user-actionable states, not failures — the banner tells you which one you're looking at instead of leaving the circle unexplained.
 
-## 3D terrain view
+## 3D terrain view {#3d-terrain-view}
 
 ::: tip New in 4.14
 :::

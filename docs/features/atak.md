@@ -114,7 +114,7 @@ Baremetal deployments must initialize the submodule
 (`git submodule update --init --recursive`); the Docker image and LXC
 template include the dictionaries automatically.
 
-## Phase 3 — CoT feed (ATAK/WinTAK network input)
+## Phase 3 — CoT feed (ATAK/WinTAK network input) {#phase-3-cot-feed-atak-wintak-network-input}
 
 MeshMonitor can run a plaintext TCP server that streams CoT `<event>` XML —
 the format ATAK and WinTAK natively consume as a "network input." Point ATAK

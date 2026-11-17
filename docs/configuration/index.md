@@ -76,7 +76,7 @@ node(s) in **Dashboard → Sources**.
 | `DATABASE_PATH` | SQLite database file path | `/data/meshmonitor.db` |
 | `TRACEROUTE_HISTORY_LIMIT` | Traceroute history rows to keep per node pair | `50` |
 | `BASE_URL` | Base path if serving from subfolder (e.g., `/meshmonitor`). Trailing slashes are stripped, so `/meshmonitor//` works like `/meshmonitor`. | `/` (root) |
-| `TZ` | Timezone for log timestamps and scheduled tasks | `America/New_York` |
+| `TZ` | Timezone for log timestamps and scheduled tasks | `UTC` |
 | `PUID` / `PGID` | Docker: uid/gid of the unprivileged `node` user every process runs as. See [Docker Security](/configuration/production#docker-security) | `1000` / `1000` |
 
 ### Meshtastic Connection Variables
@@ -109,10 +109,10 @@ told it about one.
 | `MESHTASTIC_NODE_IP` | IP address used to seed the first TCP source on first boot. Unset → the Default source is created disabled (host `meshtastic.local`), or skipped when the MeshCore vars below are set | _unset_ |
 | `MESHTASTIC_TCP_PORT` | TCP port used to seed the first TCP source on first boot | `4403` |
 | `MESHTASTIC_STALE_CONNECTION_TIMEOUT` | Connection timeout in milliseconds before reconnecting if no data received | `300000` (5 minutes) |
-| `MESHTASTIC_CONNECT_TIMEOUT_MS` | Initial TCP connection timeout in milliseconds | `10000` (10 seconds) |
-| `MESHTASTIC_RECONNECT_INITIAL_DELAY_MS` | Initial delay before first reconnect attempt (base for exponential backoff) | `1000` (1 second) |
+| `MESHTASTIC_CONNECT_TIMEOUT_MS` | Initial TCP connection timeout in milliseconds | `60000` (60 seconds) |
+| `MESHTASTIC_RECONNECT_INITIAL_DELAY_MS` | Initial delay before first reconnect attempt (base for exponential backoff) | `60000` (60 seconds) |
 | `MESHTASTIC_RECONNECT_MAX_DELAY_MS` | Maximum delay between reconnect attempts (backoff cap) | `60000` (60 seconds) |
-| `MESHTASTIC_MODULE_CONFIG_DELAY_MS` | Delay between consecutive module config requests to avoid overwhelming the device | `100` (100ms) |
+| `MESHTASTIC_MODULE_CONFIG_DELAY_MS` | Delay between consecutive module config requests to avoid overwhelming the device | `1000` (1 second) |
 
 ### Virtual Node
 
@@ -162,9 +162,9 @@ See [MeshCore → Headless installs](/features/meshcore#headless-installs-first-
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TRUST_PROXY` | Trust reverse proxy headers (required for HTTPS behind proxy) | `1` in production |
-| `COOKIE_SECURE` | Require HTTPS for cookies | `true` in production |
-| `COOKIE_SAMESITE` | Cookie SameSite policy (`strict`, `lax`, or `none`) | `strict` in production |
+| `TRUST_PROXY` | Trust reverse proxy headers (required for HTTPS behind proxy) | `false` (set `true` or a hop count behind a proxy) |
+| `COOKIE_SECURE` | Require HTTPS for cookies | `false` (set `true` when served over HTTPS) |
+| `COOKIE_SAMESITE` | Cookie SameSite policy (`strict`, `lax`, or `none`) | `lax` |
 | `SESSION_COOKIE_NAME` | Custom session cookie name (useful for multiple instances on same host) | `meshmonitor.sid` |
 | `SESSION_MAX_AGE` | Session cookie lifetime in milliseconds | `86400000` (24 hours) |
 | `SESSION_ROLLING` | Reset session expiry on each request (keeps active users logged in) | `true` |
@@ -294,15 +294,13 @@ For Docker deployments, configuration is typically done through environment vari
 ```yaml
 services:
   meshmonitor:
-    image: meshmonitor:latest
+    image: ghcr.io/yeraze/meshmonitor:latest
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-      - PORT=3000
       - SESSION_SECRET=your-secret-key-here
     ports:
-      - "8080:8080"
+      - "8080:3001"   # host:container — the app listens on 3001
     volumes:
-      - meshmonitor_data:/app/data
+      - meshmonitor_data:/data
 ```
 
 ### Kubernetes (Helm)
@@ -347,7 +345,7 @@ MeshMonitor uses SQLite for data storage by default. The database file is stored
 
 ### Database Location
 
-- **Docker**: `/app/data/meshmonitor.db` (mounted as a volume)
+- **Docker**: `/data/meshmonitor.db` (mounted as a volume)
 - **Bare Metal**: `./data/meshmonitor.db` (relative to project root)
 
 ### Backup and Migration
@@ -356,7 +354,7 @@ To backup your database:
 
 ```bash
 # Docker
-docker cp meshmonitor:/app/data/meshmonitor.db ./backup.db
+docker cp meshmonitor:/data/meshmonitor.db ./backup.db
 
 # Bare Metal
 cp data/meshmonitor.db backup.db

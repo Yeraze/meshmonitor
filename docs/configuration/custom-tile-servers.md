@@ -608,7 +608,7 @@ Cannot find module '../build/Release/sharp-linux-x64.node'
    **Note**: Light version can't render vector → raster, but works perfectly with raster .mbtiles or directory tiles.
 
 2. **Use nginx caching proxy** (easiest for offline):
-   - Set up [nginx caching proxy](#nginx-caching-tile-proxy-easiest-for-offline)
+   - Set up [nginx caching proxy](#nginx-caching-tile-proxy-gradual-offline-coverage)
    - Proxy to OpenStreetMap or other raster tile service
    - Gradually builds offline cache as you use it
    - No rendering needed!

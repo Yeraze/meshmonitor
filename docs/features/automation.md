@@ -2378,6 +2378,21 @@ A **Run Cycle Now** button triggers one cycle immediately for the selected targe
 
 ---
 
+## Auto Delete by Distance {#auto-delete-by-distance}
+
+Removes nodes that sit farther than a set distance from a home point. Use it to clear far-off nodes that reach your mesh through relays on aircraft.
+
+1. Turn on **Enable Auto Delete by Distance**.
+2. Set the **Home Coordinate**, or click **Use Current Node Position**.
+3. Set the **Distance Threshold** (shown in your chosen distance unit) and the **Check Interval** in hours.
+4. Choose the **Action**:
+   - **Delete node** removes the node from MeshMonitor. It comes back if it keeps broadcasting.
+   - **Ignore node** hides it and syncs the ignore to the device (firmware 2.7.0 or later). See [Ignored Nodes](#ignored-nodes).
+
+**Run Now** runs a check at once. The **Activity Log** lists each run and how many nodes it removed.
+
+Favorited nodes and your local node are never removed. MeshCore sources have a matching setting with the same Delete or Ignore choice.
+
 ## Ignored Nodes {#ignored-nodes}
 
 Manages the persistent ignore list for nodes you want to exclude from your mesh monitoring. Ignored nodes are hidden from the node list and stay ignored permanently — whenever a listed node reappears without the ignore flag, MeshMonitor re-applies it automatically. This covers both inactive-node cleanup and the case where the device's own node database fills up and silently clears the ignore (see [#2601](https://github.com/Yeraze/meshmonitor/issues/2601)).

@@ -31,7 +31,7 @@ const newsJsonPlugin = {
 /**
  * Features sidebar.
  *
- * Rebalanced so no group runs past six rows: "Network Insight" had grown to ten
+ * Rebalanced so groups stay short (aim for six rows or fewer): "Network Insight" had grown to ten
  * and "Administration & Security" to nine, which is past the point a sidebar
  * group can be scanned. Groups are named for what the reader is doing rather
  * than for the subsystem involved.
@@ -167,7 +167,7 @@ const featuresSidebar = [
     collapsed: false,
     items: [
       { text: 'MeshCore Overview', link: '/features/meshcore' },
-      { text: 'Receive-Only Mode', link: '/features/meshcore-receive-only' },
+      { text: 'MeshCore Receive-Only', link: '/features/meshcore-receive-only' },
       { text: 'Analyzer Observer', link: '/features/meshcore-analyzer-observer' },
       { text: 'MQTT Ingest', link: '/features/meshcore-mqtt-ingest' },
       { text: 'MQTT Broker', link: '/features/meshcore-mqtt-broker' },
@@ -178,14 +178,111 @@ const featuresSidebar = [
     text: 'Appearance & Community',
     collapsed: true,
     items: [
-      { text: '\u{1F3A8} Custom Themes', link: '/features/custom-themes' },
-      { text: '\u{1F3A8} Theme Gallery', link: '/THEME_GALLERY' },
-      { text: '\u{1F30D} Translations', link: '/features/translations' },
-      { text: '\u{1F310} Site Gallery', link: '/site-gallery' },
-      { text: '\u{1F4DC} User Scripts', link: '/user-scripts' }
+      { text: 'Custom Themes', link: '/features/custom-themes' },
+      { text: 'Theme Gallery', link: '/THEME_GALLERY' },
+      { text: 'Translations', link: '/features/translations' },
+      { text: 'Site Gallery', link: '/site-gallery' },
+      { text: 'User Scripts', link: '/user-scripts' }
     ]
   }
 ]
+
+const configurationSidebar = [
+    {
+      text: 'Get Started',
+      collapsed: false,
+      items: [
+        { text: 'Overview', link: '/configuration/' },
+        { text: 'Docker Compose Configurator', link: '/configurator' },
+        { text: 'Desktop App', link: '/configuration/desktop' }
+      ]
+    },
+    {
+      text: 'Connect Your Mesh',
+      collapsed: false,
+      items: [
+        { text: 'BLE Bridge (Bluetooth)', link: '/configuration/ble-bridge' },
+        { text: 'Serial Bridge (USB)', link: '/configuration/serial-bridge' },
+        { text: 'Virtual Node Server', link: '/configuration/virtual-node' },
+        { text: 'Using meshtasticd', link: '/configuration/meshtasticd' },
+        { text: 'Tested Hardware', link: '/configuration/tested-hardware' }
+      ]
+    },
+    {
+      text: 'Networking & TLS',
+      collapsed: false,
+      items: [
+        { text: 'HTTP vs HTTPS', link: '/configuration/http-vs-https' },
+        { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },
+        { text: 'HTTPS with DuckDNS', link: '/configuration/duckdns-https' }
+      ]
+    },
+    {
+      text: 'Authentication & Hardening',
+      collapsed: false,
+      items: [
+        { text: 'SSO (OpenID Connect)', link: '/configuration/sso' },
+        { text: 'Passkeys', link: '/features/passkeys' },
+        { text: 'Fail2ban Integration', link: '/configuration/fail2ban' }
+      ]
+    },
+    {
+      text: 'Production & Operations',
+      collapsed: false,
+      items: [
+        { text: 'Production Deployment', link: '/configuration/production' },
+        { text: 'Updating MeshMonitor', link: '/configuration/updating' },
+        { text: 'Reducing Node Load', link: '/configuration/node-load' },
+        { text: 'Custom Tile Servers', link: '/configuration/custom-tile-servers' }
+      ]
+    },
+    {
+      text: 'Deployment Guides',
+      collapsed: true,
+      items: [
+        { text: 'Deployment Guide', link: '/deployment/DEPLOYMENT_GUIDE' },
+        { text: 'Kubernetes / Helm', link: '/deployment/HELM_GUIDE' },
+        { text: 'Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' },
+        { text: 'Reticulum Bridge', link: '/deployment/RETICULUM_BRIDGE_GUIDE' }
+      ]
+    }
+  ]
+
+const developmentSidebar = [
+    {
+      text: 'Getting Started',
+      collapsed: false,
+      items: [
+        { text: 'Overview', link: '/development/' },
+        { text: 'Development Setup', link: '/development/setup' },
+        { text: 'Claude Code Quickstart', link: '/development/claude-getting-started' }
+      ]
+    },
+    {
+      text: 'Architecture',
+      collapsed: false,
+      items: [
+        { text: 'Frontend Structure', link: '/development/FRONTEND_STRUCTURE' },
+        { text: 'Database', link: '/development/database' }
+      ]
+    },
+    {
+      text: 'API & Testing',
+      collapsed: false,
+      items: [
+        { text: 'API Reference', link: '/development/api-reference' },
+        { text: 'Test Suite', link: '/development/TEST_SUITE' }
+      ]
+    },
+    {
+      text: 'Advanced Topics',
+      collapsed: true,
+      items: [
+        { text: 'Auto Responder Scripting', link: '/developers/auto-responder-scripting' },
+        { text: 'BLE Bridge Migration', link: '/development/BLE_BRIDGE_MIGRATION' }
+      ]
+    }
+  ]
 
 export default defineConfig({
   vite: {
@@ -197,12 +294,12 @@ export default defineConfig({
     plugins: [newsJsonPlugin]
   },
   title: "MeshMonitor",
-  description: "Self-hosted, multi-protocol web dashboard for Meshtastic, MeshCore, and MQTT mesh networks. Real-time maps, messaging, telemetry, automation, and alerts. Runs on Docker, desktop, or Kubernetes.",
+  description: "Self-hosted dashboard for Meshtastic, MeshCore, MQTT and Reticulum meshes: live maps, messages, telemetry, automation and alerts.",
   base: '/',  // Custom domain: meshmonitor.org
 
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
-    logo: '/images/logo.svg',
+    logo: '/images/logo.png',
 
     nav: [
       { text: 'Getting Started', link: '/getting-started' },
@@ -210,16 +307,16 @@ export default defineConfig({
       {
         text: 'Documents',
         items: [
-          { text: 'Features', link: '/features/settings' },
+          { text: 'Features', link: '/features/' },
           { text: 'Configuration', link: '/configuration/' },
           { text: 'Add-ons', link: '/add-ons/' },
           { text: 'Development', link: '/development/' },
           { text: 'Blog', link: '/blog/' },
-          { text: '🌐 Site Gallery', link: '/site-gallery' },
-          { text: '📜 User Scripts', link: '/user-scripts' }
+          { text: 'Site Gallery', link: '/site-gallery' },
+          { text: 'User Scripts', link: '/user-scripts' }
         ]
       },
-      { text: '📦 Releases', link: 'https://github.com/yeraze/meshmonitor/releases' }
+      { text: 'Releases', link: 'https://github.com/yeraze/meshmonitor/releases' }
     ],
 
     sidebar: {
@@ -243,68 +340,12 @@ export default defineConfig({
       '/user-scripts': featuresSidebar,
       '/faq': featuresSidebar,
 
-      '/configuration/': [
-        {
-          text: 'Get Started',
-          collapsed: false,
-          items: [
-            { text: 'Overview', link: '/configuration/' },
-            { text: '⚡ Docker Compose Configurator', link: '/configurator' },
-            { text: '🖥️ Desktop App', link: '/configuration/desktop' }
-          ]
-        },
-        {
-          text: 'Connect Your Mesh',
-          collapsed: false,
-          items: [
-            { text: 'BLE Bridge (Bluetooth)', link: '/configuration/ble-bridge' },
-            { text: 'Serial Bridge (USB)', link: '/configuration/serial-bridge' },
-            { text: 'Virtual Node Server', link: '/configuration/virtual-node' },
-            { text: 'Using meshtasticd', link: '/configuration/meshtasticd' },
-            { text: '🧪 Tested Hardware', link: '/configuration/tested-hardware' }
-          ]
-        },
-        {
-          text: 'Networking & TLS',
-          collapsed: false,
-          items: [
-            { text: 'HTTP vs HTTPS', link: '/configuration/http-vs-https' },
-            { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },
-            { text: 'HTTPS with DuckDNS', link: '/configuration/duckdns-https' }
-          ]
-        },
-        {
-          text: 'Authentication & Hardening',
-          collapsed: false,
-          items: [
-            { text: 'SSO (OpenID Connect)', link: '/configuration/sso' },
-            { text: 'Passkeys', link: '/features/passkeys' },
-            { text: 'Fail2ban Integration', link: '/configuration/fail2ban' }
-          ]
-        },
-        {
-          text: 'Production & Operations',
-          collapsed: false,
-          items: [
-            { text: 'Production Deployment', link: '/configuration/production' },
-            { text: '🔄 Updating MeshMonitor', link: '/configuration/updating' },
-          { text: 'Unattended Upgrades', link: '/configuration/auto-upgrade' },
-            { text: 'Reducing Node Load', link: '/configuration/node-load' },
-            { text: 'Push Notifications', link: '/features/notifications' },
-            { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' }
-          ]
-        },
-        {
-          text: 'Deployment Guides',
-          collapsed: true,
-          items: [
-            { text: 'Deployment Guide', link: '/deployment/DEPLOYMENT_GUIDE' },
-            { text: '☸️ Kubernetes / Helm', link: '/deployment/HELM_GUIDE' },
-            { text: '📦 Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' },
-            { text: '📡 Reticulum Bridge', link: '/deployment/RETICULUM_BRIDGE_GUIDE' }
-          ]
-        }
-      ],
+      '/configuration/': configurationSidebar,
+      // Pages linked from the Configuration sidebar that live outside
+      // /configuration/ — without these keys they render with no sidebar.
+      '/getting-started': configurationSidebar,
+      '/configurator': configurationSidebar,
+      '/deployment/': configurationSidebar,
       '/add-ons/': [
         {
           text: 'Community Add-ons',
@@ -315,43 +356,8 @@ export default defineConfig({
           ]
         }
       ],
-      '/development/': [
-        {
-          text: 'Getting Started',
-          collapsed: false,
-          items: [
-            { text: 'Overview', link: '/development/' },
-            { text: 'Development Setup', link: '/development/setup' },
-            { text: 'Claude Code Quickstart', link: '/development/claude-getting-started' }
-          ]
-        },
-        {
-          text: 'Architecture',
-          collapsed: false,
-          items: [
-            { text: 'Architecture Overview', link: '/development/architecture' },
-            { text: 'Frontend Structure', link: '/development/FRONTEND_STRUCTURE' },
-            { text: 'Database', link: '/development/database' },
-            { text: 'Authentication', link: '/development/authentication' }
-          ]
-        },
-        {
-          text: 'API & Testing',
-          collapsed: false,
-          items: [
-            { text: 'API Reference', link: '/development/api-reference' },
-            { text: 'Test Suite', link: '/development/TEST_SUITE' }
-          ]
-        },
-        {
-          text: 'Advanced Topics',
-          collapsed: true,
-          items: [
-            { text: 'Auto Responder Scripting', link: '/developers/auto-responder-scripting' },
-            { text: 'BLE Bridge Migration', link: '/development/BLE_BRIDGE_MIGRATION' }
-          ]
-        }
-      ]
+      '/development/': developmentSidebar,
+      '/developers/': developmentSidebar
     },
 
     socialLinks: [
@@ -406,6 +412,11 @@ export default defineConfig({
     '**/planning/**',
     '**/plans/**',
     '**/operations/**',
+    // Design specs and reviews written by planning tools, and pre-4.x release
+    // notes. Internal records, not user docs (they were publishing and showing
+    // up in site search).
+    '**/superpowers/**',
+    '**/releases/**',
     // Dated point-in-time security review, kept in-repo as an archive record.
     // The living advisory page (security/SECURITY_ADVISORY.md) still publishes.
     '**/security/2026-*-review.md'

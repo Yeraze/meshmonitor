@@ -63,13 +63,13 @@ meshmonitor/
 ### [Development Setup](/development/setup)
 Complete guide to setting up your local development environment, including Docker and native setups.
 
-### [Architecture](/development/architecture)
-Overview of MeshMonitor's architecture, design patterns, and system components.
+### [Architecture Lessons](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/ARCHITECTURE_LESSONS.md)
+Rules for node communication, state, async work, and multi-source code. Read before changing those areas.
 
 ### [Database](/development/database)
 Database schema, migrations, and data models.
 
-### [Authentication](/development/authentication)
+### [Authentication](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/AUTHENTICATION.md)
 Authentication system implementation, including local auth and OIDC.
 
 ### [API Documentation](/development/api-reference)
@@ -286,6 +286,6 @@ docs(readme): update installation instructions
 
 - [Get started with Claude Code](/development/claude-getting-started) - Recommended for new contributors
 - [Set up your development environment](/development/setup)
-- [Understand the architecture](/development/architecture)
+- [Read the architecture lessons](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/ARCHITECTURE_LESSONS.md)
 - [Explore the API](/development/api-reference)
 - [Review the database schema](/development/database)

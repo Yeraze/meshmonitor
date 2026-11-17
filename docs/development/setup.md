@@ -382,10 +382,10 @@ nvm use 20
 
 ## Next Steps
 
-- **[Architecture Guide](/development/architecture)** - Understand the system design
+- **[Architecture Lessons](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/ARCHITECTURE_LESSONS.md)** - Rules for core subsystems
 - **[Database Schema](/development/database)** - Learn about data structures
 - **[API Documentation](/development/api-reference)** - Explore API endpoints
-- **[Authentication](/development/authentication)** - Understand auth implementation
+- **[Authentication](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/AUTHENTICATION.md)** - Understand auth implementation
 
 ## Contributing
 

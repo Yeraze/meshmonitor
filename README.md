@@ -249,7 +249,7 @@ When proxy authentication is enabled, existing local users are **automatically m
 
 MeshMonitor supports multiple deployment methods:
 
-- **🐳 Docker** (Recommended) - Pre-built multi-architecture images with auto-upgrade support
+- **🐳 Docker** (Recommended) - Pre-built multi-architecture images with update notifications
   - [Docker Compose Guide](docs/deployment/DEPLOYMENT_GUIDE.md)
   - Platforms: amd64, arm64, armv7
 
@@ -278,7 +278,7 @@ MeshMonitor supports multiple deployment methods:
 - **Multi-Protocol, Multi-Source** - Monitor Meshtastic (TCP/Serial/BLE), MeshCore (USB/TCP), and MQTT brokers from a single deployment, with per-source permissions, schedulers, and Virtual Nodes
 - **Embedded MQTT Broker** - Optional built-in broker with bidirectional bridges to public upstreams and topic/channel/portnum/geo filtering
 - **MQTT Geo Filtering** - With a bounding box configured on an MQTT bridge source, nodes that report a position outside the box are automatically ignored and have all their stored data purged (messages, telemetry, traceroutes, etc.); they reappear automatically the moment they report an in-bounds position. Nodes that never report a position always flow through (no more silent hiding, unlike previous releases). Manually-ignored nodes are never auto-un-ignored. Changing the bounding box retroactively re-applies the rule to already-stored nodes.
-- **Analysis & Reports (4.2)** - Cross-source analytical workspace at `/reports`; first report is Solar Monitoring Analysis with auto-detection of solar-powered nodes, production overlay, healthy-level reference lines, and multi-day battery forecast simulation
+- **Analysis & Reports** - Cross-source workspace at `/reports`: coverage reports, traceroute explorer, mesh issue checks, and solar analysis with battery forecasts
 - **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking across every connected source
 - **Modern UI** - Catppuccin theme with message reactions and threading
 - **Interactive Maps** - Unified node positions and network topology visualization across all sources
@@ -293,7 +293,7 @@ MeshMonitor supports multiple deployment methods:
 - **Virtual Node Server** - Remote TCP access for Meshtastic mobile/Python clients, plus a MeshCore Virtual Node to connect the MeshCore app to a managed device over WiFi
 - **REST API** - v1 API with Bearer token authentication for external integrations
 - **Docker Ready** - Pre-built multi-architecture images
-- **One-click Self-Upgrade** - Automatic upgrades from the UI with backup and rollback
+- **Update Notifications** - The UI tells you when a new release is out ([how to update](https://meshmonitor.org/configuration/updating))
 - **System Backup & Restore** - Complete disaster recovery with automated backups
 
 For a complete feature list and technical details, visit **[meshmonitor.org](https://meshmonitor.org/)**.
@@ -346,7 +346,7 @@ This starts both the React dev server (port 5173) and the Express API server (po
 
 **Frontend:**
 - React 19 with TypeScript
-- Vite 7 (build tool)
+- Vite 8 (build tool)
 - CSS3 with Catppuccin theme
 - Translation support crowdsourced by [Weblate](https://hosted.weblate.org/projects/meshmonitor/)
 

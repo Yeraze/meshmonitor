@@ -195,11 +195,11 @@ version: '3.8'
 
 services:
   meshmonitor:
-    image: yeraze/meshmonitor:latest
+    image: ghcr.io/yeraze/meshmonitor:latest
     container_name: meshmonitor
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8080:3001"
     volumes:
       - meshmonitor_data:/data
     environment:

@@ -50,7 +50,7 @@ services:
       - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
       - OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
     volumes:
-      - meshmonitor_data:/app/data
+      - meshmonitor_data:/data
     ports:
       - "127.0.0.1:8080:3001"  # Only bind to localhost
     logging:
@@ -157,95 +157,12 @@ helm install meshmonitor meshmonitor/meshmonitor -f values.yaml
 
 ## High Availability
 
-### Load Balancing
+Run **one** MeshMonitor instance per database. Do not put several replicas behind a load balancer:
 
-Run multiple instances behind a load balancer:
+- Each instance opens its own connection to every source. A Meshtastic node serves one TCP client at a time, so replicas knock each other off the radio.
+- Two processes writing one SQLite file fight over its write lock and can each see stale data.
 
-**Docker Compose:**
-
-```yaml
-version: '3.8'
-
-services:
-  meshmonitor-1:
-    image: meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-    volumes:
-      - meshmonitor_data:/app/data
-    expose:
-      - "8080"
-    networks:
-      - app-network
-
-  meshmonitor-2:
-    image: meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-    volumes:
-      - meshmonitor_data:/app/data
-    expose:
-      - "8080"
-    networks:
-      - app-network
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx-lb.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - meshmonitor-1
-      - meshmonitor-2
-    networks:
-      - app-network
-
-volumes:
-  meshmonitor_data:
-
-networks:
-  app-network:
-```
-
-**NGINX Load Balancer Config:**
-
-```nginx
-upstream meshmonitor_backend {
-    least_conn;  # Load balancing method
-    server meshmonitor-1:8080 max_fails=3 fail_timeout=30s;
-    server meshmonitor-2:8080 max_fails=3 fail_timeout=30s;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name meshmonitor.example.com;
-
-    # SSL config...
-
-    location / {
-        proxy_pass http://meshmonitor_backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-
-        # Session stickiness
-        proxy_set_header Connection "";
-        proxy_http_version 1.1;
-    }
-}
-```
-
-### Session Management
-
-For multiple instances, sessions must be shared:
-
-**Options:**
-1. **Sticky sessions** (session affinity) - Route users to same instance
-2. **Shared session store** - Redis, Memcached, or database
-3. **JWT tokens** - Stateless authentication
-
-MeshMonitor uses SQLite for sessions by default, which works with sticky sessions.
+For uptime, use `restart: unless-stopped` (Docker) or a single-replica Deployment (Kubernetes), keep [System Backups](/features/system-backup) running, and use PostgreSQL or MySQL if you want a managed, replicated database.
 
 ## Security Hardening
 
@@ -429,7 +346,7 @@ CONTAINER="meshmonitor"
 mkdir -p "$BACKUP_DIR"
 
 # Backup database
-docker cp "$CONTAINER:/app/data/meshmonitor.db" \
+docker cp "$CONTAINER:/data/meshmonitor.db" \
   "$BACKUP_DIR/meshmonitor-$DATE.db"
 
 # Compress
@@ -741,7 +658,7 @@ Regularly test your recovery procedure:
 ```bash
 # Test restoration in a separate environment
 docker compose -f docker-compose.test.yml up -d
-docker cp backup.db meshmonitor-test:/app/data/meshmonitor.db
+docker cp backup.db meshmonitor-test:/data/meshmonitor.db
 # Verify data integrity
 ```
 
