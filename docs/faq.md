@@ -32,7 +32,7 @@ No, though Docker Compose is the main install. You can also use the [Desktop app
 
 ### Can I use PostgreSQL or MySQL instead of SQLite?
 
-Yes. SQLite is the default and needs no setup. For the others, set `DATABASE_URL` to a `postgres://` or `mysql://` URL; MeshMonitor creates its tables on first start. See the [Configuration overview](/configuration/).
+Yes. SQLite is the default and needs no setup. For the others, set `DATABASE_URL` to a `postgres://` or `mysql://` URL; MeshMonitor creates its tables on first start. Switching starts an empty database; use the migration tool to copy SQLite data across. See [Choosing a Database](/configuration/database).
 
 ### Can I sign in with SSO?
 
