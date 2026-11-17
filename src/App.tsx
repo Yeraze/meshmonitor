@@ -632,6 +632,7 @@ function App() {
     setAutoAckMessageDirect,
     setAutoAckChannels,
     setAutoAckSkipIncompleteNodes,
+    setAutoAckRespondToAutomation,
     setAutoAckIgnoredNodes,
     setAutoAckMatrix,
     setAutoAckCooldownSeconds,
@@ -663,6 +664,7 @@ function App() {
     setAutoResponderEnabled,
     setAutoResponderTriggers,
     setAutoResponderSkipIncompleteNodes,
+    setAutoResponderRespondToAutomation,
     setAutoKeyManagementEnabled,
     setAutoKeyManagementIntervalMinutes,
     setAutoKeyManagementMaxExchanges,
@@ -1081,6 +1083,9 @@ function App() {
           if (settings.autoAckSkipIncompleteNodes !== undefined) {
             setAutoAckSkipIncompleteNodes(settings.autoAckSkipIncompleteNodes === 'true');
           }
+          if (settings.autoAckRespondToAutomation !== undefined) {
+            setAutoAckRespondToAutomation(settings.autoAckRespondToAutomation === 'true');
+          }
 
           if (settings.autoAckIgnoredNodes !== undefined) {
             setAutoAckIgnoredNodes(settings.autoAckIgnoredNodes);
@@ -1206,6 +1211,9 @@ function App() {
 
           if (settings.autoResponderSkipIncompleteNodes !== undefined) {
             setAutoResponderSkipIncompleteNodes(settings.autoResponderSkipIncompleteNodes === 'true');
+          }
+          if (settings.autoResponderRespondToAutomation !== undefined) {
+            setAutoResponderRespondToAutomation(settings.autoResponderRespondToAutomation === 'true');
           }
 
           // Auto key management settings

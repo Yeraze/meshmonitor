@@ -291,6 +291,13 @@ button.unified-source-pill.is-active {
   font-size: 12px;
 }
 
+/* Sender flagged the packet as sent by an automation (#6449). */
+.unified-msg-card__automation {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-disabled);
+}
+
 .unified-msg-card__time {
   margin-left: auto;
   color: var(--color-text-faint);
