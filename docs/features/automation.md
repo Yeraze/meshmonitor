@@ -13,6 +13,17 @@ MeshMonitor includes several automation features that can help you manage your m
 
 ![Automation](/images/features/automation.png)
 
+## Automated Messages Are Flagged {#is-automation}
+
+Every Meshtastic packet MeshMonitor sends for an automation carries the **`is_automation`** flag: bit 2 (`0x04`) of the packet's `Data.bitfield`, reserved by Meshtastic for this purpose. That covers Auto Acknowledge, Auto Responder, Auto Announce, Auto Traceroute, timers, scheduled requests, key-repair NodeInfo exchanges and Automation Engine actions. A message you type yourself never carries it.
+
+- **Messages** show a bot icon next to the hop count on any message whose sender set the flag, from MeshMonitor or any other client.
+- **Packet Monitor** shows the flag in its own column.
+- **Auto Acknowledge** and **Auto Responder** ignore flagged messages by default, so two bots can't answer each other forever. See [Respond to Automated Messages](#respond-to-automated-ack).
+- **Automation Engine** message rules can filter on it. See [Sent by](/features/automation-engine#sent-by).
+
+The flag costs no airtime: the bitfield is already in every packet. Older firmware and clients ignore it. The sender sets the flag itself and nothing verifies it, so use it to cut noise and stop loops, not to decide what a node is allowed to do.
+
 ## Auto Acknowledge
 
 Automatically responds to messages matching a specific pattern with a customizable confirmation message.
@@ -261,6 +272,16 @@ These figures are for one full 200-byte Meshtastic part (about 237 bytes on air,
 - Prevent responding to nodes that may be eavesdropping
 
 **Related**: See [Hide Incomplete Nodes](/features/settings#hide-incomplete-nodes) for UI filtering.
+
+### Respond to Automated Messages {#respond-to-automated-ack}
+
+**Description**: When enabled, Auto Acknowledge also answers messages whose sender set the [`is_automation` flag](#is-automation).
+
+**Default**: Disabled. Flagged messages get no acknowledgement, so this bot and another can't trigger each other in a loop.
+
+**When to enable**: you run a test bot on purpose and want it acknowledged. Set a [maximum number of responses](#auto-ack-max-responses) when you do.
+
+When you [convert Auto Acknowledge to an automation](#converting-to-an-automation), this setting becomes the rule's **Sent by** filter: *Anyone* when enabled, *People only* when disabled.
 
 ### Converting to an Automation
 
@@ -1458,6 +1479,14 @@ With more than five triggers, a search box and type filter appear above the list
 - Prevent external HTTP requests or script execution from unverified sources
 
 **Related**: See [Hide Incomplete Nodes](/features/settings#hide-incomplete-nodes) for UI filtering, or [Skip Incomplete Nodes for Auto Acknowledge](#skip-incomplete-nodes-ack).
+
+### Respond to Automated Messages {#respond-to-automated-responder}
+
+**Description**: When enabled, Auto Responder also answers messages whose sender set the [`is_automation` flag](#is-automation).
+
+**Default**: Disabled. A trigger that matches a flagged message sends nothing, so two auto-responders can't answer each other forever.
+
+**When to enable**: only when you mean to answer another bot. Use a trigger that its replies can't match, or you build the loop this setting prevents.
 
 ### Side Effects
 
