@@ -126,34 +126,26 @@ export class FavoritesService {
 
   /**
    * Build an AddContact admin message for the favorited node from the user
-   * data MeshMonitor already holds (#6153). Returns null when there is
-   * essentially no user data — in that case the caller falls back to today's
-   * behavior (set_favorite_node only) rather than sending an empty contact
-   * that would overwrite the target's possibly-fresher user fields with blanks.
+   * data MeshMonitor already holds (#6153). Returns null when MeshMonitor has
+   * no public key for the node; the caller then sends set_favorite_node alone.
    *
-   * `addFromContact` requires `has_user`, so the payload always carries a user
-   * block; `buildSharedContactPayload` omits the fields we pass as null/empty.
+   * Firmware `addFromContact` replaces the target's stored user record with
+   * the contact's, so the message carries every user field we know, role
+   * included: a missing role arrives as CLIENT, and a router keeps hop_limit
+   * only for a favorite whose stored role is a router role. Firmware before
+   * 2.8 also copies an empty key over the stored one, which breaks PKI DMs
+   * with that node until its next NodeInfo, so a contact without a key is
+   * never sent.
    */
   private async buildFavoritedContactMessage(
     nodeNum: number,
     sessionPasskey: Uint8Array,
   ): Promise<Uint8Array | null> {
     const node = await databaseService.nodes.getNode(nodeNum, this.mgr.sourceId);
-    if (!node) return null;
-
-    // Require at least one real identity field. A contact carrying only the
-    // id derived from nodeNum tells the target nothing and risks clobbering
-    // fresher data, so skip add_contact entirely in that case.
-    const hasUserData = Boolean(node.longName || node.shortName || node.publicKey);
-    if (!hasUserData) return null;
+    if (!node?.publicKey) return null;
 
     return protobufService.createAddContactMessage(
-      nodeNum,
-      node.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`,
-      node.longName || '',
-      node.shortName || '',
-      node.publicKey || '',
-      node.hwModel ?? undefined,
+      { ...node, nodeNum, nodeId: node.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}` },
       sessionPasskey,
     );
   }

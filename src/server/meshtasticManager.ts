@@ -6,7 +6,7 @@ import meshtasticProtobufService, { formatTakPreview, formatTakV2Preview } from 
 import { takV2Variant } from './takV2Decoder.js';
 import type { RawSecurityConfig } from './utils/securityConfigWrite.js';
 import { formatAdminMqttConfig } from './utils/adminMqttConfig.js';
-import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
+import protobufService, { convertIpv4ConfigToStrings, type AddContactUser } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
 import { VirtualNodeServer, type VirtualNodeConfig } from './virtualNodeServer.js';
@@ -16009,7 +16009,7 @@ class MeshtasticManager implements ISourceManager {
     return this.nodeDbMaintenanceService.sendRemoveNode(nodeNum);
   }
 
-  private async pushContactToRadio(targetNode: { nodeNum: number; nodeId: string; longName?: string | null; shortName?: string | null; publicKey?: string | null; hwModel?: number | null }): Promise<void> {
+  private async pushContactToRadio(targetNode: AddContactUser): Promise<void> {
     if (!this.isConnected || !this.transport || !this.localNodeInfo?.nodeNum) {
       return;
     }
@@ -16018,14 +16018,9 @@ class MeshtasticManager implements ISourceManager {
     }
 
     const localNodeNum = this.localNodeInfo.nodeNum;
-    const addContactMsg = protobufService.createAddContactMessage(
-      targetNode.nodeNum,
-      targetNode.nodeId,
-      targetNode.longName,
-      targetNode.shortName,
-      targetNode.publicKey,
-      targetNode.hwModel ?? undefined,
-    );
+    // The whole user record, role included: add_contact replaces the radio's
+    // stored copy, so a missing role would be stored as CLIENT.
+    const addContactMsg = protobufService.createAddContactMessage(targetNode);
     const adminPacket = protobufService.createAdminPacket(addContactMsg, localNodeNum, localNodeNum);
     await this.transport.send(adminPacket);
     // The contact (incl. public key) is now in the radio's NodeDB, so messaging is
