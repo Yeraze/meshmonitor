@@ -188,6 +188,52 @@ describe('meshcoreObserverToken', () => {
     });
   });
 
+  describe('owner claims (#6454)', () => {
+    const decodePayload = (token: string): Record<string, unknown> =>
+      JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    const OWNER_LOWER = 'ab'.repeat(32);
+
+    it('with no claims the payload is exactly { publicKey, aud, iat, exp }, in that order', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const result = await mintObserverToken(PRIV, 'test.aud', { nowSeconds });
+      expect(Object.keys(decodePayload(result.token))).toEqual(['publicKey', 'aud', 'iat', 'exp']);
+      const empty = await mintObserverToken(PRIV, 'test.aud', { nowSeconds, claims: { owner: '  ', email: '' } });
+      expect(Object.keys(decodePayload(empty.token))).toEqual(['publicKey', 'aud', 'iat', 'exp']);
+    });
+
+    it('adds owner uppercased and email lowercased, and the signature still verifies', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const result = await mintObserverToken(PRIV, 'test.aud', {
+        nowSeconds,
+        claims: { owner: ` ${OWNER_LOWER} `, email: ' Me@Example.COM ' },
+      });
+      const payload = decodePayload(result.token);
+      expect(Object.keys(payload)).toEqual(['publicKey', 'aud', 'iat', 'exp', 'owner', 'email']);
+      expect(payload.owner).toBe(OWNER_LOWER.toUpperCase());
+      expect(payload.email).toBe('me@example.com');
+
+      const verified = await verifyAuthToken(result.token, result.publicKey);
+      expect(verified).not.toBeNull();
+      expect(verified!.owner).toBe(OWNER_LOWER.toUpperCase());
+      expect(verified!.email).toBe('me@example.com');
+    });
+
+    it('omits an invalid owner or email', async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const badOwner = await mintObserverToken(PRIV, 'test.aud', {
+        nowSeconds,
+        claims: { owner: 'abc123', email: 'me@example.com' },
+      });
+      expect(Object.keys(decodePayload(badOwner.token))).toEqual(['publicKey', 'aud', 'iat', 'exp', 'email']);
+
+      const badEmail = await mintObserverToken(PRIV, 'test.aud', {
+        nowSeconds,
+        claims: { owner: OWNER_LOWER, email: 'not an email' },
+      });
+      expect(Object.keys(decodePayload(badEmail.token))).toEqual(['publicKey', 'aud', 'iat', 'exp', 'owner']);
+    });
+  });
+
   describe('mintObserverTokenForSource', () => {
     beforeEach(() => {
       sourceRows.clear();
@@ -505,6 +551,31 @@ describe('meshcoreObserverToken', () => {
         },
       });
       expect(await mintObserverTokenForSourceDetailed('src-m', 'some-aud')).toEqual({ kind: 'no_key' });
+    });
+
+    it('passes owner claims through to the minted token (#6454)', async () => {
+      const keyStore = new MeshCoreObserverKeyStore('secretX'.repeat(8), true);
+      setMeshCoreObserverKeyStoreForTesting(keyStore);
+      const pub = await deriveObserverPublicKey(PRIV);
+      await keyStore.store('src-claims', PRIV, pub, 'device');
+      sourceRows.set('src-claims', {
+        id: 'src-claims',
+        type: 'meshcore',
+        config: {
+          observer: { enabled: true, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO', tokenAudience: 'my-aud' },
+        },
+      });
+
+      const result = await mintObserverTokenForSourceDetailed('src-claims', 'other-aud', {
+        owner: 'CD'.repeat(32),
+        email: 'owner@example.com',
+      });
+      expect(result.kind).toBe('ok');
+      const token = (result as { kind: 'ok'; token: { token: string } }).token.token;
+      const verified = await verifyAuthToken(token, pub);
+      expect(verified!.aud).toBe('other-aud');
+      expect(verified!.owner).toBe('CD'.repeat(32));
+      expect(verified!.email).toBe('owner@example.com');
     });
   });
 });

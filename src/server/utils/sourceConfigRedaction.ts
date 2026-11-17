@@ -430,6 +430,10 @@ const OBSERVER_BROKER: Spec<MeshCoreObserverBrokerConfig> = {
   tokenAudience: withheld,
   label: granted(),
   rejectUnauthorized: granted(),
+  // Owner claims (#6454): the email is PII and the key ties the observer to
+  // a person. Editors only, like tokenAudience.
+  ownerPublicKey: withheld,
+  ownerEmail: withheld,
 };
 
 const OBSERVER: Spec<MeshCoreObserverConfig> = {
@@ -438,6 +442,8 @@ const OBSERVER: Spec<MeshCoreObserverConfig> = {
   brokerUrl: grantedUrl(),
   iataCode: granted(),
   tokenAudience: withheld,
+  ownerPublicKey: withheld,
+  ownerEmail: withheld,
   // An entry is identified by the endpoint it names, never by its position.
   brokers: grantedListOf(OBSERVER_BROKER, (entry) =>
     typeof entry.url === 'string' ? urlEntryIdentity(entry.url) : null,
