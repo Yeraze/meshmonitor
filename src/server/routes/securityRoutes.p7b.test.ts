@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   runScan: vi.fn().mockResolvedValue(undefined),
   getStatus: vi.fn(),
   sendDigest: vi.fn(),
+  previewDigest: vi.fn(),
 }));
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: { getManager: h.getManager, getAllManagers: h.getAllManagers },
@@ -23,7 +24,7 @@ vi.mock('../services/duplicateKeySchedulerService.js', () => ({
   duplicateKeySchedulerService: { runScan: h.runScan, getStatus: h.getStatus },
 }));
 vi.mock('../services/securityDigestService.js', () => ({
-  securityDigestService: { sendDigest: h.sendDigest },
+  securityDigestService: { sendDigest: h.sendDigest, previewDigest: h.previewDigest },
 }));
 
 const pk = (c: string) => c.repeat(64);
@@ -53,6 +54,10 @@ describe('securityRoutes — P7b', () => {
     h.getStatus.mockReturnValue({ scanningNow: false });
     h.runScan.mockClear();
     h.sendDigest.mockReset().mockResolvedValue({ success: true, message: 'ok' });
+    h.previewDigest.mockReset().mockResolvedValue({
+      title: '[A] MeshMonitor Security Digest', body: 'body', format: 'text', reportType: 'summary',
+      length: 34, combined: false, configured: true,
+    });
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -290,6 +295,57 @@ describe('securityRoutes — P7b', () => {
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('MISSING_SOURCE_ID');
       expect(h.sendDigest).not.toHaveBeenCalled();
+    });
+  });
+
+  // #6453: preview has the same gate as send, and sends nothing.
+  describe('POST /digest/preview', () => {
+    it('returns the preview in the ok() envelope for an admin, without sending', async () => {
+      const res = await (await harness.loginAs(harness.admin)).post('/api/security/digest/preview').send({ sourceId: mc });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        success: true,
+        data: {
+          title: '[A] MeshMonitor Security Digest', body: 'body', format: 'text', reportType: 'summary',
+          length: 34, combined: false, configured: true,
+        },
+      });
+      expect(h.previewDigest).toHaveBeenCalledWith(mc);
+      expect(h.sendDigest).not.toHaveBeenCalled();
+    });
+
+    it('403s a limited user with no grants', async () => {
+      const res = await (await harness.loginAs(harness.limited)).post('/api/security/digest/preview').send({ sourceId: mc });
+      expect(res.status).toBe(403);
+      expect(h.previewDigest).not.toHaveBeenCalled();
+    });
+
+    it('403s security:write with nodes:read only on another source', async () => {
+      await grantSecurityWithNodesOn(mt);
+      const res = await (await harness.loginAs(harness.limited)).post('/api/security/digest/preview').send({ sourceId: mc });
+      expect(res.status).toBe(403);
+      expect(h.previewDigest).not.toHaveBeenCalled();
+    });
+
+    it('previews for the source the caller can read', async () => {
+      await grantSecurityWithNodesOn(mc);
+      const res = await (await harness.loginAs(harness.limited)).post('/api/security/digest/preview').send({ sourceId: mc });
+      expect(res.status).toBe(200);
+      expect(h.previewDigest).toHaveBeenCalledWith(mc);
+    });
+
+    it('rejects a request without a sourceId the same way /send does', async () => {
+      const res = await (await harness.loginAs(harness.admin)).post('/api/security/digest/preview').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('MISSING_SOURCE_ID');
+      expect(h.previewDigest).not.toHaveBeenCalled();
+    });
+
+    it('500s with the fail() envelope when the build throws', async () => {
+      h.previewDigest.mockRejectedValue(new Error('db down'));
+      const res = await (await harness.loginAs(harness.admin)).post('/api/security/digest/preview').send({ sourceId: mc });
+      expect(res.status).toBe(500);
+      expect(res.body).toMatchObject({ success: false, code: 'INTERNAL_ERROR' });
     });
   });
 

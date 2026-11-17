@@ -358,6 +358,52 @@ export function stripDigestTitle(body: string): string {
   return lines.join('\n');
 }
 
+/** Saved settings one digest message is built from (#6453). */
+interface DigestSettings {
+  /** The Apprise target URL, or null when none applies. Never leaves the server. */
+  appriseUrl: string | null;
+  reportType: string;
+  suppressEmpty: boolean;
+  format: DigestFormat;
+  baseUrl: string;
+}
+
+interface BuiltDigestMessage {
+  title: string;
+  /** Null when suppress-empty is on and there is nothing to report. */
+  body: string | null;
+  total: number;
+}
+
+interface BuiltCombinedMessage extends BuiltDigestMessage {
+  /** Sources whose section is in the body. */
+  included: string[];
+  /** Per-source results for sources that were suppressed or failed to build. */
+  results: DigestSourceResult[];
+}
+
+type DigestSourceResult = { sourceId: string; success: boolean; message: string; skipped?: boolean };
+
+/** What "Send now" would send for one source (#6453). */
+export interface DigestPreview {
+  title: string;
+  /** Null when the digest is suppressed because there are no issues. */
+  body: string | null;
+  format: DigestFormat;
+  reportType: string;
+  /** Characters in title + body as sent; 0 when nothing would be sent. */
+  length: number;
+  /** The daily digest folds this source into a combined message with others. */
+  combined: boolean;
+  /** An Apprise URL applies to this source. */
+  configured: boolean;
+}
+
+/** Characters (code points), the unit chat services such as Discord count. */
+function charCount(s: string): number {
+  return Array.from(s).length;
+}
+
 class SecurityDigestService {
   private cronJob: CronJob | null = null;
   private databaseService: any = null;
@@ -409,7 +455,7 @@ class SecurityDigestService {
       return { success: false, message: 'No sources available' };
     }
 
-    const results: Array<{ sourceId: string; success: boolean; message: string; skipped?: boolean }> = [];
+    const results: DigestSourceResult[] = [];
     if (sourceIdOverride) {
       results.push(await this.sendDigestForSource(sourceIdOverride));
     } else {
@@ -511,31 +557,76 @@ class SecurityDigestService {
   }
 
   /**
-   * One digest for every source that uses the global Apprise URL (L14). Uses
-   * the global report type, format and suppress-empty settings, since one
-   * message has one format. Each source is a section; a source with no
-   * issues is left out when suppress-empty is on, and nothing is sent when
-   * every section is empty. One source failing to build does not stop the rest.
+   * The saved settings one source's own digest uses (#6453). Each key falls
+   * back to the global row (see `digestSetting`). `appriseUrl` is null when
+   * no URL applies.
    */
-  private async sendCombinedDigest(sourceIds: string[]): Promise<Array<{ sourceId: string; success: boolean; message: string; skipped?: boolean }>> {
-    const settings = this.databaseService.settings;
-    const globalUrl = settings ? await settings.getSetting?.('securityDigestAppriseUrl') : null;
-    if (!globalUrl) {
-      return sourceIds.map((sourceId) => ({ sourceId, success: true, skipped: true, message: 'No Apprise URL configured' }));
+  private async sourceDigestSettings(sourceId: string): Promise<DigestSettings> {
+    if (!this.databaseService.settings) {
+      return { appriseUrl: null, reportType: 'summary', suppressEmpty: true, format: 'text', baseUrl: '' };
     }
+    const appriseUrl = await this.digestSetting(sourceId, 'securityDigestAppriseUrl');
+    const reportType = (await this.digestSetting(sourceId, 'securityDigestReportType')) || 'summary';
+    const suppressEmpty = (await this.digestSetting(sourceId, 'securityDigestSuppressEmpty')) !== 'false';
+    const format = ((await this.digestSetting(sourceId, 'securityDigestFormat')) || 'text') as DigestFormat;
+    // externalUrl is a GLOBAL-only setting (#4437) — one origin per install, not
+    // one per source (see settingsRoutes.ts's validation comment). Deliberately
+    // `getSetting`, NOT `getSettingForSource`: the latter, when passed a truthy
+    // sourceId, reads ONLY the `source:<id>:externalUrl` row and does NOT fall
+    // back to the global key (that per-source-miss fallback was removed from
+    // getSettingForSource for #2839/#2840 — see settings.ts's own docstring).
+    // Since externalUrl has no per-source writer, getSettingForSource(sourceId, …)
+    // here would always read null and silently break the "View details" link
+    // for every source. `getSetting` reads the global row directly.
+    const baseUrl = (await this.databaseService.settings.getSetting('externalUrl')) || '';
+    return { appriseUrl: appriseUrl || null, reportType, suppressEmpty, format, baseUrl };
+  }
+
+  /**
+   * The saved settings the combined digest uses (L14): global rows only, since
+   * one message has one format.
+   */
+  private async combinedDigestSettings(): Promise<DigestSettings> {
+    const settings = this.databaseService.settings;
+    if (!settings) {
+      return { appriseUrl: null, reportType: 'summary', suppressEmpty: true, format: 'text', baseUrl: '' };
+    }
+    const appriseUrl = (await settings.getSetting?.('securityDigestAppriseUrl')) || null;
     const reportType = (await settings.getSetting?.('securityDigestReportType')) || 'summary';
     const suppressEmpty = (await settings.getSetting?.('securityDigestSuppressEmpty')) !== 'false';
     const format = ((await settings.getSetting?.('securityDigestFormat')) || 'text') as DigestFormat;
     const baseUrl = (await settings.getSetting('externalUrl')) || '';
-    const md = format === 'markdown';
+    return { appriseUrl, reportType, suppressEmpty, format, baseUrl };
+  }
 
-    const results: Array<{ sourceId: string; success: boolean; message: string; skipped?: boolean }> = [];
+  /**
+   * Build one source's own digest message: the exact title and body
+   * `sendDigestForSource` posts (#6453). Throws if the issues cannot be read.
+   */
+  private async buildSourceMessage(sourceId: string, s: DigestSettings): Promise<BuiltDigestMessage> {
+    const sourceName = await this.sourceNameOf(sourceId);
+    const { body, total } = await this.renderSourceDigest(sourceId, s);
+    // The title names the source, so operators can tell which mesh a digest
+    // came from when they run several. The body does not repeat it (#5593).
+    return { title: `[${sourceName}] MeshMonitor Security Digest`, body, total };
+  }
+
+  /**
+   * Build the combined digest message for every source on the global URL
+   * (L14). Each source is a section; a source with no issues is left out when
+   * suppress-empty is on, and `body` is null when every section is empty. One
+   * source failing to build does not stop the rest; its failure is in
+   * `results`.
+   */
+  private async buildCombinedMessage(sourceIds: string[], s: DigestSettings): Promise<BuiltCombinedMessage> {
+    const md = s.format === 'markdown';
+    const results: DigestSourceResult[] = [];
     const included: string[] = [];
     const blocks: string[] = [];
     let grandTotal = 0;
     for (const sourceId of sourceIds) {
       try {
-        const { body, total } = await this.renderSourceDigest(sourceId, { reportType, suppressEmpty, format, baseUrl });
+        const { body, total } = await this.renderSourceDigest(sourceId, s);
         if (body === null) {
           results.push({ sourceId, success: true, message: 'No issues found, digest suppressed' });
           continue;
@@ -549,105 +640,129 @@ class SecurityDigestService {
         results.push({ sourceId, success: false, message: error instanceof Error ? error.message : 'Unknown error' });
       }
     }
-    if (blocks.length === 0) {
+    const date = new Date().toISOString().split('T')[0];
+    return {
+      title: `MeshMonitor Security Digest — ${date} (${blocks.length} ${blocks.length === 1 ? 'source' : 'sources'})`,
+      body: blocks.length === 0 ? null : blocks.join(md ? '\n\n---\n\n' : '\n\n'),
+      total: grandTotal,
+      included,
+      results,
+    };
+  }
+
+  /** POST one built message to Apprise. */
+  private async postToApprise(
+    appriseUrl: string,
+    message: { title: string; body: string; total: number },
+    format: DigestFormat,
+    settingsSourceId: string | null,
+  ): Promise<Response> {
+    // Reuse the same Apprise API server resolution chain as every other
+    // dispatch path (setting → appriseApiServerUrl → APPRISE_URL → bundled
+    // localhost default) instead of hardcoding the endpoint — #4442.
+    const appriseServerUrl = await resolveAppriseServerUrl(this.databaseService.settings, settingsSourceId);
+    return fetch(appriseNotifyEndpoint(appriseServerUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        urls: [appriseUrl],
+        title: message.title,
+        body: message.body,
+        type: message.total > 0 ? 'warning' : 'info',
+        format: format === 'markdown' ? 'markdown' : 'text',
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+  }
+
+  /**
+   * What "Send now" (`sendDigest(sourceId)`) would send for this source,
+   * built by the same code and from the same saved settings, without sending
+   * anything (#6453). The Apprise URL is never returned: it holds a webhook
+   * secret. `combined` says the DAILY digest folds this source into one
+   * message with other sources on the global URL; Send now still sends this
+   * source on its own.
+   */
+  async previewDigest(sourceId: string): Promise<DigestPreview> {
+    if (!this.databaseService) throw new Error('Service not initialized');
+    const s = await this.sourceDigestSettings(sourceId);
+    const msg = await this.buildSourceMessage(sourceId, s);
+    let combined = false;
+    if (!(await this.hasOwnDigestUrl(sourceId))) {
+      let others = 0;
+      for (const m of sourceManagerRegistry.getAllManagers()) {
+        if (m.sourceId !== sourceId && !(await this.hasOwnDigestUrl(m.sourceId))) others++;
+      }
+      combined = others > 0;
+    }
+    return {
+      title: msg.title,
+      body: msg.body,
+      format: s.format,
+      reportType: s.reportType,
+      length: msg.body === null ? 0 : charCount(msg.title) + charCount(msg.body),
+      combined,
+      configured: s.appriseUrl !== null,
+    };
+  }
+
+  /**
+   * One digest for every source that uses the global Apprise URL (L14). Uses
+   * the global report type, format and suppress-empty settings, since one
+   * message has one format. Nothing is sent when every section is empty.
+   */
+  private async sendCombinedDigest(sourceIds: string[]): Promise<DigestSourceResult[]> {
+    const s = await this.combinedDigestSettings();
+    if (!s.appriseUrl) {
+      return sourceIds.map((sourceId) => ({ sourceId, success: true, skipped: true, message: 'No Apprise URL configured' }));
+    }
+    const msg = await this.buildCombinedMessage(sourceIds, s);
+    const results = msg.results;
+    if (msg.body === null) {
       logger.debug('Combined security digest suppressed — no issues found');
       return results;
     }
 
-    const date = new Date().toISOString().split('T')[0];
     try {
-      const appriseServerUrl = await resolveAppriseServerUrl(settings, null);
-      const response = await fetch(appriseNotifyEndpoint(appriseServerUrl), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          urls: [globalUrl],
-          title: `MeshMonitor Security Digest — ${date} (${blocks.length} ${blocks.length === 1 ? 'source' : 'sources'})`,
-          body: blocks.join(md ? '\n\n---\n\n' : '\n\n'),
-          type: grandTotal > 0 ? 'warning' : 'info',
-          format: md ? 'markdown' : 'text',
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
+      const response = await this.postToApprise(s.appriseUrl, { title: msg.title, body: msg.body, total: msg.total }, s.format, null);
       if (!response.ok) {
         const text = await response.text();
         logger.error(`Combined security digest delivery failed: ${response.status} ${text}`);
-        for (const sourceId of included) results.push({ sourceId, success: false, message: `Apprise returned ${response.status}` });
+        for (const sourceId of msg.included) results.push({ sourceId, success: false, message: `Apprise returned ${response.status}` });
         return results;
       }
-      logger.info(`Combined security digest sent for ${included.length} sources (${reportType}, ${grandTotal} issues)`);
-      for (const sourceId of included) results.push({ sourceId, success: true, message: 'Sent in the combined digest' });
+      logger.info(`Combined security digest sent for ${msg.included.length} sources (${s.reportType}, ${msg.total} issues)`);
+      for (const sourceId of msg.included) results.push({ sourceId, success: true, message: 'Sent in the combined digest' });
     } catch (error) {
       logger.error('Error sending combined security digest:', error);
-      for (const sourceId of included) results.push({ sourceId, success: false, message: error instanceof Error ? error.message : 'Unknown error' });
+      for (const sourceId of msg.included) results.push({ sourceId, success: false, message: error instanceof Error ? error.message : 'Unknown error' });
     }
     return results;
   }
 
-  private async sendDigestForSource(sourceId: string): Promise<{ sourceId: string; success: boolean; message: string; skipped?: boolean }> {
-    const appriseUrl = this.databaseService.settings
-      ? await this.digestSetting(sourceId, 'securityDigestAppriseUrl')
-      : null;
-    if (!appriseUrl) {
+  private async sendDigestForSource(sourceId: string): Promise<DigestSourceResult> {
+    const s = await this.sourceDigestSettings(sourceId);
+    if (!s.appriseUrl) {
       // Not configured is not a failure: nothing was asked for (#6281).
       return { sourceId, success: true, skipped: true, message: 'No Apprise URL configured' };
     }
 
-    const reportType = (await this.digestSetting(sourceId, 'securityDigestReportType')) || 'summary';
-    const suppressEmptyRaw = await this.digestSetting(sourceId, 'securityDigestSuppressEmpty');
-    const suppressEmpty = suppressEmptyRaw !== 'false';
-    const format = ((await this.digestSetting(sourceId, 'securityDigestFormat')) || 'text') as DigestFormat;
-    // externalUrl is a GLOBAL-only setting (#4437) — one origin per install, not
-    // one per source (see settingsRoutes.ts's validation comment). Deliberately
-    // `getSetting`, NOT `getSettingForSource`: the latter, when passed a truthy
-    // sourceId, reads ONLY the `source:<id>:externalUrl` row and does NOT fall
-    // back to the global key (that per-source-miss fallback was removed from
-    // getSettingForSource for #2839/#2840 — see settings.ts's own docstring).
-    // Since externalUrl has no per-source writer, getSettingForSource(sourceId, …)
-    // here would always read null and silently break the "View details" link
-    // for every source. `getSetting` reads the global row directly.
-    const baseUrl = (await this.databaseService.settings.getSetting('externalUrl')) || '';
-
-    const sourceName = await this.sourceNameOf(sourceId);
-
     try {
-      const { body: rawBody, total } = await this.renderSourceDigest(sourceId, { reportType, suppressEmpty, format, baseUrl });
-      const issues = { total };
-
-      if (rawBody === null) {
+      const msg = await this.buildSourceMessage(sourceId, s);
+      if (msg.body === null) {
         logger.debug(`[${sourceId}] Security digest suppressed — no issues found`);
         return { sourceId, success: true, message: 'No issues found, digest suppressed' };
       }
 
-      // The title names the source, so operators can tell which mesh a digest
-      // came from when they run several. The body does not repeat it (#5593).
-      const body = rawBody;
-
-      // Reuse the same Apprise API server resolution chain as every other
-      // dispatch path (setting → appriseApiServerUrl → APPRISE_URL → bundled
-      // localhost default) instead of hardcoding the endpoint — #4442.
-      const appriseServerUrl = await resolveAppriseServerUrl(this.databaseService.settings, sourceId);
-      const response = await fetch(appriseNotifyEndpoint(appriseServerUrl), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          urls: [appriseUrl],
-          title: `[${sourceName}] MeshMonitor Security Digest`,
-          body,
-          type: issues.total > 0 ? 'warning' : 'info',
-          format: format === 'markdown' ? 'markdown' : 'text',
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-
+      const response = await this.postToApprise(s.appriseUrl, { title: msg.title, body: msg.body, total: msg.total }, s.format, sourceId);
       if (!response.ok) {
         const text = await response.text();
         logger.error(`[${sourceId}] Security digest delivery failed: ${response.status} ${text}`);
         return { sourceId, success: false, message: `Apprise returned ${response.status}` };
       }
 
-      logger.info(`[${sourceId}] Security digest sent (${reportType}, ${issues.total} issues)`);
-      return { sourceId, success: true, message: `Digest sent with ${issues.total} issue(s)` };
+      logger.info(`[${sourceId}] Security digest sent (${s.reportType}, ${msg.total} issues)`);
+      return { sourceId, success: true, message: `Digest sent with ${msg.total} issue(s)` };
     } catch (error) {
       logger.error(`[${sourceId}] Error sending security digest:`, error);
       return { sourceId, success: false, message: error instanceof Error ? error.message : 'Unknown error' };

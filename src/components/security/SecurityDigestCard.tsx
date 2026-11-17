@@ -1,9 +1,16 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../services/api';
+import { SecurityDigestPreview, type DigestPreviewData } from './SecurityDigestPreview';
+import previewStyles from './SecurityDigestPreview.module.css';
 
 interface SecurityDigestCardProps {
   sourceId: string | null | undefined;
+}
+
+/** The per-source digest settings as one comparable string. */
+function digestSnapshot(appriseUrl: string, reportType: string, suppressEmpty: boolean, format: string): string {
+  return JSON.stringify([appriseUrl, reportType, suppressEmpty, format]);
 }
 
 /**
@@ -23,6 +30,15 @@ export const SecurityDigestCard: React.FC<SecurityDigestCardProps> = ({ sourceId
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<DigestPreviewData | null>(null);
+  // The per-source keys as last loaded or saved. Preview and Send Now both use
+  // the SAVED settings, so the preview says so while the form has edits (#6453).
+  const [savedSnapshot, setSavedSnapshot] = useState(() => digestSnapshot('', 'summary', true, 'text'));
+  const dirty = useMemo(
+    () => digestSnapshot(appriseUrl, reportType, suppressEmpty, format) !== savedSnapshot,
+    [appriseUrl, reportType, suppressEmpty, format, savedSnapshot],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +53,12 @@ export const SecurityDigestCard: React.FC<SecurityDigestCardProps> = ({ sourceId
         setReportType((settings.securityDigestReportType as 'summary' | 'detailed') || 'summary');
         setSuppressEmpty(settings.securityDigestSuppressEmpty !== 'false');
         setFormat((settings.securityDigestFormat as 'text' | 'markdown') || 'text');
+        setSavedSnapshot(digestSnapshot(
+          settings.securityDigestAppriseUrl || '',
+          settings.securityDigestReportType || 'summary',
+          settings.securityDigestSuppressEmpty !== 'false',
+          settings.securityDigestFormat || 'text',
+        ));
       } catch {
         // Settings may not exist yet, use defaults
       }
@@ -62,6 +84,7 @@ export const SecurityDigestCard: React.FC<SecurityDigestCardProps> = ({ sourceId
         securityDigestEnabled: String(enabled),
         securityDigestTime: time,
       });
+      setSavedSnapshot(digestSnapshot(appriseUrl, reportType, suppressEmpty, format));
       setMessage({ type: 'success', text: t('common.saved', 'Settings saved') });
     } catch {
       setMessage({ type: 'error', text: t('common.save_failed', 'Failed to save settings') });
@@ -89,6 +112,28 @@ export const SecurityDigestCard: React.FC<SecurityDigestCardProps> = ({ sourceId
       setSending(false);
     }
   }, [sourceId, t]);
+
+  const loadPreview = useCallback(async () => {
+    setPreviewing(true);
+    setMessage(null);
+    try {
+      // ApiService does not unwrap the ok() envelope: the preview is in `.data`.
+      const result = await api.post<{ success: boolean; data: DigestPreviewData }>(
+        '/api/security/digest/preview',
+        sourceId ? { sourceId } : {},
+      );
+      setPreview(result.data);
+    } catch (error) {
+      setPreview(null);
+      const detail = error instanceof Error && error.message ? `: ${error.message}` : '';
+      setMessage({ type: 'error', text: `${t('security.digest_preview_failed', 'Failed to build the digest preview')}${detail}` });
+    } finally {
+      setPreviewing(false);
+    }
+  }, [sourceId, t]);
+
+  // A preview belongs to one source.
+  useEffect(() => { setPreview(null); }, [sourceId]);
 
   return (
     <div className="issues-section digest-section">
@@ -157,8 +202,12 @@ export const SecurityDigestCard: React.FC<SecurityDigestCardProps> = ({ sourceId
           <button className="digest-send-btn" onClick={sendNow} disabled={sending || !appriseUrl}>
             {sending ? t('common.sending', 'Sending...') : t('security.digest_send_now', 'Send Now')}
           </button>
+          <button className={previewStyles.previewButton} onClick={loadPreview} disabled={previewing}>
+            {previewing ? t('security.digest_previewing', 'Loading preview...') : t('security.digest_preview', 'Preview')}
+          </button>
         </div>
         {message && <div className={`digest-message ${message.type}`}>{message.text}</div>}
+        {preview && <SecurityDigestPreview preview={preview} dirty={dirty} onClose={() => setPreview(null)} />}
       </div>
     </div>
   );

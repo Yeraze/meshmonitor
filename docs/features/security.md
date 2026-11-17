@@ -285,6 +285,10 @@ Your own radio is never flagged. Adverts are listed with the rate for informatio
 
 **Send Now.** The **Send Now** button sends the digest for the source you view. The API call `POST /api/security/digest/send` needs a `sourceId` in the body and rejects a request without one (400), because it no longer sends for every source. It needs `security:write` and `nodes:read` on that source.
 
+**Preview.** The **Preview** button shows the title and body that **Send Now** would send for the source you view, as raw text, with its character count. It sends nothing. Like Send Now, it uses the saved settings, so save your edits first. It also tells you when the digest is suppressed (no issues), when no Apprise URL is set, and when the daily digest folds this source into the combined message (which will be longer). The API call is `POST /api/security/digest/preview` with the same body and permissions as Send Now.
+
+**Discord's 2,000-character limit.** Discord rejects a message longer than 2,000 characters, so a **Detailed** digest on a busy mesh can fail while **Summary** works. Preview warns you when the digest is over the limit. Switch to **Summary**, or add `?overflow=split` to the Apprise URL (for example `discord://webhook_id/webhook_token?overflow=split`) so Apprise splits the digest into several messages.
+
 **Export.** Export as CSV or JSON from either protocol. The file lists every node with a flag, including nodes flagged only for spam or clock offset. CSV cells are quoted and escaped. The Meshtastic columns keep their order, and "Excessive Packets" and "Packets per Hour" come last. MeshCore has its own columns.
 
 **Permissions.** `/issues`, `/export` and `/key-mismatches` need `nodes:read` on the source, as well as `security:read`. Scan and clear need `security:write` and `nodes:read` on the source.
