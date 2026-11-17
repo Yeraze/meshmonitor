@@ -18,7 +18,7 @@ hero:
 features:
   - icon: 🛰️
     title: Multi-Protocol, Multi-Source
-    details: Connect Meshtastic (TCP, Serial, BLE), MeshCore, and MQTT brokers all at once — mix and match in one dashboard. Per-source maps, messages, telemetry, and traceroutes. No restart to add or remove a source.
+    details: Connect Meshtastic (TCP, or USB and Bluetooth through a bridge), MeshCore, and MQTT brokers all at once, plus Reticulum through a bridge. Per-source maps, messages, telemetry, and traceroutes. Add or remove a source without a restart.
 
   - icon: 📡
     title: MeshCore Support
@@ -34,11 +34,11 @@ features:
 
   - icon: 🌐
     title: Per-Source Virtual Node
-    details: Each source exposes its own Virtual Node endpoint. Run multiple Meshtastic mobile apps through MeshMonitor with message queuing and config caching — and, new in 4.11.0, connect the MeshCore app to a managed MeshCore device over WiFi.
+    details: Each source exposes its own Virtual Node endpoint. Run multiple Meshtastic mobile apps through MeshMonitor with message queuing and config caching, or connect the MeshCore app to a managed MeshCore device over WiFi.
 
   - icon: 🗺️
     title: Interactive Map
-    details: Real-time node positions, signal-strength indicators, and topology overlays. GeoJSON / KML / KMZ imports for zones, plus an optional polar grid for RF coverage.
+    details: Real-time node positions colored by hop count, link quality, and topology overlays. 3D terrain and link profiles for planning. GeoJSON / KML / KMZ imports for zones, plus an optional polar grid for RF coverage.
 
   - icon: 📊
     title: Analytics & Telemetry
@@ -50,11 +50,19 @@ features:
 
   - icon: ⚡
     title: Automation & Triggers
-    details: Auto-Responders, Scheduled Messages, Auto-Traceroute, and Geofence Triggers. Extend with custom Python or Bash scripts.
+    details: Built-in auto-responders, scheduled messages, auto-traceroute, and geofences, plus the visual Automation Engine for your own when-this-do-that rules. Extend with Python, JavaScript, or shell scripts. Automated sends are flagged so bots don't reply to each other.
 
   - icon: 📬
     title: Store & Forward
-    details: Retrieve history from S&F peers, flag S&F servers on the map, and keep messages flowing across offline gaps.
+    details: Flag S&F servers on the map and record the history they replay, tagged so you can tell it from live traffic.
+
+  - icon: 🩺
+    title: Mesh Diagnostics
+    details: Coverage reports, a traceroute explorer, mesh issue checks, and a packet monitor show where your mesh is weak and why.
+
+  - icon: 🌍
+    title: Public-Instance Mode
+    details: Open your dashboard to the public with less exposure. Signed-out viewers see positions snapped to about 1.5 km, and long names, keys, and message text hidden.
 
   - icon: 🔒
     title: Security Monitoring
@@ -62,11 +70,11 @@ features:
 
   - icon: 🔔
     title: Push Notifications
-    details: Real-time alerts on iOS, Android, and desktop — even when the app is closed. Apprise for email, Slack, Discord, Telegram, and more.
+    details: Push alerts on Android, desktop, and iOS (as an installed web app), even when the tab is closed. Needs HTTPS except on localhost. Apprise for email, Slack, Discord, Telegram, and more.
 
   - icon: 🖥️
     title: Remote Administration
-    details: Configure devices, manage channels, and push OTA firmware updates through a connected gateway — all from the web UI, no SSH or CLI.
+    details: Configure devices and manage channels from the web UI, no SSH or CLI. Admins can push OTA firmware to ESP32 Meshtastic nodes after a one-time bootloader flash.
 
   - icon: 🧩
     title: Custom Map Tiles
@@ -82,7 +90,7 @@ features:
 
   - icon: 💻
     title: Desktop & Mobile
-    details: Native desktop app for Windows and macOS. Progressive Web App for iOS and Android with a collapsible sidebar and system-tray integration.
+    details: Native desktop app for Windows and macOS. Installable web app for iOS and Android.
 
   - icon: 🐳
     title: Flexible Deployment
@@ -108,8 +116,7 @@ services:
     volumes:
       - meshmonitor-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100  # Seeds the first source on first boot; add more from Dashboard → Sources
-      - ALLOWED_ORIGINS=http://localhost:8080  # Required for CORS
+      - ALLOWED_ORIGINS=http://localhost:8080  # The URL you open in your browser, e.g. http://192.168.1.50:8080
     restart: unless-stopped
 
 volumes:
@@ -119,26 +126,27 @@ EOF
 docker compose up -d
 ```
 
-Access at `http://localhost:8080` and login with username `admin` and password `changeme`.
+Open `http://localhost:8080`, log in as `admin` / `changeme`, then add your radio with the **+** next to **Sources** in the dashboard sidebar. If you browse from another machine, set `ALLOWED_ORIGINS` to that URL first, or you may get a [blank screen](/faq#i-see-a-blank-white-screen-when-accessing-meshmonitor).
 
-**That's it!** No SESSION_SECRET or complex configuration needed for basic usage. MeshMonitor works over HTTP out of the box.
+No SESSION_SECRET or other setup is needed for basic use. MeshMonitor works over HTTP out of the box.
 
 For production deployments, Kubernetes, reverse proxies, and advanced configurations, see the [Production Deployment Guide](/configuration/production).
 
 ## What can MeshMonitor monitor?
 
-MeshMonitor speaks three off-grid mesh ecosystems and treats them as peers in one deployment:
+MeshMonitor speaks several off-grid mesh ecosystems and treats them as peers in one deployment:
 
 - **[Meshtastic](https://meshtastic.org/)** — an open-source, off-grid, decentralized mesh network built on affordable, low-power devices. Connect over TCP, Serial (via the [Serial Bridge](/configuration/serial-bridge)), or BLE (via the [BLE Bridge](/configuration/ble-bridge)).
 - **[MeshCore](/features/meshcore)** — companions and repeaters connected over USB or TCP, alongside or instead of Meshtastic.
-- **MQTT** — connect to an external MQTT broker as a read-only source, or run the [embedded broker](/features/mqtt-broker) with bidirectional bridges to public upstreams.
+- **MQTT** — connect to an external MQTT broker as a source (receive, and send without a local radio), or run the [embedded broker](/features/mqtt-broker) with two-way bridges to public upstreams.
+- **Reticulum** — through the [Reticulum Bridge](/deployment/RETICULUM_BRIDGE_GUIDE).
 
-Pick one, mix all three — MeshMonitor's unified views, per-source permissions, and the same automation, telemetry, and map features apply to every source you add.
+Pick one or mix them — MeshMonitor's unified views, per-source permissions, and the same automation, telemetry, and map features apply to every source you add.
 
 ## Key Features
 
 ### Network Visualization
-View every connected mesh — Meshtastic, MeshCore, MQTT — on a single interactive map, with nodes colored by signal strength and connectivity status. Track node positions, signal quality, and network topology in real-time.
+View every connected mesh — Meshtastic, MeshCore, MQTT — on a single interactive map, with nodes colored by hop count, source, or gateway. Track node positions, signal quality, and network topology in real-time.
 
 ### Message History
 Access complete message history across every source and channel. Search, filter, and export messages for analysis or record-keeping.

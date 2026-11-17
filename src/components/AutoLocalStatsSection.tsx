@@ -431,7 +431,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
           />
           {t('automation.auto_localstats.title')}
           <a
-            href="https://meshmonitor.org/features/automation#auto-localstats"
+            href="https://meshmonitor.org/features/automation#auto-remote-localstats"
             target="_blank"
             rel="noopener noreferrer"
             style={{ fontSize: '1.2rem', color: '#89b4fa', textDecoration: 'none', marginLeft: '0.5rem' }}

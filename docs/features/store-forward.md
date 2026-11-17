@@ -1,7 +1,7 @@
 # Store &amp; Forward
 
-::: tip New in 4.0 (Phase 0)
-MeshMonitor is now a Store &amp; Forward **client**. It recognizes S&amp;F server nodes on your mesh and can request history from them. Full server functionality remains on the node itself.
+::: tip Passive client
+MeshMonitor recognizes Store &amp; Forward server nodes on your mesh and records the history they replay. It does not request history itself; the server node does the storing and replaying.
 :::
 
 ## What is Store &amp; Forward?
@@ -16,12 +16,12 @@ Meshtastic's Store &amp; Forward module lets a powered node (usually a mains-pow
 - **Preserves S&amp;F metadata across upgrades** — two new database fields (`is_store_forward_server`, `via_store_forward`) were added in migrations 034 and 035
 
 ::: info Passive client only
-MeshMonitor does not actively request history from S&amp;F servers — it reacts to replays the server decides to push. Enabling S&amp;F history requests (a `CLIENT_HISTORY` message) is on the roadmap.
+MeshMonitor does not actively request history from S&amp;F servers — it reacts to replays the server decides to push.
 :::
 
 ## When it helps
 
-- Intermittent coverage — messages you missed while out of range are still retrievable
+- Intermittent coverage — messages a server replays after an outage still land in your history
 - Shared repeaters — a community repeater acts as a message buffer for the whole mesh
 - Debugging — spot messages that transited an S&amp;F peer instead of direct RF
 

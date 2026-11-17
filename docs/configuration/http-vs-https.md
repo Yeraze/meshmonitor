@@ -34,11 +34,9 @@ MeshMonitor runs on HTTP by default for development:
 ```yaml
 services:
   meshmonitor:
-    image: meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
+    image: ghcr.io/yeraze/meshmonitor:latest
     ports:
-      - "8080:8080"  # HTTP
+      - "8080:3001"  # HTTP (the app listens on 3001)
 ```
 
 Access at: `http://localhost:8080`
