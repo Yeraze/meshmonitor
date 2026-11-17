@@ -1,0 +1,110 @@
+/* Security digest preview (#6453). Scoped module — see CLAUDE.md. */
+
+.preview {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  text-align: left;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.heading {
+  font-weight: 600;
+}
+
+.count {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.countOver {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--color-surface-hover);
+}
+
+/* Severity is carried by text and icon as well as colour. */
+.note,
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.note {
+  color: var(--color-text-muted);
+}
+
+.warning {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-caution);
+  border-radius: 4px;
+  color: var(--color-text);
+}
+
+.block {
+  margin: 0.5rem 0 0;
+  max-height: 24rem;
+  overflow: auto;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-sunken);
+  color: var(--color-text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.blockTitle {
+  font-weight: 600;
+}
+
+/* The Preview button sits beside Save and Send Now in the digest card. */
+.previewButton {
+  padding: 8px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.previewButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.previewButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
