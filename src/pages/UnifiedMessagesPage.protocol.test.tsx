@@ -24,6 +24,7 @@ vi.mock('../contexts/AuthContext', () => ({
 }));
 
 const apiGet = vi.fn();
+vi.mock('../contexts/SettingsContext', () => ({ useSettingsOptional: () => undefined }));
 vi.mock('../services/api', () => ({
   default: { get: (...args: unknown[]) => apiGet(...args) },
 }));

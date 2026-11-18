@@ -17,6 +17,7 @@ const ref = (sourceId: string, canSend = true): SenderRef => ({
   canSend,
   sendKind: 'meshtastic',
   sendBlockedReason: null,
+  reactionsOutbound: null,
 });
 
 describe('unified sender preference (#3045 P2)', () => {

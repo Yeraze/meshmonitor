@@ -28,7 +28,7 @@ describe('useUnifiedSenders', () => {
   });
 
   it('sendersForChannel matches exactly, then case-insensitively', () => {
-    const s = (id: string) => ({ sourceId: id, sourceName: id, channelNumber: 0, canSend: true, sendKind: null, sendBlockedReason: null });
+    const s = (id: string) => ({ sourceId: id, sourceName: id, channelNumber: 0, canSend: true, sendKind: null, sendBlockedReason: null, reactionsOutbound: null });
     const channels = [{ name: '#Public', sources: [s('a')] }, { name: '#public', sources: [s('b')] }];
     expect(sendersForChannel(channels, '#public')[0].sourceId).toBe('b');
     expect(sendersForChannel(channels, '#PUBLIC')[0].sourceId).toBe('a');

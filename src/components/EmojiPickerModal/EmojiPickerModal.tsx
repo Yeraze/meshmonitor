@@ -64,6 +64,8 @@ interface EmojiPickerModalProps<T> {
   customEmojis?: TapbackEmoji[];
   /** When given, grid entries and custom input that fail it are not offered. */
   isEmojiAllowed?: (emoji: string) => boolean;
+  /** Optional line under the title, e.g. which node the reaction sends from. */
+  subtitle?: string;
 }
 
 export function EmojiPickerModal<T = MeshMessage>({
@@ -72,6 +74,7 @@ export function EmojiPickerModal<T = MeshMessage>({
   onClose,
   customEmojis,
   isEmojiAllowed,
+  subtitle,
 }: EmojiPickerModalProps<T>): React.ReactElement | null {
   const { t } = useTranslation();
   const [showCustomInput, setShowCustomInput] = useState(false);
@@ -120,6 +123,11 @@ export function EmojiPickerModal<T = MeshMessage>({
             ×
           </button>
         </div>
+        {subtitle && (
+          <div className="emoji-picker-subtitle" style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+            {subtitle}
+          </div>
+        )}
         <div className="emoji-picker-grid">
           {emojis.map(({ emoji, title }) => (
             <button
