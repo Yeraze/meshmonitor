@@ -551,6 +551,15 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
     const success = await managerFor(req, res).sendMessage(text, toPublicKey, parsedChannelIdx, scopeOverride);
 
     if (success) {
+      // No message text in the audit row, by design.
+      auditMeshcoreEvent(req, 'meshcore_message_sent', 'messages', {
+        sourceId: req.params.id,
+        kind: isDm ? 'dm' : 'channel',
+        channelIdx: parsedChannelIdx ?? null,
+        toPublicKey: isDm ? toPublicKey : null,
+        scope: scopeOverride ?? null,
+        via: 'api',
+      });
       res.json({ success: true, message: 'Message sent' });
     } else {
       res.status(400).json({ success: false, error: 'Failed to send message' });
@@ -904,6 +913,11 @@ router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('mes
 
     const success = await managerFor(req, res).sendRoomPost(text!, roomPublicKey);
     if (success) {
+      auditMeshcoreEvent(req, 'meshcore_room_post_sent', 'messages', {
+        sourceId: req.params.id,
+        roomPublicKey,
+        via: 'api',
+      });
       res.json({ success: true, message: 'Room post sent' });
     } else {
       res.status(400).json({ success: false, error: 'Failed to send room post' });
