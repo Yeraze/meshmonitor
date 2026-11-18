@@ -10,6 +10,7 @@ This is part of the parity epic (`MESHCORE_PARITY_EPIC.md`). Base is `main` at `
    - Q1: room posts follow the DM toggle and `mutedDMs` (label "Direct messages and room posts"). No migration.
    - Q2: accept that existing MeshCore rows with `enableDirectMessages=true` start receiving DM pushes. Add a release note.
    - Q3: a mute wins over a mention. A muted channel or room is fully silent; mentions still ignore the channel-enable list.
+     #6490 adds an opt-in per mute rule (`allowMentions`, "Still alert on @mentions") that lets mention alerts through; plain mutes keep this default.
    - Q4: the Disconnect route raises "Node disconnected"; shutdown and source edits stay silent.
    - Q5: the per-DM mute fix (`muteKey`) also applies to Meshtastic.
    - Q6: hide "New nodes" on Repeater sources with an explaining hint; Repeater advert alerts become a follow-up issue.

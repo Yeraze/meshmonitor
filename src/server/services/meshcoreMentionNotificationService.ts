@@ -168,13 +168,14 @@ export class MeshCoreMentionNotificationService {
         ? { data: { type: 'channel' as const, channelId: venue.channelIdx, messageId: msg.id } }
         : {}),
       // Same key as the message notifier, so a recipient who got this alert
-      // gets no second one for the message. A mute on the venue wins (P11 Q3).
+      // gets no second one for the message. A mute on the venue wins (P11 Q3)
+      // unless the rule has `allowMentions` (#6490).
       dedup: { key: meshcoreNotificationKey(msg, { roomKey: msg.toPublicKey ?? undefined }) },
       ...(msg.keyFingerprint ? { keyFingerprint: msg.keyFingerprint } : {}),
       muteVenue:
         venue.kind === 'channel'
-          ? { isDirectMessage: false, channelId: venue.channelIdx }
-          : { isDirectMessage: true, muteKey: (msg.toPublicKey ?? '').toLowerCase() || undefined },
+          ? { isDirectMessage: false, channelId: venue.channelIdx, isMention: true }
+          : { isDirectMessage: true, muteKey: (msg.toPublicKey ?? '').toLowerCase() || undefined, isMention: true },
     });
     return 'sent';
   }

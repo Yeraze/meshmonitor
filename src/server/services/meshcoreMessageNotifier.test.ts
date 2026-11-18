@@ -356,6 +356,29 @@ describe('MeshCore message notifications', () => {
       expect(pushes()).toHaveLength(0);
     });
 
+    it('a channel muted except mentions alerts once for a mention, not for plain messages (#6490)', async () => {
+      addUser(1, { 'mc-a': { notifyOnMention: true, mutedChannels: [{ channelId: 0, muteUntil: null, allowMentions: true }] } });
+      const mention = chan({ fromName: 'Dan', text: '@[MC-Sandbox] ping' });
+      await meshcoreMentionNotificationService.handleMessage(mention, 'mc-a');
+      await send(mention);
+      expect(alertsTo(1)).toHaveLength(1);
+      expect(alertsTo(1)[0].title).toContain('mentioned');
+
+      const plain = chan({ fromName: 'Fay', text: 'no mention here' });
+      await meshcoreMentionNotificationService.handleMessage(plain, 'mc-a');
+      await send(plain);
+      expect(alertsTo(1)).toHaveLength(1);
+    });
+
+    it('a room muted except mentions alerts for a mention (#6490)', async () => {
+      addUser(1, { 'mc-a': { notifyOnMention: true, enableDirectMessages: true, mutedDMs: [{ nodeUuid: ROOM_KEY, muteUntil: null, allowMentions: true }] } });
+      const msg = room({ text: '@[MC-Sandbox] hi' });
+      await meshcoreMentionNotificationService.handleMessage(msg, 'mc-a');
+      await send(msg);
+      expect(alertsTo(1)).toHaveLength(1);
+      expect(alertsTo(1)[0].title).toContain('mentioned');
+    });
+
     it('a keyed mention does not reach a user without the key', async () => {
       addUser(1, { 'mc-a': { notifyOnMention: true } });
       const msg = chan({ fromName: 'Eve', text: '@[MC-Sandbox] secret', keyFingerprint: FP });

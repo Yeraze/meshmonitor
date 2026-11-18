@@ -32,7 +32,7 @@ Room posts are the exception. A room server sends its backlog when you log in, s
 
 **Unread indicators** — channels with messages newer than the last time you opened them show an unread dot and a **bold name** in the channel list. A header badge counts how many channels currently have unread messages, and an optional **"unread first"** sort toggle (persisted) floats those channels to the top. Opening a channel marks it read up to the newest visible message. Read markers are saved **on the server, per user and per source**, so they follow your account to another browser or device. The browser keeps a copy in `localStorage` so the list paints at once, and falls back to that copy when you are signed out.
 
-**Mute** — a signed-in user can mute a channel with the bell button beside the message box. A muted channel shows no unread dot and does not count in the header badge. The mute is yours alone, on this source.
+**Mute** — a signed-in user can mute a channel with the bell button beside the message box. A muted channel shows no unread dot and does not count in the header badge. The mute is yours alone, on this source. Tick **Still alert on @mentions** in the mute menu to keep [mention alerts](#notifications) for a muted channel or room.
 
 **Protocol stripe** — each message carries a thin left border in the MeshCore colour (orange), the same stripe Unified Messages uses to tell MeshCore from Meshtastic and Reticulum. See [Source picker](/features/multi-source#source-picker).
 
