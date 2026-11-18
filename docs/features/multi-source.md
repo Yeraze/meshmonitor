@@ -103,7 +103,20 @@ Pick one channel and a send box appears under the message feed. It is not shown 
 - **MeshMonitor remembers your pick per channel, per browser.** If the remembered node can no longer send, it switches to the first node that can and tells you which one it now uses.
 - **Limits follow the node you chose.** Meshtastic and MQTT nodes allow 200 bytes. A MeshCore node allows less, because its name counts against the packet. Newlines work on Meshtastic and MQTT, not on MeshCore.
 - **Errors keep your text.** If the server says you send too fast, the box shows how long to wait. If a node is not connected or has transmit off, it says so and refreshes the list. MeshMonitor never retries a send for you; press Send again if you want to.
-- **Not here yet:** replies and tapbacks. Use the source's own Messages tab for those.
+
+#### Replies and tapbacks
+
+<!-- screenshot: unified-send-reply.png (reply banner and the row action bar) -->
+
+With one channel selected, hover a message (or tab to it) to see **Reply** and **React** buttons under it. On a touch screen they always show. They do not appear on All Channels, in the public view, or on a message MeshMonitor cannot answer (a Meshtastic message with no packet id, a MeshCore reaction, a Reticulum message).
+
+- **Reply** puts a "Replying to ..." banner above the send box. The reply goes out from the node picked in **Send from**, which lists only nodes of the same protocol as the message. On MeshCore the box starts with `@[Name]: `, because MeshCore replies are plain text. Cancel the banner and your text stays.
+- **React** opens the emoji picker at once. Pick an emoji to send it: one click, one packet. To use another node, close the picker, change **Send from** in the banner, and press **Choose reaction**.
+- **MeshCore tapbacks need a node that heard the message, with reactions turned on.** A MeshCore node that did not hear it shows greyed out ("did not hear this message"), and so does one with reactions off.
+- **Known limitation:** a MeshCore reply goes out on the sending node's default scope, not the scope of the message you reply to. The per-source MeshCore view copies the scope.
+- Errors keep your target and text, and MeshMonitor never retries for you.
+
+Messages you sent from a Meshtastic or MQTT node show a status icon next to the time: pending, transmitted to the mesh, received by the target, failed, or timed out. MeshCore messages show no status icon here.
 
 
 ## Virtual Node
