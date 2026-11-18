@@ -718,7 +718,7 @@ Utilization is over its threshold (default `30%`), these actions send nothing on
 
 | Held back | Never held back (they send nothing on the mesh) |
 | --- | --- |
-| **Send a message**, **Send a tapback**, **Request data** (every op), **Broadcast a waypoint**, **Trace MeshCore paths on a schedule**, **Reboot the node** with a remote target | **Reboot the node** (local), **Manage the node**, **Send a notification**, **Run a script**, **Enable or disable an automation**, **Turn forwarding on or off**, **Pause**, **Do nothing**, **Set a variable** |
+| **Send a message**, **Send a tapback**, **Request data** (every op), **Broadcast a waypoint**, **Reboot the node** with a remote target. **Trace MeshCore paths on a schedule** checks too, but runs only on MeshCore, which has no reading, so it is never held back today | **Reboot the node** (local), **Manage the node**, **Send a notification**, **Run a script**, **Enable or disable an automation**, **Turn forwarding on or off**, **Pause**, **Do nothing**, **Set a variable** |
 
 How it behaves:
 
@@ -730,6 +730,11 @@ How it behaves:
   and *Pause* don't count either way). The rule can then fire again as soon as the channel clears,
   instead of waiting out a window in which it sent nothing. A run that did anything else (a
   notification, a script, a send on another source) keeps its stamp.
+- **A held-back send is dropped, not queued.** Nothing replays it when the channel clears; the next
+  event that fires the rule sends. Triggers that fire once per change (a geofence crossing, *left
+  home*, a stale or declining-battery alert) have already moved on, so that alert is not sent again.
+  A bridge rule that relays onto a busy Meshtastic source drops those relays the same way.
+- **Set a variable** steps still run on every held-back run.
 - **Run log stays short.** While every send of a rule is held back, the run log stores at most one
   row per rule every 10 minutes. The live trace still shows every run.
 - **Run now ignores the cutoff.** You asked for the send, so it goes, and the run log adds an

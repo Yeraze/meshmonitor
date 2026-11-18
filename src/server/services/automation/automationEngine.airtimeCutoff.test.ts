@@ -202,6 +202,31 @@ describe('Automation Engine airtime cutoff — refund, run-log throttle, Run now
     expect(await autos.listRuns(a.id)).toHaveLength(4);
   });
 
+  it('a run where no action ran does not re-open the run-log window', async () => {
+    // Only "ping" reaches the send; "skip" stops at a false condition.
+    const g: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'c', type: 'condition.string', params: { field: 'text', op: 'contains', value: 'ping' } },
+        SEND,
+      ],
+      edges: [{ from: 't', to: 'c' }, { from: 'c', to: 's', port: 'true' }],
+    };
+    const a = await autos.createAutomation({ name: 'pong', enabled: true, config: JSON.stringify(g) });
+    const engine = await boot();
+    await engine.onMessage(message(111, 90), 'mt');
+    const before = (await autos.listRuns(a.id)).length;
+    clock += 30_000;
+    await engine.onMessage({ ...message(111, 91), text: 'skip' } as DbMessage, 'mt');
+    const afterMiss = (await autos.listRuns(a.id)).length;
+    clock += 30_000;
+    await engine.onMessage(message(111, 92), 'mt');
+    // The skipped send after the miss is still inside the 10-minute window.
+    expect((await autos.listRuns(a.id)).length).toBe(afterMiss);
+    expect(before).toBe(1);
+  });
+
   it('Run now sends anyway, is always logged, and says it ignored the cutoff', async () => {
     const a = await create({}, [SEND]);
     const engine = await boot();

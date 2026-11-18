@@ -52,7 +52,7 @@ When the mesh gets busy, this setting pauses a Meshtastic source's built-in auto
 
 The cutoff pauses Auto Acknowledge, Auto Responder, Auto Welcome, Auto Announce, Forwarding, Timer Triggers, Geofence Triggers, Auto Traceroute, Auto Remote LocalStats, Auto Ping, Remote Admin Scanner, Auto Time Sync and Auto Key Management.
 
-It also holds back **Automation Engine** actions that transmit on that source: send message, tapback, request data, broadcast waypoint, scheduled trace paths and a remote reboot. The rule still runs, its other steps still happen, and the run log shows the held-back step as "paused: airtime over cutoff". **Run now** sends anyway and notes it in the log. See [Airtime cutoff](/features/automation-engine-reference#airtime-cutoff) in the Engine reference.
+It also holds back **Automation Engine** actions that transmit on that source: send message, tapback, request data, broadcast waypoint and a remote reboot. The rule still runs, its other steps still happen, and the run log shows the held-back step as "paused: airtime over cutoff". **Run now** sends anyway and notes it in the log. See [Airtime cutoff](/features/automation-engine-reference#airtime-cutoff) in the Engine reference.
 
 The cutoff only reads Meshtastic sources. MeshCore, Reticulum and MQTT sources have no Channel Utilization figure, so rules there are never held back.
 

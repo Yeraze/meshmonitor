@@ -38,6 +38,14 @@ describe('AutomationTester — airtime cutoff', () => {
     expect(screen.getByText('pong ping')).toBeInTheDocument();
   });
 
+  it('rounds a long neighbour-average reading to one decimal', async () => {
+    const user = userEvent.setup();
+    mockedPost.mockResolvedValue(result({ ...SKIP, channelUtilization: 33.333333 }));
+    render(<AutomationTester getConfig={getConfig} variables={[]} sources={[]} />);
+    await user.click(screen.getByRole('button', { name: /run test/i }));
+    await waitFor(() => expect(screen.getByText(/airtime 33\.3% > 30%/)).toBeInTheDocument());
+  });
+
   it('a partial skip keeps the normal headline and adds a note', async () => {
     const user = userEvent.setup();
     mockedPost.mockResolvedValue(result([SKIP, { sourceId: 'mt2', text: 'pong', channel: 0 }]));

@@ -130,6 +130,11 @@ const AIRTIME_SKIP_LOG_INTERVAL_MS = 10 * 60_000;
 /** Action types that neither send nor skip: they do not count for or against an all-skipped run. */
 const AIRTIME_NEUTRAL_ACTIONS = new Set(['action.nothing', 'action.delay']);
 
+/** A percent for a log line: one decimal place, '?' when unknown. */
+function roundPct(n: number | null): string {
+  return n == null ? '?' : String(Math.round(n * 10) / 10);
+}
+
 const COOLDOWN_KEYS_MAX = 4096;
 const COOLDOWN_KEYS_TRIM_TO = 2048;
 
@@ -1122,7 +1127,8 @@ export class AutomationEngineService {
       // Now is always logged.
       const idleTick = !opts.manual && !anyFailed && result.actions.length > 0
         && (evalCtx.idleActions ?? 0) === result.actions.length;
-      const allAirtimeSkipped = !opts.manual && this.allAirtimeSkipped(a, result.actions);
+      const airtimeOutcome = this.airtimeOutcome(a, result.actions);
+      const allAirtimeSkipped = !opts.manual && airtimeOutcome === 'allSkipped';
       // While the cutoff holds every send back, a busy rule would write a row
       // per event; keep one per rule per AIRTIME_SKIP_LOG_INTERVAL_MS. The live
       // trace still shows every run.
@@ -1132,7 +1138,9 @@ export class AutomationEngineService {
         const t = this.now();
         if (last != null && t - last < AIRTIME_SKIP_LOG_INTERVAL_MS) airtimeThrottled = true;
         else this.lastAirtimeRowAt.set(a.id, t);
-      } else {
+      } else if (airtimeOutcome === 'didSomething') {
+        // Only a run that did something re-opens the window; a run where no
+        // action ran (a condition was false) says nothing about the channel.
         this.lastAirtimeRowAt.delete(a.id);
       }
       // A manual run that ignored the cutoff says so in its log.
@@ -1146,7 +1154,7 @@ export class AutomationEngineService {
             sourceId: b.sourceId,
             channelUtilization: b.channelUtilization,
             threshold: b.threshold,
-            reason: `Run now ignored the airtime cutoff on ${b.sourceId} (channel utilization ${b.channelUtilization ?? '?'}% is over the ${b.threshold}% cutoff)`,
+            reason: `Run now ignored the airtime cutoff on ${b.sourceId} (channel utilization ${roundPct(b.channelUtilization)}% is over the ${roundPct(b.threshold)}% cutoff)`,
           },
         });
       }
@@ -1189,20 +1197,25 @@ export class AutomationEngineService {
   }
 
   /**
-   * True when at least one counting action ran and every one was held back by
-   * the airtime cutoff. Strict: a failure, a protocol skip, an empty-send skip
-   * or a real send on any target means the rule did something, so it keeps
-   * its stamp. action.nothing / action.delay are neutral.
+   * What the airtime cutoff made of one run:
+   *  - 'allSkipped': at least one counting action ran and every one was held
+   *    back by the cutoff;
+   *  - 'didSomething': a counting action failed, was skipped for another
+   *    reason, or sent on at least one target — the rule keeps its stamp;
+   *  - 'none': no counting action ran (action.nothing / action.delay are neutral).
    */
-  private allAirtimeSkipped(a: LoadedAutomation, actions: Array<{ nodeId: string; ok: boolean; value?: unknown }>): boolean {
+  private airtimeOutcome(
+    a: LoadedAutomation,
+    actions: Array<{ nodeId: string; ok: boolean; value?: unknown }>,
+  ): 'allSkipped' | 'didSomething' | 'none' {
     const typeOf = new Map(a.graph.nodes.map((n) => [n.id, String(n.type)]));
     let counted = 0;
     for (const x of actions) {
       if (AIRTIME_NEUTRAL_ACTIONS.has(typeOf.get(x.nodeId) ?? '')) continue;
-      if (!x.ok || !isAllAirtimeSkipped(x.value)) return false;
+      if (!x.ok || !isAllAirtimeSkipped(x.value)) return 'didSomething';
       counted++;
     }
-    return counted > 0;
+    return counted > 0 ? 'allSkipped' : 'none';
   }
 
   // ─── self-origin guard (#3914) ──────────────────────────────────────────

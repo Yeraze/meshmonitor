@@ -402,6 +402,11 @@ function renderEventInputs(
   }
 }
 
+/** A percent for display: one decimal place, '?' when not a number. */
+function roundPct(v: unknown): string {
+  return typeof v === 'number' && Number.isFinite(v) ? String(Math.round(v * 10) / 10) : '?';
+}
+
 /** Human-readable "what would be sent" for one simulated action. */
 function ActionView({ a }: { a: SimResult['actions'][number] }) {
   const p = (a.resolvedParams ?? {}) as Record<string, unknown>;
@@ -416,7 +421,7 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
       r != null && typeof r === 'object' && (r as Record<string, unknown>).airtimeCutoff === true);
   const airtimeNote = airtimeSkips.length > 0
     ? airtimeSkips.map((r) =>
-        `would be skipped now on ${String(r.sourceId ?? '')}: airtime ${String(r.channelUtilization ?? '?')}% > ${String(r.threshold ?? '?')}%`,
+        `would be skipped now on ${String(r.sourceId ?? '')}: airtime ${roundPct(r.channelUtilization)}% > ${roundPct(r.threshold)}%`,
       ).join('; ')
     : null;
   const airtimeAll = airtimeSkips.length > 0
