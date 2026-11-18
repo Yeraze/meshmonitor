@@ -157,4 +157,40 @@ describe('MeshCoreRequiredRepeaterSection (#6193)', () => {
     await waitFor(() => expect(h.showToast).toHaveBeenCalled());
     expect(option(REQ)!.checked).toBe(false);
   });
+
+  describe('Auto Resend toggle (#6240)', () => {
+    const toggle = () => screen.getByTestId('meshcore-auto-resend-toggle') as HTMLInputElement;
+
+    it('is disabled, with a hint, while no required repeater is set', async () => {
+      mockServer({ meshcoreAutoResendEnabled: 'true' });
+      render(<MeshCoreRequiredRepeaterSection baseUrl="/mm" sourceId="src-1" contacts={contacts} />);
+      await waitFor(() => expect(toggle().checked).toBe(true));
+      expect(toggle().disabled).toBe(true);
+      expect(screen.getByTestId('meshcore-auto-resend-help').textContent).toMatch(/at least one required repeater/i);
+    });
+
+    it('loads the saved value and saves a change for this source', async () => {
+      mockServer({ meshcoreRequiredRepeaters: JSON.stringify([REQ]) });
+      render(<MeshCoreRequiredRepeaterSection baseUrl="/mm" sourceId="src-1" contacts={contacts} />);
+      await waitFor(() => expect(option(REQ)!.checked).toBe(true));
+      expect(toggle().checked).toBe(false);
+      expect(toggle().disabled).toBe(false);
+      expect(screen.getByTestId('meshcore-auto-resend-help').textContent).toMatch(/another flood/i);
+
+      await userEvent.click(toggle());
+      await waitFor(() => expect(posts()).toHaveLength(1));
+      expect(posts()[0][0]).toBe(SOURCE_URL);
+      expect(lastPostBody()).toEqual({ meshcoreAutoResendEnabled: 'true' });
+      expect(toggle().checked).toBe(true);
+    });
+
+    it('rolls back and shows an error when the save fails', async () => {
+      mockServer({ meshcoreRequiredRepeaters: JSON.stringify([REQ]) }, 500);
+      render(<MeshCoreRequiredRepeaterSection baseUrl="/mm" sourceId="src-1" contacts={contacts} />);
+      await waitFor(() => expect(toggle().disabled).toBe(false));
+      await userEvent.click(toggle());
+      await waitFor(() => expect(h.showToast).toHaveBeenCalledWith('Failed to save Auto Resend', 'error'));
+      expect(toggle().checked).toBe(false);
+    });
+  });
 });

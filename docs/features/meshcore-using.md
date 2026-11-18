@@ -68,6 +68,14 @@ The resend count lives in the database, so restarting MeshMonitor does not reset
 
 **Required repeaters.** By default any repeater echo clears the Resend button. In the source's **Settings**, **Required repeaters** lets you pick the direct repeaters (heard on a zero-hop path) that must relay your message. **Match mode** sets the rule: **Any** stops the resend once one of them relays, **All** waits for every one. Leave the list empty for the default. A saved repeater that is no longer direct stays on the list and shows "no longer direct". Sent direct messages show the repeaters heard relaying them in the same heard-by bubble.
 
+**Auto Resend.** Under the list, **Auto Resend until the required repeaters hear it** makes MeshMonitor click Resend for you. It is off by default and needs at least one required repeater. When it is on, every channel message and direct message this source sends, including automated ones, is resent until the match mode is met. It runs on the server, so it works with no browser open, and it uses the same limits as the button:
+
+- A resend goes out 30 seconds after the send, then 30 seconds after each resend.
+- At most **3 resends** per message, counting any you made by hand.
+- Only messages under **1 hour** old. A direct message the recipient acknowledged is never resent.
+
+Each resend is another flood, so turn it on only where a required repeater often misses your messages, for example several repeaters sharing one tower. If a message uses all 3 resends and the rule is still unmet, Auto Resend pauses for that channel or contact for an hour and logs a warning; manual Resend still works. That usually means the list is wrong: a repeater out of range, removed from your contacts, or sharing a hash prefix with another. Pending resends stop when the radio disconnects; after a reconnect or restart MeshMonitor picks up messages from the last hour, and the stored count means no message gets more than 3. When Auto Resend is on, it replaces the one-shot automatic channel retry for this source.
+
 ## Channel order
 
 The Channels page has a **Sort channels by** dropdown with five choices: **Device order**, **Channel name**, **Last message**, **Message count** and **Custom**. **Last message** puts the most recently active channel first and shows how long ago each channel's last message arrived. **Message count** puts the busiest channel first. Channels with no messages sink to the bottom in both. Pick **Custom** and click **Sort** to drag channels (or use the arrows) into the order you want. MeshMonitor saves the sort choice and the custom order in your browser, per source. This changes only how MeshMonitor lists the channels. The slots on the device stay as they are.
