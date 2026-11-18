@@ -6,6 +6,7 @@ import meshtasticProtobufService, { formatTakPreview, formatTakV2Preview } from 
 import { takV2Variant } from './takV2Decoder.js';
 import type { RawSecurityConfig } from './utils/securityConfigWrite.js';
 import { formatAdminMqttConfig } from './utils/adminMqttConfig.js';
+import { normalizeTracerouteIntervalMinutes } from './utils/tracerouteInterval.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
@@ -696,6 +697,13 @@ interface RemoteLocalStatsRetryEntry {
 const REMOTE_LOCALSTATS_RETRY_STATE_KEY = 'remoteLocalStatsRetryState';
 
 /**
+ * Per-source key holding the epoch-ms time of the last auto traceroute this
+ * source sent. The scheduler reads it on every (re)start, so a settings save,
+ * a reconnect or a process restart never sends sooner than last + interval.
+ */
+const AUTO_TRACEROUTE_LAST_SENT_KEY = 'autoTracerouteLastSentAt';
+
+/**
  * Bounds for `autoAckCooldowns` (#4399). It was previously never evicted at
  * all — it got away with that because it is per-manager (per-source) and
  * bounded in practice by one radio's NodeDB, but it has no upper bound in
@@ -1107,6 +1115,10 @@ class MeshtasticManager implements ISourceManager {
 
   private tracerouteIntervalMinutes: number = 0;
   private lastTracerouteSentTime: number = 0;
+  // Bumped on every traceroute scheduler start/stop, so a start that is still
+  // reading the persisted last-send time drops out if a newer start or a stop
+  // ran meanwhile (no double timers, no timer armed after disconnect).
+  private tracerouteSchedulerGeneration: number = 0;
   // Airtime cutoff: pause all transmitting automations when the local node's
   // Channel Utilization exceeds this percent. 0 disables the feature.
   private automationAirtimeCutoffThreshold: number = DEFAULT_AIRTIME_CUTOFF_THRESHOLD;
@@ -2553,7 +2565,8 @@ class MeshtasticManager implements ISourceManager {
         // time-offset learning, announce, timer, key repair, distance delete,
         // auto-favorite sweep) running.
         const passive = this.passiveMode;
-        setTimeout(() => this.startTracerouteScheduler(), S * 1);
+        setTimeout(() => this.startTracerouteScheduler().catch(e =>
+          logger.error('❌ Error starting traceroute scheduler:', e)), S * 1);
         if (passive) {
           logger.debug('🟢 [passive] Skipping remote admin scanner — outbound queries to device');
         } else {
@@ -2960,15 +2973,7 @@ class MeshtasticManager implements ISourceManager {
       this.transport = null;
     }
 
-    if (this.tracerouteJitterTimeout) {
-      clearTimeout(this.tracerouteJitterTimeout);
-      this.tracerouteJitterTimeout = null;
-    }
-
-    if (this.tracerouteInterval) {
-      clearInterval(this.tracerouteInterval);
-      this.tracerouteInterval = null;
-    }
+    this.stopTracerouteScheduler();
 
     if (this.remoteLocalStatsJitterTimeout) {
       clearTimeout(this.remoteLocalStatsJitterTimeout);
@@ -3042,8 +3047,10 @@ class MeshtasticManager implements ISourceManager {
     this.externalConfigCaptureCallback = callback;
   }
 
-  private startTracerouteScheduler(): void {
-    // Clear any pending jitter timeout to prevent leaked timers
+  /** Cancel the auto-traceroute timers and any start still reading the DB. */
+  private stopTracerouteScheduler(): void {
+    this.tracerouteSchedulerGeneration++;
+
     if (this.tracerouteJitterTimeout) {
       clearTimeout(this.tracerouteJitterTimeout);
       this.tracerouteJitterTimeout = null;
@@ -3053,6 +3060,38 @@ class MeshtasticManager implements ISourceManager {
       clearInterval(this.tracerouteInterval);
       this.tracerouteInterval = null;
     }
+  }
+
+  /** Persisted time of this source's last auto traceroute (epoch ms), or 0. */
+  private async loadAutoTracerouteLastSentAt(): Promise<number> {
+    try {
+      const raw = await databaseService.settings.getSettingForSource(this.sourceId, AUTO_TRACEROUTE_LAST_SENT_KEY);
+      const at = raw ? Number(raw) : 0;
+      return Number.isFinite(at) && at > 0 ? at : 0;
+    } catch (err) {
+      logger.warn(`🗺️ Auto-traceroute: failed to read last send time for source ${this.sourceId}:`, err);
+      return 0;
+    }
+  }
+
+  private async persistAutoTracerouteLastSentAt(at: number): Promise<void> {
+    try {
+      await databaseService.settings.setSourceSetting(this.sourceId, AUTO_TRACEROUTE_LAST_SENT_KEY, String(at));
+    } catch (err) {
+      logger.warn(`🗺️ Auto-traceroute: failed to persist last send time for source ${this.sourceId}:`, err);
+    }
+  }
+
+  /**
+   * Start (or restart) the auto-traceroute scheduler. A restart (settings
+   * save, reconnect, process restart) is never a trigger: the first run waits
+   * until the persisted last send plus one interval, or the startup jitter,
+   * whichever is later.
+   */
+  private async startTracerouteScheduler(): Promise<void> {
+    // Clear any pending timers to prevent leaks, and invalidate older starts.
+    this.stopTracerouteScheduler();
+    const generation = this.tracerouteSchedulerGeneration;
 
     // If interval is 0, traceroute is disabled
     if (this.tracerouteIntervalMinutes === 0) {
@@ -3067,9 +3106,21 @@ class MeshtasticManager implements ISourceManager {
     // Only the first execution is delayed; subsequent runs use the regular interval.
     const maxJitterMs = Math.min(intervalMs, 5 * 60 * 1000); // Cap at 5 minutes
     const initialJitterMs = Math.random() * maxJitterMs;
-    const jitterSeconds = Math.round(initialJitterMs / 1000);
 
-    logger.debug(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval (initial jitter: ${jitterSeconds}s)`);
+    // Never run sooner than last send + interval. The in-memory time covers a
+    // failed DB read; the persisted time covers a process restart.
+    const lastSentAt = Math.max(this.lastTracerouteSentTime, await this.loadAutoTracerouteLastSentAt());
+    if (generation !== this.tracerouteSchedulerGeneration) {
+      return; // a newer start or a stop ran while we read the DB
+    }
+    // Cap at one interval so a last-send time in the future (clock moved
+    // back) cannot stall the scheduler.
+    const untilDueMs = lastSentAt > 0
+      ? Math.min(intervalMs, Math.max(0, lastSentAt + intervalMs - Date.now()))
+      : 0;
+    const initialDelayMs = Math.max(initialJitterMs, untilDueMs);
+
+    logger.debug(`🗺️ Starting traceroute scheduler with ${this.tracerouteIntervalMinutes} minute interval (first run in ${Math.round(initialDelayMs / 1000)}s)`);
 
     // The traceroute execution logic
     const executeTraceroute = async () => {
@@ -3121,7 +3172,10 @@ class MeshtasticManager implements ISourceManager {
             this.pendingAutoTraceroutes.add(targetNode.nodeNum);
             this.pendingTracerouteTimestamps.set(targetNode.nodeNum, Date.now());
 
-            this.lastTracerouteSentTime = Date.now();
+            const sentAt = Date.now();
+            this.lastTracerouteSentTime = sentAt;
+            // Persist so a restart or settings save cannot send early.
+            await this.persistAutoTracerouteLastSentAt(sentAt);
             await this.sendTraceroute(targetNode.nodeNum, channel, { origin: 'automation' });
 
             // Check for timed-out traceroutes (> 5 minutes old)
@@ -3137,7 +3191,7 @@ class MeshtasticManager implements ISourceManager {
       }
     };
 
-    // Delay first execution by jitter, then start regular interval
+    // Delay first execution, then start regular interval
     this.tracerouteJitterTimeout = setTimeout(() => {
       this.tracerouteJitterTimeout = null;
       // Execute first traceroute
@@ -3145,7 +3199,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Start regular interval (no jitter on subsequent runs)
       this.tracerouteInterval = setInterval(executeTraceroute, intervalMs);
-    }, initialJitterMs);
+    }, initialDelayMs);
   }
 
   /** Start this source's per-source auto-delete-by-distance scheduler (#3901).
@@ -3170,9 +3224,19 @@ class MeshtasticManager implements ISourceManager {
     this.distanceDeleteScheduler?.stop();
   }
 
-  setTracerouteInterval(minutes: number): void {
-    if (minutes < 0 || minutes > 60) {
-      throw new Error('Traceroute interval must be between 0 and 60 minutes (0 = disabled)');
+  setTracerouteInterval(requestedMinutes: number): void {
+    // 0 or 3–60; a request for 1 or 2 rises to 3 (the UI minimum).
+    const minutes = normalizeTracerouteIntervalMinutes(requestedMinutes);
+    if (minutes === null) {
+      throw new Error('Traceroute interval must be 0 (disabled) or 3–60 minutes');
+    }
+
+    // Same interval and the scheduler already armed: leave it alone, so a
+    // save that only changes filters or the schedule window does not re-time
+    // the next traceroute.
+    const armed = this.tracerouteJitterTimeout !== null || this.tracerouteInterval !== null;
+    if (minutes === this.tracerouteIntervalMinutes && (armed || minutes === 0)) {
+      return;
     }
     this.tracerouteIntervalMinutes = minutes;
 
@@ -3183,7 +3247,7 @@ class MeshtasticManager implements ISourceManager {
     }
 
     if (this.isConnected) {
-      this.startTracerouteScheduler();
+      this.startTracerouteScheduler().catch(err => logger.error('❌ Error starting traceroute scheduler:', err));
     }
   }
 
@@ -17019,15 +17083,7 @@ class MeshtasticManager implements ISourceManager {
 
     // 'stopSchedulers' action (below, through the cron-job clear)
     // Clear any active intervals and pending jitter timeouts
-    if (this.tracerouteJitterTimeout) {
-      clearTimeout(this.tracerouteJitterTimeout);
-      this.tracerouteJitterTimeout = null;
-    }
-
-    if (this.tracerouteInterval) {
-      clearInterval(this.tracerouteInterval);
-      this.tracerouteInterval = null;
-    }
+    this.stopTracerouteScheduler();
 
     if (this.remoteLocalStatsJitterTimeout) {
       clearTimeout(this.remoteLocalStatsJitterTimeout);

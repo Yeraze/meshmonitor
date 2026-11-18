@@ -82,6 +82,7 @@ import {
   isValidAutoAckMaxResponses,
 } from '../autoAckResponseCap.js';
 import { clampIntervalSetting, GEOFENCE_WHILE_INSIDE_MINUTES } from '../utils/schedulerInterval.js';
+import { normalizeTracerouteIntervalMinutes } from '../utils/tracerouteInterval.js';
 import { GEOFENCE_RADIUS_KM_MAX } from '../../utils/geofenceLimits.js';
 import { keepServerRunState, parseStoredTriggers } from '../utils/timerRunState.js';
 import { findSplitTimerTooFrequent, findTimerTooManyChannels } from '../utils/timerSplitGuard.js';
@@ -1858,16 +1859,30 @@ router.delete('/', requirePermission('settings', 'write'), async (req: Request, 
 const perSourceSettings = (action: 'read' | 'write') =>
   requireSourcePermission('settings', action, { whenOmitted: 'primary' });
 
-router.post('/traceroute-interval', perSourceSettings('write'), (req, res) => {
+router.post('/traceroute-interval', perSourceSettings('write'), async (req, res) => {
   try {
     const { intervalMinutes } = req.body;
-    if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 60) {
-      return fail(res, 400, 'INVALID_INTERVAL', 'Invalid interval. Must be between 0 and 60 minutes (0 = disabled).');
+    // 0 (off) or 3–60, the same set the Automation tab offers and the
+    // scheduler accepts at startup (applyManagerSettings).
+    const normalized = typeof intervalMinutes === 'number'
+      ? normalizeTracerouteIntervalMinutes(intervalMinutes)
+      : null;
+    if (normalized === null || normalized !== intervalMinutes) {
+      return fail(res, 400, 'INVALID_INTERVAL', 'Invalid interval. Must be 0 (disabled) or 3–60 minutes.');
+    }
+
+    // Save it for this source, the key applyManagerSettings reads at startup,
+    // so the value survives a restart (same row POST /api/settings writes).
+    const target = getSourceTarget(req);
+    if (target.sourceId) {
+      await databaseService.settings.setSourceSetting(target.sourceId, 'tracerouteIntervalMinutes', String(intervalMinutes));
+    } else {
+      await databaseService.settings.setSetting('tracerouteIntervalMinutes', String(intervalMinutes));
     }
 
     // Apply only to THIS source's own radio. A non-Meshtastic source has none;
     // re-arming the primary's scheduler would change its airtime (#5375).
-    getSourceTarget(req).manager?.setTracerouteInterval(intervalMinutes);
+    target.manager?.setTracerouteInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
     logger.error('Error setting traceroute interval:', error);

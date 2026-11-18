@@ -866,6 +866,22 @@ describe('nodes / ignored-nodes / settings / message routes: permission is check
       expect(managerA.setTracerouteInterval).not.toHaveBeenCalled();
     });
 
+    it('saves the traceroute interval for the named source, so it survives a restart', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/settings/traceroute-interval').send({ intervalMinutes: 15, sourceId: harness.sourceB });
+      expect(res.status).toBe(200);
+      expect(databaseService.settings.setSourceSetting).toHaveBeenCalledWith(harness.sourceB, 'tracerouteIntervalMinutes', '15');
+      expect(databaseService.settings.setSourceSetting).not.toHaveBeenCalledWith(harness.sourceA, 'tracerouteIntervalMinutes', expect.anything());
+    });
+
+    it('400s a traceroute interval below the 3-minute minimum and saves nothing', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/settings/traceroute-interval').send({ intervalMinutes: 2, sourceId: harness.sourceB });
+      expect(res.status).toBe(400);
+      expect(managerB.setTracerouteInterval).not.toHaveBeenCalled();
+      expect(databaseService.settings.setSourceSetting).not.toHaveBeenCalled();
+    });
+
     it('409s SOURCE_NOT_CONNECTED on a device route for a permitted source whose radio is offline', async () => {
       await sourceManagerRegistry.removeManager(harness.sourceB);
       await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceB);

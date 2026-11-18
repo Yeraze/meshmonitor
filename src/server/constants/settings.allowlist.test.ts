@@ -179,7 +179,16 @@ describe('per-source settings key allowlist invariants', () => {
     // #6282 added meshcoreSenderNameOverride (per-source sender-name allowlist).
     // #4305 added the 8 mqttNative* keys (MQTT-native send; written only by
     // PUT /api/sources/:id/mqtt/native, which clamps the limits).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(46);
+    // Auto Traceroute added autoTracerouteLastSentAt (persisted last send).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(47);
+  });
+
+  // A POST that cleared the last auto-traceroute time would let the next
+  // scheduler restart send before last send + interval.
+  it('autoTracerouteLastSentAt is server-managed, never client-postable', () => {
+    const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('autoTracerouteLastSentAt')).toBe(true);
+    expect(valid.has('autoTracerouteLastSentAt')).toBe(false);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is

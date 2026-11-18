@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  normalizeTracerouteIntervalMinutes,
   parseTracerouteIntervalMinutes,
   recentTracerouteLimit,
   RECENT_TRACEROUTE_MIN_LIMIT,
@@ -40,5 +41,25 @@ describe('recentTracerouteLimit', () => {
 
   it('never returns less than the minimum', () => {
     expect(recentTracerouteLimit(null, 1)).toBe(RECENT_TRACEROUTE_MIN_LIMIT);
+  });
+});
+
+describe('normalizeTracerouteIntervalMinutes', () => {
+  it('keeps 0 (off) and 3–60', () => {
+    expect(normalizeTracerouteIntervalMinutes(0)).toBe(0);
+    expect(normalizeTracerouteIntervalMinutes(3)).toBe(3);
+    expect(normalizeTracerouteIntervalMinutes(60)).toBe(60);
+  });
+
+  it('raises 1 and 2 to 3', () => {
+    expect(normalizeTracerouteIntervalMinutes(1)).toBe(3);
+    expect(normalizeTracerouteIntervalMinutes(2)).toBe(3);
+  });
+
+  it('rejects negatives, values over 60, fractions and NaN', () => {
+    expect(normalizeTracerouteIntervalMinutes(-1)).toBeNull();
+    expect(normalizeTracerouteIntervalMinutes(61)).toBeNull();
+    expect(normalizeTracerouteIntervalMinutes(4.5)).toBeNull();
+    expect(normalizeTracerouteIntervalMinutes(NaN)).toBeNull();
   });
 });
