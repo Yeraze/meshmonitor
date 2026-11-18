@@ -142,6 +142,20 @@ describe('GET /api/unified/messages — MeshCore cross-source merge (#5587)', ()
     expect(body[0].receptions.map((r: any) => r.timestamp)).toEqual([T0 + 20_000, T0 + 25_000]);
   });
 
+  it('carries the region name from the first reception that has one (#6500)', async () => {
+    await companionRow(COMPANION);
+    await repeaterRow({ scopeName: 'us-east' });
+    const { body } = await feed(harness.admin);
+    expect(body).toHaveLength(1);
+    expect(body[0].scopeName).toBe('us-east');
+  });
+
+  it('omits scopeName when no reception has one (#6500)', async () => {
+    await companionRow(COMPANION);
+    const { body } = await feed(harness.admin);
+    expect(body[0]).not.toHaveProperty('scopeName');
+  });
+
   it('keeps the sender time on a room post and sends no sender second (#5973)', async () => {
     await harness.db.meshcore.insertMessage(
       {

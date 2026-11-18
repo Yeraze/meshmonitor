@@ -288,6 +288,22 @@ describe('UnifiedSendComposer', () => {
       expect(apiPost.mock.calls[0][1]).not.toHaveProperty('replyId');
     });
 
+    it('meshcore reply: sends the parent scope as scope (#6500)', async () => {
+      sources = mcSources();
+      const t = mcTarget('reply');
+      setup({ ...t, msg: { ...t.msg, scopeName: 'us-east' } });
+      await picker();
+      type('@[Bob]: hey');
+      fireEvent.click(sendBtn());
+      await waitFor(() =>
+        expect(apiPost).toHaveBeenCalledWith('/api/sources/c/meshcore/messages/send', {
+          text: '@[Bob]: hey',
+          channelIdx: 1,
+          scope: 'us-east',
+        }),
+      );
+    });
+
     it('meshcore react: only the hearing source with reactions on is enabled; emoji posts once', async () => {
       sources = mcSources();
       const { store, onClearTarget } = setup(mcTarget('react'));
