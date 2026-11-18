@@ -163,6 +163,6 @@ describe('scrubScriptSecrets', () => {
   it('passes text through when nothing is stored', () => {
     setScriptSecretsSnapshot(new Map());
     expect(scrubScriptSecrets('abc')).toBe('abc');
-    expect(scrubScriptSecrets(undefined)).toBeUndefined();
+    expect(scrubScriptSecrets('')).toBe('');
   });
 });

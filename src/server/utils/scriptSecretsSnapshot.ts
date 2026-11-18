@@ -25,9 +25,7 @@ export const SCRIPT_SECRET_MASK = '***';
  * stdout/stderr (and error text that embeds them) before the server logs it.
  * Longest values first, so a value that contains another is masked whole.
  */
-export function scrubScriptSecrets(text: string): string;
-export function scrubScriptSecrets(text: string | undefined | null): string | undefined | null;
-export function scrubScriptSecrets(text: string | undefined | null): string | undefined | null {
+export function scrubScriptSecrets(text: string): string {
   if (!text || snapshot.size === 0) return text;
   const values = [...snapshot.values()].filter((v) => v.length > 0).sort((a, b) => b.length - a.length);
   let out = text;
