@@ -9,6 +9,7 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import ScriptTestModal from './ScriptTestModal';
 import { UiIcon } from './icons';
 import { ConfigSection, ConfigHeaderCount } from './shared/config/ConfigSection';
+import { AutomationEngineNote } from './shared/config/AutomationEngineNote';
 import { ConfigEmptyState } from './shared/config/ConfigEmptyState';
 import { TriggerCard, TriggerCardAction, type TriggerChip } from './shared/automation/TriggerCard';
 import { TriggerListFilter } from './shared/automation/TriggerListFilter';
@@ -323,6 +324,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   return (
     <ConfigSection
       title={t('automation.timer_triggers.section_title', 'Timer Triggers')}
+      notice={<AutomationEngineNote />}
       docsUrl="https://meshmonitor.org/features/automation#timer-triggers"
       headerActions={
         <ConfigHeaderCount>

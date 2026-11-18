@@ -2,7 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
+import { EngineNoteHarness } from '../test/EngineNoteHarness';
 import userEvent from '@testing-library/user-event';
 import GeofenceTriggersSection from './GeofenceTriggersSection';
 import { GeofenceTrigger } from './auto-responder/types.js';
@@ -432,5 +433,11 @@ describe('GeofenceTriggersSection Component', () => {
       // The old name should not be present
       expect(screen.queryByText('Test Geofence')).not.toBeInTheDocument();
     });
+  });
+  it('shows the Automation Engine note, and its link opens the Automation Engine page', async () => {
+    render(<EngineNoteHarness><GeofenceTriggersSection {...defaultProps} /></EngineNoteHarness>);
+    const link = await screen.findByRole('link', { name: /build this in the Automation Engine|automation\.engine_note/i });
+    fireEvent.click(link);
+    expect(await screen.findByTestId('automation-engine-page')).toBeInTheDocument();
   });
 });

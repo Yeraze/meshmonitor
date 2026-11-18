@@ -13,6 +13,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { EngineNoteHarness } from '../../test/EngineNoteHarness';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -165,5 +166,11 @@ describe('MeshCoreTimerTriggersSection receive-only', () => {
       expect.stringMatching(/run failed/i),
       'error',
     );
+  });
+  it('shows the Automation Engine note, and its link opens the Automation Engine page', async () => {
+    render(<EngineNoteHarness><MeshCoreTimerTriggersSection baseUrl="" sourceId="src1" /></EngineNoteHarness>);
+    const link = await screen.findByRole('link', { name: /build this in the Automation Engine|automation\.engine_note/i });
+    fireEvent.click(link);
+    expect(await screen.findByTestId('automation-engine-page')).toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { UiIcon } from '../icons';
 import { ConfigSection, ConfigHeaderCount } from '../shared/config/ConfigSection';
+import { AutomationEngineNote } from '../shared/config/AutomationEngineNote';
 import { ConfigEmptyState } from '../shared/config/ConfigEmptyState';
 import { TriggerCard, TriggerCardAction, type TriggerChip } from '../shared/automation/TriggerCard';
 import { TriggerListFilter } from '../shared/automation/TriggerListFilter';
@@ -378,6 +379,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
     <NumberInputScope scope={numberScope}>
       <ConfigSection
         title={t('meshcore.automation.timers.title', 'Timer Triggers')}
+        notice={<AutomationEngineNote />}
         docsUrl="https://meshmonitor.org/features/meshcore#timer-triggers"
         canWrite={canWrite}
         receiveOnly={receiveOnly}
