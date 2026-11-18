@@ -409,7 +409,24 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
   let sent: ReactNode = null;
   // #5636: an empty send that was held back. Nothing would be transmitted.
   const held = p.emptySend === true ? String(p.reason ?? '') : null;
-  if (held !== null) {
+  // The source is over its airtime cutoff right now, so a live run would not
+  // send. One target, or every target of a multi-source action.
+  const airtimeSkips = (Array.isArray(a.resolvedParams) ? a.resolvedParams : [a.resolvedParams])
+    .filter((r): r is Record<string, unknown> =>
+      r != null && typeof r === 'object' && (r as Record<string, unknown>).airtimeCutoff === true);
+  const airtimeNote = airtimeSkips.length > 0
+    ? airtimeSkips.map((r) =>
+        `would be skipped now on ${String(r.sourceId ?? '')}: airtime ${String(r.channelUtilization ?? '?')}% > ${String(r.threshold ?? '?')}%`,
+      ).join('; ')
+    : null;
+  const airtimeAll = airtimeSkips.length > 0
+    && (!Array.isArray(a.resolvedParams) || airtimeSkips.length === a.resolvedParams.length);
+  if (airtimeAll) {
+    headline = `${a.type.replace('action.', '')}: ${airtimeNote}`;
+    // Still show what would go out once the channel clears.
+    const texts = airtimeSkips.map((r) => r.text).filter((t): t is string => typeof t === 'string');
+    if (texts.length > 0) sent = <div className="ae-test-sent">{texts[0]}</div>;
+  } else if (held !== null) {
     const what = a.type === 'action.tapback' ? 'Tapback' : a.type === 'action.notify' ? 'Notify (Apprise)' : 'Send message';
     headline = `${what}: not sent`;
     sent = <div className="ae-test-note">Skipped: {held}.</div>;
@@ -478,6 +495,7 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
   return (
     <div className={`ae-test-action ${a.ok ? '' : 'is-err'}`}>
       <strong>{headline}</strong>
+      {airtimeNote && !airtimeAll && <div className="ae-test-note">Partly sent: {airtimeNote}.</div>}
       {a.error
         ? <span className="ae-test-badge ae-test-badge--err" style={{ marginLeft: '0.4rem' }}>{a.error}</span>
         : <>

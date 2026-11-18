@@ -11,7 +11,7 @@ import { sourceProtocol } from './channelUnify.js';
 import { getCachedSignFlipContext, correctLatLon } from '../signFlipCorrection.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
-import { isMeshCoreManager } from '../../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshtasticManager } from '../../sourceManagerTypes.js';
 import { CHANNEL_DB_OFFSET } from '../../constants/meshtastic.js';
 import { parseHopEmojiOverrides } from '../../../utils/hopEmoji.js';
 import { isOwnNodeNum as isOwnedByAnySource, isOwnPublicKey as isOwnedPubkeyByAnySource, isOwnMeshCoreName as isOwnMeshCoreNameAnySource } from '../../utils/ownNodes.js';
@@ -194,6 +194,19 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         return isOwnedByAnySource(nodeNum);
       } catch {
         return false;
+      }
+    },
+
+    // Airtime cutoff for the Engine: the same verdict the legacy timers use.
+    // Only a Meshtastic TCP manager measures Channel Utilization; every other
+    // source (MeshCore, Reticulum, MQTT, not connected) reads null → fail open.
+    async getAirtimeGate(sourceId) {
+      try {
+        const m = sourceManagerRegistry.getManager(sourceId);
+        if (!m || !isMeshtasticManager(m) || typeof m.getAirtimeGateVerdict !== 'function') return null;
+        return await m.getAirtimeGateVerdict();
+      } catch {
+        return null;
       }
     },
 

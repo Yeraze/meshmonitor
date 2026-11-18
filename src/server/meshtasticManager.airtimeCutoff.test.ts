@@ -113,6 +113,17 @@ describe('MeshtasticManager - airtime cutoff gate', () => {
       expect((await manager.getAirtimeCutoffStatus()).gated).toBe(false);
     });
 
+    it('getAirtimeGateVerdict carries the figures and agrees with the legacy gate and the status', async () => {
+      for (const [util, threshold] of [[null, 30], [42, 30], [30, 30], [99, 0]] as const) {
+        manager.setAutomationAirtimeCutoffThreshold(threshold);
+        manager.localChannelUtilization = util;
+        const verdict = await manager.getAirtimeGateVerdict();
+        expect(verdict).toEqual({ gated: util != null && threshold > 0 && util > threshold, channelUtilization: util, threshold, measuredFrom: 'local' });
+        expect(await manager.isAutomationAirtimeGated()).toBe(verdict.gated);
+        expect((await manager.getAirtimeCutoffStatus()).gated).toBe(verdict.gated);
+      }
+    });
+
     it('does not query neighbours in local mode', async () => {
       manager.localChannelUtilization = 10;
       await manager.isAutomationAirtimeGated();
