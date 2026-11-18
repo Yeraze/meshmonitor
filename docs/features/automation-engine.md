@@ -58,6 +58,9 @@ Key properties:
 - **Cooldown / rate-limit** per automation, or **per node / per source+node** via the trigger's
   [*Cooldown applies to*](/features/automation-engine-reference#cooldown-applies-to), prevents mesh spam, plus a per-run action cap and a loop guard
   so an automation can't runaway-recurse.
+- **Airtime cutoff.** Sends pause on a Meshtastic source whose Channel Utilization is over its
+  [cutoff](/features/automation#airtime-cutoff); the rule's other steps still run. See
+  [Airtime cutoff](/features/automation-engine-reference#airtime-cutoff).
 - **Variables** — a separate management area for user-defined values (constants and runtime
   flags/counters) referenced anywhere as `{{ var.name }}`.
 - **Run log** — every fire is recorded with its per-step outcome for debugging.

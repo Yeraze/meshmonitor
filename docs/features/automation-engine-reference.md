@@ -710,6 +710,42 @@ The rule only ever removes a transmission. It adds no packets and changes no coo
 or self-origin check. **Broadcast a waypoint** and **Request data** are not covered: neither has a
 message body, and a waypoint with no name is still a position worth sending.
 
+### Airtime cutoff {#airtime-cutoff}
+
+Engine rules honor the source's [Cutoff Airtime Utilization Threshold](/features/automation#airtime-cutoff),
+the same verdict that pauses the built-in automations. While a Meshtastic source's Channel
+Utilization is over its threshold (default `30%`), these actions send nothing on that source:
+
+| Held back | Never held back (they send nothing on the mesh) |
+| --- | --- |
+| **Send a message**, **Send a tapback**, **Request data** (every op), **Broadcast a waypoint**, **Trace MeshCore paths on a schedule**, **Reboot the node** with a remote target | **Reboot the node** (local), **Manage the node**, **Send a notification**, **Run a script**, **Enable or disable an automation**, **Turn forwarding on or off**, **Pause**, **Do nothing**, **Set a variable** |
+
+How it behaves:
+
+- **Per target.** Each selected source is checked on its own, so a busy source holds back its send
+  while a quiet one still sends. The run log then says *partly sent* and names the held-back sources.
+- **The run goes on.** A held-back step is logged as *paused: airtime over cutoff* with the reading
+  and the threshold, the later steps still run, and the run counts as completed.
+- **Cooldown and rate limit are given back** when every step that counts was held back (*Do nothing*
+  and *Pause* don't count either way). The rule can then fire again as soon as the channel clears,
+  instead of waiting out a window in which it sent nothing. A run that did anything else (a
+  notification, a script, a send on another source) keeps its stamp.
+- **Run log stays short.** While every send of a rule is held back, the run log stores at most one
+  row per rule every 10 minutes. The live trace still shows every run.
+- **Run now ignores the cutoff.** You asked for the send, so it goes, and the run log adds an
+  *airtime cutoff ignored (Run now)* line with the reading.
+- **Test panel** shows *would be skipped now: airtime X% > Y%* and still shows the text that would
+  be sent.
+- **Only Meshtastic sources have a reading.** MeshCore, Reticulum and MQTT sources are never held
+  back. A Meshtastic source with no reading yet is not held back either.
+- **No per-rule opt-out.** Set the source's threshold to `0` to turn the cutoff off for that source.
+
+A held-back **Broadcast a waypoint** does not use up its 30-minute floor, and a held-back scheduled
+trace path stays due, so each goes out on the next run after the channel clears.
+
+The empty-send rule and the protocol skips (for example a tapback on Reticulum) are checked first; the
+cutoff is only asked about a send that would otherwise go out.
+
 ### Enable or disable an automation
 
 In JSON mode, this action has the type `action.setAutomationEnabled`.
