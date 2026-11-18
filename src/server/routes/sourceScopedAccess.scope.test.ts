@@ -901,6 +901,40 @@ describe('nodes / ignored-nodes / settings / message routes: permission is check
       expect(databaseService.settings.setSourceSetting).not.toHaveBeenCalled();
     });
 
+    /** Let the time sync settings writes reach the real DB, so the route reads them back. */
+    const realTimeSyncWrites = () => {
+      vi.mocked(databaseService.setTimeSyncFilterSettingsAsync).mockRestore();
+      vi.mocked(databaseService.settings.setSourceSetting).mockRestore();
+    };
+
+    it('an interval-only time sync save keeps Time Sync on', async () => {
+      realTimeSyncWrites();
+      const agent = await harness.loginAs(harness.admin);
+      const on = await agent.post('/settings/time-sync-nodes').query({ sourceId: harness.sourceB }).send({ enabled: true, intervalMinutes: 30 });
+      expect(on.status).toBe(200);
+      expect(managerB.setTimeSyncInterval).toHaveBeenLastCalledWith(30);
+
+      const res = await agent.post('/settings/time-sync-nodes').query({ sourceId: harness.sourceB }).send({ intervalMinutes: 60 });
+      expect(res.status).toBe(200);
+      expect(res.body.enabled).toBe(true);
+      expect(managerB.setTimeSyncInterval).toHaveBeenLastCalledWith(60);
+    });
+
+    it('an enabled-only time sync save uses the stored interval, and disabling passes 0', async () => {
+      realTimeSyncWrites();
+      const agent = await harness.loginAs(harness.admin);
+      await agent.post('/settings/time-sync-nodes').query({ sourceId: harness.sourceB }).send({ enabled: false, intervalMinutes: 45 });
+      expect(managerB.setTimeSyncInterval).toHaveBeenLastCalledWith(0);
+
+      await agent.post('/settings/time-sync-nodes').query({ sourceId: harness.sourceB }).send({ enabled: true });
+      expect(managerB.setTimeSyncInterval).toHaveBeenLastCalledWith(45);
+
+      // A filter-only save leaves the scheduler alone.
+      vi.mocked(managerB.setTimeSyncInterval).mockClear();
+      await agent.post('/settings/time-sync-nodes').query({ sourceId: harness.sourceB }).send({ filterEnabled: true });
+      expect(managerB.setTimeSyncInterval).not.toHaveBeenCalled();
+    });
+
     it('409s SOURCE_NOT_CONNECTED on a device route for a permitted source whose radio is offline', async () => {
       await sourceManagerRegistry.removeManager(harness.sourceB);
       await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceB);
