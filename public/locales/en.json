@@ -7457,6 +7457,7 @@
   "unified.send.kind.meshcore": "MeshCore",
   "unified.send.placeholder": "Message #{{channel}} from {{source}}…",
   "unified.send.send_aria": "Send message",
+  "unified.send.no_sender": "No sender available",
   "unified.send.none_can_send": "No node can send on this channel right now.",
   "unified.send.sender_changed": "{{previous}} can no longer send here. Now sending from {{current}}.",
   "unified.send.reason.not_connected": "not connected",

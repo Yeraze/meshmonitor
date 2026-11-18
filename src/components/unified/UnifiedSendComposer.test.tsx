@@ -187,6 +187,20 @@ describe('UnifiedSendComposer', () => {
     expect(box().disabled).toBe(true);
   });
 
+  it('lists a source once when it holds two slots of the same name', async () => {
+    sources = [ref({ channelNumber: 2 }), ref({ channelNumber: 5 })];
+    setup();
+    const select = await picker();
+    expect(Array.from(select.options).filter((o) => o.value === 'a')).toHaveLength(1);
+  });
+
+  it('labels the empty picker when no node can send', async () => {
+    sources = [ref({ canSend: false, sendBlockedReason: 'SOURCE_NOT_CONNECTED' })];
+    setup();
+    const select = await picker();
+    expect(select.options[select.selectedIndex].textContent).toBe('No sender available');
+  });
+
   it('renders nothing when no ref has a live state', async () => {
     sources = [ref({ canSend: false, sendKind: null, sendBlockedReason: 'FORBIDDEN' })];
     const { container } = setup();

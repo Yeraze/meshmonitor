@@ -195,7 +195,10 @@ export default function UnifiedSendComposer({ channelName, draftStore, onSent }:
 
   const maxBytes = kind === 'meshcore' ? meshcoreChannelMaxBytes(nodeName) : MAX_MESSAGE_BYTES;
   const selectId = `unified-send-from-${channelName}`;
-  const listed = [...eligible, ...liveBlocked];
+  // One option per source: a source can hold two slots with the same name.
+  const listed = [...eligible, ...liveBlocked].filter(
+    (r, i, all) => all.findIndex((o) => o.sourceId === r.sourceId) === i,
+  );
 
   return (
     <div className={styles.composer}>
@@ -207,7 +210,11 @@ export default function UnifiedSendComposer({ channelName, draftStore, onSent }:
           value={effective?.sourceId ?? ''}
           onChange={(e) => handlePick(e.target.value)}
         >
-          {!effective && <option value="" disabled />}
+          {!effective && (
+            <option value="" disabled>
+              {t('unified.send.no_sender', 'No sender available')}
+            </option>
+          )}
           {listed.map((r) =>
             r.canSend ? (
               <option key={r.sourceId} value={r.sourceId}>
@@ -246,25 +253,27 @@ export default function UnifiedSendComposer({ channelName, draftStore, onSent }:
           </button>
         </div>
       )}
-      <MessageComposeInput
-        listId="unified-send-mention-list"
-        textareaRef={textareaRef}
-        draftStore={draftStore}
-        mentionCandidates={NO_MENTIONS}
-        homoglyphEnabled={false}
-        placeholder={t('unified.send.placeholder', 'Message #{{channel}} from {{source}}…', {
-          channel: channelName.replace(/^#/, ''),
-          source: effective?.sourceName ?? '',
-        })}
-        disabled={!effective}
-        disabledTitle={t('unified.send.none_can_send', 'No node can send on this channel right now.')}
-        onSend={handleSend}
-        sendAriaLabel={t('unified.send.send_aria', 'Send message')}
-        maxBytes={maxBytes}
-        blockSendOverLimit
-        allowNewlines={kind !== 'meshcore'}
-        sending={mutation.isPending}
-      />
+      <div className="message-input-container">
+        <MessageComposeInput
+          listId="unified-send-mention-list"
+          textareaRef={textareaRef}
+          draftStore={draftStore}
+          mentionCandidates={NO_MENTIONS}
+          homoglyphEnabled={false}
+          placeholder={t('unified.send.placeholder', 'Message #{{channel}} from {{source}}…', {
+            channel: channelName.replace(/^#/, ''),
+            source: effective?.sourceName ?? '',
+          })}
+          disabled={!effective}
+          disabledTitle={t('unified.send.none_can_send', 'No node can send on this channel right now.')}
+          onSend={handleSend}
+          sendAriaLabel={t('unified.send.send_aria', 'Send message')}
+          maxBytes={maxBytes}
+          blockSendOverLimit
+          allowNewlines={kind !== 'meshcore'}
+          sending={mutation.isPending}
+        />
+      </div>
     </div>
   );
 }
