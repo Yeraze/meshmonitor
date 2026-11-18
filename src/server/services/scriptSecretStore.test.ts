@@ -6,7 +6,7 @@
  * Runs against the real `:memory:` DatabaseService singleton (all migrations,
  * so this also exercises migration 240 through the registry).
  */
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import databaseService from '../../services/database.js';
 import {
   ScriptSecretStore,
@@ -156,13 +156,72 @@ describe('scrubScriptSecrets', () => {
   afterAll(() => setScriptSecretsSnapshot(new Map()));
 
   it('masks every stored value, longest first', () => {
-    setScriptSecretsSnapshot(new Map([['A', 'abc'], ['B', 'abcdef']]));
-    expect(scrubScriptSecrets('x abcdef y abc z')).toBe('x *** y *** z');
+    setScriptSecretsSnapshot(new Map([['A', 'abcdefgh'], ['B', 'abcdefghijkl']]));
+    expect(scrubScriptSecrets('x abcdefghijkl y abcdefgh z')).toBe('x *** y *** z');
+  });
+
+  it('leaves values shorter than 8 characters alone', () => {
+    setScriptSecretsSnapshot(new Map([['A', 'abc1234']]));
+    expect(scrubScriptSecrets('abc1234')).toBe('abc1234');
   });
 
   it('passes text through when nothing is stored', () => {
     setScriptSecretsSnapshot(new Map());
     expect(scrubScriptSecrets('abc')).toBe('abc');
     expect(scrubScriptSecrets('')).toBe('');
+  });
+});
+
+describe('ScriptSecretStore hardening', () => {
+  beforeAll(async () => {
+    await databaseService.waitForReady();
+  });
+  beforeEach(async () => {
+    await clearAll();
+    setScriptSecretsSnapshot(new Map());
+  });
+  afterAll(async () => {
+    vi.restoreAllMocks();
+    await clearAll();
+    setScriptSecretsSnapshot(new Map());
+  });
+
+  it('binds the envelope to its name: a row copied to another name does not open', async () => {
+    const store = new ScriptSecretStore(KEY_A, true);
+    await store.set('SOURCE_KEY', VALUE);
+    const [row] = await databaseService.scriptSecrets.getAll();
+    await databaseService.scriptSecrets.upsert('OTHER_KEY', row.encryptedValue);
+    await store.reloadCache();
+    expect(getScriptSecretsSnapshot().get('SOURCE_KEY')).toBe(VALUE);
+    expect(getScriptSecretsSnapshot().has('OTHER_KEY')).toBe(false);
+    const meta = await store.listMetadata();
+    expect(meta.find((m) => m.name === 'OTHER_KEY')?.status).toBe('unreadable');
+    expect(meta.find((m) => m.name === 'SOURCE_KEY')?.status).toBe('ok');
+  });
+
+  it('revokes a deleted secret even when the reload after the delete fails', async () => {
+    const store = new ScriptSecretStore(KEY_A, true);
+    await store.set('GONE_KEY', VALUE);
+    const spy = vi.spyOn(databaseService.scriptSecrets, 'getAll').mockRejectedValueOnce(new Error('db down'));
+    expect(await store.delete('GONE_KEY')).toBe(true);
+    expect(getScriptSecretsSnapshot().has('GONE_KEY')).toBe(false);
+    spy.mockRestore();
+  });
+
+  it('an older reload that finishes last does not overwrite a newer snapshot', async () => {
+    const store = new ScriptSecretStore(KEY_A, true);
+    await store.set('RACE_KEY', VALUE);
+    const stale = await databaseService.scriptSecrets.getAll(); // still holds RACE_KEY
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const spy = vi
+      .spyOn(databaseService.scriptSecrets, 'getAll')
+      .mockImplementationOnce(async () => { await gate; return stale; });
+    const older = store.reloadCache(); // reads the stale rows, slowly
+    spy.mockRestore();
+    expect(await store.delete('RACE_KEY')).toBe(true); // newer reload, no RACE_KEY
+    release();
+    await older;
+    expect(getScriptSecretsSnapshot().has('RACE_KEY')).toBe(false);
   });
 });

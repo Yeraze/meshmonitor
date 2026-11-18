@@ -28,7 +28,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { isReservedScriptSecretName, SCRIPT_SECRET_NAME_PATTERN } from '../utils/scriptRunner.js';
-import { setScriptSecretsSnapshot } from '../utils/scriptSecretsSnapshot.js';
+import { setScriptSecretsSnapshot, removeFromScriptSecretsSnapshot } from '../utils/scriptSecretsSnapshot.js';
 
 const KDF_VERSION = 1;
 const KDF_INFO_AEAD = 'script-secrets-aead-v1';
@@ -98,6 +98,8 @@ export class ScriptSecretStore {
   private readonly aeadKey: Buffer;
   private readonly currentKid: string;
   private readonly _capability: ScriptSecretCapability;
+  /** Bumped by every reload; a reload that finishes after a newer one started is discarded. */
+  private reloadGeneration = 0;
 
   constructor(sessionSecret: string, sessionSecretProvided: boolean) {
     this._capability = sessionSecretProvided
@@ -149,7 +151,7 @@ export class ScriptSecretStore {
     if (!(await repo.exists(name)) && (await repo.count()) >= MAX_SCRIPT_SECRETS) {
       throw new ScriptSecretError('TOO_MANY_SECRETS', `At most ${MAX_SCRIPT_SECRETS} script secrets can be stored`, 400);
     }
-    const result = await repo.upsert(name, JSON.stringify(this.seal(value)));
+    const result = await repo.upsert(name, JSON.stringify(this.seal(name, value)));
     await this.reloadCache();
     return { name, ...result };
   }
@@ -157,6 +159,9 @@ export class ScriptSecretStore {
   /** Delete one secret. Returns false when none had that name. Works without SESSION_SECRET. */
   async delete(name: string): Promise<boolean> {
     const removed = await databaseService.scriptSecrets.delete(name);
+    // Revoke now: if the reload below fails, the old snapshot must not keep
+    // handing the deleted value to scripts.
+    removeFromScriptSecretsSnapshot(name);
     if (removed) await this.reloadCache();
     return removed;
   }
@@ -167,7 +172,8 @@ export class ScriptSecretStore {
     return rows.map((row) => ({
       name: row.name,
       updatedAt: row.updatedAt,
-      status: this.isEnvelopeCurrent(row.encryptedValue) ? 'ok' : 'unreadable',
+      // A full open (≤50 rows), so a corrupt or moved envelope reads as unreadable too.
+      status: this.open(row.name, row.encryptedValue) !== null ? 'ok' : 'unreadable',
     }));
   }
 
@@ -187,6 +193,7 @@ export class ScriptSecretStore {
    * values). On a database error the previous snapshot stays in place.
    */
   async reloadCache(): Promise<void> {
+    const generation = ++this.reloadGeneration;
     let rows;
     try {
       rows = await databaseService.scriptSecrets.getAll();
@@ -194,10 +201,13 @@ export class ScriptSecretStore {
       logger.warn(`[ScriptSecrets] Could not load script secrets; keeping the previous set: ${(error as Error).message}`);
       return;
     }
+    // A newer reload started while this one read the table: its result wins,
+    // so this older read can't bring back a value deleted in between.
+    if (generation !== this.reloadGeneration) return;
     const next = new Map<string, string>();
     const skipped: string[] = [];
     for (const row of rows) {
-      const value = this.open(row.encryptedValue);
+      const value = this.open(row.name, row.encryptedValue);
       if (value === null) skipped.push(row.name);
       else next.set(row.name, value);
     }
@@ -210,9 +220,11 @@ export class ScriptSecretStore {
     }
   }
 
-  private seal(value: string): StoredEnvelope {
+  /** The name is bound as AAD, so an envelope copied onto another row will not open. */
+  private seal(name: string, value: string): StoredEnvelope {
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.aeadKey, iv);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.aeadKey, iv, { authTagLength: 16 });
+    cipher.setAAD(Buffer.from(name, 'utf8'));
     const ct = Buffer.concat([cipher.update(Buffer.from(value, 'utf8')), cipher.final()]);
     return {
       v: KDF_VERSION,
@@ -238,11 +250,14 @@ export class ScriptSecretStore {
   }
 
   /** Plain value, or null when the envelope is foreign, stale or corrupt. */
-  private open(raw: string): string | null {
+  private open(name: string, raw: string): string | null {
     const env = this.parse(raw);
     if (!env || env.v !== KDF_VERSION || env.kid !== this.currentKid) return null;
     try {
-      const decipher = crypto.createDecipheriv('aes-256-gcm', this.aeadKey, Buffer.from(env.iv, 'hex'));
+      const decipher = crypto.createDecipheriv('aes-256-gcm', this.aeadKey, Buffer.from(env.iv, 'hex'), {
+        authTagLength: 16,
+      });
+      decipher.setAAD(Buffer.from(name, 'utf8'));
       decipher.setAuthTag(Buffer.from(env.tag, 'hex'));
       return Buffer.concat([decipher.update(Buffer.from(env.ct, 'hex')), decipher.final()]).toString('utf8');
     } catch {

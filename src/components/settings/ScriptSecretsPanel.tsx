@@ -141,6 +141,7 @@ const ScriptSecretsPanel: React.FC = () => {
           <ul>
             <li>{t('scripts.secrets.warning_any_script', 'Any script uploaded here can read these values and print them, send them over the mesh, or send them to any web server.')}</li>
             <li>{t('scripts.secrets.warning_triggers', 'Users who can edit automations can run existing scripts, and so make them use these secrets.')}</li>
+            <li>{t('scripts.secrets.warning_logs', 'MeshMonitor masks stored values of 8 or more characters in its own logs and in script test output. This is best effort: it misses a value the script encodes, splits or changes.')}</li>
             <li>{t('scripts.secrets.warning_write_only', 'A value cannot be viewed after you save it. Replace it or delete it.')}</li>
             <li>{t('scripts.secrets.warning_session_secret', 'Values are encrypted with a key made from SESSION_SECRET. If SESSION_SECRET changes, enter each value again.')}</li>
           </ul>

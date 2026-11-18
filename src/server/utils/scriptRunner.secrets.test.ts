@@ -82,6 +82,21 @@ describe('buildScriptChildEnv with Script Secrets', () => {
     expect(sanitizeScriptEnv({ PATH: '/usr/bin' }).WEATHER_KEY).toBeUndefined();
   });
 
+  it('reserves shell/loader controls, in any letter case', () => {
+    for (const name of ['SHELLOPTS', 'BASHOPTS', 'PS4', 'GCONV_PATH', 'OPENSSL_CONF', 'OPENSSL_MODULES', 'Path', 'ld_preload', 'pythonpath']) {
+      expect(isReservedScriptSecretName(name), name).toBe(true);
+    }
+    expect(isReservedScriptSecretName('HTTPS_PROXY')).toBe(false);
+    expect(isReservedScriptSecretName('SSL_CERT_FILE')).toBe(false);
+  });
+
+  it('does not add a secret whose name the caller set in another letter case (Windows env)', () => {
+    setScriptSecretsSnapshot(new Map([['COMSPEC', 'evil.exe']]));
+    const env = buildScriptChildEnv({ ComSpec: 'C:\\Windows\\cmd.exe' }, 'sh');
+    expect(env.COMSPEC).toBeUndefined();
+    expect(env.ComSpec).toBe('C:\\Windows\\cmd.exe');
+  });
+
   it('reserves caller families and process basics', () => {
     for (const name of ['PATH', 'HOME', 'MSG_TEXT', 'MM_SOURCE_ID', 'FROM_NODE', 'MESHCORE_SOURCE_ID', 'TIMER_NAME', 'GEOFENCE_ID', 'NODE_ID', 'PYTHONPATH', 'OIDC_CLIENT_SECRET', 'ADMIN_PASSWORD']) {
       expect(isReservedScriptSecretName(name), name).toBe(true);

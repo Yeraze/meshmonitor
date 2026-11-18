@@ -317,7 +317,7 @@ export function parseAutoResponderResponse(
     jsonResp = JSON.parse(rawResp);
   } catch (_) {
     if (jsonExpected) {
-      logger.error(`❌ Auto responder output is not valid JSON: ${rawResp.substring(0, 100)}`);
+      logger.error(`❌ Auto responder output is not valid JSON: ${scrubScriptSecrets(rawResp).substring(0, 100)}`);
       return { json: {}, responses: [] };
     }
     return { json: {}, responses: [rawResp] };
@@ -346,7 +346,7 @@ export function parseAutoResponderResponse(
 
   // Single response format: { "response": "msg" }
   if (typeof obj.response === 'string') {
-    logger.debug(`📥 Auto responder output: ${obj.response.substring(0, 50)}…`);
+    logger.debug(`📥 Auto responder output: ${scrubScriptSecrets(obj.response).substring(0, 50)}…`);
     return { json: obj, responses: [obj.response] };
   }
 

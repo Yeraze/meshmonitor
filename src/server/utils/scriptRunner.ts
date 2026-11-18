@@ -156,6 +156,7 @@ const RESERVED_SECRET_NAMES = new Set<string>([
   // Process basics and interpreter/loader controls
   'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'PWD', 'OLDPWD', 'TMPDIR', 'TMP', 'TEMP', 'TZ', 'LANG',
   'LANGUAGE', 'TERM', 'IFS', 'ENV', 'BASH_ENV', 'HOSTNAME', 'DATA_DIR', 'IS_DESKTOP', 'BASE_URL',
+  'SHELLOPTS', 'BASHOPTS', 'PS4', 'GCONV_PATH', 'OPENSSL_CONF', 'OPENSSL_MODULES',
   // Server secrets the deny filter withholds by exact name
   ...SECRET_ENV_EXACT,
   // Variables set by script callers (auto-responder, geofence, timer, MeshCore
@@ -181,10 +182,14 @@ const RESERVED_SECRET_PREFIXES = [
 /** Shape every Script Secret name must have: an upper-case env var name. */
 export const SCRIPT_SECRET_NAME_PATTERN = /^[A-Z_][A-Z0-9_]{0,63}$/;
 
-/** True when `name` may not be used for a Script Secret. Expects an upper-case name. */
+/**
+ * True when `name` may not be used for a Script Secret. Case-insensitive:
+ * Windows (the desktop build) treats `Path` and `PATH` as one variable.
+ */
 export function isReservedScriptSecretName(name: string): boolean {
-  if (RESERVED_SECRET_NAMES.has(name)) return true;
-  return RESERVED_SECRET_PREFIXES.some((p) => name.startsWith(p));
+  const upper = name.toUpperCase();
+  if (RESERVED_SECRET_NAMES.has(upper)) return true;
+  return RESERVED_SECRET_PREFIXES.some((p) => upper.startsWith(p));
 }
 
 /**
@@ -195,10 +200,12 @@ export function isReservedScriptSecretName(name: string): boolean {
  */
 function scriptSecretEnv(sanitized: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
+  // Case-insensitive, for Windows env keys such as `Path` / `ComSpec`.
+  const presentUpper = new Set(Object.keys(sanitized).map((k) => k.toUpperCase()));
   for (const [name, value] of getScriptSecretsSnapshot()) {
     if (!SCRIPT_SECRET_NAME_PATTERN.test(name)) continue;
     if (isReservedScriptSecretName(name)) continue;
-    if (Object.prototype.hasOwnProperty.call(sanitized, name)) continue;
+    if (presentUpper.has(name.toUpperCase())) continue;
     if (value.includes('\0')) continue;
     out[name] = value;
   }

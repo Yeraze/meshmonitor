@@ -760,6 +760,7 @@ import { MapStyleService } from './services/mapStyleService.js';
 import { createMapStyleRouter } from './routes/mapStyleRoutes.js';
 import { scriptsEndpoint, getScriptsDirectory } from './routes/scriptRoutes.js';
 import { getScriptSecretStore } from './services/scriptSecretStore.js';
+import { describeJsonParseError } from './utils/jsonParseErrorLog.js';
 import { setSystemCallbacks } from './routes/systemRoutes.js';
 import { publicInstanceRedaction } from './middleware/publicInstanceRedaction.js';
 
@@ -953,7 +954,8 @@ configureStaticServing(app);
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   // Handle JSON parsing errors with a helpful message
   if (err instanceof SyntaxError && 'body' in err) {
-    logger.warn('JSON parsing error:', err.message);
+    // Not err.message: it can quote the body (see describeJsonParseError).
+    logger.warn(describeJsonParseError(err));
     return res.status(400).json({
       error: 'Bad Request',
       message: 'Invalid JSON in request body. Please check your JSON syntax.',
