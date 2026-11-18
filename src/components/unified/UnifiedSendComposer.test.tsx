@@ -238,10 +238,11 @@ describe('UnifiedSendComposer', () => {
       createdAt: 1,
       receptions: [],
     };
+    const mcReception = { sourceId: 'c', sourceName: 'Charlie', sourceType: 'meshcore', hopStart: null, hopLimit: null, rxSnr: null, rxRssi: null, rxTime: null, timestamp: 1 };
     const mtTarget = (mode: 'reply' | 'react'): Target => ({ mode, msg: { ...msgBase } });
     const mcTarget = (mode: 'reply' | 'react', refs = ['mc:c:row:1']): Target => ({
       mode,
-      msg: { ...msgBase, packetId: null, meshcoreRowRefs: refs },
+      msg: { ...msgBase, packetId: null, meshcoreRowRefs: refs, receptions: [mcReception] },
     });
     const mcSources = () => [
       ref({ sourceId: 'a', sourceName: 'Alpha' }),
@@ -341,6 +342,17 @@ describe('UnifiedSendComposer', () => {
     it('says so when no node can answer, and disables the box', async () => {
       sources = [ref({})];
       setup(mcTarget('reply'));
+      await picker();
+      expect(screen.getByText('No node here can reply to this message')).toBeTruthy();
+      expect(box().disabled).toBe(true);
+    });
+
+    it('a Reticulum target has no senders and shows the no_sender note', async () => {
+      sources = mcSources();
+      setup({
+        mode: 'reply',
+        msg: { ...msgBase, receptions: [{ ...mcReception, sourceType: 'reticulum' }] },
+      });
       await picker();
       expect(screen.getByText('No node here can reply to this message')).toBeTruthy();
       expect(box().disabled).toBe(true);

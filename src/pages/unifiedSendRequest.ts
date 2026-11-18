@@ -132,7 +132,8 @@ export type TargetMode = 'reply' | 'react';
 export interface SendTarget {
   mode: TargetMode;
   /** Protocol of the parent message. */
-  protocol: 'meshtastic' | 'meshcore';
+  /** `unsupported` (e.g. Reticulum): no node here can answer it. */
+  protocol: 'meshtastic' | 'meshcore' | 'unsupported';
   meshcoreRowRefs?: string[];
 }
 
@@ -144,6 +145,7 @@ export function senderFitsTarget(
   target: SendTarget | null | undefined,
 ): { fits: boolean; reason?: SenderFitReason } {
   if (!target) return { fits: true };
+  if (target.protocol === 'unsupported') return { fits: false };
   if (target.protocol === 'meshtastic') {
     return { fits: ref.sendKind === 'meshtastic' || ref.sendKind === 'mqtt_native' };
   }

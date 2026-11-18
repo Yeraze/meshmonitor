@@ -44,6 +44,7 @@ import {
 import { meshcoreChannelMaxBytes } from '../../utils/meshcoreMessageLimits';
 import { MAX_MESSAGE_BYTES } from '../../server/constants/meshtastic';
 import type { MentionCandidate } from '../../utils/mentions';
+import { sourceTypeMeshProtocol } from '../../utils/meshProtocol';
 import type { UnifiedMessage } from '../../pages/unifiedMessageTypes';
 import styles from './UnifiedSendComposer.module.css';
 
@@ -73,6 +74,11 @@ interface SendVars {
 
 const MC_REPLY_PREFIX_RE = /^@\[[^\]]*\]: /;
 const NO_TAPBACKS: never[] = [];
+
+function targetProtocol(msg: UnifiedMessage): SendTarget['protocol'] {
+  const p = sourceTypeMeshProtocol(msg.receptions[0]?.sourceType);
+  return p === 'meshcore' || p === 'meshtastic' ? p : 'unsupported';
+}
 
 function targetName(msg: UnifiedMessage): string {
   return msg.fromNodeLongName || msg.fromNodeShortName || msg.fromNodeId;
@@ -134,7 +140,7 @@ export default function UnifiedSendComposer({ channelName, draftStore, onSent, t
       target
         ? {
             mode: target.mode,
-            protocol: target.msg.meshcoreRowRefs !== undefined ? 'meshcore' : 'meshtastic',
+            protocol: targetProtocol(target.msg),
             meshcoreRowRefs: target.msg.meshcoreRowRefs,
           }
         : null,
@@ -310,7 +316,7 @@ export default function UnifiedSendComposer({ channelName, draftStore, onSent, t
 
   // MeshCore reply: start the draft with `@[Name]: ` and put the caret after it.
   useEffect(() => {
-    if (!target || target.mode !== 'reply' || target.msg.meshcoreRowRefs === undefined) return;
+    if (!target || target.mode !== 'reply' || targetProtocol(target.msg) !== 'meshcore') return;
     const prefix = meshcoreReplyPrefix(target.msg.fromNodeLongName);
     if (!prefix) return;
     draftStore.set((prev) => prefix + prev.replace(MC_REPLY_PREFIX_RE, ''));
