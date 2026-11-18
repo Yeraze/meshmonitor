@@ -55,6 +55,8 @@ import {
   MeshCoreUnmatchedReaction,
 } from '../components/MeshCore/MeshCoreReactionChips';
 import HopBadge from '../components/unified/HopBadge';
+import UnifiedSendComposer from '../components/unified/UnifiedSendComposer';
+import { createComposeDraftStore, type ComposeDraftStore } from '../contexts/composeDraftStore';
 import { MeshCoreClockOffset } from '../components/MeshCore/MeshCoreClockOffset';
 import { meshcoreClockOffsetMs } from '../utils/meshcoreMessageTime';
 import { messageRowPropsEqual } from '../components/messages/messageRowSupport';
@@ -563,6 +565,25 @@ export default function UnifiedMessagesPage() {
   //     by shifting scrollTop by the exact growth in content height.
   const scrollRef = useRef<HTMLDivElement>(null);
   const wasAtBottomRef = useRef<boolean>(true);
+  // One draft per channel, so text never crosses channels (#3045 P2).
+  const draftStoresRef = useRef(new Map<string, ComposeDraftStore>());
+  const draftStoreFor = (name: string): ComposeDraftStore => {
+    let store = draftStoresRef.current.get(name);
+    if (!store) {
+      store = createComposeDraftStore();
+      draftStoresRef.current.set(name, store);
+    }
+    return store;
+  };
+  const handleSent = useCallback(() => {
+    wasAtBottomRef.current = true;
+  }, []);
+  const showComposer =
+    isAuthenticated &&
+    !publicView.active &&
+    canReadAnyMessages &&
+    !!selectedChannel &&
+    selectedChannel !== ALL_CHANNELS_PARAM;
   const prevStateRef = useRef<{ len: number; firstKey: string; scrollHeight: number }>({
     len: 0,
     firstKey: '',
@@ -783,6 +804,15 @@ export default function UnifiedMessagesPage() {
         })()}
       </div>
       </div>
+
+      {showComposer && (
+        <UnifiedSendComposer
+          key={selectedChannel}
+          channelName={selectedChannel}
+          draftStore={draftStoreFor(selectedChannel)}
+          onSent={handleSent}
+        />
+      )}
 
       {/* ── Reception stats modal ───────────────────────────────────────── */}
       {statsFor && (
