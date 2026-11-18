@@ -92,6 +92,20 @@ Nearly every top-level view has a **source picker** in the header. It controls w
 
 Your picker choice persists per view and per user.
 
+### Sending from Unified Messages
+
+Pick one channel and a send box appears under the message feed. It is not shown on **All Channels**, and only signed-in users see it.
+
+<!-- screenshot: unified-send-composer.png (the orchestrator adds the image) -->
+
+- **Send from** lists the nodes that can send on this channel right now. A node that you may use but that cannot send at the moment (not connected, transmit off, MQTT send turned off) shows greyed out, with the reason. A node you have no permission for does not appear. If every node is greyed out, the box is disabled until one comes back.
+- **One click sends one message from one node**, on that node's own channel. Nothing goes to the other nodes that share the channel name.
+- **MeshMonitor remembers your pick per channel, per browser.** If the remembered node can no longer send, it switches to the first node that can and tells you which one it now uses.
+- **Limits follow the node you chose.** Meshtastic and MQTT nodes allow 200 bytes. A MeshCore node allows less, because its name counts against the packet. Newlines work on Meshtastic and MQTT, not on MeshCore.
+- **Errors keep your text.** If the server says you send too fast, the box shows how long to wait. If a node is not connected or has transmit off, it says so and refreshes the list. MeshMonitor never retries a send for you; press Send again if you want to.
+- **Not here yet:** replies and tapbacks. Use the source's own Messages tab for those.
+
+
 ## Virtual Node
 
 Virtual Node is a MeshMonitor feature that lets mobile Meshtastic and MeshCore apps connect *through* MeshMonitor instead of directly to the node. In 4.0 it is **per-source**.
@@ -200,7 +214,7 @@ Everything that used to be a single global setting is now per-source:
 Two display choices are remembered too:
 
 - **Show MQTT/Bridge Messages** in the Channels view is saved per user and per source. Turning it on for one source leaves the others as they were. MeshMonitor saves it to your account, so it follows you to another browser. Anonymous users keep it in the browser only.
-- **Unified Messages** remembers the channel you last picked in its selector, per browser. It restores that channel on your next visit when the channel still exists, or when you chose **All channels**. If you never pick one, the page chooses as before.
+- **Unified Messages** remembers the channel you last picked in its selector, per browser. It restores that channel on your next visit when the channel still exists, or when you chose **All channels**. If you never pick one, the page chooses as before. It also remembers which node you send from, per channel and per browser.
 
 For global behavior that isn't source-specific (theme, language, map center, push VAPID keys, session policy), use the new **Global Settings** page — the gear icon in the dashboard sidebar footer.
 

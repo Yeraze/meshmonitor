@@ -58,3 +58,4 @@ Hazards found in orientation:
 
 - 2026-11-18: interview done; plan approved.
 - 2026-11-18: P1 implemented (WP1 rate limit + audit, WP2 sender list).
+- 2026-11-18: P2 implemented (send composer, sender picker, per-channel drafts, error handling; no retry).
