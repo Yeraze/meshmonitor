@@ -41,12 +41,26 @@ import databaseService from '../../../services/database.js';
 import { createRouteTestApp, type RouteTestHarness } from '../../test-helpers/routeTestApp.js';
 import actionsRouter from './actions.js';
 import { MeshCoreDeviceType } from '../../meshcoreManager.js';
+import { ManualMeshTxQueue } from '../../services/meshcoreManualTxQueue.js';
 
 const MC = 'wp4a-mc-source';
 const MQ = 'wp4a-mcmqtt-source';
 const PK = 'cd'.repeat(32);
 
-const makeStub = (over: Record<string, unknown> = {}) => ({
+const makeStub = (over: Record<string, unknown> = {}) => {
+  const stub: Record<string, any> = makeBaseStub(over);
+  // Real queue over the stub's floor primitives (#6493).
+  const q = new ManualMeshTxQueue({
+    getLastMeshTxAt: () => stub.getLastMeshTxAt() as number,
+    recordMeshTx: (when?: number) => stub.recordMeshTx(when),
+  });
+  stub.waitForManualMeshTxSlot = (o: Parameters<ManualMeshTxQueue['waitForSlot']>[0]) => q.waitForSlot(o);
+  stub.tryClaimMeshTxSlot = (now?: number, floorMs?: number) => q.tryClaim(now, floorMs);
+  stub.getManualMeshTxStatus = (k: string, r: string) => q.status(k, r);
+  stub.hasManualMeshReservation = () => q.isHeld();
+  return stub as ReturnType<typeof makeBaseStub> & Record<string, any>;
+};
+const makeBaseStub = (over: Record<string, unknown> = {}) => ({
   sourceType: 'meshcore',
   isReceiveOnly: vi.fn(() => false),
   isConnected: vi.fn(() => true),

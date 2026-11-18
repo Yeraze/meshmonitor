@@ -20,6 +20,7 @@ import { PermissionTestHelper } from '../test-helpers/permissionTestHelper.js';
 import { UserTestHelper } from '../test-helpers/userTestHelper.js';
 import { migration as baselineMigration } from '../migrations/001_v37_baseline.js';
 import { migration as sourceIdPermsMigration } from '../migrations/022_add_source_id_to_permissions.js';
+import { ManualMeshTxQueue } from '../services/meshcoreManualTxQueue.js';
 import { migration as passkeysMigration } from '../migrations/207_create_user_passkeys.js';
 
 // Mock dependencies before importing routes
@@ -118,6 +119,19 @@ const meshcoreManager = {
   isReceiveOnly: vi.fn().mockReturnValue(false),
   canTransmit: vi.fn().mockReturnValue(true),
 };
+
+// The manual routes take their TX slot through the real queue (#6493), backed
+// by the stub's own floor primitives.
+const manualTxQueue = new ManualMeshTxQueue({
+  getLastMeshTxAt: () => meshcoreManager.getLastMeshTxAt() as number,
+  recordMeshTx: (when?: number) => meshcoreManager.recordMeshTx(when),
+});
+Object.assign(meshcoreManager, {
+  waitForManualMeshTxSlot: (o: Parameters<ManualMeshTxQueue['waitForSlot']>[0]) => manualTxQueue.waitForSlot(o),
+  tryClaimMeshTxSlot: (now?: number, floorMs?: number) => manualTxQueue.tryClaim(now, floorMs),
+  getManualMeshTxStatus: (k: string, r: string) => manualTxQueue.status(k, r),
+  hasManualMeshReservation: () => manualTxQueue.isHeld(),
+});
 
 vi.mock('../meshcoreManager.js', () => ({
   ConnectionType: {
@@ -1867,7 +1881,7 @@ describe('MeshCore Routes', () => {
       meshcoreManager.getLastMeshTxAt.mockReturnValue(Date.now() - 5_000);
       const res = await authenticatedAgent
         .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/telemetry/poll`)
-        .send({ type: 'status' });
+        .send({ type: 'status', wait: false });
       expect(res.status).toBe(429);
       expect(res.body.retryAfterSecs).toBeGreaterThan(0);
       expect(res.headers['retry-after']).toBeDefined();
@@ -2009,7 +2023,8 @@ describe('MeshCore Routes', () => {
     it('enforces the shared 60s mesh-TX gate with 429 + Retry-After', async () => {
       meshcoreManager.getLastMeshTxAt.mockReturnValue(Date.now() - 5_000);
       const res = await authenticatedAgent
-        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/neighbours/poll`);
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/neighbours/poll`)
+        .send({ wait: false });
       expect(res.status).toBe(429);
       expect(res.body.retryAfterSecs).toBeGreaterThan(0);
       expect(res.headers['retry-after']).toBeDefined();
@@ -2219,7 +2234,8 @@ describe('MeshCore Routes', () => {
     it('enforces the shared 60s mesh-TX gate with 429 + Retry-After', async () => {
       meshcoreManager.getLastMeshTxAt.mockReturnValue(Date.now() - 5_000);
       const res = await authenticatedAgent
-        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`);
+        .post(`/api/sources/test-source/meshcore/nodes/${TS_PUBKEY}/time-sync`)
+        .send({ wait: false });
       expect(res.status).toBe(429);
       expect(res.body.retryAfterSecs).toBeGreaterThan(0);
       expect(res.headers['retry-after']).toBeDefined();

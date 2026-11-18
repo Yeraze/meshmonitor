@@ -307,3 +307,63 @@ describe('fetchNeighbourPages — manual reservation (#6493)', () => {
     expect(stamps).toHaveLength(1);
   });
 });
+
+describe('fetchNeighbourPages — page 1 through the manual queue (#6493)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const slotOpts = { maxPages: 1, orderBy: 0, minIntervalMs: FLOOR };
+
+  it('page 1 uses the queue, reports queued progress, and runs onGranted before the send', async () => {
+    const { m, calls } = fakeManager(table(5));
+    const order: string[] = [];
+    m.waitForManualMeshTxSlot = vi.fn(async () => {
+      order.push('slot');
+      return { kind: 'granted' as const, grantedAt: Date.now(), waitedMs: 1000 };
+    });
+    m.getManualMeshTxStatus = () => ({ position: 2, depth: 2, startsInSecs: 90, action: 'neighbours' });
+    const events: NeighbourFetchProgressEvent[] = [];
+    const r = await fetchNeighbourPages(m, KEY, {
+      ...slotOpts,
+      manualSlot: { ownerKey: 'user:1', requestId: 'req-12345678', onGranted: () => { order.push('granted'); } },
+      onProgress: (e) => events.push(e),
+    });
+    expect(r.outcome).toBe('complete');
+    expect(order).toEqual(['slot', 'granted']);
+    expect(calls).toHaveLength(1);
+    expect(events[0]).toMatchObject({ phase: 'waiting', queued: true, position: 2, waitMs: 90_000 });
+  });
+
+  it('superseded page 1 ends as superseded: no onGranted, no send', async () => {
+    const { m, calls, stamps } = fakeManager(table(5));
+    m.waitForManualMeshTxSlot = async () => ({ kind: 'superseded' as const, by: { action: 'telemetry' } });
+    const onGranted = vi.fn();
+    const r = await fetchNeighbourPages(m, KEY, { ...slotOpts, manualSlot: { ownerKey: 'user:1', onGranted } });
+    expect(r.outcome).toBe('superseded');
+    expect(r.pagesFetched).toBe(0);
+    expect(onGranted).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
+    expect(stamps).toHaveLength(0);
+  });
+
+  it('aborted, unavailable and timeout page 1 send nothing', async () => {
+    for (const [slot, outcome] of [
+      [{ kind: 'aborted' as const }, 'cancelled'],
+      [{ kind: 'unavailable' as const }, 'failed'],
+      [{ kind: 'timeout' as const, retryAfterSecs: 30 }, 'failed'],
+    ] as const) {
+      const { m, calls } = fakeManager(table(5));
+      m.waitForManualMeshTxSlot = async () => slot;
+      const onGranted = vi.fn();
+      const r = await fetchNeighbourPages(m, KEY, { ...slotOpts, manualSlot: { ownerKey: 'user:1', onGranted } });
+      expect(r.outcome).toBe(outcome);
+      expect(onGranted).not.toHaveBeenCalled();
+      expect(calls).toHaveLength(0);
+    }
+  });
+});
