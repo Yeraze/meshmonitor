@@ -802,7 +802,7 @@ Update automation and system settings.
 - See [Automation Documentation](../features/automation.md) for detailed information about each automation feature
 
 ### POST /api/settings/traceroute-interval
-Re-arm a source's Auto Traceroute timer with a new interval, in minutes. `0` turns it off. Pass `?sourceId=<id>` to pick the source; without it, the call targets the primary Meshtastic source. This call does not save the value; save it with `POST /api/settings` (`tracerouteIntervalMinutes`) so it survives a restart.
+Save a source's Auto Traceroute interval, in minutes, and apply it to that source's scheduler. `0` turns it off; otherwise the value must be 3-60 (anything else returns `400 INVALID_INTERVAL`). Pass `?sourceId=<id>` to pick the source; without it, the call targets the primary Meshtastic source. The value is saved as the source's `tracerouteIntervalMinutes`, so it survives a restart. The same interval leaves the schedule alone, and a new one counts from the last auto traceroute, so this call never makes a traceroute go out sooner than one interval after the last.
 
 **Request Body:**
 ```json

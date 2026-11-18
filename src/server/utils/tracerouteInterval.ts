@@ -23,6 +23,24 @@ export function parseTracerouteIntervalMinutes(raw: string | null | undefined): 
   return Number.isNaN(n) ? 0 : n;
 }
 
+/** Smallest non-zero Auto Traceroute interval, in minutes (the UI minimum). */
+export const MIN_TRACEROUTE_INTERVAL_MINUTES = 3;
+
+/** Largest Auto Traceroute interval, in minutes. */
+export const MAX_TRACEROUTE_INTERVAL_MINUTES = 60;
+
+/**
+ * Bring an Auto Traceroute interval into the allowed set: 0 (off) or
+ * 3–60 minutes. 1 or 2 rises to 3, so a value saved below the UI minimum
+ * never sends more often than the UI allows. Returns null for a value that
+ * is not a whole number in 0–60, which callers reject or ignore.
+ */
+export function normalizeTracerouteIntervalMinutes(minutes: number): number | null {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_TRACEROUTE_INTERVAL_MINUTES) return null;
+  if (minutes === 0) return 0;
+  return Math.max(minutes, MIN_TRACEROUTE_INTERVAL_MINUTES);
+}
+
 /**
  * Default row limit for the recent-traceroutes list: enough rows to cover the
  * node window at the configured interval, plus 10% slack, never below

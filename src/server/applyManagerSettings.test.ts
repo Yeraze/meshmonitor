@@ -126,6 +126,15 @@ describe('applyManagerSettings — per-source scheduler bootstrap', () => {
     expect(mgr.setTracerouteInterval).not.toHaveBeenCalled();
   });
 
+  it('raises a stored traceroute interval of 1 or 2 minutes to the 3-minute minimum', async () => {
+    const db = makeDbStub({ 'source:SRC-A:tracerouteIntervalMinutes': '2' });
+    const mgr = makeManagerStub();
+
+    await applyManagerSettings(mgr, 'SRC-A', db);
+
+    expect(mgr.setTracerouteInterval).toHaveBeenCalledWith(3);
+  });
+
   it('allows 0 (disabled) for traceroute interval', async () => {
     const db = makeDbStub({ 'source:SRC-A:tracerouteIntervalMinutes': '0' });
     const mgr = makeManagerStub();

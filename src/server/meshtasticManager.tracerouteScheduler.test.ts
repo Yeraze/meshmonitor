@@ -33,6 +33,7 @@ vi.mock('../services/database.js', () => ({
       // `getSettingForSource(this.sourceId, ...)`.
       getSettingForSource: vi.fn((_sourceId: string, key: string) => mockGetSetting(key)),
       setSettingForSource: vi.fn((_sourceId: string, key: string, value: string) => mockSetSetting(key, value)),
+      setSourceSetting: vi.fn().mockResolvedValue(undefined),
     },
     nodes: {
       getNode: vi.fn().mockResolvedValue(null),
@@ -258,10 +259,10 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
   /**
    * Helper: bind and call startTracerouteScheduler with the given interval
    */
-  function startScheduler(minutes: number) {
+  async function startScheduler(minutes: number) {
     manager.tracerouteIntervalMinutes = minutes;
     const fn = manager['startTracerouteScheduler'].bind(manager);
-    fn();
+    await fn();
   }
 
   describe('Timer leak prevention', () => {
@@ -269,7 +270,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       // Use non-zero jitter for this test to verify the timeout is cleared
       vi.spyOn(Math, 'random').mockReturnValue(0.5);
 
-      startScheduler(2); // 2-minute interval, jitter = 0.5 * 2min = 1 min
+      await startScheduler(2); // 2-minute interval, jitter = 0.5 * 2min = 1 min
 
       // Jitter timeout should be set
       expect(manager.tracerouteJitterTimeout).not.toBeNull();
@@ -277,7 +278,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       // Restart scheduler before jitter fires (simulates settings change)
       // Reset jitter to 0 so second scheduler fires immediately
       vi.spyOn(Math, 'random').mockReturnValue(0);
-      startScheduler(2);
+      await startScheduler(2);
 
       // Fire the immediate timeout (jitter = 0)
       await vi.advanceTimersByTimeAsync(0);
@@ -298,7 +299,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
     it('should not leak intervals when scheduler is restarted multiple times', async () => {
       // Restart scheduler 5 times rapidly (simulates repeated settings changes)
       for (let i = 0; i < 5; i++) {
-        startScheduler(1);
+        await startScheduler(1);
       }
 
       // With jitter=0, the timeout fires immediately
@@ -317,10 +318,10 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       expect(manager.sendTraceroute).toHaveBeenCalledTimes(1);
     });
 
-    it('should clear jitter timeout on disconnect', () => {
+    it('should clear jitter timeout on disconnect', async () => {
       // Use non-zero jitter to keep timeout pending
       vi.spyOn(Math, 'random').mockReturnValue(0.5);
-      startScheduler(1);
+      await startScheduler(1);
 
       expect(manager.tracerouteJitterTimeout).not.toBeNull();
 
@@ -338,7 +339,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       // so the rate limit will trigger
       manager.lastTracerouteSentTime = Date.now();
 
-      startScheduler(1);
+      await startScheduler(1);
 
       // Advance just past 0ms jitter but not past 30 seconds
       await vi.advanceTimersByTimeAsync(10);
@@ -351,7 +352,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       // Set lastTracerouteSentTime to 60 seconds in the past
       manager.lastTracerouteSentTime = Date.now() - 60000;
 
-      startScheduler(1);
+      await startScheduler(1);
 
       // Advance past 0ms jitter
       await vi.advanceTimersByTimeAsync(0);
@@ -363,7 +364,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
     it('should allow first traceroute when lastTracerouteSentTime is 0', async () => {
       manager.lastTracerouteSentTime = 0;
 
-      startScheduler(1);
+      await startScheduler(1);
 
       // Advance past 0ms jitter
       await vi.advanceTimersByTimeAsync(0);
@@ -374,21 +375,21 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
   });
 
   describe('Scheduler disabled', () => {
-    it('should not schedule anything when interval is 0', () => {
-      startScheduler(0);
+    it('should not schedule anything when interval is 0', async () => {
+      await startScheduler(0);
 
       expect(manager.tracerouteJitterTimeout).toBeNull();
       expect(manager.tracerouteInterval).toBeNull();
     });
 
-    it('should clear existing timers when interval is set to 0', () => {
+    it('should clear existing timers when interval is set to 0', async () => {
       vi.spyOn(Math, 'random').mockReturnValue(0.5);
-      startScheduler(1);
+      await startScheduler(1);
 
       expect(manager.tracerouteJitterTimeout).not.toBeNull();
 
       // Disable by setting to 0
-      startScheduler(0);
+      await startScheduler(0);
 
       expect(manager.tracerouteJitterTimeout).toBeNull();
       expect(manager.tracerouteInterval).toBeNull();
@@ -397,7 +398,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
 
   describe('Jitter timeout nullification', () => {
     it('should set tracerouteJitterTimeout to null after timeout fires', async () => {
-      startScheduler(1);
+      await startScheduler(1);
 
       // With jitter=0, timeout fires on next tick
       expect(manager.tracerouteJitterTimeout).not.toBeNull();
@@ -415,7 +416,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       manager.actualDeviceConfig = { lora: { txEnabled: false } };
       manager.lastTracerouteSentTime = 0;
 
-      startScheduler(1);
+      await startScheduler(1);
       await vi.advanceTimersByTimeAsync(0);
 
       expect(manager.sendTraceroute).not.toHaveBeenCalled();
@@ -427,7 +428,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       manager.actualDeviceConfig = { lora: { txEnabled: false } };
       manager.lastTracerouteSentTime = 0;
 
-      startScheduler(1);
+      await startScheduler(1);
       await vi.advanceTimersByTimeAsync(0);
       expect(manager.sendTraceroute).not.toHaveBeenCalled();
 
@@ -443,7 +444,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       manager.actualDeviceConfig = { lora: { txEnabled: true } };
       manager.lastTracerouteSentTime = 0;
 
-      startScheduler(1);
+      await startScheduler(1);
       await vi.advanceTimersByTimeAsync(0);
 
       expect(manager.sendTraceroute).toHaveBeenCalledTimes(1);
@@ -454,7 +455,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       manager.actualDeviceConfig = { lora: { txEnabled: false } };
       manager.lastTracerouteSentTime = 0;
 
-      startScheduler(1);
+      await startScheduler(1);
       await vi.advanceTimersByTimeAsync(0);
       await vi.advanceTimersByTimeAsync(60 * 1000);
       await vi.advanceTimersByTimeAsync(60 * 1000);
