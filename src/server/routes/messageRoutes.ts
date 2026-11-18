@@ -19,6 +19,7 @@ import {
 import type { SourcePermissions } from '../utils/sourceScopedAccess.js';
 import type { ResourceType } from '../../types/permission.js';
 import { optionalAuth, hasPermission } from '../auth/authMiddleware.js';
+import { messageLimiter } from '../middleware/rateLimiters.js';
 import {
   getUserReadableVirtualChannelIds,
   canReadVirtualChannelNumber,
@@ -1689,7 +1690,7 @@ async function firstUnreadFor(viewer: UnreadViewer, sourceId: string | undefined
  * POST /api/messages/send
  * Extracted verbatim from server.ts (was L2664).
  */
-router.post('/send', optionalAuth(), async (req, res) => {
+router.post('/send', messageLimiter, optionalAuth(), async (req, res) => {
   try {
     const { text, channel, destination, replyId, emoji } = req.body;
     if (!text || typeof text !== 'string') {
@@ -1794,6 +1795,33 @@ router.post('/send', optionalAuth(), async (req, res) => {
       sourceIp: req.ip ?? null,
       sourcePath: 'http_api',
     });
+
+    // Audit the send. Never blocks or fails the response: the radio already
+    // transmitted, so a 500 here would invite a retry and a second send.
+    // No message text or length goes in the row.
+    try {
+      databaseService
+        .auditLogAsync(
+          req.user?.id ?? null,
+          'message_sent',
+          'messages',
+          JSON.stringify({
+            sourceId: activeManager.sourceId,
+            kind: destinationNum ? 'dm' : 'channel',
+            channel: meshChannel,
+            destination: destinationNum
+              ? `!${(destinationNum >>> 0).toString(16).padStart(8, '0')}`
+              : null,
+            replyId: replyId ?? null,
+            tapback: emoji === 1,
+            via: 'api',
+          }),
+          req.ip || null
+        )
+        .catch((err: unknown) => logger.error('[Messages] send audit write failed:', err));
+    } catch (err) {
+      logger.error('[Messages] send audit write failed:', err);
+    }
 
     res.json({ success: true });
   } catch (error) {

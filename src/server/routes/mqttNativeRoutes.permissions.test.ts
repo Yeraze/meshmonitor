@@ -15,6 +15,7 @@ import { MQTT_NATIVE_SETTING_KEYS } from '../services/mqttNative/mqttNativeConfi
 import { resetMqttNativeStateForTesting } from '../services/mqttNative/mqttNativeState.js';
 import type { MqttNativeReadiness } from '../services/mqttNative/mqttNativeSendService.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import databaseService from '../../services/database.js';
 
 function fakeMqttManager(sourceId: string) {
   const published: Array<{ topic: string; payload: Buffer }> = [];
@@ -229,6 +230,29 @@ describe('POST /api/sources/:id/mqtt/native/send', () => {
     const res = await admin.post(`/api/sources/${harness.sourceA}/mqtt/native/send`).send(body());
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('READ_ONLY');
+  });
+
+  it('audits a successful channel send once, without the text', async () => {
+    await enableAsAdmin(harness.sourceA);
+    const audit = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined as never);
+    const admin = await harness.loginAs(harness.admin);
+    const res = await admin.post(`/api/sources/${harness.sourceA}/mqtt/native/send`).send(body());
+    expect(res.status).toBe(200);
+    const rows = audit.mock.calls.filter((c) => c[1] === 'mqtt_native_message_sent');
+    expect(rows).toHaveLength(1);
+    expect(rows[0][2]).toBe('messages');
+    expect(JSON.parse(rows[0][3] as string)).toMatchObject({
+      sourceId: harness.sourceA, kind: 'channel', channel: CHANNEL_DB_OFFSET + channelDbId, tapback: false, via: 'api',
+    });
+    expect(rows[0][3]).not.toContain('hi there');
+  });
+
+  it('writes no audit row when the send is refused', async () => {
+    const audit = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined as never);
+    const admin = await harness.loginAs(harness.admin);
+    const res = await admin.post(`/api/sources/${harness.sourceA}/mqtt/native/send`).send(body());
+    expect(res.status).toBe(409);
+    expect(audit.mock.calls.some((c) => c[1] === 'mqtt_native_message_sent')).toBe(false);
   });
 
   it('returns 429 with Retry-After at the cap', async () => {

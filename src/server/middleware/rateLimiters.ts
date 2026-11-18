@@ -150,9 +150,16 @@ export const messageLimiter = rateLimit({
   handler: (req, res) => {
     const ip = req.ip || 'unknown';
     logger.warn(`🚫 Rate limit exceeded for MESSAGES - IP: ${ip}`);
+    const resetHeader = res.getHeader('RateLimit-Reset');
+    const retryAfterSeconds = typeof resetHeader === 'string' || typeof resetHeader === 'number'
+      ? Number(resetHeader) || 60
+      : 60;
+    res.setHeader('Retry-After', retryAfterSeconds);
     res.status(429).json({
       error: 'Too many messages sent, please slow down',
-      retryAfter: '1 minute'
+      code: 'RATE_LIMITED',
+      retryAfter: '1 minute',
+      retryAfterSeconds
     });
   },
   ...rateLimitConfig,
