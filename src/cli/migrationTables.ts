@@ -173,6 +173,9 @@ export const TABLE_ORDER = [
   // brokers that don't verify the signed token. Same one-row-per-source shape
   // as meshcore_observer_keys above.
   'meshcore_observer_credentials',
+  // Global script secrets: names in the clear, values as AES-256-GCM envelopes
+  // keyed from SESSION_SECRET. No FKs.
+  'script_secrets',
   // 6195: per-source encrypted Ed25519 device identity private key for MeshCore
   // Companion sources, used for server-side DM decryption (#6194 echo match).
   // Same one-row-per-source shape as meshcore_observer_keys above.

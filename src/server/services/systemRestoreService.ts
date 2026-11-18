@@ -29,6 +29,7 @@ import { getMeshCoreObserverKeyStore } from './meshcoreObserverKeyStore.js';
 import { getMeshCoreObserverCredentialStore } from './meshcoreObserverCredentialStore.js';
 import { getSourcePkiKeyStore } from './sourcePkiKeyStore.js';
 import { getMeshCoreCredentialStore } from './meshcoreCredentialStore.js';
+import { getScriptSecretStore } from './scriptSecretStore.js';
 import { markRestoreCheckStarted, markRestoreCheckFinished, markRestoredThisBoot } from './restoreBootState.js';
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
@@ -51,6 +52,8 @@ export interface UnreadableSecrets {
   unreadableMqttNativeKeys: string[];
   unreadableObserverCredentials: string[];
   unreadableMeshcoreNodeCredentials: string[];
+  /** Script Secret names (not values). */
+  unreadableScriptSecrets: string[];
 }
 
 interface RestoreResult {
@@ -191,7 +194,13 @@ class SystemRestoreService {
 
       // Phase 4b: say so when a restored key or credential cannot be read
       // under this install's SESSION_SECRET (#5596).
-      const unreadable = await this.findUnreadableSecrets(new Set(planRestoreTables(metadata.tables).tables));
+      const restoredTables = new Set(planRestoreTables(metadata.tables).tables);
+      const unreadable = await this.findUnreadableSecrets(restoredTables);
+
+      // Script Secrets live decrypted in memory; load the restored set.
+      if (restoredTables.has('script_secrets')) {
+        await getScriptSecretStore().reloadCache();
+      }
 
       // Phase 5: Run schema migrations if needed
       if (migrationRequired) {
@@ -281,10 +290,10 @@ class SystemRestoreService {
    * Find restored keys and credentials the current SESSION_SECRET cannot
    * decrypt, and warn about each kind (#5596).
    *
-   * Four things in a backup are AES-256-GCM envelopes keyed from
+   * Several things in a backup are AES-256-GCM envelopes keyed from
    * SESSION_SECRET: Analyzer Observer signing keys, Observer broker
-   * credentials, per-source PKI private keys, and the repeater/room passwords
-   * saved on MeshCore nodes. A backup restored onto an install with a
+   * credentials, per-source PKI private keys and MQTT-native send keys, the
+   * repeater/room passwords saved on MeshCore nodes, and Script Secrets. A backup restored onto an install with a
    * different secret brings the rows back intact but unreadable. Restore does
    * what each store already does for a rotated secret: it KEEPS the row.
    * Nothing is deleted or rewritten, so putting the original SESSION_SECRET
@@ -392,12 +401,24 @@ class SystemRestoreService {
       );
     }
 
+    const unreadableScriptSecrets = await check('script_secrets', 'script secrets', () =>
+      getScriptSecretStore().findUnreadable(),
+    );
+    if (unreadableScriptSecrets.length > 0) {
+      logger.warn(
+        `⚠️  Restored ${unreadableScriptSecrets.length} script secret(s) that the current SESSION_SECRET cannot ` +
+          `decrypt (${unreadableScriptSecrets.join(', ')}). The rows were kept, and scripts do not receive them. ` +
+          'Set SESSION_SECRET to the value the backup was made under, or enter each value again in Settings › Scripts.'
+      );
+    }
+
     return {
       unreadableObserverKeys,
       unreadablePkiKeys,
       unreadableMqttNativeKeys,
       unreadableObserverCredentials,
       unreadableMeshcoreNodeCredentials,
+      unreadableScriptSecrets,
     };
   }
 

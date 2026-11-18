@@ -13,14 +13,14 @@ for complex data operations like looking up nodes, messages, and telemetry.
 
 Requirements:
 - Python 3.6+
-- MM_API_TOKEN environment variable (generate from Settings > API Tokens)
-- MM_API_URL environment variable (defaults to http://localhost:3001/meshmonitor)
+- MM_API_TOKEN Script Secret (generate the token from Settings > API Tokens)
+- MM_API_URL (optional; defaults to http://localhost:3001/meshmonitor)
 
 Setup:
 1. Generate an API token in MeshMonitor: Settings > API Tokens > Generate Token
-2. Add to docker-compose.yaml environment variables:
-   - MM_API_TOKEN=your_api_token_here
-   - MM_API_URL=http://localhost:3001/meshmonitor  # Optional, defaults to localhost
+2. In MeshMonitor: Settings > Scripts > Script Secrets, add MM_API_TOKEN with that token
+   (a docker-compose MM_API_TOKEN never reaches scripts: its name looks like a secret).
+   Optionally add MM_API_URL as a Script Secret or a docker-compose variable.
 3. Copy this script to your scripts directory
 4. Configure trigger in MeshMonitor UI:
    - Trigger Pattern: nodeinfo, nodeinfo {nodeid}
@@ -167,7 +167,7 @@ def main():
         # Check if API token is configured
         if not API_TOKEN:
             output = {
-                "response": "API token not configured. Set MM_API_TOKEN in environment."
+                "response": "API token not configured. Add the MM_API_TOKEN Script Secret (Settings > Scripts)."
             }
             print(json.dumps(output))
             return

@@ -333,6 +333,14 @@ setTimeout(async () => {
     // Wait for database initialization (critical for PostgreSQL/MySQL where repos are async)
     await databaseService.waitForReady();
 
+    // Script Secrets: decrypt into the in-memory snapshot before any source can
+    // fire a script. reloadCache() never throws; the guard is belt and braces.
+    try {
+      await getScriptSecretStore().reloadCache();
+    } catch (error) {
+      logger.error('Failed to load script secrets (continuing boot):', (error as Error).message);
+    }
+
     // #5101 P3 WP3: restore/recover the transport-traffic writer's checkpoints
     // BEFORE any source manager can receive a packet (R10 — a later refactor
     // moving this past bootstrapSources would undercount the recovered bin's
@@ -751,6 +759,8 @@ import { GeoJsonService } from './services/geojsonService.js';
 import { MapStyleService } from './services/mapStyleService.js';
 import { createMapStyleRouter } from './routes/mapStyleRoutes.js';
 import { scriptsEndpoint, getScriptsDirectory } from './routes/scriptRoutes.js';
+import { getScriptSecretStore } from './services/scriptSecretStore.js';
+import { describeJsonParseError } from './utils/jsonParseErrorLog.js';
 import { setSystemCallbacks } from './routes/systemRoutes.js';
 import { publicInstanceRedaction } from './middleware/publicInstanceRedaction.js';
 
@@ -944,7 +954,8 @@ configureStaticServing(app);
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   // Handle JSON parsing errors with a helpful message
   if (err instanceof SyntaxError && 'body' in err) {
-    logger.warn('JSON parsing error:', err.message);
+    // Not err.message: it can quote the body (see describeJsonParseError).
+    logger.warn(describeJsonParseError(err));
     return res.status(400).json({
       error: 'Bad Request',
       message: 'Invalid JSON in request body. Please check your JSON syntax.',

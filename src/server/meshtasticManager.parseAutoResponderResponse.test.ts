@@ -163,3 +163,35 @@ describe('parseAutoResponderResponse', () => {
     expect(result.responses).toEqual([]);
   });
 });
+
+describe('parseAutoResponderResponse masks Script Secrets in its logs', () => {
+  const SECRET = 'sk-live-PARSE-SENTINEL-4242';
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { setScriptSecretsSnapshot } = await import('./utils/scriptSecretsSnapshot.js');
+    setScriptSecretsSnapshot(new Map([['WEATHER_KEY', SECRET]]));
+  });
+  afterEach(async () => {
+    const { setScriptSecretsSnapshot } = await import('./utils/scriptSecretsSnapshot.js');
+    setScriptSecretsSnapshot(new Map());
+  });
+
+  const logged = () =>
+    [logger.error, logger.warn, logger.debug, logger.info]
+      .flatMap((fn) => (fn as unknown as { mock: { calls: unknown[][] } }).mock.calls)
+      .map((args) => args.map(String).join(' '))
+      .join('\n');
+
+  it('does not log a secret printed before invalid JSON', () => {
+    parseAutoResponderResponse(`key=${SECRET} {not json`, true);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/not valid JSON/));
+    expect(logged()).not.toContain(SECRET);
+    expect(logged()).toContain('***');
+  });
+
+  it('does not log a secret inside the response field', () => {
+    parseAutoResponderResponse(JSON.stringify({ response: `${SECRET} weather` }), true);
+    expect(logged()).not.toContain(SECRET);
+  });
+});

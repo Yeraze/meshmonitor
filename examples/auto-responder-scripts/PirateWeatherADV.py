@@ -92,12 +92,13 @@ Location names are resolved via OpenStreetMap Nominatim (free, no API key needed
 
 Requirements:
 - Python 3.6+
-- PIRATE_WEATHER_API_KEY environment variable (get free key at https://pirateweather.net/)
+- PIRATE_WEATHER_API_KEY Script Secret (get free key at https://pirateweather.net/)
 
 Setup:
 1. Get a free API key from https://pirateweather.net/
-2. Add to docker-compose.yaml environment variables:
-   - PIRATE_WEATHER_API_KEY=your_api_key_here
+2. In MeshMonitor: Settings > Scripts > Script Secrets, add PIRATE_WEATHER_API_KEY
+   (a docker-compose variable with this name never reaches scripts).
+   Optionally add to docker-compose.yaml environment variables:
    - LOCAL_LAT=your_latitude      # optional GPS fallback for local node
    - LOCAL_LON=your_longitude     # (MM_LAT / MM_LON also accepted as aliases)
 3. Ensure volume mapping in docker-compose.yaml:

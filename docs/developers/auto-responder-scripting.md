@@ -61,13 +61,13 @@ docker cp hello.js meshmonitor:/data/scripts/
 docker exec meshmonitor chmod +x /data/scripts/hello.js
 ```
 
-**Option C: Docker Compose (for scripts requiring environment variables)**
+**Option C: Docker Compose (mount the scripts folder)**
 
 ::: tip Use the Configurator
 The easiest way to set up scripts volume mounting is using the **[Docker Compose Configurator](/configurator)** - just check "Mount Auto Responder Scripts Directory" under Additional Settings!
 :::
 
-For scripts that need environment variables (e.g., API keys) or easier script management:
+To edit scripts on the host instead of copying them into the container:
 
 ```yaml
 services:
@@ -85,19 +85,18 @@ services:
     environment:
       # Timezone configuration (for timezone-aware scripts)
       - TZ=America/New_York
-
-      # Example: API keys for scripts (e.g., Pirate Weather)
-      - PIRATE_WEATHER_API_KEY=your_api_key_here
-
-      # Other MeshMonitor environment variables
-      - MESHTASTIC_NODE_IP=192.168.1.100
-      - MESHTASTIC_TCP_PORT=4403
+      # Needed to store Script Secrets (API keys); see below.
+      # Put SESSION_SECRET=<output of: openssl rand -hex 32> in a .env file.
+      - SESSION_SECRET=${SESSION_SECRET}
 ```
 
 **Benefits:**
 - **Volume Mapping:** `./scripts:/data/scripts` allows editing scripts locally without copying into container
-- **Environment Variables:** Scripts can access all environment variables via `process.env` (Node.js) or `os.environ` (Python)
 - **Timezone:** Set `TZ` for timezone-aware scripts (see [Timezone Support](#timezone-support))
+
+::: warning API keys don't go in the compose file
+Scripts do **not** see every container variable. MeshMonitor strips any variable whose name looks like a secret (`*API_KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `DATABASE_*` and so on), so an uploaded script can't read the server's own keys. A `PIRATE_WEATHER_API_KEY` set in `environment:` never reaches the script. Store it as a [Script Secret](#script-secrets) instead.
+:::
 
 ### 3. Configure Auto Responder
 
@@ -426,6 +425,31 @@ All scripts receive these environment variables:
 | `PARAM_*` | Extracted parameters | `PARAM_location="miami"` |
 | `MSG_*` | All message fields as individual variables | `MSG_text="weather miami"` |
 | `TZ` | Server timezone (IANA timezone name) | `"America/New_York"` |
+| *your secrets* | Every [Script Secret](#script-secrets), under its own name | `OPENAI_API_KEY="sk-…"` |
+
+### Script Secrets
+
+Store API keys and other values your scripts need in **Settings › Scripts › Script Secrets** (admins only). Each secret reaches every script as an environment variable of the same name:
+
+```python
+import os
+api_key = os.environ.get("PIRATE_WEATHER_API_KEY")
+```
+
+```javascript
+const apiKey = process.env.PIRATE_WEATHER_API_KEY;
+```
+
+How it works:
+
+- **Every script receives every secret.** There is no per-script or per-source scope. Any script uploaded to MeshMonitor can read every stored value, print it, send it over the mesh, or send it to any web server. Only upload scripts you trust.
+- **Users who can edit automations** can point a trigger at an existing script, and so make that script use the secrets, even though they cannot see or change the secrets themselves.
+- **Write only.** After you save a value, no page or API returns it. You can replace or delete it.
+- **Encrypted at rest** with AES-256-GCM, using a key derived from `SESSION_SECRET`. Storing secrets needs `SESSION_SECRET` set in your environment; without it the panel is disabled, since an auto-generated key would change on every restart. If `SESSION_SECRET` changes, each secret shows as **Unreadable**, scripts stop receiving it, and you must enter it again.
+- **Names** are upper-case letters, digits and underscores, up to 64 characters. Names scripts already receive or that control the shell, interpreter or loader are reserved (in any letter case): for example `PATH`, `HOME`, `SHELLOPTS`, `PS4`, `GCONV_PATH`, `OPENSSL_CONF`, `MESSAGE`, `CHANNEL`, `SESSION_SECRET`, and the `MM_` names MeshMonitor sets (`MM_LAT`, `MM_SOURCE_ID`, …), and names starting with `PARAM_`, `MSG_`, `FROM_`, `NODE_`, `MESHCORE_`, `MESHTASTIC_`, `GEOFENCE_`, `TIMER_`, `PYTHON`, `LD_`, `DATABASE_`.
+- A secret never replaces a variable the script would see anyway. At most 50 secrets, each up to 4096 characters.
+- **Logs:** MeshMonitor replaces stored values of 8 or more characters with `***` when it writes script output to its own log, and in the output shown when an admin tests a script. This is **best effort**: it misses a value the script encodes (base64, URL-encoding), splits or changes, and shorter values are not masked. It does not change what a script sends over the mesh.
+- **Backups** include the secrets, still encrypted. A backup restored under a different `SESSION_SECRET` keeps them, but they show as Unreadable until you enter them again. See [System Backup](/features/system-backup#a-backup-is-a-secret).
 
 ### Location Environment Variables
 

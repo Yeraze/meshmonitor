@@ -11,12 +11,13 @@ Supports any location format using OpenStreetMap's free Nominatim geocoding serv
 
 Requirements:
 - Python 3.6+
-- PIRATE_WEATHER_API_KEY environment variable (get free key from https://pirateweather.net/)
+- PIRATE_WEATHER_API_KEY Script Secret (get free key from https://pirateweather.net/)
 
 Setup:
 1. Get API key from https://pirateweather.net/
-2. Add to docker-compose.yaml environment variables:
-   - PIRATE_WEATHER_API_KEY=your_api_key_here
+2. In MeshMonitor: Settings > Scripts > Script Secrets, add PIRATE_WEATHER_API_KEY
+   (a docker-compose variable with this name never reaches scripts: MeshMonitor
+   withholds container variables named like *API_KEY*)
 3. Ensure volume mapping in docker-compose.yaml:
    - ./scripts:/data/scripts
 4. Copy PirateWeather.py to your local ./scripts/ directory (if using volume mount, it will be available in container automatically)
@@ -154,7 +155,7 @@ class WeatherBot:
             if not self.api_key:
                 return {
                     "error": "Pirate Weather API key not configured. "
-                    "Please set PIRATE_WEATHER_API_KEY environment variable."
+                    "Please add the PIRATE_WEATHER_API_KEY Script Secret (Settings > Scripts)."
                 }
 
             # Build API URL
