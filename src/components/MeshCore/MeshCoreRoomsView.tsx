@@ -920,11 +920,12 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               </span>
               {canMute && mute && (
                 <MuteMenu
+                  key={selectedRoom}
                   muted={mute.isDMMuted(selectedRoom)}
                   onMute={(until, allowMentions) => mute.muteDM(selectedRoom, until, allowMentions)}
                   onUnmute={() => mute.unmuteDM(selectedRoom)}
                   mentionOption
-                  allowMentions={roomMuteRule?.allowMentions === true}
+                  allowMentions={mute.isDMMuted(selectedRoom) && roomMuteRule?.allowMentions === true}
                   onAllowMentionsChange={(v) => roomMuteRule && mute.muteDM(selectedRoom, roomMuteRule.muteUntil, v)}
                 />
               )}

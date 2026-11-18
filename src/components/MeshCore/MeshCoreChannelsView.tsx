@@ -1102,11 +1102,12 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         )}
         {canMute && muteSettings && (
           <MuteMenu
+            key={active.id}
             muted={isChannelMuted(active.id)}
             onMute={(until, allowMentions) => muteSettings.muteChannel(active.id, until, allowMentions)}
             onUnmute={() => muteSettings.unmuteChannel(active.id)}
             mentionOption
-            allowMentions={activeMuteRule?.allowMentions === true}
+            allowMentions={isChannelMuted(active.id) && activeMuteRule?.allowMentions === true}
             onAllowMentionsChange={(v) => activeMuteRule && muteSettings.muteChannel(active.id, activeMuteRule.muteUntil, v)}
           />
         )}
