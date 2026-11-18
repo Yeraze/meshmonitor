@@ -541,6 +541,10 @@ You can silence notifications for a specific channel or direct message conversat
 3. Select a mute option (indefinitely, 1 hour, or 1 week)
 4. The DM entry in the sidebar shows a 🔇 indicator while muted
 
+### Mute Except Mentions (MeshCore)
+
+On a MeshCore channel or room, the mute menu has a **Still alert on @mentions** checkbox. Tick it, then pick a duration, to silence the venue but still get an alert when someone writes `@[YourNode]` there. The unread dot and plain message alerts stay hidden. Ticking or unticking it while the venue is muted changes the current mute and keeps its expiry. It only works when **Mentions** is on for that source (see [MeshCore Mentions](#meshcore-mentions)).
+
 ### Unmuting
 
 - **Channel**: Click the 🔇 icon in the channel header and select **Unmute**
@@ -848,7 +852,7 @@ Turn on **Mentions** on a MeshCore source's **Notifications** tab to be alerted 
 - Channel messages and room posts are checked. Direct messages are not.
 - **At most one alert per sender every 5 minutes**, per source. Other senders still get through. The limit is stored, so a restart does not reset it.
 - Your own messages, and senders you have ignored or blocked, never alert.
-- The alert goes to users who have the option on for that source and can read its messages. Channel selection and keyword filters do not apply to it, but a muted channel or room stays silent.
+- The alert goes to users who have the option on for that source and can read its messages. Channel selection and keyword filters do not apply to it. A muted channel or room stays silent unless its mute has **Still alert on @mentions** ticked.
 - A mention and the message notification for the same message arrive as one alert.
 - A MeshCore MQTT source has no node of its own, so it has nothing to mention.
 

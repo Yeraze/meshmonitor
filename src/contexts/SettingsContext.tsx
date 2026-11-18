@@ -61,12 +61,16 @@ export type { IconStyle } from './IconStyleContext';
 export interface MutedChannel {
   channelId: number;
   muteUntil: number | null;
+  /** #6490: MeshCore mention alerts still get through. */
+  allowMentions?: boolean;
 }
 
 /** A per-DM mute rule keyed by remote node UUID. muteUntil = null means indefinite. */
 export interface MutedDM {
   nodeUuid: string;
   muteUntil: number | null;
+  /** #6490: MeshCore mention alerts still get through (rooms). */
+  allowMentions?: boolean;
 }
 
 export type DistanceUnit = 'km' | 'mi';
@@ -300,9 +304,9 @@ interface SettingsContextType {
   setMeshcoreChannelRetryEnabled: (enabled: boolean) => void;
   mutedChannels: MutedChannel[];
   mutedDMs: MutedDM[];
-  muteChannel: (channelId: number, muteUntil: number | null) => Promise<void>;
+  muteChannel: (channelId: number, muteUntil: number | null, allowMentions?: boolean) => Promise<void>;
   unmuteChannel: (channelId: number) => Promise<void>;
-  muteDM: (nodeUuid: string, muteUntil: number | null) => Promise<void>;
+  muteDM: (nodeUuid: string, muteUntil: number | null, allowMentions?: boolean) => Promise<void>;
   unmuteDM: (nodeUuid: string) => Promise<void>;
   isChannelMuted: (channelId: number) => boolean;
   isDMMuted: (nodeUuid: string) => boolean;
@@ -1331,10 +1335,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     });
   }, [sourceId]);
 
-  const muteChannel = useCallback(async (channelId: number, muteUntil: number | null) => {
+  const muteChannel = useCallback(async (channelId: number, muteUntil: number | null, allowMentions?: boolean) => {
     const next = [
       ...mutedChannels.filter(r => r.channelId !== channelId),
-      { channelId, muteUntil },
+      { channelId, muteUntil, ...(allowMentions ? { allowMentions: true } : {}) },
     ];
     setMutedChannels(next);
     try {
@@ -1356,10 +1360,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     }
   }, [mutedChannels, saveMutePreferences]);
 
-  const muteDM = useCallback(async (nodeUuid: string, muteUntil: number | null) => {
+  const muteDM = useCallback(async (nodeUuid: string, muteUntil: number | null, allowMentions?: boolean) => {
     const next = [
       ...mutedDMs.filter(r => r.nodeUuid !== nodeUuid),
-      { nodeUuid, muteUntil },
+      { nodeUuid, muteUntil, ...(allowMentions ? { allowMentions: true } : {}) },
     ];
     setMutedDMs(next);
     try {
@@ -2570,6 +2574,7 @@ export const useOptionalChannelMuteSettings = () => {
   const context = useContext(SettingsContext);
   if (context === undefined) return null;
   return {
+    mutedChannels: context.mutedChannels,
     isChannelMuted: context.isChannelMuted,
     muteChannel: context.muteChannel,
     unmuteChannel: context.unmuteChannel,
@@ -2591,6 +2596,7 @@ export const useOptionalMuteSettings = () => {
     isChannelMuted: context.isChannelMuted,
     muteChannel: context.muteChannel,
     unmuteChannel: context.unmuteChannel,
+    mutedDMs: context.mutedDMs,
     isDMMuted: context.isDMMuted,
     muteDM: context.muteDM,
     unmuteDM: context.unmuteDM,

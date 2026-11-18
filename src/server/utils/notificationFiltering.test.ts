@@ -7,6 +7,7 @@ import {
   applyNodeNamePrefixAsync,
   resolveAppriseTargetAsync,
   resolveNotificationPreferencesAsync,
+  isVenueMuted,
   type NotificationFilterContext,
   type NotificationPreferences,
 } from './notificationFiltering.js';
@@ -820,5 +821,36 @@ describe('resolveAppriseTargetAsync', () => {
     ]);
     const result = await resolveAppriseTargetAsync(1);
     expect(result).toEqual({ urls: ['http://src-a'], prefixWithNodeName: false });
+  });
+});
+
+describe('isVenueMuted — allowMentions (#6490)', () => {
+  const prefs = {
+    mutedChannels: [
+      { channelId: 1, muteUntil: null },
+      { channelId: 2, muteUntil: null, allowMentions: true },
+      { channelId: 3, muteUntil: Date.now() - 1000, allowMentions: true },
+    ],
+    mutedDMs: [
+      { nodeUuid: 'room-a', muteUntil: null },
+      { nodeUuid: 'room-b', muteUntil: null, allowMentions: true },
+    ],
+  };
+
+  it('a plain mute blocks mentions and messages alike', () => {
+    expect(isVenueMuted(prefs, { isDirectMessage: false, channelId: 1 })).toBe(true);
+    expect(isVenueMuted(prefs, { isDirectMessage: false, channelId: 1, isMention: true })).toBe(true);
+    expect(isVenueMuted(prefs, { isDirectMessage: true, muteKey: 'room-a', isMention: true })).toBe(true);
+  });
+
+  it('an allowMentions mute blocks messages but lets mentions through', () => {
+    expect(isVenueMuted(prefs, { isDirectMessage: false, channelId: 2 })).toBe(true);
+    expect(isVenueMuted(prefs, { isDirectMessage: false, channelId: 2, isMention: true })).toBe(false);
+    expect(isVenueMuted(prefs, { isDirectMessage: true, muteKey: 'room-b' })).toBe(true);
+    expect(isVenueMuted(prefs, { isDirectMessage: true, muteKey: 'room-b', isMention: true })).toBe(false);
+  });
+
+  it('an expired rule mutes nothing', () => {
+    expect(isVenueMuted(prefs, { isDirectMessage: false, channelId: 3 })).toBe(false);
   });
 });

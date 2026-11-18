@@ -26,12 +26,16 @@ export type { DbPushSubscription } from '../types.js';
 export interface MutedChannel {
   channelId: number;
   muteUntil: number | null;
+  /** #6490: mention alerts still get through this mute. */
+  allowMentions?: boolean;
 }
 
 /** A single DM mute rule. muteUntil is Unix ms; null = indefinite. */
 export interface MutedDM {
   nodeUuid: string;
   muteUntil: number | null;
+  /** #6490: mention alerts still get through this mute. */
+  allowMentions?: boolean;
 }
 
 /**

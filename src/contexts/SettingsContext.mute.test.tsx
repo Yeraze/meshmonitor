@@ -181,6 +181,19 @@ describe('SettingsContext — per-source mutes (#5487)', () => {
     expect(rows['A'].mutedChannels).toEqual([{ channelId: 1, muteUntil: null }]);
   });
 
+  it('saves allowMentions on a mute rule, and drops it when false (#6490)', async () => {
+    rows['A'] = { mutedChannels: [], mutedDMs: [] };
+    const { ctx } = await renderWith('A', 'meshcore');
+    await waitFor(() => expect(mockApi.get).toHaveBeenCalled());
+
+    await act(async () => { await ctx.current.muteChannel(1, null, true); });
+    expect(mockApi.post.mock.calls[0][1]).toEqual({ sourceId: 'A', mutedChannels: [{ channelId: 1, muteUntil: null, allowMentions: true }] });
+    await act(async () => { await ctx.current.muteChannel(1, 123, false); });
+    expect(mockApi.post.mock.calls[1][1]).toEqual({ sourceId: 'A', mutedChannels: [{ channelId: 1, muteUntil: 123 }] });
+    await act(async () => { await ctx.current.muteDM('room-key', null, true); });
+    expect(mockApi.post.mock.calls[2][1]).toEqual({ sourceId: 'A', mutedDMs: [{ nodeUuid: 'room-key', muteUntil: null, allowMentions: true }] });
+  });
+
   it('reverts the toggle when the save fails', async () => {
     rows['A'] = { mutedChannels: [], mutedDMs: [] };
     const { ctx } = await renderWith('A', 'meshtastic_tcp');
