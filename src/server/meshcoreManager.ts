@@ -10426,6 +10426,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       signal?: AbortSignal;
       onProgress?: (event: NeighboursFetchEvent) => void;
       minIntervalMs?: number;
+      /** Manual fetch: page 1 takes its slot through the manual queue (#6493). */
+      manualSlot?: { ownerKey: string; requestId?: string; onGranted?: (grantedAt: number) => void | Promise<void> };
     },
   ): Promise<NeighboursFetchSummary> {
     const manual = opts.mode === 'manual';
@@ -10436,6 +10438,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       orderBy: manual ? NEIGHBOURS_ORDER_NEWEST : NEIGHBOURS_ORDER_STRONGEST,
       minIntervalMs: opts.minIntervalMs ?? MESH_TX_FLOOR_MS,
       firstSlotReserved: opts.firstSlotReserved,
+      manualSlot: opts.manualSlot && {
+        ...opts.manualSlot,
+        beforeClaim: () => !opts.signal?.aborted && this.isConnected() && !this.isReceiveOnly(),
+      },
       signal: opts.signal,
       onProgress: onProgress
         ? (event) => {
@@ -10448,7 +10454,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         : undefined,
     });
 
-    if (result.outcome === 'cancelled' || result.outcome === 'failed') {
+    if (result.outcome === 'cancelled' || result.outcome === 'failed' || result.outcome === 'superseded') {
       logger.info(
         `[MeshCore:${this.sourceId}] Neighbour fetch for ${keyShort}… ${result.outcome} after ` +
           `${result.pagesFetched} page(s): ${result.neighbours.length} of ${result.total ?? '?'} collected` +
