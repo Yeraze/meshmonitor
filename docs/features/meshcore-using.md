@@ -54,7 +54,7 @@ Each copy you hear back counts on its own, so when two repeaters both relay a po
 
 **Not confirmed** is not proof of loss: the message may have arrived while the acknowledgement was lost on the way back. A room server also sends none when you are not logged in or have read-only access. An acknowledgement that arrives late still turns the mark into the double tick. As with channel posts, no mark says the radio transmitted, and a send the radio refuses adds no message. The marks survive a page reload and a restart. One limit: if MeshMonitor restarts or the radio disconnects while a message is still waiting, the wait is lost, and the message keeps **Sent to radio** with a tooltip saying no acknowledgement is on record.
 
-**Resend** — if no repeater was heard relaying one of your channel posts, a **Resend** button appears next to it 30 seconds after you sent it. Click it and confirm to send the same packet again. The resend carries the original text and the original timestamp, so a repeater that already relayed the first copy drops the resend, and recipients never see the message twice. The resend adds no new message to the stream, and it fires no automations or notifications. If a repeater relays the resend, the heard badge appears on the original message.
+**Resend** — if no repeater was heard relaying one of your channel posts or direct messages, a **Resend** button appears next to it 30 seconds after you sent it. Click it and confirm to send the same packet again. The resend carries the original text and the original timestamp, so a repeater that already relayed the first copy drops the resend, and recipients never see the message twice. The resend adds no new message to the stream, and it fires no automations or notifications. If a repeater relays the resend, the heard badge appears on the original message.
 
 Limits, to protect the mesh:
 
@@ -64,7 +64,9 @@ Limits, to protect the mesh:
 - The button stays hidden while the automatic channel retry is still waiting on that message, and on messages sent before MeshMonitor stored send timestamps (older than this feature).
 - You need **Messages: write** on the source, and the button is hidden while the source is in receive-only mode.
 
-The resend count lives in the database, so restarting MeshMonitor does not reset it. Direct messages don't get this button: they already retry on their own until the recipient acknowledges them.
+The resend count lives in the database, so restarting MeshMonitor does not reset it.
+
+Direct messages already retry on their own while the radio waits for an acknowledgement. Once the recipient acknowledges one (the double tick), it never shows **Resend**. Room posts never get the button.
 
 **Required repeaters.** By default any repeater echo clears the Resend button. In the source's **Settings**, **Required repeaters** lets you pick the direct repeaters (heard on a zero-hop path) that must relay your message. **Match mode** sets the rule: **Any** stops the resend once one of them relays, **All** waits for every one. Leave the list empty for the default. A saved repeater that is no longer direct stays on the list and shows "no longer direct". Sent direct messages show the repeaters heard relaying them in the same heard-by bubble.
 
