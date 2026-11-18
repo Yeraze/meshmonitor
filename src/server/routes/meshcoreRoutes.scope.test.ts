@@ -543,6 +543,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'POST /contacts/import-token': 'write',
     'POST /contacts/import': 'write',
     'GET /contacts/:publicKey/neighbours': 'read-signed-in',
+    // #6493: position/ETA of the caller's own queued manual TX request.
+    'GET /tx-queue/:requestId': 'owner',
     'GET /nodes/:publicKey/telemetry-config': 'read',
     'POST /nodes/:publicKey/telemetry/poll': 'read-signed-in',
     'PATCH /nodes/:publicKey/telemetry-config': 'write',
@@ -816,6 +818,7 @@ describe('guard: every MeshCore route is classified', () => {
       'admin GET /admin/login-progress/:requestId',
       'admin POST /admin/login-cancel',
       'contacts GET /nodes/:publicKey/neighbours/fetch/:requestId',
+      'contacts GET /tx-queue/:requestId',
       'contacts POST /nodes/:publicKey/neighbours/fetch/:requestId/cancel',
     ]);
   });
