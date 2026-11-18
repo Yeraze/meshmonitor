@@ -17,8 +17,13 @@
  * keys) + `meshcoreRequiredRepeaterMode`. Reads fall back to the legacy single
  * `meshcoreRequiredRepeater` via the shared `readRequiredRepeaters` reader, so
  * #6178 setups keep working with no migration; the first save through this UI
- * writes the new keys and clears the legacy one. No airtime impact — this only
- * changes when the (already rate-limited) resend is offered.
+ * writes the new keys and clears the legacy one. The list alone has no airtime
+ * impact: it only changes when the (already rate-limited) resend is offered.
+ *
+ * Auto Resend (#6240, `meshcoreAutoResendEnabled`, default off) makes the
+ * server resend on its own until the rule is met, within the manual Resend
+ * limits (30 s apart, 3 per message, 1 h age). That does cost airtime, so the
+ * toggle carries a warning and is disabled while the list is empty.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -58,6 +63,7 @@ export const MeshCoreRequiredRepeaterSection: React.FC<MeshCoreRequiredRepeaterS
   const sourceUrl = `${baseUrl}/api/settings?sourceId=${encodeURIComponent(sourceId)}`;
   const [selected, setSelected] = useState<string[]>([]);
   const [mode, setMode] = useState<RequiredRepeaterMode>('any');
+  const [autoResend, setAutoResend] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Direct relays only: a relay (repeater / room-server) with a zero-hop cached
@@ -92,6 +98,7 @@ export const MeshCoreRequiredRepeaterSection: React.FC<MeshCoreRequiredRepeaterS
         const { keys, mode: readMode } = readRequiredRepeaters(settings);
         setSelected(keys);
         setMode(readMode);
+        setAutoResend((settings as Record<string, unknown>).meshcoreAutoResendEnabled === 'true');
       } catch {
         // Keep the default (none).
       }
@@ -122,6 +129,21 @@ export const MeshCoreRequiredRepeaterSection: React.FC<MeshCoreRequiredRepeaterS
       showToast(t('meshcore.required_repeater.save_failed', 'Failed to save the required repeater'), 'error');
     }
   }, [selected, mode, csrfFetch, sourceUrl, showToast, t]);
+
+  const changeAutoResend = useCallback(async (next: boolean) => {
+    setAutoResend(next);
+    setSaving(true);
+    const ok = await csrfFetch(sourceUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meshcoreAutoResendEnabled: next ? 'true' : 'false' }),
+    }).then(res => res.ok, () => false);
+    setSaving(false);
+    if (!ok) {
+      setAutoResend(!next);
+      showToast(t('meshcore.required_repeater.auto_resend_save_failed', 'Failed to save Auto Resend'), 'error');
+    }
+  }, [csrfFetch, sourceUrl, showToast, t]);
 
   const toggleKey = useCallback((key: string) => {
     const next = selected.includes(key)
@@ -213,6 +235,25 @@ export const MeshCoreRequiredRepeaterSection: React.FC<MeshCoreRequiredRepeaterS
           'meshcore.required_repeater.list_help',
           'Pick the direct repeaters this source should hear relay a channel message. Until the match mode is met, the message keeps its Resend button. Leave empty to resend as soon as any repeater relays it.',
         )}
+      </p>
+
+      <label>
+        <input
+          type="checkbox"
+          data-testid="meshcore-auto-resend-toggle"
+          checked={autoResend}
+          disabled={saving || selected.length === 0}
+          onChange={e => void changeAutoResend(e.target.checked)}
+        />
+        {' '}{t('meshcore.required_repeater.auto_resend_label', 'Auto Resend until the required repeaters hear it')}
+      </label>
+      <p className="hint" data-testid="meshcore-auto-resend-help">
+        {selected.length === 0
+          ? t('meshcore.required_repeater.auto_resend_needs_list', 'Pick at least one required repeater to use Auto Resend.')
+          : t(
+            'meshcore.required_repeater.auto_resend_help',
+            'Resends this source\'s channel messages and DMs on its own until the match mode is met: 30 seconds apart, at most 3 resends per message (manual resends count too), and only within an hour of sending. Each resend is another flood on the mesh. If a message uses all 3 and the rule is still unmet, Auto Resend pauses for that channel or contact for an hour.',
+          )}
       </p>
     </div>
   );
