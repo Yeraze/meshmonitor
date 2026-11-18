@@ -44,7 +44,7 @@ const READY_THRESHOLD_PCT = 50;
  * silently dropped: if one improves past the threshold, or another sub-threshold
  * language is added, this test fails and a human decides.
  */
-const KNOWN_PARTIAL = ['de', 'fr', 'ru', 'zh_Hans'];  // keep alphabetical — compared order-sensitively (es reached 100% in #6147; zh_Hans dipped below 50% in #6454; fr dipped below 50% with the Unified send keys, #3045)
+const KNOWN_PARTIAL = ['de'];  // keep alphabetical — compared order-sensitively (es reached 100% in #6147; fr, ru and zh_Hans topped up past 50% with machine translations, #3045 follow-up)
 
 /**
  * Every leaf string in a locale object, keyed by dotted path.
