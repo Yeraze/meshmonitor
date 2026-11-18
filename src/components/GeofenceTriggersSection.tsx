@@ -22,6 +22,7 @@ import GeofenceNodeSelector from './GeofenceNodeSelector';
 import ScriptTestModal from './ScriptTestModal';
 import apiService from '../services/api';
 import layout from './AutomationFormLayout.module.css';
+import { AutomationEngineNote } from './shared/config/AutomationEngineNote';
 import {
   GEOFENCE_COOLDOWN_MINUTES_MAX,
   GEOFENCE_INTERVAL_MINUTES_MAX,
@@ -355,6 +356,9 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
           {t('automation.geofence_triggers.description', 'Trigger actions when nodes enter, exit, or remain inside geographic areas')}
         </p>
+        <div style={{ marginLeft: '1.75rem', marginBottom: '1rem' }}>
+          <AutomationEngineNote />
+        </div>
 
         {/* Add/Edit Geofence Trigger Form */}
         <div style={{

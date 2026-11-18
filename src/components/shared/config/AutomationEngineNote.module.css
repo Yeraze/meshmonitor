@@ -1,0 +1,20 @@
+/* AutomationEngineNote — muted one-line pointer to the Automation Engine,
+   styled like ReceiveOnlyNote. */
+.note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text-subtle);
+  font-size: 0.85em;
+  margin: 0.35rem 0;
+}
+
+.link {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.link:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}

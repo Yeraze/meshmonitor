@@ -7,6 +7,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { AutomationEngineNoteContext } from '../shared/config/automationEngineNoteContext';
 import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
 import { MeshCoreAutoAnnounceSection } from './MeshCoreAutoAnnounceSection';
 import { MeshCoreAutoResponderSection } from './MeshCoreAutoResponderSection';
@@ -65,6 +66,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
   const csrfFetch = useCsrfFetch();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission('automation', 'write');
+  const canReadEngine = hasPermission('automations', 'read');
 
   const [settings, setSettings] = useState<PathfindingSettings>(DEFAULTS);
   const [initial, setInitial] = useState<PathfindingSettings>(DEFAULTS);
@@ -167,6 +169,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
   };
 
   return (
+    <AutomationEngineNoteContext.Provider value={canReadEngine}>
     <NumberInputScope scope={numberScope}>
     <div className="meshcore-automations-view" style={{ padding: 'var(--meshcore-pane-padding, 1rem)', overflowY: 'auto', height: '100%', minHeight: 0 }}>
       <h1 style={{ marginBottom: '1.5rem' }}>
@@ -425,5 +428,6 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       </div>
     </div>
     </NumberInputScope>
+    </AutomationEngineNoteContext.Provider>
   );
 };

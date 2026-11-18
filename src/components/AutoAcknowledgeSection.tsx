@@ -19,6 +19,7 @@ import {
 import { hasRE2IncompatibleConstructs } from '../utils/autoAckRegex';
 import { UiIcon } from './icons';
 import { ConfigSection } from './shared/config/ConfigSection';
+import { AutomationEngineNote } from './shared/config/AutomationEngineNote';
 import { ConfigGroup } from './shared/config/ConfigGroup';
 import AutoAckConvertDialog from './autoack/AutoAckConvertDialog';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
@@ -437,6 +438,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     <>
       <ConfigSection
         title={t('automation.auto_ack.title')}
+        notice={<AutomationEngineNote />}
         enabled={localEnabled}
         onEnabledChange={setLocalEnabled}
         enableLabel={t('automation.auto_ack.title')}

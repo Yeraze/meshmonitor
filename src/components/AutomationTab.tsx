@@ -27,6 +27,7 @@ import AutoResponderSection from './AutoResponderSection';
 import ForwardingSection from './forwarding/ForwardingSection';
 import { useSource } from '../contexts/SourceContext';
 import { useAuth } from '../contexts/AuthContext';
+import { AutomationEngineNoteContext } from './shared/config/automationEngineNoteContext';
 import AutoKeyManagementSection from './AutoKeyManagementSection';
 import TimerTriggersSection from './TimerTriggersSection';
 import GeofenceTriggersSection from './GeofenceTriggersSection';
@@ -58,6 +59,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
   // there is no source to check, so fall back to a grant on any source rather
   // than locking every section for non-admins in legacy views.
   const canWrite = hasPermission('automation', 'write', sourceId ? { sourceId } : { anySource: true });
+  const canReadEngine = hasPermission('automations', 'read');
   const forwardingChannels = React.useMemo(
     () => channels.map(c => ({ index: c.id, name: c.displayName || c.name || '' })).sort((a, b) => a.index - b.index),
     [channels],
@@ -131,6 +133,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
   } = useAutomation();
 
   return (
+    <AutomationEngineNoteContext.Provider value={canReadEngine}>
     <SaveBarGroup id="automation">
       <div className={`settings-tab ${sectionNavLayout.shell}`}>
         <SectionNav
@@ -383,6 +386,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
         </div>
       </div>
     </SaveBarGroup>
+    </AutomationEngineNoteContext.Provider>
   );
 };
 

@@ -14,7 +14,8 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, act, waitFor } from '@testing-library/react';
+import { render, screen, within, act, waitFor, fireEvent } from '@testing-library/react';
+import { EngineNoteHarness } from '../test/EngineNoteHarness';
 import userEvent from '@testing-library/user-event';
 import TimerTriggersSection from './TimerTriggersSection';
 import type { TimerTrigger } from './auto-responder/types';
@@ -277,5 +278,11 @@ describe('TimerTriggersSection hybrid workflow (#5812)', () => {
     await user.type(screen.getByRole('searchbox'), 'needle');
     expect(cards()).toHaveLength(1);
     expect(within(cards()[0]).getByText('Needle')).toBeInTheDocument();
+  });
+  it('shows the Automation Engine note, and its link opens the Automation Engine page', async () => {
+    render(<EngineNoteHarness><TimerTriggersSection triggers={SAVED} channels={channels} baseUrl="" onTriggersChange={vi.fn()} /></EngineNoteHarness>);
+    const link = await screen.findByRole('link', { name: /build this in the Automation Engine|automation\.engine_note/i });
+    fireEvent.click(link);
+    expect(await screen.findByTestId('automation-engine-page')).toBeInTheDocument();
   });
 });

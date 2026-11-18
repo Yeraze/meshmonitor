@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { EngineNoteHarness } from '../test/EngineNoteHarness';
 import enTranslations from '../../public/locales/en.json';
 import AutoAnnounceSection from './AutoAnnounceSection';
 import { Channel } from '../types/device';
@@ -174,5 +175,11 @@ describe('AutoAnnounceSection — token insert buttons', () => {
     textarea.setSelectionRange(6, 9);
     fireEvent.click(screen.getByRole('button', { name: '+ {VERSION}' }));
     expect(textarea.value).toBe('Hello {VERSION} world');
+  });
+  it('shows the Automation Engine note, and its link opens the Automation Engine page', async () => {
+    render(<EngineNoteHarness><AutoAnnounceSection {...props} /></EngineNoteHarness>);
+    const link = await screen.findByRole('link', { name: /build this in the Automation Engine|automation\.engine_note/i });
+    fireEvent.click(link);
+    expect(await screen.findByTestId('automation-engine-page')).toBeInTheDocument();
   });
 });

@@ -9,6 +9,7 @@ import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { AutomationEngineNote } from '../shared/config/AutomationEngineNote';
 import { ConfigGroup } from '../shared/config/ConfigGroup';
 import { SplitLongMessagesField } from '../shared/automation/SplitLongMessagesField';
 import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
@@ -273,6 +274,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
     <>
       <ConfigSection
         title={t('meshcore.automation.autoack.title', 'Auto-Acknowledge')}
+        notice={<AutomationEngineNote />}
         enabled={settings.enabled}
         onEnabledChange={(v) => update('enabled', v)}
         enableLabel={t('meshcore.automation.autoack.title', 'Auto-Acknowledge')}
