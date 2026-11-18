@@ -14597,7 +14597,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       try {
         const ok = await dispatch(trimmed, allowSplit);
         if (!ok) {
-          logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script: send failed for "${trimmed.substring(0, 50)}"`);
+          logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script: send failed for "${scrubScriptSecrets(trimmed).substring(0, 50)}"`);
         }
       } catch (err) {
         logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script: send threw: ${(err as Error).message}`);

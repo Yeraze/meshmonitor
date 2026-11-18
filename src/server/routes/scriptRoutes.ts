@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger.js';
 import { dataPath } from '../config/dataDir.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { buildScriptChildEnv } from '../utils/scriptRunner.js';
+import { scrubScriptSecrets } from '../utils/scriptSecretsSnapshot.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { normalizeTriggerPatterns } from '../../utils/autoResponderUtils.js';
 import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
@@ -810,7 +811,8 @@ router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requi
     }
   } catch (error: any) {
     const executionTimeMs = Date.now() - startTime;
-    logger.error('❌ Error testing script:', error);
+    // Message only (scrubbed): an execFile error would quote the script's stderr.
+    logger.error('❌ Error testing script:', scrubScriptSecrets(String(error?.message ?? error)));
     return res.status(500).json({
       success: false,
       error: error.message || 'Internal server error',
