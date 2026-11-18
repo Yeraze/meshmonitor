@@ -200,7 +200,7 @@
           class="text-input"
         />
         <p class="field-help">
-          The IP or hostname of the machine running MeshMonitor, as you type it in the browser.
+          The IP or hostname of the machine running MeshMonitor (no http:// and no port).
           It goes into ALLOWED_ORIGINS; without it, login works only from http://localhost.
         </p>
       </div>
@@ -755,15 +755,25 @@ const accessUrl = computed(() => {
     const protocol = config.value.useHttps ? 'https' : 'http'
     return `${protocol}://${config.value.hostname || 'yourdomain.com'}`
   }
-  return `http://${config.value.serverAddress.trim() || 'localhost'}:${config.value.webPort}`
+  return `http://${serverHost.value || 'localhost'}:${config.value.webPort}`
 })
+
+// The Server Address field, cut down to a bare host in case the user pasted
+// a full URL such as http://192.168.1.50:8080/.
+const serverHost = computed(() =>
+  config.value.serverAddress
+    .trim()
+    .replace(/^[a-z]+:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/:\d+$/, '')
+)
 
 // Origins a browser may load MeshMonitor from when no reverse proxy is in
 // front: localhost, plus the LAN address if the user gave one.
 const directOrigins = computed(() => {
   const port = config.value.webPort
   const origins = [`http://localhost:${port}`]
-  const addr = config.value.serverAddress.trim()
+  const addr = serverHost.value
   if (addr && addr !== 'localhost') {
     origins.push(`http://${addr}:${port}`)
   }
