@@ -284,6 +284,15 @@ export interface LeakHit {
   path: string;
 }
 
+/**
+ * Random per-request values that cannot carry seeded data. The numeric
+ * sentinels (e.g. altitude 2741) are short digit runs, and a 64-hex CSRF token
+ * or a session cookie holds one by chance often enough to fail CI at random.
+ * The key or header name is still scanned; only the random value is skipped.
+ */
+const RANDOM_VALUE_KEYS: ReadonlySet<string> = new Set(['csrfToken']);
+const RANDOM_VALUE_HEADERS: ReadonlySet<string> = new Set(['set-cookie', 'etag']);
+
 function matchLeaf(value: string, path: string, hits: LeakHit[], defs: readonly SentinelDef[]): void {
   for (const def of defs) if (def.re.test(value)) hits.push({ def, path });
 }
@@ -302,6 +311,7 @@ export function scanJson(value: unknown, defs: readonly SentinelDef[] = SENTINEL
   if (typeof value === 'object') {
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       matchLeaf(k, `${path}.<key>`, hits, defs);
+      if (RANDOM_VALUE_KEYS.has(k) && typeof v === 'string') continue;
       scanJson(v, defs, `${path}.${k}`, hits);
     }
   }
@@ -317,6 +327,10 @@ export function scanText(text: string, path: string, defs: readonly SentinelDef[
 export function scanHeaders(headers: Record<string, unknown>, defs: readonly SentinelDef[] = SENTINELS): LeakHit[] {
   const hits: LeakHit[] = [];
   for (const [name, v] of Object.entries(headers)) {
+    if (RANDOM_VALUE_HEADERS.has(name.toLowerCase())) {
+      matchLeaf(name, `header:${name}`, hits, defs);
+      continue;
+    }
     const text = Array.isArray(v) ? v.join(', ') : String(v);
     matchLeaf(`${name}: ${text}`, `header:${name}`, hits, defs);
   }
