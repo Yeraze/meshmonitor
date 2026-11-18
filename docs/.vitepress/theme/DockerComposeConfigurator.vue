@@ -1120,9 +1120,11 @@ const envFile = computed(() => {
 
   // Production session secret - this is the ONLY setting that should be in .env
   if (config.value.deploymentMode !== 'development') {
-    lines.push('# IMPORTANT: Generate a secure session secret!')
-    lines.push('# Run: openssl rand -base64 32')
-    lines.push('SESSION_SECRET=REPLACE_WITH_SECURE_RANDOM_STRING')
+    lines.push('# Session secret. Generate one and uncomment the line below:')
+    lines.push('#   openssl rand -base64 32')
+    lines.push('# Left unset, MeshMonitor picks a random secret at each start')
+    lines.push('# (everyone is signed out on restart). Never use a shared example value.')
+    lines.push('# SESSION_SECRET=')
     lines.push('')
   }
 
