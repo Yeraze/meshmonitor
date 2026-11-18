@@ -73,7 +73,7 @@ import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeof
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
 import { automationTraceBus } from './automationTraceBus.js';
 import { evaluateCondition } from './conditionEvaluator.js';
-import { executeAction, actionStepDetail, type ActionDeps, type SetAutomationEnabledResult } from './actionExecutor.js';
+import { executeAction, actionStepDetail, isAllAirtimeSkipped, type ActionDeps, type SetAutomationEnabledResult } from './actionExecutor.js';
 import {
   type EngineEvalContext,
   type NodeDataProvider,
@@ -120,6 +120,21 @@ interface LoadedAutomation {
  * firehoses, so the same laxness would be a real leak here. (#4399 has since
  * bounded autoAckCooldowns too, with this same exact-expiry-then-trim shape.)
  */
+/**
+ * While every send of a rule is held back by the airtime cutoff, write at most
+ * one run-log row per rule per this window. It bounds log rows only; it is not
+ * a mesh safety timer (nothing is sent during a skip), so it lives in memory.
+ */
+const AIRTIME_SKIP_LOG_INTERVAL_MS = 10 * 60_000;
+
+/** Action types that neither send nor skip: they do not count for or against an all-skipped run. */
+const AIRTIME_NEUTRAL_ACTIONS = new Set(['action.nothing', 'action.delay']);
+
+/** A percent for a log line: one decimal place, '?' when unknown. */
+function roundPct(n: number | null): string {
+  return n == null ? '?' : String(Math.round(n * 10) / 10);
+}
+
 const COOLDOWN_KEYS_MAX = 4096;
 const COOLDOWN_KEYS_TRIM_TO = 2048;
 
@@ -223,11 +238,17 @@ interface BatteryTrendEntry {
  *  this is the subset the live trace ("view logs") streams to the browser. */
 interface FireResult {
   status: 'completed' | 'failed';
+  /**
+   * True when at least one action ran and every one that counts was held back
+   * by the airtime cutoff (action.nothing / action.delay are neutral). The
+   * dispatcher then refunds the rule's cooldown and rate-limit stamp.
+   */
+  allAirtimeSkipped?: boolean;
   conditionResults: Record<string, boolean>;
   actions: Array<{ nodeId: string; ok: boolean; error?: string }>;
   // Looser than EvaluationStep[] so the synthetic engine-error step (outcome
   // 'engine:error', not a StepOutcome) fits; the UI handles unknown outcomes.
-  steps: Array<{ nodeId: string; type: string; outcome: string; error?: string }>;
+  steps: Array<{ nodeId: string; type: string; outcome: string; error?: string; detail?: Record<string, unknown> }>;
 }
 
 /**
@@ -329,6 +350,8 @@ export class AutomationEngineService {
   private lastFired = new Map<string, Map<string, number>>();
   /** automationId → fire timestamps (ms) within the current rate-limit window (#4577 Phase 2). */
   private rateLimitEvents = new Map<string, number[]>();
+  /** Last time an all-airtime-skipped run of each rule wrote a run-log row. */
+  private lastAirtimeRowAt = new Map<string, number>();
   /** automationId → nodeNum → { inside: was the node in the geofence at last check; ts: when last checked (eviction, #4399) }. */
   private geofenceState = new Map<string, Map<number, { inside: boolean; ts: number }>>();
   /** automationId → nodeNum → alarmed (beyond threshold) for left-home re-arm. */
@@ -438,6 +461,7 @@ export class AutomationEngineService {
     // out of the index, so dropping it is unobservable — identical reasoning to
     // the lastFired prune immediately above.
     for (const id of this.rateLimitEvents.keys()) if (!liveIds.has(id)) this.rateLimitEvents.delete(id);
+    for (const id of this.lastAirtimeRowAt.keys()) if (!liveIds.has(id)) this.lastAirtimeRowAt.delete(id);
     // Same prune for geofence baselines (#4399): a deleted/disabled automation's
     // entries are unreachable (checkGeofences only iterates `this.index`), so
     // dropping them is unobservable — unlike evicting a *live* automation's
@@ -610,9 +634,7 @@ export class AutomationEngineService {
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
       return 0;
     }
-    this.markFired(a, gate.key, now);
-    this.markRateLimited(a, now);
-    const fr = await this.fireAutomation(a, ctx, now);
+    const fr = await this.stampAndFire(a, gate.key, ctx, now);
     if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     return 1;
   }
@@ -737,6 +759,53 @@ export class AutomationEngineService {
     if (last == null || now - last >= windowMs) return { ok: true, key };
     const remainingMs = Math.max(0, windowMs - (now - last));
     return { ok: false, reason: `cooldown active — ${Math.ceil(remainingMs / 1000)}s remaining (${label})` };
+  }
+
+  /**
+   * Stamp a fire against the cooldown and rate limit, run it, and give the
+   * stamp back when the airtime cutoff held back every send. A run that sent
+   * nothing must not use up the rule's cooldown or rate budget, or a rule
+   * would go quiet for a whole window after the channel clears. Used by every
+   * non-manual dispatch site; Run Now stamps on its own (it is never held back).
+   */
+  private async stampAndFire(a: LoadedAutomation, key: string, ctx: TriggerContext, now: number): Promise<FireResult> {
+    const prevCooldown = this.lastFired.get(a.id)?.get(key);
+    this.markFired(a, key, now);
+    this.markRateLimited(a, now);
+    const fr = await this.fireAutomation(a, ctx, now);
+    if (fr.allAirtimeSkipped) this.refundFire(a, key, now, prevCooldown);
+    return fr;
+  }
+
+  /**
+   * Undo one {@link markFired} + {@link markRateLimited} pair, in memory and
+   * on disk. Touches only state this fire wrote: the cooldown key is restored
+   * only while it still holds `now` (a later fire's stamp wins), and exactly
+   * one `now` entry leaves the rate window (same-millisecond fires exist).
+   */
+  private refundFire(a: LoadedAutomation, key: string, now: number, prevCooldown: number | undefined): void {
+    if (a.cooldownSeconds > 0) {
+      const inner = this.lastFired.get(a.id);
+      if (inner && inner.get(key) === now) {
+        if (prevCooldown == null) {
+          inner.delete(key);
+          this.persistFireState(`cooldown refund for "${a.name}"`, (repo) => repo.deleteCooldown(a.id, key));
+        } else {
+          inner.set(key, prevCooldown);
+          this.persistFireState(`cooldown refund for "${a.name}"`, (repo) => repo.upsertCooldown(a.id, key, prevCooldown));
+        }
+      }
+    }
+    if (a.rateLimit) {
+      const events = this.rateLimitEvents.get(a.id);
+      const i = events ? events.lastIndexOf(now) : -1;
+      if (events && i >= 0) {
+        events.splice(i, 1);
+        const snapshot = [...events];
+        this.persistFireState(`rate limit refund for "${a.name}"`, (repo) => repo.upsertRateEvents(a.id, snapshot));
+      }
+    }
+    logger.debug(`[AutomationEngine] "${a.name}": airtime cutoff held back every send; cooldown and rate limit not used`);
   }
 
   /** Stamp a fire against its cooldown key, bounding the per-automation key set. */
@@ -999,10 +1068,8 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
         continue;
       }
-      this.markFired(a, gate.key, now);
-      this.markRateLimited(a, now);
       fired++;
-      const fr = await this.fireAutomation(a, ctx, now);
+      const fr = await this.stampAndFire(a, gate.key, ctx, now);
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     }
     return fired;
@@ -1046,6 +1113,7 @@ export class AutomationEngineService {
       varCtx: varContextFromTrigger(ctx),
       now,
       automationId: a.id,
+      manual: opts.manual === true,
       // #5636: this run's own step outputs. A new Map per call, reachable only
       // through evalCtx, so concurrent runs of one automation cannot see each
       // other's, and it is freed with evalCtx when this method returns.
@@ -1059,20 +1127,52 @@ export class AutomationEngineService {
       // Now is always logged.
       const idleTick = !opts.manual && !anyFailed && result.actions.length > 0
         && (evalCtx.idleActions ?? 0) === result.actions.length;
-      if (!idleTick) {
+      const airtimeOutcome = this.airtimeOutcome(a, result.actions);
+      const allAirtimeSkipped = !opts.manual && airtimeOutcome === 'allSkipped';
+      // While the cutoff holds every send back, a busy rule would write a row
+      // per event; keep one per rule per AIRTIME_SKIP_LOG_INTERVAL_MS. The live
+      // trace still shows every run.
+      let airtimeThrottled = false;
+      if (allAirtimeSkipped) {
+        const last = this.lastAirtimeRowAt.get(a.id);
+        const t = this.now();
+        if (last != null && t - last < AIRTIME_SKIP_LOG_INTERVAL_MS) airtimeThrottled = true;
+        else this.lastAirtimeRowAt.set(a.id, t);
+      } else if (airtimeOutcome === 'didSomething') {
+        // Only a run that did something re-opens the window; a run where no
+        // action ran (a condition was false) says nothing about the channel.
+        this.lastAirtimeRowAt.delete(a.id);
+      }
+      // A manual run that ignored the cutoff says so in its log.
+      const steps: FireResult['steps'] = [...result.steps];
+      for (const b of evalCtx.airtimeBypassed ?? []) {
+        steps.push({
+          nodeId: a.id,
+          type: 'engine',
+          outcome: 'airtime:bypassed',
+          detail: {
+            sourceId: b.sourceId,
+            channelUtilization: b.channelUtilization,
+            threshold: b.threshold,
+            reason: `Run now ignored the airtime cutoff on ${b.sourceId} (channel utilization ${roundPct(b.channelUtilization)}% is over the ${roundPct(b.threshold)}% cutoff)`,
+          },
+        });
+      }
+      if (!idleTick && !airtimeThrottled) {
         await this.automationsRepo.createRun({
           automationId: a.id,
           sourceId: ctx.sourceId,
           status: anyFailed ? 'failed' : 'completed',
           triggerEvent: JSON.stringify(ctx.fields),
-          log: JSON.stringify(result.steps),
+          log: JSON.stringify(steps),
         });
       }
       return {
         status: anyFailed ? 'failed' : 'completed',
         conditionResults: result.conditionResults,
         actions: result.actions.map((x) => ({ nodeId: x.nodeId, ok: x.ok, error: x.error })),
-        steps: result.steps,
+        steps,
+        ...(allAirtimeSkipped ? { allAirtimeSkipped: true } : {}),
       };
     } catch (e: any) {
       logger.error(`[AutomationEngine] automation "${a.name}" threw: ${e?.message}`);
@@ -1094,6 +1194,28 @@ export class AutomationEngineService {
       // context is collected (#5636). They can be up to 64 KiB each.
       evalCtx.stepOutputs?.clear();
     }
+  }
+
+  /**
+   * What the airtime cutoff made of one run:
+   *  - 'allSkipped': at least one counting action ran and every one was held
+   *    back by the cutoff;
+   *  - 'didSomething': a counting action failed, was skipped for another
+   *    reason, or sent on at least one target — the rule keeps its stamp;
+   *  - 'none': no counting action ran (action.nothing / action.delay are neutral).
+   */
+  private airtimeOutcome(
+    a: LoadedAutomation,
+    actions: Array<{ nodeId: string; ok: boolean; value?: unknown }>,
+  ): 'allSkipped' | 'didSomething' | 'none' {
+    const typeOf = new Map(a.graph.nodes.map((n) => [n.id, String(n.type)]));
+    let counted = 0;
+    for (const x of actions) {
+      if (AIRTIME_NEUTRAL_ACTIONS.has(typeOf.get(x.nodeId) ?? '')) continue;
+      if (!x.ok || !isAllAirtimeSkipped(x.value)) return 'didSomething';
+      counted++;
+    }
+    return counted > 0 ? 'allSkipped' : 'none';
   }
 
   // ─── self-origin guard (#3914) ──────────────────────────────────────────
@@ -1645,10 +1767,8 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'ratelimited', reason: rateGate.reason });
         continue;
       }
-      this.markFired(a, gate.key, now);
-      this.markRateLimited(a, now);
       fired++;
-      const fr = await this.fireAutomation(a, geoCtx, now);
+      const fr = await this.stampAndFire(a, gate.key, geoCtx, now);
       if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     }
     return fired;
@@ -1696,10 +1816,8 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
         continue;
       }
-      this.markFired(a, gate.key, now);
-      this.markRateLimited(a, now);
       fired++;
-      const fr = await this.fireAutomation(a, ctx, now);
+      const fr = await this.stampAndFire(a, gate.key, ctx, now);
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     }
     return fired;
@@ -1828,10 +1946,8 @@ export class AutomationEngineService {
       if (!inner) { inner = new Map(); this.leftHomeAlarmed.set(a.id, inner); }
       inner.set(nodeNum, true);
 
-      this.markFired(a, gate.key, now);
-      this.markRateLimited(a, now);
       fired++;
-      const fr = await this.fireAutomation(a, ctx, now);
+      const fr = await this.stampAndFire(a, gate.key, ctx, now);
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     }
     return fired;
@@ -1880,9 +1996,7 @@ export class AutomationEngineService {
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'ratelimited', reason: rateGate.reason });
       return 0;
     }
-    this.markFired(a, gate.key, now);
-    this.markRateLimited(a, now);
-    const fr = await this.fireAutomation(a, ctx, now);
+    const fr = await this.stampAndFire(a, gate.key, ctx, now);
     if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     return 1;
   }

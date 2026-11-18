@@ -195,6 +195,24 @@ export interface NodeDataProvider {
     publicKey: string,
     sinceMs: number,
   ): Promise<Array<{ timestamp: number; value: number }>>;
+  /**
+   * The source's airtime-cutoff verdict (the same one the legacy timers use).
+   * Only Meshtastic sources measure Channel Utilization; MeshCore, Reticulum,
+   * MQTT and unknown sources resolve null, and the executor treats null or a
+   * throw as "not gated" (fail open). Optional; absent → never gated.
+   */
+  getAirtimeGate?(sourceId: string): Promise<AirtimeGateVerdict | null>;
+}
+
+/** Airtime-cutoff verdict for one source (see {@link NodeDataProvider.getAirtimeGate}). */
+export interface AirtimeGateVerdict {
+  gated: boolean;
+  /** Effective Channel Utilization percent, or null when unknown. */
+  channelUtilization: number | null;
+  /** Cutoff percent; 0 = feature off. */
+  threshold: number;
+  /** 'local' or 'neighbors'. */
+  measuredFrom?: string;
 }
 
 export interface EngineEvalContext {
@@ -224,6 +242,18 @@ export interface EngineEvalContext {
    * engine writes no run-log row, so a one-minute tick does not fill the log.
    */
   idleActions?: number;
+  /**
+   * True for a user's "Run now" (manual) run. Manual runs bypass the airtime
+   * cutoff (the user asked for this send) and say so in the run log.
+   */
+  manual?: boolean;
+  /** True in the simulator (Test panel). An airtime skip then keeps the rendered text. */
+  dryRun?: boolean;
+  /**
+   * Sources whose airtime cutoff a manual run ignored, with the figures, so the
+   * run log can say so. Filled by the executor; read by the engine.
+   */
+  airtimeBypassed?: Array<{ sourceId: string; channelUtilization: number | null; threshold: number }>;
   /** internal memo for the hydrated subject node (do not set directly). */
   __nodeP?: Promise<NodeFacts | null>;
 }

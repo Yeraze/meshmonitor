@@ -18,7 +18,8 @@ import {
   stepOutputNameOf,
 } from '../../../types/automation.js';
 import { parseHopLimitOverride } from '../../../utils/hopLimitOverride.js';
-import { type EngineEvalContext, interpolateAsync, resolveOperand, capStepOutput } from './engineContext.js';
+import { type EngineEvalContext, type AirtimeGateVerdict, interpolateAsync, resolveOperand, capStepOutput } from './engineContext.js';
+import { logger } from '../../../utils/logger.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { hopCountEmoji } from '../../../utils/hopEmoji.js';
 import { tokenizeArgv } from '../../utils/argvTokenizer.js';
@@ -185,6 +186,10 @@ export interface SetAutomationEnabledResult {
  */
 export function actionStepDetail(node: AutomationNode, value: unknown): Record<string, unknown> | undefined {
   if (value == null || typeof value !== 'object') return undefined;
+  // Airtime cutoff: say what was held back and why. Whitelisted fields only —
+  // a dry-run skip carries the rendered text, which must not reach the run log.
+  const airtime = airtimeStepDetail(value);
+  if (airtime) return airtime;
   const v = value as Record<string, unknown>;
   // #5636: an empty send that was held back, with why.
   if (v.emptySend === true && typeof v.reason === 'string') return { skipped: true, reason: v.reason };
@@ -199,6 +204,34 @@ export function actionStepDetail(node: AutomationNode, value: unknown): Record<s
   }
   if (node.type !== 'action.setAutomationEnabled') return undefined;
   return { automationId: v.automationId, name: v.name, mode: v.mode, enabled: v.enabled, previous: v.previous };
+}
+
+/**
+ * Run-log detail for an airtime-cutoff skip: one skip, an all-skipped array
+ * (`sourceIds` lists every held-back source), or a partial array where some
+ * targets sent (`partial: true`, `airtimeSkipped` lists the held-back ones).
+ * Undefined when the cutoff played no part.
+ */
+function airtimeStepDetail(value: unknown): Record<string, unknown> | undefined {
+  const pick = (k: AirtimeSkip) => ({
+    skipped: true, airtimeCutoff: true, sourceId: k.sourceId,
+    channelUtilization: k.channelUtilization, threshold: k.threshold, reason: k.reason,
+  });
+  if (!Array.isArray(value)) return isAirtimeSkip(value) ? pick(value) : undefined;
+  const skips = value.filter(isAirtimeSkip);
+  if (skips.length === 0) return undefined;
+  const sids = [...new Set(skips.map((k) => k.sourceId))];
+  if (skips.length === value.length) {
+    return sids.length === 1 && skips.length === 1
+      ? pick(skips[0])
+      : { skipped: true, airtimeCutoff: true, sourceIds: sids, reason: `airtime cutoff held back every send (${sids.join(', ')}): ${skips[0].reason}` };
+  }
+  return {
+    partial: true,
+    airtimeCutoff: true,
+    airtimeSkipped: sids,
+    reason: `partly sent: the airtime cutoff held back ${skips.length} of ${value.length} sends (${sids.join(', ')})`,
+  };
 }
 
 /**
@@ -298,6 +331,95 @@ async function pushOrSkipTxDisabled<T>(results: unknown[], fn: () => Promise<T>)
     }
     throw error;
   }
+}
+
+/** What an action records when the airtime cutoff held its send back. */
+export interface AirtimeSkip {
+  skipped: true;
+  airtimeCutoff: true;
+  sourceId: string;
+  channelUtilization: number | null;
+  threshold: number;
+  reason: string;
+  /** Dry run only: the text that would have been sent, for the Test panel. */
+  text?: string;
+}
+
+/** True for a result the airtime cutoff produced. The one test every caller shares. */
+export function isAirtimeSkip(v: unknown): v is AirtimeSkip {
+  return v != null && typeof v === 'object' && (v as { airtimeCutoff?: unknown }).airtimeCutoff === true
+    && (v as { skipped?: unknown }).skipped === true;
+}
+
+/**
+ * True when an action's result is airtime skips only: one skip, or an array
+ * of results that are all skips. A mixed array (some sent, some skipped)
+ * is not, so the rule's cooldown keeps its stamp.
+ */
+export function isAllAirtimeSkipped(v: unknown): boolean {
+  if (Array.isArray(v)) return v.length > 0 && v.every(isAirtimeSkip);
+  return isAirtimeSkip(v);
+}
+
+function pct(n: number | null): string {
+  return n == null ? '?' : String(Math.round(n * 10) / 10);
+}
+
+/**
+ * Ask the source's airtime cutoff whether this send may go. Returns the skip
+ * to record, or null to send. Fails open: no provider hook, a null verdict
+ * (MeshCore / Reticulum / MQTT / not connected) or a throw all send.
+ *
+ * A manual "Run now" ignores the cutoff — the user asked for this send — but
+ * still asks, so the run log can say the cutoff was bypassed.
+ */
+async function airtimeGate(ctx: EngineEvalContext, sid: string | null): Promise<AirtimeSkip | null> {
+  if (!sid || !ctx.data.getAirtimeGate) return null;
+  let verdict: AirtimeGateVerdict | null;
+  try {
+    verdict = await ctx.data.getAirtimeGate(sid);
+  } catch {
+    return null;
+  }
+  if (!verdict || !verdict.gated) return null;
+  const figures = `channel utilization ${pct(verdict.channelUtilization)}% is over the ${pct(verdict.threshold)}% cutoff`;
+  if (ctx.manual) {
+    const bypassed = ctx.airtimeBypassed ?? (ctx.airtimeBypassed = []);
+    if (!bypassed.some((b) => b.sourceId === sid)) {
+      bypassed.push({ sourceId: sid, channelUtilization: verdict.channelUtilization, threshold: verdict.threshold });
+    }
+    logger.info(`[AutomationEngine] Run now ignored the airtime cutoff on ${sid}: ${figures}`);
+    return null;
+  }
+  return {
+    skipped: true,
+    airtimeCutoff: true,
+    sourceId: sid,
+    channelUtilization: verdict.channelUtilization,
+    threshold: verdict.threshold,
+    reason: `airtime cutoff: ${figures}, so nothing was sent`,
+  };
+}
+
+/**
+ * {@link pushOrSkipTxDisabled} behind the airtime cutoff: when the source is
+ * over its cutoff the dep is never called and an {@link AirtimeSkip} is
+ * recorded instead. Checked per target, so one busy source does not hold
+ * back a quiet one. `extra` rides on the skip (the dry run's rendered text).
+ */
+async function pushOrSkipMesh<T>(
+  results: unknown[],
+  ctx: EngineEvalContext,
+  sid: string | null,
+  fn: () => Promise<T>,
+  extra?: { text?: string },
+): Promise<void> {
+  const skip = await airtimeGate(ctx, sid);
+  if (skip) {
+    results.push(ctx.dryRun && extra?.text != null ? { ...skip, text: extra.text } : skip);
+    return;
+  }
+  await pushOrSkipTxDisabled(results, fn);
 }
 
 /**
@@ -534,7 +656,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
             && typeof triggerHash === 'string' && triggerHash.length > 0
             ? { replyToHash: triggerHash }
             : {};
-          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination: to, ...replyToHashArg }));
+          await pushOrSkipMesh(results, ctx, sid, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination: to, ...replyToHashArg }), { text });
           continue;
         }
 
@@ -553,7 +675,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           // unknown), so the chosen scope governs a DM's propagation just as it does
           // a channel broadcast — dropping it forced DMs onto the source default.
           // 'inherit' still leaves scopeArg empty, so DMs default as before.
-          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...splitArg, ...attemptsArg, ...hopLimitArg }));
+          await pushOrSkipMesh(results, ctx, sid, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...splitArg, ...attemptsArg, ...hopLimitArg }), { text });
           continue;
         }
         const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
@@ -561,7 +683,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
           const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
           if (!match) continue; // channel not present on this source
-          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg, ...splitArg, ...attemptsArg, ...hopLimitArg }));
+          await pushOrSkipMesh(results, ctx, sid, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg, ...splitArg, ...attemptsArg, ...hopLimitArg }), { text });
         }
       }
 
@@ -625,7 +747,9 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const hopLimit = parseHopLimitOverride(p.hopLimit) ?? null;
 
       const results: unknown[] = [];
-      await pushOrSkipTxDisabled(results, () => deps.broadcastWaypoint({
+      // Airtime gate BEFORE the dep: the dep stamps the 30-minute floor, and a
+      // skipped send must not use it up.
+      await pushOrSkipMesh(results, ctx, wpSource, () => deps.broadcastWaypoint({
         sourceId: wpSource,
         automationKey: `${ctx.automationId ?? 'unsaved'}:${waypointKey}`,
         latitude,
@@ -704,10 +828,10 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
             results.push({ skipped: true, reason: 'tapback on MeshCore needs a triggering MeshCore message on the same source' });
             continue;
           }
-          await pushOrSkipTxDisabled(results, () => deps.sendTapback({ sourceId: sid, emoji, meshcoreMessageId }));
+          await pushOrSkipMesh(results, ctx, sid, () => deps.sendTapback({ sourceId: sid, emoji, meshcoreMessageId }));
           continue;
         }
-        await pushOrSkipTxDisabled(results, () => deps.sendTapback({ sourceId: sid, emoji, channel, destination, replyId, ...tapbackHopArg }));
+        await pushOrSkipMesh(results, ctx, sid, () => deps.sendTapback({ sourceId: sid, emoji, channel, destination, replyId, ...tapbackHopArg }));
       }
       // Unwrap the single-target case so the result shape (and run-log
       // resolvedParams) matches the original one-target behavior.
@@ -782,7 +906,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           }
           if (!target) throw new Error(`action.requestData: no target node for "${op}"`);
         }
-        await pushOrSkipTxDisabled(results, () => deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined, ...(advertMode ? { advertMode } : {}) }));
+        await pushOrSkipMesh(results, ctx, sid, () => deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined, ...(advertMode ? { advertMode } : {}) }));
       }
       return results.length === 1 ? results[0] : results;
     }
@@ -810,7 +934,8 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         }
         for (const path of paths) {
           const pathKey = `${ctx.automationId ?? 'unsaved'}:${node.id}:${path.publicKey}`;
-          await pushOrSkipTxDisabled(results, () => deps.runScheduledTrace({ sourceId: sid, pathKey, path, autoReturn }));
+          // Gate BEFORE the dep, so a skipped path keeps its due slot.
+          await pushOrSkipMesh(results, ctx, sid, () => deps.runScheduledTrace({ sourceId: sid, pathKey, path, autoReturn }));
         }
       }
       // Nothing was due on this tick: tell the engine this step was idle.
@@ -855,7 +980,13 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           results.push({ skipped: true, reason: 'remote-admin reboot is not supported on MeshCore' });
           continue;
         }
-        await pushOrSkipTxDisabled(results, () => deps.rebootDevice({ sourceId: sid, seconds, targetNodeNum }));
+        // A local reboot is a command to our own radio and sends nothing on the
+        // mesh; only a remote-admin reboot goes over the air, so only it is gated.
+        if (targetNodeNum != null) {
+          await pushOrSkipMesh(results, ctx, sid, () => deps.rebootDevice({ sourceId: sid, seconds, targetNodeNum }));
+        } else {
+          await pushOrSkipTxDisabled(results, () => deps.rebootDevice({ sourceId: sid, seconds, targetNodeNum }));
+        }
       }
       return results.length === 1 ? results[0] : results;
     }
