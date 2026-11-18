@@ -758,7 +758,7 @@ Update automation and system settings.
 - **Auto Acknowledge**: `autoAckEnabled`, `autoAckRegex`, `autoAckMessage`, etc.
 - **Auto Welcome**: `autoWelcomeEnabled`, `autoWelcomeMessage`, etc.
 - **Display Preferences**: `temperatureUnit`, `distanceUnit`, `timeFormat`, `dateFormat`, etc.
-- **Traceroute**: `tracerouteIntervalMinutes` (1-60)
+- **Traceroute** (per-source — pass `?sourceId=<id>`): `tracerouteIntervalMinutes` (0 = off, or 3-60). Off when no value is saved.
 - **MeshCore** (per-source — pass `?sourceId=<id>`): `meshcoreReceiveOnly` (string: exact
   `"true"`/`"false"` — see the strict-boolean note below). Blocks every transmission from that
   MeshCore source; see [MeshCore Receive-Only Mode](../features/meshcore-receive-only.md).
@@ -802,12 +802,12 @@ Update automation and system settings.
 - See [Automation Documentation](../features/automation.md) for detailed information about each automation feature
 
 ### POST /api/settings/traceroute-interval
-Update the automatic traceroute interval.
+Re-arm a source's Auto Traceroute timer with a new interval, in minutes. `0` turns it off. Pass `?sourceId=<id>` to pick the source; without it, the call targets the primary Meshtastic source. This call does not save the value; save it with `POST /api/settings` (`tracerouteIntervalMinutes`) so it survives a restart.
 
 **Request Body:**
 ```json
 {
-  "interval": 600000
+  "intervalMinutes": 10
 }
 ```
 
@@ -815,8 +815,7 @@ Update the automatic traceroute interval.
 ```json
 {
   "success": true,
-  "interval": 600000,
-  "message": "Traceroute interval updated to 10 minutes"
+  "intervalMinutes": 10
 }
 ```
 

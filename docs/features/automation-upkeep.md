@@ -108,13 +108,13 @@ Each request goes out at your node's own **hop limit** (**Device Configuration â
 
 ### Configuration
 
-**Enable/Disable**: Toggle the checkbox next to "Auto Traceroute"
+**Enable/Disable**: Toggle the checkbox next to "Auto Traceroute". Auto Traceroute is **off by default** on every source. It sends nothing until you turn it on and save.
 
-**Traceroute Interval**: How often to send traceroute requests to nodes
+**Traceroute Interval**: How often to send a traceroute. Each run traces one node.
 
 - **Range**: 3-60 minutes
-- **Default**: 3 minutes
-- **Recommendation**: Use longer intervals (10-15 minutes) for larger networks or slower mesh presets
+- **Default**: off. When you turn it on, the box starts at 15 minutes.
+- **Recommendation**: 15-30 minutes suits most meshes. Use 30-60 minutes on large meshes or slow presets. Go below 10 minutes only on a small, quiet mesh.
 
 **Node Filter** *(New in v2.12)*: Limit traceroutes to specific nodes instead of all nodes
 

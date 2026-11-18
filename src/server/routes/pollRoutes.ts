@@ -37,6 +37,7 @@ import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 import { holdsAnyGrantOn } from '../utils/sourcePermissions.js';
 import { pollDeltaTracker, serializePollReply } from '../services/pollDeltaTracker.js';
 import { fail } from '../utils/apiResponse.js';
+import { recentTracerouteLimit } from '../utils/tracerouteInterval.js';
 import { tracerouteNamesHiddenNode, dropMessagesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
 const env = getEnvironmentConfig();
@@ -640,11 +641,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
       // Calculate dynamic default limit based on settings
-      const tracerouteIntervalMinutes = parseInt(await databaseService.settings.getSetting('tracerouteIntervalMinutes') || '5');
       const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, pollSourceId ?? null);
-      const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
-      let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
-      limit = Math.max(limit, 100);
+      const limit = recentTracerouteLimit(await databaseService.settings.getSetting('tracerouteIntervalMinutes'), maxNodeAgeHours);
 
       const signFlipCtxForTraceroutes = await getCachedSignFlipContext(pollSourceId); // #5363
       // `traceroute:read` on the row's source, the gate of GET
