@@ -1176,6 +1176,7 @@ class MeshtasticManager implements ISourceManager {
   // Throttle the "automations gated" log so a busy mesh doesn't spam.
   private lastAirtimeGateLogTime: number = 0;
   private localStatsInterval: NodeJS.Timeout | null = null;
+  private localStatsFirstRequestTimeout: NodeJS.Timeout | null = null;
   private timeOffsetSamples: number[] = [];
   private timeOffsetInterval: NodeJS.Timeout | null = null;
   // Hourly auto-favorite staleness sweep. Kept on the instance so a reconnect
@@ -4344,10 +4345,7 @@ class MeshtasticManager implements ISourceManager {
    * Requests LocalStats at the configured interval to track mesh health metrics
    */
   private startLocalStatsScheduler(): void {
-    if (this.localStatsInterval) {
-      clearInterval(this.localStatsInterval);
-      this.localStatsInterval = null;
-    }
+    this.stopLocalStatsScheduler();
 
     // If interval is 0, collection is disabled
     if (this.localStatsIntervalMinutes === 0) {
@@ -4359,7 +4357,8 @@ class MeshtasticManager implements ISourceManager {
     logger.debug(`📊 Starting LocalStats scheduler with ${this.localStatsIntervalMinutes} minute interval`);
 
     // Delay the first request by 30 seconds to let the node settle after connect
-    setTimeout(() => {
+    this.localStatsFirstRequestTimeout = setTimeout(() => {
+      this.localStatsFirstRequestTimeout = null;
       if (this.isConnected && this.localNodeInfo) {
         this.requestLocalStats().catch(error => {
           logger.error('❌ Error requesting initial LocalStats:', error);
@@ -4389,6 +4388,12 @@ class MeshtasticManager implements ISourceManager {
    * Stop LocalStats collection scheduler
    */
   private stopLocalStatsScheduler(): void {
+    // The 30-second first request is a timer too; leaving it armed let every
+    // restart add one more request.
+    if (this.localStatsFirstRequestTimeout) {
+      clearTimeout(this.localStatsFirstRequestTimeout);
+      this.localStatsFirstRequestTimeout = null;
+    }
     if (this.localStatsInterval) {
       clearInterval(this.localStatsInterval);
       this.localStatsInterval = null;
@@ -4451,6 +4456,12 @@ class MeshtasticManager implements ISourceManager {
   setLocalStatsInterval(minutes: number): void {
     if (minutes < 0 || minutes > 60) {
       throw new Error('LocalStats interval must be between 0 and 60 minutes (0 = disabled)');
+    }
+
+    // Same interval and the scheduler already armed: leave it alone, so a
+    // save of an unrelated setting does not restart collection.
+    if (minutes === this.localStatsIntervalMinutes && (this.localStatsInterval !== null || minutes === 0)) {
+      return;
     }
     this.localStatsIntervalMinutes = minutes;
 
