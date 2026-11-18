@@ -8,10 +8,6 @@ services:
     #   context: .
     #   dockerfile: Dockerfile
 
-    # Auto-Upgrade: To enable automatic upgrades through the UI, use:
-    #   docker compose -f docker-compose.yml -f docker-compose.upgrade.yml up -d
-    # See docs/configuration/auto-upgrade.md for details
-
     container_name: meshmonitor
     ports:
       - "8080:3001"
@@ -20,10 +16,12 @@ services:
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false  # optional; put secrets/overrides here if you want
     environment:
       # Minimal configuration for http://localhost:8080
-      - NODE_ENV=development  # Use development mode for simple HTTP deployments
+      - NODE_ENV=production
       - TZ=America/New_York
       - ALLOWED_ORIGINS=http://localhost:8080  # Required for CORS
 
@@ -37,13 +35,11 @@ services:
       # See docs/configuration/production.md for full production setup guide
 
       # For production with HTTPS reverse proxy (nginx, Caddy, Traefik):
-      # - NODE_ENV=production
       # - SESSION_SECRET=your-generated-secret-here  # Required in production
       # - TRUST_PROXY=true
       # - ALLOWED_ORIGINS=https://yourdomain.com
 
       # For production with direct HTTP (not recommended):
-      # - NODE_ENV=production
       # - SESSION_SECRET=your-generated-secret-here  # Required in production
       # - COOKIE_SECURE=false
 

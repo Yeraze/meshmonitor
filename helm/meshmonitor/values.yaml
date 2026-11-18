@@ -123,11 +123,10 @@ httpRoute:
 # MeshMonitor 4.0 manages additional sources via the Dashboard → Sources UI;
 # changing these values after bootstrap does NOT reconfigure the existing source.
 env:
-  # IP address of the bootstrap source (seeds the first source on a fresh install)
-  meshtasticNodeIp: "192.168.1.100"
-
-  # Enable HTTPS connection to node (optional)
-  meshtasticUseTls: "false"
+  # IP address of the bootstrap source (optional). When set, seeds the first
+  # source on a fresh install. Leave empty to add sources from the UI instead;
+  # MESHTASTIC_NODE_IP is then not set at all.
+  meshtasticNodeIp: ""
 
   # Environment mode (optional)
   nodeEnv: "production"
@@ -157,17 +156,6 @@ env:
 #           name: meshmonitor-secrets
 #           key: session-secret
 extraEnv: []
-
-# Auto-upgrade configuration (Docker only)
-# Note: Kubernetes deployments should use kubectl/helm for upgrades
-autoupgrade:
-  # Enable auto-upgrade feature in the application UI
-  # When enabled, an "Upgrade Now" button appears in the update notification banner
-  enabled: false
-
-  # Note: For Docker deployments, use docker-compose.upgrade.yml overlay
-  # For Kubernetes, this setting only enables the UI feature - actual upgrades
-  # should be performed via standard Kubernetes deployment updates
 
 # Persistent storage for SQLite database
 persistence:

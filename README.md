@@ -98,8 +98,7 @@ helm repo update
 # Minimal custom-values.yaml
 cat > custom-values.yaml << 'EOF'
 env:
-  meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "false"
+  meshtasticNodeIp: "192.168.1.100"   # optional; omit to add sources in the UI
 EOF
 
 helm install meshmonitor meshmonitor/meshmonitor -f custom-values.yaml

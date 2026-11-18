@@ -32,12 +32,13 @@ Pin a specific version with `--version <x.y.z>`. The repository tracks the lates
 
 1. **Update the required configuration values**
 
-   Create a `custom-values.yaml` file with your Meshtastic node IP:
+   Optionally create a `custom-values.yaml` file with your Meshtastic node IP
+   to seed the first source on first boot. Leave it out to add sources from
+   the UI after install:
 
    ```yaml
    env:
-     meshtasticNodeIp: "192.168.1.100"  # Your Meshtastic node IP
-     meshtasticUseTls: "false"          # Set to "true" for HTTPS
+     meshtasticNodeIp: "192.168.1.100"  # Optional: your Meshtastic node IP
    ```
 
 2. **Install the chart**
@@ -73,7 +74,6 @@ To expose MeshMonitor via an Ingress:
 # custom-values.yaml
 env:
   meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "false"
 
 ingress:
   enabled: true
@@ -103,7 +103,6 @@ If your cluster uses the [Gateway API](https://gateway-api.sigs.k8s.io/) instead
 # custom-values.yaml
 env:
   meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "false"
 
 httpRoute:
   enabled: true
@@ -125,7 +124,6 @@ To deploy MeshMonitor at a subfolder path (e.g., `https://example.com/meshmonito
 # custom-values.yaml
 env:
   meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "false"
   baseUrl: "/meshmonitor"
 
 ingress:
@@ -140,30 +138,25 @@ ingress:
 
 ## Configuration
 
-### Required Environment Variables
+### Bootstrap Source
 
-These are the **required** configuration values from the Docker documentation:
+`env.meshtasticNodeIp` is optional and empty by default. When set, it seeds the
+first Meshtastic source on a fresh install. When empty, the chart does not set
+`MESHTASTIC_NODE_IP` and you add sources from the UI. Changing it after the
+first boot does not change an existing source.
 
 ```yaml
 env:
-  # IP address of your Meshtastic node (REQUIRED)
   meshtasticNodeIp: "192.168.1.100"
-
-  # Enable HTTPS connection to node (REQUIRED)
-  meshtasticUseTls: "false"
 ```
 
 ### Complete Values.yaml Structure
 
-Below is the complete tree of configurable values. Required values from the Docker docs are listed first:
+Below is the complete tree of configurable values:
 
 ```yaml
-# REQUIRED: Meshtastic node connection settings
 env:
-  meshtasticNodeIp: "192.168.1.100"    # ⚠️ REQUIRED - IP address of your Meshtastic node
-  meshtasticUseTls: "false"            # ⚠️ REQUIRED - Enable HTTPS connection to node
-
-  # Optional environment variables
+  meshtasticNodeIp: ""                 # Optional - seeds the first source on first boot
   nodeEnv: "production"                # Environment mode
   port: "3001"                         # Server port (should match service.targetPort)
   baseUrl: ""                          # Runtime base URL path for subfolder deployment (e.g., "/meshmonitor")
@@ -315,7 +308,6 @@ process access to the PVC instead.
 ```yaml
 env:
   meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "false"
 
 persistence:
   enabled: true
@@ -328,14 +320,6 @@ resources:
   requests:
     cpu: 250m
     memory: 256Mi
-```
-
-### Setup with TLS/HTTPS
-
-```yaml
-env:
-  meshtasticNodeIp: "192.168.1.100"
-  meshtasticUseTls: "true"
 ```
 
 ### Using Existing PersistentVolumeClaim
