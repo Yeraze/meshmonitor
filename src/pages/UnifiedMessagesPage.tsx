@@ -55,7 +55,11 @@ import {
   MeshCoreUnmatchedReaction,
 } from '../components/MeshCore/MeshCoreReactionChips';
 import HopBadge from '../components/unified/HopBadge';
-import UnifiedSendComposer from '../components/unified/UnifiedSendComposer';
+import UnifiedSendComposer, { type UnifiedSendTarget } from '../components/unified/UnifiedSendComposer';
+import { MessageStatusIndicator } from '../components/MessageStatusIndicator';
+import { useUnifiedSenders, sendersForChannel } from '../hooks/useUnifiedSenders';
+import { rowActionAvailability } from './unifiedRowActions';
+import rowStyles from './UnifiedMessageRow.module.css';
 import { createComposeDraftStore, type ComposeDraftStore } from '../contexts/composeDraftStore';
 import { MeshCoreClockOffset } from '../components/MeshCore/MeshCoreClockOffset';
 import { meshcoreClockOffsetMs } from '../utils/meshcoreMessageTime';
@@ -108,6 +112,25 @@ interface UnifiedMessageRowProps {
   replyPreview: ReplyPreviewState<UnifiedMessage>;
   chips: ReactionChip[];
   onOpen: (msg: UnifiedMessage) => void;
+  /** Reply / tapback offered on this row (#3045 P3). Booleans keep the memo cheap. */
+  canReply: boolean;
+  canReact: boolean;
+  onReply: (msg: UnifiedMessage) => void;
+  onReact: (msg: UnifiedMessage) => void;
+}
+
+/** Delivery icon for our own sent rows. Own component so its hooks sit before no early return. */
+function UnifiedDeliveryStatus({ msg }: { msg: UnifiedMessage }) {
+  const { deliveryState, ackFailed, routingErrorReceived, createdAt } = msg;
+  const message = useMemo(
+    () => ({ deliveryState, ackFailed, routingErrorReceived, timestamp: new Date(createdAt) }),
+    [deliveryState, ackFailed, routingErrorReceived, createdAt],
+  );
+  return (
+    <span className={rowStyles.status}>
+      <MessageStatusIndicator message={message} />
+    </span>
+  );
 }
 
 /**
@@ -124,6 +147,10 @@ const UnifiedMessageRow = memo(function UnifiedMessageRow({
   replyPreview,
   chips,
   onOpen,
+  canReply,
+  canReact,
+  onReply,
+  onReact,
 }: UnifiedMessageRowProps) {
   const { t } = useTranslation();
   // Left border = mesh protocol (#5744). Every reception of one packet
@@ -147,7 +174,7 @@ const UnifiedMessageRow = memo(function UnifiedMessageRow({
   }
 
   return (
-    <div>
+    <div className={rowStyles.row}>
       {divider}
       <div
         className={`unified-msg-card unified-msg-card--clickable ${protocolStripe.stripe}`}
@@ -212,6 +239,9 @@ const UnifiedMessageRow = memo(function UnifiedMessageRow({
               <MeshCoreClockOffset offsetMs={meshcoreClockOffsetMs(msg.createdAt, msg.senderTimestamp)} />
             )}
           </span>
+          {(msg.deliveryState != null || msg.ackFailed || msg.routingErrorReceived) && (
+            <UnifiedDeliveryStatus msg={msg} />
+          )}
         </div>
 
         {replyPreview.kind !== 'none' && (
@@ -255,6 +285,32 @@ const UnifiedMessageRow = memo(function UnifiedMessageRow({
         )}
         <MeshCoreReactionChips chips={chips} />
       </div>
+      {(canReply || canReact) && (
+        <div className={rowStyles.actions}>
+          {canReply && (
+            <button
+              type="button"
+              className={rowStyles.action}
+              title={t('unified.reply.button_title', 'Reply')}
+              aria-label={t('unified.reply.button_title', 'Reply')}
+              onClick={() => onReply(msg)}
+            >
+              <UiIcon name="reply" size={14} />
+            </button>
+          )}
+          {canReact && (
+            <button
+              type="button"
+              className={rowStyles.action}
+              title={t('unified.react.button_title', 'React')}
+              aria-label={t('unified.react.button_title', 'React')}
+              onClick={() => onReact(msg)}
+            >
+              <UiIcon name="reaction" size={14} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }, messageRowPropsEqual);
@@ -315,6 +371,7 @@ export default function UnifiedMessagesPage() {
   const [sourceFilter, setSourceFilter] = useState<string>('');
   const [statsFor, setStatsFor] = useState<UnifiedMessage | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [target, setTarget] = useState<UnifiedSendTarget | null>(null);
 
   // ── Channels query ────────────────────────────────────────────────────
   const {
@@ -537,6 +594,15 @@ export default function UnifiedMessagesPage() {
     canReadAnyMessages &&
     !!selectedChannel &&
     selectedChannel !== ALL_CHANNELS_PARAM;
+  // Reply / tapback availability per row, from the same senders query the composer reads.
+  const { data: senderChannels } = useUnifiedSenders(showComposer);
+  const channelSenders = useMemo(
+    () => (showComposer ? sendersForChannel(senderChannels, selectedChannel) : []),
+    [showComposer, senderChannels, selectedChannel],
+  );
+  const handleReply = useCallback((msg: UnifiedMessage) => setTarget({ mode: 'reply', msg }), []);
+  const handleReact = useCallback((msg: UnifiedMessage) => setTarget({ mode: 'react', msg }), []);
+  const handleClearTarget = useCallback(() => setTarget(null), []);
   const prevStateRef = useRef<{ len: number; firstKey: string; scrollHeight: number }>({
     len: 0,
     firstKey: '',
@@ -638,6 +704,7 @@ export default function UnifiedMessagesPage() {
             onChange={(e) => {
               setSelectedChannel(e.target.value);
               writeStoredUnifiedChannel(e.target.value);
+              setTarget(null);
             }}
             disabled={loadingChannels || channels.length === 0}
             aria-label={t('unified.messages.channel_aria')}
@@ -738,6 +805,7 @@ export default function UnifiedMessagesPage() {
             const dateLabel = formatDateDivider(msg.timestamp, t);
             const showDivider = dateLabel !== lastDateLabel;
             if (showDivider) lastDateLabel = dateLabel;
+            const actions = rowActionAvailability(msg, channelSenders);
             return (
               <UnifiedMessageRow
                 key={msg.dedupKey}
@@ -751,6 +819,10 @@ export default function UnifiedMessagesPage() {
                 replyPreview={resolveReplyPreview(msg.replyId, byPacketId)}
                 chips={mcReactions.chipsByTarget.get(msg.dedupKey) ?? NO_CHIPS}
                 onOpen={openStats}
+                canReply={actions.canReply}
+                canReact={actions.canReact}
+                onReply={handleReply}
+                onReact={handleReact}
               />
             );
           });
@@ -764,6 +836,8 @@ export default function UnifiedMessagesPage() {
           channelName={selectedChannel}
           draftStore={draftStoreFor(selectedChannel)}
           onSent={handleSent}
+          target={target}
+          onClearTarget={handleClearTarget}
         />
       )}
 

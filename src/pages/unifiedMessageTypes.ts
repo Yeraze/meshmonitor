@@ -1,5 +1,7 @@
 /** Shapes of the `/api/unified/messages` feed, shared by the page and the composer. */
 
+import type { MessageDeliveryState } from '../types/message';
+
 export interface Reception {
   sourceId: string;
   sourceName: string;
@@ -46,4 +48,8 @@ export interface UnifiedMessage {
   senderTimestamp?: number | null;
   /** Meshtastic Data.bitfield bit 2 (#6449): sender flagged it as sent by an automation. */
   isAutomation?: boolean;
+  /** Our own sent row (Meshtastic and MQTT-native only): delivery status. */
+  deliveryState?: MessageDeliveryState;
+  ackFailed?: boolean;
+  routingErrorReceived?: boolean;
 }
