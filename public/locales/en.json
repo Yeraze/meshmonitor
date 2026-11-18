@@ -8535,6 +8535,7 @@
   "automation.tokens.global_note": "Also work in Auto-Announce and Auto-Welcome.",
   "automation.tokens.engine_tip2": "— build global “when this happens, do that” workflows across every source.",
   "automation.engine_link": "Automation Engine",
+  "automation.engine_note": "You can also build this in the Automation Engine.",
   "meshcore.automation.responder.pattern_label": "Pattern",
   "meshcore.automation.responder.chip_split": "Split",
   "node_details.channel_none": "None",

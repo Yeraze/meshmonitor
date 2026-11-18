@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { EngineNoteHarness } from '../test/EngineNoteHarness';
 import AutoAcknowledgeSection from './AutoAcknowledgeSection';
 import { Channel } from '../types/device';
 import { DEFAULT_AUTOACK_MATRIX } from '../utils/autoAckMatrix';
@@ -137,5 +138,11 @@ describe('AutoAcknowledgeSection — Convert to an Automation button', () => {
     const button = screen.getByRole('button', { name: /Convert to an Automation/ });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute('title', 'automation.auto_ack.convert_no_permission');
+  });
+  it('shows the Automation Engine note, and its link opens the Automation Engine page', async () => {
+    render(<EngineNoteHarness><AutoAcknowledgeSection {...defaultProps} /></EngineNoteHarness>);
+    const link = await screen.findByRole('link', { name: /build this in the Automation Engine|automation\.engine_note/i });
+    fireEvent.click(link);
+    expect(await screen.findByTestId('automation-engine-page')).toBeInTheDocument();
   });
 });

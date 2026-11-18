@@ -11,6 +11,7 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { AutomationEngineNote } from '../shared/config/AutomationEngineNote';
 import { ConfigGroup } from '../shared/config/ConfigGroup';
 import { TokenInsertButtons } from '../shared/automation/TokenInsertButtons';
 import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
@@ -345,6 +346,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
     <>
       <ConfigSection
         title={t('meshcore.automation.announce.title', 'Auto-Announce')}
+        notice={<AutomationEngineNote />}
         enabled={settings.enabled}
         onEnabledChange={(v) => update('enabled', v)}
         enableLabel={t('meshcore.automation.announce.title', 'Auto-Announce')}

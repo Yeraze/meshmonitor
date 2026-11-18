@@ -9,6 +9,7 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { ConfigSection } from './shared/config/ConfigSection';
+import { AutomationEngineNote } from './shared/config/AutomationEngineNote';
 import { ConfigGroup } from './shared/config/ConfigGroup';
 import { TokenInsertButtons } from './shared/automation/TokenInsertButtons';
 import apiService from '../services/api';
@@ -384,6 +385,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     <NumberInputScope scope={numberScope}>
     <ConfigSection
       title={t('automation.auto_announce.title')}
+      notice={<AutomationEngineNote />}
       enabled={localEnabled}
       onEnabledChange={setLocalEnabled}
       enableLabel={t('automation.auto_announce.title')}
