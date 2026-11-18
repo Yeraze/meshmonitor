@@ -27,6 +27,8 @@ function walk(dir: string, out: string[] = []): string[] {
 const ALLOWED_IMPORTERS = new Set([
   'routes/mqttNativeRoutes.ts',
   'services/mqttNative/mqttNativeNodeInfoScheduler.ts',
+  // Read-only: runs the shared precondition and channel check, never transmits (#3045).
+  'services/unifiedSendEligibility.ts',
 ]);
 
 describe('MQTT-native send is user-only (#4305)', () => {

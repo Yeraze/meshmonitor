@@ -86,9 +86,9 @@ export async function buildUnifiedChannelGroups(
         const chans = await databaseService.channels.getAllChannels(source.id);
         const presetName = sourcePresets.get(source.id) ?? null;
         for (const c of chans) {
-          const name = unifiedChannelDisplayName(c as any, presetName);
-          if (!name) continue; // disabled or unused slot
-          const channelNum = (c as any).id as number;
+          const name = unifiedChannelDisplayName({ ...c, id: c.id ?? -1 }, presetName);
+          if (!name || c.id === undefined) continue; // disabled or unused slot
+          const channelNum = c.id;
           const canReadChannel = canReadMessages || (user
             ? await databaseService.checkPermissionAsync(
                 user.id,
