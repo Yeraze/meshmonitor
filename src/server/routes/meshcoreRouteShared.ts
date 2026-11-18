@@ -33,6 +33,8 @@ import {
   MESHCORE_MAX_MESSAGE_BYTES_DM,
 } from '../constants/meshcoreMessageLimits.js';
 import { CONTACT_NOT_ON_DEVICE_MESSAGE } from '../meshcoreDeviceContactErrors.js';
+import type { ManualMeshTxRef } from '../services/meshcoreManualTxQueue.js';
+import { MESH_TX_FLOOR_MS } from '../services/meshcoreNeighboursPaging.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -200,6 +202,134 @@ export function failIfTxDisabled(res: Response, error: unknown): boolean {
     return true;
   }
   return false;
+}
+
+/** The caller's user id: session login or API token (both set `req.user`). */
+export function requestUserId(req: Request): number | null {
+  const id = (req.user as { id?: unknown } | undefined)?.id ?? req.session?.userId;
+  return typeof id === 'number' ? id : null;
+}
+
+/** Queue owner key for a request: one slot per user (session and API token alike). */
+export function manualTxOwnerKey(req: Request): string {
+  return `user:${requestUserId(req) ?? 'anonymous'}`;
+}
+
+/** How a manual mesh-TX slot request ended (#6493). */
+export type ManualSlotOutcome =
+  | { kind: 'granted'; grantedAt: number; waitedSecs: number }
+  | { kind: 'superseded'; by: ManualMeshTxRef }
+  | { kind: 'aborted' }
+  | { kind: 'unavailable'; receiveOnly: boolean }
+  | { kind: 'invalid_request_id' }
+  | { kind: 'timeout' | 'full' | 'rate_limited'; retryAfterSecs: number };
+
+/**
+ * Take the next mesh-TX slot for a manual action (#6493).
+ *
+ * `wait: true` queues behind other manual requests and answers once the
+ * 60 s floor allows a send; `wait: false` claims at once or answers
+ * `rate_limited`. A grant ALREADY stamps the floor, so the caller must not
+ * call `recordMeshTx` again. Nothing is claimed after the client went away
+ * (response closed or socket timed out), so no path sends for a dropped
+ * request. The client may pass `requestId` in the body to read its queue
+ * position from GET `/tx-queue/:requestId`.
+ */
+export async function awaitManualMeshTxSlot(
+  req: Request,
+  res: Response,
+  manager: MeshCoreManager,
+  opts: { action: string; publicKey?: string; wait: boolean },
+): Promise<ManualSlotOutcome> {
+  const rawId = (req.body as { requestId?: unknown } | undefined)?.requestId;
+  if (rawId !== undefined && rawId !== null && !isValidLoginRequestId(rawId)) {
+    return { kind: 'invalid_request_id' };
+  }
+  const requestId = typeof rawId === 'string' ? rawId : undefined;
+
+  const ac = new AbortController();
+  const abort = () => ac.abort();
+  res.on('close', () => {
+    if (!res.writableFinished) abort();
+  });
+  res.on('timeout', abort);
+
+  const canSend = () =>
+    !ac.signal.aborted && !res.headersSent && manager.isConnected() && !manager.isReceiveOnly();
+
+  if (!opts.wait) {
+    if (!canSend()) return ac.signal.aborted || res.headersSent ? { kind: 'aborted' } : { kind: 'unavailable', receiveOnly: manager.isReceiveOnly() };
+    if (manager.tryClaimMeshTxSlot()) return { kind: 'granted', grantedAt: Date.now(), waitedSecs: 0 };
+    const last = manager.getLastMeshTxAt();
+    const left = last > 0 ? MESH_TX_FLOOR_MS - (Date.now() - last) : 0;
+    return { kind: 'rate_limited', retryAfterSecs: Math.max(1, Math.ceil(left / 1000)) };
+  }
+
+  const r = await manager.waitForManualMeshTxSlot({
+    ownerKey: manualTxOwnerKey(req),
+    requestId,
+    action: opts.action,
+    publicKey: opts.publicKey,
+    signal: ac.signal,
+    beforeClaim: canSend,
+  });
+  if (r.kind === 'granted') {
+    return { kind: 'granted', grantedAt: r.grantedAt, waitedSecs: Math.round(r.waitedMs / 1000) };
+  }
+  if (r.kind === 'aborted') {
+    logger.debug(`[API] Manual mesh TX request ${opts.action} aborted before a slot (client gone)`);
+  }
+  if (r.kind === 'unavailable') return { kind: 'unavailable', receiveOnly: manager.isReceiveOnly() };
+  return r;
+}
+
+/**
+ * Answer a non-granted slot outcome. Returns true when it sent a response
+ * (false for `granted` and for `aborted`, where the client is gone and there
+ * is nobody to answer). `v1` adds the v1 field names and status codes.
+ */
+export function respondManualSlotFailure(
+  res: Response,
+  outcome: ManualSlotOutcome,
+  opts: { v1?: boolean } = {},
+): boolean {
+  switch (outcome.kind) {
+    case 'granted':
+    case 'aborted':
+      return false;
+    case 'invalid_request_id':
+      fail(res, 400, 'INVALID_REQUEST_ID', 'requestId must be 8-64 characters of A-Z, a-z, 0-9, _ or -');
+      return true;
+    case 'superseded':
+      fail(res, 409, 'MESH_TX_SUPERSEDED', 'Replaced by your newer request', {
+        supersededBy: { action: outcome.by.action, publicKey: outcome.by.publicKey ?? null },
+      });
+      return true;
+    case 'unavailable': {
+      if (outcome.receiveOnly) {
+        fail(res, 409, TX_DISABLED_CODE, MESHCORE_RECEIVE_ONLY_MESSAGE);
+      } else if (opts.v1) {
+        fail(res, 503, SOURCE_NOT_CONNECTED_CODE, 'MeshCore source is not connected');
+      } else {
+        fail(res, 409, SOURCE_NOT_CONNECTED_CODE, 'MeshCore source is not connected');
+      }
+      return true;
+    }
+    default: {
+      const secs = outcome.retryAfterSecs;
+      const code =
+        outcome.kind === 'timeout' ? 'MESH_TX_QUEUE_TIMEOUT'
+          : outcome.kind === 'full' ? 'MESH_TX_QUEUE_FULL'
+            : 'RATE_LIMITED';
+      res.set('Retry-After', String(secs));
+      fail(res, 429, code, `Too soon since last mesh transmission; retry in ${secs}s`, {
+        retryAfterSecs: secs,
+        retryAfterSeconds: secs,
+        ...(opts.v1 ? { retryAfter: secs } : {}),
+      });
+      return true;
+    }
+  }
 }
 
 /** Machine code for "the radio doesn't hold this contact" (#5349). */

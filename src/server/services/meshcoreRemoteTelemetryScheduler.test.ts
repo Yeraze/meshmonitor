@@ -204,6 +204,8 @@ interface FakeManagerState {
   callOrder: string[];
   /** #4547: strict receive-only flag. Defaults to false (transmit-allowed). */
   receiveOnly: boolean;
+  /** A manual action holds the next mesh-TX slot (#6493). */
+  reserved: boolean;
 }
 
 function makeFakeManager(init: Partial<FakeManagerState>): MeshCoreManager & { _state: FakeManagerState } {
@@ -218,12 +220,20 @@ function makeFakeManager(init: Partial<FakeManagerState>): MeshCoreManager & { _
     guestLoginResult: true,
     callOrder: [],
     receiveOnly: false,
+    reserved: false,
     ...init,
   };
   const m: any = {
     sourceId: state.sourceId,
     isConnected: () => state.connected,
     isReceiveOnly: () => state.receiveOnly,
+    hasManualMeshReservation: () => state.reserved,
+    tryClaimMeshTxSlot: (now: number = Date.now(), floorMs: number = 60_000) => {
+      if (state.reserved) return false;
+      if (state.lastMeshTxAt > 0 && now - state.lastMeshTxAt < floorMs) return false;
+      state.lastMeshTxAt = now;
+      return true;
+    },
     getLastMeshTxAt: () => state.lastMeshTxAt,
     recordMeshTx: (when: number = Date.now()) => {
       state.lastMeshTxAt = when;
@@ -1235,5 +1245,51 @@ describe('MeshCoreRemoteTelemetryScheduler — retry accounting', () => {
     await scheduler.tickOneManager(manager);
     expect(spies.markTelemetryRequested).not.toHaveBeenCalled();
     expect(spies.setTelemetryRetryState).not.toHaveBeenCalled();
+  });
+});
+
+describe('MeshCoreRemoteTelemetryScheduler — manual reservation (#6493)', () => {
+  const now = 10_000_000;
+  function setup(manager: any, onGetNodes?: () => void) {
+    const getNodes = vi.fn().mockImplementation(async () => {
+      onGetNodes?.();
+      return [makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null })];
+    });
+    const markRequested = vi.fn();
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested, upsertNode: vi.fn().mockResolvedValue(undefined), markHeard: vi.fn().mockResolvedValue(undefined) },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
+      },
+      now: () => now,
+    });
+    return { scheduler, getNodes, markRequested };
+  }
+
+  it('skips the tick while a reservation is held: no read, no mark, no send', async () => {
+    const manager = makeFakeManager({ lastMeshTxAt: 0, reserved: true });
+    const { scheduler, getNodes, markRequested } = setup(manager);
+    await scheduler.tickOneManager(manager);
+    expect(getNodes).not.toHaveBeenCalled();
+    expect(markRequested).not.toHaveBeenCalled();
+    expect((manager as any)._state.lastRequestedKey).toBeNull();
+  });
+
+  it('a reservation that appears during the DB read blocks the claim: no mark, no send', async () => {
+    const manager = makeFakeManager({ lastMeshTxAt: 0 });
+    const { scheduler, markRequested } = setup(manager, () => { (manager as any)._state.reserved = true; });
+    await scheduler.tickOneManager(manager);
+    expect(markRequested).not.toHaveBeenCalled();
+    expect((manager as any)._state.lastRequestedKey).toBeNull();
+    expect((manager as any)._state.lastMeshTxAt).toBe(0);
+  });
+
+  it('with no reservation it claims, marks and sends as before', async () => {
+    const manager = makeFakeManager({ lastMeshTxAt: 0 });
+    const { scheduler, markRequested } = setup(manager);
+    await scheduler.tickOneManager(manager);
+    expect(markRequested).toHaveBeenCalledWith('src-a', 'a', now);
+    expect((manager as any)._state.lastRequestedKey).toBe('a');
   });
 });

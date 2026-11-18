@@ -151,6 +151,8 @@ interface FakeState {
   sourceId: string;
   connected: boolean;
   receiveOnly: boolean;
+  /** A manual action holds the next mesh-TX slot (#6493). */
+  reserved: boolean;
   lastMeshTxAt: number;
   syncedFor: string[];
   syncResult: SyncResult;
@@ -162,6 +164,7 @@ function makeFakeManager(init: Partial<FakeState>): MeshCoreManager & { _state: 
     sourceId: 'src-a',
     connected: true,
     receiveOnly: false,
+    reserved: false,
     lastMeshTxAt: 0,
     syncedFor: [],
     syncResult: { status: 'ok', reply: 'OK', elapsedMs: 1200 },
@@ -173,6 +176,13 @@ function makeFakeManager(init: Partial<FakeState>): MeshCoreManager & { _state: 
     sourceType: 'meshcore',
     isConnected: () => state.connected,
     isReceiveOnly: () => state.receiveOnly,
+    hasManualMeshReservation: () => state.reserved,
+    tryClaimMeshTxSlot: (now: number = Date.now(), floorMs: number = 60_000) => {
+      if (state.reserved) return false;
+      if (state.lastMeshTxAt > 0 && now - state.lastMeshTxAt < floorMs) return false;
+      state.lastMeshTxAt = now;
+      return true;
+    },
     getLastMeshTxAt: () => state.lastMeshTxAt,
     recordMeshTx: (when: number = Date.now()) => { state.lastMeshTxAt = when; },
     syncNodeTime: async (publicKey: string) => {
@@ -382,5 +392,31 @@ describe('MeshCoreTimeSyncScheduler.tick', () => {
 
     await expect(scheduler.tick()).resolves.toBeUndefined();
     expect(good._state.syncedFor).toEqual(['pk-a']);
+  });
+});
+
+describe('MeshCoreTimeSyncScheduler — manual reservation (#6493)', () => {
+  const NOW = 1_000_000_000;
+
+  it('skips the tick while a reservation is held: no read, no mark, no sync', async () => {
+    const manager = makeFakeManager({ reserved: true });
+    const { db, getEnabled, mark } = makeDb([node({ publicKey: 'pk-a', lastTimeSyncAt: null })]);
+    await makeScheduler(manager, db, NOW).tickOneManager(manager);
+    expect(getEnabled).not.toHaveBeenCalled();
+    expect(mark).not.toHaveBeenCalled();
+    expect(manager._state.syncedFor).toEqual([]);
+  });
+
+  it('a reservation that appears during the DB read blocks the claim: no mark, no sync', async () => {
+    const manager = makeFakeManager({});
+    const { db, getEnabled, mark } = makeDb([node({ publicKey: 'pk-a', lastTimeSyncAt: null })]);
+    getEnabled.mockImplementation(async () => {
+      manager._state.reserved = true;
+      return [node({ publicKey: 'pk-a', lastTimeSyncAt: null })];
+    });
+    await makeScheduler(manager, db, NOW).tickOneManager(manager);
+    expect(mark).not.toHaveBeenCalled();
+    expect(manager._state.syncedFor).toEqual([]);
+    expect(manager._state.lastMeshTxAt).toBe(0);
   });
 });

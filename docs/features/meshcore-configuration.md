@@ -115,7 +115,9 @@ Alongside the scheduled config, the panel has two buttons to pull telemetry from
 - **Poll Status** — requests battery / uptime / counters (repeater- and room-server-oriented).
 - **Poll Environment (LPP)** — requests a Cayenne-LPP environment reading (companion-oriented).
 
-Both transmit on the mesh, so they share the per-source **60-second mesh-TX gate** — if another scheduled or manual op fired too recently the request is refused with **HTTP 429 and a `Retry-After`**, surfaced as a throttle message on the button. Each button shows a pending state and reports how many telemetry rows were written. On-demand polling requires only **`nodes:read`** on the source (and returns 409 if the source isn't connected).
+Both transmit on the mesh, so they share the per-source **60-second mesh-TX gate** — if another scheduled or manual op fired too recently, your click is **queued** and sent when the slot opens. The button shows "Queued — sending in N s" with a countdown. The same applies to **Sync Now** on the Time Sync panel and to page 1 of a neighbours fetch. A source holds at most 5 waiting requests, a request waits at most 180 s, and you get one waiting request per source: a newer click replaces the older one, which shows "Replaced by your newer request". Past a limit the call answers **HTTP 429 and a `Retry-After`**, and the button counts down before it re-enables. MeshMonitor never resends on its own. Schedulers and Auto Ping step aside while your request waits. Each button shows a pending state and reports how many telemetry rows were written. On-demand polling requires only **`nodes:read`** on the source (and returns 409 if the source isn't connected).
+
+![A Poll Status click queued during the 60-second mesh-TX gate, counting down](/images/features/meshcore-tx-queue-countdown.png)
 
 The composite primary key on `meshcore_nodes` is `(sourceId, publicKey)`, so the same device advertising under two different sources is tracked independently.
 

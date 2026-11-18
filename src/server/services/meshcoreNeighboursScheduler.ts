@@ -177,6 +177,12 @@ export class MeshCoreNeighboursScheduler {
       return;
     }
 
+    // A manual action is queued for the next slot (#6493): give way.
+    if (manager.hasManualMeshReservation()) {
+      logger.debug(`[MeshCoreNeighbours:${manager.sourceId}] Skipping - manual action waiting for the slot`);
+      return;
+    }
+
     const nodes = await this.database.meshcore.getNeighborsEnabledNodes(manager.sourceId);
     if (nodes.length === 0) return;
 
@@ -189,8 +195,11 @@ export class MeshCoreNeighboursScheduler {
     // Stamp BEFORE issuing — preserves fair rotation when several nodes share
     // the same overdue-by, and applies the per-source 60s gate regardless of
     // how long the query takes. Mirrors the telemetry scheduler.
+    // Claim the slot atomically BEFORE marking: a reservation may have
+    // appeared during the awaits above, and a skipped tick must change
+    // neither rotation nor the stored request time (#6493).
+    if (!manager.tryClaimMeshTxSlot(now, this.minIntervalMs)) return;
     await this.database.meshcore.markNeighborsRequested(manager.sourceId, target.publicKey, now);
-    manager.recordMeshTx(now);
 
     try {
       const result = await manager.pollNeighborsAndStore(target.publicKey);

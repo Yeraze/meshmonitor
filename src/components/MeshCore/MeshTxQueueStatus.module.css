@@ -1,0 +1,32 @@
+/*
+ * MeshTxQueueStatus CSS module (#6493). Theme tokens only, no fallback.
+ */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.icon {
+  flex: 0 0 auto;
+}
+
+.queued .icon,
+.sending .icon {
+  color: var(--color-accent);
+}
+
+.superseded .icon,
+.cooldown .icon {
+  color: var(--color-warning);
+}
+
+.replaces {
+  color: var(--color-text-muted);
+}
