@@ -1,0 +1,54 @@
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-raised);
+}
+
+.senderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.notice {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-error);
+  font-size: 0.85rem;
+}
+
+.errorText {
+  flex: 1 1 auto;
+}
+
+.dismiss {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
