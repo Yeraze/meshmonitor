@@ -2368,24 +2368,17 @@ router.post('/time-sync-nodes', perSourceSettings('write'), async (req, res) => 
       intervalMinutes: intervalMinutes !== undefined ? Number(intervalMinutes) : undefined,
     }, sourceId);
 
-    // Update the meshtastic manager interval if connected
-    const timeSyncSourceId = sourceId;
+    // Read back the saved values (per-source with global fallback), so a
+    // request that sends only one of enabled / intervalMinutes uses the
+    // stored value for the other. A missing `enabled` used to read as false
+    // and turned Time Sync off on an interval-only save.
+    const updatedSettings = await databaseService.getTimeSyncFilterSettingsAsync(sourceId);
+
     // Own radio only; a non-Meshtastic source never re-arms the primary's
     // time-sync scheduler (#5375).
-    if (!timeSyncManager) {
-      // Settings are saved above; there is no local radio to apply them to.
-    } else if (intervalMinutes !== undefined) {
-      timeSyncManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
-    } else if (enabled !== undefined) {
-      // If only enabled/disabled changed, use existing interval (per-source with global fallback)
-      const intervalStr = await databaseService.settings.getSettingForSource(timeSyncSourceId ?? null, 'autoTimeSyncIntervalMinutes');
-      const parsed = intervalStr ? parseInt(intervalStr, 10) : NaN;
-      const currentInterval = isNaN(parsed) ? 15 : parsed;
-      timeSyncManager.setTimeSyncInterval(enabled ? currentInterval : 0);
+    if (timeSyncManager && (enabled !== undefined || intervalMinutes !== undefined)) {
+      timeSyncManager.setTimeSyncInterval(updatedSettings.enabled ? updatedSettings.intervalMinutes : 0);
     }
-
-    // Get the updated settings to return
-    const updatedSettings = await databaseService.getTimeSyncFilterSettingsAsync(sourceId);
 
     res.json({
       success: true,
