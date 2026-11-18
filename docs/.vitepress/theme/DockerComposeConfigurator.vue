@@ -120,27 +120,27 @@
       <p class="help-text">How will you access MeshMonitor?</p>
 
       <div class="radio-group">
-        <label class="radio-option" :class="{ selected: config.deploymentMode === 'development' }">
-          <input type="radio" v-model="config.deploymentMode" value="development" />
+        <label class="radio-option" :class="{ selected: config.deploymentMode === 'production-http' }">
+          <input type="radio" v-model="config.deploymentMode" value="production-http" />
           <div class="option-content">
-            <strong>Development (HTTP)</strong>
-            <span class="option-desc">Simple HTTP access via localhost or local IP</span>
+            <strong>Plain HTTP (LAN)</strong>
+            <span class="option-desc">Direct HTTP on your local network. Use a reverse proxy for internet access.</span>
           </div>
         </label>
 
         <label class="radio-option" :class="{ selected: config.deploymentMode === 'production-proxy' }">
           <input type="radio" v-model="config.deploymentMode" value="production-proxy" />
           <div class="option-content">
-            <strong>Production with Reverse Proxy</strong>
-            <span class="option-desc">HTTPS via nginx, Caddy, or Traefik (recommended)</span>
+            <strong>Reverse Proxy (HTTPS)</strong>
+            <span class="option-desc">HTTPS via nginx, Caddy, or Traefik. Use this for internet access.</span>
           </div>
         </label>
 
-        <label class="radio-option" :class="{ selected: config.deploymentMode === 'production-http' }">
-          <input type="radio" v-model="config.deploymentMode" value="production-http" />
+        <label class="radio-option" :class="{ selected: config.deploymentMode === 'development' }">
+          <input type="radio" v-model="config.deploymentMode" value="development" />
           <div class="option-content">
-            <strong>Production without Reverse Proxy</strong>
-            <span class="option-desc">Direct HTTP access (not recommended)</span>
+            <strong>Development (contributors)</strong>
+            <span class="option-desc">For working on MeshMonitor itself. Sets NODE_ENV=development, which loosens login and API rate limits.</span>
           </div>
         </label>
       </div>
@@ -187,6 +187,21 @@
           {{ config.deploymentMode === 'production-proxy'
             ? 'Port for reverse proxy to connect to (not directly accessible)'
             : 'Port to access MeshMonitor web interface' }}
+        </p>
+      </div>
+
+      <div v-if="config.deploymentMode !== 'production-proxy'" class="form-group">
+        <label for="serverAddress">Server Address (optional)</label>
+        <input
+          id="serverAddress"
+          v-model="config.serverAddress"
+          type="text"
+          placeholder="192.168.1.50"
+          class="text-input"
+        />
+        <p class="field-help">
+          The IP or hostname of the machine running MeshMonitor (no http:// and no port).
+          It goes into ALLOWED_ORIGINS; without it, login works only from http://localhost.
         </p>
       </div>
     </section>
@@ -691,8 +706,9 @@ const config = ref({
   bleMac: '',
   serialDevice: '/dev/ttyUSB0',
   baudRate: 115200,
-  deploymentMode: 'development',
+  deploymentMode: 'production-http',
   hostname: '',
+  serverAddress: '',
   useHttps: true,
   webPort: 8080,
   planVirtualNode: true,
@@ -739,7 +755,29 @@ const accessUrl = computed(() => {
     const protocol = config.value.useHttps ? 'https' : 'http'
     return `${protocol}://${config.value.hostname || 'yourdomain.com'}`
   }
-  return `http://localhost:${config.value.webPort}`
+  return `http://${serverHost.value || 'localhost'}:${config.value.webPort}`
+})
+
+// The Server Address field, cut down to a bare host in case the user pasted
+// a full URL such as http://192.168.1.50:8080/.
+const serverHost = computed(() =>
+  config.value.serverAddress
+    .trim()
+    .replace(/^[a-z]+:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/:\d+$/, '')
+)
+
+// Origins a browser may load MeshMonitor from when no reverse proxy is in
+// front: localhost, plus the LAN address if the user gave one.
+const directOrigins = computed(() => {
+  const port = config.value.webPort
+  const origins = [`http://localhost:${port}`]
+  const addr = serverHost.value
+  if (addr && addr !== 'localhost') {
+    origins.push(`http://${addr}:${port}`)
+  }
+  return origins.join(',')
 })
 
 // Build the compose YAML. `portainer` mode targets Portainer's stack web
@@ -905,9 +943,9 @@ function buildComposeLines(portainer) {
     lines.push(`      - ALLOWED_ORIGINS=${protocol}://${config.value.hostname}`)
   } else if (config.value.deploymentMode === 'production-http') {
     lines.push('      - COOKIE_SECURE=false')
-    lines.push(`      - ALLOWED_ORIGINS=http://localhost:${config.value.webPort}`)
+    lines.push(`      - ALLOWED_ORIGINS=${directOrigins.value}`)
   } else {
-    lines.push(`      - ALLOWED_ORIGINS=http://localhost:${config.value.webPort}`)
+    lines.push(`      - ALLOWED_ORIGINS=${directOrigins.value}`)
   }
 
   // Virtual Node is configured per-source in the UI starting in 4.0
@@ -1082,9 +1120,11 @@ const envFile = computed(() => {
 
   // Production session secret - this is the ONLY setting that should be in .env
   if (config.value.deploymentMode !== 'development') {
-    lines.push('# IMPORTANT: Generate a secure session secret!')
-    lines.push('# Run: openssl rand -base64 32')
-    lines.push('SESSION_SECRET=REPLACE_WITH_SECURE_RANDOM_STRING')
+    lines.push('# Session secret. Generate one and uncomment the line below:')
+    lines.push('#   openssl rand -base64 32')
+    lines.push('# Left unset, MeshMonitor picks a random secret at each start')
+    lines.push('# (everyone is signed out on restart). Never use a shared example value.')
+    lines.push('# SESSION_SECRET=')
     lines.push('')
   }
 
