@@ -216,7 +216,7 @@ Since 4.17 everything in the container runs as the `node` user (uid and gid 1000
 
 ### My scripts lost their Python modules or API keys
 
-Scripts no longer load modules from the scripts folder or see variables named like secrets (`API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`). List modules in `/data/scripts/requirements.txt` and click **Install / Update dependencies**; they survive updates. For an API key, put it in a file under `/data/scripts/` and have the script read it. Don't rename the variable to get past the filter: the filter exists so an uploaded script can't read the server's own secrets. See [User Scripts](/user-scripts#installing-dependencies).
+Scripts no longer load modules from the scripts folder or see container variables named like secrets (`API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`). List modules in `/data/scripts/requirements.txt` and click **Install / Update dependencies**; they survive updates. For an API key, add it in **Settings › Scripts › Script Secrets**: each secret reaches every script as an environment variable of the same name. Don't rename a container variable to get past the filter: the filter exists so an uploaded script can't read the server's own secrets. See [Script Secrets](/developers/auto-responder-scripting#script-secrets) and [User Scripts](/user-scripts#installing-dependencies).
 
 ### Docker's network clashes with my LAN
 

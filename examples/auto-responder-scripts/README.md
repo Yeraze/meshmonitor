@@ -130,7 +130,7 @@ Weather lookup template (stub implementation).
 Complete Pirate Weather API integration with Nominatim geocoding. Supports flexible location input (city, zip code, address, etc.) and provides detailed weather information including current conditions, daily highs/lows, humidity, and wind speed.
 
 **Requirements:**
-- `PIRATE_WEATHER_API_KEY` environment variable (get free key from https://pirateweather.net/)
+- `PIRATE_WEATHER_API_KEY` Script Secret (get free key from https://pirateweather.net/)
 - Python 3.6+
 
 **Trigger:** `weather, weather {location}`
@@ -146,7 +146,7 @@ Complete Pirate Weather API integration with Nominatim geocoding. Supports flexi
 
 **Setup:**
 1. Get API key from https://pirateweather.net/
-2. Add `PIRATE_WEATHER_API_KEY=your_key` to docker-compose.yaml environment variables
+2. In MeshMonitor, open **Settings → Scripts → Script Secrets** and add `PIRATE_WEATHER_API_KEY` with your key (MeshMonitor does not pass container variables named like `*API_KEY*` to scripts)
 3. Ensure volume mount `./scripts:/data/scripts` in docker-compose.yaml
 4. Copy `PirateWeather.py` to your local `./scripts/` directory (automatically available in container via volume mount)
 5. Make executable: `chmod +x ./scripts/PirateWeather.py`
@@ -162,7 +162,7 @@ Complete Pirate Weather API integration with Nominatim geocoding. Supports flexi
 Advanced Pirate Weather integration with two separate triggers: current conditions and 7-day forecast. Uses Nominatim for geocoding/reverse-geocoding, accepts city/zip/coordinates, and falls back to GPS from the requesting node (or the local node) when no location is supplied. Outputs temperatures in both Fahrenheit and Celsius. The 7-day forecast splits across multiple 200-char messages automatically.
 
 **Requirements:**
-- `PIRATE_WEATHER_API_KEY` environment variable (get free key from https://pirateweather.net/)
+- `PIRATE_WEATHER_API_KEY` Script Secret (get free key from https://pirateweather.net/)
 - `LOCAL_LAT` / `LOCAL_LON` env vars (optional GPS fallback)
 - Python 3.6+
 
@@ -178,7 +178,7 @@ Advanced Pirate Weather integration with two separate triggers: current conditio
 
 **Setup:**
 1. Get API key from https://pirateweather.net/
-2. Add `PIRATE_WEATHER_API_KEY=your_key` (and optionally `LOCAL_LAT` / `LOCAL_LON`) to docker-compose.yaml
+2. Add `PIRATE_WEATHER_API_KEY` in **Settings → Scripts → Script Secrets**; optionally set `LOCAL_LAT` / `LOCAL_LON` in docker-compose.yaml
 3. Copy `PirateWeatherADV.py` to your `./scripts/` directory and `chmod +x` it
 4. Configure two triggers in MeshMonitor UI (Settings → Automation → Auto Responder):
    - Pattern `weather, w, weather {location:.+}, w {location:.+}` → Script `/data/scripts/PirateWeatherADV.py`
@@ -296,8 +296,8 @@ subprocess.run(['/data/scripts/remote-admin.py', '--reboot'])
 Demonstrates using MeshMonitor's v1 API from scripts. Shows how to query node information using API token authentication.
 
 **Requirements:**
-- `MM_API_TOKEN` environment variable (generate from Settings > API Tokens)
-- `MM_API_URL` environment variable (optional, defaults to `http://localhost:3001/meshmonitor`)
+- `MM_API_TOKEN` Script Secret (generate the token from Settings > API Tokens)
+- `MM_API_URL` (optional, defaults to `http://localhost:3001/meshmonitor`): a Script Secret or a docker-compose variable
 
 **Trigger:** `nodeinfo, nodeinfo {nodeid}`
 **Example messages:**
@@ -308,11 +308,7 @@ Demonstrates using MeshMonitor's v1 API from scripts. Shows how to query node in
 
 **Setup:**
 1. Generate an API token: Settings > API Tokens > Generate Token
-2. Add to docker-compose.yaml:
-   ```yaml
-   environment:
-     - MM_API_TOKEN=your_token_here
-   ```
+2. Add `MM_API_TOKEN` with that token in **Settings > Scripts > Script Secrets** (a `MM_API_TOKEN` set in docker-compose.yaml never reaches scripts: its name looks like a secret)
 3. Configure trigger with pattern `nodeinfo, nodeinfo {nodeid}`
 
 ## Regex Pattern Examples

@@ -122,6 +122,7 @@ import { isPowered, detectPowerTransition } from './utils/poweredState.js';
 import { autoAckIsIp, autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { hopCountEmoji, HOP_COUNT_EMOJIS, parseHopEmojiOverrides } from '../utils/hopEmoji.js';
 import { buildScriptChildEnv } from './utils/scriptRunner.js';
+import { scrubScriptSecrets } from './utils/scriptSecretsSnapshot.js';
 import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
@@ -4855,7 +4856,7 @@ class MeshtasticManager implements ISourceManager {
         maxBuffer: 1024 * 1024,
       });
 
-      if (stderr) logger.warn(`📍 Geofence script "${trigger.name}" stderr: ${stderr}`);
+      if (stderr) logger.warn(`📍 Geofence script "${trigger.name}" stderr: ${scrubScriptSecrets(stderr)}`);
 
       // Parse JSON output and send messages (same format as timer scripts)
       if (stdout && stdout.trim()) {
@@ -4904,10 +4905,10 @@ class MeshtasticManager implements ISourceManager {
       await this.updateGeofenceTriggerResult(trigger.id, 'success');
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      const errorMessage = error.message || 'Unknown error';
+      const errorMessage = scrubScriptSecrets(error.message || 'Unknown error');
       logger.error(`📍 Geofence "${trigger.name}" script failed after ${duration}ms: ${errorMessage}`);
-      if (error.stderr) logger.error(`📍 Geofence script stderr: ${error.stderr}`);
-      if (error.stdout) logger.warn(`📍 Geofence script stdout before failure: ${error.stdout.substring(0, 200)}`);
+      if (error.stderr) logger.error(`📍 Geofence script stderr: ${scrubScriptSecrets(String(error.stderr))}`);
+      if (error.stdout) logger.warn(`📍 Geofence script stdout before failure: ${scrubScriptSecrets(String(error.stdout)).substring(0, 200)}`);
       await this.updateGeofenceTriggerResult(trigger.id, 'error', errorMessage);
     }
   }
@@ -5121,7 +5122,7 @@ class MeshtasticManager implements ISourceManager {
       });
 
       if (stderr) {
-        logger.warn(`⏱️ Timer script "${triggerName}" stderr: ${stderr}`);
+        logger.warn(`⏱️ Timer script "${triggerName}" stderr: ${scrubScriptSecrets(stderr)}`);
       }
 
       const duration = Date.now() - startTime;
@@ -5129,14 +5130,14 @@ class MeshtasticManager implements ISourceManager {
 
       // Parse JSON output and send messages to channel
       if (stdout && stdout.trim()) {
-        logger.debug(`⏱️ Timer script stdout: ${stdout.substring(0, 200)}${stdout.length > 200 ? '...' : ''}`);
+        logger.debug(`⏱️ Timer script stdout: ${scrubScriptSecrets(stdout).substring(0, 200)}${stdout.length > 200 ? '...' : ''}`);
 
         // Try to parse as JSON (same format as Auto-Responder scripts)
         let scriptOutput;
         try {
           scriptOutput = JSON.parse(stdout.trim());
         } catch (parseError) {
-          logger.debug(`⏱️ Timer script output is not JSON, ignoring: ${stdout.substring(0, 100)}`);
+          logger.debug(`⏱️ Timer script output is not JSON, ignoring: ${scrubScriptSecrets(stdout).substring(0, 100)}`);
           await this.updateTimerTriggerResult(triggerId, 'success');
           return;
         }
@@ -5155,7 +5156,7 @@ class MeshtasticManager implements ISourceManager {
         } else if (scriptOutput.response && typeof scriptOutput.response === 'string') {
           // Single response format: { "response": "msg" }
           scriptResponses = [scriptOutput.response];
-          logger.debug(`⏱️ Timer script response: ${scriptOutput.response.substring(0, 50)}...`);
+          logger.debug(`⏱️ Timer script response: ${scrubScriptSecrets(scriptOutput.response).substring(0, 50)}...`);
         } else {
           logger.debug(`⏱️ Timer script output has no 'response' or 'responses' field, ignoring`);
           await this.updateTimerTriggerResult(triggerId, 'success');
@@ -5201,10 +5202,10 @@ class MeshtasticManager implements ISourceManager {
 
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      const errorMessage = error.message || 'Unknown error';
+      const errorMessage = scrubScriptSecrets(error.message || 'Unknown error');
       logger.error(`⏱️ Timer "${triggerName}" failed after ${duration}ms: ${errorMessage}`);
-      if (error.stderr) logger.error(`⏱️ Timer script stderr: ${error.stderr}`);
-      if (error.stdout) logger.warn(`⏱️ Timer script stdout before failure: ${error.stdout.substring(0, 200)}`);
+      if (error.stderr) logger.error(`⏱️ Timer script stderr: ${scrubScriptSecrets(String(error.stderr))}`);
+      if (error.stdout) logger.warn(`⏱️ Timer script stdout before failure: ${scrubScriptSecrets(String(error.stdout)).substring(0, 200)}`);
       await this.updateTimerTriggerResult(triggerId, 'error', errorMessage);
     }
   }
@@ -14000,7 +14001,7 @@ class MeshtasticManager implements ISourceManager {
               });
 
               if (stderr) {
-                logger.warn(`🔧 Auto-responder script for "${triggerPattern}" stderr: ${stderr}`);
+                logger.warn(`🔧 Auto-responder script for "${triggerPattern}" stderr: ${scrubScriptSecrets(stderr)}`);
               }
 
               // Support both single response and multiple responses
@@ -14077,10 +14078,10 @@ class MeshtasticManager implements ISourceManager {
               } else if (error.code === 'ENOENT') {
                 logger.error(`🔧 Auto-responder script for "${triggerPattern}" not found: ${scriptPath}`);
               } else {
-                logger.error(`🔧 Auto-responder script for "${triggerPattern}" failed after ${scriptDuration}ms: ${error.message}`);
+                logger.error(`🔧 Auto-responder script for "${triggerPattern}" failed after ${scriptDuration}ms: ${scrubScriptSecrets(String(error.message))}`);
               }
-              if (error.stderr) logger.error(`🔧 Script stderr: ${error.stderr}`);
-              if (error.stdout) logger.warn(`🔧 Script stdout before failure: ${error.stdout.substring(0, 200)}`);
+              if (error.stderr) logger.error(`🔧 Script stderr: ${scrubScriptSecrets(String(error.stderr))}`);
+              if (error.stdout) logger.warn(`🔧 Script stdout before failure: ${scrubScriptSecrets(String(error.stdout)).substring(0, 200)}`);
               return;
             }
 

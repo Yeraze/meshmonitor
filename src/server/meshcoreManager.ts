@@ -40,6 +40,7 @@ import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.
 import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
+import { scrubScriptSecrets } from './utils/scriptSecretsSnapshot.js';
 import { MeshCoreNativeBackend, MESHCORE_LOGIN_REJECTED, decodeOutPathLen, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import {
   MESHCORE_CONTACT_NOT_ON_DEVICE,
@@ -14583,7 +14584,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const result = await runScript({ scriptPath, scriptArgs: argv, env });
 
     if (!result.success) {
-      logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script error: ${result.error}${result.stderr ? ` | stderr: ${result.stderr.substring(0, 200)}` : ''}`);
+      logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script error: ${scrubScriptSecrets(result.error ?? '')}${result.stderr ? ` | stderr: ${scrubScriptSecrets(result.stderr).substring(0, 200)}` : ''}`);
       return result;
     }
 

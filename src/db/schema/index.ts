@@ -123,6 +123,7 @@ export * from './mqttNativeIdentities.js';
 // Per-source MeshCore Analyzer Observer signing keys (epic #4457)
 export * from './meshcoreObserverKeys.js';
 export * from './meshcoreObserverCredentials.js';
+export * from './scriptSecrets.js';
 
 // Per-source MeshCore Companion device identity private keys (issue #6195)
 export * from './meshcoreSourcePkiKeys.js';

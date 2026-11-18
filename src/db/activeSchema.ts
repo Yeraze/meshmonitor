@@ -259,6 +259,9 @@ import {
   meshcoreObserverCredentialsSqlite, meshcoreObserverCredentialsPostgres, meshcoreObserverCredentialsMysql,
 } from './schema/meshcoreObserverCredentials.js';
 import {
+  scriptSecretsSqlite, scriptSecretsPostgres, scriptSecretsMysql,
+} from './schema/scriptSecrets.js';
+import {
   deadDropMessagesSqlite, deadDropMessagesPostgres, deadDropMessagesMysql,
 } from './schema/deadDrop.js';
 
@@ -492,6 +495,9 @@ export interface ActiveSchema {
   // Per-source MeshCore Analyzer Observer static MQTT credentials (issue #4595)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4595 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   meshcoreObserverCredentials: any;
+  // Global script secrets (sealed values handed to user scripts as env vars)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  scriptSecrets: any;
 
   // Dead Drop / Mailbox — async per-source message store
   deadDropMessages: any;
@@ -616,6 +622,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverKeys: meshcoreObserverKeysSqlite,
     meshcoreSourcePkiKeys: meshcoreSourcePkiKeysSqlite,
     meshcoreObserverCredentials: meshcoreObserverCredentialsSqlite,
+    scriptSecrets: scriptSecretsSqlite,
     deadDropMessages: deadDropMessagesSqlite,
     atakContacts: atakContactsSqlite,
     meshBeaconOffers: meshBeaconOffersSqlite,
@@ -715,6 +722,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverKeys: meshcoreObserverKeysPostgres,
     meshcoreSourcePkiKeys: meshcoreSourcePkiKeysPostgres,
     meshcoreObserverCredentials: meshcoreObserverCredentialsPostgres,
+    scriptSecrets: scriptSecretsPostgres,
     deadDropMessages: deadDropMessagesPostgres,
     atakContacts: atakContactsPostgres,
     meshBeaconOffers: meshBeaconOffersPostgres,
@@ -814,6 +822,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreObserverKeys: meshcoreObserverKeysMysql,
     meshcoreSourcePkiKeys: meshcoreSourcePkiKeysMysql,
     meshcoreObserverCredentials: meshcoreObserverCredentialsMysql,
+    scriptSecrets: scriptSecretsMysql,
     deadDropMessages: deadDropMessagesMysql,
     atakContacts: atakContactsMysql,
     meshBeaconOffers: meshBeaconOffersMysql,

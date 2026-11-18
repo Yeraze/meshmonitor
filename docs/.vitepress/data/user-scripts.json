@@ -151,7 +151,7 @@
     "exampleTrigger": "weather, weather {location:.+}",
     "requirements": [
         "Python 3.6+",
-        "PIRATE_WEATHER_API_KEY environment variable (get free key from https://pirateweather.net/)"
+        "PIRATE_WEATHER_API_KEY Script Secret, set in Settings › Scripts (get free key from https://pirateweather.net/)"
     ],
     "author": "Codename-11",
     "features": [
@@ -173,8 +173,8 @@
     "requirements": [
       "Python 3.6+",
       "For Ollama: Ollama service running",
-      "For OpenAI: OPENAI_API_KEY environment variable (optional)",
-      "For Anthropic: ANTHROPIC_API_KEY environment variable (optional)"
+      "For OpenAI: OPENAI_API_KEY Script Secret, set in Settings › Scripts (optional)",
+      "For Anthropic: ANTHROPIC_API_KEY Script Secret, set in Settings › Scripts (optional)"
     ],
     "author": "Codename-11",
     "features": [
@@ -351,8 +351,8 @@
     "requirements": [
       "Python 3.8+",
       "Internet access",
-      "ADSBX_API_KEY environment variable (free from ADS-B Exchange)",
-      "AISHUB_API_KEY environment variable (free from AIS Hub)"
+      "ADSBX_API_KEY Script Secret, set in Settings › Scripts (free from ADS-B Exchange)",
+      "AISHUB_API_KEY Script Secret, set in Settings › Scripts (free from AIS Hub)"
     ],
     "author": "maxhayim",
     "features": [
@@ -657,7 +657,7 @@
     "exampleTrigger": "weather — GPS mode, uses node coordinates\nweather {location:.+} — location mode, user types a place name",
     "requirements": [
       "Python 3.6+ (included in MeshMonitor)",
-      "PIRATE_WEATHER_API_KEY environment variable (free key from https://pirateweather.net/)",
+      "PIRATE_WEATHER_API_KEY Script Secret, set in Settings › Scripts (free key from https://pirateweather.net/)",
       "Optional: LOCAL_LAT / LOCAL_LON for GPS fallback when requesting node has no coordinates"
     ],
     "author": "Nullvoid3771",

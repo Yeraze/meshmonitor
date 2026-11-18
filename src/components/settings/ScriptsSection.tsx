@@ -4,6 +4,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { UiIcon, type UiIconName } from '../icons';
 import ScriptDependenciesPanel from '../auto-responder/ScriptDependenciesPanel';
+import ScriptSecretsPanel from './ScriptSecretsPanel';
 import styles from './ScriptsSection.module.css';
 
 /**
@@ -518,6 +519,8 @@ const ScriptsSection: React.FC<ScriptsSectionProps> = ({ baseUrl, canWrite = tru
       )}
 
       <ScriptDependenciesPanel />
+
+      <ScriptSecretsPanel />
     </div>
   );
 };

@@ -108,6 +108,8 @@ export { MeshCoreObserverKeysRepository } from './meshcoreObserverKeys.js';
 export type { DbMeshCoreObserverKey } from './meshcoreObserverKeys.js';
 export { MeshCoreObserverCredentialsRepository } from './meshcoreObserverCredentials.js';
 export type { DbMeshCoreObserverCredential } from './meshcoreObserverCredentials.js';
+export { ScriptSecretsRepository } from './scriptSecrets.js';
+export type { DbScriptSecret, ScriptSecretMetadataRow } from './scriptSecrets.js';
 export { MeshCoreSourcePkiKeysRepository } from './meshcoreSourcePkiKeys.js';
 export type { DbMeshCoreSourcePkiKey } from './meshcoreSourcePkiKeys.js';
 export { MessageEventsRepository } from './messageEvents.js';
