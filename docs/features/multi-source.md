@@ -106,7 +106,9 @@ Pick one channel and a send box appears under the message feed. It is not shown 
 
 #### Replies and tapbacks
 
-<!-- screenshot: unified-send-reply.png (reply banner and the row action bar) -->
+![Replying from Unified Messages, with the reply and react buttons under each message](/images/features/unified-send-reply.png)
+
+![Picking a tapback; the picker names the node that will send it](/images/features/unified-send-react.png)
 
 With one channel selected, hover a message (or tab to it) to see **Reply** and **React** buttons under it. On a touch screen they always show. They do not appear on All Channels, in the public view, or on a message MeshMonitor cannot answer (a Meshtastic message with no packet id, a MeshCore reaction, a Reticulum message).
 

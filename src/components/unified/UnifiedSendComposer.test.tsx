@@ -323,6 +323,13 @@ describe('UnifiedSendComposer', () => {
       );
     });
 
+    it('react mode explains the disabled text box instead of claiming no node can send', async () => {
+      sources = [ref({})];
+      setup(mtTarget('react'));
+      await picker();
+      expect(box().title).toBe('Pick a reaction to send it; the text box is not used.');
+    });
+
     it('a pick during a target does not write the stored default', async () => {
       sources = [ref({}), ref({ sourceId: 'b', sourceName: 'Bravo' })];
       setup(mtTarget('reply'));

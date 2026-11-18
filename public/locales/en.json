@@ -7492,6 +7492,7 @@
   "unified.react.banner": "Reacting to {{name}}",
   "unified.react.choose": "Choose reaction",
   "unified.react.picker_subtitle": "Sends from {{source}}",
+  "unified.react.use_picker": "Pick a reaction to send it; the text box is not used.",
   "unified.react.no_sender": "No node here can react to this message",
   "unified.react.no_sender_meshcore": "Only a MeshCore node that heard this message, with reactions on, can react to it",
   "unified.telemetry.title": "Unified Telemetry",

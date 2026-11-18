@@ -466,7 +466,11 @@ export default function UnifiedSendComposer({ channelName, draftStore, onSent, t
                 })
           }
           disabled={!effective || reactMode}
-          disabledTitle={t('unified.send.none_can_send', 'No node can send on this channel right now.')}
+          disabledTitle={
+            reactMode
+              ? t('unified.react.use_picker', 'Pick a reaction to send it; the text box is not used.')
+              : t('unified.send.none_can_send', 'No node can send on this channel right now.')
+          }
           onSend={handleSend}
           sendAriaLabel={t('unified.send.send_aria', 'Send message')}
           maxBytes={maxBytes}
