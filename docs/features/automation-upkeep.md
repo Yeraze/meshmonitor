@@ -188,6 +188,12 @@ Navigate to **Automation → Auto Remote LocalStats**.
 
 **Interval**: How often the scheduler ticks (applied live, no restart needed).
 
+**Saves and restarts keep the interval.** MeshMonitor stores the time of each source's last request. Saving this section, a reconnect to the node, or a MeshMonitor restart never sends a request sooner than one interval after the last one:
+
+- A save that keeps the same interval (for example, a filter change) leaves the schedule alone.
+- A save with a new interval counts from the last request: shorten 30 minutes to 10, and the next one goes out 10 minutes after the last.
+- On the first start, or when the last request is more than one interval old, the first run waits a random delay of up to 5 minutes, so several instances don't all send at once.
+
 **Target filters** — targets are the **union** of every enabled filter, so a node matching any one is polled:
 
 - **Node list** — an explicit set of nodes.
