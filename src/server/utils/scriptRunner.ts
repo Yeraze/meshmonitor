@@ -380,6 +380,10 @@ export async function runScript(opts: RunScriptOptions): Promise<RunScriptResult
       maxBuffer: 1024 * 1024,
     });
     const parsed = parseScriptOutput(stdout);
+    // Success stdout is deliberately NOT scrubbed of Script Secret values: it
+    // becomes the mesh reply / engine step output, and a script may legitimately
+    // echo a configured value. Scrubbing is applied only where output reaches
+    // server logs or the admin test route. Do not "fix" this here.
     return {
       success: true,
       stdout,
