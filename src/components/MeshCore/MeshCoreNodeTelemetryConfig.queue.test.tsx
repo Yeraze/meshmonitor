@@ -30,9 +30,10 @@ const res = (status: number, body: unknown, headers: Record<string, string> = {}
 let posts: Array<{ body: Record<string, unknown>; settle: (r: unknown) => void }>;
 let queueGet: () => unknown;
 
+const afterPost = () => act(async () => { await vi.advanceTimersByTimeAsync(1000); });
 const flush = () => act(async () => { await vi.advanceTimersByTimeAsync(0); });
 const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
-const renderPanel = () => render(<MeshCoreNodeTelemetryConfig baseUrl="" sourceId="s1" publicKey={PK} />);
+const renderPanel = () => render(<MeshCoreNodeTelemetryConfig baseUrl="" sourceId="s1" publicKey={PK} nodeLabel="Hilltop" />);
 
 describe('MeshCoreNodeTelemetryConfig queue states', () => {
   beforeEach(() => {
@@ -57,7 +58,7 @@ describe('MeshCoreNodeTelemetryConfig queue states', () => {
     renderPanel();
     await flush();
     fireEvent.click(screen.getByText('Poll Status'));
-    await flush();
+    await afterPost();
     expect(screen.getByText(/Queued — sending in 45 s · 1 ahead/)).toBeInTheDocument();
     expect(screen.getByText('Polling…').closest('button')).toBeDisabled();
     expect(screen.getByText('Poll Environment (LPP)').closest('button')).not.toBeDisabled();
@@ -69,17 +70,17 @@ describe('MeshCoreNodeTelemetryConfig queue states', () => {
     renderPanel();
     await flush();
     fireEvent.click(screen.getByText('Poll Status'));
-    await flush();
+    await afterPost();
     fireEvent.click(screen.getByText('Poll Environment (LPP)'));
-    await flush();
-    expect(screen.getByText(/Replaces your queued Poll Status for aaaaaaaa/)).toBeInTheDocument();
+    await afterPost();
+    expect(screen.getByText(/Replaces your queued Poll Status for Hilltop/)).toBeInTheDocument();
     await act(async () => {
       posts[0].settle(
         res(409, { success: false, code: 'MESH_TX_SUPERSEDED', error: 'Replaced by your newer request', supersededBy: { action: 'telemetry', publicKey: PK } }),
       );
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByText(/Replaced by your newer request \(telemetry\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Replaced by your newer request \(Poll Environment \(LPP\)\)/)).toBeInTheDocument();
     await advance(8100);
     expect(screen.queryByText(/Replaced by your newer request/)).toBeNull();
   });
@@ -89,7 +90,7 @@ describe('MeshCoreNodeTelemetryConfig queue states', () => {
     renderPanel();
     await flush();
     fireEvent.click(screen.getByText('Poll Status'));
-    await flush();
+    await afterPost();
     await act(async () => {
       posts[0].settle(res(429, { success: false, code: 'MESH_TX_QUEUE_TIMEOUT', retryAfterSecs: 3, retryAfterSeconds: 3 }));
       await vi.advanceTimersByTimeAsync(0);
@@ -105,7 +106,7 @@ describe('MeshCoreNodeTelemetryConfig queue states', () => {
     const first = renderPanel();
     await flush();
     fireEvent.click(screen.getByText('Poll Status'));
-    await flush();
+    await afterPost();
     first.unmount();
     renderPanel();
     await flush();

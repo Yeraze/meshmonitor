@@ -952,6 +952,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     baseUrl={baseUrl}
                     sourceId={sourceId}
                     publicKey={selected}
+                    nodeLabel={contactsByKey.get(selected)?.advName || contactsByKey.get(selected)?.name || undefined}
                     receiveOnly={receiveOnly}
                   />
                   <MeshCoreNodeNeighboursConfig
@@ -964,6 +965,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     baseUrl={baseUrl}
                     sourceId={sourceId}
                     publicKey={selected}
+                    nodeLabel={contactsByKey.get(selected)?.advName || contactsByKey.get(selected)?.name || undefined}
                     receiveOnly={receiveOnly}
                   />
                   <TelemetryGraphs

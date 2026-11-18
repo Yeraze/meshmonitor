@@ -32,6 +32,8 @@ export interface UseMeshTxQueuedAction {
   replaced: MeshTxEntry['replaced'];
   /** The action that replaced a superseded one, when the server named it. */
   supersededBy: MeshTxEntry['supersededBy'];
+  /** Button label of the newer action that replaced this one. */
+  supersededByLabel: string | null;
   /** True while the button of this action must stay disabled. */
   busy: boolean;
 }
@@ -65,6 +67,7 @@ export function useMeshTxQueuedAction(
     result: entry?.result ?? null,
     replaced: entry?.replaced ?? null,
     supersededBy: entry?.supersededBy ?? null,
-    busy: phase === 'queued' || phase === 'sending' || phase === 'cooldown',
+    supersededByLabel: entry?.supersededByLabel ?? null,
+    busy: phase === 'starting' || phase === 'queued' || phase === 'sending' || phase === 'cooldown',
   };
 }

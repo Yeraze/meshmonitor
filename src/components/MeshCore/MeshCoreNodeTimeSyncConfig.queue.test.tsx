@@ -21,6 +21,7 @@ vi.mock('../ToastContainer', () => ({ useToast: () => ({ showToast: vi.fn() }) }
 const PK = 'a'.repeat(64);
 const res = (status: number, body: unknown) => ({ ok: status < 300, status, headers: new Headers(), json: async () => body });
 let posts: Array<{ settle: (r: unknown) => void }>;
+const afterPost = () => act(async () => { await vi.advanceTimersByTimeAsync(1000); });
 const flush = () => act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
 describe('MeshCoreNodeTimeSyncConfig queue states', () => {
@@ -43,7 +44,7 @@ describe('MeshCoreNodeTimeSyncConfig queue states', () => {
     render(<MeshCoreNodeTimeSyncConfig baseUrl="" sourceId="s1" publicKey={PK} />);
     await flush();
     fireEvent.click(screen.getByText('Sync Clock'));
-    await flush();
+    await afterPost();
     expect(screen.getByText(/Queued — sending in 20 s/)).toBeInTheDocument();
     expect(screen.getByText('Syncing…').closest('button')).toBeDisabled();
     await act(async () => {

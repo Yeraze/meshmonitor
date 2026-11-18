@@ -16,11 +16,13 @@ import styles from './MeshTxQueueStatus.module.css';
 type Props = Pick<UseMeshTxQueuedAction, 'phase' | 'secondsLeft' | 'position' | 'replaced'> & {
   /** Names the action that replaced a superseded one, when the server said. */
   supersededAction?: string | null;
+  /** Server action key, used only when the button label is unknown. */
+  supersededKey?: 'telemetry' | 'neighbours' | 'time-sync' | null;
 };
 
 const ACTIVE: ReadonlySet<MeshTxPhase> = new Set<MeshTxPhase>(['queued', 'sending', 'superseded', 'cooldown']);
 
-export const MeshTxQueueStatus: React.FC<Props> = ({ phase, secondsLeft, position, replaced, supersededAction }) => {
+export const MeshTxQueueStatus: React.FC<Props> = ({ phase, secondsLeft, position, replaced, supersededAction, supersededKey }) => {
   const { t } = useTranslation();
   if (!ACTIVE.has(phase)) return null;
 
@@ -36,8 +38,16 @@ export const MeshTxQueueStatus: React.FC<Props> = ({ phase, secondsLeft, positio
     text = t('meshcore.tx_queue.sending', 'Sending…');
     icon = 'send';
   } else if (phase === 'superseded') {
-    text = supersededAction
-      ? t('meshcore.tx_queue.superseded_by', 'Replaced by your newer request ({{action}})', { action: supersededAction })
+    const named = supersededAction
+      ?? (supersededKey
+        ? {
+          telemetry: t('meshcore.tx_queue.action_telemetry', 'Poll telemetry'),
+          neighbours: t('meshcore.tx_queue.action_neighbours', 'Poll Neighbours'),
+          'time-sync': t('meshcore.tx_queue.action_time_sync', 'Sync Now'),
+        }[supersededKey]
+        : null);
+    text = named
+      ? t('meshcore.tx_queue.superseded_by', 'Replaced by your newer request ({{action}})', { action: named })
       : t('meshcore.tx_queue.superseded', 'Replaced by your newer request');
     icon = 'alert';
   } else {
@@ -56,7 +66,7 @@ export const MeshTxQueueStatus: React.FC<Props> = ({ phase, secondsLeft, positio
           <span>
             {t('meshcore.tx_queue.replaces', 'Replaces your queued {{action}} for {{node}}', {
               action: replaced.label,
-              node: `${replaced.publicKey.slice(0, 8)}…`,
+              node: replaced.nodeLabel || `${replaced.publicKey.slice(0, 8)}…`,
             })}
           </span>
         </div>

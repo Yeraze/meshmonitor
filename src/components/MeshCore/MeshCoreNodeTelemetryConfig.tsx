@@ -32,6 +32,8 @@ interface MeshCoreNodeTelemetryConfigProps {
    *  status / Poll LPP disabled; the enable checkbox and interval input
    *  stay editable per interview decision 5). */
   receiveOnly?: boolean;
+  /** Display name of the node, for queue messages. */
+  nodeLabel?: string;
 }
 
 interface TelemetryConfigState {
@@ -73,6 +75,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   sourceId,
   publicKey,
   receiveOnly = false,
+  nodeLabel,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -190,6 +193,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
       label: type === 'status'
         ? t('meshcore.telemetry_config.poll_status', 'Poll Status')
         : t('meshcore.telemetry_config.poll_lpp', 'Poll Environment (LPP)'),
+      nodeLabel,
       mcPrefix,
       path: `nodes/${encodeURIComponent(publicKey)}/telemetry/poll`,
       body: { type },
@@ -390,7 +394,8 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
             secondsLeft={h.secondsLeft}
             position={h.position}
             replaced={h.replaced}
-            supersededAction={h.supersededBy?.action}
+            supersededAction={h.supersededByLabel}
+            supersededKey={h.supersededBy?.action}
           />
         ))}
         {pollMsg && (

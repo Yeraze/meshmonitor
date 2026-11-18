@@ -18,7 +18,7 @@ import { newLoginRequestId } from './useMeshCoreLoginProgress';
 
 export type MeshTxAction = 'telemetry' | 'neighbours' | 'time-sync';
 
-export type MeshTxPhase = 'idle' | 'queued' | 'sending' | 'cooldown' | 'superseded' | 'done' | 'error';
+export type MeshTxPhase = 'idle' | 'starting' | 'queued' | 'sending' | 'cooldown' | 'superseded' | 'done' | 'error';
 
 type Fetcher = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -44,6 +44,8 @@ export interface MeshTxEntry {
   publicKey: string;
   variant: string;
   label: string;
+  /** Display name of the node, when the panel knows it. */
+  nodeLabel: string | null;
   requestId: string;
   phase: Exclude<MeshTxPhase, 'idle'>;
   /** 1-based place in the queue while `queued`. */
@@ -52,12 +54,16 @@ export interface MeshTxEntry {
   secondsLeft: number | null;
   result: MeshTxResult | null;
   /** The earlier queued action this one replaced. */
-  replaced: { action: MeshTxAction; label: string; publicKey: string } | null;
+  replaced: { action: MeshTxAction; label: string; publicKey: string; nodeLabel: string | null } | null;
   /** Set on a superseded entry: the action that replaced it, when known. */
   supersededBy: { action: MeshTxAction; publicKey: string | null } | null;
+  /** Button label of the action the user clicked that replaced this one. */
+  supersededByLabel: string | null;
 }
 
 export const MESH_TX_POLL_MS = 2000;
+/** First GET waits so the server has enqueued the POST; an early 404 would read as granted. */
+export const MESH_TX_FIRST_POLL_MS = 1000;
 export const MESH_TX_TICK_MS = 1000;
 /** How long "Replaced by your newer request" stays on the old button. */
 export const MESH_TX_SUPERSEDED_SHOW_MS = 8000;
@@ -175,6 +181,8 @@ export interface MeshTxRunOptions {
   variant?: string;
   /** Short human name shown in "Replaces your queued …" ("Poll Status"). */
   label: string;
+  /** Display name of the node, for "Replaces your queued … for <node>". */
+  nodeLabel?: string;
   /** `${baseUrl}/api/sources/${id}/meshcore`. */
   mcPrefix: string;
   /** Path under mcPrefix, e.g. `nodes/<pk>/telemetry/poll`. */
@@ -192,7 +200,7 @@ export async function runMeshTxAction(opts: MeshTxRunOptions): Promise<MeshTxRes
   const slot = makeSlot(action, publicKey, variant);
   const key = `${sourceId}|${slot}`;
   const existing = getMeshTxEntry(sourceId, slot);
-  if (existing && (existing.phase === 'queued' || existing.phase === 'sending' || existing.phase === 'cooldown')) {
+  if (existing && (existing.phase === 'starting' || existing.phase === 'queued' || existing.phase === 'sending' || existing.phase === 'cooldown')) {
     return null;
   }
   if (existing) remove(sourceId, slot);
@@ -201,7 +209,8 @@ export async function runMeshTxAction(opts: MeshTxRunOptions): Promise<MeshTxRes
   let replaced: MeshTxEntry['replaced'] = null;
   for (const other of getMeshTxEntries(sourceId)) {
     if (other.phase === 'queued') {
-      replaced ??= { action: other.action, label: other.label, publicKey: other.publicKey };
+      patch(other, { supersededByLabel: label });
+      replaced ??= { action: other.action, label: other.label, publicKey: other.publicKey, nodeLabel: other.nodeLabel };
     }
   }
 
@@ -213,13 +222,15 @@ export async function runMeshTxAction(opts: MeshTxRunOptions): Promise<MeshTxRes
     publicKey,
     variant,
     label,
+    nodeLabel: opts.nodeLabel ?? null,
     requestId,
-    phase: 'sending',
+    phase: 'starting',
     position: null,
     secondsLeft: null,
     result: null,
     replaced,
     supersededBy: null,
+    supersededByLabel: null,
   };
   let m = entries.get(sourceId);
   if (!m) {
@@ -261,7 +272,7 @@ export async function runMeshTxAction(opts: MeshTxRunOptions): Promise<MeshTxRes
         } else if (resp.status === 404) {
           // Granted: the POST is open but no longer queued.
           const cur = getMeshTxEntry(sourceId, slot);
-          if (cur && cur.phase === 'queued') patch(cur, { phase: 'sending', position: null, secondsLeft: null });
+          if (cur && (cur.phase === 'queued' || cur.phase === 'starting')) patch(cur, { phase: 'sending', position: null, secondsLeft: null });
           if (l.tickTimer) {
             clearInterval(l.tickTimer);
             l.tickTimer = null;
@@ -274,7 +285,7 @@ export async function runMeshTxAction(opts: MeshTxRunOptions): Promise<MeshTxRes
     }
     if (l.open && current()) l.pollTimer = setTimeout(() => void poll(), MESH_TX_POLL_MS);
   };
-  void poll();
+  l.pollTimer = setTimeout(() => void poll(), MESH_TX_FIRST_POLL_MS);
 
   const finishKeep = (ms: number) => {
     if (l.keepTimer) clearTimeout(l.keepTimer);

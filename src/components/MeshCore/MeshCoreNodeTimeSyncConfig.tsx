@@ -49,6 +49,8 @@ interface MeshCoreNodeTimeSyncConfigProps {
   publicKey: string;
   /** True when this MeshCore source is in strict receive-only mode (#4547). */
   receiveOnly?: boolean;
+  /** Display name of the node, for queue messages. */
+  nodeLabel?: string;
 }
 
 interface TimeSyncConfigState {
@@ -82,6 +84,7 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
   sourceId,
   publicKey,
   receiveOnly = false,
+  nodeLabel,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -207,6 +210,7 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
     const result = await syncAction.run({
       fetcher: csrfFetch,
       label: t('meshcore.time_sync_config.sync_title', 'Sync Now'),
+      nodeLabel,
       mcPrefix,
       path: `nodes/${encodeURIComponent(publicKey)}/time-sync`,
       body: {},
@@ -404,7 +408,8 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
           secondsLeft={syncAction.secondsLeft}
           position={syncAction.position}
           replaced={syncAction.replaced}
-          supersededAction={syncAction.supersededBy?.action}
+          supersededAction={syncAction.supersededByLabel}
+          supersededKey={syncAction.supersededBy?.action}
         />
         {syncMsg && (
           <div

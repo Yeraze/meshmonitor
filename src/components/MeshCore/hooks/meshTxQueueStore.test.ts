@@ -66,7 +66,7 @@ describe('meshTxQueueStore', () => {
     f.setQueue(() => json(200, { success: true, data: { position: 2, depth: 2, startsInSecs: 30 } }));
     const p = runMeshTxAction(base(f));
     const slot = makeSlot('telemetry', 'a'.repeat(64), '');
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(f.posts[0].body.requestId).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
     expect(f.gets[0]).toBe(`${PRE}/tx-queue/${f.posts[0].body.requestId}`);
     expect(getMeshTxEntry('s1', slot)).toMatchObject({ phase: 'queued', position: 2, secondsLeft: 30 });
@@ -89,8 +89,22 @@ describe('meshTxQueueStore', () => {
   it('shows sending when the GET says the request is no longer queued (404)', async () => {
     const f = makeFetcher();
     void runMeshTxAction(base(f));
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(getMeshTxEntry('s1', makeSlot('telemetry', 'a'.repeat(64), ''))?.phase).toBe('sending');
+  });
+
+  it('holds the first GET for 1 s, shows no sending phase meanwhile, and catches a queued 200', async () => {
+    const f = makeFetcher();
+    f.setQueue(() => json(200, { success: true, data: { position: 1, depth: 1, startsInSecs: 50 } }));
+    const slot = makeSlot('telemetry', 'a'.repeat(64), '');
+    void runMeshTxAction(base(f));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(f.gets.length).toBe(0);
+    expect(f.posts.length).toBe(1);
+    expect(getMeshTxEntry('s1', slot)?.phase).toBe('starting');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.gets.length).toBe(1);
+    expect(getMeshTxEntry('s1', slot)).toMatchObject({ phase: 'queued', secondsLeft: 50 });
   });
 
   it('marks the old queued entry superseded and tells the new one what it replaced', async () => {
@@ -98,12 +112,12 @@ describe('meshTxQueueStore', () => {
     f.setQueue(() => json(200, { success: true, data: { position: 1, depth: 1, startsInSecs: 40 } }));
     const pk2 = 'b'.repeat(64);
     const first = runMeshTxAction(base(f));
-    await vi.advanceTimersByTimeAsync(0);
-    void runMeshTxAction(base(f, { action: 'time-sync', publicKey: pk2, label: 'Sync Now', path: 'nodes/y/time-sync' }));
+    await vi.advanceTimersByTimeAsync(1000);
+    void runMeshTxAction(base(f, { nodeLabel: 'Hilltop', action: 'time-sync', publicKey: pk2, label: 'Sync Now', path: 'nodes/y/time-sync' }));
     await vi.advanceTimersByTimeAsync(0);
 
     const newer = getMeshTxEntry('s1', makeSlot('time-sync', pk2, ''));
-    expect(newer?.replaced).toEqual({ action: 'telemetry', label: 'Poll Status', publicKey: 'a'.repeat(64) });
+    expect(newer?.replaced).toEqual({ action: 'telemetry', label: 'Poll Status', publicKey: 'a'.repeat(64), nodeLabel: null });
 
     f.posts[0].settle(
       json(409, {
@@ -115,7 +129,7 @@ describe('meshTxQueueStore', () => {
     );
     await first;
     const old = getMeshTxEntry('s1', makeSlot('telemetry', 'a'.repeat(64), ''));
-    expect(old).toMatchObject({ phase: 'superseded', supersededBy: { action: 'time-sync' } });
+    expect(old).toMatchObject({ phase: 'superseded', supersededBy: { action: 'time-sync' }, supersededByLabel: 'Sync Now' });
     await vi.advanceTimersByTimeAsync(MESH_TX_SUPERSEDED_SHOW_MS + 10);
     expect(getMeshTxEntry('s1', makeSlot('telemetry', 'a'.repeat(64), ''))).toBeNull();
   });
