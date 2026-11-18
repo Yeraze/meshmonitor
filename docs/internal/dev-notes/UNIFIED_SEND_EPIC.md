@@ -42,7 +42,7 @@ Hazards found in orientation:
   *Exit:* routes tested with `createRouteTestApp`; virtual/physical slot rules enforced in the sender list; CI green; merged.
 - [x] **P2 — Composer.** `MessageComposeInput` on Unified for one explicit channel; node picker limited to eligible senders; per-browser default node per channel; byte limit per source type; hidden/disabled on All Channels. Docs + screenshot.
   *Exit:* live-validated on the dev container (no transmit unless the user OKs reconnecting radios; `gauntlet` only); merged.
-- [ ] **P3 — Replies, tapbacks, status.** Reply and tapback from Unified rows (rules in hazard 3); delivery status where the sent row already tracks it. Docs + screenshot.
+- [x] **P3 — Replies, tapbacks, status.** Reply and tapback from Unified rows (rules in hazard 3); delivery status where the sent row already tracks it. Docs + screenshot.
   *Exit:* live-validated; merged.
 
 ## Phase 1 result (server)
@@ -59,3 +59,4 @@ Hazards found in orientation:
 - 2026-11-18: interview done; plan approved.
 - 2026-11-18: P1 implemented (WP1 rate limit + audit, WP2 sender list).
 - 2026-11-18: P2 implemented (send composer, sender picker, per-channel drafts, error handling; no retry).
+- 2026-11-18: P3 implemented (reply and tapback row actions, target state, MeshCore heard-by rule, delivery status icon on sent rows; MeshCore reply uses the default scope).

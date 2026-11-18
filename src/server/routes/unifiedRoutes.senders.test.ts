@@ -71,7 +71,10 @@ function fakeManagers(a: string, b: string) {
   return { st, managers };
 }
 
-type Ref = { sourceId: string; channelNumber: number; canSend: boolean; sendKind: string | null; sendBlockedReason: string | null };
+type Ref = {
+  sourceId: string; channelNumber: number; canSend: boolean; sendKind: string | null;
+  sendBlockedReason: string | null; reactionsOutbound: boolean | null;
+};
 
 describe('GET /api/unified/senders (#3045)', () => {
   let harness: RouteTestHarness;
@@ -174,6 +177,33 @@ describe('GET /api/unified/senders (#3045)', () => {
     expect(find(refs, MC, vnum)).toMatchObject({ canSend: false, sendBlockedReason: 'VIRTUAL_CHANNEL' });
     expect(find(refs, harness.sourceA, 1)).toMatchObject({ canSend: true, sendKind: 'meshtastic' });
     expect(find(refs, MC, 1)).toMatchObject({ canSend: true, sendKind: 'meshcore' });
+  });
+
+  it('reports reactionsOutbound for MeshCore refs only (#3045 P3)', async () => {
+    let refs = await fetchRefs(harness.admin);
+    // Setting unset: the shipped default applies, whatever it is.
+    expect(typeof find(refs, MC, 1).reactionsOutbound).toBe('boolean');
+
+    await harness.db.settings.setSourceSetting(MC, 'meshcoreReactionsOutboundEnabled', 'true');
+    refs = await fetchRefs(harness.admin);
+    expect(find(refs, MC, 1)).toMatchObject({ canSend: true, reactionsOutbound: true });
+
+    await harness.db.settings.setSourceSetting(MC, 'meshcoreReactionsOutboundEnabled', 'false');
+    refs = await fetchRefs(harness.admin);
+    expect(find(refs, MC, 1)).toMatchObject({ canSend: true, reactionsOutbound: false });
+
+    // Not-sendable MeshCore ref that reached the live-state step still reports it.
+    st[MC].connected = false;
+    expect(find(await fetchRefs(harness.admin), MC, 1)).toMatchObject({
+      sendBlockedReason: 'SOURCE_NOT_CONNECTED', reactionsOutbound: false,
+    });
+    st[MC].connected = true;
+
+    // Meshtastic and MQTT refs never carry it.
+    expect(find(refs, harness.sourceA, 1).reactionsOutbound).toBeNull();
+    expect(refs.filter((r) => r.sendKind !== 'meshcore').every((r) => r.reactionsOutbound === null)).toBe(true);
+    // A MeshCore ref blocked before the live-state step (virtual) stays null.
+    expect(refs.find((r) => r.sourceId === MC && r.sendBlockedReason === 'VIRTUAL_CHANNEL')?.reactionsOutbound).toBeNull();
   });
 
   it('scopes permissions per source', async () => {
