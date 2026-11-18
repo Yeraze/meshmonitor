@@ -1208,6 +1208,49 @@ Two of these are **`GET`** requests that transmit — `GET /contacts/:publicKey/
 remote repeater for its neighbour table) and `GET /admin/status/:publicKey` (polls a remote node for
 status). An API consumer scanning only `POST` routes for transmit side effects will miss both.
 
+#### Manual MeshCore actions wait for the radio slot (#6493)
+
+A MeshCore source sends at most one floor-gated packet per 60 seconds. A manual
+`POST …/meshcore/nodes/:publicKey/telemetry/poll`, `…/neighbours/poll` or
+`…/time-sync` that arrives inside that window no longer fails at once. It joins
+a per-source queue and the call answers when the packet is sent.
+
+| Limit | Value |
+|-------|-------|
+| Longest wait | 180 s |
+| Waiting requests per source | 5 |
+| Waiting requests per user per source | 1 (a newer request replaces the older) |
+
+- **Body `requestId`** (optional, 8 to 64 characters of `[A-Za-z0-9_-]`) names the request so you can read its place in the queue. A bad value answers `400` `INVALID_REQUEST_ID`.
+- **`200`** keeps its old body and adds `data.waitedSecs`, the seconds spent in the queue.
+- **`409` `MESH_TX_SUPERSEDED`** means a newer request from the same user on the same source took the place of this one. Nothing was sent. The body carries `supersededBy: { action: "telemetry" | "neighbours" | "time-sync", publicKey: string | null }`.
+- **`429`** with `MESH_TX_QUEUE_TIMEOUT`, `MESH_TX_QUEUE_FULL` or `RATE_LIMITED` carries a numeric `retryAfterSecs` (also `retryAfterSeconds` and the `Retry-After` header). Wait that long, then send a new request. Nothing was sent.
+- Other errors (`409` `SOURCE_NOT_CONNECTED`, `409` `TX_DISABLED`) are unchanged. A client that disconnects while waiting cancels the request and nothing is sent.
+
+Because a call can now stay open for up to 180 s, raise any proxy read timeout to 300 s
+(see [Reverse proxy](../configuration/reverse-proxy.md)).
+
+Read the place in the queue while a call is open:
+
+```
+GET /api/sources/:id/meshcore/tx-queue/:requestId
+```
+
+```json
+{ "success": true, "data": { "position": 2, "depth": 3, "startsInSecs": 45,
+                              "action": "telemetry", "publicKey": "<64 hex>" } }
+```
+
+`position` counts from 1. The call answers `404` `MESH_TX_REQUEST_NOT_FOUND` for an unknown
+id, for another user's id, and once the request has left the queue. A `404` while the POST is
+still open means the radio slot was granted and the packet is being sent. Poll about every 2 s.
+
+The paged neighbours fetch (`POST …/neighbours/fetch`) queues page 1 the same way, and
+its progress snapshot gains `queued` and `queuePosition`. While queued, `phase` is `waiting`
+and `waitMs` is the estimated start. A fetch replaced by a newer request ends with
+`outcome: "superseded"` and `pagesFetched: 0`. Pages 2 to 5 do not queue; they wait for a
+free slot as before. The same `requestId` works with the queue GET above.
+
 **Common Status Codes:**
 - `200` - Success
 - `400` - Bad Request (invalid parameters, or missing `sourceId` on a per-source v1 endpoint)

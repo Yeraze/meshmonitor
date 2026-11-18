@@ -722,6 +722,25 @@ every CLI command a **person** issued, in the per-source
 | (this) | ACL manager form, command history, this doc. |
 | #5785 | Remembered admin sessions: Resume / Log out in the console, session reuse in the schedulers. |
 
+## Manual TX queue (#6493)
+
+A manual route that transmits (`telemetry/poll`, `neighbours/poll`, `time-sync`, v1
+`request-telemetry` with `wait: true`, page 1 of the neighbours fetch) takes the next 60 s radio
+slot through `meshcoreManualTxQueue.ts` instead of answering 429 inside the floor. The route
+helper `awaitManualMeshTxSlot` in `meshcoreRouteShared.ts` waits, then sends on the same POST.
+
+- **Owner:** one waiting request per user per source (`requestUserId`). A newer request replaces
+  the older, which answers 409 `MESH_TX_SUPERSEDED` with nothing sent or marked.
+- **Limits:** 180 s max wait, 5 waiting per source. Past either, the legacy 429 with numeric
+  `retryAfterSecs`.
+- **Abort:** a closed or aborted request leaves the queue at once and sends nothing.
+- **Schedulers yield:** while a reservation is held the telemetry, neighbours, time-sync and
+  room-sync schedulers, Auto Ping and pager pages 2+ skip their turn, and re-check with
+  `tryClaim` after any DB await before they mark. Do the same in any new scheduler.
+- **Progress:** `GET /tx-queue/:requestId` (owner only; 404 while the POST is open means granted).
+  The UI side is `meshTxQueueStore.ts` + `useMeshTxQueuedAction` + `MeshTxQueueStatus`.
+- **Proxies:** a call can stay open 180 s, so docs ask for `proxy_read_timeout 300s`.
+
 ## Things that look tempting but aren't worth doing
 
 - **Adding `set <key> <value>` to the synthetic Companion CLI.** Already covered by the configuration form with proper validation.
