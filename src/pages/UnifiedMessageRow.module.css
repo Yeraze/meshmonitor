@@ -1,0 +1,78 @@
+/* Reply / tapback bar and delivery status for a Unified Messages row (#3045 P3).
+ * The bar is a sibling of the clickable card, never inside it. */
+.row {
+  position: relative;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: -2px 4px 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease-in-out;
+}
+
+.row:hover .actions,
+.row:focus-within .actions {
+  opacity: 1;
+}
+
+/* Touch screens have no hover: keep the bar visible. */
+@media (hover: none) {
+  .actions {
+    opacity: 1;
+  }
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.action:hover,
+.action:focus-visible {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+}
+
+/* messages.css is not loaded on this route: same colours as its .status-* rules. */
+.status :global(.status-pending) {
+  color: var(--color-warning);
+  font-size: 0.8rem;
+}
+
+.status :global(.status-delivered) {
+  color: var(--color-success);
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.status :global(.status-failed) {
+  color: var(--color-error);
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.status :global(.status-confirmed) {
+  color: var(--color-accent);
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.status :global(.status-timeout) {
+  color: var(--color-caution);
+  font-size: 0.8rem;
+}

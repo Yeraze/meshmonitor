@@ -9,6 +9,7 @@
  * path runs, so the list and the routes cannot drift.
  */
 import databaseService from '../../services/database.js';
+import { isReactionsOutboundEnabled } from './meshcoreReactionSend.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshtasticManager, isMeshCoreManager } from '../sourceManagerTypes.js';
 import { isMqttSourceType } from '../../db/repositories/sources.js';
@@ -45,6 +46,11 @@ export interface SenderRef {
   canSend: boolean;
   sendKind: SendKind | null;
   sendBlockedReason: SendBlockedReason | null;
+  /**
+   * MeshCore only: the source's "reactions outbound" setting. Null for every
+   * other kind and for MeshCore refs blocked before the live-state step.
+   */
+  reactionsOutbound: boolean | null;
 }
 
 type PermSet = Record<string, { read?: boolean; write?: boolean } | undefined>;
@@ -53,6 +59,7 @@ interface SourceContext {
   /** null means admin: everything allowed. */
   perms: PermSet | null;
   mqttBlock?: Promise<SendBlockedReason | null>;
+  reactionsOutbound?: Promise<boolean>;
 }
 
 function kindOf(sourceType: string): SendKind | null {
@@ -118,7 +125,13 @@ export async function resolveUnifiedSenders(
     const blocked = (
       reason: SendBlockedReason,
       sendKind: SendKind | null = null
-    ): SenderRef => ({ ...base, canSend: false, sendKind, sendBlockedReason: reason });
+    ): SenderRef => ({
+      ...base,
+      canSend: false,
+      sendKind,
+      sendBlockedReason: reason,
+      reactionsOutbound: null,
+    });
 
     const ctx = await contextFor(ref.sourceId);
     const perms = ctx.perms;
@@ -158,6 +171,7 @@ export async function resolveUnifiedSenders(
     if (!permitted) return blocked('FORBIDDEN');
 
     // 5. Live state.
+    let reactionsOutbound: boolean | null = null;
     const manager = sourceManagerRegistry.getManager(ref.sourceId);
     if (kind === 'meshtastic') {
       if (!manager || !isMeshtasticManager(manager) || !manager.getStatus().connected) {
@@ -165,18 +179,21 @@ export async function resolveUnifiedSenders(
       }
       if (!manager.canTransmit()) return blocked('TX_DISABLED', kind);
     } else if (kind === 'meshcore') {
+      // Settings read only; memoised per source. Nothing transmits.
+      ctx.reactionsOutbound ??= isReactionsOutboundEnabled(ref.sourceId);
+      reactionsOutbound = await ctx.reactionsOutbound;
       if (!manager || !isMeshCoreManager(manager) || !manager.isConnected()) {
-        return blocked('SOURCE_NOT_CONNECTED', kind);
+        return { ...blocked('SOURCE_NOT_CONNECTED', kind), reactionsOutbound };
       }
-      if (manager.isRepeaterSource()) return blocked('UNSUPPORTED_SOURCE', kind);
-      if (manager.isReceiveOnly()) return blocked('TX_DISABLED', kind);
+      if (manager.isRepeaterSource()) return { ...blocked('UNSUPPORTED_SOURCE', kind), reactionsOutbound };
+      if (manager.isReceiveOnly()) return { ...blocked('TX_DISABLED', kind), reactionsOutbound };
     } else {
       ctx.mqttBlock ??= mqttPreconditionBlock(ref.sourceId);
       const block = await ctx.mqttBlock;
       if (block) return blocked(block, kind);
     }
 
-    return { ...base, canSend: true, sendKind: kind, sendBlockedReason: null };
+    return { ...base, canSend: true, sendKind: kind, sendBlockedReason: null, reactionsOutbound };
   };
 
   return Promise.all(

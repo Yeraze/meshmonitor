@@ -13,7 +13,7 @@ import { getMeshtasticDeliveryState, TIMEOUT_MS } from '../utils/deliveryDiagnos
 import styles from './MessageStatusIndicator.module.css';
 
 interface MessageStatusIndicatorProps {
-  message: MeshMessage;
+  message: Pick<MeshMessage, 'ackFailed' | 'routingErrorReceived' | 'deliveryState' | 'timestamp'>;
   /** When provided, the indicator becomes a clickable button that opens the
    *  Delivery Details modal for this message (#4816 Phase 1). When absent,
    *  it stays a plain, non-interactive `<span>` for backward compatibility

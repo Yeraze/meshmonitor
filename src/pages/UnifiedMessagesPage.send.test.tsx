@@ -30,6 +30,7 @@ vi.mock('../services/api', () => ({
   },
 }));
 
+vi.mock('../contexts/SettingsContext', () => ({ useSettingsOptional: () => undefined }));
 vi.mock('../components/LinkPreview', () => ({ default: () => null }));
 vi.mock('../components/MessageExportDialog/MessageExportDialog', () => ({ default: () => null }));
 
@@ -60,6 +61,7 @@ const sender = (n: number) => ({
   canSend: true,
   sendKind: 'meshtastic',
   sendBlockedReason: null,
+  reactionsOutbound: null,
 });
 
 describe('UnifiedMessagesPage send composer (#3045 P2)', () => {
