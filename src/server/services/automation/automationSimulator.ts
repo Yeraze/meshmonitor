@@ -250,6 +250,11 @@ function stubData(
     async getSourceProtocol(sourceId) {
       return live?.getSourceProtocol ? live.getSourceProtocol(sourceId).catch(() => null) : null;
     },
+    // Read-only: the Test panel reports a send the airtime cutoff would hold
+    // back right now. Fails open like the live engine.
+    async getAirtimeGate(sourceId) {
+      return live?.getAirtimeGate ? live.getAirtimeGate(sourceId).catch(() => null) : null;
+    },
   };
 }
 
@@ -519,6 +524,7 @@ export async function simulateAutomation(opts: SimulateOptions): Promise<SimResu
   const evalCtx: EngineEvalContext = {
     trigger: ctx, vars, data, varCtx: varContextFromTrigger(ctx), now, automationId: opts.automationId,
     stepOutputs: createStepOutputs(),
+    dryRun: true,
   };
 
   // #5636: a "Run a script" step that stores a run output "prints" its sample.

@@ -3647,8 +3647,29 @@ class MeshtasticManager implements ISourceManager {
    * disabled or no utilization reading is available.
    */
   async isAutomationAirtimeGated(): Promise<boolean> {
+    return (await this.getAirtimeGateVerdict()).gated;
+  }
+
+  /**
+   * The one airtime-cutoff verdict every automation path shares: the legacy
+   * timers (via {@link isAutomationAirtimeGated}) and the Automation Engine
+   * (via its NodeDataProvider). Carries the figures so a skipped Engine
+   * action can say why. Fail-open like {@link shouldGateAutomations}.
+   */
+  async getAirtimeGateVerdict(): Promise<{
+    gated: boolean;
+    channelUtilization: number | null;
+    threshold: number;
+    measuredFrom: AirtimeCutoffSource;
+  }> {
     const { value } = await this.getEffectiveChannelUtilization();
     const gated = shouldGateAutomations(value, this.automationAirtimeCutoffThreshold);
+    const verdict = {
+      gated,
+      channelUtilization: value,
+      threshold: this.automationAirtimeCutoffThreshold,
+      measuredFrom: this.automationAirtimeCutoffSource,
+    };
     if (gated) {
       const now = Date.now();
       if (now - this.lastAirtimeGateLogTime > 60000) {
@@ -3659,7 +3680,7 @@ class MeshtasticManager implements ISourceManager {
         );
       }
     }
-    return gated;
+    return verdict;
   }
 
   /**

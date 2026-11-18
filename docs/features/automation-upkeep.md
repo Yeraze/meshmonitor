@@ -11,7 +11,7 @@ Most have no full [Automation Engine](/features/automation-engine) equivalent, s
 | [Auto Time Sync](#auto-time-sync) | Partial (MeshCore): the **A MeshCore node’s clock is out of sync** trigger alerts you, but does not set the clock. |
 | [Auto Ping](#auto-ping), [Auto Heap Management](#auto-heap-management), [Remote Admin Scanner](#remote-admin-scanner), [Auto Key Management](#auto-key-management) | None. |
 
-On Meshtastic sources, Auto Traceroute, Auto Remote LocalStats, Auto Ping, Remote Admin Scanner, Auto Time Sync and Auto Key Management pause while the [airtime cutoff](/features/automation#airtime-cutoff) is active.
+On Meshtastic sources, Auto Traceroute, Auto Remote LocalStats, Auto Ping, Remote Admin Scanner, Auto Time Sync and Auto Key Management pause while the [airtime cutoff](/features/automation#airtime-cutoff) is active. Automation Engine rules hold back their sends on that source too ([details](/features/automation-engine-reference#airtime-cutoff)).
 
 ## Auto Favorite {#auto-favorite}
 
