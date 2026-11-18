@@ -110,7 +110,7 @@ The Meshtastic-only packet filters `portnum`, `from_node`, `to_node`, `channel` 
 Send a message through a MeshCore source. The request goes to the radio.
 
 ::: warning Airtime cost
-A MeshCore channel message is a flood. Every repeater in range sends it again. A 100-character channel message costs about 0.46 s of airtime × (1 + the number of repeaters that hear it) per send on the US narrow presets. The rate limit is 30 messages per minute per client (set by `RATE_LIMIT_MESSAGES`). A script that sends at that limit can saturate a busy mesh. Send the least you can. Do not loop a send on a timer without a cap of your own.
+A MeshCore channel message is a flood. Every repeater in range sends it again. A 100-character channel message costs about 0.46 s of airtime × (1 + the number of repeaters that hear it) per send on the US narrow presets. The rate limit is 30 messages per minute per client (set by `RATE_LIMIT_MESSAGES`). The limit also covers `POST /api/messages/send`. One bucket per client IP is shared across all send routes, and a limited request gets `429` with `code: "RATE_LIMITED"` and `retryAfterSeconds`. A script that sends at that limit can saturate a busy mesh. Send the least you can. Do not loop a send on a timer without a cap of your own.
 :::
 
 Body:

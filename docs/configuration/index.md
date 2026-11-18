@@ -212,7 +212,7 @@ If you're running multiple MeshMonitor instances on the same host (different por
 |----------|-------------|----------------------|-----------------------|
 | `RATE_LIMIT_API` | Max API requests per 15 minutes | `1000` (~1 req/sec) | `10000` |
 | `RATE_LIMIT_AUTH` | Max auth attempts per 15 minutes | `5` | `100` |
-| `RATE_LIMIT_MESSAGES` | Max messages per minute | `30` | `100` |
+| `RATE_LIMIT_MESSAGES` | Max messages per minute, per client IP. One bucket covers every send route, including `POST /api/messages/send` | `30` | `100` |
 
 **Note**: Rate limit violations are logged with IP address and path for troubleshooting. Adjust these values based on your usage patterns.
 

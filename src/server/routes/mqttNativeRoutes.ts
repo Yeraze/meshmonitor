@@ -301,6 +301,32 @@ router.post(
         emoji: emoji === 1 ? 1 : undefined,
         sourceIp: req.ip ?? null,
       });
+      // Fire-and-forget audit; never blocks or fails the response. No text.
+      try {
+        databaseService
+          .auditLogAsync(
+            user.id,
+            'mqtt_native_message_sent',
+            'messages',
+            JSON.stringify({
+              sourceId,
+              kind: destinationNum === undefined ? 'channel' : 'dm',
+              channel: destinationNum === undefined ? channel : null,
+              destination:
+                destinationNum !== undefined
+                  ? `!${(destinationNum >>> 0).toString(16).padStart(8, '0')}`
+                  : null,
+              replyId: typeof replyId === 'number' && replyId > 0 ? replyId : null,
+              tapback: emoji === 1,
+              messageId: (result as { messageId?: unknown } | undefined)?.messageId ?? null,
+              via: 'api',
+            }),
+            req.ip || null,
+          )
+          .catch((err) => logger.error('[MqttNative] send audit write failed:', err));
+      } catch (err) {
+        logger.error('[MqttNative] send audit write failed:', err);
+      }
       return ok(res, result);
     } catch (err) {
       if (err instanceof MqttNativeSendError) {

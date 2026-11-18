@@ -36,6 +36,7 @@ describe('meshcore internal send + sender-name policy (#6282)', () => {
     canTransmit: () => !receiveOnly.value,
     getLocalNode: () => ({ name: 'Bob' }),
     sendMessage: vi.fn(async () => true),
+    sendRoomPost: vi.fn(async () => true),
     sendChannelMessageAs: vi.fn(async () => ({ ok: true, message: { id: 'raw-1', scopeName: null } })),
   });
 
@@ -58,6 +59,50 @@ describe('meshcore internal send + sender-name policy (#6282)', () => {
 
   const enable = (sourceId: string, names = ['Alerts Bot']) =>
     databaseService.settings.setSourceSetting(sourceId, POLICY_KEY, JSON.stringify({ enabled: true, allowedNames: names }));
+
+  describe('send audit (#3045)', () => {
+    const rows = (action: string) => audit.mock.calls.filter((c) => c[1] === action);
+
+    it('a plain channel send writes one meshcore_message_sent row without the text', async () => {
+      const agent = await h.loginAs(h.admin);
+      const res = await agent.post(send(h.sourceA)).send({ text: 'secret words', channelIdx: 2 });
+      expect(res.status).toBe(200);
+      expect(rows('meshcore_message_sent')).toHaveLength(1);
+      expect(JSON.parse(rows('meshcore_message_sent')[0][3] as string)).toMatchObject({
+        sourceId: h.sourceA, kind: 'channel', channelIdx: 2, via: 'api',
+      });
+      expect(audit.mock.calls.some((c) => String(c[3]).includes('secret words'))).toBe(false);
+    });
+
+    it('a sent-as send writes meshcore_message_sent_as and no meshcore_message_sent', async () => {
+      await enable(h.sourceA);
+      const agent = await h.loginAs(h.admin);
+      const res = await agent.post(send(h.sourceA)).send({ text: 'hi', channelIdx: 1, senderName: 'Alerts Bot' });
+      expect(res.status).toBe(200);
+      expect(rows('meshcore_message_sent_as')).toHaveLength(1);
+      expect(rows('meshcore_message_sent')).toHaveLength(0);
+    });
+
+    it('a failed send writes no row', async () => {
+      stubs.get(h.sourceA).sendMessage.mockResolvedValueOnce(false);
+      const agent = await h.loginAs(h.admin);
+      const res = await agent.post(send(h.sourceA)).send({ text: 'hi', channelIdx: 2 });
+      expect(res.status).toBe(400);
+      expect(rows('meshcore_message_sent')).toHaveLength(0);
+    });
+
+    it('rooms/post writes meshcore_room_post_sent without the text', async () => {
+      const agent = await h.loginAs(h.admin);
+      const key = 'ab'.repeat(32);
+      const res = await agent.post(`/sources/${h.sourceA}/meshcore/rooms/post`).send({ roomPublicKey: key, text: 'room words' });
+      expect(res.status).toBe(200);
+      expect(rows('meshcore_room_post_sent')).toHaveLength(1);
+      expect(JSON.parse(rows('meshcore_room_post_sent')[0][3] as string)).toMatchObject({
+        sourceId: h.sourceA, roomPublicKey: key, via: 'api',
+      });
+      expect(audit.mock.calls.some((c) => String(c[3]).includes('room words'))).toBe(false);
+    });
+  });
 
   describe('send with senderName', () => {
     it('default off: 403 SENDER_NAME_DISABLED, nothing sent', async () => {
