@@ -20,6 +20,7 @@ import type { MeshCoreTraceRunRow } from '../../db/repositories/meshcoreTraceRun
 import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { tracerouteNamesHiddenNode, loadMqttConsentHiddenSet } from '../utils/mqttConsentVisibility.js';
+import { recentTracerouteLimit } from '../utils/tracerouteInterval.js';
 
 const router = Router();
 
@@ -48,11 +49,8 @@ router.get('/recent', optionalAuth(), async (req: Request, res: Response) => {
     if (req.query.limit) {
       limit = parseInt(req.query.limit as string);
     } else {
-      const tracerouteIntervalMinutes = parseInt(await databaseService.settings.getSetting('tracerouteIntervalMinutes') || '5');
       const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, recentSourceId ?? null);
-      const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
-      limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
-      limit = Math.max(limit, 100);
+      limit = recentTracerouteLimit(await databaseService.settings.getSetting('tracerouteIntervalMinutes'), maxNodeAgeHours);
     }
 
     // Cross-source when sourceId is omitted, over the permitted sources only
