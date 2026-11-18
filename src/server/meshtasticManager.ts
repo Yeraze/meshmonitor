@@ -704,6 +704,13 @@ const REMOTE_LOCALSTATS_RETRY_STATE_KEY = 'remoteLocalStatsRetryState';
 const AUTO_TRACEROUTE_LAST_SENT_KEY = 'autoTracerouteLastSentAt';
 
 /**
+ * Per-source key holding the epoch-ms time of the last remote LocalStats
+ * request the scheduler sent. Read on every (re)start, so a settings save, a
+ * reconnect or a process restart never sends sooner than last + interval.
+ */
+const REMOTE_LOCALSTATS_LAST_SENT_KEY = 'remoteLocalStatsLastSentAt';
+
+/**
  * Bounds for `autoAckCooldowns` (#4399). It was previously never evicted at
  * all — it got away with that because it is per-manager (per-source) and
  * bounded in practice by one radio's NodeDB, but it has no upper bound in
@@ -1194,6 +1201,9 @@ class MeshtasticManager implements ISourceManager {
   // target per tick (least-recently-polled) to stay gentle on shared airtime.
   private remoteLocalStatsInterval: NodeJS.Timeout | null = null;
   private remoteLocalStatsJitterTimeout: NodeJS.Timeout | null = null;
+  // Bumped on every remote LocalStats scheduler start/stop; see
+  // tracerouteSchedulerGeneration.
+  private remoteLocalStatsSchedulerGeneration: number = 0;
   private remoteLocalStatsIntervalMinutes: number = 0;
   private lastRemoteLocalStatsSentTime: number = 0;
   private remoteLocalStatsLastSentAt: Map<number, number> = new Map();
@@ -2606,7 +2616,8 @@ class MeshtasticManager implements ISourceManager {
         if (passive) {
           logger.debug('🟢 [passive] Skipping remote LocalStats scheduler — outbound queries to mesh');
         } else {
-          setTimeout(() => this.startRemoteLocalStatsScheduler(), S * 10);
+          setTimeout(() => this.startRemoteLocalStatsScheduler().catch(e =>
+            logger.error('❌ Error starting remote LocalStats scheduler:', e)), S * 10);
         }
 
         // Request LoRa config (config type 5) for Configuration tab — deferred
@@ -2975,15 +2986,7 @@ class MeshtasticManager implements ISourceManager {
 
     this.stopTracerouteScheduler();
 
-    if (this.remoteLocalStatsJitterTimeout) {
-      clearTimeout(this.remoteLocalStatsJitterTimeout);
-      this.remoteLocalStatsJitterTimeout = null;
-    }
-
-    if (this.remoteLocalStatsInterval) {
-      clearInterval(this.remoteLocalStatsInterval);
-      this.remoteLocalStatsInterval = null;
-    }
+    this.stopRemoteLocalStatsScheduler();
 
     if (this.remoteAdminScannerInterval) {
       clearInterval(this.remoteAdminScannerInterval);
@@ -3259,6 +3262,14 @@ class MeshtasticManager implements ISourceManager {
     if (minutes < 0 || minutes > 1440) {
       throw new Error('Remote LocalStats interval must be between 0 and 1440 minutes (0 = disabled)');
     }
+
+    // Same interval and the scheduler already armed: leave it alone, so a
+    // save that only changes filters or the schedule window does not re-time
+    // the next request.
+    const armed = this.remoteLocalStatsJitterTimeout !== null || this.remoteLocalStatsInterval !== null;
+    if (minutes === this.remoteLocalStatsIntervalMinutes && (armed || minutes === 0)) {
+      return;
+    }
     this.remoteLocalStatsIntervalMinutes = minutes;
     logger.debug(
       minutes === 0
@@ -3266,7 +3277,7 @@ class MeshtasticManager implements ISourceManager {
         : `📊 Remote LocalStats interval updated to ${minutes} minutes`
     );
     if (this.isConnected) {
-      this.startRemoteLocalStatsScheduler();
+      this.startRemoteLocalStatsScheduler().catch(err => logger.error('❌ Error starting remote LocalStats scheduler:', err));
     }
   }
 
@@ -3276,16 +3287,14 @@ class MeshtasticManager implements ISourceManager {
    * schedule-window + airtime gating, and a minimum-interval rate limit. Each
    * tick polls ONE target (the least-recently-polled match) to keep airtime use
    * low while still cycling through the whole matched set over time. Issue #3398.
+   * A restart (settings save, reconnect, process restart) is never a trigger:
+   * the first run waits until the persisted last send plus one interval, or
+   * the startup jitter, whichever is later.
    */
-  private startRemoteLocalStatsScheduler(): void {
-    if (this.remoteLocalStatsJitterTimeout) {
-      clearTimeout(this.remoteLocalStatsJitterTimeout);
-      this.remoteLocalStatsJitterTimeout = null;
-    }
-    if (this.remoteLocalStatsInterval) {
-      clearInterval(this.remoteLocalStatsInterval);
-      this.remoteLocalStatsInterval = null;
-    }
+  private async startRemoteLocalStatsScheduler(): Promise<void> {
+    // Clear any pending timers to prevent leaks, and invalidate older starts.
+    this.stopRemoteLocalStatsScheduler();
+    const generation = this.remoteLocalStatsSchedulerGeneration;
 
     if (this.remoteLocalStatsIntervalMinutes === 0) {
       logger.debug('📊 Remote LocalStats automation is disabled');
@@ -3299,7 +3308,20 @@ class MeshtasticManager implements ISourceManager {
 
     const maxJitterMs = Math.min(intervalMs, 5 * 60 * 1000);
     const initialJitterMs = Math.random() * maxJitterMs;
-    logger.debug(`📊 Starting remote LocalStats scheduler with ${this.remoteLocalStatsIntervalMinutes} minute interval (initial jitter: ${Math.round(initialJitterMs / 1000)}s)`);
+
+    // Never run sooner than last send + interval. The in-memory time covers a
+    // failed DB read; the persisted time covers a process restart.
+    const lastSentAt = Math.max(this.lastRemoteLocalStatsSentTime, await this.loadRemoteLocalStatsLastSentAt());
+    if (generation !== this.remoteLocalStatsSchedulerGeneration) {
+      return; // a newer start or a stop ran while we read the DB
+    }
+    // Cap at one interval so a last-send time in the future (clock moved
+    // back) cannot stall the scheduler.
+    const untilDueMs = lastSentAt > 0
+      ? Math.min(intervalMs, Math.max(0, lastSentAt + intervalMs - Date.now()))
+      : 0;
+    const initialDelayMs = Math.max(initialJitterMs, untilDueMs);
+    logger.debug(`📊 Starting remote LocalStats scheduler with ${this.remoteLocalStatsIntervalMinutes} minute interval (first run in ${Math.round(initialDelayMs / 1000)}s)`);
 
     const executeRemoteLocalStats = async () => {
       // TX-disabled radios cannot send remote telemetry requests; skip quietly and
@@ -3376,10 +3398,12 @@ class MeshtasticManager implements ISourceManager {
         const targetName = target.longName || target.nodeId;
         logger.debug(`📊 Remote LocalStats: Requesting local_stats from ${targetName} (${target.nodeId}) on channel ${channel}, hopLimit ${hopLimit}`);
 
-        this.remoteLocalStatsLastSentAt.set(Number(target.nodeNum), Date.now());
-        this.lastRemoteLocalStatsSentTime = Date.now();
         // Record the request so the NEXT tick settles it into success/miss.
         const sentAt = Date.now();
+        this.remoteLocalStatsLastSentAt.set(Number(target.nodeNum), sentAt);
+        this.lastRemoteLocalStatsSentTime = sentAt;
+        // Persist so a restart or settings save cannot send early.
+        await this.persistRemoteLocalStatsLastSentAt(sentAt);
         const entry = retryState.get(Number(target.nodeNum))
           ?? { missCount: 0, cooldownUntil: null, lastRequestAt: null, settledAt: null };
         entry.lastRequestAt = sentAt;
@@ -3395,7 +3419,42 @@ class MeshtasticManager implements ISourceManager {
       this.remoteLocalStatsJitterTimeout = null;
       executeRemoteLocalStats().catch(err => logger.error('Remote LocalStats scheduler error:', err));
       this.remoteLocalStatsInterval = setInterval(executeRemoteLocalStats, intervalMs);
-    }, initialJitterMs);
+    }, initialDelayMs);
+  }
+
+  /** Cancel the remote LocalStats timers and any start still reading the DB. */
+  private stopRemoteLocalStatsScheduler(): void {
+    this.remoteLocalStatsSchedulerGeneration++;
+
+    if (this.remoteLocalStatsJitterTimeout) {
+      clearTimeout(this.remoteLocalStatsJitterTimeout);
+      this.remoteLocalStatsJitterTimeout = null;
+    }
+
+    if (this.remoteLocalStatsInterval) {
+      clearInterval(this.remoteLocalStatsInterval);
+      this.remoteLocalStatsInterval = null;
+    }
+  }
+
+  /** Persisted time of this source's last remote LocalStats request (epoch ms), or 0. */
+  private async loadRemoteLocalStatsLastSentAt(): Promise<number> {
+    try {
+      const raw = await databaseService.settings.getSettingForSource(this.sourceId, REMOTE_LOCALSTATS_LAST_SENT_KEY);
+      const at = raw ? Number(raw) : 0;
+      return Number.isFinite(at) && at > 0 ? at : 0;
+    } catch (err) {
+      logger.warn(`📊 Remote LocalStats: failed to read last send time for source ${this.sourceId}:`, err);
+      return 0;
+    }
+  }
+
+  private async persistRemoteLocalStatsLastSentAt(at: number): Promise<void> {
+    try {
+      await databaseService.settings.setSourceSetting(this.sourceId, REMOTE_LOCALSTATS_LAST_SENT_KEY, String(at));
+    } catch (err) {
+      logger.warn(`📊 Remote LocalStats: failed to persist last send time for source ${this.sourceId}:`, err);
+    }
   }
 
   /**
@@ -17085,15 +17144,7 @@ class MeshtasticManager implements ISourceManager {
     // Clear any active intervals and pending jitter timeouts
     this.stopTracerouteScheduler();
 
-    if (this.remoteLocalStatsJitterTimeout) {
-      clearTimeout(this.remoteLocalStatsJitterTimeout);
-      this.remoteLocalStatsJitterTimeout = null;
-    }
-
-    if (this.remoteLocalStatsInterval) {
-      clearInterval(this.remoteLocalStatsInterval);
-      this.remoteLocalStatsInterval = null;
-    }
+    this.stopRemoteLocalStatsScheduler();
 
     this.distanceDeleteScheduler?.stop();
 

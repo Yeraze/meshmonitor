@@ -882,6 +882,25 @@ describe('nodes / ignored-nodes / settings / message routes: permission is check
       expect(databaseService.settings.setSourceSetting).not.toHaveBeenCalled();
     });
 
+    it('saves the remote LocalStats interval for the named source, so it survives a restart', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/settings/remote-localstats-interval').send({ intervalMinutes: 30, sourceId: harness.sourceB });
+      expect(res.status).toBe(200);
+      expect(managerB.setRemoteLocalStatsInterval).toHaveBeenCalledWith(30);
+      expect(databaseService.settings.setSourceSetting).toHaveBeenCalledWith(harness.sourceB, 'remoteLocalStatsIntervalMinutes', '30');
+      expect(databaseService.settings.setSourceSetting).not.toHaveBeenCalledWith(harness.sourceA, 'remoteLocalStatsIntervalMinutes', expect.anything());
+    });
+
+    it('400s a fractional or out-of-range remote LocalStats interval and saves nothing', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      for (const intervalMinutes of [2.5, -1, 1441, '30']) {
+        const res = await agent.post('/settings/remote-localstats-interval').send({ intervalMinutes, sourceId: harness.sourceB });
+        expect(res.status).toBe(400);
+      }
+      expect(managerB.setRemoteLocalStatsInterval).not.toHaveBeenCalled();
+      expect(databaseService.settings.setSourceSetting).not.toHaveBeenCalled();
+    });
+
     it('409s SOURCE_NOT_CONNECTED on a device route for a permitted source whose radio is offline', async () => {
       await sourceManagerRegistry.removeManager(harness.sourceB);
       await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceB);

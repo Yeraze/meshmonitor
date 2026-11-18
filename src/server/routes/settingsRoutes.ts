@@ -1890,14 +1890,22 @@ router.post('/traceroute-interval', perSourceSettings('write'), async (req, res)
   }
 });
 
-router.post('/remote-localstats-interval', perSourceSettings('write'), (req, res) => {
+router.post('/remote-localstats-interval', perSourceSettings('write'), async (req, res) => {
   try {
     const { intervalMinutes } = req.body;
-    if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 1440) {
-      return fail(res, 400, 'INVALID_INTERVAL', 'Invalid interval. Must be between 0 and 1440 minutes (0 = disabled).');
+    if (!Number.isInteger(intervalMinutes) || intervalMinutes < 0 || intervalMinutes > 1440) {
+      return fail(res, 400, 'INVALID_INTERVAL', 'Invalid interval. Must be a whole number between 0 and 1440 minutes (0 = disabled).');
+    }
+    // Save it for this source, the key applyManagerSettings reads at startup,
+    // so the value survives a restart (same row POST /api/settings writes).
+    const target = getSourceTarget(req);
+    if (target.sourceId) {
+      await databaseService.settings.setSourceSetting(target.sourceId, 'remoteLocalStatsIntervalMinutes', String(intervalMinutes));
+    } else {
+      await databaseService.settings.setSetting('remoteLocalStatsIntervalMinutes', String(intervalMinutes));
     }
     // Own radio only; never the primary's scheduler (#5375).
-    getSourceTarget(req).manager?.setRemoteLocalStatsInterval(intervalMinutes);
+    target.manager?.setRemoteLocalStatsInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
     logger.error('Error setting remote LocalStats interval:', error);
