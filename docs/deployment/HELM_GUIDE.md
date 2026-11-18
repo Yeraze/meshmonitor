@@ -24,9 +24,8 @@ MeshMonitor ships a Helm chart for deploying to any Kubernetes 1.19+ cluster. Th
 
    ```yaml
    env:
-     # Optional: seeds the first source on first boot. The chart default is
-     # 192.168.1.100, so set your node's IP here, or "" to add sources later
-     # from the Sources sidebar in the UI.
+     # Optional: seeds the first source on first boot. Empty by default, so
+     # no source is created; add sources from the Sources sidebar instead.
      meshtasticNodeIp: "192.168.1.100"
    ```
 

@@ -87,8 +87,8 @@ Write a `values.yaml` like the one below, then install it as shown under [Additi
 ```yaml
 # values.yaml
 env:
-  # Optional: seeds the first source on first boot. The chart default is
-  # 192.168.1.100, so set your node's IP, or "" to add sources in the UI.
+  # Optional: seeds the first source on first boot. Empty by default;
+  # leave it empty to add sources in the UI.
   meshtasticNodeIp: ""
 
 resources:
