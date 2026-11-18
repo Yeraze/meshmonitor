@@ -966,6 +966,9 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // JSON map keyed by nodeNum, written ONLY by meshtasticManager — see
   // PER_SOURCE_KEYS_NOT_POSTABLE.
   'remoteLocalStatsRetryState',
+  // Server-managed time of the last auto traceroute (epoch ms), written ONLY
+  // by meshtasticManager — see PER_SOURCE_KEYS_NOT_POSTABLE.
+  'autoTracerouteLastSentAt',
   // Coverage Report MQTT gateway-reception recording (#5277 P2). Per-source,
   // MQTT sources only, default off. Read via coverageMqttSettings.ts.
   'coverage_mqtt_enabled',
@@ -1197,6 +1200,7 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'newNodeAlertLearnUntil',  // newNodeAlertGate.ts (#6306; persisted learning-window end, only a purge re-arms it)
   'newNodeAlertRate',  // newNodeAlertGate.ts (#6306; persisted hourly alert counter, so a restart or save cannot reopen the hour)
   'remoteLocalStatsRetryState',  // meshtasticManager.ts remote-LocalStats scheduler (#6033; persisted per-node miss counter + cooldown, so a restart/save cannot re-arm or clear it)
+  'autoTracerouteLastSentAt',  // meshtasticManager.ts auto-traceroute scheduler (persisted last send, so a restart/save cannot send before last + interval)
   'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)
   // POST /api/sources/:id/forwarding (forwardingRoutes.ts, #5446) — gated on
   // per-source `automation` write, so the generic `settings` POST must not

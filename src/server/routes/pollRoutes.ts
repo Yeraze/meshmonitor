@@ -642,7 +642,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
 
       // Calculate dynamic default limit based on settings
       const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, pollSourceId ?? null);
-      const limit = recentTracerouteLimit(await databaseService.settings.getSetting('tracerouteIntervalMinutes'), maxNodeAgeHours);
+      // The interval is saved per source; with no source named this reads the global row.
+      const limit = recentTracerouteLimit(await databaseService.settings.getSettingForSource(pollSourceId ?? null, 'tracerouteIntervalMinutes'), maxNodeAgeHours);
 
       const signFlipCtxForTraceroutes = await getCachedSignFlipContext(pollSourceId); // #5363
       // `traceroute:read` on the row's source, the gate of GET

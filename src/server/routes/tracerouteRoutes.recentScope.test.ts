@@ -139,9 +139,30 @@ describe('GET /recent permission scope', () => {
       expect(perSource).toHaveBeenCalledWith(harness.sourceA, 'maxNodeAgeHours');
     });
 
+    it('sizes the list from the named source\'s own tracerouteIntervalMinutes', async () => {
+      // A stale global row must not win over the per-source value.
+      vi.spyOn(harness.db.settings, 'getSetting').mockResolvedValue('60');
+      const perSource = vi.spyOn(harness.db.settings, 'getSettingForSource').mockImplementation(
+        async (sourceId: string | null | undefined, key: string) => {
+          if (sourceId !== harness.sourceA) return null;
+          if (key === 'maxNodeAgeHours') return '24';
+          if (key === 'tracerouteIntervalMinutes') return '3';
+          return null;
+        },
+      );
+      const read = vi.spyOn(harness.db.traceroutes, 'getAllTraceroutes');
+      const agent = await harness.loginAs(harness.admin);
+      await agent.get('/recent').query({ sourceId: harness.sourceA });
+      expect(perSource).toHaveBeenCalledWith(harness.sourceA, 'tracerouteIntervalMinutes');
+      // (60 / 3) per hour * 24 h * 1.1, not the 60-minute global row's 100-row floor
+      expect(read).toHaveBeenCalledWith(Math.ceil((60 / 3) * 24 * 1.1), harness.sourceA);
+    });
+
     it('reads the un-namespaced global maxNodeAgeHours when no source is named', async () => {
       vi.spyOn(harness.db.settings, 'getSetting').mockResolvedValue('5');
-      const perSource = vi.spyOn(harness.db.settings, 'getSettingForSource').mockResolvedValue('48');
+      const perSource = vi.spyOn(harness.db.settings, 'getSettingForSource').mockImplementation(
+        async (_sourceId: string | null | undefined, key: string) => (key === 'maxNodeAgeHours' ? '48' : null),
+      );
       const read = vi.spyOn(harness.db.traceroutes, 'getAllTraceroutes');
       const agent = await harness.loginAs(harness.admin);
       await agent.get('/recent');

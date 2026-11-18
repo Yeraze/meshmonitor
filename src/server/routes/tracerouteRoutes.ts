@@ -50,7 +50,8 @@ router.get('/recent', optionalAuth(), async (req: Request, res: Response) => {
       limit = parseInt(req.query.limit as string);
     } else {
       const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, recentSourceId ?? null);
-      limit = recentTracerouteLimit(await databaseService.settings.getSetting('tracerouteIntervalMinutes'), maxNodeAgeHours);
+      // The interval is saved per source; with no source named this reads the global row.
+      limit = recentTracerouteLimit(await databaseService.settings.getSettingForSource(recentSourceId ?? null, 'tracerouteIntervalMinutes'), maxNodeAgeHours);
     }
 
     // Cross-source when sourceId is omitted, over the permitted sources only

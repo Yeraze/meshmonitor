@@ -116,6 +116,12 @@ Each request goes out at your node's own **hop limit** (**Device Configuration â
 - **Default**: off. When you turn it on, the box starts at 15 minutes.
 - **Recommendation**: 15-30 minutes suits most meshes. Use 30-60 minutes on large meshes or slow presets. Go below 10 minutes only on a small, quiet mesh.
 
+**Saves and restarts keep the interval.** MeshMonitor stores the time of each source's last auto traceroute. Saving the Auto Traceroute section, a reconnect to the node, or a MeshMonitor restart never sends a traceroute sooner than one interval after the last one:
+
+- A save that keeps the same interval (for example, a filter change) leaves the schedule alone.
+- A save with a new interval counts from the last traceroute: shorten 10 minutes to 5, and the next one goes out 5 minutes after the last.
+- On the first start, or when the last traceroute is more than one interval old, the first run waits a random delay of up to 5 minutes (or the interval, if shorter), so several instances don't all send at once.
+
 **Node Filter** *(New in v2.12)*: Limit traceroutes to specific nodes instead of all nodes
 
 - **Enable Filter**: Toggle to restrict traceroutes to selected nodes only
@@ -133,7 +139,7 @@ Each request goes out at your node's own **hop limit** (**Device Configuration â
 - **Network Congestion**: Each traceroute request generates multiple packets. In large networks with many nodes, this can significantly increase mesh traffic
 - **Airtime Usage**: Consumes airtime on the LoRa radio, which may affect message delivery performance
 - **Battery Impact**: Causes nodes to relay more packets, increasing power consumption
-- **Requires Restart**: Changes to this setting require a container restart to take effect
+- **No Restart Needed**: Changes take effect when you save, and keep the interval as described above
 
 ### Use Cases
 

@@ -15,6 +15,7 @@
  */
 import type { MeshtasticManager } from './meshtasticManager.js';
 import { getLocalStatsIntervalMinutes } from './services/nodeDisplaySettings.js';
+import { normalizeTracerouteIntervalMinutes } from './utils/tracerouteInterval.js';
 
 /**
  * Structural subset of DatabaseService that applyManagerSettings needs.
@@ -36,8 +37,9 @@ export async function applyManagerSettings(
 ): Promise<void> {
   const trInterval = await db.settings.getSettingForSource(sourceId, 'tracerouteIntervalMinutes');
   if (trInterval !== null) {
-    const n = parseInt(trInterval, 10);
-    if (!isNaN(n) && n >= 0 && n <= 60) manager.setTracerouteInterval(n);
+    // 0 or 3–60; a stored 1 or 2 (below the UI minimum) rises to 3.
+    const n = normalizeTracerouteIntervalMinutes(parseInt(trInterval, 10));
+    if (n !== null) manager.setTracerouteInterval(n);
   }
 
   // #4412 Phase 2: localStatsIntervalMinutes is one of the ten Node Display
