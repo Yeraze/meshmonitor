@@ -42,7 +42,9 @@ export const MeshCoreNeighboursFetchProgress: React.FC<MeshCoreNeighboursFetchPr
   if (!running) {
     if (fetch.outcome === 'complete' || fetch.outcome === null) return null;
     let note: string;
-    if (fetch.outcome === 'cancelled') {
+    if (fetch.outcome === 'superseded') {
+      note = t('meshcore.tx_queue.superseded', 'Replaced by your newer request');
+    } else if (fetch.outcome === 'cancelled') {
       note = total !== null
         ? t('meshcore.neighbours_fetch.cancelled', 'Cancelled: showing {{collected}} of {{total}} neighbours. Stored neighbours were kept and updated, not replaced.', { collected, total })
         : t('meshcore.neighbours_fetch.cancelled_none', 'Cancelled before any page arrived. Stored neighbours were left as they were.');
@@ -77,6 +79,16 @@ export const MeshCoreNeighboursFetchProgress: React.FC<MeshCoreNeighboursFetchPr
   const parts: string[] = [];
   if (fetch.phase === 'starting') {
     parts.push(t('meshcore.neighbours_fetch.starting', 'Starting neighbour fetch…'));
+  } else if (fetch.queued) {
+    // Page 1 is waiting for the shared radio slot (#6493); nothing is sent yet.
+    const ahead = Math.max(0, (fetch.queuePosition ?? 1) - 1);
+    parts.push(
+      seconds !== null
+        ? t('meshcore.tx_queue.queued', 'Queued — sending in {{n}} s', { n: seconds })
+        : t('meshcore.tx_queue.queued_unknown', 'Queued — waiting for the radio'),
+    );
+    if (ahead > 0) parts.push(t('meshcore.tx_queue.ahead', '{{n}} ahead', { n: ahead }));
+    if (fetch.cancelling) parts.push(t('meshcore.neighbours_fetch.cancelling', 'cancelling…'));
   } else {
     parts.push(t('meshcore.neighbours_fetch.page', 'Page {{page}} of {{pages}}', { page, pages }));
     if (total !== null) {

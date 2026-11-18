@@ -35,9 +35,10 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
-import { isTxDisabledBody } from '../../utils/txDisabled';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { NumberInput } from '../common/NumberInput';
+import { useMeshTxQueuedAction } from './hooks/useMeshTxQueuedAction';
+import { MeshTxQueueStatus } from './MeshTxQueueStatus';
 
 interface MeshCoreNodeTimeSyncConfigProps {
   /** Frontend basename (e.g. '' or '/meshmonitor'). */
@@ -97,14 +98,13 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const syncAction = useMeshTxQueuedAction(sourceId, 'time-sync', publicKey);
 
   const endpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/time-sync-config`;
   // The endpoint names the node. A reply that lands after the user has moved
   // to another node belongs to the old one, so it is dropped (#5797).
   const currentEndpoint = useRef(endpoint);
-  const syncEndpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/time-sync`;
+  const mcPrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`;
 
   const applyResponse = (d: Record<string, unknown>): TimeSyncConfigState => ({
     enabled: Boolean(d.enabled),
@@ -120,7 +120,6 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
     setLoading(true);
     setError(null);
     setSaved(false);
-    setSyncMsg(null);
     void (async () => {
       try {
         const response = await csrfFetch(endpoint);
@@ -205,55 +204,50 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
   };
 
   const syncNow = async () => {
-    setSyncing(true);
-    setSyncMsg(null);
-    try {
-      const response = await csrfFetch(syncEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setSyncMsg({
-          kind: 'ok',
-          text: t('meshcore.time_sync_config.sync_ok', 'Clock pushed to repeater.'),
-        });
-        // The server stamped lastTimeSyncAt; reflect it without a refetch.
-        setCfg((prev) => ({ ...prev, lastSyncAt: data.data?.syncedAt ?? Date.now() }));
-      } else if (isTxDisabledBody(response.status, data)) {
-        showToast(
-          t(
-            'meshcore.receive_only.blocked_toast',
-            'Receive-only mode is on for this MeshCore source — nothing was sent.',
-          ),
-          'warning',
-        );
-      } else if (data.code === 'NO_SAVED_CREDENTIAL') {
-        // This is the one case the up-front banner can miss: the blob exists
-        // (so hasSavedCredential was true and no warning showed) but no longer
-        // decrypts, which is what rotating SESSION_SECRET does. Say so, rather
-        // than leaving the user staring at a node they know they saved a
-        // password for.
-        setSyncMsg({
-          kind: 'err',
-          text: t(
-            'meshcore.time_sync_config.sync_no_credential',
-            'No usable admin password for this node. If you did save one, it may have been invalidated by a SESSION_SECRET change — log in again and re-save it.',
-          ),
-        });
-      } else {
-        setSyncMsg({
-          kind: 'err',
-          text: data.error || t('meshcore.time_sync_config.sync_error', 'Time sync failed'),
-        });
-      }
-    } catch (_err) {
-      setSyncMsg({ kind: 'err', text: t('meshcore.time_sync_config.sync_error', 'Time sync failed') });
-    } finally {
-      setSyncing(false);
+    const result = await syncAction.run({
+      fetcher: csrfFetch,
+      label: t('meshcore.time_sync_config.sync_title', 'Sync Now'),
+      mcPrefix,
+      path: `nodes/${encodeURIComponent(publicKey)}/time-sync`,
+      body: {},
+    });
+    if (result?.txDisabled) {
+      showToast(
+        t(
+          'meshcore.receive_only.blocked_toast',
+          'Receive-only mode is on for this MeshCore source — nothing was sent.',
+        ),
+        'warning',
+      );
     }
   };
+
+  let syncMsg: { kind: 'ok' | 'err'; text: string } | null = null;
+  if (syncAction.phase === 'done') {
+    syncMsg = {
+      kind: 'ok',
+      text: t('meshcore.time_sync_config.sync_ok', 'Clock pushed to repeater.'),
+    };
+  } else if (syncAction.phase === 'error' && !syncAction.result?.txDisabled) {
+    syncMsg = syncAction.result?.code === 'NO_SAVED_CREDENTIAL'
+      // The blob exists (so hasSavedCredential was true and no warning showed)
+      // but no longer decrypts, which is what rotating SESSION_SECRET does.
+      ? {
+        kind: 'err',
+        text: t(
+          'meshcore.time_sync_config.sync_no_credential',
+          'No usable admin password for this node. If you did save one, it may have been invalidated by a SESSION_SECRET change — log in again and re-save it.',
+        ),
+      }
+      : {
+        kind: 'err',
+        text: syncAction.result?.error || t('meshcore.time_sync_config.sync_error', 'Time sync failed'),
+      };
+  }
+  // The server stamped lastTimeSyncAt; reflect it without a refetch.
+  const shownLastSyncAt = syncAction.phase === 'done'
+    ? ((syncAction.result?.data?.syncedAt as number | undefined) ?? cfg.lastSyncAt)
+    : cfg.lastSyncAt;
 
   return (
     <div className="node-details-block">
@@ -359,13 +353,13 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
             </div>
           </div>
 
-          {cfg.lastSyncAt && (
+          {shownLastSyncAt && (
             <div className="node-detail-card node-detail-card-2col">
               <div className="node-detail-label">
                 {t('meshcore.time_sync_config.last_sync', 'Last sync')}
               </div>
               <div className="node-detail-value">
-                {new Date(cfg.lastSyncAt).toLocaleString()}
+                {new Date(shownLastSyncAt).toLocaleString()}
               </div>
             </div>
           )}
@@ -381,7 +375,7 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
         <p className="hint" style={{ marginBottom: '0.5rem' }}>
           {t(
             'meshcore.time_sync_config.sync_hint',
-            "Push the clock immediately, outside the scheduled interval. Subject to the same 60-second mesh-TX spacing. The firmware refuses to move a clock backwards, so a repeater running ahead of this server will reject the push.",
+            "Push the clock immediately, outside the scheduled interval. Subject to the same 60-second mesh-TX spacing: a click during the cooldown is queued and sent when the radio is free. The firmware refuses to move a clock backwards, so a repeater running ahead of this server will reject the push.",
           )}
         </p>
         <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
@@ -390,7 +384,7 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
             type="button"
             className="btn-secondary"
             onClick={() => void syncNow()}
-            disabled={!canSync || syncing || receiveOnly}
+            disabled={!canSync || syncAction.busy || receiveOnly}
             title={
               receiveOnly
                 ? t(
@@ -400,11 +394,18 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
                 : undefined
             }
           >
-            {syncing
+            {syncAction.busy
               ? t('meshcore.time_sync_config.syncing', 'Syncing…')
               : t('meshcore.time_sync_config.sync_button', 'Sync Clock')}
           </button>
         </div>
+        <MeshTxQueueStatus
+          phase={syncAction.phase}
+          secondsLeft={syncAction.secondsLeft}
+          position={syncAction.position}
+          replaced={syncAction.replaced}
+          supersededAction={syncAction.supersededBy?.action}
+        />
         {syncMsg && (
           <div
             className="meshcore-empty-state"

@@ -72,6 +72,8 @@ function startingState(requestId: string, publicKey: string): MeshCoreNeighbours
     waitMs: null,
     waitRemainingMs: null,
     cancelRequested: false,
+    queued: false,
+    queuePosition: null,
     outcome: null,
     stored: null,
     written: null,

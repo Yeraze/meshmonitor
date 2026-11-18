@@ -19,7 +19,7 @@ export interface MeshCoreResolvedNeighbour {
   fullPublicKey: string | null;
 }
 
-export type MeshCoreNeighboursFetchOutcome = 'complete' | 'capped' | 'cancelled' | 'failed';
+export type MeshCoreNeighboursFetchOutcome = 'complete' | 'capped' | 'cancelled' | 'failed' | 'superseded';
 
 /** Mirrors the server's NeighboursFetchSnapshot. */
 export interface MeshCoreNeighboursFetchSnapshot {
@@ -35,6 +35,10 @@ export interface MeshCoreNeighboursFetchSnapshot {
   waitMs: number | null;
   waitRemainingMs: number | null;
   cancelRequested: boolean;
+  /** Page 1 is waiting for the shared radio slot (#6493). `waitMs` is then the ETA. */
+  queued?: boolean;
+  /** Requests ahead of this one while queued, else null (#6493). */
+  queuePosition?: number | null;
   outcome: MeshCoreNeighboursFetchOutcome | null;
   stored: 'replaced' | 'merged' | 'none' | null;
   written: number | null;
