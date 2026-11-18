@@ -1220,9 +1220,13 @@ class MeshtasticManager implements ISourceManager {
   private pendingFavoriteResync: Map<number, boolean> = new Map();
   private remoteAdminScannerInterval: NodeJS.Timeout | null = null;
   private remoteAdminScannerIntervalMinutes: number = 0; // 0 = disabled
+  // Bumped by every start/stop; a start that awaited the DB and finds it
+  // changed drops out, so overlapping starts cannot arm two timers.
+  private remoteAdminScannerGeneration = 0;
   private pendingRemoteAdminScans: Set<number> = new Set(); // Track nodes being scanned
   private timeSyncInterval: NodeJS.Timeout | null = null;
   private timeSyncIntervalMinutes: number = 0; // 0 = disabled
+  private timeSyncSchedulerGeneration = 0; // same role as remoteAdminScannerGeneration
   private pendingTimeSyncs: Set<number> = new Set(); // Track nodes being synced
   private keyRepairInterval: NodeJS.Timeout | null = null;
   private keyRepairEnabled: boolean = false;
@@ -2988,15 +2992,9 @@ class MeshtasticManager implements ISourceManager {
 
     this.stopRemoteLocalStatsScheduler();
 
-    if (this.remoteAdminScannerInterval) {
-      clearInterval(this.remoteAdminScannerInterval);
-      this.remoteAdminScannerInterval = null;
-    }
+    this.stopRemoteAdminScanner();
 
-    if (this.timeSyncInterval) {
-      clearInterval(this.timeSyncInterval);
-      this.timeSyncInterval = null;
-    }
+    this.stopTimeSyncScheduler();
 
     if (this.autoFavoriteSweepInterval) {
       clearInterval(this.autoFavoriteSweepInterval);
@@ -3897,6 +3895,13 @@ class MeshtasticManager implements ISourceManager {
     if (minutes < 0 || minutes > 60) {
       throw new Error('Remote admin scanner interval must be between 0 and 60 minutes (0 = disabled)');
     }
+
+    // Same interval and the scanner already armed: leave it alone. A restart
+    // starts a fresh full interval, so every save would push the next scan
+    // back, and frequent saves would stop it from ever running.
+    if (minutes === this.remoteAdminScannerIntervalMinutes && (this.remoteAdminScannerInterval !== null || minutes === 0)) {
+      return;
+    }
     this.remoteAdminScannerIntervalMinutes = minutes;
 
     if (minutes === 0) {
@@ -3915,14 +3920,15 @@ class MeshtasticManager implements ISourceManager {
    * Periodically checks nodes for remote admin capability
    */
   private async startRemoteAdminScanner(): Promise<void> {
-    if (this.remoteAdminScannerInterval) {
-      clearInterval(this.remoteAdminScannerInterval);
-      this.remoteAdminScannerInterval = null;
-    }
+    this.stopRemoteAdminScanner();
+    const generation = this.remoteAdminScannerGeneration;
 
     // Load setting from database if not already set
     if (this.remoteAdminScannerIntervalMinutes === 0) {
       const savedInterval = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteAdminScannerIntervalMinutes');
+      if (generation !== this.remoteAdminScannerGeneration) {
+        return; // a newer start or a stop ran while we read the DB
+      }
       if (savedInterval) {
         const parsed = parseInt(savedInterval, 10) || 0;
         // 0 keeps the scanner off; anything else is clamped to the UI's 1–60.
@@ -3977,6 +3983,15 @@ class MeshtasticManager implements ISourceManager {
     }, intervalMs);
   }
 
+  /** Cancel the remote admin scanner and any start still reading the DB. */
+  private stopRemoteAdminScanner(): void {
+    this.remoteAdminScannerGeneration++;
+    if (this.remoteAdminScannerInterval) {
+      clearInterval(this.remoteAdminScannerInterval);
+      this.remoteAdminScannerInterval = null;
+    }
+  }
+
   /**
    * Set the auto time sync interval in minutes
    * @param minutes Interval in minutes (15-1440), 0 to disable
@@ -3984,6 +3999,12 @@ class MeshtasticManager implements ISourceManager {
   setTimeSyncInterval(minutes: number): void {
     if (minutes !== 0 && (minutes < 15 || minutes > 1440)) {
       throw new Error('Time sync interval must be 0 (disabled) or between 15 and 1440 minutes');
+    }
+
+    // Same interval and the scheduler already armed: leave it alone, so a
+    // save that only changes the node filter does not push the next sync back.
+    if (minutes === this.timeSyncIntervalMinutes && (this.timeSyncInterval !== null || minutes === 0)) {
+      return;
     }
     this.timeSyncIntervalMinutes = minutes;
 
@@ -4004,20 +4025,24 @@ class MeshtasticManager implements ISourceManager {
    * Start the automatic time sync scheduler
    */
   private async startTimeSyncScheduler(): Promise<void> {
-    if (this.timeSyncInterval) {
-      clearInterval(this.timeSyncInterval);
-      this.timeSyncInterval = null;
-    }
+    this.stopTimeSyncScheduler();
+    const generation = this.timeSyncSchedulerGeneration;
 
     // Per-source reads: when saved via /api/settings/time-sync-nodes?sourceId=,
     // these live at source:<id>:autoTimeSync* and fall back to global keys.
     const enabledStr = await databaseService.settings.getSettingForSource(this.sourceId, 'autoTimeSyncEnabled');
+    if (generation !== this.timeSyncSchedulerGeneration) {
+      return; // a newer start or a stop ran while we read the DB
+    }
     const isEnabled = enabledStr === 'true';
 
     // Load settings from database if not already set
     if (this.timeSyncIntervalMinutes === 0) {
       if (isEnabled) {
         const intervalStr = await databaseService.settings.getSettingForSource(this.sourceId, 'autoTimeSyncIntervalMinutes');
+        if (generation !== this.timeSyncSchedulerGeneration) {
+          return;
+        }
         const parsed = intervalStr ? parseInt(intervalStr, 10) : NaN;
         // NaN keeps the historical default of 15 and 0 still means disabled;
         // anything else is clamped to the UI's 15–1440 range (the setter
@@ -4050,6 +4075,15 @@ class MeshtasticManager implements ISourceManager {
         logger.debug('🕐 Time sync scheduler: Skipping - not connected or no local node info');
       }
     }, intervalMs);
+  }
+
+  /** Cancel the time sync scheduler and any start still reading the DB. */
+  private stopTimeSyncScheduler(): void {
+    this.timeSyncSchedulerGeneration++;
+    if (this.timeSyncInterval) {
+      clearInterval(this.timeSyncInterval);
+      this.timeSyncInterval = null;
+    }
   }
 
   /**
@@ -4309,6 +4343,8 @@ class MeshtasticManager implements ISourceManager {
     autoPurge?: boolean;
     immediatePurge?: boolean;
   }): void {
+    const wasEnabled = this.keyRepairEnabled;
+    const prevIntervalMinutes = this.keyRepairIntervalMinutes;
     if (settings.enabled !== undefined) {
       this.keyRepairEnabled = settings.enabled;
     }
@@ -4333,8 +4369,13 @@ class MeshtasticManager implements ISourceManager {
 
     logger.debug(`🔐 Key repair settings updated: enabled=${this.keyRepairEnabled}, interval=${this.keyRepairIntervalMinutes}min, maxExchanges=${this.keyRepairMaxExchanges}, autoPurge=${this.keyRepairAutoPurge}, immediatePurge=${this.keyRepairImmediatePurge}`);
 
-    // Restart scheduler if connected
-    if (this.isConnected) {
+    // Restart only when the timing changed or the scheduler should run but is
+    // not armed. A restart starts a fresh full interval, so restarting on a
+    // max-exchanges or purge change would push the next repair pass back.
+    const timingChanged = this.keyRepairEnabled !== wasEnabled
+      || this.keyRepairIntervalMinutes !== prevIntervalMinutes;
+    const needsArming = this.keyRepairEnabled && this.keyRepairInterval === null;
+    if (this.isConnected && (timingChanged || needsArming)) {
       this.startKeyRepairScheduler();
     }
   }
@@ -17148,15 +17189,9 @@ class MeshtasticManager implements ISourceManager {
 
     this.distanceDeleteScheduler?.stop();
 
-    if (this.remoteAdminScannerInterval) {
-      clearInterval(this.remoteAdminScannerInterval);
-      this.remoteAdminScannerInterval = null;
-    }
+    this.stopRemoteAdminScanner();
 
-    if (this.timeSyncInterval) {
-      clearInterval(this.timeSyncInterval);
-      this.timeSyncInterval = null;
-    }
+    this.stopTimeSyncScheduler();
 
     if (this.autoFavoriteSweepInterval) {
       clearInterval(this.autoFavoriteSweepInterval);
