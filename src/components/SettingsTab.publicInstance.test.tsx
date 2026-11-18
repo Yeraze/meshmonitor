@@ -369,4 +369,25 @@ describe('SettingsTab — Public-instance mode section (#5156)', () => {
       unmount();
     }
   });
+
+  it('shows the anonymous-send toggle off by default with a warning, and saves it (#6499)', async () => {
+    renderSettings();
+    await waitFor(() => expect(el('allowAnonymousSend')).not.toBeNull());
+    expect(el('allowAnonymousSend').checked).toBe(false);
+    expect(el('allowAnonymousSend').disabled).toBe(false);
+    expect(document.querySelector('[data-testid="allow-anonymous-send-warning"]')).not.toBeNull();
+
+    fireEvent.click(el('allowAnonymousSend'));
+    await waitFor(() => expect(el('allowAnonymousSend').checked).toBe(true));
+    await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(true));
+    await saveBarCapture.current!.onSave();
+    const [, options] = csrfFetchMock.mock.calls[csrfFetchMock.mock.calls.length - 1];
+    expect(JSON.parse((options as RequestInit).body as string).allowAnonymousSend).toBe('1');
+  });
+
+  it('loads the anonymous-send toggle on from the server setting (#6499)', async () => {
+    serverSettings = { allowAnonymousSend: '1' };
+    renderSettings();
+    await waitFor(() => expect(el('allowAnonymousSend')?.checked).toBe(true));
+  });
 });

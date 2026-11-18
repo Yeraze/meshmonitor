@@ -22,9 +22,23 @@ The master switch starts off. Turn it on, then pick what to hide.
 | Hide public keys | On | Cuts MeshCore keys to a 12-hex prefix and removes Meshtastic keys. |
 | Round times down to the hour | On | Rounds timestamps down to the hour. |
 | Hide message text | On | Replaces message text with a placeholder. |
+| Allow anonymous sending | Off | Lets a signed-out visitor send messages to the mesh. Works without the master switch. |
 
-The four toggles only matter once the master switch is on. Each starts on, so switching
+The four hide toggles only matter once the master switch is on. Each starts on, so switching
 the master on gives you the strictest setup.
+
+### Anonymous sending
+
+Signed-out visitors cannot send by default, even if the `anonymous` account holds a write
+grant. Sending transmits over radio, so you must opt in: turn on **Allow anonymous sending**.
+Even then, a visitor can only send on channels and direct messages where the `anonymous`
+account also has write permission. Without the setting, `POST /api/messages/send` returns
+`401 AUTH_REQUIRED` and nothing transmits. The same gate covers the key-warning DM and the
+Reticulum message send.
+
+Every send through `POST /api/messages/send` and the v1 API (`POST /api/v1/sources/{id}/messages`)
+writes an audit entry (`message_sent`) with the source, channel or destination, and
+sender. The entry holds no message text.
 
 ## Always on
 

@@ -492,8 +492,13 @@ Send a text message to the mesh network.
 ```
 
 **Error Responses:**
+- `401 AUTH_REQUIRED` — The request has no signed-in user and **Allow anonymous sending** is off
+  (the default); nothing was sent. See [Public-Instance Mode](../features/public-instance-mode.md#anonymous-sending).
 - `409 TX_DISABLED` — Transmit is disabled on this source (receive-only mode); nothing was sent.
   See [Receive-Only Mode](../features/receive-only-mode.md).
+
+Each send writes a `message_sent` audit entry with no message text. The v1 send
+(`POST /api/v1/sources/{sourceId}/messages`) writes the same entry.
 
 ---
 

@@ -62,6 +62,7 @@ function setupApi(opts: {
   channelDbPermissions?: Array<{ channelDatabaseId: number; canViewOnMap: boolean; canRead: boolean; canWrite?: boolean }>;
   channelDbEntries?: Array<{ id: number; name: string; description: string | null; isEnabled: boolean }>;
   sources?: Array<{ id: string; name: string; type: string }>;
+  username?: string;
 } = {}) {
   apiGetMock.mockReset();
   apiGetMock.mockImplementation(async (url: string) => {
@@ -70,7 +71,7 @@ function setupApi(opts: {
         users: [
           {
             id: 2,
-            username: 'alice',
+            username: opts.username ?? 'alice',
             email: null,
             displayName: 'Alice',
             authProvider: 'local',
@@ -353,5 +354,31 @@ describe('UsersTab — PR-C grid additions', () => {
     expect(writeCheckbox.checked).toBe(false);
     fireEvent.click(writeCheckbox);
     expect(writeCheckbox.checked).toBe(true);
+  });
+});
+
+describe('UsersTab — anonymous send warning (#6499)', () => {
+  const open = async () => {
+    render(<UsersTab />);
+    fireEvent.click(await screen.findByText(/Alice/));
+    await waitFor(() => expect(screen.getByText('Per-Source Resources')).toBeInTheDocument());
+  };
+
+  it('warns on the anonymous account when it holds a channel write grant', async () => {
+    setupApi({ username: 'anonymous', permissions: { channel_0: { read: true, write: true } } });
+    await open();
+    await waitFor(() => expect(screen.getByTestId('anonymous-send-warning')).toBeInTheDocument());
+  });
+
+  it('does not warn on the anonymous account with read-only grants', async () => {
+    setupApi({ username: 'anonymous', permissions: { channel_0: { read: true, write: false } } });
+    await open();
+    expect(screen.queryByTestId('anonymous-send-warning')).toBeNull();
+  });
+
+  it('does not warn for a normal user with write grants', async () => {
+    setupApi({ permissions: { channel_0: { read: true, write: true } } });
+    await open();
+    expect(screen.queryByTestId('anonymous-send-warning')).toBeNull();
   });
 });

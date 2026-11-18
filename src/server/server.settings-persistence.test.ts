@@ -251,6 +251,8 @@ function validTestValue(key: string, suffix = ''): string {
     publicInstanceHidePublicKeys: '0',
     publicInstanceRoundTimestamps: '0',
     publicInstanceHideMessageText: '0',
+    // Anonymous-send opt-in (#6499)
+    allowAnonymousSend: '1',
   };
 
   if (key in VALID_VALUES) {
@@ -595,6 +597,8 @@ describe('Settings Persistence', () => {
         'publicInstanceModeEnabled', 'publicInstanceHideLongNames',
         'publicInstanceHidePublicKeys', 'publicInstanceRoundTimestamps',
         'publicInstanceHideMessageText',
+        // Anonymous-send opt-in (#6499) — loaded directly by SettingsTab.
+        'allowAnonymousSend',
         // Coverage Report retention window (#5277 P1 WP2) — loaded directly by
         // SettingsTab into its own initial* snapshot (GLOBAL_ONLY_SETTINGS_KEYS,
         // settings:write-gated field, no SettingsContext hook), same pattern as

@@ -454,6 +454,40 @@ async function sendMeshCoreMessage(req: Request, res: Response, sourceId: string
 }
 
 /**
+ * Audit a v1 send. Fire-and-forget and text-free, same shape as
+ * POST /api/messages/send (`via: 'v1'`). A failed write never fails the
+ * response: the radio already transmitted, and a 500 would invite a retry.
+ */
+function auditV1Send(
+  req: Request,
+  info: { sourceId: string; destinationNum: number | undefined; meshChannel: number; replyId: number | undefined },
+): void {
+  try {
+    databaseService
+      .auditLogAsync(
+        req.user?.id ?? null,
+        'message_sent',
+        'messages',
+        JSON.stringify({
+          sourceId: info.sourceId,
+          kind: info.destinationNum ? 'dm' : 'channel',
+          channel: info.meshChannel,
+          destination: info.destinationNum
+            ? `!${(info.destinationNum >>> 0).toString(16).padStart(8, '0')}`
+            : null,
+          replyId: info.replyId ?? null,
+          tapback: false,
+          via: 'v1',
+        }),
+        req.ip || null
+      )
+      .catch((err: unknown) => logger.error('[Messages] v1 send audit write failed:', err));
+  } catch (err) {
+    logger.error('[Messages] v1 send audit write failed:', err);
+  }
+}
+
+/**
  * POST /api/v1/messages
  * Send a new message to a channel or directly to a node
  *
@@ -636,6 +670,8 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
 
       logger.debug(`📤 v1 API: Queued ${messageParts.length} message parts (user: ${req.user?.username}, queueIds: ${queueIds.join(', ')})`);
 
+      auditV1Send(req, { sourceId: activeManager.sourceId, destinationNum, meshChannel, replyId });
+
       res.status(202).json({
         success: true,
         data: {
@@ -664,6 +700,8 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       const messageId = localNodeNum ? `${localNodeNum}_${requestId}` : requestId.toString();
 
       logger.debug(`📤 v1 API: Sent message via API token (user: ${req.user?.username}, requestId: ${requestId})`);
+
+      auditV1Send(req, { sourceId: activeManager.sourceId, destinationNum, meshChannel, replyId });
 
       res.status(201).json({
         success: true,
