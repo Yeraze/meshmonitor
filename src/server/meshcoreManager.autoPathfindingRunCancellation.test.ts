@@ -119,6 +119,8 @@ describe('MeshCoreManager Auto-Pathfinding run cancellation (#5170)', () => {
       .mockReturnValueOnce(makeCompanionContacts(5))
       .mockReturnValue(makeCompanionContacts(5).map(c => ({ ...c, publicKey: `new-${c.publicKey}` })));
     (m as any).getContacts = getContacts;
+    // Two runs inside one floor window: the claim itself is covered in the #6500 block.
+    vi.spyOn(m, 'tryClaimMeshTxSlot').mockReturnValue(true);
     const discoverContactPath = vi.fn().mockResolvedValue(true);
     (m as any).discoverContactPath = discoverContactPath;
 
@@ -166,5 +168,65 @@ describe('MeshCoreManager Auto-Pathfinding run cancellation (#5170)', () => {
     // A superseded run must not advance the "last completed run" timestamp
     // either — only a run that actually finishes its target list should.
     expect((m as any).autoPathfindingLastRunAt).toBe(0);
+  });
+
+  describe('TX floor and manual queue (#6500)', () => {
+    function setup(count: number) {
+      const m = new MeshCoreManager('test-source');
+      mockPathfindingSettings();
+      (m as any).connected = true;
+      (m as any).canTransmit = vi.fn().mockReturnValue(true);
+      (m as any).getContacts = vi.fn().mockReturnValue(makeCompanionContacts(count));
+      const discoverContactPath = vi.fn().mockResolvedValue(true);
+      (m as any).discoverContactPath = discoverContactPath;
+      return { m, discoverContactPath };
+    }
+
+    it('does not send while a claim is refused (manual reservation held)', async () => {
+      const { m, discoverContactPath } = setup(1);
+      const claim = vi.spyOn(m, 'tryClaimMeshTxSlot').mockReturnValue(false);
+      await m.startAutoPathfinding();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(claim).toHaveBeenCalledTimes(1);
+      expect(discoverContactPath).not.toHaveBeenCalled();
+    });
+
+    it('does not send inside the 60 s floor, then retries the same target later', async () => {
+      const { m, discoverContactPath } = setup(1);
+      // Close the floor right now.
+      expect(m.tryClaimMeshTxSlot(Date.now())).toBe(true);
+      await m.startAutoPathfinding();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(discoverContactPath).not.toHaveBeenCalled();
+      // One interval (3 min) later the floor is open: the same target goes out.
+      await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
+      expect(discoverContactPath).toHaveBeenCalledTimes(1);
+      expect(discoverContactPath).toHaveBeenCalledWith('pubkey-0', { automatic: true });
+    });
+
+    it('a successful claim stamps the floor once per send', async () => {
+      const { m, discoverContactPath } = setup(1);
+      const claim = vi.spyOn(m, 'tryClaimMeshTxSlot');
+      await m.startAutoPathfinding();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(claim).toHaveBeenCalledTimes(1);
+      expect(claim.mock.results[0].value).toBe(true);
+      expect(discoverContactPath).toHaveBeenCalledTimes(1);
+      // Floor now closed.
+      expect(m.tryClaimMeshTxSlot(Date.now())).toBe(false);
+    });
+
+    it('gives up on a target after repeated refusals and moves on', async () => {
+      const { m, discoverContactPath } = setup(2);
+      const claim = vi.spyOn(m, 'tryClaimMeshTxSlot')
+        .mockReturnValueOnce(false).mockReturnValueOnce(false).mockReturnValueOnce(false)
+        .mockReturnValue(true);
+      await m.startAutoPathfinding();
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(3 * 60 * 1000 * 2);
+      expect(claim).toHaveBeenCalledTimes(4);
+      expect(discoverContactPath).toHaveBeenCalledTimes(1);
+      expect(discoverContactPath).toHaveBeenCalledWith('pubkey-1', { automatic: true });
+    });
   });
 });

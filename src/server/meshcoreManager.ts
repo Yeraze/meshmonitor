@@ -905,6 +905,9 @@ export const MC_PF_RSSI_FLOOR = -200;
 /** Sentinel SNR (dB) below which a configured `snrMin` threshold is a no-op. */
 export const MC_PF_SNR_FLOOR = -100;
 
+/** Failed TX-slot claims tolerated per auto-pathfinding target before it waits for the next run (#6500). */
+const AUTO_PATHFINDING_MAX_CLAIM_MISSES = 3;
+
 /**
  * Pure filter for Auto-Pathfinding target selection (#4024). AND pre-filters
  * (last-heard, hop range, signal) narrow the pool first; OR-union identity
@@ -14152,6 +14155,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
       logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: running on ${companions.length} companions + ${repeaters.length} repeaters`);
 
+      let claimMisses = 0;
       for (let i = 0; i < targets.length; i++) {
         if (!this.connected) break;
         // #5170: re-checked per-target (and immediately after the
@@ -14171,6 +14175,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           break;
         }
         const t = targets[i];
+        // Per-source 60 s TX floor + manual queue (#6500): claim BEFORE any
+        // send. A refused claim sends nothing and counts nothing; wait one
+        // interval and retry this target, then leave it for the next run.
+        if (!this.tryClaimMeshTxSlot()) {
+          claimMisses++;
+          if (claimMisses < AUTO_PATHFINDING_MAX_CLAIM_MISSES) {
+            logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: TX slot busy, retrying ${t.name} in ${intervalMinutes}m`);
+            await new Promise(resolve => setTimeout(resolve, intervalMs));
+            i--;
+            continue;
+          }
+          logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: TX slot busy, skipping ${t.name} until next run`);
+        }
+        const claimed = claimMisses < AUTO_PATHFINDING_MAX_CLAIM_MISSES;
+        claimMisses = 0;
+        if (!claimed) continue;
         try {
           if (t.op === 'discover_path') {
             const ok = await this.discoverContactPath(t.key, { automatic: true });
