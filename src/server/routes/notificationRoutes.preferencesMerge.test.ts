@@ -196,6 +196,33 @@ describe('POST /push/preferences — partial update', () => {
     });
   });
 
+  it('keeps allowMentions on mute rules through a save and a GET (#6490)', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    await agent.post('/push/preferences').send({
+      sourceId: MESHCORE_SOURCE,
+      mutedChannels: [{ channelId: 1, muteUntil: null, allowMentions: true }],
+      mutedDMs: [{ nodeUuid: 'room-key', muteUntil: 123, allowMentions: true }],
+    }).expect(200);
+    // A later save of other fields keeps the flag.
+    await agent.post('/push/preferences').send({ sourceId: MESHCORE_SOURCE, blacklist: ['x'] }).expect(200);
+
+    const res = await agent.get(`/push/preferences?sourceId=${MESHCORE_SOURCE}`).expect(200);
+    const prefs = res.body.data ?? res.body;
+    expect(prefs.mutedChannels).toEqual([{ channelId: 1, muteUntil: null, allowMentions: true }]);
+    expect(prefs.mutedDMs).toEqual([{ nodeUuid: 'room-key', muteUntil: 123, allowMentions: true }]);
+  });
+
+  it('rejects a non-boolean allowMentions and writes nothing (#6490)', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post('/push/preferences').send({
+      sourceId: harness.sourceA,
+      mutedChannels: [{ channelId: 1, muteUntil: null, allowMentions: 'yes' }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_MUTE_RULE');
+    expect(await rowFor(harness.sourceA)).toBeNull();
+  });
+
   it('rejects a bad value in a partial body and writes nothing', async () => {
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.post('/push/preferences').send({

@@ -431,6 +431,12 @@ function rejectInvalidPreferencesBody(body: PreferencesBody, res: Response): Res
   )) {
     return res.status(400).json({ error: 'mutedDMs entries must have nodeUuid (string) and muteUntil (number|null)' });
   }
+  // #6490: optional per-rule "still alert on mentions" flag.
+  if ([...(mutedChannels ?? []), ...(mutedDMs ?? [])].some((r: { allowMentions?: unknown }) =>
+    r.allowMentions !== undefined && typeof r.allowMentions !== 'boolean'
+  )) {
+    return fail(res, 400, 'INVALID_MUTE_RULE', 'allowMentions must be a boolean');
+  }
 
   // Message-notification templates (#5593). null or blank clears the
   // template (back to the built-in default). An unknown `{{ token }}` is

@@ -38,16 +38,22 @@ export interface NotificationMuteVenue {
   channelId?: number;
   /** DM / room mute key. Without it a DM venue cannot be muted. */
   muteKey?: string;
+  /** A MeshCore mention alert (#6490): a rule with `allowMentions` lets it through. */
+  isMention?: boolean;
 }
 
 export interface MutedChannel {
   channelId: number;
   muteUntil: number | null;
+  /** #6490: mention alerts still get through this mute. */
+  allowMentions?: boolean;
 }
 
 export interface MutedDM {
   nodeUuid: string;
   muteUntil: number | null;
+  /** #6490: mention alerts still get through this mute (MeshCore rooms). */
+  allowMentions?: boolean;
 }
 
 export interface NotificationPreferences {
@@ -99,7 +105,8 @@ function isMuteActive(muteUntil: number | null): boolean {
 
 /**
  * True when `prefs` hold an active mute for the venue. A DM venue without a
- * `muteKey` is never muted (nothing to match on).
+ * `muteKey` is never muted (nothing to match on). A mention venue is not muted
+ * by a rule with `allowMentions` (#6490).
  */
 export function isVenueMuted(
   prefs: Pick<NotificationPreferences, 'mutedChannels' | 'mutedDMs'>,
@@ -108,11 +115,11 @@ export function isVenueMuted(
   if (venue.isDirectMessage) {
     if (!venue.muteKey) return false;
     const rule = (prefs.mutedDMs ?? []).find(r => r.nodeUuid === venue.muteKey);
-    return !!rule && isMuteActive(rule.muteUntil);
+    return !!rule && isMuteActive(rule.muteUntil) && !(venue.isMention && rule.allowMentions === true);
   }
   if (venue.channelId === undefined) return false;
   const rule = (prefs.mutedChannels ?? []).find(r => r.channelId === venue.channelId);
-  return !!rule && isMuteActive(rule.muteUntil);
+  return !!rule && isMuteActive(rule.muteUntil) && !(venue.isMention && rule.allowMentions === true);
 }
 
 /**
@@ -184,7 +191,8 @@ export async function userReadsAnySourceAsync(userId: number, sourceIds: string[
 
 /**
  * Event-broadcast gate (`broadcastToPreferenceUsers`): the payload's key
- * fingerprint and venue mute, if it carries them. A mute wins over a mention.
+ * fingerprint and venue mute, if it carries them. A mute wins over a mention
+ * unless the rule has `allowMentions` (#6490).
  * `prefs` is the recipient's row for the source when the caller has it.
  * True = drop for this user.
  */

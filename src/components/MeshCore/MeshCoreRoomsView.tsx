@@ -299,6 +299,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     () => roomServers.find(r => r.publicKey === selectedRoom) ?? null,
     [roomServers, selectedRoom],
   );
+  const roomMuteRule = selectedRoom ? mute?.mutedDMs?.find(r => r.nodeUuid === selectedRoom) : undefined;
 
   const activeFilter = useMemo(
     () => selectedRoom ? buildRoomFilter(selectedRoom) : () => false,
@@ -920,8 +921,11 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               {canMute && mute && (
                 <MuteMenu
                   muted={mute.isDMMuted(selectedRoom)}
-                  onMute={(until) => mute.muteDM(selectedRoom, until)}
+                  onMute={(until, allowMentions) => mute.muteDM(selectedRoom, until, allowMentions)}
                   onUnmute={() => mute.unmuteDM(selectedRoom)}
+                  mentionOption
+                  allowMentions={roomMuteRule?.allowMentions === true}
+                  onAllowMentionsChange={(v) => roomMuteRule && mute.muteDM(selectedRoom, roomMuteRule.muteUntil, v)}
                 />
               )}
               <span className="meshcore-room-stats-info">

@@ -467,6 +467,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // for it.
   const active: ChannelRow | null =
     selectedIdx === null ? null : displayChannels.find(c => c.id === selectedIdx) ?? null;
+  const activeMuteRule = active ? muteSettings?.mutedChannels?.find(r => r.channelId === active.id) : undefined;
   const activeFilter = useMemo(
     () => (active ? buildChannelFilter(active.id) : () => false),
     [active],
@@ -1102,8 +1103,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         {canMute && muteSettings && (
           <MuteMenu
             muted={isChannelMuted(active.id)}
-            onMute={(until) => muteSettings.muteChannel(active.id, until)}
+            onMute={(until, allowMentions) => muteSettings.muteChannel(active.id, until, allowMentions)}
             onUnmute={() => muteSettings.unmuteChannel(active.id)}
+            mentionOption
+            allowMentions={activeMuteRule?.allowMentions === true}
+            onAllowMentionsChange={(v) => activeMuteRule && muteSettings.muteChannel(active.id, activeMuteRule.muteUntil, v)}
           />
         )}
         {canSend && filtered.length > 0 && (
