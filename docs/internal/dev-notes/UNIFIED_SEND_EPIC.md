@@ -38,13 +38,23 @@ Hazards found in orientation:
 
 ## Phases
 
-- [ ] **P1 — Server.** `messageLimiter` on `/api/messages/send`; send audit rows (Meshtastic, MQTT native, MeshCore; no text); a permission-filtered per-source-ref sender list (`canSend` + reason) for Unified, with route-harness tests.
+- [x] **P1 — Server.** `messageLimiter` on `/api/messages/send`; send audit rows (Meshtastic, MQTT native, MeshCore; no text); a permission-filtered per-source-ref sender list (`canSend` + reason) for Unified, with route-harness tests.
   *Exit:* routes tested with `createRouteTestApp`; virtual/physical slot rules enforced in the sender list; CI green; merged.
 - [ ] **P2 — Composer.** `MessageComposeInput` on Unified for one explicit channel; node picker limited to eligible senders; per-browser default node per channel; byte limit per source type; hidden/disabled on All Channels. Docs + screenshot.
   *Exit:* live-validated on the dev container (no transmit unless the user OKs reconnecting radios; `gauntlet` only); merged.
 - [ ] **P3 — Replies, tapbacks, status.** Reply and tapback from Unified rows (rules in hazard 3); delivery status where the sent row already tracks it. Docs + screenshot.
   *Exit:* live-validated; merged.
 
+## Phase 1 result (server)
+
+- `messageLimiter` on `POST /api/messages/send`; its 429 now carries `code: 'RATE_LIMITED'` and `retryAfterSeconds`. The bucket is per IP and shared with the MeshCore, MQTT-native and v1 send routes. The existing Meshtastic tabs show their generic send error on a 429 until P2 handles it.
+- Audit rows (no text, no length), successful sends only: `message_sent` (Meshtastic), `mqtt_native_message_sent`, `meshcore_message_sent`, `meshcore_room_post_sent`. MeshCore sent-as / resend / reaction keep their existing rows.
+- `GET /api/unified/senders` → `{ success, data: { channels: [{ name, sources: [{ sourceId, sourceName, channelNumber, canSend, sendKind, sendBlockedReason }] }] } }`. Anonymous viewers get `[]`. Built from `buildUnifiedChannelGroups` (`src/server/services/unifiedChannelGroups.ts`, shared with `/channels`) and `resolveUnifiedSenders` (`src/server/services/unifiedSendEligibility.ts`). Check order: visibility gate → source kind → slot rule → per-source permission → live state. `sendKind` is non-null only once permission passed.
+- `prepareMqttNativeSend` is the one MQTT-native precondition for both the send path and the list; `unifiedSendEligibility.ts` is on the `mqttNativeSendService` guard allowlist (it never transmits).
+- Deviation: `loadEnabledVirtualChannels()` returns Meshtastic-protocol channel-database rows only, so MeshCore-protocol rows never appear in the sender list.
+- Found, not fixed (follow-ups): `/api/unified/channels` lists each virtual channel under every source with no read check on that source (source names visible to a channel-database-only reader); `POST /api/v1/messages` writes no audit row; `/api/messages/send` still clamps channel > 7 to 0; it uses `optionalAuth`, so an anonymous account granted write can send; `parseDestinationNum` runs before the permission check.
+
 ## Log
 
 - 2026-11-18: interview done; plan approved.
+- 2026-11-18: P1 implemented (WP1 rate limit + audit, WP2 sender list).
