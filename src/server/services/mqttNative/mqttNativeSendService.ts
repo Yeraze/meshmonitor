@@ -167,12 +167,12 @@ async function requireIdentity(sourceId: string): Promise<Extract<LoadedMqttNati
   return loaded;
 }
 
-interface UsableChannel {
+export interface UsableChannel {
   row: DbChannelDatabase & { id: number };
   psk: Buffer;
 }
 
-function usableChannel(row: DbChannelDatabase | null): UsableChannel | null {
+export function usableChannel(row: DbChannelDatabase | null): UsableChannel | null {
   if (!row || row.id === undefined || !row.isEnabled) return null;
   if ((row.protocol ?? 'meshtastic') !== 'meshtastic') return null;
   let psk: Buffer | null;
@@ -183,6 +183,29 @@ function usableChannel(row: DbChannelDatabase | null): UsableChannel | null {
   }
   if (!psk || (psk.length !== 16 && psk.length !== 32)) return null;
   return { row: row as DbChannelDatabase & { id: number }, psk };
+}
+
+/**
+ * The shared precondition for an MQTT-native send: source, enabled flag,
+ * readiness, root topic and identity, checked in that order. Used by the send
+ * path and by the unified sender list so the two cannot disagree.
+ */
+export async function prepareMqttNativeSend(sourceId: string): Promise<{
+  publisher: MqttNativePublisher;
+  config: MqttNativeConfig;
+  root: string;
+  identity: Extract<LoadedMqttNativeIdentity, { kind: 'ok' }>;
+}> {
+  const publisher = resolveMqttNativePublisher(sourceId);
+  const config = await readMqttNativeConfig(sourceId);
+  if (!config.enabled) {
+    throw new MqttNativeSendError('MQTT_NATIVE_DISABLED', 'MQTT-native send is turned off for this source.');
+  }
+  requireReady(publisher);
+  const root = resolveRootTopic(config, publisher);
+  if (!root) throw new MqttNativeSendError('NO_ROOT_TOPIC', 'Set the MQTT root topic for MQTT-native send first.');
+  const identity = await requireIdentity(sourceId);
+  return { publisher, config, root, identity };
 }
 
 /** Channel a NodeInfo announce goes on: the configured one, else LongFast, else the first usable. */
@@ -229,15 +252,7 @@ export async function sendMqttNativeUserText(input: MqttNativeUserSend): Promise
     throw new MqttNativeSendError('INVALID_ORIGIN', 'MQTT-native send is limited to signed-in users.');
   }
   const { sourceId } = input;
-  const publisher = resolveMqttNativePublisher(sourceId);
-  const config = await readMqttNativeConfig(sourceId);
-  if (!config.enabled) {
-    throw new MqttNativeSendError('MQTT_NATIVE_DISABLED', 'MQTT-native send is turned off for this source.');
-  }
-  requireReady(publisher);
-  const root = resolveRootTopic(config, publisher);
-  if (!root) throw new MqttNativeSendError('NO_ROOT_TOPIC', 'Set the MQTT root topic for MQTT-native send first.');
-  const identity = await requireIdentity(sourceId);
+  const { publisher, config, root, identity } = await prepareMqttNativeSend(sourceId);
 
   if (typeof input.text !== 'string' || input.text.trim().length === 0) {
     throw new MqttNativeSendError('INVALID_MESSAGE', 'Message text is required.');
