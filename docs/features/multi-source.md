@@ -96,7 +96,7 @@ Your picker choice persists per view and per user.
 
 Pick one channel and a send box appears under the message feed. It is not shown on **All Channels**, and only signed-in users see it.
 
-<!-- screenshot: unified-send-composer.png (the orchestrator adds the image) -->
+![Unified Messages send composer with the Send from picker](/images/features/unified-send-composer.png)
 
 - **Send from** lists the nodes that can send on this channel right now. A node that you may use but that cannot send at the moment (not connected, transmit off, MQTT send turned off) shows greyed out, with the reason. A node you have no permission for does not appear. If every node is greyed out, the box is disabled until one comes back.
 - **One click sends one message from one node**, on that node's own channel. Nothing goes to the other nodes that share the channel name.
