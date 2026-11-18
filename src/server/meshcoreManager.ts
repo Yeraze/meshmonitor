@@ -210,6 +210,12 @@ import {
   REPEATER_CLOCK_RESOLUTION_SECS,
 } from './utils/meshcoreRepeaterStats.js';
 import { parseMeshcoreNeighborsResponse } from './utils/parseMeshcoreNeighbors.js';
+import {
+  ManualMeshTxQueue,
+  type ManualMeshTxRequest,
+  type ManualMeshTxResult,
+  type ManualMeshTxStatus,
+} from './services/meshcoreManualTxQueue.js';
 import { parseObserverFrame, meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
 import { getPayloadTypeName, getRouteTypeName } from '@michaelhart/meshcore-decoder';
 import {
@@ -10420,6 +10426,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       signal?: AbortSignal;
       onProgress?: (event: NeighboursFetchEvent) => void;
       minIntervalMs?: number;
+      /** Manual fetch: page 1 takes its slot through the manual queue (#6493). */
+      manualSlot?: { ownerKey: string; requestId?: string; onGranted?: (grantedAt: number) => void | Promise<void> };
     },
   ): Promise<NeighboursFetchSummary> {
     const manual = opts.mode === 'manual';
@@ -10430,6 +10438,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       orderBy: manual ? NEIGHBOURS_ORDER_NEWEST : NEIGHBOURS_ORDER_STRONGEST,
       minIntervalMs: opts.minIntervalMs ?? MESH_TX_FLOOR_MS,
       firstSlotReserved: opts.firstSlotReserved,
+      manualSlot: opts.manualSlot && {
+        ...opts.manualSlot,
+        beforeClaim: () => !opts.signal?.aborted && this.isConnected() && !this.isReceiveOnly(),
+      },
       signal: opts.signal,
       onProgress: onProgress
         ? (event) => {
@@ -10442,7 +10454,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         : undefined,
     });
 
-    if (result.outcome === 'cancelled' || result.outcome === 'failed') {
+    if (result.outcome === 'cancelled' || result.outcome === 'failed' || result.outcome === 'superseded') {
       logger.info(
         `[MeshCore:${this.sourceId}] Neighbour fetch for ${keyShort}… ${result.outcome} after ` +
           `${result.pagesFetched} page(s): ${result.neighbours.length} of ${result.total ?? '?'} collected` +
@@ -12731,6 +12743,34 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.lastMeshTxAt = when;
   }
 
+  /**
+   * Per-source queue of manual actions waiting for the next mesh-TX slot
+   * (#6493). In memory on purpose; the floor above is unchanged.
+   */
+  private readonly manualTxQueue = new ManualMeshTxQueue(this);
+
+  /** Wait for the next slot and take it ahead of schedulers; stamps the floor on grant. */
+  waitForManualMeshTxSlot(o: ManualMeshTxRequest): Promise<ManualMeshTxResult> {
+    return this.manualTxQueue.waitForSlot(o);
+  }
+
+  /** True while a manual request waits; schedulers and auto-ping skip their tick. */
+  hasManualMeshReservation(): boolean {
+    return this.manualTxQueue.isHeld();
+  }
+
+  /**
+   * Atomic claim for schedulers and pager pages 2+: false while a reservation
+   * is held or the floor is closed, otherwise stamps the floor.
+   */
+  tryClaimMeshTxSlot(now: number = Date.now(), floorMs: number = MESH_TX_FLOOR_MS): boolean {
+    return this.manualTxQueue.tryClaim(now, floorMs);
+  }
+
+  getManualMeshTxStatus(ownerKey: string, requestId: string): ManualMeshTxStatus | null {
+    return this.manualTxQueue.status(ownerKey, requestId);
+  }
+
   // ============ Remote-node telemetry (companion only, RF) ============
   //
   // `requestRemoteTelemetry` puts a binary req-telemetry packet on the
@@ -15003,6 +15043,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       sendReply: (text, publicKey) => this.sendMessage(text, publicKey),
       markPingFailed: (messageId, ackCrc) => this.failDmDelivery(messageId, ackCrc),
       recordMeshTx: () => this.recordMeshTx(),
+      hasManualMeshReservation: () => this.hasManualMeshReservation(),
     });
   }
 

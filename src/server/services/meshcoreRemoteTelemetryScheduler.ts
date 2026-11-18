@@ -458,6 +458,12 @@ export class MeshCoreRemoteTelemetryScheduler {
       return;
     }
 
+    // A manual action is queued for the next slot (#6493): give way.
+    if (manager.hasManualMeshReservation()) {
+      logger.debug(`[MeshCoreRemoteTelem:${manager.sourceId}] Skipping - manual action waiting for the slot`);
+      return;
+    }
+
     const nodes = await this.database.meshcore.getTelemetryEnabledNodes(manager.sourceId);
     if (nodes.length === 0) return;
 
@@ -477,8 +483,11 @@ export class MeshCoreRemoteTelemetryScheduler {
     // also bumps its own `lastMeshTxAt` inside `requestRemoteTelemetry`
     // on success; we pre-bump here so the per-source 60s gate applies
     // regardless of which sub-call returns first.
+    // Claim the slot atomically BEFORE marking: a reservation may have
+    // appeared during the awaits above, and a skipped tick must change
+    // neither rotation nor the stored request time (#6493).
+    if (!manager.tryClaimMeshTxSlot(now, this.minIntervalMs)) return;
     await this.database.meshcore.markTelemetryRequested(manager.sourceId, target.publicKey, now);
-    manager.recordMeshTx(now);
 
     // For repeater-like targets, request both the status blob and LPP;
     // companions only ship LPP. Throttle/stamp bookkeeping is owned here

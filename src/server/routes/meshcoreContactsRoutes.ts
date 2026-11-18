@@ -28,7 +28,6 @@ import {
   DEFAULT_INTERVAL_MINUTES as TIME_SYNC_DEFAULT_INTERVAL_MINUTES,
   MIN_INTERVAL_MINUTES as TIME_SYNC_MIN_INTERVAL_MINUTES,
   MAX_INTERVAL_MINUTES as TIME_SYNC_MAX_INTERVAL_MINUTES,
-  MIN_INTERVAL_BETWEEN_REQUESTS_MS as TIME_SYNC_MIN_INTERVAL_BETWEEN_REQUESTS_MS,
 } from '../services/meshcoreTimeSyncScheduler.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
@@ -36,8 +35,10 @@ import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
-import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain, requireMeshcoreTx, failIfTxDisabled, maskContactPositionsForViewOnMap } from './meshcoreRouteShared.js';
+import { managerFor, requestUserId, awaitManualMeshTxSlot, respondManualSlotFailure, manualTxOwnerKey, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain, requireMeshcoreTx, failIfTxDisabled, maskContactPositionsForViewOnMap } from './meshcoreRouteShared.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import type { ManualSlotOutcome } from './meshcoreRouteShared.js';
+import { isValidLoginRequestId } from '../services/meshcoreLoginProgress.js';
 import { newNodeAlertGate } from '../services/newNodeAlertGate.js';
 import {
   getMeshCoreNeighboursFetchRegistry,
@@ -51,6 +52,8 @@ import { recordMeshcoreCliHistory, cliRequester, cliErrorOutcome } from '../serv
 import { applyMeshCorePositionOverridesForViewer } from '../utils/meshcorePositionOverride.js';
 import { MESHCORE_TRACE_SOCKET_TIMEOUT_MS } from '../constants/meshcoreFirmwareTimeout.js';
 
+// A manual poll may first wait up to 180 s for its mesh-TX slot (#6493), so
+// the poll/time-sync socket timeouts are that wait + the round trip + 10 s.
 // Radio round trips on these routes legitimately run past the 30s default
 // socket timeout; extend it per-route so the caller gets the real result
 // instead of a dropped-socket 504.
@@ -59,13 +62,13 @@ const PING_TIMEOUT_MS = MESHCORE_TRACE_SOCKET_TIMEOUT_MS;
 /** Remote neighbours query round trip over RF. */
 const NEIGHBOURS_TIMEOUT_MS = 120_000;
 /** Remote neighbours poll, scheduler-gated multi-hop round trip. */
-const NEIGHBOURS_POLL_TIMEOUT_MS = 120_000;
+const NEIGHBOURS_POLL_TIMEOUT_MS = 310_000;
 /** Remote time-sync round trip over RF. */
-const TIME_SYNC_TIMEOUT_MS = 120_000;
+const TIME_SYNC_TIMEOUT_MS = 310_000;
 /** Neighbours request via SendBinaryReq, multi-hop round trip. */
 const NEIGHBORS_REQUEST_TIMEOUT_MS = 120_000;
 /** Remote telemetry poll round trip over RF. */
-const TELEMETRY_POLL_TIMEOUT_MS = 90_000;
+const TELEMETRY_POLL_TIMEOUT_MS = 280_000;
 /** Node discovery (nearby/repeaters/sensors): multi-second scan window. */
 const DISCOVER_TIMEOUT_MS = 180_000;
 /** Region discovery: multi-second scan window, larger candidate set. */
@@ -1237,33 +1240,55 @@ export type MeshCoreTelemetryPollOutcome =
   | { kind: 'not_connected' }
   | { kind: 'scheduler_unavailable' }
   | { kind: 'rate_limited'; retryAfterSecs: number }
-  | { kind: 'polled'; written: number; sources: string[] };
+  | { kind: 'polled'; written: number; sources: string[]; waitedSecs: number }
+  | { kind: 'slot'; outcome: ManualSlotOutcome };
 
 /**
  * One manual remote-telemetry poll for a MeshCore node, outside the scheduler
  * cadence (#3674). Shared by the UI poll route and the v1
  * `actions/request-telemetry` handler (#6263), so both hit the same per-source
- * 60 s mesh-TX gate (the scheduler's own primitive) and stamp `recordMeshTx`
- * BEFORE the request goes out. Throws what the manager throws (TxDisabledError).
+ * 60 s mesh-TX gate (the scheduler's own primitive).
+ *
+ * With `queue`, the poll takes the next slot through the manual queue (#6493):
+ * `wait` queues, otherwise it claims at once or answers `rate_limited`. A
+ * non-granted slot comes back as `{ kind: 'slot', outcome }` for the caller to
+ * answer, and NOTHING is marked or sent. The grant stamps the floor, and the
+ * per-node request clock is marked only after it. Without `queue` the legacy
+ * floor check and stamp apply. Throws what the manager throws (TxDisabledError).
  */
 export async function pollMeshCoreNodeTelemetry(opts: {
   manager: MeshCoreManager;
   sourceId: string;
   publicKey: string;
   type: 'status' | 'lpp';
+  queue?: { req: Request; res: Response; wait: boolean };
 }): Promise<MeshCoreTelemetryPollOutcome> {
-  const { manager, sourceId, publicKey, type } = opts;
+  const { manager, sourceId, publicKey, type, queue } = opts;
   if (!manager.isConnected()) return { kind: 'not_connected' };
 
   const scheduler = getMeshCoreRemoteTelemetryScheduler();
   if (!scheduler) return { kind: 'scheduler_unavailable' };
 
-  // Per-source 60s mesh-TX gate: a manual poll can't flood the air or collide
-  // with a scheduled request already in flight on this source.
-  const lastTx = manager.getLastMeshTxAt();
-  const sinceLastTx = Date.now() - lastTx;
-  if (lastTx > 0 && sinceLastTx < MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
-    return { kind: 'rate_limited', retryAfterSecs: Math.ceil((MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000) };
+  let now = Date.now();
+  let waitedSecs = 0;
+  if (queue) {
+    const slot = await awaitManualMeshTxSlot(queue.req, queue.res, manager, {
+      action: 'telemetry', publicKey, wait: queue.wait,
+    });
+    if (slot.kind !== 'granted') {
+      if (slot.kind === 'rate_limited') return { kind: 'rate_limited', retryAfterSecs: slot.retryAfterSecs };
+      return { kind: 'slot', outcome: slot };
+    }
+    now = slot.grantedAt;
+    waitedSecs = slot.waitedSecs;
+  } else {
+    // Per-source 60s mesh-TX gate: a manual poll can't flood the air or collide
+    // with a scheduled request already in flight on this source.
+    const lastTx = manager.getLastMeshTxAt();
+    const sinceLastTx = now - lastTx;
+    if (lastTx > 0 && sinceLastTx < MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
+      return { kind: 'rate_limited', retryAfterSecs: Math.ceil((MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000) };
+    }
   }
 
   // Load the persisted node (if any) so the scheduler can classify advType for
@@ -1271,9 +1296,9 @@ export async function pollMeshCoreNodeTelemetry(opts: {
   const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
 
   // Stamp before issuing so the gate applies regardless of result and the
-  // scheduler's fair-rotation clock advances too.
-  const now = Date.now();
-  manager.recordMeshTx(now);
+  // scheduler's fair-rotation clock advances too. The queue grant already
+  // stamped the floor; the legacy path stamps here.
+  if (!queue) manager.recordMeshTx(now);
   await databaseService.meshcore.markTelemetryRequested(sourceId, publicKey, now);
 
   const result = await scheduler.requestTelemetryForNode(
@@ -1281,7 +1306,7 @@ export async function pollMeshCoreNodeTelemetry(opts: {
     { publicKey, advType: node?.advType ?? null, name: node?.name ?? null },
     { includeStatus: type === 'status', includeLpp: type === 'lpp' },
   );
-  return { kind: 'polled', written: result.written, sources: result.sources };
+  return { kind: 'polled', written: result.written, sources: result.sources, waitedSecs };
 }
 
 /**
@@ -1321,7 +1346,12 @@ router.post(
 
       const outcome = await pollMeshCoreNodeTelemetry({
         manager: managerFor(req, res), sourceId, publicKey, type,
+        queue: { req, res, wait: req.body?.wait !== false },
       });
+      if (outcome.kind === 'slot') {
+        respondManualSlotFailure(res, outcome.outcome);
+        return;
+      }
       if (outcome.kind === 'not_connected') {
         return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
       }
@@ -1330,16 +1360,15 @@ router.post(
       }
       if (outcome.kind === 'rate_limited') {
         res.set('Retry-After', String(outcome.retryAfterSecs));
-        return res.status(429).json({
-          success: false,
-          error: `Too soon since last mesh transmission; retry in ${outcome.retryAfterSecs}s`,
+        return fail(res, 429, 'RATE_LIMITED', `Too soon since last mesh transmission; retry in ${outcome.retryAfterSecs}s`, {
           retryAfterSecs: outcome.retryAfterSecs,
+          retryAfterSeconds: outcome.retryAfterSecs,
         });
       }
 
       res.json({
         success: true,
-        data: { type, written: outcome.written, sources: outcome.sources },
+        data: { type, written: outcome.written, sources: outcome.sources, waitedSecs: outcome.waitedSecs },
       });
     } catch (error) {
       if (failIfTxDisabled(res, error)) return;
@@ -1524,38 +1553,29 @@ router.post(
         return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
       }
 
-      // Per-source 60s mesh-TX gate — the same primitive the scheduler uses,
-      // so a manual poll can't flood the air or collide with a scheduled
-      // request already in flight on this source.
-      const lastTx = manager.getLastMeshTxAt();
-      const sinceLastTx = Date.now() - lastTx;
-      if (lastTx > 0 && sinceLastTx < NEIGHBOURS_MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
-        const retryAfterSecs = Math.ceil((NEIGHBOURS_MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000);
-        res.set('Retry-After', String(retryAfterSecs));
-        return res.status(429).json({
-          success: false,
-          error: `Too soon since last mesh transmission; retry in ${retryAfterSecs}s`,
-          retryAfterSecs,
-        });
+      // Take the next mesh-TX slot (#6493): queues behind other manual
+      // requests, or with `wait:false` claims at once / answers 429. The grant
+      // stamps the floor, and the node is marked only after it.
+      const slot = await awaitManualMeshTxSlot(req, res, manager, {
+        action: 'neighbours', publicKey, wait: req.body?.wait !== false,
+      });
+      if (slot.kind !== 'granted') {
+        respondManualSlotFailure(res, slot);
+        return;
       }
-
-      // Stamp before issuing so the gate applies regardless of result and the
-      // scheduler's fair-rotation clock advances too.
-      const now = Date.now();
-      manager.recordMeshTx(now);
-      await databaseService.meshcore.markNeighborsRequested(sourceId, publicKey, now);
+      await databaseService.meshcore.markNeighborsRequested(sourceId, publicKey, slot.grantedAt);
 
       const result = await manager.pollNeighborsAndStore(publicKey);
       if (!result) {
         return res.json({
           success: true,
-          data: { total: 0, written: 0, notSupported: true },
+          data: { total: 0, written: 0, notSupported: true, waitedSecs: slot.waitedSecs },
         });
       }
 
       res.json({
         success: true,
-        data: { total: result.total, written: result.written },
+        data: { total: result.total, written: result.written, waitedSecs: slot.waitedSecs },
       });
     } catch (error) {
       if (failIfTxDisabled(res, error)) return;
@@ -1564,12 +1584,6 @@ router.post(
     }
   },
 );
-
-/** The caller's user id: session login or API token (both set `req.user`). */
-function requestUserId(req: Request): number | null {
-  const id = (req.user as { id?: unknown } | undefined)?.id ?? req.session?.userId;
-  return typeof id === 'number' ? id : null;
-}
 
 /**
  * POST /api/sources/:id/meshcore/nodes/:publicKey/neighbours/fetch
@@ -1629,16 +1643,27 @@ router.post(
       }
       const { handle } = started;
 
-      // Advance the scheduler's clock for this node too, so autopoll does not
-      // re-ask a node we are reading in full right now.
-      await databaseService.meshcore.markNeighborsRequested(sourceId, publicKey, Date.now());
-
+      // Page 1 takes the next mesh-TX slot with priority (#6493) and, once
+      // granted, advances the scheduler's clock for this node so autopoll does
+      // not re-ask a node we are reading in full right now. A superseded or
+      // cancelled page 1 leaves that clock alone.
       void manager
         .fetchAndStoreNeighbours(publicKey, {
           mode: 'manual',
           signal: handle.signal,
           onProgress: handle.onProgress,
           minIntervalMs: NEIGHBOURS_MIN_INTERVAL_BETWEEN_REQUESTS_MS,
+          manualSlot: {
+            ownerKey: manualTxOwnerKey(req),
+            requestId,
+            onGranted: async (grantedAt) => {
+              try {
+                await databaseService.meshcore.markNeighborsRequested(sourceId, publicKey, grantedAt);
+              } catch (err) {
+                logger.warn('[API] Could not mark neighbours requested:', err);
+              }
+            },
+          },
         })
         .then((summary) => handle.finish(summary))
         .catch((err: unknown) => {
@@ -1662,6 +1687,26 @@ router.post(
     }
   },
 );
+
+/**
+ * GET /api/sources/:id/meshcore/tx-queue/:requestId
+ *
+ * Queue position of a manual MeshCore action that is waiting for the next
+ * mesh-TX slot (#6493): `{ position, depth, startsInSecs, action, publicKey }`.
+ * Owner and source scoped (the owner is the user, session or API token alike);
+ * anyone else, an unknown id, or a request that is no longer queued gets 404.
+ * requireAuth() only: it never touches the radio and reveals only the
+ * caller's own entry plus the queue depth.
+ */
+router.get('/tx-queue/:requestId', requireAuth(), (req: Request, res: Response) => {
+  const { requestId } = req.params as { requestId: string };
+  if (requestUserId(req) === null || !isValidLoginRequestId(requestId)) {
+    return fail(res, 404, 'MESH_TX_REQUEST_NOT_FOUND', 'No such queued request');
+  }
+  const status = managerFor(req, res).getManualMeshTxStatus(manualTxOwnerKey(req), requestId);
+  if (!status) return fail(res, 404, 'MESH_TX_REQUEST_NOT_FOUND', 'No such queued request');
+  return ok(res, status);
+});
 
 /**
  * GET /api/sources/:id/meshcore/nodes/:publicKey/neighbours/fetch/:requestId
@@ -1991,23 +2036,16 @@ router.post(
         return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
       }
 
-      // Per-source 60s mesh-TX gate — the same primitive the scheduler uses.
-      const lastTx = manager.getLastMeshTxAt();
-      const sinceLastTx = Date.now() - lastTx;
-      if (lastTx > 0 && sinceLastTx < TIME_SYNC_MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
-        const retryAfterSecs = Math.ceil((TIME_SYNC_MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000);
-        res.set('Retry-After', String(retryAfterSecs));
-        return res.status(429).json({
-          success: false,
-          error: `Too soon since last mesh transmission; retry in ${retryAfterSecs}s`,
-          retryAfterSecs,
-        });
+      // Take the next mesh-TX slot (#6493). A superseded, timed-out or
+      // aborted request sends nothing and writes no CLI-history row.
+      const slot = await awaitManualMeshTxSlot(req, res, manager, {
+        action: 'time-sync', publicKey, wait: req.body?.wait !== false,
+      });
+      if (slot.kind !== 'granted') {
+        respondManualSlotFailure(res, slot);
+        return;
       }
-
-      // Stamp before issuing so the gate applies regardless of result and the
-      // scheduler's fair-rotation clock advances too.
-      const now = Date.now();
-      manager.recordMeshTx(now);
+      const now = slot.grantedAt;
       await databaseService.meshcore.markTimeSyncRequested(sourceId, publicKey, now);
 
       const result = await manager.syncNodeTime(publicKey);
@@ -2057,7 +2095,7 @@ router.post(
 
       res.json({
         success: true,
-        data: { reply: result.reply, elapsedMs: result.elapsedMs, syncedAt: now },
+        data: { reply: result.reply, elapsedMs: result.elapsedMs, syncedAt: now, waitedSecs: slot.waitedSecs },
       });
     } catch (error) {
       if (failIfTxDisabled(res, error)) return;

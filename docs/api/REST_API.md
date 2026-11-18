@@ -190,6 +190,7 @@ Two actions run on a MeshCore source. Name the target in `destination` (or `node
   - On Meshtastic, `type` is `device`, `environment`, `airQuality` or `power`. The default is `device`.
   - On MeshCore, `type` is required and is `status` or `lpp`. Any other value answers `400` `INVALID_INPUT`.
   - A MeshCore source allows one transmission per 60 seconds. A request inside that gate answers `429` `RATE_LIMITED` with a `Retry-After` header (seconds) and `retryAfter` in the body.
+  - Add `"wait": true` to opt in to the radio queue (#6493). The call then holds until the packet is sent (up to 180 s), instead of answering `429`. A newer request from the same user on the same source replaces a waiting one and the older call answers `409` `MESH_TX_SUPERSEDED`. An optional `requestId` (8 to 64 characters of `[A-Za-z0-9_-]`) lets you read the queue place with `GET /api/sources/:id/meshcore/tx-queue/:requestId`. See [API reference](API_REFERENCE.md#manual-meshcore-actions-wait-for-the-radio-slot-6493). Without `wait` the quick `429` stays.
   - Other errors: `409` `TX_DISABLED`, `503` `SOURCE_NOT_CONNECTED` or `TELEMETRY_UNAVAILABLE`.
 
 The other actions (`request-position`, `request-nodeinfo`, `request-neighbors`) are Meshtastic-only. On a MeshCore source they answer `400` `SOURCE_NOT_MESHTASTIC`.

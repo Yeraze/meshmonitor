@@ -88,8 +88,9 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
 
-        # Timeouts for long-running requests
-        proxy_read_timeout 90s;
+        # Timeouts for long-running requests. A manual MeshCore action can wait
+        # up to 180 s for the radio slot (#6493), so keep read above that.
+        proxy_read_timeout 300s;
         proxy_connect_timeout 90s;
         proxy_send_timeout 90s;
     }

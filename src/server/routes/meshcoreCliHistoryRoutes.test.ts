@@ -10,6 +10,7 @@ import meshcoreRoutes from './meshcoreRoutes.js';
 import { unifiedCliHistoryRouter } from './meshcoreCliHistoryRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import type { NewMeshCoreCliHistoryRow } from '../../db/repositories/meshcoreCliHistory.js';
+import { ManualMeshTxQueue } from '../services/meshcoreManualTxQueue.js';
 
 const h = vi.hoisted(() => ({
   stubs: new Map<string, Record<string, any>>(),
@@ -25,14 +26,22 @@ vi.mock('../sourceManagerRegistry.js', () => ({
 const KEY = 'cd'.repeat(32);
 
 function stub(sourceId: string) {
+  // A real TX queue over this stub's floor (#6493): the time-sync route waits on it.
+  let lastTx = 0;
+  const floor = { getLastMeshTxAt: () => lastTx, recordMeshTx: (when?: number) => { lastTx = when ?? Date.now(); } };
+  const queue = new ManualMeshTxQueue(floor);
   return {
     sourceId,
+    waitForManualMeshTxSlot: (o: Parameters<ManualMeshTxQueue['waitForSlot']>[0]) => queue.waitForSlot(o),
+    tryClaimMeshTxSlot: (now?: number, floorMs?: number) => queue.tryClaim(now ?? Date.now(), floorMs ?? 60_000),
+    hasManualMeshReservation: () => queue.isHeld(),
+    getManualMeshTxStatus: (ownerKey: string, requestId: string) => queue.status(ownerKey, requestId),
     sourceType: 'meshcore' as const,
     isReceiveOnly: () => false,
     canTransmit: () => true,
     isConnected: () => true,
-    getLastMeshTxAt: () => 0,
-    recordMeshTx: vi.fn(),
+    getLastMeshTxAt: floor.getLastMeshTxAt,
+    recordMeshTx: vi.fn(floor.recordMeshTx),
     getContact: (k: string) => (k === KEY ? { publicKey: KEY, advName: 'Hill Repeater' } : undefined),
     getLocalNode: () => ({ name: 'Base Companion' }),
     resolveContactByPrefix: () => undefined,

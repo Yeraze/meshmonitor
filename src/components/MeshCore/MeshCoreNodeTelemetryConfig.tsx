@@ -15,9 +15,10 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
-import { isTxDisabledBody } from '../../utils/txDisabled';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { NumberInput } from '../common/NumberInput';
+import { useMeshTxQueuedAction } from './hooks/useMeshTxQueuedAction';
+import { MeshTxQueueStatus } from './MeshTxQueueStatus';
 
 interface MeshCoreNodeTelemetryConfigProps {
   /** Frontend basename (e.g. '' or '/meshmonitor'). */
@@ -31,6 +32,8 @@ interface MeshCoreNodeTelemetryConfigProps {
    *  status / Poll LPP disabled; the enable checkbox and interval input
    *  stay editable per interview decision 5). */
   receiveOnly?: boolean;
+  /** Display name of the node, for queue messages. */
+  nodeLabel?: string;
 }
 
 interface TelemetryConfigState {
@@ -72,6 +75,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   sourceId,
   publicKey,
   receiveOnly = false,
+  nodeLabel,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -88,14 +92,14 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [polling, setPolling] = useState<null | 'status' | 'lpp'>(null);
-  const [pollMsg, setPollMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const statusPoll = useMeshTxQueuedAction(sourceId, 'telemetry', publicKey, 'status');
+  const lppPoll = useMeshTxQueuedAction(sourceId, 'telemetry', publicKey, 'lpp');
 
   const endpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/telemetry-config`;
   // The endpoint names the node. A reply that lands after the user has moved
   // to another node belongs to the old one, so it is dropped (#5797).
   const currentEndpoint = useRef(endpoint);
-  const pollEndpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/telemetry/poll`;
+  const mcPrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`;
 
   // Refetch whenever the selected node or source changes.
   useEffect(() => {
@@ -104,7 +108,6 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
     setLoading(true);
     setError(null);
     setSaved(false);
-    setPollMsg(null);
     void (async () => {
       try {
         const response = await csrfFetch(endpoint);
@@ -184,40 +187,39 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   };
 
   const poll = async (type: 'status' | 'lpp') => {
-    setPolling(type);
-    setPollMsg(null);
-    try {
-      const response = await csrfFetch(pollEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type }),
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        const written: number = typeof data.data?.written === 'number' ? data.data.written : 0;
-        setPollMsg({
-          kind: 'ok',
-          text:
-            written > 0
-              ? t('meshcore.telemetry_config.poll_wrote', `Wrote ${written} telemetry row(s).`)
-              : t('meshcore.telemetry_config.poll_empty', 'Request sent — no telemetry returned.'),
-        });
-      } else if (isTxDisabledBody(response.status, data)) {
-        // Receive-only 409 — the friendly warning toast covers this; don't
-        // also paint the red inline error (#4547 Phase 2 §3.3).
-        showToast(t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.'), 'warning');
-      } else {
-        setPollMsg({
-          kind: 'err',
-          text: data.error || t('meshcore.telemetry_config.poll_error', 'Poll failed'),
-        });
-      }
-    } catch (_err) {
-      setPollMsg({ kind: 'err', text: t('meshcore.telemetry_config.poll_error', 'Poll failed') });
-    } finally {
-      setPolling(null);
+    const hook = type === 'status' ? statusPoll : lppPoll;
+    const result = await hook.run({
+      fetcher: csrfFetch,
+      label: type === 'status'
+        ? t('meshcore.telemetry_config.poll_status', 'Poll Status')
+        : t('meshcore.telemetry_config.poll_lpp', 'Poll Environment (LPP)'),
+      nodeLabel,
+      mcPrefix,
+      path: `nodes/${encodeURIComponent(publicKey)}/telemetry/poll`,
+      body: { type },
+    });
+    // Receive-only 409: the friendly warning toast covers this; don't also
+    // paint the red inline error (#4547 Phase 2 §3.3).
+    if (result?.txDisabled) {
+      showToast(t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.'), 'warning');
     }
   };
+
+  // The newest finished poll for this node drives the inline message.
+  const finished = [statusPoll, lppPoll].find((h) => h.phase === 'done' || h.phase === 'error');
+  let pollMsg: { kind: 'ok' | 'err'; text: string } | null = null;
+  if (finished?.phase === 'done') {
+    const written: number = typeof finished.result?.data?.written === 'number' ? (finished.result.data.written as number) : 0;
+    pollMsg = {
+      kind: 'ok',
+      text:
+        written > 0
+          ? t('meshcore.telemetry_config.poll_wrote', `Wrote ${written} telemetry row(s).`)
+          : t('meshcore.telemetry_config.poll_empty', 'Request sent — no telemetry returned.'),
+    };
+  } else if (finished?.phase === 'error' && !finished.result?.txDisabled) {
+    pollMsg = { kind: 'err', text: finished.result?.error || t('meshcore.telemetry_config.poll_error', 'Poll failed') };
+  }
 
   return (
     <div className="node-details-block">
@@ -357,7 +359,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
         <p className="hint" style={{ marginBottom: '0.5rem' }}>
           {t(
             'meshcore.telemetry_config.poll_hint',
-            'Request telemetry immediately, outside the scheduled interval. Subject to the same 60-second mesh-TX spacing. Status applies to repeaters; Environment (LPP) to nodes with sensors.',
+            'Request telemetry immediately, outside the scheduled interval. Subject to the same 60-second mesh-TX spacing: a click during the cooldown is queued and sent when the radio is free. Status applies to repeaters; Environment (LPP) to nodes with sensors.',
           )}
         </p>
         <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
@@ -366,10 +368,10 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
             type="button"
             className="btn-secondary"
             onClick={() => void poll('status')}
-            disabled={!canPoll || polling !== null || receiveOnly}
+            disabled={!canPoll || statusPoll.busy || receiveOnly}
             title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
           >
-            {polling === 'status'
+            {statusPoll.busy
               ? t('meshcore.telemetry_config.polling', 'Polling…')
               : t('meshcore.telemetry_config.poll_status', 'Poll Status')}
           </button>
@@ -377,14 +379,25 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
             type="button"
             className="btn-secondary"
             onClick={() => void poll('lpp')}
-            disabled={!canPoll || polling !== null || receiveOnly}
+            disabled={!canPoll || lppPoll.busy || receiveOnly}
             title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
           >
-            {polling === 'lpp'
+            {lppPoll.busy
               ? t('meshcore.telemetry_config.polling', 'Polling…')
               : t('meshcore.telemetry_config.poll_lpp', 'Poll Environment (LPP)')}
           </button>
         </div>
+        {[statusPoll, lppPoll].map((h, i) => (
+          <MeshTxQueueStatus
+            key={i}
+            phase={h.phase}
+            secondsLeft={h.secondsLeft}
+            position={h.position}
+            replaced={h.replaced}
+            supersededAction={h.supersededByLabel}
+            supersededKey={h.supersededBy?.action}
+          />
+        ))}
         {pollMsg && (
           <div
             className="meshcore-empty-state"

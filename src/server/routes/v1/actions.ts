@@ -38,6 +38,7 @@ import { MeshCoreDeviceType } from '../../meshcoreManager.js';
 import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
 import { requestMeshtasticTelemetry } from '../meshRequestRoutes.js';
 import { pollMeshCoreNodeTelemetry } from '../meshcoreContactsRoutes.js';
+import { respondManualSlotFailure } from '../meshcoreRouteShared.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -341,9 +342,20 @@ router.post('/request-telemetry', attachSource('messages', 'write'), deviceLimit
       }
       const target = await resolveMeshCoreAction(req, res, sourceId);
       if (!target) return;
+      // Opt-in wait (#6493): only `wait: true` queues for the next slot, and
+      // only then is the socket timeout raised (this route is shared with
+      // Meshtastic). Otherwise: today's quick 429 with Retry-After, now
+      // claimed atomically so it also refuses while a manual reservation is held.
+      const wait = req.body?.wait === true;
+      if (wait) req.setTimeout(280_000);
       const outcome = await pollMeshCoreNodeTelemetry({
         manager: target.manager, sourceId, publicKey: target.publicKey, type,
+        queue: { req, res, wait },
       });
+      if (outcome.kind === 'slot') {
+        respondManualSlotFailure(res, outcome.outcome, { v1: true });
+        return;
+      }
       if (outcome.kind === 'not_connected') {
         return fail(res, 503, 'SOURCE_NOT_CONNECTED', 'MeshCore source is not connected');
       }
@@ -354,7 +366,7 @@ router.post('/request-telemetry', attachSource('messages', 'write'), deviceLimit
         res.set('Retry-After', String(outcome.retryAfterSecs));
         return fail(res, 429, 'RATE_LIMITED',
           `Too soon since last mesh transmission; retry in ${outcome.retryAfterSecs}s`,
-          { retryAfter: outcome.retryAfterSecs });
+          { retryAfter: outcome.retryAfterSecs, retryAfterSecs: outcome.retryAfterSecs, retryAfterSeconds: outcome.retryAfterSecs });
       }
       return ok(res, {
         destination: `mc:${target.publicKey}`,
@@ -363,6 +375,7 @@ router.post('/request-telemetry', attachSource('messages', 'write'), deviceLimit
         sources: outcome.sources,
         message: 'Telemetry request sent',
         protocol: 'meshcore',
+        waitedSecs: outcome.waitedSecs,
       });
     }
 

@@ -80,6 +80,8 @@ interface FakeManagerState {
   sourceId: string;
   connected: boolean;
   receiveOnly: boolean;
+  /** A manual action holds the next mesh-TX slot (#6493). */
+  reserved: boolean;
   lastMeshTxAt: number;
   loginCalledFor: string[];
   loginResult: boolean;
@@ -93,6 +95,7 @@ function makeFakeManager(init: Partial<FakeManagerState>): MeshCoreManager & { _
     sourceId: 'src-a',
     connected: true,
     receiveOnly: false,
+    reserved: false,
     lastMeshTxAt: 0,
     loginCalledFor: [],
     loginResult: true,
@@ -103,6 +106,13 @@ function makeFakeManager(init: Partial<FakeManagerState>): MeshCoreManager & { _
     sourceType: 'meshcore',
     isConnected: () => state.connected,
     isReceiveOnly: () => state.receiveOnly,
+    hasManualMeshReservation: () => state.reserved,
+    tryClaimMeshTxSlot: (now: number = Date.now(), floorMs: number = 60_000) => {
+      if (state.reserved) return false;
+      if (state.lastMeshTxAt > 0 && now - state.lastMeshTxAt < floorMs) return false;
+      state.lastMeshTxAt = now;
+      return true;
+    },
     getLastMeshTxAt: () => state.lastMeshTxAt,
     recordMeshTx: (when: number = Date.now()) => { state.lastMeshTxAt = when; },
     loginToRoom: async (publicKey: string, _password: string) => {
@@ -590,5 +600,48 @@ describe('MeshCoreRoomSyncScheduler — blank-password re-join (#6408)', () => {
     await (makeScheduler(manager) as any).tickOneManager('src-a', manager);
 
     expect(calls).toEqual([]);
+  });
+});
+
+describe('MeshCoreRoomSyncScheduler — manual reservation (#6493)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function setup(manager: any) {
+    const getRoomNodes = vi.spyOn(databaseService.meshcore, 'getRoomSyncEnabledNodes').mockResolvedValue([
+      { publicKey: 'pk-a', advType: 3, roomSyncIntervalMinutes: 60, lastRoomSyncAt: null } as any,
+    ]);
+    vi.spyOn(databaseService.meshcore, 'updateLastRoomSyncAt').mockResolvedValue(undefined);
+    vi.spyOn(databaseService.meshcore, 'clearRoomSyncFailure').mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRoomSyncScheduler({
+      registry: makeRegistry([manager]),
+      credentialStore: makeCredentialStore(),
+      now: () => 10_000_000,
+    });
+    return { scheduler, getRoomNodes };
+  }
+
+  it('skips the tick while a reservation is held: no read, no login', async () => {
+    const manager = makeFakeManager({ reserved: true });
+    const { scheduler, getRoomNodes } = setup(manager);
+    await (scheduler as any).tickOneManager(manager.sourceId, manager);
+    expect(getRoomNodes).not.toHaveBeenCalled();
+    expect((manager as any)._state.loginCalledFor).toEqual([]);
+  });
+
+  it('a failed claim leaves the room unsettled, so a later tick still tries it', async () => {
+    const manager = makeFakeManager({});
+    const { scheduler, getRoomNodes } = setup(manager);
+    getRoomNodes.mockImplementationOnce(async () => {
+      (manager as any)._state.reserved = true; // appears during the DB read
+      return [{ publicKey: 'pk-a', advType: 3, roomSyncIntervalMinutes: 60, lastRoomSyncAt: null } as any];
+    });
+    await (scheduler as any).tickOneManager(manager.sourceId, manager);
+    expect((manager as any)._state.loginCalledFor).toEqual([]);
+
+    (manager as any)._state.reserved = false;
+    await (scheduler as any).tickOneManager(manager.sourceId, manager);
+    expect((manager as any)._state.loginCalledFor).toEqual(['pk-a']);
   });
 });

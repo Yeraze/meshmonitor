@@ -40,7 +40,7 @@ export type NeighboursFetchPhase = 'starting' | 'waiting' | 'requesting' | 'done
 export type NeighboursStoreAction = 'replaced' | 'merged' | 'none';
 
 export type NeighboursFetchEvent =
-  | { phase: 'waiting'; page: number; plannedPages: number; waitMs: number }
+  | { phase: 'waiting'; page: number; plannedPages: number; waitMs: number; queued?: boolean; position?: number }
   | { phase: 'requesting'; page: number; plannedPages: number }
   | { phase: 'page'; page: number; plannedPages: number; total: number; neighbours: ResolvedNeighbour[] };
 
@@ -70,6 +70,10 @@ export interface NeighboursFetchSnapshot {
   waitMs: number | null;
   /** Time left in the current wait, computed server-side (no clock skew). */
   waitRemainingMs: number | null;
+  /** Page 1 waits in the manual TX queue (#6493), not just the floor. */
+  queued: boolean;
+  /** 1-based queue position while `queued`, when known. */
+  queuePosition: number | null;
   cancelRequested: boolean;
   outcome: NeighbourFetchOutcome | null;
   stored: NeighboursStoreAction | null;
@@ -91,6 +95,8 @@ interface Entry {
   neighbours: ResolvedNeighbour[];
   waitMs: number | null;
   waitStartedAt: number | null;
+  queued: boolean;
+  queuePosition: number | null;
   outcome: NeighbourFetchOutcome | null;
   stored: NeighboursStoreAction | null;
   written: number | null;
@@ -166,6 +172,8 @@ export class MeshCoreNeighboursFetchRegistry {
       neighbours: [],
       waitMs: null,
       waitStartedAt: null,
+      queued: false,
+      queuePosition: null,
       outcome: null,
       stored: null,
       written: null,
@@ -187,10 +195,14 @@ export class MeshCoreNeighboursFetchRegistry {
             entry.phase = 'waiting';
             entry.waitMs = event.waitMs;
             entry.waitStartedAt = this.now();
+            entry.queued = event.queued === true;
+            entry.queuePosition = event.position ?? null;
           } else if (event.phase === 'requesting') {
             entry.phase = 'requesting';
             entry.waitMs = null;
             entry.waitStartedAt = null;
+            entry.queued = false;
+            entry.queuePosition = null;
           } else {
             entry.total = event.total;
             entry.pagesFetched = event.page;
@@ -209,6 +221,8 @@ export class MeshCoreNeighboursFetchRegistry {
           entry.error = summary.error ?? null;
           entry.waitMs = null;
           entry.waitStartedAt = null;
+          entry.queued = false;
+          entry.queuePosition = null;
           entry.expiry = setTimeout(() => {
             if (this.entries.get(requestId) === entry) this.entries.delete(requestId);
           }, NEIGHBOURS_FETCH_RETAIN_MS);
@@ -238,6 +252,8 @@ export class MeshCoreNeighboursFetchRegistry {
       neighbours: entry.neighbours,
       waitMs: entry.waitMs,
       waitRemainingMs,
+      queued: entry.queued,
+      queuePosition: entry.queuePosition,
       cancelRequested: entry.controller.signal.aborted,
       outcome: entry.outcome,
       stored: entry.stored,

@@ -303,3 +303,28 @@ describe('MeshCoreAutoPingController', () => {
     expect(summary).toContain('Direct: 34 Flood: 66');
   });
 });
+
+describe('MeshCoreAutoPingController — manual reservation (#6493)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a tick while a reservation is held sends nothing and counts for nothing', async () => {
+    let held = true;
+    const host = makeHost({ hasManualMeshReservation: () => held });
+    const c = new MeshCoreAutoPingController(host);
+    await c.handleCommand(REQ_PREFIX, 'ping 3');
+    const txAfterStart = host.meshTx; // the "Starting" reply stamps once
+    await vi.advanceTimersByTimeAsync(95_000); // three ticks
+    expect(host.pings).toHaveLength(0);
+    expect(host.meshTx).toBe(txAfterStart);
+    const s = c.getSessions()[0];
+    expect(s.completedPings).toBe(0);
+    expect(host.failed).toEqual([]);
+
+    held = false;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(host.pings).toHaveLength(1);
+  });
+});
