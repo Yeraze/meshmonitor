@@ -50,10 +50,10 @@ spec:
         {{- . | trim | nindent 8 }}
         {{- end }}
         env:
+        {{- with .Values.env.meshtasticNodeIp }}
         - name: MESHTASTIC_NODE_IP
-          value: {{ .Values.env.meshtasticNodeIp | quote }}
-        - name: MESHTASTIC_USE_TLS
-          value: {{ .Values.env.meshtasticUseTls | quote }}
+          value: {{ . | quote }}
+        {{- end }}
         - name: NODE_ENV
           value: {{ .Values.env.nodeEnv | quote }}
         - name: PORT
@@ -61,10 +61,6 @@ spec:
         {{- if .Values.env.baseUrl }}
         - name: BASE_URL
           value: {{ .Values.env.baseUrl | quote }}
-        {{- end }}
-        {{- if .Values.autoupgrade.enabled }}
-        - name: AUTO_UPGRADE_ENABLED
-          value: "true"
         {{- end }}
         {{- if .Values.extraEnv }}
         {{- toYaml .Values.extraEnv | nindent 8 }}
