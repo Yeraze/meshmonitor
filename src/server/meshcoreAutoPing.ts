@@ -129,6 +129,8 @@ export interface AutoPingHost {
   markPingFailed(messageId: string, ackCrc: number): void;
   /** Stamp the shared mesh-TX clock so background schedulers back off. */
   recordMeshTx(): void;
+  /** True while a manual action waits for the mesh-TX slot (#6493). */
+  hasManualMeshReservation?(): boolean;
 }
 
 function clampInt(raw: string | null, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER): number {
@@ -375,6 +377,9 @@ export class MeshCoreAutoPingController {
     // One ping in flight at a time. `sending` is set before the first await
     // so a second tick during the send cannot launch a duplicate.
     if (session.pendingAckCrc !== null || session.sending) return;
+    // A manual action holds the next slot (#6493): skip without counting
+    // the tick, so no timeout is recorded and `completedPings` is unchanged.
+    if (this.host.hasManualMeshReservation?.()) return;
     session.sending = true;
 
     const pingNum = session.completedPings + 1;

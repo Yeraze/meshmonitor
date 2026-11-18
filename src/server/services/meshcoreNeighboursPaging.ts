@@ -30,6 +30,9 @@
  */
 export const MESH_TX_FLOOR_MS = 60_000;
 
+/** Poll step while a manual reservation holds the slot and the floor is open. */
+const RESERVATION_POLL_MS = 2_000;
+
 /** Most entries one reply can hold with the 8-byte prefix (130 / 13). */
 export const NEIGHBOURS_PAGE_SIZE = 10;
 
@@ -42,6 +45,8 @@ export const AUTOMATED_NEIGHBOURS_MAX_PAGES = 1;
 /** order_by values the firmware understands. */
 export const NEIGHBOURS_ORDER_NEWEST = 0;
 export const NEIGHBOURS_ORDER_STRONGEST = 2;
+
+import type { ManualMeshTxRequest, ManualMeshTxResult } from './meshcoreManualTxQueue.js';
 
 export interface RawNeighbour {
   publicKeyPrefix: string;
@@ -58,6 +63,17 @@ export interface NeighbourPage {
 export interface NeighbourPagingManager {
   getLastMeshTxAt(): number;
   recordMeshTx(when?: number): void;
+  /**
+   * Atomic claim: false while a manual reservation is held or the floor is
+   * closed, otherwise stamps the floor (#6493). Pages 2+ claim through this
+   * so they give way to a queued manual action.
+   */
+  tryClaimMeshTxSlot(now?: number, floorMs?: number): boolean;
+  /**
+   * Queue seam for page 1 of a manual fetch (#6493 WP2): wait for the next
+   * slot with priority. Not used by the pager yet.
+   */
+  waitForManualMeshTxSlot?(o: ManualMeshTxRequest): Promise<ManualMeshTxResult>;
   getNeighbours(
     publicKey: string,
     opts: { count: number; offset: number; orderBy: number; skipLogin?: boolean },
@@ -161,14 +177,31 @@ export async function fetchNeighbourPages(
     // Wait the shared floor, then claim the slot. The check and the stamp run
     // in the same tick, so two waiters on one source cannot both send.
     if (!(page === 1 && opts.firstSlotReserved)) {
-      for (;;) {
-        const last = manager.getLastMeshTxAt();
-        const waitMs = last > 0 ? opts.minIntervalMs - (now() - last) : 0;
-        if (waitMs <= 0) break;
-        opts.onProgress?.({ phase: 'waiting', page, plannedPages: planned, waitMs });
-        if (!(await sleep(waitMs, opts.signal))) return result('cancelled');
+      if (page === 1) {
+        // Page 1 keeps the plain floor wait. WP2 (#6493) routes a manual
+        // page 1 through manager.waitForManualMeshTxSlot here, for priority.
+        for (;;) {
+          const last = manager.getLastMeshTxAt();
+          const waitMs = last > 0 ? opts.minIntervalMs - (now() - last) : 0;
+          if (waitMs <= 0) break;
+          opts.onProgress?.({ phase: 'waiting', page, plannedPages: planned, waitMs });
+          if (!(await sleep(waitMs, opts.signal))) return result('cancelled');
+        }
+        manager.recordMeshTx(now());
+      } else {
+        // Pages 2+ give way to a queued manual action: claim atomically, and
+        // when the claim fails (floor closed or a reservation held) wait and retry.
+        for (;;) {
+          if (opts.signal?.aborted) return result('cancelled');
+          if (manager.tryClaimMeshTxSlot(now(), opts.minIntervalMs)) break;
+          const last = manager.getLastMeshTxAt();
+          const floorLeft = last > 0 ? opts.minIntervalMs - (now() - last) : 0;
+          // Floor open means a reservation holds the slot: poll briefly.
+          const waitMs = floorLeft > 0 ? floorLeft : RESERVATION_POLL_MS;
+          opts.onProgress?.({ phase: 'waiting', page, plannedPages: planned, waitMs });
+          if (!(await sleep(waitMs, opts.signal))) return result('cancelled');
+        }
       }
-      manager.recordMeshTx(now());
     }
 
     opts.onProgress?.({ phase: 'requesting', page, plannedPages: planned });

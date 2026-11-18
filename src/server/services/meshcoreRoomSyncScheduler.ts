@@ -216,6 +216,12 @@ export class MeshCoreRoomSyncScheduler {
     const lastTx = manager.getLastMeshTxAt?.() ?? 0;
     if (now - lastTx < MIN_INTERVAL_BETWEEN_REQUESTS_MS) return;
 
+    // A manual action is queued for the next slot (#6493): give way.
+    if (manager.hasManualMeshReservation?.()) {
+      logger.debug(`[RoomSyncScheduler:${sourceId}] Skipping - manual action waiting for the slot`);
+      return;
+    }
+
     // Get room-sync-enabled nodes for this source.
     const dbNodes = await databaseService.meshcore.getRoomSyncEnabledNodes(sourceId);
     const roomNodes: RoomSyncNode[] = dbNodes
@@ -268,6 +274,9 @@ export class MeshCoreRoomSyncScheduler {
       );
     }
     if (!target) return;
+    // Claim the slot atomically BEFORE settling: a skipped tick must not
+    // spend the room's one try per connection (#6493).
+    if (manager.tryClaimMeshTxSlot?.(now, MIN_INTERVAL_BETWEEN_REQUESTS_MS) === false) return;
     settled.add(target.publicKey);
     const blank = password === '';
 

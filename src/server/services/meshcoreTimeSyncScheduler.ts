@@ -248,6 +248,12 @@ export class MeshCoreTimeSyncScheduler {
       return;
     }
 
+    // A manual action is queued for the next slot (#6493): give way.
+    if (manager.hasManualMeshReservation()) {
+      logger.debug(`[MeshCoreTimeSync:${manager.sourceId}] Skipping - manual action waiting for the slot`);
+      return;
+    }
+
     const nodes = await this.database.meshcore.getTimeSyncEnabledNodes(manager.sourceId);
     if (nodes.length === 0) return;
 
@@ -262,8 +268,11 @@ export class MeshCoreTimeSyncScheduler {
     // how long the two round-trips take or whether they succeed. A repeater
     // that is offline or rejecting the push must not be retried every tick.
     // Mirrors the telemetry and neighbours schedulers.
+    // Claim the slot atomically BEFORE marking: a reservation may have
+    // appeared during the awaits above, and a skipped tick must change
+    // neither rotation nor the stored request time (#6493).
+    if (!manager.tryClaimMeshTxSlot(now, this.minIntervalMs)) return;
     await this.database.meshcore.markTimeSyncRequested(manager.sourceId, target.publicKey, now);
-    manager.recordMeshTx(now);
 
     try {
       const result = await manager.syncNodeTime(target.publicKey);

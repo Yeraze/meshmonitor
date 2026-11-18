@@ -210,6 +210,12 @@ import {
   REPEATER_CLOCK_RESOLUTION_SECS,
 } from './utils/meshcoreRepeaterStats.js';
 import { parseMeshcoreNeighborsResponse } from './utils/parseMeshcoreNeighbors.js';
+import {
+  ManualMeshTxQueue,
+  type ManualMeshTxRequest,
+  type ManualMeshTxResult,
+  type ManualMeshTxStatus,
+} from './services/meshcoreManualTxQueue.js';
 import { parseObserverFrame, meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
 import { getPayloadTypeName, getRouteTypeName } from '@michaelhart/meshcore-decoder';
 import {
@@ -12731,6 +12737,34 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.lastMeshTxAt = when;
   }
 
+  /**
+   * Per-source queue of manual actions waiting for the next mesh-TX slot
+   * (#6493). In memory on purpose; the floor above is unchanged.
+   */
+  private readonly manualTxQueue = new ManualMeshTxQueue(this);
+
+  /** Wait for the next slot and take it ahead of schedulers; stamps the floor on grant. */
+  waitForManualMeshTxSlot(o: ManualMeshTxRequest): Promise<ManualMeshTxResult> {
+    return this.manualTxQueue.waitForSlot(o);
+  }
+
+  /** True while a manual request waits; schedulers and auto-ping skip their tick. */
+  hasManualMeshReservation(): boolean {
+    return this.manualTxQueue.isHeld();
+  }
+
+  /**
+   * Atomic claim for schedulers and pager pages 2+: false while a reservation
+   * is held or the floor is closed, otherwise stamps the floor.
+   */
+  tryClaimMeshTxSlot(now: number = Date.now(), floorMs: number = MESH_TX_FLOOR_MS): boolean {
+    return this.manualTxQueue.tryClaim(now, floorMs);
+  }
+
+  getManualMeshTxStatus(ownerKey: string, requestId: string): ManualMeshTxStatus | null {
+    return this.manualTxQueue.status(ownerKey, requestId);
+  }
+
   // ============ Remote-node telemetry (companion only, RF) ============
   //
   // `requestRemoteTelemetry` puts a binary req-telemetry packet on the
@@ -15003,6 +15037,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       sendReply: (text, publicKey) => this.sendMessage(text, publicKey),
       markPingFailed: (messageId, ackCrc) => this.failDmDelivery(messageId, ackCrc),
       recordMeshTx: () => this.recordMeshTx(),
+      hasManualMeshReservation: () => this.hasManualMeshReservation(),
     });
   }
 

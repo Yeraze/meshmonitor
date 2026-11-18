@@ -32,11 +32,19 @@ function fakeManager(rows: RawNeighbour[], opts: { failPage?: number; shiftOnPag
   let lastTx = 0;
   const calls: Call[] = [];
   const stamps: number[] = [];
+  const reservation = { held: false };
   const m: NeighbourPagingManager = {
     getLastMeshTxAt: () => lastTx,
     recordMeshTx: (when = Date.now()) => {
       lastTx = when;
       stamps.push(when);
+    },
+    tryClaimMeshTxSlot: (now = Date.now(), floorMs = FLOOR) => {
+      if (reservation.held) return false;
+      if (lastTx > 0 && now - lastTx < floorMs) return false;
+      lastTx = now;
+      stamps.push(now);
+      return true;
     },
     getNeighbours: vi.fn(async (_pk, o) => {
       calls.push({ ...o, at: Date.now() });
@@ -51,7 +59,7 @@ function fakeManager(rows: RawNeighbour[], opts: { failPage?: number; shiftOnPag
       return { total: rows.length, neighbours: src.slice(o.offset, o.offset + Math.min(o.count, NEIGHBOURS_PAGE_SIZE)) };
     }),
   };
-  return { m, calls, stamps, setLastTx: (v: number) => { lastTx = v; } };
+  return { m, calls, stamps, reservation, setLastTx: (v: number) => { lastTx = v; } };
 }
 
 describe('fetchNeighbourPages', () => {
@@ -159,6 +167,7 @@ describe('fetchNeighbourPages', () => {
     const m: NeighbourPagingManager = {
       getLastMeshTxAt: () => 0,
       recordMeshTx: () => {},
+      tryClaimMeshTxSlot: () => true,
       getNeighbours: vi.fn(async () => ({ total: 12, neighbours: [] })),
     };
     const result = await fetchNeighbourPages(m, KEY, { maxPages: 5, orderBy: 0, minIntervalMs: FLOOR });
@@ -193,6 +202,7 @@ describe('fetchNeighbourPages', () => {
     const m: NeighbourPagingManager = {
       getLastMeshTxAt: () => 0,
       recordMeshTx: () => {},
+      tryClaimMeshTxSlot: () => true,
       getNeighbours: vi.fn(async () => { throw new Error('tx disabled'); }),
     };
     const result = await fetchNeighbourPages(m, KEY, { maxPages: 5, orderBy: 0, minIntervalMs: FLOOR });
@@ -253,5 +263,47 @@ describe('mergeNeighbourRows', () => {
       now,
     );
     expect(rows.map((r) => r.neighborPublicKey)).toEqual(['A', 'B']);
+  });
+});
+
+describe('fetchNeighbourPages — manual reservation (#6493)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-27T12:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('page 2 gives way while a reservation is held, then claims once it clears', async () => {
+    const { m, calls, stamps, reservation } = fakeManager(table(25));
+    const p = fetchNeighbourPages(m, KEY, { maxPages: 5, orderBy: 0, minIntervalMs: FLOOR });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(1);
+
+    reservation.held = true;
+    await vi.advanceTimersByTimeAsync(3 * FLOOR); // floor long open, but held
+    expect(calls).toHaveLength(1);
+    expect(stamps).toHaveLength(1);
+
+    reservation.held = false;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(calls).toHaveLength(2);
+    expect(stamps).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(2 * FLOOR);
+    expect((await p).outcome).toBe('complete');
+  });
+
+  it('cancelling while a reservation blocks page 2 never stamps', async () => {
+    const { m, calls, stamps, reservation } = fakeManager(table(25));
+    const ctrl = new AbortController();
+    const p = fetchNeighbourPages(m, KEY, { maxPages: 5, orderBy: 0, minIntervalMs: FLOOR, signal: ctrl.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    reservation.held = true;
+    await vi.advanceTimersByTimeAsync(2 * FLOOR);
+    ctrl.abort();
+    expect((await p).outcome).toBe('cancelled');
+    expect(calls).toHaveLength(1);
+    expect(stamps).toHaveLength(1);
   });
 });
