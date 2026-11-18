@@ -538,6 +538,10 @@ export const VALID_SETTINGS_KEYS = [
   // MeshCore Required Repeater mode (#6193) — per source. 'any' | 'all';
   // anything but 'all' reads as 'any' (the default).
   'meshcoreRequiredRepeaterMode',
+  // MeshCore Auto Resend (#6240) — per source. 'true' resends own channel and
+  // DM sends until the Required Repeater(s) rule is met, within the manual
+  // Resend limits. Off unless 'true'; inert while the list is empty.
+  'meshcoreAutoResendEnabled',
   // Terrain Link Profile / elevation backend (#4111 Phase 1). Global (not
   // per-source) — elevation is source-agnostic public DEM data.
   // `elevationEnabled` is the public availability flag the Map Analysis page
@@ -870,6 +874,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // MeshCore Required Repeaters list + mode (#6193) — per source
   'meshcoreRequiredRepeaters',
   'meshcoreRequiredRepeaterMode',
+  'meshcoreAutoResendEnabled',
   // Node Display (#4412 / per-source node display epic). All ten keys in the
   // Settings → Node Display section are per-source as of Phase 1; Phase 2 converts
   // the server reads to getSettingForSource(). `localStatsIntervalMinutes` is
