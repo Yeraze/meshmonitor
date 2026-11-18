@@ -701,6 +701,53 @@ describe('Unified Routes', () => {
       expect(res.body[0].requestId).toBe(777);
     });
 
+    describe('delivery state from our own sent row (#3045 P3)', () => {
+      const sentRow = () =>
+        mkMsg({
+          id: 'src-a_1_4242', fromNodeNum: NODE_ONE.nodeNum, requestId: null, text: 'mine',
+          timestamp: 1000, rxTime: 1000, deliveryState: 'pending', ackFailed: true,
+        });
+      const receivedCopy = () =>
+        mkMsg({
+          id: 'src-b_1_4242', fromNodeNum: NODE_ONE.nodeNum, requestId: null, text: 'mine',
+          timestamp: 1200, rxTime: 1200,
+        });
+
+      it.each([
+        ['sent row first', true],
+        ['received copy from another source first (upgrade branch)', false],
+      ])('copies delivery fields onto the item: %s', async (_label, sentFirst) => {
+        mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+        mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
+        const [first, second] = sentFirst ? [sentRow(), receivedCopy()] : [receivedCopy(), sentRow()];
+        mockDb.messages.getMessagesBeforeInChannel
+          .mockResolvedValueOnce([first])
+          .mockResolvedValueOnce([second]);
+
+        const res = await request(createApp(adminUser)).get('/messages?channel=Primary');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveLength(1);
+        expect(res.body[0].receptions).toHaveLength(2);
+        expect(res.body[0]).toMatchObject({ deliveryState: 'pending', ackFailed: true, routingErrorReceived: false });
+      });
+
+      it('leaves received-only items without delivery fields', async () => {
+        mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+        mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
+        mockDb.messages.getMessagesBeforeInChannel
+          .mockResolvedValueOnce([receivedCopy()])
+          .mockResolvedValueOnce([receivedCopy()]);
+
+        const res = await request(createApp(adminUser)).get('/messages?channel=Primary');
+
+        expect(res.body).toHaveLength(1);
+        expect(res.body[0]).not.toHaveProperty('deliveryState');
+        expect(res.body[0]).not.toHaveProperty('ackFailed');
+        expect(res.body[0]).not.toHaveProperty('routingErrorReceived');
+      });
+    });
+
     it('de-duplicates using the mesh packet id extracted from the row id when requestId is null', async () => {
       // Real-world: received text messages store requestId=null — the mesh
       // packet id lives as the last `_`-separated segment of the row id.

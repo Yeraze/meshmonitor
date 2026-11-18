@@ -225,6 +225,7 @@ router.get('/senders', async (req: Request, res: Response) => {
  *     toNodeNum, toNodeId,
  *     channel, channelName,
  *     text, emoji, replyId,
+ *     deliveryState?, ackFailed?, routingErrorReceived?, // Meshtastic: from our own sent row only
  *     meshcoreRowRefs?,                 // MeshCore non-reaction: dedupKey of each row behind it
  *     reactionEmoji?, reactionTargetRefs?, // MeshCore reaction: emoji; target row dedupKeys ([] = unmatched)
  *     timestamp,        // canonical device time (earliest rxTime seen) — for display.
@@ -315,6 +316,13 @@ router.get('/messages', async (req: Request, res: Response) => {
        * Absent on MeshCore entries (no such flag).
        */
       isAutomation?: boolean;
+      /**
+       * Meshtastic delivery state of OUR OWN sent row (pending / delivered /
+       * confirmed / failed). Absent on received-only packets and MeshCore entries.
+       */
+      deliveryState?: string | null;
+      ackFailed?: boolean;
+      routingErrorReceived?: boolean;
     };
 
     const merged = new Map<string, Merged>();
@@ -744,9 +752,20 @@ router.get('/messages', async (req: Request, res: Response) => {
             xeddsaSigned: m.xeddsaSigned ?? null,
           };
 
+          // Only our own sent row carries delivery state; received rows leave
+          // all three empty.
+          const hasDelivery = m.deliveryState != null || !!m.ackFailed || !!m.routingErrorReceived;
+
           const existing = merged.get(dedupKey);
           if (existing) {
             existing.receptions.push(reception);
+            // Upgrade delivery state if the sent row arrived after a received
+            // copy from another source (same ordering reason as below).
+            if (hasDelivery && existing.deliveryState == null && !existing.ackFailed && !existing.routingErrorReceived) {
+              existing.deliveryState = m.deliveryState ?? null;
+              existing.ackFailed = !!m.ackFailed;
+              existing.routingErrorReceived = !!m.routingErrorReceived;
+            }
             // Canonical = earliest heard
             if (canonical < existing.timestamp) existing.timestamp = canonical;
             // createdAt = earliest DB arrival across all receptions (#3122)
@@ -809,6 +828,13 @@ router.get('/messages', async (req: Request, res: Response) => {
               createdAt: m.createdAt,
               receptions: [reception],
               ...(m.isAutomation ? { isAutomation: true } : {}),
+              ...(hasDelivery
+                ? {
+                    deliveryState: m.deliveryState ?? null,
+                    ackFailed: !!m.ackFailed,
+                    routingErrorReceived: !!m.routingErrorReceived,
+                  }
+                : {}),
             });
           }
         }
