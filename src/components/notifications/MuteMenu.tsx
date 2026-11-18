@@ -103,9 +103,11 @@ export const MuteMenu: React.FC<MuteMenuProps> = ({
         <UiIcon name="calendar" size={iconSize ?? 14} /> {t('notifications.mute_1w', 'Mute for 1 week')}
       </button>
       {mentionOption && (
-        <label className={itemClass} role="menuitemcheckbox" aria-checked={exceptMentions}>
+        <label className={itemClass}>
           <input
             type="checkbox"
+            role="menuitemcheckbox"
+            aria-checked={exceptMentions}
             checked={exceptMentions}
             onChange={(e) => {
               const next = e.target.checked;

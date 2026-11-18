@@ -79,7 +79,7 @@ describe('MuteMenu', () => {
   it('has no mentions checkbox unless mentionOption is set (#6490)', () => {
     render(<MuteMenu muted={false} onMute={vi.fn()} onUnmute={vi.fn()} />);
     fireEvent.click(screen.getByRole('button'));
-    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByRole('menuitemcheckbox')).toBeNull();
   });
 
   it('passes the mentions choice with the duration when not yet muted (#6490)', async () => {
@@ -89,7 +89,7 @@ describe('MuteMenu', () => {
       <MuteMenu muted={false} onMute={onMute} onUnmute={vi.fn()} mentionOption onAllowMentionsChange={onAllowMentionsChange} />,
     );
     fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Still alert on @mentions' }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Still alert on @mentions' }));
     expect(onAllowMentionsChange).not.toHaveBeenCalled();
     await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Mute for 1 week' })); });
     expect(onMute).toHaveBeenLastCalledWith(NOW + MUTE_DURATIONS.week, true);
@@ -101,10 +101,18 @@ describe('MuteMenu', () => {
       <MuteMenu muted allowMentions onMute={vi.fn()} onUnmute={vi.fn()} mentionOption onAllowMentionsChange={onAllowMentionsChange} />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Muted except @mentions — click to change' }));
-    const box = screen.getByRole('checkbox', { name: 'Still alert on @mentions' }) as HTMLInputElement;
+    const box = screen.getByRole('menuitemcheckbox', { name: 'Still alert on @mentions' }) as HTMLInputElement;
     expect(box.checked).toBe(true);
     fireEvent.click(box);
     expect(onAllowMentionsChange).toHaveBeenCalledWith(false);
+  });
+
+  it('re-muting while muted keeps the ticked mentions choice (#6490)', async () => {
+    const onMute = vi.fn();
+    render(<MuteMenu muted allowMentions onMute={onMute} onUnmute={vi.fn()} mentionOption onAllowMentionsChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button'));
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Mute for 1 hour' })); });
+    expect(onMute).toHaveBeenLastCalledWith(NOW + MUTE_DURATIONS.hour, true);
   });
 
   it('MutedIndicator is labelled', () => {

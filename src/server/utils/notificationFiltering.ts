@@ -596,6 +596,8 @@ export async function shouldFilterNotificationAsync(
 
   // MUTE CHECK (second priority — per-channel and per-DM mutes). A DM with no
   // mute key cannot match a DM rule and is not tested against channel rules.
+  // No `isMention` on purpose: this is the plain message path, so an
+  // `allowMentions` mute still blocks it. Only the mention service sets it (#6490).
   if (isVenueMuted(prefs, {
     isDirectMessage: filterContext.isDirectMessage,
     channelId: filterContext.channelId,
