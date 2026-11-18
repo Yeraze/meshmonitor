@@ -180,11 +180,18 @@ describe('per-source settings key allowlist invariants', () => {
     // #4305 added the 8 mqttNative* keys (MQTT-native send; written only by
     // PUT /api/sources/:id/mqtt/native, which clamps the limits).
     // Auto Traceroute added autoTracerouteLastSentAt (persisted last send).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(47);
+    // Auto Remote LocalStats added remoteLocalStatsLastSentAt (same reason).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(48);
   });
 
   // A POST that cleared the last auto-traceroute time would let the next
   // scheduler restart send before last send + interval.
+  it('remoteLocalStatsLastSentAt is server-managed, never client-postable', () => {
+    const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('remoteLocalStatsLastSentAt')).toBe(true);
+    expect(valid.has('remoteLocalStatsLastSentAt')).toBe(false);
+  });
+
   it('autoTracerouteLastSentAt is server-managed, never client-postable', () => {
     const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
     expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('autoTracerouteLastSentAt')).toBe(true);
