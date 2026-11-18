@@ -1408,7 +1408,7 @@ curl -X POST \
 ```
 
 **Notes:**
-- Traceroutes are automatically scheduled every 3 minutes by the system
+- Auto Traceroute is off by default. When you turn it on, it sends one traceroute per interval (3-60 minutes, set per source)
 - Manual traceroutes can be useful for immediate path discovery
 - Results are stored in the database for historical analysis
 
