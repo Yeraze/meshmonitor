@@ -68,6 +68,7 @@ import {
   MqttNativeIdentitiesRepository,
   MeshCoreObserverKeysRepository,
   MeshCoreObserverCredentialsRepository,
+  ScriptSecretsRepository,
   MeshCoreSourcePkiKeysRepository,
   MessageEventsRepository,
   MeshtasticHeardRepeatersRepository,
@@ -661,6 +662,7 @@ class DatabaseService {
   public mqttNativeIdentitiesRepo: MqttNativeIdentitiesRepository | null = null;
   public meshcoreObserverKeysRepo: MeshCoreObserverKeysRepository | null = null;
   public meshcoreObserverCredentialsRepo: MeshCoreObserverCredentialsRepository | null = null;
+  public scriptSecretsRepo: ScriptSecretsRepository | null = null;
   public meshcoreSourcePkiKeysRepo: MeshCoreSourcePkiKeysRepository | null = null;
   public messageEventsRepo: MessageEventsRepository | null = null;
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
@@ -869,6 +871,11 @@ class DatabaseService {
   get meshcoreObserverCredentials(): MeshCoreObserverCredentialsRepository {
     if (!this.meshcoreObserverCredentialsRepo) throw new Error('Database not initialized');
     return this.meshcoreObserverCredentialsRepo;
+  }
+
+  get scriptSecrets(): ScriptSecretsRepository {
+    if (!this.scriptSecretsRepo) throw new Error('Database not initialized');
+    return this.scriptSecretsRepo;
   }
 
   get deadDrop(): DeadDropRepository {
@@ -1314,6 +1321,7 @@ class DatabaseService {
       this.mqttNativeIdentitiesRepo = new MqttNativeIdentitiesRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreObserverKeysRepo = new MeshCoreObserverKeysRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreObserverCredentialsRepo = new MeshCoreObserverCredentialsRepository(drizzleDb, this.drizzleDbType);
+      this.scriptSecretsRepo = new ScriptSecretsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreSourcePkiKeysRepo = new MeshCoreSourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
       this.messageEventsRepo = new MessageEventsRepository(drizzleDb, this.drizzleDbType);
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);

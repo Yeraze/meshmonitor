@@ -256,6 +256,7 @@ import { migration as createMqttNativeIdentitiesMigration, runMigration236Postgr
 import { migration as meshcoreRoomLoginOkAtMigration, runMigration237Postgres, runMigration237Mysql } from '../server/migrations/237_add_meshcore_room_login_ok_at.js';
 import { migration as meshcoreCompanionDefaultHeartbeatMigration, runMigration238Postgres, runMigration238Mysql } from '../server/migrations/238_meshcore_companion_default_heartbeat.js';
 import { migration as isAutomationFlagMigration, runMigration239Postgres, runMigration239Mysql } from '../server/migrations/239_add_is_automation_flag.js';
+import { migration as scriptSecretsMigration, runMigration240Postgres, runMigration240Mysql } from '../server/migrations/240_add_script_secrets.js';
 import { migration as refileMeshcoreMqttSlotChannelsMigration, runMigration228Postgres, runMigration228Mysql } from '../server/migrations/228_refile_meshcore_mqtt_slot_channels.js';
 import { migration as meshcoreNeighborWatchMigration, runMigration230Postgres, runMigration230Mysql } from '../server/migrations/230_add_meshcore_neighbor_watch.js';
 
@@ -3850,4 +3851,19 @@ registry.register({
   sqlite: (db) => isAutomationFlagMigration.up(db),
   postgres: (client) => runMigration239Postgres(client),
   mysql: (pool) => runMigration239Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 240: `script_secrets` — named values (API keys) handed to user
+// scripts as environment variables. Global (no sourceId); values are
+// AES-256-GCM envelopes keyed from SESSION_SECRET.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 240,
+  name: 'add_script_secrets',
+  settingsKey: 'migration_240_add_script_secrets',
+  sqlite: (db) => scriptSecretsMigration.up(db),
+  postgres: (client) => runMigration240Postgres(client),
+  mysql: (pool) => runMigration240Mysql(pool),
 });

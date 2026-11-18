@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger.js';
 import { dataPath } from '../config/dataDir.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { buildScriptChildEnv } from '../utils/scriptRunner.js';
+import { scrubScriptSecrets } from '../utils/scriptSecretsSnapshot.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { normalizeTriggerPatterns } from '../../utils/autoResponderUtils.js';
 import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
@@ -709,8 +710,10 @@ router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requi
       });
 
       const executionTimeMs = Date.now() - startTime;
-      const output = stdout.trim();
-      const errorOutput = stderr.trim();
+      // Stored Script Secrets are masked in everything this route returns
+      // (no API returns a secret value; the parsed fields below derive from these).
+      const output = scrubScriptSecrets(stdout.trim());
+      const errorOutput = scrubScriptSecrets(stderr.trim());
 
       // Parse JSON output to extract "would send" messages
       let wouldSendMessages: string[] = [];
@@ -763,7 +766,7 @@ router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requi
         // On Windows, EPERM can occur when trying to kill a process that's already dead
         // If we got stdout/stderr before the error, return that
         if (error.stdout || error.stderr) {
-          const output = error.stdout?.toString().trim() || '';
+          const output = scrubScriptSecrets(error.stdout?.toString().trim() || '');
           let wouldSendMessages: string[] = [];
           let returnValue: unknown = null;
 
@@ -784,7 +787,7 @@ router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requi
           return res.json({
             success: true,
             stdout: output || '(no output)',
-            stderr: error.stderr?.toString().trim() || undefined,
+            stderr: scrubScriptSecrets(error.stderr?.toString().trim() || '') || undefined,
             wouldSendMessages,
             returnValue,
             extractedParams: triggerType === 'auto-responder' ? extractedParams : undefined,
@@ -796,24 +799,25 @@ router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requi
         return res.status(500).json({
           success: false,
           error: 'Script execution completed but encountered a cleanup error (this is usually harmless)',
-          stderr: error.stderr?.toString() || undefined,
+          stderr: scrubScriptSecrets(error.stderr?.toString() || '') || undefined,
           executionTimeMs,
         });
       }
 
       return res.status(500).json({
         success: false,
-        error: error.message || 'Script execution failed',
-        stderr: error.stderr?.toString() || undefined,
+        error: scrubScriptSecrets(error.message || 'Script execution failed'),
+        stderr: scrubScriptSecrets(error.stderr?.toString() || '') || undefined,
         executionTimeMs,
       });
     }
   } catch (error: any) {
     const executionTimeMs = Date.now() - startTime;
-    logger.error('❌ Error testing script:', error);
+    // Message only (scrubbed): an execFile error would quote the script's stderr.
+    logger.error('❌ Error testing script:', scrubScriptSecrets(String(error?.message ?? error)));
     return res.status(500).json({
       success: false,
-      error: error.message || 'Internal server error',
+      error: scrubScriptSecrets(error.message || 'Internal server error'),
       executionTimeMs,
     });
   }

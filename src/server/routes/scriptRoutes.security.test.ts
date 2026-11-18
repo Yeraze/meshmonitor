@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import scriptRoutes, { getScriptsDirectory } from './scriptRoutes.js';
+import { setScriptSecretsSnapshot } from '../utils/scriptSecretsSnapshot.js';
 
 // Integration regression coverage for cluster C1 (script-engine RCE), driven
 // through the real auth middleware + real permission SQL via the route harness.
@@ -119,5 +120,42 @@ describe.skipIf(process.platform === 'win32')('script execution hardening (INJ-0
       if (prev === undefined) delete process.env.SESSION_SECRET;
       else process.env.SESSION_SECRET = prev;
     }
+  });
+});
+
+// Script Secrets: the admin test-run route masks stored values in what it
+// returns (no API returns a secret value).
+describe.skipIf(process.platform === 'win32')('script test route masks Script Secrets', () => {
+  const scriptName = 'mm_sec_secretecho.sh';
+  const VALUE = 'sk-live-TESTROUTE-SENTINEL-88';
+  let scriptAbsPath: string;
+
+  beforeEach(() => {
+    scriptAbsPath = path.join(getScriptsDirectory(), scriptName);
+    fs.writeFileSync(scriptAbsPath, '#!/bin/sh\necho "out $WEATHER_KEY"\necho "err $WEATHER_KEY" >&2\n', { mode: 0o755 });
+    setScriptSecretsSnapshot(new Map([['WEATHER_KEY', VALUE]]));
+  });
+
+  afterEach(() => {
+    setScriptSecretsSnapshot(new Map());
+    try {
+      fs.unlinkSync(scriptAbsPath);
+    } catch {
+      /* already gone */
+    }
+  });
+
+  it('returns stdout/stderr with the value masked', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/scripts/test').send({
+      triggerType: 'timer',
+      script: `/data/scripts/${scriptName}`,
+      timerName: 't',
+      timerId: 't',
+    });
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain(VALUE);
+    expect(res.body.stdout).toBe('out ***');
+    expect(res.body.stderr).toBe('err ***');
   });
 });

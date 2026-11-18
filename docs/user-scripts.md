@@ -137,6 +137,11 @@ All scripts receive these environment variables:
 - `TRIGGER`: The trigger pattern that matched
 - `PARAM_*`: Extracted parameters from trigger pattern (e.g., `PARAM_name`, `PARAM_location`)
 - `TZ`: Server timezone (IANA timezone name)
+- Every [Script Secret](/developers/auto-responder-scripting#script-secrets), under its own name
+
+### API keys
+
+Scripts do **not** see container variables whose names look like secrets (`*API_KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`), so an uploaded script can't read MeshMonitor's own keys. To give scripts an API key, an admin adds it in **Settings › Scripts › Script Secrets** (this needs `SESSION_SECRET` set in your environment). Each secret reaches **every** script as an environment variable of the same name, so read it with `os.environ["PIRATE_WEATHER_API_KEY"]` (Python) or `process.env.PIRATE_WEATHER_API_KEY` (Node.js). Only upload scripts you trust: any script can read every secret. See [Script Secrets](/developers/auto-responder-scripting#script-secrets).
 
 ## Source Code Location
 

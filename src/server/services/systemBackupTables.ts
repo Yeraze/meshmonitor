@@ -138,6 +138,8 @@ export const BACKUP_TABLES: string[] = [
   // #4305: MQTT-native send identity (sealed X25519 private key).
   'mqtt_native_identities',
   'meshcore_observer_credentials',
+  // Values user scripts receive as environment variables (API keys).
+  'script_secrets',
 
   // ── History, logs and derived data ───────────────────────────────────────
   // The large group. Everything here can be lost without breaking the install,
@@ -245,6 +247,10 @@ export const BACKUP_SECRET_TABLES: Readonly<Record<string, { protection: string;
   },
   meshcore_observer_keys: { protection: 'AES-256-GCM envelope keyed from SESSION_SECRET', sessionSecret: true },
   meshcore_observer_credentials: { protection: 'AES-256-GCM envelope keyed from SESSION_SECRET', sessionSecret: true },
+  script_secrets: {
+    protection: 'AES-256-GCM envelope keyed from SESSION_SECRET; secret names in the clear',
+    sessionSecret: true,
+  },
   meshcore_nodes: {
     protection: 'saved repeater/room passwords as AES-256-GCM envelopes keyed from SESSION_SECRET',
     sessionSecret: true,

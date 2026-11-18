@@ -69,6 +69,7 @@ import statusRoutes from './statusRoutes.js';
 import dataExchangeRoutes from './dataExchangeRoutes.js';
 import serverInfoRoutes from './serverInfoRoutes.js';
 import scriptRoutes from './scriptRoutes.js';
+import scriptSecretRoutes from './scriptSecretRoutes.js';
 import deviceRoutes from './deviceRoutes.js';
 import systemRoutes from './systemRoutes.js';
 import channelRoutes from './channelRoutes.js';
@@ -332,6 +333,10 @@ export function createApiRouter({ geojsonRouter, mapStyleRouter, includeDebugRou
   // (/scripts/*, /http/test). The public /api/scripts listing endpoint is
   // mounted separately on the app below (bypasses CSRF).
   apiRouter.use('/', scriptRoutes);
+  // Script Secrets (admin only, write only). Not under /scripts: Express
+  // paths are case-insensitive, so /scripts/:name would collide with
+  // /scripts/:filename/source.
+  apiRouter.use('/script-secrets', scriptSecretRoutes);
 
   // Consolidated polling endpoint (GET /poll). Mounted at '/' — appended after
   // the existing '/'-mounted routers per #3502 PR1 mount-placement rules.

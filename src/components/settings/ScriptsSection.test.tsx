@@ -31,6 +31,9 @@ vi.mock('../icons', () => ({
 vi.mock('../auto-responder/ScriptDependenciesPanel', () => ({
   default: () => null,
 }));
+vi.mock('./ScriptSecretsPanel', () => ({
+  default: () => null,
+}));
 
 import ScriptsSection from './ScriptsSection';
 

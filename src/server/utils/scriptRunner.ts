@@ -20,6 +20,7 @@ import { dataPath } from '../config/dataDir.js';
 import fs from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { getScriptSecretsSnapshot, scrubScriptSecrets } from './scriptSecretsSnapshot.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -106,7 +107,10 @@ export function scriptDependencyEnv(ext: string, baseEnv: NodeJS.ProcessEnv): Re
  * secrets (session key, admin password, DB connection string, OIDC/VAPID keys,
  * API tokens) turns any script execution into a one-shot credential dump
  * (INJ-01). Scripts receive only the explicit MESH/NODE/GEOFENCE/TIMER vars
- * their callers set, plus harmless process basics (PATH, HOME, LANG, …).
+ * their callers set, harmless process basics (PATH, HOME, LANG, …), and the
+ * Script Secrets an admin stored in Settings › Scripts. Those are added AFTER
+ * this filter (see buildScriptChildEnv), so a stored `OPENAI_API_KEY` reaches
+ * the script while the container's own variable of that name never does.
  *
  * The match is a denylist rather than an allowlist so scripts keep the mundane
  * process environment they rely on (PATH for the interpreter, plus PYTHONPATH
@@ -141,8 +145,77 @@ export function sanitizeScriptEnv(env: NodeJS.ProcessEnv | Record<string, string
 }
 
 /**
+ * Names a Script Secret may not use. A secret is injected into every script's
+ * environment, so it must not be able to stand in for a process basic (PATH,
+ * the interpreter's own variables, a loader hook), a server secret the deny
+ * filter withholds, or any variable a script caller sets (MESSAGE, PARAM_x,
+ * MM_x, NODE_ID, …). Names that merely LOOK secret (`*_API_KEY`) are fine —
+ * that is what the store is for.
+ */
+const RESERVED_SECRET_NAMES = new Set<string>([
+  // Process basics and interpreter/loader controls
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'PWD', 'OLDPWD', 'TMPDIR', 'TMP', 'TEMP', 'TZ', 'LANG',
+  'LANGUAGE', 'TERM', 'IFS', 'ENV', 'BASH_ENV', 'HOSTNAME', 'DATA_DIR', 'IS_DESKTOP', 'BASE_URL',
+  'SHELLOPTS', 'BASHOPTS', 'PS4', 'GCONV_PATH', 'OPENSSL_CONF', 'OPENSSL_MODULES',
+  // Server secrets the deny filter withholds by exact name
+  ...SECRET_ENV_EXACT,
+  // Variables set by script callers (auto-responder, geofence, timer, MeshCore
+  // triggers, the script test route, the Automation Engine aliases)
+  'MESSAGE', 'MSG', 'TRIGGER', 'MATCHED_PATTERN', 'PACKET_ID', 'CHANNEL', 'CHANNELS', 'IS_DIRECT', 'DM',
+  'HOPS', 'RSSI', 'SNR', 'VIA_MQTT', 'SHORT_NAME', 'LONG_NAME', 'NODECOUNT', 'VERSION', 'IP', 'PORT',
+  'EVENT', 'DISTANCE_TO_CENTER', 'ROUTE', 'ROUTE_NAMES', 'HASH_SIZE', 'SCOPE',
+  'MM_LAT', 'MM_LON', 'MM_TRIGGER_TYPE', 'MM_SOURCE_ID', 'MM_TIMESTAMP', 'MM_NODE_NUM',
+]);
+const RESERVED_SECRET_PREFIXES = [
+  // Loader / interpreter / package-manager controls (NODE_ also covers
+  // NODE_OPTIONS, NODE_PATH, NODE_ENV)
+  'LD_', 'DYLD_', 'PYTHON', 'NPM_CONFIG_', 'LC_', 'NODE_',
+  // Server secret families the deny filter withholds by prefix
+  ...SECRET_ENV_PREFIXES,
+  // Caller-set families
+  // (MM_ is NOT a reserved prefix: the documented MM_API_TOKEN / MM_API_URL
+  // belong here. The Automation Engine's MM_<field> vars still win, because a
+  // secret never replaces a variable the caller set.)
+  'PARAM_', 'MSG_', 'FROM_', 'MESHCORE_', 'MESHTASTIC_', 'GEOFENCE_', 'TIMER_',
+];
+
+/** Shape every Script Secret name must have: an upper-case env var name. */
+export const SCRIPT_SECRET_NAME_PATTERN = /^[A-Z_][A-Z0-9_]{0,63}$/;
+
+/**
+ * True when `name` may not be used for a Script Secret. Case-insensitive:
+ * Windows (the desktop build) treats `Path` and `PATH` as one variable.
+ */
+export function isReservedScriptSecretName(name: string): boolean {
+  const upper = name.toUpperCase();
+  if (RESERVED_SECRET_NAMES.has(upper)) return true;
+  return RESERVED_SECRET_PREFIXES.some((p) => upper.startsWith(p));
+}
+
+/**
+ * The stored Script Secrets that may join a child env built from `sanitized`.
+ * Skips (defensively — the store already refuses these) a bad or reserved
+ * name, a value holding a NUL, and any name the caller or process env already
+ * set: a secret never overrides a variable the script would otherwise see.
+ */
+function scriptSecretEnv(sanitized: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  // Case-insensitive, for Windows env keys such as `Path` / `ComSpec`.
+  const presentUpper = new Set(Object.keys(sanitized).map((k) => k.toUpperCase()));
+  for (const [name, value] of getScriptSecretsSnapshot()) {
+    if (!SCRIPT_SECRET_NAME_PATTERN.test(name)) continue;
+    if (isReservedScriptSecretName(name)) continue;
+    if (presentUpper.has(name.toUpperCase())) continue;
+    if (value.includes('\0')) continue;
+    out[name] = value;
+  }
+  return out;
+}
+
+/**
  * Build the final child environment for a script spawn: strip the server's
- * secrets (INJ-01), layer on the dependency path (PYTHONPATH / NODE_PATH), and
+ * secrets (INJ-01), add the stored Script Secrets, layer on the dependency
+ * path (PYTHONPATH / NODE_PATH), and
  * — for Python — stop CPython from prepending the script's own directory
  * (`/data/scripts`) to `sys.path`. Without that last step an uploaded
  * `requests.py` / `os.py` silently shadows the real module for every later
@@ -160,8 +233,9 @@ export function buildScriptChildEnv(
   ext: string,
 ): Record<string, string> {
   const sanitized = sanitizeScriptEnv(baseEnv);
+  const secretEnv = scriptSecretEnv(sanitized);
   const depEnv = scriptDependencyEnv(ext, sanitized);
-  const childEnv: Record<string, string> = { ...sanitized, ...depEnv };
+  const childEnv: Record<string, string> = { ...sanitized, ...secretEnv, ...depEnv };
   if (ext === 'py') {
     childEnv.PYTHONSAFEPATH = '1';
   }
@@ -306,6 +380,10 @@ export async function runScript(opts: RunScriptOptions): Promise<RunScriptResult
       maxBuffer: 1024 * 1024,
     });
     const parsed = parseScriptOutput(stdout);
+    // Success stdout is deliberately NOT scrubbed of Script Secret values: it
+    // becomes the mesh reply / engine step output, and a script may legitimately
+    // echo a configured value. Scrubbing is applied only where output reaches
+    // server logs or the admin test route. Do not "fix" this here.
     return {
       success: true,
       stdout,
@@ -331,7 +409,8 @@ export async function runScript(opts: RunScriptOptions): Promise<RunScriptResult
       executionTimeMs: Date.now() - start,
       error: timedOut
         ? `Script timed out after ${Math.round(timeoutMs / 1000)}s`
-        : (e.message || 'Script execution failed'),
+        // execFile's message quotes the script's stderr; mask stored secrets.
+        : scrubScriptSecrets(e.message || 'Script execution failed'),
     };
   }
 }
