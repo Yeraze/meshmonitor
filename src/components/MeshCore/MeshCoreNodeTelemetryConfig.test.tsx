@@ -14,6 +14,8 @@ const { csrfFetchMock, hasPermissionMock, showToastMock } = vi.hoisted(() => ({
   showToastMock: vi.fn(),
 }));
 
+import { resetMeshTxQueueStoreForTests } from './hooks/meshTxQueueStore';
+
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
   return createReactI18nextMock();
@@ -40,6 +42,7 @@ const renderPanel = (receiveOnly = false) =>
 
 describe('MeshCoreNodeTelemetryConfig — manual poll buttons', () => {
   beforeEach(() => {
+    resetMeshTxQueueStoreForTests();
     hasPermissionMock.mockReset().mockReturnValue(true);
     showToastMock.mockReset();
     csrfFetchMock.mockReset().mockImplementation((_url: string, opts?: { method?: string; body?: string }) => {
@@ -68,7 +71,7 @@ describe('MeshCoreNodeTelemetryConfig — manual poll buttons', () => {
     await waitFor(() =>
       expect(csrfFetchMock).toHaveBeenCalledWith(
         '/api/sources/test-source/meshcore/nodes/' + PK + '/telemetry/poll',
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ type: 'status' }) }),
+        expect.objectContaining({ method: 'POST', body: expect.stringMatching(/^\{"type":"status","requestId":"[A-Za-z0-9_-]{8,64}"\}$/) }),
       ),
     );
     await waitFor(() => expect(screen.getByText(/Wrote 16 telemetry row/)).toBeInTheDocument());
@@ -81,7 +84,7 @@ describe('MeshCoreNodeTelemetryConfig — manual poll buttons', () => {
     await waitFor(() =>
       expect(csrfFetchMock).toHaveBeenCalledWith(
         expect.stringContaining('/telemetry/poll'),
-        expect.objectContaining({ body: JSON.stringify({ type: 'lpp' }) }),
+        expect.objectContaining({ body: expect.stringMatching(/^\{"type":"lpp","requestId":"[A-Za-z0-9_-]{8,64}"\}$/) }),
       ),
     );
   });
@@ -115,6 +118,7 @@ describe('MeshCoreNodeTelemetryConfig — manual poll buttons', () => {
 
 describe('MeshCoreNodeTelemetryConfig — receive-only mode (#4547 Phase 2 WP3)', () => {
   beforeEach(() => {
+    resetMeshTxQueueStoreForTests();
     hasPermissionMock.mockReset().mockReturnValue(true);
     showToastMock.mockReset();
     csrfFetchMock.mockReset().mockImplementation((_url: string, opts?: { method?: string }) => {

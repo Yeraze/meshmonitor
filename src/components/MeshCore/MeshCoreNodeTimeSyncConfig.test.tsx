@@ -30,6 +30,8 @@ const stableT = (_key: string, fallback?: string | Record<string, unknown>) =>
   typeof fallback === 'string' ? fallback : _key;
 const stableTranslation = { t: stableT };
 
+import { resetMeshTxQueueStoreForTests } from './hooks/meshTxQueueStore';
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => stableTranslation,
 }));
@@ -78,6 +80,7 @@ function defaultGet(over: Record<string, unknown> = {}) {
 
 describe('MeshCoreNodeTimeSyncConfig', () => {
   beforeEach(() => {
+    resetMeshTxQueueStoreForTests();
     hasPermissionMock.mockReset().mockReturnValue(true);
     showToastMock.mockReset();
     csrfFetchMock.mockReset().mockImplementation((_url: string, opts?: { method?: string; body?: string }) => {
