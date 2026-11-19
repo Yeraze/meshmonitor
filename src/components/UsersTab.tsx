@@ -760,6 +760,17 @@ const UsersTab: React.FC = () => {
                       <UiIcon name="info" /> {t('users.anonymous_hint')}
                     </div>
                   )}
+                  {selectedUser.username === 'anonymous' &&
+                    Object.entries(permissions).some(
+                      ([res, p]) => (isChannelSlot(res) || res === 'messages') && p?.write
+                    ) && (
+                    <div
+                      data-testid="anonymous-send-warning"
+                      style={{ marginTop: '4px', fontSize: '0.9em', color: 'var(--color-warning)' }}
+                    >
+                      <UiIcon name="alert" /> {t('users.anonymous_send_warning')}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="info-item">

@@ -33,6 +33,7 @@ import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js'
 import { filterNodesByChannelPermission, loadNodeViewAccess } from '../utils/nodeEnhancer.js';
 import type { NodeViewAccess } from '../utils/nodeEnhancer.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { requireAnonymousSendAllowed } from '../utils/anonymousSendGate.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { PortNum } from '../constants/meshtastic.js';
 import { parseMessageSearchQuery, searchReadableMessages } from '../utils/messageSearch.js';
@@ -1690,7 +1691,7 @@ async function firstUnreadFor(viewer: UnreadViewer, sourceId: string | undefined
  * POST /api/messages/send
  * Extracted verbatim from server.ts (was L2664).
  */
-router.post('/send', messageLimiter, optionalAuth(), async (req, res) => {
+router.post('/send', messageLimiter, optionalAuth(), requireAnonymousSendAllowed(), async (req, res) => {
   try {
     const { text, channel, destination, replyId, emoji } = req.body;
     if (!text || typeof text !== 'string') {

@@ -265,6 +265,8 @@ interface SettingsDraft {
   publicInstanceHidePublicKeys: boolean;
   publicInstanceRoundTimestamps: boolean;
   publicInstanceHideMessageText: boolean;
+  // Anonymous sending (#6499). Global, default OFF.
+  allowAnonymousSend: boolean;
   // Virtual Node message replay (#6160). Global, opt-in (default off). Same
   // Category C pattern as the fields above — no SettingsContext home; read
   // server-side by VirtualNodeServer. Exclude list is a CSV of IPs.
@@ -626,6 +628,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     publicInstanceHidePublicKeys: true,
     publicInstanceRoundTimestamps: true,
     publicInstanceHideMessageText: true,
+    allowAnonymousSend: false,
     virtualNodeReplayEnabled: false,
     virtualNodeReplayExcludeIps: '',
     translationEnabled: false,
@@ -717,6 +720,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialPublicInstanceHidePublicKeys, setInitialPublicInstanceHidePublicKeys] = useState(true);
   const [initialPublicInstanceRoundTimestamps, setInitialPublicInstanceRoundTimestamps] = useState(true);
   const [initialPublicInstanceHideMessageText, setInitialPublicInstanceHideMessageText] = useState(true);
+  const [initialAllowAnonymousSend, setInitialAllowAnonymousSend] = useState(false);
   // Virtual Node message replay (#6160). Same Category C pattern as cotFeed above.
   const [initialVirtualNodeReplayEnabled, setInitialVirtualNodeReplayEnabled] = useState(false);
   const [initialVirtualNodeReplayExcludeIps, setInitialVirtualNodeReplayExcludeIps] = useState('');
@@ -1011,6 +1015,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const publicInstanceHideMessageTextOn = !(settings.publicInstanceHideMessageText === '0' || settings.publicInstanceHideMessageText === 'false');
           updateField('publicInstanceHideMessageText', publicInstanceHideMessageTextOn);
           setInitialPublicInstanceHideMessageText(publicInstanceHideMessageTextOn);
+          const allowAnonymousSendOn = settings.allowAnonymousSend === '1' || settings.allowAnonymousSend === 'true';
+          updateField('allowAnonymousSend', allowAnonymousSendOn);
+          setInitialAllowAnonymousSend(allowAnonymousSendOn);
 
           // Load ATAK/CoT feed settings (#3691 Phase 3). Default OFF; absent
           // port key => 8088.
@@ -1178,6 +1185,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       publicInstanceHidePublicKeys: initialPublicInstanceHidePublicKeys,
       publicInstanceRoundTimestamps: initialPublicInstanceRoundTimestamps,
       publicInstanceHideMessageText: initialPublicInstanceHideMessageText,
+      allowAnonymousSend: initialAllowAnonymousSend,
       virtualNodeReplayEnabled: initialVirtualNodeReplayEnabled,
       virtualNodeReplayExcludeIps: initialVirtualNodeReplayExcludeIps,
       translationEnabled: initialTranslationEnabled,
@@ -1203,7 +1211,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
-      initialPublicInstanceModeEnabled, initialPublicInstanceHideLongNames, initialPublicInstanceHidePublicKeys, initialPublicInstanceRoundTimestamps, initialPublicInstanceHideMessageText,
+      initialPublicInstanceModeEnabled, initialPublicInstanceHideLongNames, initialPublicInstanceHidePublicKeys, initialPublicInstanceRoundTimestamps, initialPublicInstanceHideMessageText, initialAllowAnonymousSend,
       initialVirtualNodeReplayEnabled, initialVirtualNodeReplayExcludeIps,
       initialDuctingOverlayEnabled, initialMqttRootDirectoryRefreshEnabled,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
@@ -1430,6 +1438,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialPublicInstanceHidePublicKeys(d.publicInstanceHidePublicKeys);
     setInitialPublicInstanceRoundTimestamps(d.publicInstanceRoundTimestamps);
     setInitialPublicInstanceHideMessageText(d.publicInstanceHideMessageText);
+    setInitialAllowAnonymousSend(d.allowAnonymousSend);
     setInitialVirtualNodeReplayEnabled(d.virtualNodeReplayEnabled);
     setInitialVirtualNodeReplayExcludeIps(d.virtualNodeReplayExcludeIps.trim());
     setInitialTranslationEnabled(d.translationEnabled);
@@ -1555,6 +1564,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         publicInstanceHidePublicKeys: draft.publicInstanceHidePublicKeys ? '1' : '0',
         publicInstanceRoundTimestamps: draft.publicInstanceRoundTimestamps ? '1' : '0',
         publicInstanceHideMessageText: draft.publicInstanceHideMessageText ? '1' : '0',
+        allowAnonymousSend: draft.allowAnonymousSend ? '1' : '0',
         // Virtual Node message replay (#6160). Opt-in; exclude list trimmed.
         virtualNodeReplayEnabled: draft.virtualNodeReplayEnabled ? '1' : '0',
         virtualNodeReplayExcludeIps: draft.virtualNodeReplayExcludeIps.trim(),
@@ -2533,6 +2543,22 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               />
               <span>{t('settings.public_instance_hide_message_text', 'Hide message text')}</span>
             </label>
+          </div>
+          <div className="setting-item">
+            <label className={settingsStyles.checkboxRow}>
+              <input
+                id="allowAnonymousSend"
+                type="checkbox"
+                checked={draft.allowAnonymousSend}
+                onChange={(e) => updateField('allowAnonymousSend', e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.allow_anonymous_send', 'Allow anonymous sending')}</span>
+            </label>
+            <p className={settingsStyles.txWarning} data-testid="allow-anonymous-send-warning">
+              <UiIcon name="alert" />
+              {t('settings.allow_anonymous_send_warning', 'Visitors who are not signed in can send messages to the mesh. This transmits over radio. It only works for channels and direct messages where the anonymous account also has write permission. Off by default.')}
+            </p>
           </div>
           {draft.publicInstanceModeEnabled && draft.cotFeedEnabled && (
             <p className={settingsStyles.txWarning} data-testid="public-instance-cot-warning">

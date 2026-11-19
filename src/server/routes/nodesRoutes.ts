@@ -19,6 +19,7 @@
  * `send-key-warning` is gated on `messages:write` (it sends a DM).
  */
 import express from 'express';
+import { requireAnonymousSendAllowed } from '../utils/anonymousSendGate.js';
 import { loadMqttConsentHiddenSet, dropRowsNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
@@ -1864,7 +1865,7 @@ router.post('/nodes/:nodeNum/scan-remote-admin', requireSourcePermission('settin
 // Send key security warning DM to a specific node
 // Transmits a DM. `messages:write` is checked on the source whose radio sends
 // it: the named one, else the primary.
-router.post('/nodes/:nodeId/send-key-warning', requireSourcePermission('messages', 'write', { whenOmitted: 'primary', device: 'meshtastic', what: 'message sends' }), async (req, res) => {
+router.post('/nodes/:nodeId/send-key-warning', requireSourcePermission('messages', 'write', { whenOmitted: 'primary', device: 'meshtastic', what: 'message sends' }), requireAnonymousSendAllowed(), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
