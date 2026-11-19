@@ -182,6 +182,14 @@ describe('unread badge: channel replies & tapbacks (#5254)', () => {
     expect(res.body.sources[harness.sourceA]).toEqual({ directMessages: 0, channelReplies: 2 });
   });
 
+  it('mark-all leaves replies alone on a channel the caller cannot read', async () => {
+    await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.post('/mark-all-dms-read?includeReplies=true');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ marked: 0, sources: 0 });
+  });
+
   it('mark-all clears the replies the badge counted', async () => {
     const agent = await harness.loginAs(harness.admin);
     const cleared = await agent.post('/mark-all-dms-read?includeReplies=true');

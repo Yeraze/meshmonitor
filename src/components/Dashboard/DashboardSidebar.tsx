@@ -1034,7 +1034,11 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   count: dms,
                 });
                 // #5254: name both parts when replies are counted.
-                const replyLabel = t('source.unread_replies', { count: replies });
+                const replyLabel = t('source.unread_replies', {
+                  defaultValue: '{{count}} unread reply',
+                  defaultValue_plural: '{{count}} unread replies',
+                  count: replies,
+                });
                 const label = replies === 0 ? dmLabel : dms === 0 ? replyLabel : `${dmLabel}, ${replyLabel}`;
                 return (
                   <span className="dashboard-unread-badge" title={label} aria-label={label}>
