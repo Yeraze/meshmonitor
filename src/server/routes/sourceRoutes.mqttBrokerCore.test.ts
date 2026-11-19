@@ -41,6 +41,7 @@ describe('sourceRoutes — mqtt_broker required fields', () => {
     ['no auth', { auth: undefined }],
     ['blank username', { auth: { username: '  ', password: 'x' } }],
     ['no password', { auth: { username: 'mm' } }],
+    ['empty password', { auth: { username: 'mm', password: '' } }],
     ['no gateway', { gateway: undefined }],
     ['bad nodeNum', { gateway: { nodeNum: -1, nodeId: '!80000002' } }],
     ['bad nodeId', { gateway: { nodeNum: 1, nodeId: 'gateway' } }],
@@ -54,6 +55,15 @@ describe('sourceRoutes — mqtt_broker required fields', () => {
     const res = await create(good());
     expect(res.status).toBe(201);
     await harness.db.sources.deleteSource(res.body.id).catch(() => {});
+  });
+
+  it('PUT accepts a complete config', async () => {
+    await harness.db.sources.createSource({ id: BROKER_ID, name: 'Core Broker', type: 'mqtt_broker', config: good(), enabled: false });
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.put(`/${BROKER_ID}`).send({ config: { ...good(), listener: { port: 21886 } } });
+    expect(res.status).toBe(200);
+    const stored = await harness.db.sources.getSource(BROKER_ID);
+    expect((stored!.config as { listener: { port: number } }).listener.port).toBe(21886);
   });
 
   it('PUT refuses dropping the gateway and leaves the stored config alone', async () => {
