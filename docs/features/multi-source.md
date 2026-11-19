@@ -80,8 +80,7 @@ The badge obeys the permissions you already hold:
 To also count channel replies and tapbacks to messages a source sent, click
 **Include channel replies & tapbacks** beside the indicator toggle. It is off by default and
 saved to your account. A reply counts only if you can read its channel on that source
-and you have not muted that channel. **Mark all read** then clears those replies too, so
-the badge reaches zero.
+and you have not muted that channel. **Mark all read** then clears those replies too.
 
 MeshCore and Reticulum sources show no badge. Their messages live in other tables, and
 MeshMonitor leaves them out rather than showing a zero it cannot stand behind.

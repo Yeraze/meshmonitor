@@ -19,17 +19,20 @@ const PEER = { nodeNum: 0x0c000002, nodeId: '!0c000002' };
 const OTHER = { nodeNum: 0x0c000003, nodeId: '!0c000003' };
 
 const localBySource: Record<string, { nodeNum: number; nodeId: string } | null> = {};
+/** Source ids whose manager omits `getAllNodesAsync`. */
+const omitNodeList = new Set<string>();
 
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: {
     getManager: vi.fn((sourceId: string) => {
       if (!(sourceId in localBySource)) return null;
-      return {
+      const manager: Record<string, unknown> = {
         sourceId,
         sourceType: 'meshtastic_tcp',
         getLocalNodeInfo: () => localBySource[sourceId],
-        getAllNodesAsync: async () => [],
       };
+      if (!omitNodeList.has(sourceId)) manager.getAllNodesAsync = async () => [];
+      return manager;
     }),
     getAllManagers: vi.fn(() => []),
     startManager: vi.fn(),
@@ -111,6 +114,7 @@ describe('unread badge: channel replies & tapbacks (#5254)', () => {
     await harness.db.messages.deleteAllMessages(harness.sourceB);
     await harness.cleanup();
     for (const k of Object.keys(localBySource)) delete localBySource[k];
+    omitNodeList.clear();
     vi.clearAllMocks();
   });
 
@@ -159,6 +163,23 @@ describe('unread badge: channel replies & tapbacks (#5254)', () => {
     const agent = await harness.loginAs(harness.admin);
     const res = await agent.get('/unread-by-source?includeReplies=true');
     expect(res.body.sources[harness.sourceA]).toBeUndefined();
+  });
+
+  it('still counts replies when the manager cannot list nodes and DMs are pending', async () => {
+    // Sender visibility gates DMs only; replies are gated by channel.
+    omitNodeList.add(harness.sourceA);
+    await harness.db.messages.insertMessage(
+      {
+        id: `${harness.sourceA}_${PEER.nodeNum}_${pid(900)}`,
+        fromNodeNum: PEER.nodeNum, toNodeNum: LOCAL_A.nodeNum,
+        fromNodeId: PEER.nodeId, toNodeId: LOCAL_A.nodeId,
+        text: 'dm', channel: -1, portnum: 1, timestamp: Date.now(), createdAt: Date.now(),
+      } as never,
+      harness.sourceA,
+    );
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/unread-by-source?includeReplies=true');
+    expect(res.body.sources[harness.sourceA]).toEqual({ directMessages: 0, channelReplies: 2 });
   });
 
   it('mark-all clears the replies the badge counted', async () => {

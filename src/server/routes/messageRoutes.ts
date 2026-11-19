@@ -1484,7 +1484,11 @@ async function collectVisibleUnreadDms(
     // No node list means no way to check sender visibility. Count nothing
     // rather than everything — the filter is a permission gate, so failing
     // open here would be the leak this handler exists to avoid.
-    if (typeof manager.getAllNodesAsync !== 'function') continue;
+    // Replies are gated by channel, not sender, so they still count here.
+    if (typeof manager.getAllNodesAsync !== 'function') {
+      if (replyIds.length > 0) out.push({ sourceId: source.id, localNodeId, senders: {}, replyIds });
+      continue;
+    }
     const nodes = await manager.getAllNodesAsync(source.id);
     const visible = await filterNodesByChannelPermission(nodes, user, source.id);
     const visibleNodeIds = new Set(

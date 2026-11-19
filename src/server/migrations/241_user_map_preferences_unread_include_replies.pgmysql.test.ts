@@ -23,13 +23,15 @@ const PRE_PG = `
     id SERIAL PRIMARY KEY,
     "userId" INTEGER NOT NULL,
     show_mqtt_nodes BOOLEAN DEFAULT TRUE
-  )`;
+  );
+  CREATE TABLE messages (id TEXT PRIMARY KEY, "sourceId" TEXT, "replyId" BIGINT)`;
 const PRE_MYSQL = `
   CREATE TABLE user_map_preferences (
     id SERIAL PRIMARY KEY,
     userId INT NOT NULL,
     show_mqtt_nodes BOOLEAN DEFAULT TRUE
   )`;
+const PRE_MYSQL_MESSAGES = `CREATE TABLE messages (id VARCHAR(255) PRIMARY KEY, sourceId VARCHAR(64), replyId BIGINT)`;
 
 describe.skipIf(!postgresAvailable)('migration 241 — PostgreSQL (container)', () => {
   let pool: InstanceType<typeof PgPool>;
@@ -69,6 +71,8 @@ describe.skipIf(!postgresAvailable)('migration 241 — PostgreSQL (container)', 
       `SELECT unread_include_replies FROM user_map_preferences WHERE "userId" = 1`,
     );
     expect(rows[0].unread_include_replies).toBe(false);
+    const idx = await pool.query(`SELECT 1 FROM pg_indexes WHERE schemaname = '${PG_SCHEMA}' AND indexname = 'idx_messages_source_reply'`);
+    expect(idx.rowCount).toBe(1);
   });
 });
 
@@ -85,6 +89,7 @@ describe.skipIf(!mysqlAvailable)('migration 241 — MySQL (container)', () => {
 
     pool = mysql.createPool({ host: 'localhost', port: 3307, user: 'test', password: 'test', database: MYSQL_DB, connectionLimit: 5 });
     await pool.query(PRE_MYSQL);
+    await pool.query(PRE_MYSQL_MESSAGES);
   }, 30_000);
 
   afterAll(async () => {
@@ -104,5 +109,7 @@ describe.skipIf(!mysqlAvailable)('migration 241 — MySQL (container)', () => {
     );
     // MySQL BOOLEAN is TINYINT(1); 0 is the stored FALSE.
     expect(Number((rows as Array<{ unread_include_replies: number }>)[0].unread_include_replies)).toBe(0);
+    const [idx] = await pool.query(`SHOW INDEX FROM messages WHERE Key_name = 'idx_messages_source_reply'`);
+    expect((idx as unknown[]).length).toBe(2);
   });
 });
