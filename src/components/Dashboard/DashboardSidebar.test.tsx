@@ -1066,6 +1066,39 @@ describe('DashboardSidebar', () => {
     });
   });
 
+  describe('MQTT direction badge (#5794)', () => {
+    const sources: DashboardSource[] = [
+      { id: 'brk', name: 'Broker', type: 'mqtt_broker', enabled: true, config: {} },
+      { id: 'up', name: 'Upstream', type: 'mqtt_bridge', enabled: true, config: { brokerSourceId: 'brk' } },
+      { id: 'solo', name: 'Watcher', type: 'mqtt_bridge', enabled: true, config: {} },
+    ];
+
+    it('takes bridge modes from status for a non-admin', () => {
+      renderSidebar({
+        sources,
+        statusMap: new Map<string, SourceStatus | null>([
+          ['brk', { sourceId: 'brk', connected: true }],
+          ['up', { sourceId: 'up', connected: true, mode: 'subscribe_only' } as SourceStatus],
+          ['solo', { sourceId: 'solo', connected: true, mode: 'bidirectional' } as SourceStatus],
+        ]),
+      });
+      expect(screen.getByTestId('mqtt-direction-up')).toHaveTextContent('source.mqtt_direction.downlink');
+      expect(screen.getByTestId('mqtt-direction-brk')).toHaveTextContent('source.mqtt_direction.downlink');
+      expect(screen.getByTestId('mqtt-direction-solo')).toHaveTextContent('source.mqtt_direction.monitor');
+    });
+
+    it('shows nothing for a non-admin when status carries no mode', () => {
+      renderSidebar({ sources, statusMap: new Map() });
+      expect(screen.queryByTestId('mqtt-direction-up')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('mqtt-direction-brk')).not.toBeInTheDocument();
+    });
+
+    it('falls back to config for an admin', () => {
+      renderSidebar({ sources, statusMap: new Map(), isAdmin: true });
+      expect(screen.getByTestId('mqtt-direction-up')).toHaveTextContent('source.mqtt_direction.both');
+    });
+  });
+
   describe('FWD pill (#5537)', () => {
     const withForwarding = (forwarding: SourceStatus['forwarding'] | undefined) =>
       new Map<string, SourceStatus | null>([

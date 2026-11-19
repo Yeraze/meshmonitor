@@ -33,6 +33,21 @@ Two rules follow from this table:
 - **Bridge into the mesh** (upstream packets should be transmitted locally): needs a broker, a node with Downlink Enabled, and a hop limit you have chosen. See [How much airtime downlink costs](#how-much-airtime-downlink-costs).
 :::
 
+### What the source card badge means
+
+Each MQTT source's card on the dashboard shows which way its traffic moves. MeshMonitor works this out from the source's settings and the sources you can see:
+
+| Badge | Shown on | Meaning |
+|---|---|---|
+| **Monitor only** | Bridge, MeshCore MQTT source | Receives and stores traffic. Nothing it receives reaches your nodes or the air. A bridge reads this way when it has no parent broker and no node is linked to it, whatever its mode. |
+| **Uplink** | Bridge, broker | Publishes local traffic to the upstream server. Nothing comes back. |
+| **Downlink** | Bridge, broker | Hands upstream traffic to your local nodes. |
+| **Uplink + Downlink** | Bridge, broker | Both of the above. |
+| **Local only** | Broker | Relays between the nodes and clients connected to it. No bridge links it to an upstream server. |
+| **Client proxy** | Node source | The node's MQTT traffic goes through a MeshMonitor broker or bridge (its **MQTT source link**). |
+
+**Downlink** and **Uplink + Downlink** are highlighted, because only those paths can lead to a transmission. Even then, a node transmits a broker packet only on a channel with **Downlink Enabled**, and the badge cannot see that setting. A broker's badge comes from its bridges; a node that connects to the broker directly does not change it.
+
 ### How a node reaches the broker
 
 A node connects to MeshMonitor's broker in one of two ways. Use one or the other per node, never both:

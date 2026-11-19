@@ -32,6 +32,7 @@ import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import styles from './DashboardSidebar.module.css';
 import MqttProxyWarning from './MqttProxyWarning';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory';
+import { getMqttDirection, resolveBridgeMode, type MqttDirection } from '../../utils/mqttDirection';
 import type { TranslateFn } from '../../types/translate';
 
 // Narrow, LOCAL slices of `source.config` / the status poll for the compact
@@ -278,6 +279,37 @@ const ForwardingPill: React.FC<{
       {enabled ? `${label} ${activeRuleCount}` : `${label} ${t('forwarding.pill_off', 'off')}`}
     </button>
   );
+};
+
+/** Default English for the direction badge (#5794); en.json holds the same text. */
+const MQTT_DIRECTION_TEXT: Record<MqttDirection, { label: string; title: string }> = {
+  monitor: {
+    label: 'Monitor only',
+    title: 'Monitor only: receives and stores MQTT traffic. Nothing it receives goes to your nodes or the air.',
+  },
+  uplink: {
+    label: 'Uplink',
+    title: 'Uplink: publishes local traffic to the upstream server. Nothing comes back to your nodes.',
+  },
+  downlink: {
+    label: 'Downlink',
+    title:
+      'Downlink: hands upstream traffic to your local nodes. A node transmits it only on channels with Downlink Enabled.',
+  },
+  both: {
+    label: 'Uplink + Downlink',
+    title:
+      'Uplink and downlink: publishes local traffic upstream and hands upstream traffic to your local nodes. A node transmits it only on channels with Downlink Enabled.',
+  },
+  local: {
+    label: 'Local only',
+    title: 'Local only: relays between the nodes and clients connected to this broker. No bridge links it to an upstream server.',
+  },
+  client_proxy: {
+    label: 'Client proxy',
+    title:
+      "Client proxy: this node's MQTT traffic goes through a MeshMonitor broker or bridge. The node transmits broker traffic only on channels with Downlink Enabled.",
+  },
 };
 
 interface KebabMenuProps {
@@ -801,6 +833,26 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 source.type !== 'reticulum' && (
                   <span className="dashboard-source-card-badge">{source.type}</span>
                 )}
+              {!isUnified && source.enabled && (() => {
+                // Which way MQTT traffic moves through this source (#5794).
+                // Reads only the sources this viewer can see.
+                const direction = getMqttDirection(source, sources, (b) =>
+                  resolveBridgeMode(b, (statusMap.get(b.id) as { mode?: unknown } | null | undefined)?.mode, isAdmin),
+                );
+                if (!direction) return null;
+                const text = MQTT_DIRECTION_TEXT[direction];
+                const title = t(`source.mqtt_direction.${direction}_title`, text.title);
+                return (
+                  <span
+                    className={`dashboard-source-card-badge${direction === 'downlink' || direction === 'both' ? ` ${styles.mqttDirToMesh}` : ''}`}
+                    title={title}
+                    aria-label={title}
+                    data-testid={`mqtt-direction-${source.id}`}
+                  >
+                    {t(`source.mqtt_direction.${direction}`, text.label)}
+                  </span>
+                );
+              })()}
               {!isUnified && (() => {
                 const vn = (source.config as any)?.virtualNode;
                 return vn?.enabled ? (

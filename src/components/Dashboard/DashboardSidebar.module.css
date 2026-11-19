@@ -100,3 +100,8 @@
 .fwdOff {
   color: var(--color-text-faint);
 }
+
+/* MQTT direction badge (#5794): traffic that can reach local nodes. */
+.mqttDirToMesh {
+  color: var(--color-warning);
+}
