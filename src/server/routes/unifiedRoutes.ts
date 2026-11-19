@@ -310,6 +310,8 @@ router.get('/messages', async (req: Request, res: Response) => {
        * client shows the sender's clock offset from it. Absent on room posts.
        */
       senderTimestamp?: number | null;
+      /** MeshCore entry (#6500): region name of the first reception that has one; a reply reuses it. */
+      scopeName?: string;
       /**
        * Meshtastic Data.bitfield bit 2 (#6449): the sender flagged this packet
        * as sent by an automation. True when any reception carried the bit.
@@ -856,6 +858,7 @@ router.get('/messages', async (req: Request, res: Response) => {
       // are in createdAt order) and carries the sender second for the offset.
       // A room post replays on login, so it keeps the sender's time.
       const roomPost = m.messageType === 'room_post';
+      const scopeName = cluster.members.find((x) => x.row.scopeName?.trim())?.row.scopeName ?? undefined;
       merged.set(cluster.dedupKey, {
         dedupKey: cluster.dedupKey,
         packetId: null,
@@ -876,6 +879,7 @@ router.get('/messages', async (req: Request, res: Response) => {
         timestamp: roomPost ? m.timestamp : m.createdAt,
         createdAt: m.createdAt,
         ...(roomPost ? {} : { senderTimestamp: storedWireSecond(m) }),
+        ...(scopeName ? { scopeName } : {}),
         ...(refs.reactionEmoji
           ? { reactionEmoji: refs.reactionEmoji, reactionTargetRefs: refs.reactionTargetRefs ?? [] }
           : { meshcoreRowRefs: refs.rowRefs }),

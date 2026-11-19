@@ -46,6 +46,8 @@ export interface UnifiedMessage {
   /** MeshCore DM / channel entry: wire sender second, for the clock offset (#5973).
    *  Its `timestamp` is then the earliest receipt time. */
   senderTimestamp?: number | null;
+  /** MeshCore entry (#6500): region name the message was sent on, copied by a reply. */
+  scopeName?: string;
   /** Meshtastic Data.bitfield bit 2 (#6449): sender flagged it as sent by an automation. */
   isAutomation?: boolean;
   /** Our own sent row (Meshtastic and MQTT-native only): delivery status. */

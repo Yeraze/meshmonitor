@@ -88,6 +88,7 @@ Nearly every top-level view has a **source picker** in the header. It controls w
 - **Unified mode** (where available) — combines messages/telemetry/traceroutes across all sources while still tagging each row with its originating source
   - On **Unified Messages**, pick **All Channels** in the channel list to read every channel you can open in one feed. Each message carries a tag with its channel and a pill for each source that heard it. Direct messages are left out; read those on the source's own Messages tab.
   - A MeshCore message heard by several of your sources shows as **one row**, with a pill for each source that heard it. Only sources you can read are counted.
+  - **Server-decrypted (channel database) channels** are shared by every source. A user who may read such a channel sees it, and its messages, under every source that heard it, together with those sources' names, even without a grant on the source itself. This is intended: it is what lets you give a viewer one channel (for example an anonymous viewer on an MQTT bridge) and nothing else. Grant a channel-database entry only to people who may know which sources hear it.
   - The **left border** of each message shows its mesh protocol: green for Meshtastic (MQTT sources included), orange for MeshCore, the accent colour for Reticulum. Hover the card to read the protocol name. The **source pills** keep one colour per source, so you can still tell which source heard a message. Channel and DM views on a single source draw the same protocol stripe on each message.
 
 Your picker choice persists per view and per user.
@@ -112,10 +113,9 @@ Pick one channel and a send box appears under the message feed. It is not shown 
 
 With one channel selected, hover a message (or tab to it) to see **Reply** and **React** buttons under it. On a touch screen they always show. They do not appear on All Channels, in the public view, or on a message MeshMonitor cannot answer (a Meshtastic message with no packet id, a MeshCore reaction, a Reticulum message).
 
-- **Reply** puts a "Replying to ..." banner above the send box. The reply goes out from the node picked in **Send from**, which lists only nodes of the same protocol as the message. On MeshCore the box starts with `@[Name]: `, because MeshCore replies are plain text. Cancel the banner and your text stays.
+- **Reply** puts a "Replying to ..." banner above the send box. The reply goes out from the node picked in **Send from**, which lists only nodes of the same protocol as the message. On MeshCore the box starts with `@[Name]: `, because MeshCore replies are plain text. A MeshCore reply goes out on the region of the message you reply to, as in the per-source view. Cancel the banner and your text stays.
 - **React** opens the emoji picker at once. Pick an emoji to send it: one click, one packet. To use another node, close the picker, change **Send from** in the banner, and press **Choose reaction**.
 - **MeshCore tapbacks need a node that heard the message, with reactions turned on.** A MeshCore node that did not hear it shows greyed out ("did not hear this message"), and so does one with reactions off.
-- **Known limitation:** a MeshCore reply goes out on the sending node's default scope, not the scope of the message you reply to. The per-source MeshCore view copies the scope.
 - Errors keep your target and text, and MeshMonitor never retries for you.
 
 Messages you sent from a Meshtastic or MQTT node show a status icon next to the time: pending, transmitted to the mesh, received by the target, failed, or timed out. MeshCore messages show no status icon here.

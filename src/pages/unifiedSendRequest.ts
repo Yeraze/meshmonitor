@@ -45,11 +45,13 @@ export interface UnifiedSendOptions {
   replyId?: number;
   /** Send `text` as a tapback (`emoji: 1`). */
   tapback?: boolean;
+  /** MeshCore reply only: the parent's region name, so the reply stays in its region. */
+  scope?: string;
 }
 
 /**
  * Route and body for one send from `ref`. Throws when the ref cannot send.
- * MeshCore ignores `opts`: a reply is a text prefix and a tapback has its own route.
+ * MeshCore uses only `opts.scope`: a reply is a text prefix and a tapback has its own route.
  */
 export function buildUnifiedSendRequest(
   ref: SenderRef,
@@ -77,7 +79,7 @@ export function buildUnifiedSendRequest(
     case 'meshcore':
       return {
         endpoint: `/api/sources/${id}/meshcore/messages/send`,
-        body: { text, channelIdx: ref.channelNumber },
+        body: { text, channelIdx: ref.channelNumber, ...(opts?.scope ? { scope: opts.scope } : {}) },
       };
     default:
       throw new Error(`Unknown send kind for source ${ref.sourceId}`);
