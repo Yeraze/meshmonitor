@@ -7369,6 +7369,7 @@
   "source.mqtt_direction.both_title": "Uplink and downlink: publishes local traffic upstream and hands upstream traffic to your local nodes. A node transmits it only on channels with Downlink Enabled.",
   "source.mqtt_direction.local_title": "Local only: relays between the nodes and clients connected to this broker. No bridge links it to an upstream server.",
   "source.mqtt_direction.client_proxy_title": "Client proxy: this node's MQTT traffic goes through a MeshMonitor broker or bridge. The node transmits broker traffic only on channels with Downlink Enabled.",
+  "source.mqtt_direction.visible_only": "Based on the sources you can see.",
   "source.observer_badge_title": "Analyzer Observer: {{connected}} of {{total}} brokers connected",
   "source.observer_badge_unknown": "Analyzer Observer configured; status unavailable",
   "source.sidebar.open_sources": "Open sources",

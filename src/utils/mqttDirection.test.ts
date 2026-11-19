@@ -32,10 +32,10 @@ describe('resolveBridgeMode', () => {
 });
 
 describe('getMqttDirection — bridge', () => {
-  const cases: Array<[string, MqttBridgeModeValue, boolean, string]> = [
+  const cases: Array<[string, MqttBridgeModeValue, boolean, string | null]> = [
     ['standalone, default mode', 'bidirectional', false, 'monitor'],
     ['standalone, subscribe only', 'subscribe_only', false, 'monitor'],
-    ['standalone, publish only', 'publish_only', false, 'uplink'],
+    ['standalone, publish only', 'publish_only', false, null],
     ['with parent, bidirectional', 'bidirectional', true, 'both'],
     ['with parent, subscribe only', 'subscribe_only', true, 'downlink'],
     ['with parent, publish only', 'publish_only', true, 'uplink'],
@@ -88,6 +88,13 @@ describe('getMqttDirection — other types', () => {
   it('marks a linked node as client proxy', () => {
     expect(getMqttDirection(node('b'), [broker, node('b')], adminMode)).toBe('client_proxy');
     expect(getMqttDirection(node(null), [], adminMode)).toBeNull();
+  });
+  it('drops client proxy when the visible target is disabled or not MQTT', () => {
+    expect(getMqttDirection(node('b'), [{ ...broker, enabled: false }], adminMode)).toBeNull();
+    expect(getMqttDirection(node('b'), [{ id: 'b', type: 'meshcore' }], adminMode)).toBeNull();
+  });
+  it('trusts a link to a source the viewer cannot see', () => {
+    expect(getMqttDirection(node('hidden'), [], adminMode)).toBe('client_proxy');
   });
   it('marks MeshCore MQTT sources as monitor only', () => {
     expect(getMqttDirection({ id: 'm', type: 'meshcore_mqtt' }, [], adminMode)).toBe('monitor');

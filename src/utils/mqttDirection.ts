@@ -63,11 +63,13 @@ function bridgeDirection(
   bridge: MqttDirectionSource,
   mode: MqttBridgeModeValue,
   sources: readonly MqttDirectionSource[],
-): MqttDirection {
+): MqttDirection | null {
   const parent = field(bridge.config, 'brokerSourceId');
   const hasLocalSide =
     (typeof parent === 'string' && parent !== '') || sources.some((s) => mqttLinkTarget(s) === bridge.id);
-  if (!hasLocalSide) return mode === 'publish_only' ? 'uplink' : 'monitor';
+  // A standalone publish-only bridge has nothing local to publish (only
+  // MQTT-native sends), and does not subscribe either: no badge fits.
+  if (!hasLocalSide) return mode === 'publish_only' ? null : 'monitor';
   if (mode === 'publish_only') return 'uplink';
   if (mode === 'subscribe_only') return 'downlink';
   return 'both';
@@ -87,8 +89,17 @@ export function getMqttDirection(
     case 'meshcore_mqtt_broker':
       // MeshCore MQTT sources only receive; nothing they hear can reach a radio.
       return 'monitor';
-    case 'meshtastic_tcp':
-      return mqttLinkTarget(source) ? 'client_proxy' : null;
+    case 'meshtastic_tcp': {
+      const targetId = mqttLinkTarget(source);
+      if (!targetId) return null;
+      // A visible target that is off or the wrong kind carries nothing; the
+      // card's MqttProxyWarning covers that case. A hidden one is trusted.
+      const target = sources.find((s) => s.id === targetId);
+      if (target && (target.enabled === false || (target.type !== 'mqtt_broker' && target.type !== 'mqtt_bridge'))) {
+        return null;
+      }
+      return 'client_proxy';
+    }
     case 'mqtt_bridge': {
       const mode = modeOf(source);
       return mode ? bridgeDirection(source, mode, sources) : null;
