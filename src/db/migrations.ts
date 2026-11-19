@@ -181,6 +181,7 @@ import { migration as nodeIdentityMergesMigration, runMigration159Postgres, runM
 import { migration as tracerouteTransportMechanismMigration, runMigration160Postgres, runMigration160Mysql } from '../server/migrations/160_traceroute_transport_mechanism.js';
 import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_user_map_preferences_unread_indicator.js';
 import { migration as userPrefsUnreadIncludeRepliesMigration, runMigration241Postgres, runMigration241Mysql } from '../server/migrations/241_user_map_preferences_unread_include_replies.js';
+import { migration as readMessagesCompositeKeyMigration, runMigration242Postgres, runMigration242Mysql } from '../server/migrations/242_read_messages_composite_key.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -3882,4 +3883,18 @@ registry.register({
   sqlite: (db) => userPrefsUnreadIncludeRepliesMigration.up(db),
   postgres: (client) => runMigration241Postgres(client),
   mysql: (pool) => runMigration241Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 242: SQLite `read_messages` keyed by (message_id, user_id) (#6505)
+// so one user's read row no longer blocks every other user's. PG/MySQL no-op.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 242,
+  name: 'read_messages_composite_key',
+  settingsKey: 'migration_242_read_messages_composite_key',
+  sqlite: (db) => readMessagesCompositeKeyMigration.up(db),
+  postgres: (client) => runMigration242Postgres(client),
+  mysql: (pool) => runMigration242Mysql(pool),
 });

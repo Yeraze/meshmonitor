@@ -147,11 +147,15 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
 
 // ============ READ MESSAGES ============
 
+// Keyed by (message, user) since migration 242 (#6505); before it, message_id
+// alone was the key and one user's read row blocked every other user's.
 export const readMessagesSqlite = sqliteTable('read_messages', {
-  messageId: text('message_id').notNull().primaryKey(),
+  messageId: text('message_id').notNull(),
   userId: integer('user_id').references(() => usersSqlite.id, { onDelete: 'cascade' }),
   readAt: integer('read_at').notNull(),
-});
+}, (t) => ({
+  pk: sqlitePrimaryKey({ columns: [t.messageId, t.userId] }),
+}));
 
 export const readMessagesPostgres = pgTable('read_messages', {
   id: pgSerial('id').primaryKey(),

@@ -1274,6 +1274,62 @@ function runNotificationsTests(getBackend: () => TestBackend) {
     });
   });
 
+  // ============ Per-user read rows (#6505) ============
+
+  describe('mark-read is per user (#6505)', () => {
+    async function seedTwoUsers(backend: TestBackend) {
+      await backend.exec(insertUserSql(backend, 1, 'user1'));
+      await backend.exec(insertUserSql(backend, 2, 'user2'));
+    }
+
+    it('channel: user 2 can mark a message user 1 already read', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+      const repo = new NotificationsRepository(backend.drizzleDb, backend.dbType);
+      await seedTwoUsers(backend);
+      await backend.exec(insertMessageSql(backend, 'c1', 0, 1, 1000));
+
+      expect(await repo.markChannelMessagesAsRead(0, 1)).toBe(1);
+      expect((await repo.getUnreadCountsByChannelAsync(2, undefined, ALL_SOURCES))[0]).toBe(1);
+
+      expect(await repo.markChannelMessagesAsRead(0, 2)).toBe(1);
+      expect((await repo.getUnreadCountsByChannelAsync(2, undefined, ALL_SOURCES))[0] ?? 0).toBe(0);
+      expect((await repo.getUnreadCountsByChannelAsync(1, undefined, ALL_SOURCES))[0] ?? 0).toBe(0);
+
+      // Marking again inserts nothing new.
+      expect(await repo.markChannelMessagesAsRead(0, 2)).toBe(0);
+    });
+
+    it('DM: user 2 can mark a message user 1 already read', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+      const repo = new NotificationsRepository(backend.drizzleDb, backend.dbType);
+      await seedTwoUsers(backend);
+      await backend.exec(insertMessageSql(backend, 'd1', -1, 1, 1000, '!remote', '!local'));
+
+      expect(await repo.getUnreadDMCountAsync('!local', '!remote', 2, ALL_SOURCES)).toBe(1);
+      expect(await repo.markDMMessagesAsRead('!local', '!remote', 1)).toBe(1);
+      expect(await repo.getUnreadDMCountAsync('!local', '!remote', 2, ALL_SOURCES)).toBe(1);
+
+      expect(await repo.markDMMessagesAsRead('!local', '!remote', 2)).toBe(1);
+      expect(await repo.getUnreadDMCountAsync('!local', '!remote', 2, ALL_SOURCES)).toBe(0);
+    });
+
+    it('by id: user 2 can mark a message user 1 already read', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+      const repo = new NotificationsRepository(backend.drizzleDb, backend.dbType);
+      await seedTwoUsers(backend);
+      await backend.exec(insertMessageSql(backend, 'i1', 0, 1, 1000));
+
+      await repo.markMessagesAsReadByIds(['i1'], 1);
+      expect((await repo.getUnreadCountsByChannelAsync(2, undefined, ALL_SOURCES))[0]).toBe(1);
+
+      await repo.markMessagesAsReadByIds(['i1'], 2);
+      expect((await repo.getUnreadCountsByChannelAsync(2, undefined, ALL_SOURCES))[0] ?? 0).toBe(0);
+    });
+  });
+
   // ============ getUnreadOwnReplyRowsAsync (#5254) ============
 
   describe('getUnreadOwnReplyRowsAsync — replies to own messages (#5254)', () => {

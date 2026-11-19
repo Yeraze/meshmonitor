@@ -887,12 +887,14 @@ export class NotificationsRepository extends BaseRepository {
         let inserted = 0;
         for (const msg of messages) {
           try {
-            await db.insert(readMessagesSqlite).values({
+            // Count real inserts only: a row this user already has is not
+            // newly marked (matches PG/MySQL rowCount).
+            const result = await db.insert(readMessagesSqlite).values({
               userId: effectiveUserId,
               messageId: msg.id,
               readAt: now,
             }).onConflictDoNothing();
-            inserted++;
+            inserted += result.changes;
           } catch {
             // Ignore duplicates
           }
@@ -1022,12 +1024,14 @@ export class NotificationsRepository extends BaseRepository {
         let inserted = 0;
         for (const msg of messages) {
           try {
-            await db.insert(readMessagesSqlite).values({
+            // Count real inserts only: a row this user already has is not
+            // newly marked (matches PG/MySQL rowCount).
+            const result = await db.insert(readMessagesSqlite).values({
               userId: effectiveUserId,
               messageId: msg.id,
               readAt: now,
             }).onConflictDoNothing();
-            inserted++;
+            inserted += result.changes;
           } catch {
             // Ignore duplicates
           }
@@ -1132,12 +1136,14 @@ export class NotificationsRepository extends BaseRepository {
         let inserted = 0;
         for (const msg of messages) {
           try {
-            await db.insert(readMessagesSqlite).values({
+            // Count real inserts only: a row this user already has is not
+            // newly marked (matches PG/MySQL rowCount).
+            const result = await db.insert(readMessagesSqlite).values({
               userId: effectiveUserId,
               messageId: msg.id,
               readAt: now,
             }).onConflictDoNothing();
-            inserted++;
+            inserted += result.changes;
           } catch {
             // Ignore duplicates
           }
@@ -1237,9 +1243,8 @@ export class NotificationsRepository extends BaseRepository {
    * `m.id = rm.messageId AND rm.userId = ?` (authenticated) pattern used by
    * the unread-count queries.
    *
-   * Note: the SQLite schema uses `messageId` as the PRIMARY KEY (no separate
-   * `userId` per row prior to multi-user). The PG/MySQL schemas use `userId`
-   * as a real column. Drizzle handles the column-name mapping per dialect.
+   * Every backend keys a read row by (message, user); SQLite since migration
+   * 242 (#6505). Drizzle handles the column-name mapping per dialect.
    */
   private unreadJoinOn(userId: number | null) {
     const messages = this.tables.messages;
