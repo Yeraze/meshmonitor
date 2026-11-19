@@ -344,6 +344,9 @@ export const VALID_SETTINGS_KEYS = [
   'publicInstanceHidePublicKeys',
   'publicInstanceRoundTimestamps',
   'publicInstanceHideMessageText',
+  // Anonymous sending opt-in (#6499, default OFF): lets a signed-out visitor
+  // POST /api/messages/send when the anonymous account holds a write grant.
+  'allowAnonymousSend',
   // Node-name anti-spam (#6382, default OFF). Global, admin-only write. When
   // on, invite links in node names are replaced with a placeholder before the
   // name is stored. See src/utils/nodeNameSanitizer.ts.
@@ -1074,6 +1077,7 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'publicInstanceHidePublicKeys',           // global public-instance mode (#5156)
   'publicInstanceRoundTimestamps',          // global public-instance mode (#5156)
   'publicInstanceHideMessageText',          // global public-instance mode (#5156)
+  'allowAnonymousSend',                     // global anonymous-send opt-in (#6499)
   'nodeNameSanitizeEnabled',                // global ingest rewrite (#6382)
   'nodeNameSanitizeBuiltins',               // "
   'nodeNameSanitizeCustomPatterns',         // "

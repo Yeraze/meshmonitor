@@ -41,6 +41,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { requireAnonymousSendAllowed } from '../utils/anonymousSendGate.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isReticulumManager } from '../sourceManagerTypes.js';
 import type { ReticulumManager, SendReticulumMessageParams } from '../reticulumManager.js';
@@ -781,6 +782,7 @@ router.get(
 router.post(
   '/messages',
   requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }),
+  requireAnonymousSendAllowed(),
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
     const body = (req.body ?? {}) as {
@@ -844,6 +846,7 @@ router.post(
 router.post(
   '/propagation/sync',
   requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }),
+  requireAnonymousSendAllowed(),
   async (req: Request, res: Response) => {
     const sourceId = (req.params as { id: string }).id;
     const manager = res.locals.reticulumManager as ReticulumManager | undefined;
