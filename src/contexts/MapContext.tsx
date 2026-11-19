@@ -71,6 +71,9 @@ interface MapContextType {
   /** Per-source unread-DM badge on the Sources list (#5124). Default on. */
   unreadIndicatorEnabled: boolean;
   setUnreadIndicatorEnabled: (value: boolean) => void;
+  /** #5254: also count channel replies/tapbacks to the source's own messages. */
+  unreadIncludeReplies: boolean;
+  setUnreadIncludeReplies: (value: boolean) => void;
   /**
    * "Spread Nodes" Map Features toggle (#5177). When on (default), a
    * low-precision node's marker sits at a deterministic offset WITHIN its
@@ -235,6 +238,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   // Defaults on: the badge is the feature, and a pre-migration-161 row has no
   // stored value. The toggle exists for installs with many overlapping sources.
   const [unreadIndicatorEnabled, setUnreadIndicatorEnabledState] = useState<boolean>(true);
+  // #5254: opt-in, so the badge keeps meaning "unread DMs" until asked.
+  const [unreadIncludeReplies, setUnreadIncludeRepliesState] = useState<boolean>(false);
   // #5177: default true = preserve the existing within-cell offset behaviour.
   const [spreadNodes, setSpreadNodesState] = useState<boolean>(true);
   // #6125: default false = opt-in per-source ring around node markers.
@@ -380,6 +385,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setUnreadIndicatorEnabledState(value);
     void savePreferenceToServer({ unreadIndicatorEnabled: value });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- #5124 see comment above
+  }, []);
+
+  const setUnreadIncludeReplies = React.useCallback((value: boolean) => {
+    setUnreadIncludeRepliesState(value);
+    void savePreferenceToServer({ unreadIncludeReplies: value });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5254 same as setUnreadIndicatorEnabled
   }, []);
 
   const setSpreadNodes = React.useCallback((value: boolean) => {
@@ -644,6 +655,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.unreadIndicatorEnabled !== undefined) {
               setUnreadIndicatorEnabledState(preferences.unreadIndicatorEnabled);
             }
+            if (preferences.unreadIncludeReplies !== undefined) {
+              setUnreadIncludeRepliesState(preferences.unreadIncludeReplies);
+            }
             if (preferences.spreadNodes !== undefined) {
               setSpreadNodesState(preferences.spreadNodes);
             }
@@ -738,6 +752,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showRfNodes,
     unreadIndicatorEnabled,
     setUnreadIndicatorEnabled,
+    unreadIncludeReplies,
+    setUnreadIncludeReplies,
     spreadNodes,
     setSpreadNodes,
     colorNodesBySource,
@@ -814,6 +830,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showUdpNodes, setShowUdpNodes,
     showRfNodes, setShowRfNodes,
     unreadIndicatorEnabled, setUnreadIndicatorEnabled,
+    unreadIncludeReplies, setUnreadIncludeReplies,
     spreadNodes, setSpreadNodes,
     colorNodesBySource, setColorNodesBySource,
     colorNodesByGateway, setColorNodesByGateway,

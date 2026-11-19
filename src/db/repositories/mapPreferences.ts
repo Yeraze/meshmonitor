@@ -51,6 +51,8 @@ export class MapPreferencesRepository extends BaseRepository {
         // NULL on a pre-migration-161 row means "never set", and the badge
         // defaults on (#5124) — so null reads as true, not false.
         unreadIndicatorEnabled: row.unreadIndicatorEnabled ?? true,
+        // Opt-in (#5254): NULL on a pre-migration-241 row reads as false.
+        unreadIncludeReplies: row.unreadIncludeReplies ?? false,
         spreadNodes: row.spreadNodes ?? true,
         // NULL on a pre-migration-221 row reads as false — the ring is opt-in (#6125).
         colorNodesBySource: row.colorNodesBySource ?? false,
@@ -94,6 +96,7 @@ export class MapPreferencesRepository extends BaseRepository {
     showEstimatedPositions?: boolean;
     showAtakContacts?: boolean;
     unreadIndicatorEnabled?: boolean;
+    unreadIncludeReplies?: boolean;
     spreadNodes?: boolean;
     /** Per-source coloured ring around node markers on Unified maps (#6125). */
     colorNodesBySource?: boolean;
@@ -134,6 +137,7 @@ export class MapPreferencesRepository extends BaseRepository {
         if (preferences.showEstimatedPositions !== undefined) set.showEstimatedPositions = preferences.showEstimatedPositions;
         if (preferences.showAtakContacts !== undefined) set.showAtakContacts = preferences.showAtakContacts;
         if (preferences.unreadIndicatorEnabled !== undefined) set.unreadIndicatorEnabled = preferences.unreadIndicatorEnabled;
+        if (preferences.unreadIncludeReplies !== undefined) set.unreadIncludeReplies = preferences.unreadIncludeReplies;
         if (preferences.spreadNodes !== undefined) set.spreadNodes = preferences.spreadNodes;
         if (preferences.colorNodesBySource !== undefined) set.colorNodesBySource = preferences.colorNodesBySource;
         if (preferences.aircraftDisplayMode !== undefined) set.aircraftDisplayMode = preferences.aircraftDisplayMode;
@@ -167,6 +171,7 @@ export class MapPreferencesRepository extends BaseRepository {
           showEstimatedPositions: preferences.showEstimatedPositions ?? true,
           showAtakContacts: preferences.showAtakContacts ?? false,
           unreadIndicatorEnabled: preferences.unreadIndicatorEnabled ?? true,
+          unreadIncludeReplies: preferences.unreadIncludeReplies ?? false,
           spreadNodes: preferences.spreadNodes ?? true,
           colorNodesBySource: preferences.colorNodesBySource ?? false,
           aircraftDisplayMode: preferences.aircraftDisplayMode ?? null,

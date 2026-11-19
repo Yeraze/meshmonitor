@@ -180,6 +180,7 @@ import {
 import { migration as nodeIdentityMergesMigration, runMigration159Postgres, runMigration159Mysql } from '../server/migrations/159_node_identity_merges.js';
 import { migration as tracerouteTransportMechanismMigration, runMigration160Postgres, runMigration160Mysql } from '../server/migrations/160_traceroute_transport_mechanism.js';
 import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_user_map_preferences_unread_indicator.js';
+import { migration as userPrefsUnreadIncludeRepliesMigration, runMigration241Postgres, runMigration241Mysql } from '../server/migrations/241_user_map_preferences_unread_include_replies.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -3866,4 +3867,19 @@ registry.register({
   sqlite: (db) => scriptSecretsMigration.up(db),
   postgres: (client) => runMigration240Postgres(client),
   mysql: (pool) => runMigration240Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 241: `user_map_preferences.unread_include_replies` (#5254) —
+// per-user opt-in for the source badge to count channel replies/tapbacks to
+// the source's own messages. Default FALSE.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 241,
+  name: 'user_map_preferences_unread_include_replies',
+  settingsKey: 'migration_241_user_map_preferences_unread_include_replies',
+  sqlite: (db) => userPrefsUnreadIncludeRepliesMigration.up(db),
+  postgres: (client) => runMigration241Postgres(client),
+  mysql: (pool) => runMigration241Mysql(pool),
 });

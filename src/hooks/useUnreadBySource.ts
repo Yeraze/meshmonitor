@@ -16,7 +16,7 @@ import { useCsrf } from '../contexts/CsrfContext';
 
 export interface UnreadBySourceData {
   /** Source id -> counts. A source the caller cannot read is absent, not 0. */
-  sources: { [sourceId: string]: { directMessages: number } };
+  sources: { [sourceId: string]: { directMessages: number; channelReplies?: number } };
 }
 
 interface UseUnreadBySourceOptions {
@@ -24,6 +24,8 @@ interface UseUnreadBySourceOptions {
   /** Pass the user's `unreadIndicatorEnabled` preference — off means no polling at all. */
   enabled?: boolean;
   refetchInterval?: number;
+  /** #5254: also count channel replies/tapbacks to the source's own messages. */
+  includeReplies?: boolean;
 }
 
 const EMPTY: UnreadBySourceData = { sources: {} };
@@ -32,11 +34,13 @@ export function useUnreadBySource({
   baseUrl = '',
   enabled = true,
   refetchInterval = 15000,
+  includeReplies = false,
 }: UseUnreadBySourceOptions = {}) {
   return useQuery({
-    queryKey: ['unreadBySource', baseUrl],
+    queryKey: ['unreadBySource', baseUrl, includeReplies],
     queryFn: async (): Promise<UnreadBySourceData> => {
-      const response = await fetch(`${baseUrl}/api/messages/unread-by-source`, {
+      const query = includeReplies ? '?includeReplies=true' : '';
+      const response = await fetch(`${baseUrl}/api/messages/unread-by-source${query}`, {
         credentials: 'include',
       });
 
@@ -69,7 +73,7 @@ export function useUnreadBySource({
  * badges elsewhere in the app read the same read-state, and leaving them stale
  * would show a source with no badge whose conversations still look unread.
  */
-export function useMarkAllDmsRead({ baseUrl = '' }: { baseUrl?: string } = {}) {
+export function useMarkAllDmsRead({ baseUrl = '', includeReplies = false }: { baseUrl?: string; includeReplies?: boolean } = {}) {
   const queryClient = useQueryClient();
   const { getToken: getCsrfToken } = useCsrf();
 
@@ -79,7 +83,9 @@ export function useMarkAllDmsRead({ baseUrl = '' }: { baseUrl?: string } = {}) {
       const csrfToken = getCsrfToken();
       if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
 
-      const response = await fetch(`${baseUrl}/api/messages/mark-all-dms-read`, {
+      // #5254: clears the replies the badge counted, so it reaches zero.
+      const query = includeReplies ? '?includeReplies=true' : '';
+      const response = await fetch(`${baseUrl}/api/messages/mark-all-dms-read${query}`, {
         method: 'POST',
         headers,
         credentials: 'include',

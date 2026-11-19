@@ -336,7 +336,7 @@ function DashboardInner() {
   // here to gate the request). Unified pulls every source; single-source pulls
   // just the selected one. The hook itself drops non-MeshCore sources, whose
   // requests the server answers with 404.
-  const { showNeighborInfo, unreadIndicatorEnabled, setUnreadIndicatorEnabled } = useMapContext();
+  const { showNeighborInfo, unreadIndicatorEnabled, setUnreadIndicatorEnabled, unreadIncludeReplies, setUnreadIncludeReplies } = useMapContext();
   // #5124. `enabled: false` means the query never runs, so switching the badge
   // off stops the polling too rather than merely hiding the answer.
   const { data: unreadBySourceData } = useUnreadBySource({
@@ -345,10 +345,11 @@ function DashboardInner() {
     // `appBasename` every other query hook is handed.
     baseUrl: appBasename,
     enabled: isAuthenticated && unreadIndicatorEnabled,
+    includeReplies: unreadIncludeReplies,
   });
 
   // #5197: same basename for the same reason as the query above.
-  const markAllDmsRead = useMarkAllDmsRead({ baseUrl: appBasename });
+  const markAllDmsRead = useMarkAllDmsRead({ baseUrl: appBasename, includeReplies: unreadIncludeReplies });
   const neighborSourceIds = isUnifiedSelected
     ? sourceIds
     : (selectedSourceId && selectedSourceId !== UNIFIED_SOURCE_ID ? [selectedSourceId] : []);
@@ -1240,6 +1241,8 @@ function DashboardInner() {
           unreadBySource={unreadIndicatorEnabled ? unreadBySourceData?.sources : undefined}
           unreadIndicatorEnabled={unreadIndicatorEnabled}
           onToggleUnreadIndicator={setUnreadIndicatorEnabled}
+          unreadIncludeReplies={unreadIncludeReplies}
+          onToggleUnreadIncludeReplies={setUnreadIncludeReplies}
           onMarkAllDmsRead={() => markAllDmsRead.mutate()}
           markAllDmsReadPending={markAllDmsRead.isPending}
           mobileOpen={mobileSidebarOpen}

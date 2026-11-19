@@ -150,7 +150,7 @@ const POSTGRES_CREATE = `
     "hopStart" INTEGER,
     "hopLimit" INTEGER,
     "relayNode" BIGINT,
-    "replyId" INTEGER,
+    "replyId" BIGINT,
     emoji INTEGER,
     "viaMqtt" BOOLEAN,
     "rxSnr" DOUBLE PRECISION,
@@ -299,7 +299,7 @@ const MYSQL_CREATE = `
     hopStart INTEGER,
     hopLimit INTEGER,
     relayNode BIGINT,
-    replyId INTEGER,
+    replyId BIGINT,
     emoji INTEGER,
     viaMqtt BOOLEAN,
     rxSnr DOUBLE,
@@ -1271,6 +1271,42 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       // sidebar dot and per-channel badge stay in sync with the hidden-MQTT view.
       const rfOnly = await repo.getUnreadCountsByChannelAsync(1, undefined, ALL_SOURCES, true);
       expect(rfOnly[0]).toBe(2);
+    });
+  });
+
+  // ============ getUnreadOwnReplyRowsAsync (#5254) ============
+
+  describe('getUnreadOwnReplyRowsAsync — replies to own messages (#5254)', () => {
+    it('finds unread replies whose parent this source\'s own node sent, on every backend', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      const setReply = (id: string, replyId: number) => backend.exec(
+        backend.dbType === 'postgres'
+          ? `UPDATE messages SET "replyId" = ${replyId} WHERE id = '${id}'`
+          : `UPDATE messages SET replyId = ${replyId} WHERE id = '${id}'`,
+      );
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      // Parents: ours (local node 10 on src) and someone else's. Packet ids
+      // above 2^31 check the unsigned range survives the cast.
+      await backend.exec(insertMessageWithSourceSql(backend, 'src_10_3000000000', 0, 1, 1000, 'src', '!local'));
+      await backend.exec(insertMessageWithSourceSql(backend, 'src_20_600', 0, 1, 1000, 'src', '!other'));
+      // Replies.
+      await backend.exec(insertMessageWithSourceSql(backend, 'src_30_1', 2, 1, 2000, 'src', '!peer'));
+      await setReply('src_30_1', 3000000000);
+      await backend.exec(insertMessageWithSourceSql(backend, 'src_30_2', 0, 1, 2000, 'src', '!peer'));
+      await setReply('src_30_2', 600);
+      await backend.exec(insertMessageWithSourceSql(backend, 'src_10_3', 0, 1, 2000, 'src', '!local'));
+      await setReply('src_10_3', 3000000000);
+      await backend.exec(insertMessageWithSourceSql(backend, 'other_30_4', 0, 1, 2000, 'other', '!peer'));
+      await setReply('other_30_4', 3000000000);
+
+      expect(await repo.getUnreadOwnReplyRowsAsync('!local', 10, 1, 'src'))
+        .toEqual([{ id: 'src_30_1', channel: 2 }]);
+
+      await repo.markMessagesAsReadByIds(['src_30_1'], 1);
+      expect(await repo.getUnreadOwnReplyRowsAsync('!local', 10, 1, 'src')).toEqual([]);
     });
   });
 
