@@ -286,7 +286,13 @@ export default function UnifiedSendComposer({ channelName, draftStore, onSent, t
       // A MeshCore reply is plain text; only Meshtastic-wire sends carry the parent id.
       const replyId =
         target?.mode === 'reply' && sendTarget?.protocol === 'meshtastic' ? target.msg.packetId : null;
-      request = buildUnifiedSendRequest(effective, text, replyId != null ? { replyId } : undefined);
+      const scope =
+        target?.mode === 'reply' && sendTarget?.protocol === 'meshcore' ? target.msg.scopeName : undefined;
+      request = buildUnifiedSendRequest(
+        effective,
+        text,
+        replyId != null ? { replyId } : scope ? { scope } : undefined,
+      );
     } catch (err) {
       setError({ text: err instanceof Error ? err.message : String(err) });
       return;

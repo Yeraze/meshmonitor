@@ -95,6 +95,18 @@ describe('replies and tapbacks (#3045 P3)', () => {
     expect(r.body).toEqual({ text: 'hi', channelIdx: 1 });
   });
 
+  it('meshcore reply passes the parent scope; a plain send and a non-meshcore send do not', () => {
+    const mc = mk({ sourceId: 'c', sendKind: 'meshcore', channelNumber: 1 });
+    expect(buildUnifiedSendRequest(mc, 'hi', { scope: 'us-east' }).body).toEqual({
+      text: 'hi',
+      channelIdx: 1,
+      scope: 'us-east',
+    });
+    expect(buildUnifiedSendRequest(mc, 'hi').body).not.toHaveProperty('scope');
+    expect(buildUnifiedSendRequest(mc, 'hi', { scope: '' }).body).not.toHaveProperty('scope');
+    expect(buildUnifiedSendRequest(mk({}), 'hi', { scope: 'x' }).body).not.toHaveProperty('scope');
+  });
+
   it('tapback for meshtastic and mqtt_native uses replyId and emoji flag', () => {
     const parent = { packetId: 123, meshcoreRowRefs: undefined };
     expect(buildUnifiedReactionRequest(mk({}), parent, '👍')).toEqual({
