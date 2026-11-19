@@ -35,8 +35,11 @@ MeshMonitor can be deployed in Proxmox VE using LXC (Linux Containers) as an alt
 - **Storage**: At least 10GB available for container
 - **Network**: Bridge network configured (typically `vmbr0`)
 - **Resources**:
-  - Minimum: 1 CPU core, 512MB RAM
+  - Minimum: 1 CPU core, 512MB RAM (enough to run MeshMonitor, not to update it)
   - Recommended: 2 CPU cores, 2GB RAM, 1GB swap
+  - Updates rebuild the app inside the container, which needs far more memory
+    than running it. `meshmonitor-update` checks before it stops anything; see
+    [Update memory](#update-memory).
 
 ### Meshtastic Requirements
 
@@ -297,7 +300,9 @@ pct set 100 --net0 name=eth0,bridge=vmbr0,ip=192.168.1.50/24,gw=192.168.1.1
 
 `meshmonitor-update` creates a backup before every update automatically. Backups are
 stored at `/var/backups/meshmonitor/` by default and include `/data/`,
-`meshmonitor.env`, and systemd service files.
+`meshmonitor.env`, and systemd service files. If an update fails and the updater
+restores the previous version by itself, its log
+(`meshmonitor-update-recovery-<time>.log`) is written to the same folder.
 
 ### Manual Backup
 
@@ -515,8 +520,38 @@ pct set 100 --memory 4096
 pct set 100 --swap 1024
 ```
 
-If `meshmonitor-update` runs for an excessively long time, the container likely needs
-more RAM or swap — npm's TypeScript build peaks at ~1.5GB Node heap.
+#### Update memory
+
+`meshmonitor-update` rebuilds the app in three steps with very different memory
+needs (measured on 4.18.1, each step alone):
+
+| Step | What it does | Peak memory |
+|---|---|---|
+| Type check (`tsc`) | Checks types only, writes no files | ~3.0 GB (needs a Node heap over 2 GB) |
+| Client (`vite build`) | Builds the web UI | ~1.2 GB |
+| Server (`tsc -p tsconfig.server.json`) | Builds the server | ~1.7 GB (1.5 GB Node heap) |
+
+Before it stops anything, the updater adds up the memory the build can use —
+free RAM, free swap, and what MeshMonitor gives back when it is stopped — and
+picks a build:
+
+- **About 3.3 GB or more → full build** (type check, client, server).
+- **About 1.9 GB or more → lean build**: the type check is skipped. It writes
+  no files and upstream CI runs it on every commit, so the app is the same.
+  The recommended 2 GB RAM + 1 GB swap usually gets a lean build.
+- **Less → the update refuses**, with MeshMonitor still running, and asks for
+  more RAM or swap (`pct set <ctid> --memory … --swap …`).
+
+If the type check still runs out of memory during a full build, the updater
+carries on with a lean build instead of failing. Overrides, if you know
+better:
+
+```bash
+BUILD_MODE=lean meshmonitor-update        # always skip the type check
+BUILD_MODE=full meshmonitor-update        # always run it
+HEAP_TYPECHECK=2560 meshmonitor-update    # Node heap for the type check (MB, default 3072)
+HEAP_SERVER=2048 meshmonitor-update       # Node heap for npm and the server build (MB, default 1536)
+```
 
 ## Updating
 
@@ -539,7 +574,25 @@ meshmonitor-update -n    # dry run — preview what would change
 meshmonitor-update -h    # see all options
 ```
 
-This performs a `git pull`, rebuilds the app, and restarts services in place.
+This fast-forwards the checkout to the latest `main`, rebuilds the app, and
+restarts services in place. What to expect:
+
+- **It checks before stopping anything.** If tracked files in `/opt/meshmonitor`
+  have local edits, it lists them and refuses, with MeshMonitor still running —
+  move your changes out of the checkout (e.g. `git stash`) and run it again. A
+  modified or conflicted `package-lock.json` is a generated file and is simply
+  reset. It also refuses when there isn't enough memory to build (see
+  [Update memory](#update-memory)).
+- **Dependencies are installed with `npm ci`**, exactly as `package-lock.json`
+  pins them, so the checkout stays clean for the next update.
+- **A failed update doesn't leave MeshMonitor down.** If anything fails while
+  the services are stopped — the pull, the install, the build, or a Ctrl-C or
+  dropped SSH session — the updater puts the previous version back, rebuilds
+  it, and restarts it. `/data` is not touched (the new version never started).
+  The details go to `meshmonitor-update-recovery-<time>.log` in the backup
+  folder.
+- If the new version starts but doesn't respond, use `meshmonitor-update -r`
+  (rollback from the backup taken at the start of the run).
 
 ### Full template swap (alternative)
 
