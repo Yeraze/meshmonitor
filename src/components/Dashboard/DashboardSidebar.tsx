@@ -25,7 +25,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { DashboardSource, SourceStatus, SourceForwardingStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 import { useAuth } from '../../contexts/AuthContext';
-import { UiIcon } from '../icons';
+import { UiIcon, type UiIconName } from '../icons';
 import { DRAG_HANDLE_TOUCH_STYLE } from '../dragHandleStyle';
 import SidebarFooter from '../SidebarFooter';
 import { MarkAllReadButton } from '../messages/MarkAllReadButton';
@@ -281,32 +281,32 @@ const ForwardingPill: React.FC<{
   );
 };
 
-/** Default English for the direction badge (#5794); en.json holds the same text. */
-const MQTT_DIRECTION_TEXT: Record<MqttDirection, { label: string; title: string }> = {
+/** Icon and default English tooltip for the direction badge (#5794); en.json holds the same text. */
+const MQTT_DIRECTION_TEXT: Record<MqttDirection, { icon: UiIconName; title: string }> = {
   monitor: {
-    label: 'Monitor only',
+    icon: 'mqttMonitor',
     title: 'Monitor only: receives and stores MQTT traffic. Nothing it receives goes to your nodes or the air.',
   },
   uplink: {
-    label: 'Uplink',
+    icon: 'mqttUplink',
     title: 'Uplink: publishes local traffic to the upstream server. Nothing comes back to your nodes.',
   },
   downlink: {
-    label: 'Downlink',
+    icon: 'mqttDownlink',
     title:
       'Downlink: hands upstream traffic to your local nodes. A node transmits it only on channels with Downlink Enabled.',
   },
   both: {
-    label: 'Uplink + Downlink',
+    icon: 'mqttUplinkDownlink',
     title:
       'Uplink and downlink: publishes local traffic upstream and hands upstream traffic to your local nodes. A node transmits it only on channels with Downlink Enabled.',
   },
   local: {
-    label: 'Local only',
+    icon: 'mqttLocal',
     title: 'Local only: relays between the nodes and clients connected to this broker. No bridge links it to an upstream server.',
   },
   client_proxy: {
-    label: 'Client proxy',
+    icon: 'mqttClientProxy',
     title:
       "Client proxy: this node's MQTT traffic goes through a MeshMonitor broker or bridge. The node transmits broker traffic only on channels with Downlink Enabled.",
   },
@@ -965,12 +965,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 }
                 return (
                   <span
-                    className={`dashboard-source-card-badge${direction === 'downlink' || direction === 'both' ? ` ${styles.mqttDirToMesh}` : ''}`}
+                    className={`dashboard-source-card-badge ${styles.mqttDir}${direction === 'downlink' || direction === 'both' ? ` ${styles.mqttDirToMesh}` : ''}`}
+                    role="img"
                     title={title}
                     aria-label={title}
+                    data-direction={direction}
                     data-testid={`mqtt-direction-${source.id}`}
                   >
-                    {t(`source.mqtt_direction.${direction}`, text.label)}
+                    <UiIcon name={text.icon} size={12} />
                   </span>
                 );
               })()}

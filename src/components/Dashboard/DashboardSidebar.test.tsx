@@ -1082,9 +1082,9 @@ describe('DashboardSidebar', () => {
           ['solo', { sourceId: 'solo', connected: true, mode: 'bidirectional' } as SourceStatus],
         ]),
       });
-      expect(screen.getByTestId('mqtt-direction-up')).toHaveTextContent('source.mqtt_direction.downlink');
-      expect(screen.getByTestId('mqtt-direction-brk')).toHaveTextContent('source.mqtt_direction.downlink');
-      expect(screen.getByTestId('mqtt-direction-solo')).toHaveTextContent('source.mqtt_direction.monitor');
+      expect(screen.getByTestId('mqtt-direction-up')).toHaveAttribute('data-direction', 'downlink');
+      expect(screen.getByTestId('mqtt-direction-brk')).toHaveAttribute('data-direction', 'downlink');
+      expect(screen.getByTestId('mqtt-direction-solo')).toHaveAttribute('data-direction', 'monitor');
     });
 
     it('shows nothing for a non-admin when status carries no mode', () => {
@@ -1095,7 +1095,7 @@ describe('DashboardSidebar', () => {
 
     it('falls back to config for an admin', () => {
       renderSidebar({ sources, statusMap: new Map(), isAdmin: true });
-      expect(screen.getByTestId('mqtt-direction-up')).toHaveTextContent('source.mqtt_direction.both');
+      expect(screen.getByTestId('mqtt-direction-up')).toHaveAttribute('data-direction', 'both');
     });
   });
 
