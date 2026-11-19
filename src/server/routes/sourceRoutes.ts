@@ -560,6 +560,40 @@ function validateMqttBridgeIgnoreOkToMqtt(config: Record<string, any>): string |
 }
 
 /**
+ * Validate the fields an mqtt_broker cannot start without: `listener.port`,
+ * `auth.username` / `auth.password`, and the synthetic `gateway` identity.
+ * The dashboard form always sends them; an API caller that left one out got
+ * a saved row whose manager threw on start (reading `gateway.nodeNum` of
+ * undefined), taking its bridges down with it.
+ *
+ * Returns an error message string if invalid, or null if OK.
+ */
+function validateMqttBrokerCore(config: Record<string, any>): string | null {
+  const port = config.listener?.port;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return 'mqtt_broker listener.port must be an integer between 1 and 65535';
+  }
+  const auth = config.auth;
+  if (!auth || typeof auth !== 'object' || typeof auth.username !== 'string' || !auth.username.trim()) {
+    return 'mqtt_broker auth.username is required';
+  }
+  if (typeof auth.password !== 'string' || !auth.password) {
+    return 'mqtt_broker auth.password is required';
+  }
+  const gw = config.gateway;
+  if (!gw || typeof gw !== 'object') {
+    return 'mqtt_broker gateway is required';
+  }
+  if (!Number.isInteger(gw.nodeNum) || gw.nodeNum < 0 || gw.nodeNum > 0xffffffff) {
+    return 'mqtt_broker gateway.nodeNum must be an unsigned 32-bit integer';
+  }
+  if (typeof gw.nodeId !== 'string' || !/^![0-9a-f]{8}$/i.test(gw.nodeId)) {
+    return 'mqtt_broker gateway.nodeId must look like !0123abcd';
+  }
+  return null;
+}
+
+/**
  * Validate the optional `downlinkHopLimitOverride` on an mqtt_broker config
  * (#4081). Absent (undefined/null) means "pass hop_limit through unchanged",
  * which is also what the legacy `zeroHopInjection: false` meant. When
@@ -1036,6 +1070,8 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     // the validator then never has to reason about a null config, so adding a
     // field read to it later can't turn into a TypeError.
     if (type === 'mqtt_broker') {
+      const coreErr = validateMqttBrokerCore(config);
+      if (coreErr) return fail(res, 400, 'INVALID_BROKER_CONFIG', coreErr);
       const hopErr =
         validateMqttBrokerHopLimitOverride(config) ?? validateMqttBrokerHopLimitPolicy(config);
       if (hopErr) {
@@ -1391,6 +1427,8 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
 
       // Validate the mqtt_broker downlink hop-limit override (#4081).
       if (existing.type === 'mqtt_broker') {
+        const coreErr = validateMqttBrokerCore(config);
+        if (coreErr) return fail(res, 400, 'INVALID_BROKER_CONFIG', coreErr);
         const hopErr =
         validateMqttBrokerHopLimitOverride(config) ?? validateMqttBrokerHopLimitPolicy(config);
         if (hopErr) {
