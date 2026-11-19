@@ -1407,13 +1407,26 @@ async function loadActiveMutes(
  * Every gate here is PER SOURCE — see the handler docs below for why that is
  * the whole point rather than an optimisation.
  */
+interface VisibleUnreadEntry {
+  sourceId: string;
+  localNodeId: string;
+  senders: Record<string, number>;
+  /** Unread channel replies/tapbacks to this source's own messages (#5254).
+   *  Empty unless the caller opted in. */
+  replyIds: string[];
+}
+
 async function collectVisibleUnreadDms(
   user: Express.Request['user'],
   userId: number | null,
-): Promise<Array<{ sourceId: string; localNodeId: string; senders: Record<string, number> }>> {
+  includeReplies = false,
+): Promise<VisibleUnreadEntry[]> {
   const isAdmin = user?.isAdmin === true;
-  const out: Array<{ sourceId: string; localNodeId: string; senders: Record<string, number> }> = [];
+  const out: VisibleUnreadEntry[] = [];
   if (!user) return out;
+
+  // Channel gates for the opt-in reply count, loaded once for every source.
+  const viewer = includeReplies ? await loadUnreadViewer(user) : null;
 
   const sources = await databaseService.sources.getAllSources();
 
@@ -1440,11 +1453,33 @@ async function collectVisibleUnreadDms(
     // A DM is addressed to THIS source's local node. No local node yet
     // (still connecting, never connected) means nothing can be addressed to
     // it — deliberately not falling back to the primary source's node.
-    const localNodeId = manager.getLocalNodeInfo()?.nodeId;
-    if (!localNodeId) continue;
+    const localNode = manager.getLocalNodeInfo();
+    const localNodeId = localNode?.nodeId;
+    if (!localNode || !localNodeId) continue;
+
+    // Opt-in (#5254): channel replies and tapbacks to this source's own
+    // messages. Widens what the badge discloses, so each channel passes the
+    // same gates as `/unread-counts` — `channel_N:read` on THIS source (or a
+    // virtual-channel grant) and the user's channel mutes.
+    const replyIds: string[] = [];
+    if (viewer) {
+      const rows = await databaseService.getUnreadOwnReplyRowsAsync(localNodeId, localNode.nodeNum, userId, source.id);
+      if (rows.length > 0) {
+        const hasChannelsRead = isAdmin || viewer.permissions.can('channel_0', 'read', source.id);
+        const { channels: mutedChannelIds } = await loadActiveMutes(userId, source.id);
+        for (const row of rows) {
+          if (mutedChannelIds.has(row.channel)) continue;
+          if (!canReadUnreadChannel(viewer, row.channel, source.id, hasChannelsRead)) continue;
+          replyIds.push(row.id);
+        }
+      }
+    }
 
     const perSender = await databaseService.getBatchUnreadDMCountsAsync(localNodeId, userId, source.id);
-    if (Object.keys(perSender).length === 0) continue;
+    if (Object.keys(perSender).length === 0) {
+      if (replyIds.length > 0) out.push({ sourceId: source.id, localNodeId, senders: {}, replyIds });
+      continue;
+    }
 
     // No node list means no way to check sender visibility. Count nothing
     // rather than everything — the filter is a permission gate, so failing
@@ -1469,7 +1504,9 @@ async function collectVisibleUnreadDms(
       if (n > 0) senders[nodeId] = n;
     }
 
-    if (Object.keys(senders).length > 0) out.push({ sourceId: source.id, localNodeId, senders });
+    if (Object.keys(senders).length > 0 || replyIds.length > 0) {
+      out.push({ sourceId: source.id, localNodeId, senders, replyIds });
+    }
   }
 
   return out;
@@ -1478,16 +1515,20 @@ async function collectVisibleUnreadDms(
 router.get('/unread-by-source', optionalAuth(), async (req, res) => {
   try {
     const userId = req.user?.id ?? null;
-    const result: { [sourceId: string]: { directMessages: number } } = {};
+    const includeReplies = req.query.includeReplies === 'true';
+    const result: { [sourceId: string]: { directMessages: number; channelReplies?: number } } = {};
 
     // No identity, no per-user read state to report on.
     if (!req.user) {
       return res.json({ sources: result });
     }
 
-    for (const entry of await collectVisibleUnreadDms(req.user, userId)) {
+    for (const entry of await collectVisibleUnreadDms(req.user, userId, includeReplies)) {
       const total = Object.values(entry.senders).reduce((sum, n) => sum + n, 0);
-      if (total > 0) result[entry.sourceId] = { directMessages: total };
+      if (total === 0 && entry.replyIds.length === 0) continue;
+      result[entry.sourceId] = includeReplies
+        ? { directMessages: total, channelReplies: entry.replyIds.length }
+        : { directMessages: total };
     }
 
     res.json({ sources: result });
@@ -1551,7 +1592,10 @@ router.post('/mark-all-dms-read', optionalAuth(), async (req, res) => {
     }
 
     const userId = req.user.id ?? null;
-    const entries = await collectVisibleUnreadDms(req.user, userId);
+    // Same opt-in as the badge (#5254): when it counts replies, the sweep
+    // clears them too, or the badge would survive "mark all read".
+    const includeReplies = req.query.includeReplies === 'true';
+    const entries = await collectVisibleUnreadDms(req.user, userId, includeReplies);
 
     let marked = 0;
     for (const entry of entries) {
@@ -1561,6 +1605,10 @@ router.post('/mark-all-dms-read', optionalAuth(), async (req, res) => {
           senderNodeId,
           userId,
         );
+      }
+      if (entry.replyIds.length > 0) {
+        await databaseService.markMessagesAsReadAsync(entry.replyIds, userId);
+        marked += entry.replyIds.length;
       }
     }
 

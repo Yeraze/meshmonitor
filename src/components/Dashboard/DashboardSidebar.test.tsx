@@ -1265,4 +1265,46 @@ describe('source card with endpoints withheld', () => {
       expect(screen.queryByTestId('mqtt-proxy-warning-detail-src-1')).not.toBeInTheDocument();
     });
   });
+
+  // ── #5254: opt-in channel replies & tapbacks ──────────────────────────────
+  describe('channel replies in the unread badge (#5254)', () => {
+    const toggle = () => screen.queryByText('settings.unread_include_replies');
+
+    it('adds replies to the badge and the mark-all total', () => {
+      const { container } = renderSidebar({
+        unreadBySource: { 'src-2': { directMessages: 2, channelReplies: 3 } },
+        onMarkAllDmsRead: vi.fn(),
+      });
+      expect(container.querySelector('.dashboard-unread-badge')).toHaveTextContent('5');
+      expect(screen.queryByText('source.mark_all_dms_read')).toBeInTheDocument();
+    });
+
+    it('shows a replies-only badge', () => {
+      const { container } = renderSidebar({
+        unreadBySource: { 'src-2': { directMessages: 0, channelReplies: 1 } },
+      });
+      expect(container.querySelector('.dashboard-unread-badge')).toHaveTextContent('1');
+    });
+
+    it('offers the toggle only while the indicator is on', () => {
+      const onToggle = vi.fn();
+      const { unmount } = renderSidebar({
+        unreadIndicatorEnabled: true,
+        onToggleUnreadIndicator: vi.fn(),
+        unreadIncludeReplies: false,
+        onToggleUnreadIncludeReplies: onToggle,
+      });
+      expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+      fireEvent.click(toggle()!);
+      expect(onToggle).toHaveBeenCalledWith(true);
+      unmount();
+
+      renderSidebar({
+        unreadIndicatorEnabled: false,
+        onToggleUnreadIndicator: vi.fn(),
+        onToggleUnreadIncludeReplies: onToggle,
+      });
+      expect(toggle()).not.toBeInTheDocument();
+    });
+  });
 });

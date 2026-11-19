@@ -7,7 +7,7 @@
  *
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, and, or, lte, isNull, ne, asc, inArray, type SQL } from 'drizzle-orm';
+import { eq, desc, sql, and, or, lte, isNull, isNotNull, ne, asc, inArray, type SQL } from 'drizzle-orm';
 import {
   readMessagesSqlite,
 } from '../schema/notifications.js';
@@ -1376,6 +1376,60 @@ export class NotificationsRepository extends BaseRepository {
     } catch (error) {
       logger.error('Error getting batch unread DM counts:', error);
       return {};
+    }
+  }
+
+  /**
+   * Unread channel replies and tapbacks to messages THIS source's own node
+   * sent (#5254). Returns `{ id, channel }` per row so a caller can both count
+   * them and mark exactly that set read.
+   *
+   * A reply names its parent only by packet id (`replyId`). The parent here
+   * was sent by `localNodeNum` on `sourceId`, and every such row is keyed
+   * `${sourceId}_${localNodeNum}_${packetId}` (outbound sends and inbound
+   * inserts alike), so the parent check is a primary-key lookup rather than
+   * a suffix match on `id`.
+   *
+   * Filters mirror `getUnreadCountsByChannelAsync`: text port, not a DM, not
+   * from the local node. Plain replies and tapbacks (`emoji = 1`) both count.
+   */
+  async getUnreadOwnReplyRowsAsync(
+    localNodeId: string,
+    localNodeNum: number,
+    userId: number | null,
+    sourceId: string
+  ): Promise<Array<{ id: string; channel: number }>> {
+    const messages = this.tables.messages;
+    const readMessages = this.tables.readMessages;
+    const prefix = `${sourceId}_${localNodeNum}_`;
+    // MySQL reads `||` as OR, so it needs CONCAT. No CAST there: a cast gives
+    // the result the connection collation at IMPLICIT strength, which clashes
+    // with `messages.id` ("Illegal mix of collations"). The bare number keeps
+    // the result coercible, so the column's collation wins and the PK serves.
+    const parentId = this.isMySQL()
+      ? sql`CONCAT(${prefix}, ${messages.replyId})`
+      : sql`${prefix} || CAST(${messages.replyId} AS TEXT)`;
+
+    try {
+      const rows: Array<{ id: unknown; channel: unknown }> = await this.db
+        .select({ id: messages.id, channel: messages.channel })
+        .from(messages)
+        .leftJoin(readMessages, this.unreadJoinOn(userId)!)
+        .where(
+          and(
+            isNull(readMessages.messageId),
+            eq(messages.portnum, 1),
+            ne(messages.channel, -1),
+            ne(messages.fromNodeId, localNodeId),
+            isNotNull(messages.replyId),
+            this.withSourceScope(messages, sourceId),
+            sql`EXISTS (SELECT 1 FROM messages parent WHERE parent.id = ${parentId})`
+          )
+        );
+      return rows.map((row) => ({ id: String(row.id), channel: Number(row.channel) }));
+    } catch (error) {
+      logger.error('Error getting unread replies to own messages:', error);
+      return [];
     }
   }
 

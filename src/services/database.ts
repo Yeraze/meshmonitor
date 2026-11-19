@@ -4899,6 +4899,11 @@ class DatabaseService {
     return this.notificationsRepo.getBatchUnreadDMCountsAsync(localNodeId, userId, sourceId);
   }
 
+  /** Unread channel replies/tapbacks to this source's own messages (#5254). */
+  async getUnreadOwnReplyRowsAsync(localNodeId: string, localNodeNum: number, userId: number | null, sourceId: string): Promise<Array<{ id: string; channel: number }>> {
+    return this.notifications.getUnreadOwnReplyRowsAsync(localNodeId, localNodeNum, userId, sourceId);
+  }
+
   /**
    * Oldest still-unread message timestamp per Meshtastic conversation, for the
    * unread divider / jump-to-first-unread entry scroll (issue #4607).
@@ -5964,6 +5969,7 @@ class DatabaseService {
     mapMaxAgeHours?: number | null;
     positionHistoryPointsOnly?: boolean;
       unreadIndicatorEnabled?: boolean;
+      unreadIncludeReplies?: boolean;
       spreadNodes?: boolean;
       /** Per-source coloured ring around node markers on Unified maps (#6125). */
       colorNodesBySource?: boolean;

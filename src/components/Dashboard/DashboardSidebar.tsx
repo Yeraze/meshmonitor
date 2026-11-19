@@ -133,9 +133,13 @@ interface DashboardSidebarProps {
    * Undefined = indicator off or not loaded; a source absent from the map has
    * no badge (the server omits what the caller may not read).
    */
-  unreadBySource?: { [sourceId: string]: { directMessages: number } };
+  unreadBySource?: { [sourceId: string]: { directMessages: number; channelReplies?: number } };
   /** Current value of the per-user unread-indicator preference (#5124). */
   unreadIndicatorEnabled?: boolean;
+  /** #5254: badge also counts channel replies/tapbacks to the source's own messages. */
+  unreadIncludeReplies?: boolean;
+  /** Toggle that preference. Omit to hide the control. */
+  onToggleUnreadIncludeReplies?: (value: boolean) => void;
   /** Toggle the preference from the sidebar header (#5124). Omit to hide the control. */
   onToggleUnreadIndicator?: (value: boolean) => void;
   /**
@@ -495,6 +499,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   unreadBySource,
   unreadIndicatorEnabled = true,
   onToggleUnreadIndicator,
+  unreadIncludeReplies = false,
+  onToggleUnreadIncludeReplies,
   onMarkAllDmsRead,
   markAllDmsReadPending = false,
 }) => {
@@ -511,7 +517,10 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   // whether the bulk-clear control appears at all and whether it confirms
   // first.
   const totalUnreadDms = React.useMemo(
-    () => Object.values(unreadBySource ?? {}).reduce((sum, v) => sum + (v?.directMessages ?? 0), 0),
+    () => Object.values(unreadBySource ?? {}).reduce(
+      (sum, v) => sum + (v?.directMessages ?? 0) + (v?.channelReplies ?? 0),
+      0,
+    ),
     [unreadBySource],
   );
 
@@ -676,6 +685,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             title={t('settings.unread_indicator_help')}
           >
             {t('settings.unread_indicator')}
+          </button>
+        )}
+        {/* #5254: only meaningful while the badge is on, so hidden otherwise. */}
+        {isAuthenticated && unreadIndicatorEnabled && onToggleUnreadIncludeReplies && (
+          <button
+            className="dashboard-add-source-btn"
+            style={{ marginLeft: 6, padding: '2px 8px', fontSize: 11 }}
+            onClick={() => onToggleUnreadIncludeReplies(!unreadIncludeReplies)}
+            aria-pressed={unreadIncludeReplies}
+            title={t('settings.unread_include_replies_help')}
+          >
+            {t('settings.unread_include_replies')}
           </button>
         )}
         {/* #5197: sits BESIDE the toggle above, not in place of it. The
@@ -1003,13 +1024,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               {/* Unread DM badge (#5124). The server omits sources the viewer
                   may not read, so a missing entry is "no badge", not "zero". */}
               {(() => {
-                const unread = unreadBySource?.[source.id]?.directMessages ?? 0;
+                const dms = unreadBySource?.[source.id]?.directMessages ?? 0;
+                const replies = unreadBySource?.[source.id]?.channelReplies ?? 0;
+                const unread = dms + replies;
                 if (!isAuthenticated || unread <= 0) return null;
-                const label = t('source.unread_dms', {
+                const dmLabel = t('source.unread_dms', {
                   defaultValue: '{{count}} unread DM',
                   defaultValue_plural: '{{count}} unread DMs',
-                  count: unread,
+                  count: dms,
                 });
+                // #5254: name both parts when replies are counted.
+                const replyLabel = t('source.unread_replies', { count: replies });
+                const label = replies === 0 ? dmLabel : dms === 0 ? replyLabel : `${dmLabel}, ${replyLabel}`;
                 return (
                   <span className="dashboard-unread-badge" title={label} aria-label={label}>
                     {unread > 99 ? '99+' : unread}
