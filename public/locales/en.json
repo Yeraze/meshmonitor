@@ -7149,7 +7149,7 @@
   "source.not_connected.body": "Connect the source to see its data here.",
   "settings.unread_indicator": "Unread DM indicator",
   "settings.unread_indicator_help": "Show a badge on each source in the Sources list when it has unread direct messages.",
-  "settings.unread_include_replies": "Include channel replies & tapbacks",
+  "settings.unread_include_replies": "Include replies",
   "settings.unread_include_replies_help": "Also count unread channel replies and tapbacks to messages this source sent.",
   "source.open": "Open →",
   "source.node_count": "{{count}} nodes",

@@ -78,7 +78,7 @@ The badge obeys the permissions you already hold:
 - Anonymous visitors see no badges, because unread state belongs to a user.
 
 To also count channel replies and tapbacks to messages a source sent, click
-**Include channel replies & tapbacks** beside the indicator toggle. It is off by default and
+**Include replies** beside the indicator toggle. It is off by default and
 saved to your account. A reply counts only if you can read its channel on that source
 and you have not muted that channel. **Mark all read** then clears those replies too.
 
