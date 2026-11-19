@@ -209,8 +209,11 @@ baked into the template. Run it inside the container:
 meshmonitor-update
 ```
 
-It pulls the latest code, rebuilds, and restarts the service for you. This
-is unchanged by the Auto-Upgrade retirement — it was never part of that
+It pulls the latest code, rebuilds, and restarts the service for you. It
+checks for local edits and enough memory before it stops anything, and if an
+update fails part-way it puts the previous version back and restarts it —
+details in the [Proxmox LXC guide](/deployment/PROXMOX_LXC_GUIDE#in-place-update-recommended).
+This is unchanged by the Auto-Upgrade retirement — it was never part of that
 subsystem.
 
 ## Kubernetes / Helm
