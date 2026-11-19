@@ -100,3 +100,17 @@
 .fwdOff {
   color: var(--color-text-faint);
 }
+
+/* MQTT direction badge (#5794): an icon chip; the tooltip carries the words. */
+.mqttDir {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/* Traffic that can reach local nodes. Two classes, to beat the global
+   .dashboard-source-card-badge colour in dashboard.css. */
+.mqttDir.mqttDirToMesh {
+  color: var(--color-warning);
+}

@@ -25,13 +25,14 @@ import { CSS } from '@dnd-kit/utilities';
 import type { DashboardSource, SourceStatus, SourceForwardingStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 import { useAuth } from '../../contexts/AuthContext';
-import { UiIcon } from '../icons';
+import { UiIcon, type UiIconName } from '../icons';
 import { DRAG_HANDLE_TOUCH_STYLE } from '../dragHandleStyle';
 import SidebarFooter from '../SidebarFooter';
 import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import styles from './DashboardSidebar.module.css';
 import MqttProxyWarning from './MqttProxyWarning';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory';
+import { getMqttDirection, resolveBridgeMode, type MqttDirection } from '../../utils/mqttDirection';
 import type { TranslateFn } from '../../types/translate';
 
 // Narrow, LOCAL slices of `source.config` / the status poll for the compact
@@ -278,6 +279,37 @@ const ForwardingPill: React.FC<{
       {enabled ? `${label} ${activeRuleCount}` : `${label} ${t('forwarding.pill_off', 'off')}`}
     </button>
   );
+};
+
+/** Icon and default English tooltip for the direction badge (#5794); en.json holds the same text. */
+const MQTT_DIRECTION_TEXT: Record<MqttDirection, { icon: UiIconName; title: string }> = {
+  monitor: {
+    icon: 'mqttMonitor',
+    title: 'Monitor only: receives and stores MQTT traffic. Nothing it receives goes to your nodes or the air.',
+  },
+  uplink: {
+    icon: 'mqttUplink',
+    title: 'Uplink: publishes local traffic to the upstream server. Nothing comes back to your nodes.',
+  },
+  downlink: {
+    icon: 'mqttDownlink',
+    title:
+      'Downlink: hands upstream traffic to your local nodes. A node transmits it only on channels with Downlink Enabled.',
+  },
+  both: {
+    icon: 'mqttUplinkDownlink',
+    title:
+      'Uplink and downlink: publishes local traffic upstream and hands upstream traffic to your local nodes. A node transmits it only on channels with Downlink Enabled.',
+  },
+  local: {
+    icon: 'mqttLocal',
+    title: 'Local only: relays between the nodes and clients connected to this broker. No bridge links it to an upstream server.',
+  },
+  client_proxy: {
+    icon: 'mqttClientProxy',
+    title:
+      "Client proxy: this node's MQTT traffic goes through a MeshMonitor broker or bridge. The node transmits broker traffic only on channels with Downlink Enabled.",
+  },
 };
 
 interface KebabMenuProps {
@@ -916,6 +948,34 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   <span className={styles.activityWindow}>{activityBadge.window}</span>
                 </span>
               )}
+              {!isUnified && source.enabled && (() => {
+                // Which way MQTT traffic moves through this source (#5794).
+                // Reads only the sources this viewer can see. Lives in the
+                // wrapping status row: the header has no room for it.
+                const direction = getMqttDirection(source, sources, (b) =>
+                  resolveBridgeMode(b, statusMap.get(b.id)?.mode, isAdmin),
+                );
+                if (!direction) return null;
+                const text = MQTT_DIRECTION_TEXT[direction];
+                let title = t(`source.mqtt_direction.${direction}_title`, text.title);
+                // A non-admin may not see every source, so a claim that
+                // nothing is linked rests only on the ones they can see.
+                if (!isAdmin && (direction === 'monitor' || direction === 'local')) {
+                  title += ` ${t('source.mqtt_direction.visible_only', 'Based on the sources you can see.')}`;
+                }
+                return (
+                  <span
+                    className={`dashboard-source-card-badge ${styles.mqttDir}${direction === 'downlink' || direction === 'both' ? ` ${styles.mqttDirToMesh}` : ''}`}
+                    role="img"
+                    title={title}
+                    aria-label={title}
+                    data-direction={direction}
+                    data-testid={`mqtt-direction-${source.id}`}
+                  >
+                    <UiIcon name={text.icon} size={12} />
+                  </span>
+                );
+              })()}
               {!isUnified && source.type === 'meshtastic_tcp' && status?.mqttProxyUnlinked === true && (
                 // Proxy to Client is on and nothing carries MQTT (#5013). The
                 // server sends the flag only to viewers who may read this

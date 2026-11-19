@@ -33,6 +33,25 @@ Two rules follow from this table:
 - **Bridge into the mesh** (upstream packets should be transmitted locally): needs a broker, a node with Downlink Enabled, and a hop limit you have chosen. See [How much airtime downlink costs](#how-much-airtime-downlink-costs).
 :::
 
+### What the source card badge means
+
+Each MQTT source's card on the dashboard shows an icon for which way its traffic moves. Hover it for the full description. MeshMonitor works this out from the source's settings and the sources you can see:
+
+![Dashboard source cards with MQTT direction badges](/images/features/5794-mqtt-direction-badges.png)
+
+| Icon | Badge | Shown on | Meaning |
+|---|---|---|---|
+| Eye | **Monitor only** | Bridge, MeshCore MQTT source | Receives and stores traffic. Nothing it receives reaches your nodes or the air. A bridge reads this way when it has no parent broker and no node is linked to it, in any mode but publish-only (which then has nothing to publish and shows no badge). |
+| Up arrow | **Uplink** | Bridge, broker | Publishes local traffic to the upstream server. Nothing comes back. |
+| Down arrow | **Downlink** | Bridge, broker | Hands upstream traffic to your local nodes. |
+| Up-and-down arrow | **Uplink + Downlink** | Bridge, broker | Both of the above. |
+| House | **Local only** | Broker | Relays between the nodes and clients connected to it. No bridge links it to an upstream server. |
+| Chain link | **Client proxy** | Node source | The node's MQTT traffic goes through a MeshMonitor broker or bridge (its **MQTT source link**). |
+
+**Downlink** and **Uplink + Downlink** are drawn in the warning colour, because only those paths can lead to a transmission. Even then, a node transmits a broker packet only on a channel with **Downlink Enabled**, and the badge cannot see that setting. A broker's badge comes from its bridges; a node that connects to the broker directly does not change it. A bridge in **Monitor only** still publishes the messages you send through it with MQTT-native send.
+
+The badge counts only sources you can see. If you cannot see every source, **Monitor only** and **Local only** describe what your sources link to, not the whole system.
+
 ### How a node reaches the broker
 
 A node connects to MeshMonitor's broker in one of two ways. Use one or the other per node, never both:
