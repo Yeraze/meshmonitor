@@ -37,6 +37,8 @@ Two rules follow from this table:
 
 Each MQTT source's card on the dashboard shows which way its traffic moves. MeshMonitor works this out from the source's settings and the sources you can see:
 
+![Dashboard source cards with MQTT direction badges](/images/features/5794-mqtt-direction-badges.png)
+
 | Badge | Shown on | Meaning |
 |---|---|---|
 | **Monitor only** | Bridge, MeshCore MQTT source | Receives and stores traffic. Nothing it receives reaches your nodes or the air. A bridge reads this way when it has no parent broker and no node is linked to it, in any mode but publish-only (which then has nothing to publish and shows no badge). |

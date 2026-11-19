@@ -833,31 +833,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 source.type !== 'reticulum' && (
                   <span className="dashboard-source-card-badge">{source.type}</span>
                 )}
-              {!isUnified && source.enabled && (() => {
-                // Which way MQTT traffic moves through this source (#5794).
-                // Reads only the sources this viewer can see.
-                const direction = getMqttDirection(source, sources, (b) =>
-                  resolveBridgeMode(b, statusMap.get(b.id)?.mode, isAdmin),
-                );
-                if (!direction) return null;
-                const text = MQTT_DIRECTION_TEXT[direction];
-                let title = t(`source.mqtt_direction.${direction}_title`, text.title);
-                // A non-admin may not see every source, so a claim that
-                // nothing is linked rests only on the ones they can see.
-                if (!isAdmin && (direction === 'monitor' || direction === 'local')) {
-                  title += ` ${t('source.mqtt_direction.visible_only', 'Based on the sources you can see.')}`;
-                }
-                return (
-                  <span
-                    className={`dashboard-source-card-badge${direction === 'downlink' || direction === 'both' ? ` ${styles.mqttDirToMesh}` : ''}`}
-                    title={title}
-                    aria-label={title}
-                    data-testid={`mqtt-direction-${source.id}`}
-                  >
-                    {t(`source.mqtt_direction.${direction}`, text.label)}
-                  </span>
-                );
-              })()}
               {!isUnified && (() => {
                 const vn = (source.config as any)?.virtualNode;
                 return vn?.enabled ? (
@@ -973,6 +948,32 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   <span className={styles.activityWindow}>{activityBadge.window}</span>
                 </span>
               )}
+              {!isUnified && source.enabled && (() => {
+                // Which way MQTT traffic moves through this source (#5794).
+                // Reads only the sources this viewer can see. Lives in the
+                // wrapping status row: the header has no room for it.
+                const direction = getMqttDirection(source, sources, (b) =>
+                  resolveBridgeMode(b, statusMap.get(b.id)?.mode, isAdmin),
+                );
+                if (!direction) return null;
+                const text = MQTT_DIRECTION_TEXT[direction];
+                let title = t(`source.mqtt_direction.${direction}_title`, text.title);
+                // A non-admin may not see every source, so a claim that
+                // nothing is linked rests only on the ones they can see.
+                if (!isAdmin && (direction === 'monitor' || direction === 'local')) {
+                  title += ` ${t('source.mqtt_direction.visible_only', 'Based on the sources you can see.')}`;
+                }
+                return (
+                  <span
+                    className={`dashboard-source-card-badge${direction === 'downlink' || direction === 'both' ? ` ${styles.mqttDirToMesh}` : ''}`}
+                    title={title}
+                    aria-label={title}
+                    data-testid={`mqtt-direction-${source.id}`}
+                  >
+                    {t(`source.mqtt_direction.${direction}`, text.label)}
+                  </span>
+                );
+              })()}
               {!isUnified && source.type === 'meshtastic_tcp' && status?.mqttProxyUnlinked === true && (
                 // Proxy to Client is on and nothing carries MQTT (#5013). The
                 // server sends the flag only to viewers who may read this
