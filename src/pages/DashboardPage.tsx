@@ -1565,7 +1565,7 @@ function DashboardInner() {
                   <span style={{ fontSize: 11, color: 'var(--color-text-subtle)', marginTop: 4 }}>
                     {t(
                       'source.form.mqtt_bridge_broker_help',
-                      'With a parent broker, the bridge also republishes upstream traffic to local devices and forwards their packets upstream. Without one, it runs as a pure MQTT client — useful for monitoring or as a client-proxy target for a Meshtastic source.',
+                      'With a parent broker, the bridge also republishes upstream traffic to local devices and forwards their packets upstream. Without one, it runs as a pure MQTT client — useful for monitoring or as a client-proxy target for a Meshtastic source. With no parent broker and no linked node, nothing it receives reaches your nodes or the air, and its card reads Monitor only.',
                     )}
                   </span>
                 </label>

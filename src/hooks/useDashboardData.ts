@@ -73,6 +73,8 @@ export interface SourceStatus {
    * connect clears it.
    */
   authStopped?: boolean;
+  /** MQTT bridge only: its mode (`bidirectional`, `publish_only`, `subscribe_only`). */
+  mode?: string;
   /** Embedded MeshCore MQTT broker (#6197): observers connected right now. */
   clientCount?: number;
   /**

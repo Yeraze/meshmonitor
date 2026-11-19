@@ -12,6 +12,7 @@ import {
   ArrowLeftRight,
   ArrowRight,
   ArrowUp,
+  ArrowUpDown,
   ArrowUpFromLine,
   BarChart3,
   Beaker,
@@ -277,6 +278,12 @@ export const UI_ICON_DEFINITIONS = {
   downloadData: { lucide: ArrowDownToLine, emoji: '📥', usage: 'data export' },
   uploadData: { lucide: ArrowUpFromLine, emoji: '📤', usage: 'data import' },
   sortAscending: { lucide: ArrowUp, emoji: '↑', usage: 'ascending sort' },
+  mqttMonitor: { lucide: Eye, emoji: '👁️', usage: 'MQTT source that only receives (#5794)' },
+  mqttUplink: { lucide: ArrowUp, emoji: '⬆️', usage: 'MQTT uplink to an upstream server (#5794)' },
+  mqttDownlink: { lucide: ArrowDown, emoji: '⬇️', usage: 'MQTT downlink to local nodes (#5794)' },
+  mqttUplinkDownlink: { lucide: ArrowUpDown, emoji: '↕️', usage: 'MQTT uplink and downlink (#5794)' },
+  mqttLocal: { lucide: Home, emoji: '🏠', usage: 'MQTT broker with no upstream bridge (#5794)' },
+  mqttClientProxy: { lucide: Link, emoji: '🔗', usage: 'node MQTT traffic through a MeshMonitor source (#5794)' },
   sortDescending: { lucide: ArrowDown, emoji: '↓', usage: 'descending sort and jump-to-bottom' },
 } as const satisfies Record<string, UiIconDefinition>;
 
