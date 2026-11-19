@@ -132,7 +132,9 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ### MeshRadio Online
 - **URL**: [meshtastic.meshradio.online](https://meshtastic.meshradio.online/)
-- **Description**: Local Meshtastic monitor tracking LongFast activity and node telemetry.
+- **Network**: MeshRadio Online
+- **Location**: Novorossiysk, Russia
+- **Description**: Meshtastic monitor tracking local LongFast activity and node telemetry.
 
 ---
 
