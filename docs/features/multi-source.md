@@ -77,6 +77,11 @@ The badge obeys the permissions you already hold:
 - Muted conversations never light the badge.
 - Anonymous visitors see no badges, because unread state belongs to a user.
 
+To also count channel replies and tapbacks to messages a source sent, click
+**Include replies** beside the indicator toggle. It is off by default and
+saved to your account. A reply counts only if you can read its channel on that source
+and you have not muted that channel. **Mark all read** then clears those replies too.
+
 MeshCore and Reticulum sources show no badge. Their messages live in other tables, and
 MeshMonitor leaves them out rather than showing a zero it cannot stand behind.
 

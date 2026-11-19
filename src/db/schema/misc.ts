@@ -126,6 +126,7 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   // the badge is the feature; the toggle exists because a reporter with 5+
   // sources expects it lit constantly and wants it gone.
   unreadIndicatorEnabled: integer('unread_indicator_enabled', { mode: 'boolean' }).default(true),
+  unreadIncludeReplies: integer('unread_include_replies', { mode: 'boolean' }).default(false),
   // Within-accuracy-cell marker offset for low-precision nodes (#5177).
   // Default true = today's decluttering behaviour; false pins every node at
   // exactly the position it reported.
@@ -177,6 +178,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showEstimatedPositions: pgBoolean('show_estimated_positions').default(false),
   showAtakContacts: pgBoolean('show_atak_contacts').default(false),
   unreadIndicatorEnabled: pgBoolean('unread_indicator_enabled').default(true),
+  unreadIncludeReplies: pgBoolean('unread_include_replies').default(false),
   spreadNodes: pgBoolean('spread_nodes').default(true),
   colorNodesBySource: pgBoolean('color_nodes_by_source').default(false),
   aircraftDisplayMode: pgText('aircraft_display_mode'),
@@ -440,6 +442,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showEstimatedPositions: myBoolean('show_estimated_positions').default(false),
   showAtakContacts: myBoolean('show_atak_contacts').default(false),
   unreadIndicatorEnabled: myBoolean('unread_indicator_enabled').default(true),
+  unreadIncludeReplies: myBoolean('unread_include_replies').default(false),
   spreadNodes: myBoolean('spread_nodes').default(true),
   colorNodesBySource: myBoolean('color_nodes_by_source').default(false),
   aircraftDisplayMode: myVarchar('aircraft_display_mode', { length: 8 }),
