@@ -1093,6 +1093,20 @@ describe('DashboardSidebar', () => {
       expect(screen.queryByTestId('mqtt-direction-brk')).not.toBeInTheDocument();
     });
 
+    it('marks a linked node as client proxy, without the warning colour', () => {
+      renderSidebar({
+        sources: [
+          ...sources,
+          { id: 'n', name: 'Node', type: 'meshtastic_tcp', enabled: true, config: { mqttLink: { enabled: true, mqttBrokerSourceId: 'brk' } } },
+        ],
+        statusMap: new Map(),
+      });
+      const chip = screen.getByTestId('mqtt-direction-n');
+      expect(chip).toHaveAttribute('data-direction', 'client_proxy');
+      expect(chip.className).not.toMatch(/mqttDirToMesh/);
+      expect(chip.querySelector('svg')).not.toBeNull();
+    });
+
     it('falls back to config for an admin', () => {
       renderSidebar({ sources, statusMap: new Map(), isAdmin: true });
       expect(screen.getByTestId('mqtt-direction-up')).toHaveAttribute('data-direction', 'both');

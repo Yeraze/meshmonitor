@@ -23,6 +23,7 @@ export type MqttDirection = 'monitor' | 'uplink' | 'downlink' | 'both' | 'local'
 export interface MqttDirectionSource {
   id: string;
   type: string;
+  /** Only an explicit `false` means off, as in `mqttProxyLink.ts`. */
   enabled?: boolean | null;
   config?: unknown;
 }
@@ -112,6 +113,7 @@ export function getMqttDirection(
       for (const s of sources) {
         if (s.type !== 'mqtt_bridge' || s.enabled === false || field(s.config, 'brokerSourceId') !== source.id) continue;
         const mode = modeOf(s);
+        // One unknowable bridge makes any answer a guess: show nothing.
         if (mode === null) return null;
         if (mode !== 'subscribe_only') up = true;
         if (mode !== 'publish_only') down = true;

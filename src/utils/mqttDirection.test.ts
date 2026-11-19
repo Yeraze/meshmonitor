@@ -78,6 +78,11 @@ describe('getMqttDirection — broker', () => {
     const other = bridge({ brokerSourceId: 'z' }, 'y');
     expect(getMqttDirection(broker, [broker, off, other], adminMode)).toBe('local');
   });
+  it('shows nothing when any child bridge mode is unknown, even if others are known', () => {
+    const up = bridge({ brokerSourceId: 'b', mode: 'publish_only' }, 'u');
+    const unk = bridge({ brokerSourceId: 'b' }, 'unk');
+    expect(getMqttDirection(broker, [broker, up, unk], (s) => (s.id === 'unk' ? null : adminMode(s)))).toBeNull();
+  });
   it('shows nothing when a child bridge mode is unknown', () => {
     const b = bridge({ brokerSourceId: 'b' });
     expect(getMqttDirection(broker, [broker, b], () => null)).toBeNull();
