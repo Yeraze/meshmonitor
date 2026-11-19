@@ -22,8 +22,11 @@
 #   2. Run this script whenever a new version is available — no redeployment needed
 #
 # What this script does:
+#   - Checks the source tree is clean BEFORE stopping anything
 #   - Backs up /data/, meshmonitor.env, and systemd service files
-#   - Stops services, pulls latest source, rebuilds, restarts
+#   - Stops services, fast-forwards to origin/main, npm ci + rebuilds, restarts
+#   - If anything fails while the services are stopped, puts the previous
+#     version back and restarts it (the app is not left down)
 #   - Keeps the last 5 backups and supports one-command rollback
 #
 # Requirements:
@@ -57,6 +60,20 @@
 #   - PUPPETEER_SKIP_DOWNLOAD=true is set automatically on every npm install.
 #     Stale Puppeteer cache (~/.cache/puppeteer/) is wiped before each install
 #     to prevent the "folder exists but executable missing" Chrome error (4.7.x+).
+#   - Dependencies are installed with `npm ci`, which installs exactly what
+#     package-lock.json says and never rewrites it (`npm install` did, which
+#     left the checkout dirty and broke the next update's pull).
+#   - Updates only run from a clean checkout. A modified or conflicted
+#     package-lock.json is reset to the committed version (it is generated);
+#     any other modified tracked file stops the run before services are stopped.
+#   - Memory: the build's needs are checked BEFORE anything is stopped
+#     (free RAM + swap + what the stopped services give back). Enough for the
+#     type check (~3.3 GB at 4.18.1) → full build; enough for ~1.9 GB → lean
+#     build (type check skipped — it writes no files, upstream CI runs it);
+#     less → refuses with the app still running. Used by update, rollback and
+#     recovery. Overrides: BUILD_MODE=full|lean, HEAP_TYPECHECK=<MB>,
+#     HEAP_SERVER=<MB> (defaults 3072 / 1536), e.g.
+#       BUILD_MODE=lean meshmonitor-update
 #
 # END_HELP
 
@@ -606,6 +623,117 @@ wait_for_healthy() {
 }
 
 # =============================================================================
+# BUILD MEMORY PLAN
+# Shared by update, rollback and automatic recovery.
+#
+# The build is three steps with very different memory needs. Measured on
+# 4.18.1 (4 GB LXC, no swap; each step alone, peak memory of its cgroup):
+#   type check  `tsc` (tsconfig.json noEmit)  heap 2048 MB fails, 3072 ok; peak ~3.0 GB
+#   client      `vite build`                  ~1.2 GB whatever the heap cap (native)
+#   server      `tsc -p tsconfig.server.json` heap 1024 MB fails, 1536 ok; peak ~1.7 GB
+# A Node heap cap cannot make a step need less than it does: below the need the
+# step aborts (4.17.1's build at 1536 MB did), above the machine's memory it
+# swaps or gets OOM-killed. So instead of guessing a cap from RAM:
+#   - The type check writes no files and upstream CI runs it on every commit,
+#     so a machine without room for it gets a "lean" build: vite build +
+#     server build, type check skipped. If the type check still runs out of
+#     memory in a full build, the build carries on lean.
+#   - The memory budget is checked BEFORE anything is stopped:
+#       budget = MemAvailable + SwapFree + memory the services free when stopped
+#     full build if budget >= NEED_FULL_MB, lean if >= NEED_LEAN_MB, otherwise
+#     the run refuses with the app still running (add RAM or swap).
+# Overrides (environment): BUILD_MODE=full|lean, HEAP_TYPECHECK=<MB>,
+# HEAP_SERVER=<MB>. Thresholds are measured values plus ~250 MB of margin;
+# re-measure when the toolchain changes (Vite 8 / TypeScript 6 at 4.18.1).
+# =============================================================================
+num_or() { [[ "${1:-}" =~ ^[0-9]+$ ]] && [ "$1" -ge 256 ] && echo "$1" || echo "$2"; }
+HEAP_TYPECHECK=$(num_or "${HEAP_TYPECHECK:-}" 3072)
+HEAP_SERVER=$(num_or "${HEAP_SERVER:-}" 1536)
+NEED_FULL_MB=3300
+NEED_LEAN_MB=1900
+BUILD_MODE_REQ="${BUILD_MODE:-}"
+BUILD_MODE=""
+
+mem_field() { awk -v k="$1" '$1==k":" {print int($2/1024)}' /proc/meminfo; }
+
+# Memory the build can use: what is free now, plus swap, plus what our own
+# services give back when they are stopped (0 if they are already stopped).
+memory_budget() {
+    local s cur svc_mb=0
+    for s in "${SERVICES[@]}"; do
+        cur=$(systemctl show -p MemoryCurrent --value "${s}.service" 2>/dev/null || true)
+        [[ "$cur" =~ ^[0-9]+$ ]] && svc_mb=$(( svc_mb + cur / 1048576 ))
+    done
+    echo $(( $(mem_field MemAvailable) + $(mem_field SwapFree) + svc_mb ))
+}
+
+# Sets BUILD_MODE (full|lean) and reports the plan. Returns 1 when even a lean
+# build will not fit — callers refuse before stopping anything.
+plan_build() {
+    local budget; budget=$(memory_budget)
+    log "Memory: $(mem_field MemTotal)MB RAM, $(mem_field SwapTotal)MB swap; budget for the build ${budget}MB"
+    if [ "$BUILD_MODE_REQ" = "full" ] || [ "$BUILD_MODE_REQ" = "lean" ]; then
+        BUILD_MODE="$BUILD_MODE_REQ"
+        ok "Build mode: ${BLD}${BUILD_MODE}${N} (set by BUILD_MODE)"
+        return 0
+    fi
+    if [ "$budget" -ge "$NEED_FULL_MB" ]; then
+        BUILD_MODE=full
+        ok "Build mode: ${BLD}full${N} (type check + client + server; needs ~${NEED_FULL_MB}MB)"
+    elif [ "$budget" -ge "$NEED_LEAN_MB" ]; then
+        BUILD_MODE=lean
+        warn "Build mode: ${BLD}lean${N} — not enough memory for the type check (~${NEED_FULL_MB}MB);"
+        warn "  building client + server only (~${NEED_LEAN_MB}MB). The type check writes no files."
+    else
+        BUILD_MODE=lean
+        err "Not enough memory to build MeshMonitor: budget ${budget}MB, a lean build needs ~${NEED_LEAN_MB}MB."
+        err "  Add RAM or swap (for an LXC: Proxmox → CT → Resources → Memory/Swap), then re-run."
+        err "  To try anyway: BUILD_MODE=lean meshmonitor-update"
+        return 1
+    fi
+    return 0
+}
+
+# npm ci + build, honouring BUILD_MODE. Returns non-zero on failure instead of
+# exiting, so automatic recovery can call it too. In a real run every step is
+# checked explicitly (set -e is off inside a function called with ||).
+install_and_build() {
+    local hs="export NODE_OPTIONS='--max-old-space-size=${HEAP_SERVER}'"
+    local ht="export NODE_OPTIONS='--max-old-space-size=${HEAP_TYPECHECK}'"
+    local rc=0
+    log "Installing dependencies (npm ci)..."
+    run_sh "cd '$INSTALL_DIR' && $hs && export PUPPETEER_SKIP_DOWNLOAD=true && $SUDO npm ci --legacy-peer-deps --audit false" || return 1
+
+    if grep -qE '"build"[[:space:]]*:[[:space:]]*"tsc && vite build"' "$INSTALL_DIR/package.json"; then
+        if [ "$BUILD_MODE" = "full" ]; then
+            log "Type check (tsc, heap cap ${HEAP_TYPECHECK}MB)..."
+            if [ "$DRY_RUN" -eq 1 ]; then
+                echo "    [DRY RUN] cd '$INSTALL_DIR' && $ht && $SUDO node_modules/.bin/tsc"
+            else
+                (cd "$INSTALL_DIR" && eval "$ht" && $SUDO node_modules/.bin/tsc) || rc=$?
+                case "$rc" in
+                    0)       ok "Type check passed." ;;
+                    134|137) warn "Type check ran out of memory (exit ${rc}) — skipped; continuing with a lean build." ;;
+                    *)       err "Type check failed (exit ${rc})."; return 1 ;;
+                esac
+            fi
+        else
+            log "Type check skipped (lean build)."
+        fi
+        log "Building client (vite build)..."
+        run_sh "cd '$INSTALL_DIR' && $hs && $SUDO node_modules/.bin/vite build" || return 1
+    else
+        warn "package.json 'build' is no longer 'tsc && vite build' — running it as is (no lean mode)."
+        log "Building client (npm run build, heap cap ${HEAP_TYPECHECK}MB)..."
+        run_sh "cd '$INSTALL_DIR' && $ht && $SUDO npm run build" || return 1
+    fi
+
+    log "Building server (TypeScript, heap cap ${HEAP_SERVER}MB)..."
+    run_sh "cd '$INSTALL_DIR' && $hs && $SUDO npm run build:server" || return 1
+    return 0
+}
+
+# =============================================================================
 # ROLLBACK MODE
 # Always shows a warning banner listing exactly what will be overwritten.
 # Requires typing 'yes' in full — -y / --yes does NOT bypass this.
@@ -710,6 +838,11 @@ do_rollback() {
         exit 0
     fi
 
+    if [ "$DO_CODE" -eq 1 ]; then
+        hr
+        plan_build || die "Rollback not started — services were not stopped, nothing was changed."
+    fi
+
     hr
     log "Stopping services..."
     for s in "${SERVICES[@]}"; do run systemctl stop "$s" 2>/dev/null || true; done
@@ -734,9 +867,8 @@ do_rollback() {
         log "Resetting source tree to commit ${BLD}${commit}${N}..."
         run_sh "cd '$INSTALL_DIR' && $GIT_CMD reset --hard '$commit'"
         run_sh "cd '$INSTALL_DIR' && $GIT_CMD clean -fd"
-        run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP:-1536}' && export PUPPETEER_SKIP_DOWNLOAD=true && $SUDO npm install --legacy-peer-deps --audit false"
-        run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP:-1536}' && $SUDO npm run build"
-        run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP:-1536}' && $SUDO npm run build:server"
+        install_and_build \
+            || die "Rollback build failed — services are stopped. Fix the cause above, then run meshmonitor-update -r again."
         run_sh "$SUDO chown -R '${APP_USER}:${APP_GROUP}' '$INSTALL_DIR'"
         if [ -f "$INSTALL_DIR/lxc/systemd/meshmonitor.service" ]; then
             run_sh "cd '$INSTALL_DIR' && $SUDO cp lxc/systemd/meshmonitor.service /etc/systemd/system/"
@@ -780,16 +912,12 @@ free_mb=$(df -Pm "$INSTALL_DIR" | awk 'NR==2 {print $4}')
 [ "$free_mb" -ge 2048 ] && ok "Disk: ${free_mb}MB free" \
     || warn "Low disk space: ${free_mb}MB free (need ~2GB for build)"
 
-mem_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
-if [ "$mem_mb" -ge 4096 ]; then
-    NODE_HEAP_CAP=$(( mem_mb * 3 / 4 ))
-    ok "RAM: ${mem_mb}MB  (Node heap cap: ${NODE_HEAP_CAP}MB)"
-elif [ "$mem_mb" -ge 2048 ]; then
-    NODE_HEAP_CAP=1536
-    ok "RAM: ${mem_mb}MB  (Node heap cap: ${NODE_HEAP_CAP}MB)"
-else
-    NODE_HEAP_CAP=1536
-    warn "Low RAM: ${mem_mb}MB — capping Node heap at ${NODE_HEAP_CAP}MB"
+if ! plan_build; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+        warn "[DRY RUN] A real run would stop here."
+    else
+        die "Refusing to update — services were not stopped, nothing was changed."
+    fi
 fi
 
 command -v node >/dev/null 2>&1 \
@@ -910,9 +1038,158 @@ if [ -n "$INCOMING_VERSION" ]; then
 fi
 
 # =============================================================================
+# SOURCE TREE CHECK
+# Runs before anything is stopped. Updates only proceed from a clean checkout.
+# Local edits used to be stashed and popped around the pull; a conflicting pop
+# (usually package-lock.json, rewritten by the old `npm install`) left the file
+# unmerged, and the next run stopped the services, failed to stash, died at the
+# pull and left the app down.
+#   - package-lock.json is generated: a local change or a conflict in it is
+#     reset to the committed version (npm ci needs it to match package.json).
+#   - Any other modified tracked file, a merge/rebase in progress, or a local
+#     branch that cannot fast-forward to origin/main stops the run here, with
+#     the services still running. Existing stash entries are left alone.
+# =============================================================================
+check_source_tree() {
+    local gitdir op lock_state dirty line
+    gitdir=$(cd "$INSTALL_DIR" && $GIT_CMD rev-parse --git-dir)
+    case "$gitdir" in /*) ;; *) gitdir="$INSTALL_DIR/$gitdir" ;; esac
+    for op in MERGE_HEAD rebase-merge rebase-apply CHERRY_PICK_HEAD REVERT_HEAD; do
+        if [ -e "$gitdir/$op" ]; then
+            err "A git operation is in progress in ${INSTALL_DIR} (${op})."
+            err "Finish or abort it (e.g. git merge --abort, git rebase --abort), then re-run."
+            die "Refusing to update — services were not stopped, nothing was changed."
+        fi
+    done
+
+    lock_state=$(cd "$INSTALL_DIR" && $GIT_CMD status --porcelain --untracked-files=no -- package-lock.json)
+    if [ -n "$lock_state" ]; then
+        warn "package-lock.json differs from the committed version ('${lock_state:0:2}') — resetting it (generated file)."
+        run_sh "cd '$INSTALL_DIR' && $GIT_CMD checkout HEAD -- package-lock.json"
+        [ "$DRY_RUN" -eq 0 ] && ok "package-lock.json reset to HEAD."
+    fi
+
+    dirty=$(cd "$INSTALL_DIR" && $GIT_CMD status --porcelain --untracked-files=no -- . ':(exclude)package-lock.json')
+    if [ -n "$dirty" ]; then
+        err "Tracked files are modified in ${INSTALL_DIR}:"
+        while IFS= read -r line; do err "    $line"; done <<< "$dirty"
+        err "Updates run from a clean checkout. Keep your changes somewhere else, e.g.:"
+        err "    cd ${INSTALL_DIR} && ${GIT_CMD} stash push -m 'local changes'"
+        if [ "$DRY_RUN" -eq 1 ]; then
+            warn "[DRY RUN] A real run would stop here."
+        else
+            die "Refusing to update — services were not stopped, nothing was changed."
+        fi
+    fi
+
+    if (cd "$INSTALL_DIR" && $GIT_CMD rev-parse -q --verify origin/main >/dev/null) \
+       && ! (cd "$INSTALL_DIR" && $GIT_CMD merge-base --is-ancestor HEAD origin/main); then
+        err "Local branch has commits that are not on origin/main — cannot fast-forward."
+        err "    cd ${INSTALL_DIR} && ${GIT_CMD} log --oneline origin/main..HEAD"
+        if [ "$DRY_RUN" -eq 1 ]; then
+            warn "[DRY RUN] A real run would stop here."
+        else
+            die "Refusing to update — services were not stopped, nothing was changed."
+        fi
+    fi
+    [ -z "$dirty" ] && ok "Source tree clean."
+    return 0
+}
+hr
+log "Checking source tree..."
+check_source_tree
+
+# =============================================================================
+# FAILURE RECOVERY
+# From the moment the services stop until they are started again, a failure
+# (die, or any command failing under set -e: the pull, npm ci, an
+# out-of-memory build, Ctrl-C, a closed SSH session) used to exit with
+# MeshMonitor stopped. This EXIT trap puts the previous version back instead
+# (it ignores further signals and logs to BACKUP_DIR, so a dead terminal
+# cannot stop it half way):
+#   - source tree moved   → git reset --hard OLD_COMMIT, that version's units
+#   - deps/build started  → npm ci + lean build of OLD_COMMIT
+#   - then chown, start the services, health check.
+# The new version never started, so no schema migration ran: /data is left as
+# it is. Disarmed just before the services are started on the new version —
+# failures after that point still point to --rollback, as before.
+# =============================================================================
+RECOVERY_ARMED=0; CODE_TOUCHED=0; BUILD_TOUCHED=0; UNITS_TOUCHED=0; OLD_COMMIT=""
+recover_previous_version() {
+    local rc=$?
+    [ "$RECOVERY_ARMED" -eq 1 ] || return 0
+    RECOVERY_ARMED=0
+    trap - EXIT
+    # Finish the recovery whatever happens to the terminal: a Ctrl-C, a closed
+    # SSH session (HUP) or a dead pipe (`| tee` killed by the same Ctrl-C) must
+    # not stop it half way. Ignored signals are inherited by npm/git too.
+    trap '' INT TERM HUP PIPE
+    set +e
+    [ "$rc" -eq 0 ] && rc=1
+    local good=1 s
+    # Full output goes to a log file; the terminal (fd 3) gets the key lines,
+    # best effort — a write to a dead terminal fails quietly instead of killing us.
+    local rlog="${BACKUP_DIR:-/root}/meshmonitor-update-recovery-$(date +%Y%m%d-%H%M%S).log"
+    exec 3>&1
+    exec >>"$rlog" 2>&1 || exec >/dev/null 2>&1
+    tell() { printf '%s\n' "$*"; printf '%s\n' "$*" >&3 2>/dev/null || true; }
+    tell ""
+    tell "[X] Update failed (exit ${rc}) while the services were stopped."
+    tell "[*] Restoring the previous version (${OLD_COMMIT:0:12}) and restarting it — details: ${rlog}"
+    if [ "$CODE_TOUCHED" -eq 1 ]; then
+        tell "[*] Resetting source tree to ${OLD_COMMIT:0:12}..."
+        (cd "$INSTALL_DIR" && $GIT_CMD reset --hard -q "$OLD_COMMIT" \
+            && $GIT_CMD submodule update --init --recursive) || good=0
+    fi
+    if [ "$CODE_TOUCHED" -eq 1 ] || [ "$UNITS_TOUCHED" -eq 1 ]; then
+        if [ -f "$INSTALL_DIR/lxc/systemd/meshmonitor.service" ]; then
+            $SUDO cp "$INSTALL_DIR/lxc/systemd/meshmonitor.service" /etc/systemd/system/ || good=0
+            $SUDO cp "$INSTALL_DIR/lxc/systemd/meshmonitor-apprise.service" /etc/systemd/system/ 2>/dev/null || true
+            systemctl daemon-reload || good=0
+        fi
+    fi
+    if [ "$BUILD_TOUCHED" -eq 1 ] && [ "$good" -eq 1 ]; then
+        # Lean: the previous version was type-checked when it was built; skipping
+        # it makes recovery faster and fit in less memory.
+        tell "[*] Reinstalling dependencies and rebuilding ${OLD_COMMIT:0:12} (lean build, a minute or two)..."
+        BUILD_MODE=lean
+        install_and_build || good=0
+    fi
+    if [ "$APP_USER" != "root" ]; then
+        $SUDO chown -R "${APP_USER}:${APP_GROUP}" "$INSTALL_DIR" || true
+    fi
+    tell "[*] Starting services..."
+    for s in "${SERVICES[@]}"; do systemctl start "$s" || good=0; done
+    if [ "$good" -eq 1 ] && wait_for_healthy "recovery" 60; then
+        tell "[OK] App is responding on port ${PORT} (recovery)."
+        tell "[!] Previous version restored and running — the update did NOT happen."
+        tell "[!] Fix the cause (see ${rlog}), then run meshmonitor-update again."
+    else
+        tell "[X] Automatic recovery FAILED — MeshMonitor may be down. Details: ${rlog}"
+        tell "[X] Restore from the backup taken at the start of this run with:"
+        tell "[X]     meshmonitor-update --rollback   (preview first: meshmonitor-update -rn)"
+        tell "[X] Logs: journalctl -u meshmonitor -n 50"
+    fi
+    flock -u "$LOCK_FD" 2>/dev/null || true
+    exit "$rc"
+}
+
+# =============================================================================
 # STOP SERVICES
 # =============================================================================
 hr
+if [ "$DRY_RUN" -eq 0 ]; then
+    OLD_COMMIT=$(cd "$INSTALL_DIR" && $GIT_CMD rev-parse HEAD)
+    trap recover_previous_version EXIT
+    # Turn every way of being stopped into an ordinary exit with a known code,
+    # so the EXIT trap runs and reports it: Ctrl-C, kill, a closed SSH session,
+    # a dead output pipe (e.g. `| tee` killed by the same Ctrl-C).
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
+    trap 'exit 141' PIPE
+    RECOVERY_ARMED=1
+fi
 log "Stopping services..."
 for s in "${SERVICES[@]}"; do
     run systemctl stop "$s"
@@ -1007,37 +1284,16 @@ fi
 # UPDATE SOURCE
 # Uses GIT_CMD (runs as app user) to avoid Git 2.35.2+ "dubious ownership"
 # errors on Debian 12 / git 2.39.x.
-# Stashes local modifications before pulling so git pull never fails mid-update.
+# The tree was checked clean before the services stopped (SOURCE TREE CHECK),
+# so this is a plain fast-forward to the origin/main fetched above — no stash,
+# no merge commit. Any failure from here on triggers FAILURE RECOVERY.
 # =============================================================================
 hr
 log "Updating source code..."
 
-GIT_STASHED=0
-if [ "$DRY_RUN" -eq 0 ]; then
-    cd "$INSTALL_DIR"
-    if ! $GIT_CMD diff --quiet || ! $GIT_CMD diff --cached --quiet; then
-        warn "Local modifications detected — stashing before pull..."
-        if $GIT_CMD stash push -m "meshmonitor-update-autostash-$(date +%Y%m%d-%H%M%S)"; then
-            GIT_STASHED=1
-            ok "Local changes stashed."
-        else
-            warn "Could not stash local changes. Proceeding anyway — pull may fail."
-        fi
-    fi
-fi
-
-run_sh "cd '$INSTALL_DIR' && $GIT_CMD pull origin main"
+CODE_TOUCHED=1
+run_sh "cd '$INSTALL_DIR' && $GIT_CMD merge --ff-only origin/main"
 run_sh "cd '$INSTALL_DIR' && $GIT_CMD submodule update --init --recursive"
-
-if [ "$GIT_STASHED" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
-    log "Re-applying stashed local changes..."
-    if $GIT_CMD -C "$INSTALL_DIR" stash pop; then
-        ok "Stash re-applied cleanly."
-    else
-        warn "Stash pop had conflicts — local changes are still in 'git stash list'."
-        warn "Resolve manually after this update if needed."
-    fi
-fi
 
 # =============================================================================
 # UPDATE SYSTEMD SERVICE FILES & ENV EXAMPLE
@@ -1046,6 +1302,7 @@ hr
 log "Updating systemd service files..."
 SVC_SRC="$INSTALL_DIR/lxc/systemd"
 if [ -d "$SVC_SRC" ]; then
+    UNITS_TOUCHED=1
     run_sh "$SUDO cp '$SVC_SRC/meshmonitor.service' /etc/systemd/system/"
     run_sh "$SUDO cp '$SVC_SRC/meshmonitor-apprise.service' /etc/systemd/system/ 2>/dev/null || true"
     run systemctl daemon-reload
@@ -1062,11 +1319,11 @@ fi
 
 # =============================================================================
 # BUILD
-# NODE_OPTIONS heap cap applied to all three npm operations.
+# Per-step heap caps and full/lean mode: see BUILD MEMORY PLAN.
 # Guard that both build scripts exist — catches renamed scripts on future refactors.
 # =============================================================================
 hr
-log "Installing dependencies..."
+log "Building (${BUILD_MODE} build)..."
 
 if [ "$DRY_RUN" -eq 0 ]; then
     grep -q '"build"' "$INSTALL_DIR/package.json" \
@@ -1086,17 +1343,11 @@ if [ "$DRY_RUN" -eq 0 ]; then
         ok "Puppeteer cache cleared."
     fi
 fi
-run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP}' \
-    && export PUPPETEER_SKIP_DOWNLOAD=true \
-    && $SUDO npm install --legacy-peer-deps --audit false"
-
-log "Building client (Vite + TypeScript)..."
-run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP}' \
-    && $SUDO npm run build"
-
-log "Building server (TypeScript)..."
-run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP}' \
-    && $SUDO npm run build:server"
+# npm ci, not npm install: installs exactly what package-lock.json pins and
+# never rewrites it, so the checkout stays clean for the next update.
+# Build mode (full|lean) was chosen in pre-flight — see BUILD MEMORY PLAN.
+BUILD_TOUCHED=1
+install_and_build || die "Build failed."
 
 # =============================================================================
 # RESTORE OWNERSHIP
@@ -1114,7 +1365,11 @@ fi
 # START SERVICES & HEALTH CHECK
 # On failure: directs the user to run -r manually rather than prompting
 # inline — ensures the full rollback confirmation flow always runs.
+# Automatic recovery is disarmed here: once the new version has started, it may
+# have migrated the database, so going back needs the data restore of -r.
 # =============================================================================
+RECOVERY_ARMED=0
+trap - EXIT INT TERM HUP PIPE
 hr
 log "Starting services..."
 for s in "${SERVICES[@]}"; do
