@@ -184,3 +184,66 @@ describe('SaveBar grouped save', () => {
   });
 
 });
+
+describe('SaveBar viewport reserve', () => {
+  it('publishes --save-bar-reserve while shown and clears it when hidden', () => {
+    const root = document.documentElement;
+    const props = { id: 'r', name: 'R', onSave: vi.fn().mockResolvedValue(undefined), onDismiss: vi.fn() };
+    const { rerender } = render(
+      <SaveBarProvider>
+        <Section {...props} hasChanges />
+        <SaveBar />
+      </SaveBarProvider>,
+    );
+    expect(root.style.getPropertyValue('--save-bar-reserve')).toMatch(/^\d+(\.\d+)?px$/);
+
+    rerender(
+      <SaveBarProvider>
+        <Section {...props} hasChanges={false} />
+        <SaveBar />
+      </SaveBarProvider>,
+    );
+    expect(root.style.getPropertyValue('--save-bar-reserve')).toBe('');
+  });
+
+  it('scrolls the focused control clear when the bar appears over it', () => {
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    input.getBoundingClientRect = () => ({ bottom: window.innerHeight + 10 }) as DOMRect;
+    const scrollIntoView = vi.fn();
+    input.scrollIntoView = scrollIntoView;
+    const props = { id: 's', name: 'S', onSave: vi.fn().mockResolvedValue(undefined), onDismiss: vi.fn() };
+    const { unmount } = render(
+      <SaveBarProvider>
+        <Section {...props} hasChanges />
+        <SaveBar />
+      </SaveBarProvider>,
+    );
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    unmount();
+    input.remove();
+  });
+});
+
+describe('SaveBar viewport reserve — pressed control', () => {
+  it('scrolls the last pressed button clear even when focus moved elsewhere', () => {
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    button.getBoundingClientRect = () => ({ bottom: window.innerHeight + 10 }) as DOMRect;
+    const scrollIntoView = vi.fn();
+    button.scrollIntoView = scrollIntoView;
+    fireEvent.pointerDown(button);
+    (document.activeElement as HTMLElement | null)?.blur();
+    const props = { id: 'p', name: 'P', onSave: vi.fn().mockResolvedValue(undefined), onDismiss: vi.fn() };
+    const { unmount } = render(
+      <SaveBarProvider>
+        <Section {...props} hasChanges />
+        <SaveBar />
+      </SaveBarProvider>,
+    );
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    unmount();
+    button.remove();
+  });
+});
