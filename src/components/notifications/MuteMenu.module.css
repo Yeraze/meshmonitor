@@ -79,3 +79,15 @@
 .muteMenuItem:hover {
   background: var(--color-surface-hover);
 }
+
+/* #6418: a muted conversation's name, greyed so it stands apart in a list.
+   A selected (accent) or custom-coloured row keeps its own text colour so
+   the name stays readable on that background. */
+.mutedName {
+  color: var(--color-text-muted);
+}
+
+:global(.selected) .mutedName,
+:global(.node-item--colored) .mutedName {
+  color: inherit;
+}

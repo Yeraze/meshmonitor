@@ -19,7 +19,7 @@ import TelemetryGraphs from '../TelemetryGraphs';
 import { useAuth } from '../../contexts/AuthContext';
 import { useContactTokenImport } from './hooks/useContactTokenImport';
 import { useSettings, useOptionalMuteSettings } from '../../contexts/SettingsContext';
-import { MuteMenu, MutedIndicator } from '../notifications/MuteMenu';
+import { MuteMenu, MutedIndicator, MutedName } from '../notifications/MuteMenu';
 import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import {
   markDmRead,
@@ -786,7 +786,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     {isFavorite && (
                       <span className="mc-dm-row-favorite" aria-label={t('meshcore.favorite.is_favorite', 'Favorite')} title={t('meshcore.favorite.is_favorite', 'Favorite')}><UiIcon name="favorite" size={15} /></span>
                     )}
-                    <span className="mc-node-row-display-name">{name}</span>
+                    <span className="mc-node-row-display-name"><MutedName muted={isMuted}>{name}</MutedName></span>
                     {isMuted && <MutedIndicator />}
                   </div>
                   <div className="mc-node-row-key">{key.substring(0, 20)}…</div>
