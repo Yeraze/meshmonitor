@@ -22,6 +22,7 @@ import { firmwareUpdateSupport } from '../../utils/firmwareHardwareMap.js';
 import { firmwareUpdateService, type FirmwareChannel } from './firmwareUpdateService.js';
 import {
   latestMeshCoreRelease,
+  meshcoreChannel,
   meshcoreFirmwareReleases,
   type MeshCoreFirmwareRole,
 } from './meshcoreFirmwareReleases.js';
@@ -143,6 +144,8 @@ export async function buildFirmwareFleet(): Promise<FirmwareFleetRow[]> {
     if (!connected && !installed) verdict = { status: 'unknown', reason: 'disconnected' };
     rows.push({
       ...base,
+      // Show the channel MeshCore really follows, not an inherited nightly.
+      channel: meshcoreChannel(channel),
       protocol: 'meshcore',
       device: node?.name || null,
       hardware: node?.model?.trim() || null,

@@ -107,6 +107,13 @@ describe('GET /api/firmware/fleet (#4943)', () => {
     expect(rows.find((r) => r.sourceId === harness.sourceA)).toMatchObject({ channel: 'stable', latest: '2.7.18' });
   });
 
+  it('an inherited nightly channel means stable for MeshCore', async () => {
+    await harness.db.settings.setSetting('firmwareChannel', 'nightly');
+    const mc = (await fleet()).find((r) => r.sourceId === MC)!;
+    expect(mc).toMatchObject({ channel: 'stable', latest: '1.18.0' });
+    await harness.db.settings.deleteSetting('firmwareChannel');
+  });
+
   it('refuses nightly/custom/local for a MeshCore source', async () => {
     const res = await (await harness.loginAs(harness.admin))
       .post('/api/firmware/channel')

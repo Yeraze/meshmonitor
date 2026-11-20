@@ -23,6 +23,8 @@ describe('MeshCore releases (#4943)', () => {
     expect(latestMeshCoreRelease(all, 'companion', 'stable')?.version).toBe('1.18.0');
     expect(latestMeshCoreRelease(all, 'companion', 'alpha')?.version).toBe('1.19.0');
     expect(latestMeshCoreRelease(all, 'repeater', 'custom')?.version).toBe('1.18.1');
+    // An inherited Meshtastic nightly means stable for MeshCore.
+    expect(latestMeshCoreRelease(all, 'companion', 'nightly')?.version).toBe('1.18.0');
     expect(latestMeshCoreRelease(all, 'room-server', 'stable')).toBeNull();
   });
 

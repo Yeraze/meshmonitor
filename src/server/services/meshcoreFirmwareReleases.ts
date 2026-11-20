@@ -50,16 +50,22 @@ export function parseMeshCoreRelease(raw: {
 }
 
 /**
- * Newest release for `role` on `channel`. MeshCore has stable and prerelease
- * builds only: alpha and nightly include prereleases; every other channel
- * (stable, and the Meshtastic-only custom/local) means stable.
+ * The channel a MeshCore source actually follows. MeshCore has stable and
+ * prerelease builds only, so `alpha` means "include prereleases" and anything
+ * else (stable, or a nightly/custom/local value inherited from the Meshtastic
+ * install-wide setting) means stable.
  */
+export function meshcoreChannel(channel: FirmwareChannel): 'stable' | 'alpha' {
+  return channel === 'alpha' ? 'alpha' : 'stable';
+}
+
+/** Newest release for `role` on `channel` (see {@link meshcoreChannel}). */
 export function latestMeshCoreRelease(
   releases: MeshCoreRelease[],
   role: MeshCoreFirmwareRole,
   channel: FirmwareChannel,
 ): MeshCoreRelease | null {
-  const withPre = channel === 'alpha' || channel === 'nightly';
+  const withPre = meshcoreChannel(channel) === 'alpha';
   let best: MeshCoreRelease | null = null;
   for (const r of releases) {
     if (r.role !== role || (r.prerelease && !withPre)) continue;

@@ -238,7 +238,7 @@ Device · Source · Protocol · Hardware · Role (MeshCore) · Installed · Late
 
 ### Release channel (per source)
 
-Each source has its own channel. For Meshtastic it is the channel chosen in that source's **Configuration → Firmware Updates** panel. For MeshCore, pick **Stable** or **Alpha (prereleases)** in the row's Channel column. A source you have not set uses the install-wide channel from before channels became per source (stable if none).
+Each source has its own channel. For Meshtastic it is the channel chosen in that source's **Configuration → Firmware Updates** panel. For MeshCore, pick **Stable** or **Alpha (prereleases)** in the row's Channel column; a MeshCore source that inherits a Meshtastic-only channel (nightly, custom or local) follows stable. A source you have not set uses the install-wide channel from before channels became per source (stable if none).
 
 ### Updating
 
