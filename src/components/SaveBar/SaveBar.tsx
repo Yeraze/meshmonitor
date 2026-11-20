@@ -3,6 +3,20 @@ import { useTranslation } from 'react-i18next';
 import { useSaveBarContext, SaveBarSection } from '../../contexts/SaveBarContext';
 import './SaveBar.css';
 
+// The control the user last pressed. The bar mounts a render after the edit
+// that summons it, by when focus may have moved on (or never landed: Safari
+// does not focus a clicked button), so remember the press itself.
+let lastPressed: Element | null = null;
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      lastPressed = e.target instanceof Element ? e.target : null;
+    },
+    true,
+  );
+}
+
 export const SaveBar: React.FC = () => {
   const { t } = useTranslation();
   const { sections, activeSection, setActiveSection } = useSaveBarContext();
@@ -24,15 +38,19 @@ export const SaveBar: React.FC = () => {
     const reserve = () => node.offsetHeight + (parseFloat(getComputedStyle(node).bottom) || 0);
     const update = () => root.style.setProperty('--save-bar-reserve', `${reserve()}px`);
     update();
-    // The bar appears on the first edit, often right over the control that made it.
-    const active = document.activeElement;
-    if (
-      active instanceof HTMLElement &&
-      active !== document.body &&
-      !node.contains(active) &&
-      active.getBoundingClientRect().bottom > window.innerHeight - reserve()
-    ) {
-      active.scrollIntoView?.({ block: 'nearest' });
+    // The bar appears on the first edit, often right over the control that
+    // made it (or over the focused field). Scroll each such control clear.
+    const barTop = window.innerHeight - reserve();
+    for (const el of [lastPressed?.closest('button, input, select, textarea, label, a'), document.activeElement]) {
+      if (
+        el instanceof HTMLElement &&
+        el !== document.body &&
+        el.isConnected &&
+        !node.contains(el) &&
+        el.getBoundingClientRect().bottom > barTop
+      ) {
+        el.scrollIntoView?.({ block: 'nearest' });
+      }
     }
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
     observer?.observe(node);
