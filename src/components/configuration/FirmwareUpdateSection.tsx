@@ -152,6 +152,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl, 
   const { sourceId } = useSource();
   const withSource = <T extends Record<string, unknown>>(body: T): T & { sourceId?: string } =>
     sourceId ? { ...body, sourceId } : body;
+  const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
 
   // Derive gateway info from poll data
   const { data: pollData } = usePoll();
@@ -246,9 +247,10 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl, 
 
   // Query: firmware status (polls every 5s)
   const { data: statusData } = useQuery<FirmwareStatusResponse>({
-    queryKey: ['firmware', 'status'],
+    // #4943: channel and custom URL are per source, so key and ask by source.
+    queryKey: ['firmware', 'status', sourceId ?? null],
     queryFn: async () => {
-      const res = await csrfFetch(`${baseUrl}/api/firmware/status`);
+      const res = await csrfFetch(`${baseUrl}/api/firmware/status${sourceQuery}`);
       if (!res.ok) throw new Error('Failed to fetch firmware status');
       return res.json();
     },
@@ -257,9 +259,9 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl, 
 
   // Query: firmware releases (staleTime: 60s)
   const { data: releasesData } = useQuery<FirmwareReleasesResponse>({
-    queryKey: ['firmware', 'releases'],
+    queryKey: ['firmware', 'releases', sourceId ?? null],
     queryFn: async () => {
-      const res = await csrfFetch(`${baseUrl}/api/firmware/releases`);
+      const res = await csrfFetch(`${baseUrl}/api/firmware/releases${sourceQuery}`);
       if (!res.ok) throw new Error('Failed to fetch firmware releases');
       return res.json();
     },
@@ -316,7 +318,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl, 
       const res = await csrfFetch(`${baseUrl}/api/firmware/channel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(withSource(body)),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -349,6 +351,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl, 
     try {
       const res = await csrfFetch(`${baseUrl}/api/firmware/check`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(withSource({})),
       });
       if (!res.ok) {
         const data = await res.json();
