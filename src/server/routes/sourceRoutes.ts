@@ -21,7 +21,7 @@ import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequ
 import { isMqttProxyLinkMisconfigured } from '../../utils/mqttProxyLink.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
-import { MqttBridgeManager, normalizeBridgeClientId, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
+import { MqttBridgeManager, normalizeBridgeClientId, MAX_TOPIC_REWRITE_RULES, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
 import meshcoreBrokerRoutes from './meshcoreBrokerRoutes.js';
@@ -549,7 +549,7 @@ function validateMqttBridgeClientId(config: Record<string, any>): string | null 
  * (#5414, absent ⇒ uplink automation sends as before).
  */
 function validateMqttBridgeIgnoreOkToMqtt(config: Record<string, any>): string | null {
-  for (const key of ['ignoreOkToMqtt', 'dropAutomationUplinks', 'skipRaise', 'relayOtherBridges'] as const) {
+  for (const key of ['ignoreOkToMqtt', 'dropAutomationUplinks', 'skipRaise', 'relayOtherBridges', 'uplinkRewriteFanOut'] as const) {
     const value = config?.[key];
     if (value === undefined || value === null) continue;
     if (typeof value !== 'boolean') {
@@ -692,12 +692,8 @@ function validateMqttBridgeRewrites(config: Record<string, any>): string | null 
   const isAttached =
     typeof config.brokerSourceId === 'string' && config.brokerSourceId.trim() !== '';
   const checkOne = (label: string, rule: unknown): string | null => {
-    if (rule === undefined || rule === null) return null;
-    if (typeof rule !== 'object' || Array.isArray(rule)) {
+    if (rule === null || typeof rule !== 'object' || Array.isArray(rule)) {
       return `${label} must be an object with from and to string fields`;
-    }
-    if (!isAttached) {
-      return `${label} requires a parent broker — standalone bridges cannot rewrite topics`;
     }
     const r = rule as { from?: unknown; to?: unknown };
     if (typeof r.from !== 'string' || typeof r.to !== 'string') {
@@ -716,9 +712,40 @@ function validateMqttBridgeRewrites(config: Record<string, any>): string | null 
     }
     return null;
   };
+  // #6516: a direction holds one rule (legacy object) or a list of them.
+  const checkDirection = (key: string, value: unknown, uniqueFrom: boolean): string | null => {
+    if (value === undefined || value === null) return null;
+    const isList = Array.isArray(value);
+    const rules: unknown[] = isList ? value : [value];
+    if (rules.length === 0) return null;
+    if (!isAttached) {
+      return `${key} requires a parent broker — standalone bridges cannot rewrite topics`;
+    }
+    if (rules.length > MAX_TOPIC_REWRITE_RULES) {
+      return `${key} allows at most ${MAX_TOPIC_REWRITE_RULES} rules`;
+    }
+    const seen = new Set<string>();
+    for (let i = 0; i < rules.length; i++) {
+      const label = isList ? `${key}[${i}]` : key;
+      const err = checkOne(label, rules[i]);
+      if (err) return err;
+      const r = rules[i] as { from: string; to: string };
+      const from = stripTrailingSlashes(r.from.trim());
+      const id = uniqueFrom ? from : `${from}\n${stripTrailingSlashes(r.to.trim())}`;
+      if (seen.has(id)) {
+        return uniqueFrom
+          ? `${label}.from repeats an earlier rule — each downlink prefix may appear once`
+          : `${label} repeats an earlier rule`;
+      }
+      seen.add(id);
+    }
+    return null;
+  };
   return (
-    checkOne('downlinkTopicRewrite', config.downlinkTopicRewrite) ??
-    checkOne('uplinkTopicRewrite', config.uplinkTopicRewrite)
+    checkDirection('downlinkTopicRewrite', config.downlinkTopicRewrite, true) ??
+    // Uplink may repeat a `from`: that is how one local prefix reaches
+    // several upstream branches (primary first, or all with fan-out).
+    checkDirection('uplinkTopicRewrite', config.uplinkTopicRewrite, false)
   );
 }
 

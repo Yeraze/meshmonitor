@@ -39,6 +39,7 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import { MQTT_BRIDGE_SETTINGS_HASH } from '../../utils/tabHashRedirect';
 import styles from './MqttBridgeConfigurationView.module.css';
 import { MqttDocsLinks } from './MqttDocsLinks';
+import { TopicRewriteList } from './TopicRewriteList';
 import {
   buildBridgeConfig,
   formFromBridgeConfig,
@@ -962,66 +963,55 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         >
           <span style={{ ...labelStyle, display: 'block', marginBottom: 8 }}>
             {t(
-              'mqtt_bridge_config.rewrites_help',
-              'Literal prefix replacement applied to topics as they cross the bridge. Leave both fields blank to disable a rewrite. MQTT wildcards (+, #) are not allowed.',
+              'mqtt_bridge_config.rewrites_help_list',
+              'Literal prefix replacement applied to topics as they cross the bridge. MQTT wildcards (+, #) are not allowed. Downlink uses the rule with the longest matching prefix, so several upstream branches can merge into one local prefix.',
             )}
           </span>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label className="dashboard-form-field">
-              <span className="dashboard-form-label">
-                {t('mqtt_bridge_config.downlink_rewrite_from', 'Downlink from')}
-              </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <TopicRewriteList
+              title={t('mqtt_bridge_config.downlink_rewrites', 'Downlink (to local broker)')}
+              rows={form.downlinkRewrite ?? []}
+              onChange={(rows) => patch('downlinkRewrite', rows)}
+              disabled={!canWrite}
+              fromPlaceholder="msh/US"
+              toPlaceholder="msh/local"
+            />
+            <TopicRewriteList
+              title={t('mqtt_bridge_config.uplink_rewrites', 'Uplink (to upstream)')}
+              rows={form.uplinkRewrite ?? []}
+              onChange={(rows) => patch('uplinkRewrite', rows)}
+              disabled={!canWrite}
+              fromPlaceholder="msh/local"
+              toPlaceholder="msh/US"
+              markPrimary={!form.uplinkRewriteFanOut}
+            />
+            <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
               <input
-                className="dashboard-form-input"
-                value={form.downlinkRewrite?.from ?? ''}
+                type="checkbox"
+                checked={form.uplinkRewriteFanOut === true}
                 disabled={!canWrite}
-                onChange={(e) =>
-                  patch('downlinkRewrite', { from: e.target.value, to: form.downlinkRewrite?.to ?? '' })
-                }
-                placeholder="msh/US"
+                onChange={(e) => patch('uplinkRewriteFanOut', e.target.checked)}
+                style={{ marginTop: 3 }}
               />
-            </label>
-            <label className="dashboard-form-field">
-              <span className="dashboard-form-label">
-                {t('mqtt_bridge_config.downlink_rewrite_to', 'Downlink to')}
+              <span>
+                <span className="dashboard-form-label" style={{ display: 'block' }}>
+                  {t('mqtt_bridge_config.uplink_fan_out', 'Send uplink to every matching rule')}
+                </span>
+                <span style={labelStyle}>
+                  {t(
+                    'mqtt_bridge_config.uplink_fan_out_help',
+                    'Off: a local packet goes upstream once, to the first uplink rule that matches. On: it goes to every matching rule.',
+                  )}
+                </span>
+                {form.uplinkRewriteFanOut && (
+                  <span className={styles.warning} style={{ display: 'block' }}>
+                    {t(
+                      'mqtt_bridge_config.uplink_fan_out_warning',
+                      'Each local packet is published upstream once per matching rule. Gateways on those upstream branches may send every copy to their own meshes.',
+                    )}
+                  </span>
+                )}
               </span>
-              <input
-                className="dashboard-form-input"
-                value={form.downlinkRewrite?.to ?? ''}
-                disabled={!canWrite}
-                onChange={(e) =>
-                  patch('downlinkRewrite', { from: form.downlinkRewrite?.from ?? '', to: e.target.value })
-                }
-                placeholder="msh/local"
-              />
-            </label>
-            <label className="dashboard-form-field">
-              <span className="dashboard-form-label">
-                {t('mqtt_bridge_config.uplink_rewrite_from', 'Uplink from')}
-              </span>
-              <input
-                className="dashboard-form-input"
-                value={form.uplinkRewrite?.from ?? ''}
-                disabled={!canWrite}
-                onChange={(e) =>
-                  patch('uplinkRewrite', { from: e.target.value, to: form.uplinkRewrite?.to ?? '' })
-                }
-                placeholder="msh/local"
-              />
-            </label>
-            <label className="dashboard-form-field">
-              <span className="dashboard-form-label">
-                {t('mqtt_bridge_config.uplink_rewrite_to', 'Uplink to')}
-              </span>
-              <input
-                className="dashboard-form-input"
-                value={form.uplinkRewrite?.to ?? ''}
-                disabled={!canWrite}
-                onChange={(e) =>
-                  patch('uplinkRewrite', { from: form.uplinkRewrite?.from ?? '', to: e.target.value })
-                }
-                placeholder="msh/US"
-              />
             </label>
           </div>
         </CollapsibleSection>

@@ -133,9 +133,19 @@ export interface MqttBridgeSourceConfig {
    * MQTT wildcards (+, #) are NOT supported — `from` must be a literal
    * prefix (the validator on sourceRoutes rejects wildcards). Trailing
    * slashes on `from`/`to` are normalized away.
+   *
+   * #6516: each may also be a list (up to MAX_TOPIC_REWRITE_RULES). Downlink
+   * uses the longest matching `from`; uplink uses the first match in list
+   * order, or every match when `uplinkRewriteFanOut` is on. Editors write a
+   * single object for one rule so older versions can still read it.
    */
-  downlinkTopicRewrite?: TopicRewriteRule;
-  uplinkTopicRewrite?: TopicRewriteRule;
+  downlinkTopicRewrite?: TopicRewriteRule | TopicRewriteRule[];
+  uplinkTopicRewrite?: TopicRewriteRule | TopicRewriteRule[];
+  /**
+   * #6516: publish a local packet to every matching uplink rule instead of
+   * only the first. Off by default: each match is one more upstream copy.
+   */
+  uplinkRewriteFanOut?: boolean;
   /**
    * See {@link MqttBridgeForwardingMode}. Defaults to `per_gateway` when
    * unset. Only meaningful when the bridge has a `brokerSourceId`
@@ -272,6 +282,57 @@ export function applyTopicRewrite(
   if (topic === from) return to;
   if (topic.startsWith(from + '/')) return to + topic.slice(from.length);
   return topic;
+}
+
+/** Most rewrite rules one bridge may hold per direction (#6516). */
+export const MAX_TOPIC_REWRITE_RULES = 8;
+
+/**
+ * Read a stored rewrite value as a list (#6516). Accepts the legacy single
+ * object, an array, or anything else (hand-edited JSON, old backups); entries
+ * without string `from`/`to` are dropped. Never throws: it runs inside the
+ * async uplink handler, where a throw would crash the server.
+ */
+export function normalizeTopicRewrites(value: unknown): TopicRewriteRule[] {
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  return list.filter(
+    (r): r is TopicRewriteRule =>
+      !!r && typeof r === 'object' && typeof r.from === 'string' && typeof r.to === 'string',
+  );
+}
+
+/**
+ * Downlink: rewrite with the rule whose `from` is longest among those that
+ * match. Only one rule applies, so rules never chain. Unchanged if none match.
+ */
+export function applyTopicRewrites(topic: string, value: unknown): string {
+  let best: string | null = null;
+  let bestLen = -1;
+  for (const rule of normalizeTopicRewrites(value)) {
+    const out = applyTopicRewrite(topic, rule);
+    const len = stripTrailingSlashes(rule.from).length;
+    if (out !== topic && len > bestLen) {
+      best = out;
+      bestLen = len;
+    }
+  }
+  return best ?? topic;
+}
+
+/**
+ * Uplink: the upstream topics a local packet is published to. With no match
+ * it is the topic itself. Otherwise only the first matching rule in list
+ * order (the "primary"), or, with `fanOut`, every matching rule (deduped).
+ */
+export function uplinkRewriteTopics(topic: string, value: unknown, fanOut: boolean): string[] {
+  const out: string[] = [];
+  for (const rule of normalizeTopicRewrites(value)) {
+    const t = applyTopicRewrite(topic, rule);
+    if (t === topic || out.includes(t)) continue;
+    out.push(t);
+    if (!fanOut) break;
+  }
+  return out.length > 0 ? out : [topic];
 }
 
 // Linear-time trailing-slash strip. Replaces `.replace(/\/+$/, '')` which
@@ -1253,7 +1314,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       // ingestion, filters, and the local-packet event all stay on the
       // original topic. Echo recorded under the post-rewrite topic so the
       // uplink direction sees the same topic the parent broker emits.
-      const publishTopic = applyTopicRewrite(topic, this.config.downlinkTopicRewrite);
+      const publishTopic = applyTopicRewrites(topic, this.config.downlinkTopicRewrite);
       // #5013: a copy of a packet this bridge already handed to the broker in
       // the last minute is not handed over again.
       if (packetId !== null && this.matchesEcho(this.downlinkEchoes, publishTopic, packetId)) return;
@@ -1347,11 +1408,12 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // topic; only the wire-level publish gets the rewrite. Echo recorded
     // under the post-rewrite topic so the downlink direction can suppress
     // the upstream broker's re-emission of this same packet.
-    const publishTopic = applyTopicRewrite(p.topic, this.config.uplinkTopicRewrite);
-    // #5013: never send the same packet upstream twice in a minute. With
-    // relayOtherBridges on and two bridges whose upstreams share traffic,
-    // each copy coming back down would otherwise be sent up again, forever.
-    if (packetId !== null && this.matchesEcho(this.uplinkEchoes, publishTopic, packetId)) return;
+    // #6516: fan-out may name several targets; each keeps its own echo.
+    const publishTopics = uplinkRewriteTopics(
+      p.topic,
+      this.config.uplinkTopicRewrite,
+      this.config.uplinkRewriteFanOut === true,
+    );
     // Per-gateway dispatch: when the pool is active and the envelope's
     // gateway_id parses to a nodeNum different from the broker's own
     // gateway nodeId, publish through the pool entry whose clientId is
@@ -1365,37 +1427,46 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       gatewayNum !== null &&
       gatewayNum !== this.brokerGatewayNum;
 
-    const onSuccess = (result: PoolPublishResult | void) => {
-      // A stopped gateway dropped the packet (the pool counted it). Nothing
-      // went upstream, so there is nothing to count or to echo-suppress.
-      if (result === 'dropped') return;
-      this.uplinkOut++;
-      this.recordEcho(this.uplinkEchoes, publishTopic, packetId);
-    };
     const onError = (err: Error) => {
       this.lastError = `upstream publish failed: ${err.message}`;
     };
 
-    if (dispatchToPool && this.publisherPool && gatewayNum !== null) {
-      this.publisherPool
-        .publish(gatewayNum, publishTopic, p.payload, p.retained)
-        .then(onSuccess)
-        .catch(onError);
-    } else {
-      if (this.subscriberAuthStopped) {
-        this.noteSubscriberDrop();
-        return;
+    for (const publishTopic of publishTopics) {
+      // #5013: never send the same packet upstream twice in a minute. With
+      // relayOtherBridges on and two bridges whose upstreams share traffic,
+      // each copy coming back down would otherwise be sent up again, forever.
+      if (packetId !== null && this.matchesEcho(this.uplinkEchoes, publishTopic, packetId)) continue;
+
+      const onSuccess = (result: PoolPublishResult | void) => {
+        // A stopped gateway dropped the packet (the pool counted it). Nothing
+        // went upstream, so there is nothing to count or to echo-suppress.
+        if (result === 'dropped') return;
+        this.uplinkOut++;
+        this.recordEcho(this.uplinkEchoes, publishTopic, packetId);
+      };
+
+      if (dispatchToPool && this.publisherPool && gatewayNum !== null) {
+        this.publisherPool
+          .publish(gatewayNum, publishTopic, p.payload, p.retained)
+          .then(onSuccess)
+          .catch(onError);
+      } else {
+        // Every target rides the same connection, so one drop note covers them.
+        if (this.subscriberAuthStopped) {
+          this.noteSubscriberDrop();
+          return;
+        }
+        if (!this.client.isConnected()) {
+          // #5893: used to return silently, so a flapping connection made
+          // uplink look broken with no trace in the logs or the status.
+          this.noteDisconnectedDrop();
+          return;
+        }
+        this.client
+          .publish(publishTopic, p.payload, p.retained)
+          .then(onSuccess)
+          .catch(onError);
       }
-      if (!this.client.isConnected()) {
-        // #5893: used to return silently, so a flapping connection made
-        // uplink look broken with no trace in the logs or the status.
-        this.noteDisconnectedDrop();
-        return;
-      }
-      this.client
-        .publish(publishTopic, p.payload, p.retained)
-        .then(onSuccess)
-        .catch(onError);
     }
   }
 

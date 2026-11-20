@@ -8868,5 +8868,18 @@
   "source.form.type_meshcore_mqtt_broker": "MeshCore MQTT broker (observers connect here, no radio)",
   "meshcore.broker.card_badge": "{{count}} obs",
   "meshcore.broker.card_badge_title": "Observers connected to this broker",
-  "meshcore.broker.reason_not_allowlisted": "Dropped (key not on the allowlist)"
+  "meshcore.broker.reason_not_allowlisted": "Dropped (key not on the allowlist)",
+  "mqtt_bridge_config.rewrites_help_list": "Literal prefix replacement applied to topics as they cross the bridge. MQTT wildcards (+, #) are not allowed. Downlink uses the rule with the longest matching prefix, so several upstream branches can merge into one local prefix.",
+  "mqtt_bridge_config.downlink_rewrites": "Downlink (to local broker)",
+  "mqtt_bridge_config.uplink_rewrites": "Uplink (to upstream)",
+  "mqtt_bridge_config.uplink_fan_out": "Send uplink to every matching rule",
+  "mqtt_bridge_config.uplink_fan_out_help": "Off: a local packet goes upstream once, to the first uplink rule that matches. On: it goes to every matching rule.",
+  "mqtt_bridge_config.uplink_fan_out_warning": "Each local packet is published upstream once per matching rule. Gateways on those upstream branches may send every copy to their own meshes.",
+  "mqtt_bridge_config.rewrite_from": "from",
+  "mqtt_bridge_config.rewrite_to": "to",
+  "mqtt_bridge_config.rewrite_remove": "Remove rule",
+  "mqtt_bridge_config.rewrite_primary": "Primary: a packet goes to the first rule that matches",
+  "mqtt_bridge_config.rewrite_add": "Add rule",
+  "mqtt_bridge_config.rewrite_max": "At most {{max}} rules per direction.",
+  "source.form.bridge_topic_rewrites_help_list": "For each bridge attached to this broker, replace a literal topic prefix on inbound (downlink) or outbound (uplink) messages. Add a rule per prefix; remove every rule to turn a direction off. Uplink fan-out is set on the bridge settings page."
 }
