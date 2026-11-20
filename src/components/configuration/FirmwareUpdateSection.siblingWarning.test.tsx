@@ -54,8 +54,8 @@ vi.mock('react-i18next', async () => {
 vi.mock('@tanstack/react-query', () => ({
   useQuery: (opts: { queryKey: unknown[] }) => {
     const key = JSON.stringify(opts.queryKey);
-    if (key === JSON.stringify(['firmware', 'status'])) return { data: h.statusResponse };
-    if (key === JSON.stringify(['firmware', 'releases']))
+    if (key.startsWith('["firmware","status"')) return { data: h.statusResponse };
+    if (key.startsWith('["firmware","releases"'))
       return { data: { success: true, releases: [], channel: 'stable' } };
     if (key === JSON.stringify(['firmware', 'backups']))
       return { data: { success: true, backups: [] } };

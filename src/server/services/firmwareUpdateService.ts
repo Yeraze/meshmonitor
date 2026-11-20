@@ -158,6 +158,13 @@ interface GitHubRelease {
 
 // ---- Constants ----
 
+const FIRMWARE_CHANNELS: readonly FirmwareChannel[] = ['stable', 'alpha', 'custom', 'nightly', 'local'];
+
+/** A stored channel value, or 'stable' when it is missing or unknown. */
+export function parseFirmwareChannel(value: string | null | undefined): FirmwareChannel {
+  return (FIRMWARE_CHANNELS as readonly string[]).includes(value ?? '') ? (value as FirmwareChannel) : 'stable';
+}
+
 const GITHUB_RELEASES_URL = 'https://api.github.com/repos/meshtastic/firmware/releases?per_page=20';
 // The develop "nightly" build (2.8.x pre-tag) is NOT a GitHub release — it lives
 // in a single, stable folder in the meshtastic.github.io repo that always holds
@@ -519,42 +526,64 @@ export class FirmwareUpdateService {
 
   // ---- Settings ----
 
-  /**
-   * Get the configured firmware channel. Defaults to 'stable'.
-   */
-  async getChannel(): Promise<FirmwareChannel> {
-    const stored = await databaseService.settings.getSetting('firmwareChannel');
-    if (
-      stored === 'alpha' ||
-      stored === 'stable' ||
-      stored === 'custom' ||
-      stored === 'nightly' ||
-      stored === 'local'
-    ) {
-      return stored;
+  // #4943: the release channel and custom URL are per source, so one radio
+  // can track alpha while another stays on stable. A source with no stored
+  // value of its own uses the install-wide value (the pre-#4943 setting), so
+  // existing installs keep their choice. `sourceId` absent = that global value.
+
+  /** Per-source value, else the install-wide one. */
+  private async readSourceSetting(sourceId: string | null | undefined, key: string): Promise<string | null> {
+    if (sourceId) {
+      const own = await databaseService.settings.getSettingForSource(sourceId, key);
+      if (own !== null) return own;
     }
-    return 'stable';
+    return await databaseService.settings.getSetting(key);
+  }
+
+  private async writeSourceSetting(sourceId: string | null | undefined, key: string, value: string): Promise<void> {
+    if (sourceId) await databaseService.settings.setSourceSetting(sourceId, key, value);
+    else await databaseService.settings.setSetting(key, value);
   }
 
   /**
-   * Set the firmware channel.
+   * Get the configured firmware channel for a source. Defaults to 'stable'.
    */
-  async setChannel(channel: FirmwareChannel): Promise<void> {
-    await databaseService.settings.setSetting('firmwareChannel', channel);
+  async getChannel(sourceId?: string | null): Promise<FirmwareChannel> {
+    return parseFirmwareChannel(await this.readSourceSetting(sourceId, 'firmwareChannel'));
   }
 
   /**
-   * Get the custom firmware URL, or null if not set.
+   * Set the firmware channel for a source (install-wide when no sourceId).
    */
-  async getCustomUrl(): Promise<string | null> {
-    return await databaseService.settings.getSetting('firmwareCustomUrl');
+  async setChannel(channel: FirmwareChannel, sourceId?: string | null): Promise<void> {
+    await this.writeSourceSetting(sourceId, 'firmwareChannel', channel);
   }
 
   /**
-   * Set the custom firmware URL.
+   * Get a source's custom firmware URL, or null if not set.
    */
-  async setCustomUrl(url: string): Promise<void> {
-    await databaseService.settings.setSetting('firmwareCustomUrl', url);
+  async getCustomUrl(sourceId?: string | null): Promise<string | null> {
+    return await this.readSourceSetting(sourceId, 'firmwareCustomUrl');
+  }
+
+  /**
+   * Set a source's custom firmware URL (install-wide when no sourceId).
+   */
+  async setCustomUrl(url: string, sourceId?: string | null): Promise<void> {
+    await this.writeSourceSetting(sourceId, 'firmwareCustomUrl', url);
+  }
+
+  /**
+   * True when the install-wide channel or any source's own channel is
+   * `channel`. A source with no row of its own inherits the install-wide value,
+   * so the first check covers it; `getSettingForSources` returns only explicit
+   * per-source rows (no fallback), which the second check covers.
+   */
+  async anySourceOnChannel(channel: FirmwareChannel): Promise<boolean> {
+    if ((await this.getChannel()) === channel) return true;
+    const ids = (await databaseService.sources.getAllSources()).map((src) => src.id);
+    const own = await databaseService.settings.getSettingForSources(ids, 'firmwareChannel');
+    return [...own.values()].some((v) => parseFirmwareChannel(v) === channel);
   }
 
   // ---- Status Management ----
@@ -750,7 +779,7 @@ export class FirmwareUpdateService {
    */
   async refreshForActiveChannel(): Promise<void> {
     await this.fetchReleases();
-    if ((await this.getChannel()) === 'nightly') {
+    if (await this.anySourceOnChannel('nightly')) {
       await this.fetchNightly();
     }
   }

@@ -58,7 +58,7 @@ const HOST_B = '10.0.0.2';
 const IDLE = { state: 'idle', step: null, message: '', logs: [] };
 
 function fakeMeshtastic() {
-  return { sourceType: 'meshtastic_tcp', isLocalNodeBridged: vi.fn().mockReturnValue(false) };
+  return { sourceType: 'meshtastic_tcp', sourceId: 'fake', isLocalNodeBridged: vi.fn().mockReturnValue(false) };
 }
 
 function updateBody(extra: Record<string, unknown> = {}) {
