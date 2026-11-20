@@ -1,3 +1,9 @@
+/* SaveBar.tsx sets --save-bar-reserve while the bar is shown, so focus and
+   scrollIntoView stop above it instead of behind it. */
+html {
+  scroll-padding-bottom: var(--save-bar-reserve, 0px);
+}
+
 .save-bar {
   position: fixed;
   left: var(--sidebar-width, 200px);

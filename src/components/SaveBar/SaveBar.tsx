@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBarContext, SaveBarSection } from '../../contexts/SaveBarContext';
 import './SaveBar.css';
@@ -9,6 +9,40 @@ export const SaveBar: React.FC = () => {
   // True for the full duration of a batch save, so the buttons stay disabled
   // between sequential section saves (no re-enable window for double-clicks).
   const [isBatchSaving, setIsBatchSaving] = useState(false);
+
+  // The bar is fixed over the page, so it can cover the control the user is
+  // working on. Publish how much of the viewport bottom it takes as
+  // --save-bar-reserve; html's scroll-padding-bottom (SaveBar.css) then keeps
+  // focus and scrollIntoView clear of it.
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const barRef = useCallback((node: HTMLDivElement | null) => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    if (!node) return;
+    const root = document.documentElement;
+    // offsetHeight and `bottom` ignore the slide-in transform.
+    const reserve = () => node.offsetHeight + (parseFloat(getComputedStyle(node).bottom) || 0);
+    const update = () => root.style.setProperty('--save-bar-reserve', `${reserve()}px`);
+    update();
+    // The bar appears on the first edit, often right over the control that made it.
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active !== document.body &&
+      !node.contains(active) &&
+      active.getBoundingClientRect().bottom > window.innerHeight - reserve()
+    ) {
+      active.scrollIntoView?.({ block: 'nearest' });
+    }
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    observer?.observe(node);
+    window.addEventListener('resize', update);
+    cleanupRef.current = () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+      root.style.removeProperty('--save-bar-reserve');
+    };
+  }, []);
 
   // Get sections with changes
   const sectionsWithChanges: SaveBarSection[] = [];
@@ -82,7 +116,7 @@ export const SaveBar: React.FC = () => {
   const showTabs = !effectiveSection.group && sectionsWithChanges.length > 1;
 
   return (
-    <div className="save-bar">
+    <div className="save-bar" ref={barRef}>
       <div className="save-bar-content">
         <div className="save-bar-left">
           {showTabs && (

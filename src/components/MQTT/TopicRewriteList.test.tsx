@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
+import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TopicRewriteList } from './TopicRewriteList';
 import { MAX_TOPIC_REWRITE_RULES } from '../../server/constants/mqttBridge.js';
@@ -45,5 +46,17 @@ describe('TopicRewriteList (#6516)', () => {
     const full = Array.from({ length: MAX_TOPIC_REWRITE_RULES }, (_, i) => ({ from: `a${i}`, to: 'b' }));
     render(<TopicRewriteList title="Downlink" rows={full} onChange={vi.fn()} />);
     expect((screen.getByText('Add rule').closest('button') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('TopicRewriteList focus', () => {
+  it('focuses the new row after Add rule', () => {
+    function Harness() {
+      const [rows, setRows] = useState(two);
+      return <TopicRewriteList title="Uplink" rows={rows} onChange={setRows} />;
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByText('Add rule'));
+    expect(document.activeElement).toBe(screen.getByLabelText('Uplink 3 from'));
   });
 });

@@ -55,6 +55,7 @@ import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { mqttGeoSweepService, type GeoSweepStats } from './services/mqttGeoSweepService.js';
 import { deriveRootTopicFromSubscriptions } from './services/mqttNative/mqttNativePacket.js';
 import type { MqttNativeReadiness } from './services/mqttNative/mqttNativeSendService.js';
+import { stripTrailingSlashes } from './utils/stripTrailingSlashes.js';
 
 /**
  * Direction the bridge is permitted to operate in against the upstream
@@ -332,13 +333,6 @@ export function uplinkRewriteTopics(topic: string, value: unknown, fanOut: boole
   return out.length > 0 ? out : [topic];
 }
 
-// Linear-time trailing-slash strip. Replaces `.replace(/\/+$/, '')` which
-// CodeQL flags as polynomial-ReDoS on user-controlled input (js/polynomial-redos).
-function stripTrailingSlashes(s: string): string {
-  let end = s.length;
-  while (end > 0 && s.charCodeAt(end - 1) === 0x2f) end--;
-  return end === s.length ? s : s.slice(0, end);
-}
 
 export interface MqttBridgeStatus extends SourceStatus {
   upstreamConnected: boolean;
