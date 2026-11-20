@@ -24,6 +24,8 @@ describe('CliConsoleBody — DANGER_COMMAND_PATTERN', () => {
     ['poweroff'],
     ['shutdown'],
     [`set prv.key ${'ab'.repeat(64)}`],
+    ['start ota'],
+    ['START  OTA'],
   ])('flags danger command %s', (cmd) => {
     expect(DANGER_COMMAND_PATTERN.test(cmd)).toBe(true);
   });
@@ -37,6 +39,8 @@ describe('CliConsoleBody — DANGER_COMMAND_PATTERN', () => {
     ['ver'],
     ['stats'],
     ['get prv.key'],
+    ['start'],
+    ['get ota.url'],
   ])('does not flag non-danger command %s', (cmd) => {
     expect(DANGER_COMMAND_PATTERN.test(cmd)).toBe(false);
   });
