@@ -17,7 +17,8 @@ import type { CliRunResult } from './CliConsoleBody';
 import { parseOtaReply } from './meshcoreOtaReply';
 import styles from './MeshCoreFirmwareUpdateSection.module.css';
 
-interface LatestResponse {
+/** The route's ok() envelope; ApiService does not unwrap `data`. */
+interface LatestEnvelope {
   success: boolean;
   data?: { role: string; channel: 'stable' | 'alpha'; latest: { version: string; tagName: string; htmlUrl: string } | null };
 }
@@ -35,13 +36,13 @@ interface Props {
 export function MeshCoreFirmwareUpdateSection({ sourceId, deviceType, disabled = false, result, onStart }: Props) {
   const { t } = useTranslation();
   const role = deviceType === 'repeater' ? 'repeater' : 'room-server';
-  const [latest, setLatest] = useState<LatestResponse['data'] | null>(null);
+  const [latest, setLatest] = useState<LatestEnvelope['data'] | null>(null);
 
   useEffect(() => {
     if (!sourceId) return;
     let cancelled = false;
     apiService
-      .get<LatestResponse>(`/api/sources/${encodeURIComponent(sourceId)}/meshcore/admin/firmware/latest?role=${role}`)
+      .get<LatestEnvelope>(`/api/sources/${encodeURIComponent(sourceId)}/meshcore/admin/firmware/latest?role=${role}`)
       .then((res) => {
         if (!cancelled && res.success && res.data) setLatest(res.data);
       })

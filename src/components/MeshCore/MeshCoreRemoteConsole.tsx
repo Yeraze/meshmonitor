@@ -160,6 +160,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     setLoginError(null);
     setSession(null);
     setResumed(false);
+    // #4943: another node's `start ota` reply must not show on this one.
+    setOtaResult(null);
   }, [publicKey]);
 
   const refreshCapability = useCallback(async () => {

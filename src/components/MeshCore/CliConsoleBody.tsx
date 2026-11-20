@@ -70,9 +70,10 @@ export interface CliConsoleBodyHandle {
    *  updated. Used by sibling forms (e.g. ACL manager) so their output
    *  shares one transcript with free-typed commands. */
   runCommand: (command: string, opts?: { confirm?: boolean }) => Promise<void>;
-  /** Open the typed-name confirmation for a danger command, exactly as if
-   *  the user had typed it and pressed Send (#4943: the Firmware update
-   *  section's "Start OTA mode"). Confirming runs it through the transcript. */
+  /** Send a command exactly as if the user had typed it and pressed Send
+   *  (#4943: the Firmware update section's "Start OTA mode"): a danger
+   *  command opens the typed-name confirmation first; anything else runs
+   *  straight away. Either way it lands in the transcript. */
   requestConfirm: (command: string) => void;
 }
 
@@ -293,8 +294,11 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
       }
     },
     runCommand: (cmd: string, opts?: { confirm?: boolean }) => runAndLog(cmd, opts),
-    requestConfirm: (cmd: string) => setDangerConfirm({ command: cmd, typedName: '' }),
-  }), [appendTranscript, runAndLog]);
+    requestConfirm: (cmd: string) => {
+      if (dangerPattern.test(cmd)) setDangerConfirm({ command: cmd, typedName: '' });
+      else void runAndLog(cmd);
+    },
+  }), [appendTranscript, runAndLog, dangerPattern]);
 
   const handleSend = useCallback(async () => {
     const trimmed = command.trim();

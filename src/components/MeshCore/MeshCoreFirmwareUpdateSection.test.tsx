@@ -43,6 +43,14 @@ describe('MeshCoreFirmwareUpdateSection (#4943)', () => {
     expect(screen.getByText(/MeshCore-OTA" \(no password\)/)).toBeInTheDocument();
   });
 
+  it('turns an nRF52 reply into DFU app steps with the address', () => {
+    render(
+      <MeshCoreFirmwareUpdateSection sourceId="s1" deviceType="repeater" result={{ ok: true, reply: 'OK - mac: C4:AA:01:02:03:FE' }} onStart={vi.fn()} />,
+    );
+    expect(screen.getByText(/nRF Device Firmware Update/)).toBeInTheDocument();
+    expect(screen.getByText(/C4:AA:01:02:03:FE/)).toBeInTheDocument();
+  });
+
   it('warns that a timeout may still have started OTA', () => {
     render(
       <MeshCoreFirmwareUpdateSection sourceId="s1" deviceType="repeater" result={{ ok: false, error: 'x', code: 'CLI_TIMEOUT' }} onStart={vi.fn()} />,

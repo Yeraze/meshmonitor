@@ -112,6 +112,15 @@ describe('CliConsoleBody — timeoutHint (#5785)', () => {
 });
 
 describe('CliConsoleBody — requestConfirm and onCommandResult (#4943)', () => {
+  it('runs a non-danger command straight away, with no modal', async () => {
+    const runCommand = vi.fn().mockResolvedValue({ ok: true, reply: 'v1.18.0' });
+    const ref = { current: null as CliConsoleBodyHandle | null };
+    render(<CliConsoleBody ref={ref} targetId="t-ota-2" targetName="Hilltop" runCommand={runCommand} actionCatalog={[]} />);
+    act(() => ref.current!.requestConfirm('ver'));
+    expect(screen.queryByText('Confirm destructive command')).not.toBeInTheDocument();
+    await waitFor(() => expect(runCommand).toHaveBeenCalledWith('ver', undefined));
+  });
+
   it('opens the typed-name confirmation and reports the result', async () => {
     const runCommand = vi.fn().mockResolvedValue({ ok: true, reply: 'Started: http://192.168.4.1/update' });
     const onCommandResult = vi.fn();
