@@ -222,6 +222,32 @@ opted-out traffic — that's the expected, healthy outcome. Detection is also **
 only covers traffic received after upgrading to a MeshMonitor version with this feature, so a
 freshly upgraded install should expect an empty report until new MQTT traffic arrives.
 
+## Firmware Status
+
+**Admin only.** A read-only table of the firmware on each Meshtastic (TCP) and MeshCore source's own radio, the device MeshMonitor connects to directly. Mesh nodes heard over the air are not listed. Added in [#4943](https://github.com/Yeraze/meshmonitor/issues/4943), Phase 1. Nothing in this report sends anything to a radio.
+
+### Columns
+
+Device · Source · Protocol · Hardware · Role (MeshCore) · Installed · Latest · Channel · Status · Update.
+
+### How "update available" is decided
+
+- **Meshtastic:** the installed version is compared with the newest [meshtastic/firmware](https://github.com/meshtastic/firmware/releases) release on that source's channel, the same list the OTA panel uses. A source on the **custom** or **local** channel has no release list, so it shows *Unknown*.
+- **MeshCore:** MeshCore tags releases per role (`companion-v…`, `repeater-v…`, `room-server-v…`). The radio's reported version is compared with the newest [meshcore-dev/MeshCore](https://github.com/meshcore-dev/MeshCore/releases) release for **its role**.
+- If the version is missing or can't be read, the role isn't known, no release is found, or the source isn't connected, the row says **Unknown** with the reason. It never claims *Up to date* when it can't tell.
+
+### Release channel (per source)
+
+Each source has its own channel. For Meshtastic it is the channel chosen in that source's **Configuration → Firmware Updates** panel. For MeshCore, pick **Stable** or **Alpha (prereleases)** in the row's Channel column. A source you have not set uses the install-wide channel from before channels became per source (stable if none).
+
+### Updating
+
+Meshtastic rows link to the source's OTA panel ("OTA update" where the board supports it, otherwise "Details"). MeshCore has no in-app update yet: flash it with the MeshCore web flasher, USB or the app. In-app MeshCore OTA/DFU is a later phase of #4943.
+
+### When releases are checked
+
+The release lists refresh on the existing firmware check: 30 seconds after start, then every 6 hours (`FIRMWARE_CHECK_ENABLED`, `FIRMWARE_CHECK_INTERVAL`). Requests use ETags, so an unchanged list costs GitHub nothing. **Check for updates** refreshes both lists at once.
+
 ## Permissions
 
 ### Solar Monitoring

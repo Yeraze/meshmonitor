@@ -25,6 +25,8 @@ import MeshIssuesReport from './MeshIssuesReport';
 import CoverageReport from './CoverageReport';
 import DirectRfContactsReport from './DirectRfContactsReport';
 import TracerouteExplorerReport from './tracerouteExplorer/TracerouteExplorerReport';
+import FirmwareStatusReport from './FirmwareStatusReport';
+import { useAuth } from '../../contexts/AuthContext';
 import { parseCoverageDeepLink } from '../../utils/coverageDeepLink';
 import { UiIcon, type UiIconName } from '../icons';
 
@@ -36,6 +38,7 @@ type AnalysisType =
   | 'coverage'
   | 'direct-rf-contacts'
   | 'traceroute-explorer'
+  | 'firmware-status'
   | null;
 
 interface AnalysisCard {
@@ -54,6 +57,9 @@ const AnalysisTab: React.FC = () => {
   // of the render-loop shape the #5277 query-stability fix guards against.
   const coverageLink = useMemo(() => parseCoverageDeepLink(searchParams), [searchParams]);
   const [selected, setSelected] = useState<AnalysisType>(() => (coverageLink ? 'coverage' : null));
+  // #4943: Firmware Status reads /api/firmware, which is admin only.
+  const { authStatus } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin === true;
 
   const reports: AnalysisCard[] = [
     {
@@ -119,6 +125,19 @@ const AnalysisTab: React.FC = () => {
       ),
       icon: 'route',
     },
+    ...(isAdmin
+      ? [
+          {
+            id: 'firmware-status' as const,
+            title: t('analysis.firmware_status.title', 'Firmware Status'),
+            description: t(
+              'analysis.firmware_status.description',
+              "Installed firmware on every Meshtastic and MeshCore source's own radio, against the newest release on each source's channel. Admin only.",
+            ),
+            icon: 'firmware' as const,
+          },
+        ]
+      : []),
   ];
 
   if (selected === 'solar-monitoring') {
@@ -192,6 +211,21 @@ const AnalysisTab: React.FC = () => {
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <DirectRfContactsReport />
+      </div>
+    );
+  }
+
+  if (selected === 'firmware-status' && isAdmin) {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <FirmwareStatusReport />
       </div>
     );
   }

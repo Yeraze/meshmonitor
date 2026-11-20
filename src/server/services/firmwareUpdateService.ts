@@ -42,6 +42,7 @@ import {
   noBoardReason,
   type FirmwareUpdateUnsupportedReason,
 } from '../../utils/firmwareHardwareMap.js';
+import { meshcoreFirmwareReleases } from './meshcoreFirmwareReleases.js';
 // Re-export for consumers
 export { getBoardName, getPlatformForBoard, isOtaCapable, getHardwareDisplayName };
 
@@ -428,6 +429,16 @@ export class FirmwareUpdateService {
    * Releases to present for a given channel. Nightly is a separate fetch (one
    * synthetic release); every other channel filters the cached GitHub list.
    */
+  /**
+   * Releases for `channel` from the caches only, with no network request
+   * (#4943 fleet view, which lists every source on each page load). The
+   * background poll and "check now" keep the caches fresh.
+   */
+  getCachedReleasesForChannel(channel: FirmwareChannel): FirmwareRelease[] {
+    if (channel === 'nightly') return this.cachedNightly ? [this.cachedNightly] : [];
+    return this.filterByChannel(this.cachedReleases, channel);
+  }
+
   async getReleasesForChannel(channel: FirmwareChannel): Promise<FirmwareRelease[]> {
     if (channel === 'nightly') {
       const nightly = await this.fetchNightly();
@@ -782,6 +793,8 @@ export class FirmwareUpdateService {
     if (await this.anySourceOnChannel('nightly')) {
       await this.fetchNightly();
     }
+    // #4943: MeshCore releases ride the same schedule; own cache, own errors.
+    await meshcoreFirmwareReleases.fetchReleases();
   }
 
   /**
