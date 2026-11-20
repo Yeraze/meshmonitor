@@ -208,7 +208,12 @@ export function buildBridgeConfig(
     };
   }
 
-  if (hasPartialRewrite(form.downlinkRewrite ?? []) || hasPartialRewrite(form.uplinkRewrite ?? [])) {
+  // Standalone bridges drop rewrites below, so a half-filled hidden row is no error.
+  const attached = form.brokerId !== undefined ? !!form.brokerId : !!opts.base?.brokerSourceId;
+  if (
+    attached &&
+    (hasPartialRewrite(form.downlinkRewrite ?? []) || hasPartialRewrite(form.uplinkRewrite ?? []))
+  ) {
     return {
       error: {
         key: 'source.form.error_rewrite_incomplete',

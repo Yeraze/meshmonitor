@@ -349,6 +349,15 @@ describe('mqttBridgeConfig', () => {
       expect(error?.key).toBe('source.form.error_rewrite_incomplete');
     });
 
+    it('ignores a half-filled row on a standalone bridge, where rewrites are hidden and dropped', () => {
+      const { config, error } = buildBridgeConfig(
+        { ...emptyBridgeForm(), url: 'mqtt://broker:1883', brokerId: '', uplinkRewrite: [{ from: 'x', to: '' }] },
+        { editing: false },
+      );
+      expect(error).toBeUndefined();
+      expect(config).not.toHaveProperty('uplinkTopicRewrite');
+    });
+
     it('drops the fan-out flag when it is turned off, and keeps it when unmanaged', () => {
       const base = { brokerSourceId: 'broker-1', uplinkRewriteFanOut: true };
       const off = buildBridgeConfig(

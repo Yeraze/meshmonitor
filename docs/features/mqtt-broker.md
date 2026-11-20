@@ -306,7 +306,7 @@ uplinkTopicRewrite:
 uplinkRewriteFanOut: false
 ```
 
-The local prefix must sit under the parent broker's **root topic** (`msh` above). The broker ignores packets published outside its root, so a rewrite to `local_branch` would never reach a device or come back for uplink.
+For **uplink**, the local prefix must sit under the parent broker's **root topic** (`msh` above). The broker hands a bridge only packets published under its root, so local traffic on a prefix like `local_branch` is never sent upstream. Downlink to such a prefix still works.
 
 A packet cross-posted to both upstream branches lands on the same local topic, and the downlink echo cache republishes it only once. Two separate bridges would deliver it twice.
 
