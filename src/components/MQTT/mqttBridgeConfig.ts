@@ -79,8 +79,11 @@ export interface BridgeConfigForm {
   /** Publish-side (uplink) raw topic filter — advanced. */
   uplinkTopicMode?: UplinkTopicMode;
   uplinkTopics?: string;
-  downlinkRewrite?: BridgeRewriteStrings;
-  uplinkRewrite?: BridgeRewriteStrings;
+  /** #6516: one or more rules per direction. Blank rows are dropped on save. */
+  downlinkRewrite?: BridgeRewriteStrings[];
+  uplinkRewrite?: BridgeRewriteStrings[];
+  /** #6516: uplink to every matching rule instead of the first. */
+  uplinkRewriteFanOut?: boolean;
   /**
    * #5893: optional single-mode Client ID (`!xxxxxxxx`). Page-only: when
    * omitted, the stored `upstream.clientId` is kept. Saved only while the
@@ -141,19 +144,46 @@ function clearTopicLists(topics: Record<string, any> | undefined): Record<string
   return rest;
 }
 
+/** Read a stored rewrite (legacy single object or a list) as form rows. */
+export function rewriteRowsFromConfig(value: unknown): BridgeRewriteStrings[] {
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  return list
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+    .map((r) => ({
+      from: typeof r.from === 'string' ? r.from : '',
+      to: typeof r.to === 'string' ? r.to : '',
+    }));
+}
+
+/** A row with only one of from/to filled in. */
+export function hasPartialRewrite(rows: BridgeRewriteStrings[]): boolean {
+  return rows.some((r) => !r.from.trim() !== !r.to.trim());
+}
+
+/**
+ * Write `rows` to `cfg[key]`. Blank rows drop out and no rule deletes the key.
+ * One rule is saved as the legacy single object so an older MeshMonitor can
+ * still read it; only two or more become a list.
+ */
+export function setRewriteConfig(
+  cfg: Record<string, unknown>,
+  key: 'downlinkTopicRewrite' | 'uplinkTopicRewrite',
+  rows: BridgeRewriteStrings[],
+): void {
+  const rules = rows
+    .map((r) => ({ from: r.from.trim(), to: r.to.trim() }))
+    .filter((r) => r.from && r.to);
+  if (rules.length === 0) delete cfg[key];
+  else cfg[key] = rules.length === 1 ? rules[0] : rules;
+}
+
 function applyRewrite(
   cfg: Record<string, any>,
   key: 'downlinkTopicRewrite' | 'uplinkTopicRewrite',
-  rule: BridgeRewriteStrings | undefined,
+  rows: BridgeRewriteStrings[] | undefined,
 ): void {
-  if (rule === undefined) return; // unmanaged by this caller — preserve base.
-  const from = rule.from.trim();
-  const to = rule.to.trim();
-  if (from && to) {
-    cfg[key] = { from, to };
-  } else {
-    delete cfg[key];
-  }
+  if (rows === undefined) return; // unmanaged by this caller — preserve base.
+  setRewriteConfig(cfg, key, rows);
 }
 
 /**
@@ -175,6 +205,20 @@ export function buildBridgeConfig(
   if (!url) {
     return {
       error: { key: 'source.form.error_mqtt_url_required', fallback: 'Upstream URL is required' },
+    };
+  }
+
+  // Standalone bridges drop rewrites below, so a half-filled hidden row is no error.
+  const attached = form.brokerId !== undefined ? !!form.brokerId : !!opts.base?.brokerSourceId;
+  if (
+    attached &&
+    (hasPartialRewrite(form.downlinkRewrite ?? []) || hasPartialRewrite(form.uplinkRewrite ?? []))
+  ) {
+    return {
+      error: {
+        key: 'source.form.error_rewrite_incomplete',
+        fallback: 'Both from and to are required when a topic rewrite is set',
+      },
     };
   }
 
@@ -309,6 +353,10 @@ export function buildBridgeConfig(
     applyRewrite(cfg, 'downlinkTopicRewrite', form.downlinkRewrite);
     applyRewrite(cfg, 'uplinkTopicRewrite', form.uplinkRewrite);
   }
+  if (form.uplinkRewriteFanOut !== undefined) {
+    if (form.uplinkRewriteFanOut) cfg.uplinkRewriteFanOut = true;
+    else delete cfg.uplinkRewriteFanOut;
+  }
 
   return { config: cfg };
 }
@@ -366,14 +414,9 @@ export function formFromBridgeConfig(config: Record<string, any> | null | undefi
     uplinkChannels: upChannels,
     uplinkTopicMode,
     uplinkTopics,
-    downlinkRewrite: {
-      from: cfg.downlinkTopicRewrite?.from ?? '',
-      to: cfg.downlinkTopicRewrite?.to ?? '',
-    },
-    uplinkRewrite: {
-      from: cfg.uplinkTopicRewrite?.from ?? '',
-      to: cfg.uplinkTopicRewrite?.to ?? '',
-    },
+    downlinkRewrite: rewriteRowsFromConfig(cfg.downlinkTopicRewrite),
+    uplinkRewrite: rewriteRowsFromConfig(cfg.uplinkTopicRewrite),
+    uplinkRewriteFanOut: cfg.uplinkRewriteFanOut === true,
     clientId: typeof cfg.upstream?.clientId === 'string' ? cfg.upstream.clientId : '',
   };
 }
@@ -398,8 +441,9 @@ export function emptyBridgeForm(): BridgeConfigForm {
     uplinkChannels: [],
     uplinkTopicMode: 'off',
     uplinkTopics: '',
-    downlinkRewrite: { from: '', to: '' },
-    uplinkRewrite: { from: '', to: '' },
+    downlinkRewrite: [],
+    uplinkRewrite: [],
+    uplinkRewriteFanOut: false,
     clientId: '',
   };
 }

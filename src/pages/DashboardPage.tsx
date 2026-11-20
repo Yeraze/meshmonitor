@@ -38,7 +38,15 @@ import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import { PasswordField } from '../components/shared/config/PasswordField';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import type { NodeSourceRef } from '../components/Dashboard/DashboardNodePopup';
-import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqttBridgeConfig';
+import {
+  buildBridgeConfig,
+  formFromBridgeConfig,
+  hasPartialRewrite,
+  rewriteRowsFromConfig,
+  setRewriteConfig,
+  type BridgeRewriteStrings,
+} from '../components/MQTT/mqttBridgeConfig';
+import { TopicRewriteList } from '../components/MQTT/TopicRewriteList';
 import HopLimitPolicyFields from '../components/MQTT/HopLimitPolicyFields';
 import { NumberInput } from '../components/common/NumberInput';
 import { NumberInputScope } from '../components/common/NumberInputScope';
@@ -70,6 +78,12 @@ import { MESHCORE_DEFAULT_TCP_PORT } from '../constants';
 import { getReservedLandingPath, isReservedLandingValue } from '../utils/defaultLandingPage';
 import '../styles/dashboard.css';
 import { UiIcon } from '../components/icons';
+
+/** #6516: per-bridge rewrite rows edited from the broker modal. */
+interface BridgeRewriteDraft {
+  downlink: BridgeRewriteStrings[];
+  uplink: BridgeRewriteStrings[];
+}
 
 
 // ---------------------------------------------------------------------------
@@ -231,17 +245,17 @@ function DashboardInner() {
   // Per-bridge topic-rewrite form state, surfaced inside the broker's
   // edit modal so an operator can manage all rewrites for the bridges
   // attached to this broker in one place. Keyed by bridge source id.
-  // Schema: { downlinkFrom, downlinkTo, uplinkFrom, uplinkTo } — empty
-  // strings mean "not configured" and a partial entry (only `from` or
-  // only `to` filled in) is a client-side validation error matching the
-  // server-side `error_rewrite_incomplete` rule.
+  // Schema: a list of { from, to } rows per direction (#6516). Blank rows
+  // are dropped on save; a row with only `from` or only `to` is a
+  // client-side validation error matching the server-side
+  // `error_rewrite_incomplete` rule.
   const [formBrokerBridgeRewrites, setFormBrokerBridgeRewrites] = useState<
-    Record<string, { downlinkFrom: string; downlinkTo: string; uplinkFrom: string; uplinkTo: string }>
+    Record<string, BridgeRewriteDraft>
   >({});
   // Snapshot at modal-open time so onSaveSource knows which bridges
   // actually changed and skips PUTs for the rest.
   const [originalBrokerBridgeRewrites, setOriginalBrokerBridgeRewrites] = useState<
-    Record<string, { downlinkFrom: string; downlinkTo: string; uplinkFrom: string; uplinkTo: string }>
+    Record<string, BridgeRewriteDraft>
   >({});
   // MQTT bridge (mqtt_bridge) form state.
   const [formMqttBridgeBrokerId, setFormMqttBridgeBrokerId] = useState('');
@@ -554,14 +568,12 @@ function DashboardInner() {
       const attached = sources.filter(
         (s) => s.type === 'mqtt_bridge' && (s.config as any)?.brokerSourceId === id,
       );
-      const rewrites: Record<string, { downlinkFrom: string; downlinkTo: string; uplinkFrom: string; uplinkTo: string }> = {};
+      const rewrites: Record<string, BridgeRewriteDraft> = {};
       for (const b of attached) {
         const bcfg = b.config as any;
         rewrites[b.id] = {
-          downlinkFrom: bcfg?.downlinkTopicRewrite?.from ?? '',
-          downlinkTo: bcfg?.downlinkTopicRewrite?.to ?? '',
-          uplinkFrom: bcfg?.uplinkTopicRewrite?.from ?? '',
-          uplinkTo: bcfg?.uplinkTopicRewrite?.to ?? '',
+          downlink: rewriteRowsFromConfig(bcfg?.downlinkTopicRewrite),
+          uplink: rewriteRowsFromConfig(bcfg?.uplinkTopicRewrite),
         };
       }
       setFormBrokerBridgeRewrites(rewrites);
@@ -921,24 +933,12 @@ function DashboardInner() {
         const bridgeErrors: string[] = [];
         for (const [bridgeId, rewrites] of Object.entries(formBrokerBridgeRewrites)) {
           const before = originalBrokerBridgeRewrites[bridgeId];
-          const unchanged =
-            before &&
-            before.downlinkFrom === rewrites.downlinkFrom &&
-            before.downlinkTo === rewrites.downlinkTo &&
-            before.uplinkFrom === rewrites.uplinkFrom &&
-            before.uplinkTo === rewrites.uplinkTo;
+          const unchanged = before && JSON.stringify(before) === JSON.stringify(rewrites);
           if (unchanged) continue;
 
           // Client-side mirror of the server's `error_rewrite_incomplete`
-          // rule — both From and To are required for a direction, or
-          // both must be empty.
-          const dlPartial =
-            (rewrites.downlinkFrom && !rewrites.downlinkTo) ||
-            (!rewrites.downlinkFrom && rewrites.downlinkTo);
-          const ulPartial =
-            (rewrites.uplinkFrom && !rewrites.uplinkTo) ||
-            (!rewrites.uplinkFrom && rewrites.uplinkTo);
-          if (dlPartial || ulPartial) {
+          // rule — every row needs both From and To, or neither.
+          if (hasPartialRewrite(rewrites.downlink) || hasPartialRewrite(rewrites.uplink)) {
             const bridge = sources.find((s) => s.id === bridgeId);
             bridgeErrors.push(
               `${bridge?.name ?? bridgeId}: ${t(
@@ -952,22 +952,8 @@ function DashboardInner() {
           const bridge = sources.find((s) => s.id === bridgeId);
           if (!bridge) continue;
           const bridgeConfig: Record<string, any> = { ...(bridge.config as any) };
-          if (rewrites.downlinkFrom && rewrites.downlinkTo) {
-            bridgeConfig.downlinkTopicRewrite = {
-              from: rewrites.downlinkFrom,
-              to: rewrites.downlinkTo,
-            };
-          } else {
-            delete bridgeConfig.downlinkTopicRewrite;
-          }
-          if (rewrites.uplinkFrom && rewrites.uplinkTo) {
-            bridgeConfig.uplinkTopicRewrite = {
-              from: rewrites.uplinkFrom,
-              to: rewrites.uplinkTo,
-            };
-          } else {
-            delete bridgeConfig.uplinkTopicRewrite;
-          }
+          setRewriteConfig(bridgeConfig, 'downlinkTopicRewrite', rewrites.downlink);
+          setRewriteConfig(bridgeConfig, 'uplinkTopicRewrite', rewrites.uplink);
           try {
             await api.put(`/api/sources/${bridgeId}`, {
               name: bridge.name,
@@ -1454,25 +1440,19 @@ function DashboardInner() {
                       </span>
                       <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 8px' }}>
                         {t(
-                          'source.form.bridge_topic_rewrites_help',
-                          'For each bridge attached to this broker, replace a literal topic prefix on inbound (downlink) or outbound (uplink) messages. Leave both From and To empty to disable that direction.',
+                          'source.form.bridge_topic_rewrites_help_list',
+                          'For each bridge attached to this broker, replace a literal topic prefix on inbound (downlink) or outbound (uplink) messages. Add a rule per prefix; remove every rule to turn a direction off. Uplink fan-out is set on the bridge settings page.',
                         )}
                       </p>
                       {attachedBridges.map((bridge) => {
-                        const rw = formBrokerBridgeRewrites[bridge.id] ?? {
-                          downlinkFrom: '',
-                          downlinkTo: '',
-                          uplinkFrom: '',
-                          uplinkTo: '',
-                        };
-                        const patch = (next: Partial<typeof rw>) => {
+                        const rw = formBrokerBridgeRewrites[bridge.id] ?? { downlink: [], uplink: [] };
+                        const patch = (next: Partial<BridgeRewriteDraft>) => {
                           setFormBrokerBridgeRewrites((prev) => ({
                             ...prev,
                             [bridge.id]: { ...rw, ...next },
                           }));
                         };
-                        const hasAny =
-                          rw.downlinkFrom || rw.downlinkTo || rw.uplinkFrom || rw.uplinkTo;
+                        const hasAny = rw.downlink.length > 0 || rw.uplink.length > 0;
                         return (
                           <details
                             key={bridge.id}
@@ -1493,49 +1473,22 @@ function DashboardInner() {
                                 </span>
                               )}
                             </summary>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-                              <div>
-                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
-                                  {t('source.form.bridge_topic_rewrites_downlink', 'Downlink (to local broker)')}
-                                </span>
-                                <input
-                                  type="text"
-                                  className="dashboard-form-input"
-                                  placeholder={t('source.form.bridge_topic_rewrites_from', 'From prefix') as string}
-                                  value={rw.downlinkFrom}
-                                  onChange={(e) => patch({ downlinkFrom: e.target.value })}
-                                  style={{ marginTop: 4 }}
-                                />
-                                <input
-                                  type="text"
-                                  className="dashboard-form-input"
-                                  placeholder={t('source.form.bridge_topic_rewrites_to', 'To prefix') as string}
-                                  value={rw.downlinkTo}
-                                  onChange={(e) => patch({ downlinkTo: e.target.value })}
-                                  style={{ marginTop: 4 }}
-                                />
-                              </div>
-                              <div>
-                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-subtle)' }}>
-                                  {t('source.form.bridge_topic_rewrites_uplink', 'Uplink (to upstream)')}
-                                </span>
-                                <input
-                                  type="text"
-                                  className="dashboard-form-input"
-                                  placeholder={t('source.form.bridge_topic_rewrites_from', 'From prefix') as string}
-                                  value={rw.uplinkFrom}
-                                  onChange={(e) => patch({ uplinkFrom: e.target.value })}
-                                  style={{ marginTop: 4 }}
-                                />
-                                <input
-                                  type="text"
-                                  className="dashboard-form-input"
-                                  placeholder={t('source.form.bridge_topic_rewrites_to', 'To prefix') as string}
-                                  value={rw.uplinkTo}
-                                  onChange={(e) => patch({ uplinkTo: e.target.value })}
-                                  style={{ marginTop: 4 }}
-                                />
-                              </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                              <TopicRewriteList
+                                title={t('source.form.bridge_topic_rewrites_downlink', 'Downlink (to local broker)')}
+                                rows={rw.downlink}
+                                onChange={(rows) => patch({ downlink: rows })}
+                                fromPlaceholder={t('source.form.bridge_topic_rewrites_from', 'From prefix') as string}
+                                toPlaceholder={t('source.form.bridge_topic_rewrites_to', 'To prefix') as string}
+                              />
+                              <TopicRewriteList
+                                title={t('source.form.bridge_topic_rewrites_uplink', 'Uplink (to upstream)')}
+                                rows={rw.uplink}
+                                onChange={(rows) => patch({ uplink: rows })}
+                                fromPlaceholder={t('source.form.bridge_topic_rewrites_from', 'From prefix') as string}
+                                toPlaceholder={t('source.form.bridge_topic_rewrites_to', 'To prefix') as string}
+                                markPrimary={(bridge.config as { uplinkRewriteFanOut?: unknown } | undefined)?.uplinkRewriteFanOut !== true}
+                              />
                             </div>
                           </details>
                         );

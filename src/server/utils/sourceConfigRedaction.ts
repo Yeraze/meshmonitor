@@ -571,6 +571,7 @@ const MQTT_BRIDGE: Spec<MqttBridgeSourceConfig> = {
   dropAutomationUplinks: withheld,
   skipRaise: withheld,
   relayOtherBridges: withheld,
+  uplinkRewriteFanOut: withheld,
 };
 
 const MQTT_BROKER: Spec<MqttBrokerSourceConfig> = {
