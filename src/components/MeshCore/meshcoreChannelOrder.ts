@@ -18,6 +18,7 @@
  *   - `name`        — alphabetical by display name
  *   - `lastMessage` — newest activity first; silent items sink to the bottom
  *   - `messageCount` — most messages first (#5503); empty items sink
+ *     (both activity sorts put muted items after unmuted ones, #6418)
  *   - `distance`    — nearest first (rooms only, #6148); no-location sinks, by name
  *   - `custom`      — the operator's drag-and-drop order (#5379)
  *
@@ -219,6 +220,9 @@ export interface SortItemsOptions<K extends OrderKey = number> {
   /** Distance (km) per id, used by `distance` (#6148). A missing/non-finite
    *  value means "no location" and sinks that item to the bottom, by name. */
   distances?: Partial<Record<K, number>>;
+  /** True for a muted item. The activity sorts (`lastMessage`,
+   *  `messageCount`) put muted items after every unmuted one (#6418). */
+  isMuted?: (id: K) => boolean;
   /** Display label for `name`/`distance` sorting (defaults to the raw name). */
   label?: (c: OrderableItem<K>) => string;
 }
@@ -238,18 +242,22 @@ export function sortItems<K extends OrderKey, T extends OrderableItem<K>>(
   const byName = (a: T, b: T) =>
     nameKey(a).localeCompare(nameKey(b), undefined, { sensitivity: 'base', numeric: true }) || tie(a, b);
 
+  // Unmuted before muted; 0 when both match, so the mode's own order decides.
+  const mutedLast = (a: T, b: T) =>
+    opts.isMuted ? Number(opts.isMuted(a.id)) - Number(opts.isMuted(b.id)) : 0;
+
   switch (mode) {
     case 'name':
       return [...items].sort(byName);
     case 'lastMessage': {
       const latest: Partial<Record<K, number>> = opts.latest ?? {};
       // Silent items (no timestamp) sink to the bottom, in id order.
-      return [...items].sort((a, b) => (latest[b.id] ?? 0) - (latest[a.id] ?? 0) || tie(a, b));
+      return [...items].sort((a, b) => mutedLast(a, b) || (latest[b.id] ?? 0) - (latest[a.id] ?? 0) || tie(a, b));
     }
     case 'messageCount': {
       const counts: Partial<Record<K, number>> = opts.counts ?? {};
       // Busiest first; empty items sink to the bottom, in id order.
-      return [...items].sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || tie(a, b));
+      return [...items].sort((a, b) => mutedLast(a, b) || (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || tie(a, b));
     }
     case 'distance': {
       const distances: Partial<Record<K, number>> = opts.distances ?? {};

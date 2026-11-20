@@ -27,7 +27,7 @@ import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
 import loginProgressStyles from './MeshCoreLoginProgress.module.css';
 import { compareMeshCoreMessages } from './messageOrder';
 import { useSettingsOptional, useOptionalMuteSettings } from '../../contexts/SettingsContext';
-import { MuteMenu, MutedIndicator } from '../notifications/MuteMenu';
+import { MuteMenu, MutedIndicator, MutedName } from '../notifications/MuteMenu';
 import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import {
   markRoomRead,
@@ -110,6 +110,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const { t } = useTranslation();
   const { hasPermission, authStatus } = useAuth();
   const mute = useOptionalMuteSettings();
+  // Rooms share the DM mute (#6261); the activity sorts put muted rooms last (#6418).
+  const isDMMuted = mute?.isDMMuted;
   const canMute = !!mute && authStatus?.authenticated === true;
   const distanceUnit = useSettingsOptional()?.distanceUnit ?? 'km';
   const canSend = hasPermission('messages', 'write');
@@ -271,8 +273,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
       latest: roomStats.latest,
       counts: roomStats.counts,
       distances: roomDistances,
+      isMuted: isDMMuted,
     });
-  }, [roomServers, sortMode, customOrder, roomStats, roomDistances]);
+  }, [roomServers, sortMode, customOrder, roomStats, roomDistances, isDMMuted]);
 
   // A stable key for the current room set; the reorder panel closes when the
   // set changes under it (a room joins or leaves).
@@ -775,7 +778,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                     <UiIcon name={loggedIn ? 'statusOn' : hasSaved ? 'statusPartial' : 'statusOff'} size={12} />
                   </span>
                   {' '}
-                  {name}
+                  <MutedName muted={roomMuted}>{name}</MutedName>
                   {roomMuted && <MutedIndicator />}
                 </div>
                 <div className="mc-channel-row-meta">

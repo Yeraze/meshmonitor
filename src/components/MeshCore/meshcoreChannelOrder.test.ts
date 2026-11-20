@@ -220,3 +220,34 @@ describe('sortChannels stays a channel-flavoured alias of sortItems', () => {
     expect(sortChannels).toBe(sortItems);
   });
 });
+
+describe('muted items sink in the activity sorts (#6418)', () => {
+  const items = [
+    { id: 0, name: 'Public' },
+    { id: 1, name: 'Busy (muted)' },
+    { id: 2, name: 'Quiet' },
+    { id: 3, name: 'Old (muted)' },
+  ];
+  const muted = new Set([1, 3]);
+  const isMuted = (id: number) => muted.has(id);
+  const latest = { 0: 200, 1: 900, 2: 100, 3: 50 };
+  const counts = { 0: 20, 1: 500, 2: 10, 3: 5 };
+
+  it('lastMessage: unmuted newest-first, then muted newest-first', () => {
+    expect(sortItems(items, 'lastMessage', { latest, isMuted }).map((c) => c.id)).toEqual([0, 2, 1, 3]);
+  });
+
+  it('messageCount: unmuted busiest-first, then muted busiest-first', () => {
+    expect(sortItems(items, 'messageCount', { counts, isMuted }).map((c) => c.id)).toEqual([0, 2, 1, 3]);
+  });
+
+  it('leaves name, device and custom order alone', () => {
+    expect(sortItems(items, 'device', { isMuted }).map((c) => c.id)).toEqual([0, 1, 2, 3]);
+    expect(sortItems(items, 'name', { isMuted }).map((c) => c.name)).toEqual(['Busy (muted)', 'Old (muted)', 'Public', 'Quiet']);
+    expect(sortItems(items, 'custom', { isMuted, customOrder: [3, 1, 0, 2] }).map((c) => c.id)).toEqual([3, 1, 0, 2]);
+  });
+
+  it('without isMuted, sorts as before', () => {
+    expect(sortItems(items, 'lastMessage', { latest }).map((c) => c.id)).toEqual([1, 0, 2, 3]);
+  });
+});

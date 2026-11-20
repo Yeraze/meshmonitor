@@ -156,6 +156,11 @@ export const MuteMenu: React.FC<MuteMenuProps> = ({
   );
 };
 
+/** A conversation name in a list, greyed while it is muted (#6418). */
+export const MutedName: React.FC<{ muted: boolean; children: React.ReactNode }> = ({ muted, children }) => (
+  <span className={muted ? styles.mutedName : undefined}>{children}</span>
+);
+
 /** Muted-conversation marker for list rows. */
 export const MutedIndicator: React.FC<{ size?: number }> = ({ size = 13 }) => {
   const { t } = useTranslation();

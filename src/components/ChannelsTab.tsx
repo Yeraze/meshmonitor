@@ -13,7 +13,7 @@ import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 import { Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
-import { MuteMenu } from './notifications/MuteMenu';
+import { MuteMenu, MutedName } from './notifications/MuteMenu';
 import { MarkAllReadButton } from './messages/MarkAllReadButton';
 import { TimeFormat, DateFormat, useSettings, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import { formatPrecisionAccuracy } from '../utils/distance';
@@ -967,7 +967,7 @@ export default function ChannelsTab({
                     <div className="channel-button-content">
                       <div className="channel-button-left">
                         <div className="channel-button-header">
-                          <span className="channel-name">{displayName}</span>
+                          <span className="channel-name"><MutedName muted={isChannelMuted(channelId)}>{displayName}</MutedName></span>
                           <span className="channel-id">#{channelId}</span>
                         </div>
                         <div className="channel-button-indicators">
