@@ -676,6 +676,24 @@ describe('firmwareUpdateRoutes', () => {
   });
 
   describe('POST /api/firmware/update with useCustomUrl (#5011)', () => {
+    beforeEach(() => {
+      // #4943: a custom-URL install needs the source on the custom channel.
+      mockGetChannel.mockResolvedValue('custom');
+    });
+
+    it('refuses when the source is no longer on the custom channel (#4943)', async () => {
+      mockGetChannel.mockResolvedValue('stable');
+      mockGetCustomUrl.mockResolvedValue('https://example.com/stale.bin');
+
+      const res = await request(app)
+        .post('/api/firmware/update')
+        .send({ useCustomUrl: true, gatewayIp: '192.168.1.100', hwModel: 44, currentVersion: '2.7.20' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('CUSTOM_URL_CHANNEL_REQUIRED');
+      expect(mockStartPreflight).not.toHaveBeenCalled();
+    });
+
     it('starts preflight against the saved URL without a targetVersion', async () => {
       mockGetCustomUrl.mockResolvedValue('https://raw.githubusercontent.com/o/r/main/firmware.bin');
       mockGetStatus.mockReturnValueOnce(IDLE_STATUS).mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });

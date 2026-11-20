@@ -388,6 +388,16 @@ router.post('/update', async (req: Request, res: Response) => {
     let targetRelease = null;
     let resolvedCustomUrl: string | undefined;
     if (wantsCustomUrl) {
+      // #4943: a URL saved earlier stays stored after the source moves to
+      // another channel; only a source on the custom channel may use it.
+      if ((await firmwareUpdateService.getChannel(mgr.sourceId)) !== 'custom') {
+        return fail(
+          res,
+          400,
+          'CUSTOM_URL_CHANNEL_REQUIRED',
+          'This source is not on the custom channel. Select Custom and save before installing from a URL.',
+        );
+      }
       // #4943: the URL saved for the source being flashed, never another's.
       const stored = await firmwareUpdateService.getCustomUrl(mgr.sourceId);
       if (!stored || !stored.trim()) {

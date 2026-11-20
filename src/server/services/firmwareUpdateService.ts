@@ -573,7 +573,12 @@ export class FirmwareUpdateService {
     await this.writeSourceSetting(sourceId, 'firmwareCustomUrl', url);
   }
 
-  /** True when the install-wide channel or any source's own channel is `channel`. */
+  /**
+   * True when the install-wide channel or any source's own channel is
+   * `channel`. A source with no row of its own inherits the install-wide value,
+   * so the first check covers it; `getSettingForSources` returns only explicit
+   * per-source rows (no fallback), which the second check covers.
+   */
   async anySourceOnChannel(channel: FirmwareChannel): Promise<boolean> {
     if ((await this.getChannel()) === channel) return true;
     const ids = (await databaseService.sources.getAllSources()).map((src) => src.id);

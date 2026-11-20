@@ -42,9 +42,12 @@ describe('POST /api/firmware/update — unsupported hardware (#5677)', () => {
   beforeEach(async () => {
     harness = await createRouteTestApp({ mount: (app) => app.use('/api/firmware', firmwareUpdateRoutes) });
     await firmwareUpdateService.setCustomUrl(CUSTOM_URL);
+    // #4943: a custom-URL install needs the custom channel.
+    await firmwareUpdateService.setChannel('custom');
   });
 
   afterEach(async () => {
+    await harness.db.settings.deleteSetting('firmwareChannel');
     await harness.cleanup();
   });
 
