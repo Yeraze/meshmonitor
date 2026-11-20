@@ -48,7 +48,7 @@ export function meshcoreRoleIconName(advType: number | null | undefined): UiIcon
   switch (advType) {
     case 1: return 'companion';
     case 2: return 'repeater';
-    case 3: return 'home';
+    case 3: return 'roomServer';
     case 4: return 'sensor';
     default: return null;
   }

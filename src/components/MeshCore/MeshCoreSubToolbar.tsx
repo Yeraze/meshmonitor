@@ -39,7 +39,7 @@ const ITEMS: Item[] = [
   // 'nodes' so saved views and permissions do not change.
   { id: 'nodes', ...MAP_NAV_ENTRY },
   { id: 'channels', labelKey: 'meshcore.nav.channels', fallback: 'Channels', icon: 'channels' },
-  { id: 'rooms', labelKey: 'meshcore.nav.rooms', fallback: 'Rooms', icon: 'home' },
+  { id: 'rooms', labelKey: 'meshcore.nav.rooms', fallback: 'Rooms', icon: 'roomServer' },
   // id/key remain 'dms' for backward-compat; the visible label was renamed to
   // 'Node Details' to reflect the view's full scope (#3867).
   { id: 'dms', labelKey: 'meshcore.nav.dms', fallback: 'Node Details', icon: 'directMessages' },

@@ -5,7 +5,7 @@ describe('meshcoreRole (#3647)', () => {
   it('maps each known advert type to a compact icon', () => {
     expect(meshcoreRoleIconName(1)).toBe('companion');
     expect(meshcoreRoleIconName(2)).toBe('repeater');
-    expect(meshcoreRoleIconName(3)).toBe('home');
+    expect(meshcoreRoleIconName(3)).toBe('roomServer');
     expect(meshcoreRoleIconName(4)).toBe('sensor');
   });
 
