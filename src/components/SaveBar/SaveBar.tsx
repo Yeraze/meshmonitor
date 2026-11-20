@@ -41,7 +41,7 @@ export const SaveBar: React.FC = () => {
     // The bar appears on the first edit, often right over the control that
     // made it (or over the focused field). Scroll each such control clear.
     const barTop = window.innerHeight - reserve();
-    for (const el of [lastPressed?.closest('button, input, select, textarea, label, a'), document.activeElement]) {
+    for (const el of new Set([lastPressed?.closest('button, input, select, textarea, label, a'), document.activeElement])) {
       if (
         el instanceof HTMLElement &&
         el !== document.body &&

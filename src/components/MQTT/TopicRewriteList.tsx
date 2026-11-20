@@ -37,7 +37,7 @@ export function TopicRewriteList({
   const addRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (focusRow === null || focusRow >= rows.length) return;
-    listRef.current?.querySelectorAll('input')[focusRow * 2]?.focus({ preventScroll: true });
+    listRef.current?.querySelectorAll<HTMLInputElement>('input[data-rewrite-from]')[focusRow]?.focus({ preventScroll: true });
     addRef.current?.scrollIntoView?.({ block: 'nearest' });
     setFocusRow(null);
   }, [focusRow, rows.length]);
@@ -52,6 +52,7 @@ export function TopicRewriteList({
           <input
             className="dashboard-form-input"
             aria-label={`${title} ${i + 1} ${t('mqtt_bridge_config.rewrite_from', 'from')}`}
+            data-rewrite-from=""
             value={row.from}
             disabled={disabled}
             placeholder={fromPlaceholder}
