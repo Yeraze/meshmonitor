@@ -641,6 +641,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     // #5785 remembered admin session: status (DB only) and Log out.
     'GET /admin/session/:publicKey': 'admin',
     'DELETE /admin/session/:publicKey': 'admin',
+    // #4943 Phase 2: newest MeshCore release for the Firmware update section (cache only).
+    'GET /admin/firmware/latest': 'admin',
   },
   automation: {
     'GET /automation/pathfinding': 'read',
