@@ -1,7 +1,21 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBarContext, SaveBarSection } from '../../contexts/SaveBarContext';
 import './SaveBar.css';
+
+// The control the user last pressed. The bar mounts a render after the edit
+// that summons it, by when focus may have moved on (or never landed: Safari
+// does not focus a clicked button), so remember the press itself.
+let lastPressed: Element | null = null;
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      lastPressed = e.target instanceof Element ? e.target : null;
+    },
+    true,
+  );
+}
 
 export const SaveBar: React.FC = () => {
   const { t } = useTranslation();
@@ -9,6 +23,44 @@ export const SaveBar: React.FC = () => {
   // True for the full duration of a batch save, so the buttons stay disabled
   // between sequential section saves (no re-enable window for double-clicks).
   const [isBatchSaving, setIsBatchSaving] = useState(false);
+
+  // The bar is fixed over the page, so it can cover the control the user is
+  // working on. Publish how much of the viewport bottom it takes as
+  // --save-bar-reserve; html's scroll-padding-bottom (SaveBar.css) then keeps
+  // focus and scrollIntoView clear of it.
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const barRef = useCallback((node: HTMLDivElement | null) => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    if (!node) return;
+    const root = document.documentElement;
+    // offsetHeight and `bottom` ignore the slide-in transform.
+    const reserve = () => node.offsetHeight + (parseFloat(getComputedStyle(node).bottom) || 0);
+    const update = () => root.style.setProperty('--save-bar-reserve', `${reserve()}px`);
+    update();
+    // The bar appears on the first edit, often right over the control that
+    // made it (or over the focused field). Scroll each such control clear.
+    const barTop = window.innerHeight - reserve();
+    for (const el of new Set([lastPressed?.closest('button, input, select, textarea, label, a'), document.activeElement])) {
+      if (
+        el instanceof HTMLElement &&
+        el !== document.body &&
+        el.isConnected &&
+        !node.contains(el) &&
+        el.getBoundingClientRect().bottom > barTop
+      ) {
+        el.scrollIntoView?.({ block: 'nearest' });
+      }
+    }
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    observer?.observe(node);
+    window.addEventListener('resize', update);
+    cleanupRef.current = () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+      root.style.removeProperty('--save-bar-reserve');
+    };
+  }, []);
 
   // Get sections with changes
   const sectionsWithChanges: SaveBarSection[] = [];
@@ -82,7 +134,7 @@ export const SaveBar: React.FC = () => {
   const showTabs = !effectiveSection.group && sectionsWithChanges.length > 1;
 
   return (
-    <div className="save-bar">
+    <div className="save-bar" ref={barRef}>
       <div className="save-bar-content">
         <div className="save-bar-left">
           {showTabs && (

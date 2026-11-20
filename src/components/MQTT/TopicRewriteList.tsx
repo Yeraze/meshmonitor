@@ -2,6 +2,7 @@
  * Editable list of topic-rewrite rules for one direction of an mqtt_bridge
  * (#6516). Shared by the bridge Configuration page and the broker modal.
  */
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { MAX_TOPIC_REWRITE_RULES } from '../../server/constants/mqttBridge.js';
@@ -29,17 +30,29 @@ export function TopicRewriteList({
   markPrimary = false,
 }: TopicRewriteListProps) {
   const { t } = useTranslation();
+  // After "Add rule": focus the new row and keep the button in view, so the
+  // fixed save bar (which the first edit brings up) cannot cover either.
+  const [focusRow, setFocusRow] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (focusRow === null || focusRow >= rows.length) return;
+    listRef.current?.querySelectorAll<HTMLInputElement>('input[data-rewrite-from]')[focusRow]?.focus({ preventScroll: true });
+    addRef.current?.scrollIntoView?.({ block: 'nearest' });
+    setFocusRow(null);
+  }, [focusRow, rows.length]);
   const update = (i: number, next: Partial<BridgeRewriteStrings>) =>
     onChange(rows.map((r, j) => (j === i ? { ...r, ...next } : r)));
 
   return (
-    <div className={styles.list}>
+    <div className={styles.list} ref={listRef}>
       <span className={styles.title}>{title}</span>
       {rows.map((row, i) => (
         <div key={i} className={styles.row}>
           <input
             className="dashboard-form-input"
             aria-label={`${title} ${i + 1} ${t('mqtt_bridge_config.rewrite_from', 'from')}`}
+            data-rewrite-from=""
             value={row.from}
             disabled={disabled}
             placeholder={fromPlaceholder}
@@ -74,10 +87,14 @@ export function TopicRewriteList({
         </div>
       ))}
       <button
+        ref={addRef}
         type="button"
         className={styles.addButton}
         disabled={disabled || rows.length >= MAX_TOPIC_REWRITE_RULES}
-        onClick={() => onChange([...rows, { from: '', to: '' }])}
+        onClick={() => {
+          setFocusRow(rows.length);
+          onChange([...rows, { from: '', to: '' }]);
+        }}
       >
         <UiIcon name="plus" size={12} />
         {t('mqtt_bridge_config.rewrite_add', 'Add rule')}

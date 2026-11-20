@@ -22,6 +22,7 @@ import { isMqttProxyLinkMisconfigured } from '../../utils/mqttProxyLink.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
 import { MAX_TOPIC_REWRITE_RULES } from '../constants/mqttBridge.js';
+import { stripTrailingSlashes } from '../utils/stripTrailingSlashes.js';
 import { MqttBridgeManager, normalizeBridgeClientId, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
@@ -66,13 +67,6 @@ import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes } from '../util
 
 const router = Router();
 
-// Linear-time trailing-slash strip. Replaces `.replace(/\/+$/, '')` which
-// CodeQL flags as polynomial-ReDoS on user-controlled input (js/polynomial-redos).
-function stripTrailingSlashes(s: string): string {
-  let end = s.length;
-  while (end > 0 && s.charCodeAt(end - 1) === 0x2f) end--;
-  return end === s.length ? s : s.slice(0, end);
-}
 
 // Validate virtualNode config nested inside a source config blob.
 // Returns null on success, or { status, error } on failure.
