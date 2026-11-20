@@ -393,8 +393,10 @@ export const VALIDATION = {
  * dotted config key (e.g. `get reboot.interval`, `set clkreboot.retries 3`)
  * — those are read/write config-path operations, not the standalone verb.
  * `set prv.key <hex>` replaces the radio's identity (#6255); `get prv.key` is a read.
- * `start ota` takes the node off the mesh into update mode (an open "MeshCore-OTA"
- * WiFi AP on ESP32, BLE DFU on nRF52) and works over remote admin (#4943).
+ * `start ota` works over remote admin and opens update mode (#4943): an open,
+ * unauthenticated "MeshCore-OTA" WiFi AP with a firmware upload page on
+ * ESP32, BLE DFU on nRF52. The node keeps meshing; until it reboots, anyone
+ * in WiFi/BLE range can flash it.
  */
 export const DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory|poweroff|shutdown)\b(?!\.)|\bset\s+prv\.key\b|\bstart\s+ota\b/i;
 

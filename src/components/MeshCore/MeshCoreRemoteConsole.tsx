@@ -27,7 +27,8 @@ import { useTranslation } from 'react-i18next';
 import type { MeshCoreActions, MeshCoreRemoteAdminSession } from './hooks/useMeshCore';
 import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
 import { MeshCoreAclManager } from './MeshCoreAclManager';
-import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle } from './CliConsoleBody';
+import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle, type CliRunResult } from './CliConsoleBody';
+import { MeshCoreFirmwareUpdateSection } from './MeshCoreFirmwareUpdateSection';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
 import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
@@ -142,6 +143,12 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   // Imperative handle into the body — used to push "Logged in" info
   // lines into the transcript without lifting transcript state.
   const bodyRef = useRef<CliConsoleBodyHandle | null>(null);
+  // #4943: the latest `start ota` result, however it was sent, for the
+  // Firmware update section's next steps.
+  const [otaResult, setOtaResult] = useState<CliRunResult | null>(null);
+  const handleCommandResult = useCallback((cmd: string, result: CliRunResult) => {
+    if (/^\s*start\s+ota\b/i.test(cmd)) setOtaResult(result);
+  }, []);
 
   // Reset auth state when the targeted contact changes — a stale "logged
   // in" badge against the wrong contact would be actively misleading.
@@ -526,8 +533,19 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         />
       )}
 
+      {loggedIn && (
+        <MeshCoreFirmwareUpdateSection
+          sourceId={sourceId ?? null}
+          deviceType={isRepeater ? 'repeater' : 'room'}
+          disabled={blocked}
+          result={otaResult}
+          onStart={() => bodyRef.current?.requestConfirm('start ota')}
+        />
+      )}
+
       <CliConsoleBody
         ref={bodyRef}
+        onCommandResult={handleCommandResult}
         targetId={publicKey}
         targetName={contactName}
         history={sourceId ? { sourceId, target: publicKey } : undefined}

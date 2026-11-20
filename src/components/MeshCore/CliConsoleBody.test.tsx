@@ -7,8 +7,8 @@
  * (which drops focus); the console restores it once the send completes.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { CliConsoleBody, DANGER_COMMAND_PATTERN } from './CliConsoleBody';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { CliConsoleBody, DANGER_COMMAND_PATTERN, type CliConsoleBodyHandle } from './CliConsoleBody';
 
 // Mirrors the server-side DANGER_COMMAND_PATTERN suite in meshcoreRoutes.test.ts.
 // If this drifts from the server pattern, the client's confirm modal and the
@@ -110,3 +110,32 @@ describe('CliConsoleBody — timeoutHint (#5785)', () => {
     expect(screen.queryByText(HINT)).toBeNull();
   });
 });
+
+describe('CliConsoleBody — requestConfirm and onCommandResult (#4943)', () => {
+  it('opens the typed-name confirmation and reports the result', async () => {
+    const runCommand = vi.fn().mockResolvedValue({ ok: true, reply: 'Started: http://192.168.4.1/update' });
+    const onCommandResult = vi.fn();
+    const ref = { current: null as CliConsoleBodyHandle | null };
+    render(
+      <CliConsoleBody
+        ref={ref}
+        targetId="t-ota"
+        targetName="Hilltop"
+        runCommand={runCommand}
+        actionCatalog={[]}
+        onCommandResult={onCommandResult}
+      />,
+    );
+    act(() => ref.current!.requestConfirm('start ota'));
+    expect(screen.getByText('Confirm destructive command')).toBeInTheDocument();
+    expect(runCommand).not.toHaveBeenCalled();
+    const nameInput = screen.getByRole('dialog').querySelector('input') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'Hilltop' } });
+    fireEvent.click(screen.getByText('Send start ota'));
+    await waitFor(() => expect(runCommand).toHaveBeenCalledWith('start ota', { confirm: true }));
+    await waitFor(() =>
+      expect(onCommandResult).toHaveBeenCalledWith('start ota', { ok: true, reply: 'Started: http://192.168.4.1/update' }),
+    );
+  });
+});
+
