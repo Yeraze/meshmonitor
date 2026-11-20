@@ -175,14 +175,18 @@ export function glyphFamilyInnerSvg(family: GlyphFamily, color: string): string 
       // Meshtastic CLIENT_BASE: base station (#6008).
       return clientBaseSvg(color);
     case 'roomServer':
-      // Stacked server rack with status LEDs.
+      // Open door: a room server is a door into a room (#6518). Paths from
+      // Lucide `door-open` (https://lucide.dev, ISC licence), a 24-unit box
+      // placed in the middle of the 48-unit marker, with the door leaf filled
+      // so it reads at map size.
       return `
-        <rect x="15" y="14" width="18" height="7" rx="1.5" fill="${color}" />
-        <rect x="15" y="23" width="18" height="7" rx="1.5" fill="${color}" />
-        <circle cx="19" cy="17.5" r="1.4" fill="white" />
-        <circle cx="19" cy="26.5" r="1.4" fill="white" />
-        <rect x="23" y="16.5" width="7" height="2" rx="1" fill="white" />
-        <rect x="23" y="25.5" width="7" height="2" rx="1" fill="white" />`;
+        <g transform="translate(12 12)" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <path d="M10 21H2" />
+          <path d="M10 3H7a2 2 0 0 0-2 2v16" />
+          <path d="M22 21h-3" />
+          <path d="M19 21V5a2 2 0 0 0-1.675-1.974l-6.163-1.013A1 1 0 0 0 10 3v18a1 1 0 0 0 1.124.992z" fill="${color}" />
+          <circle cx="14" cy="12" r="1.2" fill="white" stroke="none" />
+        </g>`;
     case 'sensor':
       // Broadcasting dot with concentric waves.
       return `
