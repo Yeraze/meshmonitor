@@ -4,7 +4,8 @@
  */
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
-import { MAX_BRIDGE_REWRITE_RULES, type BridgeRewriteStrings } from './mqttBridgeConfig';
+import { MAX_TOPIC_REWRITE_RULES } from '../../server/constants/mqttBridge.js';
+import type { BridgeRewriteStrings } from './mqttBridgeConfig';
 import styles from './TopicRewriteList.module.css';
 
 interface TopicRewriteListProps {
@@ -75,16 +76,16 @@ export function TopicRewriteList({
       <button
         type="button"
         className={styles.addButton}
-        disabled={disabled || rows.length >= MAX_BRIDGE_REWRITE_RULES}
+        disabled={disabled || rows.length >= MAX_TOPIC_REWRITE_RULES}
         onClick={() => onChange([...rows, { from: '', to: '' }])}
       >
         <UiIcon name="plus" size={12} />
         {t('mqtt_bridge_config.rewrite_add', 'Add rule')}
       </button>
-      {rows.length >= MAX_BRIDGE_REWRITE_RULES && (
+      {rows.length >= MAX_TOPIC_REWRITE_RULES && (
         <span className={styles.help}>
           {t('mqtt_bridge_config.rewrite_max', 'At most {{max}} rules per direction.', {
-            max: MAX_BRIDGE_REWRITE_RULES,
+            max: MAX_TOPIC_REWRITE_RULES,
           })}
         </span>
       )}

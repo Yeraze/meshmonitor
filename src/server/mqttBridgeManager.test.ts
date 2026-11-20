@@ -804,6 +804,125 @@ describe('MqttBridgeManager', () => {
     await new Promise<void>((r) => pub.end(true, {}, () => r()));
   });
 
+  // #6516: several rewrite rules per direction on one bridge. The local
+  // prefix sits under the parent broker's root (msh), or it ignores it.
+  describe('rewrite rule lists', () => {
+    const connectTo = async (port: number, auth: boolean) => {
+      const c = connect(`mqtt://127.0.0.1:${port}`, {
+        reconnectPeriod: 0,
+        ...(auth ? { username: 'u', password: 'p' } : {}),
+      });
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('connect timeout')), 3000);
+        c.once('connect', () => {
+          clearTimeout(t);
+          resolve();
+        });
+      });
+      return c;
+    };
+    const subscribeAll = async (c: MqttClient, filter: string) => {
+      const seen: Array<{ topic: string; payload: Buffer }> = [];
+      await new Promise<void>((resolve, reject) => {
+        c.subscribe(filter, { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+      });
+      c.on('message', (topic, payload) => seen.push({ topic, payload }));
+      return seen;
+    };
+    const branches = {
+      brokerSourceId: 'local-broker',
+      subscriptions: ['root/branch_1/#', 'root/branch_2/#'],
+      downlinkTopicRewrite: [
+        { from: 'root/branch_1', to: 'msh/local' },
+        { from: 'root/branch_2', to: 'msh/local' },
+      ],
+      uplinkTopicRewrite: [
+        { from: 'msh/local', to: 'root/branch_1' },
+        { from: 'msh/local', to: 'root/branch_2' },
+      ],
+    };
+
+    async function uplinkOnce(fanOut: boolean, packetId: number) {
+      bridge = new MqttBridgeManager(`rwlist-up-${packetId}`, 'RwListUp', {
+        ...branches,
+        upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+        uplinkRewriteFanOut: fanOut,
+      });
+      await sourceManagerRegistry.addManager(bridge);
+      upstreamClient = await connectTo(upstreamPort, false);
+      const upstreamSeen = await subscribeAll(upstreamClient, 'root/#');
+      const localSub = await connectTo(localPort, true);
+      const localSeen = await subscribeAll(localSub, 'msh/local/#');
+      const localPublisher = await connectTo(localPort, true);
+      const envelope = buildPositionEnvelope({
+        from: 0x44444444,
+        latI: 440_000_000,
+        lngI: -780_000_000,
+        channelId: 'LongFast',
+        gatewayId: '!44444444',
+        packetId,
+      });
+      localPublisher.publish('msh/local/2/e/Foo', envelope);
+      await new Promise((r) => setTimeout(r, 800));
+      await new Promise<void>((r) => localPublisher.end(true, {}, () => r()));
+      await new Promise<void>((r) => localSub.end(true, {}, () => r()));
+      const topics = upstreamSeen
+        .filter((m) => Buffer.compare(m.payload, envelope) === 0)
+        .map((m) => m.topic)
+        .sort();
+      const localCopies = localSeen.filter((m) => Buffer.compare(m.payload, envelope) === 0).length;
+      return { topics, localCopies };
+    }
+
+    it('uplinks to the primary (first) rule only by default', async () => {
+      const { topics, localCopies } = await uplinkOnce(false, 0x30000061);
+      expect(topics).toEqual(['root/branch_1/2/e/Foo']);
+      expect(bridge.getStatus().uplinkOut).toBe(1);
+      // The upstream re-emits our copy; it is not sent back down.
+      expect(localCopies).toBe(1);
+    });
+
+    it('with fan-out, uplinks once to every rule and does not loop', async () => {
+      const { topics, localCopies } = await uplinkOnce(true, 0x30000062);
+      expect(topics).toEqual(['root/branch_1/2/e/Foo', 'root/branch_2/2/e/Foo']);
+      expect(bridge.getStatus().uplinkOut).toBe(2);
+      expect(localCopies).toBe(1);
+    });
+
+    it('merges two upstream branches and republishes a cross-posted packet once', async () => {
+      bridge = new MqttBridgeManager('rwlist-down', 'RwListDown', {
+        ...branches,
+        upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      });
+      await sourceManagerRegistry.addManager(bridge);
+      const localSub = await connectTo(localPort, true);
+      const localSeen = await subscribeAll(localSub, '#');
+      upstreamClient = await connectTo(upstreamPort, false);
+      const upstreamSeen = await subscribeAll(upstreamClient, 'root/#');
+      const pub = await connectTo(upstreamPort, false);
+      const envelope = buildPositionEnvelope({
+        from: 0x55555555,
+        latI: 440_000_000,
+        lngI: -780_000_000,
+        channelId: 'LongFast',
+        gatewayId: '!55555555',
+        packetId: 0x30000063,
+      });
+      pub.publish('root/branch_1/2/e/Foo', envelope);
+      pub.publish('root/branch_2/2/e/Foo', envelope);
+      await new Promise((r) => setTimeout(r, 800));
+
+      const local = localSeen.filter((m) => Buffer.compare(m.payload, envelope) === 0);
+      expect(local.map((m) => m.topic)).toEqual(['msh/local/2/e/Foo']);
+      // Nothing goes back up: each branch saw only the original publish.
+      expect(upstreamSeen.filter((m) => Buffer.compare(m.payload, envelope) === 0)).toHaveLength(2);
+      expect(bridge.getStatus().uplinkOut).toBe(0);
+
+      await new Promise<void>((r) => pub.end(true, {}, () => r()));
+      await new Promise<void>((r) => localSub.end(true, {}, () => r()));
+    });
+  });
+
   // #5013: two bridges on one broker must not relay each other's upstream.
   describe('a second bridge on the same broker', () => {
     async function runTwoBridges(relayOtherBridges?: boolean): Promise<{

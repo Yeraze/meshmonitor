@@ -21,7 +21,8 @@ import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequ
 import { isMqttProxyLinkMisconfigured } from '../../utils/mqttProxyLink.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
-import { MqttBridgeManager, normalizeBridgeClientId, MAX_TOPIC_REWRITE_RULES, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
+import { MAX_TOPIC_REWRITE_RULES } from '../constants/mqttBridge.js';
+import { MqttBridgeManager, normalizeBridgeClientId, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
 import meshcoreBrokerRoutes from './meshcoreBrokerRoutes.js';

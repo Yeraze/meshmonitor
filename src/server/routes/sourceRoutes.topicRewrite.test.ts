@@ -292,7 +292,7 @@ describe('sourceRoutes — POST mqtt_bridge topic rewrite validation (#3166)', (
     expect(res.body.error).toMatch(/must differ/);
   });
 
-  it('rejects non-object rule (array)', async () => {
+  it('rejects an array whose entries are not objects', async () => {
     const app = createApp();
     mockDb.sources.getSource.mockResolvedValue(brokerRecord);
 

@@ -282,6 +282,34 @@ uplinkTopicRewrite:
 
 Filters run on the original (pre-rewrite) topic; the rewrite only changes what gets published. Ingestion records and the bridge's `local-packet` event also use the original topic, so dashboards stay accurate.
 
+### Several rules per direction
+
+Since [issue #6516](https://github.com/Yeraze/meshmonitor/issues/6516) a direction can hold up to **8** rules. Use **Add rule** under **Topic rewrites** (or under **Bridge topic rewrites** in the parent broker's settings). Through the API, `downlinkTopicRewrite` and `uplinkTopicRewrite` each take a single `{ from, to }` or a list of them. The editors save a single rule as a plain object, so an older MeshMonitor can still read it, and write a list only when there are two or more rules.
+
+- **Downlink** uses the rule with the **longest** matching `from`. Only one rule applies, so rules never chain (`a → b` then `b → c` does not happen). Two `from` values may share a `to`, which merges several upstream branches into one local prefix. A downlink `from` may appear only once.
+- **Uplink** may repeat a `from`, so one local prefix can feed several upstream branches. By default a local packet goes upstream **once**, to the **first** matching rule in list order: the *primary*, which the editor labels. Turn on **Send uplink to every matching rule** (`uplinkRewriteFanOut: true`) to publish it once to **every** matching rule instead. Each copy keeps its own entry in the echo cache, so loop suppression still holds for every branch.
+
+::: warning Fan-out multiplies upstream traffic
+With fan-out on, each local packet is published upstream once per matching rule. Gateways on those upstream branches may downlink every copy onto their own meshes. Leave it off unless each branch really needs your traffic.
+:::
+
+Example: pull two branches of one upstream into one local prefix, over one connection.
+
+```yaml
+subscriptions: [root/branch_1/#, root/branch_2/#]
+downlinkTopicRewrite:
+  - { from: root/branch_1, to: msh/local }
+  - { from: root/branch_2, to: msh/local }
+uplinkTopicRewrite:
+  - { from: msh/local, to: root/branch_1 }   # primary
+  - { from: msh/local, to: root/branch_2 }   # used only with fan-out on
+uplinkRewriteFanOut: false
+```
+
+The local prefix must sit under the parent broker's **root topic** (`msh` above). The broker ignores packets published outside its root, so a rewrite to `local_branch` would never reach a device or come back for uplink.
+
+A packet cross-posted to both upstream branches lands on the same local topic, and the downlink echo cache republishes it only once. Two separate bridges would deliver it twice.
+
 ### Loop suppression
 
 Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX packet republished to the parent broker as `msh/US/LA/...` is recorded under that rewritten topic. When the parent broker re-emits the same packet through the uplink path, the bridge sees `msh/US/LA/...` + the same packetId in the downlink echo cache and suppresses the uplink. The reverse direction works the same way. The 60-second `(topic, packetId)` cache covers it.
@@ -296,7 +324,7 @@ The bridge records the echo **before** it hands the packet to the broker, becaus
 - **Pair with a hop-limit cap of `0`** on the broker. Without it, inbound foreign-mesh packets arrive carrying their original `hop_limit` and devices on the receiving side will re-broadcast them over RF — re-flooding the foreign mesh's traffic across your local airwaves. Enabling the *raise* here does that on purpose; don't. If the same broker also has a trusted bridge you *do* want raised, tick **Skip raise on packets from this bridge** on the foreign one (see [below](#skip-raise-for-one-bridge)).
 - **Standalone bridges cannot rewrite.** A bridge without a parent broker has no parent-broker republish path (downlink) and no `local-packet` event source (uplink), so rewriting would silently do nothing. The validator rejects rewrite fields on standalone bridges.
 - **No wildcards.** `from` / `to` are literal prefixes only. `msh/US/+` is rejected by the validator.
-- **Single rule per direction.** v1 supports one `{from, to}` per direction. Folding multiple foreign roots into one local root (`msh/US/TX/* → msh/US/LA/*` AND `msh/CA/QC/* → msh/US/LA/*`) would need separate bridges today.
+- **At most 8 rules per direction.** Each extra downlink rule can pour another upstream region into a prefix that reaches RF, so filter and clamp hop limits as above.
 :::
 
 ## Bridges do not relay each other

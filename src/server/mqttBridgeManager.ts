@@ -284,9 +284,6 @@ export function applyTopicRewrite(
   return topic;
 }
 
-/** Most rewrite rules one bridge may hold per direction (#6516). */
-export const MAX_TOPIC_REWRITE_RULES = 8;
-
 /**
  * Read a stored rewrite value as a list (#6516). Accepts the legacy single
  * object, an array, or anything else (hand-edited JSON, old backups); entries

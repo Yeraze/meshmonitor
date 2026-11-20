@@ -144,15 +144,12 @@ function clearTopicLists(topics: Record<string, any> | undefined): Record<string
   return rest;
 }
 
-/** Mirrors the server's MAX_TOPIC_REWRITE_RULES (#6516). */
-export const MAX_BRIDGE_REWRITE_RULES = 8;
-
 /** Read a stored rewrite (legacy single object or a list) as form rows. */
 export function rewriteRowsFromConfig(value: unknown): BridgeRewriteStrings[] {
   const list = Array.isArray(value) ? value : value ? [value] : [];
   return list
-    .filter((r) => r && typeof r === 'object')
-    .map((r: any) => ({
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+    .map((r) => ({
       from: typeof r.from === 'string' ? r.from : '',
       to: typeof r.to === 'string' ? r.to : '',
     }));
@@ -164,29 +161,20 @@ export function hasPartialRewrite(rows: BridgeRewriteStrings[]): boolean {
 }
 
 /**
- * Rows → stored value. Blank rows drop out. One rule is saved as the legacy
- * single object so an older MeshMonitor can still read it; only 2+ rules
- * become an array. `undefined` means "no rewrite".
+ * Write `rows` to `cfg[key]`. Blank rows drop out and no rule deletes the key.
+ * One rule is saved as the legacy single object so an older MeshMonitor can
+ * still read it; only two or more become a list.
  */
-export function rewriteConfigValue(
-  rows: BridgeRewriteStrings[],
-): BridgeRewriteStrings | BridgeRewriteStrings[] | undefined {
-  const rules = rows
-    .map((r) => ({ from: r.from.trim(), to: r.to.trim() }))
-    .filter((r) => r.from && r.to);
-  if (rules.length === 0) return undefined;
-  return rules.length === 1 ? rules[0] : rules;
-}
-
-/** Write `rows` to `cfg[key]`, deleting the key when nothing is left. */
 export function setRewriteConfig(
-  cfg: Record<string, any>,
+  cfg: Record<string, unknown>,
   key: 'downlinkTopicRewrite' | 'uplinkTopicRewrite',
   rows: BridgeRewriteStrings[],
 ): void {
-  const value = rewriteConfigValue(rows);
-  if (value === undefined) delete cfg[key];
-  else cfg[key] = value;
+  const rules = rows
+    .map((r) => ({ from: r.from.trim(), to: r.to.trim() }))
+    .filter((r) => r.from && r.to);
+  if (rules.length === 0) delete cfg[key];
+  else cfg[key] = rules.length === 1 ? rules[0] : rules;
 }
 
 function applyRewrite(

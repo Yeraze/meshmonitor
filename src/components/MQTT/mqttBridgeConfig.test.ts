@@ -3,6 +3,7 @@ import {
   buildBridgeConfig,
   formFromBridgeConfig,
   emptyBridgeForm,
+  rewriteRowsFromConfig,
   type BridgeConfigForm,
 } from './mqttBridgeConfig';
 
@@ -289,8 +290,8 @@ describe('mqttBridgeConfig', () => {
         ...emptyBridgeForm(),
         url: 'mqtt://broker:1883',
         brokerId: 'broker-1',
-        downlinkRewrite: { from: 'msh/US', to: 'msh/local' },
-        uplinkRewrite: { from: '', to: '' },
+        downlinkRewrite: [{ from: 'msh/US', to: 'msh/local' }],
+        uplinkRewrite: [{ from: '', to: '' }],
       };
       const a = buildBridgeConfig(attached, { editing: false });
       expect(a.config?.downlinkTopicRewrite).toEqual({ from: 'msh/US', to: 'msh/local' });
@@ -302,6 +303,69 @@ describe('mqttBridgeConfig', () => {
       };
       const s = buildBridgeConfig(standalone, { editing: false });
       expect(s.config).not.toHaveProperty('downlinkTopicRewrite');
+    });
+
+    // #6516: one rule is saved as the legacy object so older versions can read it.
+    it('saves one rule as an object and two or more as a list', () => {
+      const one = buildBridgeConfig(
+        {
+          ...emptyBridgeForm(),
+          url: 'mqtt://broker:1883',
+          brokerId: 'broker-1',
+          downlinkRewrite: [{ from: ' root/b1/ ', to: 'local' }, { from: '', to: '' }],
+        },
+        { editing: false },
+      );
+      expect(one.config?.downlinkTopicRewrite).toEqual({ from: 'root/b1/', to: 'local' });
+
+      const two = buildBridgeConfig(
+        {
+          ...emptyBridgeForm(),
+          url: 'mqtt://broker:1883',
+          brokerId: 'broker-1',
+          downlinkRewrite: [
+            { from: 'root/b1', to: 'local' },
+            { from: 'root/b2', to: 'local' },
+          ],
+        },
+        { editing: false },
+      );
+      expect(two.config?.downlinkTopicRewrite).toEqual([
+        { from: 'root/b1', to: 'local' },
+        { from: 'root/b2', to: 'local' },
+      ]);
+    });
+
+    it('rejects a rule with only one side filled in', () => {
+      const { error } = buildBridgeConfig(
+        {
+          ...emptyBridgeForm(),
+          url: 'mqtt://broker:1883',
+          brokerId: 'broker-1',
+          uplinkRewrite: [{ from: 'local', to: '' }],
+        },
+        { editing: false },
+      );
+      expect(error?.key).toBe('source.form.error_rewrite_incomplete');
+    });
+
+    it('drops the fan-out flag when it is turned off, and keeps it when unmanaged', () => {
+      const base = { brokerSourceId: 'broker-1', uplinkRewriteFanOut: true };
+      const off = buildBridgeConfig(
+        { url: 'mqtt://broker:1883', uplinkRewriteFanOut: false },
+        { editing: true, base },
+      );
+      expect(off.config).not.toHaveProperty('uplinkRewriteFanOut');
+      const kept = buildBridgeConfig({ url: 'mqtt://broker:1883' }, { editing: true, base });
+      expect(kept.config?.uplinkRewriteFanOut).toBe(true);
+    });
+  });
+
+  describe('rewriteRowsFromConfig', () => {
+    it('reads a legacy object, a list, or nothing', () => {
+      expect(rewriteRowsFromConfig({ from: 'a', to: 'b' })).toEqual([{ from: 'a', to: 'b' }]);
+      expect(rewriteRowsFromConfig([{ from: 'a', to: 'b' }, { from: 'c', to: 'd' }])).toHaveLength(2);
+      expect(rewriteRowsFromConfig(undefined)).toEqual([]);
     });
   });
 
@@ -326,8 +390,12 @@ describe('mqttBridgeConfig', () => {
         uplinkChannels: ['LongFast', 'Telemetry'],
         uplinkTopicMode: 'allow',
         uplinkTopics: 'msh/US/FL/+/+/LongFast/#',
-        downlinkRewrite: { from: 'msh/US', to: 'msh/local' },
-        uplinkRewrite: { from: 'msh/local', to: 'msh/US' },
+        downlinkRewrite: [{ from: 'msh/US', to: 'msh/local' }],
+        uplinkRewrite: [
+          { from: 'msh/local', to: 'msh/US' },
+          { from: 'msh/local', to: 'msh/EU' },
+        ],
+        uplinkRewriteFanOut: true,
         clientId: '!a1b2c3d4',
       };
       const { config } = buildBridgeConfig(form, { editing: false });
