@@ -175,9 +175,10 @@ export function glyphFamilyInnerSvg(family: GlyphFamily, color: string): string 
       // Meshtastic CLIENT_BASE: base station (#6008).
       return clientBaseSvg(color);
     case 'roomServer':
-      // Open door: a room server is a door into a room (#6518). Lucide
-      // door-open (24-unit box) placed in the middle of the 48-unit marker,
-      // with the door leaf filled so it reads at map size.
+      // Open door: a room server is a door into a room (#6518). Paths from
+      // Lucide `door-open` (https://lucide.dev, ISC licence), a 24-unit box
+      // placed in the middle of the 48-unit marker, with the door leaf filled
+      // so it reads at map size.
       return `
         <g transform="translate(12 12)" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
           <path d="M10 21H2" />
