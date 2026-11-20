@@ -32,6 +32,7 @@ vi.mock('./services/dataEventEmitter.js', () => ({
 }));
 
 import { MeshCoreManager, MeshCoreDeviceType } from './meshcoreManager.js';
+import { buildAdvertFrame } from './test-helpers/meshcoreFrames.js';
 
 interface BridgeEvent {
   event_type: string;
@@ -127,17 +128,65 @@ describe('MeshCoreManager — new-node contact refresh (#3646)', () => {
     expect(bridgeCalls.filter(c => c.cmd === 'get_contacts')).toHaveLength(0);
   });
 
-  it('does NOT re-fetch for an already-known node re-advertising', async () => {
-    const { manager, bridgeCalls } = makeCompanionManager();
-    // Seed the node as already known.
-    (manager as any).contacts.set(NEW_KEY, { publicKey: NEW_KEY, advName: 'Known', advType: 1 });
+  // #6512: the 0x80 push for a stored contact carries only the public key, so
+  // the raw advert frame (LogRxData, just before the push) decides whether the
+  // name may have changed.
+  function hearAdvert(m: MeshCoreManager, name: string): void {
+    (m as any).correlateChannelEcho = vi.fn();
+    (m as any).handleOtaPacket = vi.fn();
+    const raw = buildAdvertFrame({ publicKey: NEW_KEY, name, advType: 3 });
+    dispatchBridgeEvent(m, { event_type: 'ota_packet', data: { payload_type: 4, raw_hex: raw } });
+    dispatchBridgeEvent(m, { event_type: 'contact_advertised', data: { public_key: NEW_KEY } });
+  }
 
-    dispatchBridgeEvent(manager, { event_type: 'contact_advertised', data: { public_key: NEW_KEY } });
+  it('does NOT re-fetch when a known node re-advertises the same name', async () => {
+    const { manager, bridgeCalls } = makeCompanionManager();
+    (manager as any).contacts.set(NEW_KEY, { publicKey: NEW_KEY, advName: 'Known', advType: 3 });
+
+    hearAdvert(manager, 'Known');
 
     await vi.advanceTimersByTimeAsync(1600);
     await Promise.resolve();
 
     expect(bridgeCalls.filter(c => c.cmd === 'get_contacts')).toHaveLength(0);
+  });
+
+  it('re-reads the device when a known node advertises a new name (#6512)', async () => {
+    const { manager, bridgeCalls } = makeCompanionManager();
+    (manager as any).contacts.set(NEW_KEY, { publicKey: NEW_KEY, advName: 'Old Room', advType: 3 });
+
+    hearAdvert(manager, 'Repeater One');
+    // The unverified raw name is never applied directly.
+    expect(manager.getContact(NEW_KEY)?.advName).toBe('Old Room');
+
+    await vi.advanceTimersByTimeAsync(1600);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(bridgeCalls.filter(c => c.cmd === 'get_contacts')).toHaveLength(1);
+    expect(manager.getContact(NEW_KEY)?.advName).toBe('Repeater One');
+    expect(upsertNode).toHaveBeenLastCalledWith(
+      expect.objectContaining({ publicKey: NEW_KEY, name: 'Repeater One' }),
+      'src-a',
+    );
+    expect(emitMeshCoreContactUpdated).toHaveBeenLastCalledWith(
+      expect.objectContaining({ publicKey: NEW_KEY, advName: 'Repeater One' }),
+      'src-a',
+    );
+  });
+
+  it('re-reads the device for a known node\'s key-only push with no raw frame (#6512)', async () => {
+    const { manager, bridgeCalls } = makeCompanionManager();
+    (manager as any).contacts.set(NEW_KEY, { publicKey: NEW_KEY, advName: 'Old Room', advType: 3 });
+
+    dispatchBridgeEvent(manager, { event_type: 'contact_advertised', data: { public_key: NEW_KEY } });
+
+    await vi.advanceTimersByTimeAsync(1600);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(bridgeCalls.filter(c => c.cmd === 'get_contacts')).toHaveLength(1);
+    expect(manager.getContact(NEW_KEY)?.advName).toBe('Repeater One');
   });
 
   it('refreshes an already-known but NAMELESS contact so its name populates (#3820)', async () => {
