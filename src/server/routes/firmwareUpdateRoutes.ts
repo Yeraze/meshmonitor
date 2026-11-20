@@ -16,7 +16,9 @@ import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import path from 'path';
 import { parseOtaGateway, isIpv6Literal } from '../../utils/otaGateway.js';
-import { fail } from '../utils/apiResponse.js';
+import { fail, ok } from '../utils/apiResponse.js';
+import { buildFirmwareFleet } from '../services/firmwareFleet.js';
+import { meshcoreFirmwareReleases } from '../services/meshcoreFirmwareReleases.js';
 import { refuseNonMeshtasticSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import databaseService from '../../services/database.js';
@@ -155,6 +157,49 @@ router.get('/status', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/firmware/fleet (#4943)
+ * Read-only firmware status for every Meshtastic TCP and MeshCore source's own
+ * radio, against each source's own release channel. Cached releases only.
+ */
+router.get('/fleet', async (_req: Request, res: Response) => {
+  try {
+    const rows = await buildFirmwareFleet();
+    return ok(res, {
+      rows,
+      checkedAt: {
+        meshtastic: firmwareUpdateService.getLastFetchTime(),
+        meshcore: meshcoreFirmwareReleases.getLastFetchTime(),
+      },
+    });
+  } catch (error) {
+    logger.error('[FirmwareRoutes] Error building firmware fleet:', error);
+    return fail(res, 500, 'FIRMWARE_FLEET_FAILED', 'Could not build the firmware status list.');
+  }
+});
+
+/**
+ * POST /api/firmware/fleet/check (#4943)
+ * Refresh both release lists (Meshtastic and MeshCore, plus nightly if any
+ * source is on it), then return the fleet.
+ */
+router.post('/fleet/check', async (_req: Request, res: Response) => {
+  try {
+    await firmwareUpdateService.refreshForActiveChannel();
+    const rows = await buildFirmwareFleet();
+    return ok(res, {
+      rows,
+      checkedAt: {
+        meshtastic: firmwareUpdateService.getLastFetchTime(),
+        meshcore: meshcoreFirmwareReleases.getLastFetchTime(),
+      },
+    });
+  } catch (error) {
+    logger.error('[FirmwareRoutes] Error refreshing firmware fleet:', error);
+    return fail(res, 500, 'FIRMWARE_FLEET_FAILED', 'Could not refresh the firmware status list.');
+  }
+});
+
+/**
  * GET /api/firmware/releases
  * Returns cached releases filtered by current channel
  */
@@ -202,19 +247,20 @@ router.post('/channel', async (req: Request, res: Response) => {
     const { channel, customUrl } = req.body;
     const sourceId = await channelSourceId(req, res);
     if (sourceId === false) return;
+    // #4943: MeshCore publishes stable and prerelease builds only.
+    if (sourceId && channel !== 'stable' && channel !== 'alpha') {
+      const src = await databaseService.sources.getSource(sourceId);
+      if (src?.type === 'meshcore') {
+        return fail(res, 400, 'INVALID_CHANNEL', 'A MeshCore source can only use the stable or alpha channel.');
+      }
+    }
 
     if (!channel || !['stable', 'alpha', 'custom', 'nightly', 'local'].includes(channel)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid channel. Must be one of: stable, alpha, custom, nightly, local',
-      });
+      return fail(res, 400, 'INVALID_CHANNEL', 'Invalid channel. Must be one of: stable, alpha, custom, nightly, local');
     }
 
     if (channel === 'custom' && !customUrl) {
-      return res.status(400).json({
-        success: false,
-        error: 'customUrl is required when channel is "custom"',
-      });
+      return fail(res, 400, 'CUSTOM_URL_REQUIRED', 'customUrl is required when channel is "custom"');
     }
 
     // #5011: validate the URL at save time and say what was stored. Saving
@@ -225,23 +271,17 @@ router.post('/channel', async (req: Request, res: Response) => {
     let rewritten = false;
     if (channel === 'custom' && customUrl) {
       if (typeof customUrl !== 'string') {
-        return res.status(400).json({ success: false, error: 'customUrl must be a string' });
+        return fail(res, 400, 'INVALID_CUSTOM_URL', 'customUrl must be a string');
       }
       const trimmed = customUrl.trim();
       let parsed: URL;
       try {
         parsed = new URL(trimmed);
       } catch {
-        return res.status(400).json({
-          success: false,
-          error: 'That is not a valid URL. It should start with https:// and point directly at a .bin file.',
-        });
+        return fail(res, 400, 'INVALID_CUSTOM_URL', 'That is not a valid URL. It should start with https:// and point directly at a .bin file.');
       }
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return res.status(400).json({
-          success: false,
-          error: `Unsupported URL scheme "${parsed.protocol}". Use http:// or https://.`,
-        });
+        return fail(res, 400, 'INVALID_CUSTOM_URL', `Unsupported URL scheme "${parsed.protocol}". Use http:// or https://.`);
       }
       const resolved = resolveFirmwareDownloadUrl(trimmed);
       storedUrl = resolved.url;

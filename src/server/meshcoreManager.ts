@@ -13088,6 +13088,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return this.localNode;
   }
 
+  /** What the attached device is (companion, repeater, room server); UNKNOWN until detected. */
+  getDeviceType(): MeshCoreDeviceType {
+    return this.deviceType;
+  }
+
   getContacts(): MeshCoreContact[] {
     return Array.from(this.contacts.values());
   }

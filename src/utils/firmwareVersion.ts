@@ -86,3 +86,15 @@ export function isFirmwareAtLeast(
 ): boolean {
   return isParsedFirmwareAtLeast(parseFirmwareVersion(raw), major, minor, patch);
 }
+
+/**
+ * Order two firmware version strings by major.minor.patch (#4943): negative
+ * when `a` is older, 0 when equal, positive when newer. `null` when either
+ * does not parse, so a caller can say "unknown" instead of guessing.
+ */
+export function compareFirmwareVersions(a: string | null | undefined, b: string | null | undefined): number | null {
+  const pa = parseFirmwareVersion(a);
+  const pb = parseFirmwareVersion(b);
+  if (!pa || !pb) return null;
+  return pa.major - pb.major || pa.minor - pb.minor || pa.patch - pb.patch;
+}
