@@ -908,6 +908,7 @@ describe('MeshCore Routes', () => {
       ['shutdown'],
       [`set prv.key ${'ab'.repeat(64)}`],
       ['SET   prv.key abcd'],
+      ['start ota'],
     ])('rejects danger command %s without confirm', async (cmd) => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/admin/cli')
@@ -1061,6 +1062,7 @@ describe('MeshCore Routes', () => {
       ['shutdown'],
       [`set prv.key ${'ab'.repeat(64)}`],
       ['SET   prv.key abcd'],
+      ['start ota'],
     ])('rejects danger command %s without confirm', async (cmd) => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/cli')
