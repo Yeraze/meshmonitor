@@ -1687,7 +1687,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // ADVERT_HASH_TTL_MS.
   // `hadPosition` (#5578): whether that advert frame carried coordinates.
   // `hops` (#5595): relays that frame crossed, from its path_len byte.
-  private recentAdvertHashes: Map<string, { hash: string; at: number; hadPosition: boolean; hops: number | undefined; senderSec: number }> = new Map();
+  private recentAdvertHashes: Map<string, { hash: string; at: number; hadPosition: boolean; hops: number | undefined; senderSec: number; name: string | undefined }> = new Map();
   private static readonly ADVERT_HASH_TTL_MS = 30_000;
   private static readonly ADVERT_HASH_MAX_ENTRIES = 512;
 
@@ -3269,30 +3269,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           && (!wasKnown || this.pendingNewNodeNotifications.has(publicKey))) {
           void this.notifyNewNodeDiscovered(updated);
         }
-        // A node whose advert didn't carry its name/type — the full record
-        // (name, type, position) lives on the device's contact list. Pull it via
-        // a debounced refreshContacts() so those fields populate immediately
-        // instead of only after a manual disconnect/reconnect (#3646). Coalesced
-        // with path-refreshes over the same window.
-        //
-        // This fires for KNOWN contacts too, not just brand-new ones (#3820):
-        // discovery (NODE_DISCOVER_RESP) pre-creates a *nameless* device contact,
-        // so the repeater's later zero-hop advert arrives as a pubkey-only 0x80
-        // push (the firmware's existing-contact path) carrying no adv_name — even
-        // though the firmware has already stored the real name on the device. The
-        // old `!wasKnown` gate skipped the re-read for that already-known contact,
-        // leaving it "Unknown" until an unrelated refresh (e.g. opening the admin
-        // panel) happened to run. A get_contacts re-read pulls the stored name.
-        //
-        // Safe + zero-airtime: firmware drops nameless adverts (BaseChatMesh), so
-        // every contact_advertised event means the device just stored a real name;
-        // refreshContacts() is a local debounced get_contacts read, and once the
-        // name is pulled `updated.advName` is non-empty so this stops re-firing.
-        // NOTE: this relies on discovery storing lastAdvert≈0 so the repeater's
-        // next advert isn't replay-dropped firmware-side — if the native backend
-        // ever starts passing a non-zero lastAdvert for discovered contacts, the
-        // firmware replay guard would suppress that advert and reintroduce #3820.
-        if (!updated.advName || updated.advType === undefined) {
+        // Re-read the device's contact list (a local, zero-airtime, debounced
+        // get_contacts) when the push can't tell us the contact's current name:
+        //  - no name or type yet: a brand-new node (#3646), or a known but
+        //    nameless stub that discovery pre-created (#3820);
+        //  - a 0x80 push for a stored contact carries only the public key, so a
+        //    renamed node keeps its old name (#6512). The raw advert frame
+        //    stashed just before the push holds the name; re-read when that
+        //    name differs from ours, or when no frame was seen. We never take
+        //    the name from the raw copy: the firmware checks the signature, we
+        //    don't, and the serial link has no checksum.
+        // Firmware drops nameless adverts (BaseChatMesh), so the device has the
+        // real name by now. NOTE (#3820): this relies on discovery storing
+        // lastAdvert≈0 so the repeater's next advert isn't replay-dropped.
+        const pushHasNoName = event_type === 'contact_advertised' && !sanitizeMeshCoreName(data.adv_name);
+        const nameMayHaveChanged = pushHasNoName && (!recentAdvert || recentAdvert.name !== updated.advName);
+        if (!updated.advName || updated.advType === undefined || nameMayHaveChanged) {
           this.schedulePathRefresh(publicKey);
         }
         logger.debug(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
@@ -4402,6 +4394,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       hash, at: now, hadPosition: advertHasPosition(advert.latitude, advert.longitude), hops,
       // #6273: the sender's own time, for the passive clock sample.
       senderSec: Number(advert.timestamp),
+      // #6512: only compared against the stored name to decide on a device
+      // re-read. Never written to the contact: this copy is unverified.
+      name: sanitizeMeshCoreName(advert.name) || undefined,
     });
     while (this.recentAdvertHashes.size > MeshCoreManager.ADVERT_HASH_MAX_ENTRIES) {
       const oldest = this.recentAdvertHashes.keys().next().value;
@@ -4431,13 +4426,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * its hash (#5534), whether it carried a position (#5578) and how many
    * relays it crossed (#5595).
    */
-  private takeRecentAdvert(publicKey: string): { hash: string; hadPosition: boolean; hops: number | undefined; senderSec: number; at: number } | undefined {
+  private takeRecentAdvert(publicKey: string): { hash: string; hadPosition: boolean; hops: number | undefined; senderSec: number; at: number; name: string | undefined } | undefined {
     const key = publicKey.toLowerCase();
     const entry = this.recentAdvertHashes.get(key);
     if (!entry) return undefined;
     this.recentAdvertHashes.delete(key);
     if (Date.now() - entry.at > MeshCoreManager.ADVERT_HASH_TTL_MS) return undefined;
-    return { hash: entry.hash, hadPosition: entry.hadPosition, hops: entry.hops, senderSec: entry.senderSec, at: entry.at };
+    return { hash: entry.hash, hadPosition: entry.hadPosition, hops: entry.hops, senderSec: entry.senderSec, at: entry.at, name: entry.name };
   }
 
   /**
@@ -6369,6 +6364,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           for (const key of pending) {
             const fresh = this.contacts.get(key);
             if (fresh) {
+              // Keep an Ignore / Block entry's name snapshot current (#6512).
+              meshcoreMessageFilter.noteAdvertName(this.sourceId, key, fresh.advName);
               this.emit('contacts_updated', { sourceId: this.sourceId, contact: fresh });
               dataEventEmitter.emitMeshCoreContactUpdated(fresh, this.sourceId);
               this.noteNodeTriggerChange(beforeRefresh.get(key), fresh, undefined);
