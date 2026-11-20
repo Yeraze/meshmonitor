@@ -12,7 +12,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
-import { MuteMenu } from './notifications/MuteMenu';
+import { MuteMenu, MutedName } from './notifications/MuteMenu';
 import { MarkAllReadButton } from './messages/MarkAllReadButton';
 import { DmFilterSelect } from './messages/DmFilterSelect';
 import { NodeStatChips } from './nodes/NodeStatChips';
@@ -1397,7 +1397,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         <div className="node-name">
                           {node.isFavorite && <span className="favorite-indicator"><UiIcon name="favorite" size={15} /></span>}
                           <div className="node-name-text">
-                            <div className="node-longname">{node.user?.longName || node.user?.shortName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</div>
+                            <div className="node-longname"><MutedName muted={!!node.user?.id && isDMMuted(node.user.id)}>{node.user?.longName || node.user?.shortName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</MutedName></div>
                           </div>
                         </div>
                         <div className="node-actions">

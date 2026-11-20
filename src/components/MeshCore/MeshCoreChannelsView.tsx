@@ -32,7 +32,7 @@ import { subscribeFiltersChanged } from './meshcoreFilterEvents';
 import { compareMeshCoreMessages } from './messageOrder';
 import { mergeMeshCoreHeardBy } from '../../utils/meshcoreHeardBy';
 import { UiIcon } from '../icons';
-import { MuteMenu, MutedIndicator } from '../notifications/MuteMenu';
+import { MuteMenu, MutedIndicator, MutedName } from '../notifications/MuteMenu';
 import { MarkAllReadButton } from '../messages/MarkAllReadButton';
 import { MeshCoreChannelReorderList } from './MeshCoreChannelReorderList';
 import {
@@ -798,8 +798,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       latest: effectiveLatest,
       counts: channelCounts,
       label: channelLabel,
+      isMuted: isChannelMuted,
     }),
-    [displayChannels, sortMode, customOrder, effectiveLatest, channelCounts, channelLabel],
+    [displayChannels, sortMode, customOrder, effectiveLatest, channelCounts, channelLabel, isChannelMuted],
   );
 
   // "Unread first" (#3703) layers on top: unread channels (most recent activity
@@ -980,7 +981,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 )}
                 <div className="mc-channel-row-name">
                   <MeshCoreChannelMarker id={c.id} name={c.name} psk={c.psk} />
-                  {channelLabel(c)}
+                  <MutedName muted={isChannelMuted(c.id)}>{channelLabel(c)}</MutedName>
                   {c.virtual && (
                     <sup className={styles.virtualTag} title={t('meshcore.channels.virtual_title', 'Decrypted with a Channel Database key; not set on this radio (receive-only)')}>
                       {t('meshcore.channels.virtual_tag', '(Virtual)')}

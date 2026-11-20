@@ -11,7 +11,7 @@ vi.mock('react-i18next', async () => {
   return createReactI18nextMock(t);
 });
 
-import { MuteMenu, MutedIndicator } from './MuteMenu';
+import { MuteMenu, MutedIndicator, MutedName } from './MuteMenu';
 import { MUTE_DURATIONS } from './muteDurations';
 
 const NOW = 1_700_000_000_000;
@@ -118,5 +118,14 @@ describe('MuteMenu', () => {
   it('MutedIndicator is labelled', () => {
     render(<MutedIndicator />);
     expect(screen.getByLabelText('Notifications muted')).toBeTruthy();
+  });
+});
+
+describe('MutedName (#6418)', () => {
+  it('marks the name only while muted', () => {
+    const { rerender } = render(<MutedName muted>LongFast</MutedName>);
+    expect(screen.getByText('LongFast').className).not.toBe('');
+    rerender(<MutedName muted={false}>LongFast</MutedName>);
+    expect(screen.getByText('LongFast').getAttribute('class')).toBeNull();
   });
 });
