@@ -40,6 +40,24 @@ function bodySourceId(req: Request): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * #4943: the source whose release channel / custom URL a request reads or
+ * writes: `sourceId` from the query (GET) or body (POST). Absent = the
+ * install-wide value, which every source without its own falls back to.
+ * An id that names no source is refused (404) so a typo never writes a
+ * setting nobody reads.
+ */
+async function channelSourceId(req: Request, res: Response): Promise<string | null | false> {
+  const raw = req.method === 'GET' ? req.query.sourceId : req.body?.sourceId;
+  const id = typeof raw === 'string' ? raw.trim() : '';
+  if (!id) return null;
+  if (!(await databaseService.sources.getSource(id))) {
+    fail(res, 404, 'SOURCE_NOT_FOUND', `Source "${id}" was not found.`);
+    return false;
+  }
+  return id;
+}
+
 /** A source's display name for error messages; falls back to the id. */
 async function sourceLabel(sourceId: string): Promise<string> {
   try {
@@ -116,11 +134,13 @@ async function refuseOtherSourceAction(req: Request, res: Response): Promise<boo
  * GET /api/firmware/status
  * Returns current update status, channel, customUrl, and lastChecked timestamp
  */
-router.get('/status', async (_req: Request, res: Response) => {
+router.get('/status', async (req: Request, res: Response) => {
   try {
+    const sourceId = await channelSourceId(req, res);
+    if (sourceId === false) return;
     const status = firmwareUpdateService.getStatus();
-    const channel = await firmwareUpdateService.getChannel();
-    const customUrl = await firmwareUpdateService.getCustomUrl();
+    const channel = await firmwareUpdateService.getChannel(sourceId);
+    const customUrl = await firmwareUpdateService.getCustomUrl(sourceId);
     const lastChecked = firmwareUpdateService.getLastFetchTime();
     // #5249: lets the UI show "firmware.bin staged (3.9 MB)" after a reload,
     // instead of losing track of an upload the server still holds.
@@ -138,9 +158,11 @@ router.get('/status', async (_req: Request, res: Response) => {
  * GET /api/firmware/releases
  * Returns cached releases filtered by current channel
  */
-router.get('/releases', async (_req: Request, res: Response) => {
+router.get('/releases', async (req: Request, res: Response) => {
   try {
-    const channel = await firmwareUpdateService.getChannel();
+    const sourceId = await channelSourceId(req, res);
+    if (sourceId === false) return;
+    const channel = await firmwareUpdateService.getChannel(sourceId);
     const releases = await firmwareUpdateService.getReleasesForChannel(channel);
 
     return res.json({ success: true, releases, channel });
@@ -155,10 +177,12 @@ router.get('/releases', async (_req: Request, res: Response) => {
  * POST /api/firmware/check
  * Force a release check and return updated releases
  */
-router.post('/check', async (_req: Request, res: Response) => {
+router.post('/check', async (req: Request, res: Response) => {
   try {
+    const sourceId = await channelSourceId(req, res);
+    if (sourceId === false) return;
     await firmwareUpdateService.fetchReleases();
-    const channel = await firmwareUpdateService.getChannel();
+    const channel = await firmwareUpdateService.getChannel(sourceId);
     const releases = await firmwareUpdateService.getReleasesForChannel(channel);
 
     return res.json({ success: true, releases, channel });
@@ -176,6 +200,8 @@ router.post('/check', async (_req: Request, res: Response) => {
 router.post('/channel', async (req: Request, res: Response) => {
   try {
     const { channel, customUrl } = req.body;
+    const sourceId = await channelSourceId(req, res);
+    if (sourceId === false) return;
 
     if (!channel || !['stable', 'alpha', 'custom', 'nightly', 'local'].includes(channel)) {
       return res.status(400).json({
@@ -222,10 +248,10 @@ router.post('/channel', async (req: Request, res: Response) => {
       rewritten = resolved.rewritten;
     }
 
-    await firmwareUpdateService.setChannel(channel);
+    await firmwareUpdateService.setChannel(channel, sourceId);
 
     if (storedUrl) {
-      await firmwareUpdateService.setCustomUrl(storedUrl);
+      await firmwareUpdateService.setCustomUrl(storedUrl, sourceId);
     }
 
     logger.debug(`[FirmwareRoutes] Channel set to "${channel}"${storedUrl ? ` with URL: ${storedUrl}` : ''}`);
@@ -362,7 +388,8 @@ router.post('/update', async (req: Request, res: Response) => {
     let targetRelease = null;
     let resolvedCustomUrl: string | undefined;
     if (wantsCustomUrl) {
-      const stored = await firmwareUpdateService.getCustomUrl();
+      // #4943: the URL saved for the source being flashed, never another's.
+      const stored = await firmwareUpdateService.getCustomUrl(mgr.sourceId);
       if (!stored || !stored.trim()) {
         return res.status(400).json({
           success: false,

@@ -284,7 +284,7 @@ describe('firmwareUpdateRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(mockSetChannel).toHaveBeenCalledWith('stable');
+      expect(mockSetChannel).toHaveBeenCalledWith('stable', null);
     });
 
     it('should set channel to alpha', async () => {
@@ -296,7 +296,7 @@ describe('firmwareUpdateRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(mockSetChannel).toHaveBeenCalledWith('alpha');
+      expect(mockSetChannel).toHaveBeenCalledWith('alpha', null);
     });
 
     it('should set channel to custom with customUrl', async () => {
@@ -309,8 +309,8 @@ describe('firmwareUpdateRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(mockSetChannel).toHaveBeenCalledWith('custom');
-      expect(mockSetCustomUrl).toHaveBeenCalledWith('https://example.com/releases');
+      expect(mockSetChannel).toHaveBeenCalledWith('custom', null);
+      expect(mockSetCustomUrl).toHaveBeenCalledWith('https://example.com/releases', null);
     });
 
     it('should return 400 for invalid channel', async () => {
@@ -642,7 +642,7 @@ describe('firmwareUpdateRoutes', () => {
       expect(res.body.rewritten).toBe(true);
       expect(res.body.customUrl).toBe('https://raw.githubusercontent.com/o/r/main/firmware.bin');
       // The rewritten URL is what gets stored, not what was typed.
-      expect(mockSetCustomUrl).toHaveBeenCalledWith('https://raw.githubusercontent.com/o/r/main/firmware.bin');
+      expect(mockSetCustomUrl).toHaveBeenCalledWith('https://raw.githubusercontent.com/o/r/main/firmware.bin', null);
     });
 
     it('stores a raw URL unchanged and says it did not rewrite', async () => {
@@ -651,7 +651,7 @@ describe('firmwareUpdateRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.rewritten).toBe(false);
-      expect(mockSetCustomUrl).toHaveBeenCalledWith(url);
+      expect(mockSetCustomUrl).toHaveBeenCalledWith(url, null);
     });
 
     it('rejects a malformed URL instead of storing it silently', async () => {
