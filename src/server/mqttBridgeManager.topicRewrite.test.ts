@@ -4,7 +4,12 @@
  * mqttBridgeManager.test.ts; this file focuses on the pure helper.
  */
 import { describe, it, expect } from 'vitest';
-import { applyTopicRewrite } from './mqttBridgeManager';
+import {
+  applyTopicRewrite,
+  applyTopicRewrites,
+  normalizeTopicRewrites,
+  uplinkRewriteTopics,
+} from './mqttBridgeManager';
 
 describe('applyTopicRewrite', () => {
   it('returns the topic unchanged when no rule is provided', () => {
@@ -108,5 +113,88 @@ describe('applyTopicRewrite', () => {
     expect(out).toBe('msh/US/LA/2/e/Foo');
     // 1M-char strip should be well under a second even on a slow CI box.
     expect(elapsed).toBeLessThan(1000);
+  });
+});
+
+describe('normalizeTopicRewrites (#6516)', () => {
+  it('reads a legacy object, a list, or nothing', () => {
+    const rule = { from: 'a', to: 'b' };
+    expect(normalizeTopicRewrites(rule)).toEqual([rule]);
+    expect(normalizeTopicRewrites([rule, rule])).toEqual([rule, rule]);
+    expect(normalizeTopicRewrites(undefined)).toEqual([]);
+    expect(normalizeTopicRewrites([])).toEqual([]);
+  });
+
+  it('drops malformed entries instead of throwing', () => {
+    expect(normalizeTopicRewrites('msh/US')).toEqual([]);
+    expect(normalizeTopicRewrites([null, 'x', { from: 1, to: 'b' }, { from: 'a', to: 'b' }])).toEqual([
+      { from: 'a', to: 'b' },
+    ]);
+  });
+});
+
+describe('applyTopicRewrites — downlink (#6516)', () => {
+  const merge = [
+    { from: 'root/branch_1', to: 'local_branch' },
+    { from: 'root/branch_2', to: 'local_branch' },
+  ];
+
+  it('merges several upstream branches into one local prefix', () => {
+    expect(applyTopicRewrites('root/branch_1/2/e/LongFast/!a', merge)).toBe('local_branch/2/e/LongFast/!a');
+    expect(applyTopicRewrites('root/branch_2/2/e/LongFast/!a', merge)).toBe('local_branch/2/e/LongFast/!a');
+    expect(applyTopicRewrites('root/branch_3/2/e/LongFast/!a', merge)).toBe('root/branch_3/2/e/LongFast/!a');
+  });
+
+  it('uses the longest matching prefix, whatever the list order', () => {
+    const rules = [
+      { from: 'root', to: 'all' },
+      { from: 'root/branch_1', to: 'one' },
+    ];
+    expect(applyTopicRewrites('root/branch_1/x', rules)).toBe('one/x');
+    expect(applyTopicRewrites('root/branch_2/x', rules)).toBe('all/branch_2/x');
+  });
+
+  it('applies one rule only: rules never chain', () => {
+    const rules = [
+      { from: 'a', to: 'b' },
+      { from: 'b', to: 'c' },
+    ];
+    expect(applyTopicRewrites('a/x', rules)).toBe('b/x');
+  });
+
+  it('still takes the legacy single object', () => {
+    expect(applyTopicRewrites('msh/US/x', { from: 'msh/US', to: 'msh/local' })).toBe('msh/local/x');
+  });
+});
+
+describe('uplinkRewriteTopics (#6516)', () => {
+  const branches = [
+    { from: 'local_branch', to: 'root/branch_1' },
+    { from: 'local_branch', to: 'root/branch_2' },
+  ];
+
+  it('without fan-out, goes to the first matching rule only (the primary)', () => {
+    expect(uplinkRewriteTopics('local_branch/2/e/x', branches, false)).toEqual(['root/branch_1/2/e/x']);
+  });
+
+  it('with fan-out, goes to every matching rule', () => {
+    expect(uplinkRewriteTopics('local_branch/2/e/x', branches, true)).toEqual([
+      'root/branch_1/2/e/x',
+      'root/branch_2/2/e/x',
+    ]);
+  });
+
+  it('primary is list order, not the longest prefix', () => {
+    const rules = [
+      { from: 'local', to: 'a' },
+      { from: 'local/sub', to: 'b' },
+    ];
+    expect(uplinkRewriteTopics('local/sub/x', rules, false)).toEqual(['a/sub/x']);
+  });
+
+  it('keeps the topic when nothing matches, and dedupes identical targets', () => {
+    expect(uplinkRewriteTopics('other/x', branches, true)).toEqual(['other/x']);
+    expect(uplinkRewriteTopics('x/y', [{ from: 'x', to: 'z' }, { from: 'x/', to: 'z' }], true)).toEqual(['z/y']);
+    expect(uplinkRewriteTopics('x/y', undefined, true)).toEqual(['x/y']);
   });
 });

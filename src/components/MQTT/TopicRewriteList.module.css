@@ -1,0 +1,82 @@
+/*
+ * Topic-rewrite rule list for an mqtt_bridge (#6516). Shared by the bridge
+ * Configuration page and the broker modal's "Bridge topic rewrites".
+ */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.arrow {
+  display: inline-flex;
+  color: var(--color-text-subtle);
+}
+
+.primary {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  color: var(--color-accent);
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.addButton {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.help {
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+
+.warning {
+  font-size: 11px;
+  color: var(--color-caution);
+}

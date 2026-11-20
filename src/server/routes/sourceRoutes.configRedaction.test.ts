@@ -186,6 +186,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     dropAutomationUplinks: true,
     skipRaise: true,
     relayOtherBridges: true,
+    uplinkRewriteFanOut: true,
     autoConnect: false,
     [UNCLASSIFIED]: `${SEC}-future-bridge`,
   },
