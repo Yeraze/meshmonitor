@@ -46,6 +46,16 @@ vi.mock('./CoverageReport', () => ({
   ),
 }));
 
+vi.mock('./FirmwareStatusReport', () => ({
+  default: () => <div data-testid="firmware-status-report">Firmware status report</div>,
+}));
+
+// #4943: the Firmware Status card is admin only.
+const auth = vi.hoisted(() => ({ isAdmin: false }));
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ authStatus: { authenticated: true, user: { isAdmin: auth.isAdmin } } }),
+}));
+
 vi.mock('./tracerouteExplorer/TracerouteExplorerReport', () => ({
   default: () => <div data-testid="traceroute-explorer-report">Traceroute explorer report</div>,
 }));
@@ -188,6 +198,23 @@ describe('AnalysisTab', () => {
 
       expect(screen.queryByTestId('coverage-report')).not.toBeInTheDocument();
       expect(screen.getByTestId('search-params').textContent).toBe('');
+    });
+  });
+
+  describe('Firmware Status card (#4943)', () => {
+    it('is hidden from non-admins', () => {
+      auth.isAdmin = false;
+      renderTab(['/reports']);
+      expect(screen.queryByText('Firmware Status')).not.toBeInTheDocument();
+    });
+
+    it('is shown to admins and opens the report', async () => {
+      auth.isAdmin = true;
+      const user = userEvent.setup();
+      renderTab(['/reports']);
+      await user.click(screen.getByText('Firmware Status'));
+      expect(screen.getByTestId('firmware-status-report')).toBeInTheDocument();
+      auth.isAdmin = false;
     });
   });
 });
