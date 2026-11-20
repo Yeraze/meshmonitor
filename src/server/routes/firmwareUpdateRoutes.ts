@@ -256,17 +256,11 @@ router.post('/channel', async (req: Request, res: Response) => {
     }
 
     if (!channel || !['stable', 'alpha', 'custom', 'nightly', 'local'].includes(channel)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid channel. Must be one of: stable, alpha, custom, nightly, local',
-      });
+      return fail(res, 400, 'INVALID_CHANNEL', 'Invalid channel. Must be one of: stable, alpha, custom, nightly, local');
     }
 
     if (channel === 'custom' && !customUrl) {
-      return res.status(400).json({
-        success: false,
-        error: 'customUrl is required when channel is "custom"',
-      });
+      return fail(res, 400, 'CUSTOM_URL_REQUIRED', 'customUrl is required when channel is "custom"');
     }
 
     // #5011: validate the URL at save time and say what was stored. Saving
@@ -277,23 +271,17 @@ router.post('/channel', async (req: Request, res: Response) => {
     let rewritten = false;
     if (channel === 'custom' && customUrl) {
       if (typeof customUrl !== 'string') {
-        return res.status(400).json({ success: false, error: 'customUrl must be a string' });
+        return fail(res, 400, 'INVALID_CUSTOM_URL', 'customUrl must be a string');
       }
       const trimmed = customUrl.trim();
       let parsed: URL;
       try {
         parsed = new URL(trimmed);
       } catch {
-        return res.status(400).json({
-          success: false,
-          error: 'That is not a valid URL. It should start with https:// and point directly at a .bin file.',
-        });
+        return fail(res, 400, 'INVALID_CUSTOM_URL', 'That is not a valid URL. It should start with https:// and point directly at a .bin file.');
       }
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return res.status(400).json({
-          success: false,
-          error: `Unsupported URL scheme "${parsed.protocol}". Use http:// or https://.`,
-        });
+        return fail(res, 400, 'INVALID_CUSTOM_URL', `Unsupported URL scheme "${parsed.protocol}". Use http:// or https://.`);
       }
       const resolved = resolveFirmwareDownloadUrl(trimmed);
       storedUrl = resolved.url;

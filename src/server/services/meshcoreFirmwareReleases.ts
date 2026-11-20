@@ -88,7 +88,11 @@ class MeshCoreFirmwareReleases {
       };
       if (this.etag) headers['If-None-Match'] = this.etag;
       const response = await fetch(MESHCORE_RELEASES_URL, { headers });
-      if (response.status === 304) return this.cached;
+      if (response.status === 304) {
+        // Unchanged since the last fetch: the cache is current as of now.
+        this.lastFetchTime = Date.now();
+        return this.cached;
+      }
       if (!response.ok) {
         logger.warn(`[MeshCoreFirmwareReleases] GitHub API returned ${response.status}`);
         return this.cached;

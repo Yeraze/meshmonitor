@@ -122,6 +122,21 @@ describe('GET /api/firmware/fleet (#4943)', () => {
     expect(res.body.code).toBe('INVALID_CHANNEL');
   });
 
+  it('POST /fleet/check refreshes the release lists, then returns the fleet', async () => {
+    const refresh = vi.spyOn(firmwareUpdateService, 'refreshForActiveChannel').mockResolvedValue(undefined);
+    const res = await (await harness.loginAs(harness.admin)).post('/api/firmware/fleet/check');
+    expect(res.status).toBe(200);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(res.body.data.rows.map((r: { sourceId: string }) => r.sourceId)).toContain(MC);
+  });
+
+  it('POST /fleet/check reports a failed refresh with the error envelope', async () => {
+    vi.spyOn(firmwareUpdateService, 'refreshForActiveChannel').mockRejectedValue(new Error('boom'));
+    const res = await (await harness.loginAs(harness.admin)).post('/api/firmware/fleet/check');
+    expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({ success: false, code: 'FIRMWARE_FLEET_FAILED' });
+  });
+
   it('is admin only', async () => {
     const res = await (await harness.loginAs(harness.limited)).get('/api/firmware/fleet');
     expect(res.status).toBe(403);
