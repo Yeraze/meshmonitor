@@ -13,6 +13,14 @@
   gap: 12px;
   padding: 16px;
   min-width: 0;
+  /*
+   * The host page (.dashboard-page) is a fixed-height flex column with
+   * overflow: hidden, so this view must be its own scroll container or
+   * long tabs are cut off (#6527).
+   */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .banner {
