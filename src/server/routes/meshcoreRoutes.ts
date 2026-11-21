@@ -31,6 +31,7 @@ import traceRoutes from './meshcoreTraceRoutes.js';
 import estimatedPositionRoutes from './meshcoreEstimatedPositionRoutes.js';
 import hopCandidatesRoutes from './meshcoreHopCandidatesRoutes.js';
 import { perSourceCliHistoryRouter } from './meshcoreCliHistoryRoutes.js';
+import positionOverrideRoutes from './meshcorePositionOverrideRoutes.js';
 
 const router = Router({ mergeParams: true });
 
@@ -53,6 +54,9 @@ router.use(estimatedPositionRoutes);
 router.use(hopCandidatesRoutes);
 // CLI command history (#5892): stored data, readable while disconnected.
 router.use(perSourceCliHistoryRouter);
+// Location override (#5842): MeshMonitor-only data, so an ingest source can
+// place its observers too (#6531).
+router.use(positionOverrideRoutes);
 
 // DEVICE routes from here down. This guard refuses an ingest source, and
 // everything below it is connection lifecycle, local-node status, contacts,

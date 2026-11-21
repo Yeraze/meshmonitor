@@ -10,7 +10,9 @@
  * So this reads only what an ingest source actually has:
  *
  *   Overview  broker, region, connection, and the observers heard from
- *   Nodes     everything learned from adverts
+ *   Nodes     everything learned from adverts, with a location override
+ *             editor (#6531): an observer never hears its own adverts, so
+ *             this is the only way to place it on the map
  *   Channels  messages decrypted with keys we hold
  *   Packets   the existing MeshCorePacketMonitorView, reachable at last
  *   Notifications  the shared NotificationsTab, for signed-in users (#6307)
@@ -33,6 +35,8 @@ import { usePushNotificationNavigation } from '../../hooks/usePushNotificationNa
 import { useSource } from '../../contexts/SourceContext';
 import { isMeshCoreMqttBrokerSourceType } from '../../utils/meshcoreSourceTypes';
 import { MeshCoreBrokerDiagnostics } from './MeshCoreBrokerDiagnostics';
+import { PositionOverrideModal } from '../PositionOverrideModal';
+import type { MeshCorePositionOverrideInput } from './hooks/useMeshCore';
 
 // Same shared tab the device page mounts; loaded on demand (it is large).
 const NotificationsTab = lazy(() => import('../NotificationsTab'));
@@ -65,6 +69,8 @@ interface IngestNode {
   latitude?: number | null;
   longitude?: number | null;
   lastHeard?: number | null;
+  /** Set when an enabled location override supplied the position (#5842). */
+  positionIsOverride?: boolean;
 }
 
 interface IngestMessage {
@@ -125,7 +131,11 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
 
   // Notifications tab (#6307): the shared NotificationsTab, shown by the same
   // rule as the device page (signed in).
-  const { authStatus } = useAuth();
+  const { authStatus, hasPermission } = useAuth();
+  // Location override (#6531): same per-source grant the server checks.
+  const canEditPosition = !!authStatus?.authenticated && hasPermission('nodes', 'write');
+  const [overrideNode, setOverrideNode] = useState<IngestNode | null>(null);
+  const [nodesVersion, setNodesVersion] = useState(0);
   const isAdmin = authStatus?.user?.isAdmin ?? false;
   const showNotifications = useMeshCoreViewAccess(false).includes('notifications');
   const { pendingNavigation, clearPendingNavigation } = usePushNotificationNavigation();
@@ -175,7 +185,17 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
     return () => {
       cancelled = true;
     };
-  }, [tab, prefix]);
+  }, [tab, prefix, nodesVersion]);
+
+  const saveOverride = useCallback(
+    async (publicKey: string, input: MeshCorePositionOverrideInput) => {
+      const url = `/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/position-override`;
+      if (input.enabled) await apiService.post(url, input);
+      else await apiService.delete(url);
+      setNodesVersion(v => v + 1);
+    },
+    [sourceId],
+  );
 
   useEffect(() => {
     if (tab !== 'channels') return;
@@ -316,6 +336,7 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
                     <th>{t('meshcore.ingest.node_key', 'Public key')}</th>
                     <th>{t('meshcore.ingest.node_position', 'Position')}</th>
                     <th>{t('meshcore.ingest.last_heard', 'Last heard')}</th>
+                    {canEditPosition && <th aria-label={t('meshcore.contact_details.override_location', 'Override location')} />}
                   </tr>
                 </thead>
                 <tbody>
@@ -327,8 +348,23 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
                         {n.latitude != null && n.longitude != null
                           ? `${n.latitude.toFixed(4)}, ${n.longitude.toFixed(4)}`
                           : '—'}
+                        {n.positionIsOverride && (
+                          <span
+                            className={styles.overrideTag}
+                            title={t('meshcore.contact_details.position_override_active', 'Location override')}
+                          >
+                            <UiIcon name="pin" size={12} />
+                          </span>
+                        )}
                       </td>
                       <td>{formatAge(n.lastHeard ?? null)}</td>
+                      {canEditPosition && (
+                        <td>
+                          <button type="button" className={styles.rowAction} onClick={() => setOverrideNode(n)}>
+                            {t('meshcore.contact_details.override_location', 'Override location')}
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -336,6 +372,17 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
             </div>
           )}
         </section>
+      )}
+
+      {canEditPosition && overrideNode && (
+        <PositionOverrideModal
+          protocol="meshcore"
+          isOpen
+          selectedNode={{ nodeNum: 0, user: { id: overrideNode.publicKey, longName: overrideNode.name ?? undefined } }}
+          onClose={() => setOverrideNode(null)}
+          onSave={(_nodeNum, data) => saveOverride(overrideNode.publicKey, data)}
+          getNodeName={() => overrideNode.name || shortKey(overrideNode.publicKey)}
+        />
       )}
 
       {tab === 'channels' && (
