@@ -242,7 +242,7 @@ Each source has its own channel. For Meshtastic it is the channel chosen in that
 
 ### Updating
 
-Meshtastic rows link to the source's OTA panel ("OTA update" where the board supports it, otherwise "Details"). MeshCore has no in-app update yet: flash it with the MeshCore web flasher, USB or the app. In-app MeshCore OTA/DFU is a later phase of #4943.
+Meshtastic rows link to the source's OTA panel ("OTA update" where the board supports it, otherwise "Details"). MeshCore rows say "Manual": a MeshCore update is started from a repeater's or room server's remote console ([Firmware update](/features/meshcore-remote-admin#firmware-update)) and finished near the node, or flashed over USB with the MeshCore web flasher. Companions have no over-the-air update.
 
 ### When releases are checked
 

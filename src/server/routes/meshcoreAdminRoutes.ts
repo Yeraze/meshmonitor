@@ -34,6 +34,13 @@ import {
 import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
 import { getMeshCoreLoginProgressRegistry, isValidLoginRequestId } from '../services/meshcoreLoginProgress.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
+import {
+  latestMeshCoreRelease,
+  meshcoreChannel,
+  meshcoreFirmwareReleases,
+  type MeshCoreFirmwareRole,
+} from '../services/meshcoreFirmwareReleases.js';
 import { MeshCoreContactNotOnDeviceError } from '../meshcoreDeviceContactErrors.js';
 import { isTransmittingLocalCliVerb } from '../constants/meshcoreTx.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
@@ -464,6 +471,33 @@ router.post('/cli', extendRequestTimeout(LOCAL_CLI_TIMEOUT_MS), meshcoreDeviceLi
     if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Unexpected error in /cli:', error);
     res.status(500).json({ success: false, error: 'CLI error' });
+  }
+});
+
+/**
+ * GET /admin/firmware/latest?role=repeater|room-server (#4943 Phase 2)
+ *
+ * The newest MeshCore release for a repeater / room-server role on this
+ * source's own channel, for the remote-admin "Firmware update" section. Reads
+ * the release cache only (filled by the firmware service's 6-hour check), so
+ * `latest` is null until the first check. Gated like the rest of remote admin.
+ */
+router.get('/admin/firmware/latest', requireAuth(), requirePermission('remote_admin', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const role = req.query.role;
+    if (role !== 'repeater' && role !== 'room-server') {
+      return fail(res, 400, 'INVALID_ROLE', 'role must be repeater or room-server');
+    }
+    const channel = meshcoreChannel(await firmwareUpdateService.getChannel(req.params.id));
+    const release = latestMeshCoreRelease(meshcoreFirmwareReleases.getCached(), role as MeshCoreFirmwareRole, channel);
+    return ok(res, {
+      role,
+      channel,
+      latest: release ? { version: release.version, tagName: release.tagName, htmlUrl: release.htmlUrl } : null,
+    });
+  } catch (error) {
+    logger.error('[API] Error reading MeshCore firmware release:', error);
+    return fail(res, 500, 'FIRMWARE_RELEASE_FAILED', 'Could not read the MeshCore firmware release.');
   }
 });
 

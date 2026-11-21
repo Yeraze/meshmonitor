@@ -399,9 +399,15 @@ Pattern: `/\b(reboot|erase|clkreboot|factory|poweroff|shutdown)\b(?!\.)|\bset\s+
 `poweroff` / `shutdown` joined with the Companion native CLI (#5866): a
 powered-off board needs someone at the device to come back. `set prv.key`
 replaces the identity (#6255). `start ota` (#4943) works over remote admin
-and takes a repeater or room server off the mesh into update mode: an open
-WiFi AP named `MeshCore-OTA` on ESP32, BLE DFU on nRF52. Only someone near
-the device can finish or abort the update.
+and opens update mode on a repeater or room server: an open,
+unauthenticated WiFi AP named `MeshCore-OTA` with a firmware upload page on
+ESP32 (reply `Started: http://192.168.4.1/update`), BLE DFU on nRF52 (reply
+`OK - mac: …`). `startOTAUpdate` returns and the mesh loop keeps running, so
+the node stays reachable and a remote `reboot` ends OTA mode; until then
+anyone in WiFi/BLE range can flash it. Other boards reply `Error`. The
+remote-admin **Firmware update** section sends it through the console's
+typed-name confirmation (`CliConsoleBodyHandle.requestConfirm`) and reads
+the reply via `onCommandResult`.
 
 The `(?!\.)` after the word boundary exists because these firmwares expose
 config keys as dotted paths that legitimately contain the danger words as

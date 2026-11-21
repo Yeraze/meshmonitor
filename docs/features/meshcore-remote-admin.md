@@ -143,6 +143,22 @@ Companion firmware 1.18.0 and later can also run CLI commands that another Compa
 
 No login flow: the connection is physical (USB serial or direct TCP), so there's no admin password concept. Gated on the existing `configuration:write` permission.
 
+### Firmware update (start OTA) {#firmware-update}
+
+Once you are logged in to a repeater or room server, the console shows a **Firmware update** section ([#4943](https://github.com/Yeraze/meshmonitor/issues/4943)). It lists the newest MeshCore release for the node's role on the source's channel (Stable or Alpha, set per source in **Analysis & Reports → Firmware Status**), with a link to the release files.
+
+MeshMonitor can only **start** a MeshCore update; someone near the node finishes it. **Start OTA mode…** sends `start ota` through the same typed-name confirmation as other danger commands. The reply lands in the transcript, and the section turns it into the next steps:
+
+- **ESP32** (reply `Started: http://192.168.4.1/update`): near the node, join the open Wi-Fi network **MeshCore-OTA**, open that address and upload the **non-merged `.bin`** for the board. The node restarts on the new firmware and keeps its settings.
+- **nRF52** (reply `OK - mac: …`): near the node, use Nordic's **nRF Device Firmware Update** app with the **`.zip`** for the board, picking the device with that Bluetooth address. The [OTAFIX bootloader](https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX) makes a failed update recoverable.
+- **`Error`**: the board has no over-the-air update (RP2040, STM32, ESP32-C6, or a build without OTA). Update it over USB.
+
+::: warning While update mode is on
+On ESP32 the **MeshCore-OTA** network is open and its upload page has no password, so anyone in Wi-Fi range can flash the node. The node keeps meshing during update mode; send `reboot` to leave it if nobody can finish the upload. If the reply times out, the node may still have entered update mode, so look for the network or the device in the DFU app before sending `start ota` again. MeshMonitor never resends it on its own.
+:::
+
+MeshMonitor cannot pick the exact file for you: the node does not report which build it runs, so choose the file for your board from the release.
+
 ### Credential store
 
 When the user ticks "Remember this password" at login, the plaintext is encrypted with **AES-256-GCM** using a key derived from `SESSION_SECRET` via HKDF and stored in `meshcore_nodes.adminCredential` (added by migration 070). Each envelope includes a 4-byte `kid` fingerprint of the current secret; on later visits the console offers a one-click **Log in with saved password** button when `kid` matches (it never logs in by itself). If `SESSION_SECRET` rotates, the mismatched `kid` triggers a yellow banner asking the user to re-enter the password — never a silent auth-tag failure.
@@ -155,7 +171,7 @@ When `SESSION_SECRET` was auto-generated rather than explicitly configured, the 
 
 ### Danger commands
 
-Destructive verbs matching `/(reboot|erase|clkreboot|factory)/i` are gated by a typed-name confirmation modal: the user must type the contact name (or local device name) exactly to enable the Confirm button. The same regex is mirrored server-side — `POST /admin/cli` and `POST /cli` both reject without `confirm: true` in the body with `code: DANGER_CONFIRM_REQUIRED`. Mirrored deliberately so a script bypassing the modal still gets the prompt-as-requirement.
+Destructive commands (`reboot`, `erase`, `clkreboot`, `factory`, `poweroff`, `shutdown`, `set prv.key`, and `start ota`) are gated by a typed-name confirmation modal: the user must type the contact name (or local device name) exactly to enable the Confirm button. The same regex is mirrored server-side — `POST /admin/cli` and `POST /cli` both reject without `confirm: true` in the body with `code: DANGER_CONFIRM_REQUIRED`. Mirrored deliberately so a script bypassing the modal still gets the prompt-as-requirement.
 
 ### Audit log
 
