@@ -16,6 +16,12 @@ interface MeshCoreStatusBarProps {
    *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (Send advert
    *  disabled + tooltip, receive-only status chip). */
   receiveOnly?: boolean;
+  /** False when the viewer may not drive the radio (#6524): not signed in, or
+   *  no `connection:write` on this source. Advert, Flood advert, Disconnect
+   *  and Connect all hit routes that check `requireAuth()` +
+   *  `connection:write`, so the buttons are hidden rather than shown only to
+   *  fail. Hiding them is not the access control; the routes are. */
+  canControl?: boolean;
 }
 
 export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
@@ -25,6 +31,7 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
   actions,
   hideConnectionText,
   receiveOnly = false,
+  canControl = true,
 }) => {
   const { t } = useTranslation();
   const connected = status?.connected ?? false;
@@ -52,30 +59,32 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
           </span>
         )}
       </div>
-      <div className="meshcore-status-bar-right">
-        {connected ? (
-          <>
-            <MeshCoreAdvertButtons
-              onSend={(mode) => actions.sendAdvert(mode)}
-              disabled={loading || receiveOnly}
-              disabledTitle={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
-            />
-            <button
-              className="disconnect"
-              onClick={() => void actions.disconnect()}
-              disabled={loading}
-            >
-              {t('meshcore.disconnect', 'Disconnect')}
+      {canControl && (
+        <div className="meshcore-status-bar-right">
+          {connected ? (
+            <>
+              <MeshCoreAdvertButtons
+                onSend={(mode) => actions.sendAdvert(mode)}
+                disabled={loading || receiveOnly}
+                disabledTitle={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+              />
+              <button
+                className="disconnect"
+                onClick={() => void actions.disconnect()}
+                disabled={loading}
+              >
+                {t('meshcore.disconnect', 'Disconnect')}
+              </button>
+            </>
+          ) : (
+            <button onClick={onOpenSettings} disabled={loading}>
+              {loading
+                ? t('meshcore.connecting', 'Connecting…')
+                : t('meshcore.connect', 'Connect')}
             </button>
-          </>
-        ) : (
-          <button onClick={onOpenSettings} disabled={loading}>
-            {loading
-              ? t('meshcore.connecting', 'Connecting…')
-              : t('meshcore.connect', 'Connect')}
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
