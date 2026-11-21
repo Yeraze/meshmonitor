@@ -77,7 +77,7 @@ interface MeshCorePageProps {
 
 export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, enabled, onStatusChange }) => {
   const { t } = useTranslation();
-  const { authStatus } = useAuth();
+  const { authStatus, hasPermission } = useAuth();
   const isAdmin = authStatus?.user?.isAdmin ?? false;
   const meshCore = useMeshCore({ baseUrl, sourceId, enabled });
   const { status, nodes, contacts, messages, reactionResolutions, loading, hasLoadedOnce, error, actions } = meshCore;
@@ -242,6 +242,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
         actions={actions}
         hideConnectionText={!!onStatusChange}
         receiveOnly={receiveOnly}
+        // #6524: advert/connect/disconnect routes need a signed-in user with
+        // `connection:write` on this source; hide the controls otherwise.
+        canControl={!!authStatus?.authenticated && hasPermission('connection', 'write', { sourceId })}
       />
 
       {error && (
