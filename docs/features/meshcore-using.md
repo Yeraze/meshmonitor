@@ -119,7 +119,7 @@ un-favourite a contact, do it in MeshMonitor rather than on the device.
 
 Click **Override location** in the contact's details to pin the contact to a position you choose. The map, the node list and the other maps then use that position in place of the one in its adverts. It needs **Nodes: write** on the source.
 
-- The override lives in MeshMonitor only. MeshMonitor sends nothing to the radio, so it works for Companion and Repeater sources, and while the source is disconnected.
+- The override lives in MeshMonitor only. MeshMonitor sends nothing to the radio, so it works for Companion and Repeater sources, for [MQTT ingest](/features/meshcore-mqtt-ingest#location-override) and broker sources, and while the source is disconnected.
 - A new advert does not move a pinned contact or clear the override.
 - Mark the override private to show it only to signed-in users who hold the **Private Positions** permission on the source. Everyone else sees the advertised position.
 - Cross-source links, the Coverage Report and the other features that read a contact's position use the override too.
