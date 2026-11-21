@@ -46,7 +46,11 @@ vi.mock('../sourceManagerRegistry.js', () => {
   const ingestStub = (sourceId: string) => ({
     sourceId,
     sourceType: 'meshcore_mqtt' as const,
-    getAllNodes: async () => [],
+    // Same read as MeshCoreMqttManager.getAllNodes(): the stored rows.
+    getAllNodes: async () => {
+      const { default: db } = await import('../../services/database.js');
+      return db.meshcore.getNodesBySource(sourceId);
+    },
   });
   const managers = new Map<string, unknown>([
     ['rt-source-a', stubFor('rt-source-a')],
@@ -294,6 +298,23 @@ describe('MeshCore location override routes (#5842)', () => {
 
       expect((await agent.delete(url(MQTT_SOURCE))).status).toBe(200);
       expect((await agent.get(url(MQTT_SOURCE))).body.data.enabled).toBe(false);
+    });
+
+    it('a status-only observer comes back from /ingest/nodes at the pinned position', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const before = await agent.get(`/sources/${MQTT_SOURCE}/meshcore/ingest/nodes`);
+      expect(before.status).toBe(200);
+      const row = before.body.data.nodes.find((n: { publicKey: string }) => n.publicKey === KEY);
+      expect(row).toBeDefined();
+      expect(row.latitude ?? null).toBeNull();
+
+      await agent.post(url(MQTT_SOURCE)).send({ enabled: true, ...PINNED });
+      const after = await agent.get(`/sources/${MQTT_SOURCE}/meshcore/ingest/nodes`);
+      expect(after.body.data.nodes.find((n: { publicKey: string }) => n.publicKey === KEY)).toMatchObject({
+        latitude: PINNED.latitude,
+        longitude: PINNED.longitude,
+        positionIsOverride: true,
+      });
     });
 
     it('404s for a node the ingest source has no row for, without asking for a contact list', async () => {
