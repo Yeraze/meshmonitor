@@ -15671,16 +15671,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private warnSenderNameFallback(label: string, name: string, code: string, why: string): void {
     const key = `${this.sourceId}|${label}|${name}|${code}`;
     const msg = `[MeshCore:${this.sourceId}] ${label}: cannot send as "${name}" (${code}: ${why}); sending under the node name`;
-    if (MeshCoreManager.warnedSenderNameFallbacks.has(key)) {
+    if (this.warnedSenderNameFallbacks.has(key)) {
       logger.debug(msg);
       return;
     }
-    if (MeshCoreManager.warnedSenderNameFallbacks.size > 500) MeshCoreManager.warnedSenderNameFallbacks.clear();
-    MeshCoreManager.warnedSenderNameFallbacks.add(key);
+    if (this.warnedSenderNameFallbacks.size > 500) this.warnedSenderNameFallbacks.clear();
+    this.warnedSenderNameFallbacks.add(key);
     logger.warn(`${msg} (further fallbacks for it log at debug)`);
   }
 
-  private static warnedSenderNameFallbacks = new Set<string>();
+  private readonly warnedSenderNameFallbacks = new Set<string>(); // per source: one busy source never resets another
 
   private async attemptReconnect(): Promise<void> {
     if (!this.shouldReconnect || !this.config) return;
