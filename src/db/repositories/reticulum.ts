@@ -925,8 +925,8 @@ export class ReticulumRepository extends BaseRepository {
       quality: values.quality,
     };
 
-    // `inserted` tells a first delivery from a bridge re-delivery. The update path
-    // never rewrites createdAt, so a returned createdAt equal to `now` marks the insert.
+    // `inserted` tells a first delivery from a bridge re-delivery: try the insert
+    // first, and update only when the id already exists.
     if (this.isMySQL()) {
       // MySQL reports affectedRows 1 for a matched-but-unchanged update (the
       // driver sets CLIENT_FOUND_ROWS), so a re-delivery of identical values
@@ -947,9 +947,11 @@ export class ReticulumRepository extends BaseRepository {
     const rows = await this.db
       .insert(reticulumMessages)
       .values(values)
-      .onConflictDoUpdate({ target: [reticulumMessages.id], set: updateSet })
-      .returning({ createdAt: reticulumMessages.createdAt });
-    return { inserted: Number(rows[0]?.createdAt) === now };
+      .onConflictDoNothing({ target: [reticulumMessages.id] })
+      .returning({ id: reticulumMessages.id });
+    if (rows.length > 0) return { inserted: true };
+    await this.db.update(reticulumMessages).set(updateSet).where(eq(reticulumMessages.id, input.id));
+    return { inserted: false };
   }
 
   /**
