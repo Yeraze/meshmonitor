@@ -221,6 +221,21 @@ describe('notificationService.notifyNewNode', () => {
     expect(call[1].body).not.toContain('hop');
   });
 
+  it('appends the dropped-node count to the body and the merged body (#6341)', async () => {
+    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 2, 'src1', 'Source One', { nodeNum: 7, suppressedCount: 5 });
+    const payload = mockPush.broadcastToPreferenceUsers.mock.calls[0][1];
+    const suffix = ' (+5 more new nodes since the last alert)';
+    expect(payload.body.endsWith(suffix)).toBe(true);
+    expect(payload.dedup.merged(['A', 'B']).body.endsWith(suffix)).toBe(true);
+  });
+
+  it('adds no suffix without a count', async () => {
+    await notificationService.notifyNewNode('!abc123', 'Test Node', 'TN', 100, 2, 'src1', 'Source One', { nodeNum: 7, suppressedCount: 0 });
+    const payload = mockPush.broadcastToPreferenceUsers.mock.calls[0][1];
+    expect(payload.body).not.toContain('more new nodes');
+    expect(payload.dedup.merged(['A']).body).not.toContain('more new nodes');
+  });
+
   it('does not throw on broadcast error', async () => {
     mockPush.broadcastToPreferenceUsers.mockRejectedValue(new Error('Push error'));
     await expect(

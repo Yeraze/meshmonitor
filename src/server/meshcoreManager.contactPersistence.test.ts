@@ -502,11 +502,11 @@ describe('MeshCoreManager new-node notification for nameless first adverts (issu
   it('drops a pending key whose contact is gone without notifying', async () => {
     const m = companion([]);
     pubkeyOnlyAdvert(m, NEW_KEY);
-    expect((m as any).pendingNewNodeNotifications.has(NEW_KEY)).toBe(true);
+    expect((m as any).newNodeAlerts.pending.has(NEW_KEY)).toBe(true);
     (m as any).contacts.delete(NEW_KEY);
     (m as any).flushPendingNewNodeNotifications();
     await flush();
-    expect((m as any).pendingNewNodeNotifications.has(NEW_KEY)).toBe(false);
+    expect((m as any).newNodeAlerts.pending.has(NEW_KEY)).toBe(false);
     expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
   });
 });

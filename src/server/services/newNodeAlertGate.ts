@@ -67,7 +67,17 @@ function realDeps(): NewNodeAlertGateDeps {
     now: () => Date.now(),
     getSourceSetting: (sourceId, key) => databaseService.settings.getSettingForSource(sourceId, key),
     setSourceSetting: (sourceId, key, value) => databaseService.settings.setSourceSetting(sourceId, key, value),
-    getEarliestNodeCreatedAt: (sourceId) => databaseService.meshcore.getEarliestNodeCreatedAt(sourceId),
+    // A source writes to `meshcore_nodes` (MeshCore) or `nodes` (Meshtastic MQTT);
+    // take the older of the two so an existing feed source arms at once on upgrade.
+    getEarliestNodeCreatedAt: async (sourceId) => {
+      const [mc, mt] = await Promise.all([
+        databaseService.meshcore.getEarliestNodeCreatedAt(sourceId),
+        databaseService.nodes.getEarliestNodeCreatedAt(sourceId),
+      ]);
+      if (mc === null) return mt;
+      if (mt === null) return mc;
+      return Math.min(mc, mt);
+    },
   };
 }
 

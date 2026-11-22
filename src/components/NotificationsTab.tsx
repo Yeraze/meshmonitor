@@ -912,9 +912,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                   />
                   <span style={{ fontWeight: '500' }}><UiIcon name="sparkles" /> {t('notifications.new_nodes')}</span>
                 </label>
-                {caps.newNodeNote === 'repeater_learning' && (
+                {caps.newNodeNote && (
                   <div className={styles.muted} style={{ fontSize: '12px', marginTop: '6px' }}>
-                    {t('notifications.new_nodes_repeater_note', {
+                    {t(caps.newNodeNote === 'feed_learning' ? 'notifications.new_nodes_feed_note' : 'notifications.new_nodes_repeater_note', {
                       hours: NEW_NODE_LEARN_HOURS,
                       cap: NEW_NODE_CAP_PER_HOUR,
                     })}
@@ -924,7 +924,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
               ) : null}
               {caps.unsupportedHint && (
               <div className={styles.muted} style={{ fontSize: '12px', marginBottom: '16px' }}>
-                {t(caps.unsupportedHint === 'ingest' ? 'notifications.ingest_unsupported_hint' : 'notifications.repeater_unsupported_hint')}
+                {t(caps.unsupportedHint === 'ingest' ? 'notifications.ingest_unsupported_hint_feed' : 'notifications.repeater_unsupported_hint')}
               </div>
               )}
 

@@ -5,6 +5,7 @@ import { calculateDistance } from '../utils/distance.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { logger } from '../utils/logger.js';
+import { isGatedMeshtasticNewNodeSourceType } from '../utils/newNodeAlertLimits.js';
 import { trackBackgroundTask } from '../utils/backgroundTasks.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 
@@ -1794,10 +1795,24 @@ class DatabaseService {
     this.newNodeAnnouncements.set(nodeNum, announced);
     trackBackgroundTask(import('../server/services/notificationService.js').then(async ({ notificationService }) => {
       let sourceName = newNodeSourceId;
+      let src: Awaited<ReturnType<typeof this.sources.getSource>> | null = null;
       try {
-        const src = await this.sources.getSource(newNodeSourceId);
+        src = await this.sources.getSource(newNodeSourceId);
         if (src?.name) sourceName = src.name;
-      } catch { /* fall back to id */ }
+      } catch { /* fall back to id; a failed lookup sends ungated, as before */ }
+      // #6341 P2: an MQTT feed hears a whole region, so its alerts learn for
+      // 48 h and then take at most 10 an hour. A TCP source stays ungated. The
+      // node stays announced, so a dropped alert never fires later.
+      let suppressedCount: number | undefined;
+      if (isGatedMeshtasticNewNodeSourceType(src?.type)) {
+        // Dynamic import: the gate module imports databaseService (a cycle).
+        // Use the exported singleton, never `new NewNodeAlertGate()`: its
+        // per-source chain is what serialises admit() across callers.
+        const { newNodeAlertGate } = await import('../server/services/newNodeAlertGate.js');
+        const verdict = await newNodeAlertGate.admit(newNodeSourceId);
+        if (!verdict.allow) return;
+        suppressedCount = verdict.suppressedSinceLast;
+      }
       // Sources where this node was already known before THIS announcement
       // (#5729, decision 5): those that announced earlier in this run, plus
       // those whose row was already complete before this run started (a
@@ -1822,7 +1837,7 @@ class DatabaseService {
         (nodeData.hopsAway ?? existingNode?.hopsAway) ?? undefined,
         newNodeSourceId,
         sourceName,
-        { nodeNum, knownOnSourceIds },
+        { nodeNum, knownOnSourceIds, suppressedCount },
       );
     }).catch(err => logger.error('Failed to send new node notification:', err)));
   }
