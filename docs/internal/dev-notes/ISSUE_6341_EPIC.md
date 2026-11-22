@@ -65,8 +65,6 @@ automations; gated LXMF-delivery new-destination alerts (`reticulumNewDestinatio
 peers alert under a short hash); gate earliest-row lookup also reads `reticulum_destinations`; `brokerLinkNotifier`
 gained `link:'bridge'`, custom event names and a name getter, attached once per manager (bridge re-emits
 `bridge-up`/`bridge-down`), 120 s grace; user Disconnect alerts at once, `stop()` is silent.
-||||||| parent of fb4e0500e (docs(#6341): log phase 4)
-
 
 ### P4 (spec: `ISSUE_6341_P4_SPEC.md`)
 Maintainer answers, 2026-11-22: a name refused at run time falls back to the node's own name with one warning; senders
