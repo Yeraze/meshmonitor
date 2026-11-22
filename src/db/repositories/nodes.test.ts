@@ -9,6 +9,7 @@
  * MySQL: requires test container on port 3307 (skipped if unavailable)
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
+import { and, eq } from 'drizzle-orm';
 import { NodesRepository } from './nodes.js';
 import { ALL_SOURCES } from './base.js';
 import { createTestDb, type TestDb } from '../../server/test-helpers/testDb.js';
@@ -1539,6 +1540,29 @@ function runNodesTests(getBackend: () => TestBackend) {
     });
     expect(slim.map((n) => Number(n.nodeNum)).sort((a, b) => a - b)).toEqual([1, 4, 5, 9]);
     expect('macaddr' in slim[0]).toBe(false);
+  });
+
+  it('getEarliestNodeCreatedAt - earliest createdAt of one source, null when none', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    expect(await repo.getEarliestNodeCreatedAt('sA')).toBeNull();
+    // upsertNode stamps createdAt = now, so backdate the rows directly.
+    const { nodes } = (repo as any).tables;
+    const seed: Array<[number, string, number]> = [
+      [21, 'sA', 1_760_000_050_000],
+      [22, 'sA', 1_760_000_000_000],
+      [23, 'sB', 1_750_000_000_000],
+    ];
+    for (const [num, sourceId, createdAt] of seed) {
+      await repo.upsertNode(makeNode(num, { sourceId }));
+      await (repo as any).db.update(nodes).set({ createdAt }).where(and(eq(nodes.nodeNum, num), eq(nodes.sourceId, sourceId)));
+    }
+    expect(await repo.getEarliestNodeCreatedAt('sA')).toBe(1_760_000_000_000);
+    expect(await repo.getEarliestNodeCreatedAt('sB')).toBe(1_750_000_000_000);
+    expect(await repo.getEarliestNodeCreatedAt('sZ')).toBeNull();
   });
 
   it('countNodesByChannel - counts one source\'s rows per channel', async () => {
