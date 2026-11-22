@@ -49,6 +49,7 @@ import { useSettings, useOptionalMuteSettings } from '../../contexts/SettingsCon
 import { useAuth } from '../../contexts/AuthContext';
 import { MuteMenu, MutedName } from '../notifications/MuteMenu';
 import { formatTimeOrDate } from '../../utils/datetime';
+import { sanitizeReticulumName } from '../../utils/reticulumName';
 import { UiIcon, type UiIconName } from '../icons';
 import styles from './ReticulumDmsView.module.css';
 import protocolStripe from '../messages/ProtocolStripe.module.css';
@@ -192,7 +193,9 @@ export const ReticulumDmsView: React.FC<ReticulumDmsViewProps> = ({
   const nameByHash = useMemo(() => {
     const map = new Map<string, string>();
     for (const d of destinations ?? []) {
-      if (d.displayName) map.set(d.destinationHash, d.displayName);
+      // Announce names are peer-controlled: strip bidi/zero-width/control chars.
+      const name = sanitizeReticulumName(d.displayName);
+      if (name) map.set(d.destinationHash, name);
     }
     return map;
   }, [destinations]);
