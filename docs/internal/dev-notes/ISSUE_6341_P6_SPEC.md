@@ -140,3 +140,8 @@ All: run targeted suites only, under the machine test lock with `--maxWorkers=2`
 **Q1. Emit order on MQTT.** Today MQTT emits reaction resolutions before the message; the device emits the message
 first. Recommend: unify on the device order (the target exists on the client before a patch names it). Alternative:
 an option that keeps MQTT's order.
+
+## Maintainer answers (2026-11-22)
+- `selfOrigin` on MQTT feed events as described (sibling radios' node names + recent override names), accepting the
+  rare name-collision side effect.
+- Q1: MQTT emits late reaction resolutions after the message, matching the device path.
