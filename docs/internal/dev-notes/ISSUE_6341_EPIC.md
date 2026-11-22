@@ -25,7 +25,7 @@ automated text may split into one more part. Phases 2, 3 add notifications, capp
 - [x] **P1 — Remap moves notification prefs (#5379).** `remapChannelSlots` rewrites `user_notification_preferences`
   `enabled_channels` / `muted_channels` for the source (slot ids only, mutes keep their expiry). Exit: reorder test on
   all three backends shows prefs follow their channels.
-- [ ] **P2 — MQTT feed new-node alerts.** Gate Meshtastic MQTT `maybeNotifyNewNode`; add gated, signature-required
+- [x] **P2 — MQTT feed new-node alerts.** Gate Meshtastic MQTT `maybeNotifyNewNode`; add gated, signature-required
   alerts to `meshcore_mqtt` `ingestAdvert` via a shared helper extracted from `maybeAlertRepeaterNewNode`; flip the
   capability row. Exit: tests for learning window, cap, overflow, unverified advert refused.
 - [ ] **P3 — Reticulum Notifications.** Capability row + tab on the Reticulum page; connect/disconnect events; gated
@@ -45,3 +45,12 @@ malformed JSON untouched) in the same transaction. Found while testing on MySQL:
 UNIQUE` left a single-column unique index named `userId` that migration 051 never dropped, so a MySQL database could
 hold only one notification-preference row per user across all sources. Migration 243 (MySQL only) swaps it for a
 plain index.
+
+### P2 (spec: `ISSUE_6341_P2_SPEC.md`)
+Maintainer answer, 2026-11-22: a gate-dropped feed sighting counts as "known" for #5729 cross-source dedup (option a,
+no extra code). Shipped: `newNodeAlertTracker.ts` (bounded sets + in-flight claim) and `meshcoreNewNodeAlert.ts`
+(shared alert + gated helper) used by the Repeater and the MeshCore MQTT feed (broker subclass inherits); feed alerts
+verify the advert signature once per new key; Meshtastic `mqtt_bridge` / `mqtt_broker` alerts pass through
+`newNodeAlertGate` in `maybeNotifyNewNode` (TCP ungated); "(+N more)" suffix on `notifyNewNode`; gate's earliest-node
+lookup also reads `nodes` (an old Meshtastic MQTT source arms at once on upgrade); node purge re-arms gated sources.
+Feed adverts raise no automation events (#5553 precedent).

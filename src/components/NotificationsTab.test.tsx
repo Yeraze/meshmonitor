@@ -126,6 +126,10 @@ describe('NotificationsTab — source-type gating', () => {
     expect(screen.queryByText(/notifications\.new_nodes_repeater_note/)).toBeNull();
   });
 
+  it('Meshtastic MQTT bridge shows the feed note; TCP does not (#6341)', async () => {
+    renderWithSource('mqtt_bridge');
+    await waitFor(() => expect(screen.queryByText(/notifications\.new_nodes_feed_note/)).not.toBeNull());
+  });
   it('MeshCore Repeater: hides DM, traceroute and mention, explains why, and shows new-node with its learning note', async () => {
     renderWithSource('meshcore', 2);
     await waitFor(() => {
@@ -343,7 +347,10 @@ describe('NotificationsTab — MeshCore MQTT ingest source (#6307)', () => {
     renderWithSource('meshcore_mqtt');
     await waitFor(() => expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull());
     expect(document.getElementById('lowBatteryThreshold')).toBeNull();
-    expect(screen.queryByText(/notifications\.ingest_unsupported_hint/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.ingest_unsupported_hint_feed/)).not.toBeNull();
+    // #6341: the new-node toggle and its feed gate note show on a feed.
+    expect(screen.queryByText(/notifications\.new_nodes_feed_note/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.new_nodes_repeater_note/)).toBeNull();
     expect(screen.queryByText(/notifications\.ingest_channels_warning/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.emoji_reactions/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
@@ -351,12 +358,12 @@ describe('NotificationsTab — MeshCore MQTT ingest source (#6307)', () => {
     expect(screen.queryByText(/notifications\.notify_on_inactive_node/)).not.toBeNull();
   });
 
-  it('hides DM, MQTT, traceroute, mention, waypoint and new-node', async () => {
+  it('hides DM, MQTT, traceroute, mention and waypoint', async () => {
     renderWithSource('meshcore_mqtt');
     await waitFor(() => expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull());
     expect(screen.queryByText(/notifications\.direct_messages/)).toBeNull();
     expect(screen.queryByText(/notifications\.traceroutes/)).toBeNull();
-    expect(screen.queryByText(/notifications\.new_nodes(?!_)/)).toBeNull();
+    expect(screen.queryByText(/notifications\.new_nodes(?!_)/)).not.toBeNull();
     expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).toBeNull();
     expect(screen.queryByText(/notifications\.notify_on_waypoint/)).toBeNull();
     expect(screen.queryByText(/notifications\.repeater_unsupported_hint/)).toBeNull();

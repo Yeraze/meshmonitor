@@ -17,6 +17,7 @@ vi.mock('../../services/database.js', () => ({
     nodes: { getNodeCount: vi.fn() },
     purgeAllNodesAsync: vi.fn(),
     purgeAllTelemetryAsync: vi.fn(),
+    sources: { getAllSources: vi.fn().mockResolvedValue([]) },
     messages: { getMessageCount: vi.fn(), deleteAllMessages: vi.fn() },
     traceroutes: { deleteAllTraceroutes: vi.fn(), deleteAllRouteSegments: vi.fn() },
   },

@@ -230,6 +230,7 @@ vi.mock('../server/services/notificationService.js', () => ({
 import databaseService from './database.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { waitForBackgroundTasks } from '../utils/backgroundTasks.js';
+import { newNodeAlertGate } from '../server/services/newNodeAlertGate.js';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -838,6 +839,65 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     release();
     await wait;
     expect(drained).toBe(true);
+  });
+
+  describe('gated MQTT feed sources (#6341 P2)', () => {
+    const getSourceSpy = vi.fn();
+    const priorSourcesRepo = databaseService.sourcesRepo;
+    let admitSpy: ReturnType<typeof vi.spyOn>;
+    const completeNode = (n: number) => ({
+      nodeNum: n, nodeId: `!${n.toString(16)}`, longName: 'Feed Node', shortName: 'FN', hwModel: 5,
+    });
+
+    beforeEach(() => {
+      vi.mocked(isNodeComplete).mockReturnValue(true);
+      getSourceSpy.mockReset();
+      databaseService.sourcesRepo = { getSource: getSourceSpy } as any;
+      admitSpy = vi.spyOn(newNodeAlertGate, 'admit');
+    });
+    afterEach(() => {
+      databaseService.sourcesRepo = priorSourcesRepo;
+      admitSpy.mockRestore();
+    });
+
+    for (const [i, type] of ['mqtt_bridge', 'mqtt_broker'].entries()) {
+      it(`${type}: asks the gate and sends when allowed, with the overflow count`, async () => {
+        getSourceSpy.mockResolvedValue({ id: 'feed1', name: 'Feed', type } as any);
+        admitSpy.mockResolvedValue({ allow: true, suppressedSinceLast: 3 });
+        await databaseService.upsertNodeAsync(completeNode(0x70000010 + i), 'feed1');
+        await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+        expect(admitSpy).toHaveBeenCalledWith('feed1');
+        expect(mockNotifyNewNode.mock.calls[0][7]).toMatchObject({ suppressedCount: 3 });
+      });
+
+      it(`${type}: sends nothing when the gate drops it, and never alerts later`, async () => {
+        getSourceSpy.mockResolvedValue({ id: 'feed2', name: 'Feed', type } as any);
+        admitSpy.mockResolvedValue({ allow: false, reason: 'capped' });
+        const node = completeNode(0x70000020 + i);
+        await databaseService.upsertNodeAsync(node, 'feed2');
+        await waitForBackgroundTasks();
+        expect(admitSpy).toHaveBeenCalledTimes(1);
+        expect(mockNotifyNewNode).not.toHaveBeenCalled();
+        await databaseService.upsertNodeAsync(node, 'feed2');
+        await settle();
+        expect(admitSpy).toHaveBeenCalledTimes(1);
+        expect(mockNotifyNewNode).not.toHaveBeenCalled();
+      });
+    }
+
+    it('a TCP source never reaches the gate and still alerts', async () => {
+      getSourceSpy.mockResolvedValue({ id: 'tcp1', name: 'Radio', type: 'meshtastic_tcp' } as any);
+      await databaseService.upsertNodeAsync(completeNode(0x70000003), 'tcp1');
+      await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+      expect(admitSpy).not.toHaveBeenCalled();
+    });
+
+    it('a failed source lookup sends ungated, as before', async () => {
+      getSourceSpy.mockRejectedValue(new Error('db down'));
+      await databaseService.upsertNodeAsync(completeNode(0x70000004), 'tcp2');
+      await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+      expect(admitSpy).not.toHaveBeenCalled();
+    });
   });
 
 });

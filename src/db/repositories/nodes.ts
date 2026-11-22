@@ -243,6 +243,23 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Earliest `createdAt` (epoch ms) among one source's node rows, or null when it
+   * has none. The new-node alert gate uses it to tell a long-running source from
+   * a brand-new one (#6341).
+   */
+  async getEarliestNodeCreatedAt(sourceId: string): Promise<number | null> {
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({ createdAt: nodes.createdAt })
+      .from(nodes)
+      .where(eq(nodes.sourceId, sourceId))
+      .orderBy(asc(nodes.createdAt))
+      .limit(1);
+    const v = rows[0]?.createdAt;
+    return v === null || v === undefined ? null : Number(v);
+  }
+
+  /**
    * Get a node by nodeNum, optionally scoped to a source.
    *
    * When sourceId is provided, the WHERE clause is scoped per-source — required

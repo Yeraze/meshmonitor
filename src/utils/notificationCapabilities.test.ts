@@ -28,11 +28,16 @@ describe('notificationCapabilities', () => {
     expect(notificationCapabilities('meshcore', 1).newNodeNote).toBeNull();
     expect(notificationCapabilities('meshtastic').newNodeNote).toBeNull();
   });
-  it('MeshCore MQTT ingest: channels, emoji, filters, volts; no DM/mqtt/trace/mention/waypoint/new-node (#6307)', () => {
+  it('Meshtastic MQTT bridge and broker get the feed note, TCP stays ungated (#6341)', () => {
+    expect(notificationCapabilities('mqtt_bridge')).toMatchObject({ newNode: 'on', newNodeNote: 'feed_learning' });
+    expect(notificationCapabilities('mqtt_broker')).toMatchObject({ newNode: 'on', newNodeNote: 'feed_learning' });
+    expect(notificationCapabilities('meshtastic_tcp').newNodeNote).toBeNull();
+  });
+  it('MeshCore MQTT ingest: channels, emoji, filters, volts; no DM/mqtt/trace/mention/waypoint, new-node on with the feed note (#6307, #6341)', () => {
     const c = notificationCapabilities('meshcore_mqtt');
     expect(c).toMatchObject({
       dm: false, rooms: false, channels: true, emoji: true, mqtt: false, traceroute: false,
-      newNode: 'unsupported', waypoint: false, mention: false, batteryUnit: 'voltage',
+      newNode: 'on', newNodeNote: 'feed_learning', waypoint: false, mention: false, batteryUnit: 'voltage',
       messageFilters: true, unsupportedHint: 'ingest', connectionEvents: 'broker',
     });
   });

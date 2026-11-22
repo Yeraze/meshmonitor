@@ -8,3 +8,11 @@
 export const NEW_NODE_LEARN_HOURS = 48;
 /** Most alerts per source per fixed hour once the window has ended. */
 export const NEW_NODE_CAP_PER_HOUR = 10;
+
+/**
+ * Meshtastic source types whose new-node alerts go through the learn/cap gate
+ * (#6341 P2). A TCP device source stays ungated.
+ */
+export function isGatedMeshtasticNewNodeSourceType(t: string | null | undefined): boolean {
+  return t === 'mqtt_bridge' || t === 'mqtt_broker';
+}
