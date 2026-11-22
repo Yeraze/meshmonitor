@@ -82,3 +82,7 @@ Since `|stored| > T` ⇔ both observers exceed T, `isClockOutOfSyncEdge` compose
 
 - **Q1. Unset Meshtastic clocks.** A node with no GPS, phone or NTP has no wall clock, which is normal on Meshtastic. Sample it as "Clock not set" (one alert per such node) or skip? **Recommend skip** (`senderSec < MIN_PLAUSIBLE_UNIX_SEC`); MeshCore keeps today's behaviour.
 - **Q2. Observer identity.** The topic/`origin_id` check does not authenticate an observer, so one publisher could pose as two. Accept for now? **Recommend accept**: alerts are capped at 10/hour and send nothing; a broker source can already restrict who connects.
+
+## Maintainer answers (2026-11-22)
+- Q1: skip Meshtastic nodes with no clock (implausible sender time); no "Clock not set" flag.
+- Q2: accept unauthenticated observer identity (topic/`origin_id`); no extra proof.
