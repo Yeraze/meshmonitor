@@ -649,7 +649,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       try {
         ok = ingested.signatureVerified
           || (!ingested.signatureChecked && await verifyAdvertSignature(ingested.advert));
-      } catch {
+      } catch (err) {
+        logger.warn(`[MeshCoreMqtt:${this.sourceId}] clock sample: advert signature check failed:`, err);
         ok = false;
       }
       const sample = this.clockAgreement.markVerified(key, senderSec, ok);
