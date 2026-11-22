@@ -21,7 +21,8 @@ To have observers publish straight to MeshMonitor instead of to an external brok
 | Packet Monitor for the whole region | **Direct messages** — encrypted to their recipient, and you are not it |
 | Nodes discovered from adverts (name, role, position) | **Contacts, CLI, remote admin** — there is no device to ask |
 | Channel messages, where you hold the channel key | **Sending anything** — no radio |
-| Observer battery / uptime, and noise floor as telemetry | |
+| Observer battery, uptime and noise floor as telemetry | |
+| [Location override](#location-override), to place an observer on the map | |
 
 The right-hand column is not a roadmap. Those are consequences of reading someone else's observations rather than operating a node, and no future phase removes them.
 
@@ -106,17 +107,29 @@ Two things adverts deliberately do **not** do:
 
 ## Observer status
 
-The `/status` topic carries the **publishing observer's own** battery, uptime and noise floor — not stats about nodes it overheard. Battery and uptime are stored against that observer's node row.
+The `/status` topic carries the **publishing observer's own** battery, uptime and noise floor — not stats about nodes it overheard. The latest battery and uptime are stored on that observer's node row.
 
-Noise floor is stored as telemetry, under `mc_status_noise_floor` — the same series a device-backed MeshCore source writes, so an ingest observer graphs beside a device-backed one. It appears per observer on the **Telemetry** page.
+All three are also stored as telemetry, under the same series a device-backed MeshCore source writes, so an ingest observer graphs beside a device-backed repeater:
 
-It is telemetry rather than a value on the node row because the useful question ("is this band getting more congested?") is about a trend, and a single latest reading cannot answer it. Samples are throttled to one per observer per minute — observers heartbeat every 5 minutes, so no real reading is dropped; the throttle only collapses the retained-status replay that arrives on every reconnect.
+| Field | Series | Unit |
+|---|---|---|
+| Battery | `mc_status_battery_volts` | V |
+| Uptime | `mc_status_uptime_secs` | s |
+| Noise floor | `mc_status_noise_floor` | dB |
+
+They appear per observer on the **Telemetry** page. Battery in volts is what [Solar Monitoring](/features/solar-monitoring) reads, so a solar-powered observer gets the forecast overlay and solar-node detection. A drop in uptime marks a reboot, such as a brown-out at night.
+
+These are telemetry rather than values on the node row because the useful questions ("is the battery keeping up with the sun?", "is this band getting more congested?") are about trends, and a single latest reading cannot answer them. Every observer on the source is recorded, up to three rows per heartbeat; telemetry retention prunes them like any other series. Samples are throttled to one per observer per minute — observers heartbeat every 5 minutes, so no real reading is dropped; the throttle only collapses the retained-status replay that arrives on every reconnect.
 
 ::: tip Unit
 Stored as `dB` to match the existing series. Ambient RF noise is really dBm, but splitting one series across two units to correct a label would be the worse bug.
 :::
 
 A status heartbeat does **not** refresh `lastHeard`: it proves the observer can reach its broker, not that it is reachable over the air.
+
+## Location override {#location-override}
+
+An observer usually has no position: it publishes what it hears, and it never hears its own adverts. To put it on the map, open the source's **Nodes** tab and click **Override location** on its row. This is the same [contact location override](/features/meshcore-using#contact-location-override) a Companion or Repeater source has: it lives in MeshMonitor only, a new advert does not move it, and it can be marked private. It needs **Nodes: write** on the source.
 
 ## Retention
 

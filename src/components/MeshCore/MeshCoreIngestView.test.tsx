@@ -13,7 +13,28 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 const get = vi.fn();
-vi.mock('../../services/api', () => ({ default: { get: (...a: unknown[]) => get(...a) } }));
+const post = vi.fn().mockResolvedValue({ success: true });
+const del = vi.fn().mockResolvedValue({ success: true });
+vi.mock('../../services/api', () => ({
+  default: {
+    get: (...a: unknown[]) => get(...a),
+    post: (...a: unknown[]) => post(...a),
+    delete: (...a: unknown[]) => del(...a),
+  },
+}));
+
+// The modal has its own suite; this stub exposes only its save contract.
+vi.mock('../PositionOverrideModal', () => ({
+  PositionOverrideModal: ({ onSave, selectedNode }: {
+    onSave: (n: number, d: Record<string, unknown>) => Promise<void>;
+    selectedNode: { user: { id: string } };
+  }) => (
+    <div data-testid="override-modal" data-key={selectedNode.user.id}>
+      <button onClick={() => void onSave(0, { enabled: true, latitude: 28.5, longitude: -81.4 })}>save-override</button>
+      <button onClick={() => void onSave(0, { enabled: false })}>clear-override</button>
+    </div>
+  ),
+}));
 
 // The packet monitor has its own suite; stub it so this one stays about the
 // ingest shell rather than re-testing that view's fetching.
@@ -31,11 +52,12 @@ vi.mock('react-i18next', async () => {
 vi.mock('../icons', () => ({ UiIcon: () => <span /> }));
 
 // Sign-in state and push click-through are driven per test (#6307).
-const auth = vi.hoisted(() => ({ authenticated: true, isAdmin: false }));
+const auth = vi.hoisted(() => ({ authenticated: true, isAdmin: false, canWriteNodes: true }));
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({
     authStatus: { authenticated: auth.authenticated, user: auth.authenticated ? { isAdmin: auth.isAdmin } : null },
-    hasPermission: () => true,
+    hasPermission: (resource: string, action: string) =>
+      resource === 'nodes' && action === 'write' ? auth.canWriteNodes : true,
   }),
 }));
 const nav = vi.hoisted(() => ({
@@ -76,6 +98,9 @@ const OVERVIEW = {
 beforeEach(() => {
   auth.authenticated = true;
   auth.isAdmin = false;
+  auth.canWriteNodes = true;
+  post.mockClear();
+  del.mockClear();
   nav.pending = null;
   nav.clear.mockReset();
   get.mockReset();
@@ -264,5 +289,47 @@ describe('MeshCoreIngestView (#5096)', () => {
       expect(nav.clear).not.toHaveBeenCalled();
       expect(get.mock.calls.some(c => String(c[0]).includes('/ingest/messages'))).toBe(false);
     });
+  });
+});
+
+describe('location override on the Nodes tab (#6531)', () => {
+  const KEY = 'b'.repeat(64);
+  const url = `/api/sources/src-1/meshcore/nodes/${KEY}/position-override`;
+  const openNodes = async () => {
+    renderView();
+    fireEvent.click(await screen.findByText('Nodes', { selector: 'button' }));
+    await screen.findByText('Observed Repeater');
+  };
+
+  it('opens the editor for the clicked node and saves through the data route', async () => {
+    await openNodes();
+    fireEvent.click(screen.getByText('Override location', { selector: 'button' }));
+    expect(screen.getByTestId('override-modal').getAttribute('data-key')).toBe(KEY);
+
+    const nodeLoads = () => get.mock.calls.filter(([u]) => String(u).includes('/nodes')).length;
+    const before = nodeLoads();
+    fireEvent.click(screen.getByText('save-override'));
+    await waitFor(() => expect(post).toHaveBeenCalledWith(url, { enabled: true, latitude: 28.5, longitude: -81.4 }));
+    // The list reloads so the new position shows.
+    await waitFor(() => expect(nodeLoads()).toBeGreaterThan(before));
+  });
+
+  it('clears with DELETE', async () => {
+    await openNodes();
+    fireEvent.click(screen.getByText('Override location', { selector: 'button' }));
+    fireEvent.click(screen.getByText('clear-override'));
+    await waitFor(() => expect(del).toHaveBeenCalledWith(url));
+  });
+
+  it('hides the editor without nodes:write on the source', async () => {
+    auth.canWriteNodes = false;
+    await openNodes();
+    expect(screen.queryByText('Override location', { selector: 'button' })).toBeNull();
+  });
+
+  it('hides the editor from an anonymous viewer', async () => {
+    auth.authenticated = false;
+    await openNodes();
+    expect(screen.queryByText('Override location', { selector: 'button' })).toBeNull();
   });
 });

@@ -74,6 +74,7 @@ const { default: traceRoutes } = await import('./meshcoreTraceRoutes.js');
 const { default: hopCandidatesRoutes } = await import('./meshcoreHopCandidatesRoutes.js');
 const { default: estimatedPositionRoutes } = await import('./meshcoreEstimatedPositionRoutes.js');
 const { perSourceCliHistoryRouter } = await import('./meshcoreCliHistoryRoutes.js');
+const { default: positionOverrideRoutes } = await import('./meshcorePositionOverrideRoutes.js');
 
 /**
  * A MeshCore manager that serves marked reads and records everything else.
@@ -560,9 +561,6 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'POST /nodes/:publicKey/favorite': 'write',
     // #5867: configuration:write; covered by meshcoreRemoteCliRoutes.test.ts.
     'POST /nodes/:publicKey/remote-cli': 'write',
-    'GET /nodes/:publicKey/position-override': 'read',
-    'POST /nodes/:publicKey/position-override': 'write',
-    'DELETE /nodes/:publicKey/position-override': 'write',
     'POST /neighbors/request': 'read-signed-in',
     'GET /neighbors': 'read',
   },
@@ -727,6 +725,12 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
   cliHistory: {
     'GET /cli-history': 'handler-scoped',
   },
+  // #5842, moved to the data side for ingest sources in #6531.
+  positionOverride: {
+    'GET /nodes/:publicKey/position-override': 'read',
+    'POST /nodes/:publicKey/position-override': 'write',
+    'DELETE /nodes/:publicKey/position-override': 'write',
+  },
 };
 
 /**
@@ -761,6 +765,7 @@ describe('guard: every MeshCore route is classified', () => {
     hopCandidates: hopCandidatesRoutes,
     estimatedPositions: estimatedPositionRoutes,
     cliHistory: perSourceCliHistoryRouter,
+    positionOverride: positionOverrideRoutes,
   };
   const key = (r: RegisteredRoute): string => `${r.method.toUpperCase()} ${r.path}`;
 
