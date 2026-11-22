@@ -1805,6 +1805,9 @@ class DatabaseService {
       // node stays announced, so a dropped alert never fires later.
       let suppressedCount: number | undefined;
       if (isGatedMeshtasticNewNodeSourceType(src?.type)) {
+        // Dynamic import: the gate module imports databaseService (a cycle).
+        // Use the exported singleton, never `new NewNodeAlertGate()`: its
+        // per-source chain is what serialises admit() across callers.
         const { newNodeAlertGate } = await import('../server/services/newNodeAlertGate.js');
         const verdict = await newNodeAlertGate.admit(newNodeSourceId);
         if (!verdict.allow) return;

@@ -54,7 +54,7 @@ router.post('/nodes', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Error purging nodes:', error);
-    res.status(500).json({ error: 'Failed to purge nodes' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to purge nodes');
   }
 });
 
