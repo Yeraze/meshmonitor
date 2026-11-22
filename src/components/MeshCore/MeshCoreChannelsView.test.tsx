@@ -47,6 +47,7 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     refreshContacts: vi.fn().mockResolvedValue(undefined),
     sendAdvert: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn().mockResolvedValue(true),
+    fetchUsableSenderNames: vi.fn().mockResolvedValue(null),
     setDeviceName: vi.fn().mockResolvedValue(true),
     setRadioParams: vi.fn().mockResolvedValue(true),
     setCoords: vi.fn().mockResolvedValue(true),
@@ -714,6 +715,70 @@ describe('MeshCoreChannelsView — sending', () => {
     fireEvent.change(input, { target: { value: 'a'.repeat(155) } });
     expect(screen.getByText('155/154')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  describe('sender-name picker (#6341 P4)', () => {
+    async function open(usable: unknown) {
+      csrfFetchMock.mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/messages/channel/')) {
+          return Promise.resolve(jsonResponse({ success: true, data: [] }));
+        }
+        return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+      });
+      const actions = makeActions({ fetchUsableSenderNames: vi.fn().mockResolvedValue(usable) });
+      render(
+        <MeshCoreChannelsView
+          messages={[]}
+          contacts={contacts}
+          status={makeStatus()}
+          actions={actions}
+          baseUrl=""
+          sourceId="src-a"
+        />,
+      );
+      await waitFor(() => screen.getByText('Public'));
+      fireEvent.click(screen.getByText('Public'));
+      return actions;
+    }
+
+    it('is hidden when the feature is off, firmware is old, or the list is empty', async () => {
+      await open({ enabled: false, allowedNames: ['Alerts'], firmwareSupported: true });
+      await screen.findByPlaceholderText('Type a message…');
+      expect(screen.queryByLabelText('Send as')).toBeNull();
+    });
+
+    it('is hidden without firmware support', async () => {
+      await open({ enabled: true, allowedNames: ['Alerts'], firmwareSupported: false });
+      await screen.findByPlaceholderText('Type a message…');
+      expect(screen.queryByLabelText('Send as')).toBeNull();
+    });
+
+    it('switches the counter to the raw cap and sends the name', async () => {
+      const actions = await open({ enabled: true, allowedNames: ['Alerts'], firmwareSupported: true });
+      const select = (await screen.findByLabelText('Send as')) as HTMLSelectElement;
+      expect(select.value).toBe('');
+      fireEvent.change(select, { target: { value: 'Alerts' } });
+      const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'a'.repeat(148) } });
+      // 155 - (6 + 2) = 147
+      expect(screen.getByText('148/147')).toBeTruthy();
+      fireEvent.change(input, { target: { value: 'hello' } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      });
+      expect(actions.sendMessage).toHaveBeenCalledWith('hello', undefined, 0, undefined, 'Alerts');
+    });
+
+    it('sends no name when the node name stays selected', async () => {
+      const actions = await open({ enabled: true, allowedNames: ['Alerts'], firmwareSupported: true });
+      await screen.findByLabelText('Send as');
+      const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'hi' } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      });
+      expect(actions.sendMessage).toHaveBeenCalledWith('hi', undefined, 0);
+    });
   });
 });
 

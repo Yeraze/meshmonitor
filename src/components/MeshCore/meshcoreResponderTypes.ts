@@ -35,6 +35,8 @@ export interface MeshCoreAutoResponderTrigger {
   /** MeshCore scope/region for the reply (#3833). */
   scopeMode?: ScopeMode;
   scopeName?: string;
+  /** Send the reply under this sender name (channel replies only; #6341 P4). */
+  senderName?: string;
 }
 
 export interface MeshCoreScriptMetadata {

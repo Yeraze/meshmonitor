@@ -363,9 +363,12 @@ async function sendMeshCoreMessage(req: Request, res: Response, sourceId: string
     if (target.kind === 'refused') return fail(res, target.status, target.code, target.message);
     if (target.kind !== 'meshcore') return fail(res, 400, 'SOURCE_NOT_MESHCORE', 'Source is not a MeshCore source');
     const manager = target.manager;
+    const channelCap = meshcoreMessageByteCap({ isDm: false, nodeName: manager.getLocalNode()?.name });
     if (!toPublicKey) {
-      const channelCap = meshcoreMessageByteCap({ isDm: false, nodeName: manager.getLocalNode()?.name });
-      if (byteLen > channelCap) return tooLarge(channelCap);
+      // A senderName string skips the node-name cap: the name has its own raw
+      // cap, checked below. "No override" is re-held to this cap after the
+      // decision (#6341 P4).
+      if (typeof senderName !== 'string' && byteLen > channelCap) return tooLarge(channelCap);
     }
     if (manager.isReceiveOnly()) return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
     if (!manager.isConnected()) return fail(res, 503, 'SOURCE_NOT_CONNECTED', 'MeshCore source is not connected');
@@ -391,6 +394,7 @@ async function sendMeshCoreMessage(req: Request, res: Response, sourceId: string
       }
       return fail(res, nameDecision.status, nameDecision.code, nameDecision.message);
     }
+    if (nameDecision.kind === 'none' && !toPublicKey && byteLen > channelCap) return tooLarge(channelCap);
     if (nameDecision.kind === 'override') {
       const rawCap = meshcoreChannelTextCap(nameDecision.name, { raw: true });
       if (byteLen > rawCap) return tooLarge(rawCap);

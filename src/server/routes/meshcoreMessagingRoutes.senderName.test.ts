@@ -203,6 +203,65 @@ describe('meshcore internal send + sender-name policy (#6282)', () => {
     });
   });
 
+  describe('raw cap with a short name (#6341 P4)', () => {
+    it('accepts a text above the node-name cap when the name is shorter', async () => {
+      // Node name 'Bob' (3 bytes): normal cap 155. Name 'Al' (2 bytes) raw cap 151... use a
+      // long node name so the old pre-check would have refused.
+      stubs.get(h.sourceA).getLocalNode = () => ({ name: 'n'.repeat(30) }); // normal cap 128
+      await enable(h.sourceA, ['Al']);
+      const agent = await h.loginAs(h.admin);
+      const text = 'x'.repeat(140); // > 128, <= raw cap for 'Al' (151)
+      const res = await agent.post(send(h.sourceA)).send({ text, channelIdx: 1, senderName: 'Al' });
+      expect(res.status).toBe(200);
+      expect(stubs.get(h.sourceA).sendChannelMessageAs).toHaveBeenCalledWith(text, 1, 'Al', undefined);
+    });
+
+    it('a name equal to the node name is still held to the node-name cap', async () => {
+      stubs.get(h.sourceA).getLocalNode = () => ({ name: 'n'.repeat(30) });
+      const agent = await h.loginAs(h.admin);
+      const res = await agent.post(send(h.sourceA)).send({ text: 'x'.repeat(140), channelIdx: 1, senderName: 'n'.repeat(30) });
+      expect(res.status).toBe(400);
+      expect(stubs.get(h.sourceA).sendMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('usable sender names (#6341 P4)', () => {
+    const url = (sourceId: string) => `/sources/${sourceId}/meshcore/sender-names`;
+
+    it('403 without messages:write or automation:write', async () => {
+      await enable(h.sourceA);
+      const agent = await h.loginAs(h.limited);
+      const res = await agent.get(url(h.sourceA));
+      expect(res.status).toBe(403);
+    });
+
+    it('returns an empty list when disabled', async () => {
+      await databaseService.settings.setSourceSetting(h.sourceA, POLICY_KEY, JSON.stringify({ enabled: false, allowedNames: ['Alerts Bot'] }));
+      const agent = await h.loginAs(h.admin);
+      const res = await agent.get(url(h.sourceA));
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, data: { enabled: false, allowedNames: [], firmwareSupported: false } });
+    });
+
+    it('passes on messages:write and on automation:write, scoped to the source', async () => {
+      await enable(h.sourceA);
+      stubs.get(h.sourceA).getLocalNode = () => ({ name: 'Bob', firmwareVer: 13 });
+      await h.grant(h.limited.id, 'automation', 'write', h.sourceA);
+      const agent = await h.loginAs(h.limited);
+      const ok = await agent.get(url(h.sourceA));
+      expect(ok.status).toBe(200);
+      expect(ok.body.data).toEqual({ enabled: true, allowedNames: ['Alerts Bot'], firmwareSupported: true });
+      expect((await agent.get(url(h.sourceB))).status).toBe(403);
+    });
+
+    it('passes on messages:write', async () => {
+      await enable(h.sourceA);
+      await h.grant(h.limited.id, 'messages', 'write', h.sourceA);
+      const agent = await h.loginAs(h.limited);
+      expect((await agent.get(url(h.sourceA))).status).toBe(200);
+    });
+  });
+
   describe('policy routes', () => {
     it('GET defaults to off with no names', async () => {
       const agent = await h.loginAs(h.admin);

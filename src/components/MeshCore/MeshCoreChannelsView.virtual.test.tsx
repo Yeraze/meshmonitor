@@ -41,6 +41,7 @@ function makeActions(): MeshCoreActions {
     refreshContacts: vi.fn().mockResolvedValue(undefined),
     sendAdvert: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn().mockResolvedValue(true),
+    fetchUsableSenderNames: vi.fn().mockResolvedValue(null),
     setDeviceName: vi.fn().mockResolvedValue(true),
     setRadioParams: vi.fn().mockResolvedValue(true),
     setCoords: vi.fn().mockResolvedValue(true),

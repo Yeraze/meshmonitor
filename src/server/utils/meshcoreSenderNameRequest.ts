@@ -5,6 +5,7 @@
  */
 import { checkSenderName, readSenderNamePolicy } from './meshcoreSenderNamePolicy.js';
 import { normalizeSenderName } from './meshcoreSenderName.js';
+import { meshcoreChannelMaxBytes, meshcoreChannelTextCap } from '../../utils/meshcoreMessageLimits.js';
 
 export type SenderNameDecision =
   /** No override: take today's send path, unchanged. */
@@ -44,4 +45,13 @@ export async function decideSenderName(opts: {
   if (check.ok) return { kind: 'override', name: check.name };
   const status = check.code === 'INVALID_INPUT' ? 400 : 403;
   return { kind: 'reject', status, code: check.code, message: check.message, denied: status === 403 };
+}
+
+/**
+ * Byte cap for one automated channel text that may go out under `name` (raw
+ * path) or, after a fallback, under the node's own name (normal path). The
+ * smaller of the two, so every part fits either way (#6341 P4).
+ */
+export function automatedSenderNameMaxBytes(name: string, localName: string | null | undefined): number {
+  return Math.min(meshcoreChannelTextCap(name, { raw: true }), meshcoreChannelMaxBytes(localName));
 }

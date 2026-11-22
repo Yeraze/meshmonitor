@@ -89,6 +89,18 @@ describe('createMeshActionDeps sendMessage — MeshCore split (#6316)', () => {
     expect(sendAutomatedText).toHaveBeenCalledWith('hi', expect.objectContaining({ toPublicKey: 'abcd', split: true }));
   });
 
+  it('forwards senderName on a MeshCore channel send only (#6341 P4)', async () => {
+    const sendAutomatedText = vi.fn().mockResolvedValue({ ok: true, totalParts: 1, truncated: false });
+    getManager.mockReturnValue({ sendMessage: vi.fn(), sendAutomatedText });
+    const deps = createMeshActionDeps();
+    await deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 2, senderName: 'Bob' });
+    expect(sendAutomatedText.mock.calls[0][1]).toMatchObject({ channelIdxs: [2], senderName: 'Bob' });
+    await deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 2, destination: 'abcd', senderName: 'Bob' });
+    expect('senderName' in sendAutomatedText.mock.calls[1][1]).toBe(false);
+    await deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 2 });
+    expect('senderName' in sendAutomatedText.mock.calls[2][1]).toBe(false);
+  });
+
   it('throws when no part could be sent', async () => {
     getManager.mockReturnValue({ sendMessage: vi.fn(), sendAutomatedText: vi.fn().mockResolvedValue({ ok: false, totalParts: 1, truncated: false }) });
     const deps = createMeshActionDeps();
@@ -764,6 +776,15 @@ describe('createMeshActionDeps sendMessage — Meshtastic split (#6330)', () => 
 
     await expect(deps.sendMessage({ sourceId: 'mt', text: 'z'.repeat(300), channel: 0, splitLongMessages: true }))
       .rejects.toThrow(/failed to send the Meshtastic message/);
+  });
+
+  it('ignores senderName on Meshtastic (#6341 P4)', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage });
+    const deps = createMeshActionDeps();
+    await deps.sendMessage({ sourceId: 'mt', text: 'hi', channel: 0, senderName: 'Bob' });
+    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(sendTextMessage.mock.calls[0])).not.toContain('Bob');
   });
 
   it('split off keeps the old single truncated send', async () => {

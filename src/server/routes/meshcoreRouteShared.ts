@@ -459,7 +459,7 @@ export function isValidPublicKey(key: string | undefined): boolean {
 export function auditMeshcoreEvent(
   req: Request,
   action: string,
-  resource: 'remote_admin' | 'configuration' | 'messages',
+  resource: 'remote_admin' | 'configuration' | 'messages' | 'automation',
   details: Record<string, unknown>,
 ): void {
   // API-token callers have no session; fall back to the authenticated user.

@@ -41,7 +41,7 @@ import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrInt
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { scrubScriptSecrets } from './utils/scriptSecretsSnapshot.js';
-import { MeshCoreNativeBackend, MESHCORE_LOGIN_REJECTED, decodeOutPathLen, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
+import { MeshCoreNativeBackend, MESHCORE_LOGIN_REJECTED, MIN_RAW_PACKET_FW_VER, decodeOutPathLen, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import {
   MESHCORE_CONTACT_NOT_ON_DEVICE,
   MESHCORE_DEVICE_TABLE_FULL,
@@ -51,6 +51,7 @@ import { resolveMessageScope, scopeTransportKey } from './meshcoreScopeResolve.j
 import { buildRawGroupTextFrame, RawFrameTooLargeError } from './utils/meshcoreRawGroupText.js';
 import { MeshCoreSenderNameError, isMeshCoreSenderNameError } from './errors/meshcoreSenderNameError.js';
 import { readSenderNamePolicy, checkSenderName } from './utils/meshcoreSenderNamePolicy.js';
+import { decideSenderName, automatedSenderNameMaxBytes } from './utils/meshcoreSenderNameRequest.js';
 import type { DbMeshCoreMessage } from '../db/repositories/meshcore.js';
 import { isReactionText, isReactionEmoji, mc1ChannelBody } from '../utils/meshcoreReactions.js';
 import { readRequiredRepeaters, requiredRepeatersHeard } from '../utils/meshcoreHeardBy.js';
@@ -563,6 +564,8 @@ export interface MeshCoreAutomationScopeConfig {
 }
 
 export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeConfig {
+  /** Channel replies only: send under this sender name when the source allows it (#6341 P4). */
+  senderName?: string;
   /** Split a long reply into up to 3 marked parts instead of truncating (#6316). */
   multiline?: boolean;
   id: string;
@@ -615,6 +618,8 @@ export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeCon
  * template applies on the next tick.
  */
 export interface MeshCoreTimerTrigger extends MeshCoreAutomationScopeConfig {
+  /** Channel sends only: send under this sender name when the source allows it (#6341 P4). */
+  senderName?: string;
   /** Split a long message into up to 3 marked parts (#6316). Needs interval >= 5 min. */
   multiline?: boolean;
   id: string;
@@ -14303,10 +14308,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // One call for every channel (#6316): part by part, so each channel gets
     // its parts in order. `sent` counts channels where every part went out.
     const split = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceSplitLongMessages')) === 'true';
+    const senderName = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceSenderName')) || undefined;
     let sent = 0;
     try {
       const res = await this.sendAutomatedText(rendered, {
-        channelIdxs: channelIndexes, scopeOverride, split, label: 'Auto-announce',
+        channelIdxs: channelIndexes, scopeOverride, split, label: 'Auto-announce', senderName,
       });
       sent = res.perTarget.filter((t) => t.sentParts === res.totalParts && res.totalParts > 0).length;
     } catch (err) {
@@ -14516,7 +14522,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       if (channelIndexes.length === 0) return false;
       return (await this.sendAutomatedText(text, {
-        channelIdxs: channelIndexes, scopeOverride, split, label,
+        channelIdxs: channelIndexes, scopeOverride, split, label, senderName: trigger.senderName,
         // M5: 10 s between channels so floods do not step on each other.
         targetGapMs: MESHCORE_TIMER_CHANNEL_GAP_MS,
       })).ok;
@@ -14867,6 +14873,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           if (typeof channelIdx === 'number') {
             return (await this.sendAutomatedText(text, {
               channelIdxs: [channelIdx], scopeOverride, split, label: `Auto-responder ${trigger.id}`,
+              senderName: trigger.senderName,
             })).ok;
           }
           return false;
@@ -15566,10 +15573,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       sequenceKey?: string;
       /** Wait between channels within one part (M5, multi-channel timers). */
       targetGapMs?: number;
+      /**
+       * Channel sends only (#6341 P4): send as this name through the raw path.
+       * A DM ignores it. A name the source does not allow, or a radio that
+       * cannot send raw, falls back to the normal send under the node name.
+       */
+      senderName?: string;
     },
   ): Promise<AutomatedTextResult> {
     const isDm = opts.toPublicKey !== undefined;
-    const plan = planMeshCoreTextParts(text, { isDm, nodeName: this.localNode?.name, split: opts.split });
+    const localName = this.localNode?.name;
+    const asName = !isDm && opts.senderName ? await this.resolveAutomatedSenderName(opts.senderName, opts.label) : null;
+    const plan = planMeshCoreTextParts(text, {
+      isDm, nodeName: localName, split: opts.split,
+      maxBytesOverride: asName ? automatedSenderNameMaxBytes(asName, localName) : undefined,
+    });
     const targets = isDm
       ? [{ name: 'DM', channel: undefined as number | undefined }]
       : (opts.channelIdxs ?? []).map((c) => ({ name: `channel ${c}`, channel: c as number | undefined }));
@@ -15578,16 +15596,91 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       gapMs: MESHCORE_SPLIT_PART_GAP_MS,
       targetGapMs: opts.targetGapMs,
       // Trigger + real destination (the DM target name is just "DM").
-      sequenceKey: `${opts.sequenceKey ?? opts.label}|${isDm ? `dm:${opts.toPublicKey}` : `ch:${(opts.channelIdxs ?? []).join(',')}`}`,
+      sequenceKey: `${opts.sequenceKey ?? opts.label}|${isDm ? `dm:${opts.toPublicKey}` : `ch:${(opts.channelIdxs ?? []).join(',')}`}${asName ? `|as:${asName}` : ''}`,
       canTransmit: () => this.canTransmit(),
       logPrefix: `[MeshCore:${this.sourceId}]`,
       label: opts.label,
-      sendPart: (t, part) => isDm
-        ? this.sendMessage(part, opts.toPublicKey, undefined, opts.scopeOverride)
+      sendPart: (t, part) => {
+        if (isDm) return this.sendMessage(part, opts.toPublicKey, undefined, opts.scopeOverride);
+        if (asName) return this.sendPartAs(part, t.channel as number, asName, opts.scopeOverride, opts.label);
         // Automated sender: opt into channel-send auto-retry (#3979).
-        : this.sendMessage(part, undefined, t.channel, opts.scopeOverride, true),
+        return this.sendMessage(part, undefined, t.channel, opts.scopeOverride, true);
+      },
     });
   }
+
+  /**
+   * One part under a sender name. A refusal drops this target's later parts
+   * (false), like any failed part. It never switches names or retries.
+   * `TxDisabledError` propagates so the caller still records a skip.
+   */
+  private async sendPartAs(
+    part: string, channel: number, name: string, scopeOverride: string | null | undefined, label: string,
+  ): Promise<boolean> {
+    try {
+      return (await this.sendChannelMessageAs(part, channel, name, scopeOverride)).ok;
+    } catch (err) {
+      if (isMeshCoreSenderNameError(err)) {
+        logger.warn(`[MeshCore:${this.sourceId}] ${label}: send as "${name}" refused (${err.code}); this target drops its later parts`);
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Decide, once per automated channel send, whether to use the sender name.
+   * Returns the name to send raw under, or null for the normal send. A refused
+   * name or a radio that cannot send raw falls back to the node's own name with
+   * a warning (#6341 P4): the real name is always honest, and skipping would
+   * drop scheduled or reply traffic without a sound.
+   */
+  private async resolveAutomatedSenderName(raw: string, label: string): Promise<string | null> {
+    const decision = await decideSenderName({
+      sourceId: this.sourceId, raw, isDm: false, hasChannel: true, localNodeName: this.localNode?.name,
+    });
+    if (decision.kind === 'none') return null;
+    if (decision.kind === 'reject') {
+      this.warnSenderNameFallback(label, raw, decision.code, decision.message);
+      return null;
+    }
+    const ver = this.localNode?.firmwareVer;
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      this.warnSenderNameFallback(label, decision.name, 'SOURCE_NOT_COMPANION', 'the source is not a companion radio');
+      return null;
+    }
+    if (typeof ver !== 'number' || ver < MIN_RAW_PACKET_FW_VER) {
+      this.warnSenderNameFallback(label, decision.name, 'FIRMWARE_UNSUPPORTED',
+        `the radio needs companion protocol v${MIN_RAW_PACKET_FW_VER}+`);
+      return null;
+    }
+    let info: MeshCoreDeviceInfo | null = null;
+    try {
+      info = await this.deviceQuery();
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] ${label}: device query for sender name failed: ${(err as Error).message}`);
+    }
+    if (info?.repeat === true) {
+      this.warnSenderNameFallback(label, decision.name, 'CLIENT_REPEAT_ON', 'client repeat is on for this companion');
+      return null;
+    }
+    return decision.name;
+  }
+
+  /** Warn once per (source, label, name, code), then debug, so a busy responder cannot flood the log. */
+  private warnSenderNameFallback(label: string, name: string, code: string, why: string): void {
+    const key = `${this.sourceId}|${label}|${name}|${code}`;
+    const msg = `[MeshCore:${this.sourceId}] ${label}: cannot send as "${name}" (${code}: ${why}); sending under the node name`;
+    if (this.warnedSenderNameFallbacks.has(key)) {
+      logger.debug(msg);
+      return;
+    }
+    if (this.warnedSenderNameFallbacks.size > 500) this.warnedSenderNameFallbacks.clear();
+    this.warnedSenderNameFallbacks.add(key);
+    logger.warn(`${msg} (further fallbacks for it log at debug)`);
+  }
+
+  private readonly warnedSenderNameFallbacks = new Set<string>(); // per source: one busy source never resets another
 
   private async attemptReconnect(): Promise<void> {
     if (!this.shouldReconnect || !this.config) return;

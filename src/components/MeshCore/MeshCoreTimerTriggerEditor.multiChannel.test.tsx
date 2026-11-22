@@ -24,6 +24,7 @@ vi.mock('react-i18next', async () => {
 
 // Isolate the editor from the region-fetching scope field and the advert field.
 vi.mock('./ScopeSelectField', () => ({ ScopeSelectField: () => null }));
+vi.mock('./SenderNameField', () => ({ SenderNameField: () => null }));
 vi.mock('./MeshCoreAdvertModeField', () => ({ MeshCoreAdvertModeField: () => null }));
 
 import { MeshCoreTimerTriggerEditor } from './MeshCoreTimerTriggerEditor';

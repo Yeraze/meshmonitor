@@ -36,4 +36,9 @@ describe('planMeshCoreTextParts', () => {
     expect(r.parts).toEqual(['short']);
     expect(r.truncated).toBe(false);
   });
+  it('maxBytesOverride replaces the derived cap', () => {
+    expect(planMeshCoreTextParts('hi', { isDm: false, nodeName: 'abcdefghijkl', split: false, maxBytesOverride: 120 }).maxBytes).toBe(120);
+    const r = planMeshCoreTextParts('word '.repeat(60), { isDm: false, split: true, maxBytesOverride: 100 });
+    for (const p of r.parts) expect(utf8ByteLength(p)).toBeLessThanOrEqual(100);
+  });
 });

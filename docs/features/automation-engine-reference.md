@@ -434,6 +434,11 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
   Reticulum message. It does not work for a MeshCore channel post, which carries no sender key. A
   Reticulum send **always** needs a destination — with none, the step is a recorded skip (there is
   no broadcast fallback).
+- **Send as** (Advanced) — a sender name for a **MeshCore channel** send. Type a name or pick one
+  from the list (names allowed on every MeshCore source). It is a literal, not a template. A save
+  checks syntax only; at send time a source that does not allow the name (or has client repeat on,
+  or firmware older than 1.16) sends under its own node name instead and logs one warning. Ignored
+  for DMs, Meshtastic and Reticulum. See [Send under another name](/features/meshcore-using#api-sender-names).
 - **Reply to the triggering message** — on **Meshtastic** this threads the reply as a tapback (via
   the triggering packet id). MeshCore has no packet-id/thread concept on the wire, so on **MeshCore**
   this instead **auto-prepends the sender mention** `@[<senderLabel>]: ` to the outgoing text — the same

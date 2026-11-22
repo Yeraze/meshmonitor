@@ -85,7 +85,7 @@ interface MeshtasticSplitSendManager {
 /** MeshCore companion managers send via a different method signature. */
 interface MeshCoreSendManager {
   /** Cap-fitting, optionally splitting sender (#6316). Absent on test doubles. */
-  sendAutomatedText?(text: string, opts: { toPublicKey?: string; channelIdxs?: number[]; scopeOverride?: string | null; split: boolean; label: string; sequenceKey?: string }): Promise<{ ok: boolean; totalParts: number; truncated: boolean; dropped?: 'duplicate' | 'stale' }>;
+  sendAutomatedText?(text: string, opts: { toPublicKey?: string; channelIdxs?: number[]; scopeOverride?: string | null; split: boolean; label: string; sequenceKey?: string; senderName?: string }): Promise<{ ok: boolean; totalParts: number; truncated: boolean; dropped?: 'duplicate' | 'stale' }>;
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss?: boolean): Promise<boolean>;
   // Request/operation senders (#3835).
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
@@ -146,6 +146,7 @@ async function sendTextVia(
   hopLimitOverride?: number,
   replyToHash?: string,
   splitLongMessages?: boolean,
+  senderName?: string,
 ): Promise<unknown> {
   if (!sourceId) throw new Error('automation action requires a target source');
   const manager = resolveManager(sourceId) as ISourceManager | undefined;
@@ -248,6 +249,8 @@ async function sendTextVia(
         ...(toPublicKey !== undefined ? { toPublicKey } : { channelIdxs: [channel] }),
         scopeOverride,
         split: splitLongMessages === true,
+        // #6341 P4: MeshCore channel only; the manager falls back if refused.
+        ...(senderName && toPublicKey === undefined ? { senderName } : {}),
         label: 'Automation',
         // M4: no automation id reaches here; the same text to the same target is a duplicate.
         sequenceKey: `Automation:${text}`,
@@ -277,8 +280,8 @@ function splitDropMessage(sourceId: string, reason: 'duplicate' | 'stale'): stri
 
 export function createMeshActionDeps(): ActionDeps {
   return {
-    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts, hopLimitOverride, replyToHash, splitLongMessages }) {
-      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts, hopLimitOverride, replyToHash, splitLongMessages);
+    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts, hopLimitOverride, replyToHash, splitLongMessages, senderName }) {
+      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts, hopLimitOverride, replyToHash, splitLongMessages, senderName);
     },
 
     // #5482: the service owns the persisted 30-minute floor, onlyWhenChanged,

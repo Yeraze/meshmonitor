@@ -17,6 +17,7 @@ import type {
   MeshCoreChannelRow,
   MeshCoreScriptMetadata,
 } from './meshcoreResponderTypes';
+import { SenderNameField } from './SenderNameField';
 import styles from './MeshCoreResponderTriggerEditor.module.css';
 
 export interface MeshCoreResponderTriggerEditorProps {
@@ -227,6 +228,17 @@ export const MeshCoreResponderTriggerEditor: React.FC<MeshCoreResponderTriggerEd
           ))}
         </div>
       </fieldset>
+
+      {/* Sender name override, channel replies only (#6341 P4) */}
+      {!tr.replyAsDM && (
+        <SenderNameField
+          baseUrl={baseUrl}
+          sourceId={sourceId}
+          idPrefix={`${idBase}-sender`}
+          value={tr.senderName}
+          onChange={(name) => onChange({ senderName: name })}
+        />
+      )}
 
       {/* MeshCore scope/region for the reply (#3833) */}
       <ScopeSelectField

@@ -10,8 +10,8 @@ export type MeshCoreTextPlan = AutomatedTextPlan;
 
 export function planMeshCoreTextParts(
   text: string,
-  opts: { isDm: boolean; nodeName?: string | null; split: boolean },
+  opts: { isDm: boolean; nodeName?: string | null; split: boolean; maxBytesOverride?: number },
 ): MeshCoreTextPlan {
-  const maxBytes = meshcoreMessageByteCap({ isDm: opts.isDm, nodeName: opts.nodeName });
+  const maxBytes = opts.maxBytesOverride ?? meshcoreMessageByteCap({ isDm: opts.isDm, nodeName: opts.nodeName });
   return planAutomatedTextParts(text, { maxBytes, split: opts.split });
 }

@@ -263,6 +263,23 @@ describe('simulateAutomation', () => {
     expect((r.actions[0].resolvedParams as any).messageId).toBeUndefined();
   });
 
+  it('senderName (#6341 P4): plannedParts uses the smaller raw cap', async () => {
+    const run = async (params: Record<string, unknown>) => {
+      const graph: AutomationGraph = {
+        version: 1,
+        nodes: [
+          { id: 't', type: 'trigger.message', params: {} },
+          { id: 'a', type: 'action.sendMessage', params: { text: 'x'.repeat(240), channel: 1, splitLongMessages: true, ...params } },
+        ],
+        edges: [{ from: 't', to: 'a' }],
+      };
+      const r = await simulateAutomation({ graph, varsRepo, event: { kind: 'message', text: 'ping', from: 111, packetId: 1 } });
+      return (r.actions[0].resolvedParams as any).plannedParts;
+    };
+    expect(await run({})).toBe(2);
+    expect(await run({ senderName: 'N'.repeat(31) })).toBe(3); // raw cap 122 < 127
+  });
+
   describe('setAutomationEnabled (#5445)', () => {
     const graph = (params: Record<string, unknown>): AutomationGraph => ({
       version: 1,

@@ -14,6 +14,7 @@ import { HOP_LIMIT_OVERRIDE_MAX, parseHopLimitOverride } from '../utils/hopLimit
 import { tracePathScheduleParamErrors } from './tracePathSchedule.js';
 import { readScheduleWindow } from './scheduleWindow.js';
 import { isMeshCoreAdvertMode } from './meshcoreAdvert.js';
+import { validateMeshcoreSenderName } from '../utils/meshcoreSenderName.js';
 import { parseClockThresholdSeconds, CLOCK_OUT_OF_SYNC_MIN_SECONDS, CLOCK_OUT_OF_SYNC_MAX_SECONDS } from '../utils/clockOutOfSync.js';
 
 export const AUTOMATION_CONFIG_VERSION = 1;
@@ -1146,6 +1147,15 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           {
             const hopErr = hopLimitParamError('action.sendMessage', n.id, p.hopLimit);
             if (hopErr) errors.push(hopErr);
+          }
+          // Optional MeshCore sender name (#6341 P4). A literal, syntax only: the
+          // allowlist is checked per source at send time, which falls back to the
+          // node name. Blank is dropped by the executor.
+          if (p.senderName != null && !(typeof p.senderName === 'string' && p.senderName.trim() === '')) {
+            const nameCheck = validateMeshcoreSenderName(p.senderName);
+            if (!nameCheck.ok) {
+              errors.push(`action.sendMessage "${n.id}" has an invalid params.senderName (${nameCheck.reason})`);
+            }
           }
           break;
         default:

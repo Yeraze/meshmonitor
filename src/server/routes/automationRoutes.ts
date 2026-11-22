@@ -33,11 +33,37 @@ import { estimateHomeFromNodeHistory } from '../services/automation/leftHomeFrom
 
 import { validateCron, cronMinGapMs } from '../utils/cronScheduler.js';
 import { readScheduleWindow, scheduleMinIntervalMs, SCHEDULE_MIN_INTERVAL_MS, SCHEDULE_MIN_INTERVAL_MINUTES } from '../../types/scheduleWindow.js';
+import { auditMeshcoreEvent } from './meshcoreRouteShared.js';
 
 const router = Router();
 
 const canRead = requirePermission('automations', 'read');
 const canWrite = requirePermission('automations', 'write');
+
+/** `nodeId -> senderName` for each send action that names one. */
+function senderNamesInConfig(json: string | null | undefined): Map<string, string> {
+  const out = new Map<string, string>();
+  try {
+    const g = JSON.parse(json || '{}') as { nodes?: Array<{ id?: string; type?: string; params?: Record<string, unknown> }> };
+    for (const n of g.nodes ?? []) {
+      const nm = n.type === 'action.sendMessage' ? n.params?.senderName : undefined;
+      if (typeof nm === 'string' && nm.trim() !== '') out.set(String(n.id ?? ''), nm.trim());
+    }
+  } catch { /* an unparsable stored config has no names */ }
+  return out;
+}
+
+/** Audit each send action whose sender name was added or changed (#6341 P4). */
+function auditAutomationSenderNames(req: Request, automationId: string | number, next: string, prev?: string | null): void {
+  const before = senderNamesInConfig(prev);
+  for (const [nodeId, name] of senderNamesInConfig(next)) {
+    if (before.get(nodeId) !== name) {
+      auditMeshcoreEvent(req, 'meshcore_sender_name_automation_set', 'automation', {
+        automationId, kind: 'automation', nodeId, senderName: name,
+      });
+    }
+  }
+}
 
 /** Normalise a config (object or JSON string) → validated → JSON string. */
 function validateConfig(raw: unknown): { ok: true; json: string; warnings: string[] } | { ok: false; errors: string[] } {
@@ -369,6 +395,7 @@ router.post('/', canWrite, async (req: Request, res: Response) => {
       name, description, enabled: !!enabled, config: v.json,
       createdByUserId: (req as any).user?.id ?? null,
     });
+    auditAutomationSenderNames(req, created.id, v.json);
     await reloadAutomations();
     // #5697: non-blocking findings (an empty message, …) ride along so API and
     // import callers see what the builder shows.
@@ -429,6 +456,7 @@ router.post('/import', canWrite, async (req: Request, res: Response) => {
       name, description, enabled: false, config: v.json,
       createdByUserId: (req as any).user?.id ?? null,
     });
+    auditAutomationSenderNames(req, created.id, v.json);
     res.status(201).json(v.warnings.length > 0 ? { ...created, warnings: v.warnings } : created);
   } catch (error) {
     logger.error('Error importing automation:', error);
@@ -444,12 +472,14 @@ router.put('/:id', canWrite, async (req: Request, res: Response) => {
     if (description !== undefined) patch.description = description;
     if (enabled !== undefined) patch.enabled = !!enabled;
     let warnings: string[] = [];
+    let prevConfig: string | undefined;
     if (config !== undefined) {
       const v = validateConfig(config);
       if (!v.ok) return res.status(400).json({ error: 'invalid automation config', details: v.errors });
       if (!(await checkForwardingTogglePermission(req, res, v.json))) return;
       patch.config = v.json;
       warnings = v.warnings;
+      prevConfig = (await databaseService.automations.getAutomation(req.params.id))?.config;
     } else if (patch.enabled === true) {
       // Enabling without supplying a new config arms the stored graph's
       // scheduler, so gate against the stored config (#6096) — the same path
@@ -461,6 +491,7 @@ router.put('/:id', canWrite, async (req: Request, res: Response) => {
     }
     const updated = await databaseService.automations.updateAutomation(req.params.id, patch);
     if (!updated) return res.status(404).json({ error: 'automation not found' });
+    if (typeof patch.config === 'string') auditAutomationSenderNames(req, req.params.id, patch.config, prevConfig);
     await reloadAutomations();
     res.json(warnings.length > 0 ? { ...updated, warnings } : updated);
   } catch (error) {
