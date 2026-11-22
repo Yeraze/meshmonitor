@@ -19,7 +19,8 @@ import { planMeshCoreTextParts } from '../../utils/meshcoreSplitPlan.js';
 import { planAutomatedTextParts } from '../../utils/automatedTextSplit.js';
 import { MESHTASTIC_MAX_TEXT_BYTES } from '../../../utils/messageSplitLimits.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
-import { isMeshtasticManager } from '../../sourceManagerTypes.js';
+import { isMeshtasticManager, isMeshCoreManager } from '../../sourceManagerTypes.js';
+import { automatedSenderNameMaxBytes } from '../../utils/meshcoreSenderNameRequest.js';
 import {
   categoryOf,
   stepOutputNameOf,
@@ -202,7 +203,13 @@ function recordingDeps(
         const meshtastic = typeof a.destination === 'number' || (m !== undefined && isMeshtasticManager(m));
         plannedParts = meshtastic
           ? planAutomatedTextParts(a.text, { maxBytes: MESHTASTIC_MAX_TEXT_BYTES, split: true }).parts.length
-          : planMeshCoreTextParts(a.text, { isDm: typeof a.destination === 'string', split: true }).parts.length;
+          : planMeshCoreTextParts(a.text, {
+              isDm: typeof a.destination === 'string', split: true,
+              // #6341 P4: a sender name sets the cap to the smaller of raw and normal.
+              maxBytesOverride: a.senderName && typeof a.destination !== 'string'
+                ? automatedSenderNameMaxBytes(a.senderName, m && isMeshCoreManager(m) ? m.getLocalNode()?.name : undefined)
+                : undefined,
+            }).parts.length;
       }
       return { action: 'sendMessage', ...a, ...(plannedParts !== undefined ? { plannedParts } : {}) };
     },
