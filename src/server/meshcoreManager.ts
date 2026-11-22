@@ -58,7 +58,6 @@ import { readRequiredRepeaters, requiredRepeatersHeard } from '../utils/meshcore
 import {
   foldReactionEmoji,
   meshcoreWireSecond,
-  meshcoreWireChannelText,
   mc1HashForChannelWire,
   mc1HashForDm,
   mc1HashForOwnChannelText,
@@ -154,6 +153,12 @@ import { NewNodeAlertTracker } from './services/newNodeAlertTracker.js';
 import { alertMeshCoreNewNode, maybeAlertGatedMeshCoreNewNode } from './services/meshcoreNewNodeAlert.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { meshcoreOwnIdentityTracker } from './services/meshcoreOwnIdentityTracker.js';
+import {
+  isLocalMeshCoreSenderName,
+  isRecentSenderNameOverride,
+  noteSenderNameOverride,
+} from './services/meshcoreLocalSenderNames.js';
+export { __resetSenderNameOverridesForTests } from './services/meshcoreLocalSenderNames.js';
 import { meshcoreMessageFilter, type MeshCoreClassifyResult } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MeshCoreAutoFavoriteScheduler, runAutoFavoriteSweep as runAutoFavoriteSweepService } from './services/meshcoreAutoFavorite.js';
@@ -167,14 +172,13 @@ import { MESHCORE_PAYLOAD_ADVERT, computeMeshCoreHopsAway } from '../utils/cover
 import {
   ingestAdvertFrame,
   decryptGroupTextFrame,
-  keyedFilingFor,
   frameChannelMessageId,
   frameRoomPostId,
-  noteVirtualChannelDecrypt,
   anySecretMatchesChannelHash,
   type DecryptedGroupText,
   type IngestedAdvert,
 } from './services/meshcoreFrameIngest.js';
+import { storeDecryptedChannelText } from './services/meshcoreChannelTextStore.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { maybeRecordMeshCoreDirectRf } from './services/directRfContactRecorder.js';
@@ -991,67 +995,8 @@ export interface MeshCoreSendResult {
   message?: MeshCoreMessage;
 }
 
-/**
- * Sender names MeshMonitor recently sent under as an override (#6282), shared
- * by every source in the process. A sibling source (a second companion or a
- * logging repeater on the same channel) hears our raw send as a message from
- * "Name", and only this registry tells it the name is ours. Erring towards
- * "ours" is the safe direction (same rule as #5551): it only stops automations
- * from replying. Entries expire after {@link SENDER_NAME_OVERRIDE_TTL_MS}.
- */
-const SENDER_NAME_OVERRIDE_TTL_MS = 30 * 60 * 1000;
-const recentSenderNameOverrides = new Map<string, number>();
-
-function noteSenderNameOverride(name: string, now: number = Date.now()): void {
-  recentSenderNameOverrides.set(name.trim().toLowerCase(), now + SENDER_NAME_OVERRIDE_TTL_MS);
-}
-
-function isRecentSenderNameOverride(name: string | null | undefined, now: number = Date.now()): boolean {
-  if (!name) return false;
-  const key = name.trim().toLowerCase();
-  const until = recentSenderNameOverrides.get(key);
-  if (until === undefined) return false;
-  if (until <= now) {
-    recentSenderNameOverrides.delete(key);
-    return false;
-  }
-  return true;
-}
-
-/** Test seam: forget every recorded override name. */
-export function __resetSenderNameOverridesForTests(): void {
-  recentSenderNameOverrides.clear();
-}
-
 /** MeshCore PAYLOAD_TYPE_GRP_TXT — a channel text message. */
 const MESHCORE_PAYLOAD_GRP_TXT = 0x05;
-
-/**
- * True when `name` is the advertised name of a local node on ANY connected
- * MeshCore source (#5551). A channel message carries only the sender's name,
- * so this is how a repeater recognises our own companion's sends. A stranger
- * using the same name is also matched; that only stops automations reacting
- * to them, which is the safe direction. Imported lazily: the registry imports
- * this module.
- */
-async function isLocalMeshCoreSenderName(name: string | null | undefined): Promise<boolean> {
-  if (!name) return false;
-  if (isRecentSenderNameOverride(name)) return true;
-  try {
-    const [{ sourceManagerRegistry }, { isMeshCoreManager }] = await Promise.all([
-      import('./sourceManagerRegistry.js'),
-      import('./sourceManagerTypes.js'),
-    ]);
-    const want = name.trim().toLowerCase();
-    for (const m of sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)) {
-      const local = m.getLocalNode();
-      if (local?.name && local.name.trim().toLowerCase() === want) return true;
-    }
-  } catch {
-    // Registry unavailable (tests, shutdown): treat as not ours.
-  }
-  return false;
-}
 
 /** One own channel send awaiting its heard-by echo (#3700). */
 export interface PendingChannelSend {
@@ -5485,109 +5430,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     },
   ): Promise<void> {
     const { rawHex, snr, rssi, hopCount, hops, idPrefix } = frame;
-    const { channelIdx, keyFingerprint: fingerprint, keySourceId, keyChannelIdx } = keyedFilingFor(plain.key);
-    const id = frameChannelMessageId(idPrefix, this.sourceId, fingerprint, plain.timestampSec, plain.text);
-    const now = Date.now();
-    // Raw wire second (#5759): the MC1 reaction hash input.
-    const sec = meshcoreWireSecond(plain.timestampSec);
-    const message: MeshCoreMessage = {
-      id,
-      fromPublicKey: `channel-${channelIdx}`,
-      fromName: plain.senderName ?? undefined,
-      text: plain.text,
-      senderTimestamp: sec ?? undefined,
-      // Sender's clock when it has one, else when we heard it.
-      timestamp: plain.timestampSec > 0 ? plain.timestampSec * 1000 : now,
-      receivedAt: now,
-      rssi: typeof rssi === 'number' ? rssi : undefined,
-      snr: typeof snr === 'number' ? snr : undefined,
+    await storeDecryptedChannelText(plain, {
       sourceId: this.sourceId,
-      messageType: 'channel',
-      hopCount: typeof hopCount === 'number' ? hopCount : null,
-      routePath: hops && hops.length > 0 ? hops.join(',') : null,
-      // Both null when a virtual channel's key (#5552) opened it.
-      keySourceId,
-      keyChannelIdx,
-      keyFingerprint: fingerprint,
-    };
-
-    // Ignore / Block (#5408), as on every other ingest path.
-    const verdict = meshcoreMessageFilter.classify(this.sourceId, {
-      fromPublicKey: null,
-      fromName: plain.senderName,
-      text: plain.text,
-      kind: 'channel',
-    }, { countHit: false });
-    if (verdict.action === 'block') return;
-
-    // Reaction? (#5759) The id above stays derived from the RAW text.
-    let fields: Required<MeshCoreReactionFields> | null = null;
-    const parseBody = plain.senderName ? plain.text : mc1ChannelBody(plain.text);
-    if (isReactionText(parseBody) && (await isReactionsInboundEnabled(this.sourceId))) {
-      const res = await resolveInboundReaction({
-        sourceId: this.sourceId,
-        scope: 'channel',
-        channelIdx,
-        body: parseBody,
-        reactorName: plain.senderName ?? null,
-        reactorKey: null,
-        selfName: this.localNode?.name ?? null,
-        selfKey: this.localNode?.publicKey ?? null,
-        now,
-      });
-      if (res.kind === 'duplicate') return;
-      if (res.kind === 'reaction') fields = res.fields;
-    }
-    const mc1Hash = fields ? null : mc1HashForChannelWire(meshcoreWireChannelText(plain.senderName, plain.text), sec);
-
-    const inserted = await databaseService.meshcore.insertMessage({
-      id,
-      fromPublicKey: message.fromPublicKey,
-      fromName: message.fromName ?? null,
-      toPublicKey: null,
-      text: fields?.reactionEmoji ?? message.text,
-      senderTimestamp: sec,
-      mc1Hash,
-      ...(fields ?? {}),
-      timestamp: message.timestamp,
-      rssi: message.rssi ?? null,
-      snr: message.snr ?? null,
-      messageType: 'channel',
-      hopCount: message.hopCount ?? null,
-      routePath: message.routePath ?? null,
-      keySourceId: message.keySourceId ?? null,
-      keyChannelIdx: message.keyChannelIdx ?? null,
-      keyFingerprint: fingerprint,
-      createdAt: now,
-    }, this.sourceId);
-    // A relay of a message already stored: no second event.
-    if (!inserted) return;
-    meshcoreMessageFilter.countHit(this.sourceId, verdict);
-    noteVirtualChannelDecrypt(plain.key);
-
-    const poolMessage: MeshCoreMessage = fields ? { ...message, text: fields.reactionEmoji ?? message.text, ...fields } : message;
-    this.messages.push(poolMessage);
-    if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
-      this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
-    }
-    if (fields && !fields.reactionTargetId && fields.reactionFormat && fields.reactionTargetHash) {
-      notePendingReaction(this.sourceId, {
-        id,
-        reactionFormat: fields.reactionFormat,
-        reactionTargetHash: fields.reactionTargetHash,
-      });
-    }
-
-    const packetHash = meshCorePacketHashOrUndefined(rawHex);
-    const selfOrigin = await isLocalMeshCoreSenderName(plain.senderName);
-    const event: MeshCoreMessage = {
-      ...poolMessage,
-      packetHash,
-      ...(selfOrigin ? { selfOrigin: true } : {}),
-      ...(verdict.action === 'ignore' ? { filtered: 'ignore' as const } : {}),
-    };
-    dataEventEmitter.emitMeshCoreMessage(event, this.sourceId);
-    if (!fields) await this.afterMessageStored(message, mc1Hash, Promise.resolve(true));
+      rawHex,
+      buildId: (filing) =>
+        frameChannelMessageId(idPrefix, this.sourceId, filing.keyFingerprint, plain.timestampSec, plain.text),
+      snr,
+      rssi,
+      radio: { hopCount, hops },
+      self: { name: this.localNode?.name ?? null, key: this.localNode?.publicKey ?? null },
+      onStored: (poolMessage) => {
+        this.messages.push(poolMessage);
+        if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
+          this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
+        }
+      },
+      afterStored: (message, mc1Hash) => this.afterMessageStored(message, mc1Hash, Promise.resolve(true)),
+    });
   }
 
   /** True once this connection has seen a `MESH_PACKET_LOGGING` RAW line. */
