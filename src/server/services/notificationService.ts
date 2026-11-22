@@ -327,6 +327,47 @@ class NotificationService {
   }
 
   /**
+   * Send a new-destination alert for a Reticulum source (#6341 P3). The caller
+   * (`reticulumNewDestinationAlert`) applies the LXMF filter and the persisted gate.
+   */
+  public async notifyNewReticulumDestination(
+    destinationHash: string,
+    displayName: string,
+    hops: number | null,
+    sourceId: string,
+    sourceName: string,
+    /** Destinations the new-node alert gate dropped since the last alert (appended as "(+N more)"). */
+    suppressedCount?: number
+  ): Promise<void> {
+    try {
+      const hopsText = hops !== null && hops !== undefined ? ` (${hops} ${hops === 1 ? 'hop' : 'hops'})` : '';
+      const moreText = newNodeOverflowSuffix(suppressedCount);
+      const title = 'New Reticulum Destination Detected';
+      const payload: NotificationPayload = {
+        title,
+        body: `${displayName} detected by ${sourceName}${hopsText}${moreText}`,
+        type: 'info',
+        sourceId,
+        sourceName,
+        dedup: {
+          key: `reticulum-new-node:${destinationHash}`,
+          merged: (names) => ({ title, body: `${displayName} detected by ${names.join(', ')}${hopsText}${moreText}` }),
+        },
+      };
+
+      await Promise.allSettled([
+        pushNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, undefined, sourceId),
+        appriseNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, undefined, sourceId),
+        desktopNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, sourceId)
+      ]);
+
+      logger.info(`📤 Sent new Reticulum destination notification for ${displayName} [${destinationHash.substring(0, 16)}] on ${sourceId}`);
+    } catch (error) {
+      logger.error('❌ Error sending new Reticulum destination notification:', error);
+    }
+  }
+
+  /**
    * Send notification for successful traceroute (bypasses normal filtering)
    * Only sends if user has notifyOnTraceroute enabled
    *

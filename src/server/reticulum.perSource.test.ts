@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { AnnounceMessage, InterfaceStatsEntry, InterfaceStatsMessage } from './reticulumProtocol.js';
 
-const upsertDestination = vi.fn().mockResolvedValue(undefined);
+const upsertDestination = vi.fn().mockResolvedValue({ inserted: false });
 const upsertInterface = vi.fn().mockResolvedValue(undefined);
 const insertTelemetryBatch = vi.fn().mockResolvedValue(0);
 
