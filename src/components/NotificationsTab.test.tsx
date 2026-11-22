@@ -445,3 +445,55 @@ describe('NotificationsTab — MeshCore MQTT ingest source (#6307)', () => {
     expect(screen.queryByText(/notifications\.server_events_disconnect_broker/)).toBeNull();
   });
 });
+
+describe('NotificationsTab — Reticulum source (#6341 P3)', () => {
+  const original = vi.mocked(api.get).getMockImplementation();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }) as unknown as typeof window.matchMedia;
+    vi.mocked(api.get).mockImplementation(((url: string) => {
+      if (url.startsWith('/api/push/preferences')) {
+        return Promise.resolve({ ...SAVED_PREFS, notifyOnServerEvents: true, usingDefaults: true, sourceFallback: false });
+      }
+      return (original as (u: string) => Promise<unknown>)(url);
+    }) as never);
+  });
+
+  afterEach(() => {
+    vi.mocked(api.get).mockImplementation(original as never);
+  });
+
+  it('shows DM, new-node with its note, keywords and bridge events', async () => {
+    renderWithSource('reticulum');
+    await waitFor(() => expect(screen.queryByText(/notifications\.new_nodes_reticulum_note/)).not.toBeNull());
+    expect(screen.queryByText(/notifications\.direct_messages/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.new_nodes(?!_)/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.reticulum_unsupported_hint/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.server_events_disconnect_bridge/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.server_events_reconnect_bridge/)).not.toBeNull();
+    expect(screen.queryByText(/notifications\.using_defaults_notice_dm_only/)).not.toBeNull();
+  });
+
+  it('hides channels, emoji, MQTT, trace, waypoint, mention and node monitoring, and never loads nodes', async () => {
+    renderWithSource('reticulum');
+    await waitFor(() => expect(screen.queryByText(/notifications\.new_nodes_reticulum_note/)).not.toBeNull());
+    expect(screen.queryByText(/notifications\.emoji_reactions/)).toBeNull();
+    expect(screen.queryByText(/notifications\.mqtt_messages/)).toBeNull();
+    expect(screen.queryByText(/notifications\.traceroutes/)).toBeNull();
+    expect(screen.queryByText(/notifications\.notify_on_waypoint/)).toBeNull();
+    expect(screen.queryByText(/^\s*notifications\.notify_on_mention$/)).toBeNull();
+    expect(screen.queryByText(/notifications\.notify_on_inactive_node/)).toBeNull();
+    expect(document.getElementById('lowBatteryThreshold')).toBeNull();
+    expect(document.getElementById('lowBatteryVoltageThreshold')).toBeNull();
+    expect(screen.queryByText(/notifications\.server_events_disconnect$/)).toBeNull();
+    const urls = vi.mocked(api.get).mock.calls.map(c => String(c[0]));
+    expect(urls.some(u => u.startsWith('/api/nodes'))).toBe(false);
+    expect(urls.some(u => u.startsWith('/api/channels'))).toBe(false);
+  });
+});

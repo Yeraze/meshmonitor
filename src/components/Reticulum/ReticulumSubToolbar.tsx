@@ -39,6 +39,8 @@ interface ReticulumSubToolbarProps {
    *  'configuration' page holds the LXMF identity settings in every mode
    *  (#6011); only its RNode radio sections are own-mode only. */
   sourceMode?: string | null;
+  /** Show the Notifications item (signed-in viewers only; push needs an account, #6341). */
+  showNotifications?: boolean;
 }
 
 interface Item extends SharedSourceNavEntry {
@@ -51,6 +53,8 @@ const ITEMS: Item[] = [
   // there" surfaces — and before the more plumbing-flavored
   // interfaces/info/settings pages.
   { id: 'dms', labelKey: 'reticulum.nav.dms', fallback: 'Messages', icon: 'messages' },
+  // 'notifications' (#6341 P3) — per-source push settings; the page hides it when signed out.
+  { id: 'notifications', labelKey: 'reticulum.nav.notifications', fallback: 'Notifications', icon: 'notifications' },
   { id: 'interfaces', labelKey: 'reticulum.nav.interfaces', fallback: 'Interfaces', icon: 'network' },
   // 'paths' (Phase 4 WP4) — path table + probe + remote-fleet monitoring.
   // Not mode-gated: the path table exists in every mode (build spec §4.4).
@@ -77,16 +81,17 @@ export const ReticulumSubToolbar: React.FC<ReticulumSubToolbarProps> = ({
   onToggleExpanded,
   pinned,
   onTogglePin,
+  showNotifications = false,
 }) => {
   const { t } = useTranslation();
 
   const items = useMemo<SourceNavItem[]>(() => (
-    ITEMS.map(item => ({
+    ITEMS.filter(item => item.id !== 'notifications' || showNotifications).map(item => ({
       id: item.id,
       ...sharedSourceNavPresentation(item, t),
       onClick: () => onSelect(item.id),
     }))
-  ), [t, onSelect]);
+  ), [t, onSelect, showNotifications]);
 
   return (
     <SourceNav

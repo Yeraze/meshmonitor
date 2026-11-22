@@ -16,9 +16,23 @@ vi.mock('react-i18next', async () => {
   return createReactI18nextMock();
 });
 
+const muteState = vi.hoisted(() => ({
+  authenticated: true,
+  mute: {
+    isDMMuted: vi.fn((_key: string) => false),
+    muteDM: vi.fn(),
+    unmuteDM: vi.fn(),
+  },
+}));
+
 vi.mock('../../contexts/SettingsContext', () => ({
   useNodeListStyle: () => 'monochrome',
   useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
+  useOptionalMuteSettings: () => muteState.mute,
+}));
+
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ authStatus: { authenticated: muteState.authenticated } }),
 }));
 
 import { ReticulumDmsView } from './ReticulumDmsView';
@@ -76,6 +90,41 @@ beforeEach(() => {
   baseProps.onSelectConversation = vi.fn();
   baseProps.onLoadMoreMessages = vi.fn();
   baseProps.onSend = vi.fn();
+});
+
+describe('ReticulumDmsView mute (#6341 P3)', () => {
+  beforeEach(() => {
+    muteState.authenticated = true;
+    muteState.mute.isDMMuted.mockReset().mockReturnValue(false);
+    muteState.mute.muteDM.mockReset();
+    muteState.mute.unmuteDM.mockReset();
+  });
+
+  const active = () => (
+    <ReticulumDmsView
+      {...baseProps}
+      conversations={[makeConversation({ peerHash: 'AbCdEf0123' })]}
+      activePeerHash="AbCdEf0123"
+    />
+  );
+
+  it('keys the header mute menu by the lowercased peer hash', () => {
+    render(active());
+    fireEvent.click(screen.getByRole('button', { name: /Mute notifications/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Mute indefinitely/ }));
+    expect(muteState.mute.muteDM).toHaveBeenCalledWith('abcdef0123', null);
+  });
+
+  it('shows no mute menu for a signed-out viewer', () => {
+    muteState.authenticated = false;
+    render(active());
+    expect(screen.queryByRole('button', { name: /Mute notifications/ })).toBeNull();
+  });
+
+  it('checks the lowercased hash for the list indicator', () => {
+    render(active());
+    expect(muteState.mute.isDMMuted).toHaveBeenCalledWith('abcdef0123');
+  });
 });
 
 describe('ReticulumDmsView', () => {
