@@ -16,6 +16,7 @@
  * `enabled: false` short-circuits all fetches; used to honour permission
  * gates that should suppress polling entirely.
  */
+import { parseUsableSenderNames } from './parseUsableSenderNames';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../../hooks/useCsrfFetch';
@@ -1556,10 +1557,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     try {
       const response = await csrfFetch(`${mcPrefix}/sender-names`);
       const data = await parseJsonResponse(response);
-      const d = data.data as Partial<UsableSenderNames> | undefined;
-      return data.success && d && typeof d.enabled === 'boolean' && Array.isArray(d.allowedNames)
-        ? { enabled: d.enabled, allowedNames: d.allowedNames, firmwareSupported: d.firmwareSupported === true }
-        : null;
+      return parseUsableSenderNames(data);
     } catch (_err) {
       return null;
     }

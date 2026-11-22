@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import type { UsableSenderNames } from './useMeshCore';
+import { pickableSenderNames } from './parseUsableSenderNames';
 
 export function useUsableSenderNames(
   fetchUsable: () => Promise<UsableSenderNames | null>,
@@ -19,7 +20,7 @@ export function useUsableSenderNames(
     let cancelled = false;
     void fetchUsable().then(r => {
       if (cancelled) return;
-      setNames(r && r.enabled && r.firmwareSupported ? r.allowedNames : []);
+      setNames(pickableSenderNames(r));
     });
     return () => { cancelled = true; };
   }, [fetchUsable, active]);

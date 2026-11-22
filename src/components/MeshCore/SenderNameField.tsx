@@ -7,9 +7,11 @@
  * name is already stored, so an admin can still see and clear it. A stored
  * name no longer on the list gets a note: it sends under the node name.
  */
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSourceSenderNames } from './hooks/useSourceSenderNames';
+import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import { parseUsableSenderNames } from './hooks/parseUsableSenderNames';
+import { useUsableSenderNames } from './hooks/useUsableSenderNames';
 import { SenderNamePicker } from './SenderNamePicker';
 import styles from './SenderNameField.module.css';
 
@@ -31,7 +33,16 @@ export const SenderNameField: React.FC<SenderNameFieldProps> = ({
   idPrefix = 'mc-sender-name',
 }) => {
   const { t } = useTranslation();
-  const names = useSourceSenderNames(baseUrl, sourceId);
+  const csrfFetch = useCsrfFetch();
+  const fetcher = useCallback(async () => {
+    try {
+      const res = await csrfFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/sender-names`);
+      return res.ok ? parseUsableSenderNames(await res.json()) : null;
+    } catch {
+      return null;
+    }
+  }, [baseUrl, sourceId, csrfFetch]);
+  const names = useUsableSenderNames(fetcher, true);
   const stored = value ?? '';
   if (names.length === 0 && !stored) return null;
   const stale = stored !== '' && !names.includes(stored);

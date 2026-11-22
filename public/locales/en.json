@@ -8687,7 +8687,6 @@
   "meshcore.sender_name.err_not_allowed": "That sender name is not on the allowed list for this source.",
   "meshcore.sender_name.err_client_repeat": "This node has client repeat on, so it cannot send under another name. Send as the node name instead.",
   "meshcore.sender_name.stale": "(no longer allowed: {{name}}), sends as node name",
-  "meshcore.sender_name.help_automation": "Channel sends only. If this source does not allow the name, the message goes out under the node name.",
   "meshcore.heard_by_tooltip": "Repeaters that relayed this message",
   "meshcore.route_detail_best_guess": "best guess of",
   "meshcore.route_detail_candidates": "{{count}} candidates",

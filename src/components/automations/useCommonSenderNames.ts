@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import apiService from '../../services/api';
+import { parseUsableSenderNames, pickableSenderNames } from '../MeshCore/hooks/parseUsableSenderNames';
 
-interface UsableNamesResponse {
-  data?: { enabled?: boolean; allowedNames?: unknown; firmwareSupported?: boolean };
-}
 
 /** Names allowed on all of the given MeshCore sources. */
 export function useCommonSenderNames(sourceIds: string[]): string[] {
@@ -14,11 +12,8 @@ export function useCommonSenderNames(sourceIds: string[]): string[] {
     if (sourceIds.length === 0) { setNames([]); return; }
     void Promise.all(sourceIds.map(async (id): Promise<string[]> => {
       try {
-        const r = await apiService.get<UsableNamesResponse>(`/api/sources/${encodeURIComponent(id)}/meshcore/sender-names`);
-        const d = r?.data;
-        return d?.enabled && d.firmwareSupported && Array.isArray(d.allowedNames)
-          ? d.allowedNames.filter((n): n is string => typeof n === 'string')
-          : [];
+        const r = await apiService.get<unknown>(`/api/sources/${encodeURIComponent(id)}/meshcore/sender-names`);
+        return pickableSenderNames(parseUsableSenderNames(r));
       } catch {
         return [];
       }
