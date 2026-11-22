@@ -182,6 +182,7 @@ import { migration as tracerouteTransportMechanismMigration, runMigration160Post
 import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres, runMigration161Mysql } from '../server/migrations/161_user_map_preferences_unread_indicator.js';
 import { migration as userPrefsUnreadIncludeRepliesMigration, runMigration241Postgres, runMigration241Mysql } from '../server/migrations/241_user_map_preferences_unread_include_replies.js';
 import { migration as readMessagesCompositeKeyMigration, runMigration242Postgres, runMigration242Mysql } from '../server/migrations/242_read_messages_composite_key.js';
+import { migration as dropMysqlNotifPrefsUserIdUniqueMigration, runMigration243Postgres, runMigration243Mysql } from '../server/migrations/243_drop_mysql_notif_prefs_userid_unique.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -3897,4 +3898,19 @@ registry.register({
   sqlite: (db) => readMessagesCompositeKeyMigration.up(db),
   postgres: (client) => runMigration242Postgres(client),
   mysql: (pool) => runMigration242Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 243: MySQL-only. Drop the baseline's single-column UNIQUE on
+// `user_notification_preferences.userId` (named `userId`, missed by 051), which
+// capped each user at one preference row across all sources.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 243,
+  name: 'drop_mysql_notif_prefs_userid_unique',
+  settingsKey: 'migration_243_drop_mysql_notif_prefs_userid_unique',
+  sqlite: (db) => dropMysqlNotifPrefsUserIdUniqueMigration.up(db),
+  postgres: (client) => runMigration243Postgres(client),
+  mysql: (pool) => runMigration243Mysql(pool),
 });

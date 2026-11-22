@@ -145,7 +145,7 @@ export function remapMeshCoreChannelSetting(
   return next === value ? null : next;
 }
 
-/** Channel ids at or above this are keyed (channel_database) ids, not slots. */
+/** Channel ids at or above this are keyed ids, not slots (mirrors `MESHCORE_KEYED_CHANNEL_BASE`). */
 const KEYED_BASE = 1000;
 
 function remapJsonArray(raw: unknown, mapEntry: (e: unknown) => unknown): string | null {
