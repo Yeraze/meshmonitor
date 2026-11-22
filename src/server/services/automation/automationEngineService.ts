@@ -1539,7 +1539,7 @@ export class AutomationEngineService {
   }
 
   /**
-   * A passive MeshCore clock sample (`trigger.clockOutOfSync`, #6273). The
+   * A passive clock sample (MeshCore advert/device or Meshtastic packet) (`trigger.clockOutOfSync`, #6273). The
    * sample and the two stored samples before it arrive with the event, so each
    * rule only applies its own threshold. It fires when this sample and the one
    * before are past the threshold and the one before that was not: two
@@ -1550,10 +1550,11 @@ export class AutomationEngineService {
    * No self-origin guard (#3914): no automation action can change a node's clock.
    */
   async onClockOffset(
-    publicKey: string,
+    nodeNum: number | null,
+    publicKey: string | null,
     offsetSeconds: number,
     previousOffsets: readonly number[],
-    sampleSource: 'advert' | 'device',
+    sampleSource: 'advert' | 'device' | 'packet',
     sourceId: string | null,
   ): Promise<number> {
     const autos = this.index.get('trigger.clockOutOfSync');
@@ -1565,7 +1566,7 @@ export class AutomationEngineService {
       const threshold = raw == null || raw === '' ? CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS : parseClockThresholdSeconds(raw);
       if (threshold == null) continue;
       if (!isClockOutOfSyncEdge(offsetSeconds, previousOffsets, threshold)) continue;
-      const ctx = buildClockOutOfSyncContext(publicKey, offsetSeconds, sampleSource, threshold, sourceId, now);
+      const ctx = buildClockOutOfSyncContext(nodeNum, publicKey, offsetSeconds, sampleSource, threshold, sourceId, now);
       fired += await this.fireStaleTransition(a, ctx, now);
     }
     return fired;

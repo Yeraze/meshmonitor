@@ -408,8 +408,8 @@ export const TRIGGERS: BlockDef[] = [
   },
   {
     type: 'trigger.clockOutOfSync',
-    label: 'A MeshCore node’s clock is out of sync',
-    description: 'Fires when a MeshCore node’s clock is off by more than the threshold on two samples in a row, and again only after a sample in sync. MeshMonitor measures this passively from adverts it already hears (and from the attached device’s own clock), so no packet is sent. A repeater whose clock was never set reads “Clock not set”. The firmware refuses to move a clock backwards, so only a clock that is behind can be fixed by a time sync. MQTT sources are not sampled. Meshtastic is not wired yet.',
+    label: 'A node’s clock is out of sync',
+    description: 'Fires when a node’s clock is off by more than the threshold on two samples in a row, and again only after a sample in sync. MeshMonitor measures this passively, so no packet is sent: from MeshCore adverts it already hears (and the attached device’s own clock), and from live Meshtastic LoRa telemetry and position packets. A MeshCore repeater whose clock was never set reads “Clock not set”; a Meshtastic node with no clock is skipped. The firmware refuses to move a clock backwards, so only a clock that is behind can be fixed by a time sync. Meshtastic MQTT sources are not sampled.',
     fields: [
       { name: 'thresholdSeconds', label: 'Off by more than (seconds)', kind: 'number', placeholder: String(CLOCK_OUT_OF_SYNC_DEFAULT_SECONDS), help: `Whole seconds, ${CLOCK_OUT_OF_SYNC_MIN_SECONDS} to ${CLOCK_OUT_OF_SYNC_MAX_SECONDS}. The floor covers relay delay and a repeater clock that reads to the minute.` },
       COOLDOWN,

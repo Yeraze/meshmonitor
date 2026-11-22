@@ -93,10 +93,11 @@ The gallery ships with these templates today:
   automation per alert, each pre-wired to send an Apprise notification. Automations land disabled
   for review, so you can tune thresholds before flipping them on. The silent and heard-again alerts
   work for Meshtastic and MeshCore nodes; the reboot, power and draining-battery alerts are
-  Meshtastic only. The **clock out of sync** alert is MeshCore only. It reads a node's clock from
-  the adverts MeshMonitor already hears, so it sends nothing. It fires after two samples in a row
+  Meshtastic only. The **clock out of sync** alert works for both. It reads a node's clock from
+  the MeshCore adverts and live Meshtastic LoRa telemetry and position packets MeshMonitor already
+  hears, so it sends nothing. A Meshtastic node with no clock set is skipped. It fires after two samples in a row
   are off by more than the threshold (300 seconds by default, 120 to 86400), once per episode, and
-  at most 10 times an hour. A repeater whose clock was never set reads "Clock not set". MQTT
+  at most 10 times an hour. A MeshCore repeater whose clock was never set reads "Clock not set". Meshtastic MQTT
   sources are not sampled. A MeshCore-only alert, "a repeater gains a confirmed new neighbour", is
   covered under [New neighbour confirmed](/features/automation-engine-reference#new-neighbour-confirmed).
 - **Timed Announcement** — posts a message to the Meshtastic and MeshCore channels you pick, on a

@@ -78,7 +78,7 @@ describe('trigger.clockOutOfSync engine (#6273)', () => {
     const engine = engineWith(deps);
     await engine.load();
 
-    expect(await engine.onClockOffset(KEY, 8040, [600, 3], 'advert', 'srcA')).toBe(1);
+    expect(await engine.onClockOffset(null, KEY, 8040, [600, 3], 'advert', 'srcA')).toBe(1);
     expect(calls[0].args.body).toBe(`key=${KEY} off=8040 text=2h 14m behind dir=behind via=advert thr=300 src=srcA`);
   });
 
@@ -88,12 +88,12 @@ describe('trigger.clockOutOfSync engine (#6273)', () => {
     const engine = engineWith(deps);
     await engine.load();
 
-    expect(await engine.onClockOffset(KEY, 900, [800, 700], 'advert', 's')).toBe(0); // episode continues
-    expect(await engine.onClockOffset(KEY, 900, [5, 4], 'advert', 's')).toBe(0);     // one bad sample
-    expect(await engine.onClockOffset(KEY, 900, [5, 800], 'advert', 's')).toBe(0);   // out after in
-    expect(await engine.onClockOffset(KEY, 900, [800, 5], 'advert', 's')).toBe(1);   // second consecutive bad
-    expect(await engine.onClockOffset(KEY, 900, [800], 'advert', 's')).toBe(1);      // prev2 missing
-    expect(await engine.onClockOffset(KEY, 900, [], 'advert', 's')).toBe(0);         // no history
+    expect(await engine.onClockOffset(null, KEY, 900, [800, 700], 'advert', 's')).toBe(0); // episode continues
+    expect(await engine.onClockOffset(null, KEY, 900, [5, 4], 'advert', 's')).toBe(0);     // one bad sample
+    expect(await engine.onClockOffset(null, KEY, 900, [5, 800], 'advert', 's')).toBe(0);   // out after in
+    expect(await engine.onClockOffset(null, KEY, 900, [800, 5], 'advert', 's')).toBe(1);   // second consecutive bad
+    expect(await engine.onClockOffset(null, KEY, 900, [800], 'advert', 's')).toBe(1);      // prev2 missing
+    expect(await engine.onClockOffset(null, KEY, 900, [], 'advert', 's')).toBe(0);         // no history
     expect(calls).toHaveLength(2);
   });
 
@@ -103,10 +103,10 @@ describe('trigger.clockOutOfSync engine (#6273)', () => {
     const engine = engineWith(deps);
     await engine.load();
 
-    await engine.onClockOffset(KEY, -900, [-800, 0], 'advert', 's');
+    await engine.onClockOffset(null, KEY, -900, [-800, 0], 'advert', 's');
     expect(calls[0].args.body).toContain('text=15m ahead dir=ahead');
     const never = 25 * 365 * 86400;
-    await engine.onClockOffset('cd'.repeat(32), never, [never, 0], 'device', 's');
+    await engine.onClockOffset(null, 'cd'.repeat(32), never, [never, 0], 'device', 's');
     expect(calls[1].args.body).toContain('text=Clock not set dir=notSet via=device');
   });
 
@@ -117,7 +117,7 @@ describe('trigger.clockOutOfSync engine (#6273)', () => {
     const engine = engineWith(deps);
     await engine.load();
 
-    expect(await engine.onClockOffset(KEY, 900, [800, 5], 'advert', 's')).toBe(1);
+    expect(await engine.onClockOffset(null, KEY, 900, [800, 5], 'advert', 's')).toBe(1);
     expect(calls).toHaveLength(1);
     expect(calls[0].args.body).toContain('thr=120');
   });
@@ -126,7 +126,7 @@ describe('trigger.clockOutOfSync engine (#6273)', () => {
     const { calls, deps } = recorder();
     const engine = engineWith(deps);
     await engine.load();
-    expect(await engine.onClockOffset(KEY, 900, [800, 5], 'advert', 's')).toBe(0);
+    expect(await engine.onClockOffset(null, KEY, 900, [800, 5], 'advert', 's')).toBe(0);
     expect(calls).toHaveLength(0);
   });
 
@@ -135,7 +135,23 @@ describe('trigger.clockOutOfSync engine (#6273)', () => {
     await create('clock', clockGraph({ rateLimit: { maxActions: 2, windowSeconds: 3600 } }));
     const engine = engineWith(deps);
     await engine.load();
-    for (let i = 0; i < 5; i++) await engine.onClockOffset(`${i}`.repeat(64), 900, [800, 5], 'advert', 's');
+    for (let i = 0; i < 5; i++) await engine.onClockOffset(null, `${i}`.repeat(64), 900, [800, 5], 'advert', 's');
     expect(calls).toHaveLength(2);
+  });
+
+  it('Meshtastic event: subjectNodeNum resolves node.longName; nodeNum token is set (#6341 P5)', async () => {
+    const calls: any[] = [];
+    const deps = { ...recorder().deps, notify: async (a: any) => { calls.push(a); return 4; } } as ActionDeps;
+    const graph = clockGraph();
+    (graph.nodes[1].params as any).body = 'name={{ node.longName }} num={{ trigger.nodeNum }} via={{ trigger.sampleSource }}';
+    await create('clock', graph);
+    const named: NodeDataProvider = {
+      getNode: async (_s: string | null, n: number) => (n === 0xabcd ? ({ nodeNum: n, longName: 'Hilltop' } as any) : null),
+      getTelemetry: async () => null,
+    };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: named, now: () => 1_000 });
+    await engine.load();
+    expect(await engine.onClockOffset(0xabcd, null, 900, [800, 5], 'packet', 's')).toBe(1);
+    expect(calls[0].body).toBe('name=Hilltop num=43981 via=packet');
   });
 });
