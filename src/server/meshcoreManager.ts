@@ -58,7 +58,6 @@ import { readRequiredRepeaters, requiredRepeatersHeard } from '../utils/meshcore
 import {
   foldReactionEmoji,
   meshcoreWireSecond,
-  meshcoreWireChannelText,
   mc1HashForChannelWire,
   mc1HashForDm,
   mc1HashForOwnChannelText,
@@ -173,14 +172,13 @@ import { MESHCORE_PAYLOAD_ADVERT, computeMeshCoreHopsAway } from '../utils/cover
 import {
   ingestAdvertFrame,
   decryptGroupTextFrame,
-  keyedFilingFor,
   frameChannelMessageId,
   frameRoomPostId,
-  noteVirtualChannelDecrypt,
   anySecretMatchesChannelHash,
   type DecryptedGroupText,
   type IngestedAdvert,
 } from './services/meshcoreFrameIngest.js';
+import { storeDecryptedChannelText } from './services/meshcoreChannelTextStore.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { maybeRecordMeshCoreDirectRf } from './services/directRfContactRecorder.js';
@@ -5432,109 +5430,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     },
   ): Promise<void> {
     const { rawHex, snr, rssi, hopCount, hops, idPrefix } = frame;
-    const { channelIdx, keyFingerprint: fingerprint, keySourceId, keyChannelIdx } = keyedFilingFor(plain.key);
-    const id = frameChannelMessageId(idPrefix, this.sourceId, fingerprint, plain.timestampSec, plain.text);
-    const now = Date.now();
-    // Raw wire second (#5759): the MC1 reaction hash input.
-    const sec = meshcoreWireSecond(plain.timestampSec);
-    const message: MeshCoreMessage = {
-      id,
-      fromPublicKey: `channel-${channelIdx}`,
-      fromName: plain.senderName ?? undefined,
-      text: plain.text,
-      senderTimestamp: sec ?? undefined,
-      // Sender's clock when it has one, else when we heard it.
-      timestamp: plain.timestampSec > 0 ? plain.timestampSec * 1000 : now,
-      receivedAt: now,
-      rssi: typeof rssi === 'number' ? rssi : undefined,
-      snr: typeof snr === 'number' ? snr : undefined,
+    await storeDecryptedChannelText(plain, {
       sourceId: this.sourceId,
-      messageType: 'channel',
-      hopCount: typeof hopCount === 'number' ? hopCount : null,
-      routePath: hops && hops.length > 0 ? hops.join(',') : null,
-      // Both null when a virtual channel's key (#5552) opened it.
-      keySourceId,
-      keyChannelIdx,
-      keyFingerprint: fingerprint,
-    };
-
-    // Ignore / Block (#5408), as on every other ingest path.
-    const verdict = meshcoreMessageFilter.classify(this.sourceId, {
-      fromPublicKey: null,
-      fromName: plain.senderName,
-      text: plain.text,
-      kind: 'channel',
-    }, { countHit: false });
-    if (verdict.action === 'block') return;
-
-    // Reaction? (#5759) The id above stays derived from the RAW text.
-    let fields: Required<MeshCoreReactionFields> | null = null;
-    const parseBody = plain.senderName ? plain.text : mc1ChannelBody(plain.text);
-    if (isReactionText(parseBody) && (await isReactionsInboundEnabled(this.sourceId))) {
-      const res = await resolveInboundReaction({
-        sourceId: this.sourceId,
-        scope: 'channel',
-        channelIdx,
-        body: parseBody,
-        reactorName: plain.senderName ?? null,
-        reactorKey: null,
-        selfName: this.localNode?.name ?? null,
-        selfKey: this.localNode?.publicKey ?? null,
-        now,
-      });
-      if (res.kind === 'duplicate') return;
-      if (res.kind === 'reaction') fields = res.fields;
-    }
-    const mc1Hash = fields ? null : mc1HashForChannelWire(meshcoreWireChannelText(plain.senderName, plain.text), sec);
-
-    const inserted = await databaseService.meshcore.insertMessage({
-      id,
-      fromPublicKey: message.fromPublicKey,
-      fromName: message.fromName ?? null,
-      toPublicKey: null,
-      text: fields?.reactionEmoji ?? message.text,
-      senderTimestamp: sec,
-      mc1Hash,
-      ...(fields ?? {}),
-      timestamp: message.timestamp,
-      rssi: message.rssi ?? null,
-      snr: message.snr ?? null,
-      messageType: 'channel',
-      hopCount: message.hopCount ?? null,
-      routePath: message.routePath ?? null,
-      keySourceId: message.keySourceId ?? null,
-      keyChannelIdx: message.keyChannelIdx ?? null,
-      keyFingerprint: fingerprint,
-      createdAt: now,
-    }, this.sourceId);
-    // A relay of a message already stored: no second event.
-    if (!inserted) return;
-    meshcoreMessageFilter.countHit(this.sourceId, verdict);
-    noteVirtualChannelDecrypt(plain.key);
-
-    const poolMessage: MeshCoreMessage = fields ? { ...message, text: fields.reactionEmoji ?? message.text, ...fields } : message;
-    this.messages.push(poolMessage);
-    if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
-      this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
-    }
-    if (fields && !fields.reactionTargetId && fields.reactionFormat && fields.reactionTargetHash) {
-      notePendingReaction(this.sourceId, {
-        id,
-        reactionFormat: fields.reactionFormat,
-        reactionTargetHash: fields.reactionTargetHash,
-      });
-    }
-
-    const packetHash = meshCorePacketHashOrUndefined(rawHex);
-    const selfOrigin = await isLocalMeshCoreSenderName(plain.senderName);
-    const event: MeshCoreMessage = {
-      ...poolMessage,
-      packetHash,
-      ...(selfOrigin ? { selfOrigin: true } : {}),
-      ...(verdict.action === 'ignore' ? { filtered: 'ignore' as const } : {}),
-    };
-    dataEventEmitter.emitMeshCoreMessage(event, this.sourceId);
-    if (!fields) await this.afterMessageStored(message, mc1Hash, Promise.resolve(true));
+      rawHex,
+      buildId: (filing) =>
+        frameChannelMessageId(idPrefix, this.sourceId, filing.keyFingerprint, plain.timestampSec, plain.text),
+      snr,
+      rssi,
+      radio: { hopCount, hops },
+      self: { name: this.localNode?.name ?? null, key: this.localNode?.publicKey ?? null },
+      onStored: (poolMessage) => {
+        this.messages.push(poolMessage);
+        if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
+          this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
+        }
+      },
+      afterStored: (message, mc1Hash) => this.afterMessageStored(message, mc1Hash, Promise.resolve(true)),
+    });
   }
 
   /** True once this connection has seen a `MESH_PACKET_LOGGING` RAW line. */
