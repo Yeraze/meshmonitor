@@ -23,7 +23,7 @@ automated text may split into one more part. Phases 2, 3 add notifications, capp
 ## Phases
 
 - [x] **P1 — Remap moves notification prefs (#5379).** `remapChannelSlots` rewrites `user_notification_preferences`
-  `enabled_channels` / `muted_channels` for the source (mutes merged, as migration 228 does). Exit: reorder test on
+  `enabled_channels` / `muted_channels` for the source (slot ids only, mutes keep their expiry). Exit: reorder test on
   all three backends shows prefs follow their channels.
 - [ ] **P2 — MQTT feed new-node alerts.** Gate Meshtastic MQTT `maybeNotifyNewNode`; add gated, signature-required
   alerts to `meshcore_mqtt` `ingestAdvert` via a shared helper extracted from `maybeAlertRepeaterNewNode`; flip the

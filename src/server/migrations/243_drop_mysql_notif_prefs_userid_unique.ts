@@ -20,7 +20,7 @@ export async function runMigration243Postgres(_client: unknown): Promise<void> {
   // No-op.
 }
 
-export async function runMigration243Mysql(pool: any): Promise<void> {
+export async function runMigration243Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   const [tables] = await pool.query(
     `SELECT TABLE_NAME FROM information_schema.TABLES
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_notification_preferences'`,
