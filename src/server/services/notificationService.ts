@@ -7,6 +7,11 @@ import type { MessageTemplateContext } from '../../utils/notificationTemplate.js
 import type { NotificationDedupSpec } from './notificationDedup.js';
 import type { NotificationMuteVenue } from '../utils/notificationFiltering.js';
 
+/** #6306/#6341: " (+N more ...)" appended to a new-node alert after the gate dropped some. */
+export function newNodeOverflowSuffix(n?: number): string {
+  return n && n > 0 ? ` (+${n} more new nodes since the last alert)` : '';
+}
+
 export interface NotificationPayload {
   title: string;
   body: string;
@@ -231,16 +236,17 @@ class NotificationService {
      * alert from the first source THEY can read that heard it. `knownOnSourceIds`
      * lists the sources that knew the node before this one.
      */
-    opts: { nodeNum?: number; knownOnSourceIds?: string[] } = {},
+    opts: { nodeNum?: number; knownOnSourceIds?: string[]; suppressedCount?: number } = {},
   ): Promise<void> {
     try {
       const hopsText = hopsAway !== undefined ? ` (${hopsAway} ${hopsAway === 1 ? 'hop' : 'hops'} away)` : '';
       const hwModelText = hwModel !== undefined ? ` - ${getHardwareModelName(hwModel) || 'Unknown'}` : '';
       // #4845: title carries the service, body says which instance detected it.
+      const moreText = newNodeOverflowSuffix(opts.suppressedCount);
       const title = `New Meshtastic Node Detected`;
       const payload: NotificationPayload = {
         title,
-        body: `${longName} (${shortName}) detected by ${sourceName}${hwModelText}${hopsText}`,
+        body: `${longName} (${shortName}) detected by ${sourceName}${hwModelText}${hopsText}${moreText}`,
         type: 'info',
         sourceId,
         sourceName,
@@ -250,7 +256,7 @@ class NotificationService {
         ...(opts.nodeNum !== undefined ? {
           dedup: {
             key: `meshtastic-new-node:${opts.nodeNum >>> 0}`,
-            merged: (names: string[]) => ({ title, body: `${longName} (${shortName}) detected by ${names.join(', ')}${hwModelText}${hopsText}` }),
+            merged: (names: string[]) => ({ title, body: `${longName} (${shortName}) detected by ${names.join(', ')}${hwModelText}${hopsText}${moreText}` }),
           },
         } : {}),
       };
@@ -289,9 +295,7 @@ class NotificationService {
   ): Promise<void> {
     try {
       const typeText = deviceTypeLabel ? ` - ${deviceTypeLabel}` : '';
-      const moreText = suppressedCount && suppressedCount > 0
-        ? ` (+${suppressedCount} more new nodes since the last alert)`
-        : '';
+      const moreText = newNodeOverflowSuffix(suppressedCount);
       const title = `New MeshCore Device Detected`;
       // #4845: title carries the service, body says which instance detected it.
       const payload: NotificationPayload = {

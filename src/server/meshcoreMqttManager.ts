@@ -95,6 +95,8 @@ import {
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.js';
 import { isCoverageMqttEnabled } from './services/coverageMqttSettings.js';
+import { NewNodeAlertTracker } from './services/newNodeAlertTracker.js';
+import { maybeAlertGatedMeshCoreNewNode } from './services/meshcoreNewNodeAlert.js';
 import { logger } from '../utils/logger.js';
 
 /** Persisted `sources.config` shape for a `meshcore_mqtt` source. */
@@ -257,6 +259,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    * count stops rising rather than growing the set without bound.
    */
   private readonly seenObservers = new Set<string>();
+  /** Dedup + in-flight claim for gated new-node alerts (#6341 P2). Dedup only; `inserted` is DB-derived. */
+  private readonly newNodeAlerts = new NewNodeAlertTracker();
   private static readonly MAX_TRACKED_OBSERVERS = 1_000;
   /**
    * Latest `/status` snapshot per observer, capped at
@@ -607,7 +611,11 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
         // #5909: record signature validity for cross-source hop resolution.
         verifySignature: 'toggle',
       });
-      if (ingested) this.stats.advertsIngested++;
+      if (ingested) {
+        this.stats.advertsIngested++;
+        // #6341 P2: gated new-node alert; never throws, no automation event.
+        await maybeAlertGatedMeshCoreNewNode(this.newNodeAlerts, this.sourceId, ingested);
+      }
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);
     }

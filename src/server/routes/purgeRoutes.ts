@@ -5,6 +5,8 @@ import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { newNodeAlertGate } from '../services/newNodeAlertGate.js';
+import { isGatedMeshtasticNewNodeSourceType } from '../../utils/newNodeAlertLimits.js';
 import { validateOutlierCriteria, type OutlierCriteria } from '../../utils/telemetryOutliers.js';
 import {
   previewTelemetryOutliers,
@@ -23,6 +25,14 @@ router.post('/nodes', async (req: Request, res: Response) => {
     // intentional cross-source: purge stats reflect global total before wipe
     const nodeCount = await databaseService.nodes.getNodeCount(ALL_SOURCES);
     await databaseService.purgeAllNodesAsync(purgeNodesSourceId);
+    // #6341 P2: every node heard after a purge is "new", so restart the
+    // new-node learning window of each gated feed source. It can only suppress
+    // alerts, and the window is persisted. TCP sources have no gate.
+    const sources = await databaseService.sources.getAllSources();
+    for (const src of sources) {
+      if (purgeNodesSourceId && src.id !== purgeNodesSourceId) continue;
+      if (isGatedMeshtasticNewNodeSourceType(src.type)) await newNodeAlertGate.rearm(src.id);
+    }
     // Re-sync from THIS source's own radio. A non-Meshtastic source has none;
     // asking the primary TCP radio to refresh would be the wrong device (#5375).
     const purgeNodesManager = resolveOwnMeshtasticManager(purgeNodesSourceId);
