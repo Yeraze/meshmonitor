@@ -501,6 +501,9 @@ const MESHCORE_MQTT: Spec<MeshCoreMqttSourceConfig> = {
   password: secret({ endpoint: 'brokerUrl' }),
   rejectUnauthorized: withheld,
   autoConnect: open(),
+  // #6532: which observer is the owner's node. Same class as the broker
+  // allowlist: an editor setting, not shown to a viewer.
+  localObserverKey: withheld,
 };
 
 /**
@@ -546,7 +549,7 @@ const MESHCORE_MQTT_BROKER: Spec<MeshCoreMqttBrokerSourceConfig> = {
       identity: (entry) => (typeof entry.id === 'string' && entry.id !== '' ? entry.id : null),
     },
   }),
-  autoConnect: open(),
+  autoConnect: open(),  localObserverKey: withheld, // #6532, as MESHCORE_MQTT
 };
 
 const MQTT_BRIDGE: Spec<MqttBridgeSourceConfig> = {

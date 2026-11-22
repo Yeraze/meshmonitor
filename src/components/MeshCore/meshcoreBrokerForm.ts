@@ -26,6 +26,8 @@ export interface BrokerFormState {
   regions: string;
   tokenAudience: string;
   allowedObservers: string;
+  /** The observer that is the owner's node (#6532); blank for none. */
+  localObserverKey: string;
   username: string;
   password: string;
   maxClients: string;
@@ -52,6 +54,7 @@ export function emptyBrokerForm(): BrokerFormState {
     regions: '',
     tokenAudience: '',
     allowedObservers: '',
+    localObserverKey: '',
     username: '',
     password: '',
     maxClients: BROKER_FORM_DEFAULTS.maxClients,
@@ -106,6 +109,7 @@ export function brokerFormFromConfig(raw: Record<string, unknown> | undefined | 
     regions: commas(cfg.regions),
     tokenAudience: s(auth.tokenAudience),
     allowedObservers: lines(auth.allowedObservers),
+    localObserverKey: s(cfg.localObserverKey),
     username: s(auth.username),
     password: '',
     maxClients: numStr(limits.maxClients, BROKER_FORM_DEFAULTS.maxClients),
@@ -163,6 +167,13 @@ export function brokerFormToConfig(form: BrokerFormState, hasStoredPassword = fa
   const observers = splitList(form.allowedObservers).map((k) => k.toUpperCase());
   if (observers.some((k) => !KEY_RE.test(k))) {
     return err('source.form.mcb_error_observer_key', 'Each observer public key must be 64 hex characters');
+  }
+  const localObserverKey = form.localObserverKey.trim().toUpperCase();
+  if (localObserverKey && !KEY_RE.test(localObserverKey)) {
+    return err('source.form.mcb_error_local_key', 'My node must be a 64-character hex public key');
+  }
+  if (localObserverKey && observers.length > 0 && !observers.includes(localObserverKey)) {
+    return err('source.form.mcb_error_local_key_not_allowed', 'My node must be one of the allowed observers');
   }
   const tokenAudience = form.tokenAudience.trim();
   const username = form.username.trim();
@@ -231,6 +242,7 @@ export function brokerFormToConfig(form: BrokerFormState, hasStoredPassword = fa
     autoConnect: form.autoConnect,
   };
   if (regions.length > 0) config.regions = regions;
+  if (localObserverKey) config.localObserverKey = localObserverKey;
   if (targets.length > 0 || form.ownIdentityName.trim()) {
     const forwarding: Record<string, unknown> = { targets };
     if (form.ownIdentityName.trim()) forwarding.ownIdentityName = form.ownIdentityName.trim();

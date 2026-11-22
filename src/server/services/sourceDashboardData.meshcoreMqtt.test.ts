@@ -26,13 +26,17 @@ const INGEST_NODE = {
   lastHeard: Date.now(),
 };
 
+const OTHER_NODE = { ...INGEST_NODE, publicKey: 'c'.repeat(64), name: 'Neighbour' };
+
 vi.mock('../sourceManagerRegistry.js', () => {
   // sourceType 'meshcore_mqtt' — isAnyMeshCoreManager accepts it, the
   // device-only isMeshCoreManager does not.
   const ingestStub = {
     sourceId: 'rt-source-a',
     sourceType: 'meshcore_mqtt' as const,
-    getAllNodes: async () => [INGEST_NODE],
+    getAllNodes: async () => [INGEST_NODE, OTHER_NODE],
+    // #6532: the observer the source config names as the owner's node.
+    getLocalObserverKey: () => INGEST_NODE.publicKey.toUpperCase(),
   };
   return {
     sourceManagerRegistry: {
@@ -73,7 +77,7 @@ describe('buildSourceNodes — meshcore_mqtt ingest source (#5094)', () => {
 
     const result = await buildSourceNodes(ingestRow, harness.limited as unknown as User);
 
-    expect(result).toHaveLength(1);
+    expect(result).toHaveLength(2);
     const node = result[0] as Record<string, unknown>;
     expect(node.longName).toBe('Observed Repeater');
     expect(node.latitude).toBe(39.5);
@@ -107,5 +111,25 @@ describe('buildSourceNodes — meshcore_mqtt ingest source (#5094)', () => {
     const result = await buildSourceNodes(ingestRow, harness.limited as unknown as User);
     const node = result[0] as Record<string, unknown>;
     expect(String(node.nodeId)).toBe(`mc:rt-source-a:${'b'.repeat(12)}`);
+  });
+});
+
+describe('buildSourceNodes — "my node" on an ingest source (#6532)', () => {
+  let harness: RouteTestHarness;
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: () => {} });
+  });
+  afterEach(async () => {
+    await harness.cleanup();
+  });
+
+  it('flags only the configured observer as local', async () => {
+    const result = await buildSourceNodes(
+      { id: 'rt-source-a', name: 'Region Feed', type: 'meshcore_mqtt' },
+      harness.admin as unknown as User,
+    ) as Array<Record<string, unknown>>;
+    const byName = Object.fromEntries(result.map((n) => [n.longName, n]));
+    expect(byName['Observed Repeater'].isLocal).toBe(true);
+    expect(byName['Neighbour']).not.toHaveProperty('isLocal');
   });
 });

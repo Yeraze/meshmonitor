@@ -64,3 +64,27 @@ describe('meshcoreBrokerForm', () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe('meshcoreBrokerForm — My node (#6532)', () => {
+  const base = { ...emptyBrokerForm(), tokenAudience: 'aud' };
+
+  it('round-trips the key, upper-cased', () => {
+    const r = brokerFormToConfig({ ...base, localObserverKey: KEY });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.config.localObserverKey).toBe(KEY.toUpperCase());
+    expect(brokerFormFromConfig(r.config).localObserverKey).toBe(KEY.toUpperCase());
+  });
+
+  it('omits it when blank', () => {
+    const r = brokerFormToConfig(base);
+    expect(r.ok && 'localObserverKey' in r.config).toBe(false);
+  });
+
+  it('refuses a malformed key and one missing from the allowlist', () => {
+    const bad = brokerFormToConfig({ ...base, localObserverKey: 'xyz' });
+    expect(!bad.ok && bad.errorKey).toBe('source.form.mcb_error_local_key');
+    const missing = brokerFormToConfig({ ...base, allowedObservers: 'cd'.repeat(32), localObserverKey: KEY });
+    expect(!missing.ok && missing.errorKey).toBe('source.form.mcb_error_local_key_not_allowed');
+  });
+});

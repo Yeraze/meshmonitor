@@ -27,6 +27,7 @@ vi.mock('../sourceManagerTypes.js', () => ({
   // 5.5, so an MQTT ingest source's advert-discovered nodes reach the map too.
   isAnyMeshCoreManager: (m: unknown) => Boolean(m),
   isMeshtasticManager: () => false,
+  meshCoreDisplayLocalKey: () => null, // #6532
 }));
 
 vi.mock('../../services/database.js', () => ({
