@@ -115,6 +115,8 @@ import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, computeNeighborUtilization, clampNeighborSampleCount, parseManualNeighborNodes, isPickableInfrastructureNode, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, DEFAULT_NEIGHBOR_UTIL_MAX_HOPS, DEFAULT_NEIGHBOR_SELECTION_MODE, MAX_NEIGHBOR_UTIL_MAX_HOPS, NEIGHBOR_UTIL_SAMPLE_COUNT, MAX_NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborSelectionMode, type NeighborUtilCandidate, type NeighborUtilContributor, type LocalFillReason, type SkippedNeighbor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
+import { isClockSampleEligible } from './utils/clockSampleGate.js';
+import { recordClockSample } from './services/meshcoreDeviceHealth.js';
 import { resolveLastHeardSec, isLiveReception, isFirmwareReplayPacket, resolvePositionObservedAtMs, resolveNodeDbPositionObservedAtMs } from './utils/replayGuard.js';
 import { channelIndexFromPacket } from './utils/nodeChannelEvidence.js';
 import { isLiveNodeDiscovery } from './utils/nodeDiscovery.js';
@@ -7795,6 +7797,7 @@ class MeshtasticManager implements ISourceManager {
               decryptedChannelId: decryptedChannelId ?? undefined,
               nodeDiscovered: discoveredNodeNum !== null,
             });
+            await this.sampleMeshtasticClock(meshPacket, (processedPayload as { time?: unknown } | null)?.time, context);
             break;
           case PortNum.NODEINFO_APP:
             await this.processNodeInfoMessageProtobuf(meshPacket, processedPayload as any);
@@ -7804,6 +7807,7 @@ class MeshtasticManager implements ISourceManager {
             break;
           case PortNum.TELEMETRY_APP:
             await this.processTelemetryMessageProtobuf(meshPacket, processedPayload as any);
+            await this.sampleMeshtasticClock(meshPacket, (processedPayload as { time?: unknown } | null)?.time, context);
             break;
           case PortNum.ROUTING_APP:
             await this.processRoutingErrorMessage(meshPacket, processedPayload as any);
@@ -9413,6 +9417,48 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Legacy node info message processing (for backward compatibility)
    */
+
+  /**
+   * #6341 P5 (D2/D3): feed a live LoRa telemetry/position packet's own time to
+   * the passive clock-sample store. The gate runs first, so a packet that fails
+   * it costs no DB read. Sends nothing; never throws.
+   */
+  private async sampleMeshtasticClock(
+    meshPacket: { from?: unknown; id?: unknown; rxTime?: unknown; viaMqtt?: boolean | null; transportMechanism?: number | null },
+    senderTime: unknown,
+    context?: ProcessingContext,
+  ): Promise<void> {
+    try {
+      const nowMs = Date.now();
+      const senderSec = senderTime != null ? Number(senderTime) : null;
+      const fromNum = Number(meshPacket.from) >>> 0;
+      const eligible = isClockSampleEligible({
+        rxTimeSec: meshPacket.rxTime != null ? Number(meshPacket.rxTime) : null,
+        nowMs,
+        fromNum,
+        localNodeNum: this.localNodeInfo?.nodeNum,
+        packetId: meshPacket.id ? Number(meshPacket.id) : null,
+        transport: resolveRadioPacketTransport(meshPacket),
+        viaMqtt: meshPacket.viaMqtt,
+        viaStoreForward: context?.viaStoreForward,
+        fromMqttProxy: context?.fromMqttProxy,
+        virtualNodeRequestId: context?.virtualNodeRequestId,
+        senderSec,
+      });
+      if (!eligible || senderSec == null) return;
+      await recordClockSample(
+        databaseService.telemetry,
+        { nodeId: `!${fromNum.toString(16).padStart(8, '0')}`, nodeNum: fromNum, publicKey: null },
+        Math.floor(nowMs / 1000) - senderSec,
+        'packet',
+        senderSec,
+        this.sourceId,
+        nowMs,
+      );
+    } catch (err) {
+      logger.debug('Clock sample skipped:', err);
+    }
+  }
 
   /**
    * Process telemetry message using protobuf types
