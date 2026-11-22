@@ -10,7 +10,7 @@ import { MESHCORE_MAX_TEXT_BYTES } from '../../utils/meshcoreMessageLimits';
 import { MESHTASTIC_MAX_TEXT_BYTES, SPLIT_MAX_PARTS, SPLIT_PART_GAP_MS } from '../../utils/messageSplitLimits';
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
-export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect' | 'resultTarget' | 'tracePaths' | 'datetimeLocal' | 'timeZone';
+export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'senderNameSelect' | 'forwardingSourceSelect' | 'resultTarget' | 'tracePaths' | 'datetimeLocal' | 'timeZone';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -836,6 +836,11 @@ export const ACTIONS: BlockDef[] = [
       {
         name: 'scopeName', label: 'Region', kind: 'regionSelect', advanced: true, tokens: true,
         placeholder: 'e.g. paris', help: 'Used when MeshCore scope is "A specific region".',
+      },
+      {
+        name: 'senderName', label: 'Send as', kind: 'senderNameSelect', advanced: true,
+        placeholder: 'Node name',
+        help: 'MeshCore channel sends only; a source that does not allow this name sends under its own name.',
       },
     ],
   },

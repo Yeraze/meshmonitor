@@ -182,7 +182,7 @@ MeshCore One shares a contact inside a message as a token shaped like `<PUBKEYHE
 
 An API caller can send a channel message under a name of its own (`senderName` on the send endpoints, see the [REST API](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/REST_API.md#send-under-another-name)). This is off by default and needs a source admin to set it up.
 
-**Setup.** Open **Device Configuration, API sender names** on a companion source. Turn on *Allow API callers to send under these names* and list up to 16 names, one per line. Saving needs `configuration:write` on the source. Each name is 1 to 31 bytes, with no `:`, no control characters and no leading `#`.
+**Setup.** Open **Device Configuration, Sender names** on a companion source. Turn on *Allow API callers to send under these names* and list up to 16 names, one per line. Saving needs `configuration:write` on the source. Each name is 1 to 31 bytes, with no `:`, no control characters and no leading `#`.
 
 **What it sends.** MeshMonitor builds the channel packet itself and hands it to the radio as a raw packet, so the name in the message is the name you chose. The radio's own name is not used.
 
@@ -193,6 +193,13 @@ An API caller can send a channel message under a name of its own (`senderName` o
 - The message shows once, with a **Sent as `<name>`** line on the bubble. The radio's own copy of the packet is dropped, so Auto-Acknowledge, Auto-Responder, Forwarding and notifications never answer it. On a second source on the same channel the message counts as ours for the next 30 minutes, so nothing there answers it either.
 - **Resend** goes out raw under the same name and the same time stamp. It is refused if the name was removed from the list or the feature was turned off.
 - Receive-only mode blocks it like any other send.
+
+**In automations and the composer.** The same list feeds a **Send as** picker on the channel composer and on these automations: timer triggers, auto-responder triggers (channel replies only), auto-announce, and the Automation Engine *Send message* action (Advanced, *Send as*). The picker shows only when the list is on, the companion firmware supports it, and you can send or edit automations on the source (`messages:write` or `automation:write`).
+
+- A save checks the name's syntax only. It does not check the list, so a name later removed from the list never blocks saving the rest of a trigger.
+- **At send time a name that is not allowed falls back to the node's own name**, with one warning in the log, and the message still goes out. This covers a name removed from the list, the feature turned off, client repeat on, and firmware older than 1.16. A send never changes name between split parts.
+- A name lowers the text limit, so a long message can need one more part. The part count stays capped at 3, as today.
+- Each save that sets or changes a name writes a `meshcore_sender_name_automation_set` audit row. Single sends are not audited.
 
 ::: warning Impersonation
 MeshCore does not prove who sent a channel message. Anyone with write access to the channel, on a source that allows a name, can post as that name. Receivers, MeshCore apps and MeshMonitor's own block list cannot tell the difference. List only names you want your API callers to use. Every send is in the audit log (`meshcore_message_sent_as`, no message text), and so is each list change (`meshcore_sender_names_updated`).

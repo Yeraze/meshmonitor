@@ -1,0 +1,11 @@
+/* SenderNameField. CSS module; do not add these rules to the global sheets. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stale {
+  font-size: 0.8rem;
+  color: var(--color-warning);
+}

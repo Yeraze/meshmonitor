@@ -44,6 +44,8 @@ export interface MeshCoreTimerTrigger {
   /** MeshCore scope/region for the sent message (#3833). */
   scopeMode?: ScopeMode;
   scopeName?: string;
+  /** Send channel messages under this sender name (#6341 P4). */
+  senderName?: string;
   lastRun?: number;
   lastResult?: 'success' | 'error';
   lastError?: string;

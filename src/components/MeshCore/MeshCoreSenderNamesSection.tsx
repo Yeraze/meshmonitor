@@ -94,9 +94,9 @@ export const MeshCoreSenderNamesSection: React.FC<MeshCoreSenderNamesSectionProp
   return (
     <div id="meshcore-sender-names">
       <ConfigSection
-        title={t('meshcore.sender_names.title', 'API sender names')}
+        title={t('meshcore.sender_names.title', 'Sender names')}
         description={t('meshcore.sender_names.hint',
-          "Lets an API caller send a channel message under one of these names instead of this node's name. Off by default. A caller still needs write access to the channel.")}
+          "Lets API callers, automations and the channel composer send a channel message under one of these names instead of this node's name. Off by default. A sender still needs write access to the channel.")}
         collapsible
       >
         <div>
