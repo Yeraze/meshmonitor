@@ -18,7 +18,7 @@ import { applyMeshCorePositionOverridesForViewer } from '../utils/meshcorePositi
 import { Router, type Request, type Response } from 'express';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isMeshCoreMqttManager } from '../sourceManagerTypes.js';
+import { isMeshCoreMqttManager, meshCoreDisplayLocalKey } from '../sourceManagerTypes.js';
 import type { MeshCoreMqttManager } from '../meshcoreMqttManager.js';
 import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 import { logger } from '../../utils/logger.js';
@@ -73,8 +73,11 @@ router.get(
       if (!mgr) return refuseDeviceSource(res);
 
       const status = mgr.getStatus();
+      // #6532: the observer the source config names as the owner's node.
+      const localKey = meshCoreDisplayLocalKey(mgr);
       const observers = [...mgr.getObserverStatuses().entries()].map(([publicKey, snap]) => ({
         publicKey,
+        ...(localKey && publicKey.toUpperCase() === localKey ? { isLocal: true } : {}),
         online: snap.online,
         lastSeenMs: snap.at,
         batteryMv: snap.batteryMv ?? null,
@@ -126,7 +129,9 @@ router.get(
       if (!mgr) return refuseDeviceSource(res);
       // #5842: an enabled location override wins over the advert position;
       // a private one only for a caller with nodes_private:read.
-      const nodes = await applyMeshCorePositionOverridesForViewer(await mgr.getAllNodes(), req.user, (req.params as { id: string }).id);
+      const localKey = meshCoreDisplayLocalKey(mgr); // #6532
+      const nodes = (await applyMeshCorePositionOverridesForViewer(await mgr.getAllNodes(), req.user, (req.params as { id: string }).id))
+        .map((n) => (localKey && n.publicKey?.toUpperCase() === localKey ? { ...n, isLocal: true } : n));
       return ok(res, { nodes, count: nodes.length });
     } catch (error) {
       logger.error('[API] MeshCore ingest nodes failed:', error);

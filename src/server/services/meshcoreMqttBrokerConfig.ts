@@ -66,6 +66,12 @@ export interface MeshCoreMqttBrokerSourceConfig {
     targets?: MeshCoreMqttBrokerForwardTarget[];
   };
   autoConnect?: boolean;
+  /**
+   * The observer that is the user's own node (#6532): shown as "my node" on
+   * the dashboard map and the source page. Display only. Must be on the
+   * observer allowlist when one is set.
+   */
+  localObserverKey?: string;
 }
 
 export const MESHCORE_BROKER_DEFAULT_PORT = 1884;
@@ -96,6 +102,8 @@ export interface NormalizedMeshCoreBrokerConfig {
   maxPayloadBytes: number;
   ownIdentityName: string;
   targets: NormalizedForwardTarget[];
+  /** Upper-case 64-hex key of the user's own observer (#6532), or null. */
+  localObserverKey: string | null;
 }
 
 export interface NormalizedForwardTarget {
@@ -163,6 +171,7 @@ export function normalizeMeshCoreBrokerConfig(raw: unknown): NormalizedMeshCoreB
     ),
     maxPayloadBytes: intIn(limits.maxPayloadBytes, MESHCORE_BROKER_DEFAULT_MAX_PAYLOAD, 256, MESHCORE_BROKER_MAX_PAYLOAD_CEILING),
     ownIdentityName: str(forwarding.ownIdentityName) ?? 'MeshMonitor',
+    localObserverKey: keyList([cfg.localObserverKey])[0] ?? null,
     targets: targets
       .filter((t) => t && typeof t === 'object' && t.enabled === true && str(t.url) && str(t.id))
       .map((t) => ({
@@ -232,6 +241,15 @@ export function validateMeshCoreBrokerConfig(raw: unknown): string | null {
       if (typeof k !== 'string' || !OBSERVER_KEY_RE.test(k.trim())) {
         return 'every auth.allowedObservers entry must be a 64-character hex public key';
       }
+    }
+  }
+
+  if (cfg.localObserverKey !== undefined && cfg.localObserverKey !== null && cfg.localObserverKey !== '') {
+    const key = typeof cfg.localObserverKey === 'string' ? cfg.localObserverKey.trim() : '';
+    if (!OBSERVER_KEY_RE.test(key)) return 'localObserverKey must be a 64-character hex public key';
+    const allowed = keyList(auth.allowedObservers);
+    if (allowed.length > 0 && !allowed.includes(key.toUpperCase())) {
+      return 'localObserverKey must be one of the allowed observers';
     }
   }
 

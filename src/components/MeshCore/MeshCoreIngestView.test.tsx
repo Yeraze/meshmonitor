@@ -333,3 +333,22 @@ describe('location override on the Nodes tab (#6531)', () => {
     expect(screen.queryByText('Override location', { selector: 'button' })).toBeNull();
   });
 });
+
+describe('"My node" badge (#6532)', () => {
+  it('marks the local observer and the local node', async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url.includes('/overview')) {
+        return { ...OVERVIEW, data: { ...OVERVIEW.data, observers: [{ ...OVERVIEW.data.observers[0], isLocal: true }] } };
+      }
+      if (url.includes('/nodes')) {
+        return { success: true, data: { nodes: [{ publicKey: 'b'.repeat(64), name: 'Observed Repeater', isLocal: true }] } };
+      }
+      return { success: true, data: {} };
+    });
+    renderView();
+    expect(await screen.findByText('My node')).toBeTruthy();
+    fireEvent.click(screen.getByText('Nodes', { selector: 'button' }));
+    await screen.findByText('Observed Repeater');
+    expect(screen.getAllByText('My node')).toHaveLength(1);
+  });
+});

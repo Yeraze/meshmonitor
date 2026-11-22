@@ -29,6 +29,9 @@ export interface CreateNodeIconOptions {
   /** used when color kind = hops (default) */
   hops?: number;
   isSelected?: boolean;
+  /** The source's own node ("my node", #6532): drawn at the larger selected
+   *  size so it stands out among the nodes it hears. */
+  isLocal?: boolean;
   isRouter?: boolean;
   shortName?: string;
   showLabel?: boolean;
@@ -84,6 +87,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     hops = 999,
     colorMode = 'node',
     isSelected = false,
+    isLocal = false,
     isRouter = false,
     shortName,
     showLabel = false,
@@ -155,8 +159,8 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
   // existing pin/circle rendering.
   const roleInner =
     roleCategory && roleCategory !== 'standard' ? roleGlyphInnerSvg(roleCategory, color) : '';
-  const size = isSelected ? 60 : 48;
-  const strokeWidth = isSelected ? 3 : 2;
+  const size = isSelected || isLocal ? 60 : 48;
+  const strokeWidth = isSelected || isLocal ? 3 : 2;
 
   // Unmessageable overlay (issue #4295): a "no DMs" badge pinned to the
   // top-right corner, clear of the bottom-right role badge that official style

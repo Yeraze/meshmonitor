@@ -172,6 +172,11 @@ export class MeshCoreMqttBrokerManager extends MeshCoreMqttManager {
     this.portOverride = opts?.portOverride ?? null;
   }
 
+  /** The broker config's own-node observer (#6532); see the base class. */
+  override getLocalObserverKey(): string | null {
+    return this.brokerConfig.localObserverKey;
+  }
+
   protected override async openTransport(): Promise<void> {
     this.ownKey = await this.loadOwnKey();
     const cfg = this.brokerConfig;

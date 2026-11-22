@@ -215,3 +215,31 @@ describe('GET /ingest/nodes and /ingest/messages', () => {
     expect((await request(app).get('/api/sources/device-1/meshcore/ingest/messages')).status).toBe(404);
   });
 });
+
+describe('"my node" on an ingest source (#6532)', () => {
+  const setLocal = (key: string | null) => {
+    managers.set('ingest-1', { ...makeIngestManager('ingest-1'), getLocalObserverKey: () => key });
+  };
+
+  it('flags the configured observer on the overview, matching case-insensitively', async () => {
+    setLocal('D'.repeat(64));
+    const res = await request(app).get('/api/sources/ingest-1/meshcore/ingest/overview');
+    const byKey = Object.fromEntries(res.body.data.observers.map((o: { publicKey: string }) => [o.publicKey, o]));
+    expect(byKey['d'.repeat(64)].isLocal).toBe(true);
+    expect(byKey['e'.repeat(64)]).not.toHaveProperty('isLocal');
+  });
+
+  it('flags the configured node on /ingest/nodes', async () => {
+    setLocal('C'.repeat(64));
+    const res = await request(app).get('/api/sources/ingest-1/meshcore/ingest/nodes');
+    expect(res.body.data.nodes[0].isLocal).toBe(true);
+  });
+
+  it('flags nothing when none is configured', async () => {
+    setLocal(null);
+    const ov = await request(app).get('/api/sources/ingest-1/meshcore/ingest/overview');
+    expect(ov.body.data.observers.some((o: { isLocal?: boolean }) => o.isLocal)).toBe(false);
+    const nodes = await request(app).get('/api/sources/ingest-1/meshcore/ingest/nodes');
+    expect(nodes.body.data.nodes[0]).not.toHaveProperty('isLocal');
+  });
+});

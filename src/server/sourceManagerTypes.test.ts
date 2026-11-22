@@ -9,7 +9,7 @@
  *  - Fallback scan covers the interim window between remove and re-designation.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { isMeshCoreManager, isMeshtasticManager, isReticulumManager, getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshtasticManager, isReticulumManager, getPrimaryMeshtasticManager, meshCoreDisplayLocalKey } from './sourceManagerTypes.js';
 import { SourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { ISourceManager } from './sourceManagerRegistry.js';
 
@@ -213,5 +213,26 @@ describe('SourceManagerRegistry — primary designation lifecycle', () => {
 
     // Fallback: getPrimaryMeshtasticManager returns the first tcp in insertion order.
     expect(getPrimaryMeshtasticManager(reg)).toBe(stub2);
+  });
+});
+
+describe('meshCoreDisplayLocalKey (#6532)', () => {
+  const KEY = '5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a';
+  it("is a device source's radio, upper-cased", () => {
+    const m = { ...makeStub('meshcore'), getLocalNode: () => ({ publicKey: KEY }) } as unknown as ISourceManager;
+    expect(meshCoreDisplayLocalKey(m)).toBe(KEY.toUpperCase());
+  });
+  it('is null for a device source with no local node yet', () => {
+    const m = { ...makeStub('meshcore'), getLocalNode: () => null } as unknown as ISourceManager;
+    expect(meshCoreDisplayLocalKey(m)).toBeNull();
+  });
+  it("is an ingest or broker source's configured observer", () => {
+    for (const t of ['meshcore_mqtt', 'meshcore_mqtt_broker'] as const) {
+      const m = { ...makeStub(t as ISourceManager['sourceType']), getLocalObserverKey: () => KEY.toUpperCase() } as unknown as ISourceManager;
+      expect(meshCoreDisplayLocalKey(m)).toBe(KEY.toUpperCase());
+    }
+  });
+  it('is null for a non-MeshCore source', () => {
+    expect(meshCoreDisplayLocalKey(makeStub('meshtastic_tcp'))).toBeNull();
   });
 });

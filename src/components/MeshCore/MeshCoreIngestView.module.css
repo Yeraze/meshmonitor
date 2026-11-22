@@ -153,6 +153,17 @@
   color: var(--color-text);
 }
 
+.localTag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-surface);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .overrideTag {
   margin-left: 6px;
   color: var(--color-text-muted);

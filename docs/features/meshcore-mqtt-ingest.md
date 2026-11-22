@@ -131,6 +131,16 @@ A status heartbeat does **not** refresh `lastHeard`: it proves the observer can 
 
 An observer usually has no position: it publishes what it hears, and it never hears its own adverts. To put it on the map, open the source's **Nodes** tab and click **Override location** on its row. This is the same [contact location override](/features/meshcore-using#contact-location-override) a Companion or Repeater source has: it lives in MeshMonitor only, a new advert does not move it, and it can be marked private. It needs **Nodes: write** on the source.
 
+## My node {#my-node}
+
+If one of the observers is your own node, put its public key in the source's **My node** field. MeshMonitor then:
+
+- marks it **My node** on the source's Overview and Nodes tabs,
+- draws it with the larger "own node" marker on the dashboard map, and gives it hop 0,
+- uses its position (or a public location override) as the source's reference point for [sign-flip correction](/features/settings#sign-flipped-position-correction).
+
+This is display only. Nothing is ever sent to the observer, and distance and "hops from me" calculations do not use it. One observer per source.
+
 ## Retention
 
 A region feed is far higher volume than one radio's earshot, so it has its own cap rather than sharing the device default:

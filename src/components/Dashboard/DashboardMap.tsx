@@ -903,12 +903,13 @@ export default function DashboardMap({
       const descriptor: NodeMarkerDescriptor = {
         key: markerKey,
         position: [pos.lat, pos.lng],
-        iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${markAircraft ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}|${sourceRingColor ?? ''}`,
+        iconSig: `${hops}|${node.isLocal ? 'L' : ''}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${markAircraft ? 1 : 0}|${mapPinStyle}|${mapPinColorMode}|${sourceRingColor ?? ''}`,
         buildIcon: () =>
           applyNodeSourceRing(createNodeIcon({
             variant: 'meshtastic',
             hops,
             isSelected: false,
+            isLocal: node.isLocal === true,
             isRouter,
             roleCategory,
             isUnmessagable: !!node.isUnmessagable,

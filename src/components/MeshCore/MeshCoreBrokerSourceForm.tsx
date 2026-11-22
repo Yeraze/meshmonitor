@@ -185,6 +185,23 @@ export const MeshCoreBrokerSourceForm: React.FC<Props> = ({ value, onChange, sou
           </span>
         </label>
         <label className="dashboard-form-field">
+          <span className="dashboard-form-label">{t('source.form.mc_local_observer', 'My node (optional)')}</span>
+          <input
+            className="dashboard-form-input"
+            type="text"
+            value={value.localObserverKey}
+            onChange={(e) => set('localObserverKey', e.target.value)}
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <span className="dashboard-form-help">
+            {t(
+              'source.form.mc_local_observer_help',
+              "Public key of the observer that is your own node. It is marked as \"My node\" on the dashboard map and this source's pages. Display only: nothing is sent to it.",
+            )}
+          </span>
+        </label>
+        <label className="dashboard-form-field">
           <span className="dashboard-form-label">{t('source.form.mcb_username', 'Static username (optional)')}</span>
           <input
             className="dashboard-form-input"
