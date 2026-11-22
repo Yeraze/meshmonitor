@@ -49,6 +49,18 @@ describe('notificationCapabilities', () => {
     expect(notificationCapabilities('mqtt_bridge').connectionEvents).toBe('broker');
     expect(notificationCapabilities('mqtt_broker').connectionEvents).toBe('none');
   });
+  it('Reticulum: DM, new-destination and bridge alerts only (#6341 P3)', () => {
+    expect(notificationCapabilities('reticulum')).toMatchObject({
+      dm: true, rooms: false, channels: false, emoji: false, mqtt: false, traceroute: false, autoTrace: false,
+      newNode: 'on', newNodeNote: 'reticulum_learning', waypoint: false, mention: false, messageFilters: true,
+      unsupportedHint: 'reticulum', connectionEvents: 'bridge', nodeMonitoring: false,
+    });
+  });
+  it('nodeMonitoring is true on every other source type', () => {
+    for (const type of ['meshtastic', 'meshtastic_tcp', 'mqtt_bridge', 'mqtt_broker', 'meshcore', 'meshcore_mqtt', undefined]) {
+      expect(notificationCapabilities(type, 1).nodeMonitoring).toBe(true);
+    }
+  });
   it('unknown device type behaves as Companion', () => {
     expect(notificationCapabilities('meshcore', undefined).dm).toBe(true);
   });
@@ -56,6 +68,11 @@ describe('notificationCapabilities', () => {
 
 describe('loadNotificationChannels', () => {
   beforeEach(() => vi.mocked(api.get).mockReset());
+  it('returns [] for Reticulum without a request (#6341 P3)', async () => {
+    vi.mocked(api.get).mockClear();
+    expect(await loadNotificationChannels('s1', 'reticulum')).toEqual([]);
+    expect(api.get).not.toHaveBeenCalled();
+  });
   it('uses /api/channels for Meshtastic', async () => {
     vi.mocked(api.get).mockResolvedValue([{ id: 0 }]);
     expect(await loadNotificationChannels('s1', 'meshtastic')).toEqual([{ id: 0 }]);

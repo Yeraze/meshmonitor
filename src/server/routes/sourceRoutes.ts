@@ -2749,8 +2749,14 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
       // REMOVED from the registry on disconnect (build spec §3.6/§7 risk 2):
       // read routes (`/reticulum/*`) serve from the DB and tolerate an absent
       // manager, so there is no "unaddressable source" concern here.
-      if (!sourceManagerRegistry.getManager(source.id)) {
+      const existingRtMgr = sourceManagerRegistry.getManager(source.id);
+      if (!existingRtMgr) {
         return res.json({ success: true, alreadyStopped: true });
+      }
+      // The user chose this, so a connected bridge alerts at once (no grace).
+      // Edits, autoConnect off and shutdown go through removeManager alone: silent.
+      if (isReticulumManager(existingRtMgr)) {
+        await existingRtMgr.disconnect({ userInitiated: true });
       }
       await sourceManagerRegistry.removeManager(source.id);
       return res.json({ success: true });

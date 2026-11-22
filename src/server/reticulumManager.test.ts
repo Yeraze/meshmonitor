@@ -31,9 +31,9 @@ import type {
 } from './reticulumProtocol.js';
 import type { ReticulumMessageRow } from '../db/repositories/reticulum.js';
 
-const upsertDestination = vi.fn().mockResolvedValue(undefined);
+const upsertDestination = vi.fn().mockResolvedValue({ inserted: false });
 const upsertInterface = vi.fn().mockResolvedValue(undefined);
-const upsertMessage = vi.fn().mockResolvedValue(undefined);
+const upsertMessage = vi.fn().mockResolvedValue({ inserted: true });
 const updateMessageState = vi.fn().mockResolvedValue(undefined);
 const renameMessageId = vi.fn().mockResolvedValue(undefined);
 const getMessage = vi.fn();

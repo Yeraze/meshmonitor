@@ -14,6 +14,13 @@ vi.mock('react-i18next', async () => {
   return createReactI18nextMock();
 });
 
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ authStatus: { authenticated: false, user: null }, hasPermission: () => false }),
+}));
+vi.mock('../../hooks/usePushNotificationNavigation', () => ({
+  usePushNotificationNavigation: () => ({ pendingNavigation: null, clearPendingNavigation: vi.fn() }),
+}));
+
 vi.mock('./hooks/useReticulum', () => ({
   useReticulum: () => ({
     status: { connected: true, mode: 'own', destinationCount: 0, interfaceCount: 0 },

@@ -32,4 +32,16 @@ describe('connection events (P11 S6)', () => {
     expect(broadcast.mock.calls[1][1].body).toMatch(/^Connection to the MQTT broker restored/);
     expect(JSON.stringify(broadcast.mock.calls)).not.toMatch(/radio/i);
   });
+
+  it("link 'bridge' uses Reticulum bridge wording (#6341)", async () => {
+    await svc.notifyNodeConnected('rns1', 'Mesh', 'bridge');
+    await svc.notifyNodeDisconnected('rns1', 'Mesh', 'bridge');
+    await svc.notifyNodeConnected('rns1', 'Mesh', 'bridge');
+    expect(broadcast).toHaveBeenCalledTimes(2);
+    expect(broadcast.mock.calls[0][1].title).toBe('Reticulum Bridge Disconnected · Mesh');
+    expect(broadcast.mock.calls[0][1].body).toBe('Lost connection to the Reticulum bridge');
+    expect(broadcast.mock.calls[1][1].title).toBe('Reticulum Bridge Reconnected · Mesh');
+    expect(broadcast.mock.calls[1][1].body).toMatch(/^Connection to the Reticulum bridge restored \(was offline for/);
+    expect(JSON.stringify(broadcast.mock.calls)).not.toMatch(/radio|MQTT/i);
+  });
 });

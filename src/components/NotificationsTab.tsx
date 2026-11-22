@@ -210,7 +210,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
   // Meshtastic channels — never loaded their saved preferences.
   useEffect(() => {
     void loadChannels().finally(() => loadPreferences());
-    void loadNodes();
+    if (caps.nodeMonitoring) void loadNodes();
     // Subscription state is per source too (#5493).
     void checkNotificationStatus();
   }, [currentSourceId]);
@@ -731,7 +731,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
           style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '0 0 16px', padding: '10px 12px', borderRadius: '6px', fontSize: '14px' }}
         >
           <UiIcon name="info" size={16} />
-          <span>{t(!caps.dm ? 'notifications.using_defaults_notice_no_dm' : isMeshCore ? 'notifications.using_defaults_notice_meshcore' : 'notifications.using_defaults_notice')}</span>
+          <span>{t(!caps.dm ? 'notifications.using_defaults_notice_no_dm' : caps.dm && !caps.channels ? 'notifications.using_defaults_notice_dm_only' : isMeshCore ? 'notifications.using_defaults_notice_meshcore' : 'notifications.using_defaults_notice')}</span>
         </p>
       )}
 
@@ -914,7 +914,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                 </label>
                 {caps.newNodeNote && (
                   <div className={styles.muted} style={{ fontSize: '12px', marginTop: '6px' }}>
-                    {t(caps.newNodeNote === 'feed_learning' ? 'notifications.new_nodes_feed_note' : 'notifications.new_nodes_repeater_note', {
+                    {t(caps.newNodeNote === 'feed_learning' ? 'notifications.new_nodes_feed_note' : caps.newNodeNote === 'reticulum_learning' ? 'notifications.new_nodes_reticulum_note' : 'notifications.new_nodes_repeater_note', {
                       hours: NEW_NODE_LEARN_HOURS,
                       cap: NEW_NODE_CAP_PER_HOUR,
                     })}
@@ -924,7 +924,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
               ) : null}
               {caps.unsupportedHint && (
               <div className={styles.muted} style={{ fontSize: '12px', marginBottom: '16px' }}>
-                {t(caps.unsupportedHint === 'ingest' ? 'notifications.ingest_unsupported_hint_feed' : 'notifications.repeater_unsupported_hint')}
+                {t(caps.unsupportedHint === 'ingest' ? 'notifications.ingest_unsupported_hint_feed' : caps.unsupportedHint === 'reticulum' ? 'notifications.reticulum_unsupported_hint' : 'notifications.repeater_unsupported_hint')}
               </div>
               )}
 
@@ -1110,6 +1110,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
               </div>
               )}
 
+              {/* Inactive-node, low-battery and monitored-node picker: sources with
+                  node health only (Reticulum has none). */}
+              {caps.nodeMonitoring && (
+              <>
               {/* Inactive Node Notifications */}
               <div className={styles.row} style={{
                 padding: '12px',
@@ -1349,6 +1353,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                   </div>
                 )}
               </div>
+              </>
+              )}
 
               {/* Server Events Notifications */}
               <div className={styles.row} style={{
@@ -1395,6 +1401,12 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin, meshcoreDe
                         <>
                           <li>{t('notifications.server_events_disconnect')}</li>
                           <li>{t('notifications.server_events_reconnect')}</li>
+                        </>
+                      )}
+                      {caps.connectionEvents === 'bridge' && (
+                        <>
+                          <li>{t('notifications.server_events_disconnect_bridge')}</li>
+                          <li>{t('notifications.server_events_reconnect_bridge')}</li>
                         </>
                       )}
                       {caps.connectionEvents === 'broker' && (
