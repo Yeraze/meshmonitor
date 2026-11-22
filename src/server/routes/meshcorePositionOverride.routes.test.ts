@@ -17,6 +17,7 @@ const KEY = 'c'.repeat(64);
 const UNKNOWN_KEY = 'd'.repeat(64);
 const ADVERT = { latitude: 40.0, longitude: -105.0 };
 const PINNED = { latitude: 28.5, longitude: -81.4, altitude: 30 };
+const MQTT_SOURCE = 'rt-source-mqtt';
 
 // The live contact as the manager holds it: always the advert position.
 const STUB_CONTACT = {
@@ -40,9 +41,21 @@ vi.mock('../sourceManagerRegistry.js', () => {
     getAllNodes: async () => [{ publicKey: KEY, name: 'Base Repeater', advType: 2, ...ADVERT }],
     getRecentMessages: () => [],
   });
-  const managers = new Map([
+  // An MQTT ingest source (#6531): no device, no contact list. Its node list
+  // comes from the stored rows, as the real MeshCoreMqttManager's does.
+  const ingestStub = (sourceId: string) => ({
+    sourceId,
+    sourceType: 'meshcore_mqtt' as const,
+    // Same read as MeshCoreMqttManager.getAllNodes(): the stored rows.
+    getAllNodes: async () => {
+      const { default: db } = await import('../../services/database.js');
+      return db.meshcore.getNodesBySource(sourceId);
+    },
+  });
+  const managers = new Map<string, unknown>([
     ['rt-source-a', stubFor('rt-source-a')],
     ['rt-source-b', stubFor('rt-source-b')],
+    ['rt-source-mqtt', ingestStub('rt-source-mqtt')],
   ]);
   return {
     sourceManagerRegistry: {
@@ -260,6 +273,75 @@ describe('MeshCore location override routes (#5842)', () => {
       expect(nodes.body.data[0]).not.toHaveProperty('latitudeOverride');
       expect(nodes.body.data[0]).not.toHaveProperty('positionIsOverride');
       expect((await agent.get(url(harness.sourceA))).body.data.latitude).toBeUndefined();
+    });
+  });
+
+  describe('MQTT ingest source (#6531)', () => {
+    // An observer gets its row from its first /status heartbeat; it has no
+    // advert position because it never hears its own adverts.
+    beforeEach(async () => {
+      await harness.db.meshcore.upsertNode({ publicKey: KEY, name: 'Solar Observer', batteryMv: 4100 }, MQTT_SOURCE);
+    });
+    afterEach(async () => {
+      await harness.db.meshcore.clearNodePositionOverride(MQTT_SOURCE, KEY).catch(() => {});
+    });
+
+    it('sets, reads back and clears an override with no device behind the source', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const set = await agent.post(url(MQTT_SOURCE)).send({ enabled: true, ...PINNED });
+      expect(set.status).toBe(200);
+      expect(set.body.data).toMatchObject({ enabled: true, ...PINNED, sourceId: MQTT_SOURCE });
+
+      const get = await agent.get(url(MQTT_SOURCE));
+      expect(get.status).toBe(200);
+      expect(get.body.data).toMatchObject({ enabled: true, ...PINNED });
+
+      expect((await agent.delete(url(MQTT_SOURCE))).status).toBe(200);
+      expect((await agent.get(url(MQTT_SOURCE))).body.data.enabled).toBe(false);
+    });
+
+    it('a status-only observer comes back from /ingest/nodes at the pinned position', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const before = await agent.get(`/sources/${MQTT_SOURCE}/meshcore/ingest/nodes`);
+      expect(before.status).toBe(200);
+      const row = before.body.data.nodes.find((n: { publicKey: string }) => n.publicKey === KEY);
+      expect(row).toBeDefined();
+      expect(row.latitude ?? null).toBeNull();
+
+      await agent.post(url(MQTT_SOURCE)).send({ enabled: true, ...PINNED });
+      const after = await agent.get(`/sources/${MQTT_SOURCE}/meshcore/ingest/nodes`);
+      expect(after.body.data.nodes.find((n: { publicKey: string }) => n.publicKey === KEY)).toMatchObject({
+        latitude: PINNED.latitude,
+        longitude: PINNED.longitude,
+        positionIsOverride: true,
+      });
+    });
+
+    it('404s for a node the ingest source has no row for, without asking for a contact list', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post(url(MQTT_SOURCE, UNKNOWN_KEY)).send({ enabled: true, ...PINNED });
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe('NODE_NOT_FOUND');
+    });
+
+    it('takes nodes:write on the ingest source itself, not on another source', async () => {
+      await grantNodes(harness.limited.id, harness.sourceA, { read: true, write: true });
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.post(url(MQTT_SOURCE)).send({ enabled: true, ...PINNED })).status).toBe(403);
+
+      await grantNodes(harness.limited.id, MQTT_SOURCE, { read: true, write: true });
+      expect((await agent.post(url(MQTT_SOURCE)).send({ enabled: true, ...PINNED })).status).toBe(200);
+    });
+
+    it('withholds a private override from a viewer without nodes_private:read', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      await admin.post(url(MQTT_SOURCE)).send({ enabled: true, ...PINNED, isPrivate: true });
+
+      await grantNodes(harness.limited.id, MQTT_SOURCE, { read: true, viewOnMap: true });
+      const agent = await harness.loginAs(harness.limited);
+      const get = await agent.get(url(MQTT_SOURCE));
+      expect(get.body.data).toMatchObject({ enabled: true, isPrivate: true });
+      expect(get.body.data.latitude).toBeUndefined();
     });
   });
 });

@@ -73,9 +73,12 @@ afterEach(() => { vi.restoreAllMocks(); });
 /** Controls the manager's clock so the sample throttle is testable. */
 let nowMs = 1_700_000_000_000;
 
-/** The single row handed to insertTelemetryBatch on the Nth call. */
-const rowAt = (call: number) =>
-  (insertTelemetryBatch.mock.calls[call][0] as Array<Record<string, unknown>>)[0];
+/** The rows handed to insertTelemetryBatch on the Nth call. */
+const rowsAt = (call: number) =>
+  insertTelemetryBatch.mock.calls[call][0] as Array<Record<string, unknown>>;
+/** The row of one series handed to insertTelemetryBatch on the Nth call. */
+const rowAt = (call: number, type = 'mc_status_noise_floor') =>
+  rowsAt(call).find(r => r.telemetryType === type)!;
 
 describe('status ingest (#5040 Phase 5)', () => {
   it('subscribes to the status topic alongside packets', async () => {
@@ -327,13 +330,13 @@ describe('noise floor persistence (#5040 follow-up)', () => {
     expect(rowAt(1).nodeId).toBe(other);
   });
 
-  it('stores nothing when the observer reports no noise floor', async () => {
+  it('stores no noise-floor row when the observer reports no noise floor', async () => {
     await started();
     lastClient!.deliver(statusTopic, online({ stats: { battery_mv: 4100 } }));
     await settle();
 
     expect(upsertNode).toHaveBeenCalledTimes(1);
-    expect(insertTelemetryBatch).not.toHaveBeenCalled();
+    expect(rowsAt(0).map(r => r.telemetryType)).toEqual(['mc_status_battery_volts']);
   });
 
   it('stores nothing from an offline notice', async () => {
@@ -352,5 +355,71 @@ describe('noise floor persistence (#5040 follow-up)', () => {
 
     expect(upsertNode).toHaveBeenCalledTimes(1);
     expect(mgr.getStatus().connected).toBe(true);
+  });
+});
+
+/**
+ * Battery and uptime history (#6531).
+ *
+ * The node row only holds the latest values, so an MQTT-only solar repeater
+ * had no battery graph and Solar Monitoring had nothing to draw on. Both are
+ * now written as the SAME series the remote-telemetry scheduler writes for
+ * device-backed repeaters (`mc_status_battery_volts`, `mc_status_uptime_secs`).
+ */
+describe('battery and uptime history (#6531)', () => {
+  it('writes battery, uptime and noise floor in one batch', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+
+    expect(insertTelemetryBatch).toHaveBeenCalledTimes(1);
+    expect(rowsAt(0).map(r => r.telemetryType).sort()).toEqual([
+      'mc_status_battery_volts',
+      'mc_status_noise_floor',
+      'mc_status_uptime_secs',
+    ]);
+    for (const row of rowsAt(0)) {
+      expect(row.nodeId).toBe(OBS);
+      expect(row.timestamp).toBe(nowMs);
+    }
+  });
+
+  it('stores battery in volts, the unit Solar Monitoring and device sources use', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+
+    const battery = rowAt(0, 'mc_status_battery_volts');
+    expect(battery.value).toBeCloseTo(4.1);
+    expect(battery.unit).toBe('V');
+  });
+
+  it('stores uptime in seconds, including a zero right after a reboot', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online({ stats: { battery_mv: 4100, uptime_secs: 0 } }));
+    await settle();
+
+    const uptime = rowAt(0, 'mc_status_uptime_secs');
+    expect(uptime.value).toBe(0);
+    expect(uptime.unit).toBe('s');
+  });
+
+  it('skips a battery reading the decoder rejected as implausible', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online({ stats: { battery_mv: 999_999, uptime_secs: 10 } }));
+    await settle();
+
+    expect(rowsAt(0).map(r => r.telemetryType)).toEqual(['mc_status_uptime_secs']);
+  });
+
+  it('throttles battery and uptime with noise floor, so a retained replay writes nothing', async () => {
+    await started();
+    lastClient!.deliver(statusTopic, online());
+    await settle();
+    nowMs += 5_000;
+    lastClient!.deliver(statusTopic, online({ stats: { battery_mv: 3900, uptime_secs: 5 } }));
+    await settle();
+
+    expect(insertTelemetryBatch).toHaveBeenCalledTimes(1);
   });
 });
