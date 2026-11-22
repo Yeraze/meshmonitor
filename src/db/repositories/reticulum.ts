@@ -353,7 +353,7 @@ export class ReticulumRepository extends BaseRepository {
    * (see {@link pruneDestinations}) runs only on that path, not on every
    * repeat announce (PR review finding 2).
    */
-  async upsertDestination(sourceId: string, dest: UpsertDestinationInput): Promise<void> {
+  async upsertDestination(sourceId: string, dest: UpsertDestinationInput): Promise<{ inserted: boolean }> {
     if (!sourceId) {
       throw new Error('ReticulumRepository.upsertDestination requires a sourceId');
     }
@@ -409,6 +409,24 @@ export class ReticulumRepository extends BaseRepository {
     if (inserted) {
       await this.pruneDestinations(sourceId);
     }
+    return { inserted };
+  }
+
+  /**
+   * Earliest `createdAt` (epoch ms) among one source's destination rows, or null
+   * when it has none. The new-node alert gate uses it to tell a long-running
+   * source from a new one (#6341).
+   */
+  async getEarliestDestinationCreatedAt(sourceId: string): Promise<number | null> {
+    const { reticulumDestinations } = this.tables;
+    const rows = await this.db
+      .select({ createdAt: reticulumDestinations.createdAt })
+      .from(reticulumDestinations)
+      .where(eq(reticulumDestinations.sourceId, sourceId))
+      .orderBy(asc(reticulumDestinations.createdAt))
+      .limit(1);
+    const v = rows[0]?.createdAt;
+    return v === null || v === undefined ? null : Number(v);
   }
 
   /**
@@ -859,7 +877,7 @@ export class ReticulumRepository extends BaseRepository {
    * bridge re-delivers the same `lxmf_message` event, or an outbound send is
    * reconciled — never a brand-new logical message reusing an id).
    */
-  async upsertMessage(sourceId: string, input: UpsertMessageInput): Promise<void> {
+  async upsertMessage(sourceId: string, input: UpsertMessageInput): Promise<{ inserted: boolean }> {
     if (!sourceId) {
       throw new Error('ReticulumRepository.upsertMessage requires a sourceId');
     }
@@ -907,7 +925,31 @@ export class ReticulumRepository extends BaseRepository {
       quality: values.quality,
     };
 
-    await this.upsert(reticulumMessages, values, [reticulumMessages.id], updateSet);
+    // `inserted` tells a first delivery from a bridge re-delivery. The update path
+    // never rewrites createdAt, so a returned createdAt equal to `now` marks the insert.
+    if (this.isMySQL()) {
+      // MySQL reports affectedRows 1 for a matched-but-unchanged update (the
+      // driver sets CLIENT_FOUND_ROWS), so a re-delivery of identical values
+      // is indistinguishable from an insert. Try the plain insert and fall
+      // back to the update on a duplicate key instead.
+      const mysqlDb = this.getMysqlDb();
+      try {
+        await mysqlDb.insert(reticulumMessages).values(values);
+        return { inserted: true };
+      } catch (err) {
+        const e = err as { code?: string; errno?: number; cause?: { code?: string; errno?: number } };
+        const dup = [e, e.cause].some((x) => x?.code === 'ER_DUP_ENTRY' || x?.errno === 1062);
+        if (!dup) throw err;
+        await mysqlDb.update(reticulumMessages).set(updateSet).where(eq(reticulumMessages.id, input.id));
+        return { inserted: false };
+      }
+    }
+    const rows = await this.db
+      .insert(reticulumMessages)
+      .values(values)
+      .onConflictDoUpdate({ target: [reticulumMessages.id], set: updateSet })
+      .returning({ createdAt: reticulumMessages.createdAt });
+    return { inserted: Number(rows[0]?.createdAt) === now };
   }
 
   /**

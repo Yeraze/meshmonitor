@@ -63,6 +63,13 @@ const SQLITE_CREATE = `
     cpuLoad REAL, batteryState TEXT, batteryPercent REAL
   );
   CREATE UNIQUE INDEX reticulum_interfaces_source_name_idx ON reticulum_interfaces(sourceId, interfaceName);
+  CREATE TABLE reticulum_messages (
+    id TEXT PRIMARY KEY, sourceId TEXT NOT NULL, fromHash TEXT NOT NULL, toHash TEXT NOT NULL,
+    title TEXT, content TEXT, timestamp INTEGER NOT NULL, receivedAt INTEGER, createdAt INTEGER NOT NULL,
+    state TEXT NOT NULL, method TEXT, signatureValidated INTEGER NOT NULL DEFAULT 0,
+    ratcheted INTEGER NOT NULL DEFAULT 0, fields TEXT, replyToHash TEXT, threadHash TEXT,
+    rssi INTEGER, snr REAL, quality INTEGER
+  );
   CREATE TABLE settings (
     key TEXT PRIMARY KEY, value TEXT NOT NULL,
     createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL
@@ -72,6 +79,7 @@ const SQLITE_CREATE = `
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS reticulum_destinations CASCADE;
   DROP TABLE IF EXISTS reticulum_interfaces CASCADE;
+  DROP TABLE IF EXISTS reticulum_messages CASCADE;
   DROP TABLE IF EXISTS settings CASCADE;
   CREATE TABLE reticulum_destinations (
     id SERIAL PRIMARY KEY,
@@ -106,6 +114,13 @@ const POSTGRES_CREATE = `
     "cpuLoad" DOUBLE PRECISION, "batteryState" TEXT, "batteryPercent" DOUBLE PRECISION
   );
   CREATE UNIQUE INDEX reticulum_interfaces_source_name_idx ON reticulum_interfaces("sourceId", "interfaceName");
+  CREATE TABLE reticulum_messages (
+    id TEXT PRIMARY KEY, "sourceId" TEXT NOT NULL, "fromHash" TEXT NOT NULL, "toHash" TEXT NOT NULL,
+    title TEXT, content TEXT, "timestamp" BIGINT NOT NULL, "receivedAt" BIGINT, "createdAt" BIGINT NOT NULL,
+    state TEXT NOT NULL, method TEXT, "signatureValidated" BOOLEAN NOT NULL DEFAULT false,
+    ratcheted BOOLEAN NOT NULL DEFAULT false, fields TEXT, "replyToHash" TEXT, "threadHash" TEXT,
+    rssi INTEGER, snr DOUBLE PRECISION, quality INTEGER
+  );
   CREATE TABLE settings (
     key TEXT PRIMARY KEY, value TEXT NOT NULL,
     "createdAt" BIGINT NOT NULL, "updatedAt" BIGINT NOT NULL
@@ -115,6 +130,7 @@ const POSTGRES_CREATE = `
 const MYSQL_CREATE = `
   DROP TABLE IF EXISTS reticulum_destinations;
   DROP TABLE IF EXISTS reticulum_interfaces;
+  DROP TABLE IF EXISTS reticulum_messages;
   DROP TABLE IF EXISTS settings;
   CREATE TABLE reticulum_destinations (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -145,6 +161,13 @@ const MYSQL_CREATE = `
     noiseFloor DOUBLE, interference DOUBLE, interferenceLastTs DOUBLE, interferenceLastDbm DOUBLE,
     cpuLoad DOUBLE, batteryState VARCHAR(32), batteryPercent DOUBLE,
     UNIQUE KEY reticulum_interfaces_source_name_idx (sourceId, interfaceName)
+  );
+  CREATE TABLE reticulum_messages (
+    id VARCHAR(191) PRIMARY KEY, sourceId VARCHAR(191) NOT NULL, fromHash VARCHAR(64) NOT NULL, toHash VARCHAR(64) NOT NULL,
+    title TEXT, content TEXT, timestamp BIGINT NOT NULL, receivedAt BIGINT, createdAt BIGINT NOT NULL,
+    state VARCHAR(16) NOT NULL, method VARCHAR(16), signatureValidated TINYINT(1) NOT NULL DEFAULT 0,
+    ratcheted TINYINT(1) NOT NULL DEFAULT 0, fields TEXT, replyToHash TEXT, threadHash VARCHAR(64),
+    rssi INT, snr DOUBLE, quality INT
   );
   CREATE TABLE settings (
     \`key\` VARCHAR(255) PRIMARY KEY, value TEXT NOT NULL,
@@ -727,6 +750,48 @@ function runReticulumTests(getBackend: () => TestBackend) {
     expect(config!.txPower).toBe(20);
   });
 
+  it('upsertDestination - reports inserted true on the first announce and false on a repeat', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    expect(await repo.upsertDestination(SRC_A, makeDest())).toEqual({ inserted: true });
+    expect(await repo.upsertDestination(SRC_A, makeDest())).toEqual({ inserted: false });
+    // Another source is a separate row.
+    expect(await repo.upsertDestination(SRC_B, makeDest())).toEqual({ inserted: true });
+  });
+
+  it('getEarliestDestinationCreatedAt - null when empty, the oldest row otherwise, per source', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    expect(await repo.getEarliestDestinationCreatedAt(SRC_A)).toBeNull();
+    const before = Date.now();
+    await repo.upsertDestination(SRC_A, makeDest());
+    const earliest = await repo.getEarliestDestinationCreatedAt(SRC_A);
+    expect(typeof earliest).toBe('number');
+    expect(earliest!).toBeGreaterThanOrEqual(before - 1);
+    expect(await repo.getEarliestDestinationCreatedAt(SRC_B)).toBeNull();
+  });
+
+  it('upsertMessage - reports inserted true on first delivery and false on a re-delivery', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    const msg = {
+      id: `${SRC_A}_h1`, fromHash: 'p'.repeat(32), toHash: 's'.repeat(32),
+      content: 'hi', timestamp: 1_700_000_000_000, state: 'delivered' as const,
+    };
+    expect(await repo.upsertMessage(SRC_A, msg)).toEqual({ inserted: true });
+    expect(await repo.upsertMessage(SRC_A, msg)).toEqual({ inserted: false });
+    expect(await repo.upsertMessage(SRC_B, { ...msg, id: `${SRC_B}_h1` })).toEqual({ inserted: true });
+  });
+
   it('upsertDestination - defaults to DEFAULT_RETICULUM_DESTINATIONS_MAX when unset', async () => {
     const backend = getBackend();
     if (!backend.available) {
@@ -778,6 +843,7 @@ describe.skipIf(!postgresAvailable)('ReticulumRepository - PostgreSQL Backend', 
     if (!backend.available) return;
     await clearTable(backend, 'reticulum_destinations');
     await clearTable(backend, 'reticulum_interfaces');
+    await clearTable(backend, 'reticulum_messages');
     await clearTable(backend, 'settings');
   });
 
@@ -807,6 +873,7 @@ describe.skipIf(!mysqlAvailable)('ReticulumRepository - MySQL Backend', () => {
     if (!backend.available) return;
     await clearTable(backend, 'reticulum_destinations');
     await clearTable(backend, 'reticulum_interfaces');
+    await clearTable(backend, 'reticulum_messages');
     await clearTable(backend, 'settings');
   });
 
