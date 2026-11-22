@@ -34,8 +34,13 @@ export interface BrokerLinkEmitter {
 
 export interface BrokerLinkNotifierOptions {
   sourceId: string;
-  sourceName: string;
+  /** A getter lets a renamed source alert under its current name. */
+  sourceName: string | (() => string);
   graceMs?: number;
+  /** Wording family for the alerts. Default `'broker'`. */
+  link?: 'broker' | 'bridge';
+  /** Emitter event names. Defaults are the MQTT client's. */
+  events?: { up?: string[]; down?: string[]; stopped?: string[] };
 }
 
 export interface BrokerLinkNotifier {
@@ -44,8 +49,12 @@ export interface BrokerLinkNotifier {
 
 export function attachBrokerLinkNotifier(
   client: BrokerLinkEmitter,
-  { sourceId, sourceName, graceMs = BROKER_LINK_GRACE_MS }: BrokerLinkNotifierOptions,
+  { sourceId, sourceName, graceMs = BROKER_LINK_GRACE_MS, link = 'broker', events }: BrokerLinkNotifierOptions,
 ): BrokerLinkNotifier {
+  const upEvents = events?.up ?? ['connect'];
+  const downEvents = events?.down ?? ['close', 'offline'];
+  const stoppedEvents = events?.stopped ?? ['auth-stopped', 'eviction-stopped'];
+  const nameOf = () => (typeof sourceName === 'function' ? sourceName() : sourceName);
   let timer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
 
@@ -59,7 +68,7 @@ export function attachBrokerLinkNotifier(
   const lost = () => {
     if (disposed) return;
     void serverEventNotificationService
-      .notifyNodeDisconnected(sourceId, sourceName, 'broker')
+      .notifyNodeDisconnected(sourceId, nameOf(), link)
       .catch((err) => logger.error('[BrokerLink] disconnect alert failed:', err));
   };
 
@@ -67,7 +76,7 @@ export function attachBrokerLinkNotifier(
     if (disposed) return;
     clearTimer();
     void serverEventNotificationService
-      .notifyNodeConnected(sourceId, sourceName, 'broker')
+      .notifyNodeConnected(sourceId, nameOf(), link)
       .catch((err) => logger.error('[BrokerLink] reconnect alert failed:', err));
   };
 
@@ -86,22 +95,20 @@ export function attachBrokerLinkNotifier(
     lost();
   };
 
-  client.on('connect', onConnect);
-  client.on('close', onDown);
-  client.on('offline', onDown);
-  client.on('auth-stopped', onStopped);
-  client.on('eviction-stopped', onStopped);
+  const wire = (names: string[], fn: () => void, add: boolean) =>
+    names.forEach((n) => (add ? client.on(n, fn) : client.off(n, fn)));
+  wire(upEvents, onConnect, true);
+  wire(downEvents, onDown, true);
+  wire(stoppedEvents, onStopped, true);
 
   return {
     dispose() {
       if (disposed) return;
       disposed = true;
       clearTimer();
-      client.off('connect', onConnect);
-      client.off('close', onDown);
-      client.off('offline', onDown);
-      client.off('auth-stopped', onStopped);
-      client.off('eviction-stopped', onStopped);
+      wire(upEvents, onConnect, false);
+      wire(downEvents, onDown, false);
+      wire(stoppedEvents, onStopped, false);
     },
   };
 }

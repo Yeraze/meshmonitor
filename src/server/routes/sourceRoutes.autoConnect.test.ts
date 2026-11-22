@@ -450,12 +450,15 @@ describe('sourceRoutes — POST /:id/disconnect', () => {
       createdBy: 1,
     });
     // A manager is registered for this source.
-    mockRegistry.getManager.mockReturnValue({ sourceId: 'rt-1', sourceType: 'reticulum', isConnected: () => true });
+    const rtDisconnect = vi.fn().mockResolvedValue(undefined);
+    mockRegistry.getManager.mockReturnValue({ sourceId: 'rt-1', sourceType: 'reticulum', isConnected: () => true, disconnect: rtDisconnect });
 
     const res = await request(app).post('/rt-1/disconnect');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true });
+    // The user's click alerts at once (#6341 P3); edits/shutdown skip this.
+    expect(rtDisconnect).toHaveBeenCalledWith({ userInitiated: true });
     // Reticulum removes the manager on disconnect (build spec §3.6/§7 risk 2)
     // — the opposite of MeshCore's keep-registered behavior asserted above.
     // A read against /reticulum/* after this would fall through to the DB,

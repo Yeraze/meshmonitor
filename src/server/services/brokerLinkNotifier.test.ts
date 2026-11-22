@@ -128,4 +128,37 @@ describe('attachBrokerLinkNotifier', () => {
     expect(text).not.toMatch(/wss?:\/\/|mqtts?:\/\/|\.example/);
     expect(text).not.toMatch(/radio/);
   });
+
+  it('defaults keep broker wording and the MQTT event names (existing callers)', async () => {
+    const { client } = setup();
+    client.emit('connect');
+    client.emit('close');
+    await tick(GRACE);
+    expect(bodies()).toEqual(['Lost connection to the MQTT broker']);
+    // Bridge event names do nothing without the option.
+    client.emit('bridge-up');
+    client.emit('bridge-down');
+    await tick(GRACE * 2);
+    expect(broadcast).toHaveBeenCalledTimes(1);
+  });
+
+  it('custom events, link and name getter drive bridge alerts; dispose detaches them', async () => {
+    n += 1;
+    const client = new EventEmitter();
+    let name = 'A';
+    const link = attachBrokerLinkNotifier(client, {
+      sourceId: `bl-${n}`, sourceName: () => name, link: 'bridge',
+      events: { up: ['bridge-up'], down: ['bridge-down'], stopped: [] },
+    });
+    client.emit('bridge-up');
+    client.emit('bridge-down');
+    client.emit('close'); // not a bridge event
+    name = 'B';
+    await tick(GRACE);
+    expect(broadcast).toHaveBeenCalledTimes(1);
+    expect((broadcast.mock.calls[0][1] as { title: string }).title).toBe('Reticulum Bridge Disconnected · B');
+    link.dispose();
+    expect(client.listenerCount('bridge-up')).toBe(0);
+    expect(client.listenerCount('bridge-down')).toBe(0);
+  });
 });

@@ -26,6 +26,8 @@
 
 import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
+import { attachBrokerLinkNotifier, type BrokerLinkNotifier } from './services/brokerLinkNotifier.js';
+import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import type { Source } from '../db/repositories/sources.js';
 import type { ReticulumMessageRow, UpsertMessageInput, UpsertPathInput } from '../db/repositories/reticulum.js';
 import databaseService from '../services/database.js';
@@ -209,6 +211,9 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   private periodicAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
   private nextPeriodicAnnounceAt: number | null = null;
 
+  /** Debounced bridge-link alerts (#6341 P3). Disposed silently by stop(). */
+  private readonly linkNotifier: BrokerLinkNotifier;
+
   constructor(sourceId: string, sourceName?: string) {
     super();
     if (!sourceId) {
@@ -216,6 +221,14 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
     }
     this.sourceId = sourceId;
     this.sourceName = sourceName ?? sourceId;
+    // Scoped to the manager, not the client: the start retry (#5955) builds a
+    // new client per attempt, and that must not reset the grace timer.
+    this.linkNotifier = attachBrokerLinkNotifier(this, {
+      sourceId,
+      sourceName: () => this.sourceName,
+      link: 'bridge',
+      events: { up: ['bridge-up'], down: ['bridge-down'], stopped: [] },
+    });
     logger.info(`[Reticulum:${sourceId}] Manager initialized`);
   }
 
@@ -321,6 +334,8 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
    * registry's/route handler's responsibility (WP5), not this method's.
    */
   async stop(): Promise<void> {
+    // Silent: edits, autoConnect off and shutdown all land here.
+    this.linkNotifier.dispose();
     await this.disconnect();
   }
 
@@ -353,11 +368,18 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   }
 
   /** Tear down the bridge client, if any. Idempotent. */
-  async disconnect(): Promise<void> {
+  async disconnect(opts: { userInitiated?: boolean } = {}): Promise<void> {
     this.cancelStartRetry();
     this.clearPeriodicAnnounce();
     const client = this.client;
+    const wasConnected = client?.isConnected() ?? false;
     this.client = null;
+    if (opts.userInitiated && wasConnected) {
+      // The user chose this, so no grace period: tell people at once.
+      void serverEventNotificationService
+        .notifyNodeDisconnected(this.sourceId, this.sourceName, 'bridge')
+        .catch((err: unknown) => logger.error(`[Reticulum:${this.sourceId}] disconnect alert failed:`, err));
+    }
     if (client) {
       client.removeAllListeners();
       client.disconnect();
@@ -682,6 +704,9 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
     client.on('welcome', (msg: WelcomeMessage) => this.handleWelcome(msg));
     client.on('status', (msg: StatusMessage) => this.handleStatus(msg));
     client.on('ready', (msg: ReadyMessage) => this.handleReady(msg));
+    // Link-state events for the manager-level notifier.
+    client.on('ready', () => this.emit('bridge-up'));
+    client.on('close', () => this.emit('bridge-down'));
 
     client.on('lxmf_message', (msg: LxmfMessageEvent) => {
       this.handleLxmfMessage(msg).catch((err: unknown) => {

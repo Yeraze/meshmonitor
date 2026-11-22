@@ -75,7 +75,7 @@ class ServerEventNotificationService {
   public async notifyNodeConnected(
     sourceId: string,
     sourceName: string,
-    link: 'radio' | 'broker' = 'radio',
+    link: 'radio' | 'broker' | 'bridge' = 'radio',
   ): Promise<void> {
     const state = this.getOrInitState(sourceId);
 
@@ -97,11 +97,17 @@ class ServerEventNotificationService {
           : 'unknown duration';
 
         const payload = {
-          title: link === 'broker' ? `MQTT Broker Reconnected · ${sourceName}` : `Node Reconnected · ${sourceName}`,
+          title: link === 'broker'
+            ? `MQTT Broker Reconnected · ${sourceName}`
+            : link === 'bridge'
+              ? `Reticulum Bridge Reconnected · ${sourceName}`
+              : `Node Reconnected · ${sourceName}`,
           // Broker wording never names the broker URL (it is redacted per viewer).
           body: link === 'broker'
             ? `Connection to the MQTT broker restored (was offline for ${disconnectDuration})`
-            : `Connection to the radio restored (was offline for ${disconnectDuration})`,
+            : link === 'bridge'
+              ? `Connection to the Reticulum bridge restored (was offline for ${disconnectDuration})`
+              : `Connection to the radio restored (was offline for ${disconnectDuration})`,
           type: 'success' as const,
           sourceId,
           sourceName,
@@ -122,7 +128,7 @@ class ServerEventNotificationService {
   public async notifyNodeDisconnected(
     sourceId: string,
     sourceName: string,
-    link: 'radio' | 'broker' = 'radio',
+    link: 'radio' | 'broker' | 'bridge' = 'radio',
   ): Promise<void> {
     const state = this.getOrInitState(sourceId);
 
@@ -143,8 +149,16 @@ class ServerEventNotificationService {
 
     try {
       const payload = {
-        title: link === 'broker' ? `MQTT Broker Disconnected · ${sourceName}` : `Node Disconnected · ${sourceName}`,
-        body: link === 'broker' ? 'Lost connection to the MQTT broker' : "Lost connection to the source's radio",
+        title: link === 'broker'
+          ? `MQTT Broker Disconnected · ${sourceName}`
+          : link === 'bridge'
+            ? `Reticulum Bridge Disconnected · ${sourceName}`
+            : `Node Disconnected · ${sourceName}`,
+        body: link === 'broker'
+          ? 'Lost connection to the MQTT broker'
+          : link === 'bridge'
+            ? 'Lost connection to the Reticulum bridge'
+            : "Lost connection to the source's radio",
         type: 'warning' as const,
         sourceId,
         sourceName,
