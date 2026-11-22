@@ -730,15 +730,16 @@ export function buildNeighborAddedContext(
 /**
  * Build the trigger context for a MeshCore clock sample that starts an
  * out-of-sync episode (`trigger.clockOutOfSync`, #6273). Subject node = the
- * node whose clock is off. MeshCore has no node number, so the subject key is
- * the public key (same degrade as {@link buildNodeRebootedContext}).
+ * node whose clock is off. Meshtastic passes `nodeNum`; MeshCore has none, so
+ * the subject key is the public key (same as {@link buildNodeRebootedContext}).
  * `thresholdSeconds` is the firing automation's own threshold, so this builds
  * one context per automation.
  */
 export function buildClockOutOfSyncContext(
-  publicKey: string,
+  nodeNum: number | null,
+  publicKey: string | null,
   offsetSeconds: number,
-  sampleSource: 'advert' | 'device',
+  sampleSource: 'advert' | 'device' | 'packet',
   thresholdSeconds: number,
   sourceId: string | null,
   timestamp: number,
@@ -746,12 +747,13 @@ export function buildClockOutOfSyncContext(
   return {
     triggerType: 'trigger.clockOutOfSync',
     sourceId,
-    subjectNodeNum: null,
-    subjectNodeKey: publicKey,
+    subjectNodeNum: nodeNum == null ? null : Number(nodeNum),
+    // undefined => derive from subjectNodeNum (Meshtastic); explicit key for MeshCore.
+    subjectNodeKey: nodeNum == null ? (publicKey ?? null) : undefined,
     timestamp,
     fields: {
-      nodeNum: null,
-      publicKey,
+      nodeNum: nodeNum == null ? null : Number(nodeNum),
+      publicKey: publicKey ?? undefined,
       offsetSeconds,
       offsetText: clockOffsetText(offsetSeconds),
       direction: clockDirection(offsetSeconds),

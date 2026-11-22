@@ -6,6 +6,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { dataEventEmitter } from './dataEventEmitter.js';
 import {
   detectClockOffset,
+  recordClockSample,
+  isClockSampleThrottled,
   resetClockOffsetThrottleForTests,
   CLOCK_OFFSET_TELEMETRY_TYPE,
   CLOCK_SAMPLE_MIN_INTERVAL_MS,
@@ -57,7 +59,7 @@ describe('detectClockOffset (#6273)', () => {
     expect(inserted).toMatchObject({ nodeId: KEY, telemetryType: CLOCK_OFFSET_TELEMETRY_TYPE, value: offset, timestamp: T0 });
     expect(t.insertTelemetry.mock.calls[0][1]).toBe(SRC);
     expect(emitSpy).toHaveBeenCalledWith(
-      { publicKey: KEY, offsetSeconds: offset, previousOffsets: [t.stored[2].value, t.stored[1].value], sampleSource: 'advert' },
+      { nodeNum: null, publicKey: KEY, offsetSeconds: offset, previousOffsets: [t.stored[2].value, t.stored[1].value], sampleSource: 'advert' },
       SRC,
     );
   });
@@ -103,7 +105,7 @@ describe('detectClockOffset (#6273)', () => {
     expect(await detectClockOffset(t, KEY, 610, 'device', 1_700_000_000, SRC, T0 + 1000)).toBe(true);
     expect(t.insertTelemetry).not.toHaveBeenCalled();
     expect(emitSpy).toHaveBeenLastCalledWith(
-      { publicKey: KEY, offsetSeconds: 610, previousOffsets: [600], sampleSource: 'device' },
+      { nodeNum: null, publicKey: KEY, offsetSeconds: 610, previousOffsets: [600], sampleSource: 'device' },
       SRC,
     );
   });
@@ -113,5 +115,51 @@ describe('detectClockOffset (#6273)', () => {
     const broken = { getTelemetryByNode: vi.fn().mockRejectedValue(new Error('db down')) };
     expect(await detectClockOffset(broken, KEY, 5, 'advert', 1_700_000_000, SRC, T0)).toBe(false);
     expect(emitSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('recordClockSample, Meshtastic subject (#6341 P5)', () => {
+  let emitSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    resetClockOffsetThrottleForTests();
+    emitSpy = vi.spyOn(dataEventEmitter, 'emitNodeClockOffset').mockImplementation(() => undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const subject = { nodeId: '!0000abcd', nodeNum: 0xabcd, publicKey: null };
+
+  it('stores !hex / fromNum and emits nodeNum with a null key', async () => {
+    const t = fakeTelemetry();
+    const sender = 1_700_000_300;
+    const offset = Math.floor(T0 / 1000) - sender;
+    expect(await recordClockSample(t, subject, offset, 'packet', sender, SRC, T0)).toBe(true);
+    expect(t.insertTelemetry.mock.calls[0][0]).toMatchObject({
+      nodeId: '!0000abcd', nodeNum: 0xabcd, telemetryType: CLOCK_OFFSET_TELEMETRY_TYPE, value: offset, timestamp: T0,
+    });
+    expect(t.getTelemetryByNode).toHaveBeenCalledWith('!0000abcd', 3, undefined, undefined, 0, CLOCK_OFFSET_TELEMETRY_TYPE, SRC);
+    expect(emitSpy).toHaveBeenCalledWith(
+      { nodeNum: 0xabcd, publicKey: null, offsetSeconds: offset, previousOffsets: [], sampleSource: 'packet' },
+      SRC,
+    );
+  });
+
+  it('throttles hourly and drops replays like adverts do', async () => {
+    const t = fakeTelemetry();
+    const off = (sender: number, at: number) => Math.floor(at / 1000) - sender;
+    const later = T0 + CLOCK_SAMPLE_MIN_INTERVAL_MS;
+    expect(await recordClockSample(t, subject, off(1_700_000_000, T0), 'packet', 1_700_000_000, SRC, T0)).toBe(true);
+    expect(await recordClockSample(t, subject, off(1_700_000_100, T0 + 1000), 'packet', 1_700_000_100, SRC, T0 + 1000)).toBe(false);
+    expect(await recordClockSample(t, subject, off(1_700_000_000, later), 'packet', 1_700_000_000, SRC, later)).toBe(false); // not newer
+    expect(await recordClockSample(t, subject, off(1_700_003_700, later), 'packet', 1_700_003_700, SRC, later)).toBe(true);
+  });
+
+  it('keeps throttle keys apart: !hex vs key, and source vs source', async () => {
+    const t = fakeTelemetry();
+    expect(await recordClockSample(t, subject, 5, 'packet', 1_700_000_000, SRC, T0)).toBe(true);
+    expect(isClockSampleThrottled(SRC, '!0000abcd', T0 + 1)).toBe(true);
+    expect(isClockSampleThrottled('src-b', '!0000abcd', T0 + 1)).toBe(false);
+    expect(isClockSampleThrottled(SRC, KEY, T0 + 1)).toBe(false);
+    expect(await detectClockOffset(fakeTelemetry(), KEY, 5, 'advert', 1_700_000_000, SRC, T0 + 1)).toBe(true);
+    expect(isClockSampleThrottled(SRC, KEY, T0 + 2)).toBe(true);
   });
 });

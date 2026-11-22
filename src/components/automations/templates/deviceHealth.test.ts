@@ -219,7 +219,7 @@ describe('deviceHealthTemplate', () => {
     it('declares the checkbox and a gated threshold field', () => {
       const byName = Object.fromEntries(deviceHealthTemplate.params.map((p) => [p.name, p]));
       expect(byName.clockOutOfSync.kind).toBe('checkbox');
-      expect(byName.clockOutOfSync.label).toBe('Alert when a node\'s clock is out of sync (MeshCore)');
+      expect(byName.clockOutOfSync.label).toBe('Alert when a node\'s clock is out of sync');
       expect(byName.clockDriftThresholdSeconds.showIf).toEqual({ field: 'clockOutOfSync', truthy: true });
       expect(byName.clockDriftThresholdSeconds.placeholder).toBe('300');
     });
