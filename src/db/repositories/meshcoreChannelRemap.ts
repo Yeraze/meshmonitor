@@ -13,6 +13,10 @@
  *  - `settings`: `source:<id>:meshcoreAutoAckChannels`,
  *    `meshcoreAutoAnnounceChannelIndexes`, `meshcoreAutoResponderTriggers`,
  *    `meshcoreTimerTriggers`
+ *  - `user_notification_preferences`: `enabled_channels` (number[]) and
+ *    `muted_channels` ({ channelId, muteUntil }[]) of this source's rows. Only
+ *    slot ids (< 1000) move; keyed ids (>= 1000) and unknown entries stay. Unlike
+ *    permissions, slot 8+ is fine here: these ids are plain numbers.
  *
  * The caller passes a full PERMUTATION of slots (see `completeChannelMoves`),
  * so every rewrite is a bijection: no two slots merge and nothing is deleted
@@ -38,6 +42,8 @@ export interface ChannelSlotRemapCounts {
   /** Grants for a slot 1-7 channel that moved to slot 8+, which has no `channel_N` resource. */
   permissionsDropped: number;
   settingsUpdated: string[];
+  /** Notification-preference rows whose enabled/muted channel ids moved. */
+  prefsUpdated: number;
 }
 
 /** Per-source settings keys that hold MeshCore channel slot indexes. */
@@ -139,6 +145,37 @@ export function remapMeshCoreChannelSetting(
   return next === value ? null : next;
 }
 
+/** Channel ids at or above this are keyed (channel_database) ids, not slots. */
+const KEYED_BASE = 1000;
+
+function remapJsonArray(raw: unknown, mapEntry: (e: unknown) => unknown): string | null {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!Array.isArray(parsed)) return null;
+  const next = JSON.stringify(parsed.map(mapEntry));
+  return next === JSON.stringify(parsed) ? null : next;
+}
+
+/**
+ * Rewrite one notification-preference row's slot ids for a slot map. A null
+ * field means "unchanged" (also for malformed JSON or a non-array value).
+ */
+export function remapMeshCorePrefChannels(
+  enabledRaw: unknown,
+  mutedRaw: unknown,
+  map: Map<number, number>,
+): { enabledChannels: string | null; mutedChannels: string | null } {
+  const mv = (n: number) => (n < KEYED_BASE ? (map.get(n) ?? n) : n);
+  return {
+    enabledChannels: remapJsonArray(enabledRaw, (e) => (typeof e === 'number' ? mv(e) : e)),
+    mutedChannels: remapJsonArray(mutedRaw, (e) => (
+      e !== null && typeof e === 'object' && typeof (e as { channelId?: unknown }).channelId === 'number'
+        ? { ...(e as object), channelId: mv((e as { channelId: number }).channelId) }
+        : e)),
+  };
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle query builders differ per dialect; this repo builds the same queries against whichever table set is active. */
 type Op = (tx: any) => any;
 /** One write; `count` names the reported bucket its affected rows go to (temp passes have none). */
@@ -159,6 +196,7 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
       permissionsMoved: 0,
       permissionsDropped: 0,
       settingsUpdated: [],
+      prefsUpdated: 0,
     };
     const real = moves.filter((m) => m.from !== m.to);
     if (real.length === 0) return counts;
@@ -176,7 +214,8 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
     }
     const map = new Map(real.map((m) => [m.from, m.to]));
 
-    const { meshcoreMessages: msg, channels: ch, conversationReadState: rs, permissions: perm, settings: st } = this.tables;
+    const { meshcoreMessages: msg, channels: ch, conversationReadState: rs, permissions: perm, settings: st,
+      userNotificationPreferences: np } = this.tables;
     const settingKeys = MESHCORE_CHANNEL_INDEX_SETTING_KEYS.map((k) => `source:${sourceId}:${k}`);
     const permResources = real
       .filter((m) => m.from <= MAX_PERMISSION_CHANNEL)
@@ -186,9 +225,10 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
       ? null
       : tx.select().from(perm).where(and(eq(perm.sourceId, sourceId), inArray(perm.resource, permResources))));
     const readSettings: Op = (tx) => tx.select().from(st).where(inArray(st.key, settingKeys));
+    const readPrefs: Op = (tx) => tx.select().from(np).where(eq(np.sourceId, sourceId));
 
     // Build the write list from a snapshot of the rows we read-modify-write.
-    const buildOps = (permRows: any[], settingRows: any[]): Step[] => {
+    const buildOps = (permRows: any[], settingRows: any[], prefRows: any[]): Step[] => {
       const ops: Step[] = [];
       const add = (q: Op, count?: Step['count']) => { ops.push({ q, count }); };
 
@@ -266,6 +306,17 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
         counts.settingsUpdated.push(bareKey);
         add((tx) => tx.update(st).set({ value: next, updatedAt: Date.now() }).where(eq(st.key, row.key)));
       }
+
+      // 6. Notification preferences: enabled/muted channel ids of this source.
+      for (const row of prefRows) {
+        const next = remapMeshCorePrefChannels(row.enabledChannels, row.mutedChannels, map);
+        if (next.enabledChannels === null && next.mutedChannels === null) continue;
+        const set: any = {};
+        if (next.enabledChannels !== null) set.enabledChannels = next.enabledChannels;
+        if (next.mutedChannels !== null) set.mutedChannels = next.mutedChannels;
+        counts.prefsUpdated++;
+        add((tx) => tx.update(np).set(set).where(eq(np.id, row.id)));
+      }
       return ops;
     };
 
@@ -277,7 +328,8 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
       const permQuery = readPerms(db);
       const permRows: any[] = permQuery ? permQuery.all() : [];
       const settingRows: any[] = readSettings(db).all();
-      const ops = buildOps(permRows, settingRows);
+      const prefRows: any[] = readPrefs(db).all();
+      const ops = buildOps(permRows, settingRows, prefRows);
       db.transaction((tx: any) => {
         for (const step of ops) {
           const result = step.q(tx).run();
@@ -291,7 +343,8 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
       const permQuery = readPerms(tx);
       const permRows: any[] = permQuery ? await permQuery : [];
       const settingRows: any[] = await readSettings(tx);
-      const ops = buildOps(permRows, settingRows);
+      const prefRows: any[] = await readPrefs(tx);
+      const ops = buildOps(permRows, settingRows, prefRows);
       for (const step of ops) {
         const result = await step.q(tx);
         if (step.count) counts[step.count] += this.getAffectedRows(result);
