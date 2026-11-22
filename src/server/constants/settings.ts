@@ -510,6 +510,7 @@ export const VALID_SETTINGS_KEYS = [
   // 'zero_hop' | 'flood'; absent = flood (pre-existing burst configs)
   'meshcoreAutoAnnounceAdvertMode',
   'meshcoreAutoAnnounceLastRunAt',
+  'meshcoreAutoAnnounceSenderName',
   // MeshCore auto-responder
   'meshcoreAutoResponderEnabled',
   'meshcoreAutoResponderTriggers',
@@ -834,6 +835,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // 'zero_hop' | 'flood'; absent = flood (pre-existing burst configs)
   'meshcoreAutoAnnounceAdvertMode',
   'meshcoreAutoAnnounceLastRunAt',
+  'meshcoreAutoAnnounceSenderName',
   // Last flood advert sent from this source (ms). Server-managed floor for
   // automated flood adverts; see PER_SOURCE_KEYS_NOT_POSTABLE.
   'meshcoreLastFloodAdvertAt',

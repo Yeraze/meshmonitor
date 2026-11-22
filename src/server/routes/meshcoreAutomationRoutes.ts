@@ -41,6 +41,8 @@ import {
 } from '../services/meshcoreAutoWelcome.js';
 import { MESHCORE_ADVERT_MODES, isMeshCoreAdvertMode, resolveMeshCoreAdvertMode } from '../../types/meshcoreAdvert.js';
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
+import { auditMeshcoreEvent } from './meshcoreRouteShared.js';
+import { validateMeshcoreSenderName } from '../../utils/meshcoreSenderName.js';
 import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 import { keepServerRunState, parseStoredTriggers } from '../utils/timerRunState.js';
@@ -1017,6 +1019,7 @@ router.get(
       const lastRunAt = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceLastRunAt');
       const scopeMode = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceScopeMode');
       const scopeName = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceScopeName');
+      const senderName = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceSenderName');
 
       res.json({
         success: true,
@@ -1045,6 +1048,7 @@ router.get(
           // so only inherit / unscoped / named are meaningful.
           scopeMode: (scopeMode as 'inherit' | 'unscoped' | 'named') || 'inherit',
           scopeName: scopeName || '',
+          senderName: senderName || '',
         },
       });
     } catch (error) {
@@ -1076,6 +1080,7 @@ router.post(
         advertMode,
         scopeMode,
         scopeName,
+        senderName,
       } = req.body as {
         enabled?: boolean;
         intervalHours?: number;
@@ -1090,11 +1095,24 @@ router.post(
         advertMode?: unknown;
         scopeMode?: 'inherit' | 'unscoped' | 'named';
         scopeName?: string;
+        senderName?: unknown;
       };
 
       // Validate before writing anything so a bad request leaves no partial save.
       if (advertMode !== undefined && !isMeshCoreAdvertMode(advertMode)) {
         return fail(res, 400, 'INVALID_ADVERT_MODE', `advertMode must be one of: ${MESHCORE_ADVERT_MODES.join(', ')}`);
+      }
+
+      // Sender name (#6341 P4): '' clears; otherwise syntax only (no allowlist check at save).
+      let newSenderName: string | undefined;
+      if (senderName !== undefined && senderName !== null) {
+        if (typeof senderName === 'string' && senderName.trim() === '') {
+          newSenderName = '';
+        } else {
+          const v = validateMeshcoreSenderName(senderName);
+          if (!v.ok) return fail(res, 400, 'INVALID_INPUT', `Invalid senderName (${v.reason})`);
+          newSenderName = v.name;
+        }
       }
 
       if (enabled !== undefined) {
@@ -1141,6 +1159,16 @@ router.post(
       }
       if (scopeName !== undefined) {
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceScopeName', String(scopeName).trim());
+      }
+
+      if (newSenderName !== undefined) {
+        const prev = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceSenderName')) || '';
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceSenderName', newSenderName);
+        if (newSenderName !== '' && newSenderName !== prev) {
+          auditMeshcoreEvent(req, 'meshcore_sender_name_automation_set', 'automation', {
+            sourceId, kind: 'announce', senderName: newSenderName,
+          });
+        }
       }
 
       // Re-arm the scheduler so the new settings take effect immediately.
@@ -1202,6 +1230,63 @@ router.post(
   },
 );
 
+// ============ Sender-name override on automations (#6341 P4) ============
+//
+// Save-time rule: syntax only. The allowlist is checked at send time, where a
+// name that is no longer allowed falls back to the node name, so one stale
+// name never blocks a later save of the whole trigger array.
+
+/**
+ * Validate and normalise `senderName` on each trigger, in place. An empty or
+ * blank string removes the field. Returns an error message, or null.
+ */
+function normalizeTriggerSenderNames(triggers: unknown[]): string | null {
+  for (const t of triggers as Array<Record<string, unknown> | null>) {
+    if (!t || typeof t !== 'object' || t.senderName === undefined) continue;
+    const label = String(t.id ?? '(unnamed)');
+    if (t.senderName === null || (typeof t.senderName === 'string' && t.senderName.trim() === '')) {
+      delete t.senderName;
+      continue;
+    }
+    const v = validateMeshcoreSenderName(t.senderName);
+    if (!v.ok) return `Trigger ${label}: invalid senderName (${v.reason})`;
+    t.senderName = v.name;
+  }
+  return null;
+}
+
+/** Audit each trigger whose stored sender name was added or changed. */
+function auditTriggerSenderNames(
+  req: Request,
+  sourceId: string,
+  kind: 'timer' | 'responder',
+  next: unknown[],
+  stored: unknown[],
+): void {
+  const before = new Map<string, unknown>();
+  for (const t of stored as Array<Record<string, unknown> | null>) {
+    if (t && typeof t === 'object') before.set(String(t.id ?? ''), t.senderName);
+  }
+  for (const t of next as Array<Record<string, unknown> | null>) {
+    if (!t || typeof t !== 'object' || typeof t.senderName !== 'string') continue;
+    const id = String(t.id ?? '');
+    if (before.get(id) !== t.senderName) {
+      auditMeshcoreEvent(req, 'meshcore_sender_name_automation_set', 'automation', {
+        sourceId, kind, triggerId: id, senderName: t.senderName,
+      });
+    }
+  }
+}
+
+function parseTriggerArray(json: string | null | undefined): unknown[] {
+  try {
+    const v = JSON.parse(json || '[]');
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
 // ============ Timer Triggers Automation ============
 //
 // Triggers persist as a JSON array; the manager re-reads on schedule
@@ -1254,10 +1339,13 @@ router.post(
       if (tooMany) {
         return fail(res, 400, 'TIMER_TOO_MANY_CHANNELS', `Trigger ${tooMany.id}: a timer can send to at most ${MESHCORE_TIMER_MAX_CHANNELS} channels (it has ${tooMany.channels})`);
       }
+      const nameError = normalizeTriggerSenderNames(body.triggers);
+      if (nameError) return fail(res, 400, 'INVALID_INPUT', nameError);
       // Run state belongs to the scheduler; keep the stored values (#5827).
       const storedJson = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreTimerTriggers');
       const triggers = keepServerRunState(body.triggers as unknown[], parseStoredTriggers(storedJson));
       await databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(triggers));
+      auditTriggerSenderNames(req, sourceId, 'timer', triggers as unknown[], parseTriggerArray(storedJson));
 
       await managerFor(req, res).startTimerTriggers().catch((err: Error) =>
         logger.warn(`[API] timer-trigger restart after save failed: ${err.message}`));
@@ -1357,7 +1445,11 @@ router.post(
             return fail(res, 400, 'INVALID_REGEX', `Invalid ${kind} for trigger ${tr.id || '(unnamed)'}: ${v.error}`);
           }
         }
+        const nameError = normalizeTriggerSenderNames(body.triggers);
+        if (nameError) return fail(res, 400, 'INVALID_INPUT', nameError);
+        const storedJson = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoResponderTriggers');
         await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoResponderTriggers', JSON.stringify(body.triggers));
+        auditTriggerSenderNames(req, sourceId, 'responder', body.triggers, parseTriggerArray(storedJson));
       }
 
       managerFor(req, res).resetAutoResponderRegexCache();
