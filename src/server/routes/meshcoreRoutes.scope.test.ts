@@ -603,6 +603,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'POST /channels/reorder': 'write',
   },
   messaging: {
+    // requireAuth() only; the handler passes on messages:write, automation:write or configuration:read (#6341 P4).
+    'GET /sender-names': 'handler-scoped',
     'GET /messages': 'read',
     'GET /messages/channel/:idx': 'channel-read',
     'GET /messages/channel-counts': 'listed',
