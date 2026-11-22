@@ -18,7 +18,7 @@
  * their real components into the marked seams without needing to touch this
  * file's structure.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useReticulum } from './hooks/useReticulum';
 import { ReticulumSubToolbar } from './ReticulumSubToolbar';
@@ -34,7 +34,11 @@ import { ReticulumConfigurationView } from './ReticulumConfigurationView';
 import { ReticulumPathsView } from './ReticulumPathsView';
 import type { ReticulumStatus, ReticulumView, ReticulumInterfaceRow } from '../../types/reticulum';
 import { UiIcon } from '../icons';
+import { useAuth } from '../../contexts/AuthContext';
+import { usePushNotificationNavigation } from '../../hooks/usePushNotificationNavigation';
 import styles from './ReticulumPage.module.css';
+
+const NotificationsTab = lazy(() => import('../NotificationsTab'));
 
 interface ReticulumPageProps {
   baseUrl: string;
@@ -59,6 +63,10 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
     paths, probeResult, probingHash, probe, remoteStatus, remoteStatusLoading, queryRemoteStatus,
   } = useReticulum({ sourceId, enabled });
 
+  const { authStatus } = useAuth();
+  const authenticated = authStatus?.authenticated === true;
+  const isAdmin = authStatus?.user?.isAdmin ?? false;
+  const showNotifications = authenticated;
   const [view, setView] = useState<ReticulumView>('destinations');
   // Same Pin sidebar behaviour as the Meshtastic and MeshCore sidebars
   // (#5481/#6118): one global pin, the nav starts expanded when pinned, and an
@@ -72,6 +80,22 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
   const handleToggleNavPin = useCallback(() => {
     if (toggleNavPin()) setToolbarExpanded(true);
   }, [toggleNavPin]);
+
+  // Notification click-through (#6341): open the DM the push was about.
+  // Payloads for another source are left alone.
+  const { pendingNavigation, clearPendingNavigation } = usePushNotificationNavigation();
+  useEffect(() => {
+    if (!pendingNavigation) return;
+    if (pendingNavigation.sourceId && pendingNavigation.sourceId !== sourceId) return;
+    if (pendingNavigation.type === 'dm' && pendingNavigation.senderNodeId) {
+      setView('dms');
+      void loadConversation(pendingNavigation.senderNodeId);
+    }
+    clearPendingNavigation();
+  }, [pendingNavigation, sourceId, loadConversation, clearPendingNavigation]);
+
+  // A signed-out viewer cannot stay on the hidden tab.
+  const activeView: ReticulumView = view === 'notifications' && !showNotifications ? 'destinations' : view;
 
   useEffect(() => {
     onStatusChange?.(status);
@@ -127,24 +151,25 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
         contentClassName={styles.content}
         nav={(
           <ReticulumSubToolbar
-            view={view}
+            view={activeView}
             onSelect={selectView}
             expanded={toolbarExpanded}
             onToggleExpanded={() => setToolbarExpanded(v => !v)}
             pinned={navPinned}
             onTogglePin={handleToggleNavPin}
             sourceMode={status?.mode ?? null}
+            showNotifications={showNotifications}
           />
         )}
       >
-        {view === 'destinations' && (
+        {activeView === 'destinations' && (
           <ReticulumDestinationsView
             destinations={destinations}
             onToggleFavorite={toggleFavorite}
             loading={loading}
           />
         )}
-        {view === 'dms' && (
+        {activeView === 'dms' && (
           <ReticulumDmsView
             sourceId={sourceId}
             conversations={conversations}
@@ -160,7 +185,7 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
             onSend={sendMessage}
           />
         )}
-        {view === 'interfaces' && (
+        {activeView === 'interfaces' && (
           <ReticulumInterfacesView
             interfaces={interfaces}
             baseUrl={baseUrl}
@@ -168,7 +193,7 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
             loading={loading}
           />
         )}
-        {view === 'paths' && (
+        {activeView === 'paths' && (
           <ReticulumPathsView
             paths={paths}
             loading={loading}
@@ -180,17 +205,22 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
             onQueryRemoteStatus={queryRemoteStatus}
           />
         )}
-        {view === 'map' && (
+        {activeView === 'map' && (
           <ReticulumMap destinations={destinations} paths={paths} loading={loading} />
         )}
-        {view === 'configuration' && (
+        {activeView === 'configuration' && (
           <ReticulumConfigurationView sourceId={sourceId} showRadio={status?.mode === 'own'} />
         )}
-        {view === 'info' && (
+        {activeView === 'info' && (
           <ReticulumInfoView status={status} interfaces={interfaces} loading={loading} />
         )}
-        {view === 'settings' && (
+        {activeView === 'settings' && (
           <ReticulumSettingsView sourceId={sourceId} />
+        )}
+        {activeView === 'notifications' && (
+          <Suspense fallback={null}>
+            <NotificationsTab isAdmin={isAdmin} />
+          </Suspense>
         )}
       </SourceNavLayout>
     </div>

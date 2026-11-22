@@ -28,7 +28,7 @@ automated text may split into one more part. Phases 2, 3 add notifications, capp
 - [x] **P2 — MQTT feed new-node alerts.** Gate Meshtastic MQTT `maybeNotifyNewNode`; add gated, signature-required
   alerts to `meshcore_mqtt` `ingestAdvert` via a shared helper extracted from `maybeAlertRepeaterNewNode`; flip the
   capability row. Exit: tests for learning window, cap, overflow, unverified advert refused.
-- [ ] **P3 — Reticulum Notifications.** Capability row + tab on the Reticulum page; connect/disconnect events; gated
+- [x] **P3 — Reticulum Notifications.** Capability row + tab on the Reticulum page; connect/disconnect events; gated
   new-destination alerts. Exit: tab renders right rows; event tests.
 - [ ] **P4 — Sender-name follow-ups.** `senderName` option on `sendAutomatedText` (raw cap in split planner), editors,
   composer picker. Exit: tests for name validation, split cap, refused name.
@@ -54,3 +54,14 @@ verify the advert signature once per new key; Meshtastic `mqtt_bridge` / `mqtt_b
 `newNodeAlertGate` in `maybeNotifyNewNode` (TCP ungated); "(+N more)" suffix on `notifyNewNode`; gate's earliest-node
 lookup also reads `nodes` (an old Meshtastic MQTT source arms at once on upgrade); node purge re-arms gated sources.
 Feed adverts raise no automation events (#5553 precedent).
+
+### P3 (spec: `ISSUE_6341_P3_SPEC.md`)
+Maintainer answer, 2026-11-22: accept rare false new-destination alerts for peers evicted past the 2,000-row cap
+(no eviction check). Shipped: Reticulum capability row (DM, new destination, server events; `nodeMonitoring:false`
+hides inactive/low-battery/picker) and a Notifications view on the Reticulum page; DM pushes go through
+`dispatchMessageNotification` (per-DM mute by lowercase hash, click-through to the conversation, sanitised name);
+`upsertMessage` / `upsertDestination` return `{ inserted }`, so a bridge re-delivery neither notifies nor re-fires
+automations; gated LXMF-delivery new-destination alerts (`reticulumNewDestinationAlert.ts`, own tracker, unnamed
+peers alert under a short hash); gate earliest-row lookup also reads `reticulum_destinations`; `brokerLinkNotifier`
+gained `link:'bridge'`, custom event names and a name getter, attached once per manager (bridge re-emits
+`bridge-up`/`bridge-down`), 120 s grace; user Disconnect alerts at once, `stop()` is silent.

@@ -26,6 +26,8 @@
 
 import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
+import { attachBrokerLinkNotifier, type BrokerLinkNotifier } from './services/brokerLinkNotifier.js';
+import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import type { Source } from '../db/repositories/sources.js';
 import type { ReticulumMessageRow, UpsertMessageInput, UpsertPathInput } from '../db/repositories/reticulum.js';
 import databaseService from '../services/database.js';
@@ -36,8 +38,10 @@ import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isOwnReticulumAddress } from './utils/ownNodes.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
-import { notificationService } from './services/notificationService.js';
-import { renderMessageNotification, type MessageTemplateContext } from '../utils/notificationTemplate.js';
+import { dispatchMessageNotification } from './services/messagePushNotifier.js';
+import { NewNodeAlertTracker } from './services/newNodeAlertTracker.js';
+import { maybeAlertReticulumNewDestination } from './services/reticulumNewDestinationAlert.js';
+import { sanitizeReticulumName, shortReticulumHash } from '../utils/reticulumName.js';
 import { ReticulumBridgeClient } from './reticulumBridgeClient.js';
 import type { ReticulumConfig } from './reticulumConfig.js';
 import type {
@@ -132,6 +136,8 @@ interface InterfaceSample {
 export class ReticulumManager extends EventEmitter implements ISourceManager {
   public readonly sourceId: string;
   private sourceName: string;
+  /** Per-source new-destination alert bookkeeping (#6341 P3); the persisted gate does the rate limit. */
+  private readonly newNodeAlerts = new NewNodeAlertTracker();
 
   private client: ReticulumBridgeClient | null = null;
   private pendingConfig: ReticulumConfig | null = null;
@@ -205,6 +211,9 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   private periodicAnnounceTimer: ReturnType<typeof setTimeout> | null = null;
   private nextPeriodicAnnounceAt: number | null = null;
 
+  /** Debounced bridge-link alerts (#6341 P3). Disposed silently by stop(). */
+  private readonly linkNotifier: BrokerLinkNotifier;
+
   constructor(sourceId: string, sourceName?: string) {
     super();
     if (!sourceId) {
@@ -212,6 +221,14 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
     }
     this.sourceId = sourceId;
     this.sourceName = sourceName ?? sourceId;
+    // Scoped to the manager, not the client: the start retry (#5955) builds a
+    // new client per attempt, and that must not reset the grace timer.
+    this.linkNotifier = attachBrokerLinkNotifier(this, {
+      sourceId,
+      sourceName: () => this.sourceName,
+      link: 'bridge',
+      events: { up: ['bridge-up'], down: ['bridge-down'], stopped: [] },
+    });
     logger.info(`[Reticulum:${sourceId}] Manager initialized`);
   }
 
@@ -317,6 +334,8 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
    * registry's/route handler's responsibility (WP5), not this method's.
    */
   async stop(): Promise<void> {
+    // Silent: edits, autoConnect off and shutdown all land here.
+    this.linkNotifier.dispose();
     await this.disconnect();
   }
 
@@ -349,11 +368,18 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   }
 
   /** Tear down the bridge client, if any. Idempotent. */
-  async disconnect(): Promise<void> {
+  async disconnect(opts: { userInitiated?: boolean } = {}): Promise<void> {
     this.cancelStartRetry();
     this.clearPeriodicAnnounce();
     const client = this.client;
+    const wasConnected = client?.isConnected() ?? false;
     this.client = null;
+    if (opts.userInitiated && wasConnected) {
+      // The user chose this, so no grace period: tell people at once.
+      void serverEventNotificationService
+        .notifyNodeDisconnected(this.sourceId, this.sourceName, 'bridge')
+        .catch((err: unknown) => logger.error(`[Reticulum:${this.sourceId}] disconnect alert failed:`, err));
+    }
     if (client) {
       client.removeAllListeners();
       client.disconnect();
@@ -678,6 +704,9 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
     client.on('welcome', (msg: WelcomeMessage) => this.handleWelcome(msg));
     client.on('status', (msg: StatusMessage) => this.handleStatus(msg));
     client.on('ready', (msg: ReadyMessage) => this.handleReady(msg));
+    // Link-state events for the manager-level notifier.
+    client.on('ready', () => this.emit('bridge-up'));
+    client.on('close', () => this.emit('bridge-down'));
 
     client.on('lxmf_message', (msg: LxmfMessageEvent) => {
       this.handleLxmfMessage(msg).catch((err: unknown) => {
@@ -836,7 +865,7 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   /** `announce` -> `reticulum_destinations` upsert (build spec §3.5/§4.4). */
   private async handleAnnounce(msg: AnnounceMessage): Promise<void> {
     const aspects = msg.aspects && msg.aspects.length > 0 ? msg.aspects.join('.') : null;
-    await databaseService.reticulum.upsertDestination(this.sourceId, {
+    const { inserted } = await databaseService.reticulum.upsertDestination(this.sourceId, {
       destinationHash: msg.destinationHash,
       identityHash: msg.identityHash,
       appName: msg.appName,
@@ -850,6 +879,18 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       quality: msg.q,
       announceAt: msg.ts,
     });
+    void maybeAlertReticulumNewDestination(
+      this.newNodeAlerts,
+      this.sourceId,
+      {
+        destinationHash: msg.destinationHash,
+        appName: msg.appName ?? null,
+        aspects,
+        displayName: msg.displayName ?? null,
+        hops: msg.hops ?? null,
+      },
+      inserted,
+    );
   }
 
   /**
@@ -1122,7 +1163,10 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
    * sends through the `sendMessage`/`delivery_state` flow instead.
    */
   private async handleLxmfMessage(msg: LxmfMessageEvent): Promise<void> {
-    const row = await this.persistLxmfMessage(msg);
+    const { row, inserted } = await this.persistLxmfMessage(msg);
+    // A bridge re-delivery of a message we already stored must not notify or
+    // fire automations a second time.
+    if (!inserted) return;
     if (isOwnReticulumAddress(msg.from)) {
       return;
     }
@@ -1131,55 +1175,34 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Push/Apprise/desktop notification for an inbound (non-self) LXMF DM.
-   * Routes through the existing `notificationService.broadcast()` ->
-   * `shouldFilterNotificationAsync` (`utils/notificationFiltering.ts`)
-   * pipeline shared with Meshtastic/MQTT (`messagePushNotifier.ts`) — every
-   * subscribed user's whitelist/blacklist/mute/enabled-channels preferences
-   * are honored per-user there. LXMF messages are always DMs (no channel
-   * concept), so `channelId` is a sentinel `-1` (unused when `isDirectMessage`
-   * is true) and per-DM muting by `nodeUuid` is not yet wireable — Reticulum
-   * destinations have no `uuid` column. Never throws: notification failures
-   * must not break message processing.
+   * Push/Apprise/desktop notification for an inbound (non-self) LXMF DM, through
+   * the shared `dispatchMessageNotification` (per-user DM toggle, keywords, mute,
+   * templates). LXMF messages are always DMs, so `channelId` is a sentinel `-1`.
+   * The sender's lowercase hash is the per-DM mute key. Never throws.
    */
   private async sendInboundNotification(row: ReticulumMessageRow): Promise<void> {
     try {
-      const serviceStatus = notificationService.getServiceStatus();
-      if (!serviceStatus.anyAvailable) return;
-
-      const source = await databaseService.sources.getSource(this.sourceId);
-      const sourceName = source?.name || this.sourceId;
-      const text = row.content ?? '';
-      // Same templates as every other message notification (#5593): the
-      // source name appears once, wherever the recipient's template puts it.
-      const templateContext: MessageTemplateContext = {
-        sourceName,
-        channelName: '',
-        senderName: row.fromHash,
-        senderShortName: row.fromHash,
-        text,
-        serviceLabel: 'Reticulum',
-        isDM: true,
-      };
-      const { title, body } = renderMessageNotification(templateContext);
-
-      await notificationService.broadcast(
-        {
-          title,
-          body,
-          sourceId: this.sourceId,
-          sourceName,
-          data: { type: 'dm', messageId: row.id, senderNodeId: row.fromHash },
-          message: templateContext,
-        },
-        {
-          messageText: text,
-          channelId: -1,
-          isDirectMessage: true,
-          sourceId: this.sourceId,
-          sourceName,
-        },
-      );
+      let senderName = shortReticulumHash(row.fromHash);
+      try {
+        const dest = await databaseService.reticulum.getDestination(this.sourceId, row.fromHash);
+        senderName = sanitizeReticulumName(dest?.displayName) ?? senderName;
+      } catch {
+        // fall back to the short hash
+      }
+      await dispatchMessageNotification({
+        sourceId: this.sourceId,
+        messageId: row.id,
+        isDirectMessage: true,
+        channelId: -1,
+        senderName,
+        senderShortName: shortReticulumHash(row.fromHash),
+        senderNavId: row.fromHash,
+        text: row.content ?? '',
+        isTapback: false,
+        viaMqtt: false,
+        dedupKey: null,
+        muteKey: row.fromHash.toLowerCase(),
+      });
     } catch (err) {
       logger.warn(
         `[Reticulum:${this.sourceId}] failed to send inbound message notification: ${
@@ -1190,7 +1213,7 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
   }
 
   /** Build and persist the `reticulum_messages` row for an inbound `lxmf_message` event. */
-  private async persistLxmfMessage(msg: LxmfMessageEvent): Promise<ReticulumMessageRow> {
+  private async persistLxmfMessage(msg: LxmfMessageEvent): Promise<{ row: ReticulumMessageRow; inserted: boolean }> {
     const id = `${this.sourceId}_${msg.hash}`;
     const { replyToHash, threadHash } = extractReplyAndThread(msg.fields);
     const input: UpsertMessageInput = {
@@ -1212,12 +1235,12 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       snr: msg.snr,
       quality: msg.q,
     };
-    await databaseService.reticulum.upsertMessage(this.sourceId, input);
+    const { inserted } = await databaseService.reticulum.upsertMessage(this.sourceId, input);
     const row = await databaseService.reticulum.getMessage(this.sourceId, id);
     if (!row) {
       throw new Error(`ReticulumManager(${this.sourceId}): message ${id} vanished immediately after upsert`);
     }
-    return row;
+    return { row, inserted };
   }
 
   /**

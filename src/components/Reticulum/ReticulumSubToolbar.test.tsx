@@ -20,7 +20,7 @@ vi.mock('react-i18next', async () => {
   return createReactI18nextMock();
 });
 
-function renderToolbar(sourceMode?: string | null) {
+function renderToolbar(sourceMode?: string | null, showNotifications?: boolean) {
   return render(
     <ReticulumSubToolbar
       view="destinations"
@@ -28,6 +28,7 @@ function renderToolbar(sourceMode?: string | null) {
       expanded
       onToggleExpanded={() => {}}
       sourceMode={sourceMode}
+      showNotifications={showNotifications}
     />,
   );
 }
@@ -35,6 +36,16 @@ function renderToolbar(sourceMode?: string | null) {
 const item = (id: string) => document.querySelector(`[data-source-nav-item="${id}"]`);
 
 describe('ReticulumSubToolbar', () => {
+  it('hides the notifications item when signed out and shows it when signed in (#6341)', () => {
+    renderToolbar('own');
+    expect(item('notifications')).toBeNull();
+  });
+
+  it('shows the notifications item for a signed-in viewer (#6341)', () => {
+    renderToolbar('own', true);
+    expect(item('notifications')).not.toBeNull();
+  });
+
   it('always shows the map item regardless of mode', () => {
     renderToolbar('attach');
     expect(item('map')).not.toBeNull();

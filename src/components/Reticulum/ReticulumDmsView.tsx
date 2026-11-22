@@ -45,8 +45,11 @@ import type {
   ReticulumMessageRow,
 } from '../../types/reticulum';
 import type { SendReticulumMessageInput } from './hooks/useReticulum';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, useOptionalMuteSettings } from '../../contexts/SettingsContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { MuteMenu, MutedName } from '../notifications/MuteMenu';
 import { formatTimeOrDate } from '../../utils/datetime';
+import { sanitizeReticulumName } from '../../utils/reticulumName';
 import { UiIcon, type UiIconName } from '../icons';
 import styles from './ReticulumDmsView.module.css';
 import protocolStripe from '../messages/ProtocolStripe.module.css';
@@ -172,6 +175,10 @@ export const ReticulumDmsView: React.FC<ReticulumDmsViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
+  const mute = useOptionalMuteSettings();
+  const { authStatus } = useAuth();
+  // Mute keys are the lowercased peer hash, matching the server's muteKey (#6341).
+  const canMute = !!mute && authStatus?.authenticated === true;
 
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState<PendingMessage[]>([]);
@@ -186,7 +193,9 @@ export const ReticulumDmsView: React.FC<ReticulumDmsViewProps> = ({
   const nameByHash = useMemo(() => {
     const map = new Map<string, string>();
     for (const d of destinations ?? []) {
-      if (d.displayName) map.set(d.destinationHash, d.displayName);
+      // Announce names are peer-controlled: strip bidi/zero-width/control chars.
+      const name = sanitizeReticulumName(d.displayName);
+      if (name) map.set(d.destinationHash, name);
     }
     return map;
   }, [destinations]);
@@ -244,7 +253,9 @@ export const ReticulumDmsView: React.FC<ReticulumDmsViewProps> = ({
                     onClick={() => onSelectConversation(c.peerHash)}
                     title={c.peerHash}
                   >
-                    <span className={styles.peerName}>{nameFor(c.peerHash)}</span>
+                    <span className={styles.peerName}>
+                      <MutedName muted={!!mute?.isDMMuted(c.peerHash.toLowerCase())}>{nameFor(c.peerHash)}</MutedName>
+                    </span>
                     <span className={styles.conversationPreview}>{c.lastMessage.content ?? ''}</span>
                     <span className={styles.conversationMeta}>
                       {formatTimeOrDate(new Date(c.lastMessage.timestamp), timeFormat, dateFormat)}
@@ -267,6 +278,13 @@ export const ReticulumDmsView: React.FC<ReticulumDmsViewProps> = ({
             <header className={styles.mainHeader}>
               <span className={styles.peerName}>{nameFor(activePeerHash)}</span>
               <span className={styles.peerHashFull} title={activePeerHash}>{truncateHash(activePeerHash, 20)}</span>
+              {canMute && mute && (
+                <MuteMenu
+                  muted={mute.isDMMuted(activePeerHash.toLowerCase())}
+                  onMute={(until) => mute.muteDM(activePeerHash.toLowerCase(), until)}
+                  onUnmute={() => mute.unmuteDM(activePeerHash.toLowerCase())}
+                />
+              )}
             </header>
 
             {identity?.destinationHash && (

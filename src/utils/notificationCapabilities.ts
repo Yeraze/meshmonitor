@@ -34,16 +34,18 @@ export interface NotificationCapabilities {
   autoTrace: boolean;
   newNode: 'on' | 'unsupported';
   /** Extra text under the new-node toggle. */
-  newNodeNote: 'repeater_learning' | 'feed_learning' | null;
+  newNodeNote: 'repeater_learning' | 'feed_learning' | 'reticulum_learning' | null;
   waypoint: boolean;
   mention: boolean;
   batteryUnit: 'percent' | 'voltage';
   /** Keyword filters, message templates and the filter-order info box. */
   messageFilters: boolean;
   /** Which "this source can't do X" hint the tab shows under the new-node row. */
-  unsupportedHint: 'repeater' | 'ingest' | null;
+  unsupportedHint: 'repeater' | 'ingest' | 'reticulum' | null;
   /** Wording for server-event connection alerts: radio link, MQTT broker link, or none. */
-  connectionEvents: 'radio' | 'broker' | 'none';
+  connectionEvents: 'radio' | 'broker' | 'bridge' | 'none';
+  /** Inactive-node, low-battery and monitored-node picker controls. */
+  nodeMonitoring: boolean;
 }
 
 export function notificationCapabilities(
@@ -69,6 +71,28 @@ export function notificationCapabilities(
       messageFilters: true,
       unsupportedHint: 'ingest',
       connectionEvents: 'broker',
+      nodeMonitoring: true,
+    };
+  }
+  if (sourceType === 'reticulum') {
+    // DMs, new-destination alerts and bridge-link events only (#6341 P3).
+    return {
+      dm: true,
+      rooms: false,
+      channels: false,
+      emoji: false,
+      mqtt: false,
+      traceroute: false,
+      autoTrace: false,
+      newNode: 'on',
+      newNodeNote: 'reticulum_learning',
+      waypoint: false,
+      mention: false,
+      batteryUnit: 'percent',
+      messageFilters: true,
+      unsupportedHint: 'reticulum',
+      connectionEvents: 'bridge',
+      nodeMonitoring: false,
     };
   }
   if (sourceType !== 'meshcore') {
@@ -90,6 +114,7 @@ export function notificationCapabilities(
       unsupportedHint: null,
       connectionEvents:
         sourceType === 'mqtt_bridge' ? 'broker' : sourceType === 'mqtt_broker' ? 'none' : 'radio',
+      nodeMonitoring: true,
     };
   }
   const repeater = meshcoreDeviceType === MESHCORE_DEVICE_TYPE_REPEATER;
@@ -109,6 +134,7 @@ export function notificationCapabilities(
     messageFilters: true,
     unsupportedHint: repeater ? 'repeater' : null,
     connectionEvents: 'radio',
+    nodeMonitoring: true,
   };
 }
 
@@ -132,6 +158,7 @@ export async function loadNotificationChannels(
     const list = Array.isArray(body) ? body : body?.data;
     return Array.isArray(list) ? list : [];
   }
+  if (sourceType === 'reticulum') return [];
   const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
   const path = sourceType === 'meshcore' ? '/api/channels/all' : '/api/channels';
   const response = await api.get<Channel[]>(`${path}${qs}`);

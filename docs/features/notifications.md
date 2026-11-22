@@ -801,6 +801,18 @@ MeshCore sources have their own **Notifications** tab. Message notifications use
 
 **Volume.** Channel messages stay off until you pick channels. The same message heard on two of your sources notifies once, naming both. A mention and its message notify once. Your own messages never notify.
 
+### Reticulum Sources
+
+A Reticulum source has a **Notifications** tab on its page, for signed-in users. It offers what the network can supply:
+
+| Notification | Notes |
+|---|---|
+| **Direct messages** | An LXMF message notifies once, even if the bridge delivers it again. The notification names the sender (its announced name, or the first 8 characters of its address) and opens that conversation. Mute one conversation with the bell in its header; keywords and the other message filters apply. |
+| **Newly found destinations** | Sent the first time this source logs a signed LXMF peer announce. Only LXMF delivery destinations count, so a NomadNet node or propagation node does not alert. Alerts start **48 hours** after the source first logs a destination, and at most **10 per hour** are sent per source; the next one says how many more were held back. A peer with no announced name shows its short address. Restarts and saves never reset the limit. |
+| **Server Events** | Lost and restored connection to the Reticulum bridge. The link must stay down for **2 minutes** before it notifies, so a short drop is silent. The Disconnect button notifies at once; a source edit or shutdown does not. |
+
+Reticulum has no channels, traces, waypoints, mentions or node-health alerts, so those controls do not show. This feature transmits nothing.
+
 ### MeshCore MQTT Region Feeds
 
 A MeshCore MQTT ingest source has a **Notifications** tab on its page, for signed-in users. It has no radio, so it offers only what a feed can supply:
@@ -924,6 +936,7 @@ The 5-second hold starts at the first copy and never moves, so a stream of copie
 | Channel messages and direct messages (Meshtastic radio and MQTT) | Yes, by sender + packet id + port |
 | New MeshCore device | Yes, by the device's public key |
 | Waypoint alerts | Yes, by waypoint id |
+| New Reticulum destination | No. Each Reticulum source alerts for itself, once per destination |
 | New Meshtastic node | Yes. You get it from the first source **you** can read that heard the node, once |
 | Server events (start, node connect / disconnect) | **No.** These are about a source, so you get one per source |
 | Inactive node, low battery | Yes, by node: see [Settings Saved for a Source](#settings-saved-for-a-source) |
