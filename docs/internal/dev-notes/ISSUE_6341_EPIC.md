@@ -32,7 +32,7 @@ automated text may split into one more part. Phases 2, 3 add notifications, capp
   new-destination alerts. Exit: tab renders right rows; event tests.
 - [x] **P4 — Sender-name follow-ups.** `senderName` option on `sendAutomatedText` (raw cap in split planner), editors,
   composer picker. Exit: tests for name validation, split cap, refused name.
-- [ ] **P5 — Clock samples.** Meshtastic and `meshcore_mqtt` samples into the protocol-neutral clock rule. Exit: tests
+- [x] **P5 — Clock samples.** Meshtastic and `meshcore_mqtt` samples into the protocol-neutral clock rule. Exit: tests
   for replay skip, two-observer rule.
 - [ ] **P6 — GRP_TXT pipeline merge.** One store path for device and MQTT channel text. Exit: existing suites pass,
   MQTT rows get `selfOrigin`, ids unchanged.
@@ -74,3 +74,12 @@ the raw and node-name caps, so every part fits either path; `GET /api/sources/:i
 (`messages:write` / `automation:write` / `configuration:read`); syntax-only save checks plus a
 `meshcore_sender_name_automation_set` audit row; shared `SenderNamePicker` in the editors and the channel composer
 (counter uses the raw cap). Fixed: both send routes held a short override name to the node-name cap.
+
+### P5 (spec: `ISSUE_6341_P5_SPEC.md`)
+Maintainer answers, 2026-11-22: skip Meshtastic nodes with no clock; accept unauthenticated observer identity.
+Shipped: `recordClockSample` (protocol-neutral subject; `detectClockOffset` wraps it); `node:clockOffset` and the
+`clockOutOfSync` context carry `nodeNum`; Meshtastic samples from live LoRa telemetry/position (`clockSampleGate.ts`:
+rxTime within ±120 s of server time, no replays, S&F, MQTT, proxy or Virtual Node, not the local node, plausible sender
+time; offset = server time − sender time, so a wrong local radio clock stops sampling instead of flagging everyone);
+`meshcore_mqtt` stores a sample only when two observers agree on sign (`MqttClockAgreement`, bounded; smaller offset
+stored; signature verified once per advert). Telemetry type stays `mc_rtc_drift_secs`.
