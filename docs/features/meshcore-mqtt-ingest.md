@@ -156,7 +156,7 @@ Packet capture is opt-in, as it is for every monitor.
 
 ## Notifications
 
-The source page has a **Notifications** tab for signed-in users. It alerts on channel messages you pick, inactive nodes, low observer battery, and broker connection loss. Direct messages, traces, mentions and new-node alerts do not apply to a feed with no radio. A region's channels can be busy, so nothing fires until you pick channels. See [MeshCore MQTT Region Feeds](/features/notifications#meshcore-mqtt-region-feeds) for the picker rules and the channel rules.
+The source page has a **Notifications** tab for signed-in users. It alerts on channel messages you pick, inactive nodes, low observer battery, and broker connection loss. New-node alerts fire for nodes with a verified advert signature, after a 48 hour learning period and capped at 10 per hour. Direct messages, traces and mentions do not apply to a feed with no radio. A region's channels can be busy, so nothing fires until you pick channels. See [MeshCore MQTT Region Feeds](/features/notifications#meshcore-mqtt-region-feeds) for the picker rules and the channel rules.
 
 ## Mesh impact
 

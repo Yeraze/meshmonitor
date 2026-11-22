@@ -7,11 +7,13 @@
  * trace/path alerts and new-node alerts. A MeshCore Repeater only sees channel
  * traffic, so DM, trace and mention controls are hidden. Its new-node alert is
  * on but gated by a learning window and an hourly cap (#6306), which the
- * `newNodeNote` explains.
+ * `newNodeNote` explains. MQTT feeds (MeshCore ingest, Meshtastic bridge and
+ * broker) share the same gate (#6341).
  */
 import api from '../services/api.js';
 import type { Channel } from '../types/device.js';
 import { isMeshCoreMqttFedSourceType } from './meshcoreSourceTypes.js';
+import { isGatedMeshtasticNewNodeSourceType } from './newNodeAlertLimits.js';
 
 /** MeshCore device type codes (match `status.deviceType`). */
 export const MESHCORE_DEVICE_TYPE_COMPANION = 1;
@@ -32,7 +34,7 @@ export interface NotificationCapabilities {
   autoTrace: boolean;
   newNode: 'on' | 'unsupported';
   /** Extra text under the new-node toggle. */
-  newNodeNote: 'repeater_learning' | null;
+  newNodeNote: 'repeater_learning' | 'feed_learning' | null;
   waypoint: boolean;
   mention: boolean;
   batteryUnit: 'percent' | 'voltage';
@@ -59,8 +61,8 @@ export function notificationCapabilities(
       mqtt: false,
       traceroute: false,
       autoTrace: false,
-      newNode: 'unsupported',
-      newNodeNote: null,
+      newNode: 'on',
+      newNodeNote: 'feed_learning',
       waypoint: false,
       mention: false,
       batteryUnit: 'voltage',
@@ -70,6 +72,7 @@ export function notificationCapabilities(
     };
   }
   if (sourceType !== 'meshcore') {
+    const feedGated = isGatedMeshtasticNewNodeSourceType(sourceType);
     return {
       dm: true,
       rooms: false,
@@ -79,7 +82,7 @@ export function notificationCapabilities(
       traceroute: true,
       autoTrace: false,
       newNode: 'on',
-      newNodeNote: null,
+      newNodeNote: feedGated ? 'feed_learning' : null,
       waypoint: true,
       mention: false,
       batteryUnit: 'percent',

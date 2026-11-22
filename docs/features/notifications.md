@@ -809,13 +809,25 @@ A MeshCore MQTT ingest source has a **Notifications** tab on its page, for signe
 |---|---|
 | **Channel messages** | The picker lists channels this source has messages on, named by key (a channel shared by two sources is one channel), limited to the ones you can read. Nothing fires until you pick channels. |
 | **Keywords, emoji reactions, templates** | Same as Meshtastic. |
+| **Newly Found Nodes** | Sent when a node's advert carries a valid signature and the node is new to this source. Limited by a learning period and an hourly cap; see below. |
 | **Inactive Node, Low Battery** | Pick nodes in the monitored-node picker. Low battery reads the observer's reported voltage, in millivolts. |
 | **Server Events** | Startup, plus MQTT broker connection lost and restored (see below). |
-| Direct messages, traces, mentions, new nodes, MQTT, waypoints | Not available. A region feed has no radio and no own node. |
+| Direct messages, traces, mentions, MQTT, waypoints | Not available. A region feed has no radio and no own node. |
 
 **A region feed can be busy.** A channel such as Public can carry a whole region's traffic, and there is no rate cap: each channel you tick can send many alerts. Pick channels with care. The tab says so next to the picker.
 
 **Channels are named by key.** The feed decrypts with every key MeshMonitor holds and files each message under the channel that key belongs to, so the picker lists channels by name, not by slot number. Two sources that hold the same key share one channel. Older messages whose key could not be identified show as "Channel N (older messages)" and only admins see them.
+
+**Feed new-node alerts.** A feed alerts on a node only when the node's advert carried a valid signature and the node is new to that source. Two limits apply, and neither is a setting:
+
+- **Learning period.** For 48 hours after the source first logs a node, nothing alerts, and nodes heard in that time never alert later. A feed that has logged for longer than that alerts from the first new node after you update. Only a purge that removes nodes starts the period again. A restart, reconnect, source edit or preference change does not.
+- **Hourly cap.** At most 10 alerts per source per hour. Alerts over the cap are dropped, and the next alert that goes out ends with "(+N more new nodes since the last alert)".
+
+The same gate covers a Meshtastic MQTT bridge or broker source. A Meshtastic TCP source is not limited. MeshMonitor sends nothing over the air for these alerts, and a feed never sends an Auto Welcome. If a feed drops a node's alert and a radio source later hears the same node, you do not get a second alert from the radio source.
+
+::: tip Upgrading
+The **Newly Found Nodes** toggle is on by default, so an existing MeshCore feed starts alerting for new keys as soon as you update, up to the hourly cap. Turn it off on that source's Notifications tab if you don't want these alerts. Meshtastic MQTT sources were not limited before; they now follow the same 10 per hour cap.
+:::
 
 **Who receives what.** A user needs `messages:read` on the source. A channel message only reaches users who can read the key that opened it. The Public channel reaches every signed-in user with `messages:read` on the feed.
 
