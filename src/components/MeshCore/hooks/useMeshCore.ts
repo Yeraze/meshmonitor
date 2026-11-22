@@ -24,6 +24,7 @@ import { useWebSocketContext } from '../../../contexts/WebSocketContext';
 import { useToast } from '../../ToastContainer';
 import { isTxDisabledBody } from '../../../utils/txDisabled';
 import { parseJsonResponse } from '../../../utils/parseJsonResponse';
+import { senderNameErrorMessage } from '../senderNameErrors';
 import { buildOptimisticReaction } from '../meshcoreReactionClient';
 import { mergeMeshCoreHeardBy } from '../../../utils/meshcoreHeardBy';
 import { createNeighboursFetchActions, type MeshCoreNeighboursFetchActions } from './meshcoreNeighboursFetchApi';
@@ -423,6 +424,13 @@ export interface SenderNamePolicy {
   allowedNames: string[];
 }
 
+/** Sender names a sender may pick for a channel send (#6341 P4). */
+export interface UsableSenderNames {
+  enabled: boolean;
+  allowedNames: string[];
+  firmwareSupported: boolean;
+}
+
 export interface MeshCoreActions {
   connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
@@ -467,6 +475,8 @@ export interface MeshCoreActions {
   /** Read the per-source sender-name override policy (#6282). Null on error. */
   getSenderNamePolicy: () => Promise<SenderNamePolicy | null>;
   /** Replace the per-source sender-name override policy. Returns the stored policy, or null on error. */
+  /** GET sender-names: names usable on a channel send; null when unreadable (no grant, error). */
+  fetchUsableSenderNames: () => Promise<UsableSenderNames | null>;
   setSenderNamePolicy: (policy: SenderNamePolicy) => Promise<SenderNamePolicy | null>;
   /** Read the per-source default MeshCore path hash size (1/2/3 bytes) (#4945). */
   getDefaultPathHashSize: () => Promise<1 | 2 | 3>;
@@ -547,7 +557,7 @@ export interface MeshCoreActions {
    *  (#3701) for THIS send only — it is not persisted to the channel; the next
    *  send re-asserts the channel/default scope. Omit (or pass `undefined`) for
    *  the normal channel/default resolution. */
-  sendMessage: (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null) => Promise<boolean>;
+  sendMessage: (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null, senderName?: string) => Promise<boolean>;
   /** Send an emoji reaction to a message (#5762). Shows an optimistic chip at once;
    *  resolves `true` when the server sent it. */
   sendReaction: (target: MeshCoreMessage, emoji: string) => Promise<boolean>;
@@ -1542,6 +1552,19 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const fetchUsableSenderNames = useCallback(async (): Promise<UsableSenderNames | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/sender-names`);
+      const data = await parseJsonResponse(response);
+      const d = data.data as Partial<UsableSenderNames> | undefined;
+      return data.success && d && typeof d.enabled === 'boolean' && Array.isArray(d.allowedNames)
+        ? { enabled: d.enabled, allowedNames: d.allowedNames, firmwareSupported: d.firmwareSupported === true }
+        : null;
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const setSenderNamePolicy = useCallback(async (policy: SenderNamePolicy): Promise<SenderNamePolicy | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/sender-names`, {
@@ -2465,7 +2488,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
-  const sendMessage = useCallback(async (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null): Promise<boolean> => {
+  const sendMessage = useCallback(async (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null, senderName?: string): Promise<boolean> => {
     if (!text.trim()) return false;
     try {
       const response = await csrfFetch(`${mcPrefix}/messages/send`, {
@@ -2478,6 +2501,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           // Only include the override when explicitly provided; omitting the key
           // lets the backend resolve the channel/default scope as usual (#3701).
           ...(scope !== undefined ? { scope } : {}),
+          // Only when a name is picked (#6341 P4); omitted = the node's own name.
+          ...(senderName ? { senderName } : {}),
         }),
       });
       const data = await parseJsonResponse(response);
@@ -2486,13 +2511,13 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         return true;
       }
       if (reportTxDisabled(response.status, data)) return false;
-      setError(data.error || 'Failed to send message');
+      setError(senderNameErrorMessage(data.code, t) ?? data.error ?? 'Failed to send message');
       return false;
     } catch (_err) {
       setError('Failed to send message');
       return false;
     }
-  }, [mcPrefix, csrfFetch, fetchMessages, reportTxDisabled]);
+  }, [mcPrefix, csrfFetch, fetchMessages, reportTxDisabled, t]);
 
   // ----- Message deletion / purge (#3981) -----
   // Each does an optimistic local prune; the server also broadcasts a
@@ -2983,6 +3008,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       getDefaultScope,
       setDefaultScope,
       getSenderNamePolicy,
+      fetchUsableSenderNames,
       setSenderNamePolicy,
       getDefaultPathHashSize,
       setDefaultPathHashSize,
