@@ -113,6 +113,15 @@ describe('v1 POST /messages senderName — MeshCore', () => {
     expect(stub.sendChannelMessageAs.mock.calls[0][2]).toBe('Zoë');
   });
 
+  it('a short name is held to its raw cap, not the node-name cap (#6341 P4)', async () => {
+    stub.getLocalNode.mockReturnValue({ name: 'n'.repeat(30) }); // normal cap 128
+    const text = 'x'.repeat(140); // raw cap for 'Zoë' (4 bytes) is 149
+    await post({ text, channel: 1, senderName: 'Zoë' }).expect(201);
+    expect(stub.sendChannelMessageAs).toHaveBeenCalledTimes(1);
+    // The node's own name stays on the node-name cap.
+    await post({ text, channel: 1, senderName: 'n'.repeat(30) }).expect(413);
+  });
+
   it('absent senderName takes the normal path', async () => {
     await post({ text: 'hi', channel: 1 }).expect(201);
     expect(stub.sendMessageWithResult).toHaveBeenCalled();

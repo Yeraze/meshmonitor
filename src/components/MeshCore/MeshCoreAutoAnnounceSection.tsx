@@ -9,6 +9,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
+import { SenderNameField } from './SenderNameField';
 import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
 import { ConfigSection } from '../shared/config/ConfigSection';
 import { AutomationEngineNote } from '../shared/config/AutomationEngineNote';
@@ -46,6 +47,8 @@ interface AutoAnnounceSettings {
   /** MeshCore scope/region for the announcement (#3833). No trigger, so no 'trigger' mode. */
   scopeMode: ScopeMode;
   scopeName: string;
+  /** Sender name the announcement goes out under (#6341 P4). '' = node name. */
+  senderName: string;
 }
 
 interface MeshCoreChannelRow {
@@ -70,6 +73,7 @@ const DEFAULTS: AutoAnnounceSettings = {
   advertMode: DEFAULT_MESHCORE_ADVERT_MODE,
   scopeMode: 'inherit',
   scopeName: '',
+  senderName: '',
 };
 
 const TOKENS = MESHCORE_AUTOMATION_TOKENS;
@@ -126,6 +130,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             : (json.data.advertEnabled ? 'flood' : DEFAULT_MESHCORE_ADVERT_MODE),
           scopeMode: (json.data.scopeMode as ScopeMode) || 'inherit',
           scopeName: json.data.scopeName || '',
+          senderName: json.data.senderName || '',
         };
         setSettings(s);
         setInitial(s);
@@ -199,7 +204,8 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
       settings.advertDelaySeconds !== initial.advertDelaySeconds ||
       settings.advertMode !== initial.advertMode ||
       settings.scopeMode !== initial.scopeMode ||
-      settings.scopeName !== initial.scopeName,
+      settings.scopeName !== initial.scopeName ||
+      settings.senderName !== initial.senderName,
     );
   }, [settings, initial, loaded]);
 
@@ -239,6 +245,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             advertMode: settings.advertMode,
             scopeMode: settings.scopeMode,
             scopeName: settings.scopeName,
+            senderName: settings.senderName,
           }),
         },
       );
@@ -534,6 +541,15 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
               idPrefix="announce"
               value={{ scopeMode: settings.scopeMode, scopeName: settings.scopeName }}
               onChange={(v) => setSettings((s) => ({ ...s, scopeMode: v.scopeMode ?? 'inherit', scopeName: v.scopeName ?? '' }))}
+            />
+          </div>
+          <div style={{ marginTop: '0.5rem' }}>
+            <SenderNameField
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+              idPrefix="announce"
+              value={settings.senderName}
+              onChange={(name) => setSettings((s) => ({ ...s, senderName: name ?? '' }))}
             />
           </div>
         </div>

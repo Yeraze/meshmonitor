@@ -45,6 +45,8 @@ export interface ActionDeps {
     scopeOverride?: string | null;
     /** Split a long message into up to 3 marked parts instead of cutting it (MeshCore #6316, Meshtastic #6330). */
     splitLongMessages?: boolean;
+    /** MeshCore channel sends only (#6341 P4): send under this name when the source allows it. Ignored elsewhere. */
+    senderName?: string;
     /**
      * App-level DM resend cap (#4340 Phase 3), 1–3. Absent = one direct send —
      * today's behaviour for every existing automation. Honoured ONLY for a
@@ -604,6 +606,9 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const scopeArg = scopeOverride !== undefined ? { scopeOverride } : {};
       // #6316: only forward when on, so the default call shape is unchanged.
       const splitArg = p.splitLongMessages === true ? { splitLongMessages: true } : {};
+      // #6341 P4: same rule. A literal name, not tokens; empty means none.
+      const senderNameStr = typeof p.senderName === 'string' ? p.senderName.trim() : '';
+      const splitArgWithName = senderNameStr ? { ...splitArg, senderName: senderNameStr } : splitArg;
 
       // #4340 Phase 3. Only forward the key when set, so the default (unset)
       // call shape — and thus the run-log resolvedParams and every existing
@@ -675,7 +680,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           // unknown), so the chosen scope governs a DM's propagation just as it does
           // a channel broadcast — dropping it forced DMs onto the source default.
           // 'inherit' still leaves scopeArg empty, so DMs default as before.
-          await pushOrSkipMesh(results, ctx, sid, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...splitArg, ...attemptsArg, ...hopLimitArg }), { text });
+          await pushOrSkipMesh(results, ctx, sid, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...scopeArg, ...splitArgWithName, ...attemptsArg, ...hopLimitArg }), { text });
           continue;
         }
         const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
@@ -683,7 +688,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
           const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
           if (!match) continue; // channel not present on this source
-          await pushOrSkipMesh(results, ctx, sid, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg, ...splitArg, ...attemptsArg, ...hopLimitArg }), { text });
+          await pushOrSkipMesh(results, ctx, sid, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg, ...splitArgWithName, ...attemptsArg, ...hopLimitArg }), { text });
         }
       }
 

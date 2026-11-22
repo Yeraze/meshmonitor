@@ -1,0 +1,20 @@
+/* SenderNamePicker. CSS module; do not add these rules to the global sheets. */
+.picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.select {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  max-width: 14rem;
+}

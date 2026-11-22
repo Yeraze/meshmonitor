@@ -209,6 +209,18 @@ describe('executeAction', () => {
     expect(b.calls[0].args.splitLongMessages).toBe(true);
   });
 
+  it('sendMessage: senderName is forwarded only when set (#6341 P4)', async () => {
+    const a = recorder();
+    await executeAction(node('action.sendMessage', { text: 'hi', channel: 1 }), ctx({ from: 5, channel: 1, isDM: false }), a.deps);
+    expect('senderName' in a.calls[0].args).toBe(false);
+    const e = recorder();
+    await executeAction(node('action.sendMessage', { text: 'hi', channel: 1, senderName: '  ' }), ctx({ from: 5, channel: 1, isDM: false }), e.deps);
+    expect('senderName' in e.calls[0].args).toBe(false);
+    const b = recorder();
+    await executeAction(node('action.sendMessage', { text: 'hi', channel: 1, senderName: ' Bob ' }), ctx({ from: 5, channel: 1, isDM: false }), b.deps);
+    expect(b.calls[0].args.senderName).toBe('Bob');
+  });
+
   it('sendMessage: unscoped scope passes empty-string override', async () => {
     const { calls, deps } = recorder();
     await executeAction(

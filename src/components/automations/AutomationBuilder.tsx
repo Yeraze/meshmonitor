@@ -17,6 +17,7 @@ import NodeMultiFieldInput, { type NodeMultiOption } from './NodeMultiFieldInput
 import TracePathsFieldInput from './TracePathsFieldInput';
 import AutomationIdFieldInput, { type AutomationOption } from './AutomationIdFieldInput';
 import TokenTextField from './TokenTextField';
+import SenderNameFieldInput from './SenderNameFieldInput';
 import { NumberInput } from '../common/NumberInput';
 import type { GeofenceShape } from '../auto-responder/types';
 import { UiIcon } from '../icons';
@@ -427,6 +428,9 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
           </datalist>
         </>
       );
+      break;
+    case 'senderNameSelect':
+      control = <SenderNameFieldInput value={value} onChange={onChange} sources={sources} placeholder={placeholder} />;
       break;
     case 'sendSourceMulti': {
       const sel = Array.isArray(value) ? (value as string[]) : [];

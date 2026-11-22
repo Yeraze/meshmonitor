@@ -45,7 +45,9 @@ import {
 } from './meshcoreChannelOrder';
 import { formatRelativeTime } from '../../utils/datetime';
 import styles from './MeshCoreChannelsView.module.css';
-import { meshcoreChannelMaxBytes } from '../../utils/meshcoreMessageLimits';
+import { meshcoreChannelMaxBytes, meshcoreChannelTextCap } from '../../utils/meshcoreMessageLimits';
+import { SenderNamePicker } from './SenderNamePicker';
+import { useUsableSenderNames } from './hooks/useUsableSenderNames';
 import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime';
 import { isMobileLayoutViewport } from '../../utils/sidebarWidth';
 
@@ -144,6 +146,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const csrfFetch = useCsrfFetch();
   const { hasPermission, authStatus } = useAuth();
   const canSend = hasPermission('messages', 'write');
+  const usableSenderNames = useUsableSenderNames(actions.fetchUsableSenderNames, canSend && !!status?.connected);
   // Contact-share tokens (#6370): import from messages; share in the composer.
   const contactTokenImport = useContactTokenImport(status, actions.importContactToken);
   const contactShare = useMemo(() => ({ selfNode: status?.localNode ?? null }), [status?.localNode]);
@@ -232,6 +235,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // channel switch so the override doesn't leak across channels.
   const [overrideScope, setOverrideScope] = useState<string | null>(null);
   const [showScopeOverride, setShowScopeOverride] = useState(false);
+  // Sender-name override for channel sends (#6341 P4). '' = the node's own name.
+  // Lives in state only; not saved.
+  const [senderName, setSenderName] = useState('');
   // Source default scope (#3667) — used as the displayed default when a channel
   // has no scope of its own, so the operator can see what scope a normal send
   // would use before deciding to override it.
@@ -833,6 +839,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   );
 
   const selfKey = status?.localNode?.publicKey;
+  // The name sent as an override. A stale pick, or the node's own name, is no override.
+  const pickedSenderName =
+    senderName && usableSenderNames.includes(senderName) && senderName !== status?.localNode?.name
+      ? senderName
+      : '';
   const connected = status?.connected ?? false;
   // Outbound reactions (#5762): needs the per-source switch, a live non-receive-only link, and a sendable channel.
   const canReact = canSend && connected && !receiveOnly && status?.reactionsOutboundEnabled === true && active?.readOnly !== true;
@@ -1101,6 +1112,15 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             )}
           </div>
         )}
+        {canSend && connected && !active.virtual && usableSenderNames.length > 0 && (
+          <SenderNamePicker
+            id={`mc-sender-name-${active.id}`}
+            names={usableSenderNames}
+            value={senderName}
+            onChange={setSenderName}
+            nodeName={status?.localNode?.name}
+          />
+        )}
         {canMute && muteSettings && (
           <MuteMenu
             key={active.id}
@@ -1155,9 +1175,15 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             // the control AND typed a value (incl. '' to mean unscoped). When
             // collapsed, omit the arg so the backend resolves the channel /
             // default scope as usual (#3701).
-            const ok = showScopeOverride && overrideScope !== null
-              ? await actions.sendMessage(text, undefined, active.id, overrideScope)
-              : await actions.sendMessage(text, undefined, active.id);
+            const ok = pickedSenderName
+              ? await actions.sendMessage(
+                  text, undefined, active.id,
+                  showScopeOverride && overrideScope !== null ? overrideScope : undefined,
+                  pickedSenderName,
+                )
+              : showScopeOverride && overrideScope !== null
+                ? await actions.sendMessage(text, undefined, active.id, overrideScope)
+                : await actions.sendMessage(text, undefined, active.id);
             return ok;
           }}
           onNodeNameClick={onNodeNameClick}
@@ -1168,7 +1194,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           onLoadOlder={loadOlderHistory}
           hasMoreOlder={historyReady && hasMoreHistory}
           loadingOlder={loadingOlderHistory}
-          maxBytes={meshcoreChannelMaxBytes(status?.localNode?.name)}
+          maxBytes={pickedSenderName
+            ? meshcoreChannelTextCap(pickedSenderName, { raw: true })
+            : meshcoreChannelMaxBytes(status?.localNode?.name)}
         />
         </>)}
       </div>

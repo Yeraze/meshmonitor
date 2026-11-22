@@ -15,7 +15,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { meshcoreReceiptTimeMs } from '../../utils/meshcoreMessageTime.js';
 import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
-import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
 import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isValidMessage, auditMeshcoreEvent,
@@ -30,6 +30,8 @@ import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import { isMeshCoreResendError, MESHCORE_RESEND_ERROR_STATUS } from '../errors/meshcoreResendError.js';
 import { isMeshCoreSenderNameError, MESHCORE_SENDER_NAME_ERROR_STATUS } from '../errors/meshcoreSenderNameError.js';
 import { decideSenderName } from '../utils/meshcoreSenderNameRequest.js';
+import { readSenderNamePolicy } from '../utils/meshcoreSenderNamePolicy.js';
+import { MIN_RAW_PACKET_FW_VER } from '../meshcoreNativeBackend.js';
 import { isMeshCoreReactionError, MESHCORE_REACTION_ERROR_STATUS } from '../errors/meshcoreReactionError.js';
 
 // Room-server login retries over RF can legitimately run past the 30s
@@ -436,6 +438,36 @@ router.delete('/messages/:messageId', requireAuth(), requirePermission('messages
 });
 
 /**
+ * GET /api/sources/:id/meshcore/sender-names (#6341 P4)
+ * The sender names a sender may pick: `{ enabled, allowedNames, firmwareSupported }`.
+ * Passes on `messages:write`, `automation:write` or `configuration:read` for the
+ * source, so composers and automation editors can fill a picker without the
+ * config grant. Disabled returns an empty list, so the list stays hidden.
+ */
+router.get('/sender-names', requireAuth(), async (req: Request, res: Response) => {
+  try {
+    const sourceId = req.params.id;
+    const user = req.user;
+    const allowed = !!user && (
+      await hasPermission(user, 'messages', 'write', sourceId) ||
+      await hasPermission(user, 'automation', 'write', sourceId) ||
+      await hasPermission(user, 'configuration', 'read', sourceId)
+    );
+    if (!allowed) return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+    const policy = await readSenderNamePolicy(sourceId);
+    const ver = managerFor(req, res).getLocalNode()?.firmwareVer;
+    return ok(res, {
+      enabled: policy.enabled,
+      allowedNames: policy.enabled ? policy.allowedNames : [],
+      firmwareSupported: typeof ver === 'number' && ver >= MIN_RAW_PACKET_FW_VER,
+    });
+  } catch (error) {
+    logger.error('[API] Error reading usable sender names:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to read setting');
+  }
+});
+
+/**
  * POST /api/meshcore/messages/send
  * Send a message
  * Requires authentication - sends data over mesh network
@@ -449,10 +481,16 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
     // use text room. Unknown name falls back to the worst case.
     const isDm = toPublicKey !== undefined && toPublicKey !== null && toPublicKey !== '';
     // With a senderName the byte cap is checked below against the raw cap.
-    const msgMaxBytes = meshcoreMessageByteCap({
+    const localCap = meshcoreMessageByteCap({
       isDm,
       nodeName: isDm ? undefined : managerFor(req, res).getLocalNode()?.name,
     });
+    // A channel send with a senderName string skips the node-name cap here: a
+    // name much shorter than the node's has a different cap, checked against
+    // the raw cap below (#6341 P4). A name that turns out to mean "no override"
+    // is held to the node-name cap after the decision.
+    const nameGivesOwnCap = !isDm && typeof senderName === 'string';
+    const msgMaxBytes = nameGivesOwnCap ? meshcoreMessageByteCap({ isDm: true }) : localCap;
 
     // Validate message text using the context-appropriate byte limit.
     const textValidation = isValidMessage(text, msgMaxBytes);
@@ -520,6 +558,9 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
         });
       }
       return fail(res, nameDecision.status, nameDecision.code, nameDecision.message);
+    }
+    if (nameDecision.kind === 'none' && nameGivesOwnCap && Buffer.byteLength(text, 'utf8') > localCap) {
+      return res.status(400).json({ success: false, error: `Message exceeds maximum size of ${localCap} bytes` });
     }
     if (nameDecision.kind === 'override') {
       const rawCap = meshcoreChannelTextCap(nameDecision.name, { raw: true });

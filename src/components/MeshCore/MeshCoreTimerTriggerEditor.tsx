@@ -27,6 +27,7 @@ import {
   type MeshCoreTimerErrors,
   type MeshCoreTimerTrigger,
 } from './meshcoreTimerModel';
+import { SenderNameField } from './SenderNameField';
 import styles from './MeshCoreTimerTriggerEditor.module.css';
 
 export interface MeshCoreTimerTriggerEditorProps {
@@ -253,6 +254,16 @@ export const MeshCoreTimerTriggerEditor: React.FC<MeshCoreTimerTriggerEditorProp
             </label>
           )}
         </div>
+      )}
+
+      {sends && (tr.destination || 'channel') === 'channel' && (
+        <SenderNameField
+          baseUrl={baseUrl}
+          sourceId={sourceId}
+          idPrefix={`timer-sender-${tr.id}`}
+          value={tr.senderName}
+          onChange={(name) => onChange({ senderName: name })}
+        />
       )}
 
       {sends && (
