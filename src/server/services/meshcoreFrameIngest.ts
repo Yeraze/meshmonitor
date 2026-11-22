@@ -485,6 +485,8 @@ export interface IngestedAdvert {
   inserted: boolean;
   /** The Ed25519 signature was checked and verified. */
   signatureVerified: boolean;
+  /** The signature was checked (marker `true` or `false`); false = unchecked, so a caller may verify it. */
+  signatureChecked: boolean;
 }
 
 export async function ingestAdvertFrame(
@@ -546,5 +548,6 @@ export async function ingestAdvertFrame(
     inserted: upserted?.inserted === true,
     // Only a CHECKED and passing signature counts; null/false/undefined do not.
     signatureVerified: advertSignatureVerified === true,
+    signatureChecked: typeof advertSignatureVerified === 'boolean',
   };
 }

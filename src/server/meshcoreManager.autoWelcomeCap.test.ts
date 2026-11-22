@@ -24,7 +24,7 @@ type Internals = {
   addMessage: (m: MeshCoreMessage) => Promise<boolean>;
   autoWelcomeTimers: Map<string, unknown>;
   autoWelcomeReserved: number;
-  pendingNewNodeNotifications: Set<string>;
+  newNodeAlerts: { pending: { add: (k: string) => void; has: (k: string) => boolean } };
   newNodeNotifySuppressed: boolean;
   contacts: Map<string, MeshCoreContact>;
   messages: MeshCoreMessage[];
@@ -154,12 +154,12 @@ describe('MeshCore Auto Welcome send path', () => {
     const notifySpy = vi.spyOn(i, 'notifyNewNodeDiscovered').mockResolvedValue(undefined);
     const c = contact(12);
     i.contacts.set(c.publicKey, c);
-    i.pendingNewNodeNotifications.add(c.publicKey);
+    i.newNodeAlerts.pending.add(c.publicKey);
 
     i.newNodeNotifySuppressed = true;
     i.flushPendingNewNodeNotifications();
     expect(notifySpy).not.toHaveBeenCalled();
-    expect(i.pendingNewNodeNotifications.has(c.publicKey)).toBe(true);
+    expect(i.newNodeAlerts.pending.has(c.publicKey)).toBe(true);
 
     i.newNodeNotifySuppressed = false;
     i.flushPendingNewNodeNotifications();
