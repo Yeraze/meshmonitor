@@ -299,7 +299,7 @@ Needs **Likely-aircraft detection** on. Requests are tagged as automation traffi
 **Options**:
 - **Correct sign-flipped positions**: turns the correction on for this source.
 - **Range**: how close a mirror point must be. Default 500 km. Allowed: 10 to 2000 km.
-- **Reference point (optional)**: a latitude and longitude to measure from. Leave it blank to use the source's own node. An MQTT source has no node of its own, so it needs a reference point or nothing gets corrected.
+- **Reference point (optional)**: a latitude and longitude to measure from. Leave it blank to use the source's own node. A Meshtastic MQTT source has no node of its own, so it needs a reference point or nothing gets corrected; a MeshCore MQTT source uses its [My node](/features/meshcore-mqtt-ingest#my-node) observer when one is set.
 
 **How it works**: If a node sits outside the range but exactly one mirror of its position (latitude negated, longitude negated, or both) sits inside it, MeshMonitor shows the mirror point. If more than one mirror fits, or none, the node stays where it reported. Node Details then shows "Position auto-corrected (sign flip)" and the coordinates the node reported.
 

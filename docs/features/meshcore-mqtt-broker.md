@@ -24,6 +24,7 @@ Use it when you want a private, local observer network. To read a public region 
 | Allowed regions | Optional IATA codes. Blank accepts any well-formed code. |
 | Token audience | The audience observers sign their token for. Blank turns token logins off. |
 | Allowed observer public keys | One 64-hex key per line. Binds every login: a token login needs a key on this list, and a static login may only publish under keys on it. |
+| My node | Optional. The public key of the observer that is your own node. It must be on the allowlist when you set one. See [My node](/features/meshcore-mqtt-ingest#my-node). |
 | Static username / password | Optional fixed login, for observers that use one. |
 | Limits | Max observers (default 50), messages per second per connection (default 20), max payload (default 64 KB). |
 | Upstream forwarding | Optional. Off by default. See below. |
