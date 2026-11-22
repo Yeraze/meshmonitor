@@ -80,6 +80,8 @@ import {
   decryptGroupTextFrame,
   frameChannelMessageId,
   ingestAdvertFrame,
+  verifyAdvertSignature,
+  type IngestedAdvert,
   keyedFilingFor,
   noteVirtualChannelDecrypt,
   type ChannelKeyCandidate,
@@ -97,6 +99,8 @@ import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.
 import { isCoverageMqttEnabled } from './services/coverageMqttSettings.js';
 import { NewNodeAlertTracker } from './services/newNodeAlertTracker.js';
 import { maybeAlertGatedMeshCoreNewNode } from './services/meshcoreNewNodeAlert.js';
+import { MqttClockAgreement } from './services/meshcoreMqttClockSamples.js';
+import { detectClockOffset, isClockSampleThrottled } from './services/meshcoreDeviceHealth.js';
 import { logger } from '../utils/logger.js';
 
 /** Persisted `sources.config` shape for a `meshcore_mqtt` source. */
@@ -261,6 +265,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   private readonly seenObservers = new Set<string>();
   /** Dedup + in-flight claim for gated new-node alerts (#6341 P2). Dedup only; `inserted` is DB-derived. */
   private readonly newNodeAlerts = new NewNodeAlertTracker();
+  /** #6341 P5: two-observer clock agreement buffer (per manager, so per source). */
+  private readonly clockAgreement = new MqttClockAgreement();
   private static readonly MAX_TRACKED_OBSERVERS = 1_000;
   /**
    * Latest `/status` snapshot per observer, capped at
@@ -615,9 +621,45 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
         this.stats.advertsIngested++;
         // #6341 P2: gated new-node alert; never throws, no automation event.
         await maybeAlertGatedMeshCoreNewNode(this.newNodeAlerts, this.sourceId, ingested);
+        await this.sampleClock(decoded, ingested);
       }
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);
+    }
+  }
+
+  /**
+   * #6341 P5: feed the two-observer clock buffer; store one sample once two
+   * observers agree and the signature verified (at most one verify per advert).
+   * Never throws.
+   */
+  private async sampleClock(decoded: IngestedObserverPacket, ingested: IngestedAdvert): Promise<void> {
+    const key = ingested.advert?.publicKey;
+    try {
+      if (!key) return;
+      const envelopeMs = decoded.timestamp ? Date.parse(decoded.timestamp) : NaN;
+      const nowMs = Date.now();
+      if (isClockSampleThrottled(this.sourceId, key, nowMs)) return;
+      const senderSec = ingested.advert.timestamp;
+      const step = this.clockAgreement.observe({
+        publicKey: key, senderSec, originId: decoded.originId, envelopeMs, nowMs,
+      });
+      if (step !== 'verify') return;
+      let ok = false;
+      try {
+        ok = ingested.signatureVerified
+          || (!ingested.signatureChecked && await verifyAdvertSignature(ingested.advert));
+      } catch {
+        ok = false;
+      }
+      const sample = this.clockAgreement.markVerified(key, senderSec, ok);
+      if (!sample) return;
+      await detectClockOffset(
+        databaseService.telemetry, sample.publicKey, sample.offsetSec, 'advert',
+        sample.senderSec, this.sourceId, sample.receivedAtMs,
+      );
+    } catch (err) {
+      logger.debug(`[MeshCoreMqtt:${this.sourceId}] clock sample failed:`, err);
     }
   }
 
