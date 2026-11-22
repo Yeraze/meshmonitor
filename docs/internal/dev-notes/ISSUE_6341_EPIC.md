@@ -30,7 +30,7 @@ automated text may split into one more part. Phases 2, 3 add notifications, capp
   capability row. Exit: tests for learning window, cap, overflow, unverified advert refused.
 - [x] **P3 — Reticulum Notifications.** Capability row + tab on the Reticulum page; connect/disconnect events; gated
   new-destination alerts. Exit: tab renders right rows; event tests.
-- [ ] **P4 — Sender-name follow-ups.** `senderName` option on `sendAutomatedText` (raw cap in split planner), editors,
+- [x] **P4 — Sender-name follow-ups.** `senderName` option on `sendAutomatedText` (raw cap in split planner), editors,
   composer picker. Exit: tests for name validation, split cap, refused name.
 - [ ] **P5 — Clock samples.** Meshtastic and `meshcore_mqtt` samples into the protocol-neutral clock rule. Exit: tests
   for replay skip, two-observer rule.
@@ -65,3 +65,14 @@ automations; gated LXMF-delivery new-destination alerts (`reticulumNewDestinatio
 peers alert under a short hash); gate earliest-row lookup also reads `reticulum_destinations`; `brokerLinkNotifier`
 gained `link:'bridge'`, custom event names and a name getter, attached once per manager (bridge re-emits
 `bridge-up`/`bridge-down`), 120 s grace; user Disconnect alerts at once, `stop()` is silent.
+||||||| parent of fb4e0500e (docs(#6341): log phase 4)
+
+
+### P4 (spec: `ISSUE_6341_P4_SPEC.md`)
+Maintainer answers, 2026-11-22: a name refused at run time falls back to the node's own name with one warning; senders
+may read the allowed list; audit on save only. Shipped: `sendAutomatedText({ senderName })` for timers, Auto Responder,
+Auto Announce (`meshcoreAutoAnnounceSenderName`) and the Automation Engine send action; split plans use the smaller of
+the raw and node-name caps, so every part fits either path; `GET /api/sources/:id/meshcore/sender-names`
+(`messages:write` / `automation:write` / `configuration:read`); syntax-only save checks plus a
+`meshcore_sender_name_automation_set` audit row; shared `SenderNamePicker` in the editors and the channel composer
+(counter uses the raw cap). Fixed: both send routes held a short override name to the node-name cap.
