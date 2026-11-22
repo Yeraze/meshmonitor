@@ -206,11 +206,14 @@ export interface NeighborSightingData {
  * the air; the sample comes from adverts already heard or the local clock read.
  */
 export interface NodeClockOffsetData {
-  publicKey: string;
+  /** Real node number for Meshtastic samples; null for MeshCore (identified by key). */
+  nodeNum: number | null;
+  /** MeshCore public key; null for Meshtastic samples. */
+  publicKey: string | null;
   offsetSeconds: number;
   /** The stored samples before this one, newest first (at most 2). */
   previousOffsets: number[];
-  sampleSource: 'advert' | 'device';
+  sampleSource: 'advert' | 'device' | 'packet';
 }
 
 /**
@@ -477,7 +480,7 @@ class DataEventEmitter extends EventEmitter {
       sourceId,
     };
     this.emit('data', event);
-    logger.debug(`[DataEventEmitter] Node clock offset: ${data.publicKey.substring(0, 12)} ${data.offsetSeconds}s (${data.sampleSource})`);
+    logger.debug(`[DataEventEmitter] Node clock offset: ${data.publicKey ? data.publicKey.substring(0, 12) : `!${(data.nodeNum ?? 0).toString(16)}`} ${data.offsetSeconds}s (${data.sampleSource})`);
   }
 
   /**

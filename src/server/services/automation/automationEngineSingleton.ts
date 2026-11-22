@@ -228,7 +228,7 @@ export async function routeEventToEngine(e: AutomationEngineService, event: Data
       // #6273: a passive MeshCore clock sample. Detection history lives in the
       // telemetry table; the engine only applies each rule's threshold.
       const data = event.data as NodeClockOffsetData;
-      await e.onClockOffset(data.publicKey, data.offsetSeconds, data.previousOffsets, data.sampleSource, sourceId);
+      await e.onClockOffset(data.nodeNum, data.publicKey, data.offsetSeconds, data.previousOffsets, data.sampleSource, sourceId);
       break;
     }
     case 'node:aircraft': {

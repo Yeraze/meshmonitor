@@ -161,12 +161,12 @@ const PARAMS: ParamSpec[] = [
     help: 'Fire when the battery fell by at least this many points across the window.',
   },
 
-  // 11. Clock out of sync (MeshCore)
-  { name: 'clockOutOfSync', label: 'Alert when a node\'s clock is out of sync (MeshCore)', kind: 'checkbox' },
+  // 11. Clock out of sync
+  { name: 'clockOutOfSync', label: 'Alert when a node\'s clock is out of sync', kind: 'checkbox' },
   {
     name: 'clockDriftThresholdSeconds', label: 'Clock off by more than (seconds)', kind: 'number',
     placeholder: String(DEFAULTS.clockDriftSeconds), showIf: { field: 'clockOutOfSync', truthy: true },
-    help: `Measured passively from adverts. A repeater whose clock was never set reads 'Clock not set'. From ${CLOCK_OUT_OF_SYNC_MIN_SECONDS} to ${CLOCK_OUT_OF_SYNC_MAX_SECONDS} seconds.`,
+    help: `Measured passively from adverts or packets. A MeshCore repeater whose clock was never set reads 'Clock not set'. From ${CLOCK_OUT_OF_SYNC_MIN_SECONDS} to ${CLOCK_OUT_OF_SYNC_MAX_SECONDS} seconds.`,
   },
 
   // 12. Confirmed new neighbour (MeshCore)
@@ -430,7 +430,7 @@ const ALERTS: AlertSpec[] = [
         : DEFAULTS.clockDriftSeconds;
       return assemble({
         nameSuffix: 'Clock out of sync',
-        description: `Notify when a MeshCore node's clock is off by more than ${t} seconds. Measured from adverts; sends nothing.`,
+        description: `Notify when a node's clock is off by more than ${t} seconds. Measured from adverts or packets; sends nothing.`,
         trigger: {
           type: 'trigger.clockOutOfSync',
           // Capped at 10 alerts an hour per automation (maintainer decision, #6273).

@@ -196,8 +196,9 @@ export interface ClockOffsetTelemetry {
   ) => Promise<boolean>;
 }
 
-/** Last stored advert sample per `sourceId:publicKey`. Limits storage only, so
- *  it does not need to survive a restart (the alert history is in telemetry). */
+/** Last stored sample per `sourceId:nodeId`. Limits storage only, so
+ *  it does not need to survive a restart (the alert history is in telemetry).
+ *  A Meshtastic `!hex` id never collides with a 64-hex MeshCore key. */
 const lastAdvertSampleAt = new Map<string, number>();
 const CLOCK_THROTTLE_MAX_KEYS = 5000;
 
@@ -206,18 +207,31 @@ export function resetClockOffsetThrottleForTests(): void {
   lastAdvertSampleAt.clear();
 }
 
+/** Who a clock sample is about. MeshCore: the key is the id. Meshtastic: `!hex` id and real node number. */
+export interface ClockSubject {
+  nodeId: string;
+  nodeNum: number;
+  publicKey: string | null;
+}
+
+/** True while the hourly storage throttle holds this node (cheap pre-check, no DB). */
+export function isClockSampleThrottled(sourceId: string, nodeId: string, nowMs: number = Date.now()): boolean {
+  const last = lastAdvertSampleAt.get(`${sourceId}:${nodeId}`);
+  return last !== undefined && nowMs - last < CLOCK_SAMPLE_MIN_INTERVAL_MS;
+}
+
 /**
- * Record one passive clock sample for a MeshCore node and emit
- * `node:clockOffset` for `trigger.clockOutOfSync` (#6273).
+ * Record one passive clock sample and emit `node:clockOffset` for
+ * `trigger.clockOutOfSync` (#6273, #6341 P5).
  *
  * `offsetSeconds` is receipt time minus the node's own time (positive = the node
  * is behind). The callers must pass only samples that are safe to trust: a
  * Repeater advert whose signature verified, an advert the Companion firmware
- * accepted, or the attached device's own clock.
+ * accepted, a live Meshtastic LoRa packet, or the attached device's own clock.
  *
- * - `advert` samples: dropped when the sender time is not newer than the newest
- *   stored sample's (a replay, or a duplicate copy a flood makes), and stored at
- *   most once an hour per node. The row is inserted here.
+ * - `advert` / `packet` samples: dropped when the sender time is not newer than
+ *   the newest stored sample's (a replay, or a duplicate copy a flood makes), and
+ *   stored at most once an hour per node. The row is inserted here.
  * - `device` samples: read from the attached device itself, so no replay or
  *   throttle rule applies, and the CALLER stores the row (the telemetry poller
  *   writes it in its own batch, as it always did). This only reads the prior
@@ -227,44 +241,45 @@ export function resetClockOffsetThrottleForTests(): void {
  *
  * @returns true when a sample was accepted
  */
-export async function detectClockOffset(
+export async function recordClockSample(
   telemetry: ClockOffsetTelemetry,
-  publicKey: string,
+  subject: ClockSubject,
   offsetSeconds: number,
-  sampleSource: 'advert' | 'device',
+  sampleSource: 'advert' | 'device' | 'packet',
   senderSec: number,
   sourceId: string,
   receivedAtMs: number = Date.now(),
 ): Promise<boolean> {
+  const { nodeId } = subject;
   try {
     if (!telemetry?.getTelemetryByNode) return false;
     if (!Number.isFinite(offsetSeconds) || !Number.isFinite(senderSec)) return false;
-    const key = `${sourceId}:${publicKey}`;
-    if (sampleSource === 'advert') {
+    const key = `${sourceId}:${nodeId}`;
+    const stores = sampleSource === 'advert' || sampleSource === 'packet';
+    if (stores) {
       // A zero stamp cannot be told from a repeat, so it is never sampled.
       if (!(senderSec > 0)) return false;
-      const last = lastAdvertSampleAt.get(key);
-      if (last !== undefined && receivedAtMs - last < CLOCK_SAMPLE_MIN_INTERVAL_MS) return false;
+      if (isClockSampleThrottled(sourceId, nodeId, receivedAtMs)) return false;
     }
 
     const stored = await telemetry.getTelemetryByNode(
-      publicKey, 3, undefined, undefined, 0, CLOCK_OFFSET_TELEMETRY_TYPE, sourceId,
+      nodeId, 3, undefined, undefined, 0, CLOCK_OFFSET_TELEMETRY_TYPE, sourceId,
     );
     // Newest first. A row's sender time is its receipt second minus its offset.
     const sorted = [...stored].sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
-    if (sampleSource === 'advert' && sorted.length > 0) {
+    if (stores && sorted.length > 0) {
       const newest = sorted[0];
       const newestSender = Math.floor(Number(newest.timestamp) / 1000) - Number(newest.value);
       if (senderSec <= newestSender) return false;
     }
 
     const previousOffsets = sorted.slice(0, 2).map((r) => Number(r.value));
-    if (sampleSource === 'advert') {
+    if (stores) {
       if (!telemetry.insertTelemetry) return false;
       await telemetry.insertTelemetry(
         {
-          nodeId: publicKey,
-          nodeNum: nodeNumFromPubkey(publicKey),
+          nodeId,
+          nodeNum: subject.nodeNum,
           telemetryType: CLOCK_OFFSET_TELEMETRY_TYPE,
           value: offsetSeconds,
           unit: 's',
@@ -277,12 +292,43 @@ export async function detectClockOffset(
       lastAdvertSampleAt.set(key, receivedAtMs);
     }
 
-    dataEventEmitter.emitNodeClockOffset({ publicKey, offsetSeconds, previousOffsets, sampleSource }, sourceId);
+    dataEventEmitter.emitNodeClockOffset(
+      {
+        // MeshCore subjects have no real node number; the event carries the key instead.
+        nodeNum: subject.publicKey === null ? subject.nodeNum : null,
+        publicKey: subject.publicKey,
+        offsetSeconds,
+        previousOffsets,
+        sampleSource,
+      },
+      sourceId,
+    );
     return true;
   } catch (e) {
     logger.warn(
-      `MeshCore clock offset sampling failed for ${publicKey.substring(0, 12)}…: ${e instanceof Error ? e.message : String(e)}`,
+      `Clock offset sampling failed for ${nodeId.substring(0, 12)}…: ${e instanceof Error ? e.message : String(e)}`,
     );
     return false;
   }
+}
+
+/** MeshCore wrapper (#6273): the public key is the subject. Signature unchanged. */
+export async function detectClockOffset(
+  telemetry: ClockOffsetTelemetry,
+  publicKey: string,
+  offsetSeconds: number,
+  sampleSource: 'advert' | 'device',
+  senderSec: number,
+  sourceId: string,
+  receivedAtMs: number = Date.now(),
+): Promise<boolean> {
+  return recordClockSample(
+    telemetry,
+    { nodeId: publicKey, nodeNum: nodeNumFromPubkey(publicKey), publicKey },
+    offsetSeconds,
+    sampleSource,
+    senderSec,
+    sourceId,
+    receivedAtMs,
+  );
 }
