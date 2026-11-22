@@ -134,6 +134,9 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     password: `${PW}-ingest`,
     rejectUnauthorized: false,
     autoConnect: false,
+    // Validated as a 64-hex key on save (#6532), so it cannot carry the PRIV
+    // marker; the exact-match viewer assertions below catch a leak instead.
+    localObserverKey: '6532'.repeat(16),
     [UNCLASSIFIED]: `${SEC}-future-ingest`,
   },
   meshcore_mqtt_broker: {
@@ -145,6 +148,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
       password: `${PW}-mcb`,
     },
     regions: ['SEA'],
+    localObserverKey: `${PRIV}-mcb-local`,
     limits: { maxClients: 7, note: `${PRIV}-mcb-limits` },
     forwarding: {
       ownIdentityName: `${PRIV}-mcb-name`,

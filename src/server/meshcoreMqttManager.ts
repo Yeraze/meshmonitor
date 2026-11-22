@@ -117,6 +117,12 @@ export interface MeshCoreMqttSourceConfig {
   rejectUnauthorized?: boolean;
   /** When false the source is enabled but must be connected manually. */
   autoConnect?: boolean;
+  /**
+   * The observer that is the user's own node (#6532), as a 64-hex public key.
+   * Display only: it marks that node as "my node" on the dashboard map and the
+   * source page. `getLocalNode()` stays null, so nothing treats it as a radio.
+   */
+  localObserverKey?: string;
 }
 
 /**
@@ -1112,6 +1118,16 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   /** Always null, for the same reason as {@link getLocalNodeInfo}. */
   getLocalNode(): null {
     return null;
+  }
+
+  /**
+   * Upper-case public key of the observer the user marked as their own node
+   * (#6532), or null. Display only — use `meshCoreDisplayLocalKey()` rather
+   * than calling this directly, so device and ingest sources share one rule.
+   */
+  getLocalObserverKey(): string | null {
+    const key = typeof this.config.localObserverKey === 'string' ? this.config.localObserverKey.trim() : '';
+    return /^[0-9a-fA-F]{64}$/.test(key) ? key.toUpperCase() : null;
   }
 
   /**

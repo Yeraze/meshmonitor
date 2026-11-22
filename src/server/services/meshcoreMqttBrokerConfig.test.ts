@@ -80,3 +80,31 @@ describe('meshcore broker config', () => {
     expect(err).toMatch(/token audience/);
   });
 });
+
+describe('localObserverKey (#6532)', () => {
+  const base = { listener: { port: 1884 }, auth: { tokenAudience: 'a' } };
+  const KEY = '5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a';
+
+  it('is optional', () => {
+    expect(validateMeshCoreBrokerConfig(base)).toBeNull();
+    expect(validateMeshCoreBrokerConfig({ ...base, localObserverKey: '' })).toBeNull();
+  });
+
+  it('must be a 64-hex key', () => {
+    expect(validateMeshCoreBrokerConfig({ ...base, localObserverKey: 'nothex' })).toMatch(/64-character/);
+  });
+
+  it('must be on the allowlist when there is one', () => {
+    const other = 'b'.repeat(64);
+    expect(validateMeshCoreBrokerConfig({ ...base, auth: { ...base.auth, allowedObservers: [other] }, localObserverKey: KEY }))
+      .toMatch(/allowed observers/);
+    expect(validateMeshCoreBrokerConfig({ ...base, auth: { ...base.auth, allowedObservers: [KEY.toUpperCase()] }, localObserverKey: KEY }))
+      .toBeNull();
+  });
+
+  it('normalizes to upper case, and to null when absent or invalid', () => {
+    expect(normalizeMeshCoreBrokerConfig({ ...base, localObserverKey: KEY }).localObserverKey).toBe(KEY.toUpperCase());
+    expect(normalizeMeshCoreBrokerConfig(base).localObserverKey).toBeNull();
+    expect(normalizeMeshCoreBrokerConfig({ ...base, localObserverKey: 'x' }).localObserverKey).toBeNull();
+  });
+});

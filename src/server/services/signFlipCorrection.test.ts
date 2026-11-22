@@ -13,10 +13,13 @@ vi.mock('../../services/database.js', () => ({
     nodes: {
       getNode: vi.fn(async (nodeNum: number, sourceId: string) => nodeRows.get(`${sourceId}:${nodeNum}`) ?? null),
     },
+    meshcore: {
+      getNodeByPublicKeyAndSource: vi.fn(async (key: string, sourceId: string) => nodeRows.get(`${sourceId}:${key}`) ?? null),
+    },
   },
 }));
 
-const managers = new Map<string, { sourceType: string; getLocalNode?: () => unknown }>();
+const managers = new Map<string, { sourceType: string; getLocalNode?: () => unknown; getLocalObserverKey?: () => string | null }>();
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: { getManager: (id: string) => managers.get(id) },
 }));
@@ -254,5 +257,39 @@ describe('MeshCore (#5363)', () => {
     expect(row.longitude).toBeCloseTo(-82.5);
     expect(row.positionSignFlipCorrected).toBe(true);
     expect(row.reportedLongitude).toBeCloseTo(82.5);
+  });
+});
+
+describe('loadSignFlipContext — MeshCore MQTT "my node" reference (#6532)', () => {
+  const KEY = 'AB'.repeat(32);
+  beforeEach(() => {
+    setSetting('src-mc', SIGN_FLIP_SETTING_KEYS.enabled, 'true');
+    managers.set('src-mc', { sourceType: 'meshcore_mqtt', getLocalObserverKey: () => KEY });
+  });
+
+  it("uses the configured observer's stored position, matched in either case", async () => {
+    nodeRows.set(`src-mc:${KEY.toLowerCase()}`, { latitude: 27.95, longitude: -82.46 });
+    expect((await loadSignFlipContext('src-mc'))?.reference).toEqual(TAMPA);
+  });
+
+  it('honours a public location override', async () => {
+    nodeRows.set(`src-mc:${KEY}`, {
+      latitude: null, longitude: null,
+      positionOverrideEnabled: true, latitudeOverride: 27.95, longitudeOverride: -82.46,
+    });
+    expect((await loadSignFlipContext('src-mc'))?.reference).toEqual(TAMPA);
+  });
+
+  it('ignores a private override', async () => {
+    nodeRows.set(`src-mc:${KEY}`, {
+      latitude: null, longitude: null,
+      positionOverrideEnabled: true, positionOverrideIsPrivate: true, latitudeOverride: 27.95, longitudeOverride: -82.46,
+    });
+    expect(await loadSignFlipContext('src-mc')).toBeNull();
+  });
+
+  it('is null when no observer is named', async () => {
+    managers.set('src-mc', { sourceType: 'meshcore_mqtt', getLocalObserverKey: () => null });
+    expect(await loadSignFlipContext('src-mc')).toBeNull();
   });
 });

@@ -24,7 +24,7 @@ import { hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
-import { isAnyMeshCoreManager } from '../sourceManagerTypes.js';
+import { isAnyMeshCoreManager, meshCoreDisplayLocalKey } from '../sourceManagerTypes.js';
 import {
   filterNodesByChannelPermission,
   maskNodeLocationByChannel,
@@ -136,6 +136,8 @@ async function buildSourceNodesCounted(
     // #5363: display-only sign-flip correction against this source's reference.
     const mcSignFlipCtx = mcManager ? await loadSignFlipContext(source.id) : null;
     if (mcManager) {
+      // #6532: the source's own node gets the dashboard's "my node" marker.
+      const mcLocalKey = meshCoreDisplayLocalKey(mcManager);
       // #5842: an enabled location override wins over the advert position.
       for (const n of await applyMeshCorePositionOverridesForViewer(await mcManager.getAllNodes(), user, source.id)) {
         if (n.latitude == null || n.longitude == null) continue;
@@ -151,6 +153,7 @@ async function buildSourceNodesCounted(
           sourceId: mcManager.sourceId,
           isMeshCore: true,
           publicKey: pubKey,
+          ...(mcLocalKey && pubKey.toUpperCase() === mcLocalKey ? { isLocal: true } : {}),
           // MeshCore has no ignore concept (no isIgnored anywhere in
           // meshcoreManager), so false is accurate rather than a placeholder.
           isIgnored: false,

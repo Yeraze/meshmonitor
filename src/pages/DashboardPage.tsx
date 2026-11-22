@@ -190,6 +190,8 @@ function DashboardInner() {
   const [formMcMqttPassword, setFormMcMqttPassword] = useState('');
   const [formMcMqttRejectUnauthorized, setFormMcMqttRejectUnauthorized] = useState(true);
   const [formMcMqttAutoConnect, setFormMcMqttAutoConnect] = useState(true);
+  // #6532: the observer that is the owner's node; blank for none.
+  const [formMcMqttLocalKey, setFormMcMqttLocalKey] = useState('');
   const [formName, setFormName] = useState('');
   const [formHost, setFormHost] = useState('');
   const [formPort, setFormPort] = useState('4403');
@@ -526,6 +528,7 @@ function DashboardInner() {
       setFormMcMqttPassword('');
       setFormMcMqttRejectUnauthorized(cfg?.rejectUnauthorized !== false);
       setFormMcMqttAutoConnect(cfg?.autoConnect !== false);
+      setFormMcMqttLocalKey(cfg?.localObserverKey ?? '');
       setFormError('');
       setShowSourceModal(true);
       return;
@@ -811,6 +814,12 @@ function DashboardInner() {
         rejectUnauthorized: formMcMqttRejectUnauthorized,
         autoConnect: formMcMqttAutoConnect,
       };
+      const localKey = formMcMqttLocalKey.trim().toUpperCase();
+      if (localKey && !/^[0-9A-F]{64}$/.test(localKey)) {
+        setFormError(t('source.form.mcb_error_local_key', 'My node must be a 64-character hex public key'));
+        return;
+      }
+      if (localKey) cfg.localObserverKey = localKey;
       const mcUser = formMcMqttUsername.trim();
       if (mcUser) cfg.username = mcUser;
       if (formMcMqttPassword) cfg.password = formMcMqttPassword;
@@ -1928,6 +1937,24 @@ function DashboardInner() {
                     onChange={(e) => setFormMcMqttAutoConnect(e.target.checked)}
                   />
                   <span>{t('source.form.auto_connect', 'Connect automatically on startup')}</span>
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mc_local_observer', 'My node (optional)')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMcMqttLocalKey}
+                    onChange={(e) => setFormMcMqttLocalKey(e.target.value)}
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <span className="dashboard-form-help">
+                    {t(
+                      'source.form.mc_local_observer_help',
+                      "Public key of the observer that is your own node. It is marked as \"My node\" on the dashboard map and this source's pages. Display only: nothing is sent to it.",
+                    )}
+                  </span>
                 </label>
               </>
             ) : formType === 'reticulum' ? (

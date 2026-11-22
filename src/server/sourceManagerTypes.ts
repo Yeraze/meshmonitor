@@ -86,6 +86,21 @@ export function isAnyMeshCoreManager(
 }
 
 /**
+ * Upper-case public key of the node a MeshCore source shows as "my node"
+ * (#6532): the radio of a device-backed source, or the observer a broker or
+ * ingest source names in its config. Null for anything else.
+ *
+ * DISPLAY ONLY. Never use it to pick a node to send to or configure: on an
+ * ingest source it is an observer someone else's software runs.
+ */
+export function meshCoreDisplayLocalKey(m: ISourceManager): string | null {
+  if (isMeshCoreManager(m)) return m.getLocalNode?.()?.publicKey?.toUpperCase() ?? null;
+  // Optional call: test stubs (and any future ingest manager) may omit it.
+  if (isMeshCoreMqttManager(m)) return m.getLocalObserverKey?.() ?? null;
+  return null;
+}
+
+/**
  * Narrows an ISourceManager to MeshtasticManager.
  * Predicate is based on the sourceType discriminant — no instanceof, no import cycles.
  */

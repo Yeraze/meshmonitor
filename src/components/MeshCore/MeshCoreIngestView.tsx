@@ -45,6 +45,8 @@ type IngestTab = 'overview' | 'nodes' | 'channels' | 'packets' | 'notifications'
 
 interface ObserverRow {
   publicKey: string;
+  /** The observer the source config names as the owner's node (#6532). */
+  isLocal?: boolean;
   online: boolean;
   lastSeenMs: number;
   batteryMv: number | null;
@@ -71,6 +73,8 @@ interface IngestNode {
   lastHeard?: number | null;
   /** Set when an enabled location override supplied the position (#5842). */
   positionIsOverride?: boolean;
+  /** The source's own node (#6532). */
+  isLocal?: boolean;
 }
 
 interface IngestMessage {
@@ -305,7 +309,10 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
                 <tbody>
                   {overview!.observers.map(o => (
                     <tr key={o.publicKey}>
-                      <td title={o.publicKey}>{shortKey(o.publicKey)}</td>
+                      <td title={o.publicKey}>
+                        {shortKey(o.publicKey)}
+                        {o.isLocal && <span className={styles.localTag}>{t('meshcore.ingest.my_node', 'My node')}</span>}
+                      </td>
                       <td>{formatAge(o.lastSeenMs)}</td>
                       <td>{o.batteryMv != null ? `${(o.batteryMv / 1000).toFixed(2)} V` : '—'}</td>
                       <td>
@@ -342,7 +349,10 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
                 <tbody>
                   {nodes.map(n => (
                     <tr key={n.publicKey}>
-                      <td>{n.name || t('meshcore.ingest.unnamed', 'Unnamed')}</td>
+                      <td>
+                        {n.name || t('meshcore.ingest.unnamed', 'Unnamed')}
+                        {n.isLocal && <span className={styles.localTag}>{t('meshcore.ingest.my_node', 'My node')}</span>}
+                      </td>
                       <td title={n.publicKey}>{shortKey(n.publicKey)}</td>
                       <td>
                         {n.latitude != null && n.longitude != null

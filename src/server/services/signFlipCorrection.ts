@@ -15,7 +15,7 @@
  */
 import databaseService from '../../services/database.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { isAnyMeshCoreManager, isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isAnyMeshCoreManager, isMeshCoreManager, meshCoreDisplayLocalKey } from '../sourceManagerTypes.js';
 import { getEffectiveDbNodePosition, type EffectivePosition } from '../utils/nodeEnhancer.js';
 import { logger } from '../../utils/logger.js';
 import {
@@ -47,14 +47,36 @@ export interface SignFlipFields {
 
 /**
  * The source's own node position: its Meshtastic local node row (a user
- * override honoured), or a MeshCore companion's advertised position. Sources
- * without a node of their own (MQTT, MeshCore MQTT ingest) return null, so
- * they need a manual reference point.
+ * override honoured), a MeshCore companion's advertised position, or the
+ * stored row of the observer a MeshCore MQTT source names as its own (#6532;
+ * a non-private location override honoured). Sources without a node of their
+ * own (Meshtastic MQTT, an ingest source with none named) return null, so they
+ * need a manual reference point.
  */
+/** A source's stored MeshCore row by key, matched case-insensitively. */
+async function findStoredNode(sourceId: string, upperKey: string) {
+  const exact = await databaseService.meshcore.getNodeByPublicKeyAndSource(upperKey, sourceId)
+    ?? await databaseService.meshcore.getNodeByPublicKeyAndSource(upperKey.toLowerCase(), sourceId);
+  return exact ?? null;
+}
+
 async function resolveOwnNodePosition(sourceId: string): Promise<LatLon | null> {
   const manager = sourceManagerRegistry.getManager(sourceId);
   if (manager && isAnyMeshCoreManager(manager)) {
-    const local = isMeshCoreManager(manager) ? manager.getLocalNode() : null;
+    let local: { latitude?: number | null; longitude?: number | null } | null = null;
+    if (isMeshCoreManager(manager)) {
+      local = manager.getLocalNode();
+    } else {
+      const key = meshCoreDisplayLocalKey(manager);
+      const row = key ? await findStoredNode(sourceId, key) : null;
+      if (row) {
+        const pinned = row.positionOverrideEnabled && !row.positionOverrideIsPrivate
+          && row.latitudeOverride != null && row.longitudeOverride != null;
+        local = pinned
+          ? { latitude: row.latitudeOverride, longitude: row.longitudeOverride }
+          : { latitude: row.latitude, longitude: row.longitude };
+      }
+    }
     const lat = local?.latitude;
     const lon = local?.longitude;
     if (lat == null || lon == null || isBogusPosition(lat, lon)) return null;

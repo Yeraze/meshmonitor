@@ -65,6 +65,20 @@ import {
 } from '../utils/sourceConfigRedaction.js';
 import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
 
+
+/**
+ * A `meshcore_mqtt` source's optional own-node observer (#6532): blank, or a
+ * 64-character hex public key. The broker source checks its own copy in
+ * `validateMeshCoreBrokerConfig`, against its allowlist.
+ */
+function localObserverKeyError(config: unknown): string | null {
+  const key = (config as { localObserverKey?: unknown } | null | undefined)?.localObserverKey;
+  if (key === undefined || key === null || key === '') return null;
+  if (typeof key !== 'string' || !/^[0-9a-fA-F]{64}$/.test(key.trim())) {
+    return 'localObserverKey must be a 64-character hex public key';
+  }
+  return null;
+}
 const router = Router();
 
 
@@ -1042,6 +1056,8 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       if (typeof config?.region !== 'string' || config.region.trim() === '') {
         return res.status(400).json({ error: 'region is required for a meshcore_mqtt source' });
       }
+      const localKeyErr = localObserverKeyError(config);
+      if (localKeyErr) return fail(res, 400, 'INVALID_LOCAL_OBSERVER_KEY', localKeyErr);
     }
 
     // mqtt_bridge may optionally attach to a parent mqtt_broker. When
@@ -1420,6 +1436,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       if (existing.type === 'meshcore_mqtt_broker') {
         const brokerErr = await validateMeshCoreBrokerSave(config, existing.id);
         if (brokerErr) return fail(res, brokerErr.status, brokerErr.code, brokerErr.message);
+      }
+      if (existing.type === 'meshcore_mqtt') {
+        const localKeyErr = localObserverKeyError(config);
+        if (localKeyErr) return fail(res, 400, 'INVALID_LOCAL_OBSERVER_KEY', localKeyErr);
       }
 
       // Validate mqtt_bridge topic rewrites (#3166) against the post-save

@@ -36,7 +36,7 @@ import {
   getSourcePairTarget,
   listPermittedSourceIds,
 } from '../utils/sourceScopedAccess.js';
-import { isMeshCoreManager, isMeshCoreMqttManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshCoreMqttManager, getPrimaryMeshtasticManager, meshCoreDisplayLocalKey } from '../sourceManagerTypes.js';
 import { loadNodeViewAccess, enhanceNodeForClient, checkNodeChannelAccess, resolveNodePositionScope, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
 import { applyMeshCorePositionOverrides, loadMeshCorePositionOverrides } from '../utils/meshcorePositionOverride.js';
 import { createSignFlipResolver, applySignFlipCorrection, rowSourceId } from '../services/signFlipCorrection.js';
@@ -194,7 +194,8 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
       // #5842: an enabled location override wins over the advert position.
       const mcOverrides = canViewOnMap ? await loadMeshCorePositionOverrides(mgr.sourceId) : new Map();
       const mcRows = applyMeshCorePositionOverrides(await mgr.getAllNodes(), mcOverrides, access.canViewPrivate(mgr.sourceId));
-      const mcLocalKey = mgr.getLocalNode?.()?.publicKey;
+      // The radio, or the observer an ingest source names as its own (#6532).
+      const mcLocalKey = meshCoreDisplayLocalKey(mgr);
       for (const n of mcRows) {
         const hasPosition = canViewOnMap
           && n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0);
@@ -206,11 +207,13 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
           : Math.floor(Date.now() / 1000);
         const pubKey = n.publicKey || '';
         const nodeId = `mc:${mgr.sourceId}:${pubKey.substring(0, 12)}`;
+        const isLocal = !!mcLocalKey && pubKey.toUpperCase() === mcLocalKey;
         meshcoreNodes.push(applySignFlipCorrection({
           nodeId,
           nodeNum: 0,
           sourceId: mgr.sourceId,
           isMeshCore: true,
+          ...(isLocal ? { isLocal: true } : {}),
           isIgnored: false,
           isFavorite: false,
           user: { id: nodeId, longName: n.name, shortName: (n.name || '').substring(0, 4) },
@@ -228,7 +231,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
           // #6220: the stored hop count, not a blanket 0 — every MeshCore
           // node read as a direct neighbour. Unknown stays undefined, which
           // the dashboard map draws as "unknown". The local radio is 0.
-          hopsAway: n.publicKey === mcLocalKey ? 0 : n.pathLen,
+          hopsAway: isLocal ? 0 : n.pathLen,
           role: 0,
           // #5578: latest-advert position flag for the map's hide toggle.
           // Position data too, so it follows the same `viewOnMap` gate. An
