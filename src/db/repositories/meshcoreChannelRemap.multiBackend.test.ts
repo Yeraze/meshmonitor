@@ -5,6 +5,7 @@
  * createTestDb, PG/MySQL via runLedgeredMigrations on an isolated database),
  * so a drift between the Drizzle schema and a migration shows up here.
  */
+import { eq } from 'drizzle-orm';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { drizzle as drizzlePostgres } from 'drizzle-orm/node-postgres';
 import { drizzle as drizzleMysql } from 'drizzle-orm/mysql2';
@@ -23,6 +24,7 @@ import {
   MeshCoreChannelRemapRepository,
   completeChannelMoves,
   remapMeshCoreChannelSetting,
+  remapMeshCorePrefChannels,
 } from './meshcoreChannelRemap.js';
 import {
   postgresAvailable,
@@ -116,7 +118,22 @@ async function seed(ctx: Ctx) {
     const q = db.insert(t.settings).values({ key, value, createdAt: NOW, updatedAt: NOW });
     await (dbType === 'sqlite' ? q.run() : q);
   }
+  const prefs = [
+    [SRC, [0, 1, 2, 1005], [{ channelId: 1, muteUntil: 123456 }, { channelId: 3, muteUntil: null }, { channelId: 1005, muteUntil: 7 }, 'junk']],
+    [OTHER, [1, 2], [{ channelId: 1, muteUntil: 5 }]],
+  ] as const;
+  for (const [sid, en, mu] of prefs) {
+    const q = db.insert(t.userNotificationPreferences).values({
+      userId, sourceId: sid, enabledChannels: JSON.stringify(en), mutedChannels: JSON.stringify(mu),
+      createdAt: NOW, updatedAt: NOW,
+    });
+    await (dbType === 'sqlite' ? q.run() : q);
+  }
   return { userId, t };
+}
+async function readPrefs(ctx: Ctx, t: any) {
+  const rows = await run(ctx.db.select().from(t.userNotificationPreferences), ctx.dbType);
+  return new Map<string, any>(rows.map((r: any) => [r.sourceId, r]));
 }
 
 function runSharedTests(getCtx: () => Ctx) {
@@ -181,6 +198,37 @@ function runSharedTests(getCtx: () => Ctx) {
     expect(s.get(`source:${OTHER}:meshcoreAutoAckChannels`)).toBe('1');
   });
 
+  it('moves notification-pref channel ids with their channels, for this source only', async () => {
+    const ctx = getCtx();
+    const { t } = await seed(ctx);
+    const counts = await ctx.repo.remapChannelSlots(SRC, [
+      { from: 1, to: 2 }, { from: 2, to: 3 }, { from: 3, to: 1 },
+    ]);
+    expect(counts.prefsUpdated).toBe(1);
+    const prefs = await readPrefs(ctx, t);
+    const mine = prefs.get(SRC);
+    // slot 0 and keyed 1005 stay; 1 -> 2, 2 -> 3
+    expect(JSON.parse(mine.enabledChannels)).toEqual([0, 2, 3, 1005]);
+    // mute expiry travels with the channel; unknown entries kept
+    expect(JSON.parse(mine.mutedChannels)).toEqual([
+      { channelId: 2, muteUntil: 123456 }, { channelId: 1, muteUntil: null }, { channelId: 1005, muteUntil: 7 }, 'junk',
+    ]);
+    const other = prefs.get(OTHER);
+    expect(JSON.parse(other.enabledChannels)).toEqual([1, 2]);
+    expect(JSON.parse(other.mutedChannels)).toEqual([{ channelId: 1, muteUntil: 5 }]);
+  });
+  it('leaves malformed pref JSON as it is', async () => {
+    const ctx = getCtx();
+    const { t } = await seed(ctx);
+    const upd = ctx.db.update(t.userNotificationPreferences)
+      .set({ enabledChannels: '{not json', mutedChannels: null })
+      .where(eq(t.userNotificationPreferences.sourceId, SRC));
+    await (ctx.dbType === 'sqlite' ? upd.run() : upd);
+    await ctx.repo.remapChannelSlots(SRC, [{ from: 1, to: 2 }, { from: 2, to: 1 }]);
+    const mine = (await readPrefs(ctx, t)).get(SRC);
+    expect(mine.enabledChannels).toBe('{not json');
+    expect(mine.mutedChannels).toBeNull();
+  });
   it('drops grants for a channel that moves past slot 7', async () => {
     const ctx = getCtx();
     const { t } = await seed(ctx);
@@ -234,7 +282,7 @@ describe.skipIf(!postgresAvailable)('MeshCoreChannelRemapRepository — PostgreS
     ctx.repo = new MeshCoreChannelRemapRepository(ctx.db, 'postgres');
     ctx.reset = async () => {
       await isolated.pool.query(
-        'TRUNCATE meshcore_messages, channels, conversation_read_state, permissions, users RESTART IDENTITY CASCADE',
+        'TRUNCATE meshcore_messages, channels, conversation_read_state, permissions, user_notification_preferences, users RESTART IDENTITY CASCADE',
       );
       await isolated.pool.query(`DELETE FROM settings WHERE key LIKE 'source:%'`);
     };
@@ -257,7 +305,7 @@ describe.skipIf(!mysqlAvailable)('MeshCoreChannelRemapRepository — MySQL', () 
     ctx.repo = new MeshCoreChannelRemapRepository(ctx.db, 'mysql');
     ctx.reset = async () => {
       await isolated.pool.query('SET FOREIGN_KEY_CHECKS = 0');
-      for (const table of ['meshcore_messages', 'channels', 'conversation_read_state', 'permissions', 'users']) {
+      for (const table of ['meshcore_messages', 'channels', 'conversation_read_state', 'permissions', 'user_notification_preferences', 'users']) {
         await isolated.pool.query(`TRUNCATE TABLE ${table}`);
       }
       await isolated.pool.query('SET FOREIGN_KEY_CHECKS = 1');
@@ -279,6 +327,19 @@ describe('completeChannelMoves', () => {
   });
 });
 
+describe('remapMeshCorePrefChannels', () => {
+  const map = new Map([[1, 2], [2, 1]]);
+  it('returns null fields for malformed or non-array JSON and no-op maps', () => {
+    expect(remapMeshCorePrefChannels('{x', '"s"', map)).toEqual({ enabledChannels: null, mutedChannels: null });
+    expect(remapMeshCorePrefChannels('[5]', '[{"channelId":5}]', map)).toEqual({ enabledChannels: null, mutedChannels: null });
+    expect(remapMeshCorePrefChannels(null, undefined, map)).toEqual({ enabledChannels: null, mutedChannels: null });
+  });
+  it('remaps slots, skips keyed ids', () => {
+    expect(remapMeshCorePrefChannels('[1,2,1001]', '[{"channelId":1,"muteUntil":9}]', map)).toEqual({
+      enabledChannels: '[2,1,1001]', mutedChannels: '[{"channelId":2,"muteUntil":9}]',
+    });
+  });
+});
 describe('remapMeshCoreChannelSetting', () => {
   const map = new Map([[1, 2], [2, 1]]);
   it('keeps non-numeric CSV parts and returns null when nothing changes', () => {
