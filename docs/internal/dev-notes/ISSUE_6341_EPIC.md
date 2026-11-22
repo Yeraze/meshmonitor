@@ -34,7 +34,7 @@ automated text may split into one more part. Phases 2, 3 add notifications, capp
   composer picker. Exit: tests for name validation, split cap, refused name.
 - [x] **P5 — Clock samples.** Meshtastic and `meshcore_mqtt` samples into the protocol-neutral clock rule. Exit: tests
   for replay skip, two-observer rule.
-- [ ] **P6 — GRP_TXT pipeline merge.** One store path for device and MQTT channel text. Exit: existing suites pass,
+- [x] **P6 — GRP_TXT pipeline merge.** One store path for device and MQTT channel text. Exit: existing suites pass,
   MQTT rows get `selfOrigin`, ids unchanged.
 
 ## Phase log
@@ -83,3 +83,13 @@ rxTime within ±120 s of server time, no replays, S&F, MQTT, proxy or Virtual No
 time; offset = server time − sender time, so a wrong local radio clock stops sampling instead of flagging everyone);
 `meshcore_mqtt` stores a sample only when two observers agree on sign (`MqttClockAgreement`, bounded; smaller offset
 stored; signature verified once per advert). Telemetry type stays `mc_rtc_drift_secs`.
+
+### P6 (spec: `ISSUE_6341_P6_SPEC.md`)
+Maintainer answers, 2026-11-22: `selfOrigin` on MQTT feed events (sibling radios' node names + recent override names);
+MQTT emits late reaction resolutions after the message, like the device. Shipped: `meshcoreChannelTextStore.ts`
+(`storeDecryptedChannelText`: filter, reactions, mc1Hash, insert, `selfOrigin`, emit, after-store hook) used by both
+`storeDecryptedGroupText` (device) and `ingestChannelMessage` (MQTT); `meshcoreLocalSenderNames.ts` holds the override
+registry and `isLocalMeshCoreSenderName`. Id builders stay per path (`buildId`), so existing row ids are unchanged
+(golden-id tests). MQTT's private `decryptGroupText` is gone; it uses `decryptGroupTextFrame`.
+
+All six phases shipped; #6341 can close.

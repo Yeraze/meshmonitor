@@ -58,20 +58,6 @@ import { nodeNumFromPubkey } from './services/meshcoreTelemetryPoller.js';
 import { OBSERVER_KEY_RE } from './services/meshcoreMqttBrokerConfig.js';
 import { statusToTelemetryRows } from './services/meshcoreRemoteTelemetryScheduler.js';
 import databaseService from '../services/database.js';
-import { isReactionText, mc1ChannelBody } from '../utils/meshcoreReactions.js';
-import {
-  meshcoreWireSecond,
-  meshcoreWireChannelText,
-  mc1HashForChannelWire,
-} from '../utils/meshcoreReactionTarget.js';
-import {
-  isReactionsInboundEnabled,
-  resolveInboundReaction,
-  notePendingReaction,
-  resolvePendingReactionsFor,
-  emitReactionResolutions,
-  type MeshCoreReactionFields,
-} from './services/meshcoreReactionIngest.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import type { MeshCoreNode, MeshCoreMessage } from './meshcoreManager.js';
 import {
@@ -82,13 +68,9 @@ import {
   ingestAdvertFrame,
   verifyAdvertSignature,
   type IngestedAdvert,
-  keyedFilingFor,
-  noteVirtualChannelDecrypt,
-  type ChannelKeyCandidate,
 } from './services/meshcoreFrameIngest.js';
-import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
-import { meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
+import { storeDecryptedChannelText } from './services/meshcoreChannelTextStore.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
 import {
   maybeRecordMeshCoreCoverageReception,
@@ -728,143 +710,31 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       const group = packet?.payload?.groupText;
       if (!group) return;
 
-      const plain = await this.decryptGroupText(group);
+      const plain = await decryptGroupTextFrame(group);
       if (!plain) return;
 
-      // Sender's own timestamp, not ingest time — every observer's copy of one
-      // message must agree, and a delayed relay must not re-date it (the same
-      // rule Phase 3 applies to lastHeard).
-      // The row's timestamp falls back to ingest time when the sender has no
-      // clock, but the ID deliberately keeps the raw 0.
-      //
-      // Those diverge on purpose. Every observer of one transmission must
-      // derive the SAME id, and ingest time differs per observer — so the id
-      // can only use what is on the wire. The cost is a real limitation worth
-      // stating: for a CLOCK-LESS sender, two separate transmissions of
-      // identical text on one channel are indistinguishable, and the second
-      // collapses into the first.
-      //
-      // That is inherent, not a gap to close. MeshCore encrypts
-      // `timestamp | flags | text` with AES-ECB, so with a zero timestamp both
-      // transmissions are byte-identical on the wire; nothing separates them
-      // except reception time, and using that would break the multi-observer
-      // collapse this id exists for.
-      const timestampMs = plain.timestampSec > 0 ? plain.timestampSec * 1000 : Date.now();
-      const id = channelMessageId(this.sourceId, group.channelHash, plain.timestampSec, plain.text);
-
-      // Wire second for MC1 reaction hashing (#5759). Stored raw, even when
-      // the sender's clock is implausible.
-      const sec = meshcoreWireSecond(plain.timestampSec);
-
-      const row: MeshCoreMessage & { createdAt: number } = {
-          id,
-          // 'channel-N' is how this table encodes channel membership; the
-          // channel queries match on it. An empty value here would fall through
-          // channelWhereClause(0)'s legacy "null recipient, non-channel sender"
-          // branch and file EVERY ingested message under channel 0, whichever
-          // channel it actually came from.
-          fromPublicKey: `channel-${plain.channelIdx}`,
-          // undefined, not null: the DB column is nullable but the event's
-          // MeshCoreMessage type is `fromName?: string`, and one object has to
-          // satisfy both — it is inserted and emitted unchanged.
-          fromName: plain.senderName ?? undefined,
-          text: plain.text,
-          timestamp: timestampMs,
-          messageType: 'channel',
-          snr: decoded.event.snr ?? undefined,
-          rssi: decoded.event.rssi ?? undefined,
-          createdAt: Date.now(),
-          ...(sec !== null ? { senderTimestamp: sec } : {}),
-          // Provenance of the decrypting key (#6308). Every row is key-gated,
-          // whether a device slot or a virtual channel opened it.
-          keyFingerprint: plain.keyFingerprint,
-          keySourceId: plain.keySourceId,
-          keyChannelIdx: plain.keyChannelIdx,
-      };
-
-      // Ignore / Block (#5408): block drops the message before it is stored;
-      // ignore stores it and flags the event so automations skip it.
-      const verdict = meshcoreMessageFilter.classify(this.sourceId, {
-        fromPublicKey: null,
-        fromName: plain.senderName,
-        text: plain.text,
-        kind: 'channel',
-      }, { countHit: false });
-      // Many observers relay one frame, so count a hit once per message id,
-      // not once per copy.
-      if (verdict.action === 'block') {
-        if (this.rememberBlockedId(id)) meshcoreMessageFilter.countHit(this.sourceId, verdict);
-        return;
-      }
-
-      // Reactions (#5759): an MQTT source has no node of its own, so no self
-      // name or key. The id above stays derived from the raw text.
-      let fields: Required<MeshCoreReactionFields> | null = null;
-      const parseBody = plain.senderName ? plain.text : mc1ChannelBody(plain.text);
-      if (isReactionText(parseBody) && (await isReactionsInboundEnabled(this.sourceId))) {
-        const res = await resolveInboundReaction({
-          sourceId: this.sourceId,
-          scope: 'channel',
-          channelIdx: plain.channelIdx,
-          body: parseBody,
-          reactorName: plain.senderName,
-          reactorKey: null,
-          selfName: null,
-          selfKey: null,
-          now: Date.now(),
-        });
-        if (res.kind === 'duplicate') return;
-        if (res.kind === 'reaction') fields = res.fields;
-      }
-      if (fields) {
-        Object.assign(row, fields);
-        row.text = fields.reactionEmoji ?? row.text;
-      }
-      // mc1Hash is internal: it goes to the DB row only, never the emitted event.
-      const mc1Hash = fields
-        ? null
-        : mc1HashForChannelWire(meshcoreWireChannelText(plain.senderName, plain.text), sec);
-
-      const inserted = await databaseService.meshcore.insertMessage({ ...row, mc1Hash }, this.sourceId);
-      if (!inserted) return; // A different observer's copy already landed.
-      if (fields) {
-        if (!fields.reactionTargetId) {
-          notePendingReaction(this.sourceId, {
-            id,
-            reactionFormat: fields.reactionFormat ?? '',
-            reactionTargetHash: fields.reactionTargetHash ?? '',
-          });
-        }
-      } else {
-        emitReactionResolutions(
-          this.sourceId,
-          await resolvePendingReactionsFor(
-            this.sourceId,
-            {
-              id,
-              fromPublicKey: row.fromPublicKey,
-              fromName: row.fromName ?? null,
-              text: row.text,
-              timestamp: row.timestamp,
-              senderTimestamp: sec,
-              mc1Hash,
-              messageType: 'channel',
-            },
-            { selfName: null, selfKey: null },
-          ),
-        );
-      }
-      meshcoreMessageFilter.countHit(this.sourceId, verdict);
-      this.stats.channelMessages++;
-      noteVirtualChannelDecrypt(plain.key);
-      // The packet hash (#5357) rides the event only: added AFTER the insert so
-      // the DB row keeps its shape (meshcore_messages has no hash column). The
-      // raw frame came straight off the wire, so the hash is exact.
-      const packetHash = meshCorePacketHashOrUndefined(decoded.event.raw_hex);
-      dataEventEmitter.emitMeshCoreMessage(
-        verdict.action === 'ignore' ? { ...row, packetHash, filtered: 'ignore' as const } : { ...row, packetHash },
-        this.sourceId,
-      );
+      // The id uses the sender's own wire timestamp (raw 0 for a clock-less
+      // sender), never ingest time, so every observer's copy of one message
+      // derives the SAME id. Inherent limit: for a CLOCK-LESS sender, two
+      // transmissions of identical text on one channel are byte-identical on
+      // the wire and collapse into one row.
+      // `insertMessage` returns whether it wrote; the store emits only then.
+      await storeDecryptedChannelText(plain, {
+        sourceId: this.sourceId,
+        rawHex: decoded.event.raw_hex,
+        buildId: () => channelMessageId(this.sourceId, group.channelHash, plain.timestampSec, plain.text),
+        snr: decoded.event.snr,
+        rssi: decoded.event.rssi,
+        // An MQTT source has no node of its own.
+        self: null,
+        // Many observers relay one frame: count a hit once per message id.
+        onBlocked: (id, verdict) => {
+          if (this.rememberBlockedId(id)) meshcoreMessageFilter.countHit(this.sourceId, verdict);
+        },
+        onStored: () => {
+          this.stats.channelMessages++;
+        },
+      });
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest channel message:`, err);
     }
@@ -882,40 +752,6 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       if (oldest !== undefined) this.recentBlockedIds.delete(oldest);
     }
     return true;
-  }
-
-  /**
-   * Try every known channel key whose hash matches the frame's.
-   *
-   * Returns null when we hold no matching key — the overwhelmingly common case
-   * on a region feed, where most traffic belongs to channels we are not in.
-   * That is not an error and must not be logged per packet.
-   */
-  private async decryptGroupText(
-    group: { channelHash: string; cipherMacHex: string; ciphertextHex: string },
-  ): Promise<{
-    text: string;
-    senderName: string | null;
-    timestampSec: number;
-    channelIdx: number;
-    /** Gates reads: every MQTT channel row is key-gated (#6308). */
-    keyFingerprint: string;
-    keySourceId: string | null;
-    keyChannelIdx: number | null;
-    key: ChannelKeyCandidate;
-  } | null> {
-    const res = await decryptGroupTextFrame(group);
-    if (!res) return null;
-    // One filing rule for every key (#6308): the secret-derived index plus the
-    // key's provenance, so reads gate on the key and slot N of two sources never
-    // merges into one un-gated channel.
-    return {
-      text: res.text,
-      senderName: res.senderName,
-      timestampSec: res.timestampSec,
-      key: res.key,
-      ...keyedFilingFor(res.key),
-    };
   }
 
   /**
