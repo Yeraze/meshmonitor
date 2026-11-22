@@ -55,6 +55,7 @@ import {
 } from './services/meshcoreMqttIngestPacket.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { nodeNumFromPubkey } from './services/meshcoreTelemetryPoller.js';
+import { OBSERVER_KEY_RE } from './services/meshcoreMqttBrokerConfig.js';
 import { statusToTelemetryRows } from './services/meshcoreRemoteTelemetryScheduler.js';
 import databaseService from '../services/database.js';
 import { isReactionText, mc1ChannelBody } from '../utils/meshcoreReactions.js';
@@ -1127,7 +1128,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    */
   getLocalObserverKey(): string | null {
     const key = typeof this.config.localObserverKey === 'string' ? this.config.localObserverKey.trim() : '';
-    return /^[0-9a-fA-F]{64}$/.test(key) ? key.toUpperCase() : null;
+    return OBSERVER_KEY_RE.test(key) ? key.toUpperCase() : null;
   }
 
   /**

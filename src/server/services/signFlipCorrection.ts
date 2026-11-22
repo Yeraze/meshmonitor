@@ -45,6 +45,13 @@ export interface SignFlipFields {
   reportedLongitude?: number;
 }
 
+/** A source's stored MeshCore row by key, matched case-insensitively. */
+async function findStoredNode(sourceId: string, upperKey: string) {
+  return (await databaseService.meshcore.getNodeByPublicKeyAndSource(upperKey, sourceId))
+    ?? (await databaseService.meshcore.getNodeByPublicKeyAndSource(upperKey.toLowerCase(), sourceId))
+    ?? null;
+}
+
 /**
  * The source's own node position: its Meshtastic local node row (a user
  * override honoured), a MeshCore companion's advertised position, or the
@@ -53,13 +60,6 @@ export interface SignFlipFields {
  * own (Meshtastic MQTT, an ingest source with none named) return null, so they
  * need a manual reference point.
  */
-/** A source's stored MeshCore row by key, matched case-insensitively. */
-async function findStoredNode(sourceId: string, upperKey: string) {
-  const exact = await databaseService.meshcore.getNodeByPublicKeyAndSource(upperKey, sourceId)
-    ?? await databaseService.meshcore.getNodeByPublicKeyAndSource(upperKey.toLowerCase(), sourceId);
-  return exact ?? null;
-}
-
 async function resolveOwnNodePosition(sourceId: string): Promise<LatLon | null> {
   const manager = sourceManagerRegistry.getManager(sourceId);
   if (manager && isAnyMeshCoreManager(manager)) {
