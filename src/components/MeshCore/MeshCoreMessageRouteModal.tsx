@@ -123,6 +123,25 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
             <Row label={t('meshcore.route_detail_from', 'From')}>{fromLabel}</Row>
             <Row label={t('meshcore.route_detail_time', 'Time')} mono>{new Date(meshcoreDisplayTimeMs(message)).toLocaleString()}</Row>
             <Row label={t('meshcore.route_detail_hops', 'Hops')} mono>{typeof message.hopCount === 'number' ? message.hopCount : '—'}</Row>
+            {/*
+              #6551: SNR/RSSI describe the LAST hop only — the final repeater
+              on a relayed message, the sender on a direct one. Label the
+              source so the value is never read as sender-to-us. RSSI renders
+              only when present (companion message frames carry SNR only).
+            */}
+            {typeof message.snr === 'number' && (
+              <Row label={t('meshcore.route_detail_signal', 'Last hop signal')} mono>
+                {t('meshcore.snr_label', 'SNR')} {message.snr.toFixed(1)} dB
+                {typeof message.rssi === 'number' && (
+                  <> · {t('meshcore.rssi_label', 'RSSI')} {message.rssi} dBm</>
+                )}
+                {' '}({message.hopCount === 0
+                  ? t('meshcore.route_detail_signal_sender', 'from sender')
+                  : rows.length > 0
+                    ? t('meshcore.route_detail_signal_hop', 'from hop #{{n}}', { n: rows.length })
+                    : t('meshcore.route_detail_signal_last', 'from last repeater')})
+              </Row>
+            )}
             <Row label={t('meshcore.route_detail_scope', 'Scope')}>{scopeStr}</Row>
             {message.text && (
               <Row label={t('meshcore.route_detail_text', 'Text')} wrap>{message.text}</Row>

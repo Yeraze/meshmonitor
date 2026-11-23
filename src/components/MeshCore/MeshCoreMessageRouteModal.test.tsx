@@ -114,6 +114,30 @@ describe('MeshCoreMessageRouteModal', () => {
     expect(screen.getByText('Direct (no relays)')).toBeTruthy();
   });
 
+  describe('last-hop signal (#6551)', () => {
+    const signalRow = () => screen.getByText('Last hop signal').nextElementSibling?.textContent ?? '';
+
+    it('attributes a relayed message\'s SNR/RSSI to the final hop', () => {
+      render(<MeshCoreMessageRouteModal message={msg({ snr: 6.25, rssi: -92 })} fromLabel="Sender" contacts={contacts} onClose={() => {}} />);
+      expect(signalRow()).toBe('SNR 6.3 dB · RSSI -92 dBm (from hop #2)');
+    });
+
+    it('attributes a direct message\'s SNR to the sender and omits absent RSSI', () => {
+      render(<MeshCoreMessageRouteModal message={msg({ routePath: null, hopCount: 0, snr: -3.5 })} fromLabel="Sender" contacts={contacts} onClose={() => {}} />);
+      expect(signalRow()).toBe('SNR -3.5 dB (from sender)');
+    });
+
+    it('falls back to "last repeater" when hops are known but the path is not', () => {
+      render(<MeshCoreMessageRouteModal message={msg({ routePath: null, hopCount: 3, snr: 1 })} fromLabel="Sender" contacts={contacts} onClose={() => {}} />);
+      expect(signalRow()).toBe('SNR 1.0 dB (from last repeater)');
+    });
+
+    it('hides the row when SNR is absent', () => {
+      render(<MeshCoreMessageRouteModal message={msg({ rssi: -90 })} fromLabel="Sender" contacts={contacts} onClose={() => {}} />);
+      expect(screen.queryByText('Last hop signal')).toBeNull();
+    });
+  });
+
   it('invokes onClose from the close button and backdrop, not the content', () => {
     const onClose = vi.fn();
     const { container } = render(
