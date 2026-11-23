@@ -11,7 +11,8 @@ import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveCo
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useSmartHops, type SmartHopsData } from '../hooks/useSmartHops';
-import { formatChartAxisTimestamp } from '../utils/datetime';
+import { formatChartAxisTimestamp, formatInTimeZone } from '../utils/datetime';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
 import { SMART_HOPS_TYPE } from './SmartHopsGraphs';
 import type { TelemetryNodeInfo } from '../types/device';
 import { UiIcon } from './icons';
@@ -92,6 +93,10 @@ const SmartHopsChart: React.FC<SmartHopsChartProps> = ({
     hours,
     baseUrl,
   });
+
+  // The node's zone (#6523), shared with its telemetry charts.
+  const { data: nodeTimezone } = useNodeTimezone({ baseUrl, nodeId: favorite.nodeId });
+  const timeZone = nodeTimezone?.timeZone;
 
   // Get computed CSS color values for chart styling
   const [chartColors, setChartColors] = useState({
@@ -230,7 +235,7 @@ const SmartHopsChart: React.FC<SmartHopsChartProps> = ({
             type="number"
             domain={globalTimeRange || ['dataMin', 'dataMax']}
             tick={{ fontSize: 12 }}
-            tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange)}
+            tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, undefined, timeZone)}
           />
           <YAxis
             tick={{ fontSize: 12 }}
@@ -246,15 +251,7 @@ const SmartHopsChart: React.FC<SmartHopsChartProps> = ({
               color: chartColors.text,
             }}
             labelStyle={{ color: chartColors.text }}
-            labelFormatter={value => {
-              const date = new Date(value);
-              return date.toLocaleString([], {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              });
-            }}
+            labelFormatter={value => formatInTimeZone(new Date(value), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }, timeZone)}
             formatter={(value, name) => {
               const label = name ? t(`info.${name}`) : '';
               if (value === null || value === undefined) return ['-', label];

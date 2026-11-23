@@ -68,6 +68,13 @@ export function applyMeshCorePositionOverride<T extends PositionedRow>(
   ov: MeshCorePositionOverride | undefined,
   canViewPrivate: boolean,
 ): T & MeshCoreOverrideFields {
+  // #6523: raw DB rows (MQTT ingest sources) carry the Timezone Override,
+  // which names the node's region. Lists never send it; the gated
+  // /api/nodes/timezone route does.
+  if ('timezoneOverride' in row) {
+    const { timezoneOverride: _tz, ...rest } = row as T & { timezoneOverride?: unknown };
+    row = rest as unknown as T;
+  }
   const carriesRaw = RAW_OVERRIDE_KEYS.some((k) => k in row);
   const usable = !!ov && ov.enabled && ov.latitude != null && ov.longitude != null
     && (!ov.isPrivate || canViewPrivate);

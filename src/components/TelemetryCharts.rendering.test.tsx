@@ -11,15 +11,21 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import TelemetryChart from './TelemetryChart';
 import TelemetryGraphs from './TelemetryGraphs';
 import { useTelemetry } from '../hooks/useTelemetry';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
 import { MAX_MARKER_POINTS } from '../utils/telemetryChartDensity';
 
 vi.mock('../hooks/useTelemetry', () => ({
   useTelemetry: vi.fn(),
   useSolarIrradiance: () => ({ data: undefined }),
+}));
+vi.mock('../hooks/useNodeTimezone', () => ({
+  useNodeTimezone: vi.fn(() => ({ data: undefined })),
+  useSetNodeTimezone: () => ({ mutate: vi.fn(), isPending: false }),
+  listTimeZones: () => ['UTC', 'America/Chicago'],
 }));
 vi.mock('../hooks/useFavorites', () => ({
   useFavorites: () => ({ data: undefined }),
@@ -51,6 +57,8 @@ vi.mock('@dnd-kit/sortable', () => ({
 }));
 
 const lines: Array<Record<string, unknown>> = [];
+const axes: Array<Record<string, unknown>> = [];
+const tooltips: Array<Record<string, unknown>> = [];
 vi.mock('recharts', () => ({
   ComposedChart: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   Line: (props: Record<string, unknown>) => {
@@ -58,10 +66,16 @@ vi.mock('recharts', () => ({
     return null;
   },
   Area: () => null,
-  XAxis: () => null,
+  XAxis: (props: Record<string, unknown>) => {
+    axes.push(props);
+    return null;
+  },
   YAxis: () => null,
   CartesianGrid: () => null,
-  Tooltip: () => null,
+  Tooltip: (props: Record<string, unknown>) => {
+    tooltips.push(props);
+    return null;
+  },
   ResponsiveContainer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
@@ -105,6 +119,9 @@ const lastLine = () => lines[lines.length - 1];
 
 beforeEach(() => {
   lines.length = 0;
+  axes.length = 0;
+  tooltips.length = 0;
+  (useNodeTimezone as Mock).mockReturnValue({ data: undefined });
 });
 
 describe.each([
@@ -131,5 +148,32 @@ describe.each([
     for (const props of lines) {
       expect(props.isAnimationActive).toBe(false);
     }
+  });
+});
+
+// 2026-01-15T05:30:00Z: 23:30 on Jan 14 in Chicago.
+const NEAR_MIDNIGHT = Date.UTC(2026, 0, 15, 5, 30);
+
+describe.each([
+  ['TelemetryChart (dashboard)', renderDashboardChart, false],
+  ['TelemetryGraphs (Info tab / node details)', renderInfoGraphs, true],
+])('%s in the node time zone (#6523)', (_name, renderIt, editable) => {
+  it('draws axis and tooltip times in the node zone and names it', () => {
+    (useNodeTimezone as Mock).mockReturnValue({ data: { timeZone: 'America/Chicago', source: 'position' } });
+    setTelemetry(series(10));
+    renderIt();
+    const tick = axes[axes.length - 1].tickFormatter as (v: number) => string;
+    expect(tick(NEAR_MIDNIGHT)).toBe('23:30');
+    const label = tooltips[tooltips.length - 1].labelFormatter as (v: number) => string;
+    expect(label(NEAR_MIDNIGHT)).toContain('14');
+    expect(screen.getByText('telemetry.timezone_caption')).toBeTruthy();
+    // Only the node panel offers the override, and only with nodes:write.
+    expect(screen.queryByRole('combobox') !== null).toBe(editable);
+  });
+
+  it('shows no caption while the zone is unknown', () => {
+    setTelemetry(series(10));
+    renderIt();
+    expect(screen.queryByText('telemetry.timezone_caption')).toBeNull();
   });
 });

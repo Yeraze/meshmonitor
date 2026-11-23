@@ -29,6 +29,43 @@ export function getCachedDateTimeFormat(
   return formatter;
 }
 
+/** Zones this runtime rejected, so a bad one costs one throw, not one per tick. */
+const unsupportedTimeZones = new Set<string>();
+
+/**
+ * A cached formatter that renders in `timeZone` (#6523). Falls back to the
+ * runtime's own zone when `timeZone` is absent or this runtime does not know
+ * it (the server's zone data can be newer than a browser's).
+ */
+export function getZonedDateTimeFormat(
+  locale: string | string[] | undefined,
+  options: Intl.DateTimeFormatOptions,
+  timeZone?: string
+): Intl.DateTimeFormat {
+  if (timeZone && !unsupportedTimeZones.has(timeZone)) {
+    try {
+      return getCachedDateTimeFormat(locale, { ...options, timeZone });
+    } catch {
+      unsupportedTimeZones.add(timeZone);
+    }
+  }
+  return getCachedDateTimeFormat(locale, options);
+}
+
+/**
+ * `date.toLocaleString([], options)`, or the same in `timeZone` when given.
+ * With no zone it is exactly the old call, so existing output is unchanged.
+ */
+export function formatInTimeZone(
+  date: Date,
+  options: Intl.DateTimeFormatOptions,
+  timeZone?: string
+): string {
+  if (!timeZone) return date.toLocaleString([], options);
+  if (Number.isNaN(date.getTime())) return 'Invalid Date';
+  return getZonedDateTimeFormat([], options, timeZone).format(date);
+}
+
 const TIME_12H_OPTIONS: Intl.DateTimeFormatOptions = {
   hour: 'numeric',
   minute: '2-digit',
@@ -45,12 +82,13 @@ const TIME_24H_OPTIONS: Intl.DateTimeFormatOptions = {
  * Formats a time according to the user's preferred time format
  * @param date - Date object to format
  * @param format - '12' for 12-hour format, '24' for 24-hour format
+ * @param timeZone - IANA zone to render in (#6523); the runtime's zone when absent
  * @returns Formatted time string
  */
-export function formatTime(date: Date, format: TimeFormat = '24'): string {
+export function formatTime(date: Date, format: TimeFormat = '24', timeZone?: string): string {
   // toLocaleTimeString returns this for an invalid date; Intl's format() throws.
   if (Number.isNaN(date.getTime())) return 'Invalid Date';
-  return getCachedDateTimeFormat('en-US', format === '12' ? TIME_12H_OPTIONS : TIME_24H_OPTIONS).format(date);
+  return getZonedDateTimeFormat('en-US', format === '12' ? TIME_12H_OPTIONS : TIME_24H_OPTIONS, timeZone).format(date);
 }
 
 /**
@@ -296,6 +334,8 @@ export function shouldShowDateSeparator(
          prevDate.getDate() !== currentDate.getDate();
 }
 
+const AXIS_DATE_OPTIONS: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+
 /**
  * Formats a timestamp for chart X-axis display.
  * Shows date + time if the time range spans more than 24 hours,
@@ -304,15 +344,17 @@ export function shouldShowDateSeparator(
  * @param timestamp - Timestamp in milliseconds
  * @param timeRange - Tuple of [minTimestamp, maxTimestamp] in milliseconds, or null
  * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
+ * @param timeZone - IANA zone to render in (#6523); the runtime's zone when absent
  * @returns Formatted string like "Dec 9 14:32" (multi-day) or "14:32" (single day)
  */
 export function formatChartAxisTimestamp(
   timestamp: number,
   timeRange: [number, number] | null,
-  timeFormat: TimeFormat = '24'
+  timeFormat: TimeFormat = '24',
+  timeZone?: string
 ): string {
   const date = new Date(timestamp);
-  const timeStr = formatTime(date, timeFormat);
+  const timeStr = formatTime(date, timeFormat, timeZone);
 
   // If no time range provided, default to time-only format
   if (!timeRange) {
@@ -325,6 +367,16 @@ export function formatChartAxisTimestamp(
 
   // If range is more than 24 hours, include the date
   if (rangeMs > twentyFourHours) {
+    if (timeZone) {
+      // Month and day in the node's zone, not the browser's (#6523).
+      let monthName = '';
+      let day = '';
+      for (const part of getZonedDateTimeFormat('en-US', AXIS_DATE_OPTIONS, timeZone).formatToParts(date)) {
+        if (part.type === 'month') monthName = part.value;
+        else if (part.type === 'day') day = part.value;
+      }
+      return `${monthName} ${day} ${timeStr}`;
+    }
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthName = monthNames[date.getMonth()];

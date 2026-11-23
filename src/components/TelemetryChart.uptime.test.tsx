@@ -24,6 +24,11 @@ vi.mock('../hooks/useTelemetry', () => ({
 }));
 
 let widgetMode = 'numeric';
+vi.mock('../hooks/useNodeTimezone', () => ({
+  useNodeTimezone: () => ({ data: undefined }),
+  useSetNodeTimezone: () => ({ mutate: vi.fn(), isPending: false }),
+  listTimeZones: () => [],
+}));
 vi.mock('../hooks/useWidgetMode', () => ({
   useWidgetMode: () => [widgetMode, vi.fn()],
 }));

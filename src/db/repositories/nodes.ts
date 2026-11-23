@@ -1723,6 +1723,25 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Set or clear (`null`) the per-node Timezone Override (#6523), scoped to
+   * sourceId. MeshMonitor-local; upsertNode() never writes the column.
+   * Returns false when no row matched.
+   */
+  async setNodeTimezoneOverride(nodeNum: number, sourceId: string, timeZone: string | null): Promise<boolean> {
+    const existing = await this.getNode(nodeNum, sourceId);
+    if (!existing) return false;
+    const { nodes } = this.tables;
+
+    await this.db
+      .update(nodes)
+      .set({ timezoneOverride: timeZone, updatedAt: this.now() })
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
+    return true;
+  }
+
+  /**
    * Set node ignored status (scoped to sourceId)
    */
   async setNodeIgnored(nodeNum: number, isIgnored: boolean, sourceId: string): Promise<void> {

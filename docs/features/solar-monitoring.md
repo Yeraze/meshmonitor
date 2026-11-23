@@ -52,6 +52,8 @@ The curve appears on:
 - **Telemetry Dashboard** favourite charts.
 - **Analysis & Reports → Solar Monitoring Analysis**, under each detected solar node's battery line. Its forecast compares each node's coming days with its own cell's recent average; see [Analysis & Reports](/features/analysis-reports).
 
+Times on these charts, the curve included, use the node's own time zone, so sunrise lines up with the node's morning. See [Node Time Zone](/features/telemetry-widgets#node-time-zone).
+
 A node shows no curve when it has no position, when you cannot see its position, or when its cell has not been fetched yet. A chart's CSV export adds a `Sunlight W/m2` column while the overlay has data.
 
 ## Privacy

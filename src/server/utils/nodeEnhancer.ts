@@ -134,6 +134,8 @@ export async function enhanceNodeForClient(
     delete nodeToMask.latitudeOverride;
     delete nodeToMask.longitudeOverride;
     delete nodeToMask.altitudeOverride;
+    // #6523: a Timezone Override names the node's region too.
+    delete (nodeToMask as { timezoneOverride?: unknown }).timezoneOverride;
   }
 
   if (shouldApplyOverride) {
@@ -431,6 +433,8 @@ function stripNodeLocation<T>(node: T): T {
   // #5364/#5365 Phase 2: the "confirmed fixed" anchor is a position too.
   delete masked.aircraftFixedLatitude;
   delete masked.aircraftFixedLongitude;
+  // #6523: a Timezone Override names the node's region too.
+  delete masked.timezoneOverride;
   return masked as T;
 }
 
@@ -478,6 +482,7 @@ export function withholdPrivateOverride<T>(node: T): T {
   delete masked.latitudeOverride;
   delete masked.longitudeOverride;
   delete masked.altitudeOverride;
+  delete masked.timezoneOverride; // #6523
   return masked as T;
 }
 

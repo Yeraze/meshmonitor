@@ -36,6 +36,8 @@ const OVERRIDE_KEYS = [
   'longitudeOverride',
   'altitudeOverride',
   'positionOverrideIsPrivate',
+  // #6523: the Timezone Override has its own writer too.
+  'timezoneOverride',
 ] as const;
 
 /**
@@ -182,6 +184,8 @@ export interface DbMeshCoreNode {
   longitudeOverride?: number | null;
   altitudeOverride?: number | null;
   positionOverrideIsPrivate?: boolean | null;
+  /** #6523 (migration 247): IANA Timezone Override; null = automatic. `upsertNode` never writes it. */
+  timezoneOverride?: string | null;
   batteryMv?: number | null;
   uptimeSecs?: number | null;
   rssi?: number | null;
@@ -1268,6 +1272,25 @@ export class MeshCoreRepository extends BaseRepository {
       createdAt: now,
       updatedAt: now,
     });
+  }
+
+  /**
+   * Set or clear (`null`) the per-node Timezone Override (#6523) for one
+   * (sourceId, publicKey) node. MeshMonitor-only. Updates an existing row
+   * only; returns false when the node has no row on this source.
+   */
+  async setNodeTimezoneOverride(sourceId: string, publicKey: string, timeZone: string | null): Promise<boolean> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setNodeTimezoneOverride requires a sourceId');
+    }
+    const existing = await this.getNodeByPublicKeyAndSource(publicKey, sourceId);
+    if (!existing) return false;
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({ timezoneOverride: timeZone, updatedAt: this.now() })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), this.withSourceScope(meshcoreNodes, sourceId)));
+    return true;
   }
 
   /**

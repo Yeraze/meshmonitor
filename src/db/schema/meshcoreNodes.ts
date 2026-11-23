@@ -73,6 +73,9 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   longitudeOverride: real('longitudeOverride'),
   altitudeOverride: real('altitudeOverride'),
   positionOverrideIsPrivate: integer('positionOverrideIsPrivate', { mode: 'boolean' }).default(false),
+  // Per-node Timezone Override (IANA name, #6523). Only the timezone route writes it;
+  // the automatic zone is derived from position on read and never stored.
+  timezoneOverride: text('timezoneOverride'),
 
   // Telemetry
   batteryMv: integer('batteryMv'),   // Battery voltage in millivolts
@@ -210,6 +213,9 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   longitudeOverride: pgDoublePrecision('longitudeOverride'),
   altitudeOverride: pgDoublePrecision('altitudeOverride'),
   positionOverrideIsPrivate: pgBoolean('positionOverrideIsPrivate').default(false),
+  // Per-node Timezone Override (IANA name, #6523). Only the timezone route writes it;
+  // the automatic zone is derived from position on read and never stored.
+  timezoneOverride: pgText('timezoneOverride'),
 
   batteryMv: pgInteger('batteryMv'),
   uptimeSecs: pgBigint('uptimeSecs', { mode: 'number' }),
@@ -311,6 +317,9 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   longitudeOverride: myDouble('longitudeOverride'),
   altitudeOverride: myDouble('altitudeOverride'),
   positionOverrideIsPrivate: myBoolean('positionOverrideIsPrivate').default(false),
+  // Per-node Timezone Override (IANA name, #6523). Only the timezone route writes it;
+  // the automatic zone is derived from position on read and never stored.
+  timezoneOverride: myVarchar('timezoneOverride', { length: 64 }),
 
   batteryMv: myInt('batteryMv'),
   uptimeSecs: myBigint('uptimeSecs', { mode: 'number' }),

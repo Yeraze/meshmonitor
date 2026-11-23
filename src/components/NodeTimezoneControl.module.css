@@ -1,0 +1,29 @@
+/* The zone a node's charts use, plus the override picker (#6523). */
+.timezone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.caption {
+  overflow-wrap: anywhere;
+}
+
+.override {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.select {
+  max-width: 14rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.8rem;
+}
