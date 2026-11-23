@@ -112,6 +112,14 @@ import {
   type AircraftAgeOutLastResult,
 } from '../utils/aircraftClassification';
 import { formatDateTime } from '../utils/datetime';
+import {
+  SOLAR_GRID_SIZES,
+  SOLAR_REFRESH_HOURS,
+  DEFAULT_SOLAR_GRID_SIZE,
+  DEFAULT_SOLAR_REFRESH_HOURS,
+  pickSolarOption,
+} from '../utils/solarGrid';
+import SolarMonitoringSettings from './SolarMonitoringSettings';
 
 type DistanceUnit = 'km' | 'mi';
 type PositionHistoryLineStyle = 'linear' | 'spline';
@@ -203,10 +211,6 @@ interface SettingsDraft {
   signFlipReferenceLatitude: string;
   signFlipReferenceLongitude: string;
   solarMonitoringEnabled: boolean;
-  solarMonitoringLatitude: number;
-  solarMonitoringLongitude: number;
-  solarMonitoringAzimuth: number;
-  solarMonitoringDeclination: number;
   // Category C: server-only settings, no prop/context home — dirty-tracked against an `initial*`
   // snapshot (see buildBaseline) rather than a prop/context value.
   packetLogEnabled: boolean;
@@ -248,6 +252,12 @@ interface SettingsDraft {
   adsbMatchEnabled: boolean;
   adsbFeed: string;
   adsbApiToken: string;
+  // Open-Meteo solar options (#6523). Global, admin-only, server-backed with
+  // no SettingsContext home; `solarOpenMeteoApiToken` maps to the server-only
+  // `solar_open_meteo_api_token` key (admins receive it unmasked).
+  solarOpenMeteoApiToken: string;
+  solarGridSize: string;
+  solarRefreshHours: string;
   // OpenSky Network credentials (#5877): server-only `adsb_opensky_client_*`.
   adsbOpenSkyClientId: string;
   adsbOpenSkyClientSecret: string;
@@ -356,12 +366,6 @@ interface SettingsTabProps {
   theme: Theme;
   language: string;
   solarMonitoringEnabled: boolean;
-  solarMonitoringLatitude: number;
-  solarMonitoringLongitude: number;
-  solarMonitoringAzimuth: number;
-  solarMonitoringDeclination: number;
-  currentNodeId: string;
-  nodes: any[];
   baseUrl: string;
   onMaxNodeAgeChange: (hours: number) => void;
   onInactiveNodeThresholdHoursChange: (hours: number) => void;
@@ -383,10 +387,6 @@ interface SettingsTabProps {
   onIconStyleChange: (style: IconStyle) => void;
   onLanguageChange: (language: string) => void;
   onSolarMonitoringEnabledChange: (enabled: boolean) => void;
-  onSolarMonitoringLatitudeChange: (latitude: number) => void;
-  onSolarMonitoringLongitudeChange: (longitude: number) => void;
-  onSolarMonitoringAzimuthChange: (azimuth: number) => void;
-  onSolarMonitoringDeclinationChange: (declination: number) => void;
   mode?: 'global' | 'source';
 }
 
@@ -413,12 +413,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   iconStyle,
   language,
   solarMonitoringEnabled,
-  solarMonitoringLatitude,
-  solarMonitoringLongitude,
-  solarMonitoringAzimuth,
-  solarMonitoringDeclination,
-  currentNodeId,
-  nodes,
   baseUrl,
   onMaxNodeAgeChange,
   onInactiveNodeThresholdHoursChange,
@@ -440,10 +434,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onIconStyleChange,
   onLanguageChange,
   onSolarMonitoringEnabledChange,
-  onSolarMonitoringLatitudeChange,
-  onSolarMonitoringLongitudeChange,
-  onSolarMonitoringAzimuthChange,
-  onSolarMonitoringDeclinationChange,
   mode
 }) => {
   const show = (sectionId: string) =>
@@ -589,10 +579,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     signFlipReferenceLatitude: '',
     signFlipReferenceLongitude: '',
     solarMonitoringEnabled,
-    solarMonitoringLatitude,
-    solarMonitoringLongitude,
-    solarMonitoringAzimuth,
-    solarMonitoringDeclination,
     packetLogEnabled: false,
     packetLogMaxCount: 1000,
     packetLogMaxAgeHours: 24,
@@ -618,6 +604,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     adsbMatchEnabled: false,
     adsbFeed: DEFAULT_ADSB_FEED,
     adsbApiToken: '',
+    solarOpenMeteoApiToken: '',
+    solarGridSize: String(DEFAULT_SOLAR_GRID_SIZE),
+    solarRefreshHours: String(DEFAULT_SOLAR_REFRESH_HOURS),
     adsbOpenSkyClientId: '',
     adsbOpenSkyClientSecret: '',
     cartoApiKey: '',
@@ -681,6 +670,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAdsbMatchEnabled, setInitialAdsbMatchEnabled] = useState(false);
   const [initialAdsbFeed, setInitialAdsbFeed] = useState<string>(DEFAULT_ADSB_FEED);
   const [initialAdsbApiToken, setInitialAdsbApiToken] = useState('');
+  // Open-Meteo solar options (#6523): same Category C pattern as ADS-B.
+  const [initialSolarOpenMeteoApiToken, setInitialSolarOpenMeteoApiToken] = useState('');
+  const [initialSolarGridSize, setInitialSolarGridSize] = useState(String(DEFAULT_SOLAR_GRID_SIZE));
+  const [initialSolarRefreshHours, setInitialSolarRefreshHours] = useState(String(DEFAULT_SOLAR_REFRESH_HOURS));
   const [initialAdsbOpenSkyClientId, setInitialAdsbOpenSkyClientId] = useState('');
   const [initialAdsbOpenSkyClientSecret, setInitialAdsbOpenSkyClientSecret] = useState('');
   // Likely-aircraft detection (#5364/#5365 Phase 1 WP5). Per-source, unseeded
@@ -736,7 +729,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialTranslationDefaultOutgoingLanguage, setInitialTranslationDefaultOutgoingLanguage] = useState('ja');
   // Transient/derived UI state — stays as plain useState (not draft fields, see §1.3 of the Task
   // 5.3 spec).
-  const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
+  const [isStartingSolarRefresh, setIsStartingSolarRefresh] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
   const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
@@ -925,6 +918,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const adsbToken = typeof settings.adsb_api_token === 'string' ? settings.adsb_api_token : '';
           updateField('adsbApiToken', adsbToken);
           setInitialAdsbApiToken(adsbToken);
+
+          // Open-Meteo solar options (#6523). Unknown values read as the default.
+          const solarToken = typeof settings.solar_open_meteo_api_token === 'string' ? settings.solar_open_meteo_api_token : '';
+          updateField('solarOpenMeteoApiToken', solarToken);
+          setInitialSolarOpenMeteoApiToken(solarToken);
+          const solarGrid = pickSolarOption(settings.solarMonitoringGridSize, SOLAR_GRID_SIZES, DEFAULT_SOLAR_GRID_SIZE);
+          updateField('solarGridSize', solarGrid);
+          setInitialSolarGridSize(solarGrid);
+          const solarRefresh = pickSolarOption(settings.solarMonitoringRefreshHours, SOLAR_REFRESH_HOURS, DEFAULT_SOLAR_REFRESH_HOURS);
+          updateField('solarRefreshHours', solarRefresh);
+          setInitialSolarRefreshHours(solarRefresh);
           const openSkyId = typeof settings.adsb_opensky_client_id === 'string' ? settings.adsb_opensky_client_id : '';
           updateField('adsbOpenSkyClientId', openSkyId);
           setInitialAdsbOpenSkyClientId(openSkyId);
@@ -1146,10 +1150,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       signFlipReferenceLatitude: initialSignFlip.referenceLatitude,
       signFlipReferenceLongitude: initialSignFlip.referenceLongitude,
       solarMonitoringEnabled,
-      solarMonitoringLatitude,
-      solarMonitoringLongitude,
-      solarMonitoringAzimuth,
-      solarMonitoringDeclination,
       packetLogEnabled: initialPacketMonitorSettings.enabled,
       packetLogMaxCount: initialPacketMonitorSettings.maxCount,
       packetLogMaxAgeHours: initialPacketMonitorSettings.maxAgeHours,
@@ -1175,6 +1175,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       adsbMatchEnabled: initialAdsbMatchEnabled,
       adsbFeed: initialAdsbFeed,
       adsbApiToken: initialAdsbApiToken,
+      solarOpenMeteoApiToken: initialSolarOpenMeteoApiToken,
+      solarGridSize: initialSolarGridSize,
+      solarRefreshHours: initialSolarRefreshHours,
       adsbOpenSkyClientId: initialAdsbOpenSkyClientId,
       adsbOpenSkyClientSecret: initialAdsbOpenSkyClientSecret,
       cartoApiKey: initialCartoApiKey,
@@ -1204,7 +1207,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialAircraftDetectionEnabled, initialAircraftAglThresholdMeters, initialAircraftMslThresholdMeters,
       initialAircraftAgeOutEnabled, initialAircraftAgeOutHours, initialAircraftAgeOutAction, initialAircraftPositionRequestsEnabled,
       initialSignFlip,
-      solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
+      solarMonitoringEnabled,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialTxTargetMaxAgeHoursWhenUnlimited,
       initialMeshcoreCliTimeoutSeconds, initialMeshcoreCrossSourceHopResolution, initialAdminRetryAttempts,
       initialCoverageRetentionDays, initialDirectRfRetentionDays,
@@ -1215,6 +1218,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialVirtualNodeReplayEnabled, initialVirtualNodeReplayExcludeIps,
       initialDuctingOverlayEnabled, initialMqttRootDirectoryRefreshEnabled,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
+      initialSolarOpenMeteoApiToken, initialSolarGridSize, initialSolarRefreshHours,
       initialAdsbOpenSkyClientId, initialAdsbOpenSkyClientSecret,
       initialTranslationEnabled, initialTranslationProvider, initialTranslationFields, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
 
@@ -1277,10 +1281,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         nodeDimmingStartHours,
         nodeDimmingMinOpacity,
         solarMonitoringEnabled,
-        solarMonitoringLatitude,
-        solarMonitoringLongitude,
-        solarMonitoringAzimuth,
-        solarMonitoringDeclination,
       },
     });
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
@@ -1290,19 +1290,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
-      solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination]);
-
-  // Default solar monitoring lat/long to device position if still at 0
-  useEffect(() => {
-    // Only set defaults if solar monitoring is enabled and values are at 0
-    if (solarMonitoringLatitude === 0 && solarMonitoringLongitude === 0 && currentNodeId && nodes.length > 0) {
-      const currentNode = nodes.find(n => n.user?.id === currentNodeId);
-      if (currentNode?.position?.latitude != null && currentNode?.position?.longitude != null) {
-        updateField('solarMonitoringLatitude', currentNode.position.latitude);
-        updateField('solarMonitoringLongitude', currentNode.position.longitude);
-      }
-    }
-  }, [currentNodeId, nodes, solarMonitoringLatitude, solarMonitoringLongitude, updateField]);
+      solarMonitoringEnabled]);
 
   // Derived dirty flag — replaces the old ~57-dep change-detection effect + its own `hasChanges`
   // useState. hasChanges is now purely a function of (draft, baseline); the dimming trio's own
@@ -1328,16 +1316,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
     onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
     onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange, onMapPinStyleChange, onMapPinColorModeChange, onNodeListStyleChange,
-    onIconStyleChange, onSolarMonitoringEnabledChange, onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange,
-    onSolarMonitoringAzimuthChange, onSolarMonitoringDeclinationChange,
+    onIconStyleChange, onSolarMonitoringEnabledChange,
   });
   propCallbacksRef.current = {
     onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
     onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
     onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
     onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange, onMapPinStyleChange, onMapPinColorModeChange, onNodeListStyleChange,
-    onIconStyleChange, onSolarMonitoringEnabledChange, onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange,
-    onSolarMonitoringAzimuthChange, onSolarMonitoringDeclinationChange,
+    onIconStyleChange, onSolarMonitoringEnabledChange,
   };
 
   // Collects every propagation call (onXxxChange prop callbacks + context setters + initial*
@@ -1364,10 +1350,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     cb.onNodeListStyleChange(d.nodeListStyle);
     cb.onIconStyleChange(d.iconStyle);
     cb.onSolarMonitoringEnabledChange(d.solarMonitoringEnabled);
-    cb.onSolarMonitoringLatitudeChange(d.solarMonitoringLatitude);
-    cb.onSolarMonitoringLongitudeChange(d.solarMonitoringLongitude);
-    cb.onSolarMonitoringAzimuthChange(d.solarMonitoringAzimuth);
-    cb.onSolarMonitoringDeclinationChange(d.solarMonitoringDeclination);
 
     setNeighborInfoMinZoom(d.neighborInfoMinZoom);
     setDefaultMapCenterLat(d.defaultMapCenterLat);
@@ -1428,6 +1410,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialAdsbMatchEnabled(d.adsbMatchEnabled);
     setInitialAdsbFeed(d.adsbFeed);
     setInitialAdsbApiToken(d.adsbApiToken.trim());
+    setInitialSolarOpenMeteoApiToken(d.solarOpenMeteoApiToken.trim());
+    setInitialSolarGridSize(d.solarGridSize);
+    setInitialSolarRefreshHours(d.solarRefreshHours);
     setInitialAdsbOpenSkyClientId(d.adsbOpenSkyClientId.trim());
     setInitialAdsbOpenSkyClientSecret(d.adsbOpenSkyClientSecret.trim());
     setInitialCartoApiKey(d.cartoApiKey.trim());
@@ -1499,10 +1484,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         packet_log_max_count: draft.packetLogMaxCount.toString(),
         packet_log_max_age_hours: draft.packetLogMaxAgeHours.toString(),
         solarMonitoringEnabled: draft.solarMonitoringEnabled ? '1' : '0',
-        solarMonitoringLatitude: draft.solarMonitoringLatitude.toString(),
-        solarMonitoringLongitude: draft.solarMonitoringLongitude.toString(),
-        solarMonitoringAzimuth: draft.solarMonitoringAzimuth.toString(),
-        solarMonitoringDeclination: draft.solarMonitoringDeclination.toString(),
+        solarMonitoringGridSize: draft.solarGridSize,
+        solarMonitoringRefreshHours: draft.solarRefreshHours,
+        solar_open_meteo_api_token: draft.solarOpenMeteoApiToken.trim(),
         linkPreviewsEnabled: draft.linkPreviewsEnabled ? '1' : '0',
         discardInvalidPositions: draft.discardInvalidPositions ? '1' : '0',
         noIndexEnabled: draft.noIndexEnabled ? '1' : '0',
@@ -1750,10 +1734,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     }
   }, [draft.elevationSourceUrl, t]);
 
-  const handleFetchSolarEstimates = async () => {
-    setIsFetchingSolarEstimates(true);
+  const handleSolarRefresh = async () => {
+    setIsStartingSolarRefresh(true);
     try {
-      const response = await csrfFetch(`${baseUrl}/api/solar/trigger`, {
+      const response = await csrfFetch(`${baseUrl}/api/solar/refresh`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1761,15 +1745,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to trigger solar estimate fetch');
+        throw new Error('Failed to start solar refresh');
       }
 
-      showToast(t('settings.solar_fetch_success'), 'success');
+      showToast(t('settings.solar_refresh_started'), 'success');
     } catch (error) {
-      logger.error('Error triggering solar estimate fetch:', error);
-      showToast(t('settings.solar_fetch_failed'), 'error');
+      logger.error('Error starting solar refresh:', error);
+      showToast(t('settings.solar_refresh_failed'), 'error');
     } finally {
-      setIsFetchingSolarEstimates(false);
+      setIsStartingSolarRefresh(false);
     }
   };
 
@@ -1825,10 +1809,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       updateField('packetLogMaxCount', 1000);
       updateField('packetLogMaxAgeHours', 24);
       updateField('solarMonitoringEnabled', false);
-      updateField('solarMonitoringLatitude', 0);
-      updateField('solarMonitoringLongitude', 0);
-      updateField('solarMonitoringAzimuth', 0);
-      updateField('solarMonitoringDeclination', 30);
+      updateField('solarOpenMeteoApiToken', '');
+      updateField('solarGridSize', String(DEFAULT_SOLAR_GRID_SIZE));
+      updateField('solarRefreshHours', String(DEFAULT_SOLAR_REFRESH_HOURS));
+      setInitialSolarOpenMeteoApiToken('');
+      setInitialSolarGridSize(String(DEFAULT_SOLAR_GRID_SIZE));
+      setInitialSolarRefreshHours(String(DEFAULT_SOLAR_REFRESH_HOURS));
       updateField('linkPreviewsEnabled', true);
       updateField('discardInvalidPositions', true);
       updateField('meshcoreChannelRetryEnabled', false);
@@ -1856,10 +1842,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setNodeHopsCalculation(NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation);
       setPreferredDashboardSortOption('custom');
       onSolarMonitoringEnabledChange(false);
-      onSolarMonitoringLatitudeChange(0);
-      onSolarMonitoringLongitudeChange(0);
-      onSolarMonitoringAzimuthChange(0);
-      onSolarMonitoringDeclinationChange(30);
       setLinkPreviewsEnabled(true);
       setDiscardInvalidPositions(true);
       setMeshcoreChannelRetryEnabled(false);
@@ -3220,7 +3202,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         )}
 
-        {show('settings-solar') && <div id="settings-solar" className="settings-section">
+        {show('settings-solar') && isAdmin && <div id="settings-solar" className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <label className={settingsStyles.checkboxRow}>
               <input
@@ -3233,88 +3215,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
           </h3>
           <p className="setting-description">
-            {t('settings.solar_monitoring_description', { link: '' })}
-            <a href="https://forecast.solar/" target="_blank" rel="noopener noreferrer" style={{ color: '#89b4fa' }}>
-              Forecast.Solar
-            </a>
+            {t('settings.solar_open_meteo_description')}
           </p>
           {draft.solarMonitoringEnabled && (
             <>
-              <div className="setting-item">
-                <label htmlFor="solarLatitude">
-                  {t('settings.solar_latitude')}
-                  <span className="setting-description">
-                    {t('settings.solar_latitude_description')} • <a href="https://www.latlong.net/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('settings.solar_find_coords')}</a>
-                  </span>
-                </label>
-                <NumberInput
-                  id="solarLatitude"
-                  min={-90}
-                  max={90}
-                  step={0.0001}
-                  value={draft.solarMonitoringLatitude}
-                  onChange={(n) => updateField('solarMonitoringLatitude', n)}
-                  className="setting-input"
-                />
-              </div>
-              <div className="setting-item">
-                <label htmlFor="solarLongitude">
-                  {t('settings.solar_longitude')}
-                  <span className="setting-description">{t('settings.solar_longitude_description')}</span>
-                </label>
-                <NumberInput
-                  id="solarLongitude"
-                  min={-180}
-                  max={180}
-                  step={0.0001}
-                  value={draft.solarMonitoringLongitude}
-                  onChange={(n) => updateField('solarMonitoringLongitude', n)}
-                  className="setting-input"
-                />
-              </div>
-              <div className="setting-item">
-                <label htmlFor="solarAzimuth">
-                  {t('settings.solar_azimuth')}
-                  <span className="setting-description">{t('settings.solar_azimuth_description')}</span>
-                </label>
-                <NumberInput
-                  id="solarAzimuth"
-                  min={-180}
-                  max={180}
-                  step={1}
-                  integer
-                  value={draft.solarMonitoringAzimuth}
-                  onChange={(n) => updateField('solarMonitoringAzimuth', n)}
-                  className="setting-input"
-                />
-              </div>
-              <div className="setting-item">
-                <label htmlFor="solarDeclination">
-                  {t('settings.solar_declination')}
-                  <span className="setting-description">{t('settings.solar_declination_description')}</span>
-                </label>
-                <NumberInput
-                  id="solarDeclination"
-                  min={0}
-                  max={90}
-                  step={1}
-                  integer
-                  value={draft.solarMonitoringDeclination}
-                  onChange={(n) => updateField('solarMonitoringDeclination', n)}
-                  className="setting-input"
-                />
-              </div>
+              <SolarMonitoringSettings
+                isAdmin={isAdmin}
+                apiToken={draft.solarOpenMeteoApiToken}
+                gridSize={draft.solarGridSize}
+                refreshHours={draft.solarRefreshHours}
+                onApiTokenChange={(v) => updateField('solarOpenMeteoApiToken', v)}
+                onGridSizeChange={(v) => updateField('solarGridSize', v)}
+                onRefreshHoursChange={(v) => updateField('solarRefreshHours', v)}
+              />
               <div className="setting-item" style={{ marginTop: '1rem' }}>
                 <button
-                  onClick={handleFetchSolarEstimates}
-                  disabled={isFetchingSolarEstimates}
+                  onClick={handleSolarRefresh}
+                  disabled={isStartingSolarRefresh}
                   className="save-button"
                   style={{ width: 'auto', padding: '0.5rem 1rem' }}
                 >
-                  {isFetchingSolarEstimates ? t('settings.solar_fetching') : t('settings.solar_fetch_now')}
+                  {isStartingSolarRefresh ? t('settings.solar_refresh_starting') : t('settings.solar_refresh_now')}
                 </button>
                 <p className="setting-description" style={{ marginTop: '0.5rem' }}>
-                  {t('settings.solar_fetch_description')}
+                  {t('settings.solar_refresh_now_description')}
                 </p>
               </div>
             </>

@@ -40,8 +40,6 @@ export { TimeSyncRepository } from './timeSync.js';
 export { DistanceDeleteLogRepository } from './distanceDeleteLog.js';
 export { MapPreferencesRepository } from './mapPreferences.js';
 export { ThemesRepository } from './themes.js';
-export { SolarEstimatesRepository } from './solarEstimates.js';
-export type { SolarEstimate } from './solarEstimates.js';
 export { SolarIrradianceRepository } from './solarIrradiance.js';
 export type { SolarIrradianceRow } from './solarIrradiance.js';
 export { NewsCacheRepository } from './newsCache.js';

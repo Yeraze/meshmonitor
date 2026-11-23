@@ -6,7 +6,7 @@ import { type TemperatureUnit, formatTemperature, isTemperatureType } from '../u
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
-import { useTelemetry, useSolarEstimates, type TelemetryData } from '../hooks/useTelemetry';
+import { useTelemetry, useSolarIrradiance, type TelemetryData } from '../hooks/useTelemetry';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
 import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
@@ -32,6 +32,8 @@ import {
 import { downloadTelemetryCsv, resolveSeriesDisplay } from '../utils/telemetrySeriesDisplay';
 import { TELEMETRY_RANGE_PRESETS, TELEMETRY_RETENTION_HOURS } from '../utils/telemetryRangePresets';
 import { UiIcon } from './icons';
+import SolarCredit from './SolarCredit';
+import { formatSunlight } from '../utils/solarGrid';
 import DeviceCounterNote from './DeviceCounterNote';
 import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
 import { isDeviceCounterType } from '../utils/deviceCounters';
@@ -133,14 +135,14 @@ const prepareChartData = (
     // Use current time with a 5-minute buffer to account for minor clock differences
     const now = maxTelemetryTime + 5 * 60 * 1000;
 
-    solarEstimates.forEach((wattHours, timestamp) => {
+    solarEstimates.forEach((wattsPerM2, timestamp) => {
       // Filter out data outside GLOBAL telemetry time bounds
       // Solar data should never extend the graph range beyond actual telemetry
       if (timestamp < minTelemetryTime || timestamp > now) return;
 
       if (allTimestamps.has(timestamp)) {
         // If telemetry exists at this timestamp, add solar data to it
-        allTimestamps.get(timestamp)!.solarEstimate = wattHours;
+        allTimestamps.get(timestamp)!.solarEstimate = wattsPerM2;
       } else {
         // Create a new point for solar-only data
         // Use null (not undefined) - Line will connect over these with connectNulls={true}
@@ -148,7 +150,7 @@ const prepareChartData = (
           timestamp,
           value: null, // null = solar-only (will be skipped by Line with connectNulls)
           time: formatTime(new Date(timestamp), timeFormat),
-          solarEstimate: wattHours,
+          solarEstimate: wattsPerM2,
         });
       }
     });
@@ -558,11 +560,13 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
               }}
               labelStyle={{ color: chartColors.text }}
               formatter={(value, name) =>
-                // Leave the solar overlay (watt-hours) untouched; round the
-                // rest (bucket averages are long floats, #4173 review L20).
-                name === 'solarEstimate' || typeof value !== 'number'
-                  ? value
-                  : (display.formatValue ?? formatTelemetryNumber)(value)
+                // Sunlight overlay reads as W/m² (#6523); round the rest
+                // (bucket averages are long floats, #4173 review L20).
+                name === 'solarEstimate'
+                  ? [formatSunlight(value), t('solar.tooltip_label')]
+                  : typeof value !== 'number'
+                    ? value
+                    : (display.formatValue ?? formatTelemetryNumber)(value)
               }
               labelFormatter={value => {
                 const date = new Date(value);
@@ -631,6 +635,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
             )}
           </ComposedChart>
         </ResponsiveContainer>
+        {getSolarVisibility(type) && solarEstimates.size > 0 && <SolarCredit />}
         </div>
       )}
     </div>
@@ -707,7 +712,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       sourceId,
     });
 
-    // Calculate time bounds for solar estimates based on telemetry data
+    // Time bounds for the sunlight overlay, from the telemetry window
     const telemetryTimeBounds = useMemo(() => {
       if (telemetryData.length === 0) {
         return null;
@@ -724,12 +729,14 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       };
     }, [telemetryData]);
 
-    // Fetch solar estimates using TanStack Query
-    const { data: solarEstimates = EMPTY_SOLAR_ESTIMATES } = useSolarEstimates({
+    // This node's Open-Meteo sunlight curve (W/m², #6523)
+    const { data: solarEstimates = EMPTY_SOLAR_ESTIMATES } = useSolarIrradiance({
       baseUrl,
+      sourceId: effectiveSourceId,
+      nodeId,
       startTimestamp: telemetryTimeBounds?.start,
       endTimestamp: telemetryTimeBounds?.end,
-      enabled: !!telemetryTimeBounds,
+      enabled: solarMonitoringEnabled && !!telemetryTimeBounds,
     });
 
     // Fetch favorites using TanStack Query

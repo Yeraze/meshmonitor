@@ -68,8 +68,8 @@ describe('TelemetryGraphs — Clean outliers menu item (#5333)', () => {
     vi.clearAllMocks();
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) return Promise.resolve({ ok: true, json: async () => ({}) });
-      if (url.includes('/api/solar/estimates')) {
-        return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+      if (url.includes('/api/solar/irradiance')) {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { enabled: false, points: [] } }) });
       }
       if (url.includes('/api/csrf-token')) return Promise.resolve({ ok: true, json: async () => ({ token: 't' }) });
       return Promise.resolve({

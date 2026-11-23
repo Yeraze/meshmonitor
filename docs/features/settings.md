@@ -469,68 +469,36 @@ separate from channel sharing, which uses Meshtastic's `/e/#` URL format.
 
 ## Solar Monitoring
 
-**Where**: Global Settings, under Solar Monitoring. One forecast serves the whole install, so a source's Settings page shows a pointer to it.
+**Where**: Global Settings, under Solar Monitoring. Admin-only and global, so a source's Settings page shows a pointer to it.
 
-**Description**: Configure solar production monitoring to visualize expected solar power generation on telemetry graphs.
+**Description**: Overlays the hourly sunlight (W/m²) at each node's location on that node's telemetry graphs, from [Open-Meteo](https://open-meteo.com/) weather forecasts. Nodes are grouped into grid cells; nodes in the same cell share one forecast.
 
-**Integration**: Uses the [forecast.solar](https://forecast.solar) API to fetch solar production estimates based on your panel configuration and location.
+**Configuration Parameters** (shown once the checkbox is on):
 
-**Configuration Parameters**:
+### Open-Meteo API key (optional)
+- Leave blank to use Open-Meteo's free tier: non-commercial use, under 10,000 calls a day, no sign-up.
+- A key is only for paid plans (commercial use or higher limits), from [open-meteo.com/en/pricing](https://open-meteo.com/en/pricing). With a key MeshMonitor uses the customer API host.
+- Stored server-side; only admins can read it.
 
-### Latitude
-- **Range**: -90 to 90 degrees
-- **Description**: Geographic latitude of your solar installation
-- **Examples**:
-  - 37.7749 (San Francisco, CA)
-  - 51.5074 (London, UK)
-  - -33.8688 (Sydney, Australia)
+### Grid cell size
+- **Options**: 0.05° (≈ 5.5 km), 0.1° (≈ 11 km, default), 0.25° (≈ 28 km), 0.5° (≈ 55 km), 1° (≈ 111 km)
+- Larger cells mean fewer calls but coarser weather.
 
-### Longitude
-- **Range**: -180 to 180 degrees
-- **Description**: Geographic longitude of your solar installation
-- **Examples**:
-  - -122.4194 (San Francisco, CA)
-  - -0.1278 (London, UK)
-  - 151.2093 (Sydney, Australia)
+### Refresh interval
+- **Options**: 1, 2, 3 (default), 6, 12 or 24 hours
+- How often each cell's forecast is fetched again.
 
-### Declination (Tilt)
-- **Range**: 0-90 degrees
-- **Description**: The angle your solar panels are tilted from horizontal
-- **Values**:
-  - 0° = Horizontal (flat mounting)
-  - 20-40° = Typical roof mount (varies by latitude)
-  - 90° = Vertical (wall mounting)
-- **Tip**: Use a protractor or angle finder to measure your panel tilt
+**Call estimate**: A table shows how many nodes were heard in the last 7 days and, for each grid size, the cells and the calls per day ("up to", since Open-Meteo counts each location as a call) at the selected refresh interval. Without a key MeshMonitor stays under 9,000 calls a day; if your choice needs more, a warning says only the most recently heard cells will get data.
 
-### Azimuth (Compass Direction)
-- **Range**: 0-360 degrees
-- **Description**: Compass direction your solar panels face
-- **Values**:
-  - 0° = North
-  - 90° = East
-  - 180° = South (optimal in Northern Hemisphere)
-  - 270° = West
-- **Tip**: Use a compass app on your phone to determine panel orientation
-
-**Effect**: When configured, MeshMonitor will automatically fetch solar production estimates every hour and display them as translucent yellow overlays on telemetry graphs.
-
-**Visual Indicator**: Solar estimates appear as a yellow background on:
-- Node Details telemetry graphs
-- Telemetry Dashboard charts
-- Any time-series telemetry visualization
+**Refresh Now**: Starts one pass right away. Cells refreshed within the interval are skipped and the daily budget still applies.
 
 **Side Effects**:
-- Hourly API requests to forecast.solar (free tier)
-- Additional database storage for solar estimates
-- Minimal performance impact on graph rendering
+- Outbound HTTPS calls to Open-Meteo from the server. Nothing goes over the mesh.
+- The rounded position (cell centre) of every node heard in the last 7 days is sent to Open-Meteo. Private position overrides are never sent.
 
-**When to use**:
-- Off-grid or solar-powered Meshtastic deployments
-- Battery optimization and planning
-- Correlating node performance with available solar power
-- Predicting when nodes may go offline due to insufficient power
+**Attribution**: Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
 
-**Learn More**: See [Solar Monitoring](/features/solar-monitoring) for detailed documentation, API endpoints, and troubleshooting.
+**Learn More**: See [Solar Monitoring](/features/solar-monitoring) for the budget math, API endpoints, and troubleshooting.
 
 ## Map Settings
 
@@ -856,7 +824,7 @@ Admin-only setting that controls where users land at the root URL (`/`).
 
 **Effect**: Adjusts the time window for telemetry graphs showing battery levels, voltage, temperature, and other sensor data.
 
-**CSV export**: Each graph (Node Details and Dashboard favorite charts) includes a download control that exports the **currently plotted** series for that metric — the same averaged points and display units shown on screen — as a CSV file. Solar overlay and paxcounter Wi‑Fi/BLE columns are included only when those series are present.
+**CSV export**: Each graph (Node Details and Dashboard favorite charts) includes a download control that exports the **currently plotted** series for that metric — the same averaged points and display units shown on screen — as a CSV file. Sunlight (`Sunlight W/m2`) and paxcounter Wi‑Fi/BLE columns are included only when those series are present.
 
 **Side Effects**: Larger values may result in slower graph rendering if you have many nodes with frequent telemetry updates.
 

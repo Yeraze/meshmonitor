@@ -143,8 +143,8 @@ export const TABLE_ORDER = [
   // #5785: remembered MeshCore remote-admin logins (honoured only while the
   // source's companion key matches selfPublicKey).
   'meshcore_admin_sessions',
-  'solar_estimates',
-  // #6523: global Open-Meteo sunlight cache (no sourceId).
+  // #6523: global Open-Meteo sunlight cache (no sourceId). Replaced the
+  // forecast.solar `solar_estimates` table, which migration 246 drops.
   'solar_irradiance',
   'system_backup_history',
   // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)
@@ -252,7 +252,7 @@ export const SKIP_TABLES = new Set([
   'meshcore_pathfinding_targets', // Non-essential (re-selectable Auto-Pathfinding allowlist, mirrors auto_traceroute_nodes)
   'auto_key_repair_state', // Non-essential
   'auto_key_repair_log', // Non-essential logging
-  // solar_estimates - REMOVED: Users want historical solar data preserved
+  'solar_estimates', // #6523: retired forecast.solar cache; migration 246 drops it
   'system_backup_history', // Non-essential
   'user_map_preferences', // Column mapping issues
 ]);

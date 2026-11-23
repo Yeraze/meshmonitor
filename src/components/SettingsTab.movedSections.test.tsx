@@ -293,12 +293,6 @@ const baseProps = {
   theme: 'catppuccin' as const,
   language: 'en',
   solarMonitoringEnabled: false,
-  solarMonitoringLatitude: 0,
-  solarMonitoringLongitude: 0,
-  solarMonitoringAzimuth: 180,
-  solarMonitoringDeclination: 30,
-  currentNodeId: '',
-  nodes: [],
   baseUrl: '',
   onMaxNodeAgeChange: noop,
   onInactiveNodeThresholdHoursChange: noop,
@@ -320,10 +314,6 @@ const baseProps = {
   onIconStyleChange: noop,
   onLanguageChange: noop,
   onSolarMonitoringEnabledChange: noop,
-  onSolarMonitoringLatitudeChange: noop,
-  onSolarMonitoringLongitudeChange: noop,
-  onSolarMonitoringAzimuthChange: noop,
-  onSolarMonitoringDeclinationChange: noop,
 };
 
 function renderSettings(mode: 'source' | 'global') {

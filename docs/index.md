@@ -86,7 +86,7 @@ features:
 
   - icon: ☀️
     title: Solar Monitoring
-    details: forecast.solar projections alongside telemetry. Auto-detect solar nodes and surface ones predicted at risk for off-grid deployments.
+    details: Hourly Open-Meteo sunlight at each node, drawn behind its telemetry. Auto-detect solar nodes and surface ones predicted at risk for off-grid deployments.
 
   - icon: 💻
     title: Desktop & Mobile

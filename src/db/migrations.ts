@@ -185,6 +185,7 @@ import { migration as readMessagesCompositeKeyMigration, runMigration242Postgres
 import { migration as dropMysqlNotifPrefsUserIdUniqueMigration, runMigration243Postgres, runMigration243Mysql } from '../server/migrations/243_drop_mysql_notif_prefs_userid_unique.js';
 import { migration as purgeShiftedSolarEstimatesMigration, runMigration244Postgres, runMigration244Mysql } from '../server/migrations/244_purge_shifted_solar_estimates.js';
 import { migration as createSolarIrradianceMigration, runMigration245Postgres, runMigration245Mysql } from '../server/migrations/245_create_solar_irradiance.js';
+import { migration as dropSolarEstimatesMigration, runMigration246Postgres, runMigration246Mysql } from '../server/migrations/246_drop_solar_estimates.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -3943,4 +3944,18 @@ registry.register({
   sqlite: (db) => createSolarIrradianceMigration.up(db),
   postgres: (client) => runMigration245Postgres(client),
   mysql: (pool) => runMigration245Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 246: drop the retired forecast.solar `solar_estimates` cache
+// (#6523); per-node Open-Meteo sunlight lives in `solar_irradiance`.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 246,
+  name: 'drop_solar_estimates',
+  settingsKey: 'migration_246_drop_solar_estimates',
+  sqlite: (db) => dropSolarEstimatesMigration.up(db),
+  postgres: (client) => runMigration246Postgres(client),
+  mysql: (pool) => runMigration246Mysql(pool),
 });

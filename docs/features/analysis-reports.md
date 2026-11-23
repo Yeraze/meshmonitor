@@ -47,9 +47,9 @@ A classification belongs to the **physical node**, not to a source: a node marke
 1. Open the dashboard, click **Analysis & Reports** in the sidebar.
 2. Click the **Solar Monitoring Analysis** card.
 3. Set the **Lookback (days)** between `1` and `90` (default `7`) and click **Run analysis**.
-4. *(Optional)* Click **Run forecast** to project battery state across the next several days using the forecast.solar production estimates.
+4. *(Optional)* Click **Run forecast** to project battery state across the next few days from the Open-Meteo sunlight forecast at each node's location.
 
-The summary row shows the lookback window, total nodes analyzed, solar nodes detected, average charging hours per day, and average overnight discharge hours per day.
+The summary row shows the lookback window, total nodes analyzed, solar nodes detected, average charging hours per day, average overnight discharge hours per day, and how many solar nodes have sunlight data.
 
 ### Per-node card
 
@@ -61,22 +61,23 @@ Each detected node renders an expandable card with:
 - **Insufficient solar warning** when projected daily charging cannot keep up with overnight discharge
 - A **Recharts** time-series chart showing:
     - Battery / voltage line
-    - Solar production area overlay (Wh, right axis) when forecast.solar data is available
+    - Sunlight area overlay (W/m², right axis): the hourly Open-Meteo sunlight at the node's own grid cell, when Solar Monitoring is on and you can see the node's position
     - Reference levels: green at 100% / 4.2 V (full), yellow at 50% / 3.7 V (nominal), red at 20% / 3.3 V (low)
     - **Forecast simulation** as a mauve dashed extension when *Run forecast* has been triggered
+- A **sunlight forecast** table once *Run forecast* has run: each forecast day's insolation (Wh/m²) against the node's own recent average, flagged **Low** under 75%
 - A **Recent daily patterns** table (date, sunrise / peak / sunset times and values, rise, fall, charge rate /h, discharge rate /h)
 
 ### Forecast simulation
 
-The forecast endpoint compares projected daily Wh totals from forecast.solar to the lookback's historical average. Each day is flagged **Low** if it falls below 75% of the historical average. For every solar candidate, the report simulates the next ~5 days of battery state by running the node's measured charge and discharge rates against the forecast factor for each day:
+The forecast runs per node. For each solar node it sums the hourly sunlight at the node's grid cell into a daily insolation (Wh/m²), and compares each forecast day (today and later; Open-Meteo stores two forecast days) with the average of that cell's stored past days. A node needs at least 3 full past days of sunlight data; nodes with less, or whose position you cannot see, are counted but not forecast. Each day is flagged **Low** below 75% of the node's average. The report then simulates the node's battery across those days with its measured charge and discharge rates:
 
 - **Sunrise** point: battery after the overnight discharge
-- **Peak** point: battery after the daylight charge (modulated by `forecast_factor = forecast_wh / avg_historical_wh`, clamped 0–1.5)
+- **Peak** point: battery after the daylight charge (modulated by `forecast_factor = forecast_wh_m2 / avg_historical_daily_wh_m2`, clamped 0–1.5)
 - **Sunset** point: battery after a small afternoon drain
 
 Nodes whose simulated minimum drops below `50%` (battery) or `3.5 V` (voltage) are listed as **Nodes predicted at risk** so operators can intervene before they go offline.
 
-Solar production must already be configured under **Settings → Solar Monitoring** for the forecast to produce useful output. See the [Solar Monitoring guide](./solar-monitoring) for set-up details.
+Solar Monitoring must be on in **Global Settings → Solar Monitoring**, and a few days of sunlight must be stored, before the forecast has data. See the [Solar Monitoring guide](./solar-monitoring) for set-up details.
 
 ## NodeInfo Enrichment
 
@@ -257,6 +258,7 @@ Both solar endpoints are scoped to the requesting user's permitted source IDs:
 - Admins see all enabled sources
 - Non-admin users see sources where they hold `nodes:read`
 - An optional `?sources=id1,id2` query param restricts the analysis further (intersected with permitted IDs)
+- The sunlight overlay and forecast use the same position visibility as the map: a node whose position you cannot see gets no sunlight data, and is not forecast
 
 ### NodeInfo Enrichment
 
@@ -314,7 +316,7 @@ Error codes: `INVALID_RANGE` (400, `since` after `until`), `INVALID_SORT_FIELD` 
 
 - [Mesh Issues Analysis](./mesh-issues) — the scheduled, passive routing/RF/node-flag health report that shares this workspace
 - [Coverage Report](./coverage-report) — the passive, measured RF coverage map that shares this workspace
-- [Solar Monitoring](./solar-monitoring) — configuration of the forecast.solar integration that powers the production curve and forecast factor
+- [Solar Monitoring](./solar-monitoring) — Open-Meteo sunlight that powers the overlay and the forecast factor
 - [Packet Monitor](./packet-monitor#ok-to-mqtt-violation-detection) — how `ok_to_mqtt` violation detection works, including the per-packet badge in the MQTT Packet Monitor that this report complements
 - [Map Analysis](./map-analysis) — cross-source map / coverage workspace at `/analysis`
 - [Analytics](./analytics) — analytics dashboards in the per-source view

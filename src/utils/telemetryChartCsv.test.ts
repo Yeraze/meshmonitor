@@ -53,16 +53,16 @@ describe('telemetryChartCsv', () => {
       expect(zeroCsv.split('\r\n')[1].split(',')[2]).toBe('0');
     });
 
-    it('adds Solar Estimate column only when any row has solarEstimate', () => {
+    it('adds Sunlight W/m2 column only when any row has solarEstimate', () => {
       const without = telemetrySeriesToCsv([row()], meta);
-      expect(without.split('\r\n')[0]).not.toContain('Solar Estimate');
+      expect(without.split('\r\n')[0]).not.toContain('Sunlight W/m2');
 
       const withSolar = telemetrySeriesToCsv(
         [row({ solarEstimate: 12.3 }), row({ value: null, solarEstimate: 11 })],
         meta,
       );
       const header = withSolar.split('\r\n')[0];
-      expect(header).toContain('Solar Estimate');
+      expect(header).toContain('Sunlight W/m2');
       expect(header.split(',')).toHaveLength(TELEMETRY_CSV_BASE_COLUMNS.length + 1);
       expect(withSolar.split('\r\n')[1].split(',')[6]).toBe('12.3');
     });

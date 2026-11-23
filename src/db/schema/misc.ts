@@ -4,7 +4,7 @@
  * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real, primaryKey as sqlitePrimaryKey } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial, doublePrecision as pgDoublePrecision, primaryKey as pgPrimaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, serial as pgSerial, primaryKey as pgPrimaryKey } from 'drizzle-orm/pg-core';
 import { mysqlTable, varchar as myVarchar, text as myText, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, serial as mySerial, primaryKey as myPrimaryKey } from 'drizzle-orm/mysql-core';
 import { usersSqlite, usersPostgres, usersMysql } from './auth.js';
 
@@ -196,23 +196,8 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
 // (Auto-Upgrade Retirement). Migration 117 drops it. Do not re-add.
 
 // ============ SOLAR ESTIMATES ============
-// Stores forecast data from forecast.solar API
-
-export const solarEstimatesSqlite = sqliteTable('solar_estimates', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  timestamp: integer('timestamp').notNull().unique(),
-  watt_hours: real('watt_hours').notNull(),
-  fetched_at: integer('fetched_at').notNull(),
-  created_at: integer('created_at'),
-});
-
-export const solarEstimatesPostgres = pgTable('solar_estimates', {
-  id: pgSerial('id').primaryKey(),
-  timestamp: pgBigint('timestamp', { mode: 'number' }).notNull().unique(),
-  watt_hours: pgDoublePrecision('watt_hours').notNull(),
-  fetched_at: pgBigint('fetched_at', { mode: 'number' }).notNull(),
-  created_at: pgBigint('created_at', { mode: 'number' }),
-});
+// solar_estimates (forecast.solar cache) removed in #6523; migration 246 drops
+// it. Per-node sunlight lives in solar_irradiance. Do not re-add.
 
 // ============ AUTO TRACEROUTE NODES ============
 
@@ -458,13 +443,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
 
 // upgradeHistoryMysql removed in v4.13 (Auto-Upgrade Retirement); migration 117 drops it.
 
-export const solarEstimatesMysql = mysqlTable('solar_estimates', {
-  id: mySerial('id').primaryKey(),
-  timestamp: myBigint('timestamp', { mode: 'number' }).notNull().unique(),
-  watt_hours: myDouble('watt_hours').notNull(),
-  fetched_at: myBigint('fetched_at', { mode: 'number' }).notNull(),
-  created_at: myBigint('created_at', { mode: 'number' }),
-});
+// solarEstimatesMysql removed in #6523; migration 246 drops it.
 
 export const autoTracerouteNodesMysql = mysqlTable('auto_traceroute_nodes', {
   id: mySerial('id').primaryKey(),
@@ -610,10 +589,6 @@ export type NewUserMapPreferenceSqlite = typeof userMapPreferencesSqlite.$inferI
 export type UserMapPreferencePostgres = typeof userMapPreferencesPostgres.$inferSelect;
 export type NewUserMapPreferencePostgres = typeof userMapPreferencesPostgres.$inferInsert;
 
-export type SolarEstimateSqlite = typeof solarEstimatesSqlite.$inferSelect;
-export type NewSolarEstimateSqlite = typeof solarEstimatesSqlite.$inferInsert;
-export type SolarEstimatePostgres = typeof solarEstimatesPostgres.$inferSelect;
-export type NewSolarEstimatePostgres = typeof solarEstimatesPostgres.$inferInsert;
 
 export type AutoTracerouteNodeSqlite = typeof autoTracerouteNodesSqlite.$inferSelect;
 export type NewAutoTracerouteNodeSqlite = typeof autoTracerouteNodesSqlite.$inferInsert;
@@ -637,8 +612,6 @@ export type CustomThemeMysql = typeof customThemesMysql.$inferSelect;
 export type NewCustomThemeMysql = typeof customThemesMysql.$inferInsert;
 export type UserMapPreferenceMysql = typeof userMapPreferencesMysql.$inferSelect;
 export type NewUserMapPreferenceMysql = typeof userMapPreferencesMysql.$inferInsert;
-export type SolarEstimateMysql = typeof solarEstimatesMysql.$inferSelect;
-export type NewSolarEstimateMysql = typeof solarEstimatesMysql.$inferInsert;
 
 export type NewsCacheSqlite = typeof newsCacheSqlite.$inferSelect;
 export type NewNewsCacheSqlite = typeof newsCacheSqlite.$inferInsert;

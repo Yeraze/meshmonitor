@@ -1,0 +1,52 @@
+/* Solar Monitoring (Open-Meteo) settings, #6523. Theme tokens only. */
+
+.warning {
+  margin: 0.5rem 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  font-size: 0.85rem;
+}
+
+.estimate {
+  margin: 0.5rem 0 1rem;
+}
+
+.table {
+  width: 100%;
+  max-width: 28rem;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table th,
+.table td {
+  padding: 0.3rem 0.6rem;
+  text-align: right;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.table th:first-child,
+.table td:first-child {
+  text-align: left;
+}
+
+.selected td {
+  background: var(--color-accent-muted);
+  font-weight: 600;
+}
+
+.over td:last-child {
+  color: var(--color-warning);
+}
+
+.note {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.note a {
+  color: var(--color-accent);
+}

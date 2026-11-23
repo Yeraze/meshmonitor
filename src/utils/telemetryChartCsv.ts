@@ -9,6 +9,7 @@ import { escapeCsv } from './nodeExport.js';
 export interface TelemetryCsvRow {
   timestamp: number;
   value: number | null;
+  /** Open-Meteo sunlight at the node's grid cell, W/m² (#6523). */
   solarEstimate?: number | null;
   paxWifi?: number | null;
   paxBle?: number | null;
@@ -33,7 +34,7 @@ export const TELEMETRY_CSV_BASE_COLUMNS: ReadonlyArray<{ key: string; label: str
 ];
 
 export const TELEMETRY_CSV_OPTIONAL_COLUMNS: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'solarEstimate', label: 'Solar Estimate' },
+  { key: 'solarEstimate', label: 'Sunlight W/m2' },
   { key: 'paxWifi', label: 'Pax Wifi' },
   { key: 'paxBle', label: 'Pax Ble' },
   { key: 'source', label: 'Source' },
@@ -72,7 +73,7 @@ export function telemetrySeriesToCsv(rows: TelemetryCsvRow[], meta: TelemetryCsv
 
   const labels = [
     ...TELEMETRY_CSV_BASE_COLUMNS.map((c) => c.label),
-    ...(includeSolar ? ['Solar Estimate'] : []),
+    ...(includeSolar ? ['Sunlight W/m2'] : []),
     ...(includePaxWifi ? ['Pax Wifi'] : []),
     ...(includePaxBle ? ['Pax Ble'] : []),
     ...(includeSource ? ['Source'] : []),

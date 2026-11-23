@@ -2,7 +2,8 @@
  * SolarMonitoringReport — analyzes battery / voltage telemetry to identify
  * likely solar-powered nodes. Port of MeshManager's SolarMonitoring view.
  *
- * Renders per-node battery/voltage line + solar-production bar overlay,
+ * Renders per-node battery/voltage line + Open-Meteo sunlight overlay (W/m²
+ * at the node's own grid cell, #6523),
  * reference lines for healthy levels, and an optional forecast simulation
  * extending the chart into the future.
  */
@@ -14,6 +15,7 @@ import apiService from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { SolarOverridesPanel, type SolarOverrideEntry, type SolarPickerNode } from './SolarOverridesPanel';
 import { NumberInput } from '../common/NumberInput';
+import SolarCredit from '../SolarCredit';
 import {
   Area,
   CartesianGrid,
@@ -45,7 +47,8 @@ interface SolarChartPoint {
 
 interface SolarProductionPoint {
   timestamp: number;
-  wattHours: number;
+  /** Mean sunlight over the hour, W/m² */
+  wattsPerM2: number;
 }
 
 interface SolarNode {
@@ -63,6 +66,8 @@ interface SolarNode {
   insufficient_solar: boolean | null;
   /** True when the operator marked this node as solar (#3195). */
   manual_override?: boolean;
+  /** Hourly Open-Meteo sunlight at this node's cell; absent when not visible. */
+  solar_production?: SolarProductionPoint[];
 }
 
 interface SolarNodesAnalysis {
@@ -70,7 +75,6 @@ interface SolarNodesAnalysis {
   total_nodes_analyzed: number;
   solar_nodes_count: number;
   solar_nodes: SolarNode[];
-  solar_production: SolarProductionPoint[];
   avg_charging_hours_per_day: number | null;
   avg_discharge_hours_per_day: number | null;
   analyzed_nodes?: SolarPickerNode[];
@@ -79,8 +83,9 @@ interface SolarNodesAnalysis {
 
 interface ForecastDay {
   date: string;
-  forecast_wh: number;
-  avg_historical_wh: number;
+  /** Daily insolation, Wh/m² */
+  forecast_wh_m2: number;
+  avg_historical_wh_m2: number;
   pct_of_average: number;
   is_low: boolean;
 }
@@ -99,14 +104,15 @@ interface NodeSimulation {
   current_battery: number | null;
   min_simulated_battery: number;
   simulation: ForecastSimulationPoint[];
+  historical_days_analyzed: number;
+  avg_historical_daily_wh_m2: number;
+  forecast_days: ForecastDay[];
 }
 
 interface SolarForecastAnalysis {
   lookback_days: number;
-  historical_days_analyzed: number;
-  avg_historical_daily_wh: number;
   low_output_warning: boolean;
-  forecast_days: ForecastDay[];
+  nodes_without_forecast: number;
   nodes_at_risk_count: number;
   nodes_at_risk: NodeSimulation[];
   solar_simulations: NodeSimulation[];
@@ -221,8 +227,8 @@ const SolarMonitoringReport: React.FC = () => {
             }}
             disabled={forecastLoading}
             title={t(
-              'analysis.solar_monitoring.forecast_help',
-              'Project battery state across the next several days using forecast.solar production estimates.',
+              'analysis.solar_monitoring.forecast_sunlight_help',
+              "Project battery state across the next few days from the Open-Meteo sunlight forecast at each node's location.",
             )}
           >
             {forecastLoading
@@ -255,7 +261,7 @@ const SolarMonitoringReport: React.FC = () => {
           avgCharging={data.avg_charging_hours_per_day}
           avgDischarge={data.avg_discharge_hours_per_day}
           lookbackDays={data.lookback_days}
-          solarPointCount={data.solar_production.length}
+          sunlightNodeCount={data.solar_nodes.filter((n) => (n.solar_production?.length ?? 0) > 0).length}
         />
       )}
 
@@ -287,7 +293,7 @@ const SolarMonitoringReport: React.FC = () => {
             <SolarNodeCard
               key={node.node_num}
               node={node}
-              solarProduction={data.solar_production}
+              solarProduction={node.solar_production ?? EMPTY_PRODUCTION}
               forecast={forecast}
               canWriteOverrides={canWriteOverrides}
               overrideBusy={overrideBusy}
@@ -300,14 +306,18 @@ const SolarMonitoringReport: React.FC = () => {
   );
 };
 
+const EMPTY_PRODUCTION: SolarProductionPoint[] = [];
+
 const SolarSummary: React.FC<{
   totalAnalyzed: number;
   solarCount: number;
   avgCharging: number | null;
   avgDischarge: number | null;
   lookbackDays: number;
-  solarPointCount: number;
-}> = ({ totalAnalyzed, solarCount, avgCharging, avgDischarge, lookbackDays, solarPointCount }) => (
+  sunlightNodeCount: number;
+}> = ({ totalAnalyzed, solarCount, avgCharging, avgDischarge, lookbackDays, sunlightNodeCount }) => {
+  const { t } = useTranslation();
+  return (
   <div className="reports-stats">
     <Stat label="Lookback" value={`${lookbackDays} d`} />
     <Stat label="Nodes analyzed" value={String(totalAnalyzed)} />
@@ -320,9 +330,13 @@ const SolarSummary: React.FC<{
       label="Avg discharge hrs/day"
       value={avgDischarge !== null ? `${avgDischarge.toFixed(1)} h` : '—'}
     />
-    <Stat label="Solar production points" value={String(solarPointCount)} />
+    <Stat
+      label={t('analysis.solar_monitoring.sunlight_nodes', 'Nodes with sunlight data')}
+      value={String(sunlightNodeCount)}
+    />
   </div>
-);
+  );
+};
 
 const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="reports-stat">
@@ -332,57 +346,30 @@ const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
 );
 
 const ForecastResults: React.FC<{ forecast: SolarForecastAnalysis }> = ({ forecast }) => {
+  const { t } = useTranslation();
   return (
     <div className="reports-panel reports-forecast">
       <div className="reports-forecast__header">
         <h3 className="reports-forecast__title">
-          <UiIcon name="weather" size={18} /> Solar Forecast
+          <UiIcon name="weather" size={18} /> {t('analysis.solar_monitoring.forecast_title', 'Solar Forecast')}
         </h3>
         <div className="reports-forecast__sub">
-          Based on {forecast.historical_days_analyzed} historical day(s) avg{' '}
-          <strong>{forecast.avg_historical_daily_wh.toFixed(0)} Wh/day</strong>.{' '}
-          {forecast.nodes_at_risk_count} of {forecast.solar_simulations.length} solar nodes
-          predicted at risk.
+          {t('analysis.solar_monitoring.forecast_summary', {
+            atRisk: forecast.nodes_at_risk_count,
+            total: forecast.solar_simulations.length,
+          })}
+          {forecast.nodes_without_forecast > 0 && (
+            <>
+              {' '}
+              {t('analysis.solar_monitoring.forecast_without', { count: forecast.nodes_without_forecast })}
+            </>
+          )}
         </div>
       </div>
 
       {forecast.low_output_warning && (
         <div className="reports-banner reports-banner--warning">
-          <UiIcon name="alert" size={15} /> Forecast output is significantly below historical average — battery levels may
-          drop on at-risk nodes.
-        </div>
-      )}
-
-      {forecast.forecast_days.length > 0 && (
-        <div className="reports-table-wrap">
-          <table className="reports-table">
-            <thead>
-              <tr>
-                <th>Day</th>
-                <th>Forecast Wh</th>
-                <th>Historical Wh</th>
-                <th>% of avg</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {forecast.forecast_days.map((d) => (
-                <tr key={d.date}>
-                  <td>{d.date}</td>
-                  <td>{d.forecast_wh.toFixed(0)}</td>
-                  <td>{d.avg_historical_wh.toFixed(0)}</td>
-                  <td>{d.pct_of_average.toFixed(0)}%</td>
-                  <td>
-                    {d.is_low ? (
-                      <span className="reports-pill reports-pill--warn">Low</span>
-                    ) : (
-                      <span className="reports-pill reports-pill--ok">OK</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <UiIcon name="alert" size={15} /> {t('analysis.solar_monitoring.forecast_low_warning')}
         </div>
       )}
 
@@ -406,11 +393,57 @@ const ForecastResults: React.FC<{ forecast: SolarForecastAnalysis }> = ({ foreca
   );
 };
 
+/** One node's daily sunlight forecast against its own cell's recent average. */
+const NodeForecastDays: React.FC<{ simulation: NodeSimulation }> = ({ simulation }) => {
+  const { t } = useTranslation();
+  if (simulation.forecast_days.length === 0) return null;
+  return (
+    <div>
+      <p className="reports-node__patterns-title">
+        {t('analysis.solar_monitoring.forecast_node_title', {
+          days: simulation.historical_days_analyzed,
+          avg: simulation.avg_historical_daily_wh_m2.toFixed(0),
+        })}
+      </p>
+      <div className="reports-table-wrap">
+        <table className="reports-table">
+          <thead>
+            <tr>
+              <th>{t('analysis.solar_monitoring.forecast_col_day', 'Day')}</th>
+              <th>{t('analysis.solar_monitoring.forecast_col_forecast', 'Forecast Wh/m²')}</th>
+              <th>{t('analysis.solar_monitoring.forecast_col_average', 'Average Wh/m²')}</th>
+              <th>{t('analysis.solar_monitoring.forecast_col_pct', '% of avg')}</th>
+              <th>{t('analysis.solar_monitoring.forecast_col_status', 'Status')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {simulation.forecast_days.map((d) => (
+              <tr key={d.date}>
+                <td>{d.date}</td>
+                <td>{d.forecast_wh_m2.toFixed(0)}</td>
+                <td>{d.avg_historical_wh_m2.toFixed(0)}</td>
+                <td>{d.pct_of_average.toFixed(0)}%</td>
+                <td>
+                  {d.is_low ? (
+                    <span className="reports-pill reports-pill--warn">Low</span>
+                  ) : (
+                    <span className="reports-pill reports-pill--ok">OK</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 interface ChartPoint {
   timestamp: number;
   value?: number | null;
   forecastBattery?: number | null;
-  solarWh?: number | null;
+  sunlight?: number | null;
 }
 
 const SolarNodeCard: React.FC<{
@@ -441,12 +474,12 @@ const SolarNodeCard: React.FC<{
     const solarByHour = new Map<number, number>();
     for (const sp of solarProduction) {
       const hour = Math.floor(sp.timestamp / HOUR) * HOUR;
-      solarByHour.set(hour, sp.wattHours);
+      solarByHour.set(hour, sp.wattsPerM2);
     }
     const points: ChartPoint[] = node.chart_data.map((p) => ({
       timestamp: p.timestamp,
       value: p.value,
-      solarWh: solarByHour.get(Math.floor(p.timestamp / HOUR) * HOUR) ?? null,
+      sunlight: solarByHour.get(Math.floor(p.timestamp / HOUR) * HOUR) ?? null,
     }));
     const telemetryHours = new Set(
       points.map((p) => Math.floor(p.timestamp / HOUR) * HOUR),
@@ -456,7 +489,7 @@ const SolarNodeCard: React.FC<{
     // Add solar-only hourly points the telemetry didn't cover
     for (const [hour, wh] of solarByHour.entries()) {
       if (!telemetryHours.has(hour) && hour <= lastTs) {
-        points.push({ timestamp: hour, value: null, solarWh: wh });
+        points.push({ timestamp: hour, value: null, sunlight: wh });
       }
     }
 
@@ -468,7 +501,7 @@ const SolarNodeCard: React.FC<{
         timestamp: lastTs + 1,
         value: null,
         forecastBattery: typeof lastValue === 'number' ? lastValue : null,
-        solarWh: null,
+        sunlight: null,
       });
       for (const s of nodeForecast.simulation) {
         const ts = new Date(s.timestamp).getTime();
@@ -478,14 +511,14 @@ const SolarNodeCard: React.FC<{
           timestamp: ts,
           value: null,
           forecastBattery: s.simulated_battery,
-          solarWh: solarByHour.get(hour) ?? null,
+          sunlight: solarByHour.get(hour) ?? null,
         });
       }
     } else {
       // Even without forecast, append future solar-only points
       for (const [hour, wh] of solarByHour.entries()) {
         if (hour > lastTs) {
-          points.push({ timestamp: hour, value: null, solarWh: wh });
+          points.push({ timestamp: hour, value: null, sunlight: wh });
         }
       }
     }
@@ -509,7 +542,8 @@ const SolarNodeCard: React.FC<{
 
   const yMin = isPercent ? 0 : 3.0;
   const yMax = isPercent ? 105 : 4.3;
-  const hasSolar = chartData.some((p) => typeof p.solarWh === 'number');
+  const hasSolar = chartData.some((p) => typeof p.sunlight === 'number');
+  const sunlightLabel = t('analysis.solar_monitoring.sunlight_series', 'Sunlight W/m²');
   const hasForecast = chartData.some((p) => typeof p.forecastBattery === 'number');
 
   return (
@@ -627,7 +661,7 @@ const SolarNodeCard: React.FC<{
                     orientation="right"
                     stroke="var(--color-warning)"
                     fontSize={11}
-                    tickFormatter={(v: number) => `${Math.round(v)} Wh`}
+                    tickFormatter={(v: number) => `${Math.round(v)} W/m²`}
                     hide={!hasSolar}
                   />
                   <Tooltip
@@ -640,7 +674,8 @@ const SolarNodeCard: React.FC<{
                     }}
                     labelStyle={{ color: 'var(--color-text-subtle)' }}
                     formatter={(value, name) => {
-                      if (name === 'solarWh') return [`${Number(value).toFixed(0)} Wh`, 'Solar'];
+                      if (name === sunlightLabel)
+                        return [`${Number(value).toFixed(0)} W/m²`, sunlightLabel];
                       if (name === 'forecastBattery')
                         return [
                           isPercent ? `${value}%` : `${Number(value).toFixed(2)} V`,
@@ -685,7 +720,7 @@ const SolarNodeCard: React.FC<{
                     <Area
                       yAxisId="right"
                       type="monotone"
-                      dataKey="solarWh"
+                      dataKey="sunlight"
                       fill="var(--color-warning)"
                       fillOpacity={0.18}
                       stroke="var(--color-warning)"
@@ -693,7 +728,7 @@ const SolarNodeCard: React.FC<{
                       strokeWidth={1}
                       isAnimationActive={false}
                       connectNulls={false}
-                      name="Solar Wh"
+                      name={sunlightLabel}
                     />
                   )}
 
@@ -729,6 +764,9 @@ const SolarNodeCard: React.FC<{
               </ResponsiveContainer>
             </div>
           )}
+          {chartData.length > 0 && hasSolar && <SolarCredit />}
+
+          {nodeForecast && <NodeForecastDays simulation={nodeForecast} />}
 
           {node.recent_patterns.length > 0 && (
             <div>

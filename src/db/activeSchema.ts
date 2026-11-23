@@ -76,7 +76,6 @@ import {
   systemBackupHistorySqlite, systemBackupHistoryPostgres, systemBackupHistoryMysql,
   customThemesSqlite, customThemesPostgres, customThemesMysql,
   userMapPreferencesSqlite, userMapPreferencesPostgres, userMapPreferencesMysql,
-  solarEstimatesSqlite, solarEstimatesPostgres, solarEstimatesMysql,
   autoTracerouteNodesSqlite, autoTracerouteNodesPostgres, autoTracerouteNodesMysql,
   meshcorePathfindingTargetsSqlite, meshcorePathfindingTargetsPostgres, meshcorePathfindingTargetsMysql,
   autoTimeSyncNodesSqlite, autoTimeSyncNodesPostgres, autoTimeSyncNodesMysql,
@@ -342,7 +341,6 @@ export interface ActiveSchema {
   systemBackupHistory: any;
   customThemes: any;
   userMapPreferences: any;
-  solarEstimates: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6523 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   solarIrradiance: any;
   autoTracerouteNodes: any;
@@ -564,7 +562,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     systemBackupHistory: systemBackupHistorySqlite,
     customThemes: customThemesSqlite,
     userMapPreferences: userMapPreferencesSqlite,
-    solarEstimates: solarEstimatesSqlite,
     solarIrradiance: solarIrradianceSqlite,
     autoTracerouteNodes: autoTracerouteNodesSqlite,
     meshcorePathfindingTargets: meshcorePathfindingTargetsSqlite,
@@ -665,7 +662,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     systemBackupHistory: systemBackupHistoryPostgres,
     customThemes: customThemesPostgres,
     userMapPreferences: userMapPreferencesPostgres,
-    solarEstimates: solarEstimatesPostgres,
     solarIrradiance: solarIrradiancePostgres,
     autoTracerouteNodes: autoTracerouteNodesPostgres,
     meshcorePathfindingTargets: meshcorePathfindingTargetsPostgres,
@@ -766,7 +762,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     systemBackupHistory: systemBackupHistoryMysql,
     customThemes: customThemesMysql,
     userMapPreferences: userMapPreferencesMysql,
-    solarEstimates: solarEstimatesMysql,
     solarIrradiance: solarIrradianceMysql,
     autoTracerouteNodes: autoTracerouteNodesMysql,
     meshcorePathfindingTargets: meshcorePathfindingTargetsMysql,
