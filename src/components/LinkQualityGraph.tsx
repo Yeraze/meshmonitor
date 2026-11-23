@@ -14,7 +14,8 @@ import {
 } from 'recharts';
 import './TelemetryGraphs.css';
 import { useLinkQuality, type LinkQualityData } from '../hooks/useLinkQuality';
-import { formatChartAxisTimestamp } from '../utils/datetime';
+import { formatChartAxisTimestamp, formatInTimeZone } from '../utils/datetime';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { useToast } from './ToastContainer';
 
@@ -81,6 +82,10 @@ const LinkQualityGraph: React.FC<LinkQualityGraphProps> = React.memo(
       baseUrl,
       sourceId,
     });
+
+    // The node's zone (#6523), shared with its telemetry charts.
+    const { data: nodeTimezone } = useNodeTimezone({ baseUrl, sourceId, nodeId });
+    const timeZone = nodeTimezone?.timeZone;
 
     // Favorites management
     const { data: favorites = new Set<string>() } = useFavorites({ nodeId, baseUrl, enabled: allowFavorite });
@@ -227,7 +232,7 @@ const LinkQualityGraph: React.FC<LinkQualityGraphProps> = React.memo(
                   type="number"
                   domain={timeRange || ['dataMin', 'dataMax']}
                   tick={{ fontSize: 12 }}
-                  tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, timeRange)}
+                  tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, timeRange, undefined, timeZone)}
                 />
                 <YAxis
                   tick={{ fontSize: 12 }}
@@ -246,15 +251,7 @@ const LinkQualityGraph: React.FC<LinkQualityGraphProps> = React.memo(
                     color: chartColors.text,
                   }}
                   labelStyle={{ color: chartColors.text }}
-                  labelFormatter={value => {
-                    const date = new Date(value);
-                    return date.toLocaleString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    });
-                  }}
+                  labelFormatter={value => formatInTimeZone(new Date(value), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }, timeZone)}
                   formatter={(value) => {
                     if (value === null || value === undefined) return ['-', t('info.link_quality_label')];
                     const numValue = typeof value === 'number' ? value : parseFloat(String(value));
