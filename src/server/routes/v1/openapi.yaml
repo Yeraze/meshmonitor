@@ -45,7 +45,7 @@ info:
     `snrBack` are null); `route` holds synthetic node numbers (4294967295 when a
     hop did not resolve) and `hops[]` lists each hop's `publicKey`, `hash`, `snr`.
 
-    `/api/v1/solar` and `/api/v1/channel-database` remain deployment-global
+    `/api/v1/channel-database` remains deployment-global
     (no source scope).
 
     Legacy root paths (`/api/v1/nodes?sourceId=...`, etc.) were removed in
@@ -105,7 +105,7 @@ tags:
   - name: Packets
     description: Raw packet log data from the mesh network
   - name: Solar
-    description: Solar production estimates from forecast.solar
+    description: Per-node hourly sunlight and cloud cover from Open-Meteo
   - name: Metrics
     description: Prometheus-format mesh health metrics for monitoring and alerting
 
@@ -1124,74 +1124,51 @@ components:
         data:
           $ref: '#/components/schemas/Packet'
 
-    SolarEstimate:
+    SolarIrradiancePoint:
       type: object
       properties:
         timestamp:
           type: integer
-          description: Unix timestamp (seconds) for the estimate period
-          example: 1699560000
+          description: Start of the hour, Unix seconds (UTC)
+          example: 1699606800
         datetime:
           type: string
           format: date-time
-          description: ISO 8601 datetime string
-          example: "2024-11-09T14:00:00.000Z"
-        wattHours:
+        shortwaveRadiation:
           type: number
-          description: Estimated watt-hours of solar production for this period
-          example: 450.5
-        fetchedAt:
-          type: integer
-          description: Unix timestamp when this estimate was fetched from forecast.solar
-          example: 1699557600
+          nullable: true
+          description: Mean sunlight on a flat surface over the preceding hour (W/m²)
+          example: 412.5
+        cloudCover:
+          type: number
+          nullable: true
+          description: Total cloud cover (%)
+          example: 20
 
-    SolarListResponse:
+    SolarIrradianceResponse:
       type: object
-      required:
-        - success
-        - count
-        - data
       properties:
         success:
           type: boolean
           example: true
-        count:
-          type: integer
-          description: Number of estimates returned
-          example: 24
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/SolarEstimate'
-
-    SolarRangeResponse:
-      type: object
-      required:
-        - success
-        - count
-        - start
-        - end
-        - data
-      properties:
-        success:
+        enabled:
           type: boolean
-          example: true
+          description: False when Solar Monitoring is off (data is then empty)
+        unit:
+          type: object
+          properties:
+            shortwaveRadiation:
+              type: string
+              example: W/m²
+            cloudCover:
+              type: string
+              example: '%'
         count:
           type: integer
-          description: Number of estimates returned
-          example: 24
-        start:
-          type: integer
-          description: Start timestamp of the requested range
-          example: 1699520400
-        end:
-          type: integer
-          description: End timestamp of the requested range
-          example: 1699606800
         data:
           type: array
           items:
-            $ref: '#/components/schemas/SolarEstimate'
+            $ref: '#/components/schemas/SolarIrradiancePoint'
 
 paths:
   /:
@@ -2279,74 +2256,52 @@ paths:
     get:
       tags:
         - Solar
-      summary: Get solar production estimates
+      summary: Get hourly sunlight and cloud cover for one node
       description: |
-        Retrieve recent solar production estimates from forecast.solar.
-        Solar monitoring must be enabled and configured in MeshMonitor settings.
+        Open-Meteo hourly sunlight (W/m²) and cloud cover (%) at the node's
+        grid cell (#6523). The node's position is resolved server-side and the
+        same visibility rules as the map apply: a token that cannot see the
+        node's position gets an empty list. Replaces the forecast.solar
+        `wattHours` feed and `/solar/range` (removed).
       parameters:
-        - name: limit
+        - name: sourceId
           in: query
-          description: Maximum number of estimates to return
-          required: false
+          required: true
           schema:
-            type: integer
-            default: 100
-            minimum: 1
-            maximum: 1000
-      responses:
-        '200':
-          description: Solar estimates retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SolarListResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /solar/range:
-    get:
-      tags:
-        - Solar
-      summary: Get solar estimates for a time range
-      description: Retrieve solar production estimates for a specific time period
-      parameters:
+            type: string
+        - name: nodeId
+          in: query
+          required: true
+          description: '`!hex` for Meshtastic, 64-hex public key for MeshCore'
+          schema:
+            type: string
         - name: start
           in: query
-          description: Start timestamp (Unix seconds)
-          required: true
+          required: false
+          description: Unix seconds (default now - 24 h). At most 31 days before `end`.
           schema:
             type: integer
         - name: end
           in: query
-          description: End timestamp (Unix seconds)
-          required: true
+          required: false
+          description: Unix seconds (default now + 48 h)
           schema:
             type: integer
       responses:
         '200':
-          description: Solar estimates retrieved successfully
+          description: Points retrieved
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SolarRangeResponse'
+                $ref: '#/components/schemas/SolarIrradianceResponse'
         '400':
-          description: Bad request (invalid timestamps)
+          description: Missing sourceId/nodeId or bad window
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
+        '403':
+          description: Token may not read this node
           content:
             application/json:
               schema:

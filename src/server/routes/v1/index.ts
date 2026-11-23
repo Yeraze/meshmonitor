@@ -12,7 +12,7 @@
  *   /api/v1/sources/:sourceId/{nodes,messages,channels,telemetry,traceroutes,
  *                              packets,network,status}  — per-source, canonical
  *   /api/v1/sources/:sourceId/nodes/:nodeId/position-history
- *   /api/v1/solar, /api/v1/channel-database, /api/v1/metrics — deployment-global
+ *   /api/v1/channel-database, /api/v1/metrics — deployment-global; /api/v1/solar takes ?sourceId=&nodeId=
  *
  * The legacy root shape (`/api/v1/{nodes,messages,...}?sourceId=...`) shipped
  * with a one-release `Warning: 299` deprecation grace period in 4.13 and was
