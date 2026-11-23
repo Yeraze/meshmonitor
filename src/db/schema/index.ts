@@ -98,6 +98,7 @@ export * from './savedRegions.js';
 // Operator-hosted privacy documents (global — no sourceId) (#5156)
 export * from './privacyDocuments.js';
 export * from './solarNodeOverrides.js';
+export * from './solarIrradiance.js';
 
 // Tracked assets (global — no sourceId) (#5354)
 export * from './assetNodes.js';

@@ -7,6 +7,17 @@
 import { Router, Request, Response } from 'express';
 import { solarMonitoringService } from '../services/solarMonitoringService.js';
 import { logger } from '../../utils/logger.js';
+import { requireAdmin } from '../auth/authMiddleware.js';
+import { requireSourceId } from '../utils/requireSourceId.js';
+import { getNodeIrradiance } from '../utils/solarNodeCell.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import {
+  openMeteoSolarService,
+  collectActivePositions,
+  distinctCells,
+  SOLAR_GRID_SIZES,
+  FREE_DAILY_BUDGET,
+} from '../services/openMeteoSolarService.js';
 
 const router = Router();
 
@@ -81,7 +92,9 @@ router.get('/estimates/range', async (_req: Request, res: Response) => {
  * POST /api/solar/trigger
  * Manually trigger a solar estimate fetch (for testing/debugging)
  */
-router.post('/trigger', async (_req: Request, res: Response) => {
+// Legacy forecast.solar trigger, removed with forecast.solar in the #6523
+// follow-up. Admin-only meanwhile: it makes an outbound call.
+router.post('/trigger', requireAdmin(), async (_req: Request, res: Response) => {
   try {
     await solarMonitoringService.triggerFetch();
 
@@ -93,6 +106,61 @@ router.post('/trigger', async (_req: Request, res: Response) => {
     logger.error('Error triggering solar estimate fetch:', error);
     return res.status(500).json({ error: 'Failed to trigger solar estimate fetch' });
   }
+});
+
+/**
+ * GET /api/solar/irradiance?sourceId=&nodeId=&start=&end=  (#6523)
+ * Hourly Open-Meteo sunlight (W/m²) and cloud cover (%) at one node's grid
+ * cell. Same read gate as the node's telemetry graphs, plus the map's position
+ * visibility gate: a viewer who can't see the node's position gets no points.
+ */
+router.get('/irradiance', requireSourceId('query'), async (req: Request, res: Response) => {
+  try {
+    const result = await getNodeIrradiance(
+      req.user,
+      req.query.sourceId as string,
+      typeof req.query.nodeId === 'string' ? req.query.nodeId : '',
+      Number(req.query.start),
+      Number(req.query.end),
+    );
+    if (result.status !== 200) {
+      return fail(res, result.status, result.status === 403 ? 'FORBIDDEN' : 'INVALID_REQUEST', result.message);
+    }
+    return ok(res, { enabled: result.enabled, points: result.points });
+  } catch (error) {
+    logger.error('Error getting solar irradiance:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to get solar irradiance');
+  }
+});
+
+/**
+ * GET /api/solar/usage  (admin, #6523)
+ * Active node count and distinct cells per grid size, so Settings can show
+ * Open-Meteo calls/day for each grid + refresh choice.
+ */
+router.get('/usage', requireAdmin(), async (_req: Request, res: Response) => {
+  try {
+    const positions = await collectActivePositions();
+    const cellsByGrid = Object.fromEntries(
+      SOLAR_GRID_SIZES.map(g => [String(g), distinctCells(positions, g).length]),
+    );
+    return ok(res, { activeNodes: positions.length, freeDailyBudget: FREE_DAILY_BUDGET, cellsByGrid });
+  } catch (error) {
+    logger.error('Error computing solar usage:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to compute solar usage');
+  }
+});
+
+/**
+ * POST /api/solar/refresh  (admin, #6523)
+ * Start one Open-Meteo pass and return at once (a pass sleeps between chunks,
+ * so awaiting it could outlive the request socket and get re-sent). Cells
+ * refreshed within the interval are skipped and the daily call counter
+ * applies, so this cannot spend more than a scheduled pass would.
+ */
+router.post('/refresh', requireAdmin(), (_req: Request, res: Response) => {
+  void openMeteoSolarService.refresh();
+  return ok(res, { started: true });
 });
 
 export default router;

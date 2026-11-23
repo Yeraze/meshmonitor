@@ -887,7 +887,7 @@ const V1: Record<string, { router: Router; file: string; mount: string | null; r
   },
   sources: { router: sourcesRouter, file: './v1/sources.ts', mount: null, routes: { 'GET /': 'listed' } },
   metrics: { router: metricsRouter, file: './v1/metrics.ts', mount: null, routes: { 'GET /': 'listed' } },
-  solar: { router: solarRouter, file: './v1/solar.ts', mount: null, routes: { 'GET /': 'global', 'GET /range': 'global' } },
+  solar: { router: solarRouter, file: './v1/solar.ts', mount: "attachSource('nodes', 'read')", routes: { 'GET /': 'source' } },
   translate: { router: translateRouter, file: './v1/translate.ts', mount: null, routes: { 'POST /': 'global-permission' } },
   channelDatabase: {
     router: channelDatabaseRouter, file: './v1/channelDatabase.ts', mount: null,
@@ -922,7 +922,8 @@ describe('guard: v1 routes are classified', () => {
     expect(mounts.map((m) => m.path).sort()).toEqual([
       '/sources/:sourceId/actions', '/sources/:sourceId/channels', '/sources/:sourceId/messages',
       '/sources/:sourceId/network', '/sources/:sourceId/nodes', '/sources/:sourceId/packets',
-      '/sources/:sourceId/status', '/sources/:sourceId/telemetry', '/sources/:sourceId/traceroutes',
+      '/sources/:sourceId/solar', '/sources/:sourceId/status', '/sources/:sourceId/telemetry',
+      '/sources/:sourceId/traceroutes',
     ]);
     for (const mount of mounts) {
       if (mount.path.endsWith('/actions')) continue; // gated per route, below
@@ -936,7 +937,7 @@ describe('guard: v1 routes are classified', () => {
       expect(mount!.rest.startsWith(entry.mount), `${routerName}: ${mount!.rest}`).toBe(true);
     }
     // No per-source router is also mounted at the root, where no source is checked.
-    expect(index).not.toMatch(/router\.use\('\/(nodes|network|telemetry|traceroutes|messages|channels|packets|status)'/);
+    expect(index).not.toMatch(/router\.use\('\/(nodes|network|telemetry|traceroutes|messages|channels|packets|status|solar)'/);
   });
 
   it('every actions route carries its own attachSource gate, for a write', () => {

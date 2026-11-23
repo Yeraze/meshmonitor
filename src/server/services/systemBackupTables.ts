@@ -56,6 +56,8 @@ export const BACKUP_TABLES: string[] = [
   'auto_traceroute_nodes',
   'packet_log',
   'solar_estimates',
+  // #6523: global Open-Meteo sunlight cache, keyed by grid cell.
+  'solar_irradiance',
   'system_backup_history',
   // #2608: automated remote favorites management config + assignment ledger.
   'auto_favorite_targets',

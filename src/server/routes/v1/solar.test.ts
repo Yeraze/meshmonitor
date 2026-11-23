@@ -1,162 +1,71 @@
 /**
- * Solar API Endpoint Unit Tests
- *
- * Tests the solar production estimates v1 API endpoints
+ * v1 per-node solar irradiance (#6523). The gates live in getNodeIrradiance
+ * (covered by solarRoutes.irradiance.test.ts); this covers the v1 shape.
  */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-// Mock the solarMonitoringService before importing the router
-vi.mock('../../services/solarMonitoringService.js', () => ({
-  solarMonitoringService: {
-    getRecentEstimates: vi.fn(),
-    getEstimatesInRange: vi.fn()
-  }
-}));
+vi.mock('../../utils/solarNodeCell.js', () => ({ getNodeIrradiance: vi.fn() }));
 
-// Import after mocking
 import solarRouter from './solar.js';
-import { solarMonitoringService } from '../../services/solarMonitoringService.js';
+import { getNodeIrradiance } from '../../utils/solarNodeCell.js';
 
-describe('Solar API Routes', () => {
+const mocked = vi.mocked(getNodeIrradiance);
+
+describe('GET /api/v1/sources/:sourceId/solar', () => {
   let app: express.Application;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
     app = express();
-    app.use(express.json());
+    // attachSource stand-in: the real mount resolves :sourceId and checks nodes:read.
+    app.use('/api/v1/sources/:sourceId/solar', (req, _res, next) => {
+      (req as unknown as { source: { id: string } }).source = { id: req.params.sourceId };
+      next();
+    }, solarRouter);
     app.use('/api/v1/solar', solarRouter);
   });
 
-  describe('GET /api/v1/solar', () => {
-    it('should return solar estimates with correct format', async () => {
-      const mockEstimates = [
-        { timestamp: 1699560000, watt_hours: 450.5, fetched_at: 1699557600 },
-        { timestamp: 1699563600, watt_hours: 520.3, fetched_at: 1699557600 },
-        { timestamp: 1699567200, watt_hours: 380.2, fetched_at: 1699557600 }
-      ];
-
-      vi.mocked(solarMonitoringService.getRecentEstimates).mockReturnValue(mockEstimates);
-
-      const response = await request(app)
-        .get('/api/v1/solar')
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.count).toBe(3);
-      expect(response.body.data).toHaveLength(3);
-      expect(response.body.data[0]).toHaveProperty('timestamp');
-      expect(response.body.data[0]).toHaveProperty('datetime');
-      expect(response.body.data[0]).toHaveProperty('wattHours');
-      expect(response.body.data[0]).toHaveProperty('fetchedAt');
+  it('returns points with units and ISO datetimes', async () => {
+    mocked.mockResolvedValue({ status: 200, enabled: true, points: [{ timestamp: 1700000000, shortwaveRadiation: 410, cloudCover: 20 }] });
+    const res = await request(app).get('/api/v1/sources/s1/solar?nodeId=!abcd1234&start=1&end=2');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      success: true,
+      enabled: true,
+      unit: { shortwaveRadiation: 'W/m²', cloudCover: '%' },
+      count: 1,
+      data: [{ timestamp: 1700000000, shortwaveRadiation: 410, cloudCover: 20, datetime: '2023-11-14T22:13:20.000Z' }],
     });
-
-    it('should use default limit of 100', async () => {
-      vi.mocked(solarMonitoringService.getRecentEstimates).mockReturnValue([]);
-
-      await request(app)
-        .get('/api/v1/solar')
-        .expect(200);
-
-      expect(solarMonitoringService.getRecentEstimates).toHaveBeenCalledWith(100);
-    });
-
-    it('should respect custom limit parameter', async () => {
-      vi.mocked(solarMonitoringService.getRecentEstimates).mockReturnValue([]);
-
-      await request(app)
-        .get('/api/v1/solar?limit=50')
-        .expect(200);
-
-      expect(solarMonitoringService.getRecentEstimates).toHaveBeenCalledWith(50);
-    });
-
-    it('should cap limit at 1000', async () => {
-      vi.mocked(solarMonitoringService.getRecentEstimates).mockReturnValue([]);
-
-      await request(app)
-        .get('/api/v1/solar?limit=5000')
-        .expect(200);
-
-      expect(solarMonitoringService.getRecentEstimates).toHaveBeenCalledWith(1000);
-    });
-
-    it('should return empty array when no data', async () => {
-      vi.mocked(solarMonitoringService.getRecentEstimates).mockReturnValue([]);
-
-      const response = await request(app)
-        .get('/api/v1/solar')
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.count).toBe(0);
-      expect(response.body.data).toEqual([]);
-    });
+    expect(mocked).toHaveBeenCalledWith(undefined, 's1', '!abcd1234', 1, 2);
   });
 
-  describe('GET /api/v1/solar/range', () => {
-    it('should return solar estimates within time range', async () => {
-      const mockEstimates = [
-        { timestamp: 1699560000, watt_hours: 450.5, fetched_at: 1699557600 },
-        { timestamp: 1699563600, watt_hours: 520.3, fetched_at: 1699557600 }
-      ];
+  it('defaults the window to the last 24 h through the next 48 h', async () => {
+    mocked.mockResolvedValue({ status: 200, enabled: false, points: [] });
+    const now = Math.floor(Date.now() / 1000);
+    await request(app).get('/api/v1/sources/s1/solar?nodeId=!abcd1234');
+    const [, , , start, end] = mocked.mock.calls[0];
+    expect(Math.abs(start - (now - 86_400))).toBeLessThan(5);
+    expect(end - start).toBe(3 * 86_400);
+  });
 
-      vi.mocked(solarMonitoringService.getEstimatesInRange).mockReturnValue(mockEstimates);
+  it('is only served under a source', async () => {
+    const res = await request(app).get('/api/v1/solar?nodeId=!abcd1234');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
+    expect(mocked).not.toHaveBeenCalled();
+  });
 
-      const response = await request(app)
-        .get('/api/v1/solar/range?start=1699520400&end=1699606800')
-        .expect(200);
+  it('passes through 403 and 400', async () => {
+    mocked.mockResolvedValueOnce({ status: 403, message: 'Insufficient permissions' });
+    expect((await request(app).get('/api/v1/sources/s1/solar?nodeId=x')).status).toBe(403);
+    mocked.mockResolvedValueOnce({ status: 400, message: 'nodeId is required' });
+    expect((await request(app).get('/api/v1/sources/s1/solar')).status).toBe(400);
+  });
 
-      expect(response.body.success).toBe(true);
-      expect(response.body.count).toBe(2);
-      expect(response.body.start).toBe(1699520400);
-      expect(response.body.end).toBe(1699606800);
-      expect(response.body.data).toHaveLength(2);
-    });
-
-    it('should return 400 for missing start parameter', async () => {
-      const response = await request(app)
-        .get('/api/v1/solar/range?end=1699606800')
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.message).toContain('Invalid');
-    });
-
-    it('should return 400 for missing end parameter', async () => {
-      const response = await request(app)
-        .get('/api/v1/solar/range?start=1699520400')
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.message).toContain('Invalid');
-    });
-
-    it('should return 400 when start is after end', async () => {
-      const response = await request(app)
-        .get('/api/v1/solar/range?start=1699606800&end=1699520400')
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.message).toContain('before');
-    });
-
-    it('should return empty array for range with no data', async () => {
-      vi.mocked(solarMonitoringService.getEstimatesInRange).mockReturnValue([]);
-
-      const response = await request(app)
-        .get('/api/v1/solar/range?start=1699520400&end=1699606800')
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.count).toBe(0);
-      expect(response.body.data).toEqual([]);
-    });
+  it('500s on an unexpected error', async () => {
+    mocked.mockRejectedValue(new Error('boom'));
+    expect((await request(app).get('/api/v1/sources/s1/solar?nodeId=x')).status).toBe(500);
   });
 });
