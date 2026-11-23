@@ -92,8 +92,8 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   // Reticulum destination retention (#5683 follow-up): one cap for every
   // Reticulum source, so it left the per-source Settings page.
   'settings-reticulum',
-  // Solar Monitoring (#6258 D5): solarMonitoringService reads bare getSetting,
-  // so the forecast is one per install.
+  // Solar Monitoring (#6258 D5, #6523): openMeteoSolarService reads bare
+  // getSetting and covers every source's nodes, so it is one per install.
   'settings-solar',
   // Restart / shutdown (#6258 D6): acts on the whole process, admin-only.
   'settings-system',
@@ -201,7 +201,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-pki-dm', label: t('config.pki_dm.title', 'PKI Direct Message Decryption'), keywords: ['pki', 'dm', 'direct message', 'decrypt', 'private key', 'encryption'] },
     { id: 'settings-reliable-pki', label: t('settings.reliable_pki.title', 'Reliable PKI'), keywords: ['pki', 'nodeinfo', 'node info', 'encryption', 'keys', 'prime', 'telemetry', 'dm'] },
     { id: 'settings-packet-monitor', label: t('settings.packet_monitor'), keywords: ['packets', 'logging', 'capture'] },
-    { id: 'settings-solar', label: t('settings.solar_monitoring'), keywords: ['sun', 'panel', 'power', 'battery'] },
+    { id: 'settings-solar', label: t('settings.solar_monitoring'), keywords: ['sun', 'sunlight', 'panel', 'power', 'battery', 'weather', 'cloud', 'open-meteo'] },
     { id: 'settings-default-source', label: t('settings.default_source.title', 'Default Meshtastic source'), keywords: ['default', 'primary', 'source', 'radio', 'gateway', 'outbound', 'send', 'api'] },
     { id: 'settings-remote-admin', label: t('settings.remote_admin_section', 'Remote Administration'), keywords: ['admin', 'password', 'credentials'] },
     { id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server'), keywords: ['notifications', 'email', 'push', 'webhook'] },
