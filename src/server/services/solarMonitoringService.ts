@@ -86,8 +86,11 @@ class SolarMonitoringService {
         return;
       }
 
-      // Build API URL
-      const url = `https://api.forecast.solar/estimate/watthours/period/${latitude}/${longitude}/${declination}/${azimuth}/1`;
+      // Build API URL. `time=utc` makes forecast.solar return ISO 8601 keys with
+      // an explicit +00:00 offset. Without it the keys are offset-less local time
+      // at the panel's location, which `new Date()` reads in the container's TZ
+      // and shifts the curve by the difference (#6523).
+      const url = `https://api.forecast.solar/estimate/watthours/period/${latitude}/${longitude}/${declination}/${azimuth}/1?time=utc`;
       logger.debug(`☀️  Fetching solar estimates from: ${url}`);
 
       // Fetch data from API
@@ -117,8 +120,13 @@ class SolarMonitoringService {
 
       let count = 0;
       for (const [timestampStr, wattHours] of Object.entries(estimates)) {
-        // Parse timestamp (format: "2024-11-05 14:00:00")
-        const timestamp = Math.floor(new Date(timestampStr).getTime() / 1000);
+        // Parse timestamp (format: "2024-11-05T14:00:00+00:00")
+        const ms = Date.parse(timestampStr);
+        if (Number.isNaN(ms)) {
+          logger.warn(`⚠️  Skipping unparseable solar estimate timestamp: ${timestampStr}`);
+          continue;
+        }
+        const timestamp = Math.floor(ms / 1000);
         await databaseService.upsertSolarEstimateAsync(timestamp, wattHours, fetchedAt);
         count++;
       }
