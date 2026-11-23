@@ -1,7 +1,7 @@
 /**
  * Telemetry data fetching hooks using TanStack Query
  *
- * Provides hooks for fetching telemetry and solar estimate data
+ * Provides hooks for fetching telemetry and solar irradiance data
  * with automatic caching, deduplication, and periodic refetching.
  * Replaces manual setInterval polling with TanStack Query's built-in
  * refetch capabilities.
@@ -33,20 +33,20 @@ export interface TelemetryData {
 }
 
 /**
- * Solar power estimate data point
+ * One hourly Open-Meteo point from /api/solar/irradiance (#6523)
  */
-interface SolarEstimate {
+interface SolarIrradiancePoint {
   /** Unix timestamp in seconds */
   timestamp: number;
-  /** Estimated watt-hours of solar power */
-  wattHours: number;
+  /** Shortwave radiation in W/m² */
+  shortwaveRadiation: number | null;
+  /** Cloud cover in % */
+  cloudCover: number | null;
 }
 
-/**
- * Response from solar estimates API
- */
-interface SolarEstimatesResponse {
-  estimates: SolarEstimate[];
+interface SolarIrradianceResponse {
+  success?: boolean;
+  data?: { enabled: boolean; points: SolarIrradiancePoint[] };
 }
 
 /**
@@ -115,11 +115,15 @@ export function useTelemetry({ nodeId, hours = 24, baseUrl = '', sourceId, enabl
 }
 
 /**
- * Options for useSolarEstimates hook
+ * Options for useSolarIrradiance hook
  */
-interface UseSolarEstimatesOptions {
+interface UseSolarIrradianceOptions {
   /** Base URL for API requests (default: '') */
   baseUrl?: string;
+  /** Source the node belongs to (falls back to the primary source, like useTelemetry) */
+  sourceId?: string | null;
+  /** Node ID: `!hex` (Meshtastic) or 64-hex public key (MeshCore) */
+  nodeId?: string | null;
   /** Start timestamp in Unix seconds */
   startTimestamp?: number;
   /** End timestamp in Unix seconds */
@@ -128,112 +132,65 @@ interface UseSolarEstimatesOptions {
   enabled?: boolean;
 }
 
+/** Data changes at most hourly, so refetch rarely. */
+const SOLAR_IRRADIANCE_REFRESH_MS = 15 * 60 * 1000;
+/** The route serves at most 31 days per request. */
+const SOLAR_IRRADIANCE_MAX_SPAN_S = 31 * 24 * 3600;
+
 /**
- * Hook to fetch solar power estimates within a time range
- *
- * Uses TanStack Query for automatic caching and periodic refetching.
- * Returns an empty Map if solar monitoring is not configured.
- *
- * @param options - Configuration options
- * @returns TanStack Query result with solar estimates as Map<timestamp_ms, wattHours>
- *
- * @example
- * ```tsx
- * const { data: solarEstimates } = useSolarEstimates({
- *   startTimestamp: Math.floor(Date.now() / 1000) - 86400,
- *   endTimestamp: Math.floor(Date.now() / 1000)
- * });
- * ```
+ * Snap a window to whole hours (and to the route's 31-day cap) so a caller
+ * whose bounds drift every few seconds keeps one stable query key.
  */
-export function useSolarEstimates({
+function hourAlignedWindow(start?: number, end?: number): { start?: number; end?: number } {
+  if (!start || !end) return {};
+  const alignedEnd = Math.ceil(end / 3600) * 3600;
+  const alignedStart = Math.max(Math.floor(start / 3600) * 3600, alignedEnd - SOLAR_IRRADIANCE_MAX_SPAN_S);
+  return { start: alignedStart, end: alignedEnd };
+}
+
+/**
+ * Hook to fetch one node's hourly Open-Meteo sunlight curve (#6523).
+ *
+ * Returns Map<timestamp_ms, W/m²>; hours with no value are skipped. Returns
+ * an empty Map when the feature is off, the node has no visible position, or
+ * the request fails.
+ */
+export function useSolarIrradiance({
   baseUrl = '',
+  sourceId,
+  nodeId,
   startTimestamp,
   endTimestamp,
   enabled = true,
-}: UseSolarEstimatesOptions) {
+}: UseSolarIrradianceOptions) {
+  const fallbackSourceId = useResolvedSourceId();
+  const effectiveSourceId = sourceId ?? fallbackSourceId;
+  const { start, end } = hourAlignedWindow(startTimestamp, endTimestamp);
   return useQuery({
-    queryKey: ['solarEstimates', startTimestamp, endTimestamp],
+    queryKey: ['solarIrradiance', effectiveSourceId, nodeId, start, end],
     queryFn: async (): Promise<Map<number, number>> => {
-      const response = await fetch(`${baseUrl}/api/solar/estimates/range?start=${startTimestamp}&end=${endTimestamp}`);
+      const params = new URLSearchParams({
+        sourceId: String(effectiveSourceId),
+        nodeId: String(nodeId),
+        start: String(start),
+        end: String(end),
+      });
+      const response = await fetch(`${baseUrl}/api/solar/irradiance?${params.toString()}`);
+      if (!response.ok) return new Map();
 
-      if (!response.ok) {
-        // Return empty map if solar monitoring not configured
-        return new Map();
+      const body: SolarIrradianceResponse = await response.json();
+      const points = new Map<number, number>();
+      for (const p of body.data?.points ?? []) {
+        if (typeof p.shortwaveRadiation !== 'number') continue;
+        // Unix seconds -> ms, to match telemetry timestamps
+        points.set(p.timestamp * 1000, p.shortwaveRadiation);
       }
-
-      const data: SolarEstimatesResponse = await response.json();
-
-      const estimatesMap = new Map<number, number>();
-      if (data.estimates && data.estimates.length > 0) {
-        data.estimates.forEach(est => {
-          // Convert Unix seconds to milliseconds for consistency with telemetry timestamps
-          estimatesMap.set(est.timestamp * 1000, est.wattHours);
-        });
-      }
-
-      return estimatesMap;
+      return points;
     },
-    enabled: enabled && !!startTimestamp && !!endTimestamp,
-    refetchInterval: 60000, // Refetch every 60 seconds
-    staleTime: 55000, // Data considered fresh for 55 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-    refetchOnWindowFocus: false,
-  });
-}
-
-/**
- * Options for useSolarEstimatesLatest hook
- */
-interface UseSolarEstimatesLatestOptions {
-  /** Base URL for API requests (default: '') */
-  baseUrl?: string;
-  /** Maximum number of estimates to fetch (default: 500) */
-  limit?: number;
-  /** Whether to enable the query (default: true) */
-  enabled?: boolean;
-}
-
-/**
- * Hook to fetch latest solar power estimates (no time range)
- *
- * Uses TanStack Query for automatic caching and periodic refetching.
- * Returns an empty Map if solar monitoring is not configured.
- * This is useful for the Dashboard which shows all available solar data.
- *
- * @param options - Configuration options
- * @returns TanStack Query result with solar estimates as Map<timestamp_ms, wattHours>
- */
-export function useSolarEstimatesLatest({
-  baseUrl = '',
-  limit = 500,
-  enabled = true,
-}: UseSolarEstimatesLatestOptions = {}) {
-  return useQuery({
-    queryKey: ['solarEstimatesLatest', limit],
-    queryFn: async (): Promise<Map<number, number>> => {
-      const response = await fetch(`${baseUrl}/api/solar/estimates?limit=${limit}`);
-
-      if (!response.ok) {
-        // Return empty map if solar monitoring not configured
-        return new Map();
-      }
-
-      const data: SolarEstimatesResponse = await response.json();
-
-      const estimatesMap = new Map<number, number>();
-      if (data.estimates && data.estimates.length > 0) {
-        data.estimates.forEach(est => {
-          // Convert Unix seconds to milliseconds for consistency with telemetry timestamps
-          estimatesMap.set(est.timestamp * 1000, est.wattHours);
-        });
-      }
-
-      return estimatesMap;
-    },
-    enabled,
-    refetchInterval: 300000, // Refetch every 5 minutes (solar data changes slowly)
-    staleTime: 290000, // Data considered fresh for ~5 minutes
-    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    enabled: enabled && !!effectiveSourceId && !!nodeId && !!start && !!end,
+    refetchInterval: SOLAR_IRRADIANCE_REFRESH_MS,
+    staleTime: SOLAR_IRRADIANCE_REFRESH_MS,
+    gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }

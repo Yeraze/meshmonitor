@@ -5,7 +5,6 @@ import { DragEndEvent } from '@dnd-kit/core';
 import '../Dashboard.css';
 import { logger } from '../../utils/logger';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
-import { useSolarEstimatesLatest } from '../../hooks/useTelemetry';
 import { type TelemetryData } from '../../hooks/useTelemetry';
 import AddWidgetModal from '../AddWidgetModal';
 import { DashboardHeader, DashboardFilters, DashboardGrid } from './components';
@@ -148,13 +147,6 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       baseUrl,
       customWidgets,
       setCustomWidgets,
-    });
-
-    // Fetch solar estimates using TanStack Query hook
-    const { data: solarEstimates } = useSolarEstimatesLatest({
-      baseUrl,
-      limit: 500,
-      enabled: true,
     });
 
     // Callback for charts to report their data (for global time range)
@@ -329,7 +321,6 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
             baseUrl={baseUrl}
             globalTimeRange={globalTimeRange}
             globalMinTime={globalMinTime}
-            solarEstimates={solarEstimates || new Map()}
             onRemoveFavorite={removeFavorite}
             onDataLoaded={handleDataLoaded}
             onDragEnd={handleDragEnd}

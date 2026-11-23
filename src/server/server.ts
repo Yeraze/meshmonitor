@@ -40,7 +40,6 @@ import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
 import { waypointRebroadcastSchedulerService } from './services/waypointRebroadcastSchedulerService.js';
 import { securityDigestService } from './services/securityDigestService.js';
-import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { openMeteoSolarService } from './services/openMeteoSolarService.js';
 import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
@@ -400,8 +399,7 @@ setTimeout(async () => {
     securityDigestService.initialize(databaseService);
     logger.debug('Security digest service initialized');
 
-    // Initialize solar monitoring service
-    solarMonitoringService.initialize();
+    // Initialize Open-Meteo solar service (#6523)
     openMeteoSolarService.initialize();
     logger.debug('Solar monitoring service initialized');
 

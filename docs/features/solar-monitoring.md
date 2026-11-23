@@ -1,296 +1,107 @@
 # Solar Monitoring
 
-MeshMonitor provides integrated solar production monitoring and visualization to help optimize off-grid Meshtastic deployments. By integrating with the forecast.solar API, you can monitor expected solar power generation and correlate it with your node's telemetry data.
+Solar Monitoring overlays the hourly sunlight at each node's location on that node's telemetry graphs, so you can line up battery charging with the weather. The data comes from [Open-Meteo](https://open-meteo.com/) weather forecasts.
 
 ## Overview
 
-The solar monitoring feature automatically fetches solar production estimates from [forecast.solar](https://forecast.solar) based on your configured location and solar panel parameters. These estimates are displayed as translucent overlays on telemetry graphs, allowing you to:
+When Solar Monitoring is on, MeshMonitor:
 
-- Predict when your solar-powered nodes will have sufficient power
-- Correlate battery charging patterns with solar production
-- Plan maintenance windows during peak solar production
-- Optimize solar panel placement and orientation
+- groups every node with a known position into grid cells (0.1° ≈ 11 km by default),
+- fetches an hourly forecast of shortwave radiation (W/m²) and cloud cover (%) for each cell from Open-Meteo,
+- draws that node's sunlight curve behind its telemetry lines on the Node Details graphs and the Telemetry Dashboard.
+
+Each node gets its own curve. Nodes in the same cell share one forecast.
+
+This helps you:
+
+- see whether a battery dip lines up with a cloudy day or a failing panel,
+- spot nodes that charge less than their neighbours under the same sky,
+- plan visits for days when a remote node will have spare power.
 
 ## Configuration
 
-### Solar Panel Settings
+Solar Monitoring lives in **Global Settings → Solar Monitoring** and is admin-only. Tick the checkbox to turn it on, then pick:
 
-To enable solar monitoring, navigate to **Settings** and configure the following parameters:
+| Setting | What it does |
+|---------|--------------|
+| **Open-Meteo API key** (optional) | Leave blank to use Open-Meteo's free tier: non-commercial use, under 10,000 calls a day, no sign-up. A key is only for paid plans (commercial use or higher limits), from [open-meteo.com/en/pricing](https://open-meteo.com/en/pricing). With a key MeshMonitor uses Open-Meteo's customer API host. The key is stored server-side and only admins can read it. |
+| **Grid cell size** | 0.05° (≈ 5.5 km), 0.1° (≈ 11 km, default), 0.25° (≈ 28 km), 0.5° (≈ 55 km) or 1° (≈ 111 km). Nodes in the same cell share one forecast. Larger cells mean fewer calls but coarser weather. |
+| **Refresh interval** | 1, 2, 3 (default), 6, 12 or 24 hours. How often each cell's forecast is fetched again. |
 
-#### Required Settings
+Click **Save Settings**. The scheduler runs hourly and fetches only cells older than the refresh interval; **Refresh Now** starts a pass right away.
 
-- **Latitude**: Geographic latitude of your solar installation (-90 to 90)
-- **Longitude**: Geographic longitude of your solar installation (-180 to 180)
-- **Declination**: Tilt angle of your solar panels from horizontal (0-90 degrees)
-  - 0° = Horizontal (flat)
-  - 90° = Vertical
-  - Most installations use 20-40° depending on latitude
-- **Azimuth**: Compass direction your panels face (-180 to 180 degrees)
-  - -180° = North
-  - -90° = East
-  - 0° = South (optimal in Northern Hemisphere)
-  - 90° = West
-  - 180° = North
+### Call budget
 
-#### Additional Configuration Details
+Open-Meteo counts each location as a call, so the cost is roughly:
 
-- **API Requests**: Estimates are automatically fetched hourly at :05 minutes past the hour
-- **Data Retention**: Solar estimates are stored in the database for historical analysis
+```
+calls per day = cells × 24 ÷ refresh hours
+```
 
-### Validation
+The settings page shows how many nodes were heard in the last 7 days and, for each grid size, how many cells that makes and the calls per day at the refresh interval you picked. The row for the selected grid is highlighted.
 
-Solar Monitoring lives in **Global Settings** (one forecast per install). After configuring your settings, click **Save Settings**. MeshMonitor will begin fetching solar estimates on the next hourly cycle. You can verify the configuration is working by:
-
-1. Navigating to the **Telemetry Dashboard** or **Node Details** page
-2. Looking for the translucent yellow overlay on telemetry graphs
-3. Checking that solar estimates appear in graph tooltips
+Without an API key MeshMonitor keeps under a budget of **9,000 calls a day**, leaving headroom below the free tier's limit. If your choice would need more, a warning appears: only the most recently heard cells (as many as the budget allows) get data. Pick a larger grid, a longer interval, or add a key. MeshMonitor also counts every call against a per-day counter stored in the database, so a restart or a settings save never resets the budget.
 
 ## Visualization
 
-### Telemetry Graphs
+The sunlight curve is a translucent yellow area behind the telemetry line, on a hidden right-hand axis. Hover a point to see it in the tooltip, for example **Sunlight: 420 W/m²**. Use the sun button on each graph to show or hide it; the Dashboard remembers your choice per chart.
 
-Solar production estimates appear as **translucent yellow area overlays** on all telemetry graphs showing time-series data.
+The curve appears on:
 
-#### Features
+- **Node Details** telemetry graphs (Meshtastic and MeshCore nodes),
+- **Telemetry Dashboard** favourite charts.
+- **Analysis & Reports → Solar Monitoring Analysis**, under each detected solar node's battery line. Its forecast compares each node's coming days with its own cell's recent average; see [Analysis & Reports](/features/analysis-reports).
 
-- **Dual Y-Axes**: The left axis shows telemetry metrics (battery %, voltage, etc.), while a hidden right axis scales the solar estimates
-- **Automatic Alignment**: Solar forecast timestamps are matched to telemetry data points using nearest-neighbor search (within 1-hour window)
-- **Tooltip Integration**: Hover over any data point to see both telemetry values and the corresponding solar estimate
-- **Auto-Refresh**: Solar data refreshes automatically every 60 seconds to show the latest forecasts
+A node shows no curve when it has no position, when you cannot see its position, or when its cell has not been fetched yet. A chart's CSV export adds a `Sunlight W/m2` column while the overlay has data.
 
-#### Display Locations
+## Privacy
 
-Solar overlays appear on:
-- **Node Details** page: Telemetry graphs for individual nodes
-- **Telemetry Dashboard**: All favorite telemetry charts
-- **Any time-series telemetry visualization**
-- **Analysis & Reports → Solar Monitoring Analysis**: cross-source report that auto-detects solar-powered nodes and overlays the solar production curve on each candidate's chart, with optional multi-day battery forecast simulation. See [Analysis & Reports](./analysis-reports).
+When Solar Monitoring is on, the **rounded position (the cell centre)** of every node heard in the last 7 days is sent to Open-Meteo. Exact positions are never sent, and private position overrides are never sent. A viewer who cannot see a node's position on the map gets no sunlight curve for that node.
 
-### Visual Design
+## Attribution
 
-- **Color**: Translucent yellow (`#f9e2af` with 30% opacity)
-- **Overlay**: Sits behind telemetry line charts to avoid obscuring data
-- **Scale**: Automatically scaled to match the visible range of telemetry data
-
-## Data Management
-
-### Automatic Fetching
-
-MeshMonitor automatically fetches solar estimates using a cron scheduler:
-
-- **Schedule**: Runs at :05 minutes past every hour (e.g., 1:05, 2:05, etc.)
-- **Forecast Range**: Retrieves up to 500 data points per request
-- **Upsert Logic**: Uses `INSERT OR REPLACE` to handle overlapping forecast timestamps
-- **Silent Failure**: If solar monitoring is not configured, fetching silently skips without errors
-
-### Manual Triggering
-
-For testing or immediate updates, you can manually trigger a solar estimate fetch:
-
-```bash
-curl -X POST http://your-meshmonitor:8080/api/solar/trigger
-```
-
-This is useful for:
-- Testing your solar configuration
-- Updating estimates after changing panel parameters
-- Debugging forecast data issues
-
-### Database Storage
-
-Solar estimates are stored in the `solar_estimates` table with:
-
-- **Timestamp**: Unix epoch seconds (stored as INTEGER)
-- **Watt-Hours**: Estimated solar production at that timestamp
-- **Unique Constraint**: Prevents duplicate entries for the same timestamp
+Weather data by [Open-Meteo.com](https://open-meteo.com/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). MeshMonitor shows this credit under any chart that draws the overlay and in the settings section.
 
 ## API Endpoints
 
-### Get Recent Estimates
+| Method | Path | Who | Purpose |
+|--------|------|-----|---------|
+| `GET` | `/api/solar/irradiance?sourceId=&nodeId=&start=&end=` | Same as the node's telemetry | Hourly sunlight and cloud cover for one node's cell. `nodeId` is `!hex` (Meshtastic) or the 64-hex public key (MeshCore); `start`/`end` are Unix seconds, up to 31 days apart. |
+| `GET` | `/api/solar/usage` | Admin | Active node count and cells per grid size, for the call estimate. |
+| `POST` | `/api/solar/refresh` | Admin | Start one refresh pass and return at once. Cells refreshed within the interval are skipped and the daily budget still applies. |
 
-```http
-GET /api/solar/estimates?limit=500
-```
+Example response from `/api/solar/irradiance`:
 
-**Parameters**:
-- `limit` (optional): Maximum number of estimates to return (default: 100, max: 500)
-
-**Response**:
-```json
-[
-  {
-    "timestamp": 1704067200,
-    "watts": 125
-  },
-  {
-    "timestamp": 1704070800,
-    "watts": 250
-  }
-]
-```
-
-### Get Estimates for Time Range
-
-```http
-GET /api/solar/estimates/range?start=1704067200&end=1704153600
-```
-
-**Parameters**:
-- `start` (required): Unix timestamp (seconds) for range start
-- `end` (required): Unix timestamp (seconds) for range end
-
-**Response**:
-```json
-[
-  {
-    "timestamp": 1704067200,
-    "watts": 125
-  },
-  {
-    "timestamp": 1704070800,
-    "watts": 250
-  }
-]
-```
-
-### Trigger Manual Fetch
-
-```http
-POST /api/solar/trigger
-```
-
-**Response**:
 ```json
 {
   "success": true,
-  "message": "Solar estimates fetched successfully"
+  "data": {
+    "enabled": true,
+    "points": [
+      { "timestamp": 1704067200, "shortwaveRadiation": 420, "cloudCover": 15 },
+      { "timestamp": 1704070800, "shortwaveRadiation": null, "cloudCover": 80 }
+    ]
+  }
 }
 ```
 
-## Technical Details
-
-### Data Flow
-
-1. **Configuration**: User configures solar panel parameters in Settings
-2. **Scheduling**: Cron job runs hourly at :05 minutes past the hour
-3. **API Request**: MeshMonitor queries forecast.solar with configured parameters
-4. **Storage**: Estimates are stored in SQLite database with unique timestamp constraint
-5. **Retrieval**: Frontend fetches estimates via `/api/solar/estimates` endpoint
-6. **Alignment**: Nearest-neighbor algorithm matches forecast timestamps to telemetry data
-7. **Rendering**: Recharts ComposedChart displays solar overlay with telemetry lines
-
-### Timestamp Handling
-
-- **API Storage**: Unix seconds (INTEGER in database)
-- **Frontend**: Converts to milliseconds for JavaScript Date objects
-- **Matching**: Nearest-neighbor search within 1-hour (3600000ms) window
-- **Alignment**: Ensures forecast data aligns with telemetry data points even when timestamps don't match exactly
-
-### Performance Considerations
-
-- **Fetch Frequency**: Hourly fetching minimizes API calls while maintaining fresh data
-- **Data Limit**: 500 estimate limit prevents excessive memory usage
-- **Caching**: Database storage acts as cache to reduce API dependencies
-- **Lazy Loading**: Solar data loads independently and doesn't block telemetry display
-
-### forecast.solar Integration
-
-MeshMonitor uses the free [forecast.solar](https://forecast.solar) API, which provides:
-
-- **No Registration Required**: Free tier works without API keys
-- **Global Coverage**: Works anywhere in the world
-- **Accurate Forecasts**: Uses weather data and solar physics models
-- **Future Estimates**: Provides multi-day forecasts for planning
-
-For high-traffic deployments, consider the forecast.solar [paid tiers](https://forecast.solar/pricing) for:
-- Higher rate limits
-- Extended forecast periods
-- Commercial support
-
-## Use Cases
-
-### Battery Monitoring Correlation
-
-Compare battery levels with solar production to:
-- Identify charging inefficiencies
-- Detect failing solar panels or charge controllers
-- Optimize battery bank sizing
-
-### Network Planning
-
-Use solar forecasts to:
-- Schedule network maintenance during peak production hours
-- Plan firmware updates when batteries will be fully charged
-- Predict when remote nodes may go offline due to insufficient solar
-
-### Off-Grid Optimization
-
-- Determine optimal panel tilt for your latitude
-- Analyze seasonal production variations
-- Size battery banks based on worst-case solar scenarios
-
-### Performance Monitoring
-
-- Detect underperforming panels (actual vs forecast)
-- Identify shading issues affecting production
-- Track long-term solar system degradation
+The v1 API serves the same data; see the [API reference](/development/api-reference).
 
 ## Troubleshooting
 
-### No Solar Overlay Appearing
+**No overlay on a graph**
 
-**Possible Causes**:
-- Solar monitoring not configured (latitude/longitude missing)
-- No data available yet (wait for next hourly fetch at :05)
-- API request failed (check server logs)
-- Telemetry time range doesn't overlap with forecast data
+- Check that Solar Monitoring is on and saved in Global Settings.
+- Check that the node has a position and that you can see it on the map.
+- Wait for the next pass, or click **Refresh Now**.
+- On the free tier, check the budget warning: the node's cell may be past the cap.
 
-**Solutions**:
-1. Verify solar settings are saved in Global Settings
-2. Manually trigger a fetch: `POST /api/solar/trigger`
-3. Check browser console for API errors
-4. Verify telemetry date range includes future timestamps
+**429 errors in the server log**
 
-### Incorrect Estimates
-
-**Possible Causes**:
-- Wrong latitude/longitude configured
-- Incorrect azimuth or declination settings
-- Panel capacity not matching actual installation
-
-**Solutions**:
-1. Verify location coordinates are accurate
-2. Use a compass to confirm panel azimuth
-3. Measure panel tilt angle with protractor or angle finder
-4. Update settings and trigger new fetch
-
-### API Rate Limiting
-
-**Symptoms**:
-- Estimates stop updating
-- 429 HTTP errors in server logs
-
-**Solutions**:
-1. Reduce fetch frequency (modify cron schedule)
-2. Consider forecast.solar paid tier for higher limits
-3. Contact forecast.solar support if issues persist
-
-## Privacy & Security
-
-- **No Personal Data**: Only solar panel configuration is sent to forecast.solar
-- **No Authentication Required**: API calls don't include user information
-- **Optional Feature**: Solar monitoring is completely optional and can be left unconfigured
-- **Local Storage**: All fetched estimates are stored locally in your MeshMonitor database
+Open-Meteo is rate-limiting you. The pass stops and nothing retries until the next hourly tick. Pick a larger grid or a longer interval, or add an API key.
 
 ## Related Documentation
 
-- [Settings](/features/settings) - Configure solar panel parameters
-- [Telemetry Widgets](/features/telemetry-widgets) - Understanding telemetry graphs
-- [API Reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/API_REFERENCE.md) - Complete API documentation
-- [Database Schema](https://github.com/Yeraze/meshmonitor/blob/main/docs/database/SCHEMA.md) - Solar estimates table structure
-
-## Version History
-
-- **v2.14.0**: Added solar overlay to Telemetry Dashboard
-- **v2.13.0**: Initial solar monitoring integration with forecast.solar
-- **v2.12.0**: Added solar panel configuration UI in Settings
+- [Settings](/features/settings)
+- [Telemetry Widgets](/features/telemetry-widgets)
+- [Analysis & Reports](/features/analysis-reports)

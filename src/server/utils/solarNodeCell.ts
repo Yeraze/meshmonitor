@@ -9,6 +9,7 @@
  */
 import databaseService from '../../services/database.js';
 import { buildPositionFilter, buildMeshCorePositionFilter } from './positionVisibility.js';
+import { loadSourcePermissions, type SourcePermissions } from './sourcePermissions.js';
 import { checkNodeChannelAccess } from './nodeEnhancer.js';
 import { hasPermission } from '../auth/authMiddleware.js';
 import { isValidNodeNum } from '../constants/meshtastic.js';
@@ -23,6 +24,7 @@ export async function resolveNodeSolarCell(
   sourceId: string,
   nodeId: string,
   gridSize: number,
+  permissions?: SourcePermissions,
 ): Promise<string | null> {
   let pos: { latitude: number; longitude: number } | null;
 
@@ -30,7 +32,7 @@ export async function resolveNodeSolarCell(
     const publicKey = nodeId.toLowerCase();
     const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
     if (!node) return null;
-    const visible = await buildMeshCorePositionFilter(user ?? null, [sourceId], new Map([[sourceId, [node]]]));
+    const visible = await buildMeshCorePositionFilter(user ?? null, [sourceId], new Map([[sourceId, [node]]]), permissions);
     if (!visible({ sourceId, publicKey })) return null;
     pos = await solarPosition(node, sourceId);
   } else {
@@ -40,7 +42,7 @@ export async function resolveNodeSolarCell(
     if (!node) return null;
     // `hideFromMap` only removes the map marker; the node's telemetry graphs
     // (where this curve is drawn) still show, so drop that display gate here.
-    const visible = await buildPositionFilter(user ?? null, [sourceId], new Map([[sourceId, [{ ...node, hideFromMap: false }]]]));
+    const visible = await buildPositionFilter(user ?? null, [sourceId], new Map([[sourceId, [{ ...node, hideFromMap: false }]]]), permissions);
     if (!visible({ sourceId, nodeNum })) return null;
     pos = await solarPosition(node, sourceId);
   }
@@ -56,7 +58,7 @@ export type NodeIrradianceResult =
 const MAX_RANGE_S = 31 * 86_400;
 
 /**
- * Shared read for `/api/solar/irradiance` and `/api/v1/solar`: the node's
+ * Shared read for `/api/solar/irradiance` and `/api/v1/sources/:sourceId/solar`: the node's
  * telemetry-graph read gate (info or dashboard read, plus channel access on
  * the source), then the position gate in `resolveNodeSolarCell`.
  */
@@ -86,4 +88,48 @@ export async function getNodeIrradiance(
   const cellKey = await resolveNodeSolarCell(user, sourceId, nodeId, settings.gridSize);
   const points = cellKey ? await databaseService.solarIrradiance.getCellRange(cellKey, start, end) : [];
   return { status: 200, enabled: true, points };
+}
+
+/** A place a node can be read from: a source plus its `!hex` or public key. */
+export interface SolarNodeRef {
+  sourceId: string;
+  nodeId: string;
+}
+
+/**
+ * Hourly sunlight series for many nodes at once, for the Analysis solar
+ * report (#6523). Each node's candidates are tried in order until one gives a
+ * visible position (the same gate as `resolveNodeSolarCell`); a node with no
+ * visible position, or Solar Monitoring off, is simply absent from the map.
+ * Cells shared by several nodes are read once.
+ */
+export async function getSolarSeriesForNodes(
+  user: User | null | undefined,
+  refsByNode: Map<number, SolarNodeRef[]>,
+  start: number,
+  end: number,
+): Promise<Map<number, SolarIrradianceRow[]>> {
+  const out = new Map<number, SolarIrradianceRow[]>();
+  if (refsByNode.size === 0) return out;
+  const settings = await loadSolarSettings();
+  if (!settings.enabled) return out;
+
+  // The caller's grants, read once for every node instead of once per lookup.
+  const permissions = await loadSourcePermissions(user?.id != null ? user : null);
+  const byCell = new Map<string, Promise<SolarIrradianceRow[]>>();
+  for (const [nodeNum, refs] of refsByNode) {
+    let cellKey: string | null = null;
+    for (const ref of refs) {
+      cellKey = await resolveNodeSolarCell(user, ref.sourceId, ref.nodeId, settings.gridSize, permissions);
+      if (cellKey) break;
+    }
+    if (!cellKey) continue;
+    let rows = byCell.get(cellKey);
+    if (!rows) {
+      rows = databaseService.solarIrradiance.getCellRange(cellKey, start, end);
+      byCell.set(cellKey, rows);
+    }
+    out.set(nodeNum, await rows);
+  }
+  return out;
 }

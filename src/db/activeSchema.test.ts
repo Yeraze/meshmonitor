@@ -47,7 +47,7 @@ describe('buildActiveSchema', () => {
     expect(schema).toHaveProperty('sessions');           // from auth.ts
     expect(schema).toHaveProperty('systemBackupHistory');
     expect(schema).toHaveProperty('userMapPreferences');
-    expect(schema).toHaveProperty('solarEstimates');
+    expect(schema).not.toHaveProperty('solarEstimates');
     expect(schema).toHaveProperty('autoTracerouteNodes');
     expect(schema).toHaveProperty('autoTimeSyncNodes');
     expect(schema).toHaveProperty('autoTracerouteLog');

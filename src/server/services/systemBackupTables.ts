@@ -55,8 +55,9 @@ export const BACKUP_TABLES: string[] = [
   'user_notification_preferences',
   'auto_traceroute_nodes',
   'packet_log',
-  'solar_estimates',
-  // #6523: global Open-Meteo sunlight cache, keyed by grid cell.
+  // #6523: global Open-Meteo sunlight cache, keyed by grid cell. (The old
+  // forecast.solar `solar_estimates` table is dropped by migration 246; an old
+  // backup that still lists it is skipped with a warning on restore.)
   'solar_irradiance',
   'system_backup_history',
   // #2608: automated remote favorites management config + assignment ledger.

@@ -55,7 +55,6 @@ interface DashboardGridProps {
   baseUrl: string;
   globalTimeRange: [number, number] | null;
   globalMinTime: number | undefined;
-  solarEstimates: Map<number, number>;
   onRemoveFavorite: (nodeId: string, telemetryType: string) => void;
   onDataLoaded: (key: string, data: TelemetryData[]) => void;
 
@@ -99,7 +98,6 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
   baseUrl,
   globalTimeRange,
   globalMinTime,
-  solarEstimates,
   onRemoveFavorite,
   onDataLoaded,
   onDragEnd,
@@ -308,7 +306,6 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                   baseUrl={baseUrl}
                   globalTimeRange={globalTimeRange}
                   globalMinTime={globalMinTime}
-                  solarEstimates={solarEstimates}
                   onRemove={onRemoveFavorite}
                   onDataLoaded={onDataLoaded}
                   showSolar={getSolarVisibility ? getSolarVisibility(favorite.nodeId, favorite.telemetryType) : true}

@@ -19,7 +19,7 @@ import { MAX_MARKER_POINTS } from '../utils/telemetryChartDensity';
 
 vi.mock('../hooks/useTelemetry', () => ({
   useTelemetry: vi.fn(),
-  useSolarEstimates: () => ({ data: undefined }),
+  useSolarIrradiance: () => ({ data: undefined }),
 }));
 vi.mock('../hooks/useFavorites', () => ({
   useFavorites: () => ({ data: undefined }),
@@ -95,7 +95,6 @@ const renderDashboardChart = () =>
       baseUrl=""
       globalTimeRange={null}
       globalMinTime={undefined}
-      solarEstimates={new Map()}
       onRemove={vi.fn()}
     />
   );

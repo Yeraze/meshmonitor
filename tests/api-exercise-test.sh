@@ -498,8 +498,6 @@ check "GET /api/news/unread" "$(api GET /api/news/unread)" 200
 echo ""
 echo -e "${BLUE}=== Solar ===${NC}"
 
-check "GET /api/solar/estimates" "$(api GET /api/solar/estimates)" 200
-check "GET /api/solar/estimates/range" "$(api GET '/api/solar/estimates/range?start=0&end=9999999999999')" 200
 check "GET /api/solar/irradiance" "$(api GET "/api/solar/irradiance?sourceId=$SOURCE_ID&nodeId=!00000001&start=0&end=86400")" 200
 check "GET /api/solar/usage" "$(api GET /api/solar/usage)" 200
 
@@ -681,8 +679,8 @@ except Exception as e:
   # The legacy root shape (/api/v1/nodes etc.) was removed in 4.14 (#4117,
   # commit 6399407d); those paths now 404. Per-source resources live under
   # /api/v1/sources/{sourceId}/..., and `default` is the alias attachSource
-  # resolves to the oldest source. Only the version index, channel-database,
-  # solar and docs remain at the root.
+  # resolves to the oldest source. Only the version index, channel-database
+  # and docs remain at the root.
   V1S="/api/v1/sources/default"
 
   check_v1 "GET /api/v1" "/api/v1" "'version' in data or 'success' in data"
