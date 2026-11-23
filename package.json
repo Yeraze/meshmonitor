@@ -83,7 +83,7 @@
     "mqtt": "^5.16.1",
     "mysql2": "^3.24.6",
     "node-notifier": "^12.1.0",
-    "openid-client": "^6.8.9",
+    "openid-client": "^6.9.0",
     "otplib": "^13.6.0",
     "pg": "^8.23.1",
     "pngjs": "^7.0.0",
