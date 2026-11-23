@@ -92,7 +92,9 @@ router.get('/estimates/range', async (_req: Request, res: Response) => {
  * POST /api/solar/trigger
  * Manually trigger a solar estimate fetch (for testing/debugging)
  */
-router.post('/trigger', async (_req: Request, res: Response) => {
+// Legacy forecast.solar trigger, removed with forecast.solar in the #6523
+// follow-up. Admin-only meanwhile: it makes an outbound call.
+router.post('/trigger', requireAdmin(), async (_req: Request, res: Response) => {
   try {
     await solarMonitoringService.triggerFetch();
 

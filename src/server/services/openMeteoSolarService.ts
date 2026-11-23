@@ -153,6 +153,8 @@ export async function collectActivePositions(): Promise<Array<{ latitude: number
 
   // MeshCore lastHeard is milliseconds (see meshcore_nodes.firstHeard).
   const cutoffMs = Date.now() - ACTIVE_NODE_DAYS * 86_400_000;
+  // Cross-source on purpose (like ALL_SOURCES above): one global weather pass;
+  // nothing read here leaves the server except rounded cell centres.
   const mcNodes = await databaseService.meshcore.getAllNodes();
   for (const n of mcNodes) {
     const heard = Number(n.lastHeard ?? 0);

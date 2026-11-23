@@ -27,13 +27,18 @@ export class SolarIrradianceRepository extends BaseRepository {
   async replaceCellRows(cellKey: string, rows: SolarIrradianceRow[], fetchedAt: number): Promise<void> {
     if (rows.length === 0) return;
     const { solarIrradiance } = this.tables;
-    const timestamps = rows.map(r => r.timestamp);
+    let first = Infinity;
+    let last = -Infinity;
+    for (const r of rows) {
+      if (r.timestamp < first) first = r.timestamp;
+      if (r.timestamp > last) last = r.timestamp;
+    }
     await this.db
       .delete(solarIrradiance)
       .where(and(
         eq(solarIrradiance.cellKey, cellKey),
-        gte(solarIrradiance.timestamp, Math.min(...timestamps)),
-        lte(solarIrradiance.timestamp, Math.max(...timestamps)),
+        gte(solarIrradiance.timestamp, first),
+        lte(solarIrradiance.timestamp, last),
       ));
     for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
       await this.db.insert(solarIrradiance).values(
