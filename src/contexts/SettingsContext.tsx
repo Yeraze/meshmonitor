@@ -224,10 +224,6 @@ interface SettingsContextType {
   setActiveMapStyleId: (id: string | null) => Promise<void>;
   loadMapStyles: () => Promise<void>;
   solarMonitoringEnabled: boolean;
-  solarMonitoringLatitude: number;
-  solarMonitoringLongitude: number;
-  solarMonitoringAzimuth: number;
-  solarMonitoringDeclination: number;
   enableAudioNotifications: boolean;
   /** Global toggle: fetch & render OpenGraph link preview cards for URLs in messages. */
   linkPreviewsEnabled: boolean;
@@ -293,10 +289,6 @@ interface SettingsContextType {
   updateCustomTileset: (id: string, updates: Partial<Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   deleteCustomTileset: (id: string) => Promise<void>;
   setSolarMonitoringEnabled: (enabled: boolean) => void;
-  setSolarMonitoringLatitude: (latitude: number) => void;
-  setSolarMonitoringLongitude: (longitude: number) => void;
-  setSolarMonitoringAzimuth: (azimuth: number) => void;
-  setSolarMonitoringDeclination: (declination: number) => void;
   setEnableAudioNotifications: (enabled: boolean) => void;
   setLinkPreviewsEnabled: (enabled: boolean) => void;
   setDiscardInvalidPositions: (enabled: boolean) => void;
@@ -706,10 +698,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   // Solar monitoring settings are database-only, not persisted in localStorage
   const [solarMonitoringEnabled, setSolarMonitoringEnabledState] = useState<boolean>(false);
-  const [solarMonitoringLatitude, setSolarMonitoringLatitudeState] = useState<number>(0);
-  const [solarMonitoringLongitude, setSolarMonitoringLongitudeState] = useState<number>(0);
-  const [solarMonitoringAzimuth, setSolarMonitoringAzimuthState] = useState<number>(0);
-  const [solarMonitoringDeclination, setSolarMonitoringDeclinationState] = useState<number>(30);
 
   // Audio notification setting - localStorage only
   const [enableAudioNotifications, setEnableAudioNotificationsState] = useState<boolean>(() => {
@@ -1225,22 +1213,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // Solar monitoring setters update state only - values are persisted server-side
   const setSolarMonitoringEnabled = React.useCallback((enabled: boolean) => {
     setSolarMonitoringEnabledState(enabled);
-  }, []);
-
-  const setSolarMonitoringLatitude = React.useCallback((latitude: number) => {
-    setSolarMonitoringLatitudeState(latitude);
-  }, []);
-
-  const setSolarMonitoringLongitude = React.useCallback((longitude: number) => {
-    setSolarMonitoringLongitudeState(longitude);
-  }, []);
-
-  const setSolarMonitoringAzimuth = React.useCallback((azimuth: number) => {
-    setSolarMonitoringAzimuthState(azimuth);
-  }, []);
-
-  const setSolarMonitoringDeclination = React.useCallback((declination: number) => {
-    setSolarMonitoringDeclinationState(declination);
   }, []);
 
   const setEnableAudioNotifications = React.useCallback((enabled: boolean) => {
@@ -2034,34 +2006,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             setSolarMonitoringEnabledState(enabled);
           }
 
-          if (settings.solarMonitoringLatitude !== undefined) {
-            const latitude = parseFloat(settings.solarMonitoringLatitude);
-            if (!isNaN(latitude)) {
-              setSolarMonitoringLatitudeState(latitude);
-            }
-          }
-
-          if (settings.solarMonitoringLongitude !== undefined) {
-            const longitude = parseFloat(settings.solarMonitoringLongitude);
-            if (!isNaN(longitude)) {
-              setSolarMonitoringLongitudeState(longitude);
-            }
-          }
-
-          if (settings.solarMonitoringAzimuth !== undefined) {
-            const azimuth = parseInt(settings.solarMonitoringAzimuth);
-            if (!isNaN(azimuth)) {
-              setSolarMonitoringAzimuthState(azimuth);
-            }
-          }
-
-          if (settings.solarMonitoringDeclination !== undefined) {
-            const declination = parseInt(settings.solarMonitoringDeclination);
-            if (!isNaN(declination)) {
-              setSolarMonitoringDeclinationState(declination);
-            }
-          }
-
           // Load custom tilesets (database-only, no localStorage)
           if (settings.customTilesets) {
             try {
@@ -2240,10 +2184,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     noIndexEnabled,
     meshcoreChannelRetryEnabled,
     solarMonitoringEnabled,
-    solarMonitoringLatitude,
-    solarMonitoringLongitude,
-    solarMonitoringAzimuth,
-    solarMonitoringDeclination,
     enableAudioNotifications,
     nodeDimmingEnabled,
     nodeDimmingStartHours,
@@ -2299,10 +2239,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setNoIndexEnabled,
     setMeshcoreChannelRetryEnabled,
     setSolarMonitoringEnabled,
-    setSolarMonitoringLatitude,
-    setSolarMonitoringLongitude,
-    setSolarMonitoringAzimuth,
-    setSolarMonitoringDeclination,
     setEnableAudioNotifications,
     mutedChannels,
     mutedDMs,
@@ -2372,10 +2308,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     noIndexEnabled,
     meshcoreChannelRetryEnabled,
     solarMonitoringEnabled,
-    solarMonitoringLatitude,
-    solarMonitoringLongitude,
-    solarMonitoringAzimuth,
-    solarMonitoringDeclination,
     enableAudioNotifications,
     nodeDimmingEnabled,
     nodeDimmingStartHours,
@@ -2430,10 +2362,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setNoIndexEnabled,
     setMeshcoreChannelRetryEnabled,
     setSolarMonitoringEnabled,
-    setSolarMonitoringLatitude,
-    setSolarMonitoringLongitude,
-    setSolarMonitoringAzimuth,
-    setSolarMonitoringDeclination,
     setEnableAudioNotifications,
     mutedChannels,
     mutedDMs,
@@ -2557,10 +2485,6 @@ export const useSolarSettings = () => {
   const s = useSettings();
   return {
     solarMonitoringEnabled: s.solarMonitoringEnabled, setSolarMonitoringEnabled: s.setSolarMonitoringEnabled,
-    solarMonitoringLatitude: s.solarMonitoringLatitude, setSolarMonitoringLatitude: s.setSolarMonitoringLatitude,
-    solarMonitoringLongitude: s.solarMonitoringLongitude, setSolarMonitoringLongitude: s.setSolarMonitoringLongitude,
-    solarMonitoringAzimuth: s.solarMonitoringAzimuth, setSolarMonitoringAzimuth: s.setSolarMonitoringAzimuth,
-    solarMonitoringDeclination: s.solarMonitoringDeclination, setSolarMonitoringDeclination: s.setSolarMonitoringDeclination,
   };
 };
 

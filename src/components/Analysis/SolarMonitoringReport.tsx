@@ -227,8 +227,8 @@ const SolarMonitoringReport: React.FC = () => {
             }}
             disabled={forecastLoading}
             title={t(
-              'analysis.solar_monitoring.forecast_help',
-              'Project battery state across the next several days using forecast.solar production estimates.',
+              'analysis.solar_monitoring.forecast_sunlight_help',
+              "Project battery state across the next few days from the Open-Meteo sunlight forecast at each node's location.",
             )}
           >
             {forecastLoading

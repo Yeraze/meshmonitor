@@ -52,7 +52,7 @@ export interface ChartData {
   timestamp: number;
   value: number | null; // null for solar-only data points
   time: string;
-  solarEstimate?: number; // Solar power estimate in watt-hours
+  solarEstimate?: number; // Open-Meteo sunlight at the node's grid cell, W/m² (#6523)
 }
 
 /**

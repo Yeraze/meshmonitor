@@ -186,10 +186,6 @@ export const VALID_SETTINGS_KEYS = [
   // getSettingForSource only — see src/server/utils/mqttConsentVisibility.ts.
   'anonHideMqttNoConsent',
   'solarMonitoringEnabled',
-  'solarMonitoringLatitude',
-  'solarMonitoringLongitude',
-  'solarMonitoringAzimuth',
-  'solarMonitoringDeclination',
   // Open-Meteo per-node sunlight (#6523). Grid size in degrees, refresh in
   // hours; the API key (paid plans only, blank = free tier) is server-only via
   // the `_token` suffix.
@@ -1108,16 +1104,11 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'adsb_api_token',                         // ", secret via the _token pattern
   'adsb_opensky_client_id',                 // " (#5877), secret via SECRET_SETTINGS_KEYS
   'adsb_opensky_client_secret',             // " (#5877), secret via the _secret pattern
-  // Solar Monitoring (#6258 D5): one install-wide forecast, read via bare
-  // getSetting by solarMonitoringService; edited in Global Settings only.
+  // Solar Monitoring (#6258 D5, #6523): read via bare getSetting by
+  // openMeteoSolarService, which covers every source's nodes; edited in
+  // Global Settings only. Grid size in degrees, refresh in hours; the API key
+  // (paid plans only, blank = free tier) is server-only via the `_token` suffix.
   'solarMonitoringEnabled',
-  'solarMonitoringLatitude',
-  'solarMonitoringLongitude',
-  'solarMonitoringAzimuth',
-  'solarMonitoringDeclination',
-  // Open-Meteo per-node sunlight (#6523). Grid size in degrees, refresh in
-  // hours; the API key (paid plans only, blank = free tier) is server-only via
-  // the `_token` suffix.
   'solarMonitoringGridSize',
   'solarMonitoringRefreshHours',
   'solar_open_meteo_api_token',

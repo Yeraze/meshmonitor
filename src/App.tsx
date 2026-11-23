@@ -299,10 +299,6 @@ function App() {
     theme,
     language,
     solarMonitoringEnabled,
-    solarMonitoringLatitude,
-    solarMonitoringLongitude,
-    solarMonitoringAzimuth,
-    solarMonitoringDeclination,
     tapbackEmojis,
     setMaxNodeAgeHours,
     setInactiveNodeThresholdHours,
@@ -325,10 +321,6 @@ function App() {
     setIconStyle,
     setLanguage,
     setSolarMonitoringEnabled,
-    setSolarMonitoringLatitude,
-    setSolarMonitoringLongitude,
-    setSolarMonitoringAzimuth,
-    setSolarMonitoringDeclination,
     overlayColors: schemeColors,
     // showIncompleteNodes moved here from UIContext (#4412 Phase 3 WP3) —
     // still needed to pass down to MessagesTab below.
@@ -3851,12 +3843,6 @@ function App() {
                     theme={theme}
                     language={language}
                     solarMonitoringEnabled={solarMonitoringEnabled}
-                    solarMonitoringLatitude={solarMonitoringLatitude}
-                    solarMonitoringLongitude={solarMonitoringLongitude}
-                    solarMonitoringAzimuth={solarMonitoringAzimuth}
-                    solarMonitoringDeclination={solarMonitoringDeclination}
-                    currentNodeId={currentNodeId}
-                    nodes={nodes}
                     baseUrl={baseUrl}
                     onMaxNodeAgeChange={setMaxNodeAgeHours}
                     onInactiveNodeThresholdHoursChange={setInactiveNodeThresholdHours}
@@ -3878,10 +3864,6 @@ function App() {
                     onIconStyleChange={setIconStyle}
                     onLanguageChange={setLanguage}
                     onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
-                    onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
-                    onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}
-                    onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
-                    onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
                   />
                   )}
                 </SaveBarGroup>

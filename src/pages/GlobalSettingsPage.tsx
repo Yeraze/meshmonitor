@@ -45,10 +45,6 @@ function GlobalSettingsInner() {
     theme,
     language,
     solarMonitoringEnabled,
-    solarMonitoringLatitude,
-    solarMonitoringLongitude,
-    solarMonitoringAzimuth,
-    solarMonitoringDeclination,
     setMaxNodeAgeHours,
     setInactiveNodeThresholdHours,
     setInactiveNodeCheckIntervalMinutes,
@@ -69,10 +65,6 @@ function GlobalSettingsInner() {
     setIconStyle,
     setLanguage,
     setSolarMonitoringEnabled,
-    setSolarMonitoringLatitude,
-    setSolarMonitoringLongitude,
-    setSolarMonitoringAzimuth,
-    setSolarMonitoringDeclination,
   } = useSettings();
 
   return (
@@ -116,12 +108,6 @@ function GlobalSettingsInner() {
         theme={theme}
         language={language}
         solarMonitoringEnabled={solarMonitoringEnabled}
-        solarMonitoringLatitude={solarMonitoringLatitude}
-        solarMonitoringLongitude={solarMonitoringLongitude}
-        solarMonitoringAzimuth={solarMonitoringAzimuth}
-        solarMonitoringDeclination={solarMonitoringDeclination}
-        currentNodeId=""
-        nodes={[]}
         baseUrl={appBasename}
         onMaxNodeAgeChange={setMaxNodeAgeHours}
         onInactiveNodeThresholdHoursChange={setInactiveNodeThresholdHours}
@@ -143,10 +129,6 @@ function GlobalSettingsInner() {
         onIconStyleChange={setIconStyle}
         onLanguageChange={setLanguage}
         onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
-        onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
-        onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}
-        onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
-        onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
       />
       </SaveBarGroup>
     </div>
