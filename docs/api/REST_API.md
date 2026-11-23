@@ -1755,6 +1755,49 @@ Enable or disable Apprise notifications system-wide.
 
 ---
 
+## Solar Monitoring
+
+Per-node hourly sunlight from Open-Meteo (#6523). See [Solar Monitoring](../features/solar-monitoring.md).
+
+#### GET /api/solar/irradiance
+
+Hourly sunlight (W/m²) and cloud cover (%) at one node's grid cell. Needs the same read access as the node's telemetry, and a viewer who cannot see the node's position gets no points.
+
+**Query parameters:** `sourceId` (required), `nodeId` (`!hex` for Meshtastic, 64-hex public key for MeshCore), `start` and `end` (Unix seconds, at most 31 days apart).
+
+```json
+{
+  "success": true,
+  "data": {
+    "enabled": true,
+    "points": [
+      { "timestamp": 1704067200, "shortwaveRadiation": 420, "cloudCover": 15 }
+    ]
+  }
+}
+```
+
+`enabled` is `false` when Solar Monitoring is off. The v1 equivalent is `GET /api/v1/solar`.
+
+#### GET /api/solar/usage
+
+Admin only. Active nodes (heard in the last 7 days) and distinct cells per grid size, for the Settings call estimate.
+
+```json
+{
+  "success": true,
+  "data": {
+    "activeNodes": 1200,
+    "freeDailyBudget": 9000,
+    "cellsByGrid": { "0.05": 1100, "0.1": 900, "0.25": 400, "0.5": 120, "1": 30 }
+  }
+}
+```
+
+#### POST /api/solar/refresh
+
+Admin only. Starts one refresh pass and returns `{ "success": true, "data": { "started": true } }` at once. Cells refreshed within the interval are skipped, and the free-tier daily budget still applies.
+
 ## Analysis & Reports
 
 Cross-source analytical endpoints used by the **Analysis & Reports** workspace at `/reports`. All handlers resolve the requesting user's permitted source IDs (admin = all enabled; otherwise filtered via `nodes:read`) and intersect with the optional `sources` query parameter. Data is publicly routable but always filtered by permission.
