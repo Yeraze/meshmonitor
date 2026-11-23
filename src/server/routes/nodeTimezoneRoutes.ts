@@ -36,10 +36,11 @@ function validNodeId(nodeId: unknown): nodeId is string {
  * its identity row first, as the Position Override route does, so the
  * override does not land on a nameless stub. Unknown keys stay unknown (404).
  */
-async function ensureMeshCoreRow(sourceId: string, publicKey: string): Promise<void> {
+async function ensureMeshCoreRow(sourceId: string, publicKey: string, asSent: string): Promise<void> {
   if (await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId)) return;
   const mgr = sourceManagerRegistry.getManager(sourceId);
-  const contact = mgr && isMeshCoreManager(mgr) ? mgr.getContact(publicKey) : undefined;
+  // The live contact map is keyed exactly as the radio reported the key.
+  const contact = mgr && isMeshCoreManager(mgr) ? mgr.getContact(publicKey) ?? mgr.getContact(asSent) : undefined;
   if (!contact) return;
   await databaseService.meshcore.upsertNode(
     {
@@ -88,7 +89,7 @@ router.put(
       let updated: boolean;
       if (isMeshCoreNodeId(nodeId)) {
         const publicKey = nodeId.toLowerCase();
-        await ensureMeshCoreRow(sourceId, publicKey);
+        await ensureMeshCoreRow(sourceId, publicKey, nodeId);
         updated = await databaseService.setMeshCoreNodeTimezoneOverrideAsync(sourceId, publicKey, zone);
       } else {
         const nodeNum = parseInt(nodeId.replace('!', ''), 16);

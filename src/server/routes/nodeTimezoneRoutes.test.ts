@@ -222,6 +222,34 @@ describe('node timezone routes', () => {
     });
   });
 
+  describe('MeshCore contact known only to the live device list', () => {
+    const LIVE_KEY = 'ef'.repeat(32);
+    beforeEach(async () => {
+      await sourceManagerRegistry.addManager({
+        sourceId: harness.sourceA,
+        sourceType: 'meshcore',
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'mc', sourceType: 'meshcore', connected: true }),
+        getContact: vi.fn((key: string) => (key === LIVE_KEY ? { publicKey: LIVE_KEY, advName: 'Live Only', advType: 1, lastSeen: Date.now() } : undefined)),
+      } as unknown as ISourceManager);
+    });
+    afterEach(async () => {
+      await sourceManagerRegistry.removeManager(harness.sourceA);
+    });
+
+    it('gets its identity row first, like the Position Override route; an unknown key is 404', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      const res = await admin.put('/nodes/timezone').send({ sourceId: harness.sourceA, nodeId: LIVE_KEY, timeZone: 'Asia/Tokyo' });
+      expect(res.status).toBe(200);
+      const row = await databaseService.meshcore.getNodeByPublicKeyAndSource(LIVE_KEY, harness.sourceA);
+      expect(row?.name).toBe('Live Only');
+      expect(row?.timezoneOverride).toBe('Asia/Tokyo');
+      const unknown = await admin.put('/nodes/timezone').send({ sourceId: harness.sourceA, nodeId: '12'.repeat(32), timeZone: 'Asia/Tokyo' });
+      expect(unknown.status).toBe(404);
+    });
+  });
+
   describe('node list (GET /nodes)', () => {
     beforeEach(async () => {
       await sourceManagerRegistry.addManager(fakeManager(harness.sourceA));

@@ -87,6 +87,18 @@ describe('applyMeshCorePositionOverride', () => {
   });
 });
 
+describe('applyMeshCorePositionOverride drops the Timezone Override (#6523)', () => {
+  const RAW = { ...ROW, timezoneOverride: 'America/Denver' };
+  it.each([
+    ['no override', undefined, false],
+    ['a public override', PUBLIC_OV, false],
+    ['a private override, unseen', PRIVATE_OV, false],
+    ['a private override, seen', PRIVATE_OV, true],
+  ] as const)('with %s', (_label, ov, canViewPrivate) => {
+    expect(applyMeshCorePositionOverride(RAW, ov, canViewPrivate)).not.toHaveProperty('timezoneOverride');
+  });
+});
+
 describe('stripPositions removes the override fields', () => {
   it('a caller without viewOnMap gets no override data', () => {
     const applied = applyMeshCorePositionOverride(ROW, PUBLIC_OV, true);
