@@ -1,0 +1,12 @@
+/* Open-Meteo attribution (CC BY 4.0 requires credit), #6523 */
+.credit {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  text-align: right;
+  padding: 0 0.5rem;
+}
+
+.credit a {
+  color: inherit;
+  text-decoration: underline;
+}

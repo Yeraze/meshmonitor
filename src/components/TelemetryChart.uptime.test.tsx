@@ -20,6 +20,7 @@ import { useTelemetry } from '../hooks/useTelemetry';
 
 vi.mock('../hooks/useTelemetry', () => ({
   useTelemetry: vi.fn(),
+  useSolarIrradiance: () => ({ data: undefined }),
 }));
 
 let widgetMode = 'numeric';
@@ -114,7 +115,6 @@ const renderChart = (telemetryType: string) =>
       baseUrl=""
       globalTimeRange={null}
       globalMinTime={undefined}
-      solarEstimates={new Map()}
       onRemove={vi.fn()}
     />
   );
@@ -211,8 +211,8 @@ describe('TelemetryChart uptime humanization (#3261)', () => {
     ) => number | string;
     expect(typeof formatter).toBe('function');
     expect(formatter(UPTIME_SECONDS, 'value')).toBe('17d 20h');
-    // Solar overlay stays in watt-hours.
-    expect(formatter(5.5, 'solarEstimate')).toBe(5.5);
+    // Sunlight overlay reads as W/m² under its own label (#6523).
+    expect(formatter(5.5, 'solarEstimate')).toEqual(['6 W/m²', 'solar.tooltip_label']);
   });
 
   it('chart mode leaves non-uptime metrics without a Y-axis tickFormatter', () => {
@@ -223,10 +223,10 @@ describe('TelemetryChart uptime humanization (#3261)', () => {
     const leftAxis = captured.yAxis.find(p => p.yAxisId === 'left');
     expect(leftAxis).toBeTruthy();
     expect(leftAxis!.tickFormatter).toBeUndefined();
-    // The tooltip rounds plain readings (bucket averages) and leaves the
-    // solar overlay alone (#4173 review L20).
+    // The tooltip rounds plain readings (bucket averages, #4173 review L20)
+    // and shows the sunlight overlay in W/m² (#6523).
     const fmt = captured.tooltip[0]?.formatter as (v: unknown, n: string) => unknown;
     expect(fmt(3.9883333333333333, 'value')).toBe('3.99');
-    expect(fmt(12.3456, 'solarEstimate')).toBe(12.3456);
+    expect(fmt(420.4, 'solarEstimate')).toEqual(['420 W/m²', 'solar.tooltip_label']);
   });
 });

@@ -116,7 +116,7 @@ describe('TelemetryGraphs Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock both settings fetch (for favorites), solar estimates, CSRF token, and telemetry fetch
+    // Mock both settings fetch (for favorites), solar irradiance, CSRF token, and telemetry fetch
     (global.fetch as Mock).mockImplementation((url: string) => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({
@@ -124,7 +124,7 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({}), // No favorites by default
         });
       }
-      if (url.includes('/api/solar/estimates')) {
+      if (url.includes('/api/solar/irradiance')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -195,7 +195,7 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({}), // No favorites
         });
       }
-      if (url.includes('/api/solar/estimates')) {
+      if (url.includes('/api/solar/irradiance')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -229,7 +229,7 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({}), // No favorites
         });
       }
-      if (url.includes('/api/solar/estimates')) {
+      if (url.includes('/api/solar/irradiance')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -311,7 +311,7 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({}),
         });
       }
-      if (url.includes('/api/solar/estimates')) {
+      if (url.includes('/api/solar/irradiance')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -356,7 +356,7 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({}),
         });
       }
-      if (url.includes('/api/solar/estimates')) {
+      if (url.includes('/api/solar/irradiance')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -405,7 +405,7 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({}),
         });
       }
-      if (url.includes('/api/solar/estimates')) {
+      if (url.includes('/api/solar/irradiance')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -449,7 +449,7 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({}),
         });
       }
-      if (url.includes('/api/solar/estimates')) {
+      if (url.includes('/api/solar/irradiance')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -494,7 +494,7 @@ describe('TelemetryGraphs Component', () => {
           json: async () => ({}),
         });
       }
-      if (url.includes('/api/solar/estimates')) {
+      if (url.includes('/api/solar/irradiance')) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -552,7 +552,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({}),
           });
         }
-        if (url.includes('/api/solar/estimates')) {
+        if (url.includes('/api/solar/irradiance')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
@@ -596,7 +596,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({}),
           });
         }
-        if (url.includes('/api/solar/estimates')) {
+        if (url.includes('/api/solar/irradiance')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
@@ -639,7 +639,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({}),
           });
         }
-        if (url.includes('/api/solar/estimates')) {
+        if (url.includes('/api/solar/irradiance')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
@@ -691,7 +691,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({}),
           });
         }
-        if (url.includes('/api/solar/estimates')) {
+        if (url.includes('/api/solar/irradiance')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
@@ -739,7 +739,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({}),
           });
         }
-        if (url.includes('/api/solar/estimates')) {
+        if (url.includes('/api/solar/irradiance')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
@@ -792,8 +792,8 @@ describe('TelemetryGraphs Component', () => {
             }),
           });
         }
-        if (url.includes('/api/solar/estimates')) {
-          return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+        if (url.includes('/api/solar/irradiance')) {
+          return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { enabled: false, points: [] } }) });
         }
         if (url.includes('/api/csrf-token')) {
           return Promise.resolve({ ok: true, json: async () => ({ token: 'test-csrf-token' }) });
@@ -836,8 +836,8 @@ describe('TelemetryGraphs Component', () => {
         if (url.includes('/api/settings')) {
           return Promise.resolve({ ok: true, json: async () => ({}) });
         }
-        if (url.includes('/api/solar/estimates')) {
-          return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+        if (url.includes('/api/solar/irradiance')) {
+          return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { enabled: false, points: [] } }) });
         }
         if (url.includes('/api/csrf-token')) {
           return Promise.resolve({ ok: true, json: async () => ({ token: 'test-csrf-token' }) });
@@ -891,7 +891,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({}),
           });
         }
-        if (url.includes('/api/solar/estimates')) {
+        if (url.includes('/api/solar/irradiance')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
@@ -943,7 +943,7 @@ describe('TelemetryGraphs Component', () => {
             json: async () => ({}),
           });
         }
-        if (url.includes('/api/solar/estimates')) {
+        if (url.includes('/api/solar/irradiance')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
@@ -1056,7 +1056,7 @@ describe('TelemetryGraphs Component', () => {
       window.localStorage.setItem('deviceInfoTelemetryHours', '12');
       (global.fetch as Mock).mockImplementation((url: string) => {
         if (url.includes('/api/settings')) return Promise.resolve({ ok: true, json: async () => ({}) });
-        if (url.includes('/api/solar/estimates')) return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+        if (url.includes('/api/solar/irradiance')) return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { enabled: false, points: [] } }) });
         if (url.includes('/api/csrf-token')) return Promise.resolve({ ok: true, json: async () => ({ token: 't' }) });
         return Promise.resolve({ ok: true, json: async () => [] });
       });
@@ -1078,7 +1078,7 @@ describe('TelemetryGraphs Component', () => {
     it('shows only the empty message when the selector is off', async () => {
       (global.fetch as Mock).mockImplementation((url: string) => {
         if (url.includes('/api/settings')) return Promise.resolve({ ok: true, json: async () => ({}) });
-        if (url.includes('/api/solar/estimates')) return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+        if (url.includes('/api/solar/irradiance')) return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { enabled: false, points: [] } }) });
         if (url.includes('/api/csrf-token')) return Promise.resolve({ ok: true, json: async () => ({ token: 't' }) });
         return Promise.resolve({ ok: true, json: async () => [] });
       });
@@ -1112,8 +1112,8 @@ describe('TelemetryGraphs Component', () => {
       if (url.includes('/api/settings')) {
         return Promise.resolve({ ok: true, json: async () => ({}) });
       }
-      if (url.includes('/api/solar/estimates')) {
-        return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+      if (url.includes('/api/solar/irradiance')) {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { enabled: false, points: [] } }) });
       }
       if (url.includes('/api/csrf-token')) {
         return Promise.resolve({ ok: true, json: async () => ({ token: 'test-csrf-token' }) });

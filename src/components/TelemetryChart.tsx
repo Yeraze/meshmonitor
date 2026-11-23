@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useTelemetry, type TelemetryData } from '../hooks/useTelemetry';
+import { useTelemetry, useSolarIrradiance, type TelemetryData } from '../hooks/useTelemetry';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
 import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
 import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
@@ -35,6 +35,8 @@ import { downloadTextFile } from '../utils/nodeExport';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { UiIcon } from './icons';
+import SolarCredit from './SolarCredit';
+import { formatSunlight } from '../utils/solarGrid';
 import DeviceCounterNote from './DeviceCounterNote';
 import { isDeviceCounterType } from '../utils/deviceCounters';
 import { chartYDomain, hasFixedYBound, type ChartYRange } from '../utils/chartYRange';
@@ -55,7 +57,6 @@ interface TelemetryChartProps {
   baseUrl: string;
   globalTimeRange: [number, number] | null;
   globalMinTime: number | undefined;
-  solarEstimates: Map<number, number>;
   onRemove: (nodeId: string, telemetryType: string) => void;
   onDataLoaded?: (key: string, data: TelemetryData[]) => void;
   showSolar?: boolean;
@@ -350,7 +351,7 @@ const formatNodeName = (node: TelemetryNodeInfo | undefined, fallbackId: string)
 };
 
 /**
- * Prepare chart data with solar estimates overlay
+ * Prepare chart data with the sunlight (W/m²) overlay
  */
 const prepareChartData = (
   data: TelemetryData[],
@@ -383,17 +384,17 @@ const prepareChartData = (
   if (solarEstimates.size > 0 && effectiveMinTime !== Infinity) {
     const now = Date.now() + 5 * 60 * 1000; // 5-minute buffer
 
-    solarEstimates.forEach((wattHours, timestamp) => {
+    solarEstimates.forEach((wattsPerM2, timestamp) => {
       if (timestamp < effectiveMinTime || timestamp > now) return;
 
       if (allTimestamps.has(timestamp)) {
-        allTimestamps.get(timestamp)!.solarEstimate = wattHours;
+        allTimestamps.get(timestamp)!.solarEstimate = wattsPerM2;
       } else {
         allTimestamps.set(timestamp, {
           timestamp,
           value: null,
           time: formatTime(new Date(timestamp), timeFormat),
-          solarEstimate: wattHours,
+          solarEstimate: wattsPerM2,
         });
       }
     });
@@ -423,6 +424,8 @@ const prepareChartData = (
   return dataWithGaps;
 };
 
+const EMPTY_SOLAR = new Map<number, number>();
+
 const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
   ({
     id,
@@ -433,7 +436,6 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     baseUrl,
     globalTimeRange,
     globalMinTime,
-    solarEstimates,
     onRemove,
     onDataLoaded,
     showSolar = true,
@@ -467,6 +469,18 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
       baseUrl,
       sourceId,
       enabled: true,
+    });
+
+    // This node's Open-Meteo sunlight curve (W/m², #6523). Same source as
+    // the telemetry read; no request while the overlay is off.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { data: solarEstimates = EMPTY_SOLAR } = useSolarIrradiance({
+      baseUrl,
+      sourceId,
+      nodeId: favorite.nodeId,
+      startTimestamp: nowSec - Math.round(hours * 3600),
+      endTimestamp: nowSec,
+      enabled: solarMonitoringEnabled && showSolar,
     });
 
     const isPaxcounterCombined = favorite.telemetryType === 'paxcounterWifi';
@@ -822,6 +836,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             <div className="dashboard-no-data">{t('dashboard.no_chart_data')}</div>
           )
         ) : (
+          <>
           <ResponsiveContainer width="100%" height={200}>
             <ComposedChart data={scaledChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
@@ -849,11 +864,13 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 }}
                 labelStyle={{ color: '#cdd6f4' }}
                 formatter={(value, name) =>
-                  // Leave the solar overlay (watt-hours) untouched; round the
-                  // rest (bucket averages are long floats, #4173 review L20).
-                  name === 'solarEstimate' || typeof value !== 'number'
-                    ? value
-                    : (uptimeFormatter ?? formatTelemetryNumber)(value)
+                  // Sunlight overlay reads as W/m² (#6523); round the rest
+                  // (bucket averages are long floats, #4173 review L20).
+                  name === 'solarEstimate'
+                    ? [formatSunlight(value), t('solar.tooltip_label')]
+                    : typeof value !== 'number'
+                      ? value
+                      : (uptimeFormatter ?? formatTelemetryNumber)(value)
                 }
                 labelFormatter={value => {
                   const date = new Date(value);
@@ -922,6 +939,8 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               )}
             </ComposedChart>
           </ResponsiveContainer>
+          {showSolar && solarEstimates.size > 0 && <SolarCredit />}
+          </>
         )}
       </div>
     );

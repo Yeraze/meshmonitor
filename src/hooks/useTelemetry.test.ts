@@ -10,8 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
 import {
   useTelemetry,
-  useSolarEstimates,
-  useSolarEstimatesLatest,
+  useSolarIrradiance,
   useNodeVoltages,
   type TelemetryData,
 } from './useTelemetry';
@@ -179,238 +178,109 @@ describe('useTelemetry hooks', () => {
     });
   });
 
-  describe('useSolarEstimates', () => {
-    const startTimestamp = 1700000000;
-    const endTimestamp = 1700086400;
+  describe('useSolarIrradiance', () => {
+    // Already hour-aligned, so the hook sends them unchanged.
+    const startTimestamp = 1699999200; // 21:00 UTC
+    const endTimestamp = 1700085600;
+    const base = { sourceId: 'src-a', nodeId: '!abcd1234', startTimestamp, endTimestamp };
 
-    it('should fetch solar estimates and convert timestamps to milliseconds', async () => {
-      const mockResponse = {
-        estimates: [
-          { timestamp: 1700000000, wattHours: 10.5 },
-          { timestamp: 1700003600, wattHours: 15.2 },
-        ],
-      };
-
+    it('maps points to ms timestamps and skips null sunlight', async () => {
       (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
-        json: async () => mockResponse,
+        json: async () => ({
+          success: true,
+          data: {
+            enabled: true,
+            points: [
+              { timestamp: 1700000000, shortwaveRadiation: 420, cloudCover: 10 },
+              { timestamp: 1700003600, shortwaveRadiation: null, cloudCover: 80 },
+              { timestamp: 1700007200, shortwaveRadiation: 0, cloudCover: null },
+            ],
+          },
+        }),
       });
 
       const { wrapper } = createWrapper();
-      const { result } = renderHook(
-        () => useSolarEstimates({ startTimestamp, endTimestamp }),
-        { wrapper }
-      );
-
+      const { result } = renderHook(() => useSolarIrradiance(base), { wrapper });
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       const data = result.current.data as Map<number, number>;
-      expect(data).toBeInstanceOf(Map);
       expect(data.size).toBe(2);
-
-      // Timestamps should be converted from seconds to milliseconds
-      expect(data.get(1700000000 * 1000)).toBe(10.5);
-      expect(data.get(1700003600 * 1000)).toBe(15.2);
+      expect(data.get(1700000000 * 1000)).toBe(420);
+      expect(data.has(1700003600 * 1000)).toBe(false);
+      expect(data.get(1700007200 * 1000)).toBe(0);
     });
 
-    it('should return empty Map when response is not ok', async () => {
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-      });
-
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(
-        () => useSolarEstimates({ startTimestamp, endTimestamp }),
-        { wrapper }
-      );
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-      expect(result.current.data).toBeInstanceOf(Map);
-      expect(result.current.data?.size).toBe(0);
-    });
-
-    it('should return empty Map when estimates array is empty', async () => {
+    it('calls the irradiance route with source, node and window', async () => {
       (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ estimates: [] }),
+        json: async () => ({ success: true, data: { enabled: false, points: [] } }),
       });
 
       const { wrapper } = createWrapper();
-      const { result } = renderHook(
-        () => useSolarEstimates({ startTimestamp, endTimestamp }),
-        { wrapper }
-      );
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-      expect(result.current.data?.size).toBe(0);
-    });
-
-    it('should call the correct URL with start and end params', async () => {
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ estimates: [] }),
-      });
-
-      const { wrapper } = createWrapper();
-      renderHook(() => useSolarEstimates({ startTimestamp, endTimestamp }), { wrapper });
+      renderHook(() => useSolarIrradiance({ ...base, baseUrl: '/mm' }), { wrapper });
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledWith(
-          `/api/solar/estimates/range?start=${startTimestamp}&end=${endTimestamp}`
+          `/mm/api/solar/irradiance?sourceId=src-a&nodeId=%21abcd1234&start=${startTimestamp}&end=${endTimestamp}`
         );
       });
     });
 
-    it('should be disabled when startTimestamp is missing', () => {
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(
-        () => useSolarEstimates({ endTimestamp }),
-        { wrapper }
-      );
-
-      expect(result.current.fetchStatus).toBe('idle');
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
-    it('should be disabled when endTimestamp is missing', () => {
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(
-        () => useSolarEstimates({ startTimestamp }),
-        { wrapper }
-      );
-
-      expect(result.current.fetchStatus).toBe('idle');
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
-    it('should be disabled when enabled=false', () => {
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(
-        () => useSolarEstimates({ startTimestamp, endTimestamp, enabled: false }),
-        { wrapper }
-      );
-
-      expect(result.current.fetchStatus).toBe('idle');
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('useSolarEstimatesLatest', () => {
-    it('should fetch latest solar estimates and convert timestamps to milliseconds', async () => {
-      const mockResponse = {
-        estimates: [
-          { timestamp: 1700000000, wattHours: 8.0 },
-          { timestamp: 1700003600, wattHours: 12.5 },
-          { timestamp: 1700007200, wattHours: 20.0 },
-        ],
-      };
-
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    it('snaps a drifting window to whole hours so the query key holds', async () => {
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
         ok: true,
-        json: async () => mockResponse,
-      });
-
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSolarEstimatesLatest(), { wrapper });
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-      const data = result.current.data as Map<number, number>;
-      expect(data).toBeInstanceOf(Map);
-      expect(data.size).toBe(3);
-
-      // All timestamps should be in milliseconds
-      expect(data.get(1700000000 * 1000)).toBe(8.0);
-      expect(data.get(1700003600 * 1000)).toBe(12.5);
-      expect(data.get(1700007200 * 1000)).toBe(20.0);
-    });
-
-    it('should call the correct URL with default limit=500', async () => {
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ estimates: [] }),
-      });
-
-      const { wrapper } = createWrapper();
-      renderHook(() => useSolarEstimatesLatest(), { wrapper });
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/solar/estimates?limit=500');
-      });
-    });
-
-    it('should call the correct URL with custom limit', async () => {
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ estimates: [] }),
-      });
-
-      const { wrapper } = createWrapper();
-      renderHook(() => useSolarEstimatesLatest({ limit: 100 }), { wrapper });
-
-      await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/solar/estimates?limit=100');
-      });
-    });
-
-    it('should return empty Map when response is not ok', async () => {
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: false,
-        status: 503,
-      });
-
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSolarEstimatesLatest(), { wrapper });
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-      expect(result.current.data).toBeInstanceOf(Map);
-      expect(result.current.data?.size).toBe(0);
-    });
-
-    it('should return empty Map when estimates array is empty', async () => {
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ estimates: [] }),
-      });
-
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSolarEstimatesLatest(), { wrapper });
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-      expect(result.current.data?.size).toBe(0);
-    });
-
-    it('should be disabled when enabled=false', () => {
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(
-        () => useSolarEstimatesLatest({ enabled: false }),
-        { wrapper }
-      );
-
-      expect(result.current.fetchStatus).toBe('idle');
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
-    it('should use baseUrl when provided', async () => {
-      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ estimates: [] }),
+        json: async () => ({ success: true, data: { enabled: true, points: [] } }),
       });
 
       const { wrapper } = createWrapper();
       renderHook(
-        () => useSolarEstimatesLatest({ baseUrl: 'http://localhost:3000' }),
+        () => useSolarIrradiance({ ...base, startTimestamp: startTimestamp + 125, endTimestamp: endTimestamp - 1800 }),
         { wrapper }
       );
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/api/solar/estimates?limit=500');
+        expect(global.fetch).toHaveBeenCalledWith(
+          `/api/solar/irradiance?sourceId=src-a&nodeId=%21abcd1234&start=${startTimestamp}&end=${endTimestamp}`
+        );
       });
+    });
+
+    it('clamps the window to 31 days', async () => {
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: { enabled: true, points: [] } }),
+      });
+
+      const { wrapper } = createWrapper();
+      renderHook(() => useSolarIrradiance({ ...base, startTimestamp: endTimestamp - 90 * 86400 }), { wrapper });
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          `/api/solar/irradiance?sourceId=src-a&nodeId=%21abcd1234&start=${endTimestamp - 31 * 86400}&end=${endTimestamp}`
+        );
+      });
+    });
+
+    it('returns an empty Map when the response is not ok', async () => {
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, status: 403 });
+
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => useSolarIrradiance(base), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.data?.size).toBe(0);
+    });
+
+    it.each([
+      ['nodeId', { nodeId: '' }],
+      ['startTimestamp', { startTimestamp: undefined }],
+      ['endTimestamp', { endTimestamp: undefined }],
+      ['enabled', { enabled: false }],
+    ])('stays idle without %s', (_label, override) => {
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => useSolarIrradiance({ ...base, ...override }), { wrapper });
+      expect(result.current.fetchStatus).toBe('idle');
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 

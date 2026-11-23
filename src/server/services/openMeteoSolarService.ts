@@ -29,15 +29,25 @@ import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { correctLatLon, getCachedSignFlipContext } from './signFlipCorrection.js';
 import { ALL_SOURCES, type SolarIrradianceRow } from '../../db/repositories/index.js';
+import {
+  SOLAR_GRID_SIZES,
+  DEFAULT_SOLAR_GRID_SIZE,
+  SOLAR_REFRESH_HOURS,
+  DEFAULT_SOLAR_REFRESH_HOURS,
+  FREE_DAILY_BUDGET,
+  callsPerDay,
+  freeTierCellCap,
+} from '../../utils/solarGrid.js';
 
-/** Grid sizes offered in Settings, in degrees (0.1° ≈ 11 km). */
-export const SOLAR_GRID_SIZES = [0.05, 0.1, 0.25, 0.5, 1] as const;
-export const DEFAULT_SOLAR_GRID_SIZE = 0.1;
-/** Refresh intervals offered in Settings, in hours. */
-export const SOLAR_REFRESH_HOURS = [1, 2, 3, 6, 12, 24] as const;
-export const DEFAULT_SOLAR_REFRESH_HOURS = 3;
-/** Free tier allows < 10,000 calls/day; keep a margin for manual use. */
-export const FREE_DAILY_BUDGET = 9000;
+export {
+  SOLAR_GRID_SIZES,
+  DEFAULT_SOLAR_GRID_SIZE,
+  SOLAR_REFRESH_HOURS,
+  DEFAULT_SOLAR_REFRESH_HOURS,
+  FREE_DAILY_BUDGET,
+  callsPerDay,
+  freeTierCellCap,
+};
 /** A node counts toward the mesh if heard within this many days. */
 export const ACTIVE_NODE_DAYS = 7;
 /** Coordinates per Open-Meteo request. */
@@ -72,16 +82,6 @@ export function cellFor(latitude: number, longitude: number, gridSize: number): 
   const lat = centre(latitude);
   const lon = centre(longitude);
   return { key: `${gridSize}:${lat}:${lon}`, latitude: lat, longitude: lon };
-}
-
-/** Open-Meteo calls per day for `cells` refreshed every `refreshHours`. */
-export function callsPerDay(cells: number, refreshHours: number): number {
-  return Math.ceil((cells * 24) / refreshHours);
-}
-
-/** Most cells the free tier can refresh every `refreshHours`. */
-export function freeTierCellCap(refreshHours: number): number {
-  return Math.floor((FREE_DAILY_BUDGET * refreshHours) / 24);
 }
 
 function pick<T extends number>(raw: string | null, allowed: readonly T[], fallback: T): T {
