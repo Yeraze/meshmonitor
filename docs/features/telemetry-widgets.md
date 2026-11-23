@@ -138,6 +138,29 @@ If telemetry changed after the preview, MeshMonitor asks you to run the preview 
 
 Visibility follows the per-source rules for node telemetry: the source needs `nodes:read`, a Meshtastic node needs its channel's map visibility, and the position readings of a private node need the private-position permission.
 
+## Node Time Zone {#node-time-zone}
+
+Telemetry charts show times in the **node's** time zone, not your browser's. A node in Chicago reads 06:00 at its own sunrise, wherever you view it from. MeshMonitor stores every time in UTC and converts only for display.
+
+A caption under the panel title names the zone and where it came from, for example *Times in America/Chicago (from position)*. MeshMonitor picks the zone in this order:
+
+1. **Override.** A zone someone set by hand for this node.
+2. **From position.** The zone at the node's position: its Position Override if it has one, else its GPS fix. MeshMonitor looks it up on the server, with no outside service. It does not store the result, so a node that moves gets its new zone on the next read.
+3. **Server.** The zone of the MeshMonitor server or container (its `TZ`), when the node has no position and no override.
+
+The zone follows the map's position rules. If you cannot see a node's position, for example a private Position Override without the private-position permission, you get the server zone, and the override stays hidden too.
+
+### Set a Timezone Override
+
+A user with `nodes:write` on the node's source sees a **Timezone override** list next to the caption, in the node's telemetry panel. This works for Meshtastic and MeshCore nodes alike.
+
+- Pick a zone to pin the node to it. Use this for a node with no GPS, or one whose position sits near a zone border.
+- Pick **Automatic** to clear the override and go back to the position or server zone.
+
+Dashboard favorite charts use the same zone and show the caption, but you set the override from the node's own telemetry panel. CSV exports keep their UTC ISO timestamps.
+
+The API is `GET /api/nodes/timezone?sourceId=&nodeId=` and `PUT /api/nodes/timezone` with `{ sourceId, nodeId, timeZone }` (`null` clears). See the [API reference](/development/api-reference).
+
 ## Limitations
 
 - Gauge and Numeric modes only display the **most recent** data point. If no data has been received, the widget remains empty.
