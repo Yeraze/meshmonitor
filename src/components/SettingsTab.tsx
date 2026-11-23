@@ -3202,7 +3202,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         )}
 
-        {show('settings-solar') && <div id="settings-solar" className="settings-section">
+        {show('settings-solar') && isAdmin && <div id="settings-solar" className="settings-section">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <label className={settingsStyles.checkboxRow}>
               <input

@@ -233,7 +233,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
 
   const adminOnly = new Set([
     'settings-default-source',
-    'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-mqtt-root-directory', 'settings-ducting', 'settings-adsb', 'settings-meshwars',
+    'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-mqtt-root-directory', 'settings-ducting', 'settings-adsb', 'settings-solar', 'settings-meshwars',
     'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics', 'settings-system',
   ]);
   const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt', 'settings-anon-mqtt-consent']);

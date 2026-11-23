@@ -9,6 +9,7 @@
  */
 import databaseService from '../../services/database.js';
 import { buildPositionFilter, buildMeshCorePositionFilter } from './positionVisibility.js';
+import { loadSourcePermissions, type SourcePermissions } from './sourcePermissions.js';
 import { checkNodeChannelAccess } from './nodeEnhancer.js';
 import { hasPermission } from '../auth/authMiddleware.js';
 import { isValidNodeNum } from '../constants/meshtastic.js';
@@ -23,6 +24,7 @@ export async function resolveNodeSolarCell(
   sourceId: string,
   nodeId: string,
   gridSize: number,
+  permissions?: SourcePermissions,
 ): Promise<string | null> {
   let pos: { latitude: number; longitude: number } | null;
 
@@ -30,7 +32,7 @@ export async function resolveNodeSolarCell(
     const publicKey = nodeId.toLowerCase();
     const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
     if (!node) return null;
-    const visible = await buildMeshCorePositionFilter(user ?? null, [sourceId], new Map([[sourceId, [node]]]));
+    const visible = await buildMeshCorePositionFilter(user ?? null, [sourceId], new Map([[sourceId, [node]]]), permissions);
     if (!visible({ sourceId, publicKey })) return null;
     pos = await solarPosition(node, sourceId);
   } else {
@@ -40,7 +42,7 @@ export async function resolveNodeSolarCell(
     if (!node) return null;
     // `hideFromMap` only removes the map marker; the node's telemetry graphs
     // (where this curve is drawn) still show, so drop that display gate here.
-    const visible = await buildPositionFilter(user ?? null, [sourceId], new Map([[sourceId, [{ ...node, hideFromMap: false }]]]));
+    const visible = await buildPositionFilter(user ?? null, [sourceId], new Map([[sourceId, [{ ...node, hideFromMap: false }]]]), permissions);
     if (!visible({ sourceId, nodeNum })) return null;
     pos = await solarPosition(node, sourceId);
   }
@@ -112,11 +114,13 @@ export async function getSolarSeriesForNodes(
   const settings = await loadSolarSettings();
   if (!settings.enabled) return out;
 
+  // The caller's grants, read once for every node instead of once per lookup.
+  const permissions = await loadSourcePermissions(user?.id != null ? user : null);
   const byCell = new Map<string, Promise<SolarIrradianceRow[]>>();
   for (const [nodeNum, refs] of refsByNode) {
     let cellKey: string | null = null;
     for (const ref of refs) {
-      cellKey = await resolveNodeSolarCell(user, ref.sourceId, ref.nodeId, settings.gridSize);
+      cellKey = await resolveNodeSolarCell(user, ref.sourceId, ref.nodeId, settings.gridSize, permissions);
       if (cellKey) break;
     }
     if (!cellKey) continue;

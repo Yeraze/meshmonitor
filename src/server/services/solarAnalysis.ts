@@ -755,7 +755,8 @@ const MIN_HOURS_PER_DAY = 22;
 /** Fewest past days a node needs before its forecast is trusted. */
 export const MIN_HISTORICAL_DAYS = 3;
 /** How many days ahead (today included) the forecast looks. */
-const FORECAST_HORIZON_DAYS = 5;
+// Open-Meteo is fetched with forecast_days=2, so at most today + 2 days exist.
+const FORECAST_HORIZON_DAYS = 3;
 
 /**
  * Hourly Open-Meteo rows (Unix seconds, W/m²) as chart points keyed by
