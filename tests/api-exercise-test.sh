@@ -500,6 +500,8 @@ echo -e "${BLUE}=== Solar ===${NC}"
 
 check "GET /api/solar/estimates" "$(api GET /api/solar/estimates)" 200
 check "GET /api/solar/estimates/range" "$(api GET '/api/solar/estimates/range?start=0&end=9999999999999')" 200
+check "GET /api/solar/irradiance" "$(api GET "/api/solar/irradiance?sourceId=$SOURCE_ID&nodeId=!00000001&start=0&end=86400")" 200
+check "GET /api/solar/usage" "$(api GET /api/solar/usage)" 200
 
 # ─── Push Notifications ───────────────────────────────────
 
@@ -694,8 +696,7 @@ except Exception as e:
   check_v1 "GET $V1S/network/direct-neighbors" "$V1S/network/direct-neighbors" "'success' in data or isinstance(data, dict)"
   check_v1 "GET $V1S/packets" "$V1S/packets" "'success' in data and 'data' in data"
   check_v1 "GET /api/v1/channel-database" "/api/v1/channel-database" "'success' in data and 'data' in data"
-  check "GET /api/v1/solar" "$(v1 GET /api/v1/solar)" 200
-  check "GET /api/v1/solar/range" "$(v1 GET '/api/v1/solar/range?start=0&end=9999999999999')" 200
+  check "GET $V1S/solar" "$(v1 GET "$V1S/solar?nodeId=!00000001")" 200
   check "GET $V1S/messages/search?q=test" "$(v1 GET "$V1S/messages/search?q=test")" 200
   check "GET /api/v1/docs/openapi.json" "$(v1 GET /api/v1/docs/openapi.json)" 200
   check "GET /api/v1/docs/openapi.yaml" "$(v1 GET /api/v1/docs/openapi.yaml)" 200

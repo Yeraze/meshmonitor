@@ -190,6 +190,12 @@ export const VALID_SETTINGS_KEYS = [
   'solarMonitoringLongitude',
   'solarMonitoringAzimuth',
   'solarMonitoringDeclination',
+  // Open-Meteo per-node sunlight (#6523). Grid size in degrees, refresh in
+  // hours; the API key (paid plans only, blank = free tier) is server-only via
+  // the `_token` suffix.
+  'solarMonitoringGridSize',
+  'solarMonitoringRefreshHours',
+  'solar_open_meteo_api_token',
   'mapPinStyle',
   'mapPinColorMode',
   'nodeListStyle',
@@ -1109,6 +1115,12 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'solarMonitoringLongitude',
   'solarMonitoringAzimuth',
   'solarMonitoringDeclination',
+  // Open-Meteo per-node sunlight (#6523). Grid size in degrees, refresh in
+  // hours; the API key (paid plans only, blank = free tier) is server-only via
+  // the `_token` suffix.
+  'solarMonitoringGridSize',
+  'solarMonitoringRefreshHours',
+  'solar_open_meteo_api_token',
   // Global singletons driven only by the global POST branch:
   'cotFeedEnabled',                         // settingsRoutes.ts:900-911 — "global singleton"
   'cotFeedPort',                            // "
@@ -1302,6 +1314,12 @@ export const ADMIN_ONLY_SETTINGS_KEYS = new Set<string>([
   'analyticsConfig',
   // MeshWars forwarder: sends the radio's position to a third-party server.
   'meshwarsEnabled',
+  // #6523: solar monitoring sends every active node's rounded position to
+  // Open-Meteo; grid and refresh set how many calls that costs.
+  'solarMonitoringEnabled',
+  'solarMonitoringGridSize',
+  'solarMonitoringRefreshHours',
+  'solar_open_meteo_api_token',
   'meshwarsSourceId',
   'meshwarsBaseUrl',
   'meshwars_api_token',

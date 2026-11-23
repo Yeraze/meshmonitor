@@ -100,6 +100,7 @@ import {
   SolarNodeOverridesRepository,
   AssetNodesRepository,
   SolarEstimatesRepository,
+  SolarIrradianceRepository,
   NewsCacheRepository,
   BackupHistoryRepository,
   AutoTracerouteRepository,
@@ -694,6 +695,7 @@ class DatabaseService {
   public solarNodeOverridesRepo: SolarNodeOverridesRepository | null = null;
   public assetNodesRepo: AssetNodesRepository | null = null;
   public solarEstimatesRepo: SolarEstimatesRepository | null = null;
+  public solarIrradianceRepo: SolarIrradianceRepository | null = null;
   public newsCacheRepo: NewsCacheRepository | null = null;
   public backupHistoryRepo: BackupHistoryRepository | null = null;
   public autoTracerouteRepo: AutoTracerouteRepository | null = null;
@@ -924,6 +926,11 @@ class DatabaseService {
   get solarEstimates(): SolarEstimatesRepository {
     if (!this.solarEstimatesRepo) throw new Error('Database not initialized');
     return this.solarEstimatesRepo;
+  }
+
+  get solarIrradiance(): SolarIrradianceRepository {
+    if (!this.solarIrradianceRepo) throw new Error('Database not initialized');
+    return this.solarIrradianceRepo;
   }
 
   get newsCache(): NewsCacheRepository {
@@ -1353,6 +1360,7 @@ class DatabaseService {
       this.solarNodeOverridesRepo = new SolarNodeOverridesRepository(drizzleDb, this.drizzleDbType);
       this.assetNodesRepo = new AssetNodesRepository(drizzleDb, this.drizzleDbType);
       this.solarEstimatesRepo = new SolarEstimatesRepository(drizzleDb, this.drizzleDbType);
+      this.solarIrradianceRepo = new SolarIrradianceRepository(drizzleDb, this.drizzleDbType);
       this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
       this.backupHistoryRepo = new BackupHistoryRepository(drizzleDb, this.drizzleDbType);
       this.autoTracerouteRepo = new AutoTracerouteRepository(drizzleDb, this.drizzleDbType);

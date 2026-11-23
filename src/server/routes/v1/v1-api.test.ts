@@ -59,11 +59,6 @@ const testPositionTelemetry = [
   { id: 10, nodeId: '2882400001', nodeNum: 2882400001, telemetryType: 'altitude', timestamp: 3000, value: 325, unit: 'meters', createdAt: 3000, packetId: 102 },
 ];
 
-const testSolarEstimates = [
-  { timestamp: Math.floor(Date.now() / 1000), watt_hours: 450.5, fetched_at: Math.floor(Date.now() / 1000) - 3600 },
-  { timestamp: Math.floor(Date.now() / 1000) + 3600, watt_hours: 520.3, fetched_at: Math.floor(Date.now() / 1000) - 3600 },
-  { timestamp: Math.floor(Date.now() / 1000) + 7200, watt_hours: 380.2, fetched_at: Math.floor(Date.now() / 1000) - 3600 }
-];
 
 // Mock the database service before importing v1Router
 vi.mock('../../../services/database.js', () => {
@@ -335,17 +330,6 @@ vi.mock('../../services/packetLogService.js', () => {
   };
 });
 
-// Mock solarMonitoringService
-vi.mock('../../services/solarMonitoringService.js', () => {
-  return {
-    solarMonitoringService: {
-      getRecentEstimates: vi.fn((limit: number) => testSolarEstimates.slice(0, limit)),
-      getEstimatesInRange: vi.fn((start: number, end: number) => {
-        return testSolarEstimates.filter(e => e.timestamp >= start && e.timestamp <= end);
-      })
-    }
-  };
-});
 
 // Import after mocking
 import v1Router from './index.js';
@@ -421,7 +405,7 @@ describe('GET /api/v1/', () => {
     expect(response.body.endpoints.messages).toBe('/api/v1/sources/{sourceId}/messages');
     expect(response.body.endpoints.status).toBe('/api/v1/sources/{sourceId}/status');
     // Deployment-global resources stay at the root.
-    expect(response.body.endpoints.solar).toBe('/api/v1/solar');
+    expect(response.body.endpoints.solar).toBe('/api/v1/sources/:sourceId/solar');
     expect(response.body.endpoints.channelDatabase).toBe('/api/v1/channel-database');
     expect(response.body.endpoints.actions).toBe('/api/v1/sources/{sourceId}/actions');
     expect(response.body.note).toMatch(/Legacy root paths/i);
@@ -600,94 +584,6 @@ describe('GET /api/v1/sources/:sourceId/packets/:id', () => {
   });
 });
 
-describe('GET /api/v1/solar', () => {
-  it('should return solar estimates with standard response format', async () => {
-    const response = await request(app)
-      .get('/api/v1/solar')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
-      .expect(200);
-
-    expect(response.body).toHaveProperty('success', true);
-    expect(response.body).toHaveProperty('count');
-    expect(response.body).toHaveProperty('data');
-    expect(Array.isArray(response.body.data)).toBe(true);
-    expect(response.body.count).toBeGreaterThanOrEqual(3);
-  });
-
-  it('should return solar estimates with correct fields', async () => {
-    const response = await request(app)
-      .get('/api/v1/solar')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
-      .expect(200);
-
-    const estimate = response.body.data[0];
-    expect(estimate).toHaveProperty('timestamp');
-    expect(estimate).toHaveProperty('datetime');
-    expect(estimate).toHaveProperty('wattHours');
-    expect(estimate).toHaveProperty('fetchedAt');
-  });
-
-  it('should respect limit parameter', async () => {
-    const response = await request(app)
-      .get('/api/v1/solar?limit=1')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
-      .expect(200);
-
-    expect(response.body.count).toBe(1);
-    expect(response.body.data.length).toBe(1);
-  });
-});
-
-describe('GET /api/v1/solar/range', () => {
-  it('should return solar estimates within time range', async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const start = now - 3600;
-    const end = now + 10800; // 3 hours ahead
-
-    const response = await request(app)
-      .get(`/api/v1/solar/range?start=${start}&end=${end}`)
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
-      .expect(200);
-
-    expect(response.body).toHaveProperty('success', true);
-    expect(response.body).toHaveProperty('count');
-    expect(response.body).toHaveProperty('start', start);
-    expect(response.body).toHaveProperty('end', end);
-    expect(response.body).toHaveProperty('data');
-    expect(Array.isArray(response.body.data)).toBe(true);
-  });
-
-  it('should return 400 for missing start parameter', async () => {
-    const response = await request(app)
-      .get('/api/v1/solar/range?end=1699560000')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
-      .expect(400);
-
-    expect(response.body).toHaveProperty('success', false);
-    expect(response.body).toHaveProperty('error');
-  });
-
-  it('should return 400 for missing end parameter', async () => {
-    const response = await request(app)
-      .get('/api/v1/solar/range?start=1699520400')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
-      .expect(400);
-
-    expect(response.body).toHaveProperty('success', false);
-    expect(response.body).toHaveProperty('error');
-  });
-
-  it('should return 400 when start is after end', async () => {
-    const response = await request(app)
-      .get('/api/v1/solar/range?start=1699606800&end=1699520400')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
-      .expect(400);
-
-    expect(response.body).toHaveProperty('success', false);
-    expect(response.body).toHaveProperty('error');
-  });
-});
-
 describe('API Response Format Consistency', () => {
   it('all list endpoints should have consistent response structure', async () => {
     const endpoints = [
@@ -696,7 +592,6 @@ describe('API Response Format Consistency', () => {
       '/api/v1/sources/test-source/telemetry',
       '/api/v1/sources/test-source/traceroutes',
       '/api/v1/sources/test-source/packets',
-      '/api/v1/solar'
     ];
 
     for (const endpoint of endpoints) {

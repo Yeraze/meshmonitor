@@ -144,6 +144,8 @@ export const TABLE_ORDER = [
   // source's companion key matches selfPublicKey).
   'meshcore_admin_sessions',
   'solar_estimates',
+  // #6523: global Open-Meteo sunlight cache (no sourceId).
+  'solar_irradiance',
   'system_backup_history',
   // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)
   'estimated_positions',

@@ -165,6 +165,9 @@ import {
   directRfContactsSqlite, directRfContactsPostgres, directRfContactsMysql,
 } from './schema/directRfContacts.js';
 import {
+  solarIrradianceSqlite, solarIrradiancePostgres, solarIrradianceMysql,
+} from './schema/solarIrradiance.js';
+import {
   translationCacheSqlite, translationCachePostgres, translationCacheMysql,
   messageTranslationsSqlite, messageTranslationsPostgres, messageTranslationsMysql,
 } from './schema/translations.js';
@@ -340,6 +343,8 @@ export interface ActiveSchema {
   customThemes: any;
   userMapPreferences: any;
   solarEstimates: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #6523 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  solarIrradiance: any;
   autoTracerouteNodes: any;
   // meshcorePathfindingTargets (#4024) is intentionally NOT declared here —
   // it is served by the `[key: string]: any` index signature below so this
@@ -560,6 +565,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     customThemes: customThemesSqlite,
     userMapPreferences: userMapPreferencesSqlite,
     solarEstimates: solarEstimatesSqlite,
+    solarIrradiance: solarIrradianceSqlite,
     autoTracerouteNodes: autoTracerouteNodesSqlite,
     meshcorePathfindingTargets: meshcorePathfindingTargetsSqlite,
     autoTimeSyncNodes: autoTimeSyncNodesSqlite,
@@ -660,6 +666,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     customThemes: customThemesPostgres,
     userMapPreferences: userMapPreferencesPostgres,
     solarEstimates: solarEstimatesPostgres,
+    solarIrradiance: solarIrradiancePostgres,
     autoTracerouteNodes: autoTracerouteNodesPostgres,
     meshcorePathfindingTargets: meshcorePathfindingTargetsPostgres,
     autoTimeSyncNodes: autoTimeSyncNodesPostgres,
@@ -760,6 +767,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     customThemes: customThemesMysql,
     userMapPreferences: userMapPreferencesMysql,
     solarEstimates: solarEstimatesMysql,
+    solarIrradiance: solarIrradianceMysql,
     autoTracerouteNodes: autoTracerouteNodesMysql,
     meshcorePathfindingTargets: meshcorePathfindingTargetsMysql,
     autoTimeSyncNodes: autoTimeSyncNodesMysql,

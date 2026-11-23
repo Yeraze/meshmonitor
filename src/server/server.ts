@@ -41,6 +41,7 @@ import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerSe
 import { waypointRebroadcastSchedulerService } from './services/waypointRebroadcastSchedulerService.js';
 import { securityDigestService } from './services/securityDigestService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
+import { openMeteoSolarService } from './services/openMeteoSolarService.js';
 import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { lowBatteryNotificationService } from './services/lowBatteryNotificationService.js';
@@ -401,6 +402,7 @@ setTimeout(async () => {
 
     // Initialize solar monitoring service
     solarMonitoringService.initialize();
+    openMeteoSolarService.initialize();
     logger.debug('Solar monitoring service initialized');
 
     // Initialize news service (fetches news from meshmonitor.org)
