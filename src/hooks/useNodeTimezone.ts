@@ -25,6 +25,7 @@ interface UseNodeTimezoneOptions {
 
 /** A node's zone changes only when it moves or someone sets an override. */
 const NODE_TIMEZONE_STALE_MS = 60 * 60 * 1000;
+const NULL_ZONE_STALE_MS = 60 * 1000;
 
 const nodeTimezoneKey = (sourceId: string | null | undefined, nodeId: string | null | undefined) =>
   ['nodeTimezone', sourceId ?? null, nodeId ?? null] as const;
@@ -41,6 +42,9 @@ export function useNodeTimezone({ baseUrl = '', sourceId, nodeId, enabled = true
     queryFn: async (): Promise<NodeTimezone | null> => {
       const params = new URLSearchParams({ sourceId: String(effectiveSourceId), nodeId: String(nodeId) });
       const response = await fetch(`${baseUrl}/api/nodes/timezone?${params.toString()}`);
+      // 5xx: throw, so it is retried and never cached as "no zone".
+      if (response.status >= 500) throw new Error(`HTTP ${response.status}`);
+      // 401/403/404: no zone for this caller (yet).
       if (!response.ok) return null;
       const body = (await response.json()) as { data?: Partial<NodeTimezone> };
       const tz = body.data;
@@ -49,7 +53,9 @@ export function useNodeTimezone({ baseUrl = '', sourceId, nodeId, enabled = true
         : null;
     },
     enabled: enabled && !!effectiveSourceId && !!nodeId,
-    staleTime: NODE_TIMEZONE_STALE_MS,
+    // A "no zone" answer (e.g. a 403 before login) goes stale quickly, so it
+    // is re-asked soon; a real zone holds for an hour.
+    staleTime: (query) => (query.state.data ? NODE_TIMEZONE_STALE_MS : NULL_ZONE_STALE_MS),
     gcTime: NODE_TIMEZONE_STALE_MS,
     refetchOnWindowFocus: false,
   });

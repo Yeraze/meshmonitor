@@ -25,7 +25,9 @@ import { isMeshCoreManager } from '../sourceManagerTypes.js';
 
 const router = Router();
 
-const MESHTASTIC_ID = /^!?[0-9a-fA-F]{8}$/;
+// `!` required: checkNodeChannelAccess reads an unprefixed id as DECIMAL
+// while the resolver reads hex, so the two gates must see the same node.
+const MESHTASTIC_ID = /^![0-9a-fA-F]{8}$/;
 
 function validNodeId(nodeId: unknown): nodeId is string {
   return typeof nodeId === 'string' && (isMeshCoreNodeId(nodeId) || MESHTASTIC_ID.test(nodeId));

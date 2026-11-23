@@ -139,6 +139,9 @@ describe('node timezone routes', () => {
     const admin = await harness.loginAs(harness.admin);
     expect((await admin.get(`/nodes/timezone?nodeId=${encodeURIComponent(NODE_ID)}`)).status).toBe(400);
     expect((await admin.get(url(harness.sourceA, 'nope'))).status).toBe(400);
+    // Unprefixed 8-hex is refused: the channel gate would read it as decimal
+    // while the resolver reads hex, so the two would check different nodes.
+    expect((await admin.get(url(harness.sourceA, NODE_ID.replace('!', '')))).body.code).toBe('INVALID_NODE_ID');
   });
 
   describe('PUT', () => {
