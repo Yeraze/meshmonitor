@@ -89,6 +89,7 @@ const POSTGRES_CREATE = `
     "longitudeOverride" REAL,
     "altitudeOverride" REAL,
     "positionOverrideIsPrivate" BOOLEAN DEFAULT FALSE,
+    "timezoneOverride" TEXT,
     "hideFromMap" BOOLEAN DEFAULT FALSE,
     "channelLocked" BOOLEAN DEFAULT FALSE,
     "notes" TEXT,
@@ -185,6 +186,7 @@ const MYSQL_CREATE = `
     longitudeOverride DOUBLE,
     altitudeOverride DOUBLE,
     positionOverrideIsPrivate BOOLEAN DEFAULT FALSE,
+    timezoneOverride VARCHAR(64),
     hideFromMap BOOLEAN DEFAULT FALSE,
     channelLocked BOOLEAN DEFAULT FALSE,
     notes VARCHAR(2000),
@@ -751,6 +753,34 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(await repo.getNodeViewFacts(big, 'src-facts-c')).toBeNull();
     expect(await repo.getNodeViewFacts(531531, 'src-facts-a')).toBeNull();
     expect(await repo.getNodeViewFacts(-1, 'src-facts-a')).toBeNull();
+  });
+
+  it('setNodeTimezoneOverride - source-scoped, and packet upserts never clear it (#6523)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const big = 0xfeedbee1;
+    await repo.upsertNode(makeNode(big, { channel: 0 }), 'src-tz-a');
+    await repo.upsertNode(makeNode(big, { channel: 0 }), 'src-tz-b');
+
+    expect(await repo.setNodeTimezoneOverride(big, 'src-tz-a', 'America/Chicago')).toBe(true);
+    expect((await repo.getNode(big, 'src-tz-a'))?.timezoneOverride).toBe('America/Chicago');
+    expect((await repo.getNode(big, 'src-tz-b'))?.timezoneOverride ?? null).toBeNull();
+    // No row on this source: nothing written.
+    expect(await repo.setNodeTimezoneOverride(big, 'src-tz-c', 'Europe/Paris')).toBe(false);
+
+    // A packet-driven upsert, including one that spreads a stored row back in
+    // with the key nulled, keeps the override.
+    await repo.upsertNode(makeNode(big, { latitude: 10, longitude: 20, longName: 'Moved' }), 'src-tz-a');
+    expect((await repo.getNode(big, 'src-tz-a'))?.longName).toBe('Moved');
+    await repo.upsertNode({ ...makeNode(big), timezoneOverride: null } as never, 'src-tz-a');
+    expect((await repo.getNode(big, 'src-tz-a'))?.timezoneOverride).toBe('America/Chicago');
+
+    expect(await repo.setNodeTimezoneOverride(big, 'src-tz-a', null)).toBe(true);
+    expect((await repo.getNode(big, 'src-tz-a'))?.timezoneOverride ?? null).toBeNull();
   });
 
   it('getHeardNodes - every heard node regardless of age, source-scoped, skips never-heard rows (#5376)', async () => {

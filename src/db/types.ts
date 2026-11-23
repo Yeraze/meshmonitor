@@ -100,6 +100,8 @@ export interface DbNode {
   longitudeOverride?: number | null;
   altitudeOverride?: number | null;
   positionOverrideIsPrivate?: boolean | null;
+  /** #6523: per-node IANA Timezone Override; null = automatic. Only the timezone route writes it. */
+  timezoneOverride?: string | null;
   // Map visibility — #3549: suppress this node's marker on maps only
   hideFromMap?: boolean | null;
   channelLocked?: boolean | null; // #5923

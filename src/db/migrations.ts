@@ -186,6 +186,7 @@ import { migration as dropMysqlNotifPrefsUserIdUniqueMigration, runMigration243P
 import { migration as purgeShiftedSolarEstimatesMigration, runMigration244Postgres, runMigration244Mysql } from '../server/migrations/244_purge_shifted_solar_estimates.js';
 import { migration as createSolarIrradianceMigration, runMigration245Postgres, runMigration245Mysql } from '../server/migrations/245_create_solar_irradiance.js';
 import { migration as dropSolarEstimatesMigration, runMigration246Postgres, runMigration246Mysql } from '../server/migrations/246_drop_solar_estimates.js';
+import { migration as nodeTimezoneOverrideMigration, runMigration247Postgres, runMigration247Mysql } from '../server/migrations/247_add_node_timezone_override.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -3958,4 +3959,17 @@ registry.register({
   sqlite: (db) => dropSolarEstimatesMigration.up(db),
   postgres: (client) => runMigration246Postgres(client),
   mysql: (pool) => runMigration246Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 247: per-node Timezone Override on nodes + meshcore_nodes (#6523).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 247,
+  name: 'add_node_timezone_override',
+  settingsKey: 'migration_247_add_node_timezone_override',
+  sqlite: (db) => nodeTimezoneOverrideMigration.up(db),
+  postgres: (client) => runMigration247Postgres(client),
+  mysql: (pool) => runMigration247Mysql(pool),
 });

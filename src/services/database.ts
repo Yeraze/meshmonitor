@@ -203,6 +203,7 @@ export interface DbNode {
   longitudeOverride?: number; // Override longitude
   altitudeOverride?: number; // Override altitude
   positionOverrideIsPrivate?: boolean; // Override privacy (false = public, true = private)
+  timezoneOverride?: string | null; // #6523: IANA Timezone Override; null = automatic
   hideFromMap?: boolean; // #3549: suppress this node's marker on maps only
   channelLocked?: boolean; // #5923: admin-pinned channel; traffic does not change it
   notes?: string; // #3921: free-text per-node MeshMonitor-local annotation
@@ -4540,6 +4541,31 @@ class DatabaseService {
     }
 
     logger.debug(`📝 Node ${nodeNum}@${sourceId} notes updated (${notes.length} chars)`);
+  }
+
+  /**
+   * Set or clear (`null`) a Meshtastic node's Timezone Override (#6523).
+   * Returns false when the node has no row on this source.
+   */
+  async setNodeTimezoneOverrideAsync(nodeNum: number, sourceId: string, timeZone: string | null): Promise<boolean> {
+    if (!this.nodesRepo) {
+      throw new Error('Nodes repository is not initialized');
+    }
+    const updated = await this.nodesRepo.setNodeTimezoneOverride(nodeNum, sourceId, timeZone);
+    const cached = this.nodeCache.get(nodeNum, sourceId);
+    if (updated && cached) {
+      cached.timezoneOverride = timeZone;
+      cached.updatedAt = Date.now();
+    }
+    return updated;
+  }
+
+  /**
+   * Set or clear (`null`) a MeshCore node's Timezone Override (#6523).
+   * Returns false when the node has no row on this source.
+   */
+  async setMeshCoreNodeTimezoneOverrideAsync(sourceId: string, publicKey: string, timeZone: string | null): Promise<boolean> {
+    return this.meshcore.setNodeTimezoneOverride(sourceId, publicKey, timeZone);
   }
 
   /**

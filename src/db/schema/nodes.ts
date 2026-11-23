@@ -96,6 +96,9 @@ export const nodesSqlite = sqliteTable('nodes', {
   longitudeOverride: real('longitudeOverride'),
   altitudeOverride: real('altitudeOverride'),
   positionOverrideIsPrivate: integer('positionOverrideIsPrivate', { mode: 'boolean' }).default(false),
+  // Per-node Timezone Override (IANA name, #6523). Only the timezone route writes it;
+  // the automatic zone is derived from position on read and never stored.
+  timezoneOverride: text('timezoneOverride'),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: integer('hideFromMap', { mode: 'boolean' }).default(false),
   // #5923: an admin pinned `channel`; packet-driven upserts leave it alone.
@@ -226,6 +229,9 @@ export const nodesPostgres = pgTable('nodes', {
   longitudeOverride: pgDoublePrecision('longitudeOverride'),
   altitudeOverride: pgDoublePrecision('altitudeOverride'),
   positionOverrideIsPrivate: pgBoolean('positionOverrideIsPrivate').default(false),
+  // Per-node Timezone Override (IANA name, #6523). Only the timezone route writes it;
+  // the automatic zone is derived from position on read and never stored.
+  timezoneOverride: pgText('timezoneOverride'),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: pgBoolean('hideFromMap').default(false),
   channelLocked: pgBoolean('channelLocked').default(false),
@@ -349,6 +355,9 @@ export const nodesMysql = mysqlTable('nodes', {
   longitudeOverride: myDouble('longitudeOverride'),
   altitudeOverride: myDouble('altitudeOverride'),
   positionOverrideIsPrivate: myBoolean('positionOverrideIsPrivate').default(false),
+  // Per-node Timezone Override (IANA name, #6523). Only the timezone route writes it;
+  // the automatic zone is derived from position on read and never stored.
+  timezoneOverride: myVarchar('timezoneOverride', { length: 64 }),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: myBoolean('hideFromMap').default(false),
   channelLocked: myBoolean('channelLocked').default(false),

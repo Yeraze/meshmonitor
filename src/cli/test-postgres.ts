@@ -79,6 +79,7 @@ async function createSchema(pool: import('pg').Pool): Promise<void> {
         "longitudeOverride" REAL,
         "altitudeOverride" REAL,
         "positionOverrideIsPrivate" BOOLEAN DEFAULT false,
+        "timezoneOverride" TEXT,
         "createdAt" BIGINT,
         "updatedAt" BIGINT
       );
