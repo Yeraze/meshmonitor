@@ -8,16 +8,12 @@
  * never pass coordinates in and never return the cell key out.
  */
 import databaseService from '../../services/database.js';
-import { buildPositionFilter, buildMeshCorePositionFilter } from './positionVisibility.js';
-import { loadSourcePermissions, type SourcePermissions } from './sourcePermissions.js';
 import { checkNodeChannelAccess } from './nodeEnhancer.js';
-import { hasPermission } from '../auth/authMiddleware.js';
-import { isValidNodeNum } from '../constants/meshtastic.js';
-import { cellFor, loadSolarSettings, solarPosition } from '../services/openMeteoSolarService.js';
+import { loadSourcePermissions, type SourcePermissions } from './sourcePermissions.js';
+import { cellFor, loadSolarSettings } from '../services/openMeteoSolarService.js';
+import { hasTelemetryReadRole, resolveVisibleNodePosition } from './nodeVisiblePosition.js';
 import type { SolarIrradianceRow } from '../../db/repositories/index.js';
 import type { User } from '../../types/auth.js';
-
-const MESHCORE_KEY = /^[0-9a-fA-F]{64}$/;
 
 export async function resolveNodeSolarCell(
   user: User | null | undefined,
@@ -26,27 +22,7 @@ export async function resolveNodeSolarCell(
   gridSize: number,
   permissions?: SourcePermissions,
 ): Promise<string | null> {
-  let pos: { latitude: number; longitude: number } | null;
-
-  if (MESHCORE_KEY.test(nodeId)) {
-    const publicKey = nodeId.toLowerCase();
-    const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
-    if (!node) return null;
-    const visible = await buildMeshCorePositionFilter(user ?? null, [sourceId], new Map([[sourceId, [node]]]), permissions);
-    if (!visible({ sourceId, publicKey })) return null;
-    pos = await solarPosition(node, sourceId);
-  } else {
-    const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    if (!isValidNodeNum(nodeNum)) return null;
-    const node = await databaseService.nodes.getNode(nodeNum, sourceId);
-    if (!node) return null;
-    // `hideFromMap` only removes the map marker; the node's telemetry graphs
-    // (where this curve is drawn) still show, so drop that display gate here.
-    const visible = await buildPositionFilter(user ?? null, [sourceId], new Map([[sourceId, [{ ...node, hideFromMap: false }]]]), permissions);
-    if (!visible({ sourceId, nodeNum })) return null;
-    pos = await solarPosition(node, sourceId);
-  }
-
+  const pos = await resolveVisibleNodePosition(user, sourceId, nodeId, permissions);
   return pos ? cellFor(pos.latitude, pos.longitude, gridSize).key : null;
 }
 
@@ -69,11 +45,7 @@ export async function getNodeIrradiance(
   start: number,
   end: number,
 ): Promise<NodeIrradianceResult> {
-  if (
-    !user?.isAdmin &&
-    !(user ? await hasPermission(user, 'info', 'read') : false) &&
-    !(user ? await hasPermission(user, 'dashboard', 'read') : false)
-  ) {
+  if (!await hasTelemetryReadRole(user)) {
     return { status: 403, message: 'Insufficient permissions' };
   }
   if (!nodeId) return { status: 400, message: 'nodeId is required' };
