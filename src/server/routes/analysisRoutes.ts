@@ -49,6 +49,7 @@ import {
   type MeshCoreTelemetryInput,
 } from '../services/solarTelemetryAdapter.js';
 import { resolveLocalNodeNums } from '../utils/localNodeNums.js';
+import { getSolarSeriesForNodes, type SolarNodeRef } from '../utils/solarNodeCell.js';
 import {
   classifySourceBrokerAddress,
   combineBrokerClasses,
@@ -500,6 +501,44 @@ async function loadMeshCoreSolarInputs(sourceIds: string[], sinceMs: number) {
   return { rows, nodes };
 }
 
+/** Stored Open-Meteo sunlight reaches back this far (the service's retention). */
+const SOLAR_SERIES_PAST_S = 30 * 86_400;
+/** ... and this far ahead (today plus the forecast days). */
+const SOLAR_SERIES_AHEAD_S = 3 * 86_400;
+
+/**
+ * Where each solar node can be read for its Open-Meteo cell (#6523): every
+ * permitted, non-hidden Meshtastic row for that nodeNum, then its MeshCore
+ * rows. `getSolarSeriesForNodes` applies the position gate per candidate.
+ */
+function solarNodeRefs(
+  nodeNums: Iterable<number>,
+  allNodes: Array<{ nodeNum: unknown; sourceId?: unknown }>,
+  mcNodes: Array<{ sourceId: string; publicKey: string }>,
+  sourceIds: string[],
+  hidden: { hides: (sourceId: string | null, nodeNum: number) => boolean },
+): Map<number, SolarNodeRef[]> {
+  const wanted = new Set(nodeNums);
+  const permitted = new Set(sourceIds);
+  const refs = new Map<number, SolarNodeRef[]>();
+  const add = (nodeNum: number, ref: SolarNodeRef) => {
+    const list = refs.get(nodeNum) ?? [];
+    list.push(ref);
+    refs.set(nodeNum, list);
+  };
+  for (const n of allNodes) {
+    const nodeNum = Number(n.nodeNum);
+    if (!wanted.has(nodeNum) || typeof n.sourceId !== 'string' || !permitted.has(n.sourceId)) continue;
+    if (hidden.hides(n.sourceId, nodeNum)) continue;
+    add(nodeNum, { sourceId: n.sourceId, nodeId: `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}` });
+  }
+  for (const n of mcNodes) {
+    const nodeNum = nodeNumFromPubkey(n.publicKey);
+    if (wanted.has(nodeNum) && permitted.has(n.sourceId)) add(nodeNum, { sourceId: n.sourceId, nodeId: n.publicKey });
+  }
+  return refs;
+}
+
 /**
  * GET /api/analysis/solar-nodes
  *
@@ -577,19 +616,22 @@ router.get('/solar-nodes', async (req: Request, res: Response) => {
       is_solar: isSolar,
     }));
 
-    // Overlay: hourly solar-production estimates from the forecast.solar
-    // cache for the same lookback window. Returned alongside per-node chart
-    // data so the UI can render an output curve under the battery line.
+    // Overlay (#6523): each node's hourly Open-Meteo sunlight (W/m²) at its
+    // own grid cell, under its battery line. A node whose position the
+    // caller cannot see gets none.
     try {
-      const startSec = Math.floor(sinceMs / 1000);
-      const endSec = Math.floor(Date.now() / 1000) + 5 * 24 * 3600; // include forecast window
-      const estimates = await databaseService.getSolarEstimatesInRangeAsync(
-        startSec,
-        endSec,
+      const series = await getSolarSeriesForNodes(
+        req.user,
+        solarNodeRefs(result.solar_nodes.map((n) => n.node_num), allNodes, mc.nodes, sourceIds, hidden),
+        Math.floor(sinceMs / 1000),
+        Math.floor(Date.now() / 1000) + SOLAR_SERIES_AHEAD_S,
       );
-      result.solar_production = summarizeSolarProduction(estimates);
+      for (const node of result.solar_nodes) {
+        const rows = series.get(node.node_num);
+        if (rows) node.solar_production = summarizeSolarProduction(rows);
+      }
     } catch (e) {
-      logger.warn('Failed to load solar estimates for analysis overlay:', e);
+      logger.warn('Failed to load solar irradiance for analysis overlay:', e);
     }
 
     res.json(result);
@@ -602,9 +644,9 @@ router.get('/solar-nodes', async (req: Request, res: Response) => {
 /**
  * GET /api/analysis/solar-forecast
  *
- * Compares forecast.solar projections to historical production averages and
- * simulates each detected solar node's battery state across the forecast
- * horizon. Returns nodes predicted to drop below the at-risk threshold so
+ * For each detected solar node, compares the Open-Meteo sunlight forecast at
+ * its own grid cell to that cell's stored past days (#6523) and simulates the
+ * node's battery state across the forecast horizon. Returns nodes predicted to drop below the at-risk threshold so
  * operators can intervene before they go offline.
  */
 router.get('/solar-forecast', async (req: Request, res: Response) => {
@@ -668,15 +710,16 @@ router.get('/solar-forecast', async (req: Request, res: Response) => {
     );
     const analysis = identifySolarNodes(rows, nodeLookup, lookbackDays, overrides);
 
-    // Need both historical (lookback window) and forecast (today + future) Wh
-    const startSec = Math.floor(sinceMs / 1000);
-    const endSec = Math.floor(Date.now() / 1000) + 5 * 24 * 3600;
-    const estimates = await databaseService.getSolarEstimatesInRangeAsync(
-      startSec,
-      endSec,
+    // Each node's stored past days (history) plus today and the forecast days.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const series = await getSolarSeriesForNodes(
+      req.user,
+      solarNodeRefs(analysis.solar_nodes.map((n) => n.node_num), allNodes, mc.nodes, sourceIds, hidden),
+      nowSec - SOLAR_SERIES_PAST_S,
+      nowSec + SOLAR_SERIES_AHEAD_S,
     );
 
-    const forecast = computeSolarForecast(analysis, estimates);
+    const forecast = computeSolarForecast(analysis, series);
     res.json(forecast);
   } catch (error) {
     logger.error('Error in GET /api/analysis/solar-forecast:', error);

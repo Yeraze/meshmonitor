@@ -1806,10 +1806,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         throw new Error('Failed to start solar refresh');
       }
 
-      showToast(t('settings.solar_fetch_success'), 'success');
+      showToast(t('settings.solar_refresh_started'), 'success');
     } catch (error) {
       logger.error('Error starting solar refresh:', error);
-      showToast(t('settings.solar_fetch_failed'), 'error');
+      showToast(t('settings.solar_refresh_failed'), 'error');
     } finally {
       setIsFetchingSolarEstimates(false);
     }
@@ -3281,7 +3281,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
           </h3>
           <p className="setting-description">
-            {t('settings.solar_monitoring_description')}
+            {t('settings.solar_open_meteo_description')}
           </p>
           {draft.solarMonitoringEnabled && (
             <>
@@ -3365,10 +3365,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   className="save-button"
                   style={{ width: 'auto', padding: '0.5rem 1rem' }}
                 >
-                  {isFetchingSolarEstimates ? t('settings.solar_fetching') : t('settings.solar_fetch_now')}
+                  {isFetchingSolarEstimates ? t('settings.solar_refresh_starting') : t('settings.solar_refresh_now')}
                 </button>
                 <p className="setting-description" style={{ marginTop: '0.5rem' }}>
-                  {t('settings.solar_fetch_description')}
+                  {t('settings.solar_refresh_now_description')}
                 </p>
               </div>
             </>

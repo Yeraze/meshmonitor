@@ -45,11 +45,24 @@ export interface SolarNode {
    * 0 and its patterns empty, because the manual flag is the only evidence.
    */
   manual_override: boolean;
+  /**
+   * Hourly Open-Meteo sunlight at this node's grid cell (#6523), attached by
+   * the route. Absent when Solar Monitoring is off or the viewer cannot see
+   * the node's position.
+   */
+  solar_production?: SolarProductionPoint[];
 }
 
 export interface SolarProductionPoint {
   timestamp: number; // ms epoch
-  wattHours: number;
+  /** Mean sunlight over the hour, W/m² */
+  wattsPerM2: number;
+}
+
+/** One stored Open-Meteo hour (Unix seconds), as read from `solar_irradiance`. */
+export interface SolarIrradianceHour {
+  timestamp: number;
+  shortwaveRadiation: number | null;
 }
 
 export interface SolarNodesAnalysis {
@@ -57,7 +70,6 @@ export interface SolarNodesAnalysis {
   total_nodes_analyzed: number;
   solar_nodes_count: number;
   solar_nodes: SolarNode[];
-  solar_production: SolarProductionPoint[];
   avg_charging_hours_per_day: number | null;
   avg_discharge_hours_per_day: number | null;
   /**
@@ -69,10 +81,11 @@ export interface SolarNodesAnalysis {
   manual_overrides?: Array<{ node_num: number; node_name: string; is_solar: boolean }>;
 }
 
+/** One forecast day for one node; insolation in Wh/m² (sum of hourly W/m²). */
 export interface ForecastDay {
   date: string;
-  forecast_wh: number;
-  avg_historical_wh: number;
+  forecast_wh_m2: number;
+  avg_historical_wh_m2: number;
   pct_of_average: number;
   is_low: boolean;
 }
@@ -93,14 +106,19 @@ export interface NodeSimulation {
   current_battery: number | null;
   min_simulated_battery: number;
   simulation: ForecastSimulationPoint[];
+  /** Past full days of sunlight data at this node's cell. */
+  historical_days_analyzed: number;
+  /** Average daily insolation over those days, Wh/m². */
+  avg_historical_daily_wh_m2: number;
+  forecast_days: ForecastDay[];
 }
 
 export interface SolarForecastAnalysis {
   lookback_days: number;
-  historical_days_analyzed: number;
-  avg_historical_daily_wh: number;
+  /** True when any node has a forecast day under 75% of its own average. */
   low_output_warning: boolean;
-  forecast_days: ForecastDay[];
+  /** Solar nodes with too little sunlight data (or no visible position) to forecast. */
+  nodes_without_forecast: number;
   nodes_at_risk_count: number;
   nodes_at_risk: NodeSimulation[];
   solar_simulations: NodeSimulation[];
@@ -721,7 +739,6 @@ export function identifySolarNodes(
     total_nodes_analyzed: nodeData.size,
     solar_nodes_count: solarCandidates.length,
     solar_nodes: solarCandidates,
-    solar_production: [],
     avg_charging_hours_per_day: avgChargingHoursPerDay,
     avg_discharge_hours_per_day: avgDischargeHoursPerDay,
     analyzed_nodes: [...nodeData.keys()]
@@ -733,105 +750,102 @@ export function identifySolarNodes(
   };
 }
 
+/** A day counts only with this many hourly values (UTC day). */
+const MIN_HOURS_PER_DAY = 22;
+/** Fewest past days a node needs before its forecast is trusted. */
+export const MIN_HISTORICAL_DAYS = 3;
+/** How many days ahead (today included) the forecast looks. */
+const FORECAST_HORIZON_DAYS = 5;
+
 /**
- * Group raw solar estimate points (unix seconds + watt_hours) into hourly
- * points keyed by ms-epoch — used as a chart-ready overlay alongside the
- * battery telemetry.
+ * Hourly Open-Meteo rows (Unix seconds, W/m²) as chart points keyed by
+ * ms-epoch, skipping hours with no value (#6523).
  */
-export function summarizeSolarProduction(
-  estimates: Array<{ timestamp: number; watt_hours: number }>,
-): SolarProductionPoint[] {
-  // Group by hour, average across estimates that fall in the same bucket
-  // (the upsert is keyed on (timestamp, fetched_at) so multiple fetches can
-  // land in the same hour).
-  const byHour = new Map<number, { sum: number; count: number }>();
-  for (const e of estimates) {
-    const ms = e.timestamp * 1000;
-    const hour = Math.floor(ms / HOUR_MS) * HOUR_MS;
-    const cell = byHour.get(hour) ?? { sum: 0, count: 0 };
-    cell.sum += e.watt_hours;
-    cell.count += 1;
-    byHour.set(hour, cell);
-  }
-  return Array.from(byHour.entries())
-    .map(([hour, cell]) => ({
-      timestamp: hour,
-      wattHours: round(cell.sum / cell.count, 2),
-    }))
+export function summarizeSolarProduction(rows: SolarIrradianceHour[]): SolarProductionPoint[] {
+  return rows
+    .filter((r): r is { timestamp: number; shortwaveRadiation: number } => typeof r.shortwaveRadiation === 'number')
+    .map((r) => ({ timestamp: r.timestamp * 1000, wattsPerM2: round(r.shortwaveRadiation, 1) }))
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
+/** Daily insolation (Wh/m²) per UTC day, keeping only days with enough hours. */
+function dailyInsolation(rows: SolarIrradianceHour[]): Map<string, number> {
+  const days = new Map<string, { sum: number; hours: number }>();
+  for (const r of rows) {
+    if (typeof r.shortwaveRadiation !== 'number') continue;
+    const key = dateKey(r.timestamp * 1000);
+    const day = days.get(key) ?? { sum: 0, hours: 0 };
+    day.sum += r.shortwaveRadiation; // one hour at W/m² = Wh/m²
+    day.hours += 1;
+    days.set(key, day);
+  }
+  const out = new Map<string, number>();
+  for (const [key, day] of days) {
+    if (day.hours >= MIN_HOURS_PER_DAY) out.set(key, day.sum);
+  }
+  return out;
+}
+
 /**
- * Build the solar forecast analysis from the per-node solar analysis and the
- * raw solar estimate dataset (unix-seconds rows from the forecast.solar
- * cache). Compares historical (pre-today) average daily output to forecast
- * (today + future) and simulates each solar node's battery state over the
- * forecast window using its measured charge/discharge rates.
+ * Per-node solar forecast (#6523). For each solar node, compares the daily
+ * insolation forecast at ITS grid cell (today and later) with that cell's
+ * average over the stored past days, flags days under 75% as low, and
+ * simulates the node's battery across those days using its measured
+ * charge/discharge rates scaled by the day's factor (0–1.5). A node with no
+ * series, or fewer than MIN_HISTORICAL_DAYS past days, is not forecast.
  */
 export function computeSolarForecast(
   analysis: SolarNodesAnalysis,
-  estimates: Array<{ timestamp: number; watt_hours: number }>,
+  seriesByNode: Map<number, SolarIrradianceHour[]>,
+  now: number = Date.now(),
 ): SolarForecastAnalysis {
-  const now = Date.now();
-  const todayStartMs = (() => {
-    const d = new Date(now);
-    d.setUTCHours(0, 0, 0, 0);
-    return d.getTime();
-  })();
+  const todayKey = dateKey(now);
+  const todayStartMs = Date.parse(`${todayKey}T00:00:00Z`);
 
-  // Aggregate Wh per UTC day
-  const dailyWh = new Map<string, number>();
-  for (const e of estimates) {
-    const ms = e.timestamp * 1000;
-    const date = dateKey(ms);
-    dailyWh.set(date, (dailyWh.get(date) ?? 0) + e.watt_hours);
-  }
-
-  // Historical = days strictly before today
-  const todayKey = dateKey(todayStartMs);
-  const historicalDailyWh: number[] = [];
-  for (const [date, wh] of dailyWh.entries()) {
-    if (date < todayKey) historicalDailyWh.push(wh);
-  }
-  const avgHistoricalDailyWh =
-    historicalDailyWh.length > 0
-      ? historicalDailyWh.reduce((a, b) => a + b, 0) / historicalDailyWh.length
-      : 0;
-
-  // Forecast days = today + future where data is available
-  const forecastDays: ForecastDay[] = [];
-  for (let dayOffset = 0; dayOffset < 5; dayOffset++) {
-    const ms = todayStartMs + dayOffset * DAY_MS;
-    const date = dateKey(ms);
-    const forecastWh = dailyWh.get(date);
-    if (forecastWh === undefined) continue;
-    const pct = avgHistoricalDailyWh > 0 ? (forecastWh / avgHistoricalDailyWh) * 100 : 100;
-    forecastDays.push({
-      date,
-      forecast_wh: round(forecastWh, 1),
-      avg_historical_wh: round(avgHistoricalDailyWh, 1),
-      pct_of_average: round(pct, 1),
-      is_low: pct < 75,
-    });
-  }
-
-  const lowOutputWarning = forecastDays.some((d) => d.is_low);
-
-  // Simulate per-node battery state across forecast horizon
   const simulations: NodeSimulation[] = [];
   const atRisk: NodeSimulation[] = [];
+  let withoutForecast = 0;
+  let lowOutputWarning = false;
   const avgChargingHours = analysis.avg_charging_hours_per_day ?? 6;
   const avgDischargeHours = analysis.avg_discharge_hours_per_day ?? 14;
 
   for (const node of analysis.solar_nodes) {
+    const lastPoint = node.chart_data[node.chart_data.length - 1];
     if (
       node.avg_charge_rate_per_hour === null ||
-      node.avg_discharge_rate_per_hour === null
+      node.avg_discharge_rate_per_hour === null ||
+      !lastPoint
     ) {
       continue;
     }
-    const lastPoint = node.chart_data[node.chart_data.length - 1];
-    if (!lastPoint) continue;
+
+    const daily = dailyInsolation(seriesByNode.get(node.node_num) ?? []);
+    const historical = [...daily.entries()].filter(([date]) => date < todayKey).map(([, wh]) => wh);
+    if (historical.length < MIN_HISTORICAL_DAYS) {
+      withoutForecast += 1;
+      continue;
+    }
+    const avgHistorical = historical.reduce((a, b) => a + b, 0) / historical.length;
+
+    const forecastDays: ForecastDay[] = [];
+    for (let dayOffset = 0; dayOffset < FORECAST_HORIZON_DAYS; dayOffset++) {
+      const date = dateKey(todayStartMs + dayOffset * DAY_MS);
+      const wh = daily.get(date);
+      if (wh === undefined) continue;
+      const pct = avgHistorical > 0 ? (wh / avgHistorical) * 100 : 100;
+      forecastDays.push({
+        date,
+        forecast_wh_m2: round(wh, 1),
+        avg_historical_wh_m2: round(avgHistorical, 1),
+        pct_of_average: round(pct, 1),
+        is_low: pct < 75,
+      });
+    }
+    if (forecastDays.length === 0) {
+      withoutForecast += 1;
+      continue;
+    }
+    if (forecastDays.some((d) => d.is_low)) lowOutputWarning = true;
 
     const points: ForecastSimulationPoint[] = [];
     let battery = lastPoint.value;
@@ -841,8 +855,8 @@ export function computeSolarForecast(
 
     for (const fd of forecastDays) {
       const factor =
-        avgHistoricalDailyWh > 0
-          ? Math.min(1.5, Math.max(0, fd.forecast_wh / avgHistoricalDailyWh))
+        avgHistorical > 0
+          ? Math.min(1.5, Math.max(0, fd.forecast_wh_m2 / avgHistorical))
           : 1;
       const effectiveCharge = node.avg_charge_rate_per_hour * factor;
 
@@ -882,6 +896,9 @@ export function computeSolarForecast(
       current_battery: lastPoint.value,
       min_simulated_battery: round(minBattery, 1),
       simulation: points,
+      historical_days_analyzed: historical.length,
+      avg_historical_daily_wh_m2: round(avgHistorical, 1),
+      forecast_days: forecastDays,
     };
     simulations.push(sim);
 
@@ -892,10 +909,8 @@ export function computeSolarForecast(
 
   return {
     lookback_days: analysis.lookback_days,
-    historical_days_analyzed: historicalDailyWh.length,
-    avg_historical_daily_wh: round(avgHistoricalDailyWh, 1),
     low_output_warning: lowOutputWarning,
-    forecast_days: forecastDays,
+    nodes_without_forecast: withoutForecast,
     nodes_at_risk_count: atRisk.length,
     nodes_at_risk: atRisk,
     solar_simulations: simulations,

@@ -87,3 +87,45 @@ export async function getNodeIrradiance(
   const points = cellKey ? await databaseService.solarIrradiance.getCellRange(cellKey, start, end) : [];
   return { status: 200, enabled: true, points };
 }
+
+/** A place a node can be read from: a source plus its `!hex` or public key. */
+export interface SolarNodeRef {
+  sourceId: string;
+  nodeId: string;
+}
+
+/**
+ * Hourly sunlight series for many nodes at once, for the Analysis solar
+ * report (#6523). Each node's candidates are tried in order until one gives a
+ * visible position (the same gate as `resolveNodeSolarCell`); a node with no
+ * visible position, or Solar Monitoring off, is simply absent from the map.
+ * Cells shared by several nodes are read once.
+ */
+export async function getSolarSeriesForNodes(
+  user: User | null | undefined,
+  refsByNode: Map<number, SolarNodeRef[]>,
+  start: number,
+  end: number,
+): Promise<Map<number, SolarIrradianceRow[]>> {
+  const out = new Map<number, SolarIrradianceRow[]>();
+  if (refsByNode.size === 0) return out;
+  const settings = await loadSolarSettings();
+  if (!settings.enabled) return out;
+
+  const byCell = new Map<string, Promise<SolarIrradianceRow[]>>();
+  for (const [nodeNum, refs] of refsByNode) {
+    let cellKey: string | null = null;
+    for (const ref of refs) {
+      cellKey = await resolveNodeSolarCell(user, ref.sourceId, ref.nodeId, settings.gridSize);
+      if (cellKey) break;
+    }
+    if (!cellKey) continue;
+    let rows = byCell.get(cellKey);
+    if (!rows) {
+      rows = databaseService.solarIrradiance.getCellRange(cellKey, start, end);
+      byCell.set(cellKey, rows);
+    }
+    out.set(nodeNum, await rows);
+  }
+  return out;
+}
