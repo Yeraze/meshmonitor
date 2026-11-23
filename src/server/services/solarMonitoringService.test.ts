@@ -185,9 +185,9 @@ describe('SolarMonitoringService', () => {
 
       const mockResponse = {
         result: {
-          '2024-11-07 12:00:00': 500,
-          '2024-11-07 13:00:00': 750,
-          '2024-11-07 14:00:00': 1000
+          '2024-11-07T12:00:00+00:00': 500,
+          '2024-11-07T13:00:00+00:00': 750,
+          '2024-11-07T14:00:00+00:00': 1000
         },
         message: {
           code: 0,
@@ -204,7 +204,7 @@ describe('SolarMonitoringService', () => {
       await solarMonitoringService.triggerFetch();
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'https://api.forecast.solar/estimate/watthours/period/40.7128/-74.006/25/180/1'
+        'https://api.forecast.solar/estimate/watthours/period/40.7128/-74.006/25/180/1?time=utc'
       );
     });
 
@@ -215,8 +215,8 @@ describe('SolarMonitoringService', () => {
 
       const mockResponse = {
         result: {
-          '2024-11-07 12:00:00': 500,
-          '2024-11-07 13:00:00': 750
+          '2024-11-07T12:00:00+00:00': 500,
+          '2024-11-07T13:00:00+00:00': 750
         },
         message: {
           code: 0,
@@ -236,6 +236,28 @@ describe('SolarMonitoringService', () => {
       expect(estimates.length).toBe(2);
       expect(estimates[0].watt_hours).toBe(750);
       expect(estimates[1].watt_hours).toBe(500);
+      // Stored as the true UTC epoch, whatever the container's TZ (#6523).
+      expect(estimates[0].timestamp).toBe(1730984400); // 2024-11-07T13:00:00Z
+      expect(estimates[1].timestamp).toBe(1730980800); // 2024-11-07T12:00:00Z
+    });
+
+    it('should skip unparseable timestamps (#6523)', async () => {
+      mockSetSetting('solarMonitoringEnabled', '1');
+      mockSetSetting('solarMonitoringLatitude', '40.7128');
+      mockSetSetting('solarMonitoringLongitude', '-74.0060');
+
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          result: { 'not-a-date': 5, '2024-11-07T12:00:00+00:00': 500 },
+          message: { code: 0, type: 'success', text: 'OK' }
+        })
+      });
+
+      await solarMonitoringService.triggerFetch();
+
+      const estimates = await solarMonitoringService.getRecentEstimates(10);
+      expect(estimates.map(e => e.timestamp)).toEqual([1730980800]);
     });
 
     it('should handle API errors gracefully', async () => {
@@ -292,7 +314,7 @@ describe('SolarMonitoringService', () => {
       mockSetSetting('solarMonitoringLatitude', '40.7128');
       mockSetSetting('solarMonitoringLongitude', '-74.0060');
 
-      const timestamp = '2024-11-07 12:00:00';
+      const timestamp = '2024-11-07T12:00:00+00:00';
 
       // First fetch
       (global.fetch as any).mockResolvedValue({
@@ -331,10 +353,10 @@ describe('SolarMonitoringService', () => {
 
       const mockResponse = {
         result: {
-          '2024-11-07 12:00:00': 500,
-          '2024-11-07 13:00:00': 750,
-          '2024-11-07 14:00:00': 1000,
-          '2024-11-07 15:00:00': 800
+          '2024-11-07T12:00:00+00:00': 500,
+          '2024-11-07T13:00:00+00:00': 750,
+          '2024-11-07T14:00:00+00:00': 1000,
+          '2024-11-07T15:00:00+00:00': 800
         },
         message: { code: 0, type: 'success', text: 'OK' }
       };
@@ -361,8 +383,8 @@ describe('SolarMonitoringService', () => {
     });
 
     it('should get estimates in time range', async () => {
-      const start = Math.floor(new Date('2024-11-07 13:00:00').getTime() / 1000);
-      const end = Math.floor(new Date('2024-11-07 15:00:00').getTime() / 1000);
+      const start = Math.floor(new Date('2024-11-07T13:00:00+00:00').getTime() / 1000);
+      const end = Math.floor(new Date('2024-11-07T15:00:00+00:00').getTime() / 1000);
 
       const estimates = await solarMonitoringService.getEstimatesInRange(start, end);
       expect(estimates.length).toBe(3); // 13:00, 14:00, 15:00
@@ -391,7 +413,7 @@ describe('SolarMonitoringService', () => {
       mockSetSetting('solarMonitoringLongitude', '-74.0060');
 
       const mockResponse = {
-        result: { '2024-11-07 12:00:00': 500 },
+        result: { '2024-11-07T12:00:00+00:00': 500 },
         message: { code: 0, type: 'success', text: 'OK' }
       };
 
