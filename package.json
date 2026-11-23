@@ -70,7 +70,7 @@
     "express-rate-limit": "^8.7.5",
     "express-session": "^1.19.0",
     "helmet": "^8.3.0",
-    "i18next": "^27.0.0",
+    "i18next": "^27.2.2",
     "i18next-browser-languagedetector": "^8.3.1",
     "i18next-http-backend": "^4.0.10",
     "jszip": "^3.10.2",
