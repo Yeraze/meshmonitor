@@ -47,7 +47,7 @@
     "@michaelhart/meshcore-decoder": "^0.3.0",
     "@noble/curves": "2.4.0",
     "@simplewebauthn/browser": "14.0.0",
-    "@simplewebauthn/server": "14.0.3",
+    "@simplewebauthn/server": "14.1.0",
     "@tanstack/react-query": "^5.107.1",
     "@tanstack/react-virtual": "^3.14.26",
     "@tmcw/togeojson": "^7.1.4",
