@@ -14,6 +14,7 @@ import auditRoutes from './auditRoutes.js';
 import securityRoutes from './securityRoutes.js';
 import packetRoutes from './packetRoutes.js';
 import solarRoutes from './solarRoutes.js';
+import nodeTimezoneRoutes from './nodeTimezoneRoutes.js';
 import messageRoutes from './messageRoutes.js';
 import readStateRoutes from './readStateRoutes.js';
 import linkPreviewRoutes from './linkPreviewRoutes.js';
@@ -153,6 +154,10 @@ export function createApiRouter({ geojsonRouter, mapStyleRouter, includeDebugRou
 
   // Solar monitoring routes
   apiRouter.use('/solar', optionalAuth(), solarRoutes);
+
+  // Per-node timezone (#6523). Mounted before the '/' routers so no
+  // '/nodes/:nodeId' pattern can claim 'timezone'.
+  apiRouter.use('/nodes/timezone', optionalAuth(), nodeTimezoneRoutes);
 
   // News routes (public feed, authenticated status endpoints)
   apiRouter.use('/news', newsRoutes);

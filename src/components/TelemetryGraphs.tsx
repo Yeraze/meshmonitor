@@ -8,7 +8,7 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useTelemetry, useSolarIrradiance, type TelemetryData } from '../hooks/useTelemetry';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
-import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
+import { formatChartAxisTimestamp, formatInTimeZone, formatTime } from '../utils/datetime';
 import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ChartData } from '../types/ui';
@@ -33,12 +33,23 @@ import { downloadTelemetryCsv, resolveSeriesDisplay } from '../utils/telemetrySe
 import { TELEMETRY_RANGE_PRESETS, TELEMETRY_RETENTION_HOURS } from '../utils/telemetryRangePresets';
 import { UiIcon } from './icons';
 import SolarCredit from './SolarCredit';
+import NodeTimezoneControl from './NodeTimezoneControl';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
 import { formatSunlight } from '../utils/solarGrid';
 import DeviceCounterNote from './DeviceCounterNote';
 import TelemetryOutlierDialog from './TelemetryOutlierDialog/TelemetryOutlierDialog';
 import { isDeviceCounterType } from '../utils/deviceCounters';
 import { isTransportSeriesComponentType } from '../utils/transportSeries';
 import type { TranslateFn } from '../types/translate';
+
+/** Chart tooltip time label, as `toLocaleString([], …)` drew it before #6523. */
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+};
 
 /** Telemetry types that represent discrete integer values where fractional display is meaningless */
 const INTEGER_TELEMETRY_TYPES = new Set([
@@ -111,6 +122,7 @@ const prepareChartData = (
   temperatureUnit: TemperatureUnit,
   solarEstimates: Map<number, number>,
   timeFormat: TimeFormat,
+  timeZone: string | undefined,
 ): ChartData[] => {
   // Create a map of all unique timestamps from both telemetry and solar data
   const allTimestamps = new Map<number, ChartData>();
@@ -124,7 +136,7 @@ const prepareChartData = (
     allTimestamps.set(item.timestamp, {
       timestamp: item.timestamp,
       value: isTemperature ? formatTemperature(item.value, 'C', temperatureUnit) : item.value,
-      time: formatTime(new Date(item.timestamp), timeFormat),
+      time: formatTime(new Date(item.timestamp), timeFormat, timeZone),
     });
   });
 
@@ -149,7 +161,7 @@ const prepareChartData = (
         allTimestamps.set(timestamp, {
           timestamp,
           value: null, // null = solar-only (will be skipped by Line with connectNulls)
-          time: formatTime(new Date(timestamp), timeFormat),
+          time: formatTime(new Date(timestamp), timeFormat, timeZone),
           solarEstimate: wattsPerM2,
         });
       }
@@ -262,6 +274,8 @@ interface TelemetryGraphWidgetProps {
   getTelemetryLabel: (type: string) => string;
   getColor: (type: string) => string;
   timeFormat: TimeFormat;
+  /** The node's zone (#6523); the browser's when undefined. */
+  timeZone: string | undefined;
   hours: number;
   t: TranslateFn;
   canEditSettings: boolean;
@@ -292,6 +306,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   getTelemetryLabel,
   getColor,
   timeFormat,
+  timeZone,
   hours,
   t,
   canEditSettings,
@@ -336,7 +351,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   // each parent update and on every chart-width measurement, and this walks
   // (and labels) every point.
   const scaledChartData = useMemo(() => {
-    const chartData = prepareChartData(data, isTemperature, globalMinTime, temperatureUnit, solarEstimates, timeFormat);
+    const chartData = prepareChartData(data, isTemperature, globalMinTime, temperatureUnit, solarEstimates, timeFormat, timeZone);
 
     if (isPaxcounterCombined) {
       const bleByTimestamp = new Map<number, number>();
@@ -367,7 +382,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
     return !isTemperature && display.factor !== 1
       ? chartData.map(d => ({ ...d, value: d.value == null ? d.value : d.value * display.factor }))
       : chartData;
-  }, [data, isTemperature, globalMinTime, temperatureUnit, solarEstimates, timeFormat, isPaxcounterCombined, bleData, display.factor]);
+  }, [data, isTemperature, globalMinTime, temperatureUnit, solarEstimates, timeFormat, timeZone, isPaxcounterCombined, bleData, display.factor]);
 
   const latest = getLatestValue(data);
 
@@ -500,6 +515,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
             unit={unit}
             color={color}
             timestamp={latest.timestamp}
+            timeZone={timeZone}
             nodeId={nodeId}
             onRangeChange={handleRangeChange}
             canEditRange={canEditSettings}
@@ -515,6 +531,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
             unit={unit}
             color={color}
             timestamp={latest.timestamp}
+            timeZone={timeZone}
             formatValue={display.formatValue}
           />
         ) : (
@@ -530,7 +547,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
               type="number"
               domain={globalTimeRange || ['dataMin', 'dataMax']}
               tick={{ fontSize: 12 }}
-              tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
+              tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat, timeZone)}
             />
             <YAxis
               yAxisId="left"
@@ -568,16 +585,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
                     ? value
                     : (display.formatValue ?? formatTelemetryNumber)(value)
               }
-              labelFormatter={value => {
-                const date = new Date(value);
-                return date.toLocaleString([], {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                });
-              }}
+              labelFormatter={value => formatInTimeZone(new Date(value), TOOLTIP_TIME_OPTIONS, timeZone)}
             />
             {getSolarVisibility(type) && solarEstimates.size > 0 && (
               <Area
@@ -738,6 +746,10 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       endTimestamp: telemetryTimeBounds?.end,
       enabled: solarMonitoringEnabled && !!telemetryTimeBounds,
     });
+
+    // The node's zone (#6523): every time on this panel is drawn in it.
+    const { data: nodeTimezone } = useNodeTimezone({ baseUrl, sourceId: effectiveSourceId, nodeId });
+    const timeZone = nodeTimezone?.timeZone;
 
     // Fetch favorites using TanStack Query
     const { data: favorites = new Set<string>() } = useFavorites({
@@ -1004,6 +1016,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     const header = (
       <div className="telemetry-graphs-header">
         <h3 className="telemetry-title">{titleText}</h3>
+        <NodeTimezoneControl baseUrl={baseUrl} sourceId={effectiveSourceId} nodeId={nodeId} timezone={nodeTimezone} />
         {showTimeRangeSelector && (
           <div
             className="telemetry-range-selector"
@@ -1190,6 +1203,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
                   getTelemetryLabel={getTelemetryLabel}
                   getColor={getColor}
                   timeFormat={timeFormat}
+                  timeZone={timeZone}
                   hours={effectiveHours}
                   t={t}
                   canEditSettings={canEditSettings}
@@ -1206,6 +1220,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
             telemetryType={outlierType ?? undefined}
             nodeId={nodeId}
             nodeLabel={nodeId}
+            timeZone={timeZone}
             getTypeLabel={getTelemetryLabel}
             onPurged={() => void refetchTelemetry()}
           />

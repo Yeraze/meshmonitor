@@ -20,7 +20,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useTelemetry, useSolarIrradiance, type TelemetryData } from '../hooks/useTelemetry';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
-import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
+import { formatChartAxisTimestamp, formatInTimeZone, formatTime } from '../utils/datetime';
 import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
 import type { TelemetryNodeInfo } from '../types/device';
 import type { ChartData } from '../types/ui';
@@ -33,6 +33,8 @@ import { telemetryDisplayScale, formatTelemetryNumber } from '../utils/telemetry
 import { buildTelemetryFilename, telemetrySeriesToCsv } from '../utils/telemetryChartCsv';
 import { downloadTextFile } from '../utils/nodeExport';
 import TelemetryGauge from './TelemetryGauge';
+import NodeTimezoneControl from './NodeTimezoneControl';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { UiIcon } from './icons';
 import SolarCredit from './SolarCredit';
@@ -47,6 +49,15 @@ interface FavoriteChart {
   nodeId: string;
   telemetryType: string;
 }
+
+/** Chart tooltip time label, as `toLocaleString([], …)` drew it before #6523. */
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+};
 
 interface TelemetryChartProps {
   id: string;
@@ -359,7 +370,8 @@ const prepareChartData = (
   temperatureUnit: TemperatureUnit,
   solarEstimates: Map<number, number>,
   globalMinTime: number | undefined,
-  timeFormat: TimeFormat
+  timeFormat: TimeFormat,
+  timeZone: string | undefined
 ): ChartData[] => {
   const allTimestamps = new Map<number, ChartData>();
 
@@ -376,7 +388,7 @@ const prepareChartData = (
     allTimestamps.set(item.timestamp, {
       timestamp: item.timestamp,
       value: isTemperature ? formatTemperature(item.value, 'C', temperatureUnit) : item.value,
-      time: formatTime(new Date(item.timestamp), timeFormat),
+      time: formatTime(new Date(item.timestamp), timeFormat, timeZone),
     });
   });
 
@@ -393,7 +405,7 @@ const prepareChartData = (
         allTimestamps.set(timestamp, {
           timestamp,
           value: null,
-          time: formatTime(new Date(timestamp), timeFormat),
+          time: formatTime(new Date(timestamp), timeFormat, timeZone),
           solarEstimate: wattsPerM2,
         });
       }
@@ -483,6 +495,10 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
       enabled: solarMonitoringEnabled && showSolar,
     });
 
+    // The node's zone (#6523): every time on this chart is drawn in it.
+    const { data: nodeTimezone } = useNodeTimezone({ baseUrl, sourceId, nodeId: favorite.nodeId });
+    const timeZone = nodeTimezone?.timeZone;
+
     const isPaxcounterCombined = favorite.telemetryType === 'paxcounterWifi';
 
     // Filter data to only the specific telemetry type
@@ -552,7 +568,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     // stays fixed.
     const scaledChartData = useMemo(() => {
       if (telemetryData.length === 0) return [];
-      const chartData = prepareChartData(telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat);
+      const chartData = prepareChartData(telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat, timeZone);
 
       // For combined paxcounter chart, merge BLE data
       if (isPaxcounterCombined) {
@@ -570,7 +586,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
           const point: any = {
             timestamp,
             value: null,
-            time: formatTime(new Date(timestamp), timeFormat),
+            time: formatTime(new Date(timestamp), timeFormat, timeZone),
             paxWifi: null,
             paxBle: value,
           };
@@ -584,7 +600,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
       return !isTemperature && display.factor !== 1
         ? chartData.map((d) => ({ ...d, value: d.value == null ? d.value : d.value * display.factor }))
         : chartData;
-    }, [telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat, isPaxcounterCombined, paxBleData, display.factor]);
+    }, [telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat, timeZone, isPaxcounterCombined, paxBleData, display.factor]);
 
     // Loading state
     if (isLoading) {
@@ -816,6 +832,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               unit={unit}
               color={color}
               timestamp={latest.timestamp}
+              timeZone={timeZone}
               nodeId={favorite.nodeId}
               onRangeChange={handleRangeChange}
               formatValue={uptimeFormatter}
@@ -830,6 +847,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               unit={unit}
               color={color}
               timestamp={latest.timestamp}
+              timeZone={timeZone}
               formatValue={uptimeFormatter}
             />
           ) : (
@@ -845,7 +863,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 type="number"
                 domain={globalTimeRange || ['dataMin', 'dataMax']}
                 tick={{ fontSize: 12 }}
-                tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
+                tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat, timeZone)}
               />
               <YAxis
                 yAxisId="left"
@@ -872,16 +890,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                       ? value
                       : (uptimeFormatter ?? formatTelemetryNumber)(value)
                 }
-                labelFormatter={value => {
-                  const date = new Date(value);
-                  return date.toLocaleString([], {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                  });
-                }}
+                labelFormatter={value => formatInTimeZone(new Date(value), TOOLTIP_TIME_OPTIONS, timeZone)}
               />
               {showSolar && solarEstimates.size > 0 && (
                 <Area
@@ -940,6 +949,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
             </ComposedChart>
           </ResponsiveContainer>
           {showSolar && solarEstimates.size > 0 && <SolarCredit />}
+          <NodeTimezoneControl baseUrl={baseUrl} sourceId={sourceId} nodeId={favorite.nodeId} timezone={nodeTimezone} readOnly />
           </>
         )}
       </div>

@@ -1,10 +1,13 @@
 import React from 'react';
+import { formatInTimeZone } from '../utils/datetime';
 
 interface TelemetryNumericLabelProps {
   value: number;
   unit: string;
   color: string;
   timestamp: number;
+  /** Zone to show the time in (#6523); the browser's when absent. */
+  timeZone?: string;
   /**
    * Optional display formatter for the raw value (e.g. formatDuration for
    * uptime-in-seconds metrics, #3261). Defaults to the numeric rendering.
@@ -12,9 +15,11 @@ interface TelemetryNumericLabelProps {
   formatValue?: (value: number) => string;
 }
 
-const TelemetryNumericLabel: React.FC<TelemetryNumericLabelProps> = ({ value, unit, color, timestamp, formatValue }) => {
+const TelemetryNumericLabel: React.FC<TelemetryNumericLabelProps> = ({ value, unit, color, timestamp, timeZone, formatValue }) => {
   const date = new Date(timestamp);
-  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeStr = timeZone
+    ? formatInTimeZone(date, { hour: '2-digit', minute: '2-digit' }, timeZone)
+    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const displayValue = formatValue
     ? formatValue(value)
     : Number.isInteger(value)

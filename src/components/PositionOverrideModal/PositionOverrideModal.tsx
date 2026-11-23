@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { QueryClientContext } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import Modal from '../common/Modal';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
@@ -52,6 +53,8 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const sourceId = useResolvedSourceId();
+  // Optional: a moved node's zone (#6523) is re-read after a save.
+  const queryClient = useContext(QueryClientContext);
   const [enabled, setEnabled] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [latitude, setLatitude] = useState<string>('');
@@ -165,6 +168,8 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
         altitude: enabled && altitude ? parseFloat(altitude) : undefined,
         isPrivate: enabled ? isPrivate : undefined,
       });
+      // The automatic time zone follows the position (#6523).
+      void queryClient?.invalidateQueries({ queryKey: ['nodeTimezone'] });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save position override');

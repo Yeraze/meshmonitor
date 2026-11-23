@@ -26,6 +26,7 @@ import {
   type OutlierPreview,
 } from '../../utils/telemetryOutliers';
 import styles from './TelemetryOutlierDialog.module.css';
+import { formatInTimeZone } from '../../utils/datetime';
 
 export interface TelemetryOutlierDialogProps {
   isOpen: boolean;
@@ -38,6 +39,8 @@ export interface TelemetryOutlierDialogProps {
   nodeId?: string;
   /** Display name for the node in node mode. */
   nodeLabel?: string;
+  /** Node mode: the node's zone for point times (#6523); the browser's when absent. */
+  timeZone?: string;
   /** Sweep mode: the sources the admin may pick from. */
   sources?: Array<{ id: string; name: string }>;
   /** Human label for a telemetry type. */
@@ -45,6 +48,11 @@ export interface TelemetryOutlierDialogProps {
   /** Called after a successful delete with the number of rows removed. */
   onPurged?: (deletedCount: number) => void;
 }
+
+/** `toLocaleString()`'s default fields, spelled out so a zone can be added. */
+const POINT_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
+  year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+};
 
 type Step = 'configure' | 'preview' | 'confirm' | 'done';
 
@@ -60,6 +68,7 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
   telemetryType: fixedType,
   nodeId,
   nodeLabel,
+  timeZone,
   sources = [],
   getTypeLabel = (type: string) => type,
   onPurged,
@@ -390,7 +399,7 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
                       <tbody>
                         {preview.points.map(p => (
                           <tr key={p.id}>
-                            <td>{new Date(p.timestamp).toLocaleString()}</td>
+                            <td>{timeZone ? formatInTimeZone(new Date(p.timestamp), POINT_TIME_OPTIONS, timeZone) : new Date(p.timestamp).toLocaleString()}</td>
                             {!isNodeMode && <td>{p.nodeId}</td>}
                             <td className={styles.value}>{formatValue(p.value)}</td>
                             <td>{reasonLabel(p.reason)}</td>

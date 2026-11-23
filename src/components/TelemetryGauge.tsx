@@ -1,6 +1,7 @@
 import React from 'react';
 import type { WidgetRange } from '../hooks/useWidgetRange';
 import { NumberInput } from './common/NumberInput';
+import { formatInTimeZone } from '../utils/datetime';
 
 interface TelemetryGaugeProps {
   value: number;
@@ -9,6 +10,8 @@ interface TelemetryGaugeProps {
   unit: string;
   color: string;
   timestamp: number;
+  /** Zone to show the time in (#6523); the browser's when absent. */
+  timeZone?: string;
   nodeId: string;
   onRangeChange: (range: WidgetRange) => void;
   canEditRange?: boolean;
@@ -45,6 +48,7 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
   unit,
   color,
   timestamp,
+  timeZone,
   onRangeChange,
   canEditRange = false,
   formatValue,
@@ -64,7 +68,9 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
   const maxLabel = polarToCartesian(cx, cy, r + 14, endAngle);
 
   const date = new Date(timestamp);
-  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeStr = timeZone
+    ? formatInTimeZone(date, { hour: '2-digit', minute: '2-digit' }, timeZone)
+    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const displayValue = formatValue
     ? formatValue(value)
