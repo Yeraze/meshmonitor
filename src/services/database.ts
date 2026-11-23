@@ -99,7 +99,6 @@ import {
   PrivacyDocumentsRepository,
   SolarNodeOverridesRepository,
   AssetNodesRepository,
-  SolarEstimatesRepository,
   SolarIrradianceRepository,
   NewsCacheRepository,
   BackupHistoryRepository,
@@ -694,7 +693,6 @@ class DatabaseService {
   public privacyDocumentsRepo: PrivacyDocumentsRepository | null = null;
   public solarNodeOverridesRepo: SolarNodeOverridesRepository | null = null;
   public assetNodesRepo: AssetNodesRepository | null = null;
-  public solarEstimatesRepo: SolarEstimatesRepository | null = null;
   public solarIrradianceRepo: SolarIrradianceRepository | null = null;
   public newsCacheRepo: NewsCacheRepository | null = null;
   public backupHistoryRepo: BackupHistoryRepository | null = null;
@@ -921,11 +919,6 @@ class DatabaseService {
   get assetNodes(): AssetNodesRepository {
     if (!this.assetNodesRepo) throw new Error('Database not initialized');
     return this.assetNodesRepo;
-  }
-
-  get solarEstimates(): SolarEstimatesRepository {
-    if (!this.solarEstimatesRepo) throw new Error('Database not initialized');
-    return this.solarEstimatesRepo;
   }
 
   get solarIrradiance(): SolarIrradianceRepository {
@@ -1359,7 +1352,6 @@ class DatabaseService {
       this.privacyDocumentsRepo = new PrivacyDocumentsRepository(drizzleDb, this.drizzleDbType);
       this.solarNodeOverridesRepo = new SolarNodeOverridesRepository(drizzleDb, this.drizzleDbType);
       this.assetNodesRepo = new AssetNodesRepository(drizzleDb, this.drizzleDbType);
-      this.solarEstimatesRepo = new SolarEstimatesRepository(drizzleDb, this.drizzleDbType);
       this.solarIrradianceRepo = new SolarIrradianceRepository(drizzleDb, this.drizzleDbType);
       this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
       this.backupHistoryRepo = new BackupHistoryRepository(drizzleDb, this.drizzleDbType);
@@ -2951,23 +2943,6 @@ class DatabaseService {
 
   async clearAssetNodeAsync(nodeNum: number): Promise<void> {
     return this.assetNodes.clearAsync(nodeNum);
-  }
-
-  // Solar Estimates methods
-  async upsertSolarEstimateAsync(timestamp: number, wattHours: number, fetchedAt: number): Promise<void> {
-    await this.solarEstimates.upsertSolarEstimate({
-      timestamp,
-      watt_hours: wattHours,
-      fetched_at: fetchedAt,
-    });
-  }
-
-  async getRecentSolarEstimatesAsync(limit: number = 100): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
-    return this.solarEstimates.getRecentSolarEstimates(limit);
-  }
-
-  async getSolarEstimatesInRangeAsync(startTimestamp: number, endTimestamp: number): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
-    return this.solarEstimates.getSolarEstimatesInRange(startTimestamp, endTimestamp);
   }
 
   isAutoTracerouteNodeFilterEnabled(): boolean {

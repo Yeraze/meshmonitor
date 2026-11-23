@@ -389,7 +389,13 @@ describe('restoring a backup made before this change (28 tables, 1.0 format)', (
     fs.mkdirSync(path.join(env.dir, dirname), { recursive: true });
     const checksums: Record<string, string> = {};
     for (const table of TABLES_BEFORE) {
-      const json = JSON.stringify(table === 'coverage_receptions' ? [] : allRows(table), null, 2);
+      // solar_estimates was dropped by migration 246 (#6523); a 4.15 backup
+      // still carries it and restore skips it.
+      const json = JSON.stringify(
+        table === 'coverage_receptions' || table === 'solar_estimates' ? [] : allRows(table),
+        null,
+        2,
+      );
       fs.writeFileSync(backupFile(dirname, `${table}.json`), json, 'utf8');
       checksums[table] = sha256(json);
     }
@@ -415,7 +421,8 @@ describe('restoring a backup made before this change (28 tables, 1.0 format)', (
   it('validates and restores', async () => {
     expect(await systemBackupService.validateBackup(dirname)).toEqual({ valid: true, errors: [] });
     const result = await systemRestoreService.restoreFromBackup(dirname);
-    expect(result).toMatchObject({ success: true, tablesRestored: TABLES_BEFORE.length });
+    // Every old table but the retired solar_estimates (#6523).
+    expect(result).toMatchObject({ success: true, tablesRestored: TABLES_BEFORE.length - 1 });
   });
 
   it('brings back the tables the backup has', () => {

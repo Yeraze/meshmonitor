@@ -23,7 +23,9 @@ const schemaTableNames = new Set(
 );
 
 // Tables in SKIP_TABLES that are not Drizzle schema tables by design.
-const NON_SCHEMA_SKIPS = new Set(['sqlite_sequence']);
+// `solar_estimates` (#6523) was dropped by migration 246 but can still sit in
+// an older SQLite file being migrated, so it stays skipped.
+const NON_SCHEMA_SKIPS = new Set(['sqlite_sequence', 'solar_estimates']);
 
 describe('migrate-db table lists stay in sync with the Drizzle schema', () => {
   it('covers every schema table in TABLE_ORDER or SKIP_TABLES (no reliance on the implicit fallback)', () => {

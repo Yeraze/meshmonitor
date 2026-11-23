@@ -42,7 +42,6 @@ export const ROUTE_OVERRIDES: Record<string, string | string[]> = {
   'GET /api/channels/:id/export': '/api/channels/0/export',
   'GET /api/mqtt/root-finder/samples/:id': '/api/mqtt/root-finder/samples/audit-sample',
   'GET /api/packets/traffic-management/replay': '/api/packets/traffic-management/replay?sourceId=audit-mt',
-  'GET /api/solar/estimates/range': '/api/solar/estimates/range?start=0&end=9999999999',
   'GET /api/solar/irradiance': '/api/solar/irradiance?sourceId=audit-mt&nodeId=!5e0f9a61&start=0&end=86400',
   'GET /api/messages/search': ['/api/messages/search?q=sntl', '/api/messages/search?q=sntl&sourceId=audit-mt', '/api/messages/search?q=sntl&sourceId=audit-mc'],
   'GET /api/translate/stored': '/api/translate/stored?sourceId=audit-mt&lang=en&messageIds=audit-mt_1578607073_1',
