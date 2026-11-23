@@ -636,6 +636,9 @@ describe('Settings Persistence', () => {
         'mqttRootDirectoryRefreshEnabled',
         // OpenSky credentials (#5877), same pattern.
         'adsb_opensky_client_id', 'adsb_opensky_client_secret',
+        // Open-Meteo solar options (#6523) — same Category C pattern; read
+        // server-side by openMeteoSolarService.
+        'solarMonitoringGridSize', 'solarMonitoringRefreshHours', 'solar_open_meteo_api_token',
         // Virtual Node message replay (#6160) — loaded directly by SettingsTab
         // into its own initial* snapshot (global, settings:write-gated, no
         // SettingsContext hook), same Category C pattern as ductingOverlayEnabled
