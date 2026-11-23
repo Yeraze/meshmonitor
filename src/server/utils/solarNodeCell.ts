@@ -56,7 +56,7 @@ export type NodeIrradianceResult =
 const MAX_RANGE_S = 31 * 86_400;
 
 /**
- * Shared read for `/api/solar/irradiance` and `/api/v1/solar`: the node's
+ * Shared read for `/api/solar/irradiance` and `/api/v1/sources/:sourceId/solar`: the node's
  * telemetry-graph read gate (info or dashboard read, plus channel access on
  * the source), then the position gate in `resolveNodeSolarCell`.
  */

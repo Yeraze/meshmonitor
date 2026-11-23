@@ -7,6 +7,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
 import { runMigration246Postgres, runMigration246Mysql } from './246_drop_solar_estimates.js';
+import { runMigration244Postgres, runMigration244Mysql } from './244_purge_shifted_solar_estimates.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -32,6 +33,8 @@ describe.skipIf(!postgresAvailable)('migration 246 — PostgreSQL (container)', 
     try {
       await runMigration246Postgres(client);
       await runMigration246Postgres(client);
+      // 244 re-runs safely once the table is gone (restore of a pre-244 backup).
+      await runMigration244Postgres(client);
     } finally {
       client.release();
     }
@@ -56,6 +59,8 @@ describe.skipIf(!mysqlAvailable)('migration 246 — MySQL (container)', () => {
     await pool.query(`INSERT INTO solar_estimates (timestamp, watt_hours, fetched_at) VALUES (1, 2, 3)`);
     await runMigration246Mysql(pool);
     await runMigration246Mysql(pool);
+    // 244 re-runs safely once the table is gone (restore of a pre-244 backup).
+    await runMigration244Mysql(pool);
     const [rows] = await pool.query(
       `SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solar_estimates'`,
     );
