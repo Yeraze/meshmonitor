@@ -12,7 +12,8 @@
  *   /api/v1/sources/:sourceId/{nodes,messages,channels,telemetry,traceroutes,
  *                              packets,network,status}  — per-source, canonical
  *   /api/v1/sources/:sourceId/nodes/:nodeId/position-history
- *   /api/v1/channel-database, /api/v1/metrics — deployment-global; /api/v1/solar takes ?sourceId=&nodeId=
+ *   /api/v1/sources/:sourceId/solar?nodeId= — per-node sunlight (#6523)
+ *   /api/v1/channel-database, /api/v1/metrics — deployment-global
  *
  * The legacy root shape (`/api/v1/{nodes,messages,...}?sourceId=...`) shipped
  * with a one-release `Warning: 299` deprecation grace period in 4.13 and was
@@ -71,7 +72,7 @@ router.get('/', (_req, res) => {
       positionHistory: '/api/v1/sources/{sourceId}/nodes/{nodeId}/position-history',
       status: '/api/v1/sources/{sourceId}/status',
       channelDatabase: '/api/v1/channel-database',
-      solar: '/api/v1/solar',
+      solar: '/api/v1/sources/:sourceId/solar',
       metrics: '/api/v1/metrics',
       actions: '/api/v1/sources/{sourceId}/actions',
     },
@@ -83,7 +84,6 @@ router.get('/', (_req, res) => {
 
 // Global (unscoped) routers
 router.use('/sources', sourcesRouter);
-router.use('/solar', solarRouter);
 router.use('/channel-database', channelDatabaseRouter);
 router.use('/metrics', metricsRouter);
 router.use('/translate', translateRouter);
@@ -117,6 +117,11 @@ router.use(
   '/sources/:sourceId/messages',
   attachSource('messages', 'read'),
   messagesRouter
+);
+router.use(
+  '/sources/:sourceId/solar',
+  attachSource('nodes', 'read'),
+  solarRouter
 );
 router.use(
   '/sources/:sourceId/network',

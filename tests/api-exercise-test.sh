@@ -696,8 +696,7 @@ except Exception as e:
   check_v1 "GET $V1S/network/direct-neighbors" "$V1S/network/direct-neighbors" "'success' in data or isinstance(data, dict)"
   check_v1 "GET $V1S/packets" "$V1S/packets" "'success' in data and 'data' in data"
   check_v1 "GET /api/v1/channel-database" "/api/v1/channel-database" "'success' in data and 'data' in data"
-  check "GET /api/v1/solar (per node)" "$(v1 GET "/api/v1/solar?sourceId=$SOURCE_ID&nodeId=!00000001")" 200
-  check "GET /api/v1/solar (no sourceId)" "$(v1 GET /api/v1/solar)" 400
+  check "GET $V1S/solar" "$(v1 GET "$V1S/solar?nodeId=!00000001")" 200
   check "GET $V1S/messages/search?q=test" "$(v1 GET "$V1S/messages/search?q=test")" 200
   check "GET /api/v1/docs/openapi.json" "$(v1 GET /api/v1/docs/openapi.json)" 200
   check "GET /api/v1/docs/openapi.yaml" "$(v1 GET /api/v1/docs/openapi.yaml)" 200

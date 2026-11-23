@@ -2252,7 +2252,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /solar:
+  /sources/{sourceId}/solar:
     get:
       tags:
         - Solar
@@ -2262,11 +2262,12 @@ paths:
         grid cell (#6523). The node's position is resolved server-side and the
         same visibility rules as the map apply: a token that cannot see the
         node's position gets an empty list. Replaces the forecast.solar
-        `wattHours` feed and `/solar/range` (removed).
+        `wattHours` feed at `/solar` and `/solar/range` (both removed).
       parameters:
         - name: sourceId
-          in: query
+          in: path
           required: true
+          description: Source id, or `default`
           schema:
             type: string
         - name: nodeId
@@ -2295,7 +2296,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SolarIrradianceResponse'
         '400':
-          description: Missing sourceId/nodeId or bad window
+          description: Missing nodeId or bad window
           content:
             application/json:
               schema:
