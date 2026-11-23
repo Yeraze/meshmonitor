@@ -44,9 +44,9 @@ Per-source resources:
 - `GET /api/v1/sources/{sourceId}/packets`
 - `GET /api/v1/sources/{sourceId}/status`
 - `GET /api/v1/sources/{sourceId}/nodes/{nodeId}/position-history`
+- `GET /api/v1/sources/{sourceId}/solar?nodeId=&start=&end=`
 
 Deployment-global (no sourceId):
-- `GET /api/v1/solar`
 - `GET /api/v1/channel-database`
 
 ### What a token can read
@@ -1777,7 +1777,7 @@ Hourly sunlight (W/m²) and cloud cover (%) at one node's grid cell. Needs the s
 }
 ```
 
-`enabled` is `false` when Solar Monitoring is off. The v1 equivalent is `GET /api/v1/solar`.
+`enabled` is `false` when Solar Monitoring is off. The v1 equivalent is `GET /api/v1/sources/{sourceId}/solar?nodeId=&start=&end=`.
 
 #### GET /api/solar/usage
 
@@ -1806,7 +1806,7 @@ Cross-source analytical endpoints used by the **Analysis & Reports** workspace a
 
 #### GET /api/analysis/solar-nodes
 
-Detects likely solar-powered nodes by analyzing battery and voltage telemetry over a lookback window. Returns the per-node solar score, recent daily charge/discharge patterns, and a chart-ready time series, alongside the hourly solar production overlay from the forecast.solar cache.
+Detects likely solar-powered nodes by analyzing battery and voltage telemetry over a lookback window. Returns the per-node solar score, recent daily charge/discharge patterns, a chart-ready time series and, per node, the hourly Open-Meteo sunlight (W/m²) at that node's grid cell (`solar_production`). A node whose position the caller cannot see, or any node while Solar Monitoring is off, has no `solar_production`.
 
 **Query Parameters:**
 - `lookback_days` (optional, default `7`, range `1`–`90`) — days of history to analyze
@@ -1846,11 +1846,11 @@ Detects likely solar-powered nodes by analyzing battery and voltage telemetry ov
           "charge_rate_per_hour": 3.5,
           "discharge_rate_per_hour": 0.9
         }
+      ],
+      "solar_production": [
+        { "timestamp": 1777316400000, "wattsPerM2": 427 }
       ]
     }
-  ],
-  "solar_production": [
-    { "timestamp": 1777316400000, "wattHours": 427 }
   ]
 }
 ```
@@ -1864,31 +1864,32 @@ curl -X GET "http://localhost:8080/api/analysis/solar-nodes?lookback_days=14"
 
 #### GET /api/analysis/solar-forecast
 
-Compares forecast.solar projections to the lookback's historical average and simulates each detected solar node's battery state across the forecast horizon. Surfaces nodes whose simulated minimum drops below the at-risk threshold (50% for batteries, 3.5 V for voltage metrics).
+For each detected solar node, compares the daily sunlight forecast (Wh/m², from Open-Meteo at the node's grid cell) with that cell's average over its stored past days, and simulates the node's battery state across the forecast days. Surfaces nodes whose simulated minimum drops below the at-risk threshold (50% for batteries, 3.5 V for voltage metrics).
 
 **Query Parameters:**
-- `lookback_days` (optional, default `7`, range `1`–`90`) — days of history to compute the historical average
+- `lookback_days` (optional, default `7`, range `1`–`90`) — days of telemetry used to detect solar nodes and their charge/discharge rates
 - `sources` (optional) — comma-separated source IDs (intersected with permitted sources)
 
 **Response:**
 ```json
 {
   "lookback_days": 7,
-  "historical_days_analyzed": 7,
-  "avg_historical_daily_wh": 4280.5,
   "low_output_warning": true,
-  "forecast_days": [
-    { "date": "2026-05-04", "forecast_wh": 3950.0, "avg_historical_wh": 4280.5, "pct_of_average": 92.3, "is_low": false },
-    { "date": "2026-05-05", "forecast_wh": 2475.0, "avg_historical_wh": 4280.5, "pct_of_average": 57.8, "is_low": true }
-  ],
-  "nodes_at_risk_count": 2,
+  "nodes_without_forecast": 1,
+  "nodes_at_risk_count": 1,
   "nodes_at_risk": [
     {
       "node_num": 1128074052,
-      "node_name": "0day Roof 🤖",
+      "node_name": "Roof Node",
       "metric_type": "batteryLevel",
       "current_battery": 78,
       "min_simulated_battery": 41.5,
+      "historical_days_analyzed": 9,
+      "avg_historical_daily_wh_m2": 4280.5,
+      "forecast_days": [
+        { "date": "2026-05-04", "forecast_wh_m2": 3950.0, "avg_historical_wh_m2": 4280.5, "pct_of_average": 92.3, "is_low": false },
+        { "date": "2026-05-05", "forecast_wh_m2": 2475.0, "avg_historical_wh_m2": 4280.5, "pct_of_average": 57.8, "is_low": true }
+      ],
       "simulation": [
         { "timestamp": "2026-05-04T12:00:00Z", "simulated_battery": 62.4, "phase": "sunrise", "forecast_factor": 0.92 },
         { "timestamp": "2026-05-04T19:00:00Z", "simulated_battery": 95.2, "phase": "peak",    "forecast_factor": 0.92 },
@@ -1901,9 +1902,11 @@ Compares forecast.solar projections to the lookback's historical average and sim
 ```
 
 **Notes:**
-- `forecast_factor` is `forecast_wh / avg_historical_wh`, clamped to `[0, 1.5]`. Each day's effective charge rate for a node is `node.avg_charge_rate_per_hour * forecast_factor`.
-- `low_output_warning` is `true` when any forecast day drops below 75% of the historical average.
-- The forecast horizon is bounded by the data available in the local forecast.solar cache (typically today + 1–2 days).
+- Daily insolation is the sum of a UTC day's hourly W/m² values (Wh/m²); only days with at least 22 stored hours count.
+- A node needs at least 3 full past days of sunlight data; nodes with less, or with no visible position, are counted in `nodes_without_forecast` and left out of `solar_simulations`.
+- `forecast_factor` is `forecast_wh_m2 / avg_historical_daily_wh_m2`, clamped to `[0, 1.5]`. Each day's effective charge rate for a node is `node.avg_charge_rate_per_hour * forecast_factor`.
+- `low_output_warning` is `true` when any node has a forecast day below 75% of its own average.
+- The horizon is today plus Open-Meteo's stored forecast days (typically today and tomorrow).
 
 **Example:**
 ```bash

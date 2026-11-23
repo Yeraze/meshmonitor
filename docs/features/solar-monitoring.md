@@ -50,6 +50,7 @@ The curve appears on:
 
 - **Node Details** telemetry graphs (Meshtastic and MeshCore nodes),
 - **Telemetry Dashboard** favourite charts.
+- **Analysis & Reports → Solar Monitoring Analysis**, under each detected solar node's battery line. Its forecast compares each node's coming days with its own cell's recent average; see [Analysis & Reports](/features/analysis-reports).
 
 A node shows no curve when it has no position, when you cannot see its position, or when its cell has not been fetched yet. A chart's CSV export adds a `Sunlight W/m2` column while the overlay has data.
 
