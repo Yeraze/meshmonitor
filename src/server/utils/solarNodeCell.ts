@@ -9,11 +9,10 @@
  */
 import databaseService from '../../services/database.js';
 import { buildPositionFilter, buildMeshCorePositionFilter } from './positionVisibility.js';
-import { getEffectiveDbNodePosition, checkNodeChannelAccess } from './nodeEnhancer.js';
+import { checkNodeChannelAccess } from './nodeEnhancer.js';
 import { hasPermission } from '../auth/authMiddleware.js';
-import { isBogusPosition } from '../../utils/nullIsland.js';
 import { isValidNodeNum } from '../constants/meshtastic.js';
-import { cellFor, loadSolarSettings } from '../services/openMeteoSolarService.js';
+import { cellFor, loadSolarSettings, solarPosition } from '../services/openMeteoSolarService.js';
 import type { SolarIrradianceRow } from '../../db/repositories/index.js';
 import type { User } from '../../types/auth.js';
 
@@ -25,8 +24,7 @@ export async function resolveNodeSolarCell(
   nodeId: string,
   gridSize: number,
 ): Promise<string | null> {
-  let lat: number | null | undefined;
-  let lon: number | null | undefined;
+  let pos: { latitude: number; longitude: number } | null;
 
   if (MESHCORE_KEY.test(nodeId)) {
     const publicKey = nodeId.toLowerCase();
@@ -34,23 +32,20 @@ export async function resolveNodeSolarCell(
     if (!node) return null;
     const visible = await buildMeshCorePositionFilter(user ?? null, [sourceId], new Map([[sourceId, [node]]]));
     if (!visible({ sourceId, publicKey })) return null;
-    const useOverride = !!node.positionOverrideEnabled && node.latitudeOverride != null && node.longitudeOverride != null;
-    lat = useOverride ? node.latitudeOverride : node.latitude;
-    lon = useOverride ? node.longitudeOverride : node.longitude;
+    pos = await solarPosition(node, sourceId);
   } else {
     const nodeNum = parseInt(nodeId.replace('!', ''), 16);
     if (!isValidNodeNum(nodeNum)) return null;
     const node = await databaseService.nodes.getNode(nodeNum, sourceId);
     if (!node) return null;
-    const visible = await buildPositionFilter(user ?? null, [sourceId], new Map([[sourceId, [node]]]));
+    // `hideFromMap` only removes the map marker; the node's telemetry graphs
+    // (where this curve is drawn) still show, so drop that display gate here.
+    const visible = await buildPositionFilter(user ?? null, [sourceId], new Map([[sourceId, [{ ...node, hideFromMap: false }]]]));
     if (!visible({ sourceId, nodeNum })) return null;
-    const pos = getEffectiveDbNodePosition(node);
-    lat = pos.latitude;
-    lon = pos.longitude;
+    pos = await solarPosition(node, sourceId);
   }
 
-  if (lat == null || lon == null || isBogusPosition(lat, lon)) return null;
-  return cellFor(lat, lon, gridSize).key;
+  return pos ? cellFor(pos.latitude, pos.longitude, gridSize).key : null;
 }
 
 export type NodeIrradianceResult =

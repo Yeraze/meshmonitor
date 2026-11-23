@@ -11,15 +11,26 @@ let mcNodes: Array<Record<string, unknown>> = [];
 
 vi.mock('../../services/database.js', () => ({
   default: {
-    settings: { getSetting: vi.fn(async (k: string) => settings.get(k) ?? null) },
+    settings: {
+      getSetting: vi.fn(async (k: string) => settings.get(k) ?? null),
+      setSetting: vi.fn(async (k: string, v: string) => { settings.set(k, v); }),
+    },
     nodes: { getActiveNodes: vi.fn(async () => mtNodes) },
     meshcore: { getAllNodes: vi.fn(async () => mcNodes) },
     solarIrradiance: {
       getLastFetchedAt: vi.fn(async (keys: string[]) => new Map(keys.filter(k => lastFetched.has(k)).map(k => [k, lastFetched.get(k)!]))),
-      replaceCellRows: vi.fn(async (key: string, rows: unknown[]) => { replaced.push({ key, rows }); }),
+      replaceCellRows: vi.fn(async (key: string, rows: unknown[], fetchedAt: number) => {
+        replaced.push({ key, rows });
+        lastFetched.set(key, fetchedAt);
+      }),
       deleteOlderThan: vi.fn(async () => {}),
     },
   },
+}));
+
+vi.mock('./signFlipCorrection.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./signFlipCorrection.js')>()),
+  getCachedSignFlipContext: vi.fn(async () => null),
 }));
 
 import {
@@ -191,13 +202,73 @@ describe('refresh', () => {
     expect(await openMeteoSolarService.refresh()).toBe(400);
   });
 
-  it('stops the pass on an HTTP error, with no retry', async () => {
+  const echo = async (url: string) => {
+    const n = new URL(url).searchParams.get('latitude')!.split(',').length;
+    return okResponse(Array.from({ length: n }, () => location(NOW_S)));
+  };
+
+  it.each([429, 503])('stops the pass on HTTP %i, with no retry', async (status) => {
     settings.set('solarMonitoringEnabled', '1');
     mtNodes = Array.from({ length: 120 }, (_, i) => mtNode(i * 0.2 - 40, 1));
-    fetchMock.mockResolvedValue({ ok: false, status: 429, json: async () => ({}) });
+    fetchMock.mockResolvedValue({ ok: false, status, json: async () => ({}) });
     expect(await openMeteoSolarService.refresh()).toBe(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(replaced).toEqual([]);
+  });
+
+  it('skips a chunk on another 4xx and carries on', async () => {
+    settings.set('solarMonitoringEnabled', '1');
+    mtNodes = Array.from({ length: 120 }, (_, i) => mtNode(i * 0.2 - 40, 1));
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({}) }).mockImplementation(echo);
+    expect(await openMeteoSolarService.refresh()).toBe(70);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('counts calls in a persisted per-day log and stops at the daily budget', async () => {
+    settings.set('solarMonitoringEnabled', '1');
+    settings.set('solarOpenMeteoCallLog', JSON.stringify({ day: '2026-11-23', calls: 8960 }));
+    mtNodes = Array.from({ length: 120 }, (_, i) => mtNode(i * 0.2 - 40, 1));
+    fetchMock.mockImplementation(echo);
+    // 8960 + 50 > 9000: nothing fits today.
+    vi.setSystemTime(Date.parse('2026-11-23T12:00:00Z'));
+    expect(await openMeteoSolarService.refresh()).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // A new UTC day resets the counter.
+    vi.setSystemTime(Date.parse('2026-11-24T00:30:00Z'));
+    expect(await openMeteoSolarService.refresh()).toBe(120);
+    expect(JSON.parse(settings.get('solarOpenMeteoCallLog')!)).toEqual({ day: '2026-11-24', calls: 120 });
+  });
+
+  it('an over-cap mesh whose recency order shuffles never passes 9,000 calls per UTC day', async () => {
+    settings.set('solarMonitoringEnabled', '1');
+    settings.set('solarMonitoringRefreshHours', '3'); // cell cap 1125
+    const lats = Array.from({ length: 2000 }, (_, i) => -80 + i * 0.08);
+    const callsByDay = new Map<string, number>();
+    fetchMock.mockImplementation(async (url: string) => {
+      const day = new Date(Date.now()).toISOString().slice(0, 10);
+      const n = new URL(url).searchParams.get('latitude')!.split(',').length;
+      callsByDay.set(day, (callsByDay.get(day) ?? 0) + n);
+      return echo(url);
+    });
+    let seed = 7;
+    const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const start = Date.parse('2026-11-23T00:07:00Z');
+    for (let h = 0; h < 72; h++) {
+      vi.setSystemTime(start + h * 3_600_000);
+      const nowS = Math.floor(Date.now() / 1000);
+      mtNodes = lats.map(lat => mtNode(lat, 1, { lastHeard: nowS - Math.floor(rand() * 86_400) }));
+      await openMeteoSolarService.refresh();
+    }
+    expect(callsByDay.size).toBe(3);
+    for (const calls of callsByDay.values()) expect(calls).toBeLessThanOrEqual(9000);
+  });
+
+  it('a single pass never passes the per-pass ceiling on the free tier', async () => {
+    settings.set('solarMonitoringEnabled', '1');
+    settings.set('solarMonitoringRefreshHours', '24'); // cap 9000 cells
+    mtNodes = Array.from({ length: 6000 }, (_, i) => mtNode(-75 + (i % 1500) * 0.1, 1 + Math.floor(i / 1500) * 0.5));
+    fetchMock.mockImplementation(echo);
+    expect(await openMeteoSolarService.refresh()).toBe(4000);
   });
 
   it('ignores an invalid grid/refresh setting and falls back to defaults', async () => {

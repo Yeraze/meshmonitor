@@ -12,10 +12,13 @@
  *    settings save or a manual trigger never re-fetches a fresh cell.
  *  - Without an API key (free tier, < 10,000 calls/day) the cell list is cut to
  *    what fits FREE_DAILY_BUDGET at the configured refresh, most recently
- *    heard nodes first.
+ *    heard nodes first, AND every call is counted against a per-UTC-day
+ *    counter persisted in settings (CALL_LOG_KEY, server-owned, not in
+ *    VALID_SETTINGS_KEYS so no save can reset it). A pass also stops at
+ *    PASS_CALL_CEILING, under the free tier's 5,000/hour.
  *  - Requests go out in chunks, paced under the free tier's 600/minute.
- *  - Any HTTP error (429 included) ends the tick; nothing retries until the
- *    next hourly tick.
+ *  - 429 or 5xx ends the pass; any other 4xx skips that chunk. Nothing
+ *    retries until the next hourly tick.
  *
  * Privacy: a node whose position override is marked private is never sent.
  */
@@ -24,6 +27,7 @@ import databaseService from '../../services/database.js';
 import { validateCron, scheduleCron, type CronJob } from '../utils/cronScheduler.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
+import { correctLatLon, getCachedSignFlipContext } from './signFlipCorrection.js';
 import { ALL_SOURCES, type SolarIrradianceRow } from '../../db/repositories/index.js';
 
 /** Grid sizes offered in Settings, in degrees (0.1° ≈ 11 km). */
@@ -40,6 +44,10 @@ export const ACTIVE_NODE_DAYS = 7;
 const CHUNK_SIZE = 50;
 /** Pause between chunks: 50 calls / 6 s = 500/min, under the 600/min cap. */
 const CHUNK_PAUSE_MS = 6000;
+/** Most calls one pass may make on the free tier (hourly limit is 5,000). */
+export const PASS_CALL_CEILING = 4000;
+/** Server-owned per-UTC-day call counter: `{"day":"YYYY-MM-DD","calls":n}`. */
+export const CALL_LOG_KEY = 'solarOpenMeteoCallLog';
 /** Stored rows older than this are swept. */
 const RETENTION_DAYS = 30;
 /** A cell refetches when its data is older than the interval minus this slack. */
@@ -97,6 +105,36 @@ export async function loadSolarSettings(): Promise<SolarSettings> {
   };
 }
 
+/** Node fields the effective-position read needs (Meshtastic and MeshCore rows share them). */
+export interface SolarPositionFields {
+  latitude?: number | null;
+  longitude?: number | null;
+  altitude?: number | null;
+  positionOverrideEnabled?: boolean | number | null;
+  latitudeOverride?: number | null;
+  longitudeOverride?: number | null;
+  altitudeOverride?: number | null;
+  positionPrecisionBits?: number | null;
+}
+
+/**
+ * The position the map shows for `node` on `sourceId`: the override when set,
+ * else the device fix with the source's sign-flip correction. Null when there
+ * is no usable position.
+ */
+export async function solarPosition(
+  node: SolarPositionFields,
+  sourceId: string | null | undefined,
+): Promise<{ latitude: number; longitude: number } | null> {
+  const eff = getEffectiveDbNodePosition(node as Parameters<typeof getEffectiveDbNodePosition>[0]);
+  let { latitude, longitude } = eff;
+  if (!eff.isOverride) {
+    ({ latitude, longitude } = correctLatLon(latitude, longitude, await getCachedSignFlipContext(sourceId), node.positionPrecisionBits));
+  }
+  if (latitude == null || longitude == null || isBogusPosition(latitude, longitude, eff.isOverride ? null : node.positionPrecisionBits)) return null;
+  return { latitude, longitude };
+}
+
 /**
  * Effective positions of every active node on every source, most recently
  * heard first. Private overrides and bogus (Null Island / out of range)
@@ -105,26 +143,23 @@ export async function loadSolarSettings(): Promise<SolarSettings> {
 export async function collectActivePositions(): Promise<Array<{ latitude: number; longitude: number }>> {
   const out: Array<{ latitude: number; longitude: number; heard: number }> = [];
 
+  // Meshtastic lastHeard is seconds.
   const nodes = await databaseService.nodes.getActiveNodes(ACTIVE_NODE_DAYS, ALL_SOURCES);
   for (const n of nodes) {
     if (n.positionOverrideEnabled && n.positionOverrideIsPrivate) continue;
-    const pos = getEffectiveDbNodePosition(n);
-    if (pos.latitude == null || pos.longitude == null || isBogusPosition(pos.latitude, pos.longitude)) continue;
-    out.push({ latitude: pos.latitude, longitude: pos.longitude, heard: Number(n.lastHeard ?? 0) * 1000 });
+    const pos = await solarPosition(n, (n as { sourceId?: string | null }).sourceId);
+    if (pos) out.push({ ...pos, heard: Number(n.lastHeard ?? 0) * 1000 });
   }
 
-  // MeshCore lastHeard is milliseconds.
+  // MeshCore lastHeard is milliseconds (see meshcore_nodes.firstHeard).
   const cutoffMs = Date.now() - ACTIVE_NODE_DAYS * 86_400_000;
   const mcNodes = await databaseService.meshcore.getAllNodes();
   for (const n of mcNodes) {
     const heard = Number(n.lastHeard ?? 0);
     if (heard < cutoffMs) continue;
     if (n.positionOverrideEnabled && n.positionOverrideIsPrivate) continue;
-    const useOverride = !!n.positionOverrideEnabled && n.latitudeOverride != null && n.longitudeOverride != null;
-    const lat = useOverride ? n.latitudeOverride : n.latitude;
-    const lon = useOverride ? n.longitudeOverride : n.longitude;
-    if (lat == null || lon == null || isBogusPosition(lat, lon)) continue;
-    out.push({ latitude: lat, longitude: lon, heard });
+    const pos = await solarPosition(n, n.sourceId);
+    if (pos) out.push({ ...pos, heard });
   }
 
   return out.sort((a, b) => b.heard - a.heard).map(({ latitude, longitude }) => ({ latitude, longitude }));
@@ -170,6 +205,21 @@ export function buildUrl(cells: SolarCell[], apiKey: string): string {
   return `${host}/v1/forecast?${params.toString()}`;
 }
 
+function utcDay(nowS: number): string {
+  return new Date(nowS * 1000).toISOString().slice(0, 10);
+}
+
+/** Calls already spent today (UTC), from the persisted counter. */
+async function readCallsToday(nowS: number): Promise<number> {
+  try {
+    const raw = await databaseService.settings.getSetting(CALL_LOG_KEY);
+    const log = raw ? (JSON.parse(raw) as { day?: string; calls?: number }) : null;
+    return log?.day === utcDay(nowS) && Number.isFinite(log.calls) ? Number(log.calls) : 0;
+  } catch {
+    return 0;
+  }
+}
+
 class OpenMeteoSolarService {
   private cronJob: CronJob | null = null;
   private running = false;
@@ -212,14 +262,31 @@ class OpenMeteoSolarService {
       const minAge = settings.refreshHours * 3600 - REFRESH_SLACK_S;
       const due = cells.filter(c => now - (last.get(c.key) ?? 0) >= minAge);
 
+      const free = !settings.apiKey;
+      let callsToday = free ? await readCallsToday(now) : 0;
+      let passCalls = 0;
       let fetched = 0;
       for (let i = 0; i < due.length; i += CHUNK_SIZE) {
-        if (i > 0) await this.sleep(CHUNK_PAUSE_MS);
         const chunk = due.slice(i, i + CHUNK_SIZE);
+        if (free && (callsToday + chunk.length > FREE_DAILY_BUDGET || passCalls + chunk.length > PASS_CALL_CEILING)) {
+          logger.warn(`☀️  Solar: free-tier call budget reached (${callsToday} today); remaining cells wait for a later tick`);
+          break;
+        }
+        if (i > 0) await this.sleep(CHUNK_PAUSE_MS);
+        // Count before the request: a failed call may still be billed.
+        passCalls += chunk.length;
+        if (free) {
+          callsToday += chunk.length;
+          await databaseService.settings.setSetting(CALL_LOG_KEY, JSON.stringify({ day: utcDay(now), calls: callsToday }));
+        }
         const res = await fetch(buildUrl(chunk, settings.apiKey));
         if (!res.ok) {
-          logger.error(`❌ Solar: Open-Meteo returned HTTP ${res.status}; stopping until the next hourly tick`);
-          break;
+          if (res.status === 429 || res.status >= 500) {
+            logger.error(`❌ Solar: Open-Meteo returned HTTP ${res.status}; stopping until the next hourly tick`);
+            break;
+          }
+          logger.error(`❌ Solar: Open-Meteo returned HTTP ${res.status} for ${chunk.length} cells; skipping them`);
+          continue;
         }
         const body = (await res.json()) as OpenMeteoLocation | OpenMeteoLocation[];
         const locations = Array.isArray(body) ? body : [body];

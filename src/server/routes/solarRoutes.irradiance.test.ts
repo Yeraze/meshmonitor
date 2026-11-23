@@ -6,13 +6,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import solarRoutes from './solarRoutes.js';
 import databaseService from '../../services/database.js';
-import { cellFor, openMeteoSolarService } from '../services/openMeteoSolarService.js';
+import { cellFor, openMeteoSolarService, collectActivePositions } from '../services/openMeteoSolarService.js';
 
 const NODE_NUM = 0x5e0f9a61;
 const NODE_ID = '!5e0f9a61';
 const LAT = 40.0123;
 const LON = -89.9876;
 const T0 = 1_795_305_600;
+const MC_KEY = 'ab'.repeat(32);
+const MC_LAT = 51.507;
+const MC_LON = -0.128;
 
 describe('solar irradiance routes', () => {
   let harness: RouteTestHarness;
@@ -85,11 +88,11 @@ describe('solar irradiance routes', () => {
     expect((await agent.get(url(harness.sourceA))).status).toBe(403);
   });
 
-  it('returns no points for a node hidden from the map', async () => {
+  it('still returns the curve for a node hidden from the map (graphs still show)', async () => {
     await giveViewer({ viewOnMap: true });
     await databaseService.setNodeHideFromMapAsync(NODE_NUM, true, harness.sourceA);
     const agent = await harness.loginAs(harness.limited);
-    expect((await agent.get(url(harness.sourceA))).body.data.points).toEqual([]);
+    expect((await agent.get(url(harness.sourceA))).body.data.points).toHaveLength(2);
   });
 
   it('hides a private override from a viewer without nodes_private:read', async () => {
@@ -138,7 +141,42 @@ describe('solar irradiance routes', () => {
     expect(usage.body.data.activeNodes).toBeGreaterThanOrEqual(1);
     expect(usage.body.data.cellsByGrid['0.1']).toBeGreaterThanOrEqual(1);
     const r = await admin.post('/solar/refresh');
-    expect(r.body).toEqual({ success: true, data: { fetched: 3 } });
+    expect(r.body).toEqual({ success: true, data: { started: true } });
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  describe('MeshCore node (real rows)', () => {
+    beforeEach(async () => {
+      await databaseService.meshcore.upsertNode(
+        { publicKey: MC_KEY, name: 'Sun MC', latitude: MC_LAT, longitude: MC_LON, lastHeard: Date.now() - 60_000 },
+        harness.sourceA,
+      );
+      await databaseService.meshcore.setNodePositionOverride(harness.sourceA, MC_KEY, { enabled: false });
+      await databaseService.solarIrradiance.replaceCellRows(cellFor(MC_LAT, MC_LON, 0.1).key, [
+        { timestamp: T0, shortwaveRadiation: 77, cloudCover: 5 },
+      ], T0);
+    });
+
+    const mcUrl = () => `/solar/irradiance?sourceId=${harness.sourceA}&nodeId=${MC_KEY}&start=${T0}&end=${T0 + 7200}`;
+
+    it('is collected for fetching (lastHeard in ms, override honoured)', async () => {
+      expect(await collectActivePositions()).toContainEqual({ latitude: MC_LAT, longitude: MC_LON });
+      await databaseService.meshcore.setNodePositionOverride(harness.sourceA, MC_KEY, { enabled: true, latitude: 48.85, longitude: 2.35, isPrivate: false });
+      const positions = await collectActivePositions();
+      expect(positions).toContainEqual({ latitude: 48.85, longitude: 2.35 });
+      expect(positions).not.toContainEqual({ latitude: MC_LAT, longitude: MC_LON });
+      await databaseService.meshcore.setNodePositionOverride(harness.sourceA, MC_KEY, { enabled: true, latitude: 48.85, longitude: 2.35, isPrivate: true });
+      expect(await collectActivePositions()).not.toContainEqual({ latitude: 48.85, longitude: 2.35 });
+    });
+
+    it('returns points with nodes:viewOnMap and 403 without', async () => {
+      await give('info', ['read'], harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+      expect((await agent.get(mcUrl())).status).toBe(403);
+      await give('nodes', ['read', 'viewOnMap'], harness.sourceA);
+      const res = await agent.get(mcUrl());
+      expect(res.status).toBe(200);
+      expect(res.body.data.points).toEqual([{ timestamp: T0, shortwaveRadiation: 77, cloudCover: 5 }]);
+    });
   });
 });

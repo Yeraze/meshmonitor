@@ -151,17 +151,14 @@ router.get('/usage', requireAdmin(), async (_req: Request, res: Response) => {
 
 /**
  * POST /api/solar/refresh  (admin, #6523)
- * Run one Open-Meteo pass now. Cells refreshed within the interval are
- * skipped, so this cannot spend more than a scheduled pass would.
+ * Start one Open-Meteo pass and return at once (a pass sleeps between chunks,
+ * so awaiting it could outlive the request socket and get re-sent). Cells
+ * refreshed within the interval are skipped and the daily call counter
+ * applies, so this cannot spend more than a scheduled pass would.
  */
-router.post('/refresh', requireAdmin(), async (_req: Request, res: Response) => {
-  try {
-    const fetched = await openMeteoSolarService.refresh();
-    return ok(res, { fetched });
-  } catch (error) {
-    logger.error('Error refreshing solar irradiance:', error);
-    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to refresh solar irradiance');
-  }
+router.post('/refresh', requireAdmin(), (_req: Request, res: Response) => {
+  void openMeteoSolarService.refresh();
+  return ok(res, { started: true });
 });
 
 export default router;
