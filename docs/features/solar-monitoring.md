@@ -85,7 +85,7 @@ Example response from `/api/solar/irradiance`:
 }
 ```
 
-The v1 API serves the same data; see the [REST API reference](/api/REST_API).
+The v1 API serves the same data; see the [API reference](/development/api-reference).
 
 ## Troubleshooting
 
