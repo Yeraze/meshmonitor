@@ -183,6 +183,7 @@ import { migration as userPrefsUnreadIndicatorMigration, runMigration161Postgres
 import { migration as userPrefsUnreadIncludeRepliesMigration, runMigration241Postgres, runMigration241Mysql } from '../server/migrations/241_user_map_preferences_unread_include_replies.js';
 import { migration as readMessagesCompositeKeyMigration, runMigration242Postgres, runMigration242Mysql } from '../server/migrations/242_read_messages_composite_key.js';
 import { migration as dropMysqlNotifPrefsUserIdUniqueMigration, runMigration243Postgres, runMigration243Mysql } from '../server/migrations/243_drop_mysql_notif_prefs_userid_unique.js';
+import { migration as purgeShiftedSolarEstimatesMigration, runMigration244Postgres, runMigration244Mysql } from '../server/migrations/244_purge_shifted_solar_estimates.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -3913,4 +3914,18 @@ registry.register({
   sqlite: (db) => dropMysqlNotifPrefsUserIdUniqueMigration.up(db),
   postgres: (client) => runMigration243Postgres(client),
   mysql: (pool) => runMigration243Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 244: purge forecast.solar estimates stored with the container-TZ
+// parse bug (#6523). The next hourly fetch refills them as true UTC.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 244,
+  name: 'purge_shifted_solar_estimates',
+  settingsKey: 'migration_244_purge_shifted_solar_estimates',
+  sqlite: (db) => purgeShiftedSolarEstimatesMigration.up(db),
+  postgres: (client) => runMigration244Postgres(client),
+  mysql: (pool) => runMigration244Mysql(pool),
 });
