@@ -613,6 +613,36 @@ restarts services in place. What to expect:
 - If the new version starts but doesn't respond, use `meshmonitor-update -r`
   (rollback from the backup taken at the start of the run).
 
+### Release mode: update to releases without building
+
+By default the updater follows the latest commit on `main` and builds it. In
+**release mode** it installs the newest GitHub release instead, from a pre-built
+runtime that ships with each release (about 75 MB). There is no `npm ci` and no
+build, so an update takes under a minute and needs none of the memory in
+[Update memory](#update-memory).
+
+```bash
+UPDATE_MODE=release meshmonitor-update                            # latest full release
+UPDATE_MODE=release UPDATE_CHANNEL=prerelease meshmonitor-update  # include release candidates
+UPDATE_MODE=git meshmonitor-update                                # back to following main
+```
+
+Your choice is saved in `/etc/meshmonitor/update-config`, so later runs need only
+`meshmonitor-update`.
+
+- **Checked before anything stops.** The updater downloads the runtime, checks its
+  SHA-256 checksum, and confirms it was built from that release and matches this
+  container's CPU, C library and Node.js version. If anything doesn't match (for
+  example, an ARM container or an older Node.js), it builds that release the usual
+  way instead.
+- **Never moves backwards.** If the container is already on that release, the
+  updater says so and stops. If the container is newer than the release (for
+  example, it followed `main` before), the updater also stops and waits for a newer
+  release.
+- **Recovery needs no build.** The old runtime is set aside during the update. If
+  the update fails before the new version starts, the updater puts the old runtime
+  back and restarts it.
+
 ### Full template swap (alternative)
 
 Use when major OS or Node.js version changes ship, or on containers with limited

@@ -397,6 +397,7 @@ partial + sparse git clone. The cone directory list lives in
   container's own Node.js (NodeSource 24). Never move them to the host/CI
   workspace — native modules (better-sqlite3) must compile for the container's
   ABI, not the runner's.
+- **The release runtime tarball comes from the template chroot.** `build-lxc-template.sh` packs `dist/` + production `node_modules/` into `meshmonitor-runtime-<version>-<arch>.tar.gz` with a `manifest.json` (version, commit, arch, libc, Node ABI) that `meshmonitor-update`'s release mode checks before using it. Never build that tarball on the CI runner, and keep the manifest fields in step with the updater's checks.
 - **`PUPPETEER_SKIP_DOWNLOAD=true` on every npm step.** The container is
   headless — Chromium download will fail or hang without it.
 - **`.git` inside `/opt/meshmonitor` is intentional.** It is what enables
