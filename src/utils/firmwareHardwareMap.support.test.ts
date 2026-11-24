@@ -176,6 +176,18 @@ const DECISIONS: Record<string, Decision> = {
   HELTEC_RC32: ok('heltec-rc32', 'esp32s3'),
   HELTEC_RC52: no('unmapped-board'),
   HELTEC_RCC6: ok('heltec-rcc6', 'esp32c6'),
+  // #6559: in firmware develop, not yet in a release; no audited build name.
+  SEEED_WIO_TRACKER_L1_PRO_1W: no('unmapped-board'),
+  MESHNOLOGY_W12: no('unmapped-board'),
+  MESHPAGER_X2: no('unmapped-board'),
+  T_CONNECT_PRO: no('unmapped-board'),
+  AXIOMETA_GENESIS_MINI: no('unmapped-board'),
+  MAKERFABS_NOMAD_TERMINAL: no('unmapped-board'),
+  THINKNODE_MX: no('unmapped-board'),
+  NODARA: no('unmapped-board'),
+  HELTEC_MESH_POCKET_V2: no('unmapped-board'),
+  MESHNOLOGY_W15: no('unmapped-board'),
+  M5STACK_SOLAR_NODE: no('unmapped-board'),
   PRIVATE_HW: no('unmapped-board'),
 };
 

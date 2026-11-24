@@ -138,6 +138,17 @@ const HARDWARE_IMAGES: Record<number, string | null> = {
   141: null, // HELTEC_RC32
   142: null, // HELTEC_RC52
   143: null, // HELTEC_RCC6
+  144: null, // SEEED_WIO_TRACKER_L1_PRO_1W
+  145: null, // MESHNOLOGY_W12
+  146: null, // MESHPAGER_X2
+  147: null, // T_CONNECT_PRO
+  148: null, // AXIOMETA_GENESIS_MINI
+  149: null, // MAKERFABS_NOMAD_TERMINAL
+  150: null, // THINKNODE_MX
+  151: null, // NODARA
+  152: null, // HELTEC_MESH_POCKET_V2
+  153: null, // MESHNOLOGY_W15
+  154: null, // M5STACK_SOLAR_NODE
 };
 
 const BASE_IMAGE_URL = 'https://raw.githubusercontent.com/meshtastic/web-flasher/main/public/img/devices/';
