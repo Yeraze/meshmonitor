@@ -564,7 +564,8 @@ validate_backup_dir
 
 if [ "$DRY_RUN" -eq 0 ]; then
     $SUDO mkdir -p "$(dirname "$CONFIG_FILE")"
-    printf 'BACKUP_DIR="%s"\nBACKUP_KEEP=%s\n' "$BACKUP_DIR" "$BACKUP_KEEP" \
+    # %q: the file is sourced, so a quote or $ in the path must stay literal.
+    printf 'BACKUP_DIR=%q\nBACKUP_KEEP=%s\n' "$BACKUP_DIR" "$BACKUP_KEEP" \
         | $SUDO tee "$CONFIG_FILE" >/dev/null
 fi
 
@@ -755,7 +756,7 @@ install_and_build() {
 # (#6558); the next update's `npm ci` reinstalls them. Never fails the update.
 slim_install() {
     log "Removing build-only dependencies and caches..."
-    run_sh "cd '$INSTALL_DIR' && $SUDO npm prune --omit=dev --legacy-peer-deps --audit false >/dev/null" \
+    run_sh "cd '$INSTALL_DIR' && $SUDO npm prune --omit=dev --legacy-peer-deps >/dev/null" \
         || warn "npm prune failed — build tools stay installed (the app is unaffected)."
     run_sh "$SUDO rm -rf '$INSTALL_DIR/node_modules/.cache' '$INSTALL_DIR/node_modules/.vite'"
     run_sh "$SUDO npm cache clean --force >/dev/null 2>&1 || true"

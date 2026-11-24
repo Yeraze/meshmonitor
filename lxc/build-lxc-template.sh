@@ -413,7 +413,7 @@ rm -rf "$ROOTFS_DIR/var/tmp/"*
 
 # Remove npm/pip build caches
 # NOTE: node_modules/ and .git/ are intentionally kept —
-#   node_modules/ is needed at runtime by the app
+#   node_modules/ is needed at runtime (production deps only; build tools pruned in Step 7)
 #   .git/ is needed by meshmonitor-update for future in-place updates
 rm -rf "$ROOTFS_DIR/root/.npm"
 rm -rf "$ROOTFS_DIR/root/.cache"
