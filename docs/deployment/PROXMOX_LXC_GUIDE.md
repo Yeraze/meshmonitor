@@ -304,6 +304,25 @@ stored at `/var/backups/meshmonitor/` by default and include `/data/`,
 restores the previous version by itself, its log
 (`meshmonitor-update-recovery-<time>.log`) is written to the same folder.
 
+The updater keeps the last 5 backups. To keep a different number, set `BACKUP_KEEP`
+(1–50) on one run; the value is saved for later runs:
+
+```bash
+BACKUP_KEEP=2 meshmonitor-update
+```
+
+Before each backup the updater prints the size of the data it will back up and the
+free space in the backup folder, and warns if the backup may not fit. On small disks,
+keep fewer backups, point the backup folder at an external mount
+(`meshmonitor-update -c` asks again), or rely on Proxmox's own `vzdump` backups.
+
+### Disk Use During Updates
+
+The running app needs only the built files and its production dependencies. The
+template ships without the build tools, and `meshmonitor-update` removes them again
+after each build, along with the npm and build caches. During an update it reinstalls
+them to build, so expect disk use to rise by about 0.5 GB for the length of the update.
+
 ### Manual Backup
 
 ```bash
