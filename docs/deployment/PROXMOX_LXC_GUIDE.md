@@ -630,6 +630,15 @@ UPDATE_MODE=git meshmonitor-update                                # back to foll
 Your choice is saved in `/etc/meshmonitor/update-config`, so later runs need only
 `meshmonitor-update`.
 
+Release mode needs the updater from this release or later. The copy in
+`/usr/local/bin` does not replace itself, so on an existing container run one
+normal update first, then install the new copy from the checkout:
+
+```bash
+meshmonitor-update                             # brings /opt/meshmonitor up to date
+bash /opt/meshmonitor/lxc/meshmonitor-update   # offers to replace /usr/local/bin/meshmonitor-update
+```
+
 - **Checked before anything stops.** The updater downloads the runtime, checks its
   SHA-256 checksum, and confirms it was built from that release and matches this
   container's CPU, C library and Node.js version. If anything doesn't match (for
