@@ -15,7 +15,6 @@ import { usePacketRates, type PacketRatesResponse } from '../hooks/usePacketRate
 import { formatChartAxisTimestamp, formatInTimeZone } from '../utils/datetime';
 import { useNodeTimezone } from '../hooks/useNodeTimezone';
 
-const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
@@ -25,6 +24,8 @@ import DeviceCounterNote from './DeviceCounterNote';
 // Telemetry type constants for favorites
 import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from '../utils/packetRateTypes';
 export { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE };
+
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
 
 interface PacketRateGraphsProps {
   nodeId: string;

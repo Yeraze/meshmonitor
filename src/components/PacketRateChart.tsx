@@ -16,11 +16,12 @@ import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from '../utils/packetRateTyp
 import { useNodeTimezone } from '../hooks/useNodeTimezone';
 import NodeTimezoneControl from './NodeTimezoneControl';
 
-const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
 import type { TelemetryNodeInfo } from '../types/device';
 import { UiIcon } from './icons';
 import DeviceCounterNote from './DeviceCounterNote';
 import { useSource } from '../contexts/SourceContext';
+
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
 
 interface FavoriteChart {
   nodeId: string;

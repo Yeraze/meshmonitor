@@ -19,8 +19,6 @@ import { formatChartAxisTimestamp, formatInTimeZone } from '../../utils/datetime
 import type { NodeTimezone } from '../../hooks/useNodeTimezone';
 import NodeTimezoneControl from '../NodeTimezoneControl';
 
-// Same output as the plain `toLocaleString()` it replaces.
-const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' };
 import {
   HOP_SNR_CHART_POINTS,
   hopSnrChartData,
@@ -30,6 +28,9 @@ import {
   type HopSnrTranslate,
 } from '../../utils/meshcoreHopSnr';
 import styles from './MeshCoreTraceSnrCharts.module.css';
+
+// Same output as the plain `toLocaleString()` it replaces.
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' };
 
 interface Envelope { success: boolean; data?: { hours: number; links: HopSnrLink[] } }
 
