@@ -23,8 +23,8 @@ import { UiIcon } from './icons';
 import DeviceCounterNote from './DeviceCounterNote';
 
 // Telemetry type constants for favorites
-export const PACKET_RATE_RX_TYPE = 'packetRateRx';
-export const PACKET_RATE_TX_TYPE = 'packetRateTx';
+import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from '../utils/packetRateTypes';
+export { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE };
 
 interface PacketRateGraphsProps {
   nodeId: string;

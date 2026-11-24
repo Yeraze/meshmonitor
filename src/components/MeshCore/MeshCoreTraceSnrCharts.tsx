@@ -16,7 +16,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import api from '../../services/api';
 import { UiIcon } from '../icons';
 import { formatChartAxisTimestamp, formatInTimeZone } from '../../utils/datetime';
-import { useNodeTimezone } from '../../hooks/useNodeTimezone';
+import type { NodeTimezone } from '../../hooks/useNodeTimezone';
 import NodeTimezoneControl from '../NodeTimezoneControl';
 
 // Same output as the plain `toLocaleString()` it replaces.
@@ -68,9 +68,29 @@ const endId = (end: HopSnrEnd): string => end.publicKey ?? (end.hash ? `h:${end.
 export const MeshCoreTraceSnrCharts: React.FC<MeshCoreTraceSnrChartsProps> = ({ sourceId, publicKey, contacts, localPublicKey, reloadKey = 0 }) => {
   const { t } = useTranslation();
   const key = publicKey.toLowerCase();
-  // The contact's zone, like its telemetry graphs (#6523).
-  const { data: nodeTimezone } = useNodeTimezone({ sourceId, nodeId: key });
+  // The contact's zone, like its telemetry graphs (#6523). Read with the same
+  // `api` client as the links below (no React Query: this panel renders in
+  // places without a QueryClient).
+  const [nodeTimezone, setNodeTimezone] = useState<NodeTimezone | null>(null);
   const timeZone = nodeTimezone?.timeZone;
+  useEffect(() => {
+    if (!sourceId || !/^[0-9a-f]{64}$/.test(key)) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const body = await api.get<{ data?: Partial<NodeTimezone> }>(
+          `/api/nodes/timezone?sourceId=${encodeURIComponent(sourceId)}&nodeId=${key}`,
+        );
+        const tz = body?.data;
+        if (!cancelled && tz && typeof tz.timeZone === 'string' && typeof tz.source === 'string') {
+          setNodeTimezone({ timeZone: tz.timeZone, source: tz.source as NodeTimezone['source'] });
+        }
+      } catch {
+        // No read on this node, or an error: draw in the browser's zone.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sourceId, key]);
   // The reload key is part of the owner, so a reload after a clear starts
   // over: with no links left the section hides instead of showing an empty range.
   const owner = `${sourceId ?? ''}|${key}|${reloadKey}`;

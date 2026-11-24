@@ -14,7 +14,18 @@ vi.mock('react-i18next', async () => {
 
 const getMock = vi.fn();
 // Mocked the way the panel's own tests mock it: no ApiError export.
-vi.mock('../../services/api', () => ({ default: { get: (...a: unknown[]) => getMock(...a) } }));
+// The node-zone lookup (#6523) answers "no zone" on its own, so getMock sees only
+// hop-SNR reads and tooltips stay in the browser's zone.
+vi.mock('../../services/api', () => ({
+  default: {
+    // Called at import by the app's base-URL init, which NodeTimezoneControl pulls in.
+    setBaseUrl: () => {},
+    get: (...a: unknown[]) =>
+      String(a[0]).startsWith('/api/nodes/timezone')
+        ? Promise.resolve({ success: false })
+        : getMock(...a),
+  },
+}));
 
 // recharts' ResponsiveContainer measures a 0x0 box in jsdom and draws nothing,
 // so stand in for it. The LineChart stub exposes the rows it was given, and the
@@ -43,12 +54,6 @@ import {
   type HopSnrSample, type HopSnrTranslate,
 } from '../../utils/meshcoreHopSnr';
 
-// #6523: no QueryClient here; the zone is covered by useNodeTimezone's own tests.
-vi.mock('../../hooks/useNodeTimezone', () => ({
-  useNodeTimezone: () => ({ data: undefined }),
-  useSetNodeTimezone: () => ({ mutate: vi.fn(), isPending: false }),
-  listTimeZones: () => [],
-}));
 
 const ME = 'a'.repeat(64);
 const REP = 'b'.repeat(64);
