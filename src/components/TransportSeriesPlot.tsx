@@ -34,7 +34,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { formatChartAxisTimestamp } from '../utils/datetime';
+import { formatChartAxisTimestamp, formatInTimeZone } from '../utils/datetime';
 import type { TransportChartRow, TransportSeriesKind } from '../utils/transportSeries';
 import type { NodeTransportClass } from '../utils/nodeTransport';
 import styles from './TransportSeries.module.css';
@@ -45,7 +45,17 @@ export interface TransportSeriesPlotProps {
   averaged: boolean;
   height?: number;
   timeRange: [number, number] | null;
+  /** The node's IANA zone (#6523); absent = the browser's. */
+  timeZone?: string;
 }
+
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+};
+
 
 const TRANSPORT_CLASSES: readonly NodeTransportClass[] = ['rf', 'udp', 'mqtt'];
 
@@ -66,6 +76,7 @@ export default function TransportSeriesPlot({
   averaged,
   height = 200,
   timeRange,
+  timeZone,
 }: TransportSeriesPlotProps) {
   const { t } = useTranslation();
 
@@ -89,7 +100,7 @@ export default function TransportSeriesPlot({
             type="number"
             domain={timeRange || ['dataMin', 'dataMax']}
             tick={{ fontSize: 12 }}
-            tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, timeRange)}
+            tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, timeRange, '24', timeZone)}
           />
           <YAxis
             tick={{ fontSize: 12 }}
@@ -105,15 +116,7 @@ export default function TransportSeriesPlot({
               color: 'var(--color-text)',
             }}
             labelStyle={{ color: 'var(--color-text)' }}
-            labelFormatter={value => {
-              const date = new Date(value as number);
-              return date.toLocaleString([], {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              });
-            }}
+            labelFormatter={value => formatInTimeZone(new Date(value as number), TOOLTIP_TIME_OPTIONS, timeZone)}
             formatter={(value, name) => {
               const label = t(`transport.${String(name ?? '')}`);
               if (value === null || value === undefined) return ['-', label];

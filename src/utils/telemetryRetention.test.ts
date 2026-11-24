@@ -10,7 +10,7 @@ import {
   TRANSPORT_PACKETS_RX_TYPE,
   TRANSPORT_SERIES_TYPES,
 } from './transportSeries';
-import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from '../components/PacketRateGraphs';
+import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from './packetRateTypes';
 
 const NOW = 1_700_000_000_000;
 const DAY = 24 * 60 * 60 * 1000;

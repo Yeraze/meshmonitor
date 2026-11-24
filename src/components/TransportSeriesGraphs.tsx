@@ -21,6 +21,7 @@ import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
 import { UiIcon } from './icons';
 import TransportSeriesPlot from './TransportSeriesPlot';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
 import {
   toTransportChartRows,
   TRANSPORT_NODES_HEARD_TYPE,
@@ -54,6 +55,8 @@ const TransportSeriesGraphs: React.FC<TransportSeriesGraphsProps> = ({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { sourceId } = useSource();
+  // Same zone as the node's other graphs in this panel (#6523).
+  const timeZone = useNodeTimezone({ baseUrl, sourceId, nodeId }).data?.timeZone;
 
   const { data, isLoading, error } = useTelemetry({
     nodeId,
@@ -150,6 +153,7 @@ const TransportSeriesGraphs: React.FC<TransportSeriesGraphsProps> = ({
               kind="nodesHeard"
               averaged={nodesHeard.averaged}
               timeRange={timeRange}
+              timeZone={timeZone}
             />
           </div>
         )}
@@ -165,6 +169,7 @@ const TransportSeriesGraphs: React.FC<TransportSeriesGraphsProps> = ({
               kind="packetsRx"
               averaged={packetsRx.averaged}
               timeRange={timeRange}
+              timeZone={timeZone}
             />
           </div>
         )}

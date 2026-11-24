@@ -45,7 +45,7 @@ describe('useNodeTimezone', () => {
   it('falls back to the resolved source, and gives null on a refusal', async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(json(403, { success: false }));
     const { wrapper: w } = wrapper();
-    const { result } = renderHook(() => useNodeTimezone({ nodeId: '!a1b2c3d4' }), { wrapper: w });
+    const { result } = renderHook(() => useNodeTimezone({ baseUrl: '', nodeId: '!a1b2c3d4' }), { wrapper: w });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toBeNull();
     expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('sourceId=src-fallback');
