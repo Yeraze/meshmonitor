@@ -42,7 +42,7 @@ Open-Meteo's free tier allows non-commercial use under **10,000 calls a day**, a
 calls per day = cells × 24 ÷ refresh hours
 ```
 
-The settings page counts your active nodes and shows, for each grid size, how many cells that makes and the calls per day at your refresh interval. Pick the pair that fits your mesh. On the defaults (0.1° cells, 3-hour refresh) a mesh needs about 1,100 cells to reach the free-tier budget.
+The settings page counts your active nodes and shows, for each grid size, how many cells that makes and the calls per day at your refresh interval. Pick the pair that fits your mesh. At the default 3-hour refresh, MeshMonitor's 9,000-call budget (below) covers about 1,100 cells.
 
 Without an API key, MeshMonitor stays under **9,000 calls a day**. It keeps that count in the database, so a restart or a settings save never resets it. If your settings would need more, the page warns you and only the most recently heard cells get data.
 
@@ -89,7 +89,7 @@ Click **Refresh Now** if you don't want to wait for the hourly pass.
 Leave the key blank to use the free tier. It needs no sign-up, but it is for **non-commercial use only**. If you run MeshMonitor commercially, or need more than the free limits, buy a plan at [open-meteo.com/en/pricing](https://open-meteo.com/en/pricing) and paste the key in. Only admins can read it.
 
 **3. Expect your old solar history to vanish.**
-The upgrade deletes the stored forecast.solar estimates. They were tied to one location, and earlier rows sat hours off because of the timezone bug. Per-node history builds up from the first Open-Meteo pass, and the Analysis forecast appears once a node's cell has 3 days stored.
+The upgrade deletes the stored forecast.solar estimates. They were tied to one location, and those rows sat hours off because of the timezone bug. Per-node history builds up from the first Open-Meteo pass, and the Analysis forecast appears once a node's cell has 3 days stored.
 
 **4. Make sure the server can reach `api.open-meteo.com`.**
 On a paid key it uses `customer-api.open-meteo.com` instead. If the container sits behind a firewall, allow outbound HTTPS to those hosts. `api.forecast.solar` is no longer used.
@@ -104,9 +104,9 @@ A node with no position shows charts in the container's `TZ`. Set the container'
 | `GET /api/v1/solar` and `GET /api/v1/solar/range` | `GET /api/v1/sources/:sourceId/solar` (per node) |
 | `GET /api/solar/estimates`, `/api/solar/estimates/range` | `GET /api/solar/irradiance?sourceId=&nodeId=&start=&end=` |
 | `POST /api/solar/trigger` | `POST /api/solar/refresh` (admin) |
-| `GET /api/analysis/solar-forecast` | Same path; the response is now per node |
+| `GET /api/analysis/solar-forecast` | Unchanged path; the response is now per node |
 
-New: `GET /api/solar/usage` (admin) returns the active node and cell counts, and `GET`/`PUT /api/nodes/timezone` reads and sets a node's zone.
+New: `GET /api/solar/usage` (admin) returns the active node and cell counts, and `GET /api/nodes/timezone?sourceId=&nodeId=` / `PUT /api/nodes/timezone` with `{ sourceId, nodeId, timeZone }` read and set a node's zone.
 
 ## Troubleshooting
 
