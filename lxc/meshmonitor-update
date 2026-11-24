@@ -1276,8 +1276,11 @@ else
     # Free-space check (#6558). The uncompressed size is an upper bound: the
     # tarball is gzipped, so warn rather than refuse; a tar that runs out of
     # space still aborts below before anything is changed.
-    _src_bytes=$($SUDO du -sbc "${BACKUP_PATHS[@]}" 2>/dev/null | tail -1 | cut -f1)
-    _free_bytes=$(df -B1 --output=avail "$BACKUP_DIR" 2>/dev/null | tail -1 | tr -d ' ')
+    # `|| true`: under pipefail a file vanishing from live /data makes du exit 1.
+    _src_bytes=$({ $SUDO du -sbc "${BACKUP_PATHS[@]}" 2>/dev/null || true; } | tail -1 | cut -f1)
+    _free_bytes=$({ df -B1 --output=avail "$BACKUP_DIR" 2>/dev/null || true; } | tail -1 | tr -d ' ')
+    [[ "$_src_bytes" =~ ^[0-9]+$ ]] || _src_bytes=""
+    [[ "$_free_bytes" =~ ^[0-9]+$ ]] || _free_bytes=""
     if [ -n "$_src_bytes" ] && [ -n "$_free_bytes" ]; then
         log "Backup source: $(numfmt --to=iec "$_src_bytes") uncompressed; free on ${BACKUP_DIR}: $(numfmt --to=iec "$_free_bytes")"
         if [ "$_free_bytes" -lt "$_src_bytes" ]; then
