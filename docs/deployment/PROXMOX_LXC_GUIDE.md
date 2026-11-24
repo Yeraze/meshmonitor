@@ -632,11 +632,11 @@ Your choice is saved in `/etc/meshmonitor/update-config`, so later runs need onl
 
 Release mode needs the updater from this release or later. The copy in
 `/usr/local/bin` does not replace itself, so on an existing container run one
-normal update first, then install the new copy from the checkout:
+normal update first, then copy the new updater over the old one:
 
 ```bash
-meshmonitor-update                             # brings /opt/meshmonitor up to date
-bash /opt/meshmonitor/lxc/meshmonitor-update   # offers to replace /usr/local/bin/meshmonitor-update
+meshmonitor-update     # brings /opt/meshmonitor up to date
+cp /opt/meshmonitor/lxc/meshmonitor-update /usr/local/bin/meshmonitor-update
 ```
 
 - **Checked before anything stops.** The updater downloads the runtime, checks its
