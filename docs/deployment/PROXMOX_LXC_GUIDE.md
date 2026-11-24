@@ -32,7 +32,7 @@ MeshMonitor can be deployed in Proxmox VE using LXC (Linux Containers) as an alt
 ### Proxmox VE Requirements
 
 - **Proxmox VE**: Version 7.0 or later
-- **Storage**: At least 10GB available for container
+- **Storage**: At least 4 GB available for container (8 GB recommended)
 - **Network**: Bridge network configured (typically `vmbr0`)
 - **Resources**:
   - Minimum: 1 CPU core, 512MB RAM (enough to run MeshMonitor, not to update it)
@@ -118,7 +118,7 @@ scp meshmonitor-<version>-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template
 
 4. **Disks Tab**:
    - **Storage**: Choose your storage (e.g., `local-lvm`)
-   - **Disk size**: `10 GiB` (minimum), `20 GiB` (recommended)
+   - **Disk size**: `4 GiB` (minimum), `8 GiB` (recommended). A fresh container uses about 1.5 GB; a `main`-tracking update needs about 1.5 GB more while it builds, and your database and update backups grow from there. Release-mode updates need much less (see [Release mode](#release-mode-update-to-releases-without-building)).
 
 5. **CPU Tab**:
    - **Cores**: `2` (recommended)
