@@ -11,6 +11,13 @@ import TransportSeriesChart from './TransportSeriesChart';
 import { useTelemetry } from '../hooks/useTelemetry';
 import { TRANSPORT_NODES_HEARD_TYPE, TRANSPORT_PACKETS_RX_TYPE } from '../utils/transportSeries';
 
+// #6523: no QueryClient here; the zone is covered by useNodeTimezone's own tests.
+vi.mock('../hooks/useNodeTimezone', () => ({
+  useNodeTimezone: () => ({ data: undefined }),
+  useSetNodeTimezone: () => ({ mutate: vi.fn(), isPending: false }),
+  listTimeZones: () => [],
+}));
+
 vi.mock('../hooks/useTelemetry', () => ({
   useTelemetry: vi.fn(),
 }));

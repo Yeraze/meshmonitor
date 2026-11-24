@@ -15,7 +15,9 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TemperatureUnit } from '../../utils/temperature';
-import { formatChartAxisTimestamp } from '../../utils/datetime';
+import { formatChartAxisTimestamp, formatInTimeZone } from '../../utils/datetime';
+import { useNodeTimezone } from '../../hooks/useNodeTimezone';
+import NodeTimezoneControl from '../NodeTimezoneControl';
 import type { TimeFormat } from '../../contexts/SettingsContext';
 import { resolveSeriesDisplay, downloadTelemetryCsv } from '../../utils/telemetrySeriesDisplay';
 import { getTelemetryLabel } from '../TelemetryChart';
@@ -82,6 +84,10 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
 }) => {
   const { t } = useTranslation();
   const [yRangeEditorOpen, setYRangeEditorOpen] = useState(false);
+  // One node across sources: resolve its zone on the first source that has it (#6523).
+  const zoneSourceId = series.lines[0]?.sourceId ?? null;
+  const { data: nodeTimezone } = useNodeTimezone({ sourceId: zoneSourceId, nodeId: series.subjectKey });
+  const timeZone = nodeTimezone?.timeZone;
 
   const display = useMemo(
     () => resolveSeriesDisplay(
@@ -245,7 +251,7 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
             domain={timeRange ?? ['dataMin', 'dataMax']}
             allowDataOverflow={timeRange !== null}
             tick={{ fontSize: 12 }}
-            tickFormatter={(ts) => formatChartAxisTimestamp(ts, timeRange, timeFormat)}
+            tickFormatter={(ts) => formatChartAxisTimestamp(ts, timeRange, timeFormat, timeZone)}
           />
           <YAxis
             tick={{ fontSize: 12 }}
@@ -265,9 +271,9 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
               typeof value === 'number' && display.formatValue ? display.formatValue(value) : value
             }
             labelFormatter={(value, payload) => {
-              const when = new Date(value as number).toLocaleString([], {
+              const when = formatInTimeZone(new Date(value as number), {
                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
-              });
+              }, timeZone);
               const from = merged ? payload?.[0]?.payload?.[MERGED_SOURCES_KEY] : undefined;
               return from ? `${when} · ${t('unified.telemetry.merged_from', { names: from })}` : when;
             }}
@@ -301,6 +307,7 @@ const CombinedTelemetryChart: React.FC<CombinedTelemetryChartProps> = ({
           ))}
         </LineChart>
       </ResponsiveContainer>
+      <NodeTimezoneControl sourceId={zoneSourceId} nodeId={series.subjectKey} timezone={nodeTimezone} readOnly />
     </div>
   );
 };

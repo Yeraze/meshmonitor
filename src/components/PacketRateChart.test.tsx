@@ -14,6 +14,13 @@ import PacketRateChart from './PacketRateChart';
 import { usePacketRates } from '../hooks/usePacketRates';
 import { PACKET_RATE_RX_TYPE } from './PacketRateGraphs';
 
+// #6523: no QueryClient here; the zone is covered by useNodeTimezone's own tests.
+vi.mock('../hooks/useNodeTimezone', () => ({
+  useNodeTimezone: () => ({ data: undefined }),
+  useSetNodeTimezone: () => ({ mutate: vi.fn(), isPending: false }),
+  listTimeZones: () => [],
+}));
+
 vi.mock('../hooks/usePacketRates', () => ({
   usePacketRates: vi.fn(),
 }));

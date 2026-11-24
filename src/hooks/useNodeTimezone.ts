@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useResolvedSourceId } from './useResolvedSourceId';
 import { useCsrfFetch } from './useCsrfFetch';
+import api from '../services/api';
 
 /** Where a node's zone came from. Mirrors the server's `NodeTimezoneSource`. */
 export type NodeTimezoneSource = 'override' | 'position' | 'server';
@@ -34,14 +35,17 @@ const nodeTimezoneKey = (sourceId: string | null | undefined, nodeId: string | n
  * The node's zone, or `undefined` while loading, on an error, or when the
  * caller may not read it. Charts treat `undefined` as "the browser's zone".
  */
-export function useNodeTimezone({ baseUrl = '', sourceId, nodeId, enabled = true }: UseNodeTimezoneOptions) {
+export function useNodeTimezone({ baseUrl, sourceId, nodeId, enabled = true }: UseNodeTimezoneOptions) {
   const fallbackSourceId = useResolvedSourceId();
   const effectiveSourceId = sourceId ?? fallbackSourceId;
   return useQuery({
     queryKey: nodeTimezoneKey(effectiveSourceId, nodeId),
     queryFn: async (): Promise<NodeTimezone | null> => {
       const params = new URLSearchParams({ sourceId: String(effectiveSourceId), nodeId: String(nodeId) });
-      const response = await fetch(`${baseUrl}/api/nodes/timezone?${params.toString()}`);
+      // Callers that pass no baseUrl at all (Unified Telemetry, MeshCore trace
+      // panel) still need the deployment's BASE_URL prefix.
+      const base = baseUrl ?? (await api.getBaseUrl());
+      const response = await fetch(`${base}/api/nodes/timezone?${params.toString()}`);
       // 5xx: throw, so it is retried and never cached as "no zone".
       if (response.status >= 500) throw new Error(`HTTP ${response.status}`);
       // 401/403/404: no zone for this caller (yet).

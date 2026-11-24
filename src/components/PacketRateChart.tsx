@@ -11,12 +11,17 @@ import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveCo
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { usePacketRates, type PacketRatesResponse } from '../hooks/usePacketRates';
-import { formatChartAxisTimestamp } from '../utils/datetime';
-import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from './PacketRateGraphs';
+import { formatChartAxisTimestamp, formatInTimeZone } from '../utils/datetime';
+import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from '../utils/packetRateTypes';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
+import NodeTimezoneControl from './NodeTimezoneControl';
+
 import type { TelemetryNodeInfo } from '../types/device';
 import { UiIcon } from './icons';
 import DeviceCounterNote from './DeviceCounterNote';
 import { useSource } from '../contexts/SourceContext';
+
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
 
 interface FavoriteChart {
   nodeId: string;
@@ -126,6 +131,8 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
 }) => {
   const { t } = useTranslation();
   const { sourceId } = useSource();
+  const { data: nodeTimezone } = useNodeTimezone({ baseUrl, sourceId, nodeId: favorite.nodeId });
+  const timeZone = nodeTimezone?.timeZone;
 
   // Determine if this is RX or TX chart
   const isRxChart = favorite.telemetryType === PACKET_RATE_RX_TYPE;
@@ -279,7 +286,7 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
             type="number"
             domain={globalTimeRange || ['dataMin', 'dataMax']}
             tick={{ fontSize: 12 }}
-            tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange)}
+            tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, '24', timeZone)}
           />
           <YAxis tick={{ fontSize: 12 }} domain={[0, 'auto']} tickFormatter={value => value.toFixed(1)} />
           <Tooltip
@@ -290,15 +297,7 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
               color: chartColors.text,
             }}
             labelStyle={{ color: chartColors.text }}
-            labelFormatter={value => {
-              const date = new Date(value);
-              return date.toLocaleString([], {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              });
-            }}
+            labelFormatter={value => formatInTimeZone(new Date(value), TOOLTIP_TIME_OPTIONS, timeZone)}
             formatter={(value, name) => {
               const label = name ?? '';
               if (value === null || value === undefined) return ['-', label];
@@ -330,6 +329,7 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
           ))}
         </ComposedChart>
       </ResponsiveContainer>
+      <NodeTimezoneControl baseUrl={baseUrl} sourceId={sourceId} nodeId={favorite.nodeId} timezone={nodeTimezone} readOnly />
     </div>
   );
 };
