@@ -79,7 +79,7 @@
 #   - Disk: after a successful build, dev dependencies are pruned
 #     (`npm prune --omit=dev`) and the npm and build caches are cleared. The
 #     next update's `npm ci` puts them back while it builds, so expect a
-#     temporary rise of ~0.5 GB during an update.
+#     temporary rise of ~0.6 GB during an update.
 #   - Release mode (#6558): UPDATE_MODE=release installs the newest GitHub
 #     release instead of the latest commit on main, from a pre-built runtime
 #     tarball (dist/ + production node_modules) when one matches this host's
@@ -233,8 +233,11 @@ done
 if [ "${CLEAR_CONFIG:-0}" -eq 1 ]; then
     CONFIG_FILE="/etc/meshmonitor/update-config"
     if [ -f "$CONFIG_FILE" ]; then
-        rm -f "$CONFIG_FILE"
-        ok "Cleared saved config: ${BLD}${CONFIG_FILE}${N}"
+        # Forget only the backup directory: UPDATE_MODE / UPDATE_CHANNEL /
+        # BACKUP_KEEP stay, so -c never silently switches release mode back to git.
+        grep -v '^BACKUP_DIR=' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" || true
+        mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        ok "Cleared saved backup directory in ${BLD}${CONFIG_FILE}${N} (other settings kept)."
         ok "Next run will prompt for backup directory again."
     else
         warn "No saved config found at ${BLD}${CONFIG_FILE}${N} — nothing to clear."
@@ -427,6 +430,21 @@ do_status() {
     # ls-remote fetches only the remote reference — no objects downloaded.
     # We can compare SHAs to know if an update is available, but cannot
     # parse the remote package.json version without a full object fetch.
+    # Release mode (#6558) follows releases, not main: comparing with main
+    # would advertise updates the updater then declines.
+    local mode="${UPDATE_MODE:-}" chan="${UPDATE_CHANNEL:-}"
+    if [ -r /etc/meshmonitor/update-config ]; then
+        [ -z "$mode" ] && mode=$(. /etc/meshmonitor/update-config 2>/dev/null; echo "${UPDATE_MODE:-}")
+        [ -z "$chan" ] && chan=$(. /etc/meshmonitor/update-config 2>/dev/null; echo "${UPDATE_CHANNEL:-}")
+    fi
+    if [ "${mode:-git}" = "release" ]; then
+        log "Update mode       : ${BLD}release${N} (channel: ${chan:-stable})"
+        log "Run 'meshmonitor-update --dry-run' to see the target release."
+        hr
+        flock -u "$LOCK_FD" 2>/dev/null || true
+        exit 0
+    fi
+
     local remote_sha=""
     remote_sha=$(cd "$INSTALL_DIR" && $GIT_CMD ls-remote origin refs/heads/main 2>/dev/null \
         | awk '{print $1}' || true)
@@ -892,10 +910,11 @@ install_runtime_artifact() {
     log "Installing pre-built runtime for ${TARGET_TAG} (no build)..."
     run_sh "$SUDO rm -rf '$RUNTIME_PREV' && $SUDO mkdir -p '$RUNTIME_PREV'" || return 1
     local d
+    # Set before the moves: a failure half way still restores what was moved.
+    RUNTIME_SWAPPED=1
     for d in dist node_modules; do
         [ -e "$INSTALL_DIR/$d" ] && { run_sh "$SUDO mv '$INSTALL_DIR/$d' '$RUNTIME_PREV/$d'" || return 1; }
     done
-    RUNTIME_SWAPPED=1
     run_sh "$SUDO tar -xzf '$ARTIFACT_FILE' -C '$INSTALL_DIR' dist node_modules" || return 1
     ok "Runtime installed."
 }
@@ -1046,8 +1065,21 @@ do_rollback() {
         log "Resetting source tree to commit ${BLD}${commit}${N}..."
         run_sh "cd '$INSTALL_DIR' && $GIT_CMD reset --hard '$commit'"
         run_sh "cd '$INSTALL_DIR' && $GIT_CMD clean -fd"
-        install_and_build \
-            || die "Rollback build failed — services are stopped. Fix the cause above, then run meshmonitor-update -r again."
+        # A release-mode update whose new version started unhealthy leaves the
+        # previous runtime in RUNTIME_PREV: it matches last-commit.txt, so put it
+        # back instead of building (#6558).
+        if [ -d "$RUNTIME_PREV/dist" ] && [ -d "$RUNTIME_PREV/node_modules" ]; then
+            log "Restoring the runtime set aside by the last update (no rebuild)..."
+            if [ "$DRY_RUN" -eq 1 ]; then
+                echo "    [DRY RUN] move ${RUNTIME_PREV}/{dist,node_modules} back into ${INSTALL_DIR}"
+            else
+                restore_previous_runtime \
+                    || die "Restoring the previous runtime failed — services are stopped. Run meshmonitor-update -r again."
+            fi
+        else
+            install_and_build \
+                || die "Rollback build failed — services are stopped. Fix the cause above, then run meshmonitor-update -r again."
+        fi
         run_sh "$SUDO chown -R '${APP_USER}:${APP_GROUP}' '$INSTALL_DIR'"
         if [ -f "$INSTALL_DIR/lxc/systemd/meshmonitor.service" ]; then
             run_sh "cd '$INSTALL_DIR' && $SUDO cp lxc/systemd/meshmonitor.service /etc/systemd/system/"
@@ -1088,8 +1120,9 @@ hr
 log "Running pre-flight checks..."
 
 free_mb=$(df -Pm "$INSTALL_DIR" | awk 'NR==2 {print $4}')
-[ "$free_mb" -ge 2048 ] && ok "Disk: ${free_mb}MB free" \
-    || warn "Low disk space: ${free_mb}MB free (need ~2GB for build)"
+# A build needs ~0.6 GB more while it runs (measured on 4.18.1-rc7, #6558).
+[ "$free_mb" -ge 1024 ] && ok "Disk: ${free_mb}MB free" \
+    || warn "Low disk space: ${free_mb}MB free (an update that builds needs ~1GB)"
 
 # Release mode decides after the version check whether it builds at all.
 if [ "$UPDATE_MODE" = "git" ] && ! plan_build; then
@@ -1158,8 +1191,12 @@ if [ "$UPDATE_MODE" = "release" ]; then
         flock -u "$LOCK_FD" 2>/dev/null || true
         exit 0
     fi
-    if (cd "$INSTALL_DIR" && $GIT_CMD merge-base --is-ancestor "$_tag_commit" HEAD); then
-        ok "This install (${_head:0:12}) is already newer than ${TARGET_TAG} — release mode never moves back."
+    # Only move forward: HEAD must be an ancestor of the tag. Asked this way
+    # round because the LXC template's checkout is shallow (depth 1): fetching a
+    # NEWER tag connects its history to HEAD, but an older tag stays disconnected,
+    # so "is the tag behind HEAD?" cannot be answered there.
+    if ! (cd "$INSTALL_DIR" && $GIT_CMD merge-base --is-ancestor HEAD "$_tag_commit"); then
+        ok "This install (${CURRENT_VERSION:-?}, ${_head:0:12}) is not behind ${TARGET_TAG} — release mode never moves back."
         log "It will update once a newer ${UPDATE_CHANNEL} release is published, or run with UPDATE_MODE=git to follow main."
         flock -u "$LOCK_FD" 2>/dev/null || true
         exit 0

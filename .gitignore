@@ -96,3 +96,7 @@ __pycache__/
 
 # Local Docker dev overrides (machine-specific device mappings, etc.)
 docker-compose.dev.local.yml
+
+# meshmonitor-update release mode (#6558): set-aside runtime and downloads
+/.runtime-prev/
+/.runtime-download/

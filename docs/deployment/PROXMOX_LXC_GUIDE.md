@@ -118,7 +118,7 @@ scp meshmonitor-<version>-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template
 
 4. **Disks Tab**:
    - **Storage**: Choose your storage (e.g., `local-lvm`)
-   - **Disk size**: `4 GiB` (minimum), `8 GiB` (recommended). A fresh container uses about 1.5 GB; a `main`-tracking update needs about 1.5 GB more while it builds, and your database and update backups grow from there. Release-mode updates need much less (see [Release mode](#release-mode-update-to-releases-without-building)).
+   - **Disk size**: `4 GiB` (minimum), `8 GiB` (recommended). A fresh container uses about 1.5 GB; an update that builds (the default) needs about 0.6 GB more while it runs, and your database and update backups grow from there. Release-mode updates need much less (see [Release mode](#release-mode-update-to-releases-without-building)).
 
 5. **CPU Tab**:
    - **Cores**: `2` (recommended)
@@ -321,7 +321,7 @@ keep fewer backups, point the backup folder at an external mount
 The running app needs only the built files and its production dependencies. The
 template ships without the build tools, and `meshmonitor-update` removes them again
 after each build, along with the npm and build caches. During an update it reinstalls
-them to build, so expect disk use to rise by about 0.5 GB for the length of the update.
+them to build, so expect disk use to rise by about 0.6 GB for the length of the update (measured on 4.18.1-rc7: dependencies plus the npm cache).
 
 ### Manual Backup
 
