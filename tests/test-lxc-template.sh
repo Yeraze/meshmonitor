@@ -171,6 +171,13 @@ run_tests() {
         test_result "Node modules exist" "PASS" || \
         test_result "Node modules exist" "FAIL" "node_modules/ not found"
 
+    # #6558: build-only dependencies are pruned from the template
+    if [ ! -e "$TEMP_DIR/opt/meshmonitor/node_modules/typescript" ] && [ ! -e "$TEMP_DIR/opt/meshmonitor/node_modules/vite" ]; then
+        test_result "Build-only dependencies pruned" "PASS"
+    else
+        test_result "Build-only dependencies pruned" "FAIL" "typescript or vite still in node_modules/"
+    fi
+
     check_file_exists "opt/meshmonitor/package.json" "$TEMP_DIR" && \
         test_result "Package manifest exists" "PASS" || \
         test_result "Package manifest exists" "FAIL" "package.json not found"

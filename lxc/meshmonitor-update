@@ -27,7 +27,9 @@
 #   - Stops services, fast-forwards to origin/main, npm ci + rebuilds, restarts
 #   - If anything fails while the services are stopped, puts the previous
 #     version back and restarts it (the app is not left down)
-#   - Keeps the last 5 backups and supports one-command rollback
+#   - Keeps the last 5 backups (BACKUP_KEEP) and supports one-command rollback
+#   - Removes build-only dependencies and caches after the build, so the
+#     container goes back to its runtime size (#6558)
 #
 # Requirements:
 #   - MeshMonitor installed via git clone (LXC template, bare-metal, or VM)
@@ -74,6 +76,14 @@
 #     recovery. Overrides: BUILD_MODE=full|lean, HEAP_TYPECHECK=<MB>,
 #     HEAP_SERVER=<MB> (defaults 3072 / 1536), e.g.
 #       BUILD_MODE=lean meshmonitor-update
+#   - Disk: after a successful build, dev dependencies are pruned
+#     (`npm prune --omit=dev`) and the npm and build caches are cleared. The
+#     next update's `npm ci` puts them back while it builds, so expect a
+#     temporary rise of ~0.5 GB during an update.
+#   - Backups: BACKUP_KEEP=<n> (1-50, default 5) sets how many backup tarballs
+#     to keep, e.g. `BACKUP_KEEP=2 meshmonitor-update`; the value is saved in
+#     /etc/meshmonitor/update-config. Free space on the backup directory is
+#     checked before each backup.
 #
 # END_HELP
 
@@ -512,9 +522,15 @@ validate_backup_dir() {
 hr
 log "Checking backup configuration..."
 CONFIG_FILE="/etc/meshmonitor/update-config"
+_BACKUP_KEEP_ENV="${BACKUP_KEEP:-}"
 BACKUP_KEEP=5
 BACKUP_DIR=""
 [ -r "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+# An explicit BACKUP_KEEP on the command line wins over the saved value (#6558).
+[ -n "$_BACKUP_KEEP_ENV" ] && BACKUP_KEEP="$_BACKUP_KEEP_ENV"
+if ! [[ "$BACKUP_KEEP" =~ ^[0-9]+$ ]] || [ "$BACKUP_KEEP" -lt 1 ] || [ "$BACKUP_KEEP" -gt 50 ]; then
+    die "BACKUP_KEEP must be a whole number from 1 to 50 (got '${BACKUP_KEEP}')."
+fi
 
 if [ -z "${BACKUP_DIR:-}" ]; then
     hr
@@ -730,6 +746,19 @@ install_and_build() {
 
     log "Building server (TypeScript, heap cap ${HEAP_SERVER}MB)..."
     run_sh "cd '$INSTALL_DIR' && $hs && $SUDO npm run build:server" || return 1
+    slim_install
+    return 0
+}
+
+# The running app needs only dist/ and the production dependencies. Drop the
+# build toolchain and caches so the container shrinks back after a build
+# (#6558); the next update's `npm ci` reinstalls them. Never fails the update.
+slim_install() {
+    log "Removing build-only dependencies and caches..."
+    run_sh "cd '$INSTALL_DIR' && $SUDO npm prune --omit=dev --legacy-peer-deps --audit false >/dev/null" \
+        || warn "npm prune failed — build tools stay installed (the app is unaffected)."
+    run_sh "$SUDO rm -rf '$INSTALL_DIR/node_modules/.cache' '$INSTALL_DIR/node_modules/.vite'"
+    run_sh "$SUDO npm cache clean --force >/dev/null 2>&1 || true"
     return 0
 }
 
@@ -1244,6 +1273,18 @@ if [ "${#BACKUP_PATHS[@]}" -eq 0 ]; then
     warn "No backup targets found (no /data, env file, or service files). Skipping backup."
     warn "Continuing without a backup — rollback will not be available for this run."
 else
+    # Free-space check (#6558). The uncompressed size is an upper bound: the
+    # tarball is gzipped, so warn rather than refuse; a tar that runs out of
+    # space still aborts below before anything is changed.
+    _src_bytes=$($SUDO du -sbc "${BACKUP_PATHS[@]}" 2>/dev/null | tail -1 | cut -f1)
+    _free_bytes=$(df -B1 --output=avail "$BACKUP_DIR" 2>/dev/null | tail -1 | tr -d ' ')
+    if [ -n "$_src_bytes" ] && [ -n "$_free_bytes" ]; then
+        log "Backup source: $(numfmt --to=iec "$_src_bytes") uncompressed; free on ${BACKUP_DIR}: $(numfmt --to=iec "$_free_bytes")"
+        if [ "$_free_bytes" -lt "$_src_bytes" ]; then
+            warn "The backup may not fit. Free space on ${BACKUP_DIR}, lower BACKUP_KEEP (now ${BACKUP_KEEP}),"
+            warn "or choose an external mount with -c / --clear-config."
+        fi
+    fi
     if [ "$DRY_RUN" -eq 1 ]; then
         ok "[DRY RUN] Would backup: ${BACKUP_PATHS[*]}"
         ok "[DRY RUN] Would save to: $BACKUP_PATH"

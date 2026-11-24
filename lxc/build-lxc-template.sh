@@ -245,6 +245,17 @@ chroot "$ROOTFS_DIR" bash -c "
     PUPPETEER_SKIP_DOWNLOAD=true npm run build:server
 "
 
+# The running app needs only dist/ and the production dependencies (#6558).
+# Dropping the build toolchain saves ~0.5 GB in every container;
+# meshmonitor-update's `npm ci` reinstalls it for the length of an update.
+echo "Pruning build-only dependencies..."
+chroot "$ROOTFS_DIR" bash -c "
+    cd /opt/meshmonitor
+    PUPPETEER_SKIP_DOWNLOAD=true npm prune --omit=dev --legacy-peer-deps
+    rm -rf node_modules/.cache node_modules/.vite
+    npm cache clean --force
+"
+
 # docker/apprise-api.py is already present at /opt/meshmonitor/docker/
 # via the sparse-checkout cone — no separate copy needed.
 
