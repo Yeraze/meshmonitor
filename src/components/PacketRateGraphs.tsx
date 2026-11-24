@@ -12,7 +12,10 @@ import {
 } from 'recharts';
 import './TelemetryGraphs.css';
 import { usePacketRates, type PacketRatesResponse } from '../hooks/usePacketRates';
-import { formatChartAxisTimestamp } from '../utils/datetime';
+import { formatChartAxisTimestamp, formatInTimeZone } from '../utils/datetime';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
+
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
@@ -122,6 +125,8 @@ const PacketRateGraphs: React.FC<PacketRateGraphsProps> = React.memo(
     const { t } = useTranslation();
     const { showToast } = useToast();
     const { sourceId } = useSource();
+    // Same zone as the node's other graphs in this panel (#6523).
+    const timeZone = useNodeTimezone({ baseUrl, sourceId, nodeId }).data?.timeZone;
 
     // Fetch packet rate data
     const { data: rateData, isLoading, error } = usePacketRates({
@@ -260,7 +265,7 @@ const PacketRateGraphs: React.FC<PacketRateGraphsProps> = React.memo(
                 type="number"
                 domain={globalTimeRange || ['dataMin', 'dataMax']}
                 tick={{ fontSize: 12 }}
-                tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange)}
+                tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, '24', timeZone)}
               />
               <YAxis
                 tick={{ fontSize: 12 }}
@@ -275,15 +280,7 @@ const PacketRateGraphs: React.FC<PacketRateGraphsProps> = React.memo(
                   color: chartColors.text,
                 }}
                 labelStyle={{ color: chartColors.text }}
-                labelFormatter={value => {
-                  const date = new Date(value);
-                  return date.toLocaleString([], {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
-                }}
+                labelFormatter={value => formatInTimeZone(new Date(value), TOOLTIP_TIME_OPTIONS, timeZone)}
                 formatter={(value, name) => {
                   const label = name ?? '';
                   if (value === null || value === undefined) return ['-', label];

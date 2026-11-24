@@ -18,6 +18,8 @@ import { useSource } from '../contexts/SourceContext';
 import type { TelemetryNodeInfo } from '../types/device';
 import { UiIcon } from './icons';
 import TransportSeriesPlot from './TransportSeriesPlot';
+import NodeTimezoneControl from './NodeTimezoneControl';
+import { useNodeTimezone } from '../hooks/useNodeTimezone';
 import { toTransportChartRows, TRANSPORT_SERIES_PSEUDO_TYPES } from '../utils/transportSeries';
 
 interface FavoriteChart {
@@ -46,6 +48,7 @@ const TransportSeriesChart: React.FC<TransportSeriesChartProps> = ({
 }) => {
   const { t } = useTranslation();
   const { sourceId } = useSource();
+  const { data: nodeTimezone } = useNodeTimezone({ baseUrl, sourceId, nodeId: favorite.nodeId });
 
   // Falls back to 'nodesHeard' for an unrecognised type; DashboardGrid only
   // reaches this component when isTransportSeriesType(favorite.telemetryType)
@@ -131,7 +134,8 @@ const TransportSeriesChart: React.FC<TransportSeriesChartProps> = ({
   return (
     <div ref={setNodeRef} style={style} className="dashboard-chart-container">
       {header}
-      <TransportSeriesPlot rows={rows} kind={kind} averaged={averaged} timeRange={globalTimeRange} />
+      <TransportSeriesPlot rows={rows} kind={kind} averaged={averaged} timeRange={globalTimeRange} timeZone={nodeTimezone?.timeZone} />
+      <NodeTimezoneControl baseUrl={baseUrl} sourceId={sourceId} nodeId={favorite.nodeId} timezone={nodeTimezone} readOnly />
     </div>
   );
 };

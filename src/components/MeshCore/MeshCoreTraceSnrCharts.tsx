@@ -15,7 +15,12 @@ import { useTranslation } from 'react-i18next';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../../services/api';
 import { UiIcon } from '../icons';
-import { formatChartAxisTimestamp } from '../../utils/datetime';
+import { formatChartAxisTimestamp, formatInTimeZone } from '../../utils/datetime';
+import { useNodeTimezone } from '../../hooks/useNodeTimezone';
+import NodeTimezoneControl from '../NodeTimezoneControl';
+
+// Same output as the plain `toLocaleString()` it replaces.
+const TOOLTIP_TIME_OPTIONS: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' };
 import {
   HOP_SNR_CHART_POINTS,
   hopSnrChartData,
@@ -63,6 +68,9 @@ const endId = (end: HopSnrEnd): string => end.publicKey ?? (end.hash ? `h:${end.
 export const MeshCoreTraceSnrCharts: React.FC<MeshCoreTraceSnrChartsProps> = ({ sourceId, publicKey, contacts, localPublicKey, reloadKey = 0 }) => {
   const { t } = useTranslation();
   const key = publicKey.toLowerCase();
+  // The contact's zone, like its telemetry graphs (#6523).
+  const { data: nodeTimezone } = useNodeTimezone({ sourceId, nodeId: key });
+  const timeZone = nodeTimezone?.timeZone;
   // The reload key is part of the owner, so a reload after a clear starts
   // over: with no links left the section hides instead of showing an empty range.
   const owner = `${sourceId ?? ''}|${key}|${reloadKey}`;
@@ -166,7 +174,7 @@ export const MeshCoreTraceSnrCharts: React.FC<MeshCoreTraceSnrChartsProps> = ({ 
                       domain={['dataMin', 'dataMax']}
                       tick={{ fontSize: 11 }}
                       minTickGap={24}
-                      tickFormatter={(v: number) => formatChartAxisTimestamp(v, span)}
+                      tickFormatter={(v: number) => formatChartAxisTimestamp(v, span, '24', timeZone)}
                     />
                     <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} width={40} />
                     <Tooltip
@@ -178,7 +186,7 @@ export const MeshCoreTraceSnrCharts: React.FC<MeshCoreTraceSnrChartsProps> = ({ 
                       }}
                       itemStyle={{ color: 'var(--color-text)' }}
                       labelStyle={{ color: 'var(--color-text)' }}
-                      labelFormatter={(v) => new Date(Number(v)).toLocaleString()}
+                      labelFormatter={(v) => formatInTimeZone(new Date(Number(v)), TOOLTIP_TIME_OPTIONS, timeZone)}
                       formatter={(v) => {
                         const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
                         return [Number.isFinite(n) ? `${n.toFixed(2)} dB` : '-', label];
@@ -201,6 +209,7 @@ export const MeshCoreTraceSnrCharts: React.FC<MeshCoreTraceSnrChartsProps> = ({ 
           })}
         </div>
       )}
+      <NodeTimezoneControl sourceId={sourceId} nodeId={key} timezone={nodeTimezone} readOnly />
     </section>
   );
 };

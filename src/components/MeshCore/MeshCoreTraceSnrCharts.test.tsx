@@ -43,6 +43,13 @@ import {
   type HopSnrSample, type HopSnrTranslate,
 } from '../../utils/meshcoreHopSnr';
 
+// #6523: no QueryClient here; the zone is covered by useNodeTimezone's own tests.
+vi.mock('../../hooks/useNodeTimezone', () => ({
+  useNodeTimezone: () => ({ data: undefined }),
+  useSetNodeTimezone: () => ({ mutate: vi.fn(), isPending: false }),
+  listTimeZones: () => [],
+}));
+
 const ME = 'a'.repeat(64);
 const REP = 'b'.repeat(64);
 const LOCAL = 'c'.repeat(64);

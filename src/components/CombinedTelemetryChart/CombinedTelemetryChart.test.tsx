@@ -5,6 +5,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import CombinedTelemetryChart, { type CombinedSeries } from './CombinedTelemetryChart';
 
+// #6523: no QueryClient here; the zone is covered by useNodeTimezone's own tests.
+vi.mock('../../hooks/useNodeTimezone', () => ({
+  useNodeTimezone: () => ({ data: undefined }),
+  useSetNodeTimezone: () => ({ mutate: vi.fn(), isPending: false }),
+  listTimeZones: () => [],
+}));
+
 const downloadTextFile = vi.fn();
 vi.mock('../../utils/nodeExport', async (orig) => ({
   ...(await orig<typeof import('../../utils/nodeExport')>()),
