@@ -86,6 +86,7 @@ import {
   CrossSourceLinksRepository,
   DirectRfContactsRepository,
   CoverageSurveysRepository,
+  CoverageWalkaboutRepository,
   TranslationsRepository,
   AircraftFlightMatchesRepository,
   MeshCoreFiltersRepository,
@@ -679,6 +680,7 @@ class DatabaseService {
   public passkeysRepo: PasskeysRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
+  public coverageWalkaboutRepo: CoverageWalkaboutRepository | null = null;
   public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
   public directRfContactsRepo: DirectRfContactsRepository | null = null;
   public translationsRepo: TranslationsRepository | null = null;
@@ -842,6 +844,11 @@ class DatabaseService {
   get directRfContacts(): DirectRfContactsRepository {
     if (!this.directRfContactsRepo) throw new Error('Database not initialized');
     return this.directRfContactsRepo;
+  }
+
+  get coverageWalkabout(): CoverageWalkaboutRepository {
+    if (!this.coverageWalkaboutRepo) throw new Error('Database not initialized');
+    return this.coverageWalkaboutRepo;
   }
 
   get coverageSurveys(): CoverageSurveysRepository {
@@ -1338,6 +1345,7 @@ class DatabaseService {
       this.passkeysRepo = new PasskeysRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
+      this.coverageWalkaboutRepo = new CoverageWalkaboutRepository(drizzleDb, this.drizzleDbType);
       this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);
       this.directRfContactsRepo = new DirectRfContactsRepository(drizzleDb, this.drizzleDbType);
       this.translationsRepo = new TranslationsRepository(drizzleDb, this.drizzleDbType);

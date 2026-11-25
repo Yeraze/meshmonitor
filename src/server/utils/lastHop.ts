@@ -71,3 +71,18 @@ export function resolveLastHopName(
   // Relay byte is known but no named node matches → hex byte fallback.
   return hexByte(byte);
 }
+
+/**
+ * The one node whose low byte is `relayByte`, or null for 0 or >= 2 matches.
+ * Never guesses (Walkabout #5891). Filter: role != CLIENT_MUTE; `nodeNum` not in
+ * `exclude` (the local node and the packet's `from`).
+ *
+ * WP0 SKELETON: body lands in WP2.
+ */
+export function resolveUniqueRelayNode(
+  _relayByte: number,
+  _candidates: LastHopCandidate[],
+  _exclude: number[]
+): { nodeNum: number | null; matches: number } {
+  throw new Error('not implemented');
+}
