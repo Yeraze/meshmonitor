@@ -5,10 +5,10 @@
  * Every method takes `sourceId` and scopes with `withSourceScope`, except
  * `getOpenSessionsAllSources` (boot loader: cross-source by design).
  */
-import { and, count, countDistinct, desc, eq, inArray, isNull, max } from 'drizzle-orm';
+import { and, count, countDistinct, desc, eq, gte, inArray, isNull, lte, max, or, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
-import { WALKABOUT_LIST_LIMIT, type WalkaboutEndReason } from '../../utils/walkabout.js';
+import { WALKABOUT_LIST_LIMIT, WALKABOUT_MAX_DURATION_MS, type WalkaboutEndReason } from '../../utils/walkabout.js';
 
 export interface DbWalkaboutSession {
   id: string;
@@ -308,25 +308,35 @@ export class CoverageWalkaboutRepository extends BaseRepository {
    * Sessions that may overlap [sinceMs, untilMs]: startedAt <= untilMs AND
    * startedAt >= sinceMs - WALKABOUT_MAX_DURATION_MS (no session outlives the
    * cap). The caller applies the exact overlap test with walkaboutEndsAt.
-   * Newest first, `limit` rows. (P2 skeleton; WP1 fills the body.)
+   * Newest first, `limit` rows.
    */
   async listSessionsInRange(
-    _sourceId: string,
-    _sinceMs: number,
-    _untilMs: number,
-    _limit: number,
+    sourceId: string,
+    sinceMs: number,
+    untilMs: number,
+    limit: number,
   ): Promise<DbWalkaboutSession[]> {
-    throw new Error('not implemented');
+    requireSource(sourceId, 'listSessionsInRange');
+    const { coverageWalkaboutSessions: t } = this.tables;
+    const rows = await this.db.select().from(t)
+      .where(and(
+        lte(t.startedAt, untilMs),
+        gte(t.startedAt, sinceMs - WALKABOUT_MAX_DURATION_MS),
+        this.withSourceScope(t, sourceId),
+      ))
+      .orderBy(desc(t.startedAt))
+      .limit(limit);
+    return rows.map((r: Row) => this.toSession(r));
   }
 
   /**
    * Raw points; no clipping (the service clips per session). `limit` rows max,
    * ordered by heardAt DESC then id DESC (a cap drops old rows). Empty
-   * `sessionIds` returns [] with no query. (P2 skeleton.)
+   * `sessionIds` returns [] with no query.
    */
   async getReceptionPoints(
-    _sourceId: string,
-    _q: {
+    sourceId: string,
+    q: {
       sessionIds: string[];
       sinceMs: number;
       untilMs: number;
@@ -335,14 +345,82 @@ export class CoverageWalkaboutRepository extends BaseRepository {
       limit: number;
     },
   ): Promise<WalkaboutReceptionPoint[]> {
-    throw new Error('not implemented');
+    requireSource(sourceId, 'getReceptionPoints');
+    if (q.sessionIds.length === 0) return [];
+    const { coverageWalkaboutReceptions: rx } = this.tables;
+    const conds = [
+      inArray(rx.sessionId, q.sessionIds),
+      gte(rx.heardAt, q.sinceMs),
+      lte(rx.heardAt, q.untilMs),
+      this.withSourceScope(rx, sourceId),
+    ];
+    if (q.creditedKey !== undefined) conds.push(eq(rx.creditedKey, q.creditedKey));
+    if (q.bbox) conds.push(...this.bboxConds(rx, q.bbox));
+    const rows = await this.db
+      .select({
+        sessionId: rx.sessionId,
+        protocol: rx.protocol,
+        creditedKey: rx.creditedKey,
+        creditedNodeNum: rx.creditedNodeNum,
+        snr: rx.snr,
+        heardAt: rx.heardAt,
+        latitude: rx.latitude,
+        longitude: rx.longitude,
+      })
+      .from(rx)
+      .where(and(...conds))
+      .orderBy(desc(rx.heardAt), desc(rx.id))
+      .limit(q.limit);
+    return rows.map((r: Row): WalkaboutReceptionPoint => ({
+      sessionId: r.sessionId as string,
+      protocol: r.protocol as 'meshtastic' | 'meshcore',
+      creditedKey: r.creditedKey as string,
+      creditedNodeNum: r.creditedNodeNum == null ? null : Number(r.creditedNodeNum),
+      snr: r.snr == null ? null : Number(r.snr),
+      heardAt: Number(r.heardAt),
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+    }));
   }
 
-  /** Same shape for samples, on fixAt; ordered by fixAt DESC then id DESC. (P2 skeleton.) */
+  /** Same shape for samples, on fixAt; ordered by fixAt DESC then id DESC. */
   async getSamplePoints(
-    _sourceId: string,
-    _q: { sessionIds: string[]; sinceMs: number; untilMs: number; bbox?: WalkaboutBBox; limit: number },
+    sourceId: string,
+    q: { sessionIds: string[]; sinceMs: number; untilMs: number; bbox?: WalkaboutBBox; limit: number },
   ): Promise<WalkaboutSamplePoint[]> {
-    throw new Error('not implemented');
+    requireSource(sourceId, 'getSamplePoints');
+    if (q.sessionIds.length === 0) return [];
+    const { coverageWalkaboutSamples: smp } = this.tables;
+    const conds = [
+      inArray(smp.sessionId, q.sessionIds),
+      gte(smp.fixAt, q.sinceMs),
+      lte(smp.fixAt, q.untilMs),
+      this.withSourceScope(smp, sourceId),
+    ];
+    if (q.bbox) conds.push(...this.bboxConds(smp, q.bbox));
+    const rows = await this.db
+      .select({ sessionId: smp.sessionId, fixAt: smp.fixAt, latitude: smp.latitude, longitude: smp.longitude })
+      .from(smp)
+      .where(and(...conds))
+      .orderBy(desc(smp.fixAt), desc(smp.id))
+      .limit(q.limit);
+    return rows.map((r: Row): WalkaboutSamplePoint => ({
+      sessionId: r.sessionId as string,
+      fixAt: Number(r.fixAt),
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+    }));
+  }
+
+  /** Lat/lon prefilter. west > east means the box crosses the antimeridian. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5891 table type differs per backend
+  private bboxConds(t: any, b: WalkaboutBBox): SQL[] {
+    const conds: SQL[] = [gte(t.latitude, b.south), lte(t.latitude, b.north)];
+    if (b.west <= b.east) {
+      conds.push(gte(t.longitude, b.west), lte(t.longitude, b.east));
+    } else {
+      conds.push(or(gte(t.longitude, b.west), lte(t.longitude, b.east)) as SQL);
+    }
+    return conds;
   }
 }
