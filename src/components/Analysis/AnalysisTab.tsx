@@ -23,6 +23,7 @@ import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
 import MqttViolationsReport from './MqttViolationsReport';
 import MeshIssuesReport from './MeshIssuesReport';
 import CoverageReport from './CoverageReport';
+import WalkaboutReport from './WalkaboutReport';
 import DirectRfContactsReport from './DirectRfContactsReport';
 import TracerouteExplorerReport from './tracerouteExplorer/TracerouteExplorerReport';
 import FirmwareStatusReport from './FirmwareStatusReport';
@@ -36,6 +37,7 @@ type AnalysisType =
   | 'mqtt-oktomqtt-violations'
   | 'mesh-issues'
   | 'coverage'
+  | 'walkabout'
   | 'direct-rf-contacts'
   | 'traceroute-explorer'
   | 'firmware-status'
@@ -56,10 +58,12 @@ const AnalysisTab: React.FC = () => {
   // render, and NOT stored back into a query key anywhere, so this has none
   // of the render-loop shape the #5277 query-stability fix guards against.
   const coverageLink = useMemo(() => parseCoverageDeepLink(searchParams), [searchParams]);
-  const [selected, setSelected] = useState<AnalysisType>(() => (coverageLink ? 'coverage' : null));
+  const [selected, setSelected] = useState<AnalysisType>(() => (coverageLink ? 'coverage' : searchParams.get('report') === 'walkabout' ? 'walkabout' : null));
   // #4943: Firmware Status reads /api/firmware, which is admin only.
   const { authStatus } = useAuth();
   const isAdmin = authStatus?.user?.isAdmin === true;
+  // Walkabout writes need a login; hidden for anonymous viewers (#5891).
+  const showWalkabout = authStatus?.authenticated === true;
 
   const reports: AnalysisCard[] = [
     {
@@ -107,6 +111,19 @@ const AnalysisTab: React.FC = () => {
       ),
       icon: 'radioSignal',
     },
+    ...(showWalkabout
+      ? [
+          {
+            id: 'walkabout' as const,
+            title: t('analysis.walkabout.card_title', 'Walkabout'),
+            description: t(
+              'analysis.walkabout.card_description',
+              'Walk or drive with your phone; every packet this source hears is mapped to where you are. Needs HTTPS.',
+            ),
+            icon: 'location' as const,
+          },
+        ]
+      : []),
     {
       id: 'direct-rf-contacts',
       title: t('analysis.direct_rf.title', 'Direct RF Contacts'),
@@ -211,6 +228,24 @@ const AnalysisTab: React.FC = () => {
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <DirectRfContactsReport />
+      </div>
+    );
+  }
+
+  if (selected === 'walkabout' && showWalkabout) {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => {
+            setSearchParams({}, { replace: true });
+            setSelected(null);
+          }}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <WalkaboutReport />
       </div>
     );
   }
