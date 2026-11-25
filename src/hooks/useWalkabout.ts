@@ -7,13 +7,23 @@ import api from '../services/api.js';
 import {
   deleteWalkabout,
   fetchLiveWalkabout,
+  fetchWalkaboutCellNodes,
+  fetchWalkaboutCells,
   fetchWalkaboutSessions,
+  fetchWalkaboutTrack,
   startWalkabout,
+  walkaboutMapParams,
 } from '../services/walkaboutApi.js';
+import type { WalkaboutH3Res, WalkaboutMapQuery } from '../types/walkabout.js';
 
 export const walkaboutKeys = {
   sessions: (sourceId: string) => ['walkabout', sourceId, 'sessions'] as const,
   live: (sourceId: string) => ['walkabout', sourceId, 'live'] as const,
+  cells: (sourceId: string, q: WalkaboutMapQuery, res: WalkaboutH3Res) =>
+    ['walkabout', sourceId, 'cells', walkaboutMapParams(q), res] as const,
+  cellNodes: (sourceId: string, q: WalkaboutMapQuery, cell: string) =>
+    ['walkabout', sourceId, 'cell-nodes', walkaboutMapParams(q), cell] as const,
+  track: (sourceId: string, sessionId: string) => ['walkabout', sourceId, 'track', sessionId] as const,
 };
 
 export interface WalkaboutSourceRow {
@@ -76,5 +86,49 @@ export function useDeleteWalkabout(sourceId: string) {
   return useMutation({
     mutationFn: (sessionId: string) => deleteWalkabout(sourceId, sessionId),
     onSuccess: invalidate,
+  });
+}
+
+// --- Phase 2: map (WALKABOUT_P2_SPEC.md §2.9) ---
+
+
+const MAP_QUERY_OPTS = { staleTime: 60_000, refetchOnWindowFocus: false } as const;
+
+export function useWalkaboutCells(sourceId: string | null, q: WalkaboutMapQuery | null, res: WalkaboutH3Res) {
+  return useQuery({
+    queryKey: q && sourceId
+      ? walkaboutKeys.cells(sourceId, q, res)
+      : ['walkabout', sourceId ?? '', 'cells', null, res],
+    queryFn: () => fetchWalkaboutCells(sourceId as string, q as WalkaboutMapQuery, res),
+    enabled: !!sourceId && !!q,
+    // Keep the previous hexes only when just `res` changed.
+    placeholderData: (prev, prevQuery) => {
+      const prevKey = prevQuery?.queryKey as readonly unknown[] | undefined;
+      if (!prev || !prevKey || !q || !sourceId) return undefined;
+      const cur = walkaboutKeys.cells(sourceId, q, res);
+      return prevKey[1] === cur[1] && JSON.stringify(prevKey[3]) === JSON.stringify(cur[3]) ? prev : undefined;
+    },
+    ...MAP_QUERY_OPTS,
+  });
+}
+
+/** Enabled only while a popup is open (cell non-null). */
+export function useWalkaboutCellNodes(sourceId: string | null, q: WalkaboutMapQuery | null, cell: string | null) {
+  return useQuery({
+    queryKey: q && sourceId && cell
+      ? walkaboutKeys.cellNodes(sourceId, q, cell)
+      : ['walkabout', sourceId ?? '', 'cell-nodes', null, cell],
+    queryFn: () => fetchWalkaboutCellNodes(sourceId as string, q as WalkaboutMapQuery, cell as string),
+    enabled: !!sourceId && !!q && !!cell,
+    ...MAP_QUERY_OPTS,
+  });
+}
+
+export function useWalkaboutTrack(sourceId: string | null, sessionId: string | null) {
+  return useQuery({
+    queryKey: walkaboutKeys.track(sourceId ?? '', sessionId ?? ''),
+    queryFn: () => fetchWalkaboutTrack(sourceId as string, sessionId as string),
+    enabled: !!sourceId && !!sessionId,
+    ...MAP_QUERY_OPTS,
   });
 }

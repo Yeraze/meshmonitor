@@ -84,7 +84,45 @@ Anyone who can read the source sees its sessions and tracks.
 Sessions stay until you delete them. Stop a live session before you delete it.
 Deleting removes the session with all its samples and receptions.
 
-A map view of a finished session comes in a later release.
+## Map
+
+The map shows what the source radio heard along your routes. Find it in two
+places:
+
+- The **Walkabout** page, in a panel under the session list. It stays hidden
+  during a live walk. The page says "The map opens when you stop."
+- **Coverage Report → View → Walkabout**. See [Coverage Report](./coverage-report).
+
+![Walkabout hex map](/images/features/walkabout-map.png)
+
+Each hex takes the colour of the **best** signal heard in it, counting the
+last-hop node only (see "What credited means" above). The hex size grows as
+you zoom out, so the map stays easy to read at any scale.
+
+| Colour | Meaning |
+|--------|---------|
+| Strong | Best SNR of 0 dB or more |
+| Medium | Best SNR from -5 to 0 dB |
+| Weak | Best SNR from -10 to -5 dB |
+| None | Best SNR below -10 dB, or you walked there and heard nothing |
+| Grey | Heard, but with no SNR reading |
+
+The bands are fixed. Slow presets decode below -10 dB, so they may read low
+on this map. Per-source bands are tracked in
+[#6571](https://github.com/Yeraze/meshmonitor/issues/6571).
+
+Tap a hex to see "N nodes heard here". The list shows each node's best SNR and
+how many times you heard it (x count).
+
+**Time window.** Choose 24h, 7d, 14d or 30d, or pick one session. When you pick
+one session, the map also draws the walker's track. Anyone who can read the
+source can see that track.
+
+**Hidden nodes.** The map leaves out receptions from nodes hidden from the
+map. A banner shows how many it dropped.
+
+**Large windows.** When a window holds more data than the map loads, a note
+reads "showing part of this window". Pick a shorter window to see all of it.
 
 ## API
 
@@ -100,6 +138,9 @@ All routes live under `/api/sources/:id/walkabout`. Read routes need
 | POST | `/sessions/:sessionId/samples` | Post GPS samples (`latitude`, `longitude`, `accuracyM`, `deviceFixAt`, `ageMs`) |
 | POST | `/sessions/:sessionId/stop` | Stop a session |
 | DELETE | `/sessions/:sessionId` | Delete a stopped session |
+| GET | `/cells` | Hex cells with best SNR for a time window or one session (login + `nodes:read`) |
+| GET | `/cell-nodes` | Nodes heard in one hex (login + `nodes:read`) |
+| GET | `/sessions/:sessionId/track` | The walker's track for one session (login + `nodes:read`) |
 
 Errors: `409 WALKABOUT_NOT_LIVE` when a session already ended, and
 `409 WALKABOUT_LIVE_SESSION` when you delete a live one.

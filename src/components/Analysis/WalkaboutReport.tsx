@@ -6,7 +6,7 @@
  * 10 s and never polls (the sample response carries the counts), so a
  * two-hour walk over cellular stays far below the API rate limit (§2.8).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from '../icons';
@@ -22,6 +22,7 @@ import {
   useWalkaboutSources,
   walkaboutKeys,
 } from '../../hooks/useWalkabout';
+import { useReadableWalkaboutSources } from '../../hooks/useWalkaboutSources';
 import { postWalkaboutSamples, stopWalkabout } from '../../services/walkaboutApi';
 import { createWalkaboutSampler } from '../../utils/walkaboutSampler';
 import { formatClock, pausedMinutes } from '../../utils/walkaboutFormat';
@@ -30,14 +31,12 @@ import {
   WALKABOUT_MAX_DURATION_MS,
   WALKABOUT_NAME_MAX,
   WALKABOUT_POST_INTERVAL_MS,
-  WALKABOUT_READ_GRANT,
   WALKABOUT_WARN_ACCURACY_M,
   WALKABOUT_WRITE_GRANT,
 } from '../../utils/walkabout';
 import type { WalkaboutSessionDto, WalkaboutSkipCounts } from '../../types/walkabout';
+import WalkaboutMapPanel from './WalkaboutMapPanel';
 import styles from './WalkaboutReport.module.css';
-
-const WALKABOUT_SOURCE_TYPES = new Set(['meshtastic_tcp', 'meshcore']);
 
 type EndNotice = 'cap' | 'user' | 'lost' | null;
 
@@ -56,22 +55,19 @@ export default function WalkaboutReport() {
   const { hasPermission } = useAuth();
   const sourcesQ = useWalkaboutSources();
 
-  const { options, readOnlyMode } = useMemo(() => {
-    const usable = (sourcesQ.data ?? []).filter(
-      (s) => s.enabled !== false && WALKABOUT_SOURCE_TYPES.has(s.type ?? ''),
-    );
-    const writable = usable.filter((s) =>
-      hasPermission(WALKABOUT_WRITE_GRANT.resource, WALKABOUT_WRITE_GRANT.action, { sourceId: s.id }),
-    );
-    if (writable.length > 0) return { options: writable, readOnlyMode: false };
-    const readable = usable.filter((s) =>
-      hasPermission(WALKABOUT_READ_GRANT.resource, WALKABOUT_READ_GRANT.action, { sourceId: s.id }),
-    );
-    return { options: readable, readOnlyMode: true };
-  }, [sourcesQ.data, hasPermission]);
+  const canWriteSource = useCallback(
+    (id: string) => hasPermission(WALKABOUT_WRITE_GRANT.resource, WALKABOUT_WRITE_GRANT.action, { sourceId: id }),
+    [hasPermission],
+  );
+  // Every source the user can read; Start/Resume/Delete follow the SELECTED source's write grant.
+  const options = useReadableWalkaboutSources(hasPermission);
 
   const [pickedId, setPickedId] = useState('');
-  const sourceId = options.some((o) => o.id === pickedId) ? pickedId : (options[0]?.id ?? '');
+  const defaultId = (options.find((o) => canWriteSource(o.id)) ?? options[0])?.id ?? '';
+  const sourceId = options.some((o) => o.id === pickedId) ? pickedId : defaultId;
+  const readOnlyMode = !sourceId || !canWriteSource(sourceId);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
 
   const sessionsQ = useWalkaboutSessions(sourceId || null);
   const liveQ = useLiveWalkabout(sourceId || null);
@@ -488,13 +484,27 @@ export default function WalkaboutReport() {
                           ? t('analysis.walkabout.row_live', 'Running')
                           : formatClock(endMs - s.startedAt)}
                         {' · '}
-                        {t('analysis.walkabout.row_counts', '{{samples}} samples, {{receptions}} receptions, {{nodes}} nodes', {
-                          samples: s.sampleCount,
-                          receptions: s.receptionCount,
-                          nodes: s.nodeCount,
-                        })}
+                        {[
+                          t('analysis.walkabout.row_samples', { count: s.sampleCount, defaultValue: '{{count}} samples' }),
+                          t('analysis.walkabout.row_receptions', { count: s.receptionCount, defaultValue: '{{count}} receptions' }),
+                          t('analysis.walkabout.row_nodes', { count: s.nodeCount, defaultValue: '{{count}} nodes' }),
+                        ].join(', ')}
                       </span>
                     </div>
+                    {!live && (
+                      <button
+                        type="button"
+                        className={styles.secondary}
+                        onClick={() => {
+                          setSelectedSessionId(s.id);
+                          mapRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+                        }}
+                        aria-label={t('analysis.walkabout.map.show', 'Map')}
+                        data-testid="walkabout-map-button"
+                      >
+                        <UiIcon name="map" size={16} /> {t('analysis.walkabout.map.show', 'Map')}
+                      </button>
+                    )}
                     {!readOnlyMode && !live && (
                       <button
                         type="button"
@@ -512,6 +522,22 @@ export default function WalkaboutReport() {
             </ul>
           )}
         </section>
+      )}
+      {sourceId && (
+        <div ref={mapRef}>
+          {active ? (
+            <p className={styles.note} data-testid="walkabout-map-while-walking">
+              <UiIcon name="info" size={16} /> {t('analysis.walkabout.map.opens_on_stop', 'The map opens when you stop.')}
+            </p>
+          ) : (
+            <WalkaboutMapPanel
+              sourceId={sourceId}
+              sessions={sessionRows}
+              selectedSessionId={selectedSessionId}
+              onSelectSession={setSelectedSessionId}
+            />
+          )}
+        </div>
       )}
     </div>
   );

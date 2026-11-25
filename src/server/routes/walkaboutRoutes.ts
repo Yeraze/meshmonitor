@@ -22,9 +22,19 @@ import {
   WALKABOUT_MAX_SAMPLES_PER_POST,
   WALKABOUT_NAME_MAX,
   WALKABOUT_LIST_LIMIT,
+  WALKABOUT_MAP_WINDOWS_MS,
+  WALKABOUT_MAX_RANGE_MS,
   isWalkaboutLive,
 } from '../../utils/walkabout.js';
-import type { WalkaboutSampleInput } from '../../types/walkabout.js';
+import type {
+  WalkaboutH3Res,
+  WalkaboutMapQuery,
+  WalkaboutMapWindow,
+  WalkaboutSampleInput,
+} from '../../types/walkabout.js';
+import { parseSenderParam } from '../utils/coverageSenderParam.js';
+import { parseWalkaboutCell } from '../utils/walkaboutH3.js';
+import { getWalkaboutCellNodes, getWalkaboutCells, getWalkaboutTrack } from '../services/walkaboutCells.js';
 
 const router = Router({ mergeParams: true });
 
@@ -242,6 +252,89 @@ router.delete('/sessions/:sessionId', ...canWrite, async (req: Request, res: Res
     return ok(res);
   } catch (err) {
     return handleError(res, err, 'delete the walkabout');
+  }
+});
+
+// --- Phase 2: map reads (WALKABOUT_P2_SPEC.md §2.8). Every route needs a login:
+// a cell id is a position the public-instance redactor does not recognise.
+
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const INT_RE = /^\d{1,16}$/;
+
+function badWalkabout(res: Response, message: string): Response {
+  return fail(res, 400, 'INVALID_WALKABOUT', message);
+}
+
+/** Exactly one mode: sessionId | window | since+until. `node` narrows to one credited node. */
+function parseMapQuery(req: Request): { q: WalkaboutMapQuery } | { error: string } {
+  const { sessionId, window, since, until, node } = req.query as Record<string, unknown>;
+  const modes = [sessionId !== undefined, window !== undefined, since !== undefined || until !== undefined];
+  if (modes.filter(Boolean).length !== 1) {
+    return { error: 'Give exactly one of sessionId, window, or since and until' };
+  }
+  let nodeId: string | undefined;
+  if (node !== undefined) {
+    const parsed = parseSenderParam(node);
+    if (!parsed) return { error: 'node must be a !hex id, a decimal node number or a 64-hex public key' };
+    nodeId = parsed;
+  }
+  const withNode = nodeId !== undefined ? { node: nodeId } : {};
+  if (sessionId !== undefined) {
+    if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) return { error: 'sessionId is not valid' };
+    return { q: { kind: 'session', sessionId, ...withNode } };
+  }
+  if (window !== undefined) {
+    if (typeof window !== 'string' || !Object.prototype.hasOwnProperty.call(WALKABOUT_MAP_WINDOWS_MS, window)) {
+      return { error: 'window must be 24h, 7d, 14d or 30d' };
+    }
+    return { q: { kind: 'window', window: window as WalkaboutMapWindow, ...withNode } };
+  }
+  if (typeof since !== 'string' || typeof until !== 'string' || !INT_RE.test(since) || !INT_RE.test(until)) {
+    return { error: 'since and until must both be integer milliseconds' };
+  }
+  const sinceMs = Number(since);
+  const untilMs = Number(until);
+  if (sinceMs > untilMs) return { error: 'since must not be after until' };
+  if (untilMs - sinceMs > WALKABOUT_MAX_RANGE_MS) return { error: 'range is longer than 31 days' };
+  return { q: { kind: 'range', sinceMs, untilMs, ...withNode } };
+}
+
+router.get('/cells', ...canRead, async (req: Request, res: Response) => {
+  try {
+    const parsed = parseMapQuery(req);
+    if ('error' in parsed) return badWalkabout(res, parsed.error);
+    const rawRes = req.query.res;
+    let h3res: WalkaboutH3Res = 9;
+    if (rawRes !== undefined) {
+      if (rawRes !== '7' && rawRes !== '8' && rawRes !== '9') return badWalkabout(res, 'res must be 7, 8 or 9');
+      h3res = Number(rawRes) as WalkaboutH3Res;
+    }
+    const data = await getWalkaboutCells(req.user, sourceOf(req), parsed.q, h3res);
+    return data ? ok(res, data) : notFound(res);
+  } catch (err) {
+    return handleError(res, err, 'read walkabout cells');
+  }
+});
+
+router.get('/cell-nodes', ...canRead, async (req: Request, res: Response) => {
+  try {
+    const parsed = parseMapQuery(req);
+    if ('error' in parsed) return badWalkabout(res, parsed.error);
+    const cell = parseWalkaboutCell(req.query.cell);
+    if (!cell) return badWalkabout(res, 'cell must be an H3 index at resolution 7 to 9');
+    const data = await getWalkaboutCellNodes(req.user, sourceOf(req), parsed.q, cell.cell, cell.res);
+    return data ? ok(res, data) : notFound(res);
+  } catch (err) {
+    return handleError(res, err, 'read walkabout cell nodes');
+  }
+});
+
+router.get('/sessions/:sessionId/track', ...canRead, async (req: Request, res: Response) => {
+  try {
+    const data = await getWalkaboutTrack(sourceOf(req), sessionOf(req));
+    return data ? ok(res, data) : notFound(res);
+  } catch (err) {
+    return handleError(res, err, 'read the walkabout track');
   }
 });
 

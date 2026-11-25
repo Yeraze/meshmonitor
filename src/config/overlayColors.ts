@@ -20,6 +20,8 @@ export interface OverlayColors {
     poor: string;       // SNR < -5dB
     noData: string;     // No SNR data
   };
+  /** Walkabout session track polyline (#5891 P2). */
+  walkaboutTrack: string;
   polarGrid: {
     rings: string;
     sectors: string;
@@ -48,6 +50,7 @@ export const darkOverlayColors: OverlayColors = {
     poor: '#ef4444',      // Vivid red — SNR < -5dB
     noData: '#6c7086',    // Neutral grey, matching Mocha's --color-text-faint
   },
+  walkaboutTrack: '#89b4fa', // Catppuccin Mocha blue
   polarGrid: {
     rings: 'rgba(0, 200, 255, 0.3)',
     sectors: 'rgba(0, 200, 255, 0.15)',
@@ -82,6 +85,7 @@ export const lightOverlayColors: OverlayColors = {
     poor: '#d20f39',      // Catppuccin Latte red — AA on cream (contrast 4.73)
     noData: '#6c6f7e',    // darkened Latte overlay0 — AA on cream (contrast 4.34)
   },
+  walkaboutTrack: '#1e66f5', // Catppuccin Latte blue
   polarGrid: {
     rings: 'rgba(0, 80, 130, 0.3)',
     sectors: 'rgba(0, 80, 130, 0.15)',
