@@ -34,6 +34,7 @@ import forwardingRoutes from './forwardingRoutes.js';
 import atakRoutes from './atakRoutes.js';
 import surveyRoutes from './surveyRoutes.js';
 import directRfContactsRoutes from './directRfContactsRoutes.js';
+import walkaboutRoutes from './walkaboutRoutes.js';
 import beaconOfferRoutes from './beaconOfferRoutes.js';
 import reticulumRoutes from './reticulumRoutes.js';
 import embedProfileRoutes from './embedProfileRoutes.js';
@@ -214,6 +215,9 @@ export function createApiRouter({ geojsonRouter, mapStyleRouter, includeDebugRou
   // synthesis of already-collected data; emits no radio traffic.
   apiRouter.use('/sources/:id/survey', surveyRoutes);
   apiRouter.use('/sources/:id/direct-rf-contacts', directRfContactsRoutes);
+
+  // Walkabout Coverage (#5891) — per-source GPS walk sessions; login + nodes grant on the source.
+  apiRouter.use('/sources/:id/walkabout', walkaboutRoutes);
 
   // Predictive RF coverage (#4727) — terrain-modelled, read-only, and NOT
   // per-source: the origin and radio parameters come from the request, so this

@@ -788,6 +788,7 @@ export const PARAM_DEFAULTS: Readonly<Record<string, string>> = {
   threadHash: RNS_HASHES.peer,
   messageId: `${SOURCES.mt}_${MT_NUM}_1`,
   requestId: 'audit-request',
+  sessionId: '00000000-0000-4000-8000-000000000000',
   type: 'temperature',
 };
 
