@@ -56,7 +56,7 @@ MeshMonitor sends nothing for this feature (passive).
   "Walkabout sessions" filter. Track and cell reads clip samples and receptions
   to `[startedAt, endedAt]` (one in-flight sample can land just after a stop).
   *Exit:* hexes render from real sessions; popup matches data.
-- [ ] **P3 — Coverage import.** Accept our exported GeoJSON/CSV; schema + row
+- [x] **P3 — Coverage import.** Accept our exported GeoJSON/CSV; schema + row
   validation with clear errors; rows tagged `imported_from` + filename and
   filterable; round-trip test.
   *Exit:* export → import on a clean DB renders the same points.
@@ -102,3 +102,15 @@ MeshMonitor sends nothing for this feature (passive).
   - Known, not fixed: cells on the antimeridian skip the bbox prefilter (slower,
     still correct); a walk across ±180° fits a world-wide box.
 
+- **P3 (2026-11-25).** Coverage import; user guide in `docs/features/coverage-report.md`.
+  Table `coverage_imports` plus `coverage_receptions.importId` (migration 249).
+  - Decisions: Coverage exports only, walkabout export/import is #6573; a node
+    the target source never heard shows only to admins and holders of the
+    source's base map permission; target needs `nodes:write`; limits 32 MB,
+    10,000 rows per file, 50 imports and 200,000 rows per source.
+  - Review fixes: bounded CSV parsing (a 32 MB file of short lines could OOM);
+    imported rows never unmask a hidden live receiver position; delete/upload
+    race and a crash sweep at startup; restore clears stale batches; backup
+    skips orphan rows; bogus positions are skipped, not fatal.
+  - Known, not fixed: a non-admin can't start a survey on a sender that exists
+    only in imported data.
