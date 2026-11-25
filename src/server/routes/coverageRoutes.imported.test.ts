@@ -74,6 +74,8 @@ describe('coverage routes: imported rows (#5891 P3)', () => {
     await harness.db.nodes.deleteAllNodes(harness.sourceA).catch(() => {});
     await harness.db.settings.setSetting(localNodeNumSettingKey(harness.sourceA), '').catch(() => {});
     await harness.revokeAll(harness.anonymous.id).catch(() => {});
+    await harness.db.meshcore.deleteNode(MC_SENDER, MC_SRC).catch(() => {});
+    await harness.db.meshcore.deleteNode(MC_RECEIVER, MC_SRC).catch(() => {});
     await harness.db.sources.deleteSource(MC_SRC).catch(() => {});
     await harness.cleanup();
   });
@@ -269,6 +271,56 @@ describe('coverage routes: imported rows (#5891 P3)', () => {
     agent = await harness.loginAs(harness.limited);
     senders = (await agent.get('/api/analysis/coverage/senders?since=0')).body.data.senders;
     expect(senders).toEqual([]);
+  });
+
+  describe('an import naming an unresolved live receiver does not unmask the live rows', () => {
+    const seedLive = async () => {
+      for (let n = 0; n < 3; n++) {
+        await databaseService.coverageReceptions.recordReception({
+          sourceId: MC_SRC, protocol: 'meshcore', receiverKind: 'local', receiverId: MC_RECEIVER,
+          receiverLatitude: 33.25, receiverLongitude: 44.5, senderId: MC_SENDER, packetKey: `live${n}`,
+          pathKey: 'p', latitude: 1, longitude: 2, receivedAt: Date.now() - n * 1000,
+        });
+      }
+    };
+    const receiver = async (agent: any) =>
+      (await agent.get('/api/analysis/coverage/receivers?since=0')).body.data.receivers
+        .find((r: any) => r.receiverId === MC_RECEIVER);
+    const noLivePosition = (r: any) => {
+      expect(r).toBeDefined();
+      expect(r.latitude).not.toBe(33.25);
+      expect(r.longitude).not.toBe(44.5);
+    };
+
+    it('(a) a viewOnMap user gets no live position and counts only the imported row', async () => {
+      await seedLive();
+      await upload([mcDto(0)], MC_SRC);
+      await perm(harness.limited.id, MC_SRC, 'nodes', { read: true, viewOnMap: true });
+      const r = await receiver(await harness.loginAs(harness.limited));
+      noLivePosition(r);
+      expect(r.receptionCount).toBe(1); // (c) hidden live rows are not counted
+      expect(r.importedOnly).toBe(true);
+    });
+
+    it('(b) admin likewise', async () => {
+      await seedLive();
+      await upload([mcDto(0)], MC_SRC);
+      const r = await receiver(await harness.loginAs(harness.admin));
+      noLivePosition(r);
+      expect(r.receptionCount).toBe(1);
+      expect(r.importedOnly).toBe(true);
+    });
+
+    it('(c) /senders counts and last-seen exclude the hidden live rows', async () => {
+      await seedLive();
+      const id = await upload([mcDto(0)], MC_SRC);
+      expect(id).toBeTruthy();
+      const agent = await harness.loginAs(harness.admin);
+      const s = (await agent.get('/api/analysis/coverage/senders?since=0')).body.data.senders
+        .find((x: any) => x.senderId === MC_SENDER);
+      expect(s.fixCount).toBe(1);
+      expect(s.importedOnly).toBe(true);
+    });
   });
 
   it('MeshCore unknown receiver ids are never confused with the sender gate', async () => {

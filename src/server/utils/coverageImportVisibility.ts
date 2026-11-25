@@ -101,3 +101,57 @@ export function buildCoverageRowGate(args: {
       groupVisible(subject(r.sourceId, isMeshCoreReceptionRow(r), r.receiverId, r.receiverNodeNum), r.importedRows),
   };
 }
+
+interface ReceiverGroupRow {
+  sourceId: string;
+  protocol: string;
+  receiverKind: string;
+  receiverId: string;
+  receiverNodeNum: number | null;
+  lastReceivedAt: number;
+  receiverLatitude: number | null;
+  receiverLongitude: number | null;
+  receptionCount: number;
+  importedRows: number;
+  liveRows: number;
+}
+
+/**
+ * Merge `getReceivers` rows (the repository returns a receiver's live and
+ * imported rows as SEPARATE groups) into one row per receiver, gating each
+ * part on its own rule so imported rows never unmask live data:
+ *  - imported part visible, live part not: the live part is dropped, so count,
+ *    last-seen time and position snapshot come from imported rows only;
+ *  - imported part hidden from the viewer: it is dropped (live behaviour as before);
+ *  - both visible: counts add, the live snapshot wins when it has one.
+ */
+export function mergeReceiverGroups<T extends ReceiverGroupRow>(rows: T[], gate: CoverageRowGate): T[] {
+  const byKey = new Map<string, { live?: T; imported?: T }>();
+  for (const r of rows) {
+    const key = `${r.sourceId}|${r.receiverKind}|${r.receiverId}|${r.receiverNodeNum ?? ''}`;
+    const entry = byKey.get(key) ?? {};
+    if (r.importedRows > 0) entry.imported = r;
+    else entry.live = r;
+    byKey.set(key, entry);
+  }
+  const out: T[] = [];
+  for (const { live, imported } of byKey.values()) {
+    const keepImported = imported && gate.receiverGroupVisible(imported) ? imported : undefined;
+    const keepLive = live && !(keepImported && !gate.receiverGroupVisible(live)) ? live : undefined;
+    if (keepLive && keepImported) {
+      const snap = keepLive.receiverLatitude != null ? keepLive : keepImported;
+      out.push({
+        ...keepLive,
+        lastReceivedAt: Math.max(keepLive.lastReceivedAt, keepImported.lastReceivedAt),
+        receiverLatitude: snap.receiverLatitude,
+        receiverLongitude: snap.receiverLongitude,
+        receptionCount: keepLive.receptionCount + keepImported.receptionCount,
+        importedRows: keepImported.importedRows,
+        liveRows: keepLive.liveRows,
+      });
+    } else if (keepLive || keepImported) {
+      out.push((keepLive ?? keepImported) as T);
+    }
+  }
+  return out;
+}

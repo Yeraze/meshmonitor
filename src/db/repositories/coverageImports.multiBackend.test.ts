@@ -156,14 +156,29 @@ function runSharedTests(getCtx: () => Ctx) {
     const rcv = await rx.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
     const imp1 = rcv.find((r) => r.receiverId === '!imp1')!;
     expect(imp1).toMatchObject({ importedRows: 2, liveRows: 0, receptionCount: 2 });
-    expect(rcv.find((r) => r.receiverId === '!aabbccdd')).toMatchObject({ importedRows: 1, liveRows: 1 });
+    // Live and imported rows of one receiver come back as separate groups.
+    const split = rcv.filter((r) => r.receiverId === '!aabbccdd');
+    expect(split.map((r) => [r.importedRows, r.liveRows, r.receptionCount]).sort()).toEqual([[0, 1, 1], [1, 0, 1]]);
     expect((await rx.getReceivers({ sourceIds: ['src-a'], sinceMs: 0, imported: 'exclude' })).map((r) => r.receiverId)).toEqual(['!aabbccdd']);
     expect((await rx.getReceivers({ sourceIds: ['src-a'], sinceMs: 0, importId: 'i1' })).map((r) => r.receiverId)).toEqual(['!imp1']);
 
     const sum = await rx.getSenderSummary({ sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, limit: 10 });
     expect(sum.find((s) => s.senderId === '!other')).toMatchObject({ importedRows: 1, liveRows: 0, fixCount: 1 });
-    expect(sum.find((s) => s.senderId === '!bbbbbbbb')).toMatchObject({ importedRows: 2, liveRows: 1 });
+    expect(sum.filter((s) => s.senderId === '!bbbbbbbb').map((s) => [s.importedRows, s.liveRows, s.fixCount]).sort()).toEqual([[0, 1, 1], [2, 0, 2]]);
     expect((await rx.getSenderSummary({ sourceIds: ['src-a'], sinceMs: 0, untilMs: NOW + 1, limit: 10, imported: 'only', importId: 'i2' })).map((s) => s.senderId)).toEqual(['!other']);
+  });
+
+  it('getReceivers takes each group\'s position snapshot from its own rows only', async () => {
+    const { imports, rx } = getCtx();
+    await imports.createImport(importParams('i1', 'src-a', 'h1'));
+    await live(rx, { receiverLatitude: 11, receiverLongitude: 22, receivedAt: NOW });
+    await rx.insertImportedRows('src-a', 'i1', [row({ receiverLatitude: null, receiverLongitude: null, receivedAt: NOW - 10 })]);
+    const rcv = await rx.getReceivers({ sourceIds: ['src-a'], sinceMs: 0 });
+    const liveG = rcv.find((r) => r.liveRows === 1)!;
+    const impG = rcv.find((r) => r.importedRows === 1)!;
+    expect([liveG.receiverLatitude, liveG.receiverLongitude]).toEqual([11, 22]);
+    expect([impG.receiverLatitude, impG.receiverLongitude]).toEqual([null, null]);
+    expect(impG.lastReceivedAt).toBe(NOW - 10);
   });
 
   it('purgeOlderThan keeps imported rows even when they are old', async () => {

@@ -511,6 +511,10 @@ export class CoverageReceptionsRepository extends BaseRepository {
     const receiversImported = this.importedClause(args.imported, args.importId);
     if (receiversImported) windowConditions.push(receiversImported);
 
+    // Live and imported rows aggregate SEPARATELY (#5891 P3): the caller gates
+    // each part on its own visibility rule, so a live row's position or count
+    // never rides along with an imported row that names the same receiver.
+    const importedBit = sql`CASE WHEN ${coverageReceptions.importId} IS NULL THEN 0 ELSE 1 END`;
     const groups = await this.db
       .select({
         sourceId: coverageReceptions.sourceId,
@@ -523,6 +527,7 @@ export class CoverageReceptionsRepository extends BaseRepository {
         importedRows: sql<number>`SUM(CASE WHEN ${coverageReceptions.importId} IS NULL THEN 0 ELSE 1 END)`,
         liveRows: sql<number>`SUM(CASE WHEN ${coverageReceptions.importId} IS NULL THEN 1 ELSE 0 END)`,
         lastSnapAt: sql<number | null>`MAX(CASE WHEN ${coverageReceptions.receiverLatitude} IS NOT NULL THEN ${coverageReceptions.receivedAt} END)`,
+        isImported: importedBit,
       })
       .from(coverageReceptions)
       .where(and(...windowConditions))
@@ -531,14 +536,15 @@ export class CoverageReceptionsRepository extends BaseRepository {
         coverageReceptions.receiverKind,
         coverageReceptions.receiverId,
         coverageReceptions.receiverNodeNum,
+        importedBit,
       );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle cross-dialect row shape
     const groupRows = groups as any[];
 
     /** Group key for the snapshot map — mirrors the follow-up query's WHERE. */
-    const snapKey = (sourceId: string, receiverId: string, nodeNum: number | null): string =>
-      `${sourceId}|${receiverId}|${nodeNum ?? '\u0000'}`;
+    const snapKey = (sourceId: string, receiverId: string, nodeNum: number | null, imported: boolean): string =>
+      `${sourceId}|${receiverId}|${nodeNum ?? '\u0000'}|${imported ? 1 : 0}`;
 
     const needsSnapshot = groupRows.filter((g) => g.lastSnapAt != null);
     const snapshots = new Map<string, { receiverLatitude: number; receiverLongitude: number }>();
@@ -559,6 +565,7 @@ export class CoverageReceptionsRepository extends BaseRepository {
             nodeNumClause,
             eq(coverageReceptions.receivedAt, Number(g.lastSnapAt)),
             isNotNull(coverageReceptions.receiverLatitude),
+            Number(g.isImported) === 1 ? isNotNull(coverageReceptions.importId) : isNull(coverageReceptions.importId),
           );
         })
         .filter((c): c is SQL => c != null);
@@ -574,6 +581,7 @@ export class CoverageReceptionsRepository extends BaseRepository {
           receiverNodeNum: coverageReceptions.receiverNodeNum,
           receiverLatitude: coverageReceptions.receiverLatitude,
           receiverLongitude: coverageReceptions.receiverLongitude,
+          isImported: importedBit,
         })
         .from(coverageReceptions)
         .where(combined);
@@ -581,7 +589,7 @@ export class CoverageReceptionsRepository extends BaseRepository {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle cross-dialect row shape
       for (const r of snapRows as any[]) {
         const nodeNum = r.receiverNodeNum == null ? null : Number(r.receiverNodeNum);
-        const key = snapKey(r.sourceId, r.receiverId, nodeNum);
+        const key = snapKey(r.sourceId, r.receiverId, nodeNum, Number(r.isImported) === 1);
         // Take the first row per group key — several rows can share
         // (sourceId, receiverId, nodeNum, receivedAt) when two receptions
         // land in the same millisecond from different senders.
@@ -596,7 +604,7 @@ export class CoverageReceptionsRepository extends BaseRepository {
 
     return groupRows.map((g) => {
       const nodeNum = g.receiverNodeNum == null ? null : Number(g.receiverNodeNum);
-      const snap = snapshots.get(snapKey(g.sourceId, g.receiverId, nodeNum));
+      const snap = snapshots.get(snapKey(g.sourceId, g.receiverId, nodeNum, Number(g.isImported) === 1));
       return {
         sourceId: g.sourceId,
         protocol: g.protocol,
@@ -644,7 +652,12 @@ export class CoverageReceptionsRepository extends BaseRepository {
         lte(coverageReceptions.receivedAt, args.untilMs),
         this.importedClause(args.imported, args.importId),
       ))
-      .groupBy(coverageReceptions.sourceId, coverageReceptions.senderId, coverageReceptions.senderNodeNum)
+      .groupBy(
+        coverageReceptions.sourceId,
+        coverageReceptions.senderId,
+        coverageReceptions.senderNodeNum,
+        sql`CASE WHEN ${coverageReceptions.importId} IS NULL THEN 0 ELSE 1 END`,
+      )
       .orderBy(sql`MAX(${coverageReceptions.receivedAt}) DESC`)
       .limit(limit);
 

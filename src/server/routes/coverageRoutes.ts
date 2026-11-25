@@ -48,7 +48,7 @@ import {
 } from '../utils/positionVisibility.js';
 import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { parseSenderParam } from '../utils/coverageSenderParam.js';
-import { buildCoverageRowGate } from '../utils/coverageImportVisibility.js';
+import { buildCoverageRowGate, mergeReceiverGroups } from '../utils/coverageImportVisibility.js';
 import {
   clampCoverageRetentionDays, COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn,
   isMeshCoreReceptionRow, isMeshCorePubKeyId,
@@ -402,7 +402,7 @@ router.get('/receivers', async (req: Request, res: Response) => {
       for (const n of nodeList) mcNodeByKey.set(`${sourceId}:${n.publicKey.toLowerCase()}`, n);
     }
 
-    const receivers: CoverageReceiverDto[] = rows.map((r) => {
+    const receivers: CoverageReceiverDto[] = mergeReceiverGroups(rows, gate).map((r) => {
       if (isMeshCoreReceptionRow(r)) {
         // MeshCore branch (§2.5 D10): name and current position come from
         // `meshcore_nodes` (override-aware since #5842), else the latest
