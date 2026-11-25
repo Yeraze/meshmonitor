@@ -109,8 +109,9 @@ function isObj(v: unknown): v is Record<string, unknown> {
 export function validateCoverageImportRow(
   raw: Record<string, unknown>,
   nowMs: number,
-): { row: ParsedCoverageImportRow } | { errors: RowErrors } {
+): { row: ParsedCoverageImportRow } | { skipped: 'bogus_position' } | { errors: RowErrors } {
   const errors: RowErrors = [];
+  let bogusPosition = false;
   const bad = (field: string, message: string) => errors.push({ field, message });
   const blank = (v: unknown) => v === null || v === undefined;
 
@@ -211,7 +212,7 @@ export function validateCoverageImportRow(
   const longitude = reqCoord('longitude', -180, 180);
   const precisionBits = optNum('precisionBits', 0, 32, true);
   if (latitude !== null && longitude !== null && isBogusPosition(latitude, longitude, precisionBits)) {
-    bad('latitude', 'position is not a usable fix (Null Island)');
+    bogusPosition = true;
   }
   const altitude = optNum('altitude', -100_000, 100_000, false);
 
@@ -220,7 +221,7 @@ export function validateCoverageImportRow(
   if ((rLat === null) !== (rLon === null) && !errors.some((e) => e.field === 'receiverLatitude' || e.field === 'receiverLongitude')) {
     bad(rLat === null ? 'receiverLatitude' : 'receiverLongitude', 'receiver latitude and longitude must both be set or both empty');
   } else if (rLat !== null && rLon !== null && isBogusPosition(rLat, rLon)) {
-    bad('receiverLatitude', 'receiver position is not a usable fix (Null Island)');
+    bogusPosition = true;
   }
 
   const snr = optNum('snr', -50, 50, false);
@@ -245,6 +246,7 @@ export function validateCoverageImportRow(
   }
 
   if (errors.length > 0) return { errors };
+  if (bogusPosition) return { skipped: 'bogus_position' };
 
   const isMt = protocol === 'meshtastic';
   const nodeNum = (id: string): number | null => (isMt ? parseInt(id.slice(1), 16) : null);
@@ -283,6 +285,7 @@ type Collector = {
   rows: ParsedCoverageImportRow[];
   errors: CoverageImportRowError[];
   invalid: number;
+  skippedBogus: number;
 };
 
 function addErrors(c: Collector, row: number, errs: RowErrors): void {
@@ -328,7 +331,7 @@ function parseCsvImport(text: string, nowMs: number): ParseCoverageImportResult 
   if (dataCount > COVERAGE_IMPORT_MAX_ROWS) {
     return fail('IMPORT_TOO_MANY_ROWS', `The file has ${dataCount} rows; the limit is ${COVERAGE_IMPORT_MAX_ROWS}`);
   }
-  const c: Collector = { rows: [], errors: [], invalid: 0 };
+  const c: Collector = { rows: [], errors: [], invalid: 0, skippedBogus: 0 };
   for (let r = 1; r < records.length; r++) {
     const rec = records[r];
     if (rec.length !== COVERAGE_IMPORT_COLUMNS.length) {
@@ -346,10 +349,11 @@ function parseCsvImport(text: string, nowMs: number): ParseCoverageImportResult 
     });
     const res = validateCoverageImportRow(raw, nowMs);
     if ('row' in res) c.rows.push(res.row);
+    else if ('skipped' in res) c.skippedBogus++;
     else addErrors(c, lines[r], res.errors);
   }
   if (c.invalid > 0) return invalidRows(c);
-  return { ok: true, format: 'csv', rows: c.rows, gapFeatures: 0, sourceTruncated: false };
+  return { ok: true, format: 'csv', rows: c.rows, gapFeatures: 0, sourceTruncated: false, skippedBogusPositions: c.skippedBogus };
 }
 
 function parseGeoJsonImport(text: string, nowMs: number): ParseCoverageImportResult {
@@ -384,7 +388,7 @@ function parseGeoJsonImport(text: string, nowMs: number): ParseCoverageImportRes
   if (pointCount > COVERAGE_IMPORT_MAX_ROWS) {
     return fail('IMPORT_TOO_MANY_ROWS', `The file has ${pointCount} rows; the limit is ${COVERAGE_IMPORT_MAX_ROWS}`);
   }
-  const c: Collector = { rows: [], errors: [], invalid: 0 };
+  const c: Collector = { rows: [], errors: [], invalid: 0, skippedBogus: 0 };
   features.forEach((f, idx) => {
     if (isGap(f)) return;
     const row = idx + 1;
@@ -404,6 +408,7 @@ function parseGeoJsonImport(text: string, nowMs: number): ParseCoverageImportRes
     }
     const res = validateCoverageImportRow(props, nowMs);
     const errs: RowErrors = 'errors' in res ? [...res.errors] : [];
+    const skipped = 'skipped' in res;
     const coords = f.geometry.coordinates;
     if (
       !Array.isArray(coords) ||
@@ -415,10 +420,11 @@ function parseGeoJsonImport(text: string, nowMs: number): ParseCoverageImportRes
       errs.push({ field: 'geometry', message: 'coordinates do not match latitude/longitude' });
     }
     if (errs.length > 0) addErrors(c, row, errs);
+    else if (skipped) c.skippedBogus++;
     else if ('row' in res) c.rows.push(res.row);
   });
   if (c.invalid > 0) return invalidRows(c);
-  return { ok: true, format: 'geojson', rows: c.rows, gapFeatures, sourceTruncated: mm.truncated === true };
+  return { ok: true, format: 'geojson', rows: c.rows, gapFeatures, sourceTruncated: mm.truncated === true, skippedBogusPositions: c.skippedBogus };
 }
 
 export function parseCoverageImport(filename: string, text: string, nowMs: number = Date.now()): ParseCoverageImportResult {

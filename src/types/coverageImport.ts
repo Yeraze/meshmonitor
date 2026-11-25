@@ -73,6 +73,8 @@ export type ParseCoverageImportResult =
       rows: ParsedCoverageImportRow[];
       gapFeatures: number;
       sourceTruncated: boolean;
+      /** Valid rows dropped because the fix or receiver position is bogus (Null Island). */
+      skippedBogusPositions: number;
     }
   | {
       ok: false;

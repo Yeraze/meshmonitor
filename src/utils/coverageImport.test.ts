@@ -360,7 +360,6 @@ describe('validateCoverageImportRow', () => {
     ['latitude', { latitude: 91 }],
     ['longitude', { longitude: -181 }],
     ['latitude', { latitude: NaN }],
-    ['latitude', { latitude: 0, longitude: 0 }],
     ['latitude', { latitude: '40' }],
     ['receiverLongitude', { receiverLatitude: 40 }],
     ['receiverLatitude', { receiverLongitude: 40 }],
@@ -396,6 +395,22 @@ describe('validateCoverageImportRow', () => {
       NOW,
     );
     expect(mc).toMatchObject({ row: { senderId: MC_KEY, packetKey: 'ABCDEF0123456789', packetId: null, senderNodeNum: null } });
+  });
+  it('skips Null Island fixes and receivers instead of erroring', () => {
+    expect(validateCoverageImportRow({ ...good(), latitude: 0, longitude: 0 }, NOW)).toEqual({ skipped: 'bogus_position' });
+    expect(
+      validateCoverageImportRow({ ...good(), receiverLatitude: 0, receiverLongitude: 0 }, NOW),
+    ).toEqual({ skipped: 'bogus_position' });
+    // a real range error still wins
+    expect(fieldOf({ latitude: 91, longitude: 0 })).toContain('latitude');
+  });
+  it('counts skipped rows in a CSV and GeoJSON import', () => {
+    const items = [...fixtures(), dto({ id: 9, packetKey: '777', latitude: 0, longitude: 0, precisionBits: null, receivedAt: T0 + 20 })];
+    const c = parseCoverageImport('a.csv', buildCoverageCsv(items, ctx()), NOW);
+    expect(c).toMatchObject({ ok: true, skippedBogusPositions: 1 });
+    if (c.ok) expect(c.rows).toHaveLength(3);
+    const g = parseCoverageImport('a.geojson', buildCoverageGeoJson(items, ctx()), NOW);
+    expect(g).toMatchObject({ ok: true, skippedBogusPositions: 1 });
   });
   it('reports multiple fields at once', () => {
     expect(fieldOf({ snr: 99, rssi: 99 })).toEqual(['snr', 'rssi']);
