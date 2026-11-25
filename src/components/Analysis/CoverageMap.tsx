@@ -149,6 +149,11 @@ function meshCorePathLabel(r: CoverageReceptionDto, t: ReturnType<typeof useTran
 const RECEIVER_RADIUS = 9;
 const GATEWAY_RADIUS = 6;
 const FIX_RADIUS = 6;
+/** Fixes whose every reception was imported draw dashed (#5891 P3). */
+const IMPORTED_DASH = '3,3';
+const isImportedReception = (r: { importId?: string | null }) => r.importId != null;
+const isImportedFix = (fix: CoverageFix<CoverageReceptionDto>) =>
+  fix.receptions.length > 0 && fix.receptions.every(isImportedReception);
 /** Rows shown in the overlap chooser before it asks the user to zoom in. */
 const CHOOSER_MAX_ITEMS = 20;
 
@@ -273,6 +278,8 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
   const zoom = defaultMapCenterZoom ?? 2;
 
   const scale = overlayColors.snrColors;
+
+  const hasImportedFix = useMemo(() => fixes.some(isImportedFix), [fixes]);
 
   const fixColor = (fix: CoverageFix<CoverageReceptionDto>) =>
     metric === 'snr' ? snrToColor(fix.bestSnr, scale) : rssiToColor(fix.bestRssi, scale);
@@ -428,7 +435,13 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
               }}
               center={[fix.latitude, fix.longitude]}
               radius={FIX_RADIUS}
-              pathOptions={{ color: '#000000', weight: 1, fillColor: color, fillOpacity: 0.85 }}
+              pathOptions={{
+                color: '#000000',
+                weight: 1,
+                fillColor: color,
+                fillOpacity: 0.85,
+                ...(isImportedFix(fix) ? { dashArray: IMPORTED_DASH } : {}),
+              }}
             >
               <Popup>
                 <div className={styles.popup} data-testid="coverage-fix-popup">
@@ -484,6 +497,11 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
                         <li key={c.key} className={styles.popupItem}>
                           <div className={styles.popupReceiver}>
                             {receiverLabel}
+                            {isImportedReception(r) && (
+                              <span className={styles.gatewayBadge} data-testid="coverage-imported-tag">
+                                {t('analysis.coverage.imported_tag', 'Imported')}
+                              </span>
+                            )}
                             {isGateway && (
                               <span className={styles.gatewayBadge}>
                                 {isObserver
@@ -619,6 +637,12 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
         <LegendRow color={scale.fair} label={t('analysis.coverage.legend_fair', 'Fair')} />
         <LegendRow color={scale.poor} label={t('analysis.coverage.legend_poor', 'Poor')} />
         <LegendRow color={scale.noData} label={t('analysis.coverage.legend_no_data', 'No data')} />
+        {hasImportedFix && (
+          <div className={styles.legendRow} data-testid="coverage-legend-imported">
+            <span className={`${styles.legendSwatch} ${styles.legendDashed}`} />
+            <span>{t('analysis.coverage.legend_imported', 'Dashed = imported')}</span>
+          </div>
+        )}
         <div className={styles.legendNote}>
           {t(
             'analysis.coverage.legend_relay_note',

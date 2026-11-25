@@ -40,6 +40,14 @@ vi.mock('../../hooks/useWalkabout', () => ({
   useWalkaboutSessions: (...a: unknown[]) => useWalkaboutSessions(...a),
 }));
 
+// #5891 P3: the import button and panel (their own tests cover them) stay out of this view test.
+vi.mock('../../hooks/useCoverageImports', () => ({
+  useCoverageImportSources: () => [],
+  useCoverageImports: () => ({ imports: [], isLoading: false }),
+  useDeleteCoverageImport: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useImportCoverageFile: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 const hexMap = vi.fn();
 vi.mock('./walkaboutHexMapLazy', () => ({
   WalkaboutHexMapLazy: (props: unknown) => {

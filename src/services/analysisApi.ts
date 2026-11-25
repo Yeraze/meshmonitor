@@ -1,4 +1,5 @@
 import type { CrossSourceLinksResponse, TracerouteConfirmedLinksResponse } from '../types/crossSourceLinks.js';
+import type { CoverageImportedMode } from '../types/coverageImport.js';
 import api from './api.js';
 import type {
   CoverageHopsMode,
@@ -192,10 +193,20 @@ export async function fetchCoverageGrid(
 // so every fetcher below reads `body.data` explicitly (CLAUDE.md gotcha).
 
 export async function fetchCoverageReceivers(
-  args: { sources: string[]; signal?: AbortSignal },
+  args: {
+    sources: string[];
+    /** Window start (ms). Sent only when the report reaches back past retention (#5891 P3). */
+    sinceMs?: number;
+    imported?: CoverageImportedMode;
+    importId?: string;
+    signal?: AbortSignal;
+  },
 ): Promise<{ receivers: CoverageReceiverDto[]; retentionDays: number; mqttSources: CoverageMqttSourceStatusDto[] }> {
   const p = new URLSearchParams();
   if (args.sources.length) p.set('sources', args.sources.join(','));
+  if (args.sinceMs !== undefined) p.set('since', String(args.sinceMs));
+  if (args.imported) p.set('imported', args.imported);
+  if (args.importId) p.set('importId', args.importId);
   const body = await authedGet<{
     success: boolean;
     data: { receivers: CoverageReceiverDto[]; retentionDays: number; mqttSources: CoverageMqttSourceStatusDto[] };
@@ -207,6 +218,8 @@ export interface FetchCoverageSendersArgs {
   sources: string[];
   sinceMs: number;
   untilMs: number;
+  imported?: CoverageImportedMode;
+  importId?: string;
   signal?: AbortSignal;
 }
 
@@ -217,6 +230,8 @@ export async function fetchCoverageSenders(
   if (args.sources.length) p.set('sources', args.sources.join(','));
   p.set('since', String(args.sinceMs));
   p.set('until', String(args.untilMs));
+  if (args.imported) p.set('imported', args.imported);
+  if (args.importId) p.set('importId', args.importId);
   const body = await authedGet<{
     success: boolean;
     data: { senders: CoverageSenderDto[]; truncated: boolean };
@@ -240,6 +255,10 @@ export interface FetchCoverageReceptionsPageArgs {
   hopsMode?: CoverageHopsMode;
   /** #5560: only fixes sent by another of the viewer's readable sources. */
   crossSourceOnly?: boolean;
+  /** #5891 P3: include (default), exclude or show only imported rows. */
+  imported?: CoverageImportedMode;
+  /** #5891 P3: one import batch. */
+  importId?: string;
   pageSize?: number;
   cursor?: string | null;
   signal?: AbortSignal;
@@ -257,6 +276,8 @@ export async function fetchCoverageReceptionsPage(
   if (args.hops !== undefined) p.set('hops', String(args.hops));
   if (args.hopsMode) p.set('hopsMode', args.hopsMode);
   if (args.crossSourceOnly) p.set('crossSourceOnly', 'true');
+  if (args.imported) p.set('imported', args.imported);
+  if (args.importId) p.set('importId', args.importId);
   if (args.pageSize) p.set('pageSize', String(args.pageSize));
   if (args.cursor) p.set('cursor', args.cursor);
   const body = await authedGet<{ success: boolean; data: CoveragePage<CoverageReceptionDto> }>(

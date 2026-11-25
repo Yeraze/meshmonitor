@@ -45,6 +45,7 @@ const mockDb = vi.hoisted(() => ({
   },
   coverageReceptions: {
     exportSurveyReceptions: vi.fn(),
+    exportImportedReceptionsPage: vi.fn(),
   },
 }));
 
@@ -102,6 +103,8 @@ beforeEach(() => {
 
   mockDb.coverageSurveys.getExemptionWindows.mockResolvedValue([]);
   mockDb.coverageReceptions.exportSurveyReceptions.mockResolvedValue([]);
+  mockDb.coverageReceptions.exportImportedReceptionsPage.mockReset();
+  mockDb.coverageReceptions.exportImportedReceptionsPage.mockResolvedValue({ rows: [], lastId: null });
 });
 
 // ─── initializeBackupDirectory ────────────────────────────────────────────────
@@ -394,6 +397,33 @@ describe('systemBackupService.createBackup — coverage tables', () => {
     expect(writtenTableFiles).toHaveLength(1);
     const [, writtenJson] = fsMock.writeFileSync.mock.calls.find(([p]) => (p as string).endsWith('coverage_receptions.json'))!;
     expect(JSON.parse(writtenJson as string)).toEqual(rows);
+  });
+
+  it('pages imported coverage_receptions by id after the survey rows (#5891 P3), no row twice', async () => {
+    const survey = [{ sourceId: 's1', senderId: '!aabbccdd', receivedAt: 1500, importId: null }];
+    const page1 = [{ sourceId: 's1', packetKey: 'a', importId: 'i1' }, { sourceId: 's1', packetKey: 'b', importId: 'i1' }];
+    const page2 = [{ sourceId: 's2', packetKey: 'c', importId: 'i2' }];
+    // An import that started after coverage_imports was read: its rows must not be exported.
+    const orphan = { sourceId: 's2', packetKey: 'z', importId: 'late' };
+    const realPrepare = mockDb.db.prepare.getMockImplementation();
+    const importsStmt = { all: vi.fn().mockReturnValue([{ id: 'i1' }, { id: 'i2' }]), get: vi.fn(), run: vi.fn() };
+    mockDb.db.prepare.mockImplementation((sql: string) =>
+      sql.includes('coverage_imports') ? importsStmt : (realPrepare ? realPrepare(sql) : { all: vi.fn().mockReturnValue([]), get: vi.fn(), run: vi.fn() }));
+    mockDb.coverageSurveys.getExemptionWindows.mockResolvedValue([{ senderId: '!aabbccdd', startAt: 1000, endAt: 2000 }]);
+    mockDb.coverageReceptions.exportSurveyReceptions.mockResolvedValue(survey);
+    mockDb.coverageReceptions.exportImportedReceptionsPage
+      .mockResolvedValueOnce({ rows: page1, lastId: 20 })
+      .mockResolvedValueOnce({ rows: [...page2, orphan], lastId: 35 })
+      .mockResolvedValueOnce({ rows: [], lastId: null });
+
+    await systemBackupService.createBackup('manual');
+
+    const calls = mockDb.coverageReceptions.exportImportedReceptionsPage.mock.calls;
+    expect(calls.map(([after]) => after)).toEqual([0, 20, 35]);
+    const [, writtenJson] = fsMock.writeFileSync.mock.calls.find(([p]) => (p as string).endsWith('coverage_receptions.json'))!;
+    const out = JSON.parse(writtenJson as string);
+    expect(out).toEqual([...survey, ...page1, ...page2]);
+    expect(out.some((r: Record<string, unknown>) => 'id' in r)).toBe(false);
   });
 
   it('writes coverage_surveys via the generic per-backend scan (no filtered exporter)', async () => {

@@ -201,4 +201,35 @@ describe('CoverageReport query stability (#5277 regression)', () => {
     expect(fetchCoverageReceptionsPage).toHaveBeenCalledTimes(2);
     expect(fetchCoverageSurveys).toHaveBeenCalledTimes(2);
   });
+  it('sends its own window to /receivers only when it reaches back past retention, and settles after one extra fetch (#5891 P3)', async () => {
+    renderWithClient();
+    await waitFor(() => expect(screen.getByTestId('coverage-map-stub')).toBeInTheDocument());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    // Default 24 h window: inside retention, so no `sinceMs` and one call.
+    expect(fetchCoverageReceivers).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fetchCoverageReceivers).mock.calls[0][0].sinceMs).toBeUndefined();
+
+    const iso = (d: Date) => {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    const from = new Date(Date.now() - 40 * 86_400_000);
+    const to = new Date(Date.now() - 39 * 86_400_000);
+    fireEvent.click(screen.getByRole('button', { name: /Custom/i }));
+    const [fromInput, toInput] = Array.from(document.querySelectorAll('input[type="datetime-local"]'));
+    fireEvent.change(fromInput, { target: { value: iso(from) } });
+    fireEvent.change(toInput, { target: { value: iso(to) } });
+    fireEvent.click(screen.getByRole('button', { name: /Apply/i }));
+
+    await waitFor(() => expect(fetchCoverageReceivers).toHaveBeenCalledTimes(2));
+    const sent = vi.mocked(fetchCoverageReceivers).mock.calls[1][0].sinceMs;
+    expect(sent).toBeLessThan(Date.now() - 39 * 86_400_000);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(fetchCoverageReceivers).toHaveBeenCalledTimes(2);
+  });
 });

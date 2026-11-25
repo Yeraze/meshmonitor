@@ -65,6 +65,7 @@ import {
   type SourceConfigAudience,
 } from '../utils/sourceConfigRedaction.js';
 import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
+import { deleteCoverageImportsForSource } from '../services/coverageImportService.js';
 
 
 /**
@@ -1938,6 +1939,14 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       walkaboutService.forgetSource(req.params.id);
     } catch (walkaboutError) {
       logger.warn(`Failed to purge walkabout data for deleted source ${req.params.id}:`, walkaboutError);
+    }
+
+    // #5891 P3: imported coverage rows survive the node purge above (imports are
+    // user data); a deleted source has no retention sweep, so remove them here.
+    try {
+      await deleteCoverageImportsForSource(req.params.id);
+    } catch (importError) {
+      logger.warn(`Failed to purge coverage imports for deleted source ${req.params.id}:`, importError);
     }
 
     // #5245: a deleted source can no longer be the default Meshtastic source.

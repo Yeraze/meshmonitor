@@ -312,6 +312,53 @@ your filters and privacy rules. If the report hit its load limit, the
 export is limited too and says so. Names that start with `=`, `+`, `-` or `@`
 are escaped in the CSV so a spreadsheet won't treat them as formulas.
 
+### Import
+
+**Import** (next to the CSV and GeoJSON export buttons) loads a file that
+a MeshMonitor Coverage Report exported. It takes CSV or GeoJSON. Older
+exports with no version field work too.
+
+![Coverage report showing imported data with the Only filter](/images/features/coverage-import.png)
+*Imported data shown with "Only".*
+
+**Pick a target source.** Choose any enabled Meshtastic or MeshCore source
+where you have `nodes:write`. The dialog starts with the report's source when
+the report shows one. Reticulum sources can't take imports. Rows for the other
+protocol are skipped and counted. Rows at a bogus position (such as 0,0) are
+skipped and counted too.
+
+**Limits.** A file can hold up to 32 MB and 10,000 rows. Each source can hold
+up to 50 imports and 200,000 imported rows.
+
+**All or nothing.** If one row is invalid, MeshMonitor imports nothing. The
+dialog lists the first 20 problems with the row and field.
+
+**Repeat and overlapping files.** You can't import the same file twice into one
+source. Files that overlap add only the new rows. If you import into the
+instance that made the export, MeshMonitor skips rows it still holds live.
+Save a survey to keep live data.
+
+**Keeping and removing imports.** Imported rows stay until you delete the
+import. Retention (`coverage_retention_days`) and "purge nodes" don't remove
+them. Deleting the source does. System backups include imported data.
+
+**Imports panel.** The panel lists each import with its file, source, import
+date, data span and counts. Each row has two buttons:
+
+- **Show** jumps the report to that import's data.
+- **Delete** asks first. MeshMonitor refuses it while the import still runs.
+
+**Filter and look.** The **Imported** chip has three states: Show, Hide and
+Only. Fixes made only of imported data draw with a dashed outline. The legend
+reads "Dashed = imported".
+
+**Who sees what.** An imported node that the target source knows keeps its
+normal map rules. A node the target source has never heard shows only to
+admins and to users with the source's base map permission. Imported data never
+counts as a cross-source link.
+
+**Not yet.** Walkabout sessions can't be exported or imported yet (#6573).
+
 ### Opening from node details
 
 A node's details panel (Meshtastic and MeshCore) has a **Show coverage**

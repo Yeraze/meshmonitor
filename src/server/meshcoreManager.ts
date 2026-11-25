@@ -3511,7 +3511,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       void maybeRecordMeshCoreLink({
         sourceId: this.sourceId,
         receiverKind: 'local',
-        receiverPubKey: this.localNode?.publicKey ?? null,
+        receiverPubKey: this.localNode?.publicKey?.toLowerCase() ?? null,
         event: data ?? {},
       });
       // Coverage Report (#5277 P3): local companions record ADVERT
@@ -3566,7 +3566,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // watches this source.
     emitPacketFlight(this.sourceId, () => buildMeshCoreFlight({
       sourceId: this.sourceId,
-      receiverPubKey: this.localNode?.publicKey ?? null,
+      receiverPubKey: this.localNode?.publicKey?.toLowerCase() ?? null,
       event: data ?? {},
     }));
     try {

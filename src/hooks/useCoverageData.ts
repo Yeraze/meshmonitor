@@ -26,6 +26,7 @@ import type {
   CoverageHopsMode,
   CoverageMqttSourceStatusDto,
 } from '../types/coverage';
+import type { CoverageImportedMode } from '../types/coverageImport';
 
 /** Client-side page cap for `/receptions` (spec §2.11): 10 pages * 1000 rows/page ≈ 10k rows. */
 export const COVERAGE_MAX_PAGES = 10;
@@ -37,12 +38,27 @@ export interface CoverageReceiversResult {
   mqttSources: CoverageMqttSourceStatusDto[];
 }
 
+export interface CoverageReceiversOpts {
+  /**
+   * Window start. The caller sets it only when the report reaches back past
+   * the retention window (an old import or survey), so the list covers it;
+   * otherwise leave it out and the key stays what it was (#5891 P3).
+   */
+  sinceMs?: number;
+  imported?: CoverageImportedMode;
+  importId?: string;
+}
+
 export function useCoverageReceivers(
   sources: string[] = [],
+  opts?: CoverageReceiversOpts,
 ): UseQueryResult<CoverageReceiversResult> {
+  const sinceMs = opts?.sinceMs;
+  const imported = opts?.imported;
+  const importId = opts?.importId;
   return useQuery({
-    queryKey: ['analysis', 'coverageReport', 'receivers', sources],
-    queryFn: ({ signal }) => fetchCoverageReceivers({ sources, signal }),
+    queryKey: ['analysis', 'coverageReport', 'receivers', sources, { sinceMs, imported, importId }],
+    queryFn: ({ signal }) => fetchCoverageReceivers({ sources, sinceMs, imported, importId, signal }),
   });
 }
 
@@ -50,6 +66,8 @@ export interface CoverageSendersFilters {
   sources: string[];
   sinceMs: number;
   untilMs: number;
+  imported?: CoverageImportedMode;
+  importId?: string;
 }
 
 export interface CoverageSendersResult {
@@ -88,6 +106,10 @@ export interface CoverageReceptionsFilters {
   hopsMode?: CoverageHopsMode;
   /** #5560: only fixes sent by another of the viewer's readable sources. */
   crossSourceOnly?: boolean;
+  /** #5891 P3: include (default), exclude or show only imported rows. */
+  imported?: CoverageImportedMode;
+  /** #5891 P3: one import batch. */
+  importId?: string;
 }
 
 export interface CoverageReceptionsResult {
@@ -134,6 +156,8 @@ export function useCoverageReceptions(
         hops: filters.hops,
         hopsMode: filters.hopsMode,
         crossSourceOnly: filters.crossSourceOnly === true,
+        imported: filters.imported,
+        importId: filters.importId,
       },
     ],
     enabled,
@@ -155,6 +179,8 @@ export function useCoverageReceptions(
           hops: filters.hops,
           hopsMode: filters.hopsMode,
           crossSourceOnly: filters.crossSourceOnly,
+          imported: filters.imported,
+          importId: filters.importId,
           pageSize: COVERAGE_PAGE_SIZE,
           cursor,
           signal,

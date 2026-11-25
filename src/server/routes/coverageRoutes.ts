@@ -48,6 +48,7 @@ import {
 } from '../utils/positionVisibility.js';
 import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { parseSenderParam } from '../utils/coverageSenderParam.js';
+import { buildCoverageRowGate, mergeReceiverGroups } from '../utils/coverageImportVisibility.js';
 import {
   clampCoverageRetentionDays, COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn,
   isMeshCoreReceptionRow, isMeshCorePubKeyId,
@@ -75,6 +76,7 @@ import {
   type CrossSourceIndex,
 } from '../services/crossSourceCorrelation.js';
 import type { DbCoverageReception } from '../../db/repositories/coverageReceptions.js';
+import type { CoverageImportedMode } from '../../types/coverageImport.js';
 
 const router = Router();
 router.use(optionalAuth());
@@ -192,6 +194,29 @@ function isValidCursorString(raw: string): boolean {
   } catch {
     return false;
   }
+}
+
+const IMPORT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** `imported` (include|exclude|only) and `importId` (UUID), both optional (#5891 P3). */
+function parseImportParams(
+  req: Request,
+): { imported?: CoverageImportedMode; importId?: string } | { error: { code: string; message: string } } {
+  const out: { imported?: CoverageImportedMode; importId?: string } = {};
+  const { imported, importId } = req.query;
+  if (imported !== undefined) {
+    if (imported !== 'include' && imported !== 'exclude' && imported !== 'only') {
+      return { error: { code: 'INVALID_IMPORTED', message: "imported must be 'include', 'exclude' or 'only'" } };
+    }
+    out.imported = imported;
+  }
+  if (importId !== undefined) {
+    if (typeof importId !== 'string' || !IMPORT_ID_RE.test(importId)) {
+      return { error: { code: 'INVALID_IMPORT_ID', message: 'importId must be a UUID' } };
+    }
+    out.importId = importId.toLowerCase();
+  }
+  return out;
 }
 
 // ── GET /receivers ──────────────────────────────────────────────────────────
@@ -329,6 +354,9 @@ router.get('/receivers', async (req: Request, res: Response) => {
       return fail(res, 400, 'INVALID_TIME_RANGE', 'until must not be before since');
     }
 
+    const importParams = parseImportParams(req);
+    if ('error' in importParams) return fail(res, 400, importParams.error.code, importParams.error.message);
+
     if (sourceIds.length === 0) {
       return ok(res, {
         receivers: [] as CoverageReceiverDto[],
@@ -341,7 +369,7 @@ router.get('/receivers', async (req: Request, res: Response) => {
       // `untilMs` (§2b.4/§2b.5): an old survey's window is honoured instead
       // of defaulting to "through now", so its receivers still show up in
       // the filter list and on the map.
-      databaseService.coverageReceptions.getReceivers({ sourceIds, sinceMs, untilMs }),
+      databaseService.coverageReceptions.getReceivers({ sourceIds, sinceMs, untilMs, ...importParams }),
       loadNodesBySource(sourceIds),
       databaseService.sources.getAllSources(),
     ]);
@@ -356,6 +384,7 @@ router.get('/receivers', async (req: Request, res: Response) => {
     const mcFilter = mcSourceIds.length > 0
       ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource, grants)
       : null;
+    const gate = buildCoverageRowGate({ user: req.user, posFilter, mcFilter, nodesBySource, mcNodesBySource, grants });
     const sourceNameById = new Map(allSources.map((s) => [s.id, s.name] as const));
 
     // Build the (sourceId -> nodeNum -> node) map once rather than an O(receivers × nodes)
@@ -373,7 +402,7 @@ router.get('/receivers', async (req: Request, res: Response) => {
       for (const n of nodeList) mcNodeByKey.set(`${sourceId}:${n.publicKey.toLowerCase()}`, n);
     }
 
-    const receivers: CoverageReceiverDto[] = rows.map((r) => {
+    const receivers: CoverageReceiverDto[] = mergeReceiverGroups(rows, gate).map((r) => {
       if (isMeshCoreReceptionRow(r)) {
         // MeshCore branch (§2.5 D10): name and current position come from
         // `meshcore_nodes` (override-aware since #5842), else the latest
@@ -390,7 +419,7 @@ router.get('/receivers', async (req: Request, res: Response) => {
           latitude = r.receiverLatitude;
           longitude = r.receiverLongitude;
         }
-        if (!mcFilter || !mcFilter({ sourceId: r.sourceId, publicKey: r.receiverId })) {
+        if (!gate.receiverGroupVisible(r)) {
           latitude = null;
           longitude = null;
         }
@@ -408,6 +437,7 @@ router.get('/receivers', async (req: Request, res: Response) => {
           longitude,
           lastReceivedAt: r.lastReceivedAt,
           receptionCount: r.receptionCount,
+          importedOnly: r.liveRows === 0,
         };
       }
 
@@ -435,7 +465,7 @@ router.get('/receivers', async (req: Request, res: Response) => {
 
       // Visibility nulling (§2.9.1): only when receiverNodeNum is known — a
       // receiver with no nodeNum keeps its snapshot in P1.
-      if (r.receiverNodeNum != null && !posFilter({ sourceId: r.sourceId, nodeNum: r.receiverNodeNum })) {
+      if (!gate.receiverGroupVisible(r)) {
         latitude = null;
         longitude = null;
       }
@@ -453,6 +483,7 @@ router.get('/receivers', async (req: Request, res: Response) => {
         longitude,
         lastReceivedAt: r.lastReceivedAt,
         receptionCount: r.receptionCount,
+        importedOnly: r.liveRows === 0,
       };
     });
 
@@ -472,6 +503,7 @@ interface MergedSender {
   senderNodeNum: number | null;
   fixCount: number;
   lastReceivedAt: number;
+  liveRows: number;
 }
 
 router.get('/senders', async (req: Request, res: Response) => {
@@ -488,13 +520,16 @@ router.get('/senders', async (req: Request, res: Response) => {
       return fail(res, 400, 'INVALID_TIME_RANGE', 'until must not be before since');
     }
 
+    const importParams = parseImportParams(req);
+    if ('error' in importParams) return fail(res, 400, importParams.error.code, importParams.error.message);
+
     if (sourceIds.length === 0) {
       return ok(res, { senders: [] as CoverageSenderDto[], truncated: false });
     }
 
     const [rows, nodesBySource, crossIndex] = await Promise.all([
       databaseService.coverageReceptions.getSenderSummary({
-        sourceIds, sinceMs, untilMs, limit: SENDER_SUMMARY_LIMIT,
+        sourceIds, sinceMs, untilMs, limit: SENDER_SUMMARY_LIMIT, ...importParams,
       }),
       loadNodesBySource(sourceIds),
       resolveCrossSourceIndex(permitted),
@@ -513,6 +548,7 @@ router.get('/senders', async (req: Request, res: Response) => {
     const mcFilter = mcSourceIds.length > 0
       ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource, grants)
       : null;
+    const gate = buildCoverageRowGate({ user: req.user, posFilter, mcFilter, nodesBySource, mcNodesBySource, grants });
 
     // Merge by senderId across sources: sum fixCount (an upper bound —
     // documented in the repo/spec), max lastReceivedAt.
@@ -527,14 +563,11 @@ router.get('/senders', async (req: Request, res: Response) => {
     // failure drops the row before it's ever merged in, for admins too.
     const merged = new Map<string, MergedSender>();
     for (const row of rows) {
-      if (isMeshCorePubKeyId(row.senderId)) {
-        if (!mcFilter || !mcFilter({ sourceId: row.sourceId, publicKey: row.senderId })) continue;
-      } else if (row.senderNodeNum != null && !posFilter({ sourceId: row.sourceId, nodeNum: row.senderNodeNum })) {
-        continue;
-      }
+      if (!gate.senderGroupVisible(row)) continue;
       const existing = merged.get(row.senderId);
       if (existing) {
         existing.fixCount += row.fixCount;
+        existing.liveRows += row.liveRows;
         if (row.lastReceivedAt > existing.lastReceivedAt) existing.lastReceivedAt = row.lastReceivedAt;
         if (existing.senderNodeNum == null) existing.senderNodeNum = row.senderNodeNum;
       } else {
@@ -543,6 +576,7 @@ router.get('/senders', async (req: Request, res: Response) => {
           senderNodeNum: row.senderNodeNum,
           fixCount: row.fixCount,
           lastReceivedAt: row.lastReceivedAt,
+          liveRows: row.liveRows,
         });
       }
     }
@@ -564,7 +598,7 @@ router.get('/senders', async (req: Request, res: Response) => {
           // per-node number to key off — first-match-wins across the
           // sources that passed the gate above (see helper docstring).
           const mcNode = findMeshCoreNodeAcrossSources(m.senderId, mcNodesBySource);
-          const ownSourceId = crossIndex.ownerOfSenderId(m.senderId);
+          const ownSourceId = m.liveRows > 0 ? crossIndex.ownerOfSenderId(m.senderId) : null;
           return {
             senderId: m.senderId,
             senderNodeNum: null,
@@ -575,10 +609,11 @@ router.get('/senders', async (req: Request, res: Response) => {
             senderIsOwnSource: ownSourceId !== null,
             ownSourceId,
             ownSourceName: ownSourceId !== null ? ownSourceNames.get(ownSourceId) ?? null : null,
+            importedOnly: m.liveRows === 0,
           };
         }
         const nm = m.senderNodeNum != null ? names.get(m.senderNodeNum) : undefined;
-        const ownSourceId = crossIndex.ownerOfSenderId(m.senderId);
+        const ownSourceId = m.liveRows > 0 ? crossIndex.ownerOfSenderId(m.senderId) : null;
         return {
           senderId: m.senderId,
           senderNodeNum: m.senderNodeNum,
@@ -589,6 +624,7 @@ router.get('/senders', async (req: Request, res: Response) => {
           senderIsOwnSource: ownSourceId !== null,
           ownSourceId,
           ownSourceName: ownSourceId !== null ? ownSourceNames.get(ownSourceId) ?? null : null,
+          importedOnly: m.liveRows === 0,
         };
       })
       .sort((a, b) => b.lastReceivedAt - a.lastReceivedAt);
@@ -680,6 +716,9 @@ router.get('/receptions', async (req: Request, res: Response) => {
       crossSourceOnly = req.query.crossSourceOnly === 'true';
     }
 
+    const importParams = parseImportParams(req);
+    if ('error' in importParams) return fail(res, 400, importParams.error.code, importParams.error.message);
+
     const pageSize = clampRequestedPageSize(req.query.pageSize);
 
     if (sourceIds.length === 0) {
@@ -699,7 +738,7 @@ router.get('/receptions', async (req: Request, res: Response) => {
 
     const [page, nodesBySource] = await Promise.all([
       databaseService.coverageReceptions.getReceptions({
-        sourceIds, sinceMs, untilMs, receiverFilter, senderId, senderIds, hops, hopsMode, pageSize, cursor,
+        sourceIds, sinceMs, untilMs, receiverFilter, senderId, senderIds, hops, hopsMode, pageSize, cursor, ...importParams,
       }),
       loadNodesBySource(sourceIds),
     ]);
@@ -714,6 +753,7 @@ router.get('/receptions', async (req: Request, res: Response) => {
     const mcFilter = mcSourceIds.length > 0
       ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource, grants)
       : null;
+    const gate = buildCoverageRowGate({ user: req.user, posFilter, mcFilter, nodesBySource, mcNodesBySource, grants });
 
     // Post-filter on the sender's visibility, same gate as /positions
     // (§2.9.3) — a page can come back shorter than pageSize; the client
@@ -728,23 +768,20 @@ router.get('/receptions', async (req: Request, res: Response) => {
     // the gate drops the whole row (for admins too); a receiver that fails
     // it only nulls the coordinate pair, mirroring the Meshtastic branch.
     const items: CoverageReceptionDto[] = page.items
-      .filter((row) => {
-        if (isMeshCoreReceptionRow(row)) {
-          return !!mcFilter && mcFilter({ sourceId: row.sourceId, publicKey: row.senderId });
-        }
-        return row.senderNodeNum == null || posFilter({ sourceId: row.sourceId, nodeNum: row.senderNodeNum });
-      })
+      .filter((row) => gate.senderVisible(row))
       .map((row) => {
-        const receiverVisible = isMeshCoreReceptionRow(row)
-          ? !!mcFilter && mcFilter({ sourceId: row.sourceId, publicKey: row.receiverId })
-          : row.receiverNodeNum == null || posFilter({ sourceId: row.sourceId, nodeNum: row.receiverNodeNum });
+        const receiverVisible = gate.receiverVisible(row);
+        // Imported rows come from a file, not our radio: never a cross-source link.
+        const cross = row.importId != null
+          ? { senderIsOwnSource: false, senderSourceId: null, crossSourceTransport: null }
+          : crossSourceFlags(crossIndex, row);
         return {
           ...row,
           protocol: row.protocol as CoverageProtocol,
           receiverKind: row.receiverKind as CoverageReceiverKind,
           receiverLatitude: receiverVisible ? row.receiverLatitude : null,
           receiverLongitude: receiverVisible ? row.receiverLongitude : null,
-          ...crossSourceFlags(crossIndex, row),
+          ...cross,
         };
       })
       .filter((item) => !crossSourceOnly || item.senderIsOwnSource);

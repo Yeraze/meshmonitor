@@ -367,3 +367,49 @@ describe('DELETE /api/sources/:id — default Meshtastic source (#5245)', () => 
     expect(await databaseService.settings.getSetting('defaultMeshtasticSourceId')).toBe(harness.sourceB);
   });
 });
+
+/**
+ * Imported coverage rows survive the node purge, so the source delete must
+ * remove them itself (#5891 P3): a deleted source has no retention sweep.
+ */
+describe('DELETE /api/sources/:id — coverage import cleanup (#5891)', () => {
+  let harness: RouteTestHarness;
+
+  const seedImport = async (sourceId: string, id: string) => {
+    await databaseService.coverageImports.createImport({
+      id, sourceId, kind: 'coverage_report', format: 'csv', filename: 'f.csv',
+      fileSha256: id.padEnd(64, '0'), importedBy: null, importedAt: Date.now(), rowCount: 1,
+    });
+    await databaseService.coverageReceptions.insertImportedRows(sourceId, id, [{
+      protocol: 'meshtastic', receiverKind: 'local', receiverId: '!00000001', receiverNodeNum: 1,
+      receiverLatitude: null, receiverLongitude: null, senderId: '!00000002', senderNodeNum: 2,
+      packetKey: '1', packetId: 1, pathKey: 'r0:h0', latitude: 1, longitude: 2, altitude: null,
+      precisionBits: null, snr: null, rssi: null, hopStart: null, hopLimit: null, hopsAway: null,
+      relayNode: null, channel: null, receivedAt: Date.now(),
+    }]);
+  };
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', sourceRoutes) });
+    await harness.grant(harness.limited.id, 'sources', 'write');
+    await seedImport(harness.sourceA, 'a0000000-0000-4000-8000-000000000001');
+    await seedImport(harness.sourceB, 'b0000000-0000-4000-8000-000000000002');
+  });
+
+  afterEach(async () => {
+    await databaseService.coverageImports.deleteForSource(harness.sourceA).catch(() => {});
+    await databaseService.coverageImports.deleteForSource(harness.sourceB).catch(() => {});
+    await harness.cleanup();
+  });
+
+  it('removes the deleted source\'s imports and imported rows, and only those', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.delete(`/${harness.sourceA}`);
+    expect(res.status).toBe(200);
+
+    expect(await databaseService.coverageImports.countImports(harness.sourceA)).toBe(0);
+    expect(await databaseService.coverageReceptions.countImportedRows(harness.sourceA)).toBe(0);
+    expect(await databaseService.coverageImports.countImports(harness.sourceB)).toBe(1);
+    expect(await databaseService.coverageReceptions.countImportedRows(harness.sourceB)).toBe(1);
+  });
+});

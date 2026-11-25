@@ -279,6 +279,11 @@ export const CoverageReceiverFilter: React.FC<CoverageReceiverFilterProps> = ({
                                         {t('analysis.coverage.protocol_meshcore', 'MeshCore')}
                                       </span>
                                     )}
+                                    {r.importedOnly && (
+                                      <span className={styles.badgeImported} data-testid="coverage-receiver-imported">
+                                        {t('analysis.coverage.imported_tag_lower', 'Imported')}
+                                      </span>
+                                    )}
                                     <span className={styles.rowCount}>{r.receptionCount}</span>
                                   </label>
                                 </li>

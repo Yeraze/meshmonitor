@@ -64,6 +64,7 @@ export * from './meshcoreAdminSessions.js';
 
 // Coverage Report RF receptions (#5277 Phase 1 WP1)
 export * from './coverageReceptions.js';
+export * from './coverageImports.js';
 
 // Coverage Report saved surveys (global — no sourceId) (#5277 Phase 4b WP1)
 export * from './coverageSurveys.js';

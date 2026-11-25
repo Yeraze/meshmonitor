@@ -45,6 +45,13 @@
   flex-shrink: 0;
 }
 
+/* #5891 P3: hollow dashed ring, the map's mark for imported fixes. */
+.legendDashed {
+  box-sizing: border-box;
+  border: 1px dashed var(--color-text);
+  background: transparent;
+}
+
 .legendNote {
   margin-top: 6px;
   color: var(--color-text-subtle);

@@ -38,6 +38,7 @@
  *  - `cov_rx_received_idx (receivedAt)` — global purge.
  *  - `cov_rx_source_received_idx (sourceId, receivedAt)` — window query + getReceivers.
  *  - `cov_rx_sender_received_idx (senderId, receivedAt)` — sender filter.
+ *  - `cov_rx_import_idx (importId)` — migration 249; partial (importId IS NOT NULL) on SQLite/PG.
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, integer as pgInteger, real as pgReal, bigint as pgBigint, serial as pgSerial, doublePrecision as pgDouble } from 'drizzle-orm/pg-core';
@@ -92,6 +93,9 @@ export const coverageReceptionsSqlite = sqliteTable('coverage_receptions', {
   rxTime: integer('rxTime'),
   // Server receive time, unix MS. Drives the window query, cursor and purge.
   receivedAt: integer('receivedAt').notNull(),
+  // null = recorded live; set = imported from a file (coverage_imports.id),
+  // exempt from retention (#5891 P3).
+  importId: text('importId'),
 });
 
 // ============ PostgreSQL Schema ============
@@ -125,6 +129,8 @@ export const coverageReceptionsPostgres = pgTable('coverage_receptions', {
   channel: pgInteger('channel'),
   rxTime: pgBigint('rxTime', { mode: 'number' }),
   receivedAt: pgBigint('receivedAt', { mode: 'number' }).notNull(),
+  // null = live; set = imported (coverage_imports.id), exempt from retention (#5891 P3).
+  importId: pgText('importId'),
 });
 
 // ============ MySQL Schema ============
@@ -157,6 +163,8 @@ export const coverageReceptionsMysql = mysqlTable('coverage_receptions', {
   channel: myInt('channel'),
   rxTime: myBigint('rxTime', { mode: 'number' }),
   receivedAt: myBigint('receivedAt', { mode: 'number' }).notNull(),
+  // null = live; set = imported (coverage_imports.id), exempt from retention (#5891 P3).
+  importId: myVarchar('importId', { length: 36 }),
 });
 
 // ============ Type Inference ============
