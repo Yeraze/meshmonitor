@@ -14,6 +14,7 @@ import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 import {
   CoverageImportError,
   importCoverageFile,
+  deleteCoverageImport,
   toCoverageImportDto,
 } from '../services/coverageImportService.js';
 import {
@@ -123,12 +124,13 @@ router.delete('/:importId', ...canWrite, async (req: Request, res: Response) => 
   try {
     const sourceId = sourceOf(req);
     const importId = String(req.params.importId);
-    const existing = await databaseService.coverageImports.getImport(sourceId, importId);
-    if (!existing) return fail(res, 404, 'IMPORT_NOT_FOUND', 'Import not found');
-    await databaseService.coverageImports.deleteImport(sourceId, importId);
+    await deleteCoverageImport(sourceId, importId);
     logger.info(`[CoverageImport] user ${userIdOf(req)} deleted import ${importId} from source ${sourceId}`);
     ok(res);
   } catch (error) {
+    if (error instanceof CoverageImportError) {
+      return fail(res, error.status, error.code, error.message, error.extra);
+    }
     logger.error('Error in DELETE coverage import:', error);
     fail(res, 500, 'INTERNAL_ERROR', 'Failed to delete coverage import');
   }

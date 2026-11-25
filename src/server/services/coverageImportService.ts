@@ -52,7 +52,7 @@ export function toCoverageImportDto(row: DbCoverageImport, userId: number | null
 // Serialise imports per source so two uploads cannot both pass the cap checks.
 const sourceLocks = new Map<string, Promise<unknown>>();
 
-async function withSourceLock<T>(sourceId: string, fn: () => Promise<T>): Promise<T> {
+export async function withSourceLock<T>(sourceId: string, fn: () => Promise<T>): Promise<T> {
   const prev = sourceLocks.get(sourceId) ?? Promise.resolve();
   const run = prev.catch(() => undefined).then(fn);
   const tail = run.catch(() => undefined);
@@ -201,10 +201,45 @@ async function runImport(p: {
     };
   } catch (err) {
     try {
+      // Rows first, unguarded: the batch row may already be gone.
+      await coverageReceptions.deleteImportRows(p.sourceId, importId);
       await imports.deleteImport(p.sourceId, importId);
     } catch (cleanupErr) {
       logger.error(`[CoverageImport] cleanup of partial import ${importId} failed:`, cleanupErr);
     }
     throw err;
   }
+}
+
+/** Delete one import under the source lock; refuses a batch that is still importing. */
+export async function deleteCoverageImport(sourceId: string, importId: string): Promise<void> {
+  return withSourceLock(sourceId, async () => {
+    const existing = await databaseService.coverageImports.getImport(sourceId, importId);
+    if (!existing) throw new CoverageImportError('IMPORT_NOT_FOUND', 'Import not found', 404);
+    if (existing.status === 'importing') {
+      throw new CoverageImportError('IMPORT_IN_PROGRESS', 'This import is still running', 409);
+    }
+    await databaseService.coverageImports.deleteImport(sourceId, importId);
+  });
+}
+
+/** Source-delete cleanup, serialised with imports into that source. */
+export async function deleteCoverageImportsForSource(sourceId: string): Promise<void> {
+  return withSourceLock(sourceId, () => databaseService.coverageImports.deleteForSource(sourceId));
+}
+
+/**
+ * Startup sweep: a crash mid-import leaves an `importing` batch and partial rows
+ * whose hash would block a retry. Nothing is running at boot, so delete them.
+ */
+export async function sweepIncompleteCoverageImports(): Promise<number> {
+  const stale = await databaseService.coverageImports.listIncomplete();
+  for (const b of stale) {
+    await withSourceLock(b.sourceId, async () => {
+      await databaseService.coverageReceptions.deleteImportRows(b.sourceId, b.id);
+      await databaseService.coverageImports.deleteImport(b.sourceId, b.id);
+    });
+  }
+  if (stale.length > 0) logger.warn(`[CoverageImport] removed ${stale.length} incomplete import(s) left by a restart`);
+  return stale.length;
 }

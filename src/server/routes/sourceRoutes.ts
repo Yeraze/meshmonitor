@@ -65,6 +65,7 @@ import {
   type SourceConfigAudience,
 } from '../utils/sourceConfigRedaction.js';
 import { loadMqttConsentHiddenSet, dropMessagesNamingHiddenNodes } from '../utils/mqttConsentVisibility.js';
+import { deleteCoverageImportsForSource } from '../services/coverageImportService.js';
 
 
 /**
@@ -1943,7 +1944,7 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
     // #5891 P3: imported coverage rows survive the node purge above (imports are
     // user data); a deleted source has no retention sweep, so remove them here.
     try {
-      await databaseService.coverageImports.deleteForSource(req.params.id);
+      await deleteCoverageImportsForSource(req.params.id);
     } catch (importError) {
       logger.warn(`Failed to purge coverage imports for deleted source ${req.params.id}:`, importError);
     }

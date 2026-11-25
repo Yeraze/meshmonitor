@@ -162,6 +162,13 @@ export class CoverageImportsRepository extends BaseRepository {
     return (rows as any[]).map((r) => this.map(r)); // eslint-disable-line @typescript-eslint/no-explicit-any -- dialect-union rows
   }
 
+  /** Every batch still `importing`, across sources (startup sweep of crashed imports). */
+  async listIncomplete(): Promise<DbCoverageImport[]> {
+    const { coverageImports } = this.tables;
+    const rows = await this.db.select().from(coverageImports).where(eq(coverageImports.status, 'importing'));
+    return (rows as any[]).map((r) => this.map(r)); // eslint-disable-line @typescript-eslint/no-explicit-any -- dialect-union rows
+  }
+
   async countImports(sourceId: string): Promise<number> {
     const { coverageImports } = this.tables;
     const rows = await this.db

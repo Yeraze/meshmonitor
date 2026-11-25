@@ -8,6 +8,7 @@ import coverageRoutes from './coverageRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
 import { COVERAGE_IMPORT_MAX_BYTES, COVERAGE_IMPORT_MAX_PER_SOURCE } from '../../utils/coverageImport.js';
+import { sweepIncompleteCoverageImports } from '../services/coverageImportService.js';
 import { csvOf, geoOf, mcDto, mtDto, uploadTo } from '../test-helpers/coverageImportFixtures.js';
 
 const MC_SRC = 'rt-source-mc';
@@ -342,6 +343,69 @@ describe('coverage import routes (#5891 P3)', () => {
       const res = await admin.delete(`${importsUrl(harness.sourceA)}/nope`);
       expect(res.status).toBe(404);
       expect(res.body.code).toBe('IMPORT_NOT_FOUND');
+    });
+  });
+
+  describe('in-progress and crash safety', () => {
+    const batch = (sourceId: string, id: string, sha: string) =>
+      databaseService.coverageImports.createImport({
+        id, sourceId, kind: 'coverage_report', format: 'csv', filename: 'p.csv',
+        fileSha256: sha.padStart(64, '0'), importedBy: null, importedAt: Date.now(), rowCount: 1,
+      });
+
+    it('refuses to delete a batch that is still importing', async () => {
+      await batch(harness.sourceA, 'c0000000-0000-4000-8000-000000000001', 'a');
+      const admin = await harness.loginAs(harness.admin);
+      const res = await admin.delete(`${importsUrl(harness.sourceA)}/c0000000-0000-4000-8000-000000000001`);
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('IMPORT_IN_PROGRESS');
+    });
+
+    it('a delete during an upload waits for it (no orphan rows)', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      const first = await uploadTo(admin, harness.sourceA, 'a.csv', csvOf(rows(3)));
+      const id = first.body.data.import.id;
+      const [del, up] = await Promise.all([
+        admin.delete(`${importsUrl(harness.sourceA)}/${id}`),
+        uploadTo(admin, harness.sourceA, 'b.csv', csvOf(rows(3, 20))),
+      ]);
+      expect(del.status).toBe(200);
+      expect(up.status).toBe(201);
+      expect(await countRows(harness.sourceA)).toBe(3);
+    });
+
+    it('failure cleanup removes rows even when the batch row is already gone', async () => {
+      const orig = databaseService.coverageReceptions.insertImportedRows.bind(databaseService.coverageReceptions);
+      vi.spyOn(databaseService.coverageReceptions, 'insertImportedRows').mockImplementation(async (src, id, r) => {
+        await orig(src, id, r);
+        // A concurrent delete removed the batch row but left the rows.
+        const { coverageImports } = databaseService.coverageImports['tables'];
+        await databaseService.coverageImports['db'].delete(coverageImports);
+        throw new Error('boom');
+      });
+      const admin = await harness.loginAs(harness.admin);
+      expect((await uploadTo(admin, harness.sourceA, 'a.csv', csvOf(rows(2)))).status).toBe(500);
+      expect(await countRows(harness.sourceA)).toBe(0);
+    });
+
+    it('startup sweep removes importing batches and their rows, keeps complete ones', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      const ok1 = await uploadTo(admin, harness.sourceA, 'ok.csv', csvOf(rows(2)));
+      const id = 'd0000000-0000-4000-8000-000000000001';
+      await batch(harness.sourceB, id, 'b');
+      const real = databaseService.coverageReceptions;
+      await real.insertImportedRows(harness.sourceB, id, [{
+        protocol: 'meshtastic', receiverKind: 'local', receiverId: '!00000001', receiverNodeNum: 1,
+        receiverLatitude: null, receiverLongitude: null, senderId: '!00000002', senderNodeNum: 2,
+        packetKey: '1', packetId: 1, pathKey: 'r0:h0', latitude: 1, longitude: 2, altitude: null,
+        precisionBits: null, snr: null, rssi: null, hopStart: null, hopLimit: null, hopsAway: null,
+        relayNode: null, channel: null, receivedAt: Date.now(),
+      }]);
+      expect(await sweepIncompleteCoverageImports()).toBe(1);
+      expect(await countRows(harness.sourceB)).toBe(0);
+      expect(await databaseService.coverageImports.countImports(harness.sourceB)).toBe(0);
+      expect(await databaseService.coverageImports.getImport(harness.sourceA, ok1.body.data.import.id)).not.toBeNull();
+      expect(await countRows(harness.sourceA)).toBe(2);
     });
   });
 });
