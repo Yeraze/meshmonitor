@@ -81,6 +81,9 @@ export const TABLE_ORDER = [
   // per COVERAGE_P1_SPEC.md Decision D9), but migrated rather than skipped so
   // a backend move doesn't silently blank out an in-progress survey.
   'coverage_receptions',
+  'coverage_walkabout_sessions',
+  'coverage_walkabout_samples',
+  'coverage_walkabout_receptions',
   // 5561: hourly cross-source "heard here" link aggregates (txSourceId +
   // rxSourceId, no single sourceId, no FKs). Regenerable, but migrated like
   // coverage_receptions so a backend move keeps the map edges.
@@ -232,6 +235,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'meshcore_neighbor_info', 'meshcore_packet_log',
   'meshcore_heard_repeaters', 'message_events', 'message_translations', 'meshtastic_heard_repeaters',
   'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations', 'coverage_receptions',
+  'coverage_walkabout_sessions', 'coverage_walkabout_samples', 'coverage_walkabout_receptions',
   'atak_contacts', 'mesh_beacon_offers', 'aircraft_flight_matches',
   'meshcore_ignored_nodes', 'meshcore_message_filters',
   'auto_favorite_targets', 'auto_favorite_assignments',

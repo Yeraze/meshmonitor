@@ -79,6 +79,9 @@ export const BACKUP_TABLES: string[] = [
   // are exported, without `id`. Restore still clears the whole table first, so
   // non-survey receptions are lost on restore: they are regenerable.
   'coverage_receptions',
+  'coverage_walkabout_sessions',
+  'coverage_walkabout_samples',
+  'coverage_walkabout_receptions',
   // #5520: stored message translations. `translation_cache` (global, hashed
   // text only) before `message_translations` (per-source links into it).
   'translation_cache',
