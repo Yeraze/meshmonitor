@@ -187,11 +187,17 @@ describe('buildCoverageGeoJson', () => {
     });
   });
 
-  it('carries the meshmonitor foreign member (generatedAt/truncated/filters)', () => {
+  it('carries the meshmonitor foreign member (format/version/generatedAt/truncated/filters)', () => {
     const geojson = JSON.parse(
       buildCoverageGeoJson([], baseCtx({ truncated: true, generatedAt: 42, filters: { sender: '!aaaaaaaa' } })),
     );
-    expect(geojson.meshmonitor).toEqual({ generatedAt: 42, truncated: true, filters: { sender: '!aaaaaaaa' } });
+    expect(geojson.meshmonitor).toEqual({
+      format: 'meshmonitor-coverage-report',
+      version: 1,
+      generatedAt: 42,
+      truncated: true,
+      filters: { sender: '!aaaaaaaa' },
+    });
   });
 });
 

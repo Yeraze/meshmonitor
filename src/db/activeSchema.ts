@@ -155,6 +155,9 @@ import {
   coverageReceptionsSqlite, coverageReceptionsPostgres, coverageReceptionsMysql,
 } from './schema/coverageReceptions.js';
 import {
+  coverageImportsSqlite, coverageImportsPostgres, coverageImportsMysql,
+} from './schema/coverageImports.js';
+import {
   coverageSurveysSqlite, coverageSurveysPostgres, coverageSurveysMysql,
 } from './schema/coverageSurveys.js';
 import {
@@ -414,6 +417,10 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageReceptions: any;
 
+  // Coverage Report imported-file batches, per-source (#5891 Phase 3)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5891 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  coverageImports: any;
+
   // Coverage Report saved surveys, global — no sourceId (#5277 Phase 4b WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageSurveys: any;
@@ -607,6 +614,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreCliHistory: meshcoreCliHistorySqlite,
     meshcoreAdminSessions: meshcoreAdminSessionsSqlite,
     coverageReceptions: coverageReceptionsSqlite,
+    coverageImports: coverageImportsSqlite,
     coverageSurveys: coverageSurveysSqlite,
     coverageWalkaboutSessions: coverageWalkaboutSessionsSqlite,
     coverageWalkaboutSamples: coverageWalkaboutSamplesSqlite,
@@ -710,6 +718,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreCliHistory: meshcoreCliHistoryPostgres,
     meshcoreAdminSessions: meshcoreAdminSessionsPostgres,
     coverageReceptions: coverageReceptionsPostgres,
+    coverageImports: coverageImportsPostgres,
     coverageSurveys: coverageSurveysPostgres,
     coverageWalkaboutSessions: coverageWalkaboutSessionsPostgres,
     coverageWalkaboutSamples: coverageWalkaboutSamplesPostgres,
@@ -813,6 +822,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreCliHistory: meshcoreCliHistoryMysql,
     meshcoreAdminSessions: meshcoreAdminSessionsMysql,
     coverageReceptions: coverageReceptionsMysql,
+    coverageImports: coverageImportsMysql,
     coverageSurveys: coverageSurveysMysql,
     coverageWalkaboutSessions: coverageWalkaboutSessionsMysql,
     coverageWalkaboutSamples: coverageWalkaboutSamplesMysql,

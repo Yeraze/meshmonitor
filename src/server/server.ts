@@ -49,6 +49,7 @@ import { serverEventNotificationService } from './services/serverEventNotificati
 import { versionCheckService } from './services/versionCheckService.js';
 import { coverageRetentionService } from './services/coverageRetentionService.js';
 import { walkaboutService } from './services/walkaboutService.js';
+import { sweepIncompleteCoverageImports } from './services/coverageImportService.js';
 import { directRfContactsRetentionService } from './services/directRfContactsRetentionService.js';
 import { flushDirectRfContacts } from './services/directRfContactRecorder.js';
 import { notificationHold } from './services/notificationDedup.js';
@@ -583,6 +584,12 @@ setTimeout(async () => {
     await walkaboutService.init();
   } catch (error) {
     logger.error('Error initialising Walkabout sessions:', error);
+  }
+  // Coverage import (#5891): drop batches a crash left in `importing`, with their rows.
+  try {
+    await sweepIncompleteCoverageImports();
+  } catch (error) {
+    logger.error('Error sweeping incomplete coverage imports:', error);
   }
 }, 5000);
 

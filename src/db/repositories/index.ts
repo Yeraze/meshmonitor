@@ -158,6 +158,12 @@ export type {
   CoverageRetentionExemptionWindow,
 } from './coverageReceptions.js';
 export { CoverageSurveysRepository } from './coverageSurveys.js';
+export { CoverageImportsRepository, CoverageImportDuplicateError } from './coverageImports.js';
+export type {
+  DbCoverageImport,
+  CreateCoverageImportParams,
+  CompleteCoverageImportParams,
+} from './coverageImports.js';
 export { CoverageWalkaboutRepository } from './coverageWalkabout.js';
 export type {
   DbWalkaboutSession,

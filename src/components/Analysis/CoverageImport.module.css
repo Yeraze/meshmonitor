@@ -1,0 +1,160 @@
+/*
+ * Coverage import UI (#5891 P3): the Imported chip, the imports panel and the
+ * import dialog. CSS module per CLAUDE.md containment; role tokens only.
+ * Everything wraps, so nothing scrolls sideways at 375 px.
+ */
+
+.chipField {
+  min-width: 0;
+}
+
+.chip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chipActive {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-surface-hover);
+  min-width: 0;
+}
+
+.panelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.count {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+
+.rowSelected {
+  border-color: var(--color-accent);
+}
+
+.rowMain {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.filename {
+  font-weight: 600;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.pending {
+  color: var(--color-warning);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.empty {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.dialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field select,
+.field input[type='file'] {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.error {
+  padding: 8px 10px;
+  border: 1px solid var(--color-error);
+  border-radius: 6px;
+  color: var(--color-error);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.errorList {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--color-text);
+}
+
+.success {
+  padding: 8px 10px;
+  border: 1px solid var(--color-success);
+  border-radius: 6px;
+  color: var(--color-success);
+  font-size: 13px;
+}
+
+.successList {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--color-text);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}

@@ -18,12 +18,13 @@ import type { CoverageExportContext, CoverageGap } from '../types/coverageAnalys
 import { calculateDistance } from './distance.js';
 import { escapeCsv } from './nodeExport.js';
 import { receiverKey } from './coverageReceiverFilter.js';
+import { COVERAGE_EXPORT_FORMAT, COVERAGE_EXPORT_VERSION } from './coverageImport.js';
 
 export type { CoverageExportContext } from '../types/coverageAnalysis.js';
 
 type ExportColumnKind = 'text' | 'number';
 
-interface ExportColumn {
+export interface ExportColumn {
   key: string;
   label: string;
   kind: ExportColumnKind;
@@ -33,7 +34,7 @@ interface ExportColumn {
  * Column order is part of the export contract (§2a.4) — do not reorder
  * without a spec update; consumers may rely on positional columns.
  */
-const CSV_COLUMNS: ExportColumn[] = [
+export const COVERAGE_EXPORT_COLUMNS: readonly ExportColumn[] = [
   { key: 'receivedAt', label: 'receivedAt', kind: 'text' },
   { key: 'receivedAtMs', label: 'receivedAtMs', kind: 'number' },
   { key: 'protocol', label: 'protocol', kind: 'text' },
@@ -130,14 +131,14 @@ function formatCsvCell(raw: string | number | null, kind: ExportColumnKind): str
 
 /**
  * RFC 4180 CSV (CRLF line endings), one row per reception, columns per
- * `CSV_COLUMNS`. Formula-injection guarded on text columns (see
+ * `COVERAGE_EXPORT_COLUMNS`. Formula-injection guarded on text columns (see
  * {@link guardFormulaInjection}).
  */
 export function buildCoverageCsv(items: CoverageReceptionDto[], ctx: CoverageExportContext): string {
-  const header = CSV_COLUMNS.map((c) => escapeCsv(c.label)).join(',');
+  const header = COVERAGE_EXPORT_COLUMNS.map((c) => escapeCsv(c.label)).join(',');
   const rows = items.map((item) => {
     const fields = buildExportFields(item, ctx);
-    return CSV_COLUMNS.map((c) => formatCsvCell(fields[c.key], c.kind)).join(',');
+    return COVERAGE_EXPORT_COLUMNS.map((c) => formatCsvCell(fields[c.key], c.kind)).join(',');
   });
   return [header, ...rows].join('\r\n');
 }
@@ -149,7 +150,7 @@ export function buildCoverageCsv(items: CoverageReceptionDto[], ctx: CoverageExp
  * formula-guarded — that guard exists for spreadsheet software, not
  * geojson.io/GIS tooling). Gaps (when passed) become `LineString` features
  * tagged `{ kind: 'likely_gap', durationSec, distanceM, missedEstimate }`.
- * Top-level foreign member `meshmonitor: { generatedAt, truncated, filters }`.
+ * Top-level foreign member `meshmonitor: { format, version, generatedAt, truncated, filters }`.
  */
 export function buildCoverageGeoJson(
   items: CoverageReceptionDto[],
@@ -187,6 +188,8 @@ export function buildCoverageGeoJson(
     type: 'FeatureCollection' as const,
     features: [...pointFeatures, ...gapFeatures],
     meshmonitor: {
+      format: COVERAGE_EXPORT_FORMAT,
+      version: COVERAGE_EXPORT_VERSION,
       generatedAt: ctx.generatedAt,
       truncated: ctx.truncated,
       filters: ctx.filters,

@@ -60,6 +60,8 @@ export interface CoverageReceptionDto {
   senderSourceId?: string | null;
   /** How this receiver got the copy: own radio (`rf`) or an MQTT gateway's radio. Null when not cross-source. */
   crossSourceTransport?: 'rf' | 'mqtt_gateway' | 'mqtt' | 'udp' | null;
+  /** #5891 P3: `coverage_imports.id` when the row came from an imported file; null/absent = recorded live. */
+  importId?: string | null;
 }
 
 /** A distinct receiver seen in the retention window, enriched with a name and current position. */
@@ -78,6 +80,8 @@ export interface CoverageReceiverDto {
   lastReceivedAt: number;
   /** Reception rows for this receiver in the retention window (#5277 P2 §2.3/§2.4). */
   receptionCount: number;
+  /** #5891 P3: every row for this receiver came from an imported file. Absent reads as live. */
+  importedOnly?: boolean;
 }
 
 /**
@@ -109,6 +113,8 @@ export interface CoverageSenderDto {
   senderIsOwnSource?: boolean;
   ownSourceId?: string | null;
   ownSourceName?: string | null;
+  /** #5891 P3: every row for this sender came from an imported file. Absent reads as live. */
+  importedOnly?: boolean;
 }
 
 /** Cursor-paginated response shape shared by every paginated coverage endpoint. */

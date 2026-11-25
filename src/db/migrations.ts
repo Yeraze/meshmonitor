@@ -188,6 +188,7 @@ import { migration as createSolarIrradianceMigration, runMigration245Postgres, r
 import { migration as dropSolarEstimatesMigration, runMigration246Postgres, runMigration246Mysql } from '../server/migrations/246_drop_solar_estimates.js';
 import { migration as nodeTimezoneOverrideMigration, runMigration247Postgres, runMigration247Mysql } from '../server/migrations/247_add_node_timezone_override.js';
 import { migration as coverageWalkaboutMigration, runMigration248Postgres, runMigration248Mysql } from '../server/migrations/248_create_coverage_walkabout.js';
+import { migration as coverageImportsMigration, runMigration249Postgres, runMigration249Mysql } from '../server/migrations/249_create_coverage_imports.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -3987,4 +3988,18 @@ registry.register({
   sqlite: (db) => coverageWalkaboutMigration.up(db),
   postgres: (client) => runMigration248Postgres(client),
   mysql: (pool) => runMigration248Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 249: Coverage import batches + coverage_receptions.importId (#5891 P3).
+// PER-SOURCE. No foreign keys; the repository deletes reception rows first.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 249,
+  name: 'create_coverage_imports',
+  settingsKey: 'migration_249_create_coverage_imports',
+  sqlite: (db) => coverageImportsMigration.up(db),
+  postgres: (client) => runMigration249Postgres(client),
+  mysql: (pool) => runMigration249Mysql(pool),
 });

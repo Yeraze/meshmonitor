@@ -35,6 +35,7 @@ const mockDb = vi.hoisted(() => ({
     getSetting: vi.fn(),
   },
   auditLogAsync: vi.fn().mockResolvedValue(undefined),
+  coverageImports: { deleteAll: vi.fn().mockResolvedValue(undefined) },
 }));
 
 vi.mock('../../services/database.js', () => ({
@@ -330,6 +331,8 @@ describe('systemRestoreService.restoreFromBackup — coverage_receptions (PG seq
     expect(result.success).toBe(true);
     expect(result.tablesRestored).toBe(1);
     expect(result.rowsRestored).toBe(1);
+    // A backup without coverage_imports must not leave stale batches (#5891 P3).
+    expect(mockDb.coverageImports.deleteAll).toHaveBeenCalled();
 
     const insertSql = mockDb.db.prepare.mock.calls
       .map(([sql]) => sql as string)

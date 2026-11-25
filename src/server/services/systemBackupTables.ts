@@ -74,6 +74,9 @@ export const BACKUP_TABLES: string[] = [
   'asset_nodes',
   // #5277 P4b (U5): saved surveys — small, global metadata.
   'coverage_surveys',
+  // #5891 P3: imported-file batches. User data; its reception rows ride the
+  // coverage_receptions filtered exporter below.
+  'coverage_imports',
   // #5277 P4b (U3): NOT a raw table dump — see FILTERED_EXPORTERS in
   // systemBackupService.ts. Only the receptions inside a saved survey's window
   // are exported, without `id`. Restore still clears the whole table first, so

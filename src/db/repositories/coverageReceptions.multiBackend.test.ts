@@ -21,6 +21,7 @@ import {
   type RecordCoverageReceptionParams,
 } from './coverageReceptions.js';
 import { runMigration172Postgres, runMigration172Mysql } from '../../server/migrations/172_create_coverage_receptions.js';
+import { runMigration249Postgres, runMigration249Mysql } from '../../server/migrations/249_create_coverage_imports.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -335,6 +336,8 @@ describe.skipIf(!postgresAvailable)('CoverageReceptionsRepository — PostgreSQL
     const client = await pool.connect();
     try {
       await runMigration172Postgres(client);
+      // importId column (#5891 P3): Drizzle selects every schema column.
+      await runMigration249Postgres(client);
     } finally {
       client.release();
     }
@@ -370,6 +373,8 @@ describe.skipIf(!mysqlAvailable)('CoverageReceptionsRepository — MySQL (contai
     cleanupDb = isolated.cleanup;
 
     await runMigration172Mysql(pool);
+    // importId column (#5891 P3): Drizzle selects every schema column.
+    await runMigration249Mysql(pool);
 
     const drizzleDb = drizzleMysql(pool, { schema, mode: 'default' });
     repo = new CoverageReceptionsRepository(drizzleDb, 'mysql');

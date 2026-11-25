@@ -922,4 +922,39 @@ describe('overlap chooser (#5543)', () => {
     expect(chooser.getByTestId('coverage-chooser-more')).toHaveTextContent('+6 more');
     expect(chooser.getAllByTestId('coverage-chooser-fix')[0]).toHaveTextContent('RSSI -85 dBm');
   });
+  describe('imported fixes (#5891 P3)', () => {
+    const fixOf = (lat: number, receptions: CoverageReceptionDto[]): CoverageFix<CoverageReceptionDto> => ({
+      senderId: '!bbbbbbbb',
+      packetKey: String(lat),
+      latitude: lat,
+      longitude: -80.25,
+      receivedAt: 1_700_000_000_000,
+      receptions,
+      bestSnr: 5.5,
+      bestRssi: -85,
+    });
+    const dashOf = (lat: number) =>
+      screen
+        .getAllByTestId('circle-marker')
+        .find((el) => el.getAttribute('data-center') === `${lat},-80.25`)!
+        .getAttribute('data-dash');
+
+    it('dashes a fix whose every reception is imported, not a mixed or live one', () => {
+      const allImported = fixOf(30.1, [reception({ importId: 'i1' }), reception({ id: 2, importId: 'i1', receiverId: '!cccccccc' })]);
+      const mixed = fixOf(30.2, [reception({ importId: 'i1' }), reception({ id: 2, receiverId: '!cccccccc' })]);
+      const live = fixOf(30.3, [reception({})]);
+      render(<CoverageMap fixes={[allImported, mixed, live]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+      expect(dashOf(30.1)).toBe('3,3');
+      expect(dashOf(30.2)).toBe('');
+      expect(dashOf(30.3)).toBe('');
+      expect(screen.getByTestId('coverage-legend-imported')).toHaveTextContent('Dashed = imported');
+      expect(screen.getAllByTestId('coverage-imported-tag').length).toBeGreaterThan(0);
+    });
+
+    it('draws no imported legend row or tag when nothing is imported', () => {
+      render(<CoverageMap fixes={[fixOf(30.3, [reception({})])]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+      expect(screen.queryByTestId('coverage-legend-imported')).toBeNull();
+      expect(screen.queryByTestId('coverage-imported-tag')).toBeNull();
+    });
+  });
 });
