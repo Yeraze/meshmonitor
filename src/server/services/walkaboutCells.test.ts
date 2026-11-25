@@ -213,6 +213,48 @@ describe('getWalkaboutCells', () => {
     expect(b).toMatchObject({ cells: [], hiddenReceptionCount: 0 });
   });
 
+  it('hiddenReceptionCount spans whole sessions: two ranges in one session agree', async () => {
+    const all = [
+      rx({ heardAt: T0 + 5000 }),
+      rx({ creditedKey: '!dead0001', creditedNodeNum: HIDDEN_NUM, heardAt: T0 + 30_000 }),
+    ];
+    repo.getReceptionPoints.mockImplementation(async (_s: string, a: { sinceMs: number; untilMs: number }) =>
+      all.filter((r) => r.heardAt >= a.sinceMs && r.heardAt <= a.untilMs));
+    const range = (sinceMs: number, untilMs: number) => ({ kind: 'range', sinceMs, untilMs }) as const;
+    const withHidden = (await getWalkaboutCells({ id: 1 }, 'src-a', range(T0 + 29_000, T0 + 31_000), 9))!;
+    const without = (await getWalkaboutCells({ id: 1 }, 'src-a', range(T0 + 4000, T0 + 6000), 9))!;
+    expect(withHidden.hiddenReceptionCount).toBe(1);
+    expect(without.hiddenReceptionCount).toBe(1);
+    expect(withHidden.cells.reduce((n, c) => n + c.receptionCount, 0)).toBe(0);
+    expect(without.cells.reduce((n, c) => n + c.receptionCount, 0)).toBe(1);
+  });
+
+  it('a hidden node=X reports range truncation only, not the filtered read cap', async () => {
+    repo.getReceptionPoints.mockResolvedValue(
+      Array.from({ length: WALKABOUT_MAX_RX_ROWS + 1 }, () => rx({ creditedKey: '!dead0001', creditedNodeNum: HIDDEN_NUM })));
+    const r = (await getWalkaboutCells({ id: 1 }, 'src-a', { kind: 'session', sessionId: 's1', node: '!dead0001' }, 9))!;
+    expect(r.truncated).toBe(false);
+  });
+
+  it('skips the visibility loaders when there are no receptions', async () => {
+    const pv = await import('../utils/positionVisibility.js');
+    vi.mocked(pv.loadNodesBySource).mockClear();
+    repo.getSamplePoints.mockResolvedValue([smp()]);
+    const r = (await getWalkaboutCells({ id: 1 }, 'src-a', { kind: 'session', sessionId: 's1' }, 9))!;
+    expect(pv.loadNodesBySource).not.toHaveBeenCalled();
+    expect(r.cells[0]).toMatchObject({ sampleCount: 1 });
+    expect(r.bounds).not.toBeNull();
+  });
+
+  it('range truncated is set only when overlapping sessions were dropped', async () => {
+    const now = T0 + 86_400_000;
+    const old = Array.from({ length: 501 }, (_, i) => sess({ id: `o${i}`, startedAt: T0 - 1000 * i - 10 * 86_400_000, endedAt: T0 - 5 * 86_400_000 }));
+    repo.listSessionsInRange.mockResolvedValue(old);
+    const r = await resolveWalkaboutRange('src-a', { kind: 'window', window: '24h' }, now);
+    expect(r!.sessions).toHaveLength(0);
+    expect(r!.truncated).toBe(false);
+  });
+
   it('passes the node filter to the repo and returns null for a missing session', async () => {
     await getWalkaboutCells({ id: 1 }, 'src-a', { ...q, node: '!aabbccdd' }, 9);
     expect(repo.getReceptionPoints.mock.calls[0][1]).toMatchObject({ creditedKey: '!aabbccdd', limit: WALKABOUT_MAX_RX_ROWS + 1 });

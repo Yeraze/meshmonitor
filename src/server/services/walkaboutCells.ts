@@ -67,10 +67,9 @@ export async function resolveWalkaboutRange(
   const untilMs = q.kind === 'window' ? nowMs : q.untilMs;
   const sinceMs = q.kind === 'window' ? nowMs - WALKABOUT_MAP_WINDOWS_MS[q.window] : q.sinceMs;
   const found = await repo.listSessionsInRange(sourceId, sinceMs, untilMs, WALKABOUT_MAX_RANGE_SESSIONS + 1);
-  const truncated = found.length > WALKABOUT_MAX_RANGE_SESSIONS;
-  const sessions = found
-    .slice(0, WALKABOUT_MAX_RANGE_SESSIONS)
-    .filter((s) => s.startedAt <= untilMs && walkaboutEndsAt(s) >= sinceMs);
+  const overlapping = found.filter((s) => s.startedAt <= untilMs && walkaboutEndsAt(s) >= sinceMs);
+  const truncated = overlapping.length > WALKABOUT_MAX_RANGE_SESSIONS;
+  const sessions = overlapping.slice(0, WALKABOUT_MAX_RANGE_SESSIONS);
   return { sinceMs, untilMs, sessions, truncated };
 }
 
@@ -229,16 +228,20 @@ function probeFor(node: string): WalkaboutReceptionPoint {
 async function readClipped(
   sourceId: string,
   q: WalkaboutMapQuery,
-  opts: { bbox?: ReturnType<typeof walkaboutCellBBox>; samples: boolean },
+  opts: { bbox?: ReturnType<typeof walkaboutCellBBox>; samples: boolean; fullSpanRx?: boolean },
 ) {
   const range = await resolveWalkaboutRange(sourceId, q);
   if (!range) return null;
   const repo = databaseService.coverageWalkabout;
   const sessionIds = range.sessions.map((s) => s.id);
   const base = { sessionIds, sinceMs: range.sinceMs, untilMs: range.untilMs, ...(opts.bbox ? { bbox: opts.bbox } : {}) };
+  // The hidden count must not be localised below a whole session, so receptions
+  // are read over every overlapping session's full span and narrowed afterwards.
+  const fullSince = opts.fullSpanRx ? Math.min(range.sinceMs, ...range.sessions.map((s) => s.startedAt)) : range.sinceMs;
+  const fullUntil = opts.fullSpanRx ? Math.max(range.untilMs, ...range.sessions.map((s) => walkaboutEndsAt(s))) : range.untilMs;
   const [rxRaw, smRaw] = await Promise.all([
     repo.getReceptionPoints(sourceId, {
-      ...base, ...(q.node !== undefined ? { creditedKey: q.node } : {}), limit: WALKABOUT_MAX_RX_ROWS + 1,
+      ...base, sinceMs: fullSince, untilMs: fullUntil, ...(q.node !== undefined ? { creditedKey: q.node } : {}), limit: WALKABOUT_MAX_RX_ROWS + 1,
     }),
     opts.samples
       ? repo.getSamplePoints(sourceId, { ...base, limit: WALKABOUT_MAX_SAMPLE_ROWS + 1 })
@@ -246,9 +249,12 @@ async function readClipped(
   ]);
   const rxCut = rxRaw.length > WALKABOUT_MAX_RX_ROWS;
   const smCut = smRaw.length > WALKABOUT_MAX_SAMPLE_ROWS;
-  const rx = clipToSessions(rxCut ? rxRaw.slice(0, WALKABOUT_MAX_RX_ROWS) : rxRaw, range.sessions, (r) => r.heardAt, range.sinceMs, range.untilMs);
+  const rxFull = clipToSessions(rxCut ? rxRaw.slice(0, WALKABOUT_MAX_RX_ROWS) : rxRaw, range.sessions, (r) => r.heardAt, fullSince, fullUntil);
+  const rx = opts.fullSpanRx
+    ? clipToSessions(rxFull, range.sessions, (r) => r.heardAt, range.sinceMs, range.untilMs)
+    : rxFull;
   const samples = clipToSessions(smCut ? smRaw.slice(0, WALKABOUT_MAX_SAMPLE_ROWS) : smRaw, range.sessions, (r) => r.fixAt, range.sinceMs, range.untilMs);
-  return { range, rx, samples, truncated: range.truncated || rxCut || smCut };
+  return { range, rx, rxFull, samples, truncated: range.truncated || rxCut || smCut };
 }
 
 function boundsOf(points: Array<{ latitude: number; longitude: number }>): Bounds | null {
@@ -269,13 +275,19 @@ export async function getWalkaboutCells(
   q: WalkaboutMapQuery,
   res: WalkaboutH3Res,
 ): Promise<WalkaboutCellsResult | null> {
-  const read = await readClipped(sourceId, q, { samples: true });
+  const read = await readClipped(sourceId, q, { samples: true, fullSpanRx: true });
   if (!read) return null;
-  const { range, rx, samples } = read;
-  const vis = await loadWalkaboutVisibility(user, sourceId);
+  const { range, rx, rxFull, samples } = read;
   const out = { res, windowStartAt: range.sinceMs, windowEndAt: range.untilMs };
+  // No rows and no node filter: nothing to gate, skip the node loads.
+  if (rxFull.length === 0 && q.node === undefined) {
+    const { cells, truncated } = binWalkaboutCells([], samples, res);
+    return { ...out, cells, truncated: read.truncated || truncated, hiddenReceptionCount: 0, bounds: boundsOf(samples) };
+  }
+  const vis = await loadWalkaboutVisibility(user, sourceId);
   if (q.node !== undefined && !vis.visible(probeFor(q.node))) {
-    return { ...out, cells: [], truncated: read.truncated, hiddenReceptionCount: 0, bounds: null };
+    // Never the node-filtered read's own cap flag: it would show the node has rows.
+    return { ...out, cells: [], truncated: read.range.truncated, hiddenReceptionCount: 0, bounds: null };
   }
   const shown = rx.filter(vis.visible);
   const { cells, truncated } = binWalkaboutCells(shown, samples, res);
@@ -283,7 +295,7 @@ export async function getWalkaboutCells(
     ...out,
     cells,
     truncated: read.truncated || truncated,
-    hiddenReceptionCount: rx.length - shown.length,
+    hiddenReceptionCount: rxFull.filter((r) => !vis.visible(r)).length,
     bounds: boundsOf([...shown, ...samples]),
   };
 }
@@ -297,9 +309,10 @@ export async function getWalkaboutCellNodes(
 ): Promise<WalkaboutCellNodesResult | null> {
   const read = await readClipped(sourceId, q, { bbox: walkaboutCellBBox(cell), samples: false });
   if (!read) return null;
+  if (read.rx.length === 0 && q.node === undefined) return { cell, nodes: [], truncated: read.truncated };
   const vis = await loadWalkaboutVisibility(user, sourceId);
   if (q.node !== undefined && !vis.visible(probeFor(q.node))) {
-    return { cell, nodes: [], truncated: false };
+    return { cell, nodes: [], truncated: read.range.truncated };
   }
   const { nodes, truncated } = groupCellNodes(read.rx.filter(vis.visible), cell, res, vis.names);
   return { cell, nodes, truncated: read.truncated || truncated };
