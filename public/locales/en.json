@@ -9050,6 +9050,7 @@
   "analysis.walkabout.map.legend_none": "None (below {{min}} dB, or nothing heard)",
   "analysis.walkabout.map.legend_unknown": "Heard, no SNR",
   "analysis.walkabout.map.legend_note": "Colour shows the best signal heard in each hex, from the last hop.",
+  "analysis.walkabout.map.load_failed": "Could not load the walkabout map. Check the window or session and try again.",
   "analysis.walkabout.map.truncated": "Showing part of this window. Pick a session or a shorter window.",
   "analysis.walkabout.map.hidden_receptions": "{{count}} receptions from nodes you cannot see on the map are not shown.",
   "analysis.walkabout.map.empty": "No walkabout data in this window.",
@@ -9064,5 +9065,6 @@
   "analysis.coverage.walkabout_source": "Source",
   "analysis.coverage.walkabout_session": "Session",
   "analysis.coverage.walkabout_all_sessions": "All sessions in range",
+  "analysis.coverage.walkabout_range_clamped": "Walkabout shows at most 31 days. Showing the 31 days before the end of your range.",
   "analysis.coverage.walkabout_sender_hint": "Sender filter: heard directly from, or relayed last by, this node."
 }

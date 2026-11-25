@@ -7,7 +7,7 @@
  * radio heard there. The H3 resolution follows the map zoom; the fit-to-bounds
  * key never includes it, so a res change never re-fits or refetches in a loop.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cellToBoundary } from 'h3-js';
 import { Polygon, Polyline, Popup, useMapEvents } from 'react-leaflet';
@@ -142,7 +142,12 @@ const WalkaboutHexMap: React.FC<WalkaboutHexMapProps> = ({ sourceId, query, fitK
   const [res, setRes] = useState<WalkaboutH3Res>(() => walkaboutResForZoom(zoom));
   const [openCell, setOpenCell] = useState<OpenCell | null>(null);
 
-  const { data, isPlaceholderData, isLoading } = useWalkaboutCells(sourceId, query, res);
+  const { data, isPlaceholderData, isLoading, isError } = useWalkaboutCells(sourceId, query, res);
+  // A popup belongs to one query; drop it when the query, source or fit key changes.
+  const queryParamsKey = JSON.stringify(query);
+  useEffect(() => {
+    setOpenCell(null);
+  }, [sourceId, queryParamsKey, fitKey]);
   const sessionId = query.kind === 'session' ? query.sessionId : null;
   const track = useWalkaboutTrack(sourceId, sessionId);
 
@@ -220,6 +225,12 @@ const WalkaboutHexMap: React.FC<WalkaboutHexMapProps> = ({ sourceId, query, fitK
           )}
         </div>
       )}
+      {isError && (
+        <div className={styles.banner} role="alert">
+          <UiIcon name="alert" size={14} />{' '}
+          {t('analysis.walkabout.map.load_failed', 'Could not load the walkabout map. Check the window or session and try again.')}
+        </div>
+      )}
       {empty && (
         <div className={styles.banner} role="status">
           {t('analysis.walkabout.map.empty', 'No walkabout data in this window.')}
@@ -228,9 +239,8 @@ const WalkaboutHexMap: React.FC<WalkaboutHexMapProps> = ({ sourceId, query, fitK
       <div className={styles.mapBox}>
         <BaseMap center={center} zoom={zoom} {...baseMapSettings} scrollWheelZoom preferCanvas>
           <ZoomResController onRes={onRes} />
-          {!isPlaceholderData && boundsPoints.length > 0 && (
-            <FitBoundsOnce points={boundsPoints} fitKey={fitKey} maxZoom={FIT_MAX_ZOOM} />
-          )}
+          {/* Stay mounted: its fitted-key memory must survive a res change. */}
+          <FitBoundsOnce points={isPlaceholderData ? [] : boundsPoints} fitKey={fitKey} maxZoom={FIT_MAX_ZOOM} />
           {track.data && track.data.positions.length > 1 && (
             <Polyline
               positions={track.data.positions}

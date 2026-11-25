@@ -83,7 +83,7 @@ const result = (cells: WalkaboutCellDto[], p: Partial<WalkaboutCellsResult> = {}
   bounds: { bboxSouth: 40, bboxNorth: 40.01, bboxWest: -75.01, bboxEast: -75 }, ...p,
 });
 const setCells = (data: WalkaboutCellsResult | undefined, isPlaceholderData = false) =>
-  hooks.cells.mockReturnValue({ data, isPlaceholderData, isLoading: !data });
+  hooks.cells.mockReturnValue({ data, isPlaceholderData, isLoading: !data, isError: false });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -137,6 +137,34 @@ describe('WalkaboutHexMap', () => {
     setCells(result([cell(CELL_A)], { bounds: { bboxSouth: 1, bboxNorth: 2, bboxWest: 1, bboxEast: 2 } }), false);
     rerender(<WalkaboutHexMap sourceId="s" query={q} fitKey="k2" />);
     expect(fitBoundsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('fits once when placeholder data turns real under the same fitKey', () => {
+    setCells(result([cell(CELL_A)]), true);
+    const { rerender } = render(<WalkaboutHexMap sourceId="s" query={q} fitKey="k" />);
+    expect(fitBoundsMock).not.toHaveBeenCalled();
+    setCells(result([cell(CELL_A)]), false);
+    rerender(<WalkaboutHexMap sourceId="s" query={q} fitKey="k" />);
+    expect(fitBoundsMock).toHaveBeenCalledTimes(1);
+    setCells(result([cell(CELL_A)]), true); // user zoomed, uncached res
+    rerender(<WalkaboutHexMap sourceId="s" query={q} fitKey="k" />);
+    setCells(result([cell(CELL_A)]), false);
+    rerender(<WalkaboutHexMap sourceId="s" query={q} fitKey="k" />);
+    expect(fitBoundsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an error banner when the cells query fails', () => {
+    hooks.cells.mockReturnValue({ data: undefined, isPlaceholderData: false, isLoading: false, isError: true });
+    render(<WalkaboutHexMap sourceId="s" query={q} fitKey="k" />);
+    expect(screen.getByRole('alert').textContent).toMatch(/Could not load the walkabout map/);
+  });
+
+  it('closes an open popup when the query changes', () => {
+    const { rerender } = render(<WalkaboutHexMap sourceId="s" query={q} fitKey="k" />);
+    fireEvent.click(screen.getByTestId('hex'));
+    expect(screen.getByTestId('popup')).toBeTruthy();
+    rerender(<WalkaboutHexMap sourceId="s" query={{ kind: 'window', window: '24h' }} fitKey="k" />);
+    expect(screen.queryByTestId('popup')).toBeNull();
   });
 
   it('does not fit when bounds is null', () => {
