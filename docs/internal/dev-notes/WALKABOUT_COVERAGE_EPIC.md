@@ -50,7 +50,7 @@ MeshMonitor sends nothing for this feature (passive).
   secure-context notice, accuracy warning, live sample + reception counts).
   *Exit:* a live session records samples and receptions; per-source isolation
   test; permission tests; full suite green on SQLite/PG/MySQL.
-- [ ] **P2 — H3 hex view.** Server cell aggregation endpoint; hex layer on
+- [x] **P2 — H3 hex view.** Server cell aggregation endpoint; hex layer on
   `BaseMap`; bucket colours + legend; cell popup "N nodes heard here" with
   per-node best SNR + count; 24h/7d/14d/30d chips; Coverage Report gains a
   "Walkabout sessions" filter. Track and cell reads clip samples and receptions
@@ -84,4 +84,21 @@ MeshMonitor sends nothing for this feature (passive).
   - Browser check: MeshCore session credited the nearby repeater as last hop;
     a quiet Meshtastic window credited nothing (all relayed, no relay byte).
     Real-phone test over HTTPS still to do; rate-limit headroom (Q7) unmeasured.
+
+- **P2 (2026-11-25).** Spec: `WALKABOUT_P2_SPEC.md`. No schema change: H3 cells are
+  computed on read (h3-js server-side; ~93 ms per 100k points), always binned at
+  res 9 then rolled up with `cellToParent` (direct res-7/8 binning disagrees for
+  6-7% of points). Zoom ≥ 14 → res 9, 12-13 → res 8, ≤ 11 → res 7. h3-js lives
+  only in the lazy `WalkaboutHexMap` chunk (source-scan test + build check).
+  - Decisions: hidden nodes' receptions dropped before binning, one
+    `hiddenReceptionCount` banner (maintainer); fixed SNR bands, per-source
+    bands in #6571 (maintainer).
+  - Review fix: the hidden count is computed over each overlapping session's
+    full span, never a narrowed since/until, so a sliding 10 s range cannot
+    localise a hidden node. Probing a hidden `node=X` returns the same empty
+    result and never its own truncation flag.
+  - Also: P1 picker now lists readable sources (Start only where writable);
+    Coverage Report View toggle gains Walkabout; custom ranges clamp to 31 days.
+  - Known, not fixed: cells on the antimeridian skip the bbox prefilter (slower,
+    still correct); a walk across ±180° fits a world-wide box.
 
