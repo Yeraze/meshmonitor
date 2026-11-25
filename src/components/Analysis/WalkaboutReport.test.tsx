@@ -217,6 +217,15 @@ describe('WalkaboutReport', () => {
     expect(screen.getByTestId('walkabout-nodes').textContent).toBe('5');
   });
 
+  it('the live row in the session list shows the latest counts from the post', async () => {
+    fetchWalkaboutSessions.mockResolvedValue([session()]);
+    await startWalking();
+    await act(async () => { posCb(fixAt(10, NOW + 1000)); });
+    await advance(10_000);
+    const row = screen.getByTestId('walkabout-session');
+    expect(row.textContent).toMatch(/3 samples, 17 receptions, 5 nodes/);
+  });
+
   it('on a failed post keeps the batch and retries on the next 10 s tick', async () => {
     postWalkaboutSamples.mockRejectedValueOnce(Object.assign(new Error('Too many'), { status: 429 }));
     await startWalking();

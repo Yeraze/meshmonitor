@@ -212,6 +212,8 @@ export default function WalkaboutReport() {
     }
   };
 
+  // The live row shows the freshest counts from the last post; no polling.
+  const sessionRows = (sessionsQ.data ?? []).map((r) => (active && r.id === active.id ? active : r));
   const fmtDate = (ms: number) => new Date(ms).toLocaleString();
   const liveSession = liveQ.data?.session ?? null;
   const otherUserLive = !active && liveSession != null && !liveSession.startedByMe;
@@ -464,13 +466,13 @@ export default function WalkaboutReport() {
       {sourceId && (
         <section aria-label={t('analysis.walkabout.sessions', 'Sessions')}>
           <h3 className={styles.panelTitle}>{t('analysis.walkabout.sessions', 'Sessions')}</h3>
-          {sessionsQ.isLoading ? null : (sessionsQ.data ?? []).length === 0 ? (
+          {sessionsQ.isLoading ? null : sessionRows.length === 0 ? (
             <p className={styles.note} data-testid="walkabout-empty">
               {t('analysis.walkabout.no_sessions', 'No walkabout sessions yet.')}
             </p>
           ) : (
             <ul className={styles.list} data-testid="walkabout-sessions">
-              {(sessionsQ.data ?? []).map((s) => {
+              {sessionRows.map((s) => {
                 const endMs = s.endedAt ?? s.endsAt;
                 const live = s.isLive;
                 return (
