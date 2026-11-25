@@ -68,6 +68,7 @@ import { CoverageSummaryPanel } from './CoverageSummaryPanel';
 import { CoverageDistanceChart } from './CoverageDistanceChart';
 import { CoverageExportButtons } from './CoverageExportButtons';
 import { CoverageSurveyBar } from './CoverageSurveyBar';
+import { CoverageWalkaboutPanel, WalkaboutViewButton } from './CoverageWalkabout';
 import { CoverageCrossSourceSummary } from './CoverageCrossSourceSummary';
 import SearchableSelect, { type SearchableSelectOption } from '../common/SearchableSelect';
 import styles from './CoverageReport.module.css';
@@ -124,6 +125,9 @@ export interface CoverageReportProps {
   initialLink?: CoverageDeepLink;
 }
 
+/** The report's own view: the map views plus the walkabout hex map (#5891 P2). */
+type ReportView = CoverageMapView | 'walkabout';
+
 export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) => {
   const { t } = useTranslation();
   const { distanceUnit } = useSettings();
@@ -139,7 +143,8 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const [crossSourceOnly, setCrossSourceOnly] = useState(false);
   const [metric, setMetric] = useState<CoverageMetric>('snr');
   const [guidanceOpen, setGuidanceOpen] = useState(false);
-  const [view, setView] = useState<CoverageMapView>('dots');
+  const [view, setView] = useState<ReportView>('dots');
+  const isWalkabout = view === 'walkabout';
   const [cellSize, setCellSize] = useState<CoverageGridCellSizeM>(COVERAGE_GRID_DEFAULT_CELL_M);
 
   // Saved surveys (#5277 P4b WP3, spec §2b.7). `selectedSurvey` holds the
@@ -384,7 +389,8 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     if (found) applySurvey(found);
   }, [initialLink?.survey, surveysQuery.data, applySurvey]);
 
-  const receptionsEnabled = !rangeInvalid && !noReceiversSelected;
+  // The walkabout view costs one cells request, not the reception pages.
+  const receptionsEnabled = !rangeInvalid && !noReceiversSelected && !isWalkabout;
   const receptionsQuery = useCoverageReceptions(
     {
       sources: receiverQuery.sources ?? [],
@@ -594,6 +600,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             />
           </label>
 
+          {!isWalkabout && (
           <label className="reports-controls__field">
             <span>{t('analysis.coverage.hops', 'Hops')}</span>
             <select
@@ -608,8 +615,9 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
               ))}
             </select>
           </label>
+          )}
 
-          {hops !== '' && (
+          {!isWalkabout && hops !== '' && (
             <label className="reports-controls__field">
               <input
                 type="checkbox"
@@ -620,7 +628,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             </label>
           )}
 
-          {hasOwnSourceSenders && (
+          {!isWalkabout && hasOwnSourceSenders && (
             <label
               className="reports-controls__field"
               title={t(
@@ -637,6 +645,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             </label>
           )}
 
+          {!isWalkabout && (
           <label className="reports-controls__field">
             <span>{t('analysis.coverage.metric', 'Colour by')}</span>
             <select value={metric} onChange={(e) => setMetric(e.target.value as CoverageMetric)}>
@@ -644,6 +653,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
               <option value="rssi">{t('analysis.coverage.metric_rssi', 'RSSI')}</option>
             </select>
           </label>
+          )}
 
           <div className="reports-controls__field">
             <span>{t('analysis.coverage.view', 'View')}</span>
@@ -664,6 +674,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
               >
                 {t('analysis.coverage.view_grid', 'Grid')}
               </button>
+              <WalkaboutViewButton active={isWalkabout} onClick={() => setView('walkabout')} />
             </div>
           </div>
 
@@ -688,15 +699,17 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             {t('analysis.coverage.refresh', 'Refresh')}
           </button>
 
-          <CoverageExportButtons
-            items={items}
-            gaps={gapResult?.gaps ?? []}
-            ctx={exportCtx}
-            senderId={senderId || null}
-            sinceMs={sinceMs}
-            untilMs={untilMs}
-            disabled={items.length === 0}
-          />
+          {!isWalkabout && (
+            <CoverageExportButtons
+              items={items}
+              gaps={gapResult?.gaps ?? []}
+              ctx={exportCtx}
+              senderId={senderId || null}
+              sinceMs={sinceMs}
+              untilMs={untilMs}
+              disabled={items.length === 0}
+            />
+          )}
         </div>
 
         <CoverageSurveyBar
@@ -709,14 +722,16 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
           onSelectSurvey={handleSelectSurvey}
         />
 
-        <CoverageReceiverFilter
-          receivers={receivers}
-          deselected={deselectedReceiverIds}
-          onChange={setDeselectedReceiverIds}
-          mqttSources={mqttSources}
-        />
+        {!isWalkabout && (
+          <CoverageReceiverFilter
+            receivers={receivers}
+            deselected={deselectedReceiverIds}
+            onChange={setDeselectedReceiverIds}
+            mqttSources={mqttSources}
+          />
+        )}
 
-        {hasMqttReceivers && (
+        {!isWalkabout && hasMqttReceivers && (
           <div className={styles.mqttNote}>
             {t(
               'analysis.coverage.mqtt_note',
@@ -738,13 +753,13 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
         </div>
       )}
 
-      {noReceiversSelected && (
+      {!isWalkabout && noReceiversSelected && (
         <div className="reports-banner reports-banner--error">
           {t('analysis.coverage.no_receivers_selected', 'Select at least one receiver.')}
         </div>
       )}
 
-      {receptionsQuery.data?.truncated && (
+      {!isWalkabout && receptionsQuery.data?.truncated && (
         <div className="reports-banner reports-banner--warning">
           {t(
             'analysis.coverage.truncated',
@@ -754,7 +769,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
         </div>
       )}
 
-      {isEmpty && (
+      {!isWalkabout && isEmpty && (
         <div className="reports-banner reports-banner--empty">
           <div>
             {t(
@@ -777,6 +792,15 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
         </div>
       )}
 
+      {isWalkabout && !rangeInvalid && (
+        <CoverageWalkaboutPanel
+          sinceMs={sinceMs}
+          untilMs={untilMs}
+          senderId={senderId}
+          rangeKey={preset === 'custom' ? `custom:${customFrom}:${customTo}` : preset}
+        />
+      )}
+
       {receptionsEnabled && !isLoading && !isEmpty && items.length > 0 && (
         <>
           <CoverageMap
@@ -786,7 +810,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             senderNames={senderNames}
             fitKey={fitKey}
             gaps={gapResult?.gaps}
-            view={view}
+            view={view === 'walkabout' ? 'dots' : view}
             gridCells={gridCells}
           />
           <CoverageSummaryPanel
