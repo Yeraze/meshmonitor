@@ -60,3 +60,31 @@ describe('resolveLastHopName', () => {
     expect(resolveLastHopName(0x4f, nodes)).toBe('RECENT');
   });
 });
+
+import { resolveUniqueRelayNode } from './lastHop.js';
+
+describe('resolveUniqueRelayNode', () => {
+  const n = (nodeNum: number, role: number | null = null): LastHopCandidate => ({ nodeNum, role });
+
+  it('returns the one node with that low byte', () => {
+    expect(resolveUniqueRelayNode(0x4f, [n(0xaabbcc4f), n(0x11223301)], [])).toEqual({ nodeNum: 0xaabbcc4f, matches: 1 });
+  });
+
+  it('returns null with 0 matches', () => {
+    expect(resolveUniqueRelayNode(0x4f, [n(0x11223301)], [])).toEqual({ nodeNum: null, matches: 0 });
+  });
+
+  it('never guesses on 2 or more matches', () => {
+    expect(resolveUniqueRelayNode(0x4f, [n(0xaabbcc4f), n(0x1122334f)], [])).toEqual({ nodeNum: null, matches: 2 });
+  });
+
+  it('drops CLIENT_MUTE (role 1), the local node and the sender', () => {
+    const cands = [n(0xaabbcc4f, 1), n(0x1122334f), n(0x5566774f)];
+    expect(resolveUniqueRelayNode(0x4f, cands, [0x1122334f])).toEqual({ nodeNum: 0x5566774f, matches: 1 });
+    expect(resolveUniqueRelayNode(0x4f, cands, [0x1122334f, 0x5566774f])).toEqual({ nodeNum: null, matches: 0 });
+  });
+
+  it('counts a duplicated nodeNum once', () => {
+    expect(resolveUniqueRelayNode(0x4f, [n(0xaabbcc4f), n(0xaabbcc4f)], [])).toEqual({ nodeNum: 0xaabbcc4f, matches: 1 });
+  });
+});

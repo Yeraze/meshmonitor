@@ -158,6 +158,11 @@ import {
   coverageSurveysSqlite, coverageSurveysPostgres, coverageSurveysMysql,
 } from './schema/coverageSurveys.js';
 import {
+  coverageWalkaboutSessionsSqlite, coverageWalkaboutSessionsPostgres, coverageWalkaboutSessionsMysql,
+  coverageWalkaboutSamplesSqlite, coverageWalkaboutSamplesPostgres, coverageWalkaboutSamplesMysql,
+  coverageWalkaboutReceptionsSqlite, coverageWalkaboutReceptionsPostgres, coverageWalkaboutReceptionsMysql,
+} from './schema/coverageWalkabout.js';
+import {
   crossSourceLinksSqlite, crossSourceLinksPostgres, crossSourceLinksMysql,
 } from './schema/crossSourceLinks.js';
 import {
@@ -413,6 +418,14 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageSurveys: any;
 
+  // Walkabout Coverage, per-source (#5891 Phase 1)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5891 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  coverageWalkaboutSessions: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5891 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  coverageWalkaboutSamples: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5891 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  coverageWalkaboutReceptions: any;
+
   // Cross-source "heard here" link aggregates, two source ids per row (#5561)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5561 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   crossSourceLinks: any;
@@ -595,6 +608,9 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreAdminSessions: meshcoreAdminSessionsSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
+    coverageWalkaboutSessions: coverageWalkaboutSessionsSqlite,
+    coverageWalkaboutSamples: coverageWalkaboutSamplesSqlite,
+    coverageWalkaboutReceptions: coverageWalkaboutReceptionsSqlite,
     crossSourceLinks: crossSourceLinksSqlite,
     directRfContacts: directRfContactsSqlite,
     translationCache: translationCacheSqlite,
@@ -695,6 +711,9 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreAdminSessions: meshcoreAdminSessionsPostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
+    coverageWalkaboutSessions: coverageWalkaboutSessionsPostgres,
+    coverageWalkaboutSamples: coverageWalkaboutSamplesPostgres,
+    coverageWalkaboutReceptions: coverageWalkaboutReceptionsPostgres,
     crossSourceLinks: crossSourceLinksPostgres,
     directRfContacts: directRfContactsPostgres,
     translationCache: translationCachePostgres,
@@ -795,6 +814,9 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreAdminSessions: meshcoreAdminSessionsMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
+    coverageWalkaboutSessions: coverageWalkaboutSessionsMysql,
+    coverageWalkaboutSamples: coverageWalkaboutSamplesMysql,
+    coverageWalkaboutReceptions: coverageWalkaboutReceptionsMysql,
     crossSourceLinks: crossSourceLinksMysql,
     directRfContacts: directRfContactsMysql,
     translationCache: translationCacheMysql,

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import databaseService from '../../services/database.js';
+import { walkaboutService } from '../services/walkaboutService.js';
 import { forgetMqttNativeIdentity } from '../services/mqttNative/mqttNativeState.js';
 import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from '../meshcoreMqttManager.js';
@@ -1928,6 +1929,15 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       await databaseService.deleteSourceSettingsAsync(req.params.id);
     } catch (settingsError) {
       logger.warn(`Failed to purge settings for deleted source ${req.params.id}:`, settingsError);
+    }
+
+    // #5891: walkabout sessions, samples and receptions belong to the source.
+    // Source delete removes them (purge nodes does not). Best-effort.
+    try {
+      await databaseService.coverageWalkabout.deleteForSource(req.params.id);
+      walkaboutService.forgetSource(req.params.id);
+    } catch (walkaboutError) {
+      logger.warn(`Failed to purge walkabout data for deleted source ${req.params.id}:`, walkaboutError);
     }
 
     // #5245: a deleted source can no longer be the default Meshtastic source.
