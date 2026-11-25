@@ -39,6 +39,8 @@ import {
 } from '../../utils/coverage';
 import type { CoverageMetric } from '../../utils/coverage';
 import type { CoverageHopsMode, CoverageSurveyDto } from '../../types/coverage';
+import type { CoverageImportedMode } from '../../types/coverageImport';
+import type { SourcedCoverageImport } from '../../hooks/useCoverageImports';
 import {
   buildReceiverQuery,
   deselectedFromReceiverFilter,
@@ -68,10 +70,17 @@ import { CoverageSummaryPanel } from './CoverageSummaryPanel';
 import { CoverageDistanceChart } from './CoverageDistanceChart';
 import { CoverageExportButtons } from './CoverageExportButtons';
 import { CoverageSurveyBar } from './CoverageSurveyBar';
+import { CoverageImportButton } from './CoverageImportButton';
+import { CoverageImportsPanel } from './CoverageImportsPanel';
+import { CoverageImportedChip } from './CoverageImportedChip';
 import { CoverageWalkaboutPanel, WalkaboutViewButton } from './CoverageWalkabout';
 import { CoverageCrossSourceSummary } from './CoverageCrossSourceSummary';
 import SearchableSelect, { type SearchableSelectOption } from '../common/SearchableSelect';
 import styles from './CoverageReport.module.css';
+
+const DAY_MS = 86_400_000;
+/** Slack so a window that starts at the retention edge (the 7-day preset) does not count as reaching back. */
+const RETENTION_SLACK_MS = 3_600_000;
 
 const RANGE_PRESETS: Array<{ id: Exclude<CoverageRangePreset, 'custom'>; key: string; label: string }> = [
   { id: '1h', key: 'range_1h', label: '1 h' },
@@ -167,6 +176,12 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   // option handling above, just one tick later than a lazy `useState` can
   // reach (the list is a network fetch, not a prop already in hand).
   const [selectedSurvey, setSelectedSurvey] = useState<CoverageSurveyDto | null>(null);
+  // Imported rows (#5891 P3): shown by default, dashed on the map. `imported`
+  // is the Show/Hide/Only chip; `selectedImportId` narrows to one batch after
+  // "Show" in the imports panel. Like a survey, a manual window or sender
+  // change detaches it, and picking one detaches the other.
+  const [imported, setImported] = useState<CoverageImportedMode>('include');
+  const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const selectedSurveyId = selectedSurvey?.id ?? null;
   const appliedInitialSurveyRef = useRef(false);
 
@@ -184,6 +199,16 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   );
   const { sinceMs, untilMs, rangeInvalid } = timeWindow;
 
+  // The receivers list covers the retention window unless told otherwise, so a
+  // window reaching back further (an old import or survey) sends its own start
+  // (#5891 P3). Both inputs live in state: `reachBackAnchor` is set at mount
+  // and on Refresh, `knownRetentionDays` once the first response lands, so the
+  // query key never moves with `Date.now()` (the #5277 refetch-loop lesson).
+  const [reachBackAnchor, setReachBackAnchor] = useState(() => Date.now());
+  const [knownRetentionDays, setKnownRetentionDays] = useState<number | null>(null);
+  const receiversSinceMs =
+    knownRetentionDays != null && sinceMs < reachBackAnchor - knownRetentionDays * DAY_MS - RETENTION_SLACK_MS ? sinceMs : undefined;
+
   // A manual range or sender change is "changing the window/sender by hand"
   // (spec §2b.7) — it detaches whatever survey is currently applied. This
   // does NOT run when `applySurvey` itself sets these (it sets
@@ -192,6 +217,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     setPreset(id);
     setTimeWindow(resolveCoverageWindow(id, Date.now()));
     setSelectedSurvey(null);
+    setSelectedImportId(null);
   };
 
   /** Switches the UI to the custom from/to inputs WITHOUT resolving a new
@@ -205,15 +231,26 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const applyCustomRange = () => {
     setTimeWindow(resolveCoverageWindow('custom', Date.now(), customFrom, customTo));
     setSelectedSurvey(null);
+    setSelectedImportId(null);
   };
 
   const handleSenderChange = useCallback((id: string) => {
     setSenderId(id);
     setSelectedSurvey(null);
+    setSelectedImportId(null);
   }, []);
 
-  const receiversQuery = useCoverageReceivers([]);
-  const sendersQuery = useCoverageSenders({ sources: [], sinceMs, untilMs });
+  const importIdParam = selectedImportId ?? undefined;
+  const receiversQuery = useCoverageReceivers([], {
+    sinceMs: receiversSinceMs,
+    imported,
+    importId: importIdParam,
+  });
+  const sendersQuery = useCoverageSenders({ sources: [], sinceMs, untilMs, imported, importId: importIdParam });
+  const receiversRetentionDays = receiversQuery.data?.retentionDays;
+  useEffect(() => {
+    if (receiversRetentionDays != null) setKnownRetentionDays(receiversRetentionDays);
+  }, [receiversRetentionDays]);
 
   // senderId -> best display name, for CoverageMap's fix popup header.
   // Receptions/receivers carry no name; `/senders` is the only endpoint
@@ -349,6 +386,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const applySurvey = useCallback(
     (survey: CoverageSurveyDto) => {
       setSelectedSurvey(survey);
+      setSelectedImportId(null);
       setSenderId(survey.senderId);
       setTimeWindow({
         sinceMs: survey.startAt,
@@ -389,6 +427,23 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     if (found) applySurvey(found);
   }, [initialLink?.survey, surveysQuery.data, applySurvey]);
 
+  /** Show in the imports panel: that import's own span, all senders, all
+   *  receivers. Sets state directly, never through the wrapped setters that
+   *  would detach it again. */
+  const handleShowImport = useCallback((imp: SourcedCoverageImport) => {
+    if (imp.firstReceivedAt == null || imp.lastReceivedAt == null) return;
+    setSelectedImportId(imp.id);
+    setSelectedSurvey(null);
+    setSenderId('');
+    setDeselectedReceiverIds(new Set());
+    setImported('only');
+    setTimeWindow({ sinceMs: imp.firstReceivedAt, untilMs: imp.lastReceivedAt + 1, rangeInvalid: false });
+  }, []);
+
+  const handleImportDeleted = useCallback((importId: string) => {
+    setSelectedImportId((cur) => (cur === importId ? null : cur));
+  }, []);
+
   // The walkabout view costs one cells request, not the reception pages.
   const receptionsEnabled = !rangeInvalid && !noReceiversSelected && !isWalkabout;
   const receptionsQuery = useCoverageReceptions(
@@ -402,6 +457,8 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
       hops: hops === '' ? undefined : hops,
       hopsMode,
       crossSourceOnly: effectiveCrossSourceOnly,
+      imported,
+      importId: importIdParam,
     },
     receptionsEnabled,
   );
@@ -482,8 +539,8 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const fitKey = useMemo(() => {
     const receiversPart = allReceiversSelected ? 'all' : [...selectedReceiverKeys].sort().join(',');
     const rangePart = preset === 'custom' ? `custom:${customFrom}:${customTo}` : preset;
-    return `${senderId}|${receiversPart}|${hops}|${hopsMode}|${rangePart}|${effectiveCrossSourceOnly ? 'x' : ''}`;
-  }, [senderId, selectedReceiverKeys, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo, effectiveCrossSourceOnly]);
+    return `${senderId}|${receiversPart}|${hops}|${hopsMode}|${rangePart}|${effectiveCrossSourceOnly ? 'x' : ''}|${imported}|${selectedImportId ?? ''}`;
+  }, [senderId, selectedReceiverKeys, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo, effectiveCrossSourceOnly, imported, selectedImportId]);
 
   const isLoading = receiversQuery.isLoading || sendersQuery.isLoading || receptionsQuery.isLoading;
   const isEmpty = receptionsEnabled && !isLoading && items.length === 0;
@@ -510,13 +567,14 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     // §2b.7: "live -> now at resolve time; Refresh re-anchors") instead of
     // the preset — its `startAt` never moves, only how far `effectiveEndAt`
     // has crept since it was last resolved.
+    setReachBackAnchor(Date.now());
     if (selectedSurvey) {
       setTimeWindow({
         sinceMs: selectedSurvey.startAt,
         untilMs: effectiveSurveyEndAt(selectedSurvey, Date.now()),
         rangeInvalid: false,
       });
-    } else {
+    } else if (!selectedImportId) {
       setTimeWindow(resolveCoverageWindow(preset, Date.now(), customFrom, customTo));
     }
     void receiversQuery.refetch();
@@ -694,6 +752,8 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             </label>
           )}
 
+          {!isWalkabout && <CoverageImportedChip value={imported} onChange={setImported} />}
+
           <button type="button" className="reports-btn" onClick={handleRefresh} disabled={isLoading}>
             <UiIcon name="refresh" size={14} />
             {t('analysis.coverage.refresh', 'Refresh')}
@@ -710,6 +770,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
               disabled={items.length === 0}
             />
           )}
+          {!isWalkabout && <CoverageImportButton />}
         </div>
 
         <CoverageSurveyBar
@@ -720,6 +781,12 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
           currentReceiversEncoded={currentReceiversEncoded}
           selectedSurveyId={selectedSurveyId}
           onSelectSurvey={handleSelectSurvey}
+        />
+
+        <CoverageImportsPanel
+          selectedImportId={selectedImportId}
+          onShow={handleShowImport}
+          onDeleted={handleImportDeleted}
         />
 
         {!isWalkabout && (

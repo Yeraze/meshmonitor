@@ -245,3 +245,17 @@
 .showAllBtn {
   margin-top: 6px;
 }
+
+/* #5891 P3: a receiver heard only in imported rows. */
+.badgeImported {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px dashed var(--color-text-muted);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
