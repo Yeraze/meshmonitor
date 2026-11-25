@@ -77,6 +77,9 @@ export interface WalkaboutCounts {
   lastSampleAt: number | null;
 }
 
+/** Raw driver row; bigint columns may arrive as strings on PG/MySQL. */
+type Row = Record<string, unknown>;
+
 function requireSource(sourceId: string, method: string): void {
   if (!sourceId) throw new Error(`CoverageWalkaboutRepository.${method} requires a sourceId`);
 }
@@ -87,25 +90,25 @@ export class CoverageWalkaboutRepository extends BaseRepository {
   }
 
   /** Coerce bigint-capable columns (PG/MySQL may return strings) to numbers. */
-  private toSession(r: any): DbWalkaboutSession {
+  private toSession(r: Row): DbWalkaboutSession {
     return {
-      id: r.id,
-      sourceId: r.sourceId,
-      name: r.name ?? null,
+      id: r.id as string,
+      sourceId: r.sourceId as string,
+      name: (r.name as string | null) ?? null,
       startedAt: Number(r.startedAt),
       endedAt: r.endedAt == null ? null : Number(r.endedAt),
       endReason: (r.endReason ?? null) as WalkaboutEndReason | null,
-      startedBy: r.startedBy ?? null,
+      startedBy: (r.startedBy as number | null) ?? null,
       createdAt: Number(r.createdAt),
       updatedAt: Number(r.updatedAt),
     };
   }
 
-  private toSample(r: any): DbWalkaboutSample {
+  private toSample(r: Row): DbWalkaboutSample {
     return {
       id: Number(r.id),
-      sessionId: r.sessionId,
-      sourceId: r.sourceId,
+      sessionId: r.sessionId as string,
+      sourceId: r.sourceId as string,
       latitude: Number(r.latitude),
       longitude: Number(r.longitude),
       accuracyM: Number(r.accuracyM),
@@ -160,7 +163,7 @@ export class CoverageWalkaboutRepository extends BaseRepository {
       .orderBy(desc(t.startedAt))
       .limit(limit);
     if (rows.length === 0) return [];
-    const ids: string[] = rows.map((r: any) => r.id);
+    const ids: string[] = rows.map((r: Row) => r.id as string);
     const sampleRows = await this.db
       .select({ sessionId: smp.sessionId, n: count(), last: max(smp.receivedAt) })
       .from(smp)
@@ -171,11 +174,11 @@ export class CoverageWalkaboutRepository extends BaseRepository {
       .from(rx)
       .where(and(inArray(rx.sessionId, ids), this.withSourceScope(rx, sourceId)))
       .groupBy(rx.sessionId);
-    const sMap = new Map<string, any>(sampleRows.map((r: any) => [r.sessionId, r]));
-    const rMap = new Map<string, any>(rxRows.map((r: any) => [r.sessionId, r]));
-    return rows.map((r: any) => {
-      const s = sMap.get(r.id);
-      const x = rMap.get(r.id);
+    const sMap = new Map<string, Row>(sampleRows.map((r: Row) => [r.sessionId as string, r]));
+    const rMap = new Map<string, Row>(rxRows.map((r: Row) => [r.sessionId as string, r]));
+    return rows.map((r: Row) => {
+      const s = sMap.get(r.id as string);
+      const x = rMap.get(r.id as string);
       return {
         ...this.toSession(r),
         sampleCount: s ? Number(s.n) : 0,
@@ -190,7 +193,7 @@ export class CoverageWalkaboutRepository extends BaseRepository {
   async getOpenSessionsAllSources(): Promise<DbWalkaboutSession[]> {
     const { coverageWalkaboutSessions: t } = this.tables;
     const rows = await this.db.select().from(t).where(isNull(t.endedAt)).orderBy(desc(t.startedAt));
-    return rows.map((r: any) => this.toSession(r));
+    return rows.map((r: Row) => this.toSession(r));
   }
 
   /** `WHERE endedAt IS NULL`; true when a row was ended. */
