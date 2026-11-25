@@ -446,6 +446,7 @@ doesn't know never appears, even for an admin.
   card lives in
 - [Map Analysis](./map-analysis) — the positions layer this report reuses
   the same visibility rules from
+- [Walkabout](./walkabout) — walk with your phone to measure what a source radio hears
 - [Packet Monitor](./packet-monitor) — the opt-in per-source packet logs,
   a different feature with its own retention model
 - [Global Settings](./global-settings) — where the retention window is configured
