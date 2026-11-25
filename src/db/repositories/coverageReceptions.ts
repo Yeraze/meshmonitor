@@ -18,10 +18,12 @@
  * all require an explicit `sourceIds` allow-list — an empty list returns an
  * empty result rather than falling through to "every source".
  */
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, not, notInArray, or, sql, SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, not, notInArray, or, sql, SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import type { CoverageReceiverFilterEntry } from '../../utils/coverageReceiverFilter.js';
+import type { CoverageImportedMode, ParsedCoverageImportRow } from '../../types/coverageImport.js';
+import { COVERAGE_IMPORT_INSERT_CHUNK } from '../../utils/coverageImport.js';
 
 export interface DbCoverageReception {
   id: number;
@@ -51,6 +53,8 @@ export interface DbCoverageReception {
   channel: number | null;
   rxTime: number | null;
   receivedAt: number;
+  /** null = recorded live; set = imported (#5891 P3), exempt from retention. */
+  importId: string | null;
 }
 
 export interface RecordCoverageReceptionParams {
@@ -107,6 +111,10 @@ export interface GetCoverageReceptionsArgs {
   hopsMode?: CoverageHopsMode;
   pageSize: number;
   cursor?: string | null;
+  /** Imported-row filter (#5891 P3); default `'include'`. */
+  imported?: CoverageImportedMode;
+  /** Only this import batch (implies imported rows only). */
+  importId?: string;
 }
 
 export interface CoverageReceptionsPage {
@@ -127,6 +135,8 @@ export interface GetCoverageReceiversArgs {
    * original P1/P2 behaviour.
    */
   untilMs?: number;
+  imported?: CoverageImportedMode;
+  importId?: string;
 }
 
 export interface CoverageReceiverRow {
@@ -140,6 +150,9 @@ export interface CoverageReceiverRow {
   receiverLongitude: number | null;
   /** Reception rows for this receiver in the window (#5277 P2 §2.3). */
   receptionCount: number;
+  /** Rows in the group that were imported / recorded live (#5891 P3). */
+  importedRows: number;
+  liveRows: number;
 }
 
 export interface GetCoverageSenderSummaryArgs {
@@ -147,6 +160,8 @@ export interface GetCoverageSenderSummaryArgs {
   sinceMs: number;
   untilMs: number;
   limit: number;
+  imported?: CoverageImportedMode;
+  importId?: string;
 }
 
 export interface CoverageSenderSummaryRow {
@@ -155,6 +170,8 @@ export interface CoverageSenderSummaryRow {
   senderNodeNum: number | null;
   fixCount: number;
   lastReceivedAt: number;
+  importedRows: number;
+  liveRows: number;
 }
 
 /**
@@ -236,7 +253,17 @@ export class CoverageReceptionsRepository extends BaseRepository {
       channel: row.channel == null ? null : Number(row.channel),
       rxTime: row.rxTime == null ? null : Number(row.rxTime),
       receivedAt: Number(row.receivedAt),
+      importId: row.importId ?? null,
     };
+  }
+
+  /** WHERE clause for the `imported` / `importId` read filters (#5891 P3). */
+  private importedClause(imported: CoverageImportedMode | undefined, importId: string | undefined): SQL | undefined {
+    const { coverageReceptions } = this.tables;
+    if (importId) return eq(coverageReceptions.importId, importId);
+    if (imported === 'exclude') return isNull(coverageReceptions.importId);
+    if (imported === 'only') return isNotNull(coverageReceptions.importId);
+    return undefined;
   }
 
   /**
@@ -400,6 +427,8 @@ export class CoverageReceptionsRepository extends BaseRepository {
       }
       conditions.push(inArray(coverageReceptions.senderId, args.senderIds));
     }
+    const importedClause = this.importedClause(args.imported, args.importId);
+    if (importedClause) conditions.push(importedClause);
     if (args.hops !== undefined && args.hops !== null) {
       conditions.push(isNotNull(coverageReceptions.hopsAway));
       conditions.push(
@@ -479,6 +508,8 @@ export class CoverageReceptionsRepository extends BaseRepository {
     if (args.untilMs !== undefined) {
       windowConditions.push(lte(coverageReceptions.receivedAt, args.untilMs));
     }
+    const receiversImported = this.importedClause(args.imported, args.importId);
+    if (receiversImported) windowConditions.push(receiversImported);
 
     const groups = await this.db
       .select({
@@ -489,6 +520,8 @@ export class CoverageReceptionsRepository extends BaseRepository {
         protocol: sql<string>`MAX(${coverageReceptions.protocol})`,
         lastReceivedAt: sql<number>`MAX(${coverageReceptions.receivedAt})`,
         receptionCount: count(),
+        importedRows: sql<number>`SUM(CASE WHEN ${coverageReceptions.importId} IS NULL THEN 0 ELSE 1 END)`,
+        liveRows: sql<number>`SUM(CASE WHEN ${coverageReceptions.importId} IS NULL THEN 1 ELSE 0 END)`,
         lastSnapAt: sql<number | null>`MAX(CASE WHEN ${coverageReceptions.receiverLatitude} IS NOT NULL THEN ${coverageReceptions.receivedAt} END)`,
       })
       .from(coverageReceptions)
@@ -572,6 +605,8 @@ export class CoverageReceptionsRepository extends BaseRepository {
         receiverNodeNum: nodeNum,
         lastReceivedAt: Number(g.lastReceivedAt),
         receptionCount: Number(g.receptionCount),
+        importedRows: Number(g.importedRows ?? 0),
+        liveRows: Number(g.liveRows ?? 0),
         receiverLatitude: snap ? snap.receiverLatitude : null,
         receiverLongitude: snap ? snap.receiverLongitude : null,
       };
@@ -599,12 +634,15 @@ export class CoverageReceptionsRepository extends BaseRepository {
         senderNodeNum: coverageReceptions.senderNodeNum,
         fixCount: sql<number>`COUNT(DISTINCT ${coverageReceptions.packetKey})`,
         lastReceivedAt: sql<number>`MAX(${coverageReceptions.receivedAt})`,
+        importedRows: sql<number>`SUM(CASE WHEN ${coverageReceptions.importId} IS NULL THEN 0 ELSE 1 END)`,
+        liveRows: sql<number>`SUM(CASE WHEN ${coverageReceptions.importId} IS NULL THEN 1 ELSE 0 END)`,
       })
       .from(coverageReceptions)
       .where(and(
         inArray(coverageReceptions.sourceId, args.sourceIds),
         gte(coverageReceptions.receivedAt, args.sinceMs),
         lte(coverageReceptions.receivedAt, args.untilMs),
+        this.importedClause(args.imported, args.importId),
       ))
       .groupBy(coverageReceptions.sourceId, coverageReceptions.senderId, coverageReceptions.senderNodeNum)
       .orderBy(sql`MAX(${coverageReceptions.receivedAt}) DESC`)
@@ -616,6 +654,8 @@ export class CoverageReceptionsRepository extends BaseRepository {
       senderNodeNum: r.senderNodeNum == null ? null : Number(r.senderNodeNum),
       fixCount: Number(r.fixCount ?? 0),
       lastReceivedAt: Number(r.lastReceivedAt ?? 0),
+      importedRows: Number(r.importedRows ?? 0),
+      liveRows: Number(r.liveRows ?? 0),
     }));
   }
 
@@ -634,7 +674,8 @@ export class CoverageReceptionsRepository extends BaseRepository {
   async purgeOlderThan(cutoffMs: number, exemptions: CoverageRetentionExemptionWindow[] = []): Promise<number> {
     const { coverageReceptions } = this.tables;
 
-    const conditions: SQL[] = [lt(coverageReceptions.receivedAt, cutoffMs)];
+    // Imported rows (#5891 P3) are kept until their import is deleted.
+    const conditions: SQL[] = [lt(coverageReceptions.receivedAt, cutoffMs), isNull(coverageReceptions.importId)];
 
     if (exemptions.length > 0) {
       // One clause per survey — `COVERAGE_SURVEY_MAX_TOTAL` (500) bounds how
@@ -686,10 +727,11 @@ export class CoverageReceptionsRepository extends BaseRepository {
     const combined = or(...clauses);
     if (!combined) return [];
 
+    // Imported rows are exported by exportImportedReceptionsPage (no double export).
     const rows = await this.db
       .select()
       .from(coverageReceptions)
-      .where(combined);
+      .where(and(combined, isNull(coverageReceptions.importId)));
 
     return (rows as any[]).map((r) => { // eslint-disable-line @typescript-eslint/no-explicit-any -- Drizzle cross-dialect row shape
       const { id: _id, ...rest } = this.mapReception(r);
@@ -700,23 +742,138 @@ export class CoverageReceptionsRepository extends BaseRepository {
   /**
    * Delete every reception row for one source — used on source deletion and
    * per-source "purge nodes". Throws on an empty sourceId (fail-closed, same
-   * convention as `withSourceScope`).
+   * convention as `withSourceScope`). `keepImported` (#5891 P3, Q6) spares
+   * imported rows: purge keeps them, source delete removes them via
+   * `CoverageImportsRepository.deleteForSource`.
    */
-  async deleteForSource(sourceId: string): Promise<number> {
+  async deleteForSource(sourceId: string, opts?: { keepImported?: boolean }): Promise<number> {
     if (!sourceId) {
       throw new Error('CoverageReceptionsRepository.deleteForSource requires a sourceId');
     }
     const { coverageReceptions } = this.tables;
     const result = await this.db
       .delete(coverageReceptions)
-      .where(eq(coverageReceptions.sourceId, sourceId));
+      .where(and(
+        eq(coverageReceptions.sourceId, sourceId),
+        opts?.keepImported ? isNull(coverageReceptions.importId) : undefined,
+      ));
     return this.getAffectedRows(result);
   }
 
   /** Delete every reception row, across every source (global "purge all nodes"). */
-  async deleteAll(): Promise<number> {
+  async deleteAll(opts?: { keepImported?: boolean }): Promise<number> {
     const { coverageReceptions } = this.tables;
-    const result = await this.db.delete(coverageReceptions);
+    const q = this.db.delete(coverageReceptions);
+    const result = opts?.keepImported
+      ? await q.where(isNull(coverageReceptions.importId))
+      : await q;
     return this.getAffectedRows(result);
+  }
+
+  /**
+   * Insert imported rows (#5891 P3) in chunks, skipping rows that hit the
+   * unique key. Returns the number actually inserted. Unlike `insertIgnore`,
+   * a duplicate mid-chunk never loses the rest: SQLite/PG use
+   * `ON CONFLICT DO NOTHING`, MySQL uses `INSERT IGNORE` (whose affectedRows
+   * counts only inserted rows).
+   */
+  async insertImportedRows(sourceId: string, importId: string, rows: ParsedCoverageImportRow[]): Promise<number> {
+    if (!sourceId) throw new Error('CoverageReceptionsRepository.insertImportedRows requires a sourceId');
+    if (!importId) throw new Error('CoverageReceptionsRepository.insertImportedRows requires an importId');
+    const { coverageReceptions } = this.tables;
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += COVERAGE_IMPORT_INSERT_CHUNK) {
+      const values = rows.slice(i, i + COVERAGE_IMPORT_INSERT_CHUNK).map((r) => ({
+        sourceId,
+        importId,
+        protocol: r.protocol,
+        receiverKind: r.receiverKind,
+        receiverId: r.receiverId,
+        receiverNodeNum: r.receiverNodeNum,
+        receiverLatitude: r.receiverLatitude,
+        receiverLongitude: r.receiverLongitude,
+        senderId: r.senderId,
+        senderNodeNum: r.senderNodeNum,
+        packetKey: r.packetKey,
+        packetId: r.packetId,
+        pathKey: r.pathKey,
+        latitude: r.latitude,
+        longitude: r.longitude,
+        altitude: r.altitude,
+        precisionBits: r.precisionBits,
+        snr: r.snr,
+        rssi: r.rssi,
+        hopStart: r.hopStart,
+        hopLimit: r.hopLimit,
+        hopsAway: r.hopsAway,
+        relayNode: r.relayNode,
+        transportMechanism: null,
+        channel: r.channel,
+        rxTime: null,
+        receivedAt: r.receivedAt,
+      }));
+      if (values.length === 0) continue;
+      const result = this.isMySQL()
+        ? await this.getMysqlDb().insert(coverageReceptions as any).ignore().values(values) // eslint-disable-line @typescript-eslint/no-explicit-any -- dialect-union table
+        : await (this.db as any).insert(coverageReceptions).values(values).onConflictDoNothing(); // eslint-disable-line @typescript-eslint/no-explicit-any -- dialect-union builder
+      inserted += this.getAffectedRows(result);
+    }
+    return inserted;
+  }
+
+  /** Delete one import's rows (per-source scoped). Returns rows deleted. */
+  async deleteImportRows(sourceId: string, importId: string): Promise<number> {
+    if (!sourceId) throw new Error('CoverageReceptionsRepository.deleteImportRows requires a sourceId');
+    if (!importId) throw new Error('CoverageReceptionsRepository.deleteImportRows requires an importId');
+    const { coverageReceptions } = this.tables;
+    const result = await this.db
+      .delete(coverageReceptions)
+      .where(and(eq(coverageReceptions.sourceId, sourceId), eq(coverageReceptions.importId, importId)));
+    return this.getAffectedRows(result);
+  }
+
+  /** Delete every imported row of one source (source delete, #5891 P3 §2.8). */
+  async deleteImportedForSource(sourceId: string): Promise<number> {
+    if (!sourceId) throw new Error('CoverageReceptionsRepository.deleteImportedForSource requires a sourceId');
+    const { coverageReceptions } = this.tables;
+    const result = await this.db
+      .delete(coverageReceptions)
+      .where(and(eq(coverageReceptions.sourceId, sourceId), isNotNull(coverageReceptions.importId)));
+    return this.getAffectedRows(result);
+  }
+
+  /** Imported-row count for one source (per-source row cap). */
+  async countImportedRows(sourceId: string): Promise<number> {
+    if (!sourceId) throw new Error('CoverageReceptionsRepository.countImportedRows requires a sourceId');
+    const { coverageReceptions } = this.tables;
+    const rows = await this.db
+      .select({ n: count() })
+      .from(coverageReceptions)
+      .where(and(eq(coverageReceptions.sourceId, sourceId), isNotNull(coverageReceptions.importId)));
+    return Number((rows as any[])[0]?.n ?? 0); // eslint-disable-line @typescript-eslint/no-explicit-any -- dialect-union row
+  }
+
+  /**
+   * Backup export page (#5891 P3 §3.6): imported rows across ALL sources
+   * (backup is cross-source by design), keyset-paged on `id`, ids stripped
+   * from the output. `lastId` is the next `afterId`; null when the page is empty.
+   */
+  async exportImportedReceptionsPage(
+    afterId: number,
+    limit: number,
+  ): Promise<{ rows: Omit<DbCoverageReception, 'id'>[]; lastId: number | null }> {
+    const { coverageReceptions } = this.tables;
+    const page = await this.db
+      .select()
+      .from(coverageReceptions)
+      .where(and(isNotNull(coverageReceptions.importId), gt(coverageReceptions.id, afterId)))
+      .orderBy(asc(coverageReceptions.id))
+      .limit(Math.max(1, Math.trunc(limit)));
+    const mapped = (page as any[]).map((r) => this.mapReception(r)); // eslint-disable-line @typescript-eslint/no-explicit-any -- dialect-union rows
+    const last = mapped[mapped.length - 1];
+    return {
+      rows: mapped.map(({ id: _id, ...rest }) => rest),
+      lastId: last ? last.id : null,
+    };
   }
 }

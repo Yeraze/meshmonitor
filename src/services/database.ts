@@ -83,6 +83,7 @@ import {
   MeshCoreAdminSessionsRepository,
   PasskeysRepository,
   CoverageReceptionsRepository,
+  CoverageImportsRepository,
   CrossSourceLinksRepository,
   DirectRfContactsRepository,
   CoverageSurveysRepository,
@@ -679,6 +680,7 @@ class DatabaseService {
   public meshcoreAdminSessionsRepo: MeshCoreAdminSessionsRepository | null = null;
   public passkeysRepo: PasskeysRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
+  public coverageImportsRepo: CoverageImportsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
   public coverageWalkaboutRepo: CoverageWalkaboutRepository | null = null;
   public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
@@ -834,6 +836,12 @@ class DatabaseService {
   get coverageReceptions(): CoverageReceptionsRepository {
     if (!this.coverageReceptionsRepo) throw new Error('Database not initialized');
     return this.coverageReceptionsRepo;
+  }
+
+  /** Imported Coverage Report files (#5891 P3). */
+  get coverageImports(): CoverageImportsRepository {
+    if (!this.coverageImportsRepo) throw new Error('Database not initialized');
+    return this.coverageImportsRepo;
   }
 
   get crossSourceLinks(): CrossSourceLinksRepository {
@@ -1344,6 +1352,7 @@ class DatabaseService {
       this.meshcoreAdminSessionsRepo = new MeshCoreAdminSessionsRepository(drizzleDb, this.drizzleDbType);
       this.passkeysRepo = new PasskeysRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
+      this.coverageImportsRepo = new CoverageImportsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
       this.coverageWalkaboutRepo = new CoverageWalkaboutRepository(drizzleDb, this.drizzleDbType);
       this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);
@@ -4114,9 +4123,11 @@ class DatabaseService {
       if (this.coverageReceptionsRepo) {
         try {
           if (sourceId) {
-            await this.coverageReceptionsRepo.deleteForSource(sourceId);
+            // Imported rows (#5891 P3, Q6) are user data: purge keeps them.
+            // Source delete removes them via coverageImports.deleteForSource.
+            await this.coverageReceptionsRepo.deleteForSource(sourceId, { keepImported: true });
           } else {
-            await this.coverageReceptionsRepo.deleteAll();
+            await this.coverageReceptionsRepo.deleteAll({ keepImported: true });
           }
         } catch (err) {
           logger.error('Failed to purge coverage receptions during purge:', err);

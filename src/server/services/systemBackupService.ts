@@ -59,10 +59,20 @@ export { BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, BACKUP_SECRET_TABLES };
  * `onConflictDoNothing()` would otherwise silently drop future receptions
  * whose fresh id collides with a restored one.
  */
-const FILTERED_EXPORTERS: Record<string, () => Promise<unknown[]>> = {
-  coverage_receptions: async () => {
+const FILTERED_EXPORTERS: Record<string, () => AsyncIterable<BackupRow[]>> = {
+  // Survey rows (bounded by the survey caps), then imported rows (#5891 P3)
+  // paged by keyset on `id` so up to 200k rows per source never sit in memory.
+  coverage_receptions: async function* () {
     const windows = await databaseService.coverageSurveys.getExemptionWindows(Date.now());
-    return databaseService.coverageReceptions.exportSurveyReceptions(windows);
+    const surveyRows = await databaseService.coverageReceptions.exportSurveyReceptions(windows);
+    yield* inBatches(surveyRows as BackupRow[], BACKUP_BATCH_ROWS);
+    let afterId = 0;
+    for (;;) {
+      const { rows, lastId } = await databaseService.coverageReceptions.exportImportedReceptionsPage(afterId, BACKUP_BATCH_ROWS);
+      if (lastId === null) return;
+      yield rows as BackupRow[];
+      afterId = lastId;
+    }
   },
 };
 
@@ -262,8 +272,7 @@ class SystemBackupService {
     try {
       const filteredExporter = FILTERED_EXPORTERS[tableName];
       if (filteredExporter) {
-        // Bounded by the saved surveys' windows, not by the table.
-        yield* inBatches((await filteredExporter()) as BackupRow[], BACKUP_BATCH_ROWS);
+        yield* filteredExporter();
         return;
       }
       yield* session.batches(tableName);
