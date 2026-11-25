@@ -70,6 +70,7 @@
     "express-mysql-session": "^3.0.3",
     "express-rate-limit": "^8.7.5",
     "express-session": "^1.19.0",
+    "h3-js": "4.5.0",
     "helmet": "^8.3.0",
     "i18next": "^27.2.2",
     "i18next-browser-languagedetector": "^8.3.1",

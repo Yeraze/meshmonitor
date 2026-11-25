@@ -125,6 +125,66 @@ function runShared(getRepo: () => CoverageWalkaboutRepository) {
     expect((await repo.getCounts('src-b', 's9')).samples).toBe(1);
   });
 
+  it('listSessionsInRange prefilters by startedAt, newest first, and scopes by source', async () => {
+    const repo = getRepo();
+    const H = 3_600_000;
+    await start('old3h', NOW - 3 * H);
+    await start('old1h', NOW - H);
+    await start('inside', NOW + 1000);
+    await start('future', NOW + 10 * H);
+    await start('other', NOW, 'src-b');
+    const ids = (await repo.listSessionsInRange('src-a', NOW, NOW + 5000, 10)).map((s) => s.id);
+    expect(ids).toEqual(['inside', 'old1h']);
+    expect((await repo.listSessionsInRange('src-a', NOW, NOW + 5000, 1)).map((s) => s.id)).toEqual(['inside']);
+  });
+
+  it('getReceptionPoints filters, orders newest first, caps, and coerces numbers', async () => {
+    const repo = getRepo();
+    await start('s1');
+    await start('s2');
+    await start('sb', NOW, 'src-b');
+    const rows: Array<[string, Partial<NewWalkaboutReception>]> = [
+      ['s1', { packetKey: 'a', heardAt: NOW + 10, latitude: 40.1, longitude: -105.1 }],
+      ['s1', { packetKey: 'b', heardAt: NOW + 20, creditedKey: '!bbbbbbbb', creditedNodeNum: 0xbbbbbbbb, snr: null, latitude: 41, longitude: -105.1 }],
+      ['s2', { packetKey: 'c', heardAt: NOW + 30, latitude: 40.1, longitude: -105.1 }],
+      ['s2', { packetKey: 'd', heardAt: NOW + 5000, latitude: 40.1, longitude: -105.1 }],
+    ];
+    for (const [sid, o] of rows) await repo.recordReception(reception(sid, o));
+    await repo.recordReception(reception('sb', { sourceId: 'src-b', packetKey: 'x', heardAt: NOW + 10 }));
+    const base = { sessionIds: ['s1', 's2'], sinceMs: NOW, untilMs: NOW + 100, limit: 100 };
+    const all = await repo.getReceptionPoints('src-a', base);
+    expect(all.map((r) => r.heardAt)).toEqual([NOW + 30, NOW + 20, NOW + 10]);
+    expect(all[2].creditedNodeNum).toBe(BIG_NODE_NUM);
+    expect(typeof all[2].heardAt).toBe('number');
+    expect(all[2].snr).toBe(5.5);
+    expect(all[1].snr).toBeNull();
+    expect((await repo.getReceptionPoints('src-a', { ...base, limit: 2 })).map((r) => r.heardAt)).toEqual([NOW + 30, NOW + 20]);
+    expect((await repo.getReceptionPoints('src-a', { ...base, sessionIds: ['s1'] })).length).toBe(2);
+    expect((await repo.getReceptionPoints('src-a', { ...base, creditedKey: '!bbbbbbbb' })).length).toBe(1);
+    expect((await repo.getReceptionPoints('src-a', { ...base, bbox: { south: 40, north: 40.5, west: -106, east: -105 } })).length).toBe(2);
+    expect((await repo.getReceptionPoints('src-a', { ...base, sinceMs: NOW + 15, untilMs: NOW + 25 })).length).toBe(1);
+    expect(await repo.getReceptionPoints('src-a', { ...base, sessionIds: [] })).toEqual([]);
+    expect(await repo.getReceptionPoints('src-a', { ...base, sessionIds: ['sb'] })).toEqual([]);
+  });
+
+  it('getSamplePoints filters on fixAt, orders newest first, caps, and handles an antimeridian bbox', async () => {
+    const repo = getRepo();
+    await start('s1');
+    await repo.insertSample(sample('s1', { fixAt: NOW + 10, latitude: 10, longitude: 179.9 }));
+    await repo.insertSample(sample('s1', { fixAt: NOW + 20, latitude: 10, longitude: -179.9 }));
+    await repo.insertSample(sample('s1', { fixAt: NOW + 30, latitude: 10, longitude: 0 }));
+    await repo.insertSample(sample('s1', { fixAt: NOW + 9000, receivedAt: NOW, latitude: 10, longitude: 0 }));
+    const base = { sessionIds: ['s1'], sinceMs: NOW, untilMs: NOW + 100, limit: 100 };
+    const all = await repo.getSamplePoints('src-a', base);
+    expect(all.map((r) => r.fixAt)).toEqual([NOW + 30, NOW + 20, NOW + 10]);
+    expect(typeof all[0].latitude).toBe('number');
+    expect((await repo.getSamplePoints('src-a', { ...base, limit: 1 })).map((r) => r.fixAt)).toEqual([NOW + 30]);
+    const wrap = await repo.getSamplePoints('src-a', { ...base, bbox: { south: 9, north: 11, west: 179, east: -179 } });
+    expect(wrap.map((r) => r.fixAt)).toEqual([NOW + 20, NOW + 10]);
+    expect(await repo.getSamplePoints('src-a', { ...base, sessionIds: [] })).toEqual([]);
+    expect(await repo.getSamplePoints('src-b', base)).toEqual([]);
+  });
+
   it('refuses an empty sourceId', async () => {
     await expect(getRepo().getSession('', 's1')).rejects.toThrow(/sourceId/);
   });

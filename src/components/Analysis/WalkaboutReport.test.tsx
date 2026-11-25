@@ -34,6 +34,14 @@ vi.mock('../../services/walkaboutApi', () => ({
   deleteWalkabout: (...a: unknown[]) => deleteWalkabout(...a),
 }));
 
+const mapPanelProps = vi.fn();
+vi.mock('./walkaboutHexMapLazy', () => ({
+  WalkaboutHexMapLazy: (props: unknown) => {
+    mapPanelProps(props);
+    return <div data-testid="hex-map-stub" />;
+  },
+}));
+
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
   return createReactI18nextMock();
@@ -143,11 +151,56 @@ describe('WalkaboutReport', () => {
     expect((screen.getByTestId('walkabout-start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('picker lists only Meshtastic/MeshCore sources with write', async () => {
+  it('picker lists only Meshtastic/MeshCore sources with read', async () => {
     renderReport();
     await flush();
     const names = within(screen.getByTestId('walkabout-source')).getAllByRole('option').map((o) => o.textContent);
-    expect(names).toEqual(['Alpha', 'Beta MC']);
+    expect(names).toEqual(['Alpha', 'Beta MC', 'ReadOnly']);
+  });
+
+  it('write on A, read-only on B: both listed, Start only where writable', async () => {
+    renderReport();
+    await flush();
+    // Default is the first writable source.
+    expect((screen.getByTestId('walkabout-source') as HTMLSelectElement).value).toBe('a');
+    expect(screen.getByTestId('walkabout-start')).toBeTruthy();
+    fireEvent.change(screen.getByTestId('walkabout-source'), { target: { value: 'r' } });
+    await flush();
+    expect(screen.queryByTestId('walkabout-start')).toBeNull();
+    expect(screen.queryByTestId('walkabout-resume')).toBeNull();
+  });
+
+  it('defaults to the first readable source when none is writable', async () => {
+    hasPermission.mockImplementation((_r: string, action: string) => action === 'read');
+    renderReport();
+    await flush();
+    expect((screen.getByTestId('walkabout-source') as HTMLSelectElement).value).toBe('a');
+  });
+
+  it('the map panel is not mounted while walking, and mounts after stop', async () => {
+    renderReport();
+    await flush();
+    expect(screen.getByTestId('walkabout-map-panel')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('walkabout-start'));
+    fireEvent.click(screen.getByTestId('walkabout-confirm-start'));
+    await flush();
+    expect(screen.queryByTestId('walkabout-map-panel')).toBeNull();
+    expect(screen.queryByTestId('hex-map-stub')).toBeNull();
+    expect(screen.getByTestId('walkabout-map-while-walking')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('walkabout-stop'));
+    await flush();
+    expect(screen.getByTestId('walkabout-map-panel')).toBeTruthy();
+  });
+
+  it('the Map button on a finished session opens the panel on that session', async () => {
+    fetchWalkaboutSessions.mockResolvedValue([session({ id: 's9', isLive: false, endedAt: NOW + 60_000, name: 'Loop' })]);
+    renderReport();
+    await flush();
+    fireEvent.click(screen.getByTestId('walkabout-map-button'));
+    await flush();
+    expect(mapPanelProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sourceId: 'a', query: { kind: 'session', sessionId: 's9' } }),
+    );
   });
 
   it('read-only user sees the list but no Start', async () => {
@@ -156,7 +209,7 @@ describe('WalkaboutReport', () => {
     renderReport();
     await flush();
     expect(screen.queryByTestId('walkabout-start')).toBeNull();
-    expect(screen.getByText('Loop')).toBeTruthy();
+    expect(within(screen.getByTestId('walkabout-sessions')).getByText('Loop')).toBeTruthy();
     expect(screen.queryByTestId('walkabout-delete')).toBeNull();
   });
 

@@ -33,6 +33,14 @@ describe('CoverageWalkaboutRepository — per-source isolation', () => {
     expect(await repo.getLatestSample('src-a', 'b1')).toBeNull();
   });
 
+  it('map reads with another source\'s session id return nothing', async () => {
+    const q = { sessionIds: ['b1'], sinceMs: NOW - 1, untilMs: NOW + 1, limit: 10 };
+    expect(await repo.getReceptionPoints('src-a', q)).toEqual([]);
+    expect(await repo.getSamplePoints('src-a', q)).toEqual([]);
+    expect((await repo.getReceptionPoints('src-b', q)).length).toBe(1);
+    expect((await repo.listSessionsInRange('src-a', NOW, NOW, 10)).map((x) => x.id)).toEqual(['a1']);
+  });
+
   it('writes with the wrong source do nothing', async () => {
     expect(await repo.endSession('src-a', 'b1', NOW + 1, 'user')).toBe(false);
     expect(await repo.deleteSession('src-a', 'b1')).toBe(false);

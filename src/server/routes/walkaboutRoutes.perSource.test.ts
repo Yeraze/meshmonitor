@@ -54,6 +54,26 @@ describe('walkaboutRoutes per-source isolation', () => {
     expect(liveB.body.data.session.id).toBe(b);
   });
 
+  it("map routes: B's session is a 404 under A and window reads never include B's rows", async () => {
+    const admin = await h.loginAs(h.admin);
+    const t = Date.now() - 600_000;
+    const repo = h.db.coverageWalkabout;
+    await repo.createSession({ id: 'mb', sourceId: h.sourceB, name: null, startedAt: t, startedBy: null });
+    await repo.endSession(h.sourceB, 'mb', t + 60_000, 'user');
+    await repo.insertSample({
+      sessionId: 'mb', sourceId: h.sourceB, latitude: 40, longitude: -105, accuracyM: 5,
+      deviceFixAt: t, fixAt: t + 10, receivedAt: t + 10,
+    });
+    const u = (src: string, p: string) => `/api/sources/${src}/walkabout${p}`;
+    const cell = 'x';
+    expect((await admin.get(u(h.sourceA, '/cells?sessionId=mb'))).status).toBe(404);
+    expect((await admin.get(u(h.sourceA, `/cell-nodes?sessionId=mb&cell=${cell}`))).status).toBe(400);
+    expect((await admin.get(u(h.sourceA, '/sessions/mb/track'))).status).toBe(404);
+    expect((await admin.get(u(h.sourceA, '/cells?window=24h'))).body.data.cells).toEqual([]);
+    expect((await admin.get(u(h.sourceB, '/cells?window=24h'))).body.data.cells).toHaveLength(1);
+    expect((await admin.get(u(h.sourceB, '/sessions/mb/track'))).body.data.positions).toEqual([[40, -105]]);
+  });
+
   it('deleting a source removes its walkabout rows (and leaves the other source)', async () => {
     const admin = await h.loginAs(h.admin);
     const a = (await admin.post(base(h.sourceA)).send({})).body.data.session.id;

@@ -37,8 +37,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import L from 'leaflet';
-import { CircleMarker, Polyline, Popup, Rectangle, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, Polyline, Popup, Rectangle, Tooltip, useMapEvents } from 'react-leaflet';
 import { BaseMap } from '../map/BaseMap';
+import { FitBoundsOnce } from '../map/FitBoundsOnce';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useBaseMapSettings } from '../map/useBaseMapSettings';
 import { snrToColor, rssiToColor } from '../../utils/mapHelpers';
@@ -145,29 +146,6 @@ function meshCorePathLabel(r: CoverageReceptionDto, t: ReturnType<typeof useTran
   return t('analysis.coverage.relayed_unknown', 'Relayed ({{hops}} hops)', { hops: r.hopsAway });
 }
 
-/** Fit the map view to every fix + visible receiver, once per FILTER SET
- *  (`fitKey`, built by the caller from sender/receivers/hops/hopsMode/time
- *  range — never the refresh anchor). A manual Refresh re-fetches the same
- *  filter set on a new `points` array reference, which must NOT yank the
- *  view out from under a user who has since panned/zoomed; only a change to
- *  the filters themselves (a new `fitKey`) re-fits. */
-const FitCoverageBounds: React.FC<{ points: Array<[number, number]>; fitKey: string }> = ({ points, fitKey }) => {
-  const map = useMap();
-  const lastFittedKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (points.length === 0) return;
-    if (lastFittedKeyRef.current === fitKey) return;
-    lastFittedKeyRef.current = fitKey;
-    if (points.length === 1) {
-      map.setView(points[0], 13);
-      return;
-    }
-    const bounds = L.latLngBounds(points);
-    if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-  }, [map, points, fitKey]);
-  return null;
-};
-
 const RECEIVER_RADIUS = 9;
 const GATEWAY_RADIUS = 6;
 const FIX_RADIUS = 6;
@@ -228,7 +206,7 @@ interface CoverageMapProps {
   senderNames: Map<string, string>;
   /** Identifies the current filter set (sender, receivers, hops, hopsMode,
    *  time preset/custom range) but NOT the refresh anchor — see
-   *  `FitCoverageBounds`. The map view re-fits when this changes, not on
+   *  `FitBoundsOnce`. The map view re-fits when this changes, not on
    *  every `fixes`/`receivers` update. */
   fitKey: string;
   /** Likely-gap polylines (#5277 P4a WP2, spec §2a.6). Drawn under the
@@ -352,7 +330,7 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
         scrollWheelZoom
         preferCanvas
       >
-        <FitCoverageBounds points={boundsPoints} fitKey={fitKey} />
+        <FitBoundsOnce points={boundsPoints} fitKey={fitKey} />
 
         {/* Gap lines drawn first so they sit UNDER every marker/rectangle
             added after them (Leaflet stacks by layer-add order). */}
