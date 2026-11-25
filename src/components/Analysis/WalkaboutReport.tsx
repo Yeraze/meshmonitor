@@ -495,11 +495,11 @@ export default function WalkaboutReport() {
                           ? t('analysis.walkabout.row_live', 'Running')
                           : formatClock(endMs - s.startedAt)}
                         {' · '}
-                        {t('analysis.walkabout.row_counts', '{{samples}} samples, {{receptions}} receptions, {{nodes}} nodes', {
-                          samples: s.sampleCount,
-                          receptions: s.receptionCount,
-                          nodes: s.nodeCount,
-                        })}
+                        {[
+                          t('analysis.walkabout.row_samples', { count: s.sampleCount, defaultValue: '{{count}} samples' }),
+                          t('analysis.walkabout.row_receptions', { count: s.receptionCount, defaultValue: '{{count}} receptions' }),
+                          t('analysis.walkabout.row_nodes', { count: s.nodeCount, defaultValue: '{{count}} nodes' }),
+                        ].join(', ')}
                       </span>
                     </div>
                     {!live && (
