@@ -23,11 +23,13 @@ export interface CoverageImportDialogProps {
   onClose: () => void;
   /** Sources the viewer may write, already filtered by the caller. */
   sources: CoverageImportDialogSource[];
+  /** The source the report is filtered to, if any; the default target when it is in `sources`. */
+  defaultSourceId?: string;
 }
 
 const MAX_MB = Math.round(COVERAGE_IMPORT_MAX_BYTES / (1024 * 1024));
 
-export function CoverageImportDialog({ isOpen, onClose, sources }: CoverageImportDialogProps) {
+export function CoverageImportDialog({ isOpen, onClose, sources, defaultSourceId }: CoverageImportDialogProps) {
   const { t } = useTranslation();
   const importFile = useImportCoverageFile();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -38,7 +40,8 @@ export function CoverageImportDialog({ isOpen, onClose, sources }: CoverageImpor
   const [errorCount, setErrorCount] = useState(0);
   const [result, setResult] = useState<CoverageImportResult | null>(null);
 
-  const sourceId = sources.some((s) => s.id === pickedSource) ? pickedSource : (sources[0]?.id ?? '');
+  const fallbackId = sources.some((s) => s.id === defaultSourceId) ? (defaultSourceId as string) : (sources[0]?.id ?? '');
+  const sourceId = sources.some((s) => s.id === pickedSource) ? pickedSource : fallbackId;
   const uploading = importFile.isPending;
 
   const clearOutcome = () => {

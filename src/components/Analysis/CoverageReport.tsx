@@ -770,7 +770,9 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
               disabled={items.length === 0}
             />
           )}
-          {!isWalkabout && <CoverageImportButton />}
+          {!isWalkabout && <CoverageImportButton
+              defaultSourceId={receiverQuery.sources?.length === 1 ? receiverQuery.sources[0] : undefined}
+            />}
         </div>
 
         <CoverageSurveyBar

@@ -49,6 +49,14 @@ function open() {
 }
 
 describe('CoverageImportDialog', () => {
+  it('defaults to the report source when it is offered, else the first source', () => {
+    const { unmount } = render(<CoverageImportDialog isOpen onClose={vi.fn()} sources={SOURCES} defaultSourceId="b" />);
+    expect(screen.getByTestId('coverage-import-source')).toHaveValue('b');
+    unmount();
+    render(<CoverageImportDialog isOpen onClose={vi.fn()} sources={SOURCES} defaultSourceId="gone" />);
+    expect(screen.getByTestId('coverage-import-source')).toHaveValue('a');
+  });
+
   it('lists the given sources and tells the user same-instance rows are skipped', () => {
     open();
     const options = Array.from(screen.getByTestId('coverage-import-source').querySelectorAll('option')).map((o) => o.textContent);

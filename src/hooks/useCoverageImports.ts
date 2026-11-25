@@ -35,6 +35,8 @@ export function useCoverageImportSources(
     const grant = mode === 'write' ? COVERAGE_IMPORT_WRITE_GRANT : COVERAGE_IMPORT_READ_GRANT;
     return (sourcesQ.data ?? []).filter(
       (s) =>
+        // A disabled source can't take a new import (reading old ones stays allowed).
+        (mode === 'read' || s.enabled !== false) &&
         coverageImportProtocolFor(s.type ?? '') != null &&
         hasPermission(grant.resource, grant.action, { sourceId: s.id }),
     );

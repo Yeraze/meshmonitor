@@ -12,7 +12,7 @@ import { useCoverageImportSources } from '../../hooks/useCoverageImports';
 import type { HasSourcePermission } from '../../hooks/useWalkaboutSources';
 import { CoverageImportDialog } from './CoverageImportDialog';
 
-function ButtonInner() {
+function ButtonInner({ defaultSourceId }: CoverageImportButtonProps) {
   const { t } = useTranslation();
   const auth = useContext(AuthContext);
   const hasPermission = useCallback<HasSourcePermission>(
@@ -28,13 +28,18 @@ function ButtonInner() {
         <UiIcon name="import" size={14} />
         {t('analysis.coverage.import_button', 'Import')}
       </button>
-      {open && <CoverageImportDialog isOpen onClose={() => setOpen(false)} sources={sources} />}
+      {open && <CoverageImportDialog isOpen onClose={() => setOpen(false)} sources={sources} defaultSourceId={defaultSourceId} />}
     </>
   );
 }
 
-export function CoverageImportButton() {
+export interface CoverageImportButtonProps {
+  /** The source the report is filtered to, if any. */
+  defaultSourceId?: string;
+}
+
+export function CoverageImportButton(props: CoverageImportButtonProps) {
   const auth = useContext(AuthContext);
   if (!auth?.authStatus?.authenticated) return null;
-  return <ButtonInner />;
+  return <ButtonInner {...props} />;
 }
