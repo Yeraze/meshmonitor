@@ -9,7 +9,6 @@ import {
   fetchLiveWalkabout,
   fetchWalkaboutSessions,
   startWalkabout,
-  stopWalkabout,
 } from '../services/walkaboutApi.js';
 
 export const walkaboutKeys = {
@@ -68,14 +67,6 @@ export function useStartWalkabout(sourceId: string) {
   const invalidate = useInvalidate(sourceId);
   return useMutation({
     mutationFn: (name?: string) => startWalkabout(sourceId, name),
-    onSuccess: invalidate,
-  });
-}
-
-export function useStopWalkabout(sourceId: string) {
-  const invalidate = useInvalidate(sourceId);
-  return useMutation({
-    mutationFn: (sessionId: string) => stopWalkabout(sourceId, sessionId),
     onSuccess: invalidate,
   });
 }

@@ -22,7 +22,6 @@ import {
   useWalkaboutSessions,
   useLiveWalkabout,
   useStartWalkabout,
-  useStopWalkabout,
   useDeleteWalkabout,
   walkaboutKeys,
 } from './useWalkabout';
@@ -67,7 +66,6 @@ describe('useWalkabout', () => {
 
   it.each([
     ['start', () => useStartWalkabout('a'), (m: { mutateAsync: (v?: string) => Promise<unknown> }) => m.mutateAsync('Loop'), start, ['a', 'Loop']],
-    ['stop', () => useStopWalkabout('a'), (m: { mutateAsync: (v: string) => Promise<unknown> }) => m.mutateAsync('s1'), stop, ['a', 's1']],
     ['delete', () => useDeleteWalkabout('a'), (m: { mutateAsync: (v: string) => Promise<unknown> }) => m.mutateAsync('s1'), del, ['a', 's1']],
   ] as const)('%s invalidates the list and live keys', async (_n, hook, run, spy, args) => {
     const inv = vi.spyOn(qc, 'invalidateQueries');
