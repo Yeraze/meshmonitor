@@ -53,7 +53,8 @@ MeshMonitor sends nothing for this feature (passive).
 - [ ] **P2 — H3 hex view.** Server cell aggregation endpoint; hex layer on
   `BaseMap`; bucket colours + legend; cell popup "N nodes heard here" with
   per-node best SNR + count; 24h/7d/14d/30d chips; Coverage Report gains a
-  "Walkabout sessions" filter.
+  "Walkabout sessions" filter. Track and cell reads clip samples and receptions
+  to `[startedAt, endedAt]` (one in-flight sample can land just after a stop).
   *Exit:* hexes render from real sessions; popup matches data.
 - [ ] **P3 — Coverage import.** Accept our exported GeoJSON/CSV; schema + row
   validation with clear errors; rows tagged `imported_from` + filename and
