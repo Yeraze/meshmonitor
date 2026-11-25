@@ -7,7 +7,7 @@ import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType, SortField } from '../types/ui';
 import { nodePassesTransportFilter, transportCutoffSec, isMqttOnlySourceType } from '../utils/nodeTransport';
-import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps } from '../utils/nodeTypeCategory';
+import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps, isRepeaterClassNode } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { isSecurityFlagged } from '../utils/nodeAdvancedFilter';
 import { resolveClusterZoomThreshold, resolveClusteredMapCenterTargetZoom } from '../utils/mapZoomAnimation';
@@ -116,6 +116,7 @@ import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 import { UiIcon } from './icons';
+import MapRepeatersOnlyToggle from './map/MapRepeatersOnlyToggle';
 import { useToast } from './ToastContainer';
 import { logger } from '../utils/logger';
 import { calculateNodeOpacity } from '../utils/nodeDimming';
@@ -517,6 +518,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     spreadNodes,
     setSpreadNodes,
     aircraftDisplayMode,
+    showRepeatersOnly,
+    setShowRepeatersOnly,
     setAircraftDisplayMode,
     showAgedOutAircraft,
     setShowAgedOutAircraft,
@@ -1743,6 +1746,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     // Likely-aircraft Hide (#5364/#5365 Phase 1 WP4): suppress the marker,
     // except a favourite is never hidden by this toggle.
     if (aircraftDisplayMode === 'hide' && node.likelyAircraft === true && !node.isFavorite) return false;
+    // Repeaters only (#5891): the local node stays; favourites do not.
+    if (showRepeatersOnly && node.user?.id !== currentNodeId && !isRepeaterClassNode(node)) return false;
     return true;
   };
   const visibleMapNodes = nodesWithPosition.filter(passesMapFilters);
@@ -2752,6 +2757,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 >
                   <UiIcon name="fitBounds" size={16} />
                 </button>
+                <MapRepeatersOnlyToggle active={showRepeatersOnly} onChange={setShowRepeatersOnly} />
               </div>
                 <>
                   {/* #3636: node-to-node LOS distance measurement toggle. */}

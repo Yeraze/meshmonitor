@@ -174,6 +174,9 @@ interface MapContextType {
   showLocalMarkers: boolean;
   setShowLocalMarkers: (show: boolean) => void;
   /** #5734: tropospheric ducting overlay. Per-browser (localStorage), default off. */
+  /** #5891: keep only repeater-class nodes on the maps. */
+  showRepeatersOnly: boolean;
+  setShowRepeatersOnly: (show: boolean) => void;
   showDucting: boolean;
   setShowDucting: (show: boolean) => void;
   /** #5734: the forecast step on view, hours ahead (0..72, 3 h steps). Not persisted. */
@@ -324,6 +327,14 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     }
   });
   // #5734: default off, so only an explicit 'true' turns it on.
+  // #5891: default off, so only an explicit 'true' turns it on.
+  const [showRepeatersOnly, setShowRepeatersOnlyState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('showRepeatersOnly') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [showDucting, setShowDuctingState] = useState<boolean>(() => {
     try {
       return localStorage.getItem('showDucting') === 'true';
@@ -530,6 +541,15 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowLocalMarkersState(value);
     try {
       localStorage.setItem('showLocalMarkers', value.toString());
+    } catch {
+      // storage unavailable: the toggle still works for this session
+    }
+  }, []);
+
+  const setShowRepeatersOnly = React.useCallback((value: boolean) => {
+    setShowRepeatersOnlyState(value);
+    try {
+      localStorage.setItem('showRepeatersOnly', value.toString());
     } catch {
       // storage unavailable: the toggle still works for this session
     }
@@ -791,6 +811,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowTracerouteConfirmedLinks,
     showLocalMarkers,
     setShowLocalMarkers,
+    showRepeatersOnly,
+    setShowRepeatersOnly,
     showDucting,
     setShowDucting,
     ductingHoursAhead,
@@ -849,6 +871,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     packetFlightRate, setPacketFlightRate,
     showTracerouteConfirmedLinks, setShowTracerouteConfirmedLinks,
     showLocalMarkers, setShowLocalMarkers,
+    showRepeatersOnly, setShowRepeatersOnly,
     showDucting, setShowDucting,
     ductingHoursAhead, setDuctingHoursAhead,
     animatedNodes, triggerNodeAnimation,
