@@ -63,10 +63,15 @@ function handleError(res: Response, err: unknown, what: string): Response {
   return fail(res, 500, 'INTERNAL_ERROR', `Failed to ${what}`);
 }
 
+// Sanity bounds only; the service drops stale and inaccurate fixes with its own tighter limits.
+const MAX_ACCURACY_BOUND_M = 100_000;
+const MAX_AGE_BOUND_MS = 3_600_000;
+const MAX_FIX_SKEW_MS = 24 * 3_600_000;
+
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 /** Shape + range check for a post body; returns null when valid. */
-function validateSamples(body: unknown): string | null {
+function validateSamples(body: unknown, now: number = Date.now()): string | null {
   const samples = (body as { samples?: unknown } | null)?.samples;
   if (!Array.isArray(samples) || samples.length < 1 || samples.length > WALKABOUT_MAX_SAMPLES_PER_POST) {
     return `samples must hold 1 to ${WALKABOUT_MAX_SAMPLES_PER_POST} entries`;
@@ -75,9 +80,15 @@ function validateSamples(body: unknown): string | null {
     if (!s || typeof s !== 'object') return 'each sample must be an object';
     if (!isNum(s.latitude) || s.latitude < -90 || s.latitude > 90) return 'latitude out of range';
     if (!isNum(s.longitude) || s.longitude < -180 || s.longitude > 180) return 'longitude out of range';
-    if (!isNum(s.accuracyM) || s.accuracyM < 0) return 'accuracyM must be a non-negative number';
-    if (!isNum(s.deviceFixAt)) return 'deviceFixAt must be a number';
-    if (!isNum(s.ageMs)) return 'ageMs must be a number';
+    if (!isNum(s.accuracyM) || s.accuracyM < 0 || s.accuracyM > MAX_ACCURACY_BOUND_M) {
+      return 'accuracyM must be a number from 0 to 100000';
+    }
+    if (!isNum(s.deviceFixAt) || s.deviceFixAt <= 0 || Math.abs(s.deviceFixAt - now) > MAX_FIX_SKEW_MS) {
+      return 'deviceFixAt must be a timestamp within a day of now';
+    }
+    if (!isNum(s.ageMs) || s.ageMs < 0 || s.ageMs > MAX_AGE_BOUND_MS) {
+      return 'ageMs must be a number from 0 to one hour';
+    }
   }
   return null;
 }
@@ -159,6 +170,8 @@ router.post('/sessions', ...canWrite, async (req: Request, res: Response) => {
 
 router.post('/sessions/:sessionId/samples', ...canWrite, async (req: Request, res: Response) => {
   try {
+    const uid = userIdOf(req);
+    if (uid == null) return fail(res, 403, 'WALKABOUT_NOT_OWNER', 'Only the user who started a walkabout can post samples');
     const bad = validateSamples(req.body);
     if (bad) return fail(res, 400, 'INVALID_WALKABOUT', bad);
     const sourceId = sourceOf(req);
@@ -174,7 +187,7 @@ router.post('/sessions/:sessionId/samples', ...canWrite, async (req: Request, re
     const result = await walkaboutService.addSamples(
       sourceId,
       sessionId,
-      userIdOf(req),
+      uid,
       (req.body as { samples: WalkaboutSampleInput[] }).samples,
     );
     return ok(res, result);

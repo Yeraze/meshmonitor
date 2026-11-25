@@ -216,6 +216,13 @@ describe('addSamples', () => {
     await expect(svc.addSamples(SRC, id, 99, [sample()], NOW)).rejects.toMatchObject({ code: 'WALKABOUT_NOT_OWNER' });
   });
 
+  it('a null user never owns a session, even one started with a null user', async () => {
+    const svc = await ready();
+    const row = await svc.startSession(SRC, null, null, NOW);
+    repo.getSession.mockResolvedValue({ ...row });
+    await expect(svc.addSamples(SRC, row.id, null, [sample()], NOW)).rejects.toMatchObject({ code: 'WALKABOUT_NOT_OWNER' });
+  });
+
   it('counts come from getCounts (DB truth)', async () => {
     const { svc, id } = await started();
     repo.getCounts.mockResolvedValue({ samples: 12, receptions: 34, nodes: 5, lastSampleAt: NOW });

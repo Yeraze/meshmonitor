@@ -154,6 +154,12 @@ describe('walkaboutRoutes', () => {
         { samples: [sample({ accuracyM: 'a' })] },
         { samples: [sample({ accuracyM: -1 })] },
         { samples: [null] },
+        { samples: [sample({ ageMs: -1 })] },
+        { samples: [sample({ ageMs: 3_600_001 })] },
+        { samples: [sample({ deviceFixAt: 0 })] },
+        { samples: [sample({ deviceFixAt: Date.now() + 2 * 86_400_000 })] },
+        { samples: [sample({ deviceFixAt: Date.now() - 2 * 86_400_000 })] },
+        { samples: [sample({ accuracyM: 100_001 })] },
       ];
       for (const b of bodies) {
         const res = await starter.post(url).send(b);

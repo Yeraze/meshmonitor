@@ -307,7 +307,7 @@ export class WalkaboutService {
       await this.endForCap(cur);
       throw new WalkaboutError('WALKABOUT_NOT_LIVE');
     }
-    if (cur.startedBy !== userId) throw new WalkaboutError('WALKABOUT_NOT_OWNER');
+    if (cur.startedBy == null || userId == null || cur.startedBy !== userId) throw new WalkaboutError('WALKABOUT_NOT_OWNER');
 
     const dropped = { accuracy: 0, spacing: 0, stale: 0, invalid: 0 };
     let accepted = 0;
@@ -332,7 +332,9 @@ export class WalkaboutService {
         if (d < 0 && d > -WALKABOUT_CLOCK_RESET_MS) { dropped.spacing++; continue; }
         // d <= -60 s: the phone clock was reset; accept and rebase.
       }
-      // A stop, delete or cap during an earlier insert ends this post.
+      // A stop, delete or cap during an earlier insert ends this post. One row already
+      // in flight when `closing` is set can still land just after endedAt. Accepted:
+      // it is bounded to that one row, and P2 reads clip the track to [startedAt, endedAt].
       if (this.live.get(sourceId) !== cur || cur.closing) throw new WalkaboutError('WALKABOUT_NOT_LIVE');
       cur.lastDeviceFixAt = dev; // before the await, so a concurrent post sees it
       try {
