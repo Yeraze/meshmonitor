@@ -81,6 +81,8 @@ export const TABLE_ORDER = [
   // per COVERAGE_P1_SPEC.md Decision D9), but migrated rather than skipped so
   // a backend move doesn't silently blank out an in-progress survey.
   'coverage_receptions',
+  // 5891 P3: imported-file batches (per-source, no FKs, UUID PK).
+  'coverage_imports',
   'coverage_walkabout_sessions',
   'coverage_walkabout_samples',
   'coverage_walkabout_receptions',
@@ -234,7 +236,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
   'meshcore_heard_repeaters', 'message_events', 'message_translations', 'meshtastic_heard_repeaters',
-  'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations', 'coverage_receptions',
+  'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations', 'coverage_receptions', 'coverage_imports',
   'coverage_walkabout_sessions', 'coverage_walkabout_samples', 'coverage_walkabout_receptions',
   'atak_contacts', 'mesh_beacon_offers', 'aircraft_flight_matches',
   'meshcore_ignored_nodes', 'meshcore_message_filters',
