@@ -106,7 +106,8 @@ router.get('/sessions/live', ...canRead, async (req: Request, res: Response) => 
   try {
     const sourceId = sourceOf(req);
     const repo = databaseService.coverageWalkabout;
-    const open = await repo.getOpenSession(sourceId);
+    // ensureLoaded adopts a DB-open session the live map missed and ends one past its cap.
+    const open = await walkaboutService.ensureLoaded(sourceId);
     const now = Date.now();
     if (!open || !isWalkaboutLive(open, now)) return ok(res, { session: null, skipped: null });
     const counts = await repo.getCounts(sourceId, open.id);

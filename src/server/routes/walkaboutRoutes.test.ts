@@ -257,6 +257,25 @@ describe('walkaboutRoutes', () => {
     expect((await admin.delete(`${base(h.sourceA)}/${id2}`)).status).toBe(200);
   });
 
+  it('GET /sessions/live adopts a DB-open session the live map missed, and closes a past-cap one', async () => {
+    const admin = await h.loginAs(h.admin);
+    const repo = h.db.coverageWalkabout;
+    const now = Date.now();
+    await repo.createSession({ id: 'orphan-live', sourceId: h.sourceA, name: null, startedAt: now - 60_000, startedBy: h.admin.id });
+    const res = await admin.get(`${base(h.sourceA)}/live`);
+    expect(res.body.data.session).toMatchObject({ id: 'orphan-live', isLive: true });
+    expect(res.body.data.skipped).toMatchObject({ noFix: 0 }); // in the live map now
+    expect(walkaboutService.getSkipped(h.sourceA, 'orphan-live')).not.toBeNull();
+
+    await repo.deleteForSource(h.sourceA);
+    walkaboutService.forgetSource(h.sourceA);
+    await repo.createSession({ id: 'orphan-old', sourceId: h.sourceA, name: null, startedAt: now - 3 * 3_600_000, startedBy: h.admin.id });
+    const old = await admin.get(`${base(h.sourceA)}/live`);
+    expect(old.body.data).toEqual({ session: null, skipped: null });
+    const row = await repo.getSession(h.sourceA, 'orphan-old');
+    expect(row).toMatchObject({ endReason: 'cap', endedAt: now - 3 * 3_600_000 + 2 * 3_600_000 });
+  });
+
   it('GET unknown session: 404 envelope', async () => {
     const admin = await h.loginAs(h.admin);
     const res = await admin.get(`${base(h.sourceA)}/missing`);
