@@ -43,7 +43,7 @@ MeshMonitor sends nothing for this feature (passive).
 
 ## Phases
 
-- [ ] **P1 — Capture + storage.** Migration (3 backends) + repository + backup
+- [x] **P1 — Capture + storage.** Migration (3 backends) + repository + backup
   classification; session start/stop/sample/delete/list API; server-side
   reception capture for Meshtastic + MeshCore with last-hop credit; 2 h cap,
   accuracy and spacing filters; Walkabout panel (start/stop, consent,
@@ -64,3 +64,23 @@ MeshMonitor sends nothing for this feature (passive).
   *Exit:* chip filters the main map for both protocols.
 
 ## Phase log
+
+- **P1 (2026-11-25).** Spec: `WALKABOUT_P1_SPEC.md`. Migration 248; routes under
+  `/api/sources/:id/walkabout`; Reports → Walkabout card (not a panel in the
+  Coverage report, so the page stays light on a phone).
+  - Deviations: no grant gated Coverage surveys, so `nodes:write`/`nodes:read`
+    (maintainer). MQTT-fed sources cannot run walkabout (no local radio).
+    Relay candidates: Meshtastic nodes heard in 24 h minus CLIENT_MUTE;
+    MeshCore advType 2/3. Fix freshness 25 s (server clock); each reception
+    stores `sampleAgeMs` so P2 can tighten it for drives.
+  - Firmware: MeshCore repeaters strip their hash on direct routes and append
+    on floods (`Mesh.cpp`), so an empty direct path is skipped as ambiguous.
+    Meshtastic router-class relays may keep hop_limit for favourites
+    (`Router.cpp shouldDecrementHopLimit`), so 0 hops with a foreign relay byte
+    is treated as relayed.
+  - Side PRs: #6568 (`lastHop.ts` CLIENT_MUTE was 4 = REPEATER), #6569 (Direct
+    RF Contacts counted 0-hop relayed copies as direct).
+  - Browser check: MeshCore session credited the nearby repeater as last hop;
+    a quiet Meshtastic window credited nothing (all relayed, no relay byte).
+    Real-phone test over HTTPS still to do; rate-limit headroom (Q7) unmeasured.
+
