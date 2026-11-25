@@ -215,6 +215,13 @@ router.delete('/sessions/:sessionId', ...canWrite, async (req: Request, res: Res
   try {
     const sourceId = sourceOf(req);
     const sessionId = sessionOf(req);
+    const row = await databaseService.coverageWalkabout.getSession(sourceId, sessionId);
+    if (!row) return notFound(res);
+    if (isWalkaboutLive(row, Date.now())) {
+      return fail(res, 409, 'WALKABOUT_LIVE_SESSION', 'Stop this walkabout before deleting it');
+    }
+    // Open but past its cap: close it as 'cap' first, then delete.
+    if (row.endedAt == null) await walkaboutService.stopSession(sourceId, sessionId);
     const removed = await walkaboutService.deleteSession(sourceId, sessionId);
     if (!removed) return notFound(res);
     logger.info(`[Walkabout] user ${userIdOf(req)} deleted session ${sessionId} on source ${sourceId}`);

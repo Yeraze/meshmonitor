@@ -234,6 +234,29 @@ describe('walkaboutRoutes', () => {
     expect(list.body.data.sessions).toHaveLength(1);
   });
 
+  it('DELETE of a live session is 409 WALKABOUT_LIVE_SESSION; deletable once stopped or past cap', async () => {
+    const admin = await h.loginAs(h.admin);
+    const id = (await admin.post(base(h.sourceA)).send({})).body.data.session.id;
+    const live = await admin.delete(`${base(h.sourceA)}/${id}`);
+    expect(live.status).toBe(409);
+    expect(live.body).toMatchObject({ success: false, code: 'WALKABOUT_LIVE_SESSION' });
+    expect(await h.db.coverageWalkabout.getSession(h.sourceA, id)).not.toBeNull();
+
+    const row = await h.db.coverageWalkabout.getSession(h.sourceA, id);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(row!.startedAt + 2 * 3_600_000 + 1000);
+      expect((await admin.delete(`${base(h.sourceA)}/${id}`)).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await h.db.coverageWalkabout.getSession(h.sourceA, id)).toBeNull();
+
+    const id2 = (await admin.post(base(h.sourceA)).send({})).body.data.session.id;
+    await admin.post(`${base(h.sourceA)}/${id2}/stop`).send({});
+    expect((await admin.delete(`${base(h.sourceA)}/${id2}`)).status).toBe(200);
+  });
+
   it('GET unknown session: 404 envelope', async () => {
     const admin = await h.loginAs(h.admin);
     const res = await admin.get(`${base(h.sourceA)}/missing`);
