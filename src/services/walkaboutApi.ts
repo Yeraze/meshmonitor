@@ -70,29 +70,50 @@ export async function deleteWalkabout(sourceId: string, sessionId: string): Prom
   await api.delete(`${base(sourceId)}/${encodeURIComponent(sessionId)}`);
 }
 
-// --- Phase 2: map (WALKABOUT_P2_SPEC.md §2.9). Skeletons; WP2 fills the bodies. ---
+// --- Phase 2: map (WALKABOUT_P2_SPEC.md §2.9) ---
 
-/** Pure; used by query keys and fetchers. */
-export function walkaboutMapParams(_q: WalkaboutMapQuery): Record<string, string> {
-  throw new Error('not implemented');
+/** Pure; used by query keys and fetchers. Never carries a fresh timestamp
+ *  unless the caller passed one (range mode, from stable report state). */
+export function walkaboutMapParams(q: WalkaboutMapQuery): Record<string, string> {
+  const p: Record<string, string> = {};
+  if (q.kind === 'window') p.window = q.window;
+  else if (q.kind === 'session') p.sessionId = q.sessionId;
+  else {
+    p.since = String(q.sinceMs);
+    p.until = String(q.untilMs);
+  }
+  if (q.node) p.node = q.node;
+  return p;
 }
 
+const qs = (params: Record<string, string>) => new URLSearchParams(params).toString();
+const walkaboutRoot = (sourceId: string) => `/api/sources/${encodeURIComponent(sourceId)}/walkabout`;
+
 export async function fetchWalkaboutCells(
-  _sourceId: string,
-  _q: WalkaboutMapQuery,
-  _res: WalkaboutH3Res,
+  sourceId: string,
+  q: WalkaboutMapQuery,
+  res: WalkaboutH3Res,
 ): Promise<WalkaboutCellsResult> {
-  throw new Error('not implemented');
+  const body = await api.get<Envelope<WalkaboutCellsResult>>(
+    `${walkaboutRoot(sourceId)}/cells?${qs({ ...walkaboutMapParams(q), res: String(res) })}`,
+  );
+  return body.data;
 }
 
 export async function fetchWalkaboutCellNodes(
-  _sourceId: string,
-  _q: WalkaboutMapQuery,
-  _cell: string,
+  sourceId: string,
+  q: WalkaboutMapQuery,
+  cell: string,
 ): Promise<WalkaboutCellNodesResult> {
-  throw new Error('not implemented');
+  const body = await api.get<Envelope<WalkaboutCellNodesResult>>(
+    `${walkaboutRoot(sourceId)}/cell-nodes?${qs({ ...walkaboutMapParams(q), cell })}`,
+  );
+  return body.data;
 }
 
-export async function fetchWalkaboutTrack(_sourceId: string, _sessionId: string): Promise<WalkaboutTrackResult> {
-  throw new Error('not implemented');
+export async function fetchWalkaboutTrack(sourceId: string, sessionId: string): Promise<WalkaboutTrackResult> {
+  const body = await api.get<Envelope<WalkaboutTrackResult>>(
+    `${base(sourceId)}/${encodeURIComponent(sessionId)}/track`,
+  );
+  return body.data;
 }

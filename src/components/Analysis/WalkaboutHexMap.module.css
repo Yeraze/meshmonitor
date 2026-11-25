@@ -1,0 +1,109 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.mapBox {
+  position: relative;
+  height: clamp(280px, 60vh, 520px);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.loading {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1000;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.banner {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.legend {
+  font-size: 12px;
+  color: var(--color-text);
+  min-width: 0;
+}
+
+.legendNote {
+  margin-bottom: 4px;
+  color: var(--color-text-subtle);
+}
+
+.legendRows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.legendRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.popup {
+  min-width: 160px;
+  max-width: 240px;
+}
+
+.popupTitle {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.popupList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.popupRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.popupName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popupMeta {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}

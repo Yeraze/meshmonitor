@@ -7,7 +7,10 @@ import api from '../services/api.js';
 import {
   deleteWalkabout,
   fetchLiveWalkabout,
+  fetchWalkaboutCellNodes,
+  fetchWalkaboutCells,
   fetchWalkaboutSessions,
+  fetchWalkaboutTrack,
   startWalkabout,
   walkaboutMapParams,
 } from '../services/walkaboutApi.js';
@@ -86,17 +89,46 @@ export function useDeleteWalkabout(sourceId: string) {
   });
 }
 
-// --- Phase 2: map (WALKABOUT_P2_SPEC.md §2.9). Skeletons; WP2 fills the bodies. ---
+// --- Phase 2: map (WALKABOUT_P2_SPEC.md §2.9) ---
 
-export function useWalkaboutCells(_sourceId: string | null, _q: WalkaboutMapQuery | null, _res: WalkaboutH3Res): never {
-  throw new Error('not implemented');
+
+const MAP_QUERY_OPTS = { staleTime: 60_000, refetchOnWindowFocus: false } as const;
+
+export function useWalkaboutCells(sourceId: string | null, q: WalkaboutMapQuery | null, res: WalkaboutH3Res) {
+  return useQuery({
+    queryKey: q && sourceId
+      ? walkaboutKeys.cells(sourceId, q, res)
+      : ['walkabout', sourceId ?? '', 'cells', null, res],
+    queryFn: () => fetchWalkaboutCells(sourceId as string, q as WalkaboutMapQuery, res),
+    enabled: !!sourceId && !!q,
+    // Keep the previous hexes only when just `res` changed.
+    placeholderData: (prev, prevQuery) => {
+      const prevKey = prevQuery?.queryKey as readonly unknown[] | undefined;
+      if (!prev || !prevKey || !q || !sourceId) return undefined;
+      const cur = walkaboutKeys.cells(sourceId, q, res);
+      return prevKey[1] === cur[1] && JSON.stringify(prevKey[3]) === JSON.stringify(cur[3]) ? prev : undefined;
+    },
+    ...MAP_QUERY_OPTS,
+  });
 }
 
 /** Enabled only while a popup is open (cell non-null). */
-export function useWalkaboutCellNodes(_sourceId: string | null, _q: WalkaboutMapQuery | null, _cell: string | null): never {
-  throw new Error('not implemented');
+export function useWalkaboutCellNodes(sourceId: string | null, q: WalkaboutMapQuery | null, cell: string | null) {
+  return useQuery({
+    queryKey: q && sourceId && cell
+      ? walkaboutKeys.cellNodes(sourceId, q, cell)
+      : ['walkabout', sourceId ?? '', 'cell-nodes', null, cell],
+    queryFn: () => fetchWalkaboutCellNodes(sourceId as string, q as WalkaboutMapQuery, cell as string),
+    enabled: !!sourceId && !!q && !!cell,
+    ...MAP_QUERY_OPTS,
+  });
 }
 
-export function useWalkaboutTrack(_sourceId: string | null, _sessionId: string | null): never {
-  throw new Error('not implemented');
+export function useWalkaboutTrack(sourceId: string | null, sessionId: string | null) {
+  return useQuery({
+    queryKey: walkaboutKeys.track(sourceId ?? '', sessionId ?? ''),
+    queryFn: () => fetchWalkaboutTrack(sourceId as string, sessionId as string),
+    enabled: !!sourceId && !!sessionId,
+    ...MAP_QUERY_OPTS,
+  });
 }
