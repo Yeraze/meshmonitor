@@ -99,10 +99,17 @@ export function evaluateWalkaboutMeshtastic(input: {
     snr: cleanSnr(p.rxSnr),
     rssi: cleanRssi(p.rxRssi),
   };
-  if (hopsAway === 0) {
+  const relayByte = p.relayNode != null ? Number(p.relayNode) & 0xff : 0;
+  // Zero hops is normally a direct hearing. Firmware keeps hop_limit unchanged when a ROUTER /
+  // ROUTER_LATE / CLIENT_BASE relays for a unique favourite relay router
+  // (meshtastic/firmware src/mesh/Router.cpp shouldDecrementHopLimit ~L283-300, used by
+  // NextHopRouter.cpp ~L280-288, develop at 12f9b997), so a relayed copy can show 0 hops.
+  // A direct copy carries the sender's own low byte as relay_node (and 0 when hop_start is 0),
+  // so a different non-zero byte means someone else transmitted it.
+  const relayedAtZeroHops = hopsAway === 0 && relayByte !== 0 && relayByte !== (fromNum & 0xff);
+  if (hopsAway === 0 && !relayedAtZeroHops) {
     return { skip: null, credit: { ...base, creditedKey: nodeNumToId(fromNum), creditedNodeNum: fromNum, creditKind: 'direct' } };
   }
-  const relayByte = p.relayNode != null ? Number(p.relayNode) : 0;
   if (!relayByte) return { skip: 'relay-none' };
   const { nodeNum, matches } = resolveUniqueRelayNode(relayByte, input.candidates, [input.localNodeNum, fromNum]);
   if (matches === 0) return { skip: 'relay-unknown' };
@@ -153,8 +160,8 @@ export function evaluateWalkaboutMeshCore(input: {
   if (hopsAway === 0) {
     const sender = meshcoreSenderOf(rawHex);
     if (!sender) return { skip: 'no-sender' };
-    if (local && local.startsWith(sender)) return { skip: 'own-packet' };
     if (sender.length >= 64) {
+      if (local && sender === local) return { skip: 'own-packet' };
       return input.knownKeys.some((k) => k.toLowerCase() === sender)
         ? { skip: null, credit: { ...base, creditedKey: sender, creditKind: 'direct' } }
         : { skip: 'relay-unknown' };

@@ -119,8 +119,9 @@ describe('startSession', () => {
     const svc = await ready();
     repo.getOpenSession.mockResolvedValueOnce(sessionRow({ id: 'orphan' }));
     await expect(svc.startSession(SRC, USER, null, NOW + 1000)).rejects.toMatchObject({ code: 'WALKABOUT_ALREADY_LIVE', extra: { sessionId: 'orphan' } });
+    const svc2 = await ready(); // the orphan above was adopted into svc's map
     repo.getOpenSession.mockResolvedValueOnce(sessionRow({ id: 'old', startedAt: NOW - CAP - 1 }));
-    await expect(svc.startSession(SRC, USER, null, NOW)).resolves.toBeTruthy();
+    await expect(svc2.startSession(SRC, USER, null, NOW)).resolves.toBeTruthy();
     expect(repo.endSession).toHaveBeenCalledWith(SRC, 'old', NOW - 1, 'cap');
   });
 
@@ -147,6 +148,7 @@ describe('startSession', () => {
 
   it('addSamples waits for init()', async () => {
     const svc = new WalkaboutService();
+    repo.getSession.mockResolvedValue(null);
     let done = false;
     const p = svc.addSamples(SRC, 'sess-1', USER, [sample()], NOW).catch(() => { done = true; });
     await tick();
@@ -456,5 +458,84 @@ describe('init: restart sweep', () => {
     capture(svc);
     expect(svc.getSkipped(SRC, row.id)).toBeNull();
     expect(repo.recordReception).not.toHaveBeenCalled();
+  });
+});
+
+describe('review fixes', () => {
+  it('init: one failing row does not leave later sessions unloaded; addSamples lazily loads a DB-live session', async () => {
+    const bad = sessionRow({ id: 'bad', sourceId: 'src-bad' });
+    const good = sessionRow({ id: 'good', sourceId: SRC });
+    repo.getOpenSessionsAllSources.mockResolvedValue([bad, good]);
+    repo.getLatestSample.mockImplementation(async (src: string) => {
+      if (src === 'src-bad') throw new Error('read failed');
+      return null;
+    });
+    const svc = new WalkaboutService();
+    await svc.init(NOW);
+    repo.getSession.mockResolvedValue({ ...good });
+    await expect(svc.addSamples(SRC, 'good', USER, [sample()], NOW)).resolves.toMatchObject({ accepted: 1 });
+    // the failed one loads lazily once the read works
+    repo.getLatestSample.mockResolvedValue(null);
+    repo.getSession.mockResolvedValue({ ...bad });
+    await expect(svc.addSamples('src-bad', 'bad', USER, [sample()], NOW)).resolves.toMatchObject({ accepted: 1 });
+  });
+
+  it('ensureLoaded adopts a DB-open session and ends a capped one', async () => {
+    const svc = await ready();
+    repo.getOpenSession.mockResolvedValueOnce(sessionRow({ id: 'orph' }));
+    await expect(svc.ensureLoaded(SRC, NOW)).resolves.toMatchObject({ id: 'orph' });
+    expect(svc.getSkipped(SRC, 'orph')).not.toBeNull();
+    const svc2 = await ready();
+    repo.getOpenSession.mockResolvedValueOnce(sessionRow({ id: 'old', startedAt: NOW - CAP - 5 }));
+    await expect(svc2.ensureLoaded(SRC, NOW)).resolves.toBeNull();
+    expect(repo.endSession).toHaveBeenCalledWith(SRC, 'old', NOW - 5, 'cap');
+  });
+
+  it('stopSession: a DB error keeps the session live and capturing', async () => {
+    const svc = await ready();
+    const row = await live(svc);
+    repo.getSession.mockResolvedValue({ ...row });
+    repo.endSession.mockRejectedValueOnce(new Error('db'));
+    await expect(svc.stopSession(SRC, row.id, NOW + 1000)).rejects.toThrow('db');
+    expect(svc.getSkipped(SRC, row.id)).not.toBeNull();
+    capture(svc);
+    await tick();
+    expect(repo.recordReception).toHaveBeenCalledTimes(1);
+  });
+
+  it('addSamples stops inserting once a stop or delete lands mid-post', async () => {
+    const svc = await ready();
+    const row = await live(svc);
+    repo.insertSample.mockClear();
+    repo.insertSample.mockImplementation(async (r: any) => {
+      await svc.deleteSession(SRC, row.id); // lands during the first insert
+      return { id: 50, ...r };
+    });
+    await expect(svc.addSamples(SRC, row.id, USER, [sample({ deviceFixAt: 2_000_000 }), sample({ deviceFixAt: 2_010_000 })], NOW))
+      .rejects.toMatchObject({ code: 'WALKABOUT_NOT_LIVE' });
+    expect(repo.insertSample).toHaveBeenCalledTimes(1);
+  });
+
+  it('startSession: a source forgotten during the pending insert leaves no live entry or row', async () => {
+    const svc = await ready();
+    repo.createSession.mockImplementationOnce(async (p: any) => {
+      svc.forgetSource(SRC);
+      return sessionRow({ id: p.id });
+    });
+    await expect(svc.startSession(SRC, USER, null, NOW)).rejects.toBeInstanceOf(WalkaboutError);
+    expect(repo.deleteSession).toHaveBeenCalledWith(SRC, expect.any(String));
+    expect(svc.getSkipped(SRC, 'x')).toBeNull();
+    await expect(svc.startSession(SRC, USER, null, NOW)).resolves.toBeTruthy();
+  });
+
+  it('noFix counts only packets a fix could have credited', async () => {
+    const svc = await ready();
+    const row = await svc.startSession(SRC, USER, null, NOW);
+    capture(svc, { from: 0x11111111 }); // own
+    capture(svc, { viaMqtt: true });
+    capture(svc, { rxTime: Math.floor(NOW / 1000) - 600 }); // not live
+    expect(svc.getSkipped(SRC, row.id)).toMatchObject({ noFix: 0 });
+    capture(svc); // creditable, no fix
+    expect(svc.getSkipped(SRC, row.id)).toMatchObject({ noFix: 1 });
   });
 });

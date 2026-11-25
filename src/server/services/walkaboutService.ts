@@ -77,6 +77,8 @@ interface LiveSession {
   /** Empty while a start is claiming the source (before the DB insert returns). */
   id: string;
   pending: boolean;
+  /** A stop or delete is in flight: capture and posts stop, the entry leaves the map on success. */
+  closing?: boolean;
   sourceId: string;
   startedAt: number;
   startedBy: number | null;
@@ -134,31 +136,61 @@ export class WalkaboutService {
     try {
       const open = await this.repo.getOpenSessionsAllSources();
       for (const row of open) {
-        if (!isWalkaboutLive(row, nowMs)) {
-          // End at startedAt + cap, never "now": a restart is not a trigger.
-          await this.repo.endSession(row.sourceId, row.id, row.startedAt + WALKABOUT_MAX_DURATION_MS, 'cap');
-          continue;
+        // One bad row must not leave the later sessions unloaded.
+        try {
+          if (!isWalkaboutLive(row, nowMs)) {
+            // End at startedAt + cap, never "now": a restart is not a trigger.
+            await this.repo.endSession(row.sourceId, row.id, row.startedAt + WALKABOUT_MAX_DURATION_MS, 'cap');
+            continue;
+          }
+          await this.adopt(row);
+        } catch (err) {
+          logger.error(`[Walkabout] init could not load session ${row.id} (retried lazily on first use):`, err);
         }
-        if (this.live.get(row.sourceId)?.id === row.id) continue;
-        const latest = await this.repo.getLatestSample(row.sourceId, row.id);
-        this.live.set(row.sourceId, {
-          id: row.id,
-          pending: false,
-          sourceId: row.sourceId,
-          startedAt: row.startedAt,
-          startedBy: row.startedBy,
-          latest: latest
-            ? { id: latest.id, latitude: latest.latitude, longitude: latest.longitude, accuracyM: latest.accuracyM, fixAt: latest.fixAt }
-            : null,
-          lastDeviceFixAt: latest ? latest.deviceFixAt : null,
-          skipped: emptySkips(),
-        });
       }
     } catch (err) {
       logger.error('[Walkabout] init failed (lifecycle continues with an empty live map):', err);
     } finally {
       this.resolveReady();
     }
+  }
+
+  /** Put a DB-open, in-cap session into the map (once). Returns the map entry. */
+  private async adopt(row: DbWalkaboutSession): Promise<LiveSession | null> {
+    const existing = this.live.get(row.sourceId);
+    if (existing) return existing.id === row.id && !existing.pending ? existing : null;
+    const latest = await this.repo.getLatestSample(row.sourceId, row.id);
+    const again = this.live.get(row.sourceId);
+    if (again) return again.id === row.id && !again.pending ? again : null;
+    const entry: LiveSession = {
+      id: row.id, pending: false, sourceId: row.sourceId, startedAt: row.startedAt, startedBy: row.startedBy,
+      latest: latest
+        ? { id: latest.id, latitude: latest.latitude, longitude: latest.longitude, accuracyM: latest.accuracyM, fixAt: latest.fixAt }
+        : null,
+      lastDeviceFixAt: latest ? latest.deviceFixAt : null,
+      skipped: emptySkips(),
+    };
+    this.live.set(row.sourceId, entry);
+    return entry;
+  }
+
+  /**
+   * Make sure a DB-open session of this source is in the live map (a failed or partial
+   * `init()` can leave it out). Ends one past its cap. Returns the open row, if any.
+   */
+  async ensureLoaded(sourceId: string, nowMs: number = Date.now()): Promise<DbWalkaboutSession | null> {
+    await this.ready;
+    const cur = this.live.get(sourceId);
+    if (cur && !cur.pending) return this.repo.getSession(sourceId, cur.id);
+    if (cur) return null;
+    const open = await this.repo.getOpenSession(sourceId);
+    if (!open) return null;
+    if (!isWalkaboutLive(open, nowMs)) {
+      await this.endForCap(open);
+      return null;
+    }
+    await this.adopt(open);
+    return open;
   }
 
   /** End a session past its cap at startedAt + cap; drops it from the map. Never throws. */
@@ -201,11 +233,18 @@ export class WalkaboutService {
       const open = await this.repo.getOpenSession(sourceId);
       if (open) {
         if (isWalkaboutLive(open, nowMs)) {
+          release();
+          await this.adopt(open).catch(() => null);
           throw new WalkaboutError('WALKABOUT_ALREADY_LIVE', undefined, { sessionId: open.id });
         }
         await this.endForCap(open);
       }
       const row = await this.repo.createSession({ id: randomUUID(), sourceId, name: cleanName, startedAt: nowMs, startedBy: userId });
+      if (this.live.get(sourceId) !== claim) {
+        // The source was forgotten while the insert was pending: leave nothing behind.
+        await Promise.resolve(this.repo.deleteSession(sourceId, row.id)).catch(() => false);
+        throw new WalkaboutError('WALKABOUT_SOURCE_UNSUPPORTED', 'The source was removed while the session started');
+      }
       this.live.set(sourceId, {
         id: row.id, pending: false, sourceId, startedAt: row.startedAt, startedBy: row.startedBy,
         latest: null, lastDeviceFixAt: null, skipped: emptySkips(),
@@ -221,22 +260,45 @@ export class WalkaboutService {
   async stopSession(sourceId: string, sessionId: string, nowMs: number = Date.now()): Promise<DbWalkaboutSession | null> {
     await this.ready;
     const cur = this.live.get(sourceId);
-    if (cur && cur.id === sessionId) this.live.delete(sourceId);
-    const row = await this.repo.getSession(sourceId, sessionId);
-    if (!row) return null;
-    if (row.endedAt != null) return row;
-    if (!isWalkaboutLive(row, nowMs)) {
-      await this.repo.endSession(sourceId, sessionId, row.startedAt + WALKABOUT_MAX_DURATION_MS, 'cap');
-    } else {
-      await this.repo.endSession(sourceId, sessionId, nowMs, 'user');
+    const mine = cur && !cur.pending && cur.id === sessionId ? cur : null;
+    if (mine) mine.closing = true; // capture stops now; the entry leaves only once the row is ended
+    try {
+      const row = await this.repo.getSession(sourceId, sessionId);
+      if (!row) {
+        if (mine && this.live.get(sourceId) === mine) this.live.delete(sourceId);
+        return null;
+      }
+      if (row.endedAt == null) {
+        if (!isWalkaboutLive(row, nowMs)) {
+          await this.repo.endSession(sourceId, sessionId, row.startedAt + WALKABOUT_MAX_DURATION_MS, 'cap');
+        } else {
+          await this.repo.endSession(sourceId, sessionId, nowMs, 'user');
+        }
+      }
+      if (mine && this.live.get(sourceId) === mine) this.live.delete(sourceId);
+      if (row.endedAt != null) return row;
+      return (await this.repo.getSession(sourceId, sessionId)) ?? row;
+    } catch (err) {
+      if (mine) mine.closing = false;
+      throw err;
     }
-    return (await this.repo.getSession(sourceId, sessionId)) ?? row;
   }
 
   async addSamples(sourceId: string, sessionId: string, userId: number | null, samples: WalkaboutSampleInput[], nowMs: number = Date.now()): Promise<WalkaboutSampleResult> {
     await this.ready;
-    const cur = this.live.get(sourceId);
-    if (!cur || cur.pending || cur.id !== sessionId) {
+    let cur = this.live.get(sourceId);
+    if (!cur) {
+      // Not in the map: a DB-open session may have been missed by init(); load it lazily.
+      const row = await this.repo.getSession(sourceId, sessionId);
+      if (!row) throw new WalkaboutError('WALKABOUT_NOT_FOUND');
+      if (row.endedAt != null) throw new WalkaboutError('WALKABOUT_NOT_LIVE');
+      if (!isWalkaboutLive(row, nowMs)) {
+        await this.endForCap(row);
+        throw new WalkaboutError('WALKABOUT_NOT_LIVE');
+      }
+      cur = (await this.adopt(row)) ?? undefined;
+    }
+    if (!cur || cur.pending || cur.closing || cur.id !== sessionId) {
       const row = await this.repo.getSession(sourceId, sessionId);
       if (!row) throw new WalkaboutError('WALKABOUT_NOT_FOUND');
       throw new WalkaboutError('WALKABOUT_NOT_LIVE');
@@ -270,6 +332,8 @@ export class WalkaboutService {
         if (d < 0 && d > -WALKABOUT_CLOCK_RESET_MS) { dropped.spacing++; continue; }
         // d <= -60 s: the phone clock was reset; accept and rebase.
       }
+      // A stop, delete or cap during an earlier insert ends this post.
+      if (this.live.get(sourceId) !== cur || cur.closing) throw new WalkaboutError('WALKABOUT_NOT_LIVE');
       cur.lastDeviceFixAt = dev; // before the await, so a concurrent post sees it
       try {
         const row = await this.repo.insertSample({
@@ -293,8 +357,16 @@ export class WalkaboutService {
   async deleteSession(sourceId: string, sessionId: string): Promise<boolean> {
     await this.ready;
     const cur = this.live.get(sourceId);
-    if (cur && cur.id === sessionId) this.live.delete(sourceId); // capture stops before rows go
-    return this.repo.deleteSession(sourceId, sessionId);
+    const mine = cur && !cur.pending && cur.id === sessionId ? cur : null;
+    if (mine) mine.closing = true; // capture stops before the rows go
+    try {
+      const ok = await this.repo.deleteSession(sourceId, sessionId);
+      if (mine && this.live.get(sourceId) === mine) this.live.delete(sourceId);
+      return ok;
+    } catch (err) {
+      if (mine) mine.closing = false;
+      throw err;
+    }
   }
 
   forgetSource(sourceId: string): void {
@@ -315,15 +387,16 @@ export class WalkaboutService {
   /** Sync; never throws; never awaited on the RX path. */
   maybeCaptureMeshtastic(input: WalkaboutMeshtasticInput): void {
     const s = this.live.get(input.sourceId);
-    if (!s || s.pending) return;
+    if (!s || s.pending || s.closing) return;
     try {
       const now = Date.now();
-      if (!this.gate(s, now)) return;
+      if (this.capped(s, now)) return;
       const cached = this.freshCandidates(input.sourceId, now);
       const run = (cands: LastHopCandidate[]) => evaluateWalkaboutMeshtastic({
         localNodeNum: input.localNodeNum, packet: input.packet, replayed: input.replayed, nowMs: now, candidates: cands,
       });
       const r = run(cached?.mtNodes ?? []);
+      if (this.uncountable(r.skip) || !this.hasFreshFix(s, now)) return;
       if (r.skip === 'relay-unknown' && !cached) {
         // Candidates are loaded lazily by the first packet that needs them.
         void this.loadCandidates(input.sourceId, 'meshtastic', now)
@@ -340,10 +413,10 @@ export class WalkaboutService {
   /** Sync; never throws; never awaited on the RX path. */
   maybeCaptureMeshCore(input: WalkaboutMeshCoreInput): void {
     const s = this.live.get(input.sourceId);
-    if (!s || s.pending) return;
+    if (!s || s.pending || s.closing) return;
     try {
       const now = Date.now();
-      if (!this.gate(s, now)) return;
+      if (this.capped(s, now)) return;
       const local = input.localPubKey ? input.localPubKey.toLowerCase() : null;
       const cached = this.freshCandidates(input.sourceId, now);
       const run = (c: CandidateCache | null) => evaluateWalkaboutMeshCore({
@@ -352,7 +425,8 @@ export class WalkaboutService {
         relayKeys: (c?.mcRelay ?? []).filter((k) => k !== local),
       });
       const r = run(cached);
-      if ((r.skip === 'relay-unknown') && !cached) {
+      if (this.uncountable(r.skip) || !this.hasFreshFix(s, now)) return;
+      if (r.skip === 'relay-unknown' && !cached) {
         void this.loadCandidates(input.sourceId, 'meshcore', now)
           .then((c) => { if (c) this.finish(s, run(c), now); })
           .catch((err) => logger.debug('[Walkabout] candidate load failed:', err));
@@ -364,17 +438,25 @@ export class WalkaboutService {
     }
   }
 
-  /** Cap and freshness. False means stop (counted where the spec counts it). */
-  private gate(s: LiveSession, now: number): boolean {
-    if (!isWalkaboutLive({ startedAt: s.startedAt, endedAt: null }, now)) {
-      void this.endForCap(s);
-      return false;
-    }
-    if (!s.latest || now - s.latest.fixAt > WALKABOUT_SAMPLE_FRESH_MS) {
-      s.skipped.noFix++;
-      return false;
-    }
+  /** Past the cap: end the session (fire-and-forget) and tell the caller to stop. */
+  private capped(s: LiveSession, now: number): boolean {
+    if (isWalkaboutLive({ startedAt: s.startedAt, endedAt: null }, now)) return false;
+    void this.endForCap(s);
     return true;
+  }
+
+  /** Skips that no fix could change (own, MQTT, replay, non-RF, bad frame): not counted as "no fix". */
+  private uncountable(skip: WalkaboutSkip | null): boolean {
+    return skip === 'no-local-node' || skip === 'replayed' || skip === 'own-packet' || skip === 'via-mqtt'
+      || skip === 'not-rf' || skip === 'no-packet-id' || skip === 'not-live' || skip === 'nodedb-replay'
+      || skip === 'unknown-hops' || skip === 'decode-failed' || skip === 'own-advert';
+  }
+
+  /** A fix within the freshness bound; counts `noFix` otherwise. */
+  private hasFreshFix(s: LiveSession, now: number): boolean {
+    if (s.latest && now - s.latest.fixAt <= WALKABOUT_SAMPLE_FRESH_MS) return true;
+    s.skipped.noFix++;
+    return false;
   }
 
   private freshCandidates(sourceId: string, now: number): CandidateCache | null {

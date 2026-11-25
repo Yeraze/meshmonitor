@@ -66,6 +66,18 @@ describe('evaluateWalkaboutMeshtastic', () => {
     });
   });
 
+  it('0 hops with a relay byte that is not the sender is a relayed copy (favourite router keeps hop_limit)', () => {
+    const cands = [cand(0xaabbcc4f)];
+    expect(evalMt({ hopStart: 3, hopLimit: 3, relayNode: 0x4f }, { candidates: cands })).toMatchObject({
+      skip: null, credit: { creditKind: 'relay', creditedKey: '!aabbcc4f', hopsAway: 0 },
+    });
+    expect(evalMt({ hopStart: 3, hopLimit: 3, relayNode: 0x4f }, { candidates: [] })).toEqual({ skip: 'relay-unknown' });
+    // relay byte == sender's low byte: direct
+    expect(evalMt({ hopStart: 3, hopLimit: 3, relayNode: 0xef }, { candidates: cands })).toMatchObject({ skip: null, credit: { creditKind: 'direct', creditedKey: '!deadbeef' } });
+    // relay byte 0 at 0 hops: direct
+    expect(evalMt({ hopStart: 3, hopLimit: 3, relayNode: 0 })).toMatchObject({ skip: null, credit: { creditKind: 'direct' } });
+  });
+
   it('relay byte 0 is relay-none', () => {
     expect(evalMt({ hopStart: 3, hopLimit: 2, relayNode: 0 }, { candidates: [cand(0xaabbcc4f)] })).toEqual({ skip: 'relay-none' });
     expect(evalMt({ hopStart: 3, hopLimit: 2, relayNode: null }, { candidates: [cand(0xaabbcc4f)] })).toEqual({ skip: 'relay-none' });
@@ -154,8 +166,8 @@ describe('evaluateWalkaboutMeshCore', () => {
     expect(run(frame(FLOOD, T_ANON, anon), [KEY('cd')])).toEqual({ skip: 'relay-unknown' });
   });
 
-  it('a sender equal to (or a prefix of) our own key is own-packet', () => {
-    expect(run(frame(FLOOD, T_TXT, txt('11')), [KEY('ab')])).toEqual({ skip: 'own-packet' });
+  it('a full sender key equal to ours is own-packet; a 1-byte hash is not dropped by prefix', () => {
+    expect(run(frame(FLOOD, T_TXT, txt('11')), [KEY('ab')])).toEqual({ skip: 'relay-unknown' });
     expect(run(frame(FLOOD, T_ANON, `bb${LOCALKEY}00`), [KEY('ab')])).toEqual({ skip: 'own-packet' });
   });
 
