@@ -294,8 +294,8 @@ describe('CoverageImports — SQLite', () => {
     const t = createTestDb();
     close = () => t.sqlite.close();
     ctx = {
-      imports: new CoverageImportsRepository(t.db as any, 'sqlite'), // eslint-disable-line @typescript-eslint/no-explicit-any -- test db
-      rx: new CoverageReceptionsRepository(t.db as any, 'sqlite'), // eslint-disable-line @typescript-eslint/no-explicit-any -- test db
+      imports: new CoverageImportsRepository(t.db as any, 'sqlite'),
+      rx: new CoverageReceptionsRepository(t.db as any, 'sqlite'),
       clear: async () => {},
     };
   });
