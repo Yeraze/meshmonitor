@@ -232,8 +232,10 @@ Open **Analysis & Reports** from the dashboard sidebar, then click the
 - **Hops** — Any, or an exact hop count 0–7. Check **Up to this many hops**
   to turn it into a ceiling instead of an exact match.
 - **Colour by** — SNR (default) or RSSI.
-- **View** — **Dots** (one per fix) or **Grid** (see below), with a cell size
-  of 100 m, 250 m, 500 m or 1 km for the grid.
+- **View** — **Dots** (one per fix), **Grid** (see below), or **Walkabout**,
+  which shows hexes from phone-GPS sessions. See
+  [Walkabout](./walkabout#map). The grid takes a cell size of 100 m,
+  250 m, 500 m or 1 km.
 - **Export** — download the loaded receptions as CSV or GeoJSON (see below).
 - **Refresh** — re-runs the current filters against the latest data. The
   report does not poll in the background.
