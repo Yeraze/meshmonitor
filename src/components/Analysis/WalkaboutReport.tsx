@@ -85,6 +85,7 @@ export default function WalkaboutReport() {
   const [showStart, setShowStart] = useState(false);
   const [name, setName] = useState('');
   const [startError, setStartError] = useState<string | null>(null);
+  const [stopError, setStopError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<WalkaboutSessionDto | null>(null);
 
   const samplerRef = useRef(createWalkaboutSampler());
@@ -183,6 +184,7 @@ export default function WalkaboutReport() {
   const stopWalkNow = async () => {
     const s = active;
     if (!s) return;
+    setStopError(null);
     stopWatch();
     // Best effort: send what is still queued, then close the session.
     const rest = samplerRef.current.takeBatch(Date.now());
@@ -194,7 +196,8 @@ export default function WalkaboutReport() {
       refreshLists();
     } catch (err) {
       if (errCode(err) !== 'WALKABOUT_NOT_LIVE') {
-        setStartError((err as Error)?.message ?? null);
+        setStopError((err as Error)?.message || t('analysis.walkabout.stop_failed', 'Could not stop the session. Try again.'));
+        return;
       }
     }
     setActive(null);
@@ -371,6 +374,7 @@ export default function WalkaboutReport() {
                 : t('analysis.walkabout.wake_off', 'The screen may turn off. Your browser did not allow keeping it on.')}
             </p>
           )}
+          {stopError && <p className={styles.error} role="alert" data-testid="walkabout-stop-error">{stopError}</p>}
           <div className={styles.actions}>
             <button type="button" className={styles.danger} onClick={() => { void stopWalkNow(); }} data-testid="walkabout-stop">
               <UiIcon name="close" size={16} /> {t('analysis.walkabout.stop', 'Stop')}

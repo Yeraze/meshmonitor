@@ -9030,5 +9030,6 @@
   "analysis.walkabout.row_counts": "{{samples}} samples, {{receptions}} receptions, {{nodes}} nodes",
   "analysis.walkabout.card_title": "Walkabout",
   "analysis.walkabout.card_description": "Walk or drive with your phone; every packet this source hears is mapped to where you are. Needs HTTPS.",
-  "analysis.walkabout.ended_lost": "Session is gone or no longer yours. GPS tracking stopped."
+  "analysis.walkabout.ended_lost": "Session is gone or no longer yours. GPS tracking stopped.",
+  "analysis.walkabout.stop_failed": "Could not stop the session. Try again."
 }

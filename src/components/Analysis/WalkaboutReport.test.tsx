@@ -296,6 +296,20 @@ describe('WalkaboutReport', () => {
     expect(screen.getByTestId('walkabout-ended').textContent).toMatch(/stopped/);
   });
 
+  it('a failed stop shows its own error next to Stop, not in the Start dialog', async () => {
+    stopWalkabout.mockRejectedValueOnce(Object.assign(new Error('Server down'), { status: 500 }));
+    await startWalking();
+    fireEvent.click(screen.getByTestId('walkabout-stop'));
+    await flush();
+    expect(screen.getByTestId('walkabout-stop-error').textContent).toBe('Server down');
+    expect(screen.getByTestId('walkabout-live')).toBeTruthy();
+    expect(screen.queryByTestId('walkabout-start-modal')).toBeNull();
+    stopWalkabout.mockResolvedValueOnce(session({ isLive: false }));
+    fireEvent.click(screen.getByTestId('walkabout-stop'));
+    await flush();
+    expect(screen.queryByTestId('walkabout-live')).toBeNull();
+  });
+
   it('offers Resume only for my own live session', async () => {
     fetchLiveWalkabout.mockResolvedValue({ session: session(), skipped: null });
     renderReport();
