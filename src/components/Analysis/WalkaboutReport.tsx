@@ -6,7 +6,7 @@
  * 10 s and never polls (the sample response carries the counts), so a
  * two-hour walk over cellular stays far below the API rate limit (§2.8).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from '../icons';
@@ -22,6 +22,7 @@ import {
   useWalkaboutSources,
   walkaboutKeys,
 } from '../../hooks/useWalkabout';
+import { useReadableWalkaboutSources } from '../../hooks/useWalkaboutSources';
 import { postWalkaboutSamples, stopWalkabout } from '../../services/walkaboutApi';
 import { createWalkaboutSampler } from '../../utils/walkaboutSampler';
 import { formatClock, pausedMinutes } from '../../utils/walkaboutFormat';
@@ -30,15 +31,12 @@ import {
   WALKABOUT_MAX_DURATION_MS,
   WALKABOUT_NAME_MAX,
   WALKABOUT_POST_INTERVAL_MS,
-  WALKABOUT_READ_GRANT,
   WALKABOUT_WARN_ACCURACY_M,
   WALKABOUT_WRITE_GRANT,
 } from '../../utils/walkabout';
 import type { WalkaboutSessionDto, WalkaboutSkipCounts } from '../../types/walkabout';
 import WalkaboutMapPanel from './WalkaboutMapPanel';
 import styles from './WalkaboutReport.module.css';
-
-const WALKABOUT_SOURCE_TYPES = new Set(['meshtastic_tcp', 'meshcore']);
 
 type EndNotice = 'cap' | 'user' | 'lost' | null;
 
@@ -62,16 +60,7 @@ export default function WalkaboutReport() {
     [hasPermission],
   );
   // Every source the user can read; Start/Resume/Delete follow the SELECTED source's write grant.
-  const options = useMemo(
-    () =>
-      (sourcesQ.data ?? []).filter(
-        (s) =>
-          s.enabled !== false &&
-          WALKABOUT_SOURCE_TYPES.has(s.type ?? '') &&
-          hasPermission(WALKABOUT_READ_GRANT.resource, WALKABOUT_READ_GRANT.action, { sourceId: s.id }),
-      ),
-    [sourcesQ.data, hasPermission],
-  );
+  const options = useReadableWalkaboutSources(hasPermission);
 
   const [pickedId, setPickedId] = useState('');
   const defaultId = (options.find((o) => canWriteSource(o.id)) ?? options[0])?.id ?? '';

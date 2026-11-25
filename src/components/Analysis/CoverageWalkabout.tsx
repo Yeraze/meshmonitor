@@ -5,38 +5,30 @@
  * the button reads the auth context without throwing (anonymous and test
  * renders have none) and runs the source query only for a signed-in viewer.
  */
-import { Suspense, useContext, useMemo, useState } from 'react';
+import { Suspense, useCallback, useContext, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../contexts/authContextObject';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
-import { useWalkaboutSessions, useWalkaboutSources } from '../../hooks/useWalkabout';
-import { WALKABOUT_READ_GRANT } from '../../utils/walkabout';
+import { useWalkaboutSessions } from '../../hooks/useWalkabout';
+import { useReadableWalkaboutSources, type HasSourcePermission } from '../../hooks/useWalkaboutSources';
+import { WALKABOUT_MAX_RANGE_MS } from '../../utils/walkabout';
 import { WalkaboutHexMapLazy } from './walkaboutHexMapLazy';
 import type { WalkaboutMapQuery } from '../../types/walkabout';
 import styles from './CoverageWalkabout.module.css';
 
-const WALKABOUT_SOURCE_TYPES = new Set(['meshtastic_tcp', 'meshcore']);
-
-/** Enabled walkabout-capable sources the viewer can read (`nodes:read`). */
-function useReadableWalkaboutSources() {
+/** Enabled walkabout-capable sources the viewer can read; the context may be absent. */
+function useReadableSources() {
   const auth = useContext(AuthContext);
-  const sourcesQ = useWalkaboutSources();
-  const rows = useMemo(
-    () =>
-      (sourcesQ.data ?? []).filter(
-        (s) =>
-          s.enabled !== false &&
-          WALKABOUT_SOURCE_TYPES.has(s.type ?? '') &&
-          !!auth?.hasPermission(WALKABOUT_READ_GRANT.resource, WALKABOUT_READ_GRANT.action, { sourceId: s.id }),
-      ),
-    [sourcesQ.data, auth],
+  const hasPermission = useCallback<HasSourcePermission>(
+    (resource, action, opts) => !!auth?.hasPermission(resource, action, opts),
+    [auth],
   );
-  return rows;
+  return useReadableWalkaboutSources(hasPermission);
 }
 
 function ViewButtonInner({ active, onClick }: { active: boolean; onClick: () => void }) {
   const { t } = useTranslation();
-  const rows = useReadableWalkaboutSources();
+  const rows = useReadableSources();
   if (rows.length === 0) return null;
   return (
     <button
@@ -67,9 +59,12 @@ export interface CoverageWalkaboutPanelProps {
   rangeKey: string;
 }
 
-export function CoverageWalkaboutPanel({ sinceMs, untilMs, senderId, rangeKey }: CoverageWalkaboutPanelProps) {
+export function CoverageWalkaboutPanel({ sinceMs: rawSince, untilMs, senderId, rangeKey }: CoverageWalkaboutPanelProps) {
   const { t } = useTranslation();
-  const sources = useReadableWalkaboutSources();
+  // The server rejects ranges over 31 days (400): clamp to the newest 31 days and say so.
+  const clamped = untilMs - rawSince > WALKABOUT_MAX_RANGE_MS;
+  const sinceMs = clamped ? untilMs - WALKABOUT_MAX_RANGE_MS : rawSince;
+  const sources = useReadableSources();
   const [pickedSource, setPickedSource] = useState('');
   const [pickedSession, setPickedSession] = useState('');
   const sourceId = sources.some((s) => s.id === pickedSource) ? pickedSource : (sources[0]?.id ?? '');
@@ -117,6 +112,14 @@ export function CoverageWalkaboutPanel({ sinceMs, untilMs, senderId, rangeKey }:
           </select>
         </label>
       </div>
+      {clamped && (
+        <p className={styles.hint} role="status" data-testid="coverage-walkabout-clamped">
+          {t(
+            'analysis.coverage.walkabout_range_clamped',
+            'Walkabout shows at most 31 days. Showing the 31 days before the end of your range.',
+          )}
+        </p>
+      )}
       <p className={styles.hint} data-testid="coverage-walkabout-hint">
         {t(
           'analysis.coverage.walkabout_sender_hint',

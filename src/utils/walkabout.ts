@@ -22,6 +22,8 @@ export const WALKABOUT_LIST_LIMIT = 200;
 
 /** Per-source grants (Q1). Routes and UI both read these. */
 export const WALKABOUT_WRITE_GRANT = { resource: 'nodes', action: 'write' } as const;
+/** Source types a walkabout can run on (their radio hears the walker). */
+export const WALKABOUT_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshtastic_tcp', 'meshcore']);
 export const WALKABOUT_READ_GRANT = { resource: 'nodes', action: 'read' } as const;
 
 export type WalkaboutEndReason = 'user' | 'cap';

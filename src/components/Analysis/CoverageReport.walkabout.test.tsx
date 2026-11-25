@@ -172,4 +172,19 @@ describe('CoverageReport Walkabout view', () => {
     expect(call[1]).toBe(true);
     expect(screen.getByTestId('coverage-map-stub')).toBeTruthy();
   });
+
+  it('clamps a custom range over 31 days for the walkabout query and says so', () => {
+    renderReport();
+    goWalkabout();
+    expect(screen.queryByTestId('coverage-walkabout-clamped')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Custom' }));
+    const [from, to] = Array.from(document.querySelectorAll('input[type="datetime-local"]')) as HTMLInputElement[];
+    fireEvent.change(from, { target: { value: '2023-09-01T00:00' } });
+    fireEvent.change(to, { target: { value: '2023-11-14T00:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.getByTestId('coverage-walkabout-clamped')).toBeTruthy();
+    const q = lastHex().query;
+    expect(q.kind).toBe('range');
+    expect(q.untilMs - q.sinceMs).toBe(31 * 86_400_000);
+  });
 });
