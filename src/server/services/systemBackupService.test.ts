@@ -403,11 +403,17 @@ describe('systemBackupService.createBackup — coverage tables', () => {
     const survey = [{ sourceId: 's1', senderId: '!aabbccdd', receivedAt: 1500, importId: null }];
     const page1 = [{ sourceId: 's1', packetKey: 'a', importId: 'i1' }, { sourceId: 's1', packetKey: 'b', importId: 'i1' }];
     const page2 = [{ sourceId: 's2', packetKey: 'c', importId: 'i2' }];
+    // An import that started after coverage_imports was read: its rows must not be exported.
+    const orphan = { sourceId: 's2', packetKey: 'z', importId: 'late' };
+    const realPrepare = mockDb.db.prepare.getMockImplementation();
+    const importsStmt = { all: vi.fn().mockReturnValue([{ id: 'i1' }, { id: 'i2' }]), get: vi.fn(), run: vi.fn() };
+    mockDb.db.prepare.mockImplementation((sql: string) =>
+      sql.includes('coverage_imports') ? importsStmt : (realPrepare ? realPrepare(sql) : { all: vi.fn().mockReturnValue([]), get: vi.fn(), run: vi.fn() }));
     mockDb.coverageSurveys.getExemptionWindows.mockResolvedValue([{ senderId: '!aabbccdd', startAt: 1000, endAt: 2000 }]);
     mockDb.coverageReceptions.exportSurveyReceptions.mockResolvedValue(survey);
     mockDb.coverageReceptions.exportImportedReceptionsPage
       .mockResolvedValueOnce({ rows: page1, lastId: 20 })
-      .mockResolvedValueOnce({ rows: page2, lastId: 35 })
+      .mockResolvedValueOnce({ rows: [...page2, orphan], lastId: 35 })
       .mockResolvedValueOnce({ rows: [], lastId: null });
 
     await systemBackupService.createBackup('manual');

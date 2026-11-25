@@ -213,6 +213,15 @@ export class CoverageImportsRepository extends BaseRepository {
     await this.db.delete(coverageImports).where(this.withSourceScope(coverageImports, sourceId));
   }
 
+  /**
+   * Delete every batch row, all sources. Restore only: a pre-import backup
+   * has no batches and its reception rows carry no importId.
+   */
+  async deleteAll(): Promise<void> {
+    const { coverageImports } = this.tables;
+    await this.db.delete(coverageImports);
+  }
+
   private receptions(): CoverageReceptionsRepository {
     return new CoverageReceptionsRepository(this.db, this.dbType);
   }

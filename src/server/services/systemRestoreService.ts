@@ -197,6 +197,13 @@ class SystemRestoreService {
       const restoredTables = new Set(planRestoreTables(metadata.tables).tables);
       const unreadable = await this.findUnreadableSecrets(restoredTables);
 
+      // A backup from before imports (no coverage_imports file) replaced
+      // coverage_receptions with rows that have no importId, so any batch row
+      // left behind would list as empty and its sha would block a re-import.
+      if (restoredTables.has('coverage_receptions') && !restoredTables.has('coverage_imports')) {
+        await databaseService.coverageImports.deleteAll();
+      }
+
       // Script Secrets live decrypted in memory; load the restored set.
       if (restoredTables.has('script_secrets')) {
         await getScriptSecretStore().reloadCache();

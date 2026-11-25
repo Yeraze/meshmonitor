@@ -59,10 +59,10 @@ export { BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, BACKUP_SECRET_TABLES };
  * `onConflictDoNothing()` would otherwise silently drop future receptions
  * whose fresh id collides with a restored one.
  */
-const FILTERED_EXPORTERS: Record<string, () => AsyncIterable<BackupRow[]>> = {
+const FILTERED_EXPORTERS: Record<string, (exportedImportIds: ReadonlySet<string>) => AsyncIterable<BackupRow[]>> = {
   // Survey rows (bounded by the survey caps), then imported rows (#5891 P3)
   // paged by keyset on `id` so up to 200k rows per source never sit in memory.
-  coverage_receptions: async function* () {
+  coverage_receptions: async function* (exportedImportIds) {
     const windows = await databaseService.coverageSurveys.getExemptionWindows(Date.now());
     const surveyRows = await databaseService.coverageReceptions.exportSurveyReceptions(windows);
     yield* inBatches(surveyRows as BackupRow[], BACKUP_BATCH_ROWS);
@@ -70,7 +70,10 @@ const FILTERED_EXPORTERS: Record<string, () => AsyncIterable<BackupRow[]>> = {
     for (;;) {
       const { rows, lastId } = await databaseService.coverageReceptions.exportImportedReceptionsPage(afterId, BACKUP_BATCH_ROWS);
       if (lastId === null) return;
-      yield rows as BackupRow[];
+      // Only rows of batches present in this backup's coverage_imports file:
+      // an import running during the backup must not leave orphan rows.
+      const kept = (rows as BackupRow[]).filter((r) => exportedImportIds.has(String(r.importId)));
+      if (kept.length > 0) yield kept;
       afterId = lastId;
     }
   },
@@ -178,11 +181,12 @@ class SystemBackupService {
       let totalSize = 0;
       let totalRows = 0;
 
+      const exportedImportIds = new Set<string>();
       const session = await openBackupReadSession(this.backupDatabase());
       try {
         for (const tableName of BACKUP_TABLES) {
           const tableFile = path.join(backupPath, `${tableName}.json`);
-          const written = await writeTableFile(tableFile, this.exportTable(session, tableName));
+          const written = await writeTableFile(tableFile, this.exportTable(session, tableName, exportedImportIds));
 
           checksums[tableName] = written.checksum;
           totalSize += written.bytes;
@@ -268,14 +272,23 @@ class SystemBackupService {
    * path reads `BACKUP_BATCH_ROWS` rows at a time from the database (see
    * systemBackupIo.ts for how each backend does it).
    */
-  private async *exportTable(session: BackupReadSession, tableName: string): AsyncGenerator<BackupRow[]> {
+  private async *exportTable(
+    session: BackupReadSession,
+    tableName: string,
+    exportedImportIds: Set<string>,
+  ): AsyncGenerator<BackupRow[]> {
     try {
       const filteredExporter = FILTERED_EXPORTERS[tableName];
       if (filteredExporter) {
-        yield* filteredExporter();
+        yield* filteredExporter(exportedImportIds);
         return;
       }
-      yield* session.batches(tableName);
+      for await (const batch of session.batches(tableName)) {
+        // coverage_imports precedes coverage_receptions in BACKUP_TABLES: its
+        // ids bound which imported reception rows the next table may export.
+        if (tableName === 'coverage_imports') for (const r of batch) exportedImportIds.add(String(r.id));
+        yield batch;
+      }
     } catch (error) {
       logger.error(`❌ Failed to export table ${tableName}:`, error);
       throw error;
