@@ -112,6 +112,8 @@ meshmonitor-update
 
 This performs a `git pull`, rebuilds, and restarts services in place. No template redownload needed.
 
+With `UPDATE_MODE=release` (and optionally `UPDATE_CHANNEL=prerelease`) it installs the newest GitHub release from the pre-built `meshmonitor-runtime-<version>-<arch>.tar.gz` attached to each release instead of building. `build-lxc-template.sh` produces that tarball from the template chroot, so its native modules match the container. See the Proxmox LXC guide.
+
 ### Full template swap (alternative — use when major OS or dependency changes ship, or on LXCs with limited resources)
 
 `lxc/update.sh` automates the destroy-and-recreate flow on the Proxmox host:

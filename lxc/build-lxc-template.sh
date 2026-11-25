@@ -256,6 +256,32 @@ chroot "$ROOTFS_DIR" bash -c "
     npm cache clean --force
 "
 
+# Pre-built runtime for meshmonitor-update's release mode (#6558): dist/ and
+# the production node_modules/ from this same chroot, so native modules match
+# the container's Node ABI and libc. The manifest lets the updater refuse a
+# tarball that does not fit the host it runs on.
+echo "Packaging pre-built runtime..."
+RUNTIME_FILE="$BUILD_DIR/meshmonitor-runtime-${VERSION}-${ARCH}.tar.gz"
+RUNTIME_STAGE=$(mktemp -d)
+NODE_ABI=$(chroot "$ROOTFS_DIR" node -p 'process.versions.modules')
+NODE_VERSION=$(chroot "$ROOTFS_DIR" node -v)
+APP_COMMIT=$(git -C "$ROOTFS_DIR/opt/meshmonitor" rev-parse HEAD)
+APP_VERSION=$(chroot "$ROOTFS_DIR" node -p "require('/opt/meshmonitor/package.json').version")
+cat > "$RUNTIME_STAGE/manifest.json" <<MANIFEST
+{
+  "version": "${APP_VERSION}",
+  "commit": "${APP_COMMIT}",
+  "arch": "${ARCH}",
+  "libc": "glibc",
+  "nodeAbi": "${NODE_ABI}",
+  "nodeVersion": "${NODE_VERSION}"
+}
+MANIFEST
+tar -czf "$RUNTIME_FILE" -C "$RUNTIME_STAGE" manifest.json -C "$ROOTFS_DIR/opt/meshmonitor" dist node_modules
+rm -rf "$RUNTIME_STAGE"
+(cd "$BUILD_DIR" && sha256sum "$(basename "$RUNTIME_FILE")" > "$(basename "$RUNTIME_FILE").sha256")
+echo "Runtime: $(du -h "$RUNTIME_FILE" | cut -f1) (Node ${NODE_VERSION}, ABI ${NODE_ABI}, ${APP_COMMIT:0:12})"
+
 # docker/apprise-api.py is already present at /opt/meshmonitor/docker/
 # via the sparse-checkout cone — no separate copy needed.
 
