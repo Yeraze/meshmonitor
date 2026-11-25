@@ -810,7 +810,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             senderNames={senderNames}
             fitKey={fitKey}
             gaps={gapResult?.gaps}
-            view={view as CoverageMapView}
+            view={view}
             gridCells={gridCells}
           />
           <CoverageSummaryPanel
