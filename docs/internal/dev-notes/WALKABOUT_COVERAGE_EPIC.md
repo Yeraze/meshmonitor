@@ -60,7 +60,7 @@ MeshMonitor sends nothing for this feature (passive).
   validation with clear errors; rows tagged `imported_from` + filename and
   filterable; round-trip test.
   *Exit:* export → import on a clean DB renders the same points.
-- [ ] **P4 — Repeater-only map chip.** One-click map filter for repeater/router
+- [x] **P4 — Repeater-only map chip.** One-click map filter for repeater/router
   roles (Meshtastic ROUTER family, MeshCore repeater/room server).
   *Exit:* chip filters the main map for both protocols.
 
@@ -114,3 +114,9 @@ MeshMonitor sends nothing for this feature (passive).
     skips orphan rows; bogus positions are skipped, not fatal.
   - Known, not fixed: a non-admin can't start a survey on a sender that exists
     only in imported data.
+- **P4 (2026-11-25).** "Repeaters only" chip (`MapRepeatersOnlyToggle`) on all
+  three Map Features panels (NodesTab, DashboardMap, MeshCoreMapControls), one
+  shared `showRepeatersOnly` MapContext flag and one predicate
+  `isRepeaterClassNode`. CLIENT_BASE counts (reuses `isInfrastructureRole`
+  unchanged; easy to revert by excluding role 12 in the predicate). The local
+  node is exempt; favourites are not. User guide in `docs/features/walkabout.md`.

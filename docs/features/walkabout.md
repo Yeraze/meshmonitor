@@ -145,6 +145,24 @@ All routes live under `/api/sources/:id/walkabout`. Read routes need
 Errors: `409 WALKABOUT_NOT_LIVE` when a session already ended, and
 `409 WALKABOUT_LIVE_SESSION` when you delete a live one.
 
+## Repeaters only
+
+A walker wants to know which repeaters the walk can reach. The **Repeaters**
+chip sits in the header of the Map Features panel, beside the zoom-to-fit
+button, on the Meshtastic map, the Dashboard and Unified maps, and the MeshCore
+map. Click it to hide every node that is not a repeater. Click it again to show
+all nodes.
+
+- **Meshtastic:** Router, Router Late, Repeater, the deprecated Router Client,
+  and Client Base. A node with no role counts as a client and is hidden.
+- **MeshCore:** repeaters and room servers.
+- Your own node stays on the map. Favourites do not stay, so the map shows
+  repeaters only.
+- The choice persists in this browser across reloads. The chip stays in the
+  header when the panel is collapsed, so you can see that the filter is on.
+- It only changes what the map draws. It sends nothing and does not change the
+  node list.
+
 ## Related
 
 - [Coverage Report](./coverage-report) — the passive map built from position
