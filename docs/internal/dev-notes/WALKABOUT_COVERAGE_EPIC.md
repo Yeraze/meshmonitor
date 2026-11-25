@@ -29,8 +29,11 @@ MeshMonitor sends nothing for this feature (passive).
   Coverage data.
 - **Retention:** sessions are kept until the operator deletes them (not
   `coverage_retention_days`).
-- **Permission:** starting/stopping/deleting a session needs the per-source write
-  grant that gates saving Coverage surveys; viewing needs read on that source.
+- **Permission:** `nodes:write` on the source to start/stop/sample/delete;
+  `nodes:read` to view (no grant gates Coverage surveys, so the original premise
+  was corrected). Any reader of the source may see a session and its track.
+- **Radio travels with the phone.** A fixed radio hears the same nodes wherever
+  the phone is, so the Start dialog tells the operator to carry the radio.
 - **Binning:** H3 via `h3-js`, lazy-loaded with the view. Server aggregates by
   cell (res 9, dropping to 8/7 zoomed out); best signal per cell; categorical
   buckets strong/medium/weak/no-signal (SNR defaults strong ≥ 0, medium −5…0,
