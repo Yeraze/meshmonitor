@@ -9005,7 +9005,7 @@
   "analysis.walkabout.accuracy": "GPS accuracy",
   "analysis.walkabout.accuracy_wait": "Waiting for a better GPS fix. Fixes worse than 100 m are not sent.",
   "analysis.walkabout.accuracy_warn": "GPS accuracy is poor (over 30 m). Coverage points will be rough.",
-  "analysis.walkabout.send_trouble": "Could not reach the server. Samples are kept and will be sent again in 30 seconds.",
+  "analysis.walkabout.send_trouble": "Could not reach the server. Retrying. Samples older than 30 seconds are dropped.",
   "analysis.walkabout.skipped": "Not counted: {{noFix}} without a fresh fix, {{relay}} relayed by an unknown or shared relay, {{noSender}} without a sender.",
   "analysis.walkabout.paused": "GPS paused for {{minutes}} min while the screen was off.",
   "analysis.walkabout.dismiss": "Dismiss",
@@ -9029,5 +9029,6 @@
   "analysis.walkabout.row_live": "Running",
   "analysis.walkabout.row_counts": "{{samples}} samples, {{receptions}} receptions, {{nodes}} nodes",
   "analysis.walkabout.card_title": "Walkabout",
-  "analysis.walkabout.card_description": "Walk or drive with your phone; every packet this source hears is mapped to where you are. Needs HTTPS."
+  "analysis.walkabout.card_description": "Walk or drive with your phone; every packet this source hears is mapped to where you are. Needs HTTPS.",
+  "analysis.walkabout.ended_lost": "Session is gone or no longer yours. GPS tracking stopped."
 }

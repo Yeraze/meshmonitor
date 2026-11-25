@@ -71,7 +71,13 @@ export function useGeolocationWatch(onFix: (fix: WalkaboutFix) => void): UseGeol
     const wl = getWakeLock();
     if (!wl || wakeSentinel.current) return;
     try {
-      wakeSentinel.current = await wl.request('screen');
+      const sentinel = await wl.request('screen');
+      if (!watching.current) {
+        // stop() or unmount ran while the request was pending.
+        void sentinel.release().catch(() => undefined);
+        return;
+      }
+      wakeSentinel.current = sentinel;
       setWakeLockActive(true);
     } catch {
       setWakeLockActive(false);
@@ -115,6 +121,7 @@ export function useGeolocationWatch(onFix: (fix: WalkaboutFix) => void): UseGeol
   }, [handleError]);
 
   function handlePosition(pos: GeolocationPosition) {
+    if (!watching.current) return;
     setState('watching');
     setAccuracy(pos.coords.accuracy);
     armBeat();

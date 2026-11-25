@@ -18,12 +18,11 @@ import {
   useDeleteWalkabout,
   useLiveWalkabout,
   useStartWalkabout,
-  useStopWalkabout,
   useWalkaboutSessions,
   useWalkaboutSources,
   walkaboutKeys,
 } from '../../hooks/useWalkabout';
-import { postWalkaboutSamples } from '../../services/walkaboutApi';
+import { postWalkaboutSamples, stopWalkabout } from '../../services/walkaboutApi';
 import { createWalkaboutSampler } from '../../utils/walkaboutSampler';
 import { formatClock, pausedMinutes } from '../../utils/walkaboutFormat';
 import {
@@ -38,12 +37,18 @@ import {
 import type { WalkaboutSessionDto, WalkaboutSkipCounts } from '../../types/walkabout';
 import styles from './WalkaboutReport.module.css';
 
-const RETRY_AFTER_FAILURE_MS = 30_000;
 const WALKABOUT_SOURCE_TYPES = new Set(['meshtastic_tcp', 'meshcore']);
 
-type EndNotice = 'cap' | 'user' | null;
+type EndNotice = 'cap' | 'user' | 'lost' | null;
 
 const errCode = (e: unknown): string | undefined => (e as { code?: string } | null)?.code;
+const errStatus = (e: unknown): number | undefined => (e as { status?: number } | null)?.status;
+/** The session is gone or no longer ours: retrying cannot help. */
+const isTerminalError = (e: unknown): boolean => {
+  const c = errCode(e);
+  const st = errStatus(e);
+  return c === 'WALKABOUT_NOT_FOUND' || c === 'WALKABOUT_NOT_OWNER' || c === 'FORBIDDEN' || st === 403 || st === 404;
+};
 
 export default function WalkaboutReport() {
   const { t } = useTranslation();
@@ -71,7 +76,6 @@ export default function WalkaboutReport() {
   const sessionsQ = useWalkaboutSessions(sourceId || null);
   const liveQ = useLiveWalkabout(sourceId || null);
   const startMut = useStartWalkabout(sourceId);
-  const stopMut = useStopWalkabout(sourceId);
   const deleteMut = useDeleteWalkabout(sourceId);
 
   const [active, setActive] = useState<WalkaboutSessionDto | null>(null);
@@ -88,7 +92,6 @@ export default function WalkaboutReport() {
   activeRef.current = active;
   const sourceRef = useRef(sourceId);
   sourceRef.current = sourceId;
-  const retryAtRef = useRef(0);
   const inFlightRef = useRef(false);
 
   const watch = useGeolocationWatch(
@@ -123,12 +126,11 @@ export default function WalkaboutReport() {
         endWalk('cap');
         return;
       }
-      if (Date.now() < retryAtRef.current) return;
       const batch = samplerRef.current.takeBatch(Date.now());
       if (batch.length === 0) return;
       inFlightRef.current = true;
       try {
-        const res = await postWalkaboutSamples(sourceRef.current, s.id, batch);
+        const res = await postWalkaboutSamples(s.sourceId, s.id, batch);
         if (res?.session) setActive(res.session);
         if (res?.skipped) setSkipped(res.skipped);
         setSendTrouble(false);
@@ -136,9 +138,11 @@ export default function WalkaboutReport() {
         if (errCode(err) === 'WALKABOUT_NOT_LIVE') {
           const reason = (err as { body?: { endReason?: string } }).body?.endReason;
           endWalk(reason === 'cap' || Date.now() >= s.startedAt + WALKABOUT_MAX_DURATION_MS ? 'cap' : 'user');
+        } else if (isTerminalError(err)) {
+          endWalk('lost');
         } else {
+          // Retry on the next tick; the server drops fixes older than 30 s.
           samplerRef.current.requeue(batch);
-          retryAtRef.current = Date.now() + RETRY_AFTER_FAILURE_MS;
           setSendTrouble(true);
         }
       } finally {
@@ -153,7 +157,6 @@ export default function WalkaboutReport() {
 
   const beginWalk = (session: WalkaboutSessionDto) => {
     samplerRef.current = createWalkaboutSampler();
-    retryAtRef.current = 0;
     setSkipped(null);
     setEnded(null);
     setActive(session);
@@ -184,10 +187,11 @@ export default function WalkaboutReport() {
     // Best effort: send what is still queued, then close the session.
     const rest = samplerRef.current.takeBatch(Date.now());
     if (rest.length > 0) {
-      try { await postWalkaboutSamples(sourceId, s.id, rest); } catch { /* the stop still goes through */ }
+      try { await postWalkaboutSamples(s.sourceId, s.id, rest); } catch { /* the stop still goes through */ }
     }
     try {
-      await stopMut.mutateAsync(s.id);
+      await stopWalkabout(s.sourceId, s.id);
+      refreshLists();
     } catch (err) {
       if (errCode(err) !== 'WALKABOUT_NOT_LIVE') {
         setStartError((err as Error)?.message ?? null);
@@ -273,7 +277,9 @@ export default function WalkaboutReport() {
           <UiIcon name="info" size={16} />
           {ended === 'cap'
             ? t('analysis.walkabout.ended_cap', 'Session ended (2 h limit).')
-            : t('analysis.walkabout.ended_user', 'Session stopped.')}
+            : ended === 'lost'
+              ? t('analysis.walkabout.ended_lost', 'Session is gone or no longer yours. GPS tracking stopped.')
+              : t('analysis.walkabout.ended_user', 'Session stopped.')}
         </p>
       )}
 
@@ -329,7 +335,7 @@ export default function WalkaboutReport() {
           {sendTrouble && (
             <p className={styles.warn} role="status" data-testid="walkabout-send-trouble">
               <UiIcon name="alert" size={16} />
-              {t('analysis.walkabout.send_trouble', 'Could not reach the server. Samples are kept and will be sent again in 30 seconds.')}
+              {t('analysis.walkabout.send_trouble', 'Could not reach the server. Retrying. Samples older than 30 seconds are dropped.')}
             </p>
           )}
           {skipped && (skipped.noFix + skipped.relayAmbiguous + skipped.relayUnknown + skipped.noSender) > 0 && (

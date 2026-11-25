@@ -119,4 +119,25 @@ describe('useGeolocationWatch', () => {
     expect(release).toHaveBeenCalled();
     expect(result.current.state).toBe('idle');
   });
+
+  it('releases a wake lock that resolves after stop()', async () => {
+    let resolve: (v: { release: () => Promise<void> }) => void = () => undefined;
+    wakeRequest.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+    const { result } = renderHook(() => useGeolocationWatch(vi.fn()));
+    act(() => result.current.start());
+    act(() => result.current.stop());
+    await act(async () => { resolve({ release }); await Promise.resolve(); });
+    expect(release).toHaveBeenCalled();
+    expect(result.current.wakeLockActive).toBe(false);
+  });
+
+  it('ignores a late fix after stop()', () => {
+    const onFix = vi.fn();
+    const { result } = renderHook(() => useGeolocationWatch(onFix));
+    act(() => result.current.start());
+    act(() => result.current.stop());
+    act(() => posCb(pos(10, 1)));
+    expect(onFix).not.toHaveBeenCalled();
+    expect(result.current.state).toBe('idle');
+  });
 });

@@ -217,7 +217,7 @@ describe('WalkaboutReport', () => {
     expect(screen.getByTestId('walkabout-nodes').textContent).toBe('5');
   });
 
-  it('on a failed post keeps the batch and retries after 30 s', async () => {
+  it('on a failed post keeps the batch and retries on the next 10 s tick', async () => {
     postWalkaboutSamples.mockRejectedValueOnce(Object.assign(new Error('Too many'), { status: 429 }));
     await startWalking();
     await act(async () => { posCb(fixAt(10, NOW + 1000)); });
@@ -225,12 +225,43 @@ describe('WalkaboutReport', () => {
     expect(postWalkaboutSamples).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('walkabout-send-trouble')).toBeTruthy();
     await advance(10_000);
-    await advance(10_000);
-    expect(postWalkaboutSamples).toHaveBeenCalledTimes(1);
-    await advance(10_000);
     expect(postWalkaboutSamples).toHaveBeenCalledTimes(2);
-    expect(postWalkaboutSamples.mock.calls[1][2]).toHaveLength(1);
     expect(postWalkaboutSamples.mock.calls[1][2][0].deviceFixAt).toBe(NOW + 1000);
+  });
+
+  it.each([
+    ['WALKABOUT_NOT_FOUND', {}],
+    ['WALKABOUT_NOT_OWNER', {}],
+    ['FORBIDDEN', {}],
+    [undefined, { status: 404 }],
+    [undefined, { status: 403 }],
+  ])('terminal error %s %j ends the walk and stops GPS', async (code, extra) => {
+    postWalkaboutSamples.mockRejectedValueOnce(Object.assign(new Error('x'), { code }, extra));
+    await startWalking();
+    await act(async () => { posCb(fixAt(10, NOW + 1000)); });
+    await advance(10_000);
+    expect(clearWatch).toHaveBeenCalled();
+    expect(screen.queryByTestId('walkabout-live')).toBeNull();
+    expect(screen.getByTestId('walkabout-ended').textContent).toMatch(/gone|no longer/);
+    await advance(30_000);
+    expect(postWalkaboutSamples).toHaveBeenCalledTimes(1);
+  });
+
+  it('posts and stops against the session sourceId, not the picker', async () => {
+    startWalkabout.mockResolvedValue(session({ sourceId: 'zzz' }));
+    postWalkaboutSamples.mockResolvedValue({
+      accepted: 1,
+      dropped: { accuracy: 0, spacing: 0, stale: 0, invalid: 0 },
+      session: session({ sourceId: 'zzz', sampleCount: 1 }),
+      skipped: { noFix: 0, relayAmbiguous: 0, relayUnknown: 0, noSender: 0 },
+    });
+    await startWalking();
+    await act(async () => { posCb(fixAt(10, NOW + 1000)); });
+    await advance(10_000);
+    expect(postWalkaboutSamples.mock.calls[0][0]).toBe('zzz');
+    fireEvent.click(screen.getByTestId('walkabout-stop'));
+    await flush();
+    expect(stopWalkabout).toHaveBeenCalledWith('zzz', 's1');
   });
 
   it('WALKABOUT_NOT_LIVE stops the watch and shows the 2 h message', async () => {
