@@ -35,6 +35,7 @@ import {
   WALKABOUT_WRITE_GRANT,
 } from '../../utils/walkabout';
 import type { WalkaboutSessionDto, WalkaboutSkipCounts } from '../../types/walkabout';
+import WalkaboutMapPanel from './WalkaboutMapPanel';
 import styles from './WalkaboutReport.module.css';
 
 const WALKABOUT_SOURCE_TYPES = new Set(['meshtastic_tcp', 'meshcore']);
@@ -56,22 +57,28 @@ export default function WalkaboutReport() {
   const { hasPermission } = useAuth();
   const sourcesQ = useWalkaboutSources();
 
-  const { options, readOnlyMode } = useMemo(() => {
-    const usable = (sourcesQ.data ?? []).filter(
-      (s) => s.enabled !== false && WALKABOUT_SOURCE_TYPES.has(s.type ?? ''),
-    );
-    const writable = usable.filter((s) =>
-      hasPermission(WALKABOUT_WRITE_GRANT.resource, WALKABOUT_WRITE_GRANT.action, { sourceId: s.id }),
-    );
-    if (writable.length > 0) return { options: writable, readOnlyMode: false };
-    const readable = usable.filter((s) =>
-      hasPermission(WALKABOUT_READ_GRANT.resource, WALKABOUT_READ_GRANT.action, { sourceId: s.id }),
-    );
-    return { options: readable, readOnlyMode: true };
-  }, [sourcesQ.data, hasPermission]);
+  const canWriteSource = useCallback(
+    (id: string) => hasPermission(WALKABOUT_WRITE_GRANT.resource, WALKABOUT_WRITE_GRANT.action, { sourceId: id }),
+    [hasPermission],
+  );
+  // Every source the user can read; Start/Resume/Delete follow the SELECTED source's write grant.
+  const options = useMemo(
+    () =>
+      (sourcesQ.data ?? []).filter(
+        (s) =>
+          s.enabled !== false &&
+          WALKABOUT_SOURCE_TYPES.has(s.type ?? '') &&
+          hasPermission(WALKABOUT_READ_GRANT.resource, WALKABOUT_READ_GRANT.action, { sourceId: s.id }),
+      ),
+    [sourcesQ.data, hasPermission],
+  );
 
   const [pickedId, setPickedId] = useState('');
-  const sourceId = options.some((o) => o.id === pickedId) ? pickedId : (options[0]?.id ?? '');
+  const defaultId = (options.find((o) => canWriteSource(o.id)) ?? options[0])?.id ?? '';
+  const sourceId = options.some((o) => o.id === pickedId) ? pickedId : defaultId;
+  const readOnlyMode = !sourceId || !canWriteSource(sourceId);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
 
   const sessionsQ = useWalkaboutSessions(sourceId || null);
   const liveQ = useLiveWalkabout(sourceId || null);
@@ -495,6 +502,20 @@ export default function WalkaboutReport() {
                         })}
                       </span>
                     </div>
+                    {!live && (
+                      <button
+                        type="button"
+                        className={styles.secondary}
+                        onClick={() => {
+                          setSelectedSessionId(s.id);
+                          mapRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+                        }}
+                        aria-label={t('analysis.walkabout.map.show', 'Map')}
+                        data-testid="walkabout-map-button"
+                      >
+                        <UiIcon name="map" size={16} /> {t('analysis.walkabout.map.show', 'Map')}
+                      </button>
+                    )}
                     {!readOnlyMode && !live && (
                       <button
                         type="button"
@@ -512,6 +533,22 @@ export default function WalkaboutReport() {
             </ul>
           )}
         </section>
+      )}
+      {sourceId && (
+        <div ref={mapRef}>
+          {active ? (
+            <p className={styles.note} data-testid="walkabout-map-while-walking">
+              <UiIcon name="info" size={16} /> {t('analysis.walkabout.map.opens_on_stop', 'The map opens when you stop.')}
+            </p>
+          ) : (
+            <WalkaboutMapPanel
+              sourceId={sourceId}
+              sessions={sessionRows}
+              selectedSessionId={selectedSessionId}
+              onSelectSession={setSelectedSessionId}
+            />
+          )}
+        </div>
       )}
     </div>
   );

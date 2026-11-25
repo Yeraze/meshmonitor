@@ -1,0 +1,52 @@
+.panel {
+  margin-top: 1rem;
+  min-width: 0;
+}
+
+.title {
+  margin: 0 0 0.5rem;
+  color: var(--color-text);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.chip,
+.refresh {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.chipActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.select {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 480px) {
+  .select {
+    flex-basis: 100%;
+    width: 100%;
+  }
+}
