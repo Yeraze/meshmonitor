@@ -112,6 +112,7 @@ const featuresSidebar = [
         ]
       },
       { text: 'Coverage Report', link: '/features/coverage-report' },
+      { text: 'Walkabout', link: '/features/walkabout' },
       { text: 'Traceroute Explorer', link: '/features/traceroute-explorer' },
       { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
       { text: 'Transport Breakdown', link: '/features/transport-breakdown' },

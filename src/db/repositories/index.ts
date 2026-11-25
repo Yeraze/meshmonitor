@@ -158,6 +158,16 @@ export type {
   CoverageRetentionExemptionWindow,
 } from './coverageReceptions.js';
 export { CoverageSurveysRepository } from './coverageSurveys.js';
+export { CoverageWalkaboutRepository } from './coverageWalkabout.js';
+export type {
+  DbWalkaboutSession,
+  DbWalkaboutSessionWithCounts,
+  DbWalkaboutSample,
+  NewWalkaboutSample,
+  DbWalkaboutReception,
+  NewWalkaboutReception,
+  WalkaboutCounts,
+} from './coverageWalkabout.js';
 export { CrossSourceLinksRepository } from './crossSourceLinks.js';
 export type { DbCrossSourceLink, RecordCrossSourceHearingParams } from './crossSourceLinks.js';
 export { DirectRfContactsRepository, directRfDayBucket, DIRECT_RF_DAY_MS } from './directRfContacts.js';

@@ -46,14 +46,18 @@ vi.mock('./CoverageReport', () => ({
   ),
 }));
 
+vi.mock('./WalkaboutReport', () => ({
+  default: () => <div data-testid="walkabout-report">Walkabout report</div>,
+}));
+
 vi.mock('./FirmwareStatusReport', () => ({
   default: () => <div data-testid="firmware-status-report">Firmware status report</div>,
 }));
 
 // #4943: the Firmware Status card is admin only.
-const auth = vi.hoisted(() => ({ isAdmin: false }));
+const auth = vi.hoisted(() => ({ isAdmin: false, authenticated: true }));
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ authStatus: { authenticated: true, user: { isAdmin: auth.isAdmin } } }),
+  useAuth: () => ({ authStatus: { authenticated: auth.authenticated, user: { isAdmin: auth.isAdmin } } }),
 }));
 
 vi.mock('./tracerouteExplorer/TracerouteExplorerReport', () => ({
@@ -215,6 +219,32 @@ describe('AnalysisTab', () => {
       await user.click(screen.getByText('Firmware Status'));
       expect(screen.getByTestId('firmware-status-report')).toBeInTheDocument();
       auth.isAdmin = false;
+    });
+  });
+
+  describe('Walkabout card (#5891)', () => {
+    it('opens from its card and returns with Back', async () => {
+      auth.authenticated = true;
+      const user = userEvent.setup();
+      renderTab();
+      await user.click(screen.getByText('Walkabout'));
+      expect(screen.getByTestId('walkabout-report')).toBeInTheDocument();
+      await user.click(screen.getByText('Back to reports'));
+      expect(screen.queryByTestId('walkabout-report')).not.toBeInTheDocument();
+    });
+
+    it('?report=walkabout opens the card', () => {
+      auth.authenticated = true;
+      renderTab(['/reports?report=walkabout']);
+      expect(screen.getByTestId('walkabout-report')).toBeInTheDocument();
+    });
+
+    it('is hidden for anonymous viewers', () => {
+      auth.authenticated = false;
+      renderTab(['/reports?report=walkabout']);
+      expect(screen.queryByTestId('walkabout-report')).not.toBeInTheDocument();
+      expect(screen.queryByText('Walkabout')).not.toBeInTheDocument();
+      auth.authenticated = true;
     });
   });
 });

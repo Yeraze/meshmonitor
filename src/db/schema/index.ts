@@ -67,6 +67,9 @@ export * from './coverageReceptions.js';
 
 // Coverage Report saved surveys (global — no sourceId) (#5277 Phase 4b WP1)
 export * from './coverageSurveys.js';
+
+// Walkabout Coverage sessions/samples/receptions, per-source (#5891 Phase 1)
+export * from './coverageWalkabout.js';
 export * from './crossSourceLinks.js';
 // Direct RF Contacts daily rollup, per-source (#6210)
 export * from './directRfContacts.js';

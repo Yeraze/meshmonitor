@@ -162,6 +162,7 @@ import {
 import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport, isRfTransport, isNodeDbReplayForPacketLog } from './services/packetLogDedup.js';
 import { maybeRecordMeshtasticLink } from './services/crossSourceLinkRecorder.js';
 import { maybeRecordMeshtasticDirectRf } from './services/directRfContactRecorder.js';
+import { walkaboutService } from './services/walkaboutService.js';
 import { buildMeshtasticFlight, emitPacketFlight } from './services/packetFlights.js';
 import {
   isStaleCoverageRxTime,
@@ -7564,6 +7565,14 @@ class MeshtasticManager implements ISourceManager {
     // RF (not via MQTT, not a NodeDB replay). Every portnum counts. Outside
     // the packet_log gate; coalesced in memory, never throws, sends nothing.
     maybeRecordMeshtasticDirectRf({
+      sourceId: this.sourceId,
+      localNodeNum: this.localNodeInfo?.nodeNum ?? null,
+      packet: meshPacket,
+      replayed: context?.viaStoreForward === true || context?.virtualNodeRequestId != null,
+    });
+    // Walkabout (#5891 P1): tag this hearing with the phone's latest fix.
+    // Receive-only; synchronous (one Map lookup while idle), writes fire-and-forget.
+    walkaboutService.maybeCaptureMeshtastic({
       sourceId: this.sourceId,
       localNodeNum: this.localNodeInfo?.nodeNum ?? null,
       packet: meshPacket,

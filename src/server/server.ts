@@ -48,6 +48,7 @@ import { cotFeedService } from './services/cotFeedService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { versionCheckService } from './services/versionCheckService.js';
 import { coverageRetentionService } from './services/coverageRetentionService.js';
+import { walkaboutService } from './services/walkaboutService.js';
 import { directRfContactsRetentionService } from './services/directRfContactsRetentionService.js';
 import { flushDirectRfContacts } from './services/directRfContactRecorder.js';
 import { notificationHold } from './services/notificationDedup.js';
@@ -575,6 +576,13 @@ setTimeout(async () => {
     directRfContactsRetentionService.start();
   } catch (error) {
     logger.error('Error starting Direct RF Contacts retention sweep:', error);
+  }
+  // Walkabout Coverage (#5891): load open sessions; end any past its 2 h cap at
+  // startedAt + cap. A restart never starts or re-arms a session.
+  try {
+    await walkaboutService.init();
+  } catch (error) {
+    logger.error('Error initialising Walkabout sessions:', error);
   }
 }, 5000);
 
