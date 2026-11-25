@@ -84,4 +84,29 @@ describe('POST /api/purge/nodes — coverage receptions cascade (#5277)', () => 
     });
     expect(page.items).toEqual([]);
   });
+
+  it('purge keeps imported rows (#5891 P3): only live receptions go', async () => {
+    const row = {
+      protocol: 'meshtastic' as const, receiverKind: 'local' as const, receiverId: '!00000001', receiverNodeNum: 1,
+      receiverLatitude: null, receiverLongitude: null, senderId: '!00000002', senderNodeNum: 2,
+      packetKey: '1', packetId: 1, pathKey: 'r0:h0', latitude: 1, longitude: 2, altitude: null,
+      precisionBits: null, snr: null, rssi: null, hopStart: null, hopLimit: null, hopsAway: null,
+      relayNode: null, channel: null, receivedAt: Date.now() - 86_400_000,
+    };
+    for (const src of [harness.sourceA, harness.sourceB]) {
+      await databaseService.coverageReceptions.insertImportedRows(src, `imp-${src}`, [row]);
+    }
+    const agent = await harness.loginAs(harness.admin);
+
+    expect((await agent.post('/purge/nodes').send({ sourceId: harness.sourceA })).status).toBe(200);
+    expect(await databaseService.coverageReceptions.countImportedRows(harness.sourceA)).toBe(1);
+    const liveA = await databaseService.coverageReceptions.getReceptions({
+      sourceIds: [harness.sourceA], sinceMs: 0, untilMs: Date.now() + 1000, pageSize: 10, imported: 'exclude',
+    });
+    expect(liveA.items).toEqual([]);
+
+    expect((await agent.post('/purge/nodes').send({})).status).toBe(200);
+    expect(await databaseService.coverageReceptions.countImportedRows(harness.sourceA)).toBe(1);
+    expect(await databaseService.coverageReceptions.countImportedRows(harness.sourceB)).toBe(1);
+  });
 });
