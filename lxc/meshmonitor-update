@@ -79,7 +79,19 @@
 #   - Disk: after a successful build, dev dependencies are pruned
 #     (`npm prune --omit=dev`) and the npm and build caches are cleared. The
 #     next update's `npm ci` puts them back while it builds, so expect a
-#     temporary rise of ~0.5 GB during an update.
+#     temporary rise of ~0.6 GB during an update.
+#   - Release mode (#6558): UPDATE_MODE=release installs the newest GitHub
+#     release instead of the latest commit on main, from a pre-built runtime
+#     tarball (dist/ + production node_modules) when one matches this host's
+#     CPU, libc and Node ABI — no npm ci, no build, no 2-3 GB memory peak.
+#     Without a matching tarball it builds that release tag as usual.
+#     UPDATE_CHANNEL=stable (default) takes the latest full release;
+#     UPDATE_CHANNEL=prerelease also takes release candidates. Both values are
+#     saved in /etc/meshmonitor/update-config, e.g.
+#       UPDATE_MODE=release UPDATE_CHANNEL=prerelease meshmonitor-update
+#     UPDATE_MODE=git (default) keeps tracking origin/main. Release mode never
+#     moves an install back: if it is already past the release, it stops.
+#     RUNTIME_ARTIFACT=<path> uses a local runtime tarball (testing).
 #   - Backups: BACKUP_KEEP=<n> (1-50, default 5) sets how many backup tarballs
 #     to keep, e.g. `BACKUP_KEEP=2 meshmonitor-update`; the value is saved in
 #     /etc/meshmonitor/update-config. Free space on the backup directory is
@@ -221,8 +233,11 @@ done
 if [ "${CLEAR_CONFIG:-0}" -eq 1 ]; then
     CONFIG_FILE="/etc/meshmonitor/update-config"
     if [ -f "$CONFIG_FILE" ]; then
-        rm -f "$CONFIG_FILE"
-        ok "Cleared saved config: ${BLD}${CONFIG_FILE}${N}"
+        # Forget only the backup directory: UPDATE_MODE / UPDATE_CHANNEL /
+        # BACKUP_KEEP stay, so -c never silently switches release mode back to git.
+        grep -v '^BACKUP_DIR=' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" || true
+        mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        ok "Cleared saved backup directory in ${BLD}${CONFIG_FILE}${N} (other settings kept)."
         ok "Next run will prompt for backup directory again."
     else
         warn "No saved config found at ${BLD}${CONFIG_FILE}${N} — nothing to clear."
@@ -415,6 +430,21 @@ do_status() {
     # ls-remote fetches only the remote reference — no objects downloaded.
     # We can compare SHAs to know if an update is available, but cannot
     # parse the remote package.json version without a full object fetch.
+    # Release mode (#6558) follows releases, not main: comparing with main
+    # would advertise updates the updater then declines.
+    local mode="${UPDATE_MODE:-}" chan="${UPDATE_CHANNEL:-}"
+    if [ -r /etc/meshmonitor/update-config ]; then
+        [ -z "$mode" ] && mode=$(. /etc/meshmonitor/update-config 2>/dev/null; echo "${UPDATE_MODE:-}")
+        [ -z "$chan" ] && chan=$(. /etc/meshmonitor/update-config 2>/dev/null; echo "${UPDATE_CHANNEL:-}")
+    fi
+    if [ "${mode:-git}" = "release" ]; then
+        log "Update mode       : ${BLD}release${N} (channel: ${chan:-stable})"
+        log "Run 'meshmonitor-update --dry-run' to see the target release."
+        hr
+        flock -u "$LOCK_FD" 2>/dev/null || true
+        exit 0
+    fi
+
     local remote_sha=""
     remote_sha=$(cd "$INSTALL_DIR" && $GIT_CMD ls-remote origin refs/heads/main 2>/dev/null \
         | awk '{print $1}' || true)
@@ -523,9 +553,18 @@ hr
 log "Checking backup configuration..."
 CONFIG_FILE="/etc/meshmonitor/update-config"
 _BACKUP_KEEP_ENV="${BACKUP_KEEP:-}"
+_UPDATE_MODE_ENV="${UPDATE_MODE:-}"
+_UPDATE_CHANNEL_ENV="${UPDATE_CHANNEL:-}"
 BACKUP_KEEP=5
 BACKUP_DIR=""
+UPDATE_MODE=git
+UPDATE_CHANNEL=stable
 [ -r "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+# Explicit values on the command line win over the saved ones (#6558).
+[ -n "$_UPDATE_MODE_ENV" ] && UPDATE_MODE="$_UPDATE_MODE_ENV"
+[ -n "$_UPDATE_CHANNEL_ENV" ] && UPDATE_CHANNEL="$_UPDATE_CHANNEL_ENV"
+case "$UPDATE_MODE" in git|release) ;; *) die "UPDATE_MODE must be 'git' or 'release' (got '${UPDATE_MODE}')." ;; esac
+case "$UPDATE_CHANNEL" in stable|prerelease) ;; *) die "UPDATE_CHANNEL must be 'stable' or 'prerelease' (got '${UPDATE_CHANNEL}')." ;; esac
 # An explicit BACKUP_KEEP on the command line wins over the saved value (#6558).
 [ -n "$_BACKUP_KEEP_ENV" ] && BACKUP_KEEP="$_BACKUP_KEEP_ENV"
 if ! [[ "$BACKUP_KEEP" =~ ^[0-9]+$ ]] || [ "$BACKUP_KEEP" -lt 1 ] || [ "$BACKUP_KEEP" -gt 50 ]; then
@@ -565,7 +604,8 @@ validate_backup_dir
 if [ "$DRY_RUN" -eq 0 ]; then
     $SUDO mkdir -p "$(dirname "$CONFIG_FILE")"
     # %q: the file is sourced, so a quote or $ in the path must stay literal.
-    printf 'BACKUP_DIR=%q\nBACKUP_KEEP=%s\n' "$BACKUP_DIR" "$BACKUP_KEEP" \
+    printf 'BACKUP_DIR=%q\nBACKUP_KEEP=%s\nUPDATE_MODE=%s\nUPDATE_CHANNEL=%s\n' \
+        "$BACKUP_DIR" "$BACKUP_KEEP" "$UPDATE_MODE" "$UPDATE_CHANNEL" \
         | $SUDO tee "$CONFIG_FILE" >/dev/null
 fi
 
@@ -763,6 +803,134 @@ slim_install() {
     return 0
 }
 
+# --- Release mode helpers (#6558) -------------------------------------------
+# A release ships meshmonitor-runtime-<version>-<arch>.tar.gz (+ .sha256),
+# built in the same Debian/NodeSource chroot as the LXC template. It holds
+# manifest.json, dist/ and the production node_modules/ for that tag.
+ARTIFACT_OK=0; ARTIFACT_FILE=""; RUNTIME_SWAPPED=0; TARGET_TAG=""
+RUNTIME_PREV="$INSTALL_DIR/.runtime-prev"
+RUNTIME_DL="$INSTALL_DIR/.runtime-download"
+
+github_slug() {
+    local url
+    url=$(cd "$INSTALL_DIR" && $GIT_CMD remote get-url origin 2>/dev/null || true)
+    url=$(printf '%s' "$url" | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##')
+    [[ "$url" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && echo "$url" || echo "Yeraze/meshmonitor"
+}
+
+host_arch() {
+    case "$(uname -m)" in
+        x86_64)        echo amd64 ;;
+        aarch64|arm64) echo arm64 ;;
+        armv7l)        echo armv7 ;;
+        *)             uname -m ;;
+    esac
+}
+
+# Captured first: under pipefail, `ldd --version | grep -q` misreports (musl's
+# ldd exits 1, and grep -q can SIGPIPE ldd).
+host_libc() {
+    local out; out=$(ldd --version 2>&1 || true)
+    if [[ "$out" == *[Mm]usl* ]]; then echo musl; else echo glibc; fi
+}
+
+# Newest release tag on the configured channel. GitHub lists releases newest
+# first; drafts are hidden from anonymous requests.
+resolve_release_tag() {
+    local api="https://api.github.com/repos/$(github_slug)/releases"
+    if [ "$UPDATE_CHANNEL" = "prerelease" ]; then
+        curl -fsSL --max-time 20 "${api}?per_page=10" 2>/dev/null
+    else
+        curl -fsSL --max-time 20 "${api}/latest" 2>/dev/null
+    fi | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
+}
+
+# `|| true`: a missing field must read as empty, not trip set -e/pipefail.
+manifest_field() { { grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -1 | sed -E 's/.*"([^"]*)"$/\1/'; }
+
+# Download and check the runtime tarball for TARGET_TAG before anything is
+# stopped. Sets ARTIFACT_OK=1 only when the checksum, version, commit, CPU,
+# libc and Node ABI all match; otherwise the update builds the tag instead.
+fetch_runtime_artifact() {
+    local ver="${TARGET_TAG#v}" arch name base manifest m_ver m_commit m_arch m_libc m_abi tag_commit host_abi
+    arch=$(host_arch)
+    name="meshmonitor-runtime-${ver}-${arch}.tar.gz"
+    if [ -n "${RUNTIME_ARTIFACT:-}" ]; then
+        ARTIFACT_FILE="$RUNTIME_ARTIFACT"
+        [ -r "$ARTIFACT_FILE" ] || { warn "RUNTIME_ARTIFACT not readable: ${ARTIFACT_FILE} — will build instead."; return 0; }
+        log "Using local runtime tarball: ${ARTIFACT_FILE}"
+        if [ -r "${ARTIFACT_FILE}.sha256" ]; then
+            (cd "$(dirname "$ARTIFACT_FILE")" && sha256sum -c --status "$(basename "$ARTIFACT_FILE").sha256") \
+                || { warn "Checksum mismatch for ${ARTIFACT_FILE} — will build instead."; return 0; }
+        else
+            warn "No ${ARTIFACT_FILE}.sha256 next to it — checksum not verified."
+        fi
+    else
+        if [ "$DRY_RUN" -eq 1 ]; then
+            echo "    [DRY RUN] Would download ${name} from release ${TARGET_TAG}"
+            return 0
+        fi
+        base="https://github.com/$(github_slug)/releases/download/${TARGET_TAG}"
+        $SUDO rm -rf "$RUNTIME_DL"; $SUDO mkdir -p "$RUNTIME_DL"
+        log "Downloading pre-built runtime ${name}..."
+        if ! $SUDO curl -fsSL --max-time 600 -o "$RUNTIME_DL/$name" "$base/$name" \
+           || ! $SUDO curl -fsSL --max-time 60 -o "$RUNTIME_DL/$name.sha256" "$base/$name.sha256"; then
+            warn "Release ${TARGET_TAG} has no runtime tarball for ${arch} — will build instead."
+            $SUDO rm -rf "$RUNTIME_DL"; return 0
+        fi
+        (cd "$RUNTIME_DL" && sha256sum -c --status "$name.sha256") \
+            || { warn "Checksum mismatch for ${name} — will build instead."; $SUDO rm -rf "$RUNTIME_DL"; return 0; }
+        ARTIFACT_FILE="$RUNTIME_DL/$name"
+    fi
+    manifest=$(tar -xzOf "$ARTIFACT_FILE" manifest.json 2>/dev/null || true)
+    m_ver=$(manifest_field version <<< "$manifest");   m_commit=$(manifest_field commit <<< "$manifest")
+    m_arch=$(manifest_field arch <<< "$manifest");     m_libc=$(manifest_field libc <<< "$manifest")
+    m_abi=$(manifest_field nodeAbi <<< "$manifest")
+    tag_commit=$(cd "$INSTALL_DIR" && $GIT_CMD rev-parse "${TARGET_TAG}^{commit}" 2>/dev/null || true)
+    host_abi=$(node -p 'process.versions.modules' 2>/dev/null || true)
+    local why=""
+    [ -n "$manifest" ]                  || why="it has no manifest.json"
+    [ -z "$why" ] && [ "$m_ver" != "$INCOMING_VERSION" ] && why="it is version ${m_ver}, expected ${INCOMING_VERSION}"
+    [ -z "$why" ] && [ "$m_commit" != "$tag_commit" ]    && why="it was built from ${m_commit:0:12}, not ${TARGET_TAG} (${tag_commit:0:12})"
+    [ -z "$why" ] && [ "$m_arch" != "$arch" ]            && why="it is for ${m_arch}, this host is ${arch}"
+    [ -z "$why" ] && [ "$m_libc" != "$(host_libc)" ]     && why="it needs ${m_libc}, this host has $(host_libc)"
+    [ -z "$why" ] && [ "$m_abi" != "$host_abi" ]         && why="it was built for Node ABI ${m_abi}, this host's node is ${host_abi:-missing} ($(node -v 2>/dev/null))"
+    if [ -n "$why" ]; then
+        warn "Pre-built runtime not usable: ${why} — will build ${TARGET_TAG} instead."
+        [ -z "${RUNTIME_ARTIFACT:-}" ] && $SUDO rm -rf "$RUNTIME_DL"
+        ARTIFACT_FILE=""; return 0
+    fi
+    ARTIFACT_OK=1
+    ok "Pre-built runtime verified (${m_ver}, ${m_arch}, ${m_libc}, Node ABI ${m_abi}) — no build needed."
+}
+
+# Swap in dist/ + node_modules/ from the tarball. The old ones move to
+# RUNTIME_PREV so automatic recovery can put them back without a build.
+install_runtime_artifact() {
+    log "Installing pre-built runtime for ${TARGET_TAG} (no build)..."
+    run_sh "$SUDO rm -rf '$RUNTIME_PREV' && $SUDO mkdir -p '$RUNTIME_PREV'" || return 1
+    local d
+    # Set before the moves: a failure half way still restores what was moved.
+    RUNTIME_SWAPPED=1
+    for d in dist node_modules; do
+        [ -e "$INSTALL_DIR/$d" ] && { run_sh "$SUDO mv '$INSTALL_DIR/$d' '$RUNTIME_PREV/$d'" || return 1; }
+    done
+    run_sh "$SUDO tar -xzf '$ARTIFACT_FILE' -C '$INSTALL_DIR' dist node_modules" || return 1
+    ok "Runtime installed."
+}
+
+# Put the runtime that was running before back (automatic recovery).
+restore_previous_runtime() {
+    [ -d "$RUNTIME_PREV" ] || return 1
+    local d
+    for d in dist node_modules; do
+        if [ -e "$RUNTIME_PREV/$d" ]; then
+            $SUDO rm -rf "${INSTALL_DIR:?}/$d" && $SUDO mv "$RUNTIME_PREV/$d" "$INSTALL_DIR/$d" || return 1
+        fi
+    done
+    $SUDO rm -rf "$RUNTIME_PREV"
+}
+
 # =============================================================================
 # ROLLBACK MODE
 # Always shows a warning banner listing exactly what will be overwritten.
@@ -897,8 +1065,21 @@ do_rollback() {
         log "Resetting source tree to commit ${BLD}${commit}${N}..."
         run_sh "cd '$INSTALL_DIR' && $GIT_CMD reset --hard '$commit'"
         run_sh "cd '$INSTALL_DIR' && $GIT_CMD clean -fd"
-        install_and_build \
-            || die "Rollback build failed — services are stopped. Fix the cause above, then run meshmonitor-update -r again."
+        # A release-mode update whose new version started unhealthy leaves the
+        # previous runtime in RUNTIME_PREV: it matches last-commit.txt, so put it
+        # back instead of building (#6558).
+        if [ -d "$RUNTIME_PREV/dist" ] && [ -d "$RUNTIME_PREV/node_modules" ]; then
+            log "Restoring the runtime set aside by the last update (no rebuild)..."
+            if [ "$DRY_RUN" -eq 1 ]; then
+                echo "    [DRY RUN] move ${RUNTIME_PREV}/{dist,node_modules} back into ${INSTALL_DIR}"
+            else
+                restore_previous_runtime \
+                    || die "Restoring the previous runtime failed — services are stopped. Run meshmonitor-update -r again."
+            fi
+        else
+            install_and_build \
+                || die "Rollback build failed — services are stopped. Fix the cause above, then run meshmonitor-update -r again."
+        fi
         run_sh "$SUDO chown -R '${APP_USER}:${APP_GROUP}' '$INSTALL_DIR'"
         if [ -f "$INSTALL_DIR/lxc/systemd/meshmonitor.service" ]; then
             run_sh "cd '$INSTALL_DIR' && $SUDO cp lxc/systemd/meshmonitor.service /etc/systemd/system/"
@@ -939,10 +1120,12 @@ hr
 log "Running pre-flight checks..."
 
 free_mb=$(df -Pm "$INSTALL_DIR" | awk 'NR==2 {print $4}')
-[ "$free_mb" -ge 2048 ] && ok "Disk: ${free_mb}MB free" \
-    || warn "Low disk space: ${free_mb}MB free (need ~2GB for build)"
+# A build needs ~0.6 GB more while it runs (measured on 4.18.1-rc7, #6558).
+[ "$free_mb" -ge 1024 ] && ok "Disk: ${free_mb}MB free" \
+    || warn "Low disk space: ${free_mb}MB free (an update that builds needs ~1GB)"
 
-if ! plan_build; then
+# Release mode decides after the version check whether it builds at all.
+if [ "$UPDATE_MODE" = "git" ] && ! plan_build; then
     if [ "$DRY_RUN" -eq 1 ]; then
         warn "[DRY RUN] A real run would stop here."
     else
@@ -990,11 +1173,41 @@ CURRENT_VERSION=$(read_pkg_version "$INSTALL_DIR/package.json")
 log "Current version : ${BLD}${CURRENT_VERSION}${N}"
 MAJOR_UPGRADE=0
 
-run_sh "cd '$INSTALL_DIR' && $GIT_CMD fetch origin main --quiet"
+TARGET_REF="origin/main"
+if [ "$UPDATE_MODE" = "release" ]; then
+    log "Update mode     : ${BLD}release${N} (channel: ${UPDATE_CHANNEL})"
+    TARGET_TAG=$(resolve_release_tag || true)
+    [[ "$TARGET_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]] \
+        || die "Could not find the latest ${UPDATE_CHANNEL} release on GitHub — nothing was changed."
+    log "Target release  : ${BLD}${TARGET_TAG}${N}"
+    # Fetch the tag even in a dry run: it only adds a ref, and the checks below need it.
+    (cd "$INSTALL_DIR" && $GIT_CMD fetch origin "refs/tags/${TARGET_TAG}:refs/tags/${TARGET_TAG}" --quiet) \
+        || die "Could not fetch tag ${TARGET_TAG} — nothing was changed."
+    TARGET_REF="$TARGET_TAG"
+    _head=$(cd "$INSTALL_DIR" && $GIT_CMD rev-parse HEAD)
+    _tag_commit=$(cd "$INSTALL_DIR" && $GIT_CMD rev-parse "${TARGET_TAG}^{commit}")
+    if [ "$_head" = "$_tag_commit" ]; then
+        ok "Already on ${TARGET_TAG} — nothing to update."
+        flock -u "$LOCK_FD" 2>/dev/null || true
+        exit 0
+    fi
+    # Only move forward: HEAD must be an ancestor of the tag. Asked this way
+    # round because the LXC template's checkout is shallow (depth 1): fetching a
+    # NEWER tag connects its history to HEAD, but an older tag stays disconnected,
+    # so "is the tag behind HEAD?" cannot be answered there.
+    if ! (cd "$INSTALL_DIR" && $GIT_CMD merge-base --is-ancestor HEAD "$_tag_commit"); then
+        ok "This install (${CURRENT_VERSION:-?}, ${_head:0:12}) is not behind ${TARGET_TAG} — release mode never moves back."
+        log "It will update once a newer ${UPDATE_CHANNEL} release is published, or run with UPDATE_MODE=git to follow main."
+        flock -u "$LOCK_FD" 2>/dev/null || true
+        exit 0
+    fi
+else
+    run_sh "cd '$INSTALL_DIR' && $GIT_CMD fetch origin main --quiet"
+fi
 
 INCOMING_VERSION=""
-if [ "$DRY_RUN" -eq 0 ]; then
-    INCOMING_VERSION=$(cd "$INSTALL_DIR" && $GIT_CMD show origin/main:package.json 2>/dev/null \
+if [ "$DRY_RUN" -eq 0 ] || [ "$UPDATE_MODE" = "release" ]; then
+    INCOMING_VERSION=$(cd "$INSTALL_DIR" && $GIT_CMD show "${TARGET_REF}:package.json" 2>/dev/null \
         | grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' \
         | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
 fi
@@ -1112,10 +1325,10 @@ check_source_tree() {
         fi
     fi
 
-    if (cd "$INSTALL_DIR" && $GIT_CMD rev-parse -q --verify origin/main >/dev/null) \
-       && ! (cd "$INSTALL_DIR" && $GIT_CMD merge-base --is-ancestor HEAD origin/main); then
-        err "Local branch has commits that are not on origin/main — cannot fast-forward."
-        err "    cd ${INSTALL_DIR} && ${GIT_CMD} log --oneline origin/main..HEAD"
+    if (cd "$INSTALL_DIR" && $GIT_CMD rev-parse -q --verify "$TARGET_REF" >/dev/null) \
+       && ! (cd "$INSTALL_DIR" && $GIT_CMD merge-base --is-ancestor HEAD "$TARGET_REF"); then
+        err "Local branch has commits that are not on ${TARGET_REF} — cannot fast-forward."
+        err "    cd ${INSTALL_DIR} && ${GIT_CMD} log --oneline ${TARGET_REF}..HEAD"
         if [ "$DRY_RUN" -eq 1 ]; then
             warn "[DRY RUN] A real run would stop here."
         else
@@ -1128,6 +1341,23 @@ check_source_tree() {
 hr
 log "Checking source tree..."
 check_source_tree
+
+# Release mode: fetch and verify the pre-built runtime while the app still
+# runs. Only when there is none (or it doesn't fit this host) does the update
+# build, so only then does the memory plan apply.
+if [ "$UPDATE_MODE" = "release" ]; then
+    hr
+    log "Checking pre-built runtime for ${TARGET_TAG}..."
+    fetch_runtime_artifact
+    if [ "$ARTIFACT_OK" -eq 0 ] && ! plan_build; then
+        if [ "$DRY_RUN" -eq 1 ]; then
+            warn "[DRY RUN] A real run would stop here."
+        else
+            $SUDO rm -rf "$RUNTIME_DL"
+            die "Refusing to update — services were not stopped, nothing was changed."
+        fi
+    fi
+fi
 
 # =============================================================================
 # FAILURE RECOVERY
@@ -1179,12 +1409,17 @@ recover_previous_version() {
         fi
     fi
     if [ "$BUILD_TOUCHED" -eq 1 ] && [ "$good" -eq 1 ]; then
-        # Lean: the previous version was type-checked when it was built; skipping
-        # it makes recovery faster and fit in less memory.
-        tell "[*] Reinstalling dependencies and rebuilding ${OLD_COMMIT:0:12} (lean build, a minute or two)..."
-        BUILD_MODE=lean
-        install_and_build || good=0
+        if [ "$RUNTIME_SWAPPED" -eq 1 ] && restore_previous_runtime; then
+            tell "[*] Previous dist/ and node_modules/ put back (no rebuild needed)."
+        else
+            # Lean: the previous version was type-checked when it was built; skipping
+            # it makes recovery faster and fit in less memory.
+            tell "[*] Reinstalling dependencies and rebuilding ${OLD_COMMIT:0:12} (lean build, a minute or two)..."
+            BUILD_MODE=lean
+            install_and_build || good=0
+        fi
     fi
+    $SUDO rm -rf "$RUNTIME_DL" 2>/dev/null || true
     if [ "$APP_USER" != "root" ]; then
         $SUDO chown -R "${APP_USER}:${APP_GROUP}" "$INSTALL_DIR" || true
     fi
@@ -1337,7 +1572,7 @@ hr
 log "Updating source code..."
 
 CODE_TOUCHED=1
-run_sh "cd '$INSTALL_DIR' && $GIT_CMD merge --ff-only origin/main"
+run_sh "cd '$INSTALL_DIR' && $GIT_CMD merge --ff-only '$TARGET_REF'"
 run_sh "cd '$INSTALL_DIR' && $GIT_CMD submodule update --init --recursive"
 
 # =============================================================================
@@ -1368,7 +1603,11 @@ fi
 # Guard that both build scripts exist — catches renamed scripts on future refactors.
 # =============================================================================
 hr
-log "Building (${BUILD_MODE} build)..."
+if [ "$ARTIFACT_OK" -eq 1 ]; then
+    log "Installing ${TARGET_TAG} from the pre-built runtime..."
+else
+    log "Building (${BUILD_MODE} build)..."
+fi
 
 if [ "$DRY_RUN" -eq 0 ]; then
     grep -q '"build"' "$INSTALL_DIR/package.json" \
@@ -1392,7 +1631,11 @@ fi
 # never rewrites it, so the checkout stays clean for the next update.
 # Build mode (full|lean) was chosen in pre-flight — see BUILD MEMORY PLAN.
 BUILD_TOUCHED=1
-install_and_build || die "Build failed."
+if [ "$ARTIFACT_OK" -eq 1 ]; then
+    install_runtime_artifact || die "Installing the pre-built runtime failed."
+else
+    install_and_build || die "Build failed."
+fi
 
 # =============================================================================
 # RESTORE OWNERSHIP
@@ -1437,7 +1680,11 @@ if [ "$DRY_RUN" -eq 0 ]; then
         err "  $0 --rollback"
         err "To preview what a rollback would do first, run:"
         err "  $0 --rollback --dry-run"
+    else
+        # The new runtime is up: the set-aside copy of the old one is no longer needed.
+        $SUDO rm -rf "$RUNTIME_PREV"
     fi
+    $SUDO rm -rf "$RUNTIME_DL"
 fi
 
 # =============================================================================

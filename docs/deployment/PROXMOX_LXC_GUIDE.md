@@ -32,7 +32,7 @@ MeshMonitor can be deployed in Proxmox VE using LXC (Linux Containers) as an alt
 ### Proxmox VE Requirements
 
 - **Proxmox VE**: Version 7.0 or later
-- **Storage**: At least 10GB available for container
+- **Storage**: At least 4 GB available for container (8 GB recommended)
 - **Network**: Bridge network configured (typically `vmbr0`)
 - **Resources**:
   - Minimum: 1 CPU core, 512MB RAM (enough to run MeshMonitor, not to update it)
@@ -118,7 +118,7 @@ scp meshmonitor-<version>-amd64.tar.gz root@YOUR-PROXMOX-IP:/var/lib/vz/template
 
 4. **Disks Tab**:
    - **Storage**: Choose your storage (e.g., `local-lvm`)
-   - **Disk size**: `10 GiB` (minimum), `20 GiB` (recommended)
+   - **Disk size**: `4 GiB` (minimum), `8 GiB` (recommended). A fresh container uses about 1.5 GB; an update that builds (the default) needs about 0.6 GB more while it runs, and your database and update backups grow from there. Release-mode updates need much less (see [Release mode](#release-mode-update-to-releases-without-building)).
 
 5. **CPU Tab**:
    - **Cores**: `2` (recommended)
@@ -321,7 +321,7 @@ keep fewer backups, point the backup folder at an external mount
 The running app needs only the built files and its production dependencies. The
 template ships without the build tools, and `meshmonitor-update` removes them again
 after each build, along with the npm and build caches. During an update it reinstalls
-them to build, so expect disk use to rise by about 0.5 GB for the length of the update.
+them to build, so expect disk use to rise by about 0.6 GB for the length of the update (measured on 4.18.1-rc7: dependencies plus the npm cache).
 
 ### Manual Backup
 
@@ -612,6 +612,45 @@ restarts services in place. What to expect:
   folder.
 - If the new version starts but doesn't respond, use `meshmonitor-update -r`
   (rollback from the backup taken at the start of the run).
+
+### Release mode: update to releases without building
+
+By default the updater follows the latest commit on `main` and builds it. In
+**release mode** it installs the newest GitHub release instead, from a pre-built
+runtime that ships with each release (about 75 MB). There is no `npm ci` and no
+build, so an update takes under a minute and needs none of the memory in
+[Update memory](#update-memory).
+
+```bash
+UPDATE_MODE=release meshmonitor-update                            # latest full release
+UPDATE_MODE=release UPDATE_CHANNEL=prerelease meshmonitor-update  # include release candidates
+UPDATE_MODE=git meshmonitor-update                                # back to following main
+```
+
+Your choice is saved in `/etc/meshmonitor/update-config`, so later runs need only
+`meshmonitor-update`.
+
+Release mode needs the updater from this release or later. The copy in
+`/usr/local/bin` does not replace itself, so on an existing container run one
+normal update first, then copy the new updater over the old one:
+
+```bash
+meshmonitor-update     # brings /opt/meshmonitor up to date
+cp /opt/meshmonitor/lxc/meshmonitor-update /usr/local/bin/meshmonitor-update
+```
+
+- **Checked before anything stops.** The updater downloads the runtime, checks its
+  SHA-256 checksum, and confirms it was built from that release and matches this
+  container's CPU, C library and Node.js version. If anything doesn't match (for
+  example, an ARM container or an older Node.js), it builds that release the usual
+  way instead.
+- **Never moves backwards.** If the container is already on that release, the
+  updater says so and stops. If the container is newer than the release (for
+  example, it followed `main` before), the updater also stops and waits for a newer
+  release.
+- **Recovery needs no build.** The old runtime is set aside during the update. If
+  the update fails before the new version starts, the updater puts the old runtime
+  back and restarts it.
 
 ### Full template swap (alternative)
 
