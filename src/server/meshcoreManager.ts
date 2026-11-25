@@ -182,6 +182,7 @@ import { storeDecryptedChannelText } from './services/meshcoreChannelTextStore.j
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { maybeRecordMeshCoreDirectRf } from './services/directRfContactRecorder.js';
+import { walkaboutService } from './services/walkaboutService.js';
 import { buildMeshCoreFlight, emitPacketFlight } from './services/packetFlights.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops, hopByteForKey } from '../utils/meshcorePath.js';
 import { parseRepeaterNameResponse } from '../utils/meshcoreRepeaterName.js';
@@ -3552,6 +3553,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Best-effort: capture failures must never break the message stream.
    */
   private async handleOtaPacket(data: any): Promise<void> {
+    // Walkabout (#5891 P1): tag this hearing with the phone's latest fix. First,
+    // before the packet-log gate. Receive-only; synchronous, writes fire-and-forget.
+    // A repeater's own key is not `localNode.publicKey` (a placeholder).
+    walkaboutService.maybeCaptureMeshCore({
+      sourceId: this.sourceId,
+      localPubKey: this.getLocalTelemetryNodeId(),
+      event: data ?? {},
+    });
     // Live packet traffic on the map (#4835), BEFORE the packet-log gate: it
     // works with the monitor off and stores nothing. A no-op while no map
     // watches this source.

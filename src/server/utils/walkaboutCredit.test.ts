@@ -91,7 +91,6 @@ describe('evaluateWalkaboutMeshtastic', () => {
 // ---------------------------------------------------------------------------
 // MeshCore frames
 // ---------------------------------------------------------------------------
-const hex = (n: number, fill = 0) => Array.from({ length: n }, (_, i) => ((fill + i) & 0xff).toString(16).padStart(2, '0')).join('');
 const FLOOD = 1, DIRECT = 2;
 const T_TXT = 0x02, T_ADVERT = 0x04, T_GRP = 0x05, T_ACK = 0x03, T_ANON = 0x07;
 function frame(route: number, type: number, payloadHex: string, hops: string[] = [], hashSize = 1): string {
