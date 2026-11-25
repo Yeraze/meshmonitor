@@ -224,6 +224,44 @@ describe('backup → restore round trip, every table (SQLite)', () => {
   });
 });
 
+describe('imported coverage receptions (#5891 P3)', () => {
+  it('back up paged by id with importId, and restore with the batch row', async () => {
+    wipe();
+    const imp = databaseService.coverageImports;
+    const rx = databaseService.coverageReceptions;
+    await imp.createImport({
+      id: 'imp-1', sourceId: 'src-a', kind: 'coverage_report', format: 'csv', filename: 'a.csv',
+      fileSha256: 'abc', importedBy: null, importedAt: 1_700_000_000_000, rowCount: 3,
+    });
+    const rows = [1, 2, 3].map((n) => ({
+      protocol: 'meshtastic' as const, receiverKind: 'local' as const, receiverId: '!aabbccdd', receiverNodeNum: 0xaabbccdd,
+      receiverLatitude: null, receiverLongitude: null, senderId: '!bbbbbbbb', senderNodeNum: 0xbbbbbbbb,
+      packetKey: String(n), packetId: n, pathKey: 'p', latitude: 40, longitude: -105, altitude: null,
+      precisionBits: null, snr: -3.5, rssi: 0, hopStart: 3, hopLimit: 3, hopsAway: 0, relayNode: 0, channel: 0,
+      receivedAt: 1_700_000_000_000 + n,
+    }));
+    expect(await rx.insertImportedRows('src-a', 'imp-1', rows)).toBe(3);
+    await rx.recordReception({
+      sourceId: 'src-a', protocol: 'meshtastic', receiverKind: 'local', receiverId: '!aabbccdd', senderId: '!live',
+      packetKey: 'live', pathKey: 'p', latitude: 1, longitude: 2, receivedAt: 1_700_000_000_000,
+    });
+
+    const dirname = await systemBackupService.createBackup('manual');
+    const backed = readTable(dirname, 'coverage_receptions') as Array<Record<string, unknown>>;
+    expect(backed).toHaveLength(3); // live row is not in a survey window, so not exported
+    expect(backed.every((r) => r.importId === 'imp-1' && !('id' in r))).toBe(true);
+
+    wipe();
+    const result = await systemRestoreService.restoreFromBackup(dirname);
+    expect(result).toMatchObject({ success: true });
+    const restored = allRows('coverage_receptions');
+    expect(restored).toHaveLength(3);
+    expect(restored.every((r) => r.importId === 'imp-1')).toBe(true);
+    expect(allRows('coverage_imports').map((r) => r.id)).toEqual(['imp-1']);
+    expect(await rx.countImportedRows('src-a')).toBe(3);
+  });
+});
+
 describe('a MeshCore-only install', () => {
   it('gets its source, nodes, messages and automations back', async () => {
     wipe();
