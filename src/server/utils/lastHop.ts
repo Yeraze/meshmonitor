@@ -18,6 +18,8 @@
  * Implements: https://github.com/Yeraze/meshmonitor/issues/3318
  */
 
+import { DEVICE_ROLE_CLIENT_MUTE } from '../constants/meshtastic.js';
+
 /** A node considered as a possible relay. */
 export interface LastHopCandidate {
   nodeNum: number;
@@ -77,12 +79,23 @@ export function resolveLastHopName(
  * Never guesses (Walkabout #5891). Filter: role != CLIENT_MUTE; `nodeNum` not in
  * `exclude` (the local node and the packet's `from`).
  *
- * WP0 SKELETON: body lands in WP2.
+ * Uses `DEVICE_ROLE_CLIENT_MUTE` (1, the protobuf value). The private
+ * `CLIENT_MUTE_ROLE` above is 4 (REPEATER in the protobuf) and is left alone:
+ * `resolveLastHopName` has its own tests and callers.
  */
 export function resolveUniqueRelayNode(
-  _relayByte: number,
-  _candidates: LastHopCandidate[],
-  _exclude: number[]
+  relayByte: number,
+  candidates: LastHopCandidate[],
+  exclude: number[]
 ): { nodeNum: number | null; matches: number } {
-  throw new Error('not implemented');
+  const byte = relayByte & 0xff;
+  const skip = new Set(exclude);
+  const seen = new Set<number>();
+  for (const n of candidates) {
+    if (n.role === DEVICE_ROLE_CLIENT_MUTE) continue;
+    if (skip.has(n.nodeNum)) continue;
+    if ((n.nodeNum & 0xff) !== byte) continue;
+    seen.add(n.nodeNum);
+  }
+  return { nodeNum: seen.size === 1 ? [...seen][0] : null, matches: seen.size };
 }
