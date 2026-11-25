@@ -29,7 +29,7 @@ export interface CoverageImportDto {
 
 export interface CoverageImportResult {
   import: CoverageImportDto;
-  skipped: { protocolMismatch: number; gapFeatures: number };
+  skipped: { protocolMismatch: number; gapFeatures: number; bogusPositions?: number };
 }
 
 /** `row` = CSV record line or GeoJSON feature index, 1-based. */
