@@ -97,6 +97,13 @@ const MESHTASTIC_PATH_RE = /^r(\d{1,3}|-):h(\d{1,2}|-)$/;
 const MESHCORE_PACKET_RE = /^[0-9A-Fa-f]{16}$/;
 const PACKET_KEY_MAX = 4294967295;
 
+const PATH_KEY_MAX_LEN = 80; // MySQL column width; INSERT IGNORE would truncate silently
+
+function isBoundedMeshCorePath(pathKey: string): boolean {
+  const p = parseMeshCorePathKey(pathKey);
+  return p !== null && (p.hops === null || p.hops <= 63);
+}
+
 function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -187,7 +194,10 @@ export function validateCoverageImportRow(
   let pathKey: string | null = null;
   const pth = reqText('pathKey');
   if (pth !== null && protocol !== null) {
-    const ok = protocol === 'meshtastic' ? MESHTASTIC_PATH_RE.test(pth) : parseMeshCorePathKey(pth) !== null;
+    const ok =
+      protocol === 'meshtastic'
+        ? MESHTASTIC_PATH_RE.test(pth)
+        : pth.length <= PATH_KEY_MAX_LEN && isBoundedMeshCorePath(pth);
     if (ok) pathKey = pth;
     else bad('pathKey', `is not a valid ${protocol} path key`);
   }
@@ -310,9 +320,10 @@ function invalidRows(c: Collector): ParseCoverageImportResult {
 }
 
 function parseCsvImport(text: string, nowMs: number): ParseCoverageImportResult {
-  const { records, lines } = parseCsv(text);
-  if (records.length === 0) return fail('IMPORT_EMPTY', 'The file has no header row');
-  const header = records[0];
+  // Header first, bounded: stops after 2 records.
+  const { records: head } = parseCsv(text, { maxRecords: 1 });
+  if (head.length === 0) return fail('IMPORT_EMPTY', 'The file has no header row');
+  const header = head[0];
   for (let i = 0; i < Math.max(header.length, COVERAGE_IMPORT_COLUMNS.length); i++) {
     const want = COVERAGE_IMPORT_COLUMNS[i]?.key;
     const got = header[i];
@@ -322,14 +333,17 @@ function parseCsvImport(text: string, nowMs: number): ParseCoverageImportResult 
         want === undefined
           ? `Unexpected extra column "${got}" at position ${i + 1}`
           : `Column ${i + 1} should be "${want}" but is ${got === undefined ? 'missing' : `"${got}"`}`,
-        [{ row: lines[0], field: want ?? got ?? null, message: 'header does not match the Coverage Report export' }],
+        [{ row: 1, field: want ?? got ?? null, message: 'header does not match the Coverage Report export' }],
       );
     }
   }
+  // Header + row cap + 1: one extra record proves "too many" without parsing the rest.
+  const full = parseCsv(text, { maxRecords: COVERAGE_IMPORT_MAX_ROWS + 1 });
+  const { records, lines } = full;
   const dataCount = records.length - 1;
   if (dataCount === 0) return fail('IMPORT_EMPTY', 'The file has no data rows');
   if (dataCount > COVERAGE_IMPORT_MAX_ROWS) {
-    return fail('IMPORT_TOO_MANY_ROWS', `The file has ${dataCount} rows; the limit is ${COVERAGE_IMPORT_MAX_ROWS}`);
+    return fail('IMPORT_TOO_MANY_ROWS', `The file has more than ${COVERAGE_IMPORT_MAX_ROWS} rows; the limit is ${COVERAGE_IMPORT_MAX_ROWS}`);
   }
   const c: Collector = { rows: [], errors: [], invalid: 0, skippedBogus: 0 };
   for (let r = 1; r < records.length; r++) {
@@ -380,6 +394,9 @@ function parseGeoJsonImport(text: string, nowMs: number): ParseCoverageImportRes
     return fail('IMPORT_SCHEMA_MISMATCH', 'The file has no "features" array');
   }
   const features: unknown[] = doc.features;
+  if (features.length > COVERAGE_IMPORT_MAX_ROWS * 2) {
+    return fail('IMPORT_TOO_MANY_ROWS', `The file has ${features.length} features; the limit is ${COVERAGE_IMPORT_MAX_ROWS * 2}`);
+  }
   const isGap = (f: unknown) =>
     isObj(f) && isObj(f.geometry) && f.geometry.type === 'LineString' && isObj(f.properties) && f.properties.kind === 'likely_gap';
   const gapFeatures = features.filter(isGap).length;
@@ -442,7 +459,7 @@ export function coverageImportProtocolFor(sourceType: string): 'meshtastic' | 'm
 }
 
 export function sanitizeImportFilename(raw: string): string | null {
-  const base = (raw.split(/[\\/]/).pop() ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  const base = (raw.split(/[\\/]/).pop() ?? '').replace(/[\u0000-\u001f\u007f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, '').trim();
   if (base.length === 0 || base.length > COVERAGE_IMPORT_FILENAME_MAX) return null;
   return /\.(csv|geojson|json)$/i.test(base) ? base : null;
 }

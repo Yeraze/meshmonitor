@@ -24,4 +24,11 @@ describe('parseCsv', () => {
   it('returns nothing for empty input', () => {
     expect(parseCsv('').records).toEqual([]);
   });
+  it('stops at maxRecords with bounded work', () => {
+    const text = 'a\n'.repeat(100_000);
+    const r = parseCsv(text, { maxRecords: 100 });
+    expect(r.truncated).toBe(true);
+    expect(r.records.length).toBe(101);
+    expect(parseCsv('a\nb\n', { maxRecords: 5 }).truncated).toBe(false);
+  });
 });

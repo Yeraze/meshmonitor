@@ -288,6 +288,41 @@ describe('CSV structural rejections', () => {
   });
 });
 
+describe('hostile input bounds', () => {
+  it('a 1M-line CSV is rejected as too many rows quickly', () => {
+    const header = COVERAGE_EXPORT_COLUMNS.map((c) => c.label).join(',');
+    const t0 = Date.now();
+    const r = parseCoverageImport('a.csv', header + '\n' + 'a\n'.repeat(100_000), NOW);
+    expect(r).toMatchObject({ ok: false, code: 'IMPORT_TOO_MANY_ROWS' });
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+  it('a bad header on a huge file fails on the header', () => {
+    expect(parseCoverageImport('a.csv', 'x\n' + 'a\n'.repeat(100_000), NOW)).toMatchObject({ code: 'IMPORT_SCHEMA_MISMATCH' });
+  });
+  it('gap features count toward a feature cap', () => {
+    const r = parseCoverageImport(
+      'a.geojson',
+      geo((d) => {
+        const gap = { type: 'Feature', geometry: { type: 'LineString', coordinates: [] }, properties: { kind: 'likely_gap' } };
+        d.features = Array.from({ length: COVERAGE_IMPORT_MAX_ROWS * 2 + 1 }, () => gap);
+      }),
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: false, code: 'IMPORT_TOO_MANY_ROWS' });
+  });
+  it('bounds MeshCore path keys', () => {
+    const mc = { protocol: 'meshcore', senderId: MC_KEY, receiverId: MC_KEY2, packetKey: 'A'.repeat(16) };
+    const base = { receivedAt: new Date(T0).toISOString(), receivedAtMs: T0, receiverKind: 'local', latitude: 40, longitude: -80 };
+    const f = (pathKey: string) => {
+      const r = validateCoverageImportRow({ ...base, ...mc, pathKey }, NOW);
+      return 'errors' in r ? r.errors.map((e) => e.field) : [];
+    };
+    expect(f('h63:ab')).toEqual([]);
+    expect(f('h64:ab')).toContain('pathKey');
+    expect(f('h' + '1'.repeat(100) + ':ab')).toContain('pathKey');
+  });
+});
+
 describe('detectCoverageImportFormat', () => {
   it('uses extension and first byte', () => {
     expect(detectCoverageImportFormat('a.csv', 'a,b')).toBe('csv');
@@ -435,6 +470,7 @@ describe('sanitizeImportFilename', () => {
     expect(sanitizeImportFilename('C:\\a\\b\\cov.CSV')).toBe('cov.CSV');
     expect(sanitizeImportFilename('../../etc/x.geojson')).toBe('x.geojson');
     expect(sanitizeImportFilename('  a\u0000b\n.json ')).toBe('ab.json');
+    expect(sanitizeImportFilename('a\u202eb\u2066c\u2028d\u2029e.csv')).toBe('abcde.csv');
     expect(sanitizeImportFilename('x.txt')).toBeNull();
     expect(sanitizeImportFilename('dir/')).toBeNull();
     expect(sanitizeImportFilename('')).toBeNull();

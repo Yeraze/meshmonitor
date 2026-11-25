@@ -2,9 +2,16 @@
  * RFC 4180 CSV reader (#5891 Phase 3). Frontend-safe, no dependencies.
  * BOM-tolerant, CRLF/LF/CR, quoted fields with embedded commas, quotes and
  * newlines. Each record carries the 1-based line where it starts.
- * Blank lines (including a trailing one) are skipped.
+ * `maxRecords` stops parsing once more than that many records exist (the
+ * result then has maxRecords + 1 records and `truncated: true`), bounding work
+ * and memory on hostile input. Blank lines (including a trailing one) are skipped.
  */
-export function parseCsv(text: string): { records: string[][]; lines: number[] } {
+export function parseCsv(
+  text: string,
+  opts: { maxRecords?: number } = {},
+): { records: string[][]; lines: number[]; truncated: boolean } {
+  const maxRecords = opts.maxRecords ?? Infinity;
+  let truncated = false;
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const records: string[][] = [];
   const lines: number[] = [];
@@ -20,13 +27,14 @@ export function parseCsv(text: string): { records: string[][]; lines: number[] }
       record.push(field);
       records.push(record);
       lines.push(startLine);
+      if (records.length > maxRecords) truncated = true;
     }
     record = [];
     field = '';
     sawContent = false;
   };
 
-  for (let i = 0; i < text.length; i++) {
+  for (let i = 0; i < text.length && !truncated; i++) {
     const ch = text[i];
     if (inQuotes) {
       if (ch === '"') {
@@ -60,6 +68,6 @@ export function parseCsv(text: string): { records: string[][]; lines: number[] }
       sawContent = true;
     }
   }
-  endRecord();
-  return { records, lines };
+  if (!truncated) endRecord();
+  return { records, lines, truncated };
 }
