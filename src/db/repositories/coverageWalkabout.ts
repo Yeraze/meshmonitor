@@ -84,6 +84,31 @@ function requireSource(sourceId: string, method: string): void {
   if (!sourceId) throw new Error(`CoverageWalkaboutRepository.${method} requires a sourceId`);
 }
 
+export interface WalkaboutReceptionPoint {
+  sessionId: string;
+  protocol: 'meshtastic' | 'meshcore';
+  creditedKey: string;
+  creditedNodeNum: number | null;
+  snr: number | null;
+  heardAt: number;
+  latitude: number;
+  longitude: number;
+}
+
+export interface WalkaboutSamplePoint {
+  sessionId: string;
+  fixAt: number;
+  latitude: number;
+  longitude: number;
+}
+
+export interface WalkaboutBBox {
+  south: number;
+  north: number;
+  west: number;
+  east: number;
+}
+
 export class CoverageWalkaboutRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
@@ -277,5 +302,47 @@ export class CoverageWalkaboutRepository extends BaseRepository {
       nodes: Number(x[0]?.nodes ?? 0),
       lastSampleAt: s[0]?.last != null ? Number(s[0].last) : null,
     };
+  }
+
+  /**
+   * Sessions that may overlap [sinceMs, untilMs]: startedAt <= untilMs AND
+   * startedAt >= sinceMs - WALKABOUT_MAX_DURATION_MS (no session outlives the
+   * cap). The caller applies the exact overlap test with walkaboutEndsAt.
+   * Newest first, `limit` rows. (P2 skeleton; WP1 fills the body.)
+   */
+  async listSessionsInRange(
+    _sourceId: string,
+    _sinceMs: number,
+    _untilMs: number,
+    _limit: number,
+  ): Promise<DbWalkaboutSession[]> {
+    throw new Error('not implemented');
+  }
+
+  /**
+   * Raw points; no clipping (the service clips per session). `limit` rows max,
+   * ordered by heardAt DESC then id DESC (a cap drops old rows). Empty
+   * `sessionIds` returns [] with no query. (P2 skeleton.)
+   */
+  async getReceptionPoints(
+    _sourceId: string,
+    _q: {
+      sessionIds: string[];
+      sinceMs: number;
+      untilMs: number;
+      creditedKey?: string;
+      bbox?: WalkaboutBBox;
+      limit: number;
+    },
+  ): Promise<WalkaboutReceptionPoint[]> {
+    throw new Error('not implemented');
+  }
+
+  /** Same shape for samples, on fixAt; ordered by fixAt DESC then id DESC. (P2 skeleton.) */
+  async getSamplePoints(
+    _sourceId: string,
+    _q: { sessionIds: string[]; sinceMs: number; untilMs: number; bbox?: WalkaboutBBox; limit: number },
+  ): Promise<WalkaboutSamplePoint[]> {
+    throw new Error('not implemented');
   }
 }

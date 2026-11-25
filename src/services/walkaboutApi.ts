@@ -9,6 +9,11 @@ import type {
   WalkaboutSampleInput,
   WalkaboutSampleResult,
   WalkaboutSkipCounts,
+  WalkaboutMapQuery,
+  WalkaboutH3Res,
+  WalkaboutCellsResult,
+  WalkaboutCellNodesResult,
+  WalkaboutTrackResult,
 } from '../types/walkabout.js';
 
 export interface WalkaboutLiveResult {
@@ -63,4 +68,31 @@ export async function stopWalkabout(sourceId: string, sessionId: string): Promis
 
 export async function deleteWalkabout(sourceId: string, sessionId: string): Promise<void> {
   await api.delete(`${base(sourceId)}/${encodeURIComponent(sessionId)}`);
+}
+
+// --- Phase 2: map (WALKABOUT_P2_SPEC.md §2.9). Skeletons; WP2 fills the bodies. ---
+
+/** Pure; used by query keys and fetchers. */
+export function walkaboutMapParams(_q: WalkaboutMapQuery): Record<string, string> {
+  throw new Error('not implemented');
+}
+
+export async function fetchWalkaboutCells(
+  _sourceId: string,
+  _q: WalkaboutMapQuery,
+  _res: WalkaboutH3Res,
+): Promise<WalkaboutCellsResult> {
+  throw new Error('not implemented');
+}
+
+export async function fetchWalkaboutCellNodes(
+  _sourceId: string,
+  _q: WalkaboutMapQuery,
+  _cell: string,
+): Promise<WalkaboutCellNodesResult> {
+  throw new Error('not implemented');
+}
+
+export async function fetchWalkaboutTrack(_sourceId: string, _sessionId: string): Promise<WalkaboutTrackResult> {
+  throw new Error('not implemented');
 }

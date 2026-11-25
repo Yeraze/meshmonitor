@@ -9,11 +9,18 @@ import {
   fetchLiveWalkabout,
   fetchWalkaboutSessions,
   startWalkabout,
+  walkaboutMapParams,
 } from '../services/walkaboutApi.js';
+import type { WalkaboutH3Res, WalkaboutMapQuery } from '../types/walkabout.js';
 
 export const walkaboutKeys = {
   sessions: (sourceId: string) => ['walkabout', sourceId, 'sessions'] as const,
   live: (sourceId: string) => ['walkabout', sourceId, 'live'] as const,
+  cells: (sourceId: string, q: WalkaboutMapQuery, res: WalkaboutH3Res) =>
+    ['walkabout', sourceId, 'cells', walkaboutMapParams(q), res] as const,
+  cellNodes: (sourceId: string, q: WalkaboutMapQuery, cell: string) =>
+    ['walkabout', sourceId, 'cell-nodes', walkaboutMapParams(q), cell] as const,
+  track: (sourceId: string, sessionId: string) => ['walkabout', sourceId, 'track', sessionId] as const,
 };
 
 export interface WalkaboutSourceRow {
@@ -77,4 +84,19 @@ export function useDeleteWalkabout(sourceId: string) {
     mutationFn: (sessionId: string) => deleteWalkabout(sourceId, sessionId),
     onSuccess: invalidate,
   });
+}
+
+// --- Phase 2: map (WALKABOUT_P2_SPEC.md §2.9). Skeletons; WP2 fills the bodies. ---
+
+export function useWalkaboutCells(_sourceId: string | null, _q: WalkaboutMapQuery | null, _res: WalkaboutH3Res): never {
+  throw new Error('not implemented');
+}
+
+/** Enabled only while a popup is open (cell non-null). */
+export function useWalkaboutCellNodes(_sourceId: string | null, _q: WalkaboutMapQuery | null, _cell: string | null): never {
+  throw new Error('not implemented');
+}
+
+export function useWalkaboutTrack(_sourceId: string | null, _sessionId: string | null): never {
+  throw new Error('not implemented');
 }
