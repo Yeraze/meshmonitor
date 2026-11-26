@@ -23,6 +23,8 @@ export interface FieldDef {
   /** Grouped options for `fieldselect` (event / node / telemetry). Computed at render time. */
   groups?: FieldGroup[];
   placeholder?: string;
+  /** Value defaultParams() seeds on a NEW block (#6566). Saved rules keep what they have. */
+  initial?: unknown;
   /**
    * Optional per-trigger placeholders for tokenised message fields. When the
    * current WHEN trigger matches a key, that string wins over `placeholder`.
@@ -1080,6 +1082,30 @@ export const ACTIONS: BlockDef[] = [
       // first; AutomationBuilder writes whichever the user picks.
       { name: 'resultVariable', label: 'Store result in', kind: 'resultTarget', advanced: true, help: 'Optional. A variable keeps the script’s output after the run — use a "json" variable and index it later as {{ var.name.field }}. “This run only” keeps it just until this run ends, with no variable to define.' },
       { name: 'timeoutSeconds', label: 'Timeout (seconds)', kind: 'number', advanced: true, placeholder: '30' },
+    ],
+  },
+  {
+    type: 'action.aiSummarize',
+    label: 'Summarize channels (AI)',
+    description: 'Summarize recent messages from one or more channels with the AI endpoint set in Global Settings → AI channel summaries. Sends nothing over the mesh. Add a Notify step after it with {{ steps.summary.output }} in the body to send the summary. When the channels are too quiet, the run stops here so no empty summary goes out. The messages, with sender names, go to that endpoint.',
+    fields: [
+      { name: 'sourceIds', label: 'Sources', kind: 'sourceMulti', help: 'Which sources to read the channels from.' },
+      { name: 'channels', label: 'Channels', kind: 'channelMulti', help: 'Channels to summarize, matched by name on each source.' },
+      { name: 'outputName', label: 'Name the summary', kind: 'text', initial: 'summary', help: 'Later steps read the summary as {{ steps.NAME.output }}. Lower-case letters, digits and _, starting with a letter.' },
+      {
+        name: 'window', label: 'Messages from', kind: 'select',
+        options: [
+          { value: 'hours', label: 'The last N hours' },
+          { value: 'sinceLastRun', label: 'Since this automation last ran' },
+        ],
+        help: '"Since last run" starts at the last completed run, so a failed run’s messages are picked up next time. The first run uses the hours below.',
+      },
+      { name: 'lookbackHours', label: 'Hours', kind: 'number', placeholder: '24' },
+      { name: 'excludeAutomated', label: 'Leave out automated messages', kind: 'checkbox', initial: true, help: 'Drops Meshtastic messages flagged as automated (auto-replies, bots, MeshMonitor’s own automations). MeshCore messages carry no such flag.' },
+      { name: 'minMessages', label: 'Skip when fewer than', kind: 'number', placeholder: '1', help: 'With fewer messages than this, nothing is summarized and the run stops.' },
+      { name: 'prompt', label: 'Extra instructions', kind: 'textarea', tokens: true, advanced: true, placeholder: 'e.g. Use bullet points. Highlight anything about the repeater.', help: 'Added to the built-in prompt.' },
+      { name: 'maxLength', label: 'Summary length (characters)', kind: 'number', advanced: true, help: 'Asks the model to stay under this many characters. Not a hard cut.' },
+      { name: 'maxInputChars', label: 'Transcript limit (characters)', kind: 'number', advanced: true, placeholder: '100000', help: 'The oldest messages are left out past this size, to fit the model’s context.' },
     ],
   },
   {

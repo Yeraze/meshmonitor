@@ -36,6 +36,7 @@ import NodeNameSanitizerSection from './settings/NodeNameSanitizerSection';
 import MqttBridgeConfigurationView from './MQTT/MqttBridgeConfigurationView';
 import ReticulumRetentionSection from './settings/ReticulumRetentionSection';
 import DefaultMeshtasticSourceSection from './settings/DefaultMeshtasticSourceSection';
+import AiSummarySection from './settings/AiSummarySection';
 import { MovedSettingNote } from './common/MovedSettingNote';
 import SystemRestartSection from './settings/SystemRestartSection';
 import SignFlipCorrectionSettings from './settings/SignFlipCorrectionSettings';
@@ -3638,6 +3639,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             onDefaultOutgoingLanguageChange={(defaultOutgoingLanguage) => updateField('translationDefaultOutgoingLanguage', defaultOutgoingLanguage)}
           />
         )}
+
+        {show('settings-ai-summary') && isAdmin && mode === 'global' && <AiSummarySection />}
 
         {show('settings-atak-cot') && isAdmin && <div id="settings-atak-cot" className="settings-section">
           <h3>{t('settings.atak_cot_section', 'ATAK / CoT Feed')}</h3>

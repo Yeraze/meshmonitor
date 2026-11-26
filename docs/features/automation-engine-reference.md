@@ -646,6 +646,56 @@ Responder uses) when the automation fires.
 > The script itself does **not** send messages — store its output, then use a separate
 > **Send a message** action to relay it.
 
+### Summarize channels (AI) {#summarize-channels-ai}
+
+Summarizes recent messages from one or more channels with an AI model, and keeps the summary for
+later steps in the same run. It sends nothing over the mesh. Pair it with a **Schedule** trigger
+and a **Notify** step to get, for example, a morning digest of overnight chat.
+
+Set up the AI endpoint first, in **Global Settings → AI channel summaries** (admins only):
+
+- **Base URL** — any OpenAI-compatible chat endpoint. Blank uses OpenAI
+  (`https://api.openai.com/v1`). For a local model, use Ollama (`http://host.docker.internal:11434/v1`),
+  LM Studio, or vLLM.
+- **Model** — blank uses `gpt-4o-mini`.
+- **API key** — blank for a local model that needs none. Only admins can read it back.
+
+> **Privacy.** Each summary sends the chosen channels' messages, with sender names, to that
+> endpoint. Use a local model if the messages must stay on your network.
+
+Step fields:
+
+- **Sources** and **Channels** — channels are matched by name on each source, as in
+  **Send a message**. Meshtastic, MQTT and MeshCore channels work; Reticulum has no channels.
+- **Name the summary** — later steps read the summary as `{{ steps.NAME.output }}`. Defaults
+  to `summary`.
+- **Messages from** — **The last N hours** (default 24), or **Since this automation last ran**.
+  "Since last ran" starts at the last *completed* run, so a failed request does not lose
+  messages: the next run picks them up. The first run uses the hours.
+- **Leave out automated messages** — on by default. Drops Meshtastic messages flagged as
+  automated: auto-replies, bots, and MeshMonitor's own automations. MeshCore messages carry no
+  such flag, so they are always included.
+- **Skip when fewer than** — with fewer messages than this (default 1), no request is made and
+  the run stops at this step, so the Notify step after it sends nothing. A scheduled run that
+  skips writes no run-log row.
+- **Extra instructions** *(advanced)* — added to the built-in prompt, e.g. "Use bullet points".
+  Supports `{{ }}` tokens.
+- **Summary length** *(advanced)* — asks the model to stay under this many characters. It is a
+  request, not a cut.
+- **Transcript limit** *(advanced)* — the most characters of chat sent to the model (default
+  100,000, about 25k tokens). Past it, the oldest messages are left out. Lower it for a model
+  with a small context window.
+
+The run log records how many messages were summarized and the model, never the summary text. The
+Test panel does not call the AI endpoint; give the step a sample output to try the steps after it.
+
+Example — a daily digest at 08:00:
+
+1. **Schedule** trigger, cron `0 8 * * *`.
+2. **Summarize channels (AI)** — your source, channel `LongFast`, **Since this automation last
+   ran**, named `summary`.
+3. **Notify** — title `LongFast overnight`, body `{{ steps.summary.output }}`.
+
 ### Step results for this run
 
 A step can hand its result to the steps after it without a variable. Set **Store result in** to

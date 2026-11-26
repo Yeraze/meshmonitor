@@ -62,6 +62,7 @@ export type ActionType =
   | 'action.deviceReboot'
   | 'action.notify'
   | 'action.runScript'
+  | 'action.aiSummarize'
   | 'action.delay'
   | 'action.setAutomationEnabled'
   | 'action.setSourceForwardingEnabled'
@@ -127,6 +128,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.deviceReboot',
   'action.notify',
   'action.runScript',
+  'action.aiSummarize',
   'action.delay',
   'action.setAutomationEnabled',
   'action.setSourceForwardingEnabled',
@@ -456,8 +458,11 @@ export const STEP_OUTPUT_NAME_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
 /** Most bytes of one step's output kept for the run; longer output is cut. */
 export const STEP_OUTPUT_MAX_BYTES = 64 * 1024;
 
-/** Action types that can store a run output. v1: "Run a script" only. */
-export const STEP_OUTPUT_ACTION_TYPES: readonly ActionType[] = ['action.runScript'];
+/** `action.aiSummarize` lookback when none is set (#6566). */
+export const AI_SUMMARY_DEFAULT_LOOKBACK_HOURS = 24;
+
+/** Action types that can store a run output. */
+export const STEP_OUTPUT_ACTION_TYPES: readonly ActionType[] = ['action.runScript', 'action.aiSummarize'];
 
 export function isStepOutputName(raw: unknown): raw is string {
   return typeof raw === 'string' && STEP_OUTPUT_NAME_PATTERN.test(raw);
@@ -887,7 +892,7 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
       // well-formed and unique within the automation.
       if (p.outputName != null && p.outputName !== '') {
         if (!STEP_OUTPUT_ACTION_TYPES.includes(n.type as ActionType)) {
-          errors.push(`${n.type} "${n.id}" cannot store a run output (params.outputName); only action.runScript can`);
+          errors.push(`${n.type} "${n.id}" cannot store a run output (params.outputName); only ${STEP_OUTPUT_ACTION_TYPES.join(' and ')} can`);
         } else if (!isStepOutputName(p.outputName)) {
           errors.push(`${n.type} "${n.id}" requires params.outputName to be 1–32 characters: a lower-case letter, then lower-case letters, digits or _`);
         } else if (outputNames.has(p.outputName)) {
@@ -964,6 +969,30 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             errors.push(`action.runScript "${n.id}" requires params.scriptPath`);
           }
           break;
+        case 'action.aiSummarize': {
+          // #6566: which channel(s) to read, how far back, and where the
+          // summary goes. The summary is only useful to a later step, so the
+          // run output name is required.
+          if (!Array.isArray(p.sourceIds) || p.sourceIds.length === 0) {
+            errors.push(`action.aiSummarize "${n.id}" requires params.sourceIds`);
+          }
+          if (!Array.isArray(p.channels) || p.channels.length === 0) {
+            errors.push(`action.aiSummarize "${n.id}" requires params.channels`);
+          }
+          if (!isStepOutputName(p.outputName)) {
+            errors.push(`action.aiSummarize "${n.id}" requires params.outputName, so a later step can read the summary`);
+          }
+          const mode = p.window ?? 'hours';
+          if (mode !== 'hours' && mode !== 'sinceLastRun') {
+            errors.push(`action.aiSummarize "${n.id}" requires params.window ∈ {hours,sinceLastRun}`);
+          }
+          for (const k of ['lookbackHours', 'minMessages', 'maxLength', 'maxInputChars'] as const) {
+            if (p[k] != null && p[k] !== '' && !(Number(p[k]) > 0)) {
+              errors.push(`action.aiSummarize "${n.id}" requires params.${k} to be a positive number`);
+            }
+          }
+          break;
+        }
         case 'action.requestData':
           if (p.op != null && !REQUEST_OPS.includes(p.op as RequestOp)) {
             errors.push(`action.requestData "${n.id}" requires a valid params.op`);
