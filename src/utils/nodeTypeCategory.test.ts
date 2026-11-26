@@ -10,6 +10,7 @@ import {
   MESHTASTIC_CATEGORIES,
   NODE_TYPE_CATEGORIES,
   isAnyMeshCoreSourceType,
+  isRepeaterClassNode,
 } from './nodeTypeCategory';
 
 describe('getNodeTypeCategory', () => {
@@ -210,5 +211,32 @@ describe('isAnyMeshCoreSourceType / sourceTypeProtocol (#5094)', () => {
     expect(sourceTypeProtocol('meshcore_mqtt')).toBe('meshcore');
     expect(sourceTypeProtocol('meshcore')).toBe('meshcore');
     expect(sourceTypeProtocol('meshtastic_tcp')).toBe('meshtastic');
+  });
+});
+
+describe('isRepeaterClassNode (#5891)', () => {
+  it.each([2, 3, 4, 11, 12])('Meshtastic role %i is a repeater', (role) => {
+    expect(isRepeaterClassNode({ user: { role } })).toBe(true);
+  });
+  it.each([0, 1, 5, 6, 7, 8, 9, 10])('Meshtastic role %i is not', (role) => {
+    expect(isRepeaterClassNode({ user: { role } })).toBe(false);
+  });
+  it('accepts a string role and a top-level role', () => {
+    expect(isRepeaterClassNode({ user: { role: '2' } })).toBe(true);
+    expect(isRepeaterClassNode({ role: 4 })).toBe(true);
+  });
+  it('a missing role is not a repeater', () => {
+    expect(isRepeaterClassNode({})).toBe(false);
+    expect(isRepeaterClassNode({ user: null })).toBe(false);
+  });
+  it.each([2, 3])('MeshCore advType %i is a repeater', (advType) => {
+    expect(isRepeaterClassNode({ advType })).toBe(true);
+    expect(isRepeaterClassNode({ advType, isMeshCore: true })).toBe(true);
+  });
+  it.each([1, 4, null])('MeshCore advType %s is not', (advType) => {
+    expect(isRepeaterClassNode({ advType, isMeshCore: true })).toBe(false);
+  });
+  it('a MeshCore node ignores a Meshtastic role', () => {
+    expect(isRepeaterClassNode({ advType: 1, user: { role: 2 } })).toBe(false);
   });
 });

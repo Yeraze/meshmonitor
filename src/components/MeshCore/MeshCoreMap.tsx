@@ -10,6 +10,7 @@ import {
   getNodeTypeCategory,
   categoryGlyphFamily,
   nodePassesTypeFilter,
+  isRepeaterClassNode,
   type NodeTypeCategory,
 } from '../../utils/nodeTypeCategory';
 import { createNodeIcon } from '../map/markerIcons';
@@ -299,6 +300,10 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   const [localShowCrossSourceLinks, setLocalShowCrossSourceLinks] = useState(false);
   const showLocalMarkers = mapContext?.showLocalMarkers ?? localShowLocalMarkers;
   const setShowLocalMarkers = mapContext?.setShowLocalMarkers ?? setLocalShowLocalMarkers;
+  // Repeaters only (#5891): shared MapContext flag, local fallback without a provider.
+  const [localShowRepeatersOnly, setLocalShowRepeatersOnly] = useState(false);
+  const showRepeatersOnly = mapContext?.showRepeatersOnly ?? localShowRepeatersOnly;
+  const setShowRepeatersOnly = mapContext?.setShowRepeatersOnly ?? setLocalShowRepeatersOnly;
   const showCrossSourceLinks = mapContext?.showCrossSourceLinks ?? localShowCrossSourceLinks;
   const setShowCrossSourceLinks = mapContext?.setShowCrossSourceLinks ?? setLocalShowCrossSourceLinks;
 
@@ -439,8 +444,9 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
   const visibleContacts = useMemo(
     () => positioned.filter(c =>
       nodePassesTypeFilter({ advType: c.advType }, nodeTypeFilter)
-      && (c.isLocal === true || !isHiddenByPositionlessAdvert(c, hidePositionlessAdverts))),
-    [positioned, nodeTypeFilter, hidePositionlessAdverts],
+      && (c.isLocal === true || !isHiddenByPositionlessAdvert(c, hidePositionlessAdverts))
+      && (c.isLocal === true || !showRepeatersOnly || isRepeaterClassNode({ advType: c.advType, isMeshCore: true }))),
+    [positioned, nodeTypeFilter, hidePositionlessAdverts, showRepeatersOnly],
   );
 
   // Uncertainty circles for the estimated contacts this map draws, behind
@@ -990,6 +996,8 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({
         setShowNeighbors={setShowNeighbors}
         showCrossSourceLinks={showCrossSourceLinks}
         setShowCrossSourceLinks={setShowCrossSourceLinks}
+        showRepeatersOnly={showRepeatersOnly}
+        setShowRepeatersOnly={setShowRepeatersOnly}
         showLocalMarkers={showLocalMarkers}
         setShowLocalMarkers={setShowLocalMarkers}
         canWriteLocalMarkers={canWriteLocalMarkers}

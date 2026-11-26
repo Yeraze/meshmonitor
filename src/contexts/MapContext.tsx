@@ -173,6 +173,9 @@ interface MapContextType {
   /** #5686: local map markers (planning notes, never transmitted). Per-browser, default ON. */
   showLocalMarkers: boolean;
   setShowLocalMarkers: (show: boolean) => void;
+  /** #5891: keep only repeater-class nodes on the maps. */
+  showRepeatersOnly: boolean;
+  setShowRepeatersOnly: (show: boolean) => void;
   /** #5734: tropospheric ducting overlay. Per-browser (localStorage), default off. */
   showDucting: boolean;
   setShowDucting: (show: boolean) => void;
@@ -321,6 +324,14 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       return localStorage.getItem('showLocalMarkers') !== 'false';
     } catch {
       return true;
+    }
+  });
+  // #5891: default off, so only an explicit 'true' turns it on.
+  const [showRepeatersOnly, setShowRepeatersOnlyState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('showRepeatersOnly') === 'true';
+    } catch {
+      return false;
     }
   });
   // #5734: default off, so only an explicit 'true' turns it on.
@@ -530,6 +541,15 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowLocalMarkersState(value);
     try {
       localStorage.setItem('showLocalMarkers', value.toString());
+    } catch {
+      // storage unavailable: the toggle still works for this session
+    }
+  }, []);
+
+  const setShowRepeatersOnly = React.useCallback((value: boolean) => {
+    setShowRepeatersOnlyState(value);
+    try {
+      localStorage.setItem('showRepeatersOnly', value.toString());
     } catch {
       // storage unavailable: the toggle still works for this session
     }
@@ -791,6 +811,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowTracerouteConfirmedLinks,
     showLocalMarkers,
     setShowLocalMarkers,
+    showRepeatersOnly,
+    setShowRepeatersOnly,
     showDucting,
     setShowDucting,
     ductingHoursAhead,
@@ -849,6 +871,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     packetFlightRate, setPacketFlightRate,
     showTracerouteConfirmedLinks, setShowTracerouteConfirmedLinks,
     showLocalMarkers, setShowLocalMarkers,
+    showRepeatersOnly, setShowRepeatersOnly,
     showDucting, setShowDucting,
     ductingHoursAhead, setDuctingHoursAhead,
     animatedNodes, triggerNodeAnimation,

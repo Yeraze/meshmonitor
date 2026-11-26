@@ -19,7 +19,7 @@ import type { PathOptions } from 'leaflet';
 import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { markerAgeOpacity } from '../../utils/markerAgeOpacity';
-import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps } from '../../utils/nodeTypeCategory';
+import { getNodeTypeCategory, categoryGlyphFamily, markerRoleProps, isRepeaterClassNode } from '../../utils/nodeTypeCategory';
 import { getHopColor } from '../../utils/mapIcons';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import type { CustomTileset } from '../../config/tilesets';
@@ -98,6 +98,7 @@ import subToggleStyles from '../map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
 import { snrToNeighborOpacity, pairNeighborRecords } from '../../utils/neighborLinks';
 import { UiIcon } from '../icons';
+import MapRepeatersOnlyToggle from '../map/MapRepeatersOnlyToggle';
 import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
@@ -362,6 +363,8 @@ export default function DashboardMap({
     colorNodesByGateway,
     setColorNodesByGateway,
     aircraftDisplayMode,
+    showRepeatersOnly,
+    setShowRepeatersOnly,
     setAircraftDisplayMode,
     showAgedOutAircraft,
     setShowAgedOutAircraft,
@@ -460,6 +463,8 @@ export default function DashboardMap({
     // Likely-aircraft Hide: suppress the marker, except a favourite is never
     // hidden by this toggle. Aged-out aircraft follow "Show aged-out" only.
     const nodesWithTruePos = eligible.filter((e) => {
+      // Repeaters only (#5891): the local node stays; favourites do not.
+      if (showRepeatersOnly && !e.node.isLocal && !isRepeaterClassNode(e.node)) return false;
       if (isAgedOutAircraft(e.node)) return showAgedOutAircraft === true;
       return !(aircraftDisplayMode === 'hide' && e.node.likelyAircraft === true && !e.node.isFavorite);
     });
@@ -484,7 +489,7 @@ export default function DashboardMap({
     return { nodesWithPosition: positionedNodes, nowMs: referenceNowMs, cutoffTime: ageCutoffTime, aircraftCountOnMap: aircraftCount, agedOutCountOnMap: agedOutCount };
   // `spreadNodes` (#5177) changes every resolved position without changing any
   // node, so it has to be a dependency or toggling it leaves the markers put.
-  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes, aircraftDisplayMode, showAgedOutAircraft, publicView.active]);
+  }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes, aircraftDisplayMode, showAgedOutAircraft, showRepeatersOnly, publicView.active]);
 
   // #5578: nodes that get a MARKER. A MeshCore node whose latest advert had no
   // position loses its marker (and measure/3D point) when the toggle is on;
@@ -1281,6 +1286,7 @@ export default function DashboardMap({
             >
               <UiIcon name="fitBounds" size={16} />
             </button>
+            <MapRepeatersOnlyToggle active={showRepeatersOnly} onChange={setShowRepeatersOnly} />
           </div>
           <>
           {/* #3636: node-to-node LOS distance measurement toggle. Needs at least
