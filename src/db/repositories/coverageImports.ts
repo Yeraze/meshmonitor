@@ -10,6 +10,7 @@ import { and, count, desc, eq } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import { CoverageReceptionsRepository } from './coverageReceptions.js';
+import { CoverageWalkaboutRepository } from './coverageWalkabout.js';
 import { COVERAGE_IMPORT_LIST_LIMIT } from '../../utils/coverageImport.js';
 import type { CoverageImportFormat, CoverageImportKind } from '../../types/coverageImport.js';
 
@@ -194,12 +195,16 @@ export class CoverageImportsRepository extends BaseRepository {
       .where(and(this.withSourceScope(coverageImports, sourceId), eq(coverageImports.id, id)));
   }
 
-  /** Rows first (via coverageReceptions.deleteImportRows), then the batch. */
+  /**
+   * Rows first (coverage reception rows, and walkabout sessions with their
+   * samples and receptions, #6573), then the batch.
+   */
   async deleteImport(sourceId: string, id: string): Promise<boolean> {
     const { coverageImports } = this.tables;
     // Scope check first: never delete rows for an id this source does not own.
     if (!(await this.getImport(sourceId, id))) return false;
     await this.receptions().deleteImportRows(sourceId, id);
+    await this.walkabout().deleteImportSessions(sourceId, id);
     const result = await this.db
       .delete(coverageImports)
       .where(and(this.withSourceScope(coverageImports, sourceId), eq(coverageImports.id, id)));
@@ -210,6 +215,7 @@ export class CoverageImportsRepository extends BaseRepository {
   async deleteForSource(sourceId: string): Promise<void> {
     const { coverageImports } = this.tables;
     await this.receptions().deleteImportedForSource(sourceId);
+    await this.walkabout().deleteImportedForSource(sourceId);
     await this.db.delete(coverageImports).where(this.withSourceScope(coverageImports, sourceId));
   }
 
@@ -220,6 +226,10 @@ export class CoverageImportsRepository extends BaseRepository {
   async deleteAll(): Promise<void> {
     const { coverageImports } = this.tables;
     await this.db.delete(coverageImports);
+  }
+
+  private walkabout(): CoverageWalkaboutRepository {
+    return new CoverageWalkaboutRepository(this.db, this.dbType);
   }
 
   private receptions(): CoverageReceptionsRepository {

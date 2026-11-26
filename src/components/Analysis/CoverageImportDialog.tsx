@@ -25,11 +25,14 @@ export interface CoverageImportDialogProps {
   sources: CoverageImportDialogSource[];
   /** The source the report is filtered to, if any; the default target when it is in `sources`. */
   defaultSourceId?: string;
+  /** `walkabout` (#6573): copy for a walkabout session export (JSON only). Same upload route. */
+  variant?: 'coverage' | 'walkabout';
 }
 
 const MAX_MB = Math.round(COVERAGE_IMPORT_MAX_BYTES / (1024 * 1024));
 
-export function CoverageImportDialog({ isOpen, onClose, sources, defaultSourceId }: CoverageImportDialogProps) {
+export function CoverageImportDialog({ isOpen, onClose, sources, defaultSourceId, variant = 'coverage' }: CoverageImportDialogProps) {
+  const walkabout = variant === 'walkabout';
   const { t } = useTranslation();
   const importFile = useImportCoverageFile();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -96,15 +99,24 @@ export function CoverageImportDialog({ isOpen, onClose, sources, defaultSourceId
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title={t('analysis.coverage.import_title', 'Import coverage data')}
+      title={
+        walkabout
+          ? t('analysis.walkabout.import_title', 'Import walkabout sessions')
+          : t('analysis.coverage.import_title', 'Import coverage data')
+      }
       maxWidth="560px"
     >
       <div className={styles.dialogBody} data-testid="coverage-import-dialog">
         <p className={styles.note}>
-          {t(
-            'analysis.coverage.import_intro',
-            'Import a CSV or GeoJSON file exported from the Coverage Report. The rows join the report for the source you pick and stay until you delete the import.',
-          )}
+          {walkabout
+            ? t(
+                'analysis.walkabout.import_intro',
+                'Import a JSON file exported from a walkabout session. Each session in it becomes a new, finished session on the source you pick and stays until you delete the import.',
+              )
+            : t(
+                'analysis.coverage.import_intro',
+                'Import a CSV or GeoJSON file exported from the Coverage Report. The rows join the report for the source you pick and stay until you delete the import.',
+              )}
         </p>
 
         <label className={styles.field}>
@@ -128,19 +140,19 @@ export function CoverageImportDialog({ isOpen, onClose, sources, defaultSourceId
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,.geojson,.json"
+            accept={walkabout ? '.json' : '.csv,.geojson,.json'}
             disabled={uploading}
             onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
             data-testid="coverage-import-file"
           />
         </label>
 
-        <p className={styles.note}>
+        {!walkabout && <p className={styles.note}>
           {t(
             'analysis.coverage.import_same_instance_note',
             'Rows this instance still holds live are skipped, because they are already in the report. Importing into the instance that made the export therefore adds nothing for recent data. Save a survey to keep live data.',
           )}
-        </p>
+        </p>}
 
         {message && (
           <div className={styles.error} role="alert" data-testid="coverage-import-error">
@@ -173,6 +185,11 @@ export function CoverageImportDialog({ isOpen, onClose, sources, defaultSourceId
           <div className={styles.success} role="status" data-testid="coverage-import-success">
             {t('analysis.coverage.import_done', 'Imported {{filename}}.', { filename: imp.filename })}
             <ul className={styles.successList}>
+              {result.sessionIds && (
+                <li data-testid="coverage-import-sessions">
+                  {t('analysis.walkabout.import_sessions', { count: result.sessionIds.length, defaultValue: '{{count}} sessions added' })}
+                </li>
+              )}
               <li>{t('analysis.coverage.import_inserted', '{{count}} rows added', { count: imp.insertedCount })}</li>
               <li>
                 {t('analysis.coverage.import_duplicates', '{{count}} rows already here, skipped', {

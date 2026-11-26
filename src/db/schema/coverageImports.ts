@@ -4,8 +4,9 @@
  *
  * One row per imported Coverage Report file (CSV or GeoJSON). The rows it
  * brought in live in `coverage_receptions` with `importId = coverage_imports.id`.
- * `kind` is `'coverage_report'` today; P3b may add `'walkabout'` without a
- * migration. No foreign keys: the repository deletes the reception rows first.
+ * `kind` is `'coverage_report'` or `'walkabout'` (#6573: a walkabout JSON
+ * export, `format 'json'`; its sessions live in `coverage_walkabout_sessions`
+ * with this `importId`). No foreign keys: the repository deletes rows first.
  *
  * `id` is a UUID text primary key (`crypto.randomUUID()`), not serial: see
  * migration 173's header for the PG-sequence trap this avoids on restore.

@@ -23,7 +23,16 @@ import {
   walkaboutKeys,
 } from '../../hooks/useWalkabout';
 import { useReadableWalkaboutSources } from '../../hooks/useWalkaboutSources';
-import { postWalkaboutSamples, stopWalkabout } from '../../services/walkaboutApi';
+import { fetchWalkaboutExport, postWalkaboutSamples, stopWalkabout } from '../../services/walkaboutApi';
+import { useDeleteCoverageImport } from '../../hooks/useCoverageImports';
+import { downloadTextFile } from '../../utils/nodeExport';
+import {
+  buildWalkaboutCsv,
+  buildWalkaboutGeoJson,
+  buildWalkaboutJson,
+  walkaboutExportFilename,
+} from '../../utils/walkaboutExport';
+import { CoverageImportDialog } from './CoverageImportDialog';
 import { createWalkaboutSampler } from '../../utils/walkaboutSampler';
 import { formatClock, pausedMinutes } from '../../utils/walkaboutFormat';
 import {
@@ -34,11 +43,12 @@ import {
   WALKABOUT_WARN_ACCURACY_M,
   WALKABOUT_WRITE_GRANT,
 } from '../../utils/walkabout';
-import type { WalkaboutSessionDto, WalkaboutSkipCounts } from '../../types/walkabout';
+import type { WalkaboutExportDoc, WalkaboutSessionDto, WalkaboutSkipCounts } from '../../types/walkabout';
 import WalkaboutMapPanel from './WalkaboutMapPanel';
 import styles from './WalkaboutReport.module.css';
 
 type EndNotice = 'cap' | 'user' | 'lost' | null;
+type ExportFormat = 'json' | 'csv' | 'geojson';
 
 const errCode = (e: unknown): string | undefined => (e as { code?: string } | null)?.code;
 const errStatus = (e: unknown): number | undefined => (e as { status?: number } | null)?.status;
@@ -83,6 +93,13 @@ export default function WalkaboutReport() {
   const [startError, setStartError] = useState<string | null>(null);
   const [stopError, setStopError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<WalkaboutSessionDto | null>(null);
+  const deleteImportMut = useDeleteCoverageImport();
+  const [showImport, setShowImport] = useState(false);
+  // #6573 export: the doc is fetched once per opened session, then built into each format.
+  const [toExport, setToExport] = useState<WalkaboutSessionDto | null>(null);
+  const [exportDoc, setExportDoc] = useState<WalkaboutExportDoc | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const samplerRef = useRef(createWalkaboutSampler());
   const activeRef = useRef<WalkaboutSessionDto | null>(null);
@@ -205,11 +222,42 @@ export default function WalkaboutReport() {
     const s = toDelete;
     if (!s) return;
     try {
-      await deleteMut.mutateAsync(s.id);
+      // An imported session goes with its whole import (the server refuses it alone).
+      if (s.importId) await deleteImportMut.mutateAsync({ sourceId, importId: s.importId });
+      else await deleteMut.mutateAsync(s.id);
     } finally {
       setToDelete(null);
     }
   };
+
+  const openExport = (s: WalkaboutSessionDto) => {
+    setToExport(s);
+    setExportDoc(null);
+    setExportError(null);
+  };
+
+  const runExport = async (format: ExportFormat) => {
+    const s = toExport;
+    if (!s || exportBusy) return;
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const doc = exportDoc ?? (await fetchWalkaboutExport(sourceId, s.id));
+      setExportDoc(doc);
+      const name = walkaboutExportFilename(format, s.startedAt);
+      if (format === 'json') downloadTextFile(name, buildWalkaboutJson(doc), 'application/json');
+      else if (format === 'csv') downloadTextFile(name, buildWalkaboutCsv(doc), 'text/csv');
+      else downloadTextFile(name, buildWalkaboutGeoJson(doc), 'application/geo+json');
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : t('analysis.walkabout.export_failed', 'Export failed.'));
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const writableSources = options
+    .filter((o) => canWriteSource(o.id))
+    .map((o) => ({ id: o.id, name: o.name || o.id, type: o.type ?? undefined }));
 
   // The live row shows the freshest counts from the last post; no polling.
   const sessionRows = (sessionsQ.data ?? []).map((r) => (active && r.id === active.id ? active : r));
@@ -450,10 +498,12 @@ export default function WalkaboutReport() {
       >
         <div className={styles.modalBody} data-testid="walkabout-delete-modal">
           <p className={styles.note}>
-            {t('analysis.walkabout.delete_body', 'Delete this session and every sample and reception in it? This cannot be undone.')}
+            {toDelete?.importId
+              ? t('analysis.walkabout.delete_import_body', 'This session came from an import. Delete the whole import, with every session, sample and reception in it? This cannot be undone.')
+              : t('analysis.walkabout.delete_body', 'Delete this session and every sample and reception in it? This cannot be undone.')}
           </p>
           <div className={styles.actions}>
-            <button type="button" className={styles.danger} disabled={deleteMut.isPending} onClick={() => { void confirmDelete(); }} data-testid="walkabout-confirm-delete">
+            <button type="button" className={styles.danger} disabled={deleteMut.isPending || deleteImportMut.isPending} onClick={() => { void confirmDelete(); }} data-testid="walkabout-confirm-delete">
               {t('analysis.walkabout.delete', 'Delete')}
             </button>
             <button type="button" className={styles.secondary} onClick={() => setToDelete(null)}>
@@ -463,9 +513,73 @@ export default function WalkaboutReport() {
         </div>
       </Modal>
 
+      <Modal
+        isOpen={toExport != null}
+        onClose={() => { if (!exportBusy) setToExport(null); }}
+        title={t('analysis.walkabout.export_title', 'Export session')}
+      >
+        <div className={styles.modalBody} data-testid="walkabout-export-modal">
+          <p className={styles.note}>
+            {t('analysis.walkabout.export_body', 'JSON keeps everything and is the format you can import again. CSV and GeoJSON list each GPS sample with what was heard there, for use in other tools.')}
+          </p>
+          <div className={styles.actions}>
+            {(['json', 'csv', 'geojson'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={styles.secondary}
+                disabled={exportBusy}
+                onClick={() => { void runExport(f); }}
+                data-testid={`walkabout-export-${f}`}
+              >
+                <UiIcon name="download" size={16} /> {f === 'json' ? 'JSON' : f === 'csv' ? 'CSV' : 'GeoJSON'}
+              </button>
+            ))}
+          </div>
+          {exportDoc && exportDoc.meshmonitor.hiddenReceptionCount > 0 && (
+            <p className={styles.warn} role="status" data-testid="walkabout-export-hidden">
+              <UiIcon name="info" size={16} />
+              {t('analysis.walkabout.export_hidden', {
+                count: exportDoc.meshmonitor.hiddenReceptionCount,
+                defaultValue: '{{count}} receptions from nodes hidden from you were left out.',
+              })}
+            </p>
+          )}
+          {exportDoc?.meshmonitor.truncated && (
+            <p className={styles.warn} role="status" data-testid="walkabout-export-truncated">
+              <UiIcon name="info" size={16} />
+              {t('analysis.walkabout.export_truncated', 'The session is larger than one import file holds, so the export was cut at the row limit.')}
+            </p>
+          )}
+          {exportError && <p className={styles.error} role="alert">{exportError}</p>}
+        </div>
+      </Modal>
+
+      {showImport && (
+        <CoverageImportDialog
+          isOpen
+          onClose={() => setShowImport(false)}
+          sources={writableSources}
+          defaultSourceId={sourceId}
+          variant="walkabout"
+        />
+      )}
+
       {sourceId && (
         <section aria-label={t('analysis.walkabout.sessions', 'Sessions')}>
-          <h3 className={styles.panelTitle}>{t('analysis.walkabout.sessions', 'Sessions')}</h3>
+          <div className={styles.sessionsHead}>
+            <h3 className={styles.panelTitle}>{t('analysis.walkabout.sessions', 'Sessions')}</h3>
+            {writableSources.length > 0 && !active && (
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => setShowImport(true)}
+                data-testid="walkabout-import"
+              >
+                <UiIcon name="upload" size={16} /> {t('analysis.walkabout.import', 'Import')}
+              </button>
+            )}
+          </div>
           {sessionsQ.isLoading ? null : sessionRows.length === 0 ? (
             <p className={styles.note} data-testid="walkabout-empty">
               {t('analysis.walkabout.no_sessions', 'No walkabout sessions yet.')}
@@ -478,7 +592,14 @@ export default function WalkaboutReport() {
                 return (
                   <li key={s.id} className={styles.row} data-testid="walkabout-session">
                     <div className={styles.rowMain}>
-                      <span className={styles.rowName}>{s.name || fmtDate(s.startedAt)}</span>
+                      <span className={styles.rowName}>
+                        {s.name || fmtDate(s.startedAt)}
+                        {s.importId && (
+                          <span className={styles.tag} data-testid="walkabout-imported-tag">
+                            {t('analysis.walkabout.imported', 'Imported')}
+                          </span>
+                        )}
+                      </span>
                       <span className={styles.rowMeta}>
                         {live
                           ? t('analysis.walkabout.row_live', 'Running')
@@ -503,6 +624,17 @@ export default function WalkaboutReport() {
                         data-testid="walkabout-map-button"
                       >
                         <UiIcon name="map" size={16} /> {t('analysis.walkabout.map.show', 'Map')}
+                      </button>
+                    )}
+                    {!live && (
+                      <button
+                        type="button"
+                        className={styles.secondary}
+                        onClick={() => openExport(s)}
+                        aria-label={t('analysis.walkabout.export', 'Export')}
+                        data-testid="walkabout-export-button"
+                      >
+                        <UiIcon name="download" size={16} />
                       </button>
                     )}
                     {!readOnlyMode && !live && (

@@ -5,7 +5,7 @@
  * Every method takes `sourceId` and scopes with `withSourceScope`, except
  * `getOpenSessionsAllSources` (boot loader: cross-source by design).
  */
-import { and, count, countDistinct, desc, eq, gte, inArray, isNull, lte, max, or, type SQL } from 'drizzle-orm';
+import { and, asc, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, lte, max, or, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import { WALKABOUT_LIST_LIMIT, WALKABOUT_MAX_DURATION_MS, type WalkaboutEndReason } from '../../utils/walkabout.js';
@@ -21,6 +21,8 @@ export interface DbWalkaboutSession {
   startedBy: number | null;
   createdAt: number;
   updatedAt: number;
+  /** Set when a walkabout import created the session (#6573); null/absent = recorded live. */
+  importId?: string | null;
 }
 
 export interface DbWalkaboutSessionWithCounts extends DbWalkaboutSession {
@@ -126,6 +128,7 @@ export class CoverageWalkaboutRepository extends BaseRepository {
       startedBy: (r.startedBy as number | null) ?? null,
       createdAt: Number(r.createdAt),
       updatedAt: Number(r.updatedAt),
+      importId: (r.importId as string | null | undefined) ?? null,
     };
   }
 
@@ -156,6 +159,7 @@ export class CoverageWalkaboutRepository extends BaseRepository {
       startedBy: p.startedBy,
       createdAt: p.startedAt,
       updatedAt: p.startedAt,
+      importId: null,
     };
     await this.db.insert(t).values(row);
     return this.toSession(row);
@@ -410,6 +414,162 @@ export class CoverageWalkaboutRepository extends BaseRepository {
       latitude: Number(r.latitude),
       longitude: Number(r.longitude),
     }));
+  }
+
+  // --- Export / import (#6573) ---
+
+  /** An imported session: always ended (never live, never captured into). */
+  async createImportedSession(p: {
+    id: string;
+    sourceId: string;
+    name: string | null;
+    startedAt: number;
+    endedAt: number;
+    endReason: WalkaboutEndReason;
+    importId: string;
+    createdAt: number;
+  }): Promise<DbWalkaboutSession> {
+    requireSource(p.sourceId, 'createImportedSession');
+    const { coverageWalkaboutSessions: t } = this.tables;
+    const row = {
+      id: p.id,
+      sourceId: p.sourceId,
+      name: p.name,
+      startedAt: p.startedAt,
+      endedAt: p.endedAt,
+      endReason: p.endReason,
+      startedBy: null,
+      createdAt: p.createdAt,
+      updatedAt: p.createdAt,
+      importId: p.importId,
+    };
+    await this.db.insert(t).values(row);
+    return this.toSession(row);
+  }
+
+  /** Bulk insert, in chunks. The caller reads ids back with `listSamples`. */
+  async insertSamplesBulk(rows: NewWalkaboutSample[], chunk = 500): Promise<void> {
+    const { coverageWalkaboutSamples: smp } = this.tables;
+    for (const r of rows) requireSource(r.sourceId, 'insertSamplesBulk');
+    for (let i = 0; i < rows.length; i += chunk) {
+      const values = rows.slice(i, i + chunk);
+      if (values.length > 0) await this.db.insert(smp).values(values);
+    }
+  }
+
+  /**
+   * Bulk insert that skips rows hitting `cov_wk_rx_uniq`; a duplicate mid-chunk
+   * never loses the rest (SQLite/PG ON CONFLICT DO NOTHING, MySQL INSERT IGNORE).
+   * Returns the number inserted.
+   */
+  async insertReceptionsBulk(rows: NewWalkaboutReception[], chunk = 500): Promise<number> {
+    const { coverageWalkaboutReceptions: rx } = this.tables;
+    for (const r of rows) requireSource(r.sourceId, 'insertReceptionsBulk');
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += chunk) {
+      const values = rows.slice(i, i + chunk);
+      if (values.length === 0) continue;
+      const result = this.isMySQL()
+        ? await this.getMysqlDb().insert(rx as any).ignore().values(values) // eslint-disable-line @typescript-eslint/no-explicit-any -- dialect-union table
+        : await (this.db as any).insert(rx).values(values).onConflictDoNothing(); // eslint-disable-line @typescript-eslint/no-explicit-any -- dialect-union builder
+      inserted += this.getAffectedRows(result);
+    }
+    return inserted;
+  }
+
+  /** Every sample of one session, oldest fix first, at most `limit`. */
+  async listSamples(sourceId: string, sessionId: string, limit: number): Promise<DbWalkaboutSample[]> {
+    requireSource(sourceId, 'listSamples');
+    const { coverageWalkaboutSamples: smp } = this.tables;
+    const rows = await this.db.select().from(smp)
+      .where(and(eq(smp.sessionId, sessionId), this.withSourceScope(smp, sourceId)))
+      .orderBy(asc(smp.fixAt), asc(smp.id))
+      .limit(limit);
+    return rows.map((r: Row) => this.toSample(r));
+  }
+
+  /** Every reception of one session, oldest first, at most `limit`. */
+  async listReceptions(sourceId: string, sessionId: string, limit: number): Promise<DbWalkaboutReception[]> {
+    requireSource(sourceId, 'listReceptions');
+    const { coverageWalkaboutReceptions: rx } = this.tables;
+    const rows = await this.db.select().from(rx)
+      .where(and(eq(rx.sessionId, sessionId), this.withSourceScope(rx, sourceId)))
+      .orderBy(asc(rx.heardAt), asc(rx.id))
+      .limit(limit);
+    return rows.map((r: Row): DbWalkaboutReception => ({
+      id: Number(r.id),
+      sessionId: r.sessionId as string,
+      sourceId: r.sourceId as string,
+      protocol: r.protocol as 'meshtastic' | 'meshcore',
+      creditedKey: r.creditedKey as string,
+      creditedNodeNum: r.creditedNodeNum == null ? null : Number(r.creditedNodeNum),
+      creditKind: r.creditKind as 'direct' | 'relay',
+      hopsAway: r.hopsAway == null ? null : Number(r.hopsAway),
+      packetKey: r.packetKey as string,
+      snr: r.snr == null ? null : Number(r.snr),
+      rssi: r.rssi == null ? null : Number(r.rssi),
+      heardAt: Number(r.heardAt),
+      sampleId: r.sampleId == null ? null : Number(r.sampleId),
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      accuracyM: Number(r.accuracyM),
+      sampleAgeMs: Number(r.sampleAgeMs),
+    }));
+  }
+
+  /** Ids of the source's imported sessions; one import when `importId` is given. */
+  private async importedSessionIds(sourceId: string, importId?: string): Promise<string[]> {
+    const { coverageWalkaboutSessions: t } = this.tables;
+    const rows = await this.db.select({ id: t.id }).from(t)
+      .where(and(
+        importId === undefined ? isNotNull(t.importId) : eq(t.importId, importId),
+        this.withSourceScope(t, sourceId),
+      ));
+    return rows.map((r: Row) => r.id as string);
+  }
+
+  private async deleteSessionsById(sourceId: string, ids: string[]): Promise<number> {
+    const { coverageWalkaboutSessions: t, coverageWalkaboutSamples: smp, coverageWalkaboutReceptions: rx } = this.tables;
+    let removed = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const part = ids.slice(i, i + 500);
+      await this.db.delete(rx).where(and(inArray(rx.sessionId, part), this.withSourceScope(rx, sourceId)));
+      await this.db.delete(smp).where(and(inArray(smp.sessionId, part), this.withSourceScope(smp, sourceId)));
+      removed += this.getAffectedRows(
+        await this.db.delete(t).where(and(inArray(t.id, part), this.withSourceScope(t, sourceId))),
+      );
+    }
+    return removed;
+  }
+
+  /** Delete one import's sessions with their samples and receptions. Returns sessions removed. */
+  async deleteImportSessions(sourceId: string, importId: string): Promise<number> {
+    requireSource(sourceId, 'deleteImportSessions');
+    if (!importId) throw new Error('CoverageWalkaboutRepository.deleteImportSessions requires an importId');
+    return this.deleteSessionsById(sourceId, await this.importedSessionIds(sourceId, importId));
+  }
+
+  /** Delete every imported session of one source (source delete). */
+  async deleteImportedForSource(sourceId: string): Promise<number> {
+    requireSource(sourceId, 'deleteImportedForSource');
+    return this.deleteSessionsById(sourceId, await this.importedSessionIds(sourceId));
+  }
+
+  /** Samples + receptions held by imported sessions on one source (per-source row cap). */
+  async countImportedRows(sourceId: string): Promise<number> {
+    requireSource(sourceId, 'countImportedRows');
+    const ids = await this.importedSessionIds(sourceId);
+    const { coverageWalkaboutSamples: smp, coverageWalkaboutReceptions: rx } = this.tables;
+    let n = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const part = ids.slice(i, i + 500);
+      const s = await this.db.select({ n: count() }).from(smp)
+        .where(and(inArray(smp.sessionId, part), this.withSourceScope(smp, sourceId)));
+      const x = await this.db.select({ n: count() }).from(rx)
+        .where(and(inArray(rx.sessionId, part), this.withSourceScope(rx, sourceId)));
+      n += Number(s[0]?.n ?? 0) + Number(x[0]?.n ?? 0);
+    }
+    return n;
   }
 
   /** Lat/lon prefilter. west > east means the box crosses the antimeridian. */

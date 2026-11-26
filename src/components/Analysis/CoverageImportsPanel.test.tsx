@@ -69,6 +69,15 @@ describe('CoverageImportsPanel', () => {
     expect(rows[0]).toHaveTextContent('8 added, 2 already here');
   });
 
+  it('leaves walkabout imports to the Walkabout page (#6573)', () => {
+    state.imports = [imp('one', 'a'), imp('walk', 'a', { kind: 'walkabout', format: 'json', filename: 'walk.json' })];
+    renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: /Imports/ }));
+    const rows = screen.getAllByTestId('coverage-import-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('one.csv');
+  });
+
   it('Show hands the import to the report; an import with no rows cannot be shown', () => {
     const { onShow } = renderPanel();
     fireEvent.click(screen.getByRole('button', { name: /Imports/ }));
