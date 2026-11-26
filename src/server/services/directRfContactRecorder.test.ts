@@ -96,6 +96,17 @@ describe('evaluateMeshtasticDirectRf', () => {
     expect(evalMt({ hopStart: 2, hopLimit: 3 })).toEqual({ skip: 'not-direct' });
   });
 
+  it('a 0-hop copy with a foreign relay byte was relayed, so it does not count', () => {
+    // Router::shouldDecrementHopLimit lets favourite-router relays keep hop_limit.
+    expect(evalMt({ relayNode: 0x42 })).toEqual({ skip: 'not-direct' });
+  });
+
+  it('a 0-hop copy with relay byte 0, absent, or the sender low byte counts', () => {
+    expect(evalMt({ relayNode: 0 }).skip).toBeNull();
+    expect(evalMt({ relayNode: null }).skip).toBeNull();
+    expect(evalMt({ relayNode: FROM & 0xff }).skip).toBeNull();
+  });
+
   it('0/0 counts only with a bitfield (pre-2.3 firmware leaves hop_start unset as 0)', () => {
     expect(evalMt({ hopStart: 0, hopLimit: 0, decoded: { bitfield: 1 } }).skip).toBeNull();
     expect(evalMt({ hopStart: 0, hopLimit: 0, decoded: null })).toEqual({ skip: 'not-direct' });
