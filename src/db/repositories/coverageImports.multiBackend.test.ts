@@ -3,7 +3,8 @@
  * CoverageReceptionsRepository, on SQLite, PostgreSQL and MySQL
  * (Walkabout Coverage epic #5891, Phase 3 WP2).
  *
- * PG/MySQL tables come from the real migration runners (172 + 249), each
+ * PG/MySQL tables come from the real migration runners (172, 248-250; import
+ * deletes also remove walkabout sessions, #6573), each
  * backend in its OWN isolated database (`isolationKey: 'covimp'`).
  * Covers per-source isolation too (every method on A never touches B).
  */
@@ -16,7 +17,9 @@ import * as schema from '../schema/index.js';
 import { CoverageImportsRepository, CoverageImportDuplicateError } from './coverageImports.js';
 import { CoverageReceptionsRepository } from './coverageReceptions.js';
 import { runMigration172Postgres, runMigration172Mysql } from '../../server/migrations/172_create_coverage_receptions.js';
+import { runMigration248Postgres, runMigration248Mysql } from '../../server/migrations/248_create_coverage_walkabout.js';
 import { runMigration249Postgres, runMigration249Mysql } from '../../server/migrations/249_create_coverage_imports.js';
+import { runMigration250Postgres, runMigration250Mysql } from '../../server/migrations/250_add_walkabout_session_import_id.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 import type { ParsedCoverageImportRow } from '../../types/coverageImport.js';
 import {
@@ -329,7 +332,9 @@ describe.skipIf(!postgresAvailable)('CoverageImports — PostgreSQL (container)'
     const client = await pool.connect();
     try {
       await runMigration172Postgres(client);
+      await runMigration248Postgres(client);
       await runMigration249Postgres(client);
+      await runMigration250Postgres(client);
     } finally {
       client.release();
     }
@@ -355,7 +360,9 @@ describe.skipIf(!mysqlAvailable)('CoverageImports — MySQL (container)', () => 
     pool = isolated.pool;
     cleanupDb = isolated.cleanup;
     await runMigration172Mysql(pool);
+    await runMigration248Mysql(pool);
     await runMigration249Mysql(pool);
+    await runMigration250Mysql(pool);
     const db = drizzleMysql(pool, { schema, mode: 'default' });
     ctx = {
       imports: new CoverageImportsRepository(db, 'mysql'),

@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  *
  * Walkabout report (#5891 P1): notices, consent flow, posting cadence, retry,
- * session end, resume, delete, source picker.
+ * session end, resume, delete, source picker. #6573: export, import, imported sessions.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
@@ -25,13 +25,30 @@ const startWalkabout = vi.fn();
 const postWalkaboutSamples = vi.fn();
 const stopWalkabout = vi.fn();
 const deleteWalkabout = vi.fn();
+const fetchWalkaboutExport = vi.fn();
 vi.mock('../../services/walkaboutApi', () => ({
+  fetchWalkaboutExport: (...a: unknown[]) => fetchWalkaboutExport(...a),
   fetchWalkaboutSessions: (...a: unknown[]) => fetchWalkaboutSessions(...a),
   fetchLiveWalkabout: (...a: unknown[]) => fetchLiveWalkabout(...a),
   startWalkabout: (...a: unknown[]) => startWalkabout(...a),
   postWalkaboutSamples: (...a: unknown[]) => postWalkaboutSamples(...a),
   stopWalkabout: (...a: unknown[]) => stopWalkabout(...a),
   deleteWalkabout: (...a: unknown[]) => deleteWalkabout(...a),
+}));
+
+const deleteCoverageImport = vi.fn();
+vi.mock('../../services/coverageImportApi', () => ({
+  deleteCoverageImport: (...a: unknown[]) => deleteCoverageImport(...a),
+  fetchCoverageImports: vi.fn(),
+  uploadCoverageImport: vi.fn(),
+  CoverageImportUploadError: class extends Error {},
+}));
+vi.mock('../../hooks/useCsrfFetch', () => ({ useCsrfFetch: () => vi.fn() }));
+
+const downloadTextFile = vi.fn();
+vi.mock('../../utils/nodeExport', async (orig) => ({
+  ...(await orig<typeof import('../../utils/nodeExport')>()),
+  downloadTextFile: (...a: unknown[]) => downloadTextFile(...a),
 }));
 
 const mapPanelProps = vi.fn();
@@ -392,5 +409,79 @@ describe('WalkaboutReport', () => {
     fireEvent.click(screen.getByTestId('walkabout-confirm-delete'));
     await flush();
     expect(deleteWalkabout).toHaveBeenCalledWith('a', 'old');
+  });
+
+  describe('export and import (#6573)', () => {
+    const exportDoc = {
+      meshmonitor: { format: 'meshmonitor-walkabout', version: 1, exportedAt: NOW, hiddenReceptionCount: 3, truncated: false },
+      sessions: [{
+        name: null, startedAt: NOW, endedAt: NOW + 60_000, endReason: 'user',
+        samples: [{ id: 1, latitude: 10, longitude: 20, accuracyM: 5, deviceFixAt: NOW, fixAt: NOW, receivedAt: NOW }],
+        receptions: [],
+      }],
+    };
+
+    it('exports a finished session as JSON, then CSV from the same fetch, and shows the hidden count', async () => {
+      fetchWalkaboutSessions.mockResolvedValue([session({ id: 'old', isLive: false, endedAt: NOW + 60_000 })]);
+      fetchWalkaboutExport.mockResolvedValue(exportDoc);
+      renderReport();
+      await flush();
+      fireEvent.click(screen.getByTestId('walkabout-export-button'));
+      fireEvent.click(screen.getByTestId('walkabout-export-json'));
+      await flush();
+      expect(fetchWalkaboutExport).toHaveBeenCalledWith('a', 'old');
+      const [name, body, mime] = downloadTextFile.mock.calls[0];
+      expect(name).toMatch(/^walkabout_.*\.json$/);
+      expect(JSON.parse(body)).toEqual(exportDoc);
+      expect(mime).toBe('application/json');
+      expect(screen.getByTestId('walkabout-export-hidden').textContent).toMatch(/3/);
+      fireEvent.click(screen.getByTestId('walkabout-export-csv'));
+      await flush();
+      expect(fetchWalkaboutExport).toHaveBeenCalledTimes(1);
+      expect(downloadTextFile.mock.calls[1][0]).toMatch(/\.csv$/);
+    });
+
+    it('no Export button on a live session', async () => {
+      fetchWalkaboutSessions.mockResolvedValue([session({ id: 'live', isLive: true })]);
+      renderReport();
+      await flush();
+      expect(screen.queryByTestId('walkabout-export-button')).toBeNull();
+    });
+
+    it('an imported session is tagged, and Delete removes its import', async () => {
+      fetchWalkaboutSessions.mockResolvedValue([
+        session({ id: 'imp', isLive: false, endedAt: NOW + 60_000, importId: 'batch-1' }),
+      ]);
+      deleteCoverageImport.mockResolvedValue(undefined);
+      renderReport();
+      await flush();
+      expect(screen.getByTestId('walkabout-imported-tag')).toBeTruthy();
+      fireEvent.click(screen.getByTestId('walkabout-delete'));
+      expect(screen.getByTestId('walkabout-delete-modal').textContent).toMatch(/whole import/);
+      fireEvent.click(screen.getByTestId('walkabout-confirm-delete'));
+      await flush();
+      expect(deleteCoverageImport).toHaveBeenCalledWith('a', 'batch-1');
+      expect(deleteWalkabout).not.toHaveBeenCalled();
+    });
+
+    it('Import opens the walkabout import dialog for writable walkabout sources only', async () => {
+      renderReport();
+      await flush();
+      fireEvent.click(screen.getByTestId('walkabout-import'));
+      const dialog = screen.getByTestId('coverage-import-dialog');
+      expect(dialog.textContent).toMatch(/walkabout session/);
+      const options = within(dialog).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
+      expect(options).toEqual(['a', 'b']);
+      expect((within(dialog).getByTestId('coverage-import-file') as HTMLInputElement).accept).toBe('.json');
+    });
+
+    it('a read-only user gets Export but no Import', async () => {
+      hasPermission.mockImplementation((_r: string, action: string) => action === 'read');
+      fetchWalkaboutSessions.mockResolvedValue([session({ id: 'old', isLive: false, endedAt: NOW + 60_000 })]);
+      renderReport();
+      await flush();
+      expect(screen.getByTestId('walkabout-export-button')).toBeTruthy();
+      expect(screen.queryByTestId('walkabout-import')).toBeNull();
+    });
   });
 });

@@ -6,6 +6,7 @@
  * `coverage_walkabout_sessions`
  *  - `cov_wk_sess_source_started_idx (sourceId, startedAt)`
  *  - `cov_wk_sess_ended_idx (endedAt)`
+ *  - `cov_wk_sess_import_idx (importId)` (migration 250; partial on SQLite/PG)
  * `coverage_walkabout_samples`
  *  - `cov_wk_smp_session_fix_idx (sessionId, fixAt)`
  *  - `cov_wk_smp_source_idx (sourceId)`
@@ -31,6 +32,8 @@ export const coverageWalkaboutSessionsSqlite = sqliteTable('coverage_walkabout_s
   endedAt: integer('endedAt'),
   endReason: text('endReason'),
   startedBy: integer('startedBy'),
+  /** null = recorded live; set = created by a walkabout import (#6573, migration 250). */
+  importId: text('importId'),
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
 });
@@ -77,6 +80,7 @@ export const coverageWalkaboutSessionsPostgres = pgTable('coverage_walkabout_ses
   endedAt: pgBigint('endedAt', { mode: 'number' }),
   endReason: pgText('endReason'),
   startedBy: pgInteger('startedBy'),
+  importId: pgText('importId'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 });
@@ -124,6 +128,7 @@ export const coverageWalkaboutSessionsMysql = mysqlTable('coverage_walkabout_ses
   endedAt: myBigint('endedAt', { mode: 'number' }),
   endReason: myVarchar('endReason', { length: 16 }),
   startedBy: myInt('startedBy'),
+  importId: myVarchar('importId', { length: 36 }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
 });

@@ -14,6 +14,7 @@ import type {
   WalkaboutCellsResult,
   WalkaboutCellNodesResult,
   WalkaboutTrackResult,
+  WalkaboutExportDoc,
 } from '../types/walkabout.js';
 
 export interface WalkaboutLiveResult {
@@ -24,6 +25,14 @@ export interface WalkaboutLiveResult {
 interface Envelope<T> {
   success: boolean;
   data: T;
+}
+
+/** #6573: the session's lossless export doc, filtered for the viewer. */
+export async function fetchWalkaboutExport(sourceId: string, sessionId: string): Promise<WalkaboutExportDoc> {
+  const body = await api.get<Envelope<WalkaboutExportDoc>>(
+    `/api/sources/${encodeURIComponent(sourceId)}/walkabout/sessions/${encodeURIComponent(sessionId)}/export`,
+  );
+  return body.data;
 }
 
 const base = (sourceId: string) => `/api/sources/${encodeURIComponent(sourceId)}/walkabout/sessions`;

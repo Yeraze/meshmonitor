@@ -35,6 +35,7 @@ import type {
 import { parseSenderParam } from '../utils/coverageSenderParam.js';
 import { parseWalkaboutCell } from '../utils/walkaboutH3.js';
 import { getWalkaboutCellNodes, getWalkaboutCells, getWalkaboutTrack } from '../services/walkaboutCells.js';
+import { exportWalkaboutSession } from '../services/walkaboutExportService.js';
 
 const router = Router({ mergeParams: true });
 
@@ -244,6 +245,12 @@ router.delete('/sessions/:sessionId', ...canWrite, async (req: Request, res: Res
     if (isWalkaboutLive(row, Date.now())) {
       return fail(res, 409, 'WALKABOUT_LIVE_SESSION', 'Stop this walkabout before deleting it');
     }
+    // An imported session goes with its import (#6573), so the batch and its file hash stay in step.
+    if (row.importId != null) {
+      return fail(res, 409, 'WALKABOUT_IMPORTED', 'This session came from an import; delete the import instead', {
+        importId: row.importId,
+      });
+    }
     // Open but past its cap: close it as 'cap' first, then delete.
     if (row.endedAt == null) await walkaboutService.stopSession(sourceId, sessionId);
     const removed = await walkaboutService.deleteSession(sourceId, sessionId);
@@ -326,6 +333,19 @@ router.get('/cell-nodes', ...canRead, async (req: Request, res: Response) => {
     return data ? ok(res, data) : notFound(res);
   } catch (err) {
     return handleError(res, err, 'read walkabout cell nodes');
+  }
+});
+
+// --- #6573: export. The lossless JSON doc; the client builds the CSV/GeoJSON
+// files from it. Receptions of nodes hidden from the viewer are dropped and counted.
+router.get('/sessions/:sessionId/export', ...canRead, async (req: Request, res: Response) => {
+  try {
+    const doc = await exportWalkaboutSession(req.user, sourceOf(req), sessionOf(req));
+    if (!doc) return notFound(res);
+    logger.info(`[Walkabout] user ${userIdOf(req)} exported session ${sessionOf(req)} on source ${sourceOf(req)}`);
+    return ok(res, doc);
+  } catch (err) {
+    return handleError(res, err, 'export the walkabout');
   }
 });
 

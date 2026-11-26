@@ -17,6 +17,8 @@ export interface WalkaboutSessionDto {
   /** Distinct credited nodes. */
   nodeCount: number;
   lastSampleAt: number | null;
+  /** Set when a walkabout import created this session (#6573); null = recorded live. */
+  importId?: string | null;
 }
 
 export interface WalkaboutSampleInput {
@@ -92,4 +94,60 @@ export interface WalkaboutTrackResult {
   sessionId: string;
   positions: Array<[number, number]>;
   truncated: boolean;
+}
+
+// --- Export / import (#6573) ---
+
+/** One sample as exported. `id` is file-local: receptions point at it via `sampleId`. */
+export interface WalkaboutExportSample {
+  id: number;
+  latitude: number;
+  longitude: number;
+  accuracyM: number;
+  deviceFixAt: number;
+  fixAt: number;
+  receivedAt: number;
+}
+
+/** One credited reception as exported. Names are display-only; import ignores them. */
+export interface WalkaboutExportReception {
+  protocol: 'meshtastic' | 'meshcore';
+  creditedKey: string;
+  creditedNodeNum: number | null;
+  creditKind: 'direct' | 'relay';
+  hopsAway: number | null;
+  packetKey: string;
+  snr: number | null;
+  rssi: number | null;
+  heardAt: number;
+  sampleId: number | null;
+  latitude: number;
+  longitude: number;
+  accuracyM: number;
+  sampleAgeMs: number;
+  longName?: string | null;
+  shortName?: string | null;
+}
+
+export interface WalkaboutExportSession {
+  name: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  endReason: WalkaboutEndReason | null;
+  samples: WalkaboutExportSample[];
+  receptions: WalkaboutExportReception[];
+}
+
+/** The lossless JSON export, and the only walkabout import format. */
+export interface WalkaboutExportDoc {
+  meshmonitor: {
+    format: 'meshmonitor-walkabout';
+    version: number;
+    exportedAt: number;
+    /** Receptions left out because their credited node is hidden from the viewer (whole session). */
+    hiddenReceptionCount: number;
+    /** True when the row cap cut the export. */
+    truncated: boolean;
+  };
+  sessions: WalkaboutExportSession[];
 }

@@ -16,6 +16,9 @@ import {
 } from '../../utils/coverageImport.js';
 import type { CoverageImportDto, CoverageImportResult } from '../../types/coverageImport.js';
 import { logger } from '../../utils/logger.js';
+import { isWalkaboutExportText, parseWalkaboutImport, type ParsedWalkaboutSession } from '../../utils/walkaboutImport.js';
+import { WALKABOUT_SOURCE_TYPES } from '../../utils/walkabout.js';
+import type { NewWalkaboutReception, NewWalkaboutSample } from '../../db/repositories/coverageWalkabout.js';
 
 export class CoverageImportError extends Error {
   constructor(
@@ -131,6 +134,11 @@ async function runImport(p: {
     throw new CoverageImportError('IMPORT_UNSUPPORTED_FILE', 'The file is not valid UTF-8 text', 400);
   }
 
+  // A walkabout session export (#6573) takes its own path into the walkabout tables.
+  if (/\.json$/i.test(p.filename) && isWalkaboutExportText(text)) {
+    return runWalkaboutImport({ ...p, sourceType: source.type, protocol, sha, text });
+  }
+
   const parsed = parseCoverageImport(p.filename, text, p.nowMs);
   if (!parsed.ok) {
     throw new CoverageImportError(parsed.code, parsed.message, 400, {
@@ -149,7 +157,7 @@ async function runImport(p: {
     );
   }
 
-  const existingRows = await coverageReceptions.countImportedRows(p.sourceId);
+  const existingRows = await countAllImportedRows(p.sourceId);
   if (existingRows + rows.length > COVERAGE_IMPORT_MAX_ROWS_PER_SOURCE) {
     throw new CoverageImportError(
       'IMPORT_LIMIT_REACHED',
@@ -211,6 +219,188 @@ async function runImport(p: {
   }
 }
 
+/** Imported rows on one source across both kinds: the 200k per-source cap counts them together. */
+export async function countAllImportedRows(sourceId: string): Promise<number> {
+  const [coverage, walkabout] = await Promise.all([
+    databaseService.coverageReceptions.countImportedRows(sourceId),
+    databaseService.coverageWalkabout.countImportedRows(sourceId),
+  ]);
+  return coverage + walkabout;
+}
+
+/** Match each file sample to the id its row got, by content (ids are not echoed by a bulk insert). */
+const sampleKey = (s: { deviceFixAt: number; fixAt: number; receivedAt: number; latitude: number; longitude: number }): string =>
+  `${s.deviceFixAt}|${s.fixAt}|${s.receivedAt}|${s.latitude}|${s.longitude}`;
+
+/**
+ * Walkabout import (#6573). Each file session becomes a new, already-ended
+ * session on the target source tagged with the batch id; its samples and
+ * credited receptions are copied with sample links remapped. The file's
+ * source and user are never trusted. Receptions of the other protocol are
+ * skipped and counted, as for Coverage imports.
+ */
+async function runWalkaboutImport(p: {
+  sourceId: string;
+  sourceType: string;
+  protocol: 'meshtastic' | 'meshcore';
+  userId: number | null;
+  filename: string;
+  sha: string;
+  text: string;
+  nowMs?: number;
+}): Promise<CoverageImportResult> {
+  if (!WALKABOUT_SOURCE_TYPES.has(p.sourceType)) {
+    throw new CoverageImportError(
+      'IMPORT_SOURCE_UNSUPPORTED',
+      'Walkabout sessions can be imported only into a Meshtastic TCP or MeshCore source',
+      400,
+    );
+  }
+  const parsed = parseWalkaboutImport(p.text, p.nowMs);
+  if (!parsed.ok) {
+    throw new CoverageImportError(parsed.code, parsed.message, 400, {
+      errors: parsed.errors,
+      errorCount: parsed.errorCount,
+    });
+  }
+
+  let protocolMismatch = 0;
+  let fileReceptions = 0;
+  const sessions: ParsedWalkaboutSession[] = parsed.sessions.map((s) => {
+    fileReceptions += s.receptions.length;
+    const receptions = s.receptions.filter((r) => r.protocol === p.protocol);
+    protocolMismatch += s.receptions.length - receptions.length;
+    return { ...s, receptions };
+  });
+  if (fileReceptions > 0 && protocolMismatch === fileReceptions) {
+    throw new CoverageImportError(
+      'IMPORT_NO_MATCHING_ROWS',
+      `The file has no ${p.protocol} receptions to import into this source`,
+      400,
+    );
+  }
+  const rowCount = sessions.reduce((n, s) => n + s.samples.length + s.receptions.length, 0);
+
+  const existingRows = await countAllImportedRows(p.sourceId);
+  if (existingRows + rowCount > COVERAGE_IMPORT_MAX_ROWS_PER_SOURCE) {
+    throw new CoverageImportError(
+      'IMPORT_LIMIT_REACHED',
+      `This source can hold ${COVERAGE_IMPORT_MAX_ROWS_PER_SOURCE} imported rows; it has ${existingRows}`,
+      409,
+    );
+  }
+
+  const imports = databaseService.coverageImports;
+  const walkabout = databaseService.coverageWalkabout;
+  const importId = crypto.randomUUID();
+  const importedAt = Date.now();
+  try {
+    await imports.createImport({
+      id: importId,
+      sourceId: p.sourceId,
+      kind: 'walkabout',
+      format: 'json',
+      filename: p.filename,
+      fileSha256: p.sha,
+      importedBy: p.userId,
+      importedAt,
+      rowCount,
+    });
+  } catch (err) {
+    if (err instanceof CoverageImportDuplicateError) throw await duplicateFor(p.sourceId, p.sha);
+    throw err;
+  }
+
+  try {
+    const sessionIds: string[] = [];
+    let inserted = 0;
+    let duplicates = 0;
+    for (const s of [...sessions].sort((a, b) => a.startedAt - b.startedAt)) {
+      const sessionId = crypto.randomUUID();
+      sessionIds.push(sessionId);
+      await walkabout.createImportedSession({
+        id: sessionId,
+        sourceId: p.sourceId,
+        name: s.name,
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        endReason: s.endReason,
+        importId,
+        createdAt: importedAt,
+      });
+      const sampleRows: NewWalkaboutSample[] = s.samples.map((smp) => ({
+        sessionId,
+        sourceId: p.sourceId,
+        latitude: smp.latitude,
+        longitude: smp.longitude,
+        accuracyM: smp.accuracyM,
+        deviceFixAt: smp.deviceFixAt,
+        fixAt: smp.fixAt,
+        receivedAt: smp.receivedAt,
+      }));
+      await walkabout.insertSamplesBulk(sampleRows);
+      const idsByKey = new Map<string, number[]>();
+      for (const row of await walkabout.listSamples(p.sourceId, sessionId, sampleRows.length + 1)) {
+        const k = sampleKey(row);
+        const list = idsByKey.get(k);
+        if (list) list.push(row.id);
+        else idsByKey.set(k, [row.id]);
+      }
+      const newIdOf = new Map<number, number>();
+      for (const smp of s.samples) {
+        const id = idsByKey.get(sampleKey(smp))?.shift();
+        if (id == null) throw new Error('Imported walkabout sample vanished before its receptions were linked');
+        newIdOf.set(smp.fileId, id);
+      }
+      const rxRows: NewWalkaboutReception[] = s.receptions.map((r) => ({
+        sessionId,
+        sourceId: p.sourceId,
+        protocol: r.protocol,
+        creditedKey: r.creditedKey,
+        creditedNodeNum: r.creditedNodeNum,
+        creditKind: r.creditKind,
+        hopsAway: r.hopsAway,
+        packetKey: r.packetKey,
+        snr: r.snr,
+        rssi: r.rssi,
+        heardAt: r.heardAt,
+        sampleId: r.fileSampleId == null ? null : (newIdOf.get(r.fileSampleId) ?? null),
+        latitude: r.latitude,
+        longitude: r.longitude,
+        accuracyM: r.accuracyM,
+        sampleAgeMs: r.sampleAgeMs,
+      }));
+      const rxInserted = await walkabout.insertReceptionsBulk(rxRows);
+      inserted += sampleRows.length + rxInserted;
+      duplicates += rxRows.length - rxInserted;
+    }
+    await imports.completeImport(p.sourceId, importId, {
+      insertedCount: inserted,
+      duplicateCount: duplicates,
+      skippedCount: protocolMismatch,
+      firstReceivedAt: Math.min(...sessions.map((s) => s.startedAt)),
+      lastReceivedAt: Math.max(...sessions.map((s) => s.endedAt)),
+      sourceTruncated: parsed.sourceTruncated,
+    });
+    const done = await imports.getImport(p.sourceId, importId);
+    if (!done) throw new Error('Import batch vanished after completion');
+    return {
+      import: toCoverageImportDto(done, p.userId),
+      skipped: { protocolMismatch, gapFeatures: 0 },
+      sessionIds,
+    };
+  } catch (err) {
+    try {
+      // Sessions first, unguarded: the batch row may already be gone.
+      await walkabout.deleteImportSessions(p.sourceId, importId);
+      await imports.deleteImport(p.sourceId, importId);
+    } catch (cleanupErr) {
+      logger.error(`[CoverageImport] cleanup of partial walkabout import ${importId} failed:`, cleanupErr);
+    }
+    throw err;
+  }
+}
+
 /** Delete one import under the source lock; refuses a batch that is still importing. */
 export async function deleteCoverageImport(sourceId: string, importId: string): Promise<void> {
   return withSourceLock(sourceId, async () => {
@@ -237,6 +427,7 @@ export async function sweepIncompleteCoverageImports(): Promise<number> {
   for (const b of stale) {
     await withSourceLock(b.sourceId, async () => {
       await databaseService.coverageReceptions.deleteImportRows(b.sourceId, b.id);
+      await databaseService.coverageWalkabout.deleteImportSessions(b.sourceId, b.id);
       await databaseService.coverageImports.deleteImport(b.sourceId, b.id);
     });
   }

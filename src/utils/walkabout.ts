@@ -137,3 +137,9 @@ export function walkaboutResForZoom(zoom: number): WalkaboutH3Res {
   if (zoom >= 12) return 8;
   return 7;
 }
+
+// --- Export / import (#6573) ---
+export const WALKABOUT_EXPORT_FORMAT = 'meshmonitor-walkabout' as const;
+export const WALKABOUT_EXPORT_VERSION = 1;
+/** Sessions per import file. */
+export const WALKABOUT_IMPORT_MAX_SESSIONS = 50;

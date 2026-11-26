@@ -171,13 +171,25 @@ export function groupCellNodes(
   return { nodes: truncated ? all.slice(0, WALKABOUT_MAX_CELL_NODES) : all, truncated };
 }
 
-/** One loader per request: nodes for [sourceId] (both protocols), the two
- *  position filters with one shared grants object, and name lookups. */
+/**
+ * One loader per request: nodes for [sourceId] (both protocols), the two
+ * position filters with one shared grants object, and name lookups.
+ *
+ * Rows of an imported session (#6573, `importedSessionIds`) follow the
+ * Coverage import rule (WALKABOUT_P3_SPEC.md §2.5): a credited node that
+ * resolves on the source keeps the per-node filter; one unknown there is
+ * visible to admins and holders of the source's base map grant
+ * (`channel_0:viewOnMap` Meshtastic, `nodes:viewOnMap` MeshCore). Live rows
+ * keep the rule exactly as before.
+ */
 export async function loadWalkaboutVisibility(
   user: unknown,
   sourceId: string,
+  importedSessionIds: ReadonlySet<string> = new Set(),
 ): Promise<{
   visible: (r: WalkaboutReceptionPoint) => boolean;
+  /** The imported-row rule alone, for a probe that has no session. */
+  visibleImported: (r: WalkaboutReceptionPoint) => boolean;
   names: (r: WalkaboutReceptionPoint) => Names;
 }> {
   const ids = [sourceId];
@@ -200,11 +212,22 @@ export async function loadWalkaboutVisibility(
     mcNames.set(n.publicKey.toLowerCase(), { longName: n.name ?? null, shortName: null });
   }
   const none: Names = { longName: null, shortName: null };
+  const liveVisible = (r: WalkaboutReceptionPoint): boolean =>
+    r.protocol === 'meshcore'
+      ? mcFilter({ sourceId, publicKey: r.creditedKey })
+      : r.creditedNodeNum != null && posFilter({ sourceId, nodeNum: Number(r.creditedNodeNum) });
+  const resolved = (r: WalkaboutReceptionPoint): boolean =>
+    r.protocol === 'meshcore'
+      ? mcNames.has(r.creditedKey.toLowerCase())
+      : r.creditedNodeNum != null && mtNames.has(Number(r.creditedNodeNum));
+  const isAdmin = !!(user as { isAdmin?: boolean } | null | undefined)?.isAdmin;
+  const visibleImported = (r: WalkaboutReceptionPoint): boolean =>
+    resolved(r)
+      ? liveVisible(r)
+      : isAdmin || grants.can(r.protocol === 'meshcore' ? 'nodes' : 'channel_0', 'viewOnMap', sourceId);
   return {
-    visible: (r) =>
-      r.protocol === 'meshcore'
-        ? mcFilter({ sourceId, publicKey: r.creditedKey })
-        : r.creditedNodeNum != null && posFilter({ sourceId, nodeNum: Number(r.creditedNodeNum) }),
+    visible: (r) => (importedSessionIds.has(r.sessionId) ? visibleImported(r) : liveVisible(r)),
+    visibleImported,
     names: (r) =>
       (r.protocol === 'meshcore'
         ? mcNames.get(r.creditedKey.toLowerCase())
@@ -212,6 +235,11 @@ export async function loadWalkaboutVisibility(
           ? mtNames.get(Number(r.creditedNodeNum))
           : undefined) ?? none,
   };
+}
+
+/** Ids of the imported sessions in a resolved range. */
+export function importedIdsOf(sessions: DbWalkaboutSession[]): Set<string> {
+  return new Set(sessions.filter((s) => s.importId != null).map((s) => s.id));
 }
 
 /** A probe row for `node=X`, so the gate runs on the node itself even when it has no rows. */
@@ -222,6 +250,16 @@ function probeFor(node: string): WalkaboutReceptionPoint {
     sessionId: '', protocol: mc ? 'meshcore' : 'meshtastic', creditedKey: node, creditedNodeNum: num,
     snr: null, heardAt: 0, latitude: 0, longitude: 0,
   };
+}
+
+/** The node filter's gate: the live rule, or the imported rule when the range holds an import. */
+function probeVisible(
+  vis: Awaited<ReturnType<typeof loadWalkaboutVisibility>>,
+  node: string,
+  hasImported: boolean,
+): boolean {
+  const p = probeFor(node);
+  return vis.visible(p) || (hasImported && vis.visibleImported(p));
 }
 
 /** Steps 1-3 of the read order: resolve, read at limit + 1, clip. */
@@ -284,8 +322,9 @@ export async function getWalkaboutCells(
     const { cells, truncated } = binWalkaboutCells([], samples, res);
     return { ...out, cells, truncated: read.truncated || truncated, hiddenReceptionCount: 0, bounds: boundsOf(samples) };
   }
-  const vis = await loadWalkaboutVisibility(user, sourceId);
-  if (q.node !== undefined && !vis.visible(probeFor(q.node))) {
+  const imported = importedIdsOf(range.sessions);
+  const vis = await loadWalkaboutVisibility(user, sourceId, imported);
+  if (q.node !== undefined && !probeVisible(vis, q.node, imported.size > 0)) {
     // Never the node-filtered read's own cap flag: it would show the node has rows.
     return { ...out, cells: [], truncated: read.range.truncated, hiddenReceptionCount: 0, bounds: null };
   }
@@ -310,8 +349,9 @@ export async function getWalkaboutCellNodes(
   const read = await readClipped(sourceId, q, { bbox: walkaboutCellBBox(cell), samples: false });
   if (!read) return null;
   if (read.rx.length === 0 && q.node === undefined) return { cell, nodes: [], truncated: read.truncated };
-  const vis = await loadWalkaboutVisibility(user, sourceId);
-  if (q.node !== undefined && !vis.visible(probeFor(q.node))) {
+  const imported = importedIdsOf(read.range.sessions);
+  const vis = await loadWalkaboutVisibility(user, sourceId, imported);
+  if (q.node !== undefined && !probeVisible(vis, q.node, imported.size > 0)) {
     return { cell, nodes: [], truncated: read.range.truncated };
   }
   const { nodes, truncated } = groupCellNodes(read.rx.filter(vis.visible), cell, res, vis.names);

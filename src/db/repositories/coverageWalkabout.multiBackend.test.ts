@@ -15,6 +15,7 @@ import {
   type NewWalkaboutSample,
 } from './coverageWalkabout.js';
 import { runMigration248Postgres, runMigration248Mysql } from '../../server/migrations/248_create_coverage_walkabout.js';
+import { runMigration250Postgres, runMigration250Mysql } from '../../server/migrations/250_add_walkabout_session_import_id.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 import {
   postgresAvailable,
@@ -215,6 +216,7 @@ describe.skipIf(!postgresAvailable)('CoverageWalkaboutRepository — PostgreSQL 
     const client = await pool.connect();
     try {
       await runMigration248Postgres(client);
+      await runMigration250Postgres(client);
     } finally {
       client.release();
     }
@@ -238,6 +240,7 @@ describe.skipIf(!mysqlAvailable)('CoverageWalkaboutRepository — MySQL (contain
     pool = isolated.pool;
     cleanupDb = isolated.cleanup;
     await runMigration248Mysql(pool);
+    await runMigration250Mysql(pool);
     repo = new CoverageWalkaboutRepository(drizzleMysql(pool, { schema, mode: 'default' }), 'mysql');
   });
   afterAll(async () => {
