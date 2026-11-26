@@ -9947,6 +9947,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.roomClearAtCache.set(key, now);
 
       const deleted = await this.purgeRoomPosts(key);
+      // Login state is keyed by the raw key as given at login, so drop both forms.
       this.roomLoggedInNodes.delete(key);
       this.roomLoggedInNodes.delete(roomPublicKey);
       await this.markContactOnDevice(key, true);

@@ -43,7 +43,7 @@
  *
  * Re-sync after a clear (#6579). "Clear stored posts & re-sync" resets the
  * companion's cursor for the room and stamps `lastRoomClearAt` (migration
- * 250). While that is newer than the last login, the room is due: ONE login,
+ * 251). While that is newer than the last login, the room is due: ONE login,
  * on the normal tick, inside the same 60s TX floor and failure rules. Every
  * attempt stamps `lastRoomSyncAt`, so the debt is paid by the first try,
  * answered or not, and the 30-minute cooldown on the clear caps how often a
