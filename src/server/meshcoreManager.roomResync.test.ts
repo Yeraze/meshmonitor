@@ -77,6 +77,7 @@ describe('MeshCoreManager.clearRoomPostsAndResync (#6579)', () => {
     expect(res).toEqual({ status: 'done', deleted: 1, resyncQueued: true, clearedAt: CLEAR_AT });
     expect(calls).toEqual(['reset_contact_sync']);
     expect(db.recordClear).toHaveBeenCalledWith('src-resync', ROOM, CLEAR_AT);
+    expect(db.endpoints).toHaveBeenCalledWith('src-resync', 'room_post');
     expect(db.deleteByIds).toHaveBeenCalledWith(['theirs'], 'src-resync');
     // MeshMonitor's row (name, saved password, favourite, sync settings) stays.
     expect(db.deleteNode).not.toHaveBeenCalled();

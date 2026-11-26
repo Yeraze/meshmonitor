@@ -9974,7 +9974,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * could not come back.
    */
   private async purgeRoomPosts(roomKey: string): Promise<number> {
-    const rows = await databaseService.meshcore.getMessageEndpointsForSource(this.sourceId);
+    const rows = await databaseService.meshcore.getMessageEndpointsForSource(this.sourceId, 'room_post');
     const selfKey = this.localNode?.publicKey;
     const ids = rows
       .filter(r => r.messageType === 'room_post'

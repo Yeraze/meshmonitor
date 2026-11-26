@@ -134,4 +134,13 @@ describe('MeshCoreRepository — message purge per-source isolation (#3981)', ()
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: 'a1', fromPublicKey: 'cc'.repeat(6) });
   });
+
+  it('getMessageEndpointsForSource narrows to one messageType in SQL', async () => {
+    await repo.insertMessage(makeMessage('src-a', { id: 'post', messageType: 'room_post' }), 'src-a');
+    await repo.insertMessage(makeMessage('src-a', { id: 'dm' }), 'src-a');
+    await repo.insertMessage(makeMessage('src-b', { id: 'other', messageType: 'room_post' }), 'src-b');
+
+    const rows = await repo.getMessageEndpointsForSource('src-a', 'room_post');
+    expect(rows.map(r => r.id)).toEqual(['post']);
+  });
 });
