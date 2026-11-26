@@ -29,8 +29,6 @@ export interface LastHopCandidate {
   lastHeard?: number | null;
 }
 
-/** Meshtastic Config.DeviceConfig.Role.CLIENT_MUTE — never relays. */
-const CLIENT_MUTE_ROLE = 4;
 
 function hexByte(byte: number): string {
   return `0x${(byte & 0xff).toString(16).padStart(2, '0').toUpperCase()}`;
@@ -50,7 +48,7 @@ export function resolveLastHopName(
   if (relayNode == null || relayNode === 0) return 'unknown';
 
   const byte = relayNode & 0xff;
-  const relayCapable = candidates.filter((n) => n.role !== CLIENT_MUTE_ROLE);
+  const relayCapable = candidates.filter((n) => n.role !== DEVICE_ROLE_CLIENT_MUTE);
 
   // Match an exact full nodeNum (defensive) or the stored low byte.
   const matches = relayCapable.filter(
@@ -78,10 +76,6 @@ export function resolveLastHopName(
  * The one node whose low byte is `relayByte`, or null for 0 or >= 2 matches.
  * Never guesses (Walkabout #5891). Filter: role != CLIENT_MUTE; `nodeNum` not in
  * `exclude` (the local node and the packet's `from`).
- *
- * Uses `DEVICE_ROLE_CLIENT_MUTE` (1, the protobuf value). The private
- * `CLIENT_MUTE_ROLE` above is 4 (REPEATER in the protobuf) and is left alone:
- * `resolveLastHopName` has its own tests and callers.
  */
 export function resolveUniqueRelayNode(
   relayByte: number,

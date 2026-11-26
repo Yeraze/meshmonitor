@@ -38,10 +38,15 @@ describe('resolveLastHopName', () => {
     expect(resolveLastHopName(0xff, [])).toBe('0xFF');
   });
 
-  it('excludes CLIENT_MUTE nodes (role 4) from relay matching', () => {
-    const nodes = [node({ nodeNum: 0x1111114f, shortName: 'MUTE', role: 4 })];
+  it('excludes CLIENT_MUTE nodes (role 1) from relay matching', () => {
+    const nodes = [node({ nodeNum: 0x1111114f, shortName: 'MUTE', role: 1 })];
     // The only byte match is CLIENT_MUTE → no named match → hex byte
     expect(resolveLastHopName(0x4f, nodes)).toBe('0x4F');
+  });
+
+  it('keeps REPEATER nodes (role 4) as relay candidates', () => {
+    const nodes = [node({ nodeNum: 0x1111114f, shortName: 'RPT', role: 4 })];
+    expect(resolveLastHopName(0x4f, nodes)).toBe('RPT');
   });
 
   it('prefers a plausible (≤1 hop) candidate over a distant one on byte collision', () => {

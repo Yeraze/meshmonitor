@@ -33,6 +33,7 @@ import PacketHiddenChip from './PacketHiddenChip';
 import { formatAckProofStatus } from '../utils/ackProof';
 import { getUserDisplayName } from '../utils/nodeHelpers';
 import { usePublicInstanceView } from '../hooks/usePublicInstanceView';
+import { DeviceRole } from '../constants';
 
 interface PacketMonitorPanelProps {
   onClose: () => void;
@@ -355,11 +356,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   // Get the most likely relay node name for a packet
   // Uses RSSI proximity to estimate the relay when there are multiple candidates or unknown relay byte
   const getMostLikelyRelayName = (relayNode: number | undefined | null, packetRssi: number | undefined | null): string | null => {
-    // CLIENT_MUTE role doesn't relay
-    const CLIENT_MUTE = 4;
+    // CLIENT_MUTE (role 1) doesn't relay. Role 4 is REPEATER and must stay a candidate.
     const relayCapableNodes = nodes.filter(node => {
       const role = typeof node.user?.role === 'string' ? parseInt(node.user.role, 10) : node.user?.role;
-      return role !== CLIENT_MUTE;
+      return role !== DeviceRole.CLIENT_MUTE;
     });
 
     // Helper to find the node with closest RSSI to the packet
