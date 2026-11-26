@@ -153,6 +153,8 @@ button, on the Meshtastic map, the Dashboard and Unified maps, and the MeshCore
 map. Click it to hide every node that is not a repeater. Click it again to show
 all nodes.
 
+![Dashboard map with Repeaters only on](/images/features/map-repeaters-only.png)
+
 - **Meshtastic:** Router, Router Late, Repeater, the deprecated Router Client,
   and Client Base. A node with no role counts as a client and is hidden.
 - **MeshCore:** repeaters and room servers.
