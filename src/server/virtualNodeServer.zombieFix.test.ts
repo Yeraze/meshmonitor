@@ -565,4 +565,29 @@ describe('VirtualNodeServer.sendNodeInfosFromDb — radio NodeDB flags (#5921)',
     expect(unlisted).toMatchObject({ hasXeddsaSigned: undefined, heardOnCurrentLora: true });
     expect(mqtt.heardOnCurrentLora).toBe(false);
   });
+
+  it('forwards is_licensed and is_unmessagable on the User (#6575)', async () => {
+    getActiveNodesMock.mockResolvedValue([
+      node(1, { isLicensed: true, isUnmessagable: false }),
+      node(2, { isUnmessagable: true }),
+      node(3, { isUnmessagable: false }),
+      node(4, { isUnmessagable: true }),
+    ]);
+    const mgr = makeFakeManager();
+    // Node 4: the radio explicitly reported "messageable", which beats the DB.
+    mgr.getDeviceNodeFlags.mockImplementation((n: number) => n === 4
+      ? { isKeyManuallyVerified: false, isMuted: false, hasXeddsaSigned: false, heardOnCurrentLora: true, isUnmessagable: false }
+      : undefined);
+    const vn = new VirtualNodeServer({ port: 4504, meshtasticManager: mgr });
+    attachFakeClient(vn);
+
+    await (vn as any).sendNodeInfosFromDb('client-1');
+
+    const users = createNodeInfoMock.mock.calls.map((c) => c[0].user);
+    expect(users[0]).toMatchObject({ isLicensed: true, isUnmessagable: undefined });
+    expect(users[1]).toMatchObject({ isLicensed: false, isUnmessagable: true });
+    // A stored false may mean "unset": leave it unset so the client uses the role.
+    expect(users[2].isUnmessagable).toBeUndefined();
+    expect(users[3].isUnmessagable).toBe(false);
+  });
 });
