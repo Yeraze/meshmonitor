@@ -16,6 +16,7 @@ import {
   parseAutomationEnabledFlag,
   STEP_OUTPUT_MAX_BYTES,
   stepOutputNameOf,
+  AI_SUMMARY_DEFAULT_LOOKBACK_HOURS,
 } from '../../../types/automation.js';
 import { parseHopLimitOverride } from '../../../utils/hopLimitOverride.js';
 import { type EngineEvalContext, type AirtimeGateVerdict, interpolateAsync, resolveOperand, capStepOutput } from './engineContext.js';
@@ -25,6 +26,7 @@ import { hopCountEmoji } from '../../../utils/hopEmoji.js';
 import { tokenizeArgv } from '../../utils/argvTokenizer.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE, resolveMeshCoreAdvertMode } from '../../../types/meshcoreAdvert.js';
 import { parseTracePathEntry, type TracePathEntry } from '../../../types/tracePathSchedule.js';
+import type { SummarizeRequest, SummarizeResult, SummaryTarget } from '../aiSummaryService.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
@@ -119,6 +121,14 @@ export interface ActionDeps {
   runScript(a: { scriptPath: string; scriptArgs?: string[]; env: Record<string, string>; timeoutMs?: number }):
     Promise<{ success: boolean; returnValue?: unknown; stdout: string; error?: string }>;
   /**
+   * Summarize channel messages with the configured AI endpoint (#6566). Sends
+   * nothing over the mesh. Returns `skipped` without calling the endpoint
+   * when there are fewer than `minMessages` messages.
+   */
+  summarizeChannels(a: SummarizeRequest): Promise<SummarizeResult>;
+  /** When this automation last completed a run (epoch ms), or null. For the "since last run" window. */
+  lastCompletedRunAt?(automationId: string): Promise<number | null>;
+  /**
    * Upsert and (maybe) send an automation-owned Meshtastic waypoint (#5482).
    * The dep enforces the 30-minute per-waypoint floor from the persisted
    * `lastBroadcastAt` and `onlyWhenChanged`, returning a skip result for
@@ -200,6 +210,15 @@ export function actionStepDetail(node: AutomationNode, value: unknown): Record<s
     return v.outputTruncated === true
       ? { reason: `output "${String(v.outputName)}" was cut to ${STEP_OUTPUT_MAX_BYTES / 1024} KiB for this run` }
       : undefined;
+  }
+  // #6566: counts only, never the summary text.
+  if (node.type === 'action.aiSummarize') {
+    if (v.skipped === true) return { skipped: true, messageCount: v.messageCount };
+    return {
+      messageCount: v.messageCount,
+      ...(v.model ? { model: v.model } : {}),
+      ...(v.droppedForLength ? { droppedForLength: v.droppedForLength } : {}),
+    };
   }
   if (node.type === 'action.setSourceForwardingEnabled') {
     return { sourceId: v.sourceId, sourceName: v.sourceName, mode: v.mode, enabled: v.enabled, previous: v.previous };
@@ -458,6 +477,81 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         await sleep(seconds * 1000);
       }
       return { delayedSeconds: seconds };
+    }
+
+    case 'action.aiSummarize': {
+      // #6566. Resolve the selected unified channels to local slots per
+      // source, the same way action.sendMessage does. Reticulum has no
+      // channels; MQTT and other sources are read as Meshtastic.
+      const sourceIds = Array.isArray(p.sourceIds) ? (p.sourceIds as unknown[]).map(String).filter(Boolean) : [];
+      const channelSel = Array.isArray(p.channels)
+        ? (p.channels as Array<Record<string, unknown>>).map((c) => ({ name: String(c?.name ?? ''), protocol: String(c?.protocol ?? '') }))
+        : [];
+      if (sourceIds.length === 0 || channelSel.length === 0) throw new Error('action.aiSummarize: pick at least one source and one channel');
+      const targets: SummaryTarget[] = [];
+      for (const sid of sourceIds) {
+        const proto = (await ctx.data.getSourceProtocol?.(sid)) ?? null;
+        if (proto === 'reticulum') continue;
+        const protocol = proto === 'meshcore' ? 'meshcore' : 'meshtastic';
+        const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
+        for (const sel of channelSel) {
+          if (sel.protocol && proto && sel.protocol !== proto) continue;
+          const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
+          if (match) targets.push({ sourceId: sid, protocol, channel: match.id, channelName: match.name });
+        }
+      }
+      if (targets.length === 0) throw new Error('action.aiSummarize: none of the selected channels exist on the selected source(s)');
+
+      const hoursRaw = Number(p.lookbackHours);
+      const hours = Number.isFinite(hoursRaw) && hoursRaw > 0 ? hoursRaw : AI_SUMMARY_DEFAULT_LOOKBACK_HOURS;
+      let sinceMs = ctx.now - hours * 3_600_000;
+      if (p.window === 'sinceLastRun' && ctx.automationId && deps.lastCompletedRunAt) {
+        // The last completed run, else the lookback. A skipped run writes no
+        // run-log row, so its messages carry over to the next one.
+        const last = await deps.lastCompletedRunAt(ctx.automationId);
+        if (last != null && last < ctx.now) sinceMs = last;
+      }
+      const minRaw = Number(p.minMessages);
+      const maxLenRaw = Number(p.maxLength);
+      const maxInRaw = Number(p.maxInputChars);
+      const outputName = stepOutputNameOf(node);
+      const prompt = typeof p.prompt === 'string' && p.prompt.trim() ? await interpolateAsync(p.prompt, ctx) : undefined;
+
+      let result: SummarizeResult;
+      try {
+        result = await deps.summarizeChannels({
+          targets,
+          sinceMs,
+          excludeAutomated: p.excludeAutomated !== false,
+          minMessages: Number.isFinite(minRaw) && minRaw > 0 ? Math.floor(minRaw) : 1,
+          ...(prompt ? { prompt } : {}),
+          ...(Number.isFinite(maxLenRaw) && maxLenRaw > 0 ? { maxLength: Math.floor(maxLenRaw) } : {}),
+          ...(Number.isFinite(maxInRaw) && maxInRaw > 0 ? { maxInputChars: Math.floor(maxInRaw) } : {}),
+        });
+      } catch (err) {
+        if (outputName) ctx.stepOutputs?.set(outputName, { ok: false });
+        throw err;
+      }
+      if (result.skipped) {
+        // Too quiet to summarize: stop the run so the Notify step after this
+        // does not send an empty summary, and keep a scheduled tick out of
+        // the run log.
+        if (outputName) ctx.stepOutputs?.set(outputName, { ok: false });
+        ctx.idleActions = (ctx.idleActions ?? 0) + 1;
+        ctx.halt = { reason: `only ${result.messageCount} message(s) in the window, so nothing was summarized` };
+        return { skipped: true, messageCount: result.messageCount };
+      }
+      if (outputName && ctx.stepOutputs) {
+        ctx.stepOutputs.set(outputName, { ok: true, output: capStepOutput(result.summary ?? '').value });
+      }
+      return {
+        messageCount: result.messageCount,
+        channels: targets.length,
+        sinceMs,
+        ...(result.model ? { model: result.model } : {}),
+        ...(result.droppedForLength ? { droppedForLength: result.droppedForLength } : {}),
+        ...(ctx.dryRun ? { summary: result.summary } : {}),
+      };
     }
 
     case 'action.runScript': {

@@ -437,6 +437,10 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     sent = <div className="ae-test-note">Skipped: {held}.</div>;
   } else if (a.type === 'action.runScript') {
     headline = `Run script ${String(p.scriptPath ?? '')} (not run in a test)`;
+  } else if (a.type === 'action.aiSummarize') {
+    // #6566: the Test panel never calls the AI endpoint; a sample output stands in.
+    headline = 'Summarize channels (AI not called in a test)';
+    if (typeof p.summary === 'string') sent = <div className="ae-test-sent">{p.summary}</div>;
   } else if (a.type === 'action.sendMessage') {
     // #4340 Phase 3: maxAttempts (action.sendMessage's DM resend cap, see
     // catalog.ts) only applies to a DM — proof the param crossed the deps

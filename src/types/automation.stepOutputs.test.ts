@@ -107,10 +107,10 @@ describe('validateAutomationGraph — outputName', () => {
     expect(twoRules.errors[0]).toMatch(/reuses the run output name "joke"/);
   });
 
-  it('rejects outputName on any other block type (v1: Run a script only)', () => {
+  it('rejects outputName on any other block type (Run a script and Summarize only)', () => {
     const r = validateAutomationGraph(chain(trigger, { id: 'a0', type: 'action.sendMessage', params: { text: 'x', outputName: 'joke' } }));
     expect(r.valid).toBe(false);
-    expect(r.errors).toEqual(['action.sendMessage "a0" cannot store a run output (params.outputName); only action.runScript can']);
+    expect(r.errors).toEqual(['action.sendMessage "a0" cannot store a run output (params.outputName); only action.runScript and action.aiSummarize can']);
   });
 
   it('a reference that will be empty is a warning, never a save error', () => {

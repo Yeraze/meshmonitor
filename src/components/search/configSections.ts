@@ -95,6 +95,8 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   // Solar Monitoring (#6258 D5, #6523): openMeteoSolarService reads bare
   // getSetting and covers every source's nodes, so it is one per install.
   'settings-solar',
+  // AI channel summaries (#6566): one AI endpoint for the install.
+  'settings-ai-summary',
   // Restart / shutdown (#6258 D6): acts on the whole process, admin-only.
   'settings-system',
 ]);
@@ -211,6 +213,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-adsb', label: t('settings.adsb_section', 'Flight matching (ADS-B)'), keywords: ['adsb', 'ads-b', 'aircraft', 'flight', 'plane', 'callsign', 'adsb.lol', 'adsb.fi'] },
     { id: 'settings-virtual-node-replay', label: t('settings.vn_replay_section', 'Virtual Node message replay'), keywords: ['virtual node', 'vn', 'replay', 'reconnect', 'missed', 'messages', 'android', 'app', 'backlog'] },
     { id: 'settings-meshwars', label: t('settings.meshwars.title', 'MeshWars'), keywords: ['meshwars', 'game', 'territory', 'wardriving', 'meshmapper', 'meshcore'] },
+    { id: 'settings-ai-summary', label: t('settings.ai_summary.title', 'AI channel summaries'), keywords: ['ai', 'llm', 'openai', 'ollama', 'summary', 'summarize', 'digest', 'gpt', 'model'] },
     { id: 'settings-translation', label: t('settings.translation_section', 'Message Translation'), keywords: ['translate', 'translation', 'language', 'libretranslate', 'openai', 'deepl', 'ollama'] },
     { id: 'settings-backup', label: t('settings.system_backup', 'System Backup'), keywords: ['restore', 'export', 'import', 'archive'] },
     { id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database'), keywords: ['psk', 'decrypt', 'channels', 'keys'] },
@@ -234,7 +237,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
   const adminOnly = new Set([
     'settings-default-source',
     'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-mqtt-root-directory', 'settings-ducting', 'settings-adsb', 'settings-solar', 'settings-meshwars',
-    'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics', 'settings-system',
+    'settings-translation', 'settings-ai-summary', 'settings-channel-database', 'settings-scripts', 'settings-analytics', 'settings-system',
   ]);
   const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt', 'settings-anon-mqtt-consent']);
 

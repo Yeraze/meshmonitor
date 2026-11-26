@@ -612,6 +612,12 @@ export const VALID_SETTINGS_KEYS = [
   'virtualNodeReplayEnabled',
   'virtualNodeReplayExcludeIps',
   ...TRANSLATION_PROVIDER_SETTING_KEYS,
+  // AI channel summaries (#6566): the OpenAI-compatible endpoint the
+  // Automation Engine's "Summarize channels" step calls. Admin-only; the
+  // `_token` suffix hides the key from non-admins.
+  'aiSummaryBaseUrl',
+  'aiSummaryModel',
+  'ai_summary_api_token',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
@@ -1163,6 +1169,10 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   // variant to read, so a source copy would be stored and never used.
   'virtualNodeReplayEnabled',
   'virtualNodeReplayExcludeIps',
+  // AI channel summaries (#6566): one endpoint for the install.
+  'aiSummaryBaseUrl',
+  'aiSummaryModel',
+  'ai_summary_api_token',
 ]);
 
 /**
@@ -1322,6 +1332,10 @@ export const ADMIN_ONLY_SETTINGS_KEYS = new Set<string>([
   'nodeNameSanitizeBuiltins',
   'nodeNameSanitizeCustomPatterns',
   'nodeNameSanitizePlaceholder',
+  // #6566: the server sends channel messages to this endpoint.
+  'aiSummaryBaseUrl',
+  'aiSummaryModel',
+  'ai_summary_api_token',
 ]);
 
 /**
