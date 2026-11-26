@@ -78,6 +78,8 @@ export function useImportCoverageFile() {
     onSuccess: (_r, { sourceId }) => {
       void qc.invalidateQueries({ queryKey: coverageImportsKey(sourceId) });
       void qc.invalidateQueries({ queryKey: REPORT_PREFIX });
+      // A walkabout import (#6573) adds or removes sessions on the Walkabout page.
+      void qc.invalidateQueries({ queryKey: ['walkabout', sourceId] });
     },
   });
 }
@@ -89,6 +91,8 @@ export function useDeleteCoverageImport() {
     onSuccess: (_r, { sourceId }) => {
       void qc.invalidateQueries({ queryKey: coverageImportsKey(sourceId) });
       void qc.invalidateQueries({ queryKey: REPORT_PREFIX });
+      // A walkabout import (#6573) adds or removes sessions on the Walkabout page.
+      void qc.invalidateQueries({ queryKey: ['walkabout', sourceId] });
     },
   });
 }

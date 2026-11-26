@@ -4,8 +4,10 @@
  * Frontend-safe: no server imports.
  */
 
-export type CoverageImportKind = 'coverage_report';
-export type CoverageImportFormat = 'csv' | 'geojson';
+/** `walkabout` = a walkabout session export (#6573); its rows live in the walkabout tables. */
+export type CoverageImportKind = 'coverage_report' | 'walkabout';
+/** `json` = walkabout session export, the only walkabout import format. */
+export type CoverageImportFormat = 'csv' | 'geojson' | 'json';
 export type CoverageImportedMode = 'include' | 'exclude' | 'only';
 
 export interface CoverageImportDto {
@@ -30,6 +32,8 @@ export interface CoverageImportDto {
 export interface CoverageImportResult {
   import: CoverageImportDto;
   skipped: { protocolMismatch: number; gapFeatures: number; bogusPositions?: number };
+  /** Walkabout imports only: the new session ids, oldest first. */
+  sessionIds?: string[];
 }
 
 /** `row` = CSV record line or GeoJSON feature index, 1-based. */

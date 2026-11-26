@@ -84,6 +84,36 @@ Anyone who can read the source sees its sessions and tracks.
 Sessions stay until you delete them. Stop a live session before you delete it.
 Deleting removes the session with all its samples and receptions.
 
+## Export and import
+
+Tap the download button on a finished session to export it:
+
+- **JSON** keeps everything: the session, every GPS sample, and every credited
+  reception. It is the only format you can import again.
+- **CSV** and **GeoJSON** list one row (or point) per GPS sample, with how many
+  receptions were heard there, how many nodes, and the best SNR and RSSI.
+  GeoJSON also draws the track as a line. Use these in other tools; MeshMonitor
+  does not import them.
+
+An export holds only what you can see. Receptions from nodes hidden from you
+are left out, and the dialog says how many. Anyone who can read the source can
+export its sessions.
+
+To import, tap **Import** above the session list (you need `nodes:write` on the
+target source), pick a Meshtastic TCP or MeshCore source, and choose a JSON
+file. Each session in the file becomes a new, finished session tagged
+**Imported**. Receptions of the other protocol are skipped. The file's source
+and user are never kept.
+
+- Limits are shared with Coverage imports: 32 MB and 10,000 rows (samples plus
+  receptions) per file, and 50 imports and 200,000 imported rows per source.
+- A file already imported into a source is refused.
+- A node that the target source has never heard shows only to admins and to
+  users with the source's base map permission (`channel_0:viewOnMap` on
+  Meshtastic, `nodes:viewOnMap` on MeshCore). A node the source knows keeps its
+  own map rules, so an import never shows a hidden node.
+- Deleting an imported session deletes its whole import.
+
 ## Map
 
 The map shows what the source radio heard along your routes. Find it in two
@@ -141,9 +171,16 @@ All routes live under `/api/sources/:id/walkabout`. Read routes need
 | GET | `/cells` | Hex cells with best SNR for a time window or one session (login + `nodes:read`) |
 | GET | `/cell-nodes` | Nodes heard in one hex (login + `nodes:read`) |
 | GET | `/sessions/:sessionId/track` | The walker's track for one session (login + `nodes:read`) |
+| GET | `/sessions/:sessionId/export` | The session as the JSON export, filtered for the viewer (login + `nodes:read`) |
 
-Errors: `409 WALKABOUT_NOT_LIVE` when a session already ended, and
-`409 WALKABOUT_LIVE_SESSION` when you delete a live one.
+Import uses the Coverage import route: `POST /api/sources/:id/coverage/imports`
+with the JSON file as `application/octet-stream` and an `X-Filename` ending in
+`.json`. Delete an import with `DELETE /api/sources/:id/coverage/imports/:importId`.
+
+Errors: `409 WALKABOUT_NOT_LIVE` when a session already ended,
+`409 WALKABOUT_LIVE_SESSION` when you delete a live one, and
+`409 WALKABOUT_IMPORTED` (with `importId`) when you delete an imported session
+on its own.
 
 ## Repeaters only
 

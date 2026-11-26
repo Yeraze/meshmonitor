@@ -189,6 +189,7 @@ import { migration as dropSolarEstimatesMigration, runMigration246Postgres, runM
 import { migration as nodeTimezoneOverrideMigration, runMigration247Postgres, runMigration247Mysql } from '../server/migrations/247_add_node_timezone_override.js';
 import { migration as coverageWalkaboutMigration, runMigration248Postgres, runMigration248Mysql } from '../server/migrations/248_create_coverage_walkabout.js';
 import { migration as coverageImportsMigration, runMigration249Postgres, runMigration249Mysql } from '../server/migrations/249_create_coverage_imports.js';
+import { migration as walkaboutSessionImportIdMigration, runMigration250Postgres, runMigration250Mysql } from '../server/migrations/250_add_walkabout_session_import_id.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -4002,4 +4003,17 @@ registry.register({
   sqlite: (db) => coverageImportsMigration.up(db),
   postgres: (client) => runMigration249Postgres(client),
   mysql: (pool) => runMigration249Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 250: coverage_walkabout_sessions.importId (#6573, walkabout import).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 250,
+  name: 'add_walkabout_session_import_id',
+  settingsKey: 'migration_250_add_walkabout_session_import_id',
+  sqlite: (db) => walkaboutSessionImportIdMigration.up(db),
+  postgres: (client) => runMigration250Postgres(client),
+  mysql: (pool) => runMigration250Mysql(pool),
 });

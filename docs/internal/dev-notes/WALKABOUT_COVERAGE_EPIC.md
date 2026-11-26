@@ -120,3 +120,19 @@ MeshMonitor sends nothing for this feature (passive).
   `isRepeaterClassNode`. CLIENT_BASE counts (reuses `isInfrastructureRole`
   unchanged; easy to revert by excluding role 12 in the predicate). The local
   node is exempt; favourites are not. User guide in `docs/features/walkabout.md`.
+- **#6573 (2026-11-26).** Walkabout export and import. `GET .../sessions/:id/export`
+  returns the lossless JSON doc (format `meshmonitor-walkabout` v1), filtered with
+  the hex map's gate; the client builds JSON, CSV and GeoJSON (per sample) from it.
+  Import goes through the Coverage import route (`kind 'walkabout'`, `format 'json'`);
+  migration 250 adds `coverage_walkabout_sessions.importId`.
+  - Decisions (maintainer): JSON is lossless and the only import format; CSV and
+    GeoJSON are export-only; same caps as P3, samples and receptions both count
+    as rows, and the 200k per-source row cap counts both import kinds together.
+  - Privacy: the hidden count covers the whole session; an export is capped at
+    10,000 rows (`truncated`). Imported sessions use the P3 rule for unknown
+    nodes (resolved nodes keep their own gate); they never borrow live data.
+  - Imported sessions are always ended (open in the file -> `startedAt + cap`),
+    so they never become live or catch capture. Deleting one alone is refused
+    (`WALKABOUT_IMPORTED`); it goes with its import, which keeps the file-hash
+    dedupe in step.
+  - JSON parsing is bounded: the value count is scanned before `JSON.parse`.

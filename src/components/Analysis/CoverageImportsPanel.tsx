@@ -35,7 +35,9 @@ function PanelInner({ selectedImportId, onShow, onDeleted }: CoverageImportsPane
     [auth],
   );
   const sources = useCoverageImportSources(hasPermission, 'read');
-  const { imports } = useCoverageImports(sources);
+  const { imports: allImports } = useCoverageImports(sources);
+  // Walkabout imports (#6573) are listed and deleted on the Walkabout page, beside their sessions.
+  const imports = allImports.filter((imp) => imp.kind !== 'walkabout');
   const deleteImport = useDeleteCoverageImport();
   const [open, setOpen] = useState(false);
   const [toDelete, setToDelete] = useState<SourcedCoverageImport | null>(null);

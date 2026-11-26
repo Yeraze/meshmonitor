@@ -117,6 +117,7 @@ export function toWalkaboutSessionDto(
     receptionCount: counts.receptions,
     nodeCount: counts.nodes,
     lastSampleAt: counts.lastSampleAt,
+    importId: row.importId ?? null,
   };
 }
 
