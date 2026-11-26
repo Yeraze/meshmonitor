@@ -444,6 +444,32 @@ describe('MeshtasticProtobufService', () => {
     });
   });
 
+  // #6575: Android 2.8.5 reads is_licensed on the local node to allow a DM to a
+  // keyless node, and is_unmessagable (optional) before falling back to role.
+  describe('createNodeInfo User flags (#6575)', () => {
+    it('carries is_licensed and an explicit is_unmessagable', async () => {
+      if (!requireProtobufs()) return;
+      const result = await service.createNodeInfo({
+        nodeNum: 0x12345678,
+        user: { id: '!12345678', longName: 'K1ABC', shortName: 'K1', hwModel: 1, role: 2, isLicensed: true, isUnmessagable: false },
+      });
+      const parsed = service.parseIncomingData(result!);
+      expect(parsed!.data.user.isLicensed).toBe(true);
+      expect(parsed!.data.user.isUnmessagable).toBe(false);
+    });
+
+    it('leaves is_unmessagable unset when it is not known', async () => {
+      if (!requireProtobufs()) return;
+      const result = await service.createNodeInfo({
+        nodeNum: 0x12345678,
+        user: { id: '!12345678', longName: 'N', shortName: 'N', hwModel: 1 },
+      });
+      const parsed = service.parseIncomingData(result!);
+      expect(parsed!.data.user.isLicensed).toBeFalsy();
+      expect(parsed!.data.user.isUnmessagable ?? null).toBeNull();
+    });
+  });
+
   // ClientNotification dispatch (firmware warnings incl. 2.8 favorite/ignore cap
   // refusals). Confirms the real protobuf field maps through parseIncomingData;
   // the suppression/throttle/reconciliation policy is unit-tested separately in

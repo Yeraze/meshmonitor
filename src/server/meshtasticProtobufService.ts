@@ -1247,6 +1247,8 @@ export class MeshtasticProtobufService {
       hwModel?: number;
       role?: number;
       publicKey?: string;
+      isLicensed?: boolean;
+      isUnmessagable?: boolean;
     };
     position?: {
       latitude: number;
@@ -1303,6 +1305,14 @@ export class MeshtasticProtobufService {
         hwModel: info.user.hwModel || 0,
         role: info.user.role !== undefined ? info.user.role : 0,
         publicKey: publicKeyBytes,
+        // #6575: Android 2.8.5 opens a DM to a keyless node only when the
+        // local node is licensed, and reads is_unmessagable before the role.
+        isLicensed: info.user.isLicensed === true,
+        // Optional field: leave it unset unless known, so the client can fall
+        // back to the role the way it would against the radio.
+        ...(typeof info.user.isUnmessagable === 'boolean'
+          ? { isUnmessagable: info.user.isUnmessagable }
+          : {}),
       });
 
       let position = undefined;

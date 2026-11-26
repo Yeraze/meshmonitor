@@ -966,6 +966,11 @@ export class VirtualNodeServer extends EventEmitter {
           hwModel: node.hwModel || 0,
           role: node.role ?? undefined,
           publicKey: node.publicKey ?? undefined,
+          // User flags (#6575). The radio's own value for is_unmessagable wins,
+          // because the DB stores "unset" as false; without it, only a stored
+          // true is sent and an unset field stays unset.
+          isLicensed: node.isLicensed ? true : false,
+          isUnmessagable: flags?.isUnmessagable ?? (node.isUnmessagable ? true : undefined),
         },
         position: (effPos.latitude != null && effPos.longitude != null) ? {
           latitude: effPos.latitude,

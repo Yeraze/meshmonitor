@@ -587,6 +587,12 @@ export interface DeviceNodeFlags {
   isMuted: boolean;
   hasXeddsaSigned: boolean;
   heardOnCurrentLora: boolean;
+  /**
+   * `User.is_unmessagable` exactly as the radio reported it (#6575). It is an
+   * optional proto field: undefined means the radio left it unset, so a client
+   * falls back to the role. The DB stores unset as false, which loses that.
+   */
+  isUnmessagable?: boolean;
 }
 
 interface AutoResponderTrigger {
@@ -10929,6 +10935,9 @@ class MeshtasticManager implements ISourceManager {
         isMuted: nodeInfo.isMuted === true,
         hasXeddsaSigned: nodeInfo.hasXeddsaSigned === true,
         heardOnCurrentLora: nodeInfo.heardOnCurrentLora === true,
+        isUnmessagable: typeof nodeInfo.user?.isUnmessagable === 'boolean'
+          ? nodeInfo.user.isUnmessagable
+          : undefined,
       });
 
       // Check if node already exists to determine if we should set isFavorite
