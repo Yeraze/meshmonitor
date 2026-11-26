@@ -21,7 +21,7 @@ import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.
 import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isValidMessage, auditMeshcoreEvent,
   requireMeshcoreChannelAccess, canAccessMeshcoreChannel, requireMeshcoreTx, failIfTxDisabled,
   startTrackedLogin, respondLoginCancelled } from './meshcoreRouteShared.js';
-import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
+import { ROOM_CLEAR_COOLDOWN_MS, type MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
 import { meshcoreMessageByteCap, meshcoreChannelTextCap } from '../constants/meshcoreMessageLimits.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 import { ok, fail } from '../utils/apiResponse.js';
@@ -971,6 +971,66 @@ router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('mes
 });
 
 /**
+ * POST /api/sources/:id/meshcore/rooms/clear-posts  (#6579)
+ * "Clear stored posts & re-sync": delete this room's received posts on this
+ * source and reset the companion's sync cursor for it (remove + re-add the
+ * room contact), so the next login pulls every post the room server still
+ * holds (32 on stock firmware). Body: { publicKey }.
+ *
+ * Nothing is transmitted here. With auto-sync on, the Room Sync scheduler
+ * makes the one owed login on its normal tick; otherwise the user logs in.
+ * One clear per room per 30 minutes, persisted in the database: 429 with
+ * `retryAfterSeconds` inside the window. Companion sources only. Needs
+ * configuration:write on this source.
+ */
+router.post('/rooms/clear-posts', meshcoreDeviceLimiter, requireAuth(),
+  // Source configuration write: it rewrites the radio's room contact and the
+  // room's sync state, like PATCH /rooms/sync-config (one gate per route).
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const { publicKey } = req.body as { publicKey?: string };
+      if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
+        return fail(res, 400, 'INVALID_PUBLIC_KEY', 'Invalid public key format (expected 64-character hex string)');
+      }
+      const result = await managerFor(req, res).clearRoomPostsAndResync(publicKey);
+      switch (result.status) {
+        case 'done':
+          auditMeshcoreEvent(req, 'meshcore_room_posts_cleared', 'messages', {
+            sourceId: req.params.id,
+            roomPublicKey: publicKey,
+            deleted: result.deleted,
+          });
+          return ok(res, {
+            deleted: result.deleted,
+            resyncQueued: result.resyncQueued,
+            clearedAt: result.clearedAt,
+            nextAllowedAt: result.clearedAt + ROOM_CLEAR_COOLDOWN_MS,
+          });
+        case 'cooldown':
+          return fail(res, 429, 'ROOM_CLEAR_COOLDOWN',
+            'This room was cleared recently. Try again later.',
+            { retryAfterSeconds: Math.max(1, Math.ceil(result.retryAfterMs / 1000)) });
+        case 'unavailable':
+          return fail(res, 409, 'COMPANION_REQUIRED',
+            'Clearing room posts needs a connected Companion radio: only a Companion keeps a room contact.');
+        case 'not_room':
+          return fail(res, 404, 'ROOM_NOT_FOUND', 'No room server with that key on this source');
+        case 'not_on_device':
+          return failContactNotOnDevice(res);
+        case 'busy':
+          return fail(res, 409, 'ROOM_CLEAR_IN_PROGRESS', 'A clear for this room is already running');
+        default:
+          return fail(res, 500, 'ROOM_CLEAR_FAILED', result.error,
+            result.contactMissing ? { contactMissing: true } : undefined);
+      }
+    } catch (error) {
+      logger.error('[API] Error clearing room posts:', error);
+      return fail(res, 500, 'ROOM_CLEAR_FAILED', 'Failed to clear room posts');
+    }
+  });
+
+/**
  * GET /api/meshcore/rooms/sync-config?publicKey=...
  * Retrieve the current room sync configuration for a room server.
  */
@@ -983,7 +1043,10 @@ router.get('/rooms/sync-config', optionalAuth(), requirePermission('configuratio
     const sourceId = req.params.id!;
     const config = await databaseService.meshcore.getRoomSyncConfig(sourceId, publicKey);
     if (!config) {
-      return res.json({ success: true, enabled: false, intervalMinutes: 60, failureCount: 0, lastError: null });
+      return res.json({
+        success: true, enabled: false, intervalMinutes: 60, failureCount: 0, lastError: null,
+        lastClearAt: null, clearCooldownMs: ROOM_CLEAR_COOLDOWN_MS,
+      });
     }
     res.json({
       success: true,
@@ -993,6 +1056,9 @@ router.get('/rooms/sync-config', optionalAuth(), requirePermission('configuratio
       // toggle silently reading "off" with no explanation.
       failureCount: config.failureCount,
       lastError: config.lastError,
+      // "Clear stored posts & re-sync" (#6579): the UI shows the time left.
+      lastClearAt: config.lastClearAt,
+      clearCooldownMs: ROOM_CLEAR_COOLDOWN_MS,
     });
   } catch (error) {
     logger.error('[API] Error getting room sync config:', error);

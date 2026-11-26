@@ -114,6 +114,8 @@ export class MeshCoreMentionNotificationService {
   async handleMessage(msg: MeshCoreMessage, sourceId: string): Promise<MentionOutcome> {
     // An ignored or blocked sender is stored but must not alert (#5408).
     if (msg.filtered) return 'out_of_scope';
+    // An old room post pulled again by "Clear stored posts & re-sync" (#6579).
+    if (msg.resynced) return 'out_of_scope';
     const venue = mentionVenue(msg);
     if (!venue) return 'out_of_scope';
 

@@ -322,6 +322,12 @@ describe('MeshCore message notifications', () => {
       expect(pushes()).toHaveLength(0);
     });
 
+    it('an old room post pulled again by a re-sync is skipped (#6579)', async () => {
+      expect(await send(room({ resynced: true }))).toBe('skipped:resynced');
+      expect(pushes()).toHaveLength(0);
+      expect(await send(room())).toBe('sent');
+    });
+
     it('empty text is skipped', async () => {
       expect(await send(chan({ text: '  ' }))).toBe('skipped:empty');
     });

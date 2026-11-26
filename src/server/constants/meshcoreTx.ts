@@ -54,6 +54,7 @@ export const SERIAL_ONLY_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'set_other_params_raw', // P16 #6285: backup restore, SetOtherParams raw frame, no RF TX
   'get_default_flood_scope', // #6282: CMD_GET_DEFAULT_FLOOD_SCOPE (64), local read, no RF TX
   'set_contact_remote_cli', // #5867: contact flag 0x10 read-modify-write, no RF TX
+  'reset_contact_sync', // #6579: remove + re-add one contact (resets sync_since), no RF TX
 ]);
 
 export function isRfBridgeCommand(cmd: string): boolean {

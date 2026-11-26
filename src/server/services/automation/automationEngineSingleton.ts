@@ -109,11 +109,13 @@ function subscribe(): void {
  * must not trigger automations. Its bus event carries `filtered: 'ignore'`.
  */
 export function shouldRouteMeshCoreMessageToAutomations(
-  message: Pick<MeshCoreMessage, 'filtered'>,
+  message: Pick<MeshCoreMessage, 'filtered' | 'resynced'>,
 ): boolean {
   // A reaction row (#5759) is let through; the per-rule opt-in
   // (`includeMeshCoreReactions`) is enforced in meshCoreMessageMatchesFilter.
-  return !message.filtered;
+  // An old room post pulled again by "Clear stored posts & re-sync" (#6579)
+  // is not a new message, so it triggers nothing.
+  return !message.filtered && message.resynced !== true;
 }
 
 async function handleEvent(event: DataEvent): Promise<void> {

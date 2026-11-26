@@ -159,6 +159,9 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // Last SUCCESSFUL room login from this source (migration 237, #6408).
   // Non-NULL = joined: Room Sync may re-join with a blank-password ACL login.
   lastRoomLoginOkAt: integer('lastRoomLoginOkAt'),
+  // Last "Clear stored posts & re-sync" from this source (migration 251,
+  // #6579): persisted 30-min cooldown + the one owed Room Sync login.
+  lastRoomClearAt: integer('lastRoomClearAt'),
   roomCredential: text('roomCredential'),
 
   // MeshCore per-contact forwarding route (migration 068).
@@ -268,6 +271,7 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   roomSyncFailureCount: pgInteger('roomSyncFailureCount').default(0),
   roomSyncLastError: pgText('roomSyncLastError'),
   lastRoomLoginOkAt: pgBigint('lastRoomLoginOkAt', { mode: 'number' }),
+  lastRoomClearAt: pgBigint('lastRoomClearAt', { mode: 'number' }),
   roomCredential: pgText('roomCredential'),
 
   outPath: pgText('out_path'),
@@ -372,6 +376,7 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   roomSyncFailureCount: myInt('roomSyncFailureCount').default(0),
   roomSyncLastError: myVarchar('roomSyncLastError', { length: 32 }),
   lastRoomLoginOkAt: myBigint('lastRoomLoginOkAt', { mode: 'number' }),
+  lastRoomClearAt: myBigint('lastRoomClearAt', { mode: 'number' }),
   roomCredential: myVarchar('roomCredential', { length: 1024 }),
 
   outPath: myVarchar('out_path', { length: 255 }),
