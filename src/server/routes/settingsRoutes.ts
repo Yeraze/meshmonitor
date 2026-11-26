@@ -23,6 +23,13 @@ import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.
 import { invalidateSignFlipContext, SIGN_FLIP_SETTING_KEYS } from '../services/signFlipCorrection.js';
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { CHART_Y_RANGE_SETTING, normalizeChartYRangeMap } from '../../utils/chartYRange.js';
+import {
+  WALKABOUT_SNR_BANDS_SETTING,
+  WALKABOUT_SNR_BAND_RANGE,
+  formatWalkaboutSnrBands,
+  parseWalkaboutSnrBandsText,
+  validateWalkaboutSnrBands,
+} from '../../utils/walkabout.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, ADMIN_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey, isValidSecurityDeadNodeDays, SECURITY_DEAD_NODE_DAYS_RANGE } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
@@ -878,6 +885,26 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         return fail(res, 400, 'INVALID_CHART_Y_RANGE', `${CHART_Y_RANGE_SETTING} must be a JSON object`);
       }
       filteredSettings[CHART_Y_RANGE_SETTING] = JSON.stringify(normalizeChartYRangeMap(parsed));
+    }
+
+    // Issue #6571: walkabout hex map SNR band edges, "strong,medium,weak" dB.
+    // Blank resets to the defaults. Otherwise three numbers, in range, strictly
+    // descending; stored normalized.
+    if (WALKABOUT_SNR_BANDS_SETTING in filteredSettings) {
+      const raw = String(filteredSettings[WALKABOUT_SNR_BANDS_SETTING] ?? '').trim();
+      if (raw !== '') {
+        const bands = parseWalkaboutSnrBandsText(raw);
+        const err = bands ? validateWalkaboutSnrBands(bands) : 'not_number';
+        if (!bands || err) {
+          const R = WALKABOUT_SNR_BAND_RANGE;
+          return fail(res, 400, 'INVALID_WALKABOUT_SNR_BANDS',
+            `${WALKABOUT_SNR_BANDS_SETTING} must be three numbers "strong,medium,weak" between ${R.min} and ${R.max} dB, strictly descending`,
+            { reason: err });
+        }
+        filteredSettings[WALKABOUT_SNR_BANDS_SETTING] = formatWalkaboutSnrBands(bands);
+      } else {
+        filteredSettings[WALKABOUT_SNR_BANDS_SETTING] = '';
+      }
     }
 
     // Validate autoResponderTriggers JSON

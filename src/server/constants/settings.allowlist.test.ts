@@ -66,6 +66,7 @@ describe('per-source settings key allowlist invariants', () => {
       'dashboardWidgets',
       'dashboardSolarVisibility',
       'dashboardChartYRange',
+      'walkaboutSnrBands',
       'autoKeyManagementIntervalMinutes',
       'autoKeyManagementMaxExchanges',
       'autoKeyManagementAutoPurge',

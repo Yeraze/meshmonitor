@@ -9,6 +9,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from '../icons';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { WalkaboutHexMapLazy } from './walkaboutHexMapLazy';
+import WalkaboutSnrBandsEditor from './WalkaboutSnrBandsEditor';
+import { useAuth } from '../../contexts/AuthContext';
+import { useWalkaboutSnrBands } from '../../hooks/useWalkaboutSnrBands';
 import type { WalkaboutMapQuery, WalkaboutMapWindow, WalkaboutSessionDto } from '../../types/walkabout';
 import styles from './WalkaboutMapPanel.module.css';
 
@@ -31,6 +34,10 @@ export default function WalkaboutMapPanel({
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [windowKey, setWindowKey] = useState<WalkaboutMapWindow>('7d');
+  const { hasPermission } = useAuth();
+  // #6571: per-source band edges. Editing them is a source settings write.
+  const snrBands = useWalkaboutSnrBands(sourceId);
+  const canEditBands = hasPermission('settings', 'write', { sourceId });
 
   const sessionId = selectedSessionId && sessions.some((s) => s.id === selectedSessionId) ? selectedSessionId : null;
 
@@ -79,8 +86,9 @@ export default function WalkaboutMapPanel({
           <UiIcon name="refresh" size={16} /> {t('analysis.walkabout.map.refresh', 'Refresh')}
         </button>
       </div>
+      {canEditBands && <WalkaboutSnrBandsEditor sourceId={sourceId} bands={snrBands} />}
       <Suspense fallback={<MapLoadingOverlay />}>
-        <WalkaboutHexMapLazy sourceId={sourceId} query={query} fitKey={fitKey} />
+        <WalkaboutHexMapLazy sourceId={sourceId} query={query} fitKey={fitKey} snrBands={snrBands} />
       </Suspense>
     </section>
   );

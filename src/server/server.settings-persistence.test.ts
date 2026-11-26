@@ -190,6 +190,7 @@ function validTestValue(key: string, suffix = ''): string {
     telemetryCustomOrder: JSON.stringify(['temperature', 'humidity']),
     dashboardWidgets: JSON.stringify([]),
     dashboardChartYRange: JSON.stringify({ '!abcd1234-voltage': { min: 3, max: 4.2 } }),
+    walkaboutSnrBands: '-2,-8,-15',
     autoAnnounceSchedule: JSON.stringify({ start: '08:00', end: '18:00' }),
     autoAnnounceNodeInfoChannels: '0',
     autoDeleteByDistanceIntervalHours: '24',

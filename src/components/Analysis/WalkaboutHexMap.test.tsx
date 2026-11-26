@@ -108,6 +108,25 @@ describe('WalkaboutHexMap', () => {
     expect(hexes[0].dataset.points).toBe('6');
   });
 
+  it('colours and labels the legend with the source bands (#6571)', () => {
+    setCells(result([
+      cell(CELL_A, { bestSnr: -12 }),
+      cell(CELL_B, { bestSnr: -18 }),
+      cell(latLngToCell(41, -75, 9), { bestSnr: -21 }),
+      cell(latLngToCell(42, -75, 9), { bestSnr: -7 }),
+    ]));
+    render(
+      <WalkaboutHexMap sourceId="s" query={q} fitKey="k" snrBands={{ strong: -10, medium: -15, weak: -20 }} />,
+    );
+    const hexes = screen.getAllByTestId('hex');
+    // -12 medium, -18 weak, -21 none, -7 strong (would be weak on the defaults)
+    expect(hexes.map((h) => h.dataset.fill)).toEqual(['#00aa02', '#00aa03', '#00aa04', '#00aa01']);
+    expect(screen.getByText('Strong (-10 dB or better)')).toBeTruthy();
+    expect(screen.getByText('Medium (-15 to -10 dB)')).toBeTruthy();
+    expect(screen.getByText('Weak (-20 to -15 dB)')).toBeTruthy();
+    expect(screen.getByText('None (below -20 dB, or nothing heard)')).toBeTruthy();
+  });
+
   it('starts at the res for the default zoom and refetches at a new res on zoomend', () => {
     render(<WalkaboutHexMap sourceId="s" query={q} fitKey="k" />);
     expect(hooks.cells).toHaveBeenLastCalledWith('s', q, 7); // zoom 11
