@@ -3248,10 +3248,12 @@ export class MeshCoreRepository extends BaseRepository {
    * Lightweight (id + endpoint keys + type) scan of a source's messages, used
    * by the manager to resolve which rows belong to a DM conversation before a
    * conversation purge (#3981). Only the columns needed for matching are
-   * selected so this stays cheap on low-volume MeshCore meshes.
+   * selected so this stays cheap on low-volume MeshCore meshes. Pass
+   * `messageType` to narrow the scan in SQL (room purge, #6579).
    */
   async getMessageEndpointsForSource(
     sourceId: string,
+    messageType?: string,
   ): Promise<{ id: string; fromPublicKey: string; toPublicKey: string | null; messageType: string | null }[]> {
     if (!sourceId) {
       throw new Error('MeshCoreRepository.getMessageEndpointsForSource requires a sourceId');
@@ -3265,7 +3267,9 @@ export class MeshCoreRepository extends BaseRepository {
         messageType: meshcoreMessages.messageType,
       })
       .from(meshcoreMessages)
-      .where(eq(meshcoreMessages.sourceId, sourceId));
+      .where(messageType === undefined
+        ? eq(meshcoreMessages.sourceId, sourceId)
+        : and(eq(meshcoreMessages.sourceId, sourceId), eq(meshcoreMessages.messageType, messageType)));
     return rows as { id: string; fromPublicKey: string; toPublicKey: string | null; messageType: string | null }[];
   }
 
