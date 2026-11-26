@@ -21,7 +21,7 @@ vi.mock('../../services/database.js', () => ({
 }));
 vi.mock('../utils/ssrfGuard.js', () => ({ assertSafeUrl: vi.fn(async () => undefined) }));
 
-import { buildTranscript, buildSystemPrompt, summarizeChannels, AI_SUMMARY_DEFAULT_ENDPOINT } from './aiSummaryService.js';
+import { buildTranscript, buildSystemPrompt, summarizeChannels, runWindowEnd, AI_SUMMARY_DEFAULT_ENDPOINT } from './aiSummaryService.js';
 
 const T0 = Date.UTC(2026, 10, 26, 8, 0);
 
@@ -117,5 +117,18 @@ describe('summarizeChannels', () => {
     mtRows.push({ fromNodeNum: 1, fromNodeId: '!00000001', text: 'hi', createdAt: T0 });
     await expect(summarizeChannels({ targets: [mt], sinceMs: 0, excludeAutomated: true, minMessages: 1 }))
       .rejects.toThrow('AI endpoint error (401): Unauthorized');
+  });
+});
+
+describe('runWindowEnd', () => {
+  it('uses the fire time, not the row time written after a slow AI call', () => {
+    expect(runWindowEnd({ startedAt: T0 + 90_000, triggerEvent: JSON.stringify({ sourceId: null, timestamp: T0 }) })).toBe(T0);
+  });
+
+  it('falls back to startedAt for a missing, future, or implausible timestamp', () => {
+    expect(runWindowEnd({ startedAt: T0, triggerEvent: null })).toBe(T0);
+    expect(runWindowEnd({ startedAt: T0, triggerEvent: 'not json' })).toBe(T0);
+    expect(runWindowEnd({ startedAt: T0, triggerEvent: JSON.stringify({ timestamp: T0 + 1 }) })).toBe(T0);
+    expect(runWindowEnd({ startedAt: T0, triggerEvent: JSON.stringify({ timestamp: Math.floor(T0 / 1000) }) })).toBe(T0);
   });
 });

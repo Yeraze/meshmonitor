@@ -14,7 +14,7 @@ import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
-import { summarizeChannels } from '../aiSummaryService.js';
+import { summarizeChannels, runWindowEnd } from '../aiSummaryService.js';
 import { logger } from '../../../utils/logger.js';
 import { truncateUtf8Bytes, utf8ByteLength } from '../../utils/splitUtf8Message.js';
 import { waypointService } from '../waypointService.js';
@@ -490,7 +490,7 @@ export function createMeshActionDeps(): ActionDeps {
     async lastCompletedRunAt(automationId) {
       const runs = await databaseService.automations.listRuns(automationId, 50);
       const last = runs.find((r) => r.status === 'completed');
-      return last ? Number(last.startedAt) : null;
+      return last ? runWindowEnd(last) : null;
     },
 
     async runScript({ scriptPath, scriptArgs, env, timeoutMs }) {

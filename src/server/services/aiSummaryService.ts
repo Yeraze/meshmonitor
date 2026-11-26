@@ -123,6 +123,25 @@ async function readSettings(): Promise<{ endpoint: string; model: string; apiKey
   };
 }
 
+/**
+ * Where the next "since last run" window starts, from the last completed run.
+ * The run row is written after the run ends, so `startedAt` is late by the
+ * length of the AI call: messages that arrived during it would be skipped.
+ * The fire time recorded in the trigger event (`timestamp`, epoch ms) is used
+ * instead when it is plausible (at most a day before `startedAt`); a message
+ * read near the boundary may then appear in two summaries, never in none.
+ */
+export function runWindowEnd(run: { startedAt: number; triggerEvent: string | null }): number {
+  const started = Number(run.startedAt);
+  try {
+    const ts = Number((JSON.parse(run.triggerEvent ?? '{}') as { timestamp?: unknown }).timestamp);
+    if (Number.isFinite(ts) && ts <= started && ts >= started - 86_400_000) return ts;
+  } catch {
+    /* not JSON: fall back to startedAt */
+  }
+  return started;
+}
+
 /** One chat-completions request. Throws with a short reason; never echoes the upstream body. */
 export async function requestSummary(transcript: string, systemPrompt: string): Promise<{ summary: string; model: string }> {
   const { endpoint, model, apiKey } = await readSettings();
