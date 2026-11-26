@@ -97,8 +97,9 @@ export function isWalkaboutExportText(text: string): boolean {
 
 /**
  * Count JSON values (commas plus containers, outside strings) and stop at
- * `limit + 1`. Every value but the first sits after a comma or opens a
- * container, so this bounds what `JSON.parse` would build.
+ * `limit + 1`. Every value except the top-level one sits after a comma or
+ * opens a container, so this bounds what `JSON.parse` would build (a bare
+ * scalar document counts as 0).
  */
 export function countJsonValues(text: string, limit: number): number {
   let n = 0;
@@ -267,17 +268,19 @@ function validateSessionHead(
   const startedAt = checkTime(raw.startedAt, 'startedAt', errs, nowMs);
   let endedAt = startedAt + WALKABOUT_MAX_DURATION_MS;
   let endReason: WalkaboutEndReason = 'cap';
+  let endedAtOk = false;
   if (raw.endedAt != null) {
     if (!isInt(raw.endedAt) || raw.endedAt < startedAt || raw.endedAt > startedAt + WALKABOUT_MAX_DURATION_MS) {
       errs.push({ field: 'endedAt', message: 'must be empty or within 2 hours after startedAt' });
     } else {
       endedAt = raw.endedAt;
       endReason = 'user';
+      endedAtOk = true;
     }
   }
   if (raw.endReason != null) {
     if (raw.endReason !== 'user' && raw.endReason !== 'cap') errs.push({ field: 'endReason', message: 'must be user or cap' });
-    else if (raw.endedAt != null) endReason = raw.endReason;
+    else if (endedAtOk) endReason = raw.endReason;
   }
   return { name, startedAt, endedAt, endReason };
 }
