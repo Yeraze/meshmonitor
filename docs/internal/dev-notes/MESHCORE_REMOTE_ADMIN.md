@@ -384,6 +384,22 @@ rather than remote admin. Two things about them are load-bearing:
   each room one re-join after the source connects, unless a login (persisted
   `lastRoomSyncAt` / `lastRoomLoginOkAt`) happened in the last hour. Same
   failure rules and per-source 60s floor as above.
+- **"Clear stored posts & re-sync" (#6579).** The "posts I still need" cursor
+  is the companion's `ContactInfo.sync_since`, sent in every room login, so
+  deleting MeshMonitor's rows alone brings nothing back.
+  `CMD_ADD_UPDATE_CONTACT` keeps `sync_since` on an existing contact and sets
+  it to 0 only for a new one, so `POST /rooms/clear-posts` runs the
+  `reset_contact_sync` bridge command (remove, then re-add with every field,
+  both confirmed by read-back on the radio-op lock), stamps
+  `meshcore_nodes.lastRoomClearAt` (migration 251), and deletes the room's
+  received posts on that source (own posts stay: a room never pushes a post
+  back to its author). The node row, saved password and sync settings stay.
+  Nothing transmits: Room Sync owes the room one login while
+  `lastRoomClearAt` is newer than the last login, on its normal tick. Posts
+  stamped at or before the clear come back flagged `resynced` and raise no
+  notification, mention alert, automation or sound. One clear per room per
+  30 minutes, persisted (429 `ROOM_CLEAR_COOLDOWN` + `retryAfterSeconds`).
+  Companion only: a repeater-ingest source has no room contact.
 
 `rejected` versus `no_reply` comes from `MESHCORE_LOGIN_REJECTED`, which
 `meshcoreNativeBackend` raises when it sees a LoginFail push (0x86) for the

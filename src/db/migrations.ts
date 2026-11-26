@@ -190,6 +190,7 @@ import { migration as nodeTimezoneOverrideMigration, runMigration247Postgres, ru
 import { migration as coverageWalkaboutMigration, runMigration248Postgres, runMigration248Mysql } from '../server/migrations/248_create_coverage_walkabout.js';
 import { migration as coverageImportsMigration, runMigration249Postgres, runMigration249Mysql } from '../server/migrations/249_create_coverage_imports.js';
 import { migration as walkaboutSessionImportIdMigration, runMigration250Postgres, runMigration250Mysql } from '../server/migrations/250_add_walkabout_session_import_id.js';
+import { migration as meshcoreRoomClearAtMigration, runMigration251Postgres, runMigration251Mysql } from '../server/migrations/251_add_meshcore_room_clear_at.js';
 import { migration as privacyDocumentsMigration, runMigration162Postgres, runMigration162Mysql } from '../server/migrations/162_privacy_documents.js';
 import { migration as meshcoreSnrRealMigration, runMigration163Postgres, runMigration163Mysql } from '../server/migrations/163_meshcore_snr_real.js';
 import { migration as spreadNodesPrefMigration, runMigration164Postgres, runMigration164Mysql } from '../server/migrations/164_user_map_preferences_spread_nodes.js';
@@ -4016,4 +4017,19 @@ registry.register({
   sqlite: (db) => walkaboutSessionImportIdMigration.up(db),
   postgres: (client) => runMigration250Postgres(client),
   mysql: (pool) => runMigration250Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 251: `meshcore_nodes.lastRoomClearAt` (#6579). Epoch ms of the last
+// "Clear stored posts & re-sync" on a room. Holds the persisted 30-minute
+// cooldown and marks the one Room Sync login the clear is owed.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 251,
+  name: 'add_meshcore_room_clear_at',
+  settingsKey: 'migration_251_add_meshcore_room_clear_at',
+  sqlite: (db) => meshcoreRoomClearAtMigration.up(db),
+  postgres: (client) => runMigration251Postgres(client),
+  mysql: (pool) => runMigration251Mysql(pool),
 });

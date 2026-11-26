@@ -52,6 +52,7 @@ import {
 } from './meshcoreChannelOrder';
 import styles from './MeshCoreRoomsView.module.css';
 import { MeshCoreRoomGuestHint } from './MeshCoreRoomGuestHint';
+import { MeshCoreRoomResync } from './MeshCoreRoomResync';
 import { MESHCORE_MAX_MESSAGE_BYTES_DM } from '../../utils/meshcoreMessageLimits';
 import { isMobileLayoutViewport } from '../../utils/sidebarWidth';
 
@@ -81,6 +82,9 @@ function buildRoomFilter(roomPubkey: string): (m: MeshCoreMessage) => boolean {
       roomPubkey.startsWith(m.toPublicKey);
   };
 }
+
+/** MeshCoreDeviceType.COMPANION as the connection status reports it (#6579). */
+const DEVICE_TYPE_COMPANION = 1;
 
 function formatTimestamp(ts: number): string {
   return new Date(ts).toLocaleString();
@@ -184,6 +188,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   // has stopped working explains itself instead of auto-sync just reading
   // "off" for no visible reason.
   const [syncFailure, setSyncFailure] = useState<{ count: number; reason: RoomSyncFailureReason } | null>(null);
+  // Last "Clear stored posts & re-sync" on the selected room (#6579).
+  const [roomClear, setRoomClear] = useState<{ lastClearAt: number | null; cooldownMs?: number }>({ lastClearAt: null });
   const [forgetting, setForgetting] = useState(false);
 
   // Fetch credential capability on mount
@@ -441,10 +447,12 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
           ? { count: config.failureCount, reason: config.lastError }
           : null,
       );
+      setRoomClear({ lastClearAt: config.lastClearAt ?? null, cooldownMs: config.clearCooldownMs });
     } else {
       setSyncEnabled(false);
       setSyncInterval(60);
       setSyncFailure(null);
+      setRoomClear({ lastClearAt: null });
     }
     setSyncConfigDirty(false);
   }, [actions]);
@@ -941,6 +949,28 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               {/* Sync config toggle */}
               {canConfig && syncConfigControls}
             </div>
+            )}
+            {canConfig && (
+              <MeshCoreRoomResync
+                key={selectedRoom}
+                roomName={activeRoom ? roomLabel(activeRoom) : selectedRoom.substring(0, 12) + '…'}
+                isCompanion={status?.deviceType === DEVICE_TYPE_COMPANION}
+                connected={connected}
+                lastClearAt={roomClear.lastClearAt}
+                cooldownMs={roomClear.cooldownMs}
+                onClear={() => actions.clearRoomPosts(selectedRoom)}
+                onCleared={(result) => {
+                  // The server dropped its login flag: show the login card, and
+                  // reload the backlog (the history effect keys on this set).
+                  setLoggedInRooms(prev => {
+                    if (!prev.has(selectedRoom)) return prev;
+                    const next = new Set(prev);
+                    next.delete(selectedRoom);
+                    return next;
+                  });
+                  setRoomClear(prev => ({ ...prev, lastClearAt: result.clearedAt }));
+                }}
+              />
             )}
             <MeshCoreMessageStream
               contactTokenImport={contactTokenImport}

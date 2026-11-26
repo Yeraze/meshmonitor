@@ -14,6 +14,7 @@ import {
   pickMostOverdueRoom,
   isStartupRejoinEligible,
   STARTUP_REJOIN_QUIET_MS,
+  isResyncOwed,
 } from './meshcoreRoomSyncScheduler.js';
 import type { MeshCoreManager, MeshCoreLoginOutcome } from '../meshcoreManager.js';
 import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -643,5 +644,40 @@ describe('MeshCoreRoomSyncScheduler — manual reservation (#6493)', () => {
     (manager as any)._state.reserved = false;
     await (scheduler as any).tickOneManager(manager.sourceId, manager);
     expect((manager as any)._state.loginCalledFor).toEqual(['pk-a']);
+  });
+});
+
+describe('re-sync owed after "Clear stored posts & re-sync" (#6579)', () => {
+  const HOUR = 60 * 60_000;
+  const T = 10 * 24 * HOUR;
+  const node = (over: Record<string, unknown>) => ({
+    publicKey: 'pk-room', sourceId: 's', roomSyncEnabled: true, roomSyncIntervalMinutes: 240,
+    lastRoomSyncAt: T - HOUR, lastRoomLoginOkAt: T - HOUR, lastRoomClearAt: null, ...over,
+  });
+
+  it('a clear newer than the last login makes the room due at once, inside its interval', () => {
+    const n = node({ lastRoomClearAt: T - 60_000 });
+    expect(isResyncOwed(n)).toBe(true);
+    expect(isRoomSyncEligible(n, T)).toBe(true);
+  });
+
+  it('one attempt pays the debt: every attempt stamps lastRoomSyncAt past the clear', () => {
+    const n = node({ lastRoomClearAt: T - 60_000, lastRoomSyncAt: T });
+    expect(isResyncOwed(n)).toBe(false);
+    expect(isRoomSyncEligible(n, T + 60_000)).toBe(false);
+  });
+
+  it('a clear older than the last login owes nothing', () => {
+    expect(isResyncOwed(node({ lastRoomClearAt: T - 2 * HOUR }))).toBe(false);
+  });
+
+  it('auto-sync off: a clear never makes the scheduler log in', () => {
+    expect(isRoomSyncEligible(node({ roomSyncEnabled: false, lastRoomClearAt: T - 60_000 }), T)).toBe(false);
+  });
+
+  it('the debt is read from persisted timestamps only, so a restart neither creates nor forgets it', () => {
+    // Same persisted row, evaluated with no scheduler instance state.
+    expect(pickMostOverdueRoom([node({ lastRoomClearAt: T - 60_000 })], T)?.publicKey).toBe('pk-room');
+    expect(pickMostOverdueRoom([node({})], T)).toBeUndefined();
   });
 });

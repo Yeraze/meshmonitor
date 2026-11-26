@@ -51,6 +51,8 @@ interface MeshCoreSoundMessage {
   messageType?: string;
   reactionEmoji?: string | null;
   filtered?: 'ignore' | 'block';
+  /** An old room post pulled again by "Clear stored posts & re-sync" (#6579). */
+  resynced?: boolean;
 }
 
 /**
@@ -65,7 +67,7 @@ export function meshcoreSoundArgs(
   /** Maps a peer key (possibly a 12-hex prefix) to the canonical key DM/room mutes are stored under. */
   canonicalize: (key: string) => string = (k) => k,
 ): PlayForMessageArgs | null {
-  if (msg.filtered || msg.reactionEmoji) return null;
+  if (msg.filtered || msg.reactionEmoji || msg.resynced) return null;
   const isOwn =
     (!!selfPublicKey && msg.fromPublicKey === selfPublicKey) ||
     (!msg.fromPublicKey.startsWith('channel-') && !!msg.toPublicKey?.startsWith('channel-'));

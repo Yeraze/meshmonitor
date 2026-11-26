@@ -33,6 +33,7 @@ import { isMeshCoreMqttFedSourceType } from '../../utils/meshcoreSourceTypes.js'
 export type MeshCoreNotifyOutcome =
   | 'sent'
   | 'skipped:filtered'
+  | 'skipped:resynced'
   | 'skipped:self'
   | 'skipped:empty';
 
@@ -61,6 +62,8 @@ export async function sendMeshCoreMessageNotification(
   sourceId: string,
 ): Promise<MeshCoreNotifyOutcome> {
   if (msg.filtered) return 'skipped:filtered';
+  // An old room post pulled again by "Clear stored posts & re-sync" (#6579).
+  if (msg.resynced) return 'skipped:resynced';
 
   const isRoom = msg.messageType === 'room_post';
   const channelIdx = isRoom ? null : meshcoreChannelIndexOf(msg);

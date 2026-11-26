@@ -1130,6 +1130,13 @@ export interface MeshCoreMessage extends MeshCoreReactionFields {
    * overheard by the repeater cannot re-trigger the rule that sent it.
    */
   selfOrigin?: boolean;
+  /**
+   * Event-only (#6579): a room post pulled again after "Clear stored posts &
+   * re-sync" (its post time is not after the clear). It is stored and shown,
+   * but no notification, mention alert or automation may act on it: these
+   * are old posts, not new ones.
+   */
+  resynced?: boolean;
   /** Wire sender_timestamp (epoch SECONDS) as stamped by the sender, raw.
    *  (#5512) Persisted for our own sends; a user resend reuses it so repeaters
    *  dedupe the copy. (#5759) Received DM / channel rows and our own DMs carry
@@ -1539,6 +1546,19 @@ export type RemoveNonFavoritesResult =
   | { status: 'busy' }
   | { status: 'unavailable' }
   | { status: 'failed'; error: string };
+
+/** Minimum time between two "Clear stored posts & re-sync" on one room (#6579). */
+export const ROOM_CLEAR_COOLDOWN_MS = 30 * 60_000;
+
+/** Result of `MeshCoreManager.clearRoomPostsAndResync` (#6579). */
+export type ClearRoomPostsResult =
+  | { status: 'done'; deleted: number; resyncQueued: boolean; clearedAt: number }
+  | { status: 'cooldown'; retryAfterMs: number }
+  | { status: 'unavailable' }
+  | { status: 'not_room' }
+  | { status: 'not_on_device' }
+  | { status: 'busy' }
+  | { status: 'failed'; error: string; contactMissing?: boolean };
 
 /** Result of `MeshCoreManager.removeContactsBulk` (P7a, #6254). */
 export type RemoveContactsBulkResult =
@@ -3107,13 +3127,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // and no mention notifications a second time. The channel path (#5040
         // Phase 4) already does this. `handleBridgeEvent` stays synchronous, so
         // the gate rides a `.then` rather than an await.
-        void this.addMessage(message).then(stored => {
-          if (stored) {
-            this.emit('message', message);
-            dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-          } else {
+        void this.addMessage(message).then(async stored => {
+          if (!stored) {
             logger.debug(`[MeshCore:${this.sourceId}] Duplicate room post from ${authorPrefixHex} in room ${roomPubkeyPrefix} — dropped`);
+            return;
           }
+          // #6579: after "Clear stored posts & re-sync" the room pushes back
+          // every post it still holds. Show them, but quietly: a post stamped
+          // at or before the clear is old, so it raises no notification,
+          // mention alert or automation.
+          if (await this.isRoomResyncReplay(roomFullKey, roomPostSec)) {
+            dataEventEmitter.emitMeshCoreMessage({ ...message, resynced: true }, this.sourceId);
+            return;
+          }
+          this.emit('message', message);
+          dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
         });
       } else if (verdict.action === 'ignore') {
         void this.addMessage(message).then(stored => {
@@ -9817,6 +9845,151 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.error('[MeshCore] removeContact threw:', error);
       return false;
     }
+  }
+
+  /**
+   * Last "Clear stored posts & re-sync" per room (#6579), epoch ms, mirrored
+   * from `meshcore_nodes.lastRoomClearAt`. The DB is the record; this only
+   * saves a read per room post. Loaded lazily, so a restart re-reads it.
+   */
+  private roomClearAtCache = new Map<string, number | null>();
+  /** Rooms with a clear in progress, so a double click cannot run two. */
+  private roomClearInFlight = new Set<string>();
+
+  private async getRoomClearAtCached(roomKey: string): Promise<number | null> {
+    const key = roomKey.toLowerCase();
+    if (this.roomClearAtCache.has(key)) return this.roomClearAtCache.get(key) ?? null;
+    let at: number | null;
+    try {
+      at = await databaseService.meshcore.getRoomClearAt(this.sourceId, key);
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] Could not read lastRoomClearAt: ${(err as Error).message}`);
+      return null;
+    }
+    this.roomClearAtCache.set(key, at);
+    return at;
+  }
+
+  /**
+   * Is this room post an old one coming back after a clear (#6579)? True when
+   * the room server's post time is at or before the last clear. A post with
+   * no usable time (0) counts as new.
+   */
+  private async isRoomResyncReplay(roomKey: string, postSec: number): Promise<boolean> {
+    if (!postSec || postSec <= 0) return false;
+    const clearAt = await this.getRoomClearAtCached(roomKey);
+    return clearAt !== null && postSec * 1000 <= clearAt;
+  }
+
+  /**
+   * "Clear stored posts & re-sync" for one room server (#6579).
+   *
+   * The "which posts do I still need" cursor is the companion's
+   * ContactInfo.sync_since for the room. It goes out in every login and the
+   * room server only pushes posts newer than it, so deleting MeshMonitor's
+   * rows alone would bring nothing back. The firmware keeps sync_since when
+   * CMD_ADD_UPDATE_CONTACT hits an existing contact and sets it to 0 only for
+   * a new one, so the room contact is removed and written back with all its
+   * fields (`reset_contact_sync`). Then:
+   *   - the 30-minute cooldown is stamped in the database (restart-proof);
+   *   - this room's received posts are deleted on this source. Our own posts
+   *     stay: a room server never pushes a post back to its author;
+   *   - the in-memory login flag is dropped. With auto-sync on, the Room Sync
+   *     scheduler owes the room one login (lastRoomClearAt newer than the
+   *     last login) and makes it on its normal tick, inside its 60s TX floor
+   *     and failure back-off. Nothing here transmits.
+   * MeshMonitor's node row (name, saved password, favourite, sync settings)
+   * is never deleted.
+   */
+  async clearRoomPostsAndResync(roomPublicKey: string, now: number = Date.now()): Promise<ClearRoomPostsResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { status: 'unavailable' };
+    }
+    const key = roomPublicKey.toLowerCase();
+    const live = this.contacts.get(key);
+    const dbNode = await databaseService.meshcore.getNodeByPublicKeyAndSource(key, this.sourceId);
+    const advType = live?.advType ?? dbNode?.advType ?? null;
+    if (advType !== MeshCoreDeviceType.ROOM_SERVER) return { status: 'not_room' };
+    if (this.roomClearInFlight.has(key)) return { status: 'busy' };
+    this.roomClearInFlight.add(key);
+    try {
+      const lastClear = await databaseService.meshcore.getRoomClearAt(this.sourceId, key);
+      if (lastClear !== null && now - lastClear < ROOM_CLEAR_COOLDOWN_MS) {
+        return { status: 'cooldown', retryAfterMs: lastClear + ROOM_CLEAR_COOLDOWN_MS - now };
+      }
+
+      const response = await this.sendBridgeCommand('reset_contact_sync', { public_key: key });
+      if (!response.success) {
+        if (response.error === MESHCORE_CONTACT_NOT_ON_DEVICE) return { status: 'not_on_device' };
+        return { status: 'failed', error: response.error || 'The radio did not reset the room contact' };
+      }
+      if (response.data?.removed !== true) {
+        return { status: 'failed', error: 'The radio did not remove the room contact' };
+      }
+      if (response.data?.readded !== true) {
+        // Removed but not written back: put it back from what MeshMonitor
+        // knows (flood path until the next advert) so logins keep working.
+        logger.warn(`[MeshCore:${this.sourceId}] Room ${key.substring(0, 12)}… removed but not re-added; restoring from the stored contact`);
+        const restored = await this.addContactToDevice(key, { confirmFull: true });
+        if (restored.status !== 'added' && restored.status !== 'already_on_device') {
+          await this.markContactOnDevice(key, false);
+          return {
+            status: 'failed',
+            error: 'The room contact was removed from the radio but could not be added back. Use "Add to radio" on the room.',
+            contactMissing: true,
+          };
+        }
+      }
+
+      // The device cursor is reset: start the cooldown before anything else
+      // can fail, so a retry cannot reset it again inside the window.
+      await databaseService.meshcore.recordRoomClear(this.sourceId, key, now);
+      this.roomClearAtCache.set(key, now);
+
+      const deleted = await this.purgeRoomPosts(key);
+      // Login state is keyed by the raw key as given at login, so drop both forms.
+      this.roomLoggedInNodes.delete(key);
+      this.roomLoggedInNodes.delete(roomPublicKey);
+      await this.markContactOnDevice(key, true);
+
+      const config = await databaseService.meshcore.getRoomSyncConfig(this.sourceId, key).catch(() => null);
+      const resyncQueued = config?.enabled === true;
+      logger.info(
+        `[MeshCore:${this.sourceId}] Cleared ${deleted} stored post(s) for room ${key.substring(0, 12)}… and reset its sync cursor` +
+        (resyncQueued ? ' (Room Sync will log in on its next slot)' : ' (log in to pull the posts again)'),
+      );
+      return { status: 'done', deleted, resyncQueued, clearedAt: now };
+    } catch (error) {
+      logger.error(`[MeshCore:${this.sourceId}] clearRoomPostsAndResync threw:`, error);
+      return { status: 'failed', error: (error as Error).message };
+    } finally {
+      this.roomClearInFlight.delete(key);
+    }
+  }
+
+  /**
+   * Delete the room's RECEIVED posts on this source (#6579), plus any
+   * reactions pointing at them, and tell clients. Our own posts stay: the
+   * room server never sends a post back to its author, so a deleted one
+   * could not come back.
+   */
+  private async purgeRoomPosts(roomKey: string): Promise<number> {
+    const rows = await databaseService.meshcore.getMessageEndpointsForSource(this.sourceId);
+    const selfKey = this.localNode?.publicKey;
+    const ids = rows
+      .filter(r => r.messageType === 'room_post'
+        && MeshCoreManager.keysMatch(r.toPublicKey, roomKey)
+        && r.fromPublicKey !== 'local'
+        && !MeshCoreManager.keysMatch(r.fromPublicKey, selfKey))
+      .map(r => r.id);
+    if (ids.length === 0) return 0;
+    const count = await databaseService.meshcore.deleteMessagesByIds(ids, this.sourceId);
+    const gone = await this.deleteReactionsOf(ids);
+    const deleted = new Set([...ids, ...gone]);
+    this.messages = this.messages.filter(m => !deleted.has(m.id));
+    invalidatePendingReactions(this.sourceId);
+    dataEventEmitter.emitMeshCoreMessagesDeleted({ ids: [...deleted] }, this.sourceId);
+    return count;
   }
 
   /**

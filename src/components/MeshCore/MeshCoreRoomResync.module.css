@@ -1,0 +1,49 @@
+/*
+ * "Clear stored posts & re-sync" row (#6579). Scoped CSS module (CLAUDE.md
+ * CSS containment rule); colours are role tokens only.
+ */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.9rem;
+  border-bottom: 1px solid var(--color-surface-hover);
+  background: var(--color-bg-raised);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2rem;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  min-width: 0;
+}
+
+.error {
+  font-size: 0.8rem;
+  color: var(--color-error);
+}
