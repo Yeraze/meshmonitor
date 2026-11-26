@@ -3456,6 +3456,55 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { results, count: after.length, evicted };
       }
 
+      case 'reset_contact_sync': {
+        // "Clear stored posts & re-sync" (#6579). The room-post cursor is the
+        // companion's ContactInfo.sync_since, which CMD_ADD_UPDATE_CONTACT on
+        // an EXISTING contact leaves alone (companion_radio/MyMesh.cpp
+        // updateContactFromFrame never writes it, and the add frame has no
+        // field for it). Only a NEW contact starts at sync_since = 0, so the
+        // contact is removed (CMD_REMOVE_CONTACT) and written back with every
+        // field it had: type, flags, out path, name, advert time, position.
+        // The shared secret is recomputed lazily from the key on first use.
+        //
+        // Both writes resolve on meshcore.js's uncorrelated Ok/Err ack (#4631),
+        // so the whole sequence runs on the radio-op lock and every step is
+        // confirmed by reading the table back. Local serial only, no RF.
+        const hex = String(params.public_key ?? '').toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error('reset_contact_sync requires a 64-hex public_key');
+        const match = (ct: RawDeviceContact) => bytesToHex(ct.publicKey) === hex;
+        const outcome = await this.runExclusiveRadioOp(async () => this.withTimeout((async () => {
+          const before = (await c.getContacts()) as RawDeviceContact[];
+          const contact = before.find(match);
+          if (!contact) throw new Error(MESHCORE_CONTACT_NOT_ON_DEVICE);
+          try {
+            await c.removeContact(contact.publicKey);
+          } catch (err) {
+            logger.debug(`[MeshCore:native] reset_contact_sync remove ack error (verifying by read-back): ${String(err)}`);
+          }
+          const mid = (await c.getContacts()) as RawDeviceContact[];
+          if (mid.some(match)) return { removed: false, readded: false };
+          try {
+            await c.addOrUpdateContact(
+              contact.publicKey,
+              contact.type,
+              typeof contact.flags === 'number' ? contact.flags : 0,
+              // meshcore.js reads out_path_len as Int8 (#5554); write the wire byte.
+              contact.outPathLen & 0xff,
+              contact.outPath,
+              contact.advName,
+              contact.lastAdvert,
+              contact.advLat,
+              contact.advLon,
+            );
+          } catch (err) {
+            logger.debug(`[MeshCore:native] reset_contact_sync re-add ack error (verifying by read-back): ${String(err)}`);
+          }
+          const after = (await c.getContacts()) as RawDeviceContact[];
+          return { removed: true, readded: after.some(match) };
+        })(), Number(params.timeout_ms) || 20_000, 'reset_contact_sync'), 'reset_contact_sync');
+        return outcome;
+      }
+
       case 'remove_contact': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Remove-contact target not found');

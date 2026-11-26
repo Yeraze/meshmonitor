@@ -627,6 +627,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'POST /rooms/post': 'write',
     'GET /rooms/sync-config': 'read',
     'PATCH /rooms/sync-config': 'write',
+    // #6579: clear a room's stored posts + reset the radio's sync point.
+    'POST /rooms/clear-posts': 'write',
   },
   admin: {
     'POST /admin/login': 'admin',

@@ -543,6 +543,8 @@ export interface RoomSyncConfigRow {
   /** Consecutive failed syncs; reset to 0 by any success. */
   failureCount: number;
   lastError: RoomSyncFailureReason | null;
+  /** Last "Clear stored posts & re-sync" (epoch ms), or null (#6579). */
+  lastClearAt: number | null;
 }
 
 export class MeshCoreRepository extends BaseRepository {
@@ -1708,6 +1710,7 @@ export class MeshCoreRepository extends BaseRepository {
         roomSyncIntervalMinutes: meshcoreNodes.roomSyncIntervalMinutes,
         roomSyncFailureCount: meshcoreNodes.roomSyncFailureCount,
         roomSyncLastError: meshcoreNodes.roomSyncLastError,
+        lastRoomClearAt: meshcoreNodes.lastRoomClearAt,
       })
       .from(meshcoreNodes)
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
@@ -1716,6 +1719,7 @@ export class MeshCoreRepository extends BaseRepository {
       roomSyncIntervalMinutes: number | null;
       roomSyncFailureCount: number | null;
       roomSyncLastError: string | null;
+      lastRoomClearAt: number | null;
     }>;
     if (rows.length === 0) return null;
     const row = rows[0];
@@ -1724,7 +1728,39 @@ export class MeshCoreRepository extends BaseRepository {
       intervalMinutes: row.roomSyncIntervalMinutes ?? 60,
       failureCount: row.roomSyncFailureCount ?? 0,
       lastError: (row.roomSyncLastError as RoomSyncFailureReason | null) ?? null,
+      lastClearAt: row.lastRoomClearAt ?? null,
     };
+  }
+
+  /**
+   * Last "Clear stored posts & re-sync" on this room from this source (#6579),
+   * epoch ms, or null. Read from the database on every check so the cooldown
+   * survives a restart and cannot be re-armed by a settings save.
+   */
+  async getRoomClearAt(sourceId: string, publicKey: string): Promise<number | null> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getRoomClearAt requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select({ lastRoomClearAt: meshcoreNodes.lastRoomClearAt })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)))
+      .limit(1);
+    const rows = this.normalizeBigInts(result) as unknown as Array<{ lastRoomClearAt: number | null }>;
+    return rows[0]?.lastRoomClearAt ?? null;
+  }
+
+  /** Stamp a "Clear stored posts & re-sync" on this room (#6579). Update-only. */
+  async recordRoomClear(sourceId: string, publicKey: string, at: number = this.now()): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.recordRoomClear requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({ lastRoomClearAt: at, updatedAt: this.now() })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
   }
 
   /**

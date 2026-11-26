@@ -40,6 +40,15 @@
  *     from the persisted timestamps, so a restart is never itself a trigger.
  *   - Failures follow the rules above: a refusal disables auto-sync, silence
  *     counts towards MAX_CONSECUTIVE_FAILURES.
+ *
+ * Re-sync after a clear (#6579). "Clear stored posts & re-sync" resets the
+ * companion's cursor for the room and stamps `lastRoomClearAt` (migration
+ * 250). While that is newer than the last login, the room is due: ONE login,
+ * on the normal tick, inside the same 60s TX floor and failure rules. Every
+ * attempt stamps `lastRoomSyncAt`, so the debt is paid by the first try,
+ * answered or not, and the 30-minute cooldown on the clear caps how often a
+ * user can create one. Both timestamps are persisted, so a restart neither
+ * creates nor forgets it.
  */
 import { logger } from '../../utils/logger.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
@@ -78,6 +87,9 @@ interface RoomSyncNode {
   /** Last SUCCESSFUL login from this source (#6408). Non-null = joined: the
    *  room's ACL holds our key, so a blank-password login gets back in. */
   lastRoomLoginOkAt?: number | null;
+  /** Last "Clear stored posts & re-sync" (#6579): a login is owed while this
+   *  is newer than the last login. */
+  lastRoomClearAt?: number | null;
 }
 
 /** Most recent persisted login to the room: a scheduled attempt or any success. */
@@ -89,9 +101,17 @@ export function isRoomSyncEligible(node: RoomSyncNode, now: number): boolean {
   if (!node.roomSyncEnabled) return false;
   const interval = node.roomSyncIntervalMinutes;
   if (interval === null || interval === undefined || interval < 60) return false;
+  // A clear since the last login is owed one login now (#6579).
+  if (isResyncOwed(node)) return true;
   // An interactive login counts too: re-logging in minutes after the user did
   // only spends airtime.
   return (now - lastLoginAt(node)) >= interval * 60_000;
+}
+
+/** A "Clear stored posts & re-sync" came after the last login (#6579). */
+export function isResyncOwed(node: RoomSyncNode): boolean {
+  const clearAt = node.lastRoomClearAt ?? null;
+  return clearAt !== null && clearAt > lastLoginAt(node);
 }
 
 /**
@@ -233,6 +253,7 @@ export class MeshCoreRoomSyncScheduler {
         roomSyncIntervalMinutes: n.roomSyncIntervalMinutes ?? 60,
         lastRoomSyncAt: n.lastRoomSyncAt ?? null,
         lastRoomLoginOkAt: n.lastRoomLoginOkAt ?? null,
+        lastRoomClearAt: n.lastRoomClearAt ?? null,
       }));
 
     // Re-join on connect (#6408): each room gets ONE try per connection, and

@@ -316,6 +316,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         roomSyncFailureCount INTEGER DEFAULT 0,
         roomSyncLastError TEXT,
         lastRoomLoginOkAt INTEGER,
+        lastRoomClearAt INTEGER,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -608,6 +609,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         roomSyncFailureCount INTEGER DEFAULT 0,
         roomSyncLastError TEXT,
         lastRoomLoginOkAt INTEGER,
+        lastRoomClearAt INTEGER,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -901,6 +903,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         roomSyncFailureCount INTEGER DEFAULT 0,
         roomSyncLastError TEXT,
         lastRoomLoginOkAt INTEGER,
+        lastRoomClearAt INTEGER,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -1002,6 +1005,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         roomSyncFailureCount INTEGER DEFAULT 0,
         roomSyncLastError TEXT,
         lastRoomLoginOkAt INTEGER,
+        lastRoomClearAt INTEGER,
         roomCredential TEXT,
         positionSource TEXT,
         createdAt INTEGER NOT NULL,
@@ -1384,6 +1388,20 @@ describe('MeshCoreRepository — room sync failure tracking', () => {
     expect(read('src-a')).toBeGreaterThan(0);
     expect(read('src-b')).toBeNull();
     await expect(repo.recordRoomLoginOk('', 'room-a')).rejects.toThrow(/sourceId/);
+  });
+
+  it('recordRoomClear / getRoomClearAt persist the clear per source (#6579)', async () => {
+    await repo.upsertNode({ publicKey: 'room-a', advType: 3 }, 'src-b');
+    expect(await repo.getRoomClearAt('src-a', 'room-a')).toBeNull();
+
+    await repo.recordRoomClear('src-a', 'room-a', 1_763_000_000_000);
+    expect(await repo.getRoomClearAt('src-a', 'room-a')).toBe(1_763_000_000_000);
+    expect(await repo.getRoomClearAt('src-b', 'room-a')).toBeNull();
+    expect((await repo.getRoomSyncConfig('src-a', 'room-a'))?.lastClearAt).toBe(1_763_000_000_000);
+    // Leaves the sync settings alone.
+    expect((await repo.getRoomSyncConfig('src-a', 'room-a'))?.enabled).toBe(true);
+    await expect(repo.recordRoomClear('', 'room-a')).rejects.toThrow(/sourceId/);
+    await expect(repo.getRoomClearAt('', 'room-a')).rejects.toThrow(/sourceId/);
   });
 
   it('leaves auto-sync on unless explicitly asked to disable it', async () => {

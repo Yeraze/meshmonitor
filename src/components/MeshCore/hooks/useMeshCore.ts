@@ -319,6 +319,11 @@ export interface MeshCoreMessage {
    */
   filtered?: 'ignore' | 'block';
   /**
+   * Live socket copy only (#6579): an old room post pulled again by "Clear
+   * stored posts & re-sync". Shown, but plays no sound.
+   */
+  resynced?: boolean;
+  /**
    * MeshMonitor's own wall clock (ms) at the moment this message was created or
    * observed — NOT the sender's clock.
    *
@@ -395,7 +400,16 @@ export interface RoomSyncConfig {
   /** Consecutive failed scheduled syncs; 0 once one succeeds. */
   failureCount: number;
   lastError: RoomSyncFailureReason | null;
+  /** Last "Clear stored posts & re-sync" (epoch ms), or null (#6579). */
+  lastClearAt?: number | null;
+  /** Cooldown between two clears of one room, from the server (#6579). */
+  clearCooldownMs?: number;
 }
+
+/** Result of "Clear stored posts & re-sync" (#6579). */
+export type ClearRoomPostsResult =
+  | { success: true; deleted: number; resyncQueued: boolean; clearedAt: number; nextAllowedAt: number }
+  | { success: false; error: string; code?: string; retryAfterSeconds?: number };
 
 /** Response of `addContactToDevice` (#5349). `code` is the server's machine
  *  code on failure — `CONTACT_TABLE_FULL_CONFIRM` means "ask the user, then
@@ -696,6 +710,8 @@ export interface MeshCoreActions {
   setRoomSyncConfig: (publicKey: string, enabled: boolean, intervalMinutes?: number) => Promise<boolean>;
   /** Get current room sync config. */
   getRoomSyncConfig: (publicKey: string) => Promise<RoomSyncConfig | null>;
+  /** Clear this room's stored posts and reset the radio's sync cursor (#6579). */
+  clearRoomPosts: (publicKey: string) => Promise<ClearRoomPostsResult>;
 }
 
 /**
@@ -2963,11 +2979,41 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           intervalMinutes: data.intervalMinutes,
           failureCount: data.failureCount ?? 0,
           lastError: data.lastError ?? null,
+          lastClearAt: typeof data.lastClearAt === 'number' ? data.lastClearAt : null,
+          clearCooldownMs: typeof data.clearCooldownMs === 'number' ? data.clearCooldownMs : undefined,
         };
       }
       return null;
     } catch (_err) {
       return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const clearRoomPosts = useCallback(async (publicKey: string): Promise<ClearRoomPostsResult> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/rooms/clear-posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey }),
+      });
+      const data = await parseJsonResponse(response);
+      if (data.success && data.data) {
+        return {
+          success: true,
+          deleted: Number(data.data.deleted) || 0,
+          resyncQueued: data.data.resyncQueued === true,
+          clearedAt: Number(data.data.clearedAt) || 0,
+          nextAllowedAt: Number(data.data.nextAllowedAt) || 0,
+        };
+      }
+      return {
+        success: false,
+        error: data.error || 'Failed to clear room posts',
+        code: data.code,
+        retryAfterSeconds: typeof data.retryAfterSeconds === 'number' ? data.retryAfterSeconds : undefined,
+      };
+    } catch (_err) {
+      return { success: false, error: 'Failed to clear room posts' };
     }
   }, [mcPrefix, csrfFetch]);
 
@@ -3084,6 +3130,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       forgetRoomCredential,
       getRoomSyncConfig,
       setRoomSyncConfig,
+      clearRoomPosts,
     },
   };
 }
