@@ -22,12 +22,11 @@ import {
   useWalkaboutTrack,
 } from '../../hooks/useWalkabout';
 import {
-  WALKABOUT_SNR_MEDIUM_DB,
-  WALKABOUT_SNR_STRONG_DB,
-  WALKABOUT_SNR_WEAK_DB,
+  WALKABOUT_DEFAULT_SNR_BANDS,
   walkaboutBucket,
   walkaboutResForZoom,
   type WalkaboutBucket,
+  type WalkaboutSnrBands,
 } from '../../utils/walkabout';
 import { getUserDisplayName } from '../../utils/nodeHelpers';
 import { formatCoverageNodeId } from '../../utils/coverage';
@@ -39,6 +38,8 @@ export interface WalkaboutHexMapProps {
   query: WalkaboutMapQuery;
   /** Changes when source or window/session changes. Never includes res. */
   fitKey: string;
+  /** Per-source band edges (#6571). Defaults to 0 / -5 / -10 dB. */
+  snrBands?: WalkaboutSnrBands;
 }
 
 /** Bucket -> `overlayColors.snrColors` key (spec §1.2). */
@@ -128,7 +129,12 @@ const CellPopupBody: React.FC<{
   );
 };
 
-const WalkaboutHexMap: React.FC<WalkaboutHexMapProps> = ({ sourceId, query, fitKey }) => {
+const WalkaboutHexMap: React.FC<WalkaboutHexMapProps> = ({
+  sourceId,
+  query,
+  fitKey,
+  snrBands = WALKABOUT_DEFAULT_SNR_BANDS,
+}) => {
   const { t } = useTranslation();
   const baseMapSettings = useBaseMapSettings();
   const { overlayColors, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom } = useSettings();
@@ -166,37 +172,37 @@ const WalkaboutHexMap: React.FC<WalkaboutHexMapProps> = ({ sourceId, query, fitK
 
   const palette = overlayColors.snrColors;
   const colorOf = useCallback(
-    (c: WalkaboutCellDto) => palette[BUCKET_COLOR_KEY[walkaboutBucket(c)]],
-    [palette],
+    (c: WalkaboutCellDto) => palette[BUCKET_COLOR_KEY[walkaboutBucket(c, snrBands)]],
+    [palette, snrBands],
   );
 
   const onRes = useCallback((r: WalkaboutH3Res) => setRes(r), []);
 
-  const hasUnknown = (cells ?? []).some((c) => walkaboutBucket(c) === 'unknown');
+  const hasUnknown = (cells ?? []).some((c) => walkaboutBucket(c, snrBands) === 'unknown');
   const empty = !!data && !isPlaceholderData && data.cells.length === 0;
   const legendRows: Array<{ bucket: WalkaboutBucket; label: string }> = [
     {
       bucket: 'strong',
-      label: t('analysis.walkabout.map.legend_strong', 'Strong ({{min}} dB or better)', { min: WALKABOUT_SNR_STRONG_DB }),
+      label: t('analysis.walkabout.map.legend_strong', 'Strong ({{min}} dB or better)', { min: snrBands.strong }),
     },
     {
       bucket: 'medium',
       label: t('analysis.walkabout.map.legend_medium', 'Medium ({{min}} to {{max}} dB)', {
-        min: WALKABOUT_SNR_MEDIUM_DB,
-        max: WALKABOUT_SNR_STRONG_DB,
+        min: snrBands.medium,
+        max: snrBands.strong,
       }),
     },
     {
       bucket: 'weak',
       label: t('analysis.walkabout.map.legend_weak', 'Weak ({{min}} to {{max}} dB)', {
-        min: WALKABOUT_SNR_WEAK_DB,
-        max: WALKABOUT_SNR_MEDIUM_DB,
+        min: snrBands.weak,
+        max: snrBands.medium,
       }),
     },
     {
       bucket: 'none',
       label: t('analysis.walkabout.map.legend_none', 'None (below {{min}} dB, or nothing heard)', {
-        min: WALKABOUT_SNR_WEAK_DB,
+        min: snrBands.weak,
       }),
     },
   ];

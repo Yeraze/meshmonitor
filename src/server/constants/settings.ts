@@ -38,6 +38,9 @@ export const VALID_SETTINGS_KEYS = [
   // Fixed Y-axis min/max per dashboard chart widget (#6348). Per-source,
   // client-only JSON; validated and normalized in settingsRoutes on save.
   'dashboardChartYRange',
+  // Walkabout hex map SNR band edges (#6571). Per-source, client-only,
+  // "strong,medium,weak" dB; validated and normalized in settingsRoutes.
+  'walkaboutSnrBands',
   'autoAckEnabled',
   'autoAckRegex',
   'autoAckMessage',
