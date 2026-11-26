@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MapSidebar } from '../map/MapSidebar';
 import { PacketFlightsControl } from '../map/PacketFlightsControl';
 import { DuctingControl } from '../map/DuctingControl';
+import MapRepeatersOnlyToggle from '../map/MapRepeatersOnlyToggle';
 import MapLegend from '../MapLegend';
 import { TilesetSelector } from '../TilesetSelector';
 import { NumberInput } from '../common/NumberInput';
@@ -40,6 +41,8 @@ export interface MeshCoreMapControlsProps {
   showCrossSourceLinks: boolean;
   setShowCrossSourceLinks: (v: boolean) => void;
 
+  showRepeatersOnly: boolean;
+  setShowRepeatersOnly: (show: boolean) => void;
   showLocalMarkers: boolean;
   setShowLocalMarkers: (v: boolean) => void;
   /** Caller holds `waypoints:write` on this source. */
@@ -100,7 +103,10 @@ export const MeshCoreMapControls: React.FC<MeshCoreMapControlsProps> = (p) => {
     <MapSidebar storageKey="mm-meshcore-map-sidebar" title="Map controls">
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">
-          <div className="map-controls-title">Features</div>
+          <div className="map-controls-header">
+            <div className="map-controls-title">Features</div>
+            <MapRepeatersOnlyToggle active={p.showRepeatersOnly} onChange={p.setShowRepeatersOnly} />
+          </div>
           {/* #3636: node-to-node LOS distance measurement toggle. */}
           <label className="map-control-item" title="Measure straight-line distance between two nodes">
             <input

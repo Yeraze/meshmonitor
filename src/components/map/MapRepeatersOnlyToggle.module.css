@@ -1,0 +1,28 @@
+/*
+ * MapRepeatersOnlyToggle: header pill for the "Repeaters only" filter (#5891).
+ * Sits beside the fit button in each Map Features panel header.
+ */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 24px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--color-surface-active);
+}
+
+.toggle.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}

@@ -255,6 +255,21 @@ export function markerRoleProps(node: CategorizableNode): {
   return { isRouter, roleCategory };
 }
 
+/**
+ * True for repeater-class nodes, the set the "Repeaters only" map chip keeps
+ * (#5891). MeshCore: advType 2 (repeater) and 3 (room server). Meshtastic:
+ * the infrastructure roles in `isInfrastructureRole` (ROUTER, ROUTER_CLIENT,
+ * REPEATER, ROUTER_LATE, CLIENT_BASE), so the chip, the tower glyph and the
+ * airtime cutoff agree. A missing or garbage role is not a repeater.
+ */
+export function isRepeaterClassNode(node: CategorizableNode): boolean {
+  if (isMeshCoreNode(node)) {
+    const advType = toRoleNum(node.advType);
+    return advType === 2 || advType === 3;
+  }
+  return isInfrastructureRole(node.user?.role ?? node.role);
+}
+
 /** A node passes the filter when its category is enabled (default: enabled). */
 export function nodePassesTypeFilter(
   node: CategorizableNode,

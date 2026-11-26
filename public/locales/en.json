@@ -1590,6 +1590,8 @@
   "app_error.details": "Error details",
   "app_error.retry": "Try again",
   "app_error.reload": "Reload page",
+  "map.repeatersOnly": "Repeaters",
+  "map.repeatersOnlyTitle": "Show only repeaters and routers",
   "map.vector_unsupported_notice": "Vector maps need WebGL, which this browser does not provide. A standard map is shown.",
   "map.vector_context_lost_notice": "The vector map lost its graphics context. A standard map is shown.",
   "map.vector_notice_dismiss": "Dismiss",

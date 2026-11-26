@@ -222,6 +222,20 @@ describe('MeshCoreMap shared shell', () => {
     expect(props.nodes.map(n => n.key).sort()).toEqual(['aa', 'bb']);
   });
 
+  it('Repeaters only drops a companion, keeps a repeater and the local contact (#5891)', () => {
+    h.toggle3d.effective3D = true;
+    const mixed = [
+      { publicKey: 'aa', advName: 'Alpha', advType: 1, latitude: 10, longitude: 20 },
+      { publicKey: 'bb', advName: 'Bravo', advType: 2, latitude: 11, longitude: 21 },
+      { publicKey: 'cc', advName: 'Local', advType: 1, latitude: 12, longitude: 22, isLocal: true },
+    ] as never;
+    render(<MeshCoreMap contacts={mixed} selectedPublicKey={null} />);
+    const keys = () => [...(h.map3d.current as { visibleMeshCoreKeys: Set<string> }).visibleMeshCoreKeys].sort();
+    expect(keys()).toEqual(['aa', 'bb', 'cc']);
+    fireEvent.click(screen.getByRole('button', { name: 'map.repeatersOnlyTitle' }));
+    expect(keys()).toEqual(['bb', 'cc']);
+  });
+
   describe('playback', () => {
     const fixes = [
       { latitude: 10, longitude: 20, timestamp: 2000 },

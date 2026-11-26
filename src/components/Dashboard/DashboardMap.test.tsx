@@ -47,6 +47,7 @@ const mocks = vi.hoisted(() => ({
     showAgedOutAircraft: false,
     // #5364/#5365 Phase 3 flight trails.
     aircraftDisplayMode: 'mark' as string,
+    showRepeatersOnly: false,
     showAircraftTrails: false,
     colorNodesByGateway: false,
     // #5561 cross-source "heard here" edges.
@@ -59,6 +60,7 @@ const mocks = vi.hoisted(() => ({
   // #5734: the admin's ductingOverlayEnabled switch, as the hook reads it.
   ductingEnabled: false,
   setShowDucting: vi.fn(),
+  setShowRepeatersOnly: vi.fn(),
   setShowCrossSourceLinks: vi.fn(),
   setShowTracerouteConfirmedLinks: vi.fn(),
   // #5580: props the map hands the confirmed-links layer (null = not mounted).
@@ -213,6 +215,8 @@ vi.mock('../../contexts/MapContext', () => ({
     showAgedOutAircraft: mocks.mapContext.showAgedOutAircraft,
     setShowAgedOutAircraft: vi.fn(),
     aircraftDisplayMode: mocks.mapContext.aircraftDisplayMode,
+    showRepeatersOnly: mocks.mapContext.showRepeatersOnly,
+    setShowRepeatersOnly: mocks.setShowRepeatersOnly,
     setAircraftDisplayMode: vi.fn(),
     showAircraftTrails: mocks.mapContext.showAircraftTrails,
     colorNodesByGateway: mocks.mapContext.colorNodesByGateway,
@@ -515,6 +519,7 @@ describe('DashboardMap', () => {
       showMqttNodes: true,
       showAgedOutAircraft: false,
       aircraftDisplayMode: 'mark',
+      showRepeatersOnly: false,
       showAircraftTrails: false,
       colorNodesByGateway: false,
       showCrossSourceLinks: false,
@@ -1043,6 +1048,45 @@ describe('DashboardMap', () => {
       // 1_000 kept, 3_000 within 5 s dropped, 60_000 kept, 62_000 dropped.
       expect(mocks.renderedTrails[0].times).toEqual([1_000, 60_000]);
       expect(mocks.renderedTrails[0].label).toBe('Plane');
+    });
+  });
+
+  describe('Repeaters only chip (#5891)', () => {
+    const at = (n: number, extra: Record<string, unknown>) => ({
+      nodeNum: 0x5a000000 + n,
+      user: { id: `!5a00000${n}`, shortName: `R${n}`, longName: `Node ${n}` },
+      position: { latitude: 35 + n * 0.1, longitude: -80 - n * 0.1 },
+      hopsAway: 1,
+      role: 0,
+      lastHeard: recent,
+      ...extra,
+    });
+    const mixed = [
+      at(1, { role: 2 }),
+      at(2, { role: 0 }),
+      at(3, { role: 0, isFavorite: true }),
+      at(4, { role: 0, isLocal: true }),
+      at(5, { isMeshCore: true, advType: 2, role: undefined }),
+      at(6, { isMeshCore: true, advType: 1, role: undefined }),
+    ];
+
+    it('off keeps every node', () => {
+      render(<DashboardMap {...defaultProps} nodes={mixed} />);
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(6);
+    });
+
+    it('on keeps repeaters and the local node only, favourites included in the cut', () => {
+      mocks.mapContext.showRepeatersOnly = true;
+      render(<DashboardMap {...defaultProps} nodes={mixed} />);
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(3);
+    });
+
+    it('the header toggle reports the opposite value', () => {
+      render(<DashboardMap {...defaultProps} nodes={mixed} />);
+      const chip = document.querySelector('button[aria-pressed]') as HTMLButtonElement;
+      expect(chip.getAttribute('aria-pressed')).toBe('false');
+      fireEvent.click(chip);
+      expect(mocks.setShowRepeatersOnly).toHaveBeenCalledWith(true);
     });
   });
 
