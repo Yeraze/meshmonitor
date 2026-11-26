@@ -153,4 +153,12 @@ describe('validateAutomationGraph: action.aiSummarize', () => {
     expect(r.errors.join('\n')).toMatch(/window/);
     expect(r.errors.join('\n')).toMatch(/lookbackHours/);
   });
+
+  it('rejects non-positive counts and sizes', () => {
+    const r = validateAutomationGraph(graph({ sourceIds: ['mt'], channels: [{ name: 'x' }], outputName: 'summary', minMessages: 0, maxLength: -5, maxInputChars: 'abc' }));
+    const all = r.errors.join('\n');
+    expect(all).toMatch(/minMessages/);
+    expect(all).toMatch(/maxLength/);
+    expect(all).toMatch(/maxInputChars/);
+  });
 });

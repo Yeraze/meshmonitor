@@ -986,8 +986,10 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           if (mode !== 'hours' && mode !== 'sinceLastRun') {
             errors.push(`action.aiSummarize "${n.id}" requires params.window ∈ {hours,sinceLastRun}`);
           }
-          if (p.lookbackHours != null && p.lookbackHours !== '' && !(Number(p.lookbackHours) > 0)) {
-            errors.push(`action.aiSummarize "${n.id}" requires params.lookbackHours to be a positive number`);
+          for (const k of ['lookbackHours', 'minMessages', 'maxLength', 'maxInputChars'] as const) {
+            if (p[k] != null && p[k] !== '' && !(Number(p[k]) > 0)) {
+              errors.push(`action.aiSummarize "${n.id}" requires params.${k} to be a positive number`);
+            }
           }
           break;
         }
