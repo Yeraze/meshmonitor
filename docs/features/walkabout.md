@@ -99,7 +99,7 @@ Each hex takes the colour of the **best** signal heard in it, counting the
 last-hop node only (see "What credited means" above). The hex size grows as
 you zoom out, so the map stays easy to read at any scale.
 
-| Colour | Meaning |
+| Colour | Meaning (default bands) |
 |--------|---------|
 | Strong | Best SNR of 0 dB or more |
 | Medium | Best SNR from -5 to 0 dB |
@@ -107,9 +107,20 @@ you zoom out, so the map stays easy to read at any scale.
 | None | Best SNR below -10 dB, or you walked there and heard nothing |
 | Grey | Heard, but with no SNR reading |
 
-The bands are fixed. Slow presets decode below -10 dB, so they may read low
-on this map. Per-source bands are tracked in
-[#6571](https://github.com/Yeraze/meshmonitor/issues/6571).
+### SNR bands per source
+
+Each source has its own band edges. Open **SNR bands for this source** above
+the map, enter the lowest SNR for Strong, Medium and Weak, and save. Edges must
+go down (Strong above Medium above Weak) and sit between -30 and +20 dB.
+**Reset to defaults** goes back to 0 / -5 / -10 dB. The legend follows the
+saved edges.
+
+Slow presets (LongSlow, SF12) still decode near -20 dB, so on the defaults a
+working link there reads as "None". If your mesh uses a slow preset, lower the
+edges, for example -10 / -15 / -20.
+
+Changing the bands needs settings write access on that source. Anyone who can
+view the map sees the colours they set.
 
 Tap a hex to see "N nodes heard here". The list shows each node's best SNR and
 how many times you heard it (x count).
