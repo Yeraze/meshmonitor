@@ -71,6 +71,8 @@ export interface MeshtasticDirectRfPacket {
   viaMqtt?: boolean | null;
   transportMechanism?: number | null;
   decoded?: { bitfield?: number | null } | null;
+  /** Low byte of the last relay's node number; 0 or absent when unknown. */
+  relayNode?: number | null;
 }
 
 export interface EvaluateMeshtasticDirectRfInput {
@@ -107,6 +109,8 @@ export type MeshtasticDirectRfSkip =
  *  5. Zero hops by `computeMeshtasticHopsAway`: `hopStart` present,
  *     `hopStart >= hopLimit`, `hopStart - hopLimit == 0` (0/0 only with a
  *     bitfield, so pre-2.3 firmware with `hop_start` unset never counts).
+ *     A relayed copy (relay byte non-zero and not the sender's low byte) is not
+ *     direct even at 0 hops.
  *  6. A live reception (`isLiveReception`, 120 s on `rx_time`), and not a
  *     firmware NodeDB replay (#5426, `isNodeDbReplayForPacketLog`, which also
  *     catches a 2.8 replay by its packet id), so a reconnect does not mark
@@ -133,6 +137,13 @@ export function evaluateMeshtasticDirectRf(
     hasBitfield: typeof p.decoded?.bitfield === 'number',
   });
   if (hopsAway !== 0) return { skip: 'not-direct' };
+  // A 0-hop copy can still be relayed: firmware `Router::shouldDecrementHopLimit`
+  // (src/mesh/Router.cpp) lets a ROUTER / ROUTER_LATE / CLIENT_BASE keep
+  // hop_limit when the previous relay is a favourite router-class node
+  // (NextHopRouter.cpp logs "keep hop_limit"). A truly direct copy carries
+  // relay byte 0 or the sender's own low byte.
+  const relayByte = p.relayNode ? Number(p.relayNode) : 0;
+  if (relayByte !== 0 && relayByte !== (fromNum & 0xff)) return { skip: 'not-direct' };
 
   const rxTimeSec = p.rxTime != null ? Number(p.rxTime) : null;
   if (!isLiveReception(rxTimeSec ?? undefined, input.nowMs)) return { skip: 'not-live' };
