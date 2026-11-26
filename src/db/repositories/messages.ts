@@ -234,6 +234,29 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * One channel's text messages that arrived at or after `sinceMs` (server
+   * arrival time), oldest first, for an AI channel summary (#6566). Keeps the
+   * newest `limit` rows when there are more. Tapbacks and non-text portnums are
+   * left out; a NULL portnum is kept, as everywhere else.
+   */
+  async getChannelTextSince(sourceId: string, channel: number, sinceMs: number, limit: number): Promise<DbMessage[]> {
+    const { messages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(messages)
+      .where(and(
+        this.withSourceScope(messages, sourceId),
+        eq(messages.channel, channel),
+        gte(messages.createdAt, sinceMs),
+        or(isNull(messages.portnum), eq(messages.portnum, PortNum.TEXT_MESSAGE_APP)),
+        or(isNull(messages.emoji), eq(messages.emoji, 0)),
+      ))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+    return (this.normalizeBigInts(rows) as DbMessage[]).reverse();
+  }
+
+  /**
    * Get messages in a channel strictly before a cursor (cursor-based pagination).
    *
    * Cursor is server DB arrival time (createdAt) so the chat scroll-back order is

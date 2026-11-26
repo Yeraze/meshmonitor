@@ -14,6 +14,7 @@ import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
+import { summarizeChannels } from '../aiSummaryService.js';
 import { logger } from '../../../utils/logger.js';
 import { truncateUtf8Bytes, utf8ByteLength } from '../../utils/splitUtf8Message.js';
 import { waypointService } from '../waypointService.js';
@@ -481,6 +482,15 @@ export function createMeshActionDeps(): ActionDeps {
         logger.info(`[AutomationEngine] forwarding on source "${source.name}" turned ${next ? 'on' : 'off'} by an automation action`);
       }
       return { sourceId, sourceName: source.name, previous, enabled: next };
+    },
+
+    // #6566: reads the channels and calls the configured AI endpoint.
+    summarizeChannels,
+
+    async lastCompletedRunAt(automationId) {
+      const runs = await databaseService.automations.listRuns(automationId, 50);
+      const last = runs.find((r) => r.status === 'completed');
+      return last ? Number(last.startedAt) : null;
     },
 
     async runScript({ scriptPath, scriptArgs, env, timeoutMs }) {

@@ -129,6 +129,7 @@ Actions do the work: send a message or tapback, request data, run a script, noti
 - [Send a message](/features/automation-engine-reference#send-a-message)
 - <span id="trace-meshcore-paths-on-a-schedule"></span>[Trace MeshCore paths on a schedule](/features/automation-engine-reference#trace-meshcore-paths-on-a-schedule)
 - [Run a script](/features/automation-engine-reference#run-a-script)
+- [Summarize channels (AI)](/features/automation-engine-reference#summarize-channels-ai)
 - <span id="turn-forwarding-on-or-off"></span>[Turn forwarding on or off](/features/automation-engine-reference#turn-forwarding-on-or-off)
 - <span id="broadcast-a-waypoint"></span>[Broadcast a waypoint](/features/automation-engine-reference#broadcast-a-waypoint)
 - <span id="pause"></span>[Pause](/features/automation-engine-reference#pause)

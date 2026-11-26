@@ -2336,6 +2336,31 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * One channel's messages that arrived at or after `sinceMs` (server arrival
+   * time), oldest first, for an AI channel summary (#6566). Keeps the newest
+   * `limit` rows when there are more. Reaction rows are left out.
+   */
+  async getChannelMessagesSince(
+    channelIdx: number,
+    sourceId: string,
+    sinceMs: number,
+    limit: number,
+  ): Promise<DbMeshCoreMessage[]> {
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(
+        this.channelWhereClause(channelIdx, sourceId),
+        gte(meshcoreMessages.createdAt, sinceMs),
+        isNull(meshcoreMessages.reactionEmoji),
+      ))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
+      .limit(limit);
+    return (this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[]).reverse();
+  }
+
+  /**
    * One page of a single DM conversation's history (#6186), scoped to a source.
    *
    * Unlike {@link getRecentMessages} (one global tail slice shared by every

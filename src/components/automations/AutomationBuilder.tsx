@@ -101,7 +101,9 @@ function defaultParams(type: string, triggerType: string): Record<string, unknow
   if (!def) return {};
   const params: Record<string, unknown> = {};
   for (const f of def.fields) {
-    if (f.kind === 'fieldselect') {
+    if (f.initial !== undefined) {
+      params[f.name] = f.initial;
+    } else if (f.kind === 'fieldselect') {
       const first = fieldsFor(type, triggerType)[0]?.options[0]?.value;
       if (first) params[f.name] = first;
     } else if (f.kind === 'select') {

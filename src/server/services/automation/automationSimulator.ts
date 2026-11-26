@@ -223,6 +223,9 @@ function recordingDeps(
     async notify(a) { return { action: 'notify', ...a }; },
     // Dry-run must never write a waypoint or key the mesh — report the resolved params.
     async broadcastWaypoint(a) { return { action: 'broadcastWaypoint', ...a }; },
+    // #6566: the Test panel never calls the AI endpoint. A sample output for
+    // the step (set below) stands in for the summary.
+    async summarizeChannels() { return { messageCount: 0, summary: '(AI summary — not generated in a test run)' }; },
     // Dry-run must never spawn a process — report success without executing.
     async runScript() { return { success: true, stdout: '' }; },
     // Dry-run must never actually wait — resolve the pause instantly.
@@ -541,6 +544,10 @@ export async function simulateAutomation(opts: SimulateOptions): Promise<SimResu
   const depsFor = (n: AutomationNode): ActionDeps => {
     const name = stepOutputNameOf(n);
     if (!name || !Object.prototype.hasOwnProperty.call(samples, name)) return deps;
+    if (n.type === 'action.aiSummarize') {
+      const summary = String(samples[name] ?? '');
+      return { ...deps, summarizeChannels: async () => ({ messageCount: 0, summary }) };
+    }
     const stdout = String(samples[name] ?? '');
     return { ...deps, runScript: async () => ({ success: true, stdout, returnValue: parseScriptOutput(stdout).returnValue }) };
   };
