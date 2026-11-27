@@ -1,4 +1,5 @@
 import { paletteRgb } from './palettes.js';
+import { McoImageV3InvalidPayloadError } from './errors.js';
 import type { McoImageV3 } from './decoder.js';
 
 /**
@@ -11,7 +12,7 @@ export function v3ToRgba(image: McoImageV3): Uint8ClampedArray {
   for (let i = 0; i < width * height; i++) {
     const px = pixels[i];
     const rgb = paletteRgb(paletteProfile, px);
-    if (rgb === undefined) throw new Error(`No RGB entry for pixel value ${px}`);
+    if (rgb === undefined) throw new McoImageV3InvalidPayloadError(`No RGB entry for pixel value ${px}`);
     const o = i * 4;
     rgba[o] = (rgb >> 16) & 255;
     rgba[o + 1] = (rgb >> 8) & 255;
