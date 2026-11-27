@@ -4,6 +4,9 @@ import { decodeV3Text } from './v3/decoder.js';
 import { McoImageV3CodecError } from './v3/errors.js';
 import { v3ToRgba } from './v3/rgba.js';
 
+export { paintMcoImageV4 } from './v4/paint.js';
+export type { McoPaintOptions } from './v4/paint.js';
+
 const CACHE_LIMIT = 32;
 const cache = new Map<string, DecodedMcoImage | null>();
 
@@ -30,6 +33,10 @@ export function decodeMcoImageText(text: string): DecodedMcoImage | null {
     cache.delete(key);
     cache.set(key, hit);
     return hit;
+  }
+  if (candidate.format === 'im4') {
+    // Gate A: the IM4 decoder lands in the next commit.
+    return remember(key, null);
   }
   try {
     const v3 = decodeV3Text(candidate.payload);
