@@ -17,6 +17,7 @@ import { MarkAllReadButton } from './messages/MarkAllReadButton';
 import { DmFilterSelect } from './messages/DmFilterSelect';
 import { NodeStatChips } from './nodes/NodeStatChips';
 import { passesDmFilter } from '../utils/dmListFilter';
+import { isImageMessageText } from '../utils/imageMessage';
 import { formatMessagePreview } from '../utils/messagePreview';
 import { TimeFormat, DateFormat, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import {
@@ -1040,7 +1041,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     () =>
       selectedDMNode
         ? [...getDMMessages(selectedDMNode)]
-            .filter((m) => !!m.text)
+            .filter((m) => !!m.text && !isImageMessageText(m.text))
             .sort((a, b) => getMessageSortTime(a) - getMessageSortTime(b))
             .map((m) => m.id)
         : [],

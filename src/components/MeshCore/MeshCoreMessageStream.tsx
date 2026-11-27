@@ -36,6 +36,9 @@ import { getMeshCoreDirectSendState } from '../../utils/deliveryDiagnostics/stat
 import { directSendLabel } from './meshcoreSendLabel';
 import { parseSpip } from '../../utils/spip';
 import { SpipImage } from '../Spip/SpipImage';
+import { detectMcoImage } from '../../utils/mcoImage/detect';
+import { isImageMessageText } from '../../utils/imageMessage';
+import { McoImage } from '../McoImage/McoImage';
 import { meshcoreDisplayTimeMs, meshcoreMessageClockOffsetMs } from '../../utils/meshcoreMessageTime';
 import { MeshCoreClockOffset } from './MeshCoreClockOffset';
 import { requiredRepeatersHeard, RELAY_ADV_TYPES, type RequiredRepeaterMode } from '../../utils/meshcoreHeardBy';
@@ -206,6 +209,10 @@ function renderMessageText(
   // A message that is one SPIP image code draws as the image.
   const spip = parseSpip(text);
   if (spip) return <SpipImage image={spip} code={text.trim()} />;
+
+  // A message that is one MCOimg payload draws as the image (#6586).
+  const mco = detectMcoImage(text);
+  if (mco) return <McoImage payload={mco.payload} />;
 
   // Contact-share tokens (#6370): keep the token text, add an import button.
   const parts: React.ReactNode[] = [];
@@ -386,7 +393,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // view; a Translate button on each translatable row.
   const translatableIds = useMemo(
     () => messages
-      .filter(m => m.text && !m.reactionEmoji && !m.reactionPending && parseSpip(m.text) == null)
+      .filter(m => m.text && !m.reactionEmoji && !m.reactionPending && !isImageMessageText(m.text))
       .sort((a, b) => meshcoreDisplayTimeMs(a) - meshcoreDisplayTimeMs(b))
       .map(m => m.id),
     [messages],
