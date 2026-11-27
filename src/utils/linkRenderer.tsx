@@ -5,6 +5,8 @@ import { parseSpip } from './spip.js';
 import { isPublicHiddenText } from './publicInstanceMode.js';
 import { HiddenMessageText } from '../components/messages/HiddenMessageText.js';
 import { SpipImage } from '../components/Spip/SpipImage.js';
+import { detectMcoImage } from './mcoImage/detect.js';
+import { McoImage } from '../components/McoImage/McoImage.js';
 
 // URL detection regex - matches http://, https://, and www. URLs
 const URL_REGEX = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;
@@ -85,7 +87,7 @@ function renderMentions(
 /**
  * Renders text with clickable links for any URLs found, and `@` mentions as
  * chips when mention options are supplied (#5276). A message that is a SPIP
- * image code is drawn as the image instead.
+ * image code or an MCOimg (im3:) payload is drawn as the image instead.
  * @param text - The message text to process
  * @param mentions - Optional mention rendering behaviour
  * @returns JSX elements with URLs converted to clickable links
@@ -102,6 +104,10 @@ export function renderMessageWithLinks(
   // A message that is one SPIP image code draws as the image.
   const spip = parseSpip(text);
   if (spip) return [<SpipImage key="spip" image={spip} code={text.trim()} />];
+
+  // A message that is one MCOimg payload draws as the image (#6586).
+  const mco = detectMcoImage(text);
+  if (mco) return [<McoImage key="mco" payload={mco.payload} />];
 
   // Replace bell character (0x07) with visible indicator
   text = text.replace(/\x07/g, '(Alert Bell) \u{1F514} ');
@@ -172,6 +178,9 @@ export interface LinkMetadata {
  */
 export function extractUrls(text: string): string[] {
   if (!text) return [];
+
+  // Base91 can contain `http://` or `www.`; an image payload has no links.
+  if (detectMcoImage(text)) return [];
 
   URL_REGEX.lastIndex = 0;
   const matches = text.match(URL_REGEX);
