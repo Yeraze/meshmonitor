@@ -2,7 +2,7 @@
 
 MeshMonitor draws MCOimg v3 (`im3:`) and v4 (`im4:`) messages as images. A v3 image is a grid of pixels. A v4 image is a drawing with shapes and text, so it stays sharp at any zoom. They show in Meshtastic and MeshCore channels, direct messages, rooms, and Unified Messages.
 
-MCOimg packs a small image into one text message, so it costs no more airtime than any other message. You make one with the online encoder at <https://hdden.ru/MCOimg/>, then paste the code into the message box. Sending from MeshMonitor comes in a later release.
+MCOimg packs a small image into one text message, so it costs no more airtime than any other message. You can make one in MeshMonitor (see [Sending an image](#sending-an-image)) or with the online encoder at <https://hdden.ru/MCOimg/> and paste the code into the message box.
 
 ![An MCOimg v3 image in a channel, with the payload shown on hover and a Copy original message button](/images/features/mco-images.png)
 
@@ -63,6 +63,33 @@ A public instance hides message text from anonymous viewers before MeshMonitor d
 
 ---
 
+## Sending an image
+
+Every message box has a **+** button. Choose **Insert image** to open the image dialog.
+
+![The Insert image dialog showing IM3 and IM4 previews of a photo, each with its byte count and a Fits mark](/images/features/mco-images-compose.png)
+
+1. Pick a PNG or JPEG file, up to 25 MB.
+2. Choose **Auto** or **Manual**.
+   - **Auto** finds the largest picture that fits the message limit. It ranks each choice by width x height x log2(colours), so a bigger picture or more colours both score higher.
+   - **Manual** lets you set the size and palette yourself. It also has a **Dither** switch.
+3. Check the two previews. Each one is decoded from the exact text it would send, so you see what the other side sees.
+   - **IM3** is a pixel grid.
+   - **IM4** is the same pixels inside a v4 drawing. IM4 is usually a few bytes larger, so it may not fit when IM3 does.
+4. Each preview shows its byte count and whether it fits. You cannot pick one that does not fit.
+5. Select **Use**. The text goes into the message box. Send it like any other message.
+
+Good to know:
+
+- **Limits.** Meshtastic allows 200 bytes per message. MeshCore depends on the conversation: a direct message or room has a fixed limit, and a channel message gets less, because your node name counts too. The dialog uses the limit of the conversation you opened it from.
+- **Nothing is uploaded.** MeshMonitor reads and shrinks the picture in your browser. It scales the picture down to 512 pixels, fills transparent areas with white, and maps each pixel to the nearest palette colour.
+- **One message.** An image is one ordinary message. MeshMonitor never splits it, so it costs the same airtime as typed text of that length.
+- **It replaces your draft.** An image must be the whole message, so **Use** replaces what you typed. The dialog says so. On MeshCore, this also drops the reply link. If you type after you insert, the message turns back into plain text.
+- **Dithering.** Dither spreads the colour error across nearby pixels, which can look smoother. It adds 30 to 160 percent more bytes, so Auto never uses it and it is off by default.
+- **Speed.** Auto first searches with the fast encoder. **Use** works as soon as a fitting result exists. In the background, a slower encoder tries to shrink the winner for up to 20 seconds, and MeshMonitor keeps whichever text is shorter. Phones are slower than desktops, so the extra step may find less there.
+
+---
+
 ## Credits
 
 The MCOimg formats and their reference codecs come from HDDen's `meshcore-open` fork:
@@ -72,4 +99,4 @@ The MCOimg formats and their reference codecs come from HDDen's `meshcore-open` 
 - [MCOimg v4 reference](https://github.com/HDDen/meshcore-open/blob/9.5.1-mod-1.9.0/docs/mcoimg_v4_reference.md) and [v4 codec](https://github.com/HDDen/meshcore-open/blob/9.5.1-mod-1.9.0/lib/helpers/mcoimg_v4_codec.dart) (tag `9.5.1-mod-1.9.0`)
 - [MCOtxt v1 protocol](https://github.com/HDDen/meshcore-open/blob/9.5.1-mod-1.9.0/docs/MCOTXT_V1_PROTOCOL.md) and [`mcotxt.js` codec](https://github.com/HDDen/meshcore-open/blob/c38c1650fe8394835e333b5b4a1ac84ead2d5e5a/docs/mcotxt/assets/mcotxt.js)
 
-The code is MIT licensed, copyright (c) 2025 zjs81. MeshMonitor ports the IM3 and IM4 decoders and the MCOtxt decoder to TypeScript. See `THIRD_PARTY_DATA.md` for details.
+The code is MIT licensed, copyright (c) 2025 zjs81. MeshMonitor ports the IM3 and IM4 decoders, the IM3 encoder, the IM4 raster encoder, and the MCOtxt decoder to TypeScript. See `THIRD_PARTY_DATA.md` for details.

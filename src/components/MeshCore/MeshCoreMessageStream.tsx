@@ -1226,6 +1226,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           buildMentionInsertion={c => `@[${c.longName}] `}
           homoglyphEnabled={false}
           maxBytes={maxBytes}
+          imageByteLimit={maxBytes}
           blockSendOverLimit
           sending={sending}
           allowNewlines={false}

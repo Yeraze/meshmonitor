@@ -1,4 +1,4 @@
-import React, { ReactNode, RefObject, useCallback, useId, useMemo, useSyncExternalStore } from 'react';
+import React, { lazy, ReactNode, RefObject, Suspense, useCallback, useId, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useComposeDraftStore, type ComposeDraftStore } from '../contexts/composeDraftStore';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
@@ -13,6 +13,10 @@ import { getUtf8ByteLength, formatByteCount } from '../utils/text';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import type { MentionCandidate } from '../utils/mentions';
 import styles from './MessageComposeInput.module.css';
+
+// The image dialog (and the encoder behind it) loads on first use only, so the
+// main chunk gains the menu entry and this loader, nothing more (#6586).
+const McoImageComposeDialog = lazy(() => import('./McoImage/compose/McoImageComposeDialog'));
 
 interface MessageComposeInputProps {
   /** id for the mention suggestion list (unique per composer). */
@@ -49,6 +53,12 @@ interface MessageComposeInputProps {
    * empty: no + button. Inserted text counts toward `maxBytes` like typing.
    */
   insertMenuItems?: readonly ComposeInsertMenuItem[];
+  /**
+   * Byte limit of this conversation. Set: the + menu gains "Insert image",
+   * which opens the MCOimg dialog and, on choose, REPLACES the draft with the
+   * image text (an image must be the whole message). Unset: no entry (#6586).
+   */
+  imageByteLimit?: number;
 }
 
 /**
@@ -77,6 +87,7 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
   sending = false,
   allowNewlines = true,
   insertMenuItems,
+  imageByteLimit,
 }) => {
   const { t } = useTranslation();
   const overLimitHintId = useId();
@@ -91,6 +102,16 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
     [textareaRef, store],
   );
 
+  const [imageOpen, setImageOpen] = useState(false);
+  const closeImage = useCallback(() => setImageOpen(false), []);
+  const chooseImage = useCallback(
+    (text: string) => {
+      store.set(text);
+      setImageOpen(false);
+      textareaRef.current?.focus();
+    },
+    [store, textareaRef],
+  );
   useAutoResizeTextarea(textareaRef, draft);
 
   // #5276: `@` mention autocomplete over the nodes this source knows.
@@ -113,6 +134,23 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
   );
   const overLimit = blockSendOverLimit && maxBytes !== undefined && byteLen > maxBytes;
   const inputDisabled = disabled || sending;
+  const menuItems = useMemo<readonly ComposeInsertMenuItem[]>(() => {
+    const base = insertMenuItems ?? [];
+    if (imageByteLimit === undefined) return base;
+    return [
+      ...base,
+      {
+        id: 'insert-image',
+        label: t('messages.insert_image', 'Insert image'),
+        icon: 'image',
+        // The + button itself is disabled with the composer; this keeps the
+        // entry honest if the menu was already open.
+        disabled: inputDisabled,
+        disabledReason: disabledTitle,
+        onSelect: () => setImageOpen(true),
+      },
+    ];
+  }, [insertMenuItems, imageByteLimit, inputDisabled, disabledTitle, t]);
 
   // Say why Send is off while the draft is over the limit, not just a red
   // counter (#4173 review L24).
@@ -192,13 +230,24 @@ const MessageComposeInput: React.FC<MessageComposeInputProps> = ({
           {byteCountDisplay.text}
         </div>
       </div>
-      {insertMenuItems && insertMenuItems.length > 0 && (
+      {menuItems.length > 0 && (
         <ComposeInsertMenu
-          items={insertMenuItems}
+          items={menuItems}
           insert={insertText}
           disabled={inputDisabled}
           disabledTitle={disabledTitle}
         />
+      )}
+      {imageByteLimit !== undefined && imageOpen && (
+        <Suspense fallback={null}>
+          <McoImageComposeDialog
+            open
+            limit={imageByteLimit}
+            draftNotEmpty={store.get().trim() !== ''}
+            onChoose={chooseImage}
+            onClose={closeImage}
+          />
+        </Suspense>
       )}
       <MessageEmojiButton
         textareaRef={textareaRef}

@@ -87,6 +87,7 @@ import type { TranslatedMessageState } from './translation/TranslatedMessage';
 import { PublicInstanceNotice } from './PublicInstanceNotice';
 import { HiddenMessageText } from './messages/HiddenMessageText';
 import { isPublicHiddenText } from '../utils/publicInstanceMode';
+import { MESHTASTIC_MAX_TEXT_BYTES } from '../utils/messageSplitLimits';
 import { PortNum } from '../server/constants/meshtastic.js';
 
 /** The latest handlers behind the stable row callbacks (see `rowActions`). */
@@ -2161,6 +2162,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   <div className="message-input-container">
                     <MessageComposeInput
                       listId="dm-mention-list"
+                      imageByteLimit={MESHTASTIC_MAX_TEXT_BYTES}
                       textareaRef={dmMessageInputRef}
                       inputRef={attachDmInput}
                       mentionCandidates={mentionCandidates}
