@@ -41,9 +41,30 @@ the MCOimg v3 reference codec. The port lives in `src/utils/mcoImage/`.
   (`docs/mcoimg-js/mcoimg-v3-codec.global.js`).
 - Licence: MIT.
 - Credit: Copyright (c) 2025 zjs81.
-- Changes: translated to TypeScript. We ported only the decoder, the Base91
-  reader, and the palette tables. The encoder is not included.
+- Changes: translated to TypeScript. We ported the decoder, the Base91
+  reader, the palette tables, and the Normal and High encoder levels. The
+  Extreme level, worker partitioning, and progress reporting are not included.
 
+
+## MCOimg v3 encoder (Normal and High)
+
+MeshMonitor makes `im3:` images with an encoder translated to TypeScript. The
+code lives in `src/utils/mcoImage/v3/encoder/`.
+
+- Source: <https://github.com/HDDen/meshcore-open>, branch `rename-mco-advanced`,
+  commit `c38c1650fe8394835e333b5b4a1ac84ead2d5e5a`
+  (`docs/mcoimg-js/mcoimg-v3-codec.global.js`, lines 1861-5318, 5434-5448,
+  5554-5564 and 5592-5594: tables, bit writer, candidate builders, region
+  search, and `runV3Encode`).
+- Licence: MIT.
+- Credit: Copyright (c) 2025 zjs81.
+- Changes: translated to TypeScript; Extreme branches removed. Some cache keys
+  are cheaper but match as often. One output change: for a solid-background
+  image with a non-white colour, upstream (lines 3919-3939) writes the tail
+  bits only when they are above zero. The decoder always reads them, so
+  upstream's output for master64 and dynamic64+ 1x1 solid images does not
+  decode. We write the tail bits whenever the profile has them. Output is
+  identical wherever upstream's output decodes.
 
 ## MCOimg v4 decoder
 
@@ -56,8 +77,21 @@ to TypeScript from the MCOimg v4 reference. The code lives in `src/utils/mcoImag
   `lib/widgets/mco_image_v4_view.dart`, and the black index from `mcoimg_palette.dart`).
 - Licence: MIT.
 - Credit: Copyright (c) 2025 zjs81.
-- Changes: translated to TypeScript. We ported only the decoder and renderer.
-  The encoder is not included.
+- Changes: translated to TypeScript. We ported the decoder and renderer.
+  The full encoder is not included.
+
+## MCOimg v4 raster-layer encoder
+
+`src/utils/mcoImage/v4/rasterEncoder.ts` wraps an IM3 body in an `im4:` document
+with one raster layer. It has no vector figures and no transport tail.
+
+- Source: <https://github.com/HDDen/meshcore-open>, tag `9.5.1-mod-1.9.0`,
+  commit `fe375741226588440e268002b4975349b2e95ffe`
+  (`lib/helpers/mcoimg_v4_codec.dart`, lines 88-121, 218-221, 239-272, 424-426,
+  1053-1112 and 3345-3381).
+- Licence: MIT.
+- Credit: Copyright (c) 2025 zjs81.
+- Changes: translated to TypeScript, raster-layer subset only.
 
 ## MCOtxt v1 decoder and generation-0 tables
 
