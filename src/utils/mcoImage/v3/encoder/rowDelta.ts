@@ -313,7 +313,7 @@ export function bestEncoderCompactValueEncoding(values: number[], rowLength: num
 
 export function bestEncoderCompactSameScalarEncoding(values: number[], rowLength: number, row: number, changes: RowChange[], valueBits: number, predictor: number, useVirtualBaseRow: boolean, directGrayscale: boolean): CompactValueEncoding | null {
   const absolute = encoderSameRowDeltaValue(changes);
-  let best: CompactValueEncoding | null = absolute == null ? null : { useResidual: false, bitCost: valueBits + (directGrayscale ? 1 : 0) };
+  const best: CompactValueEncoding | null = absolute == null ? null : { useResidual: false, bitCost: valueBits + (directGrayscale ? 1 : 0) };
   // The wire op assigns one decoded scalar to every changed position.
   // Residual form is therefore representable only when the final absolute
   // value is shared as well; equal deltas alone are insufficient when the
