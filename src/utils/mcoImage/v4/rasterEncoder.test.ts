@@ -79,3 +79,40 @@ describe('im4TextFromV3Body', () => {
     expect(() => im4TextFromV3Body({ ...base, nonce: 256 })).toThrow(McoImageV4InvalidPayloadError);
   });
 });
+
+interface DartFx {
+  name: string;
+  width: number;
+  height: number;
+  paletteProfile: keyof typeof PaletteProfile;
+  compressionLevel: 'normal' | 'high';
+  nonce: number;
+  pixels: number[];
+  v3HeaderHigh: number;
+  v3PayloadHex: string;
+  text: string;
+  jsV3Agrees: boolean;
+}
+const dartFixtures = (
+  JSON.parse(
+    readFileSync(new URL('../__fixtures__/v4-raster-encode-fixtures.json', import.meta.url), 'utf8'),
+  ) as { entries: DartFx[] }
+).entries;
+
+describe('Dart reference documents', () => {
+  it('covers every dimension mode', () => {
+    const modes = new Set(
+      dartFixtures.map((f) =>
+        f.width === f.height && f.width <= 64 ? 'square64' : f.width <= 32 && f.height <= 32 ? 'small32' : f.width <= 64 && f.height <= 64 ? 'medium64' : f.width === f.height ? 'extSquare' : 'extended',
+      ),
+    );
+    expect([...modes].sort()).toEqual(['extSquare', 'extended', 'medium64', 'small32', 'square64']);
+  });
+
+  it.each(dartFixtures.map((f) => [f.name, f] as const))('%s: wrapper reproduces the Dart text from the Dart inner body', (_n, f) => {
+    const profile = PaletteProfile[f.paletteProfile] as PaletteProfileId;
+    const inner = Uint8Array.from([(f.v3HeaderHigh << 4) | profile, ...Buffer.from(f.v3PayloadHex, 'hex')]);
+    const text = im4TextFromV3Body({ width: f.width, height: f.height, profile, v3BodyWithoutNonce: inner, nonce: f.nonce });
+    expect(text).toBe(f.text);
+  });
+});
