@@ -447,15 +447,24 @@ describe('paintMcoImageV4 text', () => {
 
 describe('paintMcoImageV4 reporter sample', () => {
   it('paints without throwing and issues the text blocks', async () => {
+    const { readFileSync } = await import('node:fs');
     const { decodeMcoImageText } = await import('../decode.js');
-    const fs = await import('node:fs');
-    const path = process.env.MCO_REPORTER_SAMPLE;
-    if (!path) return;
-    const image = decodeMcoImageText(fs.readFileSync(path, 'utf8').trim());
+    const url = new URL('../__fixtures__/v4-differential-fixtures.json', import.meta.url);
+    const file = JSON.parse(readFileSync(url, 'utf8')) as {
+      entries: { name: string; text: string }[];
+    };
+    const entry = file.entries.find((e) => e.name === 'reporter-6586');
+    expect(entry).toBeDefined();
+    const image = decodeMcoImageText(entry?.text ?? '');
     expect(image?.format).toBe('im4');
     if (image?.format !== 'im4') return;
+    expect(image.captions).toContain('Queens Weather');
     const { ctx, named } = makeCtx();
     paintMcoImageV4(ctx, image.document, opts({ pixelWidth: 512, pixelHeight: 512, createLayerSource: () => null }));
+    const blocks = (figs: readonly V4Figure[]): number =>
+      figs.reduce((n, f) => n + (f.kind === 'text' ? 1 : f.kind === 'group' ? blocks(f.figures) : 0), 0);
+    expect(blocks(image.document.figures)).toBe(7);
+    // one fillText per laid-out line, so at least one per block
     expect(named('fillText').length).toBeGreaterThanOrEqual(7);
   });
 });
